@@ -574,22 +574,30 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page);
 
+		// A row carries one state word; the version and sign-in line are on the agent's page (#911).
 		const registry = page.getByTestId("harness-registry");
-		await expect(registry.getByTestId("harness-tested-opencode")).toHaveText(
-			"tested with 1.18.30",
+		await expect(registry.getByTestId("harness-tested-opencode")).toHaveCount(
+			0,
 		);
 		await expect(
-			registry.getByTestId("harness-tested-claude-code"),
-		).toHaveCount(0);
+			registry.getByTestId("harness-check-result-opencode"),
+		).toBeVisible();
+		await page.goto("/settings?tab=agent&agent=opencode");
+		await expect(page.getByTestId("harness-tested-opencode")).toHaveText(
+			"tested with 1.18.30",
+		);
 		// The hint renders its backticked spans as code, so match the text without them.
 		await expect(
-			registry.getByText(OPENCODE_INSTALLED.loginHint.replaceAll("`", ""), {
-				exact: false,
-			}),
+			page
+				.getByTestId("agent-detail-capabilities")
+				.locator("code", { hasText: "opencode auth login" }),
 		).toBeVisible();
-		await expect(
-			registry.locator("code", { hasText: "opencode auth login" }),
-		).toBeVisible();
+		await page.goto("/settings?tab=agent&agent=claude-code");
+		await expect(page.getByTestId("agent-detail-title")).toHaveText(
+			"Claude Code",
+		);
+		await expect(page.getByTestId("harness-tested-claude-code")).toHaveCount(0);
+		await page.goto("/settings?tab=agent");
 
 		// OpenCode takes a model: with nothing starred or reported, the chip names
 		// its list's first, never a bare default (#673 w7, #907).
@@ -746,7 +754,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		).toHaveText("Not installed");
 		await page.getByTestId("add-agent-tile-deepagents").click();
 		await page.getByTestId("add-agent-next").click();
-		await expect(page.getByTestId("add-agent-verdict")).toContainText(
+		await expect(page.getByTestId("add-agent-copy")).toContainText(
 			"pip install deepagents-acp",
 		);
 	});
@@ -985,13 +993,14 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		await page.getByTestId("harness-check-opencode").click();
 		await expect(page.getByTestId("harness-check-result-opencode")).toHaveText(
-			"answers ACP",
+			"Ready",
 		);
 
 		await page.getByTestId("harness-check-claude-code").click();
 		await expect(
 			page.getByTestId("harness-check-result-claude-code"),
-		).toHaveText(
+		).toHaveText("Sign-in needed");
+		await expect(page.getByTestId("harness-note-claude-code")).toHaveText(
 			"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
 		);
 	});

@@ -72,3 +72,31 @@ describe("Settings agent page search (#907)", () => {
 		expect(merged({ tab: "agent", agent: "nope" }).agent).toBeUndefined();
 	});
 });
+
+describe("Legacy agent links (#911)", () => {
+	it("keeps the agent when ?tab=harness redirects to Agent", () => {
+		expect(legacySettingsTarget("?tab=harness&agent=codex")).toEqual({
+			tab: "agent",
+			agent: "codex",
+		});
+		expect(legacySettingsTarget('?tab="harness"&agent="codex"')).toEqual({
+			tab: "agent",
+			agent: "codex",
+		});
+		expect(legacySettingsTarget("?tab=harness&agent=nope")).toEqual({
+			tab: "agent",
+		});
+		const beforeLoad = Route.options.beforeLoad as (ctx: {
+			location: { searchStr: string };
+		}) => void;
+		let thrown: unknown;
+		try {
+			beforeLoad({ location: { searchStr: "?tab=harness&agent=codex" } });
+		} catch (e) {
+			thrown = e;
+		}
+		expect(
+			(thrown as { options?: { search?: unknown } }).options?.search,
+		).toEqual({ tab: "agent", agent: "codex" });
+	});
+});

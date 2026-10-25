@@ -43,12 +43,20 @@ export const validateSettingsSearch = (
 	return { tab, agent, source };
 };
 
-/** The new home of an old `?tab=`, read from the raw query (validation drops it). */
+/** The new home of an old `?tab=`, read from the raw query (validation drops it); `?tab=harness&agent=` keeps its agent. */
 export function legacySettingsTarget(
 	searchStr: string,
-): { tab: SettingsTab; hash?: string } | undefined {
-	const raw = new URLSearchParams(searchStr).get("tab")?.replace(/^"|"$/g, "");
-	return raw ? LEGACY_SETTINGS_TABS[raw] : undefined;
+): { tab: SettingsTab; hash?: string; agent?: HarnessId } | undefined {
+	const query = new URLSearchParams(searchStr);
+	const read = (key: string) => query.get(key)?.replace(/^"|"$/g, "");
+	const raw = read("tab");
+	const to = raw ? LEGACY_SETTINGS_TABS[raw] : undefined;
+	if (!to) return undefined;
+	const { agent } = validateSettingsSearch({
+		tab: to.tab,
+		agent: read("agent"),
+	});
+	return agent ? { ...to, agent } : to;
 }
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -58,7 +66,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 		if (to)
 			throw redirect({
 				to: "/settings",
-				search: { tab: to.tab },
+				search: { tab: to.tab, agent: to.agent },
 				hash: to.hash,
 				replace: true,
 			});

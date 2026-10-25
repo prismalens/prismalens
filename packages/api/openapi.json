@@ -34374,6 +34374,10 @@
                                     "env"
                                   ],
                                   "type": "string"
+                                },
+                                "inEnv": {
+                                  "type": "boolean",
+                                  "default": false
                                 }
                               },
                               "required": [

@@ -134,6 +134,8 @@ export const ENV_VAR_STATES = ["unset", "set", "env"] as const;
 export const AgentEnvVarSchema = z.object({
 	name: EnvNameSchema,
 	state: z.enum(ENV_VAR_STATES),
+	/** `set` and the host has it too, so the stored value overrides it (#911; Sources' `overridesEnv`). */
+	inEnv: z.boolean().default(false),
 });
 export type AgentEnvVar = z.infer<typeof AgentEnvVarSchema>;
 

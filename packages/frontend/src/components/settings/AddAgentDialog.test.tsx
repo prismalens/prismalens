@@ -75,6 +75,8 @@ const harnesses: HarnessStatus[] = [
 		id: "deepagents",
 		label: "deepagents",
 		runnable: false,
+		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
+		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
 		checked: checked("failed-to-start", "failed to start"),
 	}),
 	status({
@@ -200,6 +202,20 @@ describe("Add agent tiles (#907)", () => {
 		expect(tileState(status({ checked: null }))).toBe("Ready");
 	});
 
+	it("searches the ACP registry under the tiles, without the agents the tiles already are (#911)", async () => {
+		await render();
+		expect(q("acp-registry")).not.toBeNull();
+		const steps = document.body.querySelectorAll(
+			'[data-testid="step-list"] li',
+		);
+		expect(steps[0]?.getAttribute("aria-current")).toBe("step");
+		await typeInto("acp-registry-search", "codex");
+		const names = Array.from(
+			document.body.querySelectorAll('[data-testid="acp-registry-entry"]'),
+		).map((e) => e.textContent);
+		expect(names.some((n) => n?.startsWith("Codex"))).toBe(false);
+	});
+
 	it("opens a ready agent's page at once", async () => {
 		await render();
 		await click("add-agent-tile-claude-code");
@@ -219,8 +235,17 @@ describe("Add agent steps (#907)", () => {
 		await render();
 		await click("add-agent-tile-codex");
 		await click("add-agent-next");
-		expect(q("add-agent-signin")?.textContent).toContain("codex login");
-		expect(q("add-agent-copy")).not.toBeNull();
+		expect(q("add-agent-copy")?.textContent).toContain("codex login");
+		// The finished step ticks, the current one is marked (#935's StepList).
+		const steps = document.body.querySelectorAll(
+			'[data-testid="step-list"] li',
+		);
+		expect(steps[0]?.hasAttribute("data-done")).toBe(true);
+		expect(steps[1]?.getAttribute("aria-current")).toBe("step");
+		expect(steps[2]?.hasAttribute("data-done")).toBe(false);
+		expect(q("env-signin-warning")?.textContent).toContain(
+			"If Codex is signed in, it may use this key instead.",
+		);
 		await typeInto("add-agent-key", "sk-1");
 		await click("add-agent-next");
 		expect(mutateAsync).toHaveBeenCalledWith({
@@ -248,8 +273,9 @@ describe("Add agent steps (#907)", () => {
 		await render();
 		await click("add-agent-tile-opencode");
 		await click("add-agent-next");
-		expect(q("add-agent-verdict")?.textContent).toContain(
-			"Not installed. Install: npm i -g @openai/codex",
+		expect(q("add-agent-verdict")?.textContent).toContain("Not installed.");
+		expect(q("add-agent-copy")?.textContent).toContain(
+			"npm i -g @openai/codex",
 		);
 		expect((q("add-agent-next") as HTMLButtonElement).disabled).toBe(false);
 	});

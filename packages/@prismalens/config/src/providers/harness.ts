@@ -179,6 +179,8 @@ export interface HarnessDescriptor {
 	resume: boolean;
 	/** The env var naming the agent's own config folder, set from Settings → Agent → Config directory (#907). */
 	configDir?: { envKey: string; shownDefault: string };
+	/** Its entries in the bundled ACP registry, so Add agent never lists it twice (#911). */
+	acpRegistryIds?: readonly string[];
 	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
 	toolsHint?: { text: string };
 }
@@ -294,6 +296,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
 		id: "opencode",
 		label: "OpenCode",
+		acpRegistryIds: ["opencode", "opencode-v2"],
 		binary: "opencode",
 		acpArgs: ({ cwd }) => ["acp", "--cwd", cwd],
 		// XDG_CONFIG_HOME stays the user's: a run takes their model, providers, MCP servers and agents.
@@ -374,6 +377,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	"claude-code": {
 		id: "claude-code",
 		label: "Claude Code",
+		acpRegistryIds: ["claude-acp"],
 		binary: "claude-agent-acp",
 		companionBinary: "claude",
 		adapterPackage: "@agentclientprotocol/claude-agent-acp",
@@ -466,6 +470,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	codex: {
 		id: "codex",
 		label: "Codex",
+		acpRegistryIds: ["codex-acp"],
 		binary: "codex-acp",
 		companionBinary: "codex",
 		adapterPackage: "@agentclientprotocol/codex-acp",
@@ -530,6 +535,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	gemini: {
 		id: "gemini",
 		label: "Gemini CLI",
+		acpRegistryIds: ["gemini"],
 		binary: "gemini",
 		acpArgs: () => ["--acp"],
 		// Trust is the user's own folderTrust setting; this row forces neither way (#817, #848).
@@ -574,6 +580,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	deepagents: {
 		id: "deepagents",
 		label: "deepagents",
+		acpRegistryIds: ["deepagents"],
 		// deepagents-acp ships no console script; deepagents-code's `dcode --acp` is
 		// the ACP server (entry points of deepagents-code 0.1.71 on PyPI, #634).
 		// `--acp` ignores ACP mcpServers: the gateway goes in by --mcp-config, beside the user's own servers (#848).

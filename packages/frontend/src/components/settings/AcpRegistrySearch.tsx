@@ -5,16 +5,25 @@ import {
 	ACP_REGISTRY,
 	type AcpRegistryEntry,
 } from "@prismalens/config/acp-registry";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { CircleDashed, Search } from "lucide-react";
 import { useId, useState } from "react";
 import { CommandChip } from "@/components/ui/command-chip";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+/** Registry entries that are not already one of Add agent's tiles (#911). */
+export const OTHER_AGENTS: readonly AcpRegistryEntry[] = (() => {
+	const tiles = new Set(
+		Object.values(HARNESS_REGISTRY).flatMap((d) => d.acpRegistryIds ?? []),
+	);
+	return ACP_REGISTRY.filter((e) => !tiles.has(e.id));
+})();
+
 /** Up to `limit` entries whose name, id or description holds every word of the query. */
 export function searchRegistry(
 	query: string,
-	entries: readonly AcpRegistryEntry[] = ACP_REGISTRY,
+	entries: readonly AcpRegistryEntry[] = OTHER_AGENTS,
 	limit = 8,
 ): AcpRegistryEntry[] {
 	const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -30,11 +39,11 @@ export function searchRegistry(
 /**
  * "Or find one in the ACP registry" (#848): a search over the registry list
  * bundled with this release. PrismaLens fetches and installs nothing (ADR
- * 0003 §4); choosing an entry shows its install line to copy. Add agent's
- * first step (#911) takes it under the agent tiles.
+ * 0003 §4); choosing an entry shows its install line to copy. It sits under
+ * Add agent's tiles and leaves out the agents those tiles already are (#911).
  */
 export function AcpRegistrySearch({
-	entries = ACP_REGISTRY,
+	entries = OTHER_AGENTS,
 }: {
 	entries?: readonly AcpRegistryEntry[];
 }) {

@@ -133,3 +133,14 @@ describe("ACP Registry and toolsHint (#848 C17)", () => {
 		expect(claudeStatus?.toolsHint).toBeUndefined();
 	});
 });
+
+describe("acpRegistryIds (#911)", () => {
+	it("names only entries the bundled registry has", () => {
+		const ids = new Set(ACP_REGISTRY.map((e) => e.id));
+		const named = Object.values(HARNESS_REGISTRY).flatMap(
+			(d) => d.acpRegistryIds ?? [],
+		);
+		expect(named.length).toBeGreaterThan(0);
+		for (const id of named) expect(ids.has(id)).toBe(true);
+	});
+});

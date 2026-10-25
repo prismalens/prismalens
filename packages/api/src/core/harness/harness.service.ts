@@ -247,14 +247,14 @@ export function envVarStates(
 	);
 	const saved = new Set(stored);
 	const names = Array.from(new Set([...keys, ...[...stored].sort()]));
-	return names.map((name) => ({
-		name,
-		state: saved.has(name)
-			? "set"
-			: keys.includes(name) && host[name] !== undefined
-				? "env"
-				: "unset",
-	}));
+	return names.map((name) => {
+		const inHost = keys.includes(name) && host[name] !== undefined;
+		return {
+			name,
+			state: saved.has(name) ? "set" : inHost ? "env" : "unset",
+			inEnv: saved.has(name) && inHost,
+		};
+	});
 }
 
 function nonEmpty<K extends string, V extends object>(

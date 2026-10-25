@@ -31,18 +31,14 @@ import {
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { Hint } from "@/components/shared/Hint";
-import { InlineCode } from "@/components/shared/InlineCode";
-import { Mono } from "@/components/shared/Mono";
 import { AddAgentDialog } from "./AddAgentDialog";
-import { testedHint, versionText } from "./AgentDetail";
+import { agentState, testedHint, versionText } from "./AgentDetail";
 
 export { testedHint, versionText };
 
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
-import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -60,13 +56,7 @@ import {
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
-
-/** One harness's last on-demand ACP handshake verdict, kept only in memory; it goes stale the moment the harness's login state changes. */
-interface ProbeState {
-	/** Only "answers ACP" is a pass; it still does not mean signed in. */
-	outcome: HarnessProbeResult["outcome"];
-	detail: string;
-}
+import { StatePill } from "./source-words";
 
 export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
@@ -278,7 +268,7 @@ function AccessRows() {
 	);
 }
 
-/** Auto: the next run takes the first agent on PATH instead of the one named above. */
+/** Auto: the next run takes the first agent that can run instead of the one named above. */
 function AutoRow() {
 	const { setting, effective } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
@@ -286,7 +276,7 @@ function AutoRow() {
 	return (
 		<SettingRow
 			label={<label htmlFor="harness-auto">Auto</label>}
-			description="Auto picks the first agent on PATH"
+			description="Auto picks the first agent that can run"
 			testId="harness-auto-row"
 		>
 			<Switch
@@ -306,8 +296,8 @@ function AutoRow() {
 
 /**
  * One agent on this machine, with its own check: a check on one row never
- * shows as pending on another (#673 w17). Shows the server's last check
- * (boot sweep or a run's readiness check) until this row runs its own.
+ * shows as pending on another (#673 w17). One state word and at most one
+ * note, like a source (#848); the whole row opens the agent's page.
  */
 function AgentRow({
 	harness,
@@ -318,91 +308,66 @@ function AgentRow({
 }) {
 	const harnessId = harness.id as HarnessId;
 	const checkHarness = useCheckHarness();
-	const [ownProbe, setOwnProbe] = useState<ProbeState | null>(null);
+	// This row's own verdict, kept in memory; it goes stale once the agent's login changes.
+	const [ownOutcome, setOwnOutcome] = useState<
+		HarnessProbeResult["outcome"] | null
+	>(null);
 	const checking = checkHarness.isPending;
-	const probe: ProbeState | null =
-		ownProbe ??
-		(harness.checked
-			? { outcome: harness.checked.outcome, detail: harness.checked.detail }
-			: null);
+	const outcome = ownOutcome ?? harness.checked?.outcome ?? null;
 
 	async function handleCheck() {
 		try {
-			const result = await checkHarness.mutateAsync({ id: harnessId });
-			setOwnProbe({ outcome: result.outcome, detail: result.detail });
+			setOwnOutcome(
+				(await checkHarness.mutateAsync({ id: harnessId })).outcome,
+			);
 		} catch {
-			setOwnProbe({
-				outcome: "failed-to-start",
-				detail: "The check did not run. Try it again.",
-			});
+			setOwnOutcome("failed-to-start");
 		}
 	}
+
+	const note = harness.windowsOnlyPath
+		? `Windows install at ${harness.windowsOnlyPath}; can't run in WSL`
+		: outcome === "sign-in-needed"
+			? failureLine(notSignedIn(harness.label))
+			: inUse
+				? "Used by the next run"
+				: null;
 
 	return (
 		<Row
 			key={harness.id}
+			className="relative"
 			testId={`harness-row-${harness.id}`}
 			lead={<AgentMark id={harness.id} className="size-5" />}
 			label={
-				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-					{harness.label}
-					{inUse && (
-						<span className="text-meta font-medium text-ok">in use</span>
-					)}
-					{harness.installed && versionText(harness) ? (
-						<Hint label={testedHint(harness)} meta={harness.tested?.date}>
-							<span
-								className="font-mono text-meta font-normal text-text-3"
-								data-testid={`harness-tested-${harness.id}`}
-							>
-								{versionText(harness)}
-							</span>
-						</Hint>
-					) : (
-						!harness.installed &&
-						!harness.windowsOnlyPath && (
-							<span className="text-meta font-normal text-text-3">
-								not installed
-							</span>
-						)
-					)}
+				<span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+					<Link
+						to="/settings"
+						search={{ tab: "agent", agent: harnessId }}
+						className="after:absolute after:inset-0"
+						data-testid={`harness-open-${harness.id}`}
+					>
+						{harness.label}
+					</Link>
+					<StatePill
+						word={
+							checking
+								? { text: "Checking", tone: "neutral" }
+								: agentState(harness, outcome)
+						}
+						testId={`harness-check-result-${harness.id}`}
+					/>
 				</span>
 			}
 			meta={
-				harness.windowsOnlyPath ? (
-					<span data-testid={`harness-windows-only-${harness.id}`}>
-						Windows install at {harness.windowsOnlyPath}; can't run in WSL
-					</span>
-				) : probe && !checking ? (
-					<StateWord
-						tone={PROBE_TONE[probe.outcome]}
+				note && (
+					<span
 						className="whitespace-normal"
-						data-testid={`harness-check-result-${harness.id}`}
+						data-testid={`harness-note-${harness.id}`}
 					>
-						{probe.outcome === "sign-in-needed"
-							? failureLine(notSignedIn(harness.label))
-							: probe.detail}
-					</StateWord>
-				) : harness.installed ? (
-					// app.css's `code` chip is unlayered, so it outranks a plain utility.
-					<span className="[&_code]:bg-transparent! [&_code]:p-0!">
-						{capabilities(harness)} <InlineCode text={harness.loginHint} />
+						{note}
 					</span>
-				) : (
-					<Mono>{harness.install}</Mono>
 				)
-			}
-			below={
-				harness.id === "opencode" ? (
-					// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
-					<p
-						className="text-meta text-text-3"
-						data-testid="harness-opencode-asks"
-					>
-						A run sets each tool's default rule to match its permission level.
-						Your other rules in opencode.json stay as they are.
-					</p>
-				) : undefined
 			}
 			trailing={
 				<span className="flex items-center gap-1">
@@ -410,6 +375,7 @@ function AgentRow({
 						<Button
 							variant="secondary"
 							size="sm"
+							className="relative z-10"
 							onClick={handleCheck}
 							disabled={checking}
 							data-testid={`harness-check-${harness.id}`}
@@ -417,43 +383,9 @@ function AgentRow({
 							{checking ? "Checking" : "Check"}
 						</Button>
 					)}
-					<Link
-						to="/settings"
-						search={{ tab: "agent", agent: harnessId }}
-						aria-label={`Open ${harness.label}`}
-						className="inline-flex size-8 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
-						data-testid={`harness-open-${harness.id}`}
-					>
-						<ChevronRight className="size-4" />
-					</Link>
+					<ChevronRight className="size-4 text-text-3" aria-hidden />
 				</span>
 			}
 		/>
 	);
-}
-
-/** A check's verdict as a word (look ruling §1.3, agent row). */
-const PROBE_TONE: Record<HarnessProbeResult["outcome"], StateTone> = {
-	"answers-acp": "ok",
-	"sign-in-needed": "warn",
-	"no-answer": "danger",
-	"failed-to-start": "danger",
-};
-
-/** What the agent takes from PrismaLens, as the last check read it (r4 R4.1 rev, R4.2, R4.3). */
-function capabilities(h: HarnessStatus): string {
-	const model =
-		h.modelVia === "acp"
-			? "Takes a model over ACP."
-			: h.id === "deepagents"
-				? "Uses its own model."
-				: "Model: pending a check.";
-	const answered = h.checked?.outcome === "answers-acp" ? h.checked : null;
-	const effort = answered?.effort
-		? ` Effort over ACP: ${answered.effort.values.join(", ")}.`
-		: "";
-	const images = answered
-		? ` Images: ${answered.images ? "yes" : "no"}.`
-		: " Images: not checked yet.";
-	return `${model}${effort}${images}`;
 }

@@ -597,14 +597,23 @@ describe("envVarStates (#907)", () => {
 	it("lists the agent's keys, then stored extras; stored wins, then the host, else unset", () => {
 		const vars = envVarStates("codex", ["OPENAI_API_KEY", "ZED"], { CODEX_API_KEY: "a", OPENAI_API_KEY: "b" });
 		expect(vars).toEqual([
-			{ name: "CODEX_API_KEY", state: "env" },
-			{ name: "OPENAI_API_KEY", state: "set" },
-			{ name: "ZED", state: "set" },
+			{ name: "CODEX_API_KEY", state: "env", inEnv: false },
+			{ name: "OPENAI_API_KEY", state: "set", inEnv: true },
+			{ name: "ZED", state: "set", inEnv: false },
 		]);
 		expect(envVarStates("codex", [], {})).toEqual([
-			{ name: "CODEX_API_KEY", state: "unset" },
-			{ name: "OPENAI_API_KEY", state: "unset" },
+			{ name: "CODEX_API_KEY", state: "unset", inEnv: false },
+			{ name: "OPENAI_API_KEY", state: "unset", inEnv: false },
 		]);
+	});
+
+	it("marks a stored key inEnv only while the host has it too (#911)", () => {
+		const of = (host: NodeJS.ProcessEnv) =>
+			envVarStates("codex", ["OPENAI_API_KEY"], host).find((v) => v.name === "OPENAI_API_KEY")?.inEnv;
+		expect(of({ OPENAI_API_KEY: "b" })).toBe(true);
+		expect(of({})).toBe(false);
+		// A stored name the agent doesn't take from the host overrides nothing.
+		expect(envVarStates("codex", ["ZED"], { ZED: "z" }).find((v) => v.name === "ZED")?.inEnv).toBe(false);
 	});
 
 	it("never reads a host name the agent doesn't take as From environment", () => {
@@ -765,15 +774,15 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		const { svc } = runtimeService();
 		const varsOf = async () => (await svc.getStatus()).harnesses.find((h) => h.id === "claude-code")?.envVars ?? [];
 		const before = await varsOf();
-		expect(before).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "env" });
-		expect(before).toContainEqual({ name: "ANTHROPIC_AUTH_TOKEN", state: "unset" });
+		expect(before).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "env", inEnv: false });
+		expect(before).toContainEqual({ name: "ANTHROPIC_AUTH_TOKEN", state: "unset", inEnv: false });
 
 		await svc.updateSettings({
 			env: { "claude-code": { ANTHROPIC_BASE_URL: "https://mine.example", MY_EXTRA: "x" } },
 		});
 		const vars = await varsOf();
-		expect(vars).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "set" });
-		expect(vars).toContainEqual({ name: "MY_EXTRA", state: "set" });
+		expect(vars).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "set", inEnv: true });
+		expect(vars).toContainEqual({ name: "MY_EXTRA", state: "set", inEnv: false });
 		const status = JSON.stringify(await svc.getStatus());
 		expect(status).not.toContain("mine.example");
 		expect(status).not.toContain("host.example");

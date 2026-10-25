@@ -6,8 +6,12 @@ import type { AcpRegistryEntry } from "@prismalens/config/acp-registry";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AcpRegistrySearch, searchRegistry } from "./AcpRegistrySearch";
-import { agentEnvVarNames, EnvVarNotes, envStateWord } from "./agent-env";
+import {
+	AcpRegistrySearch,
+	OTHER_AGENTS,
+	searchRegistry,
+} from "./AcpRegistrySearch";
+import { EnvVarNotes, envStateWord } from "./agent-env";
 import { StepList } from "./SourceConnectDialog";
 
 (
@@ -162,6 +166,23 @@ describe("StepList (#848)", () => {
 	});
 });
 
+describe("Registry search under Add agent's tiles (#911)", () => {
+	it("leaves out the agents that are already tiles, so none reads Not installed twice", () => {
+		const ids = OTHER_AGENTS.map((e) => e.id);
+		for (const tile of [
+			"claude-acp",
+			"codex-acp",
+			"gemini",
+			"opencode",
+			"opencode-v2",
+			"deepagents",
+		])
+			expect(ids).not.toContain(tile);
+		expect(ids).toContain("goose");
+		expect(searchRegistry("codex").map((e) => e.id)).not.toContain("codex-acp");
+	});
+});
+
 describe("agent-env (#848)", () => {
 	let container: HTMLDivElement | null = null;
 	let root: ReturnType<typeof createRoot> | null = null;
@@ -179,13 +200,6 @@ describe("agent-env (#848)", () => {
 			container = null;
 			root = null;
 		}
-	});
-
-	it("returns provider keys and custom model option for an agent", () => {
-		const vars = agentEnvVarNames("claude-code");
-		expect(vars).toContain("ANTHROPIC_API_KEY");
-		expect(vars).toContain("ANTHROPIC_CUSTOM_MODEL_OPTION");
-		expect(vars[vars.length - 1]).toBe("ANTHROPIC_CUSTOM_MODEL_OPTION");
 	});
 
 	it("maps envStateWord correctly", () => {

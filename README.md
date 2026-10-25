@@ -117,7 +117,8 @@ what changed:
   records the stream and validates the report.
 - **Your agent, its own sign-in.** Any ACP agent PrismaLens knows can run;
   with none pinned, the first one in the automatic order that can run is used,
-  and Settings → Agent picks another. PrismaLens never reads or stores the agent's login or API key.
+  and Settings → Agent picks another. PrismaLens never takes over the agent's own sign-in;
+  it stores only an API key you enter in Add agent, encrypted and never shown again.
 - **Four permission levels.** Ask always, Auto-accept edits, Auto and Full
   access each pick the agent's own mode and decide which of its requests wait
   for you. A run an alert starts waits for nobody: it runs at Auto and refuses

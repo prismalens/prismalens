@@ -210,9 +210,9 @@ describe("agent runtime settings (#907)", () => {
 	it("reads names and states, never values, and whether this caller may edit runtime", () => {
 		const envVars = {
 			"claude-code": [
-				{ name: "ANTHROPIC_API_KEY", state: "env" },
-				{ name: "ANTHROPIC_BASE_URL", state: "set" },
-				{ name: "OPENROUTER_API_KEY", state: "unset" },
+				{ name: "ANTHROPIC_API_KEY", state: "env", inEnv: false },
+				{ name: "ANTHROPIC_BASE_URL", state: "set", inEnv: true },
+				{ name: "OPENROUTER_API_KEY", state: "unset", inEnv: false },
 			],
 		} as const;
 		const parsed = HarnessSettingsSchema.parse({
