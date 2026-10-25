@@ -233,6 +233,17 @@ describe("Add agent steps (#907)", () => {
 		expect(q("add-agent-close")).not.toBeNull();
 	});
 
+	it("keeps a typed key until its name is picked, never dropping it (#911)", async () => {
+		await render();
+		await click("add-agent-tile-deepagents");
+		await click("add-agent-next");
+		await typeInto("add-agent-key", "sk-1");
+		await click("add-agent-next");
+		expect(q("add-agent-error")?.textContent).toBe("Pick which key this is.");
+		expect(mutateAsync).not.toHaveBeenCalled();
+		expect(q("add-agent-config")).toBeNull();
+	});
+
 	it("offers the install command for an agent that isn't installed, and Next stays on", async () => {
 		await render();
 		await click("add-agent-tile-opencode");

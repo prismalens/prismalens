@@ -497,12 +497,19 @@ describe("AgentDetail runtime and environment (#907)", () => {
 			'[data-testid="env-value"]',
 		) as HTMLInputElement;
 		expect(value.type).toBe("password");
+		// A name with no value can't be added; Remove is how a variable is cleared (#911).
+		const addButton = () =>
+			container.querySelector(
+				'[data-testid="env-add-button"]',
+			) as HTMLButtonElement;
+		expect(addButton().disabled).toBe(true);
 		expect(value.getAttribute("autocomplete")).toBe("off");
 		await typeInto(
 			container.querySelector('[data-testid="env-name"]'),
 			"MY_KEY",
 		);
 		await typeInto(value, "s3cret");
+		expect(addButton().disabled).toBe(false);
 		await act(async () => {
 			value
 				.closest("form")

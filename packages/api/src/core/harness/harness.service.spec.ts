@@ -719,6 +719,13 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		});
 	});
 
+	it("refuses an empty value, which would override the host's (#911)", async () => {
+		const { svc } = runtimeService();
+		await expect(svc.updateSettings({ env: { codex: { OPENAI_API_KEY: "" } } })).rejects.toMatchObject({
+			message: "OPENAI_API_KEY needs a value. Remove clears it.",
+		});
+	});
+
 	it("refuses a 51st variable", async () => {
 		const { svc } = runtimeService();
 		const rows = Object.fromEntries(Array.from({ length: 51 }, (_, i) => [`V${i}`, "x"]));
@@ -741,6 +748,16 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(runtime.env).toMatchObject({ ANTHROPIC_BASE_URL: "https://b.example", CLAUDE_CONFIG_DIR: dir });
 		expect(runtime.note).toEqual({ binaryPath: null, configDir: dir, envNames: ["ANTHROPIC_BASE_URL"], args: [] });
 		expect((await svc.runtimeFor("codex")).env.ANTHROPIC_BASE_URL).toBeUndefined();
+	});
+
+	it("an unsafe host gateway fails only that agent, and a saved https one fixes it (#911)", async () => {
+		process.env.ANTHROPIC_BASE_URL = "http://gateway.example";
+		const { svc } = runtimeService();
+		const ids = (await svc.getStatus()).harnesses.map((h) => h.id);
+		expect(ids).toEqual(expect.arrayContaining(["claude-code", "codex"]));
+		await expect(svc.runtimeFor("claude-code")).rejects.toThrow(/must be https/);
+		await svc.updateSettings({ env: { "claude-code": { ANTHROPIC_BASE_URL: "https://ok.example" } } });
+		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://ok.example");
 	});
 
 	it("names each variable Not set, From environment or Key set; a saved value wins over the host's", async () => {

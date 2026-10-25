@@ -17,7 +17,9 @@ import {
 	checkInstalls,
 	checkWebhookToken,
 	checkWebhookUrl,
+	doctorSelection,
 	type Handshake,
+	readyPathChecks,
 	sandboxSummary,
 	summary,
 } from "./doctor.js";
@@ -67,7 +69,7 @@ describe("doctor — harness detection", () => {
 		expect(model?.detail).toContain("Settings → Agent → Model");
 	});
 
-	it("is a HARD failure, listing every installable agent, when none can run", () => {
+	it("warns, listing every installable agent, when none on PATH can run (#911)", () => {
 		process.env.PATH = tempPathDir; // empty dir — nothing resolvable
 
 		const perHarness = checkHarnessesOnPath();
@@ -75,7 +77,7 @@ describe("doctor — harness detection", () => {
 		expect(perHarness.some((check) => check.name.includes("Local agent"))).toBe(false);
 
 		const overall = checkAnyAgentRunnable([]);
-		expect(overall).toMatchObject({ name: "Agent ready", pass: false, hard: true });
+		expect(overall).toMatchObject({ name: "Agent ready", pass: false, hard: false });
 		// The ERROR line carries the install commands themselves, not just the ids (#337 run e, G12).
 		expect(overall.detail).toContain("Set one up with Add agent in Settings → Agent, or install one:");
 		for (const descriptor of Object.values(HARNESS_REGISTRY)) {
@@ -138,7 +140,7 @@ describe("doctor — quiet about agents that can't run (#907)", () => {
 			shake("deepagents", { detail: "failed to start: boom" }),
 		];
 		const agent = checkAnyAgentRunnable(handshakes);
-		expect(agent).toEqual({ name: "Agent ready", pass: true, detail: "Claude Code ready", hard: true });
+		expect(agent).toEqual({ name: "Agent ready", pass: true, detail: "Claude Code ready", hard: false });
 		const printed = [agent, ...handshakes.filter((h) => h.ready).map((h) => h.check)];
 		expect(printed.filter((c) => !c.pass)).toEqual([]);
 		expect(printed.map((c) => c.detail).join("\n")).not.toMatch(/OpenCode|Gemini CLI|deepagents/);
@@ -148,7 +150,30 @@ describe("doctor — quiet about agents that can't run (#907)", () => {
 		});
 	});
 
-	it("is one error carrying each installed agent's reason when none can run", () => {
+	it("prints the PATH row of a ready agent only, never one that failed its handshake (#911)", () => {
+		const path = (label: string) => ({ name: `Harness: ${label}`, pass: true, detail: "found", hard: false });
+		const rows = [path("Claude Code"), path("Gemini CLI"), path("deepagents")];
+		const handshakes = [
+			shake("claude-code", { ready: true, detail: "answers ACP; signed in" }),
+			shake("gemini", { signedOut: true, detail: "answers ACP; not signed in" }),
+			shake("deepagents", { detail: "failed to start: boom" }),
+		];
+		expect(readyPathChecks(rows, handshakes).map((c) => c.name)).toEqual(["Harness: Claude Code"]);
+	});
+
+	it("never reports success for a selected agent that failed its handshake (#911)", () => {
+		const handshakes = [
+			shake("claude-code", { ready: true, detail: "answers ACP; signed in" }),
+			shake("deepagents", { detail: "failed to start: boom" }),
+		];
+		const agent = checkAnyAgentRunnable(handshakes);
+		expect(summary([agent], handshakes, "deepagents")).toEqual({
+			level: "warn",
+			line: "Required checks passed. deepagents does not answer its handshake, so a run on it fails.",
+		});
+	});
+
+	it("is one warning carrying each installed agent's reason when none can run, never an exit 1 (#911)", () => {
 		const handshakes = [
 			shake("gemini", { signedOut: true, detail: "answers ACP; not signed in" }),
 			shake("deepagents", { detail: "failed to start: boom" }),
@@ -161,8 +186,8 @@ describe("doctor — quiet about agents that can't run (#907)", () => {
 			"Agents set up only in Settings (binary path, local agent) are checked there, not here.",
 		);
 		expect(summary([agent], handshakes)).toEqual({
-			level: "error",
-			line: "No agent can run. `pl up` still starts, but Investigate stays disabled until one can.",
+			level: "warn",
+			line: "Required checks passed. No agent on PATH can run; the doctor checks PATH agents only, so one set up in Settings → Agent may still run.",
 		});
 	});
 });
@@ -304,14 +329,15 @@ describe("doctor — harness ACP handshake", () => {
 
 	it("ends in an error, not the sign-in warning, when a required check fails", () => {
 		const git = { name: "Git", pass: false, detail: "git missing", hard: true };
-		const harness = { name: "Agent ready", pass: false, detail: "", hard: true };
+		const harness = { name: "Agent ready", pass: false, detail: "", hard: false };
 		expect(summary([git], [])).toEqual({
 			level: "error",
 			line: "1 required check(s) failed. Fix the above before running `pl up`.",
 		});
 		expect(summary([harness], []).line).toBe(
-			"No agent can run. `pl up` still starts, but Investigate stays disabled until one can.",
+			"Required checks passed. No agent on PATH can run; the doctor checks PATH agents only, so one set up in Settings → Agent may still run.",
 		);
+		expect(summary([git, harness], []).level).toBe("error");
 	});
 
 	it("probes nothing when no harness is on PATH", async () => {

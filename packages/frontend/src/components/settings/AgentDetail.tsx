@@ -585,6 +585,7 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 			setError("Use letters, digits and _, not starting with a digit.");
 			return;
 		}
+		if (!value) return;
 		update.mutate(
 			{ env: { [id]: { [key]: value } } },
 			{
@@ -687,7 +688,7 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 									type="submit"
 									variant="secondary"
 									size="sm"
-									disabled={!name.trim() || update.isPending}
+									disabled={!name.trim() || !value || update.isPending}
 									data-testid="env-add-button"
 								>
 									Add variable

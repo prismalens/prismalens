@@ -145,6 +145,7 @@ export function AddAgentDialog({
 		}
 		if (step === 1) {
 			const name = API_KEY[picked as HarnessId] ?? keyName;
+			if (apiKey && !name) return setError("Pick which key this is.");
 			if (apiKey && name && picked) {
 				try {
 					await update.mutateAsync({ env: { [picked]: { [name]: apiKey } } });

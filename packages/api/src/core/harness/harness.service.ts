@@ -415,7 +415,8 @@ export class HarnessService implements OnApplicationBootstrap {
 		const configDir = row.configDir ? s.configDirs?.[id] : undefined;
 		const rows = this.decryptRows(stored[id]);
 		const env = {
-			...getHarnessProviderKeys(id, process.env),
+			// Checked after the rows overlay the host: a saved https gateway fixes an unsafe host one (#911).
+			...getHarnessProviderKeys(id, { ...process.env, ...rows }),
 			...(configDir && row.configDir
 				? { [row.configDir.envKey]: configDir }
 				: {}),
@@ -437,6 +438,20 @@ export class HarnessService implements OnApplicationBootstrap {
 					}
 				: null,
 		};
+	}
+
+	/** An agent whose runtime is refused still lists, without it; only its own run fails. */
+	private listedRuntime(
+		id: HarnessId,
+		s: HarnessSettings,
+		stored: Partial<Record<HarnessId, Record<string, string>>>,
+	): AgentRuntime | null {
+		try {
+			return this.runtimeOf(id, s, stored);
+		} catch (err) {
+			this.logger.warn(`${id}: ${(err as Error).message}`);
+			return null;
+		}
 	}
 
 	private decryptRows(
@@ -731,6 +746,11 @@ export class HarnessService implements OnApplicationBootstrap {
 				}
 				const refused = refuseEnvName(id, name);
 				if (refused) throw new HarnessSettingsError(refused);
+				// An empty value would override a working host value; Remove is how to clear one (#911).
+				if (value === "")
+					throw new HarnessSettingsError(
+						`${name} needs a value. Remove clears it.`,
+					);
 				if (name === "ANTHROPIC_BASE_URL" && !isSafeGatewayUrl(value))
 					throw new HarnessSettingsError(
 						`ANTHROPIC_BASE_URL must be https unless it points at this machine: ${value}`,
@@ -830,7 +850,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		const settings = await this.getSettings();
 		const stored = await this.readEnv();
 		const runtimes = new Map(
-			HARNESS_IDS.map((id) => [id, this.runtimeOf(id, settings, stored)]),
+			HARNESS_IDS.map((id) => [id, this.listedRuntime(id, settings, stored)]),
 		);
 		const catalogue = this.models.catalogue();
 		return {

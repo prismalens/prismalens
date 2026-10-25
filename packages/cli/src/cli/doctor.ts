@@ -245,8 +245,8 @@ export function checkInstalls(
 const AGENT_READY = "Agent ready";
 
 /**
- * HARD: at least one agent must answer its handshake signed in. An agent that is
- * absent or can't run is not a warning unless none can (#907); this one line names why.
+ * One agent on PATH should answer its handshake signed in. None ready warns, never
+ * fails: Settings-only agents are out of the doctor's sight (#907).
  */
 export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
 	const ready = handshakes.filter((h) => h.ready);
@@ -255,7 +255,7 @@ export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
 			name: AGENT_READY,
 			pass: true,
 			detail: `${ready.map((h) => HARNESS_REGISTRY[h.id].label).join(", ")} ready`,
-			hard: true,
+			hard: false,
 		};
 	const failed = handshakes.map(
 		(h) => `\n  ${HARNESS_REGISTRY[h.id].label}: ${h.check.detail}`,
@@ -263,8 +263,8 @@ export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
 	return {
 		name: AGENT_READY,
 		pass: false,
-		detail: `no agent can run. Set one up with Add agent in Settings → Agent, or install one: ${installHints()}${failed.join("")}\n  Agents set up only in Settings (binary path, local agent) are checked there, not here.`,
-		hard: true,
+		detail: `no agent on PATH can run. Set one up with Add agent in Settings → Agent, or install one: ${installHints()}${failed.join("")}\n  Agents set up only in Settings (binary path, local agent) are checked there, not here.`,
+		hard: false,
 	};
 }
 
@@ -356,9 +356,9 @@ export function sandboxSummary(sandbox: SandboxChecks | undefined): string {
  */
 export function checkAutoSelection(
 	servedModels: Partial<Record<HarnessId, string | null>> = {},
+	handshakes: Handshake[] = [],
 ): Check[] {
-	const envHarness = process.env.PRISMALENS_HARNESS;
-	const selection = resolveHarnessSelection({ envHarness, pinSource: "env" });
+	const selection = doctorSelection(handshakes);
 	// No agent at all is the Agent ready line's to say, once (#907).
 	if (!selection.runnable && selection.failure === "no-harness") return [];
 	if (!selection.runnable) {
@@ -395,6 +395,28 @@ export function checkAutoSelection(
 			hard: false,
 		},
 	];
+}
+
+/** What `pl up` would pick: auto skips an agent whose handshake failed, as the app does (#907). */
+export function doctorSelection(handshakes: Handshake[] = []) {
+	return resolveHarnessSelection({
+		envHarness: process.env.PRISMALENS_HARNESS,
+		pinSource: "env",
+		isRunnable: (id) => handshakes.find((h) => h.id === id)?.ready ?? true,
+	});
+}
+
+/** PATH rows for the ready agents only; an absent or failing one prints nothing (#907). */
+export function readyPathChecks(
+	pathChecks: Check[],
+	handshakes: Handshake[],
+): Check[] {
+	const ready = new Set(
+		handshakes
+			.filter((h) => h.ready)
+			.map((h) => `Harness: ${HARNESS_REGISTRY[h.id].label}`),
+	);
+	return pathChecks.filter((c) => c.pass && ready.has(c.name));
 }
 
 /** `opencode/` ids are OpenCode Zen, what OpenCode serves with no provider signed in (#673 S2). */
@@ -565,24 +587,32 @@ export function summary(
 ): { level: "success" | "warn" | "error"; line: string } {
 	const hardFailures = checks.filter((c) => c.hard && !c.pass);
 	if (hardFailures.length > 0) {
-		const onlyAgent = hardFailures.every((c) => c.name === AGENT_READY);
 		return {
 			level: "error",
-			line: onlyAgent
-				? "No agent can run. `pl up` still starts, but Investigate stays disabled until one can."
-				: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
+			line: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
 		};
 	}
+	if (checks.some((c) => c.name === AGENT_READY && !c.pass))
+		return {
+			level: "warn",
+			line: "Required checks passed. No agent on PATH can run; the doctor checks PATH agents only, so one set up in Settings → Agent may still run.",
+		};
 	const labels = (pick: (h: Handshake) => boolean) =>
 		handshakes
 			.filter((h) => h.id === selected && pick(h))
 			.map((h) => HARNESS_REGISTRY[h.id].label);
 	const signedOut = labels((h) => h.signedOut);
 	const unchecked = labels((h) => h.signInUnchecked);
+	const failing = labels((h) => !h.ready && !h.signedOut);
 	const notes = [
 		...(signedOut.length > 0
 			? [
 					`${signedOut.join(" and ")} ${signedOut.length > 1 ? "are" : "is"} not signed in, so a run fails until ${signedOut.length > 1 ? "they are" : "it is"}.`,
+				]
+			: []),
+		...(failing.length > 0
+			? [
+					`${failing.join(" and ")} does not answer its handshake, so a run on it fails.`,
 				]
 			: []),
 		...(unchecked.length > 0
@@ -638,10 +668,7 @@ export default defineCommand({
 				handshakes.map((h) => [h.id, h.servedModel]),
 			);
 
-			const selection = resolveHarnessSelection({
-				envHarness: process.env.PRISMALENS_HARNESS,
-				pinSource: "env",
-			});
+			const selection = doctorSelection(handshakes);
 			// Agents that are absent or can't run print nothing; Agent ready speaks for them (#907).
 			const checks: Check[] = [
 				checkNodeVersion(),
@@ -649,10 +676,10 @@ export default defineCommand({
 				checkPath(),
 				checkInstalls(),
 				...checkGit(),
-				...harnessChecks.filter((c) => c.pass),
+				...readyPathChecks(harnessChecks, handshakes),
 				checkAnyAgentRunnable(handshakes),
 				...handshakes.filter((h) => h.ready).map((h) => h.check),
-				...checkAutoSelection(servedModels),
+				...checkAutoSelection(servedModels, handshakes),
 				checkWebhookToken(),
 				checkPortHost(),
 				checkWebhookUrl(),
