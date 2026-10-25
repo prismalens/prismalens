@@ -58,7 +58,9 @@ const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
 };
 
 function SettingsPage() {
-	const { tab: picked } = useSearch({ from: "/_authenticated/settings" });
+	const { tab: picked, source } = useSearch({
+		from: "/_authenticated/settings",
+	});
 	const tab = picked ?? FIRST_SETTINGS_TAB;
 	const phone = useMediaQuery(PHONE);
 	const queryClient = useQueryClient();
@@ -103,7 +105,7 @@ function SettingsPage() {
 				</>
 			)}
 			{tab === "alert-intake" && <AlertIntakeSettings />}
-			{tab === "sources" && <SourcesSettings />}
+			{tab === "sources" && <SourcesSettings source={source} />}
 			{tab === "notifications" && <NotificationsSettings />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}

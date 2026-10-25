@@ -11,7 +11,7 @@ import {
 	Search,
 	TriangleAlert,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { SettingGroup } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
@@ -139,14 +139,14 @@ export function AddSourceButton() {
  * details behind the chevron. Many sources get tiles, filters and a detail
  * panel beside the table (a sheet below 1280 px).
  */
-export function SourcesSettings() {
+export function SourcesSettings({ source }: { source?: string }) {
 	const { data, isLoading, isError, refetch } = useSourcesOverview();
 	const { data: connections } = useConnections();
 	const remove = useDeleteConnection();
 	const [editing, setEditing] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState<string | null>(null);
 	const [adding, setAdding] = useState<string | null>(null);
-	const [selected, setSelected] = useState<string | null>(null);
+	const [selected, setSelected] = useState<string | null>(source ?? null);
 	const items = useMemo(
 		() => sourceItems(data?.sources ?? [], data?.gitHosts ?? []),
 		[data],
@@ -230,7 +230,7 @@ export function SourcesSettings() {
 					sheetHidden={dialogOpen}
 				/>
 			) : (
-				<FewSources items={items} actions={actions} />
+				<FewSources items={items} actions={actions} initialOpen={source} />
 			)}
 			{dialogs}
 		</>
@@ -253,9 +253,11 @@ export function useEnvOrigin(row: SourceRow | undefined): string | null {
 function FewSources({
 	items,
 	actions,
+	initialOpen,
 }: {
 	items: Item[];
 	actions: SourceActions;
+	initialOpen?: string;
 }) {
 	const telemetry = items.filter((i) => i.type === "conn");
 	const hosts = items.filter((i) => i.type === "host");
@@ -267,7 +269,11 @@ function FewSources({
 					count={telemetry.length}
 					testId="sources-telemetry"
 				>
-					<SourceList items={telemetry} actions={actions} />
+					<SourceList
+						items={telemetry}
+						actions={actions}
+						initialOpen={initialOpen}
+					/>
 				</SettingGroup>
 			)}
 			{hosts.length > 0 && (
@@ -286,11 +292,21 @@ function FewSources({
 function SourceList({
 	items,
 	actions,
+	initialOpen,
 }: {
 	items: Item[];
 	actions: SourceActions;
+	initialOpen?: string;
 }) {
-	const [open, setOpen] = useState<Set<string>>(new Set());
+	const [open, setOpen] = useState<Set<string>>(
+		() => new Set(initialOpen ? [initialOpen] : []),
+	);
+	useEffect(() => {
+		if (initialOpen)
+			document
+				.getElementById(`more-${initialOpen}`)
+				?.scrollIntoView({ block: "nearest" });
+	}, [initialOpen]);
 	const toggle = (id: string) =>
 		setOpen((s) => {
 			const n = new Set(s);

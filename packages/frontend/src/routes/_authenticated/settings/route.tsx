@@ -21,14 +21,22 @@ export const LEGACY_SETTINGS_TABS: Readonly<
 	danger: { tab: "about", hash: "danger-zone" },
 };
 
-/** The router spreads this over the raw search, so an unknown tab is overwritten, not omitted (w8-2). */
+/**
+ * The router spreads this over the raw search, so an unknown tab is overwritten, not omitted (w8-2).
+ * `source` opens one connection on Sources, as a coverage Fix asks (#848).
+ */
 export const validateSettingsSearch = (
 	search: Record<string, unknown>,
-): { tab?: SettingsTab } => ({
-	tab: TABS.includes(search.tab as SettingsTab)
+): { tab?: SettingsTab; source?: string } => {
+	const tab = TABS.includes(search.tab as SettingsTab)
 		? (search.tab as SettingsTab)
-		: undefined,
-});
+		: undefined;
+	const source =
+		tab === "sources" && typeof search.source === "string" && search.source
+			? search.source
+			: undefined;
+	return { tab, source };
+};
 
 /** The new home of an old `?tab=`, read from the raw query (validation drops it). */
 export function legacySettingsTarget(

@@ -246,7 +246,10 @@ function SourceResult({ source: s }: { source: PreRunSource }) {
 					<Button variant="secondary" size="sm" asChild>
 						<Link
 							to="/settings"
-							search={{ tab: "sources" }}
+							search={{
+								tab: "sources",
+								...(s.connectionId ? { source: s.connectionId } : {}),
+							}}
 							data-testid="coverage-fix"
 						>
 							Fix

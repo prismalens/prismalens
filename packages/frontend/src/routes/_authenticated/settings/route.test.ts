@@ -24,6 +24,13 @@ describe("Settings tab search (w8-2)", () => {
 		expect(merged({ tab: "alert-intake" }).tab).toBe("alert-intake");
 	});
 
+	it("keeps a source only on Sources, for a coverage Fix (#848)", () => {
+		expect(merged({ tab: "sources", source: "conn-7" }).source).toBe("conn-7");
+		expect(merged({ tab: "general", source: "conn-7" }).source).toBeUndefined();
+		expect(merged({ tab: "sources", source: 7 }).source).toBeUndefined();
+		expect(merged({ tab: "sources", source: "" }).source).toBeUndefined();
+	});
+
 	it("sends a tab from before #848 to its new page", () => {
 		expect(legacySettingsTarget("?tab=integrations")).toEqual({
 			tab: "notifications",

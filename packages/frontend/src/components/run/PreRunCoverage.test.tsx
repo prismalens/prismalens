@@ -13,8 +13,19 @@ import { coverageCounts, coverageLine, PreRunCoverage } from "./PreRunCoverage";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@tanstack/react-router", () => ({
-	Link: ({ children, ...props }: { children?: React.ReactNode }) =>
-		createElement("a", props, children),
+	Link: ({
+		children,
+		search,
+		...props
+	}: {
+		children?: React.ReactNode;
+		search?: Record<string, unknown>;
+	}) =>
+		createElement(
+			"a",
+			{ ...props, "data-search": JSON.stringify(search ?? null) },
+			children,
+		),
 }));
 
 let container: HTMLDivElement;
@@ -215,6 +226,7 @@ describe("PreRunCoverage snapshot states and rows (case 14)", () => {
 					label: "Prometheus",
 					from: "set",
 					status: "skipped",
+					connectionId: "conn-prom-2",
 					detail: "Token invalid",
 					truncated: { dropped: 10, reason: "limit" },
 					overridesEnv: "PROMETHEUS_KEY",
@@ -235,6 +247,10 @@ describe("PreRunCoverage snapshot states and rows (case 14)", () => {
 		const fixLink = container.querySelector('[data-testid="coverage-fix"]');
 		expect(fixLink).not.toBeNull();
 		expect(fixLink?.getAttribute("to")).toBe("/settings");
+		expect(JSON.parse(fixLink?.getAttribute("data-search") ?? "null")).toEqual({
+			tab: "sources",
+			source: "conn-prom-2",
+		});
 
 		// Open details
 		const expandBtn = container.querySelector('button[aria-label^="Details"]');

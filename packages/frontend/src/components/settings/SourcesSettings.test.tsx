@@ -212,6 +212,44 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 		).not.toBeNull();
 	});
 
+	it("opens the source a coverage Fix names, Few and Many (#848)", async () => {
+		const row = (i: number): SourceRow => ({
+			connectionId: `s-${i}`,
+			kind: "prometheus",
+			label: `Prometheus ${i}`,
+			address: `http://localhost:${9090 + i}`,
+			status: "ACTIVE",
+			testedAt: "2026-10-25T00:00:00Z",
+			problem: null,
+			lastErrorMessage: null,
+			credential: "none",
+			alsoInAlertIntake: false,
+			usedBy: [],
+		});
+		mockData.gitHosts = [];
+		mockData.sources = [0, 1, 2].map(row);
+		await act(async () =>
+			root.render(createElement(SourcesSettings, { source: "s-1" })),
+		);
+		const open = Array.from(
+			container.querySelectorAll('[data-testid="source-row"]'),
+		).filter((r) => r.querySelector('[data-testid="source-detail"]'));
+		expect(open.map((r) => r.getAttribute("data-source"))).toEqual([
+			"Prometheus 1",
+		]);
+
+		await act(async () => root.unmount());
+		root = createRoot(container);
+		mockData.sources = Array.from({ length: 9 }, (_, i) => row(i));
+		await act(async () =>
+			root.render(createElement(SourcesSettings, { source: "s-4" })),
+		);
+		const selected = container.querySelectorAll('[aria-selected="true"]');
+		expect(
+			Array.from(selected).map((r) => r.getAttribute("data-source")),
+		).toEqual(["Prometheus 4"]);
+	});
+
 	it("renders pick-token-select for unpinned repositories (case 8)", async () => {
 		const host: GitHostView = {
 			host: "github.com",
