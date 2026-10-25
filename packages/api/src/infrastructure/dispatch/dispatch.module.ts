@@ -5,6 +5,7 @@ import { forwardRef, Global, Module } from "@nestjs/common";
 import { HarnessModule } from "../../core/harness/harness.module.js";
 import { PrismaModule } from "../../core/prisma/prisma.module.js";
 import { ReportDeliveryModule } from "../../modules/delivery/report-delivery.module.js";
+import { GatewayModule } from "../../modules/gateway/gateway.module.js";
 import { IncidentsModule } from "../../modules/incidents/incidents.module.js";
 import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
 import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
@@ -32,6 +33,7 @@ import { EventBusModule } from "./event-bus.module.js";
 		TimelineModule,
 		IntegrationsModule,
 		ReportDeliveryModule,
+		GatewayModule,
 		HarnessModule,
 		PrismaModule,
 	],

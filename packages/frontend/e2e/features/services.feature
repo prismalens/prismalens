@@ -11,7 +11,7 @@ Feature: Services
   @quarantine
   Scenario: One page, Back at the band
     When I open "booklogr-api"
-    Then I see "Code the run reads", "Telemetry", "Dependencies", "Runs" and "Incidents" on one page with no tabs
+    Then I see "Code the run reads", "Connections", "Dependencies", "Runs" and "Incidents" on one page with no tabs
     And the band shows the kind, tier and team
     When I add "booklogr-db" as an upstream dependency
     Then it appears under "Dependencies" as "Database, upstream"

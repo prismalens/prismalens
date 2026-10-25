@@ -55,6 +55,7 @@
 		"zod": "catalog:"
 	},
 	"devDependencies": {
+		"@modelcontextprotocol/server": "~2.3.1",
 		"@types/node": "catalog:",
 		"cross-spawn": "^7.0.6",
 		"tsx": "catalog:",

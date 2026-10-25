@@ -707,7 +707,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await visit(page, `/incidents/${inc.id}`);
 		await expect(page.getByTestId("impact-no-source")).toBeVisible();
 		await expect(page.getByTestId("impact-connect")).toBeVisible();
-		// Prometheus is added under Alert sources; Integrations filters it out.
+		// Prometheus is added under Sources (#848).
 		await expect(page.getByTestId("impact-connect")).toHaveAttribute(
 			"href",
 			"/settings?tab=sources",
@@ -1149,8 +1149,11 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 
 		await visit(page, `/services/${svcId}`);
 
-		// Edit impact metric
-		const editBtn = page.getByTestId("service-metric-edit");
+		// Map the connection, then edit its impact metric in place (#848)
+		await page.getByTestId("mapping-add").click();
+		const editBtn = page.getByRole("button", {
+			name: "Edit the mapping of Prometheus Main",
+		});
 		await expect(editBtn).toBeVisible();
 		await editBtn.click();
 
@@ -1163,4 +1166,103 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			.poll(() => savedConfig)
 			.toEqual({ metric: "http_requests_total" });
 	});
+
+	test.describe("on a phone (#848, OBJ-011, OBJ-012)", () => {
+		test.use({
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			isMobile: true,
+		});
+
+		test("the incident header and the area strip keep every 48 px target on screen at 320, 360 and 390 px", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(90_000);
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("PaymentsCheckoutLatencyBudgetBurnHighEuWest1"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+			const header = [
+				"incident-back",
+				"crumb-incident",
+				"header-resolve",
+				"header-more",
+			];
+			for (const width of [320, 360, 390]) {
+				await page.setViewportSize({ width, height: 844 });
+				for (const [path, required] of [
+					[`/incidents/${inc.id}`, header],
+					[`/incidents/${inc.id}/conversation`, [...header, "details-toggle"]],
+				] as const) {
+					await visit(page, path);
+					for (const id of required)
+						await expect(
+							page.getByTestId(id),
+							`${id} at ${width}`,
+						).toBeVisible();
+					expect(
+						await toolbarFaults(page, "incident-header", required),
+						`${path} at ${width}`,
+					).toEqual([]);
+					expect(
+						await toolbarFaults(page, "topbar"),
+						`${path} at ${width}`,
+					).toEqual([]);
+				}
+			}
+		});
+	});
 });
+
+/** Overflow, a required control missing or hidden, and every link or button under 48x48
+ *  once its clipping ancestors cut it, or off screen. */
+async function toolbarFaults(
+	page: Page,
+	testId: string,
+	required: readonly string[] = [],
+): Promise<string[]> {
+	return page.getByTestId(testId).evaluate((bar, required) => {
+		const faults: string[] = [];
+		if (bar.scrollWidth > bar.clientWidth)
+			faults.push(`overflow ${bar.scrollWidth} > ${bar.clientWidth}`);
+		for (const id of required) {
+			const el = bar.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+			if (!el) faults.push(`${id} missing`);
+			else if (!el.checkVisibility({ visibilityProperty: true }))
+				faults.push(`${id} hidden`);
+		}
+		for (const el of Array.from(
+			bar.querySelectorAll<HTMLElement>("a, button"),
+		)) {
+			let { left, right, top, bottom } = el.getBoundingClientRect();
+			const id =
+				el.dataset.testid ?? el.getAttribute("aria-label") ?? el.tagName;
+			if (right - left === 0 && !required.includes(id)) continue;
+			for (
+				let p = el.parentElement;
+				p && p !== bar.parentElement;
+				p = p.parentElement
+			) {
+				if (getComputedStyle(p).overflowX === "visible") continue;
+				const r = p.getBoundingClientRect();
+				left = Math.max(left, r.left);
+				right = Math.min(right, r.right);
+				top = Math.max(top, r.top);
+				bottom = Math.min(bottom, r.bottom);
+			}
+			if (right - left < 47.5 || bottom - top < 47.5)
+				faults.push(
+					`${id} ${Math.round(right - left)}x${Math.round(bottom - top)}`,
+				);
+			if (left < 0 || right > document.documentElement.clientWidth)
+				faults.push(`${id} off screen`);
+		}
+		return faults;
+	}, required);
+}

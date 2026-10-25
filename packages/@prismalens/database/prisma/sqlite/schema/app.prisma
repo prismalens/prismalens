@@ -295,6 +295,7 @@ model Investigation {
   liveTurn        String? // report | answer; null when nothing runs
   lastTurnOutcome String? // answered | stopped | error; null until a follow-up ends
   endReason       String? // interrupted | limited, on a failed run only; null otherwise
+  preRun          String? // JSON PreRunSnapshot: what PrismaLens read before the run; its follow-ups read it again (#848)
   awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
 
   incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)

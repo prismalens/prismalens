@@ -61,7 +61,9 @@ export type AcpStreamItem =
 	| { kind: "done"; stopReason: string }
 	| { kind: "error"; message: string }
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
-	| { kind: "nudge" };
+	| { kind: "nudge" }
+	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
+	| { kind: "harness_tool_call"; name: string; at: string };
 
 /**
  * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
@@ -169,6 +171,12 @@ export interface AcpSessionConfig {
 	askWindow?: () => { timeoutMs: number; clamped: boolean };
 	/** Reopen this session with `session/load` instead of starting one (#747). */
 	resume?: { sessionId: string };
+	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
+	mcpServers?: (
+		capabilities:
+			| import("@agentclientprotocol/sdk").McpCapabilities
+			| undefined,
+	) => import("@agentclientprotocol/sdk").McpServer[];
 }
 
 /** Outcomes the run's level gives without the operator; they never show an ask. */
@@ -460,6 +468,8 @@ export class AcpSession {
 	private readonly driftSeen = new Set<string>();
 	/** Asks the policy has not answered; a cancel or close aborts them. */
 	private readonly asks = new Set<AbortController>();
+	/** This turn's `tool_call` announcements by id, for an ask that carries only the id (#848, OBJ-011). */
+	private readonly toolCalls = new Map<string, Record<string, unknown>>();
 	agent: AcpAgentInfo = {};
 	authMethods: AcpAuthMethod[] = [];
 	/** What `session/new` offered in its `model` config option; empty when nothing. */
@@ -586,7 +596,8 @@ export class AcpSession {
 			init?.agentCapabilities?._meta?.authStatus !== undefined;
 		const params = {
 			cwd: config.cwd,
-			mcpServers: [],
+			mcpServers:
+				config.mcpServers?.(init?.agentCapabilities?.mcpCapabilities) ?? [],
 			...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 		};
 		if (config.resume) {
@@ -759,7 +770,8 @@ export class AcpSession {
 							? usageLimitText(message, err.data)
 							: null) ?? message,
 				});
-			});
+			})
+			.finally(() => this.toolCalls.clear());
 		while (!turnDone) {
 			while (this.queue.length > 0) {
 				const item = this.queue.shift() as AcpStreamItem;
@@ -794,6 +806,11 @@ export class AcpSession {
 		this.pending.clear();
 		if (this.child && !this.child.killed) this.child.kill();
 		if (this.ownsLauncher) await this.launcher.destroy();
+	}
+
+	/** Queue an item from outside the agent into the turn's stream, in arrival order (#848). */
+	inject(item: Extract<AcpStreamItem, { kind: "harness_tool_call" }>): void {
+		this.push(item);
 	}
 
 	/** Wake the turn's reader with a `nudge`, e.g. while the agent waits on an ask (#820). */
@@ -910,6 +927,7 @@ export class AcpSession {
 				) {
 					this.drift("session/update", "kind", u.kind);
 					this.drift("session/update", "status", u.status);
+					this.noteToolCall(u);
 				}
 				this.trackMode(u);
 				this.push({ kind: "update", update: update as AcpUpdate });
@@ -952,13 +970,34 @@ export class AcpSession {
 		}
 	}
 
+	private noteToolCall(u: Record<string, unknown>): void {
+		if (typeof u.toolCallId !== "string") return;
+		const known = this.toolCalls.get(u.toolCallId) ?? {};
+		for (const key of ["title", "kind", "rawInput", "_meta"] as const)
+			if (u[key] !== undefined) known[key] = u[key];
+		this.toolCalls.set(u.toolCallId, known);
+	}
+
+	/** An ask with no title takes what the agent announced under that exact id earlier this turn. */
+	private withAnnounced(
+		asked: PermissionRequest["toolCall"],
+	): PermissionRequest["toolCall"] {
+		if (!asked?.toolCallId || asked.title) return asked;
+		const known = this.toolCalls.get(asked.toolCallId);
+		if (!known) return asked;
+		const given = Object.entries(asked).filter(([, v]) => v != null);
+		return { ...known, ...Object.fromEntries(given) };
+	}
+
 	private onServerRequest(msg: JsonRpcMessage): void {
 		const method = msg.method ?? "";
 		if (method === "session/request_permission") {
 			const params = msg.params ?? {};
 			const request: PermissionRequest = {
 				options: (params.options as PermissionRequest["options"]) ?? [],
-				toolCall: params.toolCall as PermissionRequest["toolCall"],
+				toolCall: this.withAnnounced(
+					params.toolCall as PermissionRequest["toolCall"],
+				),
 			};
 			const askId = newAskId();
 			const controller = new AbortController();

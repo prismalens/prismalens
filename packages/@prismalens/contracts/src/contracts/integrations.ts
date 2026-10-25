@@ -17,6 +17,7 @@ import {
 	IdParamSchema,
 	IntegrationQuerySchema,
 	IntegrationSchema,
+	ServiceIntegrationOrderSchema,
 	ServiceIntegrationSchema,
 	ServiceIntegrationWithStatusSchema,
 	TestConnectionResponseSchema,
@@ -171,6 +172,17 @@ export const integrationsContract = {
 		})
 		.input(z.object({ serviceId: z.string().uuid() }))
 		.output(z.array(ServiceIntegrationWithStatusSchema)),
+
+	setServiceIntegrationOrder: oc
+		.route({
+			method: "PUT",
+			path: "/integrations/service/{serviceId}/order",
+			summary:
+				"Order a service's mappings: the first gets the highest priority",
+			tags: ["integrations", "services"],
+		})
+		.input(ServiceIntegrationOrderSchema)
+		.output(z.array(ServiceIntegrationSchema)),
 
 	createServiceIntegration: oc
 		.route({
