@@ -1,6 +1,6 @@
 {
 	"pins": {
-		"opencode-ai": "1.18.30",
+		"opencode-ai": "1.19.4",
 		"@anthropic-ai/claude-code": "2.1.303",
 		"@openai/codex": "0.156.1",
 		"@google/gemini-cli": "0.65.0",
