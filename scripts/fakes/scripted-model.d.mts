@@ -37,6 +37,8 @@ export type Expectation =
 	| "cancelled"
 	| "error"
 	| "fault"
+	/** The agent exits before it answers anything, and PrismaLens says so. */
+	| "exited"
 	| "modes"
 	| "parallel";
 

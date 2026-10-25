@@ -14,7 +14,7 @@
 		{
 			"match": {
 				"userMessage": "ADMISSION STEP, required: run exactly `cat ./PRISMALENS_CWD_PROBE.txt`",
-				"toolResultContains": "AdmissionProbe"
+				"afterTool": "$incident_get"
 			},
 			"response": {
 				"toolCalls": [

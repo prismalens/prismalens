@@ -64,6 +64,18 @@ const INCIDENT = "$incident_get";
 /** @param {import("@copilotkit/aimock").ChatCompletionRequest} req */
 const incidentTool = (req) =>
 	req.tools?.find((t) => /incident_get$/.test(t.function.name));
+/**
+ * The name of the tool the request's trailing tool result answers, or "".
+ * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
+ */
+const answeredTool = (req) => {
+	const last = req.messages.at(-1);
+	if (last?.role !== "tool") return "";
+	for (const m of req.messages)
+		for (const c of m.tool_calls ?? [])
+			if (c.id === last.tool_call_id) return c.function.name;
+	return "";
+};
 /** @param {import("@copilotkit/aimock").ChatMessage} m */
 const textOf = (m) =>
 	typeof m.content === "string"
@@ -90,7 +102,7 @@ export function resolveEntry(entry, tools, mainLoop) {
 		}
 	}
 	const { match: fileMatch, response: _, ...opts } = entry;
-	const { inConversation, ...rest } = /** @type {any} */ (fileMatch);
+	const { inConversation, afterTool, ...rest } = /** @type {any} */ (fileMatch);
 	/** @type {import("@copilotkit/aimock").FixtureMatch} */
 	const match = { ...rest };
 	if (mainLoop && !match.toolName) match.toolName = tools.shell;
@@ -100,6 +112,9 @@ export function resolveEntry(entry, tools, mainLoop) {
 		delete match.toolName;
 		tests.push((req) => incidentTool(req) !== undefined);
 	}
+	// The result's text differs by agent (Codex wraps an MCP result); the tool it answers does not.
+	if (afterTool === INCIDENT)
+		tests.push((req) => /incident_get$/.test(answeredTool(req)));
 	// `userMessage` reads only the last user message; a row's marker must also hold on its retries.
 	if (typeof inConversation === "string")
 		tests.push((req) =>

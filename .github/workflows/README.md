@@ -45,8 +45,8 @@ yes (#920, the operator's ruling of 2026-10-24).
 | `packed-service` | none | every PR | yes |
 | `packed-upgrade-smoke` | scripted fake ACP agent, on the packed tarball; then every release npm lists upgraded to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | every PR | yes |
 | `gate-side-checks` (Linux, macOS, Windows) | scripted fake ACP agent, on the packed tarball; `--no-skip` | every PR | yes |
-| `harness-admission` (opencode, claude-code, codex) | scripted model server on loopback (`scripts/fakes/fake-model-server.mjs`), the real pinned agent; R1-R7, 3 runs that must agree | every PR | yes |
-| `agent-replay` | recorded sessions replayed through the real engine, strictly (`scripts/fakes/transcripts/`) | every PR | no, until recordings exist for every tier-1 row and it has three greens |
+| `harness-admission` (opencode, claude-code, codex) | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned), the real pinned agent; the admission (R1-R9) and the behaviour matrix, 3 runs that must agree | every PR | yes |
+| `harness-admission` (gemini, deepagents) | the same, for the tier-2 agents | every PR | no: `continue-on-error`, so a red leg leaves the job green |
 | `e2e` (calls `e2e.yml`) | none | every PR, push and merge-queue build | yes |
 
 The pins for the agents these jobs install are in `scripts/agent-pins.json` (the agent) and
@@ -125,9 +125,9 @@ Two jobs, neither required, neither spending a model call (#914):
 | `probe` | installs each agent row at its latest release and sends `initialize` and `session/new` unauthenticated; the job summary tables the answer next to the row's `tested` | nightly, and dispatch |
 | `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, one pull request per package moves its pin and carries the probe's result | nightly, and dispatch |
 
-The bump PR runs ordinary CI: scripted-model admission and the replay. It stays red on
-`harness-pins.test.ts` until the operator adds a recording (`pnpm record:agent`, CONTRIBUTING.md)
-and moves the row's `tested`, which is how `tested` comes only from a merged bump PR.
+The bump PR runs ordinary CI, so the new version runs the admission and the behaviour matrix on aimock.
+It stays red on `harness-pins.test.ts` until someone moves the row's `tested` to the new pin on that
+PR, which is how `tested` comes only from a merged bump PR that CI qualified.
 The `RELEASE_PAT` secret opens the PR so that CI starts on it; with only `GITHUB_TOKEN` the PR gets no checks.
 
 ## Review is advisory; unresolved threads are what block

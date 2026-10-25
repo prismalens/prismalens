@@ -4,6 +4,12 @@
 	"title": "Invalid tool arguments",
 	"run": {},
 	"expect": "report",
+	"agents": {
+		"gemini": {
+			"expect": "fault",
+			"why": "Gemini re-sends the same request on a malformed call, then ends the turn with no text"
+		}
+	},
 	"fixtures": [
 		{
 			"match": {

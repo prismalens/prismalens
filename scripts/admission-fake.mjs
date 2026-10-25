@@ -7,7 +7,7 @@
 //   node scripts/admission-fake.mjs <agent> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--journal]
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SCRIPTED_KEY, startScriptedModel } from "./fakes/scripted-model.mjs";
@@ -273,6 +273,7 @@ async function main() {
 	}
 	const model = await startScriptedModel(args.harness);
 	const home = mkdtempSync(join(tmpdir(), "pl-admission-fake-"));
+	const workdir = mkdtempSync(join(homedir(), ".pl-matrix-"));
 	const lines = [];
 	let worst = 0;
 	try {
@@ -307,7 +308,11 @@ async function main() {
 				const out = await engineScript(
 					"acp-matrix.ts",
 					[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
-					{ ...env, PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides) },
+					{
+						...env,
+						PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),
+						PL_MATRIX_WORKDIR: workdir,
+					},
 				);
 				parts.push(matrixSignature(out.stdout));
 				if (out.code !== 0) {
@@ -322,17 +327,29 @@ async function main() {
 			);
 			if (failed) worst = 1;
 			if (failed || args.journal) {
-				const statuses = model.journal().map((e) => e.response.status);
+				const statuses = model.journal().map((e) => {
+					const m = /** @type {any} */ (e.response.fixture)?.match;
+					const tag = m
+						? Object.entries(m)
+								.filter(([k]) => k !== "toolName")
+								.map(([k, v]) =>
+									k === "predicate" ? "p" : `${k}=${String(v).slice(0, 24)}`,
+								)
+								.join(",")
+						: "none";
+					return `${e.response.status}[${tag}]`;
+				});
 				console.log("scripted model requests (last 80):");
 				for (const r of model.requests().slice(-80))
 					console.log(JSON.stringify(r));
-				console.log(`statuses: ${statuses.slice(-80).join(" ")}`);
+				console.log(`served: ${statuses.slice(-80).join(" ")}`);
 			}
 		}
 	} finally {
 		console.log(`scripted model served ${model.journal().length} requests`);
 		await model.close();
 		rmSync(home, { recursive: true, force: true });
+		rmSync(workdir, { recursive: true, force: true, maxRetries: 5 });
 	}
 	if (new Set(lines).size > 1) {
 		console.error("verdicts differ across runs");

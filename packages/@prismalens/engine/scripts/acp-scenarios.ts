@@ -148,7 +148,10 @@ async function openSession(
 
 /** Runs one row through the engine in a fresh workspace. */
 export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
-	const workspace = mkdtempSync(join(tmpdir(), "pl-matrix-ws-"));
+	// Outside the temp dir: Codex's read-only sandbox lets a command write under /tmp.
+	const workspace = mkdtempSync(
+		join(process.env.PL_MATRIX_WORKDIR ?? tmpdir(), "pl-matrix-ws-"),
+	);
 	const runDir = mkdtempSync(join(tmpdir(), "pl-matrix-run-"));
 	writeFileSync(join(workspace, "README.md"), "# scenario\n");
 	writeFileSync(
@@ -262,7 +265,8 @@ export function checkRow(
 	seen: RowObservation,
 ): string | null {
 	if (seen.hung) return `hung: still running after ${seen.elapsedMs}ms`;
-	if (!seen.agentSpoke) return "the agent never answered on the wire";
+	if (!seen.agentSpoke && expect !== "exited")
+		return "the agent never answered on the wire";
 	const kinds = seen.events.map((e) => e.kind);
 	const errors = seen.events.flatMap((e) =>
 		e.kind === "error" ? [e.message] : [],
@@ -304,6 +308,12 @@ export function checkRow(
 			return errors.length > 0 && !report
 				? null
 				: `expected an error and no report (${saw})`;
+		case "exited":
+			return !seen.agentSpoke &&
+				errors.some((m) => m.includes("exited early")) &&
+				!report
+				? null
+				: `expected the agent to exit before answering (${saw})`;
 		case "fault":
 			return toolResults > 0 && errors.length > 0 && !report
 				? null
