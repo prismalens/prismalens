@@ -26,6 +26,7 @@ import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
+import { redactAddress, shownError, withShownAddress } from "./source-query.js";
 import { SourcesService } from "./sources.service.js";
 import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 
@@ -467,6 +468,9 @@ export class IntegrationsController {
 		// Settings, Alert sources shows (study-v3 §7). A git host token's errors are
 		// git's scrubbed taxonomy messages (#673); other token errors stay redacted.
 		const urlOnly = template?.urlOnly === true;
+		const base = urlOnly
+			? this.integrationsService.baseUrlOf(connection)
+			: null;
 		const git = template?.gitHost
 			? this.integrationsService.gitHostInfo(connection)
 			: null;
@@ -480,12 +484,18 @@ export class IntegrationsController {
 			...(expired ? { status: "TOKEN_EXPIRED" as const } : {}),
 			...(urlOnly
 				? {
-						baseUrl: this.integrationsService.baseUrlOf(connection),
-						lastErrorMessage: connection.lastErrorMessage ?? null,
+						baseUrl: base === null ? null : redactAddress(base),
+						lastErrorMessage: shownError(connection.lastErrorMessage, {
+							address: base,
+						}),
 					}
 				: {}),
 			...(template?.gitHost
-				? { lastErrorMessage: connection.lastErrorMessage ?? null }
+				? {
+						lastErrorMessage: shownError(connection.lastErrorMessage, {
+							git: { host: git?.host ?? null, label: connection.label ?? "" },
+						}),
+					}
 				: {}),
 			...(git ? { host: git.host, fingerprint: git.fingerprint } : {}),
 			...(legacy ? { legacy: true as const } : {}),
@@ -506,7 +516,9 @@ export class IntegrationsController {
 			serviceId: si.serviceId,
 			connectionId: si.connectionId,
 			priority: si.priority ?? 0,
-			config: si.config ? this.safeParseJson(si.config) : null,
+			config: si.config
+				? withShownAddress(this.safeParseJson(si.config))
+				: null,
 			isEnabled: si.isEnabled,
 			createdAt: si.createdAt.toISOString(),
 			updatedAt: si.updatedAt.toISOString(),

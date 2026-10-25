@@ -8,9 +8,12 @@ import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { GitCredentialService } from "./git-credential.service.js";
 import type { IntegrationsService } from "./integrations.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
-import { sourceProblem, SourcesService } from "./sources.service.js";
+import { QueryFailed } from "./source-query.js";
+import { OffOriginError, SourceConfigError } from "./source-request.js";
+import { redactAddress, sourceErrorText, sourceProblem, SourcesService } from "./sources.service.js";
 
-vi.mock("./source-request.js", () => ({
+vi.mock("./source-request.js", async (importActual) => ({
+	...(await importActual<typeof import("./source-request.js")>()),
 	sourceRequestFn: vi.fn(),
 }));
 
@@ -108,7 +111,7 @@ describe("SourcesService (#848 C17)", () => {
 					status: "ERROR",
 					tokenExpiresAt: null,
 					testedAt: null,
-					lastErrorMessage: "fetch failed",
+					lastErrorMessage: '{"pl":1,"kind":"reach"}',
 					integration: { templateId: "prometheus", label: "Prometheus" },
 					connectionConfig: { baseUrl: "http://prom.example:9091" },
 					serviceMappings: [],
@@ -168,7 +171,7 @@ describe("SourcesService (#848 C17)", () => {
 					status: "ERROR",
 					tokenExpiresAt: null,
 					testedAt: null,
-					lastErrorMessage: "fetch failed: https://user:sentinel@prom.example/-/ready",
+					lastErrorMessage: '{"pl":1,"kind":"reach"}',
 					connectionConfig: { baseUrl: "https://user:sentinel@prom.example:9090" },
 					integration: { templateId: "prometheus", label: "Prometheus" },
 					serviceMappings: [],
@@ -180,7 +183,176 @@ describe("SourcesService (#848 C17)", () => {
 
 			expect(overview.sources[0]?.address).toBe("https://prom.example:9090");
 			expect(overview.sources[0]?.problem).toBe("cant-reach");
+			expect(overview.sources[0]?.lastErrorMessage).toBe(
+				"Could not reach prom.example:9090: connection refused or host not found",
+			);
 			expect(JSON.stringify(overview)).not.toContain("sentinel");
+		});
+
+		it.each([
+			["a single-slash legacy URL", "https:/user:sentinel@prom.example:9090"],
+			["a password with a space", "https://user:sen tinel@prom.example:9090"],
+			["a password with an @", "https://user:sen@tinel@prom.example:9090"],
+			["a query credential", "https://prom.example:9090/?api_key=sentinel"],
+			["a fragment credential", "https://prom.example:9090/#sentinel"],
+			["slashless userinfo", "https:user:sentinel@prom.example:9090"],
+			["a slashless query", "https:prom.example?api_key=sentinel"],
+		])("overview redacts %s on the address and in the error text", async (_name, stored) => {
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{
+					id: "conn-legacy",
+					label: "Prom",
+					status: "ERROR",
+					tokenExpiresAt: null,
+					testedAt: null,
+					lastErrorMessage: `fetch failed: ${stored}/-/ready (ECONNREFUSED)`,
+					connectionConfig: { baseUrl: stored },
+					integration: { templateId: "prometheus", label: "Prometheus" },
+					serviceMappings: [],
+				},
+			]);
+			mockIntegrations.baseUrlOf.mockImplementation((c: any) => c.connectionConfig.baseUrl);
+
+			const overview = await service.overview({});
+
+			expect(JSON.stringify(overview)).not.toContain("sentinel");
+			expect(JSON.stringify(overview)).not.toContain("tinel");
+			expect(overview.sources[0]?.address).toMatch(/^https:\/+prom\.example(:9090)?\/?$/);
+		});
+
+		it.each([
+			["slashless userinfo", "https:user:sentinel@prom.example:9090", "https://prom.example:9090"],
+			["slashless query", "https:prom.example?api_key=sentinel", "https://prom.example"],
+			["a password with a space", "https://user:sen tinel@prom.example:9090", "https://prom.example:9090"],
+			["an @ in the password", "https://user:sen@tinel@prom.example:9090", "https://prom.example:9090"],
+		])("redactAddress clears %s", (_name, stored, shown) => {
+			expect(redactAddress(stored)).toBe(shown);
+		});
+
+		it.each(["//user:sentinel@prom.example", "user:sentinel@prom.example", "not a url sentinel"])(
+			"redactAddress never returns an unparseable address: %s",
+			(stored) => {
+				expect(redactAddress(stored)).toBe("an address PrismaLens cannot show");
+			},
+		);
+
+		describe("sourceErrorText writes PrismaLens's own sentence (#848)", () => {
+			const coded = (code: string) => Object.assign(new Error("connect failed"), { code });
+			const caused = (code: string) => new TypeError("fetch failed", { cause: coded(code) });
+			const named = (name: string) => Object.assign(new Error("slow"), { name });
+			const cases: [string, () => unknown, (host: string) => string][] = [
+				["ECONNREFUSED in a fetch cause", () => caused("ECONNREFUSED"), (h) => `Could not reach ${h}: connection refused or host not found`],
+				["ENOTFOUND", () => coded("ENOTFOUND"), (h) => `Could not reach ${h}: connection refused or host not found`],
+				["EAI_AGAIN in a fetch cause", () => caused("EAI_AGAIN"), (h) => `Could not reach ${h}: connection refused or host not found`],
+				["a bare fetch failed", () => new TypeError("fetch failed"), (h) => `Could not reach ${h}: connection refused or host not found`],
+				["AbortError", () => named("AbortError"), (h) => `Could not reach ${h}: no answer in time`],
+				["TimeoutError", () => named("TimeoutError"), (h) => `Could not reach ${h}: no answer in time`],
+				["ETIMEDOUT in a fetch cause", () => caused("ETIMEDOUT"), (h) => `Could not reach ${h}: no answer in time`],
+				["CERT_HAS_EXPIRED", () => caused("CERT_HAS_EXPIRED"), (h) => `Could not reach ${h}: its TLS certificate was not accepted`],
+				["UNABLE_TO_VERIFY_LEAF_SIGNATURE", () => coded("UNABLE_TO_VERIFY_LEAF_SIGNATURE"), (h) => `Could not reach ${h}: its TLS certificate was not accepted`],
+				["a redirect off the origin", () => new OffOriginError("https://x.example"), (h) => `Could not reach ${h}: it redirected elsewhere, which PrismaLens does not follow`],
+				["an unusable credential", () => new SourceConfigError("secret words"), (h) => `Could not use the saved credential for ${h}`],
+				["an HTTP status on the error", () => Object.assign(new Error("x"), { status: 503 }), (h) => `The source at ${h} answered 503`],
+				["a QueryFailed HTTP status", () => new QueryFailed("the source answered HTTP 404"), (h) => `The source at ${h} answered 404`],
+				["a JSON parse error", () => new SyntaxError("Unexpected token <"), (h) => `The source at ${h} sent a response this kind of source does not give`],
+				["a schema error", () => named("ZodError"), (h) => `The source at ${h} sent a response this kind of source does not give`],
+			];
+			const hosts: [string, string, string][] = [
+				["an IPv4 host", "http://10.0.0.5", "10.0.0.5"],
+				["a host with a port", "https://user:pw@prom.example:9090/x?k=v", "prom.example:9090"],
+				["an IPv6 host", "https://[::1]:9090", "[::1]:9090"],
+			];
+			for (const [hostName, address, host] of hosts)
+				it.each(cases)(`${hostName}: %s`, (_signal, make, text) => {
+					expect(sourceErrorText(make(), address)).toBe(text(host));
+				});
+
+			it("an error with no known signal reads the check failed, whatever its message says", () => {
+				expect(sourceErrorText(new Error("sentinel"), "http://prom.example")).toBe("the check failed");
+				expect(sourceErrorText("sentinel", "http://prom.example")).toBe("the check failed");
+			});
+
+			it("an address that does not parse is named as one PrismaLens cannot show", () => {
+				expect(sourceErrorText(coded("ECONNREFUSED"), "not a url sentinel")).toBe(
+					"Could not reach an address PrismaLens cannot show: connection refused or host not found",
+				);
+			});
+		});
+
+		it.each([
+			["newline-split userinfo", "fetch failed: https://user:\nsentinel\n@prom.example/-/ready"],
+			["two URLs in one token", "a,https://user:sentinel@other.example/b"],
+			["a slashless credential", "fetch failed: https:user:sentinel@prom.example:9090"],
+			["a query credential", "fetch failed: https://prom.example/?api_key=sen tinel"],
+			["a credential cut by truncation", `${"x".repeat(1_980)} https:user:sentinel@prom.example`],
+		])("a probe failure carrying %s echoes none of it", async (_name, message) => {
+			const { sourceRequestFn } = await import("./source-request.js");
+			vi.mocked(sourceRequestFn).mockReturnValue(async () => {
+				throw new TypeError(message, { cause: { code: "ECONNREFUSED", message } });
+			});
+
+			const report = await service.test({
+				type: "prometheus",
+				url: "https://prom.example",
+				credential: { kind: "none" },
+			} as any);
+
+			expect(report.probes[0]?.detail).toBe(
+				"Could not reach prom.example: connection refused or host not found",
+			);
+			const all = JSON.stringify(report);
+			for (const leaked of ["sentinel", "tinel", "user", "other.example"]) expect(all).not.toContain(leaked);
+		});
+
+		it.each([
+			"fetch failed: https://user:\nsentinel\n@prom.example/-/ready",
+			"a,https://user:sentinel@other.example/b",
+			"Could not reach prom.example: https://user:\nsentinel\n@prom.example/-/ready",
+			"Could not reach prom.example: https://prom.example/a,https://user:sentinel@other.example/b",
+			"The source at prom.example answered 401 https:user:sentinel@prom.example",
+		])("overview shows a stored error that is not a code as the last check failed: %s", async (stored) => {
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{
+					id: "conn-old",
+					label: "Prom",
+					status: "ERROR",
+					tokenExpiresAt: null,
+					testedAt: null,
+					lastErrorMessage: stored,
+					connectionConfig: { baseUrl: "https://prom.example" },
+					integration: { templateId: "prometheus", label: "Prometheus" },
+					serviceMappings: [],
+				},
+			]);
+			mockIntegrations.baseUrlOf.mockImplementation((c: any) => c.connectionConfig.baseUrl);
+
+			const overview = await service.overview({});
+
+			expect(overview.sources[0]?.lastErrorMessage).toBe("the last check failed");
+			expect(JSON.stringify(overview)).not.toContain("sentinel");
+		});
+
+		it("overview renders a stored error code as its sentence", async () => {
+			const written = '{"pl":1,"kind":"timeout"}';
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{
+					id: "conn-new",
+					label: "Prom",
+					status: "ERROR",
+					tokenExpiresAt: null,
+					testedAt: null,
+					lastErrorMessage: written,
+					connectionConfig: { baseUrl: "https://prom.example:9090" },
+					integration: { templateId: "prometheus", label: "Prometheus" },
+					serviceMappings: [],
+				},
+			]);
+			mockIntegrations.baseUrlOf.mockImplementation((c: any) => c.connectionConfig.baseUrl);
+
+			const overview = await service.overview({});
+
+			expect(overview.sources[0]?.lastErrorMessage).toBe("Could not reach prom.example:9090: no answer in time");
+			expect(overview.sources[0]?.problem).toBe("cant-reach");
 		});
 
 		it("a probe failure does not echo the draft URL's credentials", async () => {
@@ -199,6 +371,29 @@ describe("SourcesService (#848 C17)", () => {
 
 			expect(report.ok).toBe(false);
 			expect(JSON.stringify(report)).not.toContain("sentinel");
+		});
+
+		it.each([
+			"fetch failed: https://prom.example/-/ready?api_key=sentinel",
+			"fetch failed: https:/user:sentinel@prom.example/-/ready",
+			"fetch failed: https://user:sen tinel@prom.example/-/ready",
+			"fetch failed: https:user:sentinel@prom.example/-/ready",
+			"fetch failed: //user:sentinel@prom.example/-/ready",
+		])("a probe failure redacts %s", async (message) => {
+			const { sourceRequestFn } = await import("./source-request.js");
+			vi.mocked(sourceRequestFn).mockReturnValue(async () => {
+				throw new TypeError(message);
+			});
+
+			const report = await service.test({
+				type: "prometheus",
+				url: "https://prom.example",
+				credential: { kind: "none" },
+			} as any);
+
+			expect(report.ok).toBe(false);
+			expect(JSON.stringify(report)).not.toContain("sentinel");
+			expect(JSON.stringify(report)).not.toContain("tinel");
 		});
 	});
 
@@ -358,5 +553,21 @@ describe("SourcesService (#848 C17)", () => {
 			await connectH({ input: { type: "prometheus", url: "http://prom:9090" }, context: {} });
 			expect(connectSpy).toHaveBeenCalledWith({ type: "prometheus", url: "http://prom:9090" });
 		});
+	});
+});
+
+describe("getJson (#848)", () => {
+	it("names a 200 body that is not JSON by category, never by the parser's quote of it", async () => {
+		const { getJson } = await import("./source-query.js");
+		const src = {
+			request: async () => new Response("sentinel-credential {", { status: 200 }),
+		};
+
+		const err = await getJson(src as never, "/api/v1/query", {}, new AbortController().signal).catch(
+			(e: unknown) => e,
+		);
+
+		expect(err).toBeInstanceOf(QueryFailed);
+		expect((err as Error).message).toBe("the source sent a response that is not valid JSON");
 	});
 });

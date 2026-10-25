@@ -5,6 +5,7 @@ import * as crypto from "node:crypto";
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "@prismalens/config";
+import { httpUrlOrNull } from "@prismalens/contracts";
 import { UNASSIGNED_ALERT_STATUSES } from "@prismalens/contracts/schemas";
 import type { Alert } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -157,6 +158,8 @@ export class AlertsService {
 		const dedupKey = this.generateDedupKey(dto);
 		const fingerprint = this.generateFingerprint(dto);
 		const now = new Date();
+		// A link keeps no userinfo and only http(s), whichever door the alert came through (#848).
+		const sourceUrl = httpUrlOrNull(dto.sourceUrl) ?? undefined;
 
 		// Newest episode wins: dedupKey is no longer unique (#231 R2b), so a
 		// findUnique read here would throw once a second episode row exists.
@@ -176,8 +179,8 @@ export class AlertsService {
 						occurrenceCount: { increment: 1 },
 						lastOccurrence: now,
 						updatedAt: now,
-						...(replacesMadeUpUrl(existing, dto.sourceUrl) && {
-							sourceUrl: dto.sourceUrl,
+						...(replacesMadeUpUrl(existing, sourceUrl) && {
+							sourceUrl,
 						}),
 						...(outcome === "reopened" && {
 							status: AlertStatus.triggered,
@@ -218,7 +221,7 @@ export class AlertsService {
 				severity: dto.severity ?? "medium",
 				title: dto.title,
 				description: dto.description ?? "",
-				sourceUrl: dto.sourceUrl,
+				sourceUrl,
 				rawPayload: dto.rawPayload ? JSON.stringify(dto.rawPayload) : null,
 				tags: dto.tags ? JSON.stringify(dto.tags) : null,
 				labels: dto.labels ? JSON.stringify(dto.labels) : null,

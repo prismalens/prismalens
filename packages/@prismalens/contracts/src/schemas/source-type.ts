@@ -531,7 +531,7 @@ const hasUserinfo = (value: string): boolean => {
 
 export const SourceDraftSchema = z.object({
 	type: z.string(),
-	/** No `user:pass@`: a credential goes in `credential`, not the address (#848). */
+	/** No `user:pass@`, `?query` or `#fragment`: a credential goes in `credential`, not the address (#848). */
 	url: z
 		.string()
 		.trim()
@@ -539,6 +539,10 @@ export const SourceDraftSchema = z.object({
 		.refine((u) => !hasUserinfo(u), {
 			message:
 				"Credentials in the address are not supported; choose how to sign in below.",
+		})
+		.refine((u) => !/[?#]/.test(u), {
+			message:
+				"A query string or fragment in the address is not supported; choose how to sign in below.",
 		}),
 	/** `{ kind, ...fields }` as `CREDENTIAL_KIND_FIELDS` names them. */
 	credential: z.record(z.string(), z.string()).optional(),

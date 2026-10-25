@@ -161,6 +161,17 @@ describe("repo-source.service", () => {
 		});
 	});
 
+	describe("classifySource query and fragment (#848)", () => {
+		it.each([
+			"https://github.com/acme/api.git?token=sentinel",
+			"https://github.com/acme/api.git#sentinel",
+			"ssh://git@example.com/acme/api.git?x=1",
+			"git@github.com:acme/api.git?token=sentinel",
+		])("refuses %s", (input) => {
+			expect(() => classifySource(input)).toThrow(/query string or fragment/);
+		});
+	});
+
 	describe("mirrorPathFor", () => {
 		it("gives remotes that differ only by port their own mirror", () => {
 			const a = mirrorPathFor("https://git.example:8443/acme/api.git", "/r");

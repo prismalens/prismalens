@@ -122,6 +122,14 @@ describe("gateway contract (#848)", () => {
 		expect(draft("https://:sentinel@prom.example").success).toBe(false);
 	});
 
+	it("SourceDraftSchema refuses a query string or fragment, which can carry a credential (#848)", () => {
+		const draft = (url: string) => SourceDraftSchema.safeParse({ type: "prometheus", url });
+		expect(draft("https://prom.example/?api_key=sentinel").success).toBe(false);
+		expect(draft("https://prom.example?token=sentinel").success).toBe(false);
+		expect(draft("https://prom.example/#sentinel").success).toBe(false);
+		expect(draft("https://prom.example/?").success).toBe(false);
+	});
+
 	it("files template-only ids and descriptors under a category", () => {
 		expect(templateCategory("render")).toBe("deploys");
 		expect(templateCategory("git-host-token")).toBe("scm");

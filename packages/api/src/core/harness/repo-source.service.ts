@@ -18,6 +18,7 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	type GitCredential,
 	MACHINE_CREDENTIAL,
+	repoLabel,
 	repoPath,
 	urlHost,
 } from "./git-credential.js";
@@ -98,6 +99,10 @@ export function classifySource(input: string): {
 		if (hasEmbeddedSecret(trimmed))
 			throw new Error(
 				"Repository URL must not carry credentials; add a Git host token in Settings instead",
+			);
+		if (/[?#]/.test(trimmed))
+			throw new Error(
+				"Repository URL must not carry a query string or fragment; add a Git host token in Settings instead",
 			);
 		return { kind: "url", source: trimmed };
 	}
@@ -244,7 +249,7 @@ export class RepoSourceService {
 		const check = await this.headOf(dest);
 		const removed = await this.stripAgentConfig(dest);
 		this.logger.log(
-			`snapshot ${src.source} at ${check.head.slice(0, 12)} → ${dest}${removed.length ? ` (removed agent config: ${removed.join(", ")})` : ""}`,
+			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}${removed.length ? ` (removed agent config: ${removed.join(", ")})` : ""}`,
 		);
 		return { path: dest, ...check };
 	}
@@ -311,7 +316,7 @@ export class RepoSourceService {
 		} catch (err) {
 			const failure = remoteFailure(err, src);
 			if (failure instanceof GitFailure && failure.stderr)
-				this.logger.warn(`git ${src.source}: ${failure.stderr.trim()}`);
+				this.logger.warn(`git ${repoLabel(src.source)}: ${failure.message}`);
 			throw failure;
 		}
 		return path;

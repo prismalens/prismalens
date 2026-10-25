@@ -53,7 +53,9 @@ test.describe("Sources, a pulled Alertmanager row (#781 review, #848)", () => {
 			am.setStatus(503);
 			await row.getByRole("button", { name: "Test" }).click();
 			await expect(row.getByTestId("source-state")).not.toHaveText("Connected");
-			await expect(row).toContainText("Alertmanager answered 503");
+			await expect(row).toContainText(
+				`The source at ${new URL(am.url).host} answered 503`,
+			);
 
 			await row.getByRole("button", { name: "Delete" }).click();
 			const confirm = page.getByRole("alertdialog");

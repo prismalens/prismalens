@@ -23,7 +23,18 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { HostToken } from "./host-token.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { mappingConfig, QUERY_KINDS, type QueryKind } from "./source-query.js";
+import {
+	mappingConfig,
+	QUERY_KINDS,
+	type QueryKind,
+	redactAddress,
+	shownError,
+	sourceAnswered,
+	sourceErrorText,
+} from "./source-query.js";
+
+export { redactAddress, sourceErrorText };
+
 import { sourceRequestFn } from "./source-request.js";
 import { writeStored } from "./stored-credential.js";
 import { envVars, originOf } from "./telemetry-snapshot.service.js";
@@ -52,18 +63,6 @@ export function sourceProblem(
 
 const isQueryKind = (t: string): t is QueryKind =>
 	(QUERY_KINDS as readonly string[]).includes(t);
-
-/** `user:pass@` dropped from every URL in `text`: an address may have been saved with one (#848). */
-export const withoutUserinfo = (text: string): string =>
-	text.replace(/\/\/[^/?#\s]*@/g, "//");
-
-function errorText(err: unknown): string {
-	if (!(err instanceof Error)) return withoutUserinfo(String(err));
-	const code = (err.cause as { code?: unknown } | undefined)?.code;
-	return withoutUserinfo(
-		typeof code === "string" ? `${err.message} (${code})` : err.message,
-	);
-}
 
 /** What a draft saves: its template, config, the stored credential blob, and the host it reaches. */
 interface Plan {
@@ -106,7 +105,7 @@ export class SourcesService {
 			rows.map(async (row): Promise<SourceRow> => {
 				const kind = row.integration.templateId as QueryKind;
 				const storedUrl = this.integrations.baseUrlOf(row);
-				const address = storedUrl && withoutUserinfo(storedUrl);
+				const address = storedUrl && redactAddress(storedUrl);
 				const read = await this.integrations.sourceCredential(row.id);
 				const vars = envVars(kind);
 				const sameOriginToken =
@@ -119,6 +118,9 @@ export class SourcesService {
 					row.status === "ACTIVE" &&
 					!!row.tokenExpiresAt &&
 					row.tokenExpiresAt < new Date();
+				const lastError = shownError(row.lastErrorMessage, {
+					address: storedUrl,
+				});
 				return {
 					connectionId: row.id,
 					label: row.label || row.integration.label,
@@ -133,10 +135,8 @@ export class SourcesService {
 					...(read.state === "set" && sameOriginToken
 						? { overridesEnv: vars.token }
 						: {}),
-					problem: sourceProblem(row.status, row.lastErrorMessage, credential),
-					lastErrorMessage: row.lastErrorMessage
-						? withoutUserinfo(row.lastErrorMessage)
-						: null,
+					problem: sourceProblem(row.status, lastError, credential),
+					lastErrorMessage: lastError,
 					usedBy: row.serviceMappings
 						.filter(
 							(m) => m.isEnabled && mappingConfig(m.config).enabled !== false,
@@ -178,9 +178,15 @@ export class SourcesService {
 				{ ok: true, credential: plan.credential },
 				{ timeoutMs: PROBE_TIMEOUT_MS },
 			)(verify.method, verify.path);
-			return report(res.ok, `${plan.name} answered ${res.status}`);
+			return report(
+				res.ok,
+				sourceAnswered(plan.connectionConfig.baseUrl as string, res.status),
+			);
 		} catch (err) {
-			return report(false, `Could not reach ${plan.host}: ${errorText(err)}`);
+			return report(
+				false,
+				sourceErrorText(err, plan.connectionConfig.baseUrl as string),
+			);
 		}
 	}
 

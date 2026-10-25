@@ -2267,7 +2267,11 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		expect(secondPayload.state).toBe("not-saved");
 		expect(secondPayload.saveError).toBe("the database write failed");
 		expect(secondRaw).not.toContain(secret);
-		const logged = JSON.stringify(mocks.logged);
+		const logged = JSON.stringify(mocks.logged, (_key, value: unknown) =>
+			value instanceof Error
+				? { name: value.name, message: value.message, stack: value.stack, cause: value.cause }
+				: value,
+		);
 		expect(logged).toContain("the database write failed (Error)");
 		expect(logged).not.toContain(secret);
 		const [opts] = mocks.conductRun.mock.calls.at(-1) as [

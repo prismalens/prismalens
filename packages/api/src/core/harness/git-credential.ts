@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { isAbsolute } from "node:path";
 import { inspect } from "node:util";
 import type { GitCredentialDisplay } from "@prismalens/contracts/schemas";
 import type { GitEnvInput } from "./git-env.js";
@@ -39,16 +40,28 @@ export function urlHost(url: string): string | null {
 	}
 }
 
-/** `owner/repo` of a URL. */
+export const UNSHOWN_REPO = "a repository PrismaLens cannot show";
+
+const SAFE_REPO = /^[\w.~+-]+(?:\/[\w.~+-]+)*$/;
+
+/** `owner/repo` of a URL; anything else, such as a path that holds a URL, is never echoed (#848). */
 export function repoPath(url: string): string {
 	try {
 		const u = new URL(
 			url.replace(/^([\w.-]+)@([^:/]+):(?!\/\/)/, "ssh://$1@$2/"),
 		);
-		return u.pathname.replace(/^\/+/, "").replace(/\.git$/, "") || url;
+		const path = u.pathname.replace(/^\/+/, "").replace(/\.git$/, "");
+		return SAFE_REPO.test(path) ? path : UNSHOWN_REPO;
 	} catch {
-		return url;
+		return UNSHOWN_REPO;
 	}
+}
+
+/** A repository for a log line: `host/owner/repo` for a URL, the path for a folder; never userinfo, query or fragment (#848). */
+export function repoLabel(source: string): string {
+	const host = urlHost(source);
+	if (host) return `${host}/${repoPath(source)}`;
+	return isAbsolute(source) ? source : UNSHOWN_REPO;
 }
 
 const HOST_RULE = /^[a-z0-9.-]+(:\d{1,5})?$/;
