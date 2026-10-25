@@ -130,6 +130,8 @@ export function speak({ command, env }, args, cwd) {
 			child.kill();
 			resolve(out);
 		};
+		// An agent that closes stdin early is reported by the exit handler, not a crash.
+		child.stdin.on("error", () => {});
 		child.stderr.on("data", (d) => {
 			out.stderr = `${out.stderr}${d}`.slice(-600);
 		});

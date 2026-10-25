@@ -7,7 +7,7 @@
  * scripts/fakes/transcripts/<harness>/<scenario>.ndjson and never touches a row's
  * `tested`: that changes only in the merged bump PR.
  *
- *   pnpm record:agent <harness> <scenario|all> [--clone <dir>] [--force]
+ *   pnpm record:agent <harness> <scenario|all> --clone <dir> [--force]
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -170,11 +170,18 @@ async function main(): Promise<void> {
 		(which !== "all" && !SCENARIOS.includes(which as ScenarioName))
 	) {
 		console.error(
-			`usage: record:agent <${HARNESS_IDS.join("|")}> <${SCENARIOS.join("|")}|all> [--clone <dir>] [--force]`,
+			`usage: record:agent <${HARNESS_IDS.join("|")}> <${SCENARIOS.join("|")}|all> --clone <dir> [--force]`,
 		);
 		process.exit(2);
 	}
-	const clone = resolve(values.clone ?? process.env.INIT_CWD ?? process.cwd());
+	// Never the operator's own checkout (ADR 0004 §2): the agent runs in auto mode there.
+	if (!values.clone) {
+		console.error(
+			"pass --clone <dir>: a throwaway checkout the agent may read and change",
+		);
+		process.exit(2);
+	}
+	const clone = resolve(values.clone);
 	if (!existsSync(clone)) {
 		console.error(`no such clone: ${clone}`);
 		process.exit(2);

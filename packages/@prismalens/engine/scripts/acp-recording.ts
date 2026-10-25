@@ -67,9 +67,7 @@ export function redact(
 			return Object.fromEntries(
 				Object.entries(v).map(([k, x]) => [
 					k,
-					SECRET_FIELD.test(k) && x !== null && typeof x !== "boolean"
-						? REDACTED
-						: walk(x),
+					SECRET_FIELD.test(k) && typeof x === "string" ? REDACTED : walk(x),
 				]),
 			);
 		return v;

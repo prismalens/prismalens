@@ -399,7 +399,8 @@ function up(sb, { tty = false, env = {}, args = [], port = sb.port } = {}) {
 		async stop(signal = "SIGTERM") {
 			if (finished) return exited;
 			killTree(pid, signal);
-			kill();
+			// POSIX: the group signal already reached pl up; a second one would force its exit.
+			if (WIN) kill();
 			const done = await Promise.race([exited, sleep(30_000).then(() => null)]);
 			if (done) return done;
 			killTree(pid, "SIGKILL");
@@ -941,7 +942,13 @@ async function checkUpgrade() {
 		cli,
 	);
 	if (upgrade.code !== 0) {
-		const logs = join(env.LOCALAPPDATA ?? env.HOME, "npm-cache", "_logs");
+		const cache =
+			env.npm_config_cache ??
+			env.NPM_CONFIG_CACHE ??
+			(WIN
+				? join(env.LOCALAPPDATA ?? "", "npm-cache")
+				: join(env.HOME ?? "", ".npm"));
+		const logs = join(cache, "_logs");
 		const latest = existsSync(logs) ? readdirSync(logs).sort().at(-1) : null;
 		const debugLog = latest
 			? quiet(readFileSync(join(logs, latest), "utf8"), 3500)

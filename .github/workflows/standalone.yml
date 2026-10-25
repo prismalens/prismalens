@@ -208,7 +208,9 @@ jobs:
         run: |
           set -eu
           version=$(node -p "require('./packages/cli/package.json').version")
-          for old in $(node scripts/install/previous-releases.mjs "$version"); do
+          olds=$(node scripts/install/previous-releases.mjs "$version")
+          [ -n "$olds" ] || { echo "::error::no published release below $version"; exit 1; }
+          for old in $olds; do
             mkdir -p "$RUNNER_TEMP/old/$old"
             npm pack "prismalens@$old" --pack-destination "$RUNNER_TEMP/old/$old"
             node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/$old/prismalens-$old.tgz" --out "$GITHUB_WORKSPACE/dist/old/$old"
@@ -219,7 +221,9 @@ jobs:
         run: |
           set -eu
           version=$(node -p "require('./packages/cli/package.json').version")
-          for old in $(ls "$GITHUB_WORKSPACE/dist/old"); do
+          olds=$(ls "$GITHUB_WORKSPACE/dist/old")
+          [ -n "$olds" ] || { echo "::error::no old release archives were built"; exit 1; }
+          for old in $olds; do
             echo "::group::upgrade from $old"
             sh scripts/install/smoke-installer.sh "$GITHUB_WORKSPACE/dist/standalone" "$version" "$GITHUB_WORKSPACE/dist/old/$old" "$old"
             echo "::endgroup::"
@@ -230,7 +234,9 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content "$env:GITHUB_WORKSPACE\packages\cli\package.json" -Raw | ConvertFrom-Json).version
-          foreach ($old in (Get-ChildItem "$env:GITHUB_WORKSPACE\dist\old" -Directory).Name) {
+          $olds = @((Get-ChildItem "$env:GITHUB_WORKSPACE\dist\old" -Directory -ErrorAction Stop).Name)
+          if ($olds.Count -eq 0) { "::error::no old release archives were built"; exit 1 }
+          foreach ($old in $olds) {
             "::group::upgrade from $old"
             & pwsh -NoProfile -File scripts/install/smoke-installer.ps1 -NewDir "$env:GITHUB_WORKSPACE\dist\standalone" -NewVersion $version -OldDir "$env:GITHUB_WORKSPACE\dist\old\$old" -OldVersion $old
             $rc = $LASTEXITCODE
