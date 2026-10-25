@@ -54,7 +54,8 @@ the limit: PrismaLens adds no sandbox, and the agent runs as the user who
 started `pl up`.
 
 The agent signs in to its own provider; PrismaLens never reads or stores that
-login, and never calls a model itself.
+login, and never calls a model itself. An API key or variable you enter under an
+agent is stored encrypted, passed only to that agent and never shown again.
 
 ## Scope
 
