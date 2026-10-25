@@ -77,7 +77,7 @@ export function SetupCard({ done }: { done: number }) {
 			</div>
 			<Link
 				to="/settings"
-				search={{ tab: "harness" }}
+				search={{ tab: "agent" }}
 				className="inline-flex h-8 shrink-0 items-center rounded-control bg-accent-solid px-3.5 font-medium text-accent-fg transition-colors duration-(--dur-instant) hover:bg-[oklch(from_var(--accent-solid)_calc(l_+_0.05)_c_h)]"
 				data-testid="inbox-setup-agent"
 			>

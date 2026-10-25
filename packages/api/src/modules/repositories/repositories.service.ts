@@ -13,6 +13,7 @@ import type {
 	GitCredentialDisplay,
 } from "@prismalens/contracts";
 import type { Repository, ServiceRepository } from "@prismalens/database";
+import { repoLabel } from "../../core/harness/git-credential.js";
 import {
 	classifySource,
 	displayNameFor,
@@ -147,7 +148,7 @@ export class RepositoriesService {
 			return repo;
 		});
 		this.logger.log(
-			`Service ${input.serviceId} repository → ${kind} ${source}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
+			`Service ${input.serviceId} repository → ${kind} ${repoLabel(source)}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
 		);
 		// A service only becomes investigable once it has code behind it, so this
 		// is where "a service was added" is true. `folder`/`url` is the whole of

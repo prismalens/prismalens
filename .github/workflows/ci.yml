@@ -477,8 +477,19 @@ jobs:
         if: matrix.harness == 'codex'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      - name: Run the admission (R1-R7) against the scripted model, 3 times
+      - name: Run the admission (R1-R9) against the scripted model, 3 times
         run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3
+
+      # The negative run (#848): with no gateway the model calls no PrismaLens tool, so R8 must fail the gate.
+      - name: Without the gateway, the admission must fail
+        if: matrix.harness == 'opencode'
+        env:
+          ADMISSION_NO_GATEWAY: "1"
+        run: |
+          if node scripts/admission-fake.mjs opencode "$GITHUB_WORKSPACE"; then
+            echo "::error::the admission passed with no PrismaLens gateway; R8 is not gating"
+            exit 1
+          fi
 
   agent-replay:
     # Recorded sessions of each agent row replayed through the real engine against

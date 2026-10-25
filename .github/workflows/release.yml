@@ -32,6 +32,7 @@ jobs:
     outputs:
       created: ${{ steps.rp.outputs.release_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
+      pr: ${{ steps.rp.outputs.pr }}
     steps:
       # A step-level gate: a skipped job would skip every job after it, dispatch included.
       - if: github.event_name == 'push' && vars.RELEASE_ENABLED == 'true'
@@ -41,6 +42,33 @@ jobs:
           token: ${{ secrets.RELEASE_PAT || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # The release PR carries this release's snapshot of the public ACP registry; the app
+  # never fetches it (#848, ADR 0003 §4). A failed fetch keeps the last bundled list.
+  acp-registry:
+    name: Refresh the bundled ACP registry list
+    needs: release-please
+    if: needs.release-please.outputs.pr != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+          token: ${{ secrets.RELEASE_PAT || github.token }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/acp-registry-snapshot.mjs
+      - run: npx --yes @biomejs/biome@2.5.15 format --write packages/@prismalens/config/src/acp-registry.json
+      - name: Commit when it changed
+        run: |
+          git diff --quiet -- packages/@prismalens/config/src/acp-registry.json && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(#848): refresh the bundled ACP registry list" -- packages/@prismalens/config/src/acp-registry.json
+          git push
 
   # Merging the release PR makes a DRAFT release (`draft` + `force-tag-creation` in
   # release-please-config.json). Everything below fills it, then publishes it:

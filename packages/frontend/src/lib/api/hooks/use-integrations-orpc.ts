@@ -214,6 +214,7 @@ export function useUpdateConnection() {
 			queryClient.invalidateQueries({
 				queryKey: integrationsKeys.connections.detail(variables.id),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -230,6 +231,7 @@ export function useDeleteConnection() {
 			queryClient.invalidateQueries({
 				queryKey: integrationsKeys.connections.all(),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -247,6 +249,8 @@ export function useTestConnection() {
 			queryClient.invalidateQueries({
 				queryKey: integrationsKeys.connections.all(),
 			});
+			// Sources reads the same status and the last passing Test (#848).
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -310,6 +314,24 @@ export function useCreateServiceIntegration() {
 			queryClient.invalidateQueries({
 				queryKey: serviceIntegrationsKeys.forService(variables.serviceId),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
+		},
+	});
+}
+
+/**
+ * Order a service's mappings of one kind, highest priority first (#848)
+ */
+export function useSetServiceIntegrationOrder() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.integrations.setServiceIntegrationOrder.mutationOptions(),
+		onSuccess: (_data, variables) => {
+			queryClient.invalidateQueries({
+				queryKey: serviceIntegrationsKeys.forService(variables.serviceId),
+			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -326,6 +348,7 @@ export function useUpdateServiceIntegration() {
 			queryClient.invalidateQueries({
 				queryKey: orpc.integrations.key(),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -342,6 +365,7 @@ export function useDeleteServiceIntegration() {
 			queryClient.invalidateQueries({
 				queryKey: orpc.integrations.key(),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }

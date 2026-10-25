@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 
 const ADMISSION_STEP = /ADMISSION STEP, required: run (?:exactly )?`([^`]+)`/;
 const FOLLOW_UP = /Reply with the alert name from our conversation/;
+const CLASSIFIER = /<severity>N<\/severity>/;
 
 /** A report that validates against ModelReportSchema, with no evidence the host would downgrade. */
 export const SCRIPTED_REPORT = {
@@ -91,6 +92,8 @@ export function viewOf(wire, body) {
 		lastText: textOf(last?.content),
 		lastIsToolResult: toolResult,
 		structured: Object.keys(body?.text?.format?.schema?.properties ?? {}),
+		lastToolName: toolResult ? calledName(wire, messages, last) : "",
+		turnText: turnTextOf(wire, messages),
 		n: 0,
 	};
 }
@@ -107,7 +110,64 @@ const SHELL_TOOLS = {
 };
 
 /**
- * What the scripted model does with a request: say a text, or call the shell tool.
+ * The tool a trailing tool result answers, from the assistant message that called it.
+ * @param {"openai" | "anthropic" | "responses"} wire
+ * @param {any[]} messages
+ * @param {any} last
+ */
+function calledName(wire, messages, last) {
+	if (wire === "responses") {
+		const call = messages.findLast(
+			(/** @type {any} */ m) =>
+				typeof m?.type === "string" &&
+				/_call$/.test(m.type) &&
+				m.call_id === last?.call_id,
+		);
+		return String(call?.name ?? "");
+	}
+	const id =
+		wire === "openai"
+			? last?.tool_call_id
+			: last?.content?.find((/** @type {any} */ b) => b?.type === "tool_result")
+					?.tool_use_id;
+	for (const m of [...messages].reverse()) {
+		if (m?.role !== "assistant") continue;
+		const hit =
+			wire === "openai"
+				? m.tool_calls?.find((/** @type {any} */ c) => c?.id === id)?.function
+						?.name
+				: Array.isArray(m.content)
+					? m.content.find(
+							(/** @type {any} */ b) => b?.type === "tool_use" && b.id === id,
+						)?.name
+					: undefined;
+		if (hit) return String(hit);
+	}
+	return "";
+}
+
+/**
+ * The text of the turn's user message: the last user message that carries no tool result.
+ * @param {"openai" | "anthropic" | "responses"} wire
+ * @param {any[]} messages
+ */
+function turnTextOf(wire, messages) {
+	for (const m of [...messages].reverse()) {
+		if (m?.role !== "user") continue;
+		if (
+			wire === "anthropic" &&
+			Array.isArray(m.content) &&
+			m.content.some((/** @type {any} */ b) => b?.type === "tool_result")
+		)
+			continue;
+		return textOf(m.content);
+	}
+	return "";
+}
+
+/**
+ * What the scripted model does with a request: say a text, or call a tool. Offered
+ * PrismaLens's `incident_get`, it calls it once at the start of every user turn (#848).
  * @type {import("./fake-model-server.d.mts").Script}
  */
 export function admissionScript(req) {
@@ -123,10 +183,33 @@ export function admissionScript(req) {
 		};
 	if (req.structured.includes("title"))
 		return { say: JSON.stringify({ title: "Admission probe" }) };
+	// Claude Code's auto-mode classifier grades a PrismaLens tool call; it reads only <severity>.
+	if (
+		req.toolNames.length === 0 &&
+		CLASSIFIER.test(req.lastText) &&
+		/incident_get/.test(req.lastText)
+	)
+		return { say: "<severity>0</severity>" };
 	if (req.toolNames.length === 0) return { say: "Admission probe" };
-	if (FOLLOW_UP.test(req.lastText)) return { say: "AdmissionProbe" };
-	if (req.lastIsToolResult) return { say: REPORT_TEXT };
-	const step = ADMISSION_STEP.exec(req.lastText);
+	const incident = req.toolNames.find((n) => /incident_get$/.test(n));
+	if (!incident) return answer(req, req.lastText, req.lastIsToolResult);
+	if (!req.lastIsToolResult) return { tool: { name: incident, input: {} } };
+	return req.lastToolName === incident
+		? answer(req, req.turnText, false)
+		: answer(req, req.lastText, true);
+}
+
+/**
+ * The turn's answer to `text`: the follow-up's alert name, the report after a tool, else the step.
+ * @param {import("./fake-model-server.d.mts").ModelRequest} req
+ * @param {string} text
+ * @param {boolean} afterTool
+ * @returns {import("./fake-model-server.d.mts").Reply}
+ */
+function answer(req, text, afterTool) {
+	if (FOLLOW_UP.test(text)) return { say: "AdmissionProbe" };
+	if (afterTool) return { say: REPORT_TEXT };
+	const step = ADMISSION_STEP.exec(text);
 	const shell = req.toolNames.find((n) => n.toLowerCase() in SHELL_TOOLS);
 	if (step && shell)
 		return {

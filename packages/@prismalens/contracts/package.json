@@ -30,6 +30,7 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
+		"@noble/hashes": "^2.4.0",
 		"@orpc/contract": "catalog:",
 		"@prismalens/config": "workspace:*",
 		"zod": "catalog:"

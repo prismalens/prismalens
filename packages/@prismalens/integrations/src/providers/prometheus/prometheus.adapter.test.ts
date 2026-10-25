@@ -217,6 +217,24 @@ describe("budgeted queries (#811)", () => {
 		);
 	});
 
+	it.each([
+		["uncapped", undefined],
+		["capped", 1_000_000],
+	])("never quotes a 200 body that is not JSON, %s (#848)", async (_name, maxBytes) => {
+		const request: AuthenticatedRequestFn = async () =>
+			new Response("sentinel-credential", { status: 200 });
+		const err = await segment
+			.rangeQuery(
+				request,
+				{ expr: "up", start: new Date(0), end: new Date(1), stepSeconds: 60 },
+				{ maxBytes },
+			)
+			.catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toMatch(/not valid JSON/);
+		expect((err as Error).message).not.toContain("sentinel");
+	});
+
 	it("names the status, never the body, on a refused query", async () => {
 		const request: AuthenticatedRequestFn = async () =>
 			new Response('{"error":"secret detail"}', { status: 400 });

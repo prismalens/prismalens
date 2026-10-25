@@ -3,7 +3,9 @@
 
 import type { About } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
+import { useEffect } from "react";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { Pool } from "@/components/shared/Row";
@@ -11,6 +13,7 @@ import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatDateTime } from "@/lib/format-time";
+import { DangerZoneSettings } from "./DangerZoneSettings";
 
 export const CHANNEL_LABEL: Record<About["channel"], string> = {
 	npm: "npm",
@@ -43,6 +46,14 @@ export function CommandLine({ command }: { command: string }) {
 
 export function AboutSettings() {
 	const { data: about, isError, refetch } = useAbout();
+	const { hash } = useLocation();
+	// The old Danger zone tab lands here (#848); the section mounts after About loads.
+	useEffect(() => {
+		if (about && hash === "danger-zone")
+			document
+				.getElementById("danger-zone")
+				?.scrollIntoView({ block: "start" });
+	}, [about, hash]);
 
 	if (isError) {
 		return (
@@ -151,6 +162,9 @@ export function AboutSettings() {
 					</SettingRow>
 				</Pool>
 			</SettingGroup>
+			<div id="danger-zone" className="mt-8 scroll-mt-4">
+				<DangerZoneSettings />
+			</div>
 		</>
 	);
 }
