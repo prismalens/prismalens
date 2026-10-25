@@ -55,8 +55,8 @@ Windows, Homebrew, Scoop and the desktop app (all preview) are on
 - It opens your browser on a one-time link that pairs it, and prints the link.
   The link works once, for 15 minutes. There is no account: every browser
   pairs, this machine's included.
-- With no coding agent on PATH it says so. The app runs, but Investigate stays
-  off until one is installed.
+- With no coding agent that can run, it says so. The app runs, but Investigate
+  stays off until one can; add or fix one in Settings → Agent.
 - It prints a usage-data notice. PrismaLens counts feature use under a random
   install id, never an alert, code, a repo or a report. Nothing is sent before
   the next start; turn it off in Settings, or with `PRISMALENS_TELEMETRY=off`
@@ -116,8 +116,8 @@ what changed:
   PrismaLens assembles the prompt, routes the agent's permission requests,
   records the stream and validates the report.
 - **Your agent, its own sign-in.** Any ACP agent PrismaLens knows can run;
-  with none pinned, the first one on PATH runs, and Settings → Agent picks
-  another. PrismaLens never reads or stores the agent's login or API key.
+  with none pinned, the first one in the automatic order that can run is used,
+  and Settings → Agent picks another. PrismaLens never reads or stores the agent's login or API key.
 - **Four permission levels.** Ask always, Auto-accept edits, Auto and Full
   access each pick the agent's own mode and decide which of its requests wait
   for you. A run an alert starts waits for nobody: it runs at Auto and refuses
