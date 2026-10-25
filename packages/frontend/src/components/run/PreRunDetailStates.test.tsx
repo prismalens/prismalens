@@ -247,7 +247,7 @@ describe("RunRunbooks on a detail (#848 case 24)", () => {
 		};
 
 		await act(async () => {
-			root.render(createElement(RunRunbooks, { preRun }));
+			root.render(createElement(RunRunbooks, { runId: "run-1", preRun }));
 		});
 		expect(
 			container.querySelector('[data-testid="runbooks-no-snapshot"]'),
@@ -275,7 +275,7 @@ describe("RunRunbooks on a detail (#848 case 24)", () => {
 		};
 
 		await act(async () => {
-			root.render(createElement(RunRunbooks, { preRun }));
+			root.render(createElement(RunRunbooks, { runId: "run-1", preRun }));
 		});
 		expect(
 			container.querySelectorAll('[data-testid="runbook-card"]').length,
@@ -296,7 +296,7 @@ describe("RunRunbooks on a detail (#848 case 24)", () => {
 		};
 
 		await act(async () => {
-			root.render(createElement(RunRunbooks, { preRun }));
+			root.render(createElement(RunRunbooks, { runId: "run-1", preRun }));
 		});
 		expect(
 			container.querySelector('[data-testid="runbooks-skipped"]'),

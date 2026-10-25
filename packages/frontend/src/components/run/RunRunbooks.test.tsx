@@ -56,7 +56,7 @@ describe("RunRunbooks (#848)", () => {
 
 	it("renders runbooks-no-snapshot when preRun is null", async () => {
 		await act(async () => {
-			root?.render(<RunRunbooks preRun={null} />);
+			root?.render(<RunRunbooks runId="run-1" preRun={null} />);
 		});
 		const el = container?.querySelector('[data-testid="runbooks-no-snapshot"]');
 		expect(el).not.toBeNull();
@@ -70,7 +70,7 @@ describe("RunRunbooks (#848)", () => {
 			runbooksSkipped: "the scan timed out",
 		});
 		await act(async () => {
-			root?.render(<RunRunbooks preRun={preRun} />);
+			root?.render(<RunRunbooks runId="run-1" preRun={preRun} />);
 		});
 		const el = container?.querySelector('[data-testid="runbooks-skipped"]');
 		expect(el).not.toBeNull();
@@ -81,7 +81,9 @@ describe("RunRunbooks (#848)", () => {
 
 	it("renders runbooks-load-error when loadError is true", async () => {
 		await act(async () => {
-			root?.render(<RunRunbooks preRun={null} loadError={true} />);
+			root?.render(
+				<RunRunbooks runId="run-1" preRun={null} loadError={true} />,
+			);
 		});
 		const el = container?.querySelector('[data-testid="runbooks-load-error"]');
 		expect(el).not.toBeNull();
@@ -97,7 +99,7 @@ describe("RunRunbooks (#848)", () => {
 	it("renders runbooks-none when no runbooks found", async () => {
 		const preRun = makePreRun();
 		await act(async () => {
-			root?.render(<RunRunbooks preRun={preRun} />);
+			root?.render(<RunRunbooks runId="run-1" preRun={preRun} />);
 		});
 		const el = container?.querySelector('[data-testid="runbooks-none"]');
 		expect(el).not.toBeNull();
@@ -126,7 +128,7 @@ describe("RunRunbooks (#848)", () => {
 		});
 
 		await act(async () => {
-			root?.render(<RunRunbooks preRun={preRun} />);
+			root?.render(<RunRunbooks runId="run-1" preRun={preRun} />);
 		});
 
 		const cards = container?.querySelectorAll('[data-testid="runbook-card"]');
@@ -185,7 +187,9 @@ describe("RunRunbooks (#848)", () => {
 
 		// Eight is still Few: one flat list, no controls.
 		await act(async () => {
-			root?.render(<RunRunbooks preRun={makePreRun({ runbooks })} />);
+			root?.render(
+				<RunRunbooks runId="run-1" preRun={makePreRun({ runbooks })} />,
+			);
 		});
 		expect(view()).toBeNull();
 		expect(
@@ -195,6 +199,7 @@ describe("RunRunbooks (#848)", () => {
 		await act(async () => {
 			root?.render(
 				<RunRunbooks
+					runId="run-1"
 					preRun={makePreRun({
 						runbooks: [...runbooks, file("billing", "dunning", "billing")],
 					})}
@@ -246,6 +251,86 @@ describe("RunRunbooks (#848)", () => {
 			"billing:2",
 			"Links:1",
 		]);
+	});
+
+	const many = (services: string[]) =>
+		services.flatMap((service) =>
+			[1, 2, 3, 4, 5].map((n) => ({
+				title: `${service}-${n}`,
+				path: `${service}-repo/runbooks/${n}.md`,
+				service,
+				origin: "repo" as const,
+			})),
+		);
+	const cards = () =>
+		container?.querySelectorAll('[data-testid="runbook-card"]').length;
+	const pressed = (id: string) =>
+		container
+			?.querySelector(`[data-testid="${id}"]`)
+			?.getAttribute("aria-pressed");
+	const press = (id: string) =>
+		act(async () =>
+			container
+				?.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)
+				?.click(),
+		);
+
+	it("filters a service named all on its own, apart from All", async () => {
+		await act(async () => {
+			root?.render(
+				<RunRunbooks
+					runId="run-1"
+					preRun={makePreRun({ runbooks: many(["all", "payments"]) })}
+				/>,
+			);
+		});
+		expect(cards()).toBe(10);
+		await press("runbooks-service-all");
+		expect(cards()).toBe(5);
+		expect(pressed("runbooks-service-all")).toBe("true");
+		expect(pressed("runbooks-all")).toBe("false");
+		await press("runbooks-all");
+		expect(cards()).toBe(10);
+		expect(pressed("runbooks-service-all")).toBe("false");
+	});
+
+	it("starts the filters afresh when the run changes", async () => {
+		await act(async () => {
+			root?.render(
+				<RunRunbooks
+					runId="run-1"
+					preRun={makePreRun({ runbooks: many(["checkout", "payments"]) })}
+				/>,
+			);
+		});
+		await press("runbooks-service-payments");
+		await act(async () => {
+			const search = container?.querySelector<HTMLInputElement>(
+				'[data-testid="runbooks-search"]',
+			);
+			Object.getOwnPropertyDescriptor(
+				HTMLInputElement.prototype,
+				"value",
+			)?.set?.call(search, "payments-1");
+			search?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		expect(cards()).toBe(1);
+
+		await act(async () => {
+			root?.render(
+				<RunRunbooks
+					runId="run-2"
+					preRun={makePreRun({ runbooks: many(["billing", "search"]) })}
+				/>,
+			);
+		});
+		expect(cards()).toBe(10);
+		expect(pressed("runbooks-all")).toBe("true");
+		expect(
+			container?.querySelector<HTMLInputElement>(
+				'[data-testid="runbooks-search"]',
+			)?.value,
+		).toBe("");
 	});
 
 	it("renders contextTop inside the context tab of RunDetailsPanel", async () => {

@@ -545,7 +545,13 @@ export function RunPage() {
 					incidentId={incident.id}
 					summaryTop={overview}
 					contextTop={
-						!chat && <RunRunbooks preRun={preRun} loadError={!!run.error} />
+						!chat && (
+							<RunRunbooks
+								runId={inv.id}
+								preRun={preRun}
+								loadError={!!run.error}
+							/>
+						)
 					}
 					summary={summarySections(
 						inv,

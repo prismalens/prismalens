@@ -41,9 +41,12 @@ function Chip({ icon, children }: { icon: ReactNode; children: ReactNode }) {
  * reads only this run's snapshot and never switches to another run.
  */
 export function RunRunbooks({
+	runId,
 	preRun,
 	loadError,
 }: {
+	/** Keys the filters, so switching runs starts them afresh (#848). */
+	runId: string;
 	/** null or unavailable: a run with no snapshot (from before #848, or none was stored). */
 	preRun: PreRunDetail | null;
 	/** The run itself did not load: not the same as a scan that was skipped. */
@@ -78,7 +81,7 @@ export function RunRunbooks({
 	else
 		body =
 			read.runbooks.length > MANY_RUNBOOKS ? (
-				<ManyRunbooks runbooks={read.runbooks} />
+				<ManyRunbooks key={runId} runbooks={read.runbooks} />
 			) : (
 				<RunbookList runbooks={read.runbooks} />
 			);
@@ -169,12 +172,13 @@ function RunbookCard({ r, path }: { r: Runbook; path: string }) {
 /** Many: search and service filters, then one group per repository; links last. */
 function ManyRunbooks({ runbooks }: { runbooks: Runbook[] }) {
 	const [query, setQuery] = useState("");
-	const [service, setService] = useState("all");
+	/** null is All: "all" is also a valid service name (#848). */
+	const [service, setService] = useState<string | null>(null);
 	const services = Array.from(new Set(runbooks.map((r) => r.service)));
 	const q = query.trim().toLowerCase();
 	const shown = runbooks.filter(
 		(r) =>
-			(service === "all" || r.service === service) &&
+			(service === null || r.service === service) &&
 			(!q || `${r.title} ${r.path} ${r.service}`.toLowerCase().includes(q)),
 	);
 	const repos = Array.from(new Set(shown.map(repoOf)));
@@ -196,26 +200,22 @@ function ManyRunbooks({ runbooks }: { runbooks: Runbook[] }) {
 				aria-label="Service"
 				className="m-0 flex gap-1.5 overflow-x-auto border-0 p-0.5"
 			>
-				{["all", ...services].map((s) => (
-					<button
+				<ServiceChip
+					label="All"
+					count={runbooks.length}
+					pressed={service === null}
+					onPress={() => setService(null)}
+					testId="runbooks-all"
+				/>
+				{services.map((s) => (
+					<ServiceChip
 						key={s}
-						type="button"
-						aria-pressed={service === s}
-						onClick={() => setService(s)}
-						className={cn(
-							"inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-meta font-medium whitespace-nowrap text-text-2 outline-1 -outline-offset-1 outline-text-3/50 hover:text-text-1",
-							service === s &&
-								"bg-text-1 text-canvas outline-0 hover:text-canvas",
-						)}
-						data-testid={`runbooks-service-${s}`}
-					>
-						{s === "all" ? "All" : s}
-						<span className="tabular-nums">
-							{s === "all"
-								? runbooks.length
-								: runbooks.filter((r) => r.service === s).length}
-						</span>
-					</button>
+						label={s}
+						count={runbooks.filter((r) => r.service === s).length}
+						pressed={service === s}
+						onPress={() => setService(s)}
+						testId={`runbooks-service-${s}`}
+					/>
 				))}
 			</fieldset>
 			{shown.length === 0 ? (
@@ -227,7 +227,7 @@ function ManyRunbooks({ runbooks }: { runbooks: Runbook[] }) {
 						size="sm"
 						onClick={() => {
 							setQuery("");
-							setService("all");
+							setService(null);
 						}}
 						data-testid="runbooks-clear"
 					>
@@ -239,7 +239,7 @@ function ManyRunbooks({ runbooks }: { runbooks: Runbook[] }) {
 					const items = shown.filter((r) => repoOf(r) === repo);
 					return (
 						<section
-							key={repo ?? "links"}
+							key={repo === null ? "links" : `repo:${repo}`}
 							aria-label={repo ?? "Links"}
 							className="flex flex-col gap-1.5"
 							data-testid="runbooks-group"
@@ -261,5 +261,35 @@ function ManyRunbooks({ runbooks }: { runbooks: Runbook[] }) {
 				})
 			)}
 		</div>
+	);
+}
+
+function ServiceChip({
+	label,
+	count,
+	pressed,
+	onPress,
+	testId,
+}: {
+	label: string;
+	count: number;
+	pressed: boolean;
+	onPress: () => void;
+	testId: string;
+}) {
+	return (
+		<button
+			type="button"
+			aria-pressed={pressed}
+			onClick={onPress}
+			className={cn(
+				"inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-meta font-medium whitespace-nowrap text-text-2 outline-1 -outline-offset-1 outline-text-3/50 hover:text-text-1",
+				pressed && "bg-text-1 text-canvas outline-0 hover:text-canvas",
+			)}
+			data-testid={testId}
+		>
+			{label}
+			<span className="tabular-nums">{count}</span>
+		</button>
 	);
 }
