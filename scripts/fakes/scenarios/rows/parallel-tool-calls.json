@@ -1,0 +1,25 @@
+{
+	"row": "parallel-tool-calls",
+	"kind": "negative",
+	"title": "Parallel tool calls",
+	"run": {},
+	"expect": "parallel",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:parallel-tool-calls]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{ "name": "$shell", "arguments": { "$command": "ls" } },
+					{ "name": "$shell", "arguments": { "$command": "pwd" } }
+				]
+			}
+		},
+		{
+			"match": { "inConversation": "[row:parallel-tool-calls]" },
+			"response": { "content": "$report" }
+		}
+	]
+}

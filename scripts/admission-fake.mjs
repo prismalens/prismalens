@@ -2,36 +2,122 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Runs the harness admission (R1-R9) against the scripted model of
-// scripts/fakes/fake-model-server.mjs, so a PR's verdict never depends on a live model (#884).
-//   node scripts/admission-fake.mjs <opencode|claude-code> <cloneDir> [--repeat N]
+// Qualifies one agent against the scripted model (aimock, scripts/fakes/scripted-model.mjs):
+// the admission (R1-R9) and the behaviour matrix, so a PR's verdict never depends on a live model (#884, #914).
+//   node scripts/admission-fake.mjs <agent> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--journal]
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { startFakeModelServer } from "./fakes/fake-model-server.mjs";
+import { SCRIPTED_KEY, startScriptedModel } from "./fakes/scripted-model.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+export const AGENTS = [
+	"opencode",
+	"claude-code",
+	"codex",
+	"gemini",
+	"deepagents",
+];
 export const FAKE_MODEL = "fake/scripted";
+const KEYS = [
+	"ANTHROPIC_API_KEY",
+	"OPENAI_API_KEY",
+	"CODEX_API_KEY",
+	"GEMINI_API_KEY",
+	"GOOGLE_API_KEY",
+];
 
 /**
- * The env that points one agent at the fake and nowhere else; a throwaway home keeps
- * the runner's own sign-in out of the verdict.
- * @param {"opencode" | "claude-code"} harness
- * @param {{ url: string, openaiBaseUrl: string }} fake
+ * The env that points one agent at the scripted model and nowhere else; a throwaway home
+ * keeps the runner's own sign-in out of the verdict. `key: null` writes the same home with
+ * no key in it: the agent is not signed in, and a call it makes anyway still reaches aimock.
+ * Retries are capped so a row with a persistent fault ends inside its time.
+ * @param {string} harness
+ * @param {{ url: string, openaiBaseUrl: string }} model
  * @param {string} home
+ * @param {string | null} [key]
  * @returns {Record<string, string>}
  */
-export function agentEnv(harness, fake, home) {
+export function agentEnv(harness, model, home, key = SCRIPTED_KEY) {
+	const withKey = (/** @type {string} */ name) => (key ? { [name]: key } : {});
 	if (harness === "claude-code")
 		return {
-			ANTHROPIC_BASE_URL: fake.url,
-			ANTHROPIC_API_KEY: "scripted",
+			ANTHROPIC_BASE_URL: model.url,
+			...withKey("ANTHROPIC_API_KEY"),
 			CLAUDE_CONFIG_DIR: join(home, "claude"),
 			// MCP tools go in the request, not behind tool search, so the script sees incident_get (#848).
 			ENABLE_TOOL_SEARCH: "false",
+			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+			CLAUDE_CODE_MAX_RETRIES: "1",
 		};
+	if (harness === "codex") {
+		const codexHome = join(home, "codex");
+		mkdirSync(codexHome, { recursive: true });
+		writeFileSync(
+			join(codexHome, "config.toml"),
+			[
+				'model = "scripted"',
+				'model_provider = "fake"',
+				"",
+				"[model_providers.fake]",
+				'name = "Scripted"',
+				`base_url = "${model.openaiBaseUrl}"`,
+				'wire_api = "responses"',
+				'env_key = "OPENAI_API_KEY"',
+				"request_max_retries = 1",
+				"stream_max_retries = 1",
+				"",
+			].join("\n"),
+		);
+		return { CODEX_HOME: codexHome, ...withKey("OPENAI_API_KEY") };
+	}
+	if (harness === "gemini") {
+		const geminiHome = join(home, "gemini");
+		mkdirSync(join(geminiHome, ".gemini"), { recursive: true });
+		writeFileSync(
+			join(geminiHome, ".gemini", "settings.json"),
+			// A named model skips Gemini's model router, a side call per turn.
+			JSON.stringify({
+				security: { auth: { selectedType: "gemini-api-key" } },
+				model: { name: "gemini-2.5-flash" },
+				general: { maxAttempts: 2 },
+			}),
+		);
+		return {
+			GEMINI_CLI_HOME: geminiHome,
+			// Folder trust is on by default, and an untrusted folder loads no MCP server (the row's toolsHint).
+			GEMINI_CLI_TRUST_WORKSPACE: "true",
+			GOOGLE_GEMINI_BASE_URL: model.url,
+			...withKey("GEMINI_API_KEY"),
+		};
+	}
+	if (harness === "deepagents") {
+		const profile = join(home, "deepagents");
+		mkdirSync(profile, { recursive: true });
+		writeFileSync(
+			join(profile, "config.toml"),
+			[
+				"[models]",
+				'default = "openai:scripted"',
+				"",
+				"[models.providers.openai]",
+				`base_url = "${model.openaiBaseUrl}"`,
+				'api_key_env = "OPENAI_API_KEY"',
+				'models = ["scripted"]',
+				"",
+				"[retries]",
+				"max_retries = 1",
+				"",
+			].join("\n"),
+		);
+		return {
+			DEEPAGENTS_HOME: profile,
+			DEEPAGENTS_CODE_NO_UPDATE_CHECK: "1",
+			...withKey("OPENAI_API_KEY"),
+		};
+	}
 	const config = join(home, "config");
 	mkdirSync(join(config, "opencode"), { recursive: true });
 	writeFileSync(
@@ -42,10 +128,16 @@ export function agentEnv(harness, fake, home) {
 				fake: {
 					npm: "@ai-sdk/openai-compatible",
 					name: "Scripted",
-					options: { baseURL: fake.openaiBaseUrl, apiKey: "scripted" },
+					options: {
+						baseURL: model.openaiBaseUrl,
+						...(key ? { apiKey: key } : {}),
+					},
 					models: { scripted: { name: "Scripted", tool_call: true } },
 				},
 			},
+			// Without these OpenCode falls back to its own hosted models.
+			model: FAKE_MODEL,
+			small_model: FAKE_MODEL,
 		}),
 	);
 	return {
@@ -70,7 +162,7 @@ export function verdictOf(stdout) {
 		// an unparseable report is a failed run
 	}
 	const word = (/** @type {string} */ label) =>
-		new RegExp(`^${label}: (\\w+)`, "m").exec(stdout)?.[1] ?? "missing";
+		new RegExp(`^${label}: ([\\w/]+)`, "m").exec(stdout)?.[1] ?? "missing";
 	return {
 		pass: report.pass === true,
 		failedChecks: Object.entries(report.checks ?? {})
@@ -84,39 +176,81 @@ export function verdictOf(stdout) {
 	};
 }
 
+/**
+ * Admission failures caused by an agent's own open bug. The run passes while the agent
+ * fails exactly this way, and fails once it no longer does, so a fix upstream is noticed (#914).
+ * @type {Record<string, { failedChecks: string[], r5: string, why: string }>}
+ */
+export const KNOWN_ADMISSION_FAILURES = {
+	gemini: {
+		failedChecks: ["cwdProved", "readAllowed"],
+		r5: "fail",
+		why: "shell output never reaches ACP clients (google-gemini/gemini-cli#29930); history replays after the session/load answer (google-gemini/gemini-cli#29707)",
+	},
+};
+
+/**
+ * `null` when the admission's outcome is acceptable for this agent, else why not.
+ * @param {string} harness
+ * @param {ReturnType<typeof verdictOf>} v
+ * @param {number} code
+ */
+export function admissionProblem(harness, v, code) {
+	const known = KNOWN_ADMISSION_FAILURES[harness];
+	if (!known) return code === 0 ? null : "the admission failed";
+	const same =
+		!v.pass &&
+		v.failedChecks.join(",") === known.failedChecks.join(",") &&
+		v.r5 === known.r5 &&
+		[v.r8, v.r9].every((r) => r === "pass" || r === "n/a");
+	if (same) return null;
+	return code === 0 || v.pass || v.r5 === "pass"
+		? `the known failure is fixed (${known.why}); remove it from KNOWN_ADMISSION_FAILURES`
+		: "the admission failed differently from its known failure";
+}
+
 /** One verdict as one comparable line. */
 export const signature = (/** @type {ReturnType<typeof verdictOf>} */ v) =>
 	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7} R8=${v.r8} R9=${v.r9}`;
 
 /**
- * @param {string} harness
- * @param {string} cloneDir
+ * Each matrix row's first word, as one comparable line.
+ * @param {string} stdout
+ */
+export const matrixSignature = (stdout) =>
+	[...stdout.matchAll(/^ROW ([\w-]+): ([\w/]+)/gm)]
+		.map((m) => `${m[1]}=${m[2]}`)
+		.join(" ") || "no rows";
+
+/**
+ * @param {string} script
+ * @param {string[]} args
  * @param {Record<string, string>} env
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
-function admissionOnce(harness, cloneDir, env) {
+function engineScript(script, args, env) {
 	return new Promise((resolveRun) => {
-		const args = [
+		const all = [
 			"--filter",
 			"@prismalens/engine",
 			"exec",
 			"tsx",
-			"scripts/acp-admission.ts",
-			harness,
-			cloneDir,
+			`scripts/${script}`,
+			...args,
 		];
 		const options = { cwd: ROOT, env: { ...process.env, ...env } };
 		const child =
 			process.platform === "win32"
-				? spawn(`pnpm ${args.map((a) => JSON.stringify(a)).join(" ")}`, {
+				? spawn(`pnpm ${all.map((a) => JSON.stringify(a)).join(" ")}`, {
 						...options,
 						shell: true,
 					})
-				: spawn("pnpm", args, options);
+				: spawn("pnpm", all, options);
 		let stdout = "";
 		let stderr = "";
 		child.stdout.on("data", (d) => {
 			stdout += d;
+			if (script === "acp-matrix.ts") process.stdout.write(d);
 		});
 		child.stderr.on("data", (d) => {
 			stderr += d;
@@ -134,48 +268,128 @@ function admissionOnce(harness, cloneDir, env) {
 	});
 }
 
-async function main() {
-	const [harness, cloneArg] = process.argv.slice(2);
-	const repeatAt = process.argv.indexOf("--repeat");
-	const repeat = repeatAt > -1 ? Number(process.argv[repeatAt + 1]) : 1;
+/** @param {string[]} argv */
+export function parseArgs(argv) {
+	const [harness, cloneArg] = argv;
+	const flag = (/** @type {string} */ name) => {
+		const at = argv.indexOf(name);
+		return at > -1 ? argv[at + 1] : undefined;
+	};
+	const repeat = Number(flag("--repeat") ?? 1);
+	const only = flag("--only");
 	if (
-		(harness !== "opencode" && harness !== "claude-code") ||
+		!AGENTS.includes(harness ?? "") ||
 		!cloneArg ||
 		!Number.isInteger(repeat) ||
-		repeat < 1
-	) {
+		repeat < 1 ||
+		(only !== undefined && only !== "admission" && only !== "matrix")
+	)
+		return null;
+	return {
+		harness: /** @type {string} */ (harness),
+		cloneDir: resolve(cloneArg),
+		repeat,
+		admission: only !== "matrix",
+		matrix: only !== "admission",
+		rows: flag("--rows"),
+		journal: argv.includes("--journal"),
+	};
+}
+
+async function main() {
+	const args = parseArgs(process.argv.slice(2));
+	if (!args) {
 		console.error(
-			"usage: admission-fake.mjs <opencode|claude-code> <cloneDir> [--repeat N]",
+			`usage: admission-fake.mjs <${AGENTS.join("|")}> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--journal]`,
 		);
 		process.exit(2);
 	}
-	const cloneDir = resolve(cloneArg);
-	const fake = await startFakeModelServer();
+	const model = await startScriptedModel(args.harness);
 	const home = mkdtempSync(join(tmpdir(), "pl-admission-fake-"));
+	const workdir = mkdtempSync(join(homedir(), ".pl-matrix-"));
 	const lines = [];
 	let worst = 0;
 	try {
-		const env = agentEnv(harness, fake, home);
-		for (let run = 1; run <= repeat; run++) {
-			const { code, stdout, stderr } = await admissionOnce(
-				harness,
-				cloneDir,
-				env,
-			);
-			const verdict = verdictOf(stdout);
-			const line = signature(verdict);
+		const env = agentEnv(args.harness, model, home);
+		const signedOut = agentEnv(
+			args.harness,
+			model,
+			mkdtempSync(join(home, "signed-out-")),
+			null,
+		);
+		/** @type {Record<string, string | null>} */
+		const overrides = Object.fromEntries(KEYS.map((k) => [k, null]));
+		Object.assign(overrides, signedOut);
+		for (let run = 1; run <= args.repeat; run++) {
+			model.resetMatchCounts();
+			const parts = [];
+			let failed = false;
+			if (args.admission) {
+				const out = await engineScript(
+					"acp-admission.ts",
+					[args.harness, args.cloneDir],
+					env,
+				);
+				const verdict = verdictOf(out.stdout);
+				parts.push(signature(verdict));
+				const problem = admissionProblem(args.harness, verdict, out.code);
+				if (out.code !== 0 && !problem)
+					console.log(
+						`known failure: ${KNOWN_ADMISSION_FAILURES[args.harness]?.why}`,
+					);
+				if (problem) {
+					failed = true;
+					console.log(problem);
+					console.log(out.stdout);
+					console.error(out.stderr.slice(-2000));
+				}
+			}
+			if (args.matrix) {
+				const out = await engineScript(
+					"acp-matrix.ts",
+					[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
+					{
+						...env,
+						PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),
+						PL_MATRIX_WORKDIR: workdir,
+					},
+				);
+				parts.push(matrixSignature(out.stdout));
+				if (out.code !== 0) {
+					failed = true;
+					console.error(out.stderr.slice(-2000));
+				}
+			}
+			const line = parts.join(" | ");
 			lines.push(line);
-			console.log(`run ${run}/${repeat}: exit ${code} ${line}`);
-			if (code !== 0) {
-				worst = 1;
-				console.log(stdout);
-				console.error(stderr.slice(-2000));
+			console.log(
+				`run ${run}/${args.repeat}: ${failed ? "FAIL" : "ok"} ${line}`,
+			);
+			if (failed) worst = 1;
+			if (failed || args.journal) {
+				const statuses = model.journal().map((e) => {
+					const m = /** @type {any} */ (e.response.fixture)?.match;
+					const tag = m
+						? Object.entries(m)
+								.filter(([k]) => k !== "toolName")
+								.map(([k, v]) =>
+									k === "predicate" ? "p" : `${k}=${String(v).slice(0, 24)}`,
+								)
+								.join(",")
+						: "none";
+					return `${e.response.status}[${tag}]`;
+				});
+				console.log("scripted model requests (last 80):");
+				for (const r of model.requests().slice(-80))
+					console.log(JSON.stringify(r));
+				console.log(`served: ${statuses.slice(-80).join(" ")}`);
 			}
 		}
 	} finally {
-		console.log(`fake model served ${fake.requests().length} requests`);
-		await fake.close();
+		console.log(`scripted model served ${model.journal().length} requests`);
+		await model.close();
 		rmSync(home, { recursive: true, force: true });
+		rmSync(workdir, { recursive: true, force: true, maxRetries: 5 });
 	}
 	if (new Set(lines).size > 1) {
 		console.error("verdicts differ across runs");

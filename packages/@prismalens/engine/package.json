@@ -57,6 +57,7 @@
 	"devDependencies": {
 		"@modelcontextprotocol/server": "~2.3.1",
 		"@types/node": "catalog:",
+		"ajv": "^8.20.0",
 		"cross-spawn": "^7.0.6",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
