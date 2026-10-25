@@ -258,6 +258,18 @@ describe("releaseWorkspace retention", () => {
 		expect(rec?.teardown?.status).toBe("ok");
 	}, 60_000);
 
+	it("never re-runs the teardown of a workspace already kept for its changes", async () => {
+		const policy: WorkspacePolicy = {
+			...POLICY,
+			teardown: both(nodeCmd("require('fs').writeFileSync('left.txt','x')")),
+		};
+		await create("t3", policy);
+		await releaseWorkspace({ ...owner, id: "t3", policy });
+		const recs = await sweepWorkspaces({ ...owner, policy, isLive: () => false });
+		expect(recs[0]).toMatchObject({ removed: false, reason: "changed" });
+		expect(recs[0]?.teardown).toBeUndefined();
+	}, 60_000);
+
 	it("goes ahead with removal after a teardown hits its cap", async () => {
 		const policy: WorkspacePolicy = { ...POLICY, teardown: both(nodeCmd("setTimeout(()=>{},20000)")) };
 		await create("t2", policy);

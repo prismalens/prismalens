@@ -335,6 +335,13 @@ async function removeGuarded(
 	}
 	const blocked = guard(dir, id, side, judge);
 	if (blocked) return record(dir, id, side, false, blocked);
+	// A workspace already kept for its changes is re-checked before teardown, so a sweep never re-runs it.
+	if (
+		keepIfChanged &&
+		side?.keptAt &&
+		(await isChanged(dir, judge.env).catch(() => true))
+	)
+		return record(dir, id, side, false, "changed");
 	const cmd = commandFor(policy.teardown);
 	const teardown = cmd
 		? await runHook(cmd, { cwd: dir, env: judge.env, capMs: teardownCapMs })
