@@ -8,22 +8,14 @@
  */
 import {
 	existsSync,
-	lstatSync,
 	mkdirSync,
 	readdirSync,
 	realpathSync,
-	rmdirSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
-import {
-	basename,
-	dirname,
-	isAbsolute,
-	join,
-	relative,
-	resolve,
-} from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	DEFAULT_ACCESS_LEVEL,
@@ -1354,51 +1346,33 @@ function inside(root: string, sub: string | null): string {
 	// Across Windows drives `relative` stays absolute, so `..` alone is not the test.
 	if (rel.startsWith("..") || isAbsolute(rel) || resolve(root, rel) !== dir)
 		throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
-	// A sub-path the repo turned into a link must not move the cwd outside the snapshot,
-	// even one not created yet: its deepest existing ancestor is what mkdir follows (#848).
-	if (sub) {
-		const real = relative(realOf(root), realOf(dir));
-		if (real.startsWith("..") || isAbsolute(real))
-			throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
-	}
 	return dir;
 }
 
-/** `p` with its deepest existing ancestor canonicalised and the missing tail appended. */
-function realOf(p: string): string {
-	const tail: string[] = [];
-	let head = p;
-	while (!lstatSync(head, { throwIfNoEntry: false })) {
-		const up = dirname(head);
-		if (up === head) break;
-		tail.unshift(basename(head));
-		head = up;
-	}
-	return join(realpathSync(head), ...tail);
+/** `dir` as it is on disk, never created: an existing folder whose real path stays inside real `root` (#848). */
+function onDisk(root: string, dir: string, name: string): string {
+	let real = "";
+	try {
+		real = realpathSync(dir);
+	} catch {}
+	if (!real || !statSync(real).isDirectory())
+		throw new Error(`the sub-path ${name} is not in the repository`);
+	const rel = relative(realpathSync(root), real);
+	if (rel.startsWith("..") || isAbsolute(rel))
+		throw new Error(`Repository sub-path escapes the snapshot: ${name}`);
+	return dir;
 }
 
-/** Creates `dir`, then checks where it landed: a parent swapped for a link after `inside` must not leave a directory outside `root` (#848). */
-function mkdirInside(root: string, dir: string): void {
-	const first = mkdirSync(dir, { recursive: true });
-	const real = relative(realpathSync(root), realpathSync(dir));
-	if (!real.startsWith("..") && !isAbsolute(real)) return;
-	// Only what this call created, deepest first, and only while empty; Windows prefixes `first` with `\\?\`.
-	const top = first?.replace(/^\\\\\?\\/, "");
-	const made: string[] = [];
-	for (let p = resolve(dir); top; p = dirname(p)) {
-		made.push(p);
-		if (relative(top, p) === "") break;
-		if (dirname(p) === p) {
-			made.length = 0;
-			break;
-		}
-	}
-	try {
-		for (const p of made) rmdirSync(p);
-	} catch {}
-	throw new Error(
-		`Repository sub-path escapes the snapshot: ${relative(root, dir)}`,
-	);
+function inCheckout(runDir: string, snap: string, sub: string | null): string {
+	const dir = inside(snap, sub);
+	onDisk(runDir, snap, relative(runDir, snap));
+	return onDisk(snap, dir, sub ?? ".");
+}
+
+function unmappedDir(runDir: string): string {
+	const dir = join(runDir, "unmapped");
+	mkdirSync(dir, { recursive: true });
+	return onDisk(runDir, dir, "unmapped");
 }
 
 function whereFrom(repo: {
@@ -1475,7 +1449,7 @@ export async function resolveWorkspace(
 		}
 		const { snap, credential } = outcome.value;
 		try {
-			inside(snap.path, repo.subPath);
+			inCheckout(runDir, snap.path, repo.subPath);
 		} catch (e) {
 			skipped.push({ repo, reason: messageOf(e), code: "failed" });
 			continue;
@@ -1562,8 +1536,7 @@ function unmappedWorkspace(
 	note: string,
 	checkoutsSkipped: CheckoutSkipped[] = [],
 ): Workspace {
-	const cwd = join(runDir, "unmapped");
-	mkdirInside(runDir, cwd);
+	const cwd = unmappedDir(runDir);
 	return { layout: "unmapped", cwd, repos: [], checkoutsSkipped, note };
 }
 
@@ -1686,11 +1659,12 @@ export async function rebuildWorkspace(
 			),
 			bounded,
 		);
+		inCheckout(runDir, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
 	}
-	// The checkout may have restored a link on the cwd's path, so check again before creating it.
-	inside(runDir, relative(runDir, ws.cwd));
-	mkdirInside(runDir, ws.cwd);
+	if (ws.layout === "unmapped") unmappedDir(runDir);
+	const root = (ws.layout === "single" && ws.repos[0]?.dir) || runDir;
+	onDisk(root, ws.cwd, relative(root, ws.cwd));
 	const pinned =
 		ws.repos.length === 1
 			? (ws.repos[0] as RunWorkspaceRepo).head.slice(0, 7)
