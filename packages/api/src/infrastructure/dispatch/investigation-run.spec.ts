@@ -12,14 +12,14 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
-import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData } from "@prismalens/contracts";
+import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData, type RunWorkspace } from "@prismalens/contracts";
 import { type conductRun, withPreRunCoverage } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { Snapshot } from "../../core/harness/repo-source.service.js";
 import type { IncidentRepo, RepoRef, RunPorts } from "./run-ports.js";
 
-const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
+const mocks = vi.hoisted(() => ({ conductRun: vi.fn(), logged: [] as unknown[][] }));
 
 vi.mock("@prismalens/engine", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@prismalens/engine")>();
@@ -31,7 +31,8 @@ vi.mock("@prismalens/engine", async (importOriginal) => {
 
 vi.mock("@prismalens/logger", () => ({
 	Logger: vi.fn(function MockLogger() {
-		return { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
+		const record = (...args: unknown[]) => void mocks.logged.push(args);
+		return { info: vi.fn(record), error: vi.fn(record), warn: vi.fn(record), debug: vi.fn(record) };
 	}),
 	enrichContext: vi.fn(),
 }));
@@ -43,18 +44,20 @@ vi.mock("@prismalens/logger/standalone", () => ({
 
 const PUBLIC_CREDENTIAL = { source: "none" as const, label: "public", via: "none" };
 
-/** A `snapshotWith` double from what the clone returns; the credential is always public. */
+/** A `snapshotWith` double from what the clone returns; the credential is always public, and a clone into `dest` leaves it on disk as the real one does. */
 function cloneAs(
 	fn: (ref: RepoRef, dest: string, signal?: AbortSignal, at?: string) => Promise<Snapshot>,
 ) {
-	return vi.fn(async (ref: RepoRef, dest: string, signal?: AbortSignal, at?: string) => ({
-		snap: await fn(ref, dest, signal, at),
-		credential: PUBLIC_CREDENTIAL,
-	}));
+	return vi.fn(async (ref: RepoRef, dest: string, signal?: AbortSignal, at?: string) => {
+		const snap = await fn(ref, dest, signal, at);
+		if (snap.path === dest) mkdirSync(dest, { recursive: true });
+		return { snap, credential: PUBLIC_CREDENTIAL };
+	});
 }
 
 const {
 	resolveWorkspace,
+	rebuildWorkspace,
 	runDirFor,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
@@ -123,11 +126,10 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const snapshot = cloneAs(async () => ({
-				path: "/app-data/repos/github.com/acme/api-gateway",
-				head: "abc123def456789",
-				branch: "main" as const,
-			}));
+			const snapshot = cloneAs(async (_src: unknown, dest: string) => {
+				mkdirSync(join(dest, "services", "api"), { recursive: true });
+				return { path: dest, head: "abc123def456789", branch: "main" as const };
+			});
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
 					{
@@ -155,7 +157,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				expect.any(AbortSignal),
 			);
 			expect(ws.layout).toBe("single");
-			expect(ws.cwd).toBe(join("/app-data/repos/github.com/acme/api-gateway", "services/api"));
+			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo", "services", "api"));
 			expect(ws.note).toContain("https://github.com/acme/api-gateway");
 			expect(ws.note).toContain("abc123def456");
 		} finally {
@@ -165,20 +167,23 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 	});
 
 	it("a linked repo with no subPath: cwd is the snapshot path itself", async () => {
-		const ports = fakePorts({
-			incidentRepos: vi.fn(async () => [
-				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
-			]),
-			snapshotWith: cloneAs(async () => ({
-				path: "/app-data/repos/github.com/acme/api-gateway",
-				head: "abc123def456789",
-				branch: "main" as const,
-			})),
-		});
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
+				]),
+				snapshotWith: cloneAs(async (_src: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+			});
 
-		const ws = await resolveWorkspace(minimalData(), ports);
+			const ws = await resolveWorkspace(minimalData(), ports);
 
-		expect(ws.cwd).toBe("/app-data/repos/github.com/acme/api-gateway");
+			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo"));
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
 	});
 
 	it("a stored subPath that climbs out of the snapshot is skipped instead of widening the cwd (#848)", async () => {
@@ -202,8 +207,9 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 	it("a repo whose subPath is a junction to an outside dir throws escapes the snapshot and is skipped (#848)", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-junction-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoDir = join(tmp, "repo");
+			const repoDir = join(tmp, "runs", "inv-1", "repo");
 			const outsideDir = join(tmp, "outside");
 			mkdirSync(repoDir, { recursive: true });
 			mkdirSync(outsideDir, { recursive: true });
@@ -234,11 +240,279 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				{
 					repo: "https://github.com/acme/api-gateway",
 					code: "failed",
-					reason: expect.stringMatching(/escapes the snapshot/),
+					reason: expect.stringMatching(/escapes the snapshot: linked-sub/),
 				},
 			]);
 		} finally {
+			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("rebuildWorkspace rejects when snapshot restores a link making cwd escape, and leaves missing dir uncreated (OBJ-001)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-esc-"));
+		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-esc-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const runDir = join(tmp, "runs", "inv-1");
+			const repoDir = join(runDir, "repo");
+			const linked = join(repoDir, "linked");
+			const cwd = join(linked, "missing");
+			const ws: RunWorkspace = {
+				layout: "single",
+				cwd,
+				repos: [
+					{
+						name: "repo",
+						dir: repoDir,
+						head: "abc123def456789",
+						sourceKind: "url",
+						url: "https://github.com/acme/repo",
+						connectionId: null,
+						branch: "main",
+						subPath: null,
+						services: ["api"],
+					},
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async () => {
+					mkdirSync(repoDir, { recursive: true });
+					symlinkSync(outside, linked, "junction");
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			await expect(
+				rebuildWorkspace(ws, "inv-1", "OpenCode", ports),
+			).rejects.toThrow(/is not in the repository/);
+
+			expect(existsSync(join(outside, "missing"))).toBe(false);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rebuildWorkspace succeeds and cwd exists when linked is a real directory (OBJ-001 control)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-ctrl-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const runDir = join(tmp, "runs", "inv-1");
+			const repoDir = join(runDir, "repo");
+			const linked = join(repoDir, "linked");
+			const cwd = join(linked, "missing");
+			const ws: RunWorkspace = {
+				layout: "single",
+				cwd,
+				repos: [
+					{
+						name: "repo",
+						dir: repoDir,
+						head: "abc123def456789",
+						sourceKind: "url",
+						url: "https://github.com/acme/repo",
+						connectionId: null,
+						branch: "main",
+						subPath: null,
+						services: ["api"],
+					},
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async () => {
+					mkdirSync(cwd, { recursive: true });
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			const result = await rebuildWorkspace(ws, "inv-1", "OpenCode", ports);
+			expect(result.cwd).toBe(cwd);
+			expect(existsSync(cwd)).toBe(true);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	describe("rebuildWorkspace creates no folder but the run's own unmapped/ (OBJ-020 #848)", () => {
+		function rebuild(cwd: (runDir: string) => string) {
+			const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-own-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+			const runDir = join(tmp, "runs", "inv-1");
+			const ws: RunWorkspace = { layout: "unmapped", cwd: cwd(runDir), repos: [] };
+			return {
+				runDir,
+				cwd: ws.cwd,
+				run: () => rebuildWorkspace(ws, "inv-1", "OpenCode", fakePorts({})),
+				done: () => {
+					vi.unstubAllEnvs();
+					rmSync(tmp, { recursive: true, force: true });
+				},
+			};
+		}
+
+		it("a recorded cwd that is not there is refused, not created", async () => {
+			const t = rebuild((runDir) => join(runDir, "a", "sub", "deep"));
+			try {
+				await expect(t.run()).rejects.toThrow(/is not in the repository/);
+				expect(existsSync(join(t.runDir, "a"))).toBe(false);
+			} finally {
+				t.done();
+			}
+		});
+
+		it("an unmapped run's own folder is made again", async () => {
+			const t = rebuild((runDir) => join(runDir, "unmapped"));
+			try {
+				const result = await t.run();
+				expect(result.cwd).toBe(t.cwd);
+				expect(existsSync(t.cwd)).toBe(true);
+			} finally {
+				t.done();
+			}
+		});
+	});
+
+	it("a multi-repository follow-up rebuild whose primary repo has a missing subPath rejects even though the recorded cwd exists (OBJ-023 #848)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-subpath-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const runDir = join(tmp, "runs", "inv-1");
+			const reposDir = join(runDir, "repos");
+			mkdirSync(reposDir, { recursive: true });
+			const primaryDir = join(reposDir, "primary");
+			const secondaryDir = join(reposDir, "secondary");
+			const ws: RunWorkspace = {
+				layout: "multi",
+				cwd: reposDir,
+				repos: [
+					{
+						name: "primary",
+						dir: primaryDir,
+						head: "abc123def456789",
+						sourceKind: "url",
+						url: "https://github.com/acme/primary",
+						connectionId: null,
+						branch: "main",
+						subPath: "svc/api",
+						services: ["api"],
+					},
+					{
+						name: "secondary",
+						dir: secondaryDir,
+						head: "fedcba987654321",
+						sourceKind: "url",
+						url: "https://github.com/acme/secondary",
+						connectionId: null,
+						branch: "main",
+						subPath: null,
+						services: ["worker"],
+					},
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async (_target, dest: string) => {
+					mkdirSync(dest, { recursive: true });
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			await expect(
+				rebuildWorkspace(ws, "inv-1", "OpenCode", ports),
+			).rejects.toThrow(/is not in the repository/);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("a multi-repository follow-up rebuild whose SECONDARY repo has a missing subPath rejects although the primary's is there (OBJ-023 #848)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-subpath-2nd-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const reposDir = join(tmp, "runs", "inv-1", "repos");
+			mkdirSync(reposDir, { recursive: true });
+			const primaryDir = join(reposDir, "primary");
+			const repo = (name: string, dir: string, subPath: string) => ({
+				name,
+				dir,
+				head: "abc123def456789",
+				sourceKind: "url" as const,
+				url: `https://github.com/acme/${name}`,
+				connectionId: null,
+				branch: "main",
+				subPath,
+				services: [name],
+			});
+			const ws: RunWorkspace = {
+				layout: "multi",
+				cwd: reposDir,
+				repos: [
+					repo("primary", primaryDir, "svc/api"),
+					repo("secondary", join(reposDir, "secondary"), "svc/worker"),
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async (_target, dest: string) => {
+					mkdirSync(dest === primaryDir ? join(dest, "svc", "api") : dest, {
+						recursive: true,
+					});
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			await expect(
+				rebuildWorkspace(ws, "inv-1", "OpenCode", ports),
+			).rejects.toThrow(/svc\/worker is not in the repository/);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("resolveWorkspace with subPath 'linked/missing' over a junction link skips the repo with code failed (OBJ-001)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-resolve-junction-"));
+		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-res-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const linked = join(repoDir, "linked");
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					{
+						sourceKind: "url" as const,
+						url: "https://github.com/acme/api",
+						defaultBranch: "main",
+						subPath: "linked/missing",
+						connectionId: null,
+						serviceName: "checkout",
+					},
+				]),
+				snapshotWith: cloneAs(async () => {
+					mkdirSync(repoDir, { recursive: true });
+					symlinkSync(outside, linked, "junction");
+					return {
+						path: repoDir,
+						head: "abc123def456789",
+						branch: "main" as const,
+					};
+				}),
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+			expect(ws.checkoutsSkipped).toEqual([
+				{
+					repo: "https://github.com/acme/api",
+					code: "failed",
+					reason: "the sub-path linked/missing is not in the repository",
+				},
+			]);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
 		}
 	});
 
@@ -272,7 +546,15 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 	});
 
 	describe("every repo the incident touches (#747)", () => {
-		afterEach(() => vi.unstubAllEnvs());
+		let appData = "";
+		beforeEach(() => {
+			appData = mkdtempSync(join(os.tmpdir(), "pl-ws-"));
+		});
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			rmSync(appData, { recursive: true, force: true });
+		});
+		const under = (...p: string[]) => join(appData, "runs", "inv-1", ...p);
 		const at = (dest: string) => ({ path: dest, head: `${dest.endsWith("worker") ? "5d6e7f8" : "1a2b3c4"}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, branch: "main" as const });
 		const repo = (url: string, serviceName: string, subPath: string | null = null) => ({
 			sourceKind: "url" as const,
@@ -284,8 +566,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		});
 
 		it("two services with different repos: repos/api and repos/worker, cwd is their parent, the note names both commits", async () => {
-			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
-			const snapshot = cloneAs(async (_src: unknown, dest: string) => at(dest));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", appData);
+			const snapshot = cloneAs(async (_src: unknown, dest: string) => {
+				if (dest.endsWith("worker")) mkdirSync(join(dest, "svc", "jobs"), { recursive: true });
+				return at(dest);
+			});
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
 					repo("git@github.com:o/api.git", "checkout"),
@@ -297,11 +582,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const ws = await resolveWorkspace(minimalData(), ports);
 
 			expect(snapshot.mock.calls.map((c) => c[1])).toEqual([
-				"/ws/runs/inv-1/repos/api",
-				"/ws/runs/inv-1/repos/worker",
+				under("repos", "api"),
+				under("repos", "worker"),
 			]);
 			expect(ws.layout).toBe("multi");
-			expect(ws.cwd).toBe("/ws/runs/inv-1/repos");
+			expect(ws.cwd).toBe(under("repos"));
 			expect(ws.repos.map((r) => [r.name, r.services, r.subPath])).toEqual([
 				["api", ["checkout"], null],
 				["worker", ["jobs"], "svc/jobs"],
@@ -312,7 +597,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		});
 
 		it("a repo that cannot be copied is skipped and named in the note; a primary's failure leads the note (#848)", async () => {
-			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", appData);
 			const snapshot = cloneAs(async (_src: unknown, dest: string) => {
 				if (dest.endsWith("worker")) throw new Error("repository not found");
 				return at(dest);
@@ -328,7 +613,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const ws = await resolveWorkspace(minimalData(), ports);
 
 			expect(ws.layout).toBe("single");
-			expect(ws.cwd).toBe("/ws/runs/inv-1/repos/api");
+			expect(ws.cwd).toBe(under("repos", "api"));
 			expect(ws.repos.map((r) => r.name)).toEqual(["api"]);
 			expect(ws.note).toContain(
 				"Not included, because it could not be copied: URL git@github.com:o/worker.git (repository not found).",
@@ -348,7 +633,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		});
 
 		it("one repository linked by two services is cloned once with both service names", async () => {
-			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", appData);
 			const snapshot = cloneAs(async (_src: unknown, dest: string) => at(dest));
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
@@ -366,7 +651,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		});
 
 		it("two repos with the same folder name: the second gets -2", async () => {
-			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", appData);
 			const snapshot = cloneAs(async (_src: unknown, dest: string) => at(dest));
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
@@ -382,7 +667,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		});
 
 		it("a repo whose folder name is a hidden agent config directory gets a safe name", async () => {
-			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", appData);
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
 					repo("https://github.com/acme/.gemini", "checkout"),
@@ -510,14 +795,17 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					}),
 				})),
 				lastEventSeq: vi.fn(async () => 10),
-				snapshotWith: vi.fn(async () => ({
-					snap: {
-						path: join(runDir, "repo"),
-						head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
-						branch: "main",
-					},
-					credential: resolvedCred,
-				})),
+				snapshotWith: vi.fn(async () => {
+					mkdirSync(join(runDir, "repo"));
+					return {
+						snap: {
+							path: join(runDir, "repo"),
+							head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+							branch: "main",
+						},
+						credential: resolvedCred,
+					};
+				}),
 			});
 
 			mocks.conductRun.mockReset();
@@ -1182,11 +1470,12 @@ describe("follow-up on a finished run (#747)", () => {
 
 	it("follow-up when load returns null gives unavailable and fetches no telemetry (#848)", async () => {
 		const telemetry = vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] }));
+		const save = vi.fn(async () => {});
 		const ports = followUpPorts({
 			preRun: {
 				telemetry,
 				runbooks: vi.fn(async () => ({ entries: [] })),
-				save: vi.fn(async () => {}),
+				save,
 				load: vi.fn(async () => null),
 			},
 		});
@@ -1202,6 +1491,84 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.context.preRun).toEqual({ state: "unavailable", reason: "no stored snapshot for this run" });
 		const { PreRunContextSchema } = await import("@prismalens/contracts/schemas");
 		expect(PreRunContextSchema.safeParse(opts.context.preRun).success).toBe(true);
+		await vi.waitFor(() => {
+			expect(save).toHaveBeenCalledWith(
+				"inv-1",
+				JSON.stringify({ state: "unavailable", reason: "no stored snapshot for this run" }),
+			);
+		});
+	});
+
+	it("follow-up when load returns a not-saved marker gives unavailable reason and does not save (#848)", async () => {
+		const { buildPreRunSnapshot, notSavedMarker } = await import("./pre-run-context.js");
+		const saved = buildPreRunSnapshot({
+			window: { start: new Date("2026-10-24T09:00:00Z"), end: new Date("2026-10-24T10:00:00Z") },
+			telemetry: [],
+			pastIncidents: [],
+			runbooks: [],
+			now: new Date("2026-10-24T10:00:00Z"),
+		});
+		const save = vi.fn(async () => {});
+		const notSaved = notSavedMarker(saved, "write failed");
+		const ports = followUpPorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save,
+				load: vi.fn(async () => notSaved),
+			},
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		await runInvestigationJob({ id: "job-not-saved-load", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { preRun?: { state: string; reason: string } } }];
+		expect(opts.context.preRun).toEqual({
+			state: "unavailable",
+			reason: "the run's snapshot was not saved",
+		});
+		expect(save).not.toHaveBeenCalled();
+	});
+
+	it("follow-up when load times out or returns unparsable text does not save (#848)", async () => {
+		const save = vi.fn(async () => {});
+		const portsBadJson = followUpPorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save,
+				load: vi.fn(async () => "{ not json"),
+			},
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		await runInvestigationJob({ id: "job-bad-json", investigationId: "inv-1", attempts: 1 }, data, io(), portsBadJson);
+		expect(save).not.toHaveBeenCalled();
+
+		vi.useFakeTimers();
+		try {
+			const saveTimeout = vi.fn(async () => {});
+			const portsTimeout = followUpPorts({
+				preRun: {
+					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: saveTimeout,
+					load: vi.fn(() => new Promise<string | null>(() => {})),
+				},
+			});
+			const jobPromise = runInvestigationJob({ id: "job-load-timeout-nosave", investigationId: "inv-1", attempts: 1 }, data, io(), portsTimeout);
+			await vi.advanceTimersByTimeAsync(5_100);
+			await jobPromise;
+			expect(saveTimeout).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("save on first run, then follow-up loads and rewrites the read copies (#848)", async () => {
@@ -1821,7 +2188,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		];
 		const pre = opts.context.preRun;
 		expect(pre?.state).toBe("not-saved");
-		expect(pre?.saveError).toBe("disk full");
+		expect(pre?.saveError).toBe("the database write failed (Error)");
 		expect(pre?.copy.state).toBe("written");
 		const { buildInvestigationPrompt } = await import("@prismalens/engine");
 		const prompt = buildInvestigationPrompt(opts.context as never);
@@ -1875,15 +2242,52 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		expect(prompt).toContain("LOKI_URL (loki): 3 error log lines");
 	});
 
+	it("a save that rejects with a message containing a secret calls save twice without the secret (#848)", async () => {
+		const secret = "s3cr3t-xyz";
+		const save = vi.fn()
+			.mockRejectedValueOnce(new Error(`database write failed: ${secret}`))
+			.mockResolvedValueOnce(undefined);
+		const ports = fakePorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save,
+				load: vi.fn(async () => null),
+			},
+		});
+
+		const result = await runInvestigationJob(...job("inv-save-secret"), io(), ports);
+		expect(result.success).toBe(true);
+
+		await vi.waitFor(() => {
+			expect(save).toHaveBeenCalledTimes(2);
+		});
+		const [, secondRaw] = save.mock.calls[1] as [string, string];
+		const secondPayload = JSON.parse(secondRaw);
+		expect(secondPayload.state).toBe("not-saved");
+		expect(secondPayload.saveError).toBe("the database write failed");
+		expect(secondRaw).not.toContain(secret);
+		const logged = JSON.stringify(mocks.logged);
+		expect(logged).toContain("the database write failed (Error)");
+		expect(logged).not.toContain(secret);
+		const [opts] = mocks.conductRun.mock.calls.at(-1) as [
+			{ context: { preRun?: { saveError?: string } } },
+		];
+		expect(opts.context.preRun?.saveError).not.toContain(secret);
+	});
+
 	it("a save that never settles still lets conductRun start within 5 s (#848)", async () => {
 		vi.useFakeTimers();
 		try {
 			const neverSettlingSave = new Promise<void>(() => {});
+			const save = vi.fn()
+				.mockImplementationOnce(() => neverSettlingSave)
+				.mockResolvedValueOnce(undefined);
 			const ports = fakePorts({
 				preRun: {
 					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
 					runbooks: vi.fn(async () => ({ entries: [] })),
-					save: vi.fn(() => neverSettlingSave),
+					save,
 					load: vi.fn(async () => null),
 				},
 			});
@@ -1898,6 +2302,10 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 			];
 			expect(opts.context.preRun?.state).toBe("not-saved");
 			expect(opts.context.preRun?.saveError).toBe("the save did not finish in 5 s");
+			expect(save).toHaveBeenCalledTimes(2);
+			const [, secondRaw] = save.mock.calls[1] as [string, string];
+			const secondPayload = JSON.parse(secondRaw);
+			expect(secondPayload.saveError).toBe("the save did not finish in 5 s");
 		} finally {
 			vi.useRealTimers();
 		}
@@ -2270,6 +2678,7 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 							abortedSignal = signal;
 							return new Promise(() => {});
 						}
+						mkdirSync(dest, { recursive: true });
 						return {
 							snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
 							credential: PUBLIC_CREDENTIAL,
@@ -2303,10 +2712,13 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
 		try {
 			const repoUrls = Array.from({ length: 40 }, (_, i) => `https://github.com/acme/repo-${i}`);
-			const snapshotWith = vi.fn(async (ref: any, dest: string) => ({
-				snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
-				credential: PUBLIC_CREDENTIAL,
-			}));
+			const snapshotWith = vi.fn(async (ref: any, dest: string) => {
+				mkdirSync(dest, { recursive: true });
+				return {
+					snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
+					credential: PUBLIC_CREDENTIAL,
+				};
+			});
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => repoUrls.map((u, i) => makeRepo(u, `svc-${i}`))),
 				snapshotWith,

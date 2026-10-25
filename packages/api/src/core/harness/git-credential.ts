@@ -53,15 +53,21 @@ export function repoPath(url: string): string {
 
 const HOST_RULE = /^[a-z0-9.-]+(:\d{1,5})?$/;
 
-/** A typed host as `host[:port]`: lowercased, scheme and path dropped; null when it still is not one. */
+/**
+ * A typed host as `host[:port]`, the way `urlHost` reads a URL: lowercased, scheme and path
+ * dropped, the scheme's default port (:443, :80 for http) dropped; null when it is not one (#848).
+ */
 export function normalizeGitHost(input: string): string | null {
-	const host = input
-		.trim()
-		.toLowerCase()
+	const text = input.trim().toLowerCase();
+	const host = text
 		.replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
 		.replace(/^[^@/]*@/, "")
 		.replace(/\/.*$/, "");
-	return HOST_RULE.test(host) ? host : null;
+	if (!HOST_RULE.test(host)) return null;
+	const [name = "", port] = host.split(":");
+	if (port === undefined) return host;
+	const n = Number(port);
+	return n === (text.startsWith("http://") ? 80 : 443) ? name : `${name}:${n}`;
 }
 
 export const GIT_HOST_RULE =
@@ -138,6 +144,11 @@ export function helperName(value: string): string | null {
 	const m = /^!?([A-Za-z0-9_./-]+)(\s|$)/.exec(value.trim());
 	if (!m?.[1]) return null;
 	return m[1].split("/").pop() || null;
+}
+
+/** What a response may say of a helper: its name, never its text, which can embed a token (#848). */
+export function helperLabel(value: string): string {
+	return helperName(value) ?? "a custom git credential helper";
 }
 
 /**

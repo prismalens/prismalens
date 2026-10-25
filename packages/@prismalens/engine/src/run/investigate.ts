@@ -801,6 +801,7 @@ export async function* runInvestigation(
 			yield adapter.sessionConfig("model", chosenModel, took === chosenModel);
 			if (took !== chosenModel) {
 				const offered = session.models.map((m) => m.id).join(", ");
+				yield* toolsSummary();
 				yield adapter.error(
 					configId
 						? `${label} would not switch to ${chosenModel}; it offered ${offered || "no models"}`
@@ -822,6 +823,7 @@ export async function* runInvestigation(
 			const ok = await sendEffort();
 			yield adapter.sessionConfig("effort", opts.effort, ok);
 			if (!ok) {
+				yield* toolsSummary();
 				yield adapter.error(
 					`${label} would not take ${opts.effort} effort; it offered ${session.effort?.values.join(", ") || "none"}`,
 				);

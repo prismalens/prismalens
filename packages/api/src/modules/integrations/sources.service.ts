@@ -53,10 +53,16 @@ export function sourceProblem(
 const isQueryKind = (t: string): t is QueryKind =>
 	(QUERY_KINDS as readonly string[]).includes(t);
 
+/** `user:pass@` dropped from every URL in `text`: an address may have been saved with one (#848). */
+export const withoutUserinfo = (text: string): string =>
+	text.replace(/\/\/[^/?#\s]*@/g, "//");
+
 function errorText(err: unknown): string {
-	if (!(err instanceof Error)) return String(err);
+	if (!(err instanceof Error)) return withoutUserinfo(String(err));
 	const code = (err.cause as { code?: unknown } | undefined)?.code;
-	return typeof code === "string" ? `${err.message} (${code})` : err.message;
+	return withoutUserinfo(
+		typeof code === "string" ? `${err.message} (${code})` : err.message,
+	);
 }
 
 /** What a draft saves: its template, config, the stored credential blob, and the host it reaches. */
@@ -99,7 +105,8 @@ export class SourcesService {
 		const sources = await Promise.all(
 			rows.map(async (row): Promise<SourceRow> => {
 				const kind = row.integration.templateId as QueryKind;
-				const address = this.integrations.baseUrlOf(row);
+				const storedUrl = this.integrations.baseUrlOf(row);
+				const address = storedUrl && withoutUserinfo(storedUrl);
 				const read = await this.integrations.sourceCredential(row.id);
 				const vars = envVars(kind);
 				const sameOriginToken =
@@ -127,7 +134,9 @@ export class SourcesService {
 						? { overridesEnv: vars.token }
 						: {}),
 					problem: sourceProblem(row.status, row.lastErrorMessage, credential),
-					lastErrorMessage: row.lastErrorMessage ?? null,
+					lastErrorMessage: row.lastErrorMessage
+						? withoutUserinfo(row.lastErrorMessage)
+						: null,
 					usedBy: row.serviceMappings
 						.filter(
 							(m) => m.isEnabled && mappingConfig(m.config).enabled !== false,

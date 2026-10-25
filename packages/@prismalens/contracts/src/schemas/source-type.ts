@@ -520,9 +520,26 @@ export const SourceRowSchema = z.object({
 });
 export type SourceRow = z.infer<typeof SourceRowSchema>;
 
+const hasUserinfo = (value: string): boolean => {
+	try {
+		const u = new URL(value);
+		return !!u.username || !!u.password;
+	} catch {
+		return false;
+	}
+};
+
 export const SourceDraftSchema = z.object({
 	type: z.string(),
-	url: z.string().trim().url(),
+	/** No `user:pass@`: a credential goes in `credential`, not the address (#848). */
+	url: z
+		.string()
+		.trim()
+		.url()
+		.refine((u) => !hasUserinfo(u), {
+			message:
+				"Credentials in the address are not supported; choose how to sign in below.",
+		}),
 	/** `{ kind, ...fields }` as `CREDENTIAL_KIND_FIELDS` names them. */
 	credential: z.record(z.string(), z.string()).optional(),
 	/** Take the token or URL from the variable the api detected. */

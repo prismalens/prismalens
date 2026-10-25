@@ -33,6 +33,8 @@ import { Logger } from "@prismalens/logger";
 import type { RunbookEntry } from "../../modules/gateway/runbooks.js";
 import {
 	boundSnapshot,
+	cutSnapshot,
+	cutStrings,
 	type SnapshotWindow,
 } from "../../modules/integrations/source-query.js";
 import { scrubSecrets } from "../../modules/integrations/source-request.js";
@@ -84,6 +86,37 @@ export function scrubDeep(value: unknown, secrets: readonly string[]): unknown {
 			Object.entries(value).map(([k, v]) => [
 				scrubSecrets(k, [...secrets]),
 				scrubDeep(v, secrets),
+			]),
+		);
+	return value;
+}
+
+/** Fields PrismaLens writes itself: enums, file names and times; a secret equal to one must not break the schema (#848). */
+const OWN_FIELDS = new Set([
+	"kind",
+	"from",
+	"credentialFrom",
+	"status",
+	"rule",
+	"tagFrom",
+	"origin",
+	"code",
+	"name",
+	"file",
+	"fetchedAt",
+	"start",
+	"end",
+]);
+
+/** The snapshot's string values scrubbed; its keys and `OWN_FIELDS` are left as the schema needs them. */
+function scrubValues(value: unknown, secrets: readonly string[]): unknown {
+	if (typeof value === "string") return scrubSecrets(value, [...secrets]);
+	if (Array.isArray(value)) return value.map((v) => scrubValues(v, secrets));
+	if (value && typeof value === "object")
+		return Object.fromEntries(
+			Object.entries(value).map(([k, v]) => [
+				k,
+				OWN_FIELDS.has(k) ? v : scrubValues(v, secrets),
 			]),
 		);
 	return value;
@@ -150,9 +183,15 @@ export function buildPreRunSnapshot(input: {
 		const n = (counts.get(t.kind) ?? 0) + 1;
 		counts.set(t.kind, n);
 		const name = `telemetry-${t.kind}-${n}.json`;
-		const head = { source: who, fetchedAt: input.now.toISOString(), window };
+		// Scrub, then cut: a cut first would leave a prefix of a long secret (#848).
+		const head = cutStrings(
+			scrubDeep(
+				{ source: who, fetchedAt: input.now.toISOString(), window },
+				secrets,
+			),
+		) as object;
 		const { text, truncated } = boundSnapshot(
-			scrubDeep(t.part.data, secrets),
+			cutSnapshot(scrubDeep(t.part.data, secrets)),
 			(data) =>
 				clean(
 					JSON.stringify(
@@ -194,7 +233,7 @@ export function buildPreRunSnapshot(input: {
 		logger.warn(`pre-run: telemetry skipped: ${input.telemetrySkipped}`);
 	// Labels, selectors, titles and the window carry user text too, so the whole snapshot is scrubbed (#848).
 	return PreRunSnapshotSchema.parse(
-		scrubDeep(
+		scrubValues(
 			{
 				fetchedAt: input.now.toISOString(),
 				window,

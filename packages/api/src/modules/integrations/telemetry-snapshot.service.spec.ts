@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { parseSourceCredential, SourcesPreRunSchema } from "@prismalens/contracts/schemas";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildPreRunSnapshot } from "../../infrastructure/dispatch/pre-run-context.js";
 import { IntegrationsController } from "./integrations.controller.js";
+import { IntegrationsService } from "./integrations.service.js";
 import type { OpenedSource } from "./open-source.js";
-import { boundSnapshot, mappingConfig, QueryFailed, selectorMatchers, SNAPSHOT_QUERIES } from "./source-query.js";
+import { boundSnapshot, cutSnapshot, mappingConfig, QueryFailed, selectorMatchers, SNAPSHOT_QUERIES } from "./source-query.js";
 import {
 	envSource,
 	fetchSnapshot,
@@ -68,8 +71,16 @@ function service(rows: Row[]) {
 	const integrations = {
 		connectionBaseUrl: async (id: string) =>
 			rows.find((r) => r.id === id)?.baseUrl ?? null,
-		sourceCredential: async (id: string) =>
-			parseSourceCredential(rows.find((r) => r.id === id)?.credentials),
+		sourceCredential: async (id: string) => {
+			const row = rows.find((r) => r.id === id);
+			const parsed = parseSourceCredential(row?.credentials);
+			const state =
+				(row as any)?.state ??
+				(parsed.ok && parsed.credential.kind !== "none" && (parsed.credential as any).token !== "s3cret-token"
+					? "set"
+					: "absent");
+			return { ...parsed, state };
+		},
 	};
 	return new TelemetrySnapshotService(prisma as never, integrations as never);
 }
@@ -205,6 +216,50 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 		});
 	});
 
+	it("a basic credential {username:'alice', password:'abc'} where open returns a request is skipped with secrets ['YWxpY2U6YWJj'] (OBJ-002)", async () => {
+		const b64 = Buffer.from("alice:abc").toString("base64");
+		const source: SnapshotSource = {
+			kind: "prometheus",
+			label: "prom-basic",
+			from: "set",
+			open: async () =>
+				({
+					request: vi.fn(),
+					baseUrl: "http://127.0.0.1:9999",
+					headers: {},
+					secrets: ["abc", b64],
+				}) as never,
+		};
+
+		const [out] = await fetchSnapshot([source], WINDOW);
+		expect(out).toMatchObject({
+			status: "skipped",
+			secrets: ["YWxpY2U6YWJj"],
+		});
+		expect(out?.secrets).toEqual(["YWxpY2U6YWJj"]);
+	});
+
+	it("a basic credential {username:'alice', password:'abc'} with no request is skipped with secrets ['YWxpY2U6YWJj'] (OBJ-002)", async () => {
+		const b64 = Buffer.from("alice:abc").toString("base64");
+		const source: SnapshotSource = {
+			kind: "prometheus",
+			label: "prom-basic-noreq",
+			from: "set",
+			open: async () =>
+				({
+					unusable: "cannot be opened here",
+					secrets: ["abc", b64],
+				}) as never,
+		};
+
+		const [out] = await fetchSnapshot([source], WINDOW);
+		expect(out).toMatchObject({
+			status: "skipped",
+			secrets: ["YWxpY2U6YWJj"],
+		});
+		expect(out?.secrets).toEqual(["YWxpY2U6YWJj"]);
+	});
+
 	it("with nothing mapped, the only saved connection comes before the env, and the env serves a kind with none (#848)", async () => {
 		const auth: (string | undefined)[] = [];
 		const url = await upstream((req) => {
@@ -338,7 +393,7 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 		expect(lokiWithSel.part.summary).toContain('{app="order"}');
 	});
 
-	it("query: a 100 KB label is cut to 512 characters", async () => {
+	it("query: a 100 KB label is cut to 512 characters by cutSnapshot", async () => {
 		const longLabel = "x".repeat(100_000);
 		const url = await upstream((req) => {
 			if (req.url?.startsWith("/api/v2/alerts")) {
@@ -371,14 +426,18 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 		]).sources({});
 		const out = await fetchSnapshot(sources, WINDOW);
 		const expectedCut = `${"x".repeat(512)}…`;
+		const cutOf = (o: unknown) => (o as { part: { data: unknown } }).part.data;
 		const promPart = (out[0] as { part: { data: { firing: { result: [{ metric: { job: string } }] } } } }).part;
 		const amPart = (out[1] as { part: { data: { alerts: [{ labels: { env: string }; annotations: { note: string } }] } } }).part;
 		const lokiPart = (out[2] as { part: { data: { result: [{ stream: { tag: string } }] } } }).part;
 
-		expect(promPart.data.firing.result[0]?.metric.job).toBe(expectedCut);
-		expect(amPart.data.alerts[0]?.labels.env).toBe(expectedCut);
-		expect(amPart.data.alerts[0]?.annotations.note).toBe(expectedCut);
-		expect(lokiPart.data.result[0]?.stream.tag).toBe(expectedCut);
+		const cutProm = cutSnapshot(cutOf(out[0])) as typeof promPart.data;
+		const cutAm = cutSnapshot(cutOf(out[1])) as typeof amPart.data;
+		const cutLoki = cutSnapshot(cutOf(out[2])) as typeof lokiPart.data;
+		expect(cutProm.firing.result[0]?.metric.job).toBe(expectedCut);
+		expect(cutAm.alerts[0]?.labels.env).toBe(expectedCut);
+		expect(cutAm.alerts[0]?.annotations.note).toBe(expectedCut);
+		expect(cutLoki.result[0]?.stream.tag).toBe(expectedCut);
 	});
 
 	it("query: empty on a 200 response with no data", async () => {
@@ -454,6 +513,88 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 		const res = boundSnapshot(hugeData, (d) => JSON.stringify(d), 262_144);
 		expect(Buffer.byteLength(res.text)).toBeLessThanOrEqual(262_144);
 		expect(res.text).toContain("the 256 KiB snapshot limit");
+	});
+
+	it("boundSnapshot gives text of at most 262,144 bytes and truncated.reason when rendered header alone is over the limit (OBJ-006)", () => {
+		const res = boundSnapshot(
+			{ result: [] },
+			(d) => JSON.stringify({ h: "H".repeat(300_000), ...(d as object) }),
+		);
+		expect(Buffer.byteLength(res.text)).toBeLessThanOrEqual(262_144);
+		expect(res.truncated?.reason).toBe("the 256 KiB snapshot limit");
+	});
+
+	it("boundSnapshot bounds non-object data over the limit (OBJ-006)", () => {
+		const res = boundSnapshot("X".repeat(300_000), (d) => JSON.stringify(d));
+		expect(Buffer.byteLength(res.text)).toBeLessThanOrEqual(262_144);
+		expect(res.truncated?.reason).toBe("the 256 KiB snapshot limit");
+	});
+
+	it("a mapping config selector over 500 characters is kept, skipped by fetchSnapshot without request calls (OBJ-016)", async () => {
+		const longSelector = '{app="' + "a".repeat(520) + '"}';
+		const config = { selector: longSelector };
+		expect(mappingConfig(config).selector).toBe(longSelector);
+
+		const prisma = {
+			incident: {
+				findUnique: vi.fn(async () => ({ service: { id: "svc-1", name: "checkout" } })),
+			},
+			alert: { findMany: vi.fn(async () => []) },
+			changeEvent: { findFirst: vi.fn(async () => null) },
+			serviceIntegration: {
+				findMany: vi.fn(async () => [
+					{
+						serviceId: "svc-1",
+						connectionId: "conn-prom",
+						priority: 10,
+						isEnabled: true,
+						config,
+						connection: {
+							id: "conn-prom",
+							label: "Prod Prometheus",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus", label: "Prometheus" },
+						},
+					},
+				]),
+			},
+			connection: {
+				findMany: vi.fn(async (args: { where: { status: unknown } }) => {
+					if (args.where.status === "ACTIVE") {
+						return [
+							{
+								id: "conn-prom",
+								label: "Prod Prometheus",
+								integration: { templateId: "prometheus", label: "Prometheus" },
+							},
+						];
+					}
+					return [{ id: "conn-prom", integration: { templateId: "prometheus" } }];
+				}),
+			},
+		};
+
+		const spyRequest = vi.fn();
+		const integrations = {
+			connectionBaseUrl: vi.fn(async () => "http://127.0.0.1:9090"),
+			sourceCredential: vi.fn(async () => ({ ok: true, credential: { kind: "none" }, state: "set" as const })),
+		};
+
+		const svc = new TelemetrySnapshotService(prisma as never, integrations as never);
+		const selected = await svc.select("inc-1");
+		const unit = selected.units[0]!;
+		const origOpen = unit.open;
+		unit.open = async (ms) => {
+			const opened = await origOpen(ms);
+			return { ...opened, request: spyRequest };
+		};
+
+		const [outcome] = await fetchSnapshot([unit], WINDOW);
+		expect(outcome?.status).toBe("skipped");
+		if (outcome?.status === "skipped") {
+			expect(outcome.reason).toMatch(/longer than 500 characters/);
+		}
+		expect(spyRequest).toHaveBeenCalledTimes(0);
 	});
 
 	it("query: alerts outside the window are dropped", async () => {
@@ -812,6 +953,46 @@ describe("connection selection and credential matrix (#848 C5)", () => {
 		const [out] = await fetchSnapshot(await svc.sources({}), WINDOW);
 		expect(out?.status).toBe("found");
 	});
+
+	it("after priorities put B above A in the same deployment group, the snapshot selects B", async () => {
+		const connA = { id: "c-a", label: "Prom A", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const connB = { id: "c-b", label: "Prom B", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const mappings = [
+			{ id: "map-a", serviceId: "svc-1", connectionId: "c-a", priority: 0, config: { deployment: "prod" }, isEnabled: true, connection: connA },
+			{ id: "map-b", serviceId: "svc-1", connectionId: "c-b", priority: 0, config: { deployment: "prod" }, isEnabled: true, connection: connB },
+		];
+
+		const prisma = {
+			...mockPrisma({
+				incident: { id: "inc-1", service: { id: "svc-1", name: "checkout" } },
+				alerts: [{ labels: { env: "prod" } }],
+				mappings,
+			}),
+			serviceIntegration: {
+				findMany: async () => mappings,
+				count: async ({ where }: { where: { id: { in: string[] }; serviceId: string } }) =>
+					mappings.filter((m) => where.id.in.includes(m.id) && m.serviceId === where.serviceId).length,
+				update: vi.fn(async ({ where, data }: { where: { id: string }; data: { priority: number } }) => {
+					const m = mappings.find((item) => item.id === where.id);
+					if (m) m.priority = data.priority;
+					return m;
+				}),
+			},
+			$transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+		};
+
+		const integrationsSvc = new IntegrationsService(prisma as never, {} as never, {} as never);
+		const snapshotSvc = new TelemetrySnapshotService(prisma as never);
+
+		const before = await snapshotSvc.select("inc-1");
+		expect(before.units[0]?.facts?.connectionId).toBe("c-a");
+
+		await integrationsSvc.setServiceIntegrationOrder("svc-1", ["map-b", "map-a"]);
+
+		const after = await snapshotSvc.select("inc-1");
+		expect(after.units[0]?.facts?.connectionId).toBe("c-b");
+		expect(after.units[0]?.facts?.selection.priority).toBe(2);
+	});
 });
 
 describe("GET /sources/pre-run and preview (#848 C16a)", () => {
@@ -916,5 +1097,130 @@ describe("GET /sources/pre-run and preview (#848 C16a)", () => {
 		expect(() => noHandler({ input: { serviceId: "svc-1" } })).toThrow(
 			"The pre-run preview is not available here",
 		);
+	});
+});
+
+describe("cutSnapshot: label and log-line limits (OBJ-019 #848)", () => {
+	it("cuts label values to 512 characters and log lines to 2000, leaves query and summary untouched", () => {
+		const longLabel = "L".repeat(800);
+		const longLine = "X".repeat(3_000);
+		const query = "select * from long_table";
+		const summary = "12 results";
+
+		const data = {
+			query, // not a label key — must survive unchanged
+			summary, // not a label key — must survive unchanged
+			metric: { job: longLabel }, // LABEL_KEYS — cut to 512
+			labels: { env: longLabel }, // LABEL_KEYS — cut to 512
+			annotations: { note: longLabel }, // LABEL_KEYS — cut to 512
+			stream: { app: longLabel }, // LABEL_KEYS — cut to 512
+			values: [["1000000000", longLine]], // log-line array — cut to 2000
+		};
+
+		const cut = cutSnapshot(data) as typeof data;
+		const expectedLabel = "L".repeat(512) + "\u2026";
+		const expectedLine = "X".repeat(2_000) + "\u2026";
+
+		expect(cut.metric.job).toBe(expectedLabel);
+		expect(cut.labels.env).toBe(expectedLabel);
+		expect(cut.annotations.note).toBe(expectedLabel);
+		expect(cut.stream.app).toBe(expectedLabel);
+		expect((cut.values[0] as string[])[1]).toBe(expectedLine);
+
+		// query and summary must pass through unmodified
+		expect(cut.query).toBe(query);
+		expect(cut.summary).toBe(summary);
+	});
+
+	it("cutSnapshot leaves short labels and lines untouched", () => {
+		const data = {
+			metric: { job: "api" },
+			values: [["1", "short log"]],
+			summary: "ok",
+		};
+		const cut = cutSnapshot(data) as typeof data;
+		expect(cut.metric.job).toBe("api");
+		expect((cut.values[0] as string[])[1]).toBe("short log");
+		expect(cut.summary).toBe("ok");
+	});
+});
+
+describe("the snapshot scrubs credentials from query output (OBJ-022 #851)", () => {
+	it("the snapshot scrubs a credential the query output carries", async () => {
+		const SECRET = randomBytes(480).toString("base64url");
+		const url = await upstream((req) => {
+			if (req.url?.startsWith("/api/v1/query"))
+				return {
+					body: {
+						data: {
+							resultType: "vector",
+							result: [
+								{
+									metric: {
+										job: "p".repeat(300) + SECRET + "tail",
+										other: SECRET,
+									},
+								},
+							],
+						},
+					},
+				};
+			if (req.url?.startsWith("/api/v2/alerts"))
+				return {
+					body: [
+						{
+							labels: { env: SECRET },
+							annotations: { note: "n".repeat(300) + SECRET },
+						},
+					],
+				};
+			if (req.url?.startsWith("/loki/"))
+				return {
+					body: {
+						data: {
+							result: [
+								{
+									stream: { tag: SECRET },
+									values: [["1", "l".repeat(1700) + SECRET]],
+								},
+							],
+						},
+					},
+				};
+			return null;
+		});
+
+		const sources = await service([
+			{ id: "p", templateId: "prometheus", baseUrl: url, credentials: { kind: "bearer", token: SECRET } },
+			{ id: "a", templateId: "alertmanager", baseUrl: url, credentials: { kind: "bearer", token: SECRET } },
+			{ id: "l", templateId: "loki", baseUrl: url, credentials: { kind: "bearer", token: SECRET } },
+		]).sources({});
+
+		const out = await fetchSnapshot(sources, WINDOW);
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: out,
+			pastIncidents: [],
+			runbooks: [],
+			now: new Date(),
+		});
+
+		expect(out.length).toBeGreaterThan(0);
+		for (let i = 0; i < out.length; i++) {
+			expect(out[i]?.status).toBe("found");
+		}
+
+		const filesText = snap.files.map((f) => f.text).join("\n");
+		const snapJson = JSON.stringify(snap);
+
+		for (let i = 0; i <= 620; i++) {
+			const slice = SECRET.slice(i, i + 20);
+			expect(filesText).not.toContain(slice);
+			expect(snapJson).not.toContain(slice);
+		}
+
+		expect(filesText).toContain("p".repeat(300));
+		expect(filesText).toContain("n".repeat(300));
+		expect(filesText).toContain("l".repeat(1700));
 	});
 });

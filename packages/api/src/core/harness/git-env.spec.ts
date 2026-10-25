@@ -9,6 +9,8 @@ import {
 	GIT_HOST_RULE,
 	GitCredential,
 	MACHINE_CREDENTIAL,
+	envTokenFor,
+	helperLabel,
 	helperName,
 	hostFromGithubBaseUrl,
 	isSshUrl,
@@ -267,6 +269,28 @@ describe("git-credential", () => {
 		expect(normalizeGitHost("")).toBeNull();
 		expect(normalizeGitHost("http://")).toBeNull();
 		expect(GIT_HOST_RULE).toContain("Host must be a hostname");
+	});
+
+	it("normalizeGitHost and urlHost drop a scheme's default port alike, so GH_HOST and GITLAB_HOST match (#848)", () => {
+		expect(normalizeGitHost("https://ghe.example.com:443")).toBe("ghe.example.com");
+		expect(normalizeGitHost("ghe.example.com:443/")).toBe("ghe.example.com");
+		expect(normalizeGitHost("http://ghe.example.com:80")).toBe("ghe.example.com");
+		expect(normalizeGitHost("https://ghe.example.com:0443")).toBe("ghe.example.com");
+		expect(normalizeGitHost("https://ghe.example.com:8443")).toBe("ghe.example.com:8443");
+		expect(normalizeGitHost("https://ghe.example.com:80")).toBe("ghe.example.com:80");
+		for (const url of ["https://ghe.example.com:443/o/r.git", "http://ghe.example.com:80/o/r.git"])
+			expect(urlHost(url)).toBe(normalizeGitHost(url));
+		const host = urlHost("https://ghe.example.com/o/r.git") as string;
+		expect(envTokenFor(host, { GH_HOST: "https://ghe.example.com:443", GH_ENTERPRISE_TOKEN: "t" })?.variable).toBe("GH_ENTERPRISE_TOKEN");
+		expect(envTokenFor("gl.example.com", { GITLAB_HOST: "gl.example.com:443", GITLAB_TOKEN: "t" })?.variable).toBe("GITLAB_TOKEN");
+	});
+
+	it("helperLabel names a helper and never returns a shell function that can embed a token (#848)", () => {
+		expect(helperLabel("!gh auth git-credential")).toBe("gh");
+		expect(helperLabel("/usr/local/bin/helper.sh")).toBe("helper.sh");
+		const fn = '!f() { echo "password=SENTINEL-tok"; }; f';
+		expect(helperLabel(fn)).toBe("a custom git credential helper");
+		expect(helperLabel(fn)).not.toContain("SENTINEL");
 	});
 
 	it("hostFromGithubBaseUrl maps api.github.com to github.com and preserves GHES host", () => {

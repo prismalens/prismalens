@@ -322,13 +322,41 @@ describe("GitCredentialService & host-token (#810)", () => {
 			expect(preview).toEqual({
 				source: "machine",
 				label: "machine git (helper.sh, u)",
-				via: "/usr/local/bin/helper.sh",
+				via: "helper.sh",
 			});
 			expect(capturedLogs).not.toContain("password=p");
 		} finally {
 			unhookStdout.mockRestore();
 			unhookStderr.mockRestore();
 		}
+	});
+
+	it("a shell-function helper that embeds a token reaches neither the preview nor the host view (#848)", async () => {
+		const fn = '!f() { echo "username=u"; echo "password=SENTINEL-tok"; }; f';
+		const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+		vi.mocked(gitSpawnMod.gitConfigRead).mockImplementation(async (args: string[]) =>
+			args.includes("credential.helper") ? { stdout: fn, stderr: "" } : { stdout: "", stderr: "" },
+		);
+		vi.mocked(gitSpawnMod.spawnGit).mockImplementation(async (_args: string[], opts: any) => {
+			opts?.onStdoutLine?.("username=u");
+			opts?.onStdoutLine?.("password=p");
+			return { stdout: "", stderr: "" };
+		});
+		mockPrisma.repository.findMany.mockResolvedValue([
+			{ id: "r1", url: "https://github.com/org/repo.git", metadata: null },
+		]);
+
+		const preview = await service.preview({
+			sourceKind: "url",
+			url: "https://github.com/org/repo.git",
+			connectionId: null,
+			pick: null,
+		});
+		const hosts = await service.hosts({});
+
+		expect(preview.via).toBe("a custom git credential helper");
+		expect(hosts[0]?.machine).toEqual({ helper: "a custom git credential helper" });
+		expect(JSON.stringify([preview, hosts])).not.toContain("SENTINEL");
 	});
 
 	it("T5: helper answers nothing -> host match", async () => {
@@ -799,16 +827,22 @@ describe("GitCredentialService & host-token (#810)", () => {
 				pick: null,
 			};
 
+			const tokenErr = new GitFailure("token-rejected", "Token rejected");
 			let attempts = 0;
-			await expect(
-				service.withCredential(ref, async () => {
+			const thrown = await service
+				.withCredential(ref, async () => {
 					attempts++;
-					if (attempts === 1) {
-						throw new GitFailure("token-rejected", "Token rejected");
-					}
+					if (attempts === 1) throw tokenErr;
 					throw new GitFailure("machine-rejected", "Machine also refused");
-				}),
-			).rejects.toThrowError(GitFailure);
+				})
+				.catch((e: unknown) => e);
+
+			expect(attempts).toBe(2);
+			expect(thrown).toBe(tokenErr);
+			expect(thrown).toMatchObject({
+				code: "token-rejected",
+				message: "Token rejected",
+			});
 
 			expect(mockIntegrations.recordGitFailure).toHaveBeenCalledWith(
 				"conn-retry-fail",
