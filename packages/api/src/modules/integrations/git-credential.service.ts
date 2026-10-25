@@ -15,6 +15,7 @@ import {
 	envTokenFor,
 	GitCredential,
 	type GitCredentialDisplay,
+	helperLabel,
 	helperName,
 	isSshUrl,
 	normalizeGitHost,
@@ -305,7 +306,7 @@ export class GitCredentialService {
 								fingerprint: this.fingerprint(host, envToken.token),
 							}
 						: null,
-					machine: helper ? { helper: helperName(helper) ?? helper } : null,
+					machine: helper ? { helper: helperLabel(helper) } : null,
 					ambiguous: stored.length > 1 && unpinnedRepos.length > 0,
 					unpinnedRepos,
 				};
@@ -550,7 +551,7 @@ export class GitCredentialService {
 			display: {
 				source: "machine",
 				label: detail ? `machine git (${detail})` : "machine git",
-				via: helper,
+				via: helperLabel(helper),
 			},
 		};
 	}
