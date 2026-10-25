@@ -1,0 +1,55 @@
+{
+	"name": "@prismalens/agent-host",
+	"version": "0.0.1",
+	"license": "Apache-2.0",
+	"description": "Launches coding agents over ACP: the agent registry, permission levels, launch env, run workspaces and a readiness probe",
+	"homepage": "https://prismalens.io",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/prismalens/prismalens.git",
+		"directory": "packages/@prismalens/agent-host"
+	},
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./registry": {
+			"types": "./dist/registry/index.d.ts",
+			"import": "./dist/registry/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest run",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@agentclientprotocol/sdk": "1.9.0",
+		"cross-spawn": "7.0.6",
+		"which": "6.0.1",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@types/cross-spawn": "^6.0.6",
+		"@types/node": "catalog:",
+		"@types/which": "^3.0.4",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=22.9.0"
+	},
+	"files": [
+		"dist",
+		"!dist/**/*.test.*"
+	],
+	"publishConfig": {
+		"access": "public"
+	}
+}
