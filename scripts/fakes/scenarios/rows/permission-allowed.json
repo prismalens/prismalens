@@ -14,7 +14,10 @@
 				"toolCalls": [
 					{
 						"name": "$shell",
-						"arguments": { "$command": "echo allowed > scenario-allowed.txt" }
+						"arguments": {
+							"$command": "echo allowed > scenario-allowed.txt",
+							"$ask": true
+						}
 					}
 				]
 			}

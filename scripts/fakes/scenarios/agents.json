@@ -1,22 +1,40 @@
 {
-	"description": "Each agent's shell tool and the argument that carries the command, read from aimock's journal (GET /__aimock/journal, #914). `extra` holds arguments the agent's schema requires besides the command.",
+	"description": "Each agent's shell tool and the argument that carries the command, read from aimock's journal (GET /__aimock/journal, #914). `extra` holds arguments the agent's schema requires besides the command; `ask` the ones a permission row adds so the agent asks first. Codex's Ask-for-approval mode is a workspace-write sandbox, so it asks only for an escalated command.",
 	"agents": {
 		"opencode": {
 			"shell": "bash",
 			"command": "command",
-			"extra": { "description": "Scenario step" }
+			"extra": {
+				"description": "Scenario step"
+			}
 		},
 		"claude-code": {
 			"shell": "Bash",
 			"command": "command",
-			"extra": { "description": "Scenario step" }
+			"extra": {
+				"description": "Scenario step"
+			}
 		},
-		"codex": { "shell": "exec_command", "command": "cmd", "extra": {} },
+		"codex": {
+			"shell": "exec_command",
+			"command": "cmd",
+			"extra": {},
+			"ask": {
+				"sandbox_permissions": "require_escalated",
+				"justification": "Scenario step"
+			}
+		},
 		"gemini": {
 			"shell": "run_shell_command",
 			"command": "command",
-			"extra": { "description": "Scenario step" }
+			"extra": {
+				"description": "Scenario step"
+			}
 		},
-		"deepagents": { "shell": "execute", "command": "command", "extra": {} }
+		"deepagents": {
+			"shell": "execute",
+			"command": "command",
+			"extra": {}
+		}
 	}
 }

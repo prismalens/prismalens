@@ -13,6 +13,8 @@ export interface AgentTools {
 	shell: string;
 	command: string;
 	extra: Record<string, unknown>;
+	/** Arguments that make the agent ask before it runs the command (`$ask`). */
+	ask?: Record<string, unknown>;
 }
 
 /** What drives one matrix row through the engine. */

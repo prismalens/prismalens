@@ -84,6 +84,7 @@ const textOf = (m) =>
 
 /**
  * One file entry with this agent's names in it: `$shell` and `$command` from the tool map,
+ * `$ask` as the arguments that make the agent ask first,
  * `$report` as the report, `$incident_get` as whatever name the agent gave PrismaLens's tool.
  * @param {import("@copilotkit/aimock").FixtureFileEntry} entry
  * @param {import("./scripted-model.d.mts").AgentTools} tools
@@ -97,8 +98,13 @@ export function resolveEntry(entry, tools, mainLoop) {
 		if (call.name === "$shell") call.name = tools.shell;
 		const args = call.arguments;
 		if (args && typeof args === "object" && "$command" in args) {
-			const { $command, ...rest } = args;
-			call.arguments = { ...tools.extra, ...rest, [tools.command]: $command };
+			const { $command, $ask, ...rest } = args;
+			call.arguments = {
+				...tools.extra,
+				...($ask ? tools.ask : {}),
+				...rest,
+				[tools.command]: $command,
+			};
 		}
 	}
 	const { match: fileMatch, response: _, ...opts } = entry;

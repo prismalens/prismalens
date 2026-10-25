@@ -14,7 +14,10 @@
 				"toolCalls": [
 					{
 						"name": "$shell",
-						"arguments": { "$command": "echo declined > scenario-declined.txt" }
+						"arguments": {
+							"$command": "echo declined > scenario-declined.txt",
+							"$ask": true
+						}
 					}
 				]
 			}
