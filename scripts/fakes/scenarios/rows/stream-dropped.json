@@ -1,0 +1,35 @@
+{
+	"row": "stream-dropped",
+	"kind": "negative",
+	"title": "Stream dropped mid-answer",
+	"run": {},
+	"expect": "fault",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:stream-dropped]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:stream-dropped]"
+			},
+			"response": {
+				"content": "$report"
+			},
+			"chunkSize": 8,
+			"truncateAfterChunks": 3
+		}
+	]
+}

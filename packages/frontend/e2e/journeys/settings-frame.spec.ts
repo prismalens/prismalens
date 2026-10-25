@@ -19,32 +19,34 @@ test.describe("#523 — the settings frame", () => {
 			timeout: 15_000,
 		});
 
-		// 1. The sidebar is the section list now, with Back above it (study-v3 §2)
+		// 1. The sidebar is the page list now, flat, with Back at its foot (#848)
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar.getByTestId("settings-back")).toBeVisible();
 		await expect(sidebar.getByTestId("nav-incidents")).toHaveCount(0);
 		const sections = sidebar.getByTestId("settings-sections");
 		for (const [tab, label] of [
-			["harness", "Agent"],
-			["sources", "Alert sources"],
-			["integrations", "Integrations"],
+			["general", "General"],
+			["appearance", "Appearance"],
+			["agent", "Agent"],
+			["alert-intake", "Alert intake"],
+			["sources", "Sources"],
+			["notifications", "Notifications"],
 			["devices", "Devices"],
 			["usage", "Usage data"],
 			["about", "About"],
-			["danger", "Danger zone"],
 		]) {
 			await expect(sections.getByTestId(`settings-nav-${tab}`)).toContainText(
 				label,
 			);
 		}
-		await expect(sections.getByTestId("settings-nav-harness")).toHaveAttribute(
+		await expect(sections.getByTestId("settings-nav-general")).toHaveAttribute(
 			"aria-current",
 			"page",
 		);
 		await expect(sections.getByTestId("settings-nav-services")).toHaveCount(0);
 
 		// 2. Agent picker choose and model pill set
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(page.getByTestId("harness-settings")).toBeVisible({
 			timeout: 15_000,
 		});

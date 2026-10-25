@@ -58,6 +58,8 @@ export const AuthTemplateResponseSchema = z.object({
 	postCreationNavigateTo: z.string().optional(),
 	/** A git host token: Test runs `git ls-remote` against matching repositories (#673). */
 	gitHost: z.boolean().optional(),
+	/** The credential kinds a source accepts, picked in the form; absent for fixed-shape templates (#848). */
+	credentialKinds: z.array(z.string()).optional(),
 	/** False keeps the template out of the Add menu; saved rows still work. */
 	listed: z.boolean().optional(),
 });
@@ -212,6 +214,18 @@ export const UpdateServiceIntegrationSchema = z.object({
 	isEnabled: z.boolean().optional(),
 });
 
+/** A service's mappings, highest priority first; each gets a priority by its place (#848). */
+export const ServiceIntegrationOrderSchema = z.object({
+	serviceId: z.string().uuid(),
+	overrideIds: z
+		.array(z.string().uuid())
+		.min(1)
+		.max(1000)
+		.refine((ids) => new Set(ids).size === ids.length, {
+			message: "Each mapping appears once",
+		}),
+});
+
 export const ServiceIntegrationWithStatusSchema = z.object({
 	connectionId: z.string().uuid(),
 	connectionName: z.string(),
@@ -222,6 +236,8 @@ export const ServiceIntegrationWithStatusSchema = z.object({
 	isGlobal: z.boolean(),
 	hasOverride: z.boolean(),
 	overrideId: z.string().uuid().optional(),
+	/** The mapping's priority, set with the override; higher wins within a deployment group (#848 C5). */
+	priority: z.number().int().optional(),
 	globalConfig: z.record(z.string(), z.unknown()).nullable(),
 	serviceConfig: z.record(z.string(), z.unknown()).nullable(),
 	effectiveConfig: z.record(z.string(), z.unknown()).nullable(),
@@ -282,6 +298,9 @@ export type UpdateServiceIntegrationInput = z.infer<
 >;
 export type ServiceIntegrationWithStatus = z.infer<
 	typeof ServiceIntegrationWithStatusSchema
+>;
+export type ServiceIntegrationOrder = z.infer<
+	typeof ServiceIntegrationOrderSchema
 >;
 
 // Deletion impact types

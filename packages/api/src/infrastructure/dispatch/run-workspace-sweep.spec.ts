@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { GATEWAY_RUN_FILE } from "@prismalens/config/harness";
 import { sweepRunWorkspaces } from "./investigation-run.js";
 
 describe("sweepRunWorkspaces (#743)", () => {
@@ -51,6 +52,17 @@ describe("sweepRunWorkspaces (#743)", () => {
 		expect(await sweepRunWorkspaces()).toBe(1);
 		expect(existsSync(join(dir, "worktrees", "pl-run-d"))).toBe(false);
 		expect(existsSync(join(dir, "worktrees", "not-ours"))).toBe(true);
+	});
+
+	it("removes the gateway run file holding a run's bearer, and keeps the rest of config (#848, OBJ-029)", async () => {
+		const config = join(dir, "runs", "run-d", "config");
+		mkdirSync(config, { recursive: true });
+		writeFileSync(join(config, GATEWAY_RUN_FILE), "{}");
+		writeFileSync(join(config, "other.json"), "{}");
+
+		expect(await sweepRunWorkspaces()).toBe(1);
+		expect(existsSync(join(config, GATEWAY_RUN_FILE))).toBe(false);
+		expect(existsSync(join(config, "other.json"))).toBe(true);
 	});
 
 	it("does nothing before any run exists", async () => {

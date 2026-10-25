@@ -22,6 +22,7 @@ const mockPrismaService = {
 		findUnique: vi.fn(),
 		upsert: vi.fn(),
 	},
+	$transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(mockPrismaService),
 };
 
 /** A PATH containing exactly the named binaries (registry `binary` values, not ids). */
@@ -31,6 +32,8 @@ function pathWith(...binaries: string[]): string {
 		const file = join(dir, bin);
 		writeFileSync(file, "#!/bin/sh\nexit 0\n");
 		chmodSync(file, 0o755);
+		// Windows finds a binary on PATH only by a PATHEXT extension (#937).
+		if (process.platform === "win32") writeFileSync(`${file}.cmd`, "@exit /b 0\r\n");
 	}
 	return dir;
 }
@@ -597,14 +600,23 @@ describe("envVarStates (#907)", () => {
 	it("lists the agent's keys, then stored extras; stored wins, then the host, else unset", () => {
 		const vars = envVarStates("codex", ["OPENAI_API_KEY", "ZED"], { CODEX_API_KEY: "a", OPENAI_API_KEY: "b" });
 		expect(vars).toEqual([
-			{ name: "CODEX_API_KEY", state: "env" },
-			{ name: "OPENAI_API_KEY", state: "set" },
-			{ name: "ZED", state: "set" },
+			{ name: "CODEX_API_KEY", state: "env", inEnv: false },
+			{ name: "OPENAI_API_KEY", state: "set", inEnv: true },
+			{ name: "ZED", state: "set", inEnv: false },
 		]);
 		expect(envVarStates("codex", [], {})).toEqual([
-			{ name: "CODEX_API_KEY", state: "unset" },
-			{ name: "OPENAI_API_KEY", state: "unset" },
+			{ name: "CODEX_API_KEY", state: "unset", inEnv: false },
+			{ name: "OPENAI_API_KEY", state: "unset", inEnv: false },
 		]);
+	});
+
+	it("marks a stored key inEnv only while the host has it too (#911)", () => {
+		const of = (host: NodeJS.ProcessEnv) =>
+			envVarStates("codex", ["OPENAI_API_KEY"], host).find((v) => v.name === "OPENAI_API_KEY")?.inEnv;
+		expect(of({ OPENAI_API_KEY: "b" })).toBe(true);
+		expect(of({})).toBe(false);
+		// A stored name the agent doesn't take from the host overrides nothing.
+		expect(envVarStates("codex", ["ZED"], { ZED: "z" }).find((v) => v.name === "ZED")?.inEnv).toBe(false);
 	});
 
 	it("never reads a host name the agent doesn't take as From environment", () => {
@@ -633,6 +645,16 @@ describe("HarnessService agent runtime settings (#907)", () => {
 					store[where.key] = prev ? { ...prev, ...update } : { ...create, key: where.key };
 				}),
 			},
+			// Rolls the store back when the callback throws, as a real transaction would.
+			$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+				const before = { ...store };
+				try {
+					return await fn(prisma);
+				} catch (err) {
+					store = before;
+					throw err;
+				}
+			}),
 		};
 		const svc = new HarnessService(
 			prisma as unknown as PrismaService,
@@ -680,6 +702,18 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(store.HARNESS_ENV?.value).not.toContain("b.example");
 		expect(store.HARNESS_ENV?.value).toContain("enc:");
 
+		const { svc: failing } = runtimeService();
+		const write = failing["prisma"].setting.upsert as ReturnType<typeof vi.fn>;
+		write.mockImplementation(async ({ where }: { where: { key: string } }) => {
+			if (where.key === "HARNESS") throw new Error("disk full");
+			store[where.key] = { key: where.key, value: "partial", type: "encrypted" };
+		});
+		const envBefore = store.HARNESS_ENV;
+		await expect(
+			failing.updateSettings({ models: { "claude-code": "opus" }, env: { "claude-code": { ANTHROPIC_MODEL: "x" } } }),
+		).rejects.toThrow("disk full");
+		expect(store.HARNESS_ENV).toEqual(envBefore);
+
 		const cleared = await svc.updateSettings({
 			hiddenModels: { "claude-code": null },
 			binaryPaths: { "claude-code": null },
@@ -719,6 +753,13 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		});
 	});
 
+	it("refuses an empty value, which would override the host's (#911)", async () => {
+		const { svc } = runtimeService();
+		await expect(svc.updateSettings({ env: { codex: { OPENAI_API_KEY: "" } } })).rejects.toMatchObject({
+			message: "OPENAI_API_KEY needs a value. Remove clears it.",
+		});
+	});
+
 	it("refuses a 51st variable", async () => {
 		const { svc } = runtimeService();
 		const rows = Object.fromEntries(Array.from({ length: 51 }, (_, i) => [`V${i}`, "x"]));
@@ -743,20 +784,30 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect((await svc.runtimeFor("codex")).env.ANTHROPIC_BASE_URL).toBeUndefined();
 	});
 
+	it("an unsafe host gateway fails only that agent, and a saved https one fixes it (#911)", async () => {
+		process.env.ANTHROPIC_BASE_URL = "http://gateway.example";
+		const { svc } = runtimeService();
+		const ids = (await svc.getStatus()).harnesses.map((h) => h.id);
+		expect(ids).toEqual(expect.arrayContaining(["claude-code", "codex"]));
+		await expect(svc.runtimeFor("claude-code")).rejects.toThrow(/must be https/);
+		await svc.updateSettings({ env: { "claude-code": { ANTHROPIC_BASE_URL: "https://ok.example" } } });
+		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://ok.example");
+	});
+
 	it("names each variable Not set, From environment or Key set; a saved value wins over the host's", async () => {
 		process.env.ANTHROPIC_BASE_URL = "https://host.example";
 		const { svc } = runtimeService();
 		const varsOf = async () => (await svc.getStatus()).harnesses.find((h) => h.id === "claude-code")?.envVars ?? [];
 		const before = await varsOf();
-		expect(before).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "env" });
-		expect(before).toContainEqual({ name: "ANTHROPIC_AUTH_TOKEN", state: "unset" });
+		expect(before).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "env", inEnv: false });
+		expect(before).toContainEqual({ name: "ANTHROPIC_AUTH_TOKEN", state: "unset", inEnv: false });
 
 		await svc.updateSettings({
 			env: { "claude-code": { ANTHROPIC_BASE_URL: "https://mine.example", MY_EXTRA: "x" } },
 		});
 		const vars = await varsOf();
-		expect(vars).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "set" });
-		expect(vars).toContainEqual({ name: "MY_EXTRA", state: "set" });
+		expect(vars).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "set", inEnv: true });
+		expect(vars).toContainEqual({ name: "MY_EXTRA", state: "set", inEnv: false });
 		const status = JSON.stringify(await svc.getStatus());
 		expect(status).not.toContain("mine.example");
 		expect(status).not.toContain("host.example");

@@ -290,7 +290,7 @@ function claudeCodeSandbox(opts: SandboxCheckOptions): SandboxCheck {
 		opts.claudeUserSettings !== undefined
 			? opts.claudeUserSettings
 			: claudeUserSettingsPath(opts.env);
-	// The run loads settingSources ["user"]; managed settings win over it (Agent SDK docs, settingSources).
+	// The run loads settingSources ["user", "project", "local"]; this reads the user file, and managed settings win over all (Agent SDK docs).
 	const managed = managedSandboxSetting(dir);
 	const user = userFile ? sandboxSetting([userFile]) : undefined;
 	const on = managed ?? user ?? false;

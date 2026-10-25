@@ -12,10 +12,14 @@ import type { PrometheusAlert } from "@prismalens/contracts";
 import {
 	PrometheusMetricsSegment,
 	type RangeSeries,
-	urlOnlyRequestFn,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
+import {
+	redactAddress,
+	sourceErrorText,
+} from "../integrations/source-query.js";
+import { sourceRequestFn } from "../integrations/source-request.js";
 import { WebhooksService } from "../webhooks/webhooks.service.js";
 import { alertmanagerFingerprint } from "./alertmanager-fingerprint.js";
 
@@ -307,7 +311,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 					continue;
 				}
 
-				const requestFn = urlOnlyRequestFn(baseUrl);
+				const requestFn = sourceRequestFn(
+					baseUrl,
+					await this.integrationsService.sourceCredential(conn.id),
+				);
 				let seriesList: RangeSeries[] = [];
 				try {
 					seriesList = await metricsSegment.rangeQuery(requestFn, {
@@ -317,7 +324,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 						stepSeconds,
 					});
 				} catch (queryErr) {
-					const errorMsg = `${label}: ${queryErr instanceof Error ? queryErr.message : String(queryErr)}`;
+					const errorMsg = `${label}: ${sourceErrorText(queryErr, baseUrl)}`;
 					result.errors.push(errorMsg);
 					catchupErrors.push(errorMsg);
 					continue;
@@ -485,7 +492,8 @@ export class AlertPullService implements OnApplicationBootstrap {
 							}
 						}
 
-						const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
+						// Origin and path only: a saved URL may hold userinfo or a query credential (#848).
+						const cleanBaseUrl = redactAddress(baseUrl).replace(/\/+$/, "");
 						const alertnameExpr = `ALERTS{alertname="${labels.alertname ?? ""}"}`;
 						const generatorURL = `${cleanBaseUrl}/graph?g0.expr=${encodeURIComponent(alertnameExpr)}`;
 
@@ -555,7 +563,8 @@ export class AlertPullService implements OnApplicationBootstrap {
 					}
 				}
 			} catch (err) {
-				const errorMsg = `${label}: ${err instanceof Error ? err.message : String(err)}`;
+				const errorMsg = `${label}: ${sourceErrorText(err, "")}`;
+				this.logger.warn(`Prometheus catch-up for ${label}: ${errorMsg}`);
 				result.errors.push(errorMsg);
 				catchupErrors.push(errorMsg);
 			}
@@ -679,20 +688,31 @@ export class AlertPullService implements OnApplicationBootstrap {
 				fail("Connection has no baseUrl");
 				continue;
 			}
-			const requestFn = urlOnlyRequestFn(baseUrl);
+			const requestFn = sourceRequestFn(
+				baseUrl,
+				await this.integrationsService.sourceCredential(conn.id),
+			);
 
 			let rawAlerts: unknown;
+			let notJson = false;
 			try {
 				const response = await requestFn("GET", "/api/v2/alerts");
 				if (!response.ok) {
 					fail(`HTTP ${response.status} ${response.statusText}`);
 					continue;
 				}
-				rawAlerts = await response.json();
+				// A parse error quotes the body, which may echo a credential (#848).
+				rawAlerts = await response.json().catch(() => {
+					notJson = true;
+				});
 			} catch (err) {
 				fail(
 					`Network error: ${err instanceof Error ? err.message : String(err)}`,
 				);
+				continue;
+			}
+			if (notJson) {
+				fail("Invalid response: not valid JSON");
 				continue;
 			}
 			if (!Array.isArray(rawAlerts)) {
@@ -710,7 +730,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 	}
 
 	private async upLongEnough(
-		requestFn: ReturnType<typeof urlOnlyRequestFn>,
+		requestFn: ReturnType<typeof sourceRequestFn>,
 		now: Date,
 	): Promise<boolean> {
 		try {

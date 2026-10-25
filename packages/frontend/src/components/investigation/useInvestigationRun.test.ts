@@ -77,7 +77,6 @@ describe("the follow-up divider (#747)", () => {
 	it("renders a divider before the follow-up's first message", () => {
 		const items = deriveTranscript(
 			[step(0, "The pool is exhausted."), followUp(1, [{ name: "repo", head: "1a2b3c4d5e6f" }])],
-			Date.parse(at),
 		);
 		expect(items.map((i) => i.kind)).toEqual(["prose", "divider", "operator"]);
 		const html = renderToStaticMarkup(createElement(Transcript, { items, incidentId: "inc-1", agent: "OpenCode" }));

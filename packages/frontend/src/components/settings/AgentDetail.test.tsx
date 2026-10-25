@@ -441,12 +441,74 @@ describe("AgentDetail models (#907)", () => {
 	});
 });
 
+describe("AgentDetail header (#911)", () => {
+	it("carries the state word, the check's detail and OpenCode's permission note", async () => {
+		await act(async () => {
+			root.render(<AgentDetail id="opencode" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-state"]')
+				?.textContent,
+		).toBeTruthy();
+		expect(
+			container
+				.querySelector('[data-testid="harness-opencode-asks"]')
+				?.textContent?.replace(/\s+/g, " ")
+				.trim(),
+		).toBe(
+			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
+		);
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		expect(
+			container.querySelector('[data-testid="harness-opencode-asks"]'),
+		).toBeNull();
+	});
+});
+
 describe("AgentDetail runtime and environment (#907)", () => {
+	it("says Overrides the environment only under a stored variable the host has too (#911)", async () => {
+		mockHarnesses[0].envVars = [
+			{ name: "ANTHROPIC_API_KEY", state: "set", inEnv: true },
+			{ name: "ANTHROPIC_BASE_URL", state: "set", inEnv: false },
+		];
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		const overrides = (n: string) =>
+			container.querySelector(
+				`[data-testid="env-row-${n}"] [data-testid="env-overrides"]`,
+			) !== null;
+		expect(overrides("ANTHROPIC_API_KEY")).toBe(true);
+		expect(overrides("ANTHROPIC_BASE_URL")).toBe(false);
+		mockHarnesses[0].envVars = [];
+	});
+
+	it("warns under a stored API key only that a signed-in agent may use its own credential (#935)", async () => {
+		mockHarnesses[0].envVars = [
+			{ name: "ANTHROPIC_API_KEY", state: "set", inEnv: false },
+			{ name: "HTTPS_PROXY", state: "set", inEnv: false },
+			{ name: "ANTHROPIC_AUTH_TOKEN", state: "env", inEnv: false },
+		];
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		const warned = (n: string) =>
+			container.querySelector(
+				`[data-testid="env-row-${n}"] [data-testid="env-signin-warning"]`,
+			) !== null;
+		expect(warned("ANTHROPIC_API_KEY")).toBe(true);
+		expect(warned("HTTPS_PROXY")).toBe(false);
+		expect(warned("ANTHROPIC_AUTH_TOKEN")).toBe(false);
+		mockHarnesses[0].envVars = [];
+	});
+
 	it("names each variable Not set, Key set or From environment, never a value, and adds one as a password field", async () => {
 		mockHarnesses[0].envVars = [
-			{ name: "ANTHROPIC_API_KEY", state: "env" },
-			{ name: "ANTHROPIC_AUTH_TOKEN", state: "unset" },
-			{ name: "ANTHROPIC_BASE_URL", state: "set" },
+			{ name: "ANTHROPIC_API_KEY", state: "env", inEnv: false },
+			{ name: "ANTHROPIC_AUTH_TOKEN", state: "unset", inEnv: false },
+			{ name: "ANTHROPIC_BASE_URL", state: "set", inEnv: false },
 		];
 		await act(async () => {
 			root.render(<AgentDetail id="claude-code" />);
@@ -478,12 +540,19 @@ describe("AgentDetail runtime and environment (#907)", () => {
 			'[data-testid="env-value"]',
 		) as HTMLInputElement;
 		expect(value.type).toBe("password");
+		// A name with no value can't be added; Remove is how a variable is cleared (#911).
+		const addButton = () =>
+			container.querySelector(
+				'[data-testid="env-add-button"]',
+			) as HTMLButtonElement;
+		expect(addButton().disabled).toBe(true);
 		expect(value.getAttribute("autocomplete")).toBe("off");
 		await typeInto(
 			container.querySelector('[data-testid="env-name"]'),
 			"MY_KEY",
 		);
 		await typeInto(value, "s3cret");
+		expect(addButton().disabled).toBe(false);
 		await act(async () => {
 			value
 				.closest("form")

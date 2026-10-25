@@ -3,12 +3,27 @@
 
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
+import {
+	Bot,
+	Camera,
+	CircleCheck,
+	GitBranch,
+	Plug,
+	TriangleAlert,
+	X,
+} from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
 import { cn } from "@/lib/utils";
 import { EvidenceFileView } from "./EvidenceFileView";
+import {
+	type ToolsStatus,
+	type TurnTools,
+	toolsWord,
+	turnLine,
+} from "./RunTools";
 import {
 	type DetailLink,
 	type DetailRow,
@@ -70,7 +85,13 @@ export function RunDetailsPanel({
 	steps,
 	onJump,
 	files,
+	summaryTop,
+	contextTop,
 }: {
+	/** Above the Context sections: the runbooks the run found (#848). */
+	contextTop?: ReactNode;
+	/** Above the Summary sections: the run's five steps and its tools (#848). */
+	summaryTop?: ReactNode;
 	title: string;
 	tab: DetailsTab;
 	onTab: (tab: DetailsTab) => void;
@@ -198,6 +219,8 @@ export function RunDetailsPanel({
 							className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
 							data-testid={`run-details-${id}`}
 						>
+							{id === "summary" && summaryTop}
+							{id === "context" && contextTop}
 							<Sections
 								sections={
 									id === "summary"
@@ -382,6 +405,15 @@ function Row({
 				>
 					{row.text}
 				</span>
+				{row.flag && (
+					<span
+						className="inline-flex items-center gap-1 self-start rounded-full bg-warn/12 px-1.5 text-meta font-medium text-warn"
+						data-testid="detail-flag"
+					>
+						<TriangleAlert className="size-3" aria-hidden />
+						{row.flag}
+					</span>
+				)}
 				{row.sub && (
 					<span
 						dir="auto"
@@ -487,11 +519,171 @@ function LeaveLink({
 	return (
 		<Link
 			to="/settings"
-			search={{ tab: link.section === "agent" ? "harness" : "integrations" }}
+			search={{ tab: link.section }}
 			className={cls}
 			data-testid="detail-link"
 		>
 			{children}
 		</Link>
+	);
+}
+
+const STEP_TONE = {
+	ok: "bg-ok/15 text-ok",
+	warn: "bg-warn/15 text-warn",
+	neutral: "bg-surface-3 text-text-2",
+} as const;
+
+export interface RunOverviewStep {
+	name: "Snapshot" | "Code" | "Agent" | "Tools" | "Model";
+	text: string;
+	tone: keyof typeof STEP_TONE;
+}
+
+const STEP_ICON = {
+	Snapshot: Camera,
+	Code: GitBranch,
+	Agent: Bot,
+	Tools: Plug,
+	Model: CircleCheck,
+} as const;
+
+/** The five steps' short states, from the run's tools status (#848). */
+export function overviewSteps(o: {
+	snapshot: string;
+	code: string;
+	agent: string;
+	status: ToolsStatus;
+}): RunOverviewStep[] {
+	const s = o.status.state;
+	const tools: Pick<RunOverviewStep, "text" | "tone"> =
+		s === "reached" || s === "connected"
+			? { text: "Connected", tone: "ok" }
+			: s === "not-reached"
+				? { text: "Not connected", tone: "warn" }
+				: {
+						text:
+							s === "loading"
+								? "Loading"
+								: s === "error"
+									? "Did not load"
+									: s === "waiting"
+										? "Waiting"
+										: "Not recorded",
+						tone: "neutral",
+					};
+	const model: Pick<RunOverviewStep, "text" | "tone"> =
+		s === "reached"
+			? { text: "Used a tool", tone: "ok" }
+			: s === "connected"
+				? { text: "Not called yet", tone: "neutral" }
+				: s === "not-reached"
+					? { text: "Did not get them", tone: "warn" }
+					: tools;
+	return [
+		{ name: "Snapshot", text: o.snapshot, tone: "neutral" },
+		{ name: "Code", text: o.code, tone: "neutral" },
+		{ name: "Agent", text: o.agent, tone: "neutral" },
+		{ name: "Tools", ...tools },
+		{ name: "Model", ...model },
+	];
+}
+
+/**
+ * The Summary's head (#848): the five-step strip, then whether PrismaLens's
+ * tools reached the model, per turn a count per tool and the first time.
+ * Every later call time stays in the logs.
+ */
+export function RunOverview({
+	steps,
+	status,
+	turns,
+	hint,
+}: {
+	steps: RunOverviewStep[];
+	status: ToolsStatus;
+	turns: TurnTools[];
+	/** The agent's own line when the tools did not reach it, and the folder to trust. */
+	hint?: { text: string; folder: string | null } | null;
+}) {
+	return (
+		<div className="mb-4 flex flex-col gap-4" data-testid="run-overview">
+			<ol className="grid grid-cols-5 gap-1" aria-label="Run steps">
+				{steps.map((st) => {
+					const Icon = STEP_ICON[st.name];
+					return (
+						<li
+							key={st.name}
+							className="flex min-w-0 flex-col items-start gap-1"
+							data-testid={`run-step-${st.name.toLowerCase()}`}
+						>
+							<span
+								className={cn(
+									"grid size-6 place-items-center rounded-full",
+									STEP_TONE[st.tone],
+								)}
+								aria-hidden
+							>
+								<Icon className="size-3.5" />
+							</span>
+							<span className="text-meta font-semibold">{st.name}</span>
+							<span className="line-clamp-2 text-meta text-text-2 [overflow-wrap:anywhere]">
+								{st.text}
+							</span>
+						</li>
+					);
+				})}
+			</ol>
+			<section className="flex flex-col gap-1.5" aria-label="PrismaLens tools">
+				<h3 className="text-meta font-semibold text-text-2">
+					PrismaLens tools
+				</h3>
+				<p
+					className={cn(
+						status.state === "not-reached" ? "text-warn" : "text-text-1",
+						status.state === "loading" && "text-text-3",
+					)}
+					role="status"
+					data-testid="run-tools-status"
+				>
+					{toolsWord(status)}
+				</p>
+				{status.state === "not-reached" && hint && (
+					<div className="flex flex-col gap-1.5" data-testid="run-tools-hint">
+						<p className="text-meta text-text-2">{hint.text}</p>
+						{hint.folder && <CommandChip command={hint.folder} />}
+					</div>
+				)}
+				{turns.map((t) => (
+					<div
+						key={t.turn}
+						className="flex flex-col gap-1"
+						data-testid={`run-tools-turn-${t.turn}`}
+					>
+						<span className="text-meta font-medium">
+							{t.turn === "first" ? "First turn" : "Follow-up"}
+						</span>
+						<span className="text-meta text-text-2 tabular-nums">
+							{turnLine(t)}
+						</span>
+						{t.calls.length > 0 && (
+							<span className="flex flex-wrap gap-1">
+								{t.calls.map((c) => (
+									<span
+										key={c.name}
+										className="inline-flex h-[22px] items-center gap-1 rounded-control bg-surface-3 px-2 font-mono text-mono"
+									>
+										{c.name}
+										{c.count > 1 && (
+											<span className="text-text-2">×{c.count}</span>
+										)}
+									</span>
+								))}
+							</span>
+						)}
+					</div>
+				))}
+			</section>
+		</div>
 	);
 }

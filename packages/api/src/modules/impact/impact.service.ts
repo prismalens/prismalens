@@ -22,13 +22,14 @@ import {
 	type MetricsQueries,
 	type QueryBudget,
 	QueryBudgetExceededError,
-	urlOnlyRequestFn,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { ChangeEventsService } from "../changes/change-events.service.js";
 import { ConnectorResolverService } from "../integrations/connector-resolver.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
+import { sourceErrorText } from "../integrations/source-query.js";
+import { sourceRequestFn } from "../integrations/source-request.js";
 import { metricUnit } from "./metric-unit.js";
 import {
 	breaches,
@@ -158,8 +159,11 @@ function failureOf(
 	return "error";
 }
 
-function message(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
+/** Our own budget text, or the failure's category; an upstream error's message may quote a credential (#848). */
+function failureText(err: unknown, address: string): string {
+	return err instanceof QueryBudgetExceededError
+		? err.message
+		: sourceErrorText(err, address);
 }
 
 @Injectable()
@@ -292,7 +296,9 @@ export class ImpactService {
 			});
 		} catch (err) {
 			const kind = failureOf(err, signal);
-			this.logger.warn(`Fix check on alert ${alert.id}: ${message(err)}`);
+			this.logger.warn(
+				`Fix check on alert ${alert.id}: ${failureText(err, target.baseUrl)}`,
+			);
 			return couldNot(
 				kind === "too_broad"
 					? "too-broad"
@@ -426,7 +432,7 @@ export class ImpactService {
 		} catch (err) {
 			chart.state = failureOf(err, signal);
 			chart.series = [];
-			chart.error = message(err);
+			chart.error = failureText(err, target.baseUrl);
 			this.logger.warn(`Impact chart for ${incident.id}: ${chart.error}`);
 		}
 		return chart;
@@ -547,7 +553,10 @@ export class ImpactService {
 			label: chosen.label,
 			baseUrl: chosen.baseUrl,
 			metrics,
-			request: urlOnlyRequestFn(chosen.baseUrl),
+			request: sourceRequestFn(
+				chosen.baseUrl,
+				await this.integrations.sourceCredential(chosen.connectionId),
+			),
 		};
 	}
 

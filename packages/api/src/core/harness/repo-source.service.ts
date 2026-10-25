@@ -17,6 +17,7 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	type GitCredential,
 	MACHINE_CREDENTIAL,
+	repoLabel,
 	repoPath,
 	urlHost,
 } from "./git-credential.js";
@@ -81,6 +82,13 @@ export function classifySource(input: string): {
 		if (hasEmbeddedSecret(trimmed))
 			throw new Error(
 				"Repository URL must not carry credentials; add a Git host token in Settings instead",
+			);
+		// A URL's `#` is a fragment; in an scp path it is a path character, but `?` is refused either way (#848).
+		if (
+			/^[a-z]+:\/\//i.test(trimmed) ? /[?#]/.test(trimmed) : /\?/.test(trimmed)
+		)
+			throw new Error(
+				"Repository URL must not carry a query string or fragment; add a Git host token in Settings instead",
 			);
 		return { kind: "url", source: trimmed };
 	}
@@ -203,7 +211,7 @@ export class RepoSourceService {
 		} else await this.cloneMirror(src, dest, signal, at);
 		const check = await this.headOf(dest);
 		this.logger.log(
-			`snapshot ${src.source} at ${check.head.slice(0, 12)} → ${dest}`,
+			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}`,
 		);
 		return { path: dest, ...check };
 	}
@@ -236,7 +244,12 @@ export class RepoSourceService {
 				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
 				undefined,
 				signal,
-			);
+			).catch((err: unknown) => {
+				if (signal?.aborted) throw err;
+				throw new Error(
+					`Commit ${at} could not be checked out from this source`,
+				);
+			});
 		// origin is our mirror: refuse local-path push and fetch from the run (#676).
 		await this.git(
 			["-C", dest, "config", "protocol.file.allow", "never"],
@@ -289,7 +302,7 @@ export class RepoSourceService {
 		} catch (err) {
 			const failure = remoteFailure(err, src);
 			if (failure instanceof GitFailure && failure.stderr)
-				this.logger.warn(`git ${src.source}: ${failure.stderr.trim()}`);
+				this.logger.warn(`git ${repoLabel(src.source)}: ${failure.code}`);
 			throw failure;
 		}
 		return path;

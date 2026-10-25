@@ -7,7 +7,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	ConnectionFormDialog,
+	envTokenChange,
 	filterAvailableTemplates,
+	originOf,
 } from "./ConnectionFormDialog";
 
 let capturedContentProps: {
@@ -101,5 +103,42 @@ describe("ConnectionFormDialog (f13)", () => {
 		// Radix's own backdrop dismissal is covered in e2e connection-dialog.spec.ts.
 		expect(capturedContentProps.onPointerDownOutside).toBeUndefined();
 		expect(capturedContentProps.onInteractOutside).toBeUndefined();
+	});
+
+	it("shows edit-env-change warning when address change alters env token application (case 5)", () => {
+		const markup = renderToStaticMarkup(
+			React.createElement(ConnectionFormDialog, {
+				open: true,
+				onOpenChange: vi.fn(),
+				mode: "edit",
+				envOrigin: "https://h:9090",
+				connection: {
+					id: "c1",
+					integrationId: "i1",
+					name: "Prometheus",
+					baseUrl: "https://h:9090",
+					integration: {
+						id: "i1",
+						templateId: "prometheus",
+						label: "Prometheus",
+						description: "",
+						category: "metrics",
+					},
+				} as never,
+			}),
+		);
+
+		// With saved baseUrl matching envOrigin and connectionFieldValues.baseUrl undefined,
+		// envChange evaluates to "stops" (since saved baseUrl was on envOrigin, but unedited form field is empty)
+		expect(markup).toContain('data-testid="edit-env-change"');
+
+		// envTokenChange itself returns stops when address moves off envOrigin
+		expect(
+			envTokenChange(
+				"https://h:9090",
+				"http://h:9090",
+				"https://h:9090",
+			),
+		).toBe("stops");
 	});
 });

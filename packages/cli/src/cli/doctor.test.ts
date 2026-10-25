@@ -1,322 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { getAppDataDir, secretFileName } from "@prismalens/config";
-import { HARNESS_REGISTRY } from "@prismalens/config/harness";
+import { join } from "node:path";
+import { secretFileName } from "@prismalens/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	checkAnyAgentRunnable,
-	checkAutoSelection,
+	AGENTS_LINE,
 	checkGit,
-	checkHarnessesOnPath,
-	checkHarnessHandshake,
 	checkInstalls,
 	checkWebhookToken,
 	checkWebhookUrl,
-	type Handshake,
-	sandboxSummary,
 	summary,
 } from "./doctor.js";
 
-const FAKE_HANDSHAKE = join(
-	dirname(fileURLToPath(import.meta.url)),
-	"__fixtures__",
-	"fake-acp-handshake.mjs",
-);
-
-describe("doctor — harness detection", () => {
-	let tempPathDir: string;
-	let originalPath: string | undefined;
-
-	beforeEach(() => {
-		tempPathDir = join(
-			os.tmpdir(),
-			`pl-doctor-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		mkdirSync(tempPathDir, { recursive: true });
-		originalPath = process.env.PATH;
+describe("doctor — agents are the app's, never the doctor's (#907)", () => {
+	it("passes with no agent anywhere, and points at Settings → Agent", () => {
+		const verdict = summary([
+			{ name: "Node version", pass: true, detail: "24.0.0", hard: true },
+		]);
+		expect(verdict).toEqual({ level: "success", line: "All required checks passed." });
+		expect(AGENTS_LINE).toContain("Settings → Agent");
+		expect(AGENTS_LINE).toContain("Add agent");
 	});
 
-	afterEach(() => {
-		rmSync(tempPathDir, { recursive: true, force: true });
-		if (originalPath === undefined) {
-			process.env.PATH = "";
-		} else {
-			process.env.PATH = originalPath;
-		}
-	});
-
-	it("names the model a run would ask for, and that a saved Settings pin wins (#337 run e, G11, G15)", () => {
-		writeFileSync(join(tempPathDir, "opencode"), "#!/bin/sh\n");
-		chmodSync(join(tempPathDir, "opencode"), 0o755);
-		process.env.PATH = tempPathDir;
-		delete process.env.PRISMALENS_HARNESS;
-
-		const [selected, model] = checkAutoSelection();
-		expect(selected).toMatchObject({ name: "Selected harness", pass: true });
-		expect(selected?.detail).toContain("Settings → Agent");
-		expect(model).toMatchObject({ name: "Model", pass: true });
-		expect(model?.detail).toBe(
-			"OpenCode runs the model set in its own config, else its default, unless Settings → Agent → Model sets one",
-		);
-		expect(model?.detail).not.toContain("muse-spark");
-		expect(model?.detail).toContain("Settings → Agent → Model");
-	});
-
-	it("is a HARD failure, listing every installable agent, when none can run", () => {
-		process.env.PATH = tempPathDir; // empty dir — nothing resolvable
-
-		const perHarness = checkHarnessesOnPath();
-		expect(perHarness.every((check) => !check.pass)).toBe(true);
-		expect(perHarness.some((check) => check.name.includes("Local agent"))).toBe(false);
-
-		const overall = checkAnyAgentRunnable([]);
-		expect(overall).toMatchObject({ name: "Agent ready", pass: false, hard: true });
-		// The ERROR line carries the install commands themselves, not just the ids (#337 run e, G12).
-		expect(overall.detail).toContain("Set one up with Add agent in Settings → Agent, or install one:");
-		for (const descriptor of Object.values(HARNESS_REGISTRY)) {
-			if (descriptor.id === "local") continue;
-			expect(overall.detail).toContain(descriptor.install);
-		}
-		expect(checkAutoSelection()).toEqual([]);
-	});
-
-	it("names Claude Code when the claude companion is present and runs through the shipped adapter", () => {
-		writeFileSync(join(tempPathDir, "claude"), "#!/bin/sh\n");
-		chmodSync(join(tempPathDir, "claude"), 0o755);
-		process.env.PATH = tempPathDir;
-
-		const row = checkHarnessesOnPath().find((c) => c.name === "Harness: Claude Code");
-		expect(row?.pass).toBe(true);
-		expect(row?.detail).toBe(
-			`Claude Code found at ${join(tempPathDir, "claude")}; runs through the claude-agent-acp PrismaLens ships`,
-		);
-	});
-
-	it("passes when a registry harness binary is on PATH", () => {
-		const descriptor = Object.values(HARNESS_REGISTRY)[0];
-		const binPath = join(tempPathDir, descriptor.binary);
-		writeFileSync(binPath, "#!/bin/sh\nexit 0\n");
-		chmodSync(binPath, 0o755);
-		process.env.PATH = tempPathDir;
-
-		const perHarness = checkHarnessesOnPath();
-		const match = perHarness.find((check) =>
-			check.name.includes(descriptor.label),
-		);
-		expect(match?.pass).toBe(true);
-	});
-});
-
-describe("doctor — quiet about agents that can't run (#907)", () => {
-	const shake = (
-		id: Handshake["id"],
-		over: Partial<Handshake> & { detail: string },
-	): Handshake => ({
-		id,
-		servedModel: null,
-		signInUnchecked: false,
-		signedOut: false,
-		ready: false,
-		...over,
-		check: {
-			name: `Harness ACP handshake: ${HARNESS_REGISTRY[id].label}`,
-			pass: !!over.ready,
-			detail: over.detail,
-			hard: false,
-		},
-	});
-
-	it("names only the ready agent, with a success summary, beside a signed-out and a failing one", () => {
-		const handshakes = [
-			shake("claude-code", { ready: true, detail: "answers ACP; signed in" }),
-			shake("gemini", { signedOut: true, detail: "answers ACP; not signed in" }),
-			shake("deepagents", { detail: "failed to start: boom" }),
-		];
-		const agent = checkAnyAgentRunnable(handshakes);
-		expect(agent).toEqual({ name: "Agent ready", pass: true, detail: "Claude Code ready", hard: true });
-		const printed = [agent, ...handshakes.filter((h) => h.ready).map((h) => h.check)];
-		expect(printed.filter((c) => !c.pass)).toEqual([]);
-		expect(printed.map((c) => c.detail).join("\n")).not.toMatch(/OpenCode|Gemini CLI|deepagents/);
-		expect(summary(printed, handshakes, "claude-code")).toEqual({
-			level: "success",
-			line: "All required checks passed.",
-		});
-	});
-
-	it("is one error carrying each installed agent's reason when none can run", () => {
-		const handshakes = [
-			shake("gemini", { signedOut: true, detail: "answers ACP; not signed in" }),
-			shake("deepagents", { detail: "failed to start: boom" }),
-		];
-		const agent = checkAnyAgentRunnable(handshakes);
-		expect(agent.pass).toBe(false);
-		expect(agent.detail).toContain("\n  Gemini CLI: answers ACP; not signed in");
-		expect(agent.detail).toContain("\n  deepagents: failed to start: boom");
-		expect(agent.detail).toContain(
-			"Agents set up only in Settings (binary path, local agent) are checked there, not here.",
-		);
-		expect(summary([agent], handshakes)).toEqual({
-			level: "error",
-			line: "No agent can run. `pl up` still starts, but Investigate stays disabled until one can.",
-		});
-	});
-});
-
-describe("doctor — harness ACP handshake", () => {
-	let tempPathDir: string;
-	let originalPath: string | undefined;
-
-	beforeEach(() => {
-		tempPathDir = join(
-			os.tmpdir(),
-			`pl-doctor-handshake-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-		);
-		mkdirSync(tempPathDir, { recursive: true });
-		originalPath = process.env.PATH;
-		process.env.PATH = tempPathDir;
-	});
-
-	afterEach(() => {
-		rmSync(tempPathDir, { recursive: true, force: true });
-		if (originalPath === undefined) {
-			process.env.PATH = "";
-		} else {
-			process.env.PATH = originalPath;
-		}
-	});
-
-	/** A shell shim named after the registry binary. The mode is baked into the shim, not the parent env, which the harness child does not inherit. */
-	function installFakeOpencode(mode: string): void {
-		const binPath = join(tempPathDir, HARNESS_REGISTRY.opencode.binary);
-		writeFileSync(
-			binPath,
-			`#!/bin/sh\nFAKE_ACP_MODE=${mode} exec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
-		);
-		chmodSync(binPath, 0o755);
-	}
-
-	it('says "answers ACP", never "ready", for a harness whose handshake succeeds', async () => {
-		installFakeOpencode("ok");
-		const results = await checkHarnessHandshake();
-		const opencode = results.find((h) => h.id === "opencode");
-		expect(opencode).toEqual({
-			id: "opencode",
-			servedModel: null,
-			signInUnchecked: false,
-			signedOut: false,
-			ready: true,
-			check: {
-				name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
-				pass: true,
-				detail: `answers ACP, fake 0; sandbox: none (OpenCode has no sandbox); sign-in: ${HARNESS_REGISTRY.opencode.loginHint}`,
-				hard: false,
-			},
-		});
-		expect(summary([opencode!.check], results)).toEqual({
-			level: "success",
-			line: "All required checks passed.",
-		});
-	});
-
-	it("is a SOFT failure carrying the harness's own stderr tail when it exits before answering", async () => {
-		installFakeOpencode("unauthenticated");
-		const results = await checkHarnessHandshake();
-		const opencode = results.find((h) => h.id === "opencode")?.check;
-		expect(opencode?.pass).toBe(false);
-		expect(opencode?.hard).toBe(false);
-		expect(opencode?.detail).toMatch(/^failed to start: .*not logged in/);
-	});
-
-	it("names the model OpenCode serves, and that an opencode/ id is OpenCode Zen (#673 S2)", async () => {
-		installFakeOpencode("served");
-		delete process.env.PRISMALENS_HARNESS;
-		const results = await checkHarnessHandshake();
-		const served = Object.fromEntries(results.map((h) => [h.id, h.servedModel]));
-		expect(served.opencode).toBe("opencode/big-pickle");
-		const model = checkAutoSelection(served).find((c) => c.name === "Model");
-		expect(model?.detail).toBe(
-			"OpenCode serves opencode/big-pickle: the model set in its own config, else its default, unless Settings → Agent → Model sets one. That is an OpenCode Zen model, under OpenCode's terms; `opencode auth login` signs in another provider",
-		);
-	});
-
-	it("warns, never ✔, when Claude Code answers ACP: its sign-in is checked only when a run starts (#673 S1)", async () => {
-		const binPath = join(tempPathDir, HARNESS_REGISTRY["claude-code"].binary);
-		writeFileSync(
-			binPath,
-			`#!/bin/sh\nFAKE_ACP_MODE=ok exec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
-		);
-		chmodSync(binPath, 0o755);
-		const results = await checkHarnessHandshake();
-		const claude = results.find((h) => h.id === "claude-code");
-		expect(claude?.signInUnchecked).toBe(true);
-		expect(claude?.check).toMatchObject({ pass: true, hard: false });
-		expect(claude?.check.detail).toMatch(
-			/^answers ACP, fake 0;.*; sign-in not checked until a run starts: `claude \/login`/,
-		);
-		// Only the selected agent's unseen sign-in is a warning (#907).
-		expect(summary([claude!.check], results).level).toBe("success");
-		const verdict = summary([claude!.check], results, "claude-code");
-		expect(verdict.level).toBe("warn");
-		expect(verdict.line).toBe(
-			"Required checks passed. Claude Code checks its sign-in only when a run starts, so a run fails there if it is not signed in.",
-		);
-	});
-
-	function installFakeClaude(mode: string): void {
-		const binPath = join(tempPathDir, HARNESS_REGISTRY["claude-code"].binary);
-		writeFileSync(
-			binPath,
-			`#!/bin/sh\nFAKE_ACP_MODE=${mode} exec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
-		);
-		chmodSync(binPath, 0o755);
-	}
-
-	it("warns, never fails, when Claude Code pushes kind none on the handshake (#831)", async () => {
-		installFakeClaude("signed-out");
-		const results = await checkHarnessHandshake();
-		const claude = results.find((h) => h.id === "claude-code");
-		expect(claude).toMatchObject({ signedOut: true, signInUnchecked: false, ready: false });
-		expect(claude?.check).toMatchObject({ pass: false, hard: false });
-		expect(claude?.check.detail).toMatch(
-			/^answers ACP, fake 0;.*; not signed in: `claude \/login`/,
-		);
-		const verdict = summary([], results, "claude-code");
-		expect(verdict).toEqual({
-			level: "warn",
-			line: "Required checks passed. Claude Code is not signed in, so a run fails until it is.",
-		});
-	});
-
-	it("passes when Claude Code pushes a signed-in kind on the handshake (#831)", async () => {
-		installFakeClaude("signed-in");
-		const results = await checkHarnessHandshake();
-		const claude = results.find((h) => h.id === "claude-code");
-		expect(claude).toMatchObject({ signedOut: false, signInUnchecked: false });
-		expect(claude?.check).toMatchObject({ pass: true, hard: false });
-		expect(claude?.check.detail).toMatch(/; signed in$/);
-		expect(summary([claude!.check], results).level).toBe("success");
-	});
-
-	it("ends in an error, not the sign-in warning, when a required check fails", () => {
-		const git = { name: "Git", pass: false, detail: "git missing", hard: true };
-		const harness = { name: "Agent ready", pass: false, detail: "", hard: true };
-		expect(summary([git], [])).toEqual({
-			level: "error",
-			line: "1 required check(s) failed. Fix the above before running `pl up`.",
-		});
-		expect(summary([harness], []).line).toBe(
-			"No agent can run. `pl up` still starts, but Investigate stays disabled until one can.",
-		);
-	});
-
-	it("probes nothing when no harness is on PATH", async () => {
-		const results = await checkHarnessHandshake();
-		expect(results).toEqual([]);
+	it("fails only on its own hard checks", () => {
+		const verdict = summary([{ name: "Git", pass: false, detail: "git missing", hard: true }]);
+		expect(verdict.level).toBe("error");
 	});
 });
 
@@ -413,21 +124,6 @@ describe("doctor — WSL Windows install hint", () => {
 		expect(check.detail).toContain("C:\\npm\\pl.cmd");
 	});
 
-	it("names a Windows agent shim as the Windows install and never probes it (#673 w8)", async () => {
-		const dir = "/mnt/c/Users/sumit/AppData/Roaming/npm";
-		const shim = `${dir}/gemini`;
-		const scan = { env: { WSL_DISTRO_NAME: "Ubuntu" }, isExecutable: (p: string) => p === shim };
-
-		const row = checkHarnessesOnPath(dir, scan).find((c) => c.name === `Harness: ${HARNESS_REGISTRY.gemini.label}`);
-		expect(row).toEqual({
-			name: `Harness: ${HARNESS_REGISTRY.gemini.label}`,
-			pass: false,
-			detail: `${shim} is the Windows install; it can't run inside WSL. Install it in this distro: ${HARNESS_REGISTRY.gemini.install}`,
-			hard: false,
-		});
-		expect(await checkHarnessHandshake(dir, scan)).toEqual([]);
-	});
-
 	it("omits the hint when not running in WSL", () => {
 		const check = checkInstalls(
 			"/mnt/c/Users/sumit/AppData/Roaming/npm",
@@ -436,22 +132,6 @@ describe("doctor — WSL Windows install hint", () => {
 			(p) => p === "/mnt/c/Users/sumit/AppData/Roaming/npm/pl",
 		);
 		expect(check.detail).not.toContain("is the Windows install");
-	});
-});
-
-describe("sandboxSummary (#673 w51)", () => {
-	it("names modes only when their sandbox checks differ", () => {
-		expect(sandboxSummary(undefined)).toBe("");
-		expect(sandboxSummary({ plan: { state: "none", reason: "OpenCode has no sandbox" }, build: { state: "none", reason: "OpenCode has no sandbox" } })).toBe(
-			"; sandbox: none (OpenCode has no sandbox)",
-		);
-		expect(
-			sandboxSummary({
-				"read-only": { state: "enforced", reason: "refused" },
-				agent: { state: "enforced", reason: "refused" },
-				"agent-full-access": { state: "none", reason: "full access" },
-			}),
-		).toBe("; sandbox: enforced for read-only, agent (refused); none for agent-full-access (full access)");
 	});
 });
 

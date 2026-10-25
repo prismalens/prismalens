@@ -29,7 +29,7 @@ Feature: Shell and Back
   Scenario: Settings replaces the sidebar and Back returns to where I was
     Given I am on INC-1's Overview
     When I open Settings
-    Then the sidebar shows the settings sections with "Back" above them and no incident rows
+    Then the sidebar shows the settings sections with "Back" below them and no incident rows
     When I press "Back"
     Then I am on INC-1's Overview
     When I open Settings and press Escape

@@ -14,7 +14,7 @@ import type {
 	IncidentChanges,
 	RunCredential,
 } from "@prismalens/contracts/schemas";
-import { urlHost } from "../../core/harness/git-credential.js";
+import { repoLabel, urlHost } from "../../core/harness/git-credential.js";
 import {
 	GitFailure,
 	type GitFailureCode,
@@ -278,7 +278,9 @@ export class ChangeEventsService {
 				checkedAt: new Date().toISOString(),
 			});
 		} catch (err) {
-			this.logger.warn(`What changed: ${repo.url}: ${message(err)}`);
+			this.logger.warn(
+				`What changed: ${repoLabel(repo.url)}: ${err instanceof GitFailure ? err.code : "error"}`,
+			);
 			this.sources.set(link.key, {
 				...base,
 				status: "failed",

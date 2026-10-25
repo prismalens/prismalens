@@ -25,6 +25,6 @@ Feature: First run
 
   Scenario: No agent on this machine
     Given no coding agent is on PATH
-    Then step 3 reads which agents PrismaLens looks for and how to install one
+    Then step 3 opens Add agent
     When I open an incident's Conversation
     Then the box reads "No coding agent on this machine" with the install line, and "Investigate" is withheld

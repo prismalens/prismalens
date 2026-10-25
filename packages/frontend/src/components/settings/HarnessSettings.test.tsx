@@ -225,7 +225,7 @@ describe("HarnessSettings agents list (#907)", () => {
 			'[data-testid="harness-open-claude-code"]',
 		);
 		expect(link?.getAttribute("href")).toBe(
-			"/settings?tab=harness&agent=claude-code",
+			"/settings?tab=agent&agent=claude-code",
 		);
 		expect(
 			container.querySelector('[data-testid="harness-custom-models"]'),
@@ -273,31 +273,30 @@ describe("HarnessSettings agents list (#907)", () => {
 	});
 });
 
-describe("HarnessSettings agent rows (#673 w21)", () => {
-	it("the OpenCode row shows harness-opencode-asks with its rule, claude-code row does not", async () => {
+describe("HarnessSettings agent rows (#911)", () => {
+	it("gives each row one state word and at most one note; the detail lives on the agent page", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
 		});
-
-		const opencodeRow = container.querySelector(
-			'[data-testid="harness-row-opencode"]',
-		);
-		expect(opencodeRow).not.toBeNull();
-		const opencodeAsks = opencodeRow?.querySelector(
-			'[data-testid="harness-opencode-asks"]',
-		);
-		expect(opencodeAsks).not.toBeNull();
-		expect(opencodeAsks?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
-		);
-
-		const claudeRow = container.querySelector(
-			'[data-testid="harness-row-claude-code"]',
-		);
-		expect(claudeRow).not.toBeNull();
+		const row = (id: string) =>
+			container.querySelector(`[data-testid="harness-row-${id}"]`);
 		expect(
-			claudeRow?.querySelector('[data-testid="harness-opencode-asks"]'),
+			row("claude-code")?.querySelector(
+				'[data-testid="harness-check-result-claude-code"]',
+			)?.textContent,
+		).toBe("Not checked yet");
+		expect(
+			row("claude-code")?.querySelector(
+				'[data-testid="harness-note-claude-code"]',
+			)?.textContent,
+		).toBe("Used by the next run");
+		expect(
+			row("opencode")?.querySelector('[data-testid^="harness-note-"]'),
 		).toBeNull();
+		expect(
+			row("opencode")?.querySelector('[data-testid="harness-opencode-asks"]'),
+		).toBeNull();
+		expect(row("opencode")?.textContent).not.toContain("Images");
 	});
 });
 
@@ -325,6 +324,10 @@ describe("HarnessSettings signed-out row (w8-9)", () => {
 				container.querySelector(
 					'[data-testid="harness-check-result-claude-code"]',
 				)?.textContent,
+			).toBe("Sign-in needed");
+			expect(
+				container.querySelector('[data-testid="harness-note-claude-code"]')
+					?.textContent,
 			).toBe(
 				"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
 			);

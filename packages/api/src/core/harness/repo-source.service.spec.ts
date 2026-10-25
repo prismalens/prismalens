@@ -22,8 +22,11 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { Logger } from "@nestjs/common";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type GitHttpServer,
@@ -165,6 +168,52 @@ describe("repo-source.service", () => {
 			expect(classifySource("ssh://git@example.com/acme/api.git").kind).toBe(
 				"url",
 			);
+		});
+	});
+
+	describe("classifySource query and fragment (#848)", () => {
+		it.each([
+			"https://github.com/acme/api.git?token=sentinel",
+			"https://github.com/acme/api.git#sentinel",
+			"ssh://git@example.com/acme/api.git?x=1",
+			"https://host/repo.git#x",
+		])("refuses %s", (input) => {
+			expect(() => classifySource(input)).toThrow(/query string or fragment/);
+		});
+
+		it("refuses an scp remote's query, which would be echoed back as a credential", () => {
+			expect(() =>
+				classifySource("git@host:acme/api.git?token=sentinel"),
+			).toThrow(/query string/);
+		});
+
+		it("accepts an scp path's #, a path character", () => {
+			const input = "git@example.com:acme/repo#archive.git";
+			expect(classifySource(input)).toEqual({ kind: "url", source: input });
+		});
+	});
+
+	describe("a failed remote (#848)", () => {
+		it("puts the URL's query in neither the error nor the log", async () => {
+			vi.stubEnv("HOME", tmp("pl-home-"));
+			const service = new RepoSourceService();
+			const warn = vi
+				.spyOn((service as unknown as { logger: Logger }).logger, "warn")
+				.mockImplementation(() => {});
+			const down = createServer((_req, res) => res.writeHead(500).end());
+			await new Promise<void>((ok) => down.listen(0, "127.0.0.1", ok));
+			const { port } = down.address() as AddressInfo;
+			const source = `http://127.0.0.1:${port}/org/repo.git?api_key=sentinel`;
+			const failure = await service
+				.validate({ kind: "url", source })
+				.catch((err: unknown) => err);
+			down.close();
+			expect(failure).toBeInstanceOf(GitFailure);
+			expect((failure as GitFailure).message).not.toContain("sentinel");
+			expect(warn).toHaveBeenCalled();
+			const logged = warn.mock.calls.map(([m]) => String(m)).join(" | ");
+			expect(logged).toContain(`127.0.0.1:${port}/org/repo`);
+			expect(logged).not.toContain("sentinel");
 		});
 	});
 
@@ -518,7 +567,7 @@ describe("repo-source.service", () => {
 			expect(check).toEqual({ branch: "main", head });
 		});
 
-		it("snapshot() pinned to an earlier commit checks that commit out, and a commit the source lacks fails with git's text (#747)", async () => {
+		it("snapshot() pinned to an earlier commit checks that commit out, and a commit the source lacks fails naming it (#747)", async () => {
 			const { bareDir, work } = makeBareRemote();
 			const first = commitAndPush(work, "a.txt", "v1");
 			commitAndPush(work, "a.txt", "v2");
@@ -532,7 +581,7 @@ describe("repo-source.service", () => {
 
 			await expect(
 				service.snapshot(src, join(tmp("pl-dest-"), "repo"), undefined, "0123456789abcdef0123456789abcdef01234567"),
-			).rejects.toThrow(/0123456789abcdef0123456789abcdef01234567|reference is not a tree|did not match/);
+			).rejects.toThrow(/Commit 0123456789abcdef0123456789abcdef01234567 could not be checked out/);
 		});
 
 		it("a URL source is still a clone of the bare mirror, not a worktree of it (#918)", async () => {
@@ -606,13 +655,13 @@ describe("repo-source.service", () => {
 			expect(b.head).toBe(head);
 		});
 
-		it("a bad URL surfaces git's own verbatim error", async () => {
+		it("a bad URL surfaces a fixed sentence, not git's stderr (#848)", async () => {
 			const service = new RepoSourceService();
 			const badUrl = `file://${join(tmpdir(), "pl-no-such-remote-xyz.git")}`;
 
 			await expect(
 				service.validate({ kind: "url", source: badUrl }),
-			).rejects.toThrow(/does not appear to be a git repository/);
+			).rejects.toMatchObject({ code: "other", message: /^git could not read /i });
 		});
 	});
 

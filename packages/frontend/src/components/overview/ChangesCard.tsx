@@ -96,7 +96,7 @@ export function ChangesCard({ o }: { o: Overview }) {
 										{problem.action.label}
 									</Link>
 								) : (
-									<Link to="/settings" search={{ tab: "integrations" }}>
+									<Link to="/settings" search={{ tab: "sources" }}>
 										{problem.action.label}
 									</Link>
 								)}

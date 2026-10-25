@@ -143,7 +143,7 @@ async function serve(page: Page) {
 }
 
 async function openAddAgent(page: Page) {
-	await page.goto("/settings?tab=harness");
+	await page.goto("/settings?tab=agent");
 	await expect(page.getByTestId("harness-settings")).toBeVisible({
 		timeout: 15_000,
 	});
@@ -166,8 +166,16 @@ test.describe("Add agent (#907)", () => {
 		await expect(page.getByTestId("add-agent-tile-codex-state")).toHaveText(
 			"Sign-in needed",
 		);
+		// The registry search sits under the tiles and never repeats one (#911).
+		await page.getByTestId("acp-registry-search").fill("codex");
+		await expect(
+			page.getByTestId("acp-registry-entry").filter({ hasText: /^Codex/ }),
+		).toHaveCount(0);
 		await page.getByTestId("add-agent-tile-codex").click();
 		await page.getByTestId("add-agent-next").click();
+		const steps = page.getByTestId("step-list").locator("li");
+		await expect(steps.nth(0)).toHaveAttribute("data-done", "");
+		await expect(steps.nth(1)).toHaveAttribute("aria-current", "step");
 		const signIn = page.getByTestId("add-agent-signin");
 		await expect(
 			signIn.locator("code", { hasText: "codex login" }),
@@ -175,6 +183,9 @@ test.describe("Add agent (#907)", () => {
 		await expect(signIn.getByTestId("add-agent-copy")).toBeVisible();
 		await expect(signIn.getByTestId("add-agent-api-key")).toContainText(
 			"OPENAI_API_KEY",
+		);
+		await expect(signIn.getByTestId("env-signin-warning")).toContainText(
+			"If Codex is signed in, it may use this key instead.",
 		);
 
 		await page.getByTestId("add-agent-next").click();
@@ -215,7 +226,7 @@ test.describe("Add agent (#907)", () => {
 
 	test("the picker's rail opens Add agent too", async ({ page }) => {
 		await serve(page);
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await page.getByTestId("agent-picker").click();
 		await page.getByTestId("rail-add-agent").click();
 		await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
@@ -232,7 +243,7 @@ test.describe("Add agent on the real stack (#907)", () => {
 			new URL("../../../../scripts/fakes/fake-acp-agent.mjs", import.meta.url),
 		);
 		try {
-			await page.goto("/settings?tab=harness");
+			await page.goto("/settings?tab=agent");
 			await expect(page.getByTestId("harness-settings")).toBeVisible({
 				timeout: 15_000,
 			});

@@ -9,7 +9,7 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import {
-	type AgentEnvVar,
+	type HarnessProbeResult,
 	type HarnessStatus,
 	RUNTIME_HOST_ONLY,
 } from "@prismalens/contracts";
@@ -26,11 +26,11 @@ import {
 import { agentModels, move } from "@/components/agent/model-list";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
+import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading } from "@/components/shared/State";
-import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -40,7 +40,10 @@ import {
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
+import { failureLine, notSignedIn } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
+import { EnvVarNotes, envStateWord } from "./agent-env";
+import { CredentialChip, StatePill, type Word } from "./source-words";
 
 /**
  * The version the last check read beside the tested one, so neither reads as the
@@ -71,6 +74,38 @@ export function testedHint(h: HarnessStatus): string {
 	return `PrismaLens was tested with ${t.version}`;
 }
 
+/** An agent's one state word, from its install and its last check (#848's words for a source). */
+export function agentState(
+	h: HarnessStatus,
+	outcome: HarnessProbeResult["outcome"] | null = h.checked?.outcome ?? null,
+): Word {
+	if (h.windowsOnlyPath) return { text: "Can't run in WSL", tone: "warn" };
+	if (!h.installed) return { text: "Not installed", tone: "warn" };
+	if (outcome === "answers-acp") return { text: "Ready", tone: "ok" };
+	if (outcome === "sign-in-needed")
+		return { text: "Sign-in needed", tone: "warn" };
+	if (outcome) return { text: "Not responding", tone: "danger" };
+	return { text: "Not checked yet", tone: "neutral" };
+}
+
+/** What the agent takes from PrismaLens, as the last check read it (r4 R4.1 rev, R4.2, R4.3). */
+export function capabilities(h: HarnessStatus): string {
+	const model =
+		h.modelVia === "acp"
+			? "Takes a model over ACP."
+			: h.id === "deepagents"
+				? "Uses its own model."
+				: "Model: pending a check.";
+	const answered = h.checked?.outcome === "answers-acp" ? h.checked : null;
+	const effort = answered?.effort
+		? ` Effort over ACP: ${answered.effort.values.join(", ")}.`
+		: "";
+	const images = answered
+		? ` Images: ${answered.images ? "yes" : "no"}.`
+		: " Images: not checked yet.";
+	return `${model}${effort}${images}`;
+}
+
 /** The server's refusal, as the words under the field. */
 export function errorText(error: unknown): string | null {
 	if (!error) return null;
@@ -82,11 +117,12 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 	const agent = data?.harnesses.find((h) => h.id === id);
 	const check = useCheckHarness();
 	if (isLoading) return <Loading rows={5} />;
+	const checked = check.data ?? agent?.checked;
 	return (
 		<div data-testid="agent-detail">
 			<Link
 				to="/settings"
-				search={{ tab: "harness" }}
+				search={{ tab: "agent" }}
 				className="mb-4 inline-flex items-center gap-1.5 text-body text-text-2 hover:text-text-1"
 				data-testid="agent-detail-back"
 			>
@@ -97,7 +133,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 				<p className="text-body text-text-2">This agent is not known here.</p>
 			) : (
 				<>
-					<div className="mb-6 flex min-w-0 items-center gap-3">
+					<div className="mb-3 flex min-w-0 flex-wrap items-center gap-3">
 						<AgentMark id={agent.id} className="size-5" />
 						<h2
 							className="text-title font-semibold text-text-1"
@@ -105,9 +141,20 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 						>
 							{agent.label}
 						</h2>
-						{versionText(agent) && (
+						<StatePill
+							word={
+								check.isPending
+									? { text: "Checking", tone: "neutral" }
+									: agentState(agent, checked?.outcome ?? null)
+							}
+							testId="agent-detail-state"
+						/>
+						{agent.installed && versionText(agent) && (
 							<Hint label={testedHint(agent)} meta={agent.tested?.date}>
-								<span className="font-mono text-meta text-text-3">
+								<span
+									className="font-mono text-meta text-text-3"
+									data-testid={`harness-tested-${agent.id}`}
+								>
 									{versionText(agent)}
 								</span>
 							</Hint>
@@ -123,14 +170,36 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							{check.isPending ? "Checking" : "Check"}
 						</Button>
 					</div>
-					{agent.checked && agent.checked.outcome !== "answers-acp" && (
-						<p
-							className="mb-4 text-body text-text-2"
-							data-testid="agent-detail-check-line"
-						>
-							{agent.checked.detail}
-						</p>
-					)}
+					<div className="mb-6 flex flex-col gap-1 text-body text-text-2">
+						{checked && (
+							<p data-testid="agent-detail-check-line">
+								{checked.outcome === "sign-in-needed"
+									? failureLine(notSignedIn(agent.label))
+									: checked.detail}
+							</p>
+						)}
+						{agent.installed ? (
+							// app.css's `code` chip is unlayered, so it outranks a plain utility.
+							<p
+								className="[&_code]:bg-transparent! [&_code]:p-0!"
+								data-testid="agent-detail-capabilities"
+							>
+								{capabilities(agent)} <InlineCode text={agent.loginHint} />
+							</p>
+						) : (
+							agent.install && <Mono>{agent.install}</Mono>
+						)}
+						{agent.id === "opencode" && (
+							// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
+							<p
+								className="text-meta text-text-3"
+								data-testid="harness-opencode-asks"
+							>
+								A run sets each tool's default rule to match its permission
+								level. Your other rules in opencode.json stay as they are.
+							</p>
+						)}
+					</div>
 					{agent.modelVia === "acp" && <ModelsSection agent={agent} />}
 					<SettingGroup title="Runtime" testId="agent-runtime">
 						<RuntimeFields id={id} />
@@ -232,7 +301,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 											models: { [id]: starred(m.id) ? null : m.id },
 										})
 									}
-									className="inline-flex size-6 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4"
+									className="inline-flex size-6 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4 max-md:size-12 pointer-coarse:size-12"
 									data-testid="agent-model-star"
 								>
 									<Star
@@ -554,16 +623,6 @@ export function RuntimeFields({ id }: { id: HarnessId }) {
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 
-/** A variable's state in words; a value is never among them (#907). */
-export const ENV_STATE: Record<
-	AgentEnvVar["state"],
-	{ word: string; tone: StateTone }
-> = {
-	unset: { word: "Not set", tone: "quiet" },
-	set: { word: "Key set", tone: "ok" },
-	env: { word: "From environment", tone: "neutral" },
-};
-
 /** Variables the agent reads, each Not set, Key set or From environment; values never read back (#907 decision 9). */
 export function EnvironmentRows({ id }: { id: HarnessId }) {
 	const { data } = useHarnesses();
@@ -584,6 +643,7 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 			setError("Use letters, digits and _, not starting with a digit.");
 			return;
 		}
+		if (!value) return;
 		update.mutate(
 			{ env: { [id]: { [key]: value } } },
 			{
@@ -610,12 +670,21 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 						testId={`env-row-${v.name}`}
 						label={<Mono>{v.name}</Mono>}
 						meta={
-							<StateWord
-								tone={ENV_STATE[v.state].tone}
-								data-testid={`env-state-${v.name}`}
-							>
-								{ENV_STATE[v.state].word}
-							</StateWord>
+							<CredentialChip
+								text={envStateWord(v.state)}
+								testId={`env-state-${v.name}`}
+							/>
+						}
+						below={
+							v.state === "set" ? (
+								<EnvVarNotes
+									agent={label}
+									id={id}
+									name={v.name}
+									state={v.state}
+									inEnv={v.inEnv}
+								/>
+							) : undefined
 						}
 						trailing={
 							canEdit &&
@@ -676,7 +745,7 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 									type="submit"
 									variant="secondary"
 									size="sm"
-									disabled={!name.trim() || update.isPending}
+									disabled={!name.trim() || !value || update.isPending}
 									data-testid="env-add-button"
 								>
 									Add variable

@@ -256,6 +256,8 @@ export interface HarnessStatus {
 	configDir: { envKey: string; shownDefault: string } | null;
 	/** Provider key names the agent reads from its env. */
 	providerKeys: string[];
+	/** What the run view says when PrismaLens's tools did not reach this agent. */
+	toolsHint?: { text: string };
 }
 
 /** The launch probe for one agent, with its binary path or local command (#907). */
@@ -305,12 +307,13 @@ export function listHarnessStatus(
 				id,
 				input.envFor?.(id) ?? input.env ?? process.env,
 			),
+			...(d.toolsHint ? { toolsHint: d.toolsHint } : {}),
 		};
 	});
 }
 
-/** Every auto-order row's install line, for the doctor's ERROR and the app's tooltip. */
-export function installHints(): string {
+/** Every auto-order row's install line, for the no-agent selection reason. */
+function installHints(): string {
 	// The local agent has nothing to install; Settings → Agent sets it up.
 	return HARNESS_AUTO_ORDER.filter((id) => id !== "local")
 		.map(

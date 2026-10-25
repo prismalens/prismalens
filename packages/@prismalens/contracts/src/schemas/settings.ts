@@ -134,6 +134,8 @@ export const ENV_VAR_STATES = ["unset", "set", "env"] as const;
 export const AgentEnvVarSchema = z.object({
 	name: EnvNameSchema,
 	state: z.enum(ENV_VAR_STATES),
+	/** `set` and the host has it too, so the stored value overrides it (#911; Sources' `overridesEnv`). */
+	inEnv: z.boolean().default(false),
 });
 export type AgentEnvVar = z.infer<typeof AgentEnvVarSchema>;
 
@@ -181,6 +183,8 @@ export const HarnessStatusSchema = z.object({
 		.object({ envKey: z.string(), shownDefault: z.string() })
 		.nullable()
 		.default(null),
+	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
+	toolsHint: z.object({ text: z.string() }).optional(),
 	/**
 	 * Models to suggest (#639). `harness`: the list the harness itself offered at
 	 * its last readiness check, which wins. `catalogue`: prismalens's model

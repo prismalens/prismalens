@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { isAbsolute } from "node:path";
 import { inspect } from "node:util";
 import type { GitCredentialDisplay } from "@prismalens/contracts/schemas";
 import type { GitEnvInput } from "./git-env.js";
@@ -39,29 +40,47 @@ export function urlHost(url: string): string | null {
 	}
 }
 
-/** `owner/repo` of a URL. */
+export const UNSHOWN_REPO = "a repository PrismaLens cannot show";
+
+const SAFE_REPO = /^[\w.~+-]+(?:\/[\w.~+-]+)*$/;
+
+/** `owner/repo` of a URL; anything else, such as a path that holds a URL, is never echoed (#848). */
 export function repoPath(url: string): string {
 	try {
 		const u = new URL(
 			url.replace(/^([\w.-]+)@([^:/]+):(?!\/\/)/, "ssh://$1@$2/"),
 		);
-		return u.pathname.replace(/^\/+/, "").replace(/\.git$/, "") || url;
+		const path = u.pathname.replace(/^\/+/, "").replace(/\.git$/, "");
+		return SAFE_REPO.test(path) ? path : UNSHOWN_REPO;
 	} catch {
-		return url;
+		return UNSHOWN_REPO;
 	}
+}
+
+/** A repository for a log line: `host/owner/repo` for a URL, the path for a folder; never userinfo, query or fragment (#848). */
+export function repoLabel(source: string): string {
+	const host = urlHost(source);
+	if (host) return `${host}/${repoPath(source)}`;
+	return isAbsolute(source) ? source : UNSHOWN_REPO;
 }
 
 const HOST_RULE = /^[a-z0-9.-]+(:\d{1,5})?$/;
 
-/** A typed host as `host[:port]`: lowercased, scheme and path dropped; null when it still is not one. */
+/**
+ * A typed host as `host[:port]`, the way `urlHost` reads a URL: lowercased, scheme and path
+ * dropped, the scheme's default port (:443, :80 for http) dropped; null when it is not one (#848).
+ */
 export function normalizeGitHost(input: string): string | null {
-	const host = input
-		.trim()
-		.toLowerCase()
+	const text = input.trim().toLowerCase();
+	const host = text
 		.replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
 		.replace(/^[^@/]*@/, "")
 		.replace(/\/.*$/, "");
-	return HOST_RULE.test(host) ? host : null;
+	if (!HOST_RULE.test(host)) return null;
+	const [name = "", port] = host.split(":");
+	if (port === undefined) return host;
+	const n = Number(port);
+	return n === (text.startsWith("http://") ? 80 : 443) ? name : `${name}:${n}`;
 }
 
 export const GIT_HOST_RULE =
@@ -95,11 +114,54 @@ export function tokenFrom(creds: Record<string, unknown>): string | null {
 	return null;
 }
 
+/** An environment token for a git host, read the way gh and glab read it. */
+export interface EnvGitToken {
+	variable: string;
+	token: string;
+}
+
+/**
+ * The env token for `host` (#848): github.com takes GH_TOKEN then GITHUB_TOKEN, the host
+ * named by GH_HOST the enterprise pair, gitlab.com or GITLAB_HOST GITLAB_TOKEN; Bitbucket none.
+ */
+export function envTokenFor(
+	host: string,
+	env: NodeJS.ProcessEnv = process.env,
+): EnvGitToken | null {
+	const first = (...names: string[]): EnvGitToken | null => {
+		for (const variable of names) {
+			const token = env[variable]?.trim();
+			if (token) return { variable, token };
+		}
+		return null;
+	};
+	const h = host.toLowerCase();
+	if (h === "github.com") return first("GH_TOKEN", "GITHUB_TOKEN");
+	if (env.GH_HOST && normalizeGitHost(env.GH_HOST) === h)
+		return first("GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN");
+	if (
+		h === "gitlab.com" ||
+		(env.GITLAB_HOST && normalizeGitHost(env.GITLAB_HOST) === h)
+	)
+		return first("GITLAB_TOKEN");
+	return null;
+}
+
+/** A token-bearing source: a saved connection or an env token. */
+export function isTokenSource(source: GitCredentialSource): boolean {
+	return source === "connection" || source === "env";
+}
+
 /** The short helper name for a label, or null when the first word is quoted or escaped. */
 export function helperName(value: string): string | null {
 	const m = /^!?([A-Za-z0-9_./-]+)(\s|$)/.exec(value.trim());
 	if (!m?.[1]) return null;
 	return m[1].split("/").pop() || null;
+}
+
+/** What a response may say of a helper: its name, never its text, which can embed a token (#848). */
+export function helperLabel(value: string): string {
+	return helperName(value) ?? "a custom git credential helper";
 }
 
 /**
@@ -126,7 +188,7 @@ export class GitCredential {
 
 	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */
 	authHeader(effectiveUrl: string): string | undefined {
-		if (this.display.source !== "connection" || !this.#token) return undefined;
+		if (!isTokenSource(this.display.source) || !this.#token) return undefined;
 		if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
 		const url = new URL(effectiveUrl);
 		if (this.#host && url.host.toLowerCase() !== this.#host) return undefined;
@@ -138,7 +200,7 @@ export class GitCredential {
 	envInput(url: string): Pick<GitEnvInput, "source" | "authHeader" | "scope"> {
 		const target = this.effectiveUrl ?? url;
 		const authHeader = this.authHeader(target);
-		if (this.display.source === "connection" && authHeader) {
+		if (isTokenSource(this.display.source) && authHeader) {
 			const u = new URL(target);
 			return {
 				source: "connection",
@@ -147,8 +209,7 @@ export class GitCredential {
 			};
 		}
 		return {
-			source:
-				this.display.source === "connection" ? "none" : this.display.source,
+			source: this.display.source === "machine" ? "machine" : "none",
 		};
 	}
 

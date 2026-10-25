@@ -15,6 +15,8 @@
  */
 
 export type Theme = "light" | "dark";
+/** What Appearance stores; `system` follows the OS (#848). */
+export type ThemeChoice = Theme | "system";
 
 export const THEME_COOKIE = "prismalens-theme";
 export const DEFAULT_THEME: Theme = "dark";
@@ -44,12 +46,30 @@ export function writeCookie(name: string, value: string): void {
 	document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${ONE_YEAR_SECONDS}; SameSite=Lax`;
 }
 
-export function getTheme(): Theme {
-	return readCookie(THEME_COOKIE) === "light" ? "light" : DEFAULT_THEME;
+export const SYSTEM_DARK = "(prefers-color-scheme: dark)";
+
+export function getThemeChoice(): ThemeChoice {
+	const v = readCookie(THEME_COOKIE);
+	return v === "light" || v === "system" ? v : DEFAULT_THEME;
 }
 
-export function setTheme(theme: Theme): void {
-	writeCookie(THEME_COOKIE, theme);
+/** The theme a choice shows now. */
+export function resolveTheme(choice: ThemeChoice): Theme {
+	if (choice !== "system") return choice;
+	if (typeof window === "undefined") return DEFAULT_THEME;
+	return window.matchMedia(SYSTEM_DARK).matches ? "dark" : "light";
+}
+
+export function getTheme(): Theme {
+	return resolveTheme(getThemeChoice());
+}
+
+export function setTheme(choice: ThemeChoice): void {
+	writeCookie(THEME_COOKIE, choice);
+	applyTheme(resolveTheme(choice));
+}
+
+export function applyTheme(theme: Theme): void {
 	if (typeof document !== "undefined") {
 		document.documentElement.classList.toggle("dark", theme === "dark");
 		document.documentElement.classList.toggle("light", theme === "light");

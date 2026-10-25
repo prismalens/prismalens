@@ -29,6 +29,8 @@ export interface Step {
 }
 
 export interface FakeSession {
+	/** Why a hand-authored script stays (#914). */
+	description?: string;
 	agent?: { name: string; version: string };
 	loadSession?: boolean;
 	configOptions?: unknown[];
@@ -57,5 +59,9 @@ export function releaseDir(stateDir?: string): string;
 export function releaseRun(key: string, stateDir?: string): void;
 export function installFakeAgent(
 	binDir: string,
-	opts?: { session?: string; binaries?: string[]; stateDir?: string },
+	opts?: {
+		session?: string;
+		binaries?: string[];
+		stateDir?: string;
+	},
 ): string[];

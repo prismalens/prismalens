@@ -1,0 +1,30 @@
+{
+	"row": "permission-allowed",
+	"kind": "happy",
+	"title": "Permission allowed",
+	"run": { "accessLevel": "supervised", "answer": "allow" },
+	"expect": "allowed",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:permission-allowed]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "echo allowed > scenario-allowed.txt",
+							"$ask": true
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": { "inConversation": "[row:permission-allowed]" },
+			"response": { "content": "$report" }
+		}
+	]
+}

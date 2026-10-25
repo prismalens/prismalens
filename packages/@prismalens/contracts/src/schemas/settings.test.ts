@@ -210,9 +210,9 @@ describe("agent runtime settings (#907)", () => {
 	it("reads names and states, never values, and whether this caller may edit runtime", () => {
 		const envVars = {
 			"claude-code": [
-				{ name: "ANTHROPIC_API_KEY", state: "env" },
-				{ name: "ANTHROPIC_BASE_URL", state: "set" },
-				{ name: "OPENROUTER_API_KEY", state: "unset" },
+				{ name: "ANTHROPIC_API_KEY", state: "env", inEnv: false },
+				{ name: "ANTHROPIC_BASE_URL", state: "set", inEnv: true },
+				{ name: "OPENROUTER_API_KEY", state: "unset", inEnv: false },
 			],
 		} as const;
 		const parsed = HarnessSettingsSchema.parse({
@@ -228,5 +228,38 @@ describe("agent runtime settings (#907)", () => {
 		expect(JSON.stringify(AgentEnvVarSchema.parse({ name: "OPENAI_API_KEY", state: "set", value: "sk-1" }))).not.toContain(
 			"sk-1",
 		);
+	});
+
+	it("parses a status with and without toolsHint (#848 C17)", () => {
+		const withHint = HarnessStatusSchema.parse({
+			id: "gemini",
+			label: "Gemini CLI",
+			binary: "gemini",
+			installed: true,
+			tested: null,
+			install: "npm i -g @google/gemini-cli",
+			defaultModel: null,
+			modelVia: "unsupported",
+			loginHint: "gemini sign-in",
+			models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
+			toolsHint: {
+				text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
+			},
+		});
+		expect(withHint.toolsHint?.text).toContain("Gemini's folder trust");
+
+		const withoutHint = HarnessStatusSchema.parse({
+			id: "claude-code",
+			label: "Claude Code",
+			binary: "claude",
+			installed: true,
+			tested: null,
+			install: "npm i -g @anthropic-ai/claude-code",
+			defaultModel: null,
+			modelVia: "acp",
+			loginHint: "claude login",
+			models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
+		});
+		expect(withoutHint.toolsHint).toBeUndefined();
 	});
 });

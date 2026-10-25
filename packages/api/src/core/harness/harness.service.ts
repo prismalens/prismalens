@@ -247,14 +247,14 @@ export function envVarStates(
 	);
 	const saved = new Set(stored);
 	const names = Array.from(new Set([...keys, ...[...stored].sort()]));
-	return names.map((name) => ({
-		name,
-		state: saved.has(name)
-			? "set"
-			: keys.includes(name) && host[name] !== undefined
-				? "env"
-				: "unset",
-	}));
+	return names.map((name) => {
+		const inHost = keys.includes(name) && host[name] !== undefined;
+		return {
+			name,
+			state: saved.has(name) ? "set" : inHost ? "env" : "unset",
+			inEnv: saved.has(name) && inHost,
+		};
+	});
 }
 
 function nonEmpty<K extends string, V extends object>(
@@ -415,7 +415,8 @@ export class HarnessService implements OnApplicationBootstrap {
 		const configDir = row.configDir ? s.configDirs?.[id] : undefined;
 		const rows = this.decryptRows(stored[id]);
 		const env = {
-			...getHarnessProviderKeys(id, process.env),
+			// Checked after the rows overlay the host: a saved https gateway fixes an unsafe host one (#911).
+			...getHarnessProviderKeys(id, { ...process.env, ...rows }),
 			...(configDir && row.configDir
 				? { [row.configDir.envKey]: configDir }
 				: {}),
@@ -437,6 +438,20 @@ export class HarnessService implements OnApplicationBootstrap {
 					}
 				: null,
 		};
+	}
+
+	/** An agent whose runtime is refused still lists, without it; only its own run fails. */
+	private listedRuntime(
+		id: HarnessId,
+		s: HarnessSettings,
+		stored: Partial<Record<HarnessId, Record<string, string>>>,
+	): AgentRuntime | null {
+		try {
+			return this.runtimeOf(id, s, stored);
+		} catch (err) {
+			this.logger.warn(`${id}: ${(err as Error).message}`);
+			return null;
+		}
 	}
 
 	private decryptRows(
@@ -652,7 +667,7 @@ export class HarnessService implements OnApplicationBootstrap {
 							command: programPath(patch.localAgent.command),
 							args: patch.localAgent.args,
 						};
-		if (patch.env) await this.saveEnv(patch.env);
+		const envValue = patch.env ? await this.envValue(patch.env) : undefined;
 		const models = cleanModels({ ...current.models, ...patch.models });
 		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
 		const efforts = cleanModels({ ...current.efforts, ...patch.efforts });
@@ -686,15 +701,29 @@ export class HarnessService implements OnApplicationBootstrap {
 			...nonEmpty("configDirs", configDirs),
 			...(localAgent ? { localAgent } : {}),
 		};
-		await this.prisma.setting.upsert({
-			where: { key: SETTING_KEY },
-			update: { value: JSON.stringify(next), type: "json" },
-			create: {
-				key: SETTING_KEY,
-				value: JSON.stringify(next),
-				type: "json",
-				category: "ai",
-			},
+		// The variables and the rest of the PATCH land together or not at all (#911).
+		await this.prisma.$transaction(async (tx) => {
+			if (envValue !== undefined)
+				await tx.setting.upsert({
+					where: { key: ENV_KEY },
+					update: { value: envValue, type: "encrypted" },
+					create: {
+						key: ENV_KEY,
+						value: envValue,
+						type: "encrypted",
+						category: "ai",
+					},
+				});
+			await tx.setting.upsert({
+				where: { key: SETTING_KEY },
+				update: { value: JSON.stringify(next), type: "json" },
+				create: {
+					key: SETTING_KEY,
+					value: JSON.stringify(next),
+					type: "json",
+					category: "ai",
+				},
+			});
 		});
 		const changed = new Set<HarnessId>([
 			...(Object.keys(patch.binaryPaths ?? {}) as HarnessId[]),
@@ -710,10 +739,10 @@ export class HarnessService implements OnApplicationBootstrap {
 		return this.withEnvNames(next);
 	}
 
-	/** Validates every name and value first, then writes the ciphertext; a refusal saves nothing. */
-	private async saveEnv(
+	/** Validates every name and value, then returns the stored JSON with the ciphertext; a refusal saves nothing. */
+	private async envValue(
 		patch: NonNullable<HarnessSettingsPatch["env"]>,
-	): Promise<void> {
+	): Promise<string> {
 		const credentials = this.credentials;
 		if (!credentials)
 			throw new HarnessSettingsError("Agent variables can't be stored here.");
@@ -731,6 +760,11 @@ export class HarnessService implements OnApplicationBootstrap {
 				}
 				const refused = refuseEnvName(id, name);
 				if (refused) throw new HarnessSettingsError(refused);
+				// An empty value would override a working host value; Remove is how to clear one (#911).
+				if (value === "")
+					throw new HarnessSettingsError(
+						`${name} needs a value. Remove clears it.`,
+					);
 				if (name === "ANTHROPIC_BASE_URL" && !isSafeGatewayUrl(value))
 					throw new HarnessSettingsError(
 						`ANTHROPIC_BASE_URL must be https unless it points at this machine: ${value}`,
@@ -742,12 +776,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			if (Object.keys(next).length) stored[id] = next;
 			else delete stored[id];
 		}
-		const value = JSON.stringify(stored);
-		await this.prisma.setting.upsert({
-			where: { key: ENV_KEY },
-			update: { value, type: "encrypted" },
-			create: { key: ENV_KEY, value, type: "encrypted", category: "ai" },
-		});
+		return JSON.stringify(stored);
 	}
 
 	/**
@@ -830,7 +859,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		const settings = await this.getSettings();
 		const stored = await this.readEnv();
 		const runtimes = new Map(
-			HARNESS_IDS.map((id) => [id, this.runtimeOf(id, settings, stored)]),
+			HARNESS_IDS.map((id) => [id, this.listedRuntime(id, settings, stored)]),
 		);
 		const catalogue = this.models.catalogue();
 		return {

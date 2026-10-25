@@ -486,7 +486,7 @@ export function ModelChip({
 								setOpen(false);
 								setAdding(true);
 							}}
-							className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+							className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-md:size-12 pointer-coarse:size-12"
 							data-testid="rail-add-agent"
 						>
 							<Plus className="size-4" />

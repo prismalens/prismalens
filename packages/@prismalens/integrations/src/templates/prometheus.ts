@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AuthTemplate } from "../types.js";
+import { SOURCE_AUTH_KINDS } from "./source-auth.js";
 
 export const prometheus: AuthTemplate = {
 	id: "prometheus",
@@ -27,15 +28,16 @@ export const prometheus: AuthTemplate = {
 			placeholder: "http://prometheus.internal:9090",
 			pattern: "^https?://[^@\\s/$.?#][^@?#\\s]*$",
 			description:
-				"Credentials and query strings in the URL are not supported. Reachable from this machine without credentials. Put a read-only reverse proxy in front if your Prometheus needs auth.",
+				"Credentials and query strings in the URL are not supported; choose how to sign in below.",
 		},
 	],
 	connectionCredentialFields: [],
 	urlOnly: true,
+	credentialKinds: SOURCE_AUTH_KINDS,
 	authenticate: {},
 	proxy: { baseUrl: "{{baseUrl}}" },
 	verify: { method: "GET", path: "/-/ready" },
 	connectionCreation: { mode: "form" },
 	postIntegrationCreation: { action: "none" },
-	display: { authModeLabel: "URL only" },
+	display: { authModeLabel: "URL" },
 };

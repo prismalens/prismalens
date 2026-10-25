@@ -48,6 +48,7 @@ export {
 	useIntegrations,
 	// Service integration hooks
 	useServiceIntegrations,
+	useSetServiceIntegrationOrder,
 	useTemplate,
 	// New names (three-layer model)
 	useTemplates,

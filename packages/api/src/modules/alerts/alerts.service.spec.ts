@@ -105,6 +105,18 @@ describe("AlertsService (BDD)", () => {
 			});
 		});
 
+		it("stores a source link without its userinfo, and none that is not http(s) (#848)", async () => {
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockPrismaService.alert.create.mockResolvedValue(AlertFactory.create({}));
+
+			await service.create({ source: "api", title: "A", sourceUrl: "https://user:sentinel@prom:9090/graph?g0.expr=up" });
+			await service.create({ source: "api", title: "B", sourceUrl: "javascript:alert(1)" });
+
+			const [first, second] = mockPrismaService.alert.create.mock.calls.map(([arg]) => arg.data.sourceUrl);
+			expect(first).toBe("https://prom:9090/graph?g0.expr=up");
+			expect(second).toBeUndefined();
+		});
+
 		it("should default severity to medium when not provided", async () => {
 			const createDto: CreateAlertDto = {
 				source: "github",
