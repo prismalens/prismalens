@@ -278,7 +278,9 @@ export class ChangeEventsService {
 				checkedAt: new Date().toISOString(),
 			});
 		} catch (err) {
-			this.logger.warn(`What changed: ${repoLabel(repo.url)}: ${message(err)}`);
+			this.logger.warn(
+				`What changed: ${repoLabel(repo.url)}: ${err instanceof GitFailure ? err.code : "error"}`,
+			);
 			this.sources.set(link.key, {
 				...base,
 				status: "failed",
