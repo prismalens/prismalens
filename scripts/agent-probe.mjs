@@ -11,7 +11,7 @@
  *   agent-probe.mjs --agent <id> --version <v> [--companion <v>]   one version; exit 1 when it fails
  */
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -34,12 +34,20 @@ export const ROWS = [
 		npm: "@agentclientprotocol/codex-acp",
 		bin: "codex-acp",
 		args: [],
+		// codex-acp signs in with this key only through DEFAULT_AUTH_REQUEST; it never reaches a model (#914).
+		env: {
+			CODEX_API_KEY: "probe-no-model",
+			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
+		},
+		home: "CODEX_HOME",
 	},
 	{
 		id: "gemini",
 		npm: "@google/gemini-cli",
 		bin: "gemini",
 		args: ["--experimental-acp"],
+		env: { GEMINI_API_KEY: "probe-no-model" },
+		home: "GEMINI_CLI_HOME",
 	},
 	{
 		id: "deepagents",
@@ -97,6 +105,9 @@ function install(row, version, dir, companion) {
 				...(companion && COMPANIONS[row.id]
 					? { [COMPANIONS[row.id].env]: join(bin, COMPANIONS[row.id].bin) }
 					: {}),
+				// Its own empty home, so no runner sign-in or config is read.
+				...(row.home ? { [row.home]: join(dir, "home") } : {}),
+				...row.env,
 			},
 		};
 	}
@@ -233,6 +244,7 @@ export function summarize(answer) {
 
 async function probeOne(row, version, companion) {
 	const dir = mkdtempSync(join(tmpdir(), `pl-probe-${row.id}-`));
+	if (row.home) mkdirSync(join(dir, "home"));
 	try {
 		const started = install(row, version, dir, companion);
 		const cwd = mkdtempSync(join(dir, "cwd-"));
