@@ -67,7 +67,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
-				{ provide: HarnessService, useValue: {} },
+				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

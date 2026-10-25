@@ -20,7 +20,6 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	DEFAULT_ACCESS_LEVEL,
 	GATEWAY_RUN_FILE,
-	getHarnessProviderKeys,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
@@ -28,7 +27,10 @@ import {
 	resolveAccess,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
-import { harnessLaunch } from "@prismalens/config/harness-selection";
+import {
+	harnessLaunch,
+	type LaunchProbe,
+} from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
 	type CanonicalEvent,
@@ -71,6 +73,7 @@ import {
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
+import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
@@ -353,6 +356,7 @@ async function runJobInternal(
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
+		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
 		const gateway = await ports.gateway
 			?.lease(runId, workspace.toolsServer)
@@ -380,8 +384,8 @@ async function runJobInternal(
 				...(data.unattended ? { unattended: true } : {}),
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
-				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
-				env: getHarnessProviderKeys(selection.harness, process.env),
+				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
+				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -787,7 +791,8 @@ async function runFollowUp(
 			throw new Error(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
-		if (!harnessLaunch(row))
+		const runtime = await ports.agentRuntime(harness);
+		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
@@ -873,7 +878,7 @@ async function runFollowUp(
 				: (inv.effort ?? null);
 		const modelSource = pick
 			? pick.modelSource
-			: followUpModelSource(harness, model);
+			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
 		const gateway = await ports.gateway
 			?.lease(id, workspace.toolsServer)
@@ -928,7 +933,7 @@ async function runFollowUp(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				...(accessLevel ? { accessLevel } : {}),
-				env: getHarnessProviderKeys(harness, process.env),
+				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -1214,10 +1219,31 @@ async function ownTheEnd(
 export function followUpModelSource(
 	harness: HarnessId,
 	model: string | null,
+	agentEnv: Record<string, string> = {},
 ): ModelSource | undefined {
 	if (!model) return undefined;
-	const now = resolveHarnessModel(harness, undefined, process.env);
+	const now = resolveHarnessModel(harness, undefined, {
+		...process.env,
+		...agentEnv,
+	});
 	return now.model === model ? now.source : "operator";
+}
+
+/** A run's spawn inputs from Settings → Agent (#907). */
+function runOptionsOf(runtime: AgentRuntime) {
+	return {
+		env: runtime.env,
+		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
+		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
+		...(runtime.note ? { runtimeNote: runtime.note } : {}),
+	};
+}
+
+function launchProbeOfRuntime(runtime: AgentRuntime): LaunchProbe {
+	return {
+		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
+		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
+	};
 }
 
 /** The follow-up's message, not delivered, and why: what the conversation shows when it never ran. */

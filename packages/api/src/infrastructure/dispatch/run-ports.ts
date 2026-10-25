@@ -25,6 +25,7 @@ import type {
 	RunUsage,
 } from "@prismalens/contracts/schemas";
 import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
+import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import type {
 	RepoSource,
 	Snapshot,
@@ -172,6 +173,8 @@ export interface RunPorts {
 		/** The model is one the operator added in Settings, Agent (#673 w57). */
 		customModel?: boolean;
 	}>;
+	/** The agent's env, binary path and arguments from Settings → Agent (#907). */
+	agentRuntime(id: HarnessId): Promise<AgentRuntime>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/**
 	 * The repos of the incident's service, then of each service its alerts name,

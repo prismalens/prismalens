@@ -4,7 +4,6 @@
 import { ORPCError } from "@orpc/nest";
 import { describe, expect, it, vi } from "vitest";
 import type { HarnessService } from "../harness/harness.service.js";
-import type { HarnessProbeService } from "../harness/harness-probe.service.js";
 import { SettingsController } from "./settings.controller.js";
 import { ActiveRunsError, type SettingsService } from "./settings.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
@@ -16,7 +15,6 @@ function dangerHandlers(settings: Partial<SettingsService>) {
 	const controller = new SettingsController(
 		settings as SettingsService,
 		{} as HarnessService,
-		{} as HarnessProbeService,
 		telemetryStub(),
 		{} as AboutService,
 	);
@@ -84,7 +82,6 @@ describe("SettingsController usage data (#673 w45)", () => {
 		const controller = new SettingsController(
 			{} as SettingsService,
 			{} as HarnessService,
-			{} as HarnessProbeService,
 			telemetry,
 			{} as AboutService,
 		);

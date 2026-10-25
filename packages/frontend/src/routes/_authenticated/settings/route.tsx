@@ -2,6 +2,7 @@
  * Settings (#523, study-v3 §2): the sidebar swaps to the pages with Back
  * at its foot (#848); the chosen page's rows fill the frame. `tab` names it.
  */
+import { HARNESS_IDS, type HarnessId } from "@prismalens/config/harness";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import {
 	SETTINGS_SECTIONS,
@@ -23,27 +24,39 @@ export const LEGACY_SETTINGS_TABS: Readonly<
 
 /**
  * The router spreads this over the raw search, so an unknown tab is overwritten, not omitted (w8-2).
- * `source` opens one connection on Sources, as a coverage Fix asks (#848).
+ * `agent` opens one agent's page under Agent (#907); `source` one connection on Sources (#848).
  */
 export const validateSettingsSearch = (
 	search: Record<string, unknown>,
-): { tab?: SettingsTab; source?: string } => {
+): { tab?: SettingsTab; agent?: HarnessId; source?: string } => {
 	const tab = TABS.includes(search.tab as SettingsTab)
 		? (search.tab as SettingsTab)
 		: undefined;
+	const agent =
+		tab === "agent" && HARNESS_IDS.includes(search.agent as HarnessId)
+			? (search.agent as HarnessId)
+			: undefined;
 	const source =
 		tab === "sources" && typeof search.source === "string" && search.source
 			? search.source
 			: undefined;
-	return { tab, source };
+	return { tab, agent, source };
 };
 
-/** The new home of an old `?tab=`, read from the raw query (validation drops it). */
+/** The new home of an old `?tab=`, read from the raw query (validation drops it); `?tab=harness&agent=` keeps its agent. */
 export function legacySettingsTarget(
 	searchStr: string,
-): { tab: SettingsTab; hash?: string } | undefined {
-	const raw = new URLSearchParams(searchStr).get("tab")?.replace(/^"|"$/g, "");
-	return raw ? LEGACY_SETTINGS_TABS[raw] : undefined;
+): { tab: SettingsTab; hash?: string; agent?: HarnessId } | undefined {
+	const query = new URLSearchParams(searchStr);
+	const read = (key: string) => query.get(key)?.replace(/^"|"$/g, "");
+	const raw = read("tab");
+	const to = raw ? LEGACY_SETTINGS_TABS[raw] : undefined;
+	if (!to) return undefined;
+	const { agent } = validateSettingsSearch({
+		tab: to.tab,
+		agent: read("agent"),
+	});
+	return agent ? { ...to, agent } : to;
 }
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -53,7 +66,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 		if (to)
 			throw redirect({
 				to: "/settings",
-				search: { tab: to.tab },
+				search: { tab: to.tab, agent: to.agent },
 				hash: to.hash,
 				replace: true,
 			});

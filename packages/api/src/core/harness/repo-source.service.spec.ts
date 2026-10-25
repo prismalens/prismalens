@@ -310,7 +310,7 @@ describe("repo-source.service", () => {
 			expect(existsSync(dest)).toBe(false);
 		});
 
-		it("snapshot() removes repo-supplied agent config at any depth and keeps the code", async () => {
+		it("snapshot() keeps repo-supplied agent config at any depth, nothing stripped (#817)", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);
 			for (const [path, body] of [
@@ -339,7 +339,7 @@ describe("repo-source.service", () => {
 			const dest = join(tmp("pl-dest-"), "repo");
 			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest);
 
-			for (const gone of [
+			for (const kept of [
 				".opencode",
 				"opencode.json",
 				".claude",
@@ -355,7 +355,7 @@ describe("repo-source.service", () => {
 				"services/api/GEMINI.md",
 				"services/api/.cursorrules",
 			]) {
-				expect(existsSync(join(dest, gone)), gone).toBe(false);
+				expect(existsSync(join(dest, kept)), kept).toBe(true);
 			}
 			expect(readFileSync(join(dest, "services/api/src/app.js"), "utf8")).toBe("code");
 		});

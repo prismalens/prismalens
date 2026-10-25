@@ -29,11 +29,11 @@ export function sandboxLine(sandbox?: SandboxCheck | null): string {
 	return `Sandbox unknown: ${sandbox.reason}.`;
 }
 
-/** The tag on the default row: where the default came from (#673 w21). */
-export function defaultTag(from: AxisSource): string {
-	if (from === "agent") return "Your default";
-	if (from === "prismalens") return "PrismaLens default";
-	return "From Settings";
+/** The tag on the level a run takes when none is picked: where it came from (#673 w21), never the word Default (#907). */
+export function levelTag(from: AxisSource): string {
+	if (from === "agent") return "From your settings file";
+	if (from === "prismalens") return "PrismaLens's pick";
+	return "Set in Settings";
 }
 
 const harnessId = (h: HarnessStatus): HarnessId => h.id as HarnessId;
@@ -67,25 +67,26 @@ const DEFAULT_FILE: Partial<Record<HarnessId, string>> = {
 	opencode: "~/.config/opencode/opencode.json",
 };
 
-/** The Settings line under Permission: set here, the agent's own default, or PrismaLens's (#673 w21). */
+/** The Settings line under Permission: set here, the agent's own settings file, or PrismaLens's pick (#673 w21). */
 export function permissionLine(
 	h: HarnessStatus,
 	set: AccessLevel | undefined,
 ): string {
 	if (set) return `${ACCESS_LEVEL_LABEL[set]}, set here.`;
-	const fallback = `${ACCESS_LEVEL_LABEL[DEFAULT_ACCESS_LEVEL]}, PrismaLens default.`;
+	const fallback = `${ACCESS_LEVEL_LABEL[DEFAULT_ACCESS_LEVEL]}, PrismaLens's pick.`;
 	const id = harnessId(h);
-	if (id === "deepagents") return `${fallback} deepagents has no modes.`;
+	if (id === "deepagents" || id === "local")
+		return `${fallback} ${h.label} has no modes.`;
 	if (id === "opencode")
 		return `${fallback} OpenCode has per-tool rules, not one permission level.`;
 	const local = h.localDefault?.permission;
 	if (!local)
-		return `${fallback} No default set in ${DEFAULT_FILE[id] ?? "its settings"}.`;
+		return `${fallback} No level set in ${DEFAULT_FILE[id] ?? "its settings"}.`;
 	if (local.level)
-		return `Your default: ${ACCESS_LEVEL_LABEL[local.level]}, from ${local.file} ("${local.value}").`;
+		return `${ACCESS_LEVEL_LABEL[local.level]}, from ${local.file} ("${local.value}").`;
 	if (local.reason)
 		return `${fallback} ${local.reason}, so "${local.value}" cannot apply.`;
-	return `${fallback} Your ${h.label} default "${local.value}" in ${local.file} has no PrismaLens Permission.`;
+	return `${fallback} Your ${h.label} setting "${local.value}" in ${local.file} has no PrismaLens Permission.`;
 }
 
 /** What each agent's own settings still decide, under the Settings rows (#673 w21). */
@@ -101,7 +102,7 @@ export function agentNote(h: HarnessStatus): string | null {
 		case "opencode":
 			return "Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.";
 		case "gemini":
-			return "Gemini CLI runs the copy untrusted, so every level runs as Ask always here.";
+			return "Gemini CLI's own folder trust and settings apply, as in your terminal.";
 		default:
 			return null;
 	}

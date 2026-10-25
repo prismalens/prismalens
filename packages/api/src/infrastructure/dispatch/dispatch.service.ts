@@ -136,9 +136,13 @@ function startedByAlert(triggerType: string | null): boolean {
 export function resolveHarnessRunModel(
 	harnessId: HarnessId,
 	operatorModel: string | undefined,
+	agentEnv: Record<string, string> = {},
 ): { model?: string; modelSource?: ModelSource } {
 	if (HARNESS_REGISTRY[harnessId].modelVia === "unsupported") return {};
-	const resolved = resolveHarnessModel(harnessId, operatorModel, process.env);
+	const resolved = resolveHarnessModel(harnessId, operatorModel, {
+		...process.env,
+		...agentEnv,
+	});
 	return {
 		...(resolved.model ? { model: resolved.model } : {}),
 		modelSource: resolved.source,
@@ -329,6 +333,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				await this.timelineService.create(dto);
 			},
 			resolveHarness: (requested) => this.resolveHarness(requested),
+			agentRuntime: (id) => this.harnessService.runtimeFor(id),
 			incidentRepos: async (incidentId) => {
 				const service = {
 					select: {
@@ -491,10 +496,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const pick = (asked: string | null | undefined, stored?: string) =>
 			asked === undefined ? stored : (asked ?? undefined);
 		const effort = pick(requested.effort, settings.efforts?.[h]);
-		const local = this.harnessService.localDefaultOf(h);
+		const runtime = await this.harnessService.runtimeFor(h);
+		const local = this.harnessService.localDefaultOf(h, runtime.env);
 		const model = resolveHarnessRunModel(
 			h,
 			pick(requested.model, settings.models?.[h]),
+			runtime.env,
 		);
 		return {
 			selection,

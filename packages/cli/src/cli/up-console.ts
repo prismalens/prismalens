@@ -159,7 +159,7 @@ export const TELEMETRY_NOTICE =
 export function noAgentLine(agents: { installed: boolean }[]): string | null {
 	return agents.some((a) => a.installed)
 		? null
-		: "No coding agent on PATH: investigations need one. `pl doctor` shows how to install one.";
+		: "No coding agent can run: investigations need one. Add one in Settings → Agent.";
 }
 
 export interface BrowserCommandOptions {

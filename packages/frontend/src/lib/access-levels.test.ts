@@ -12,7 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
 	agentNote,
-	defaultTag,
+	levelTag,
 	levelIcon,
 	levelRowLine,
 	levelSandbox,
@@ -29,6 +29,7 @@ const mockHarness = (
 	label: id === "claude-code" ? "Claude Code" : id === "gemini" ? "Gemini CLI" : id === "codex" ? "Codex" : id === "opencode" ? "OpenCode" : "deepagents",
 	binary: id,
 	installed: true,
+	runnable: true,
 	tested: null,
 	install: "",
 	defaultModel: null,
@@ -37,6 +38,10 @@ const mockHarness = (
 	loginHint: "",
 	envModel: null,
 	windowsOnlyPath: null,
+	cliBinary: "",
+	configDir: null,
+	providerKeys: [],
+	envVars: [],
 	models: { source: "harness", asOf: "", entries: [] },
 	checked: null,
 	...over,
@@ -73,11 +78,11 @@ describe("levelIcon and sandboxLine (#673 w51)", () => {
 	});
 });
 
-describe("defaultTag", () => {
+describe("levelTag (#907: never \"Default\")", () => {
 	it("returns expected tag for each axis source", () => {
-		expect(defaultTag("agent")).toBe("Your default");
-		expect(defaultTag("prismalens")).toBe("PrismaLens default");
-		expect(defaultTag("settings")).toBe("From Settings");
+		expect(levelTag("agent")).toBe("From your settings file");
+		expect(levelTag("prismalens")).toBe("PrismaLens's pick");
+		expect(levelTag("settings")).toBe("Set in Settings");
 	});
 });
 
@@ -87,65 +92,65 @@ describe("permissionLine variants (§1 Settings lines)", () => {
 		expect(permissionLine(mockHarness("codex"), "full-access")).toBe("Full access, set here.");
 	});
 
-	it("deepagents: 'Ask always, PrismaLens default. deepagents has no modes.'", () => {
+	it("deepagents: 'Ask always, PrismaLens's pick. deepagents has no modes.'", () => {
 		expect(permissionLine(mockHarness("deepagents"), undefined)).toBe(
-			"Ask always, PrismaLens default. deepagents has no modes.",
+			"Ask always, PrismaLens's pick. deepagents has no modes.",
 		);
 	});
 
-	it("opencode: 'Ask always, PrismaLens default. OpenCode has per-tool rules, not one permission level.'", () => {
+	it("opencode: 'Ask always, PrismaLens's pick. OpenCode has per-tool rules, not one permission level.'", () => {
 		expect(permissionLine(mockHarness("opencode"), undefined)).toBe(
-			"Ask always, PrismaLens default. OpenCode has per-tool rules, not one permission level.",
+			"Ask always, PrismaLens's pick. OpenCode has per-tool rules, not one permission level.",
 		);
 	});
 
-	it("key absent: '<default label>, PrismaLens default. No default set in <file>.'", () => {
+	it("key absent: '<default label>, PrismaLens's pick. No level set in <file>.'", () => {
 		expect(permissionLine(mockHarness("claude-code"), undefined)).toBe(
-			"Ask always, PrismaLens default. No default set in ~/.claude/settings.json.",
+			"Ask always, PrismaLens's pick. No level set in ~/.claude/settings.json.",
 		);
 		expect(permissionLine(mockHarness("codex"), undefined)).toBe(
-			"Ask always, PrismaLens default. No default set in ~/.codex/config.toml.",
+			"Ask always, PrismaLens's pick. No level set in ~/.codex/config.toml.",
 		);
 		expect(permissionLine(mockHarness("gemini"), undefined)).toBe(
-			"Ask always, PrismaLens default. No default set in ~/.gemini/settings.json.",
+			"Ask always, PrismaLens's pick. No level set in ~/.gemini/settings.json.",
 		);
 	});
 
-	it("mapped: 'Your default: <label>, from <file> (\"<value>\").'", () => {
+	it("mapped: '<label>, from <file> (\"<value>\").'", () => {
 		const h = mockHarness("claude-code", {
 			localDefault: {
 				permission: { level: "auto", file: "~/.claude/settings.json", value: "auto" },
 			},
 		});
 		expect(permissionLine(h, undefined)).toBe(
-			'Your default: Auto, from ~/.claude/settings.json ("auto").',
+			'Auto, from ~/.claude/settings.json ("auto").',
 		);
 	});
 
-	it("present, cannot run here (Gemini reason): '<default label>, PrismaLens default. <reason>, so \"<value>\" cannot apply.'", () => {
+	it("present, cannot run here (Gemini reason): '<default label>, PrismaLens's pick. <reason>, so \"<value>\" cannot apply.'", () => {
 		const h = mockHarness("gemini", {
 			localDefault: {
 				permission: {
 					level: null,
 					file: "~/.gemini/settings.json",
 					value: "auto_edit",
-					reason: "Gemini CLI runs the copy untrusted here",
+					reason: "Gemini CLI does not offer it here",
 				},
 			},
 		});
 		expect(permissionLine(h, undefined)).toBe(
-			'Ask always, PrismaLens default. Gemini CLI runs the copy untrusted here, so "auto_edit" cannot apply.',
+			`Ask always, PrismaLens's pick. Gemini CLI does not offer it here, so "auto_edit" cannot apply.`,
 		);
 	});
 
-	it("present, no equivalent: '<default label>, PrismaLens default. Your <agent> default \"<value>\" in <file> has no PrismaLens Permission.'", () => {
+	it("present, no equivalent: '<default label>, PrismaLens's pick. Your <agent> setting \"<value>\" in <file> has no PrismaLens Permission.'", () => {
 		const h = mockHarness("claude-code", {
 			localDefault: {
 				permission: { level: null, file: "~/.claude/settings.json", value: "dontAsk" },
 			},
 		});
 		expect(permissionLine(h, undefined)).toBe(
-			'Ask always, PrismaLens default. Your Claude Code default "dontAsk" in ~/.claude/settings.json has no PrismaLens Permission.',
+			`Ask always, PrismaLens's pick. Your Claude Code setting "dontAsk" in ~/.claude/settings.json has no PrismaLens Permission.`,
 		);
 	});
 });
@@ -206,7 +211,7 @@ describe("agentNote variants (the four agent notes)", () => {
 
 	it("Gemini CLI agent note", () => {
 		expect(agentNote(mockHarness("gemini"))).toBe(
-			"Gemini CLI runs the copy untrusted, so every level runs as Ask always here.",
+			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
 		);
 	});
 

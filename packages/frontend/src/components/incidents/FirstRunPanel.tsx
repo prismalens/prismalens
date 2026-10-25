@@ -3,7 +3,8 @@
 
 import type { HarnessStatus } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+import { AddAgentDialog } from "@/components/settings/AddAgentDialog";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { Button } from "@/components/ui/button";
@@ -152,7 +153,7 @@ export function FirstRunPanel() {
 	const p = useSetupProgress();
 	const { data: token } = useWebhookToken();
 	const url = webhookUrl("prometheus");
-	const looked = p.harnesses.map((h) => h.label);
+	const [adding, setAdding] = useState(false);
 	return (
 		<div
 			className="mx-auto w-full max-w-[34rem] px-4 pt-12 pb-12"
@@ -224,29 +225,30 @@ export function FirstRunPanel() {
 					title="A coding agent on this machine"
 					testId="first-run-step-3"
 					action={
-						<Button asChild variant="secondary" size="sm">
-							<Link to="/settings" search={{ tab: "agent" }}>
-								Agent
-							</Link>
-						</Button>
+						p.agent ? (
+							<Button asChild variant="secondary" size="sm">
+								<Link to="/settings" search={{ tab: "agent" }}>
+									Agent
+								</Link>
+							</Button>
+						) : (
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => setAdding(true)}
+								data-testid="first-run-add-agent"
+							>
+								Add agent
+							</Button>
+						)
 					}
 				>
 					{p.agent ? (
 						<AgentReadiness agent={p.agent} />
 					) : (
-						<>
-							PrismaLens looks for {looked.join(", ")} on PATH. Install one:
-							{p.harnesses.slice(0, 3).map((h) => (
-								<Mono
-									key={h.id}
-									className="mt-1 block break-all text-text-2"
-									data-testid="first-run-install"
-								>
-									{h.install}
-								</Mono>
-							))}
-						</>
+						"No agent can run yet. Add agent shows each one this machine has and how to sign it in."
 					)}
+					{adding && <AddAgentDialog open onOpenChange={setAdding} />}
 				</Step>
 				<Step
 					n={4}

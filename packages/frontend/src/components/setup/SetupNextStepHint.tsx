@@ -10,8 +10,8 @@
  * This component asks `setup.getStatus` what is genuinely incomplete and names
  * the first one, so the empty state always points at a door.
  *
- * There is no wizard and no account (ADR 0001 §2): `aiProvider` means a harness is
- * on PATH and `codeLocation` means a service has a repository linked, neither
+ * There is no wizard and no account (ADR 0001 §2): `aiProvider` means the chosen
+ * agent can run and `codeLocation` means a service has a repository linked, neither
  * of which is a wizard step any more, so both hints point at the screen that
  * actually resolves them instead of `/setup`.
  */
@@ -49,7 +49,7 @@ export function SetupNextStepHint({
 
 	if (!steps.aiProvider) {
 		hint = {
-			message: "No coding agent is on PATH, so investigations cannot run yet.",
+			message: "No coding agent can run yet, so investigations cannot start.",
 			actions: (
 				<Button variant="secondary" size="sm" asChild>
 					<Link to="/settings" search={{ tab: "agent" }}>

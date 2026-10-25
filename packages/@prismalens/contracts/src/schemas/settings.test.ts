@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	AgentEnvVarSchema,
 	effectiveAccess,
 	HarnessSettingsSchema,
 	HarnessStatusSchema,
@@ -181,6 +182,52 @@ describe("HarnessStatusSchema", () => {
 			models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
 		});
 		expect(parsed.envModel).toBeNull();
+		expect(parsed).toMatchObject({ runnable: false, cliBinary: "", configDir: null });
+	});
+});
+
+describe("agent runtime settings (#907)", () => {
+	it("takes runtime fields, null clears, and refuses a bad env name or too many arguments", () => {
+		const ok = UpdateHarnessSettingsSchema.parse({
+			hiddenModels: { "claude-code": ["opus"] },
+			modelOrder: { codex: null },
+			binaryPaths: { "claude-code": "/opt/claude/bin/claude", gemini: null },
+			configDirs: { codex: "~/.codex-work" },
+			env: { "claude-code": { ANTHROPIC_BASE_URL: "https://b.example", OLD: null } },
+			localAgent: { command: "/usr/bin/node", args: ["agent.mjs"] },
+		});
+		expect(ok.env?.["claude-code"]?.OLD).toBeNull();
+		expect(UpdateHarnessSettingsSchema.safeParse({ localAgent: null }).success).toBe(true);
+		expect(UpdateHarnessSettingsSchema.safeParse({ env: { codex: { "1BAD": "x" } } }).success).toBe(false);
+		expect(
+			UpdateHarnessSettingsSchema.safeParse({
+				localAgent: { command: "/x", args: Array.from({ length: 33 }, () => "a") },
+			}).success,
+		).toBe(false);
+		expect(UpdateHarnessSettingsSchema.safeParse({ binaryPaths: { codex: "  " } }).success).toBe(false);
+	});
+
+	it("reads names and states, never values, and whether this caller may edit runtime", () => {
+		const envVars = {
+			"claude-code": [
+				{ name: "ANTHROPIC_API_KEY", state: "env", inEnv: false },
+				{ name: "ANTHROPIC_BASE_URL", state: "set", inEnv: true },
+				{ name: "OPENROUTER_API_KEY", state: "unset", inEnv: false },
+			],
+		} as const;
+		const parsed = HarnessSettingsSchema.parse({
+			harness: "auto",
+			envNames: { "claude-code": ["ANTHROPIC_BASE_URL"] },
+			canEditRuntime: false,
+		});
+		expect(parsed.envNames?.["claude-code"]).toEqual(["ANTHROPIC_BASE_URL"]);
+		const vars = envVars["claude-code"];
+		expect(vars.map((v) => AgentEnvVarSchema.parse(v))).toEqual(vars);
+		expect(AgentEnvVarSchema.safeParse({ name: "OPENAI_API_KEY", state: "shown" }).success).toBe(false);
+		// A value smuggled in is dropped, never passed on.
+		expect(JSON.stringify(AgentEnvVarSchema.parse({ name: "OPENAI_API_KEY", state: "set", value: "sk-1" }))).not.toContain(
+			"sk-1",
+		);
 	});
 
 	it("parses a status with and without toolsHint (#848 C17)", () => {

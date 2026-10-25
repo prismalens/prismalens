@@ -17,8 +17,20 @@ import { HarnessModelsService } from "./harness-models.service.js";
 export class HarnessProbeService {
 	constructor(private readonly models: HarnessModelsService) {}
 
-	async check(id: HarnessId): Promise<HarnessProbeResult> {
-		const probed = await probeHarness(id);
+	/** `runtime`: the agent's env, binary path and arguments from Settings (#907). */
+	async check(
+		id: HarnessId,
+		runtime?: {
+			env: Record<string, string>;
+			binaryPath?: string;
+			launchArgs?: string[];
+		},
+	): Promise<HarnessProbeResult> {
+		const probed = await probeHarness(id, {
+			...(runtime ? { env: runtime.env } : {}),
+			...(runtime?.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
+			...(runtime?.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
+		});
 		if (probed.outcome === "answers-acp")
 			this.models.remember(id, probed.models);
 		// The handshake passes signed out; the agent's own push says so (w8-9).
