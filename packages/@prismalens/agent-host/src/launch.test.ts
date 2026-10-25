@@ -132,6 +132,19 @@ describe("planLaunch env", () => {
 		expect(env.PRISMALENS_DB).toBeUndefined();
 	});
 
+	it("drops the product's own secrets even when a later layer sets them", () => {
+		const env = plan({
+			policy: {
+				...POLICY,
+				floor: { mode: "inherit-minus-own-secrets", ownSecrets: { names: ["ENCRYPTION_KEY"], prefixes: ["PRISMALENS_"] } },
+			},
+			stored: { ENCRYPTION_KEY: "stored" },
+			overrides: { PRISMALENS_DB: "override" },
+		}).env;
+		expect(env.ENCRYPTION_KEY).toBeUndefined();
+		expect(env.PRISMALENS_DB).toBeUndefined();
+	});
+
 	it("refuses a userSetup with no rows yet", () => {
 		expect(() => plan({ policy: { ...POLICY, userSetup: "supplied" } })).toThrow(/user-setup|supplied/);
 	});

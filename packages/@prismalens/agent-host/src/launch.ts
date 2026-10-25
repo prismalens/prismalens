@@ -66,12 +66,12 @@ export const GITHUB_TOKEN_VARS = [
 	"GITHUB_ENTERPRISE_TOKEN",
 ] as const;
 
-/** Which host variables reach the child before the row's keys. `allowlist` until #817 rules the denylist. */
+/** Which host variables reach the child before the row's keys. Products default to the denylist (#817); `allowlist` is the strict mode. */
 export type EnvFloor =
 	| { mode: "allowlist"; extraAllow?: readonly string[] }
 	| {
 			mode: "inherit-minus-own-secrets";
-			/** The product's own secrets, by exact name and by prefix. */
+			/** The product's own secrets, by name and prefix; dropped from every layer, after overrides. */
 			ownSecrets: { names?: readonly string[]; prefixes?: readonly string[] };
 	  };
 
@@ -203,8 +203,18 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	Object.assign(env, input.overrides ?? {});
 
 	const refused = policy.refuseEnvPrefixes ?? [];
+	const own =
+		policy.floor?.mode === "inherit-minus-own-secrets"
+			? policy.floor.ownSecrets
+			: {};
+	const ownNames = new Set(own.names ?? []);
+	const ownPrefixes = own.prefixes ?? [];
 	for (const key of Object.keys(env))
-		if (refused.some((p) => key.startsWith(p))) delete env[key];
+		if (
+			ownNames.has(key) ||
+			[...refused, ...ownPrefixes].some((p) => key.startsWith(p))
+		)
+			delete env[key];
 
 	const dirs = [runEnv.configDir, runEnv.dataDir];
 	if (policy.github === "exclude") {
