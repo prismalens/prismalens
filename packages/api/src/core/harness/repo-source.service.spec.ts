@@ -539,7 +539,8 @@ describe("repo-source.service", () => {
 				await releaseWorktreesIn(runWorktreeDir(`run6r${round}`));
 			}
 			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("prismalens run");
-		});
+			// 5 rounds of 4 real worktrees each: macOS git takes well past vitest's 5 s default (#918).
+		}, 60_000);
 
 		it("checkFolder() on a subdirectory returns the top level as root and the subdir as prefix", async () => {
 			const src = tmp("pl-src-");
