@@ -553,6 +553,8 @@ function stageAgentHost(dir, target) {
 		],
 		target,
 	);
+	for (const entry of readdirSync(target, { recursive: true }))
+		if (/\.(map|tsbuildinfo)$/.test(entry)) rmSync(join(target, entry));
 }
 
 // ---------------------------------------------------------------------------
