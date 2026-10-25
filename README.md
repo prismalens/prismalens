@@ -72,8 +72,9 @@ webhook URL and port), never a coding agent; Settings → Agent does that.
 - **On your own service.** In the dashboard, Services, then New service, with
   **Repository** set to a folder or a git URL. Then Incidents, New incident,
   pick the service and click **Investigate**. The agent works in a throwaway
-  clone of the repository's last commit: your checkout is never its working
-  directory, and uncommitted changes are not read. A run you start uses **Ask
+  git worktree of a folder, or a clone of a URL, at the repository's last
+  commit: your checkout is never its working directory, and uncommitted
+  changes are not read. A run you start uses **Ask
   always** unless Settings or the agent's own config sets another level. Reads
   and searches run, and a request to switch the agent's mode is denied, so the
   run keeps its mode; every other action the agent asks about waits for your
@@ -112,7 +113,7 @@ what changed:
 ## How it works
 
 - **One run, no model call.** An investigation is one coding-agent session in a
-  clone of the service's repo, driven over the Agent Client Protocol (ACP).
+  snapshot of the service's repo, driven over the Agent Client Protocol (ACP).
   PrismaLens assembles the prompt, routes the agent's permission requests,
   records the stream and validates the report.
 - **Your agent, its own sign-in.** Any ACP agent PrismaLens knows can run;

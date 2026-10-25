@@ -75,6 +75,11 @@ import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
+import {
+	releaseWorktreesIn,
+	runWorktreeDir,
+	sweepRunWorktrees,
+} from "../../core/harness/run-worktree.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
@@ -375,6 +380,7 @@ async function runJobInternal(
 				context,
 				harness: selection.harness,
 				cwd: workspace.cwd,
+				roots: rootsOf(workspace),
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
@@ -495,7 +501,7 @@ async function runJobInternal(
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
-			clearRunWorkspace(runDirFor(unvalidated.investigationId));
+			await clearRunWorkspace(unvalidated.investigationId);
 		}
 	}
 }
@@ -640,6 +646,22 @@ export function sessionCwds(ws: RunWorkspace): string[] {
 	return ws.layout === "multi" && first
 		? [ws.cwd, inside(first.dir, first.subPath)]
 		: [ws.cwd];
+}
+
+/**
+ * The handoff transcript, in every cwd the agent may start in (#918), with a `.gitignore`
+ * so the snapshot's `git status` stays clean.
+ */
+export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
+	for (const cwd of sessionCwds(ws)) {
+		const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
+		const dir = dirname(file);
+		// The checkout is untrusted: a committed symlink here must not redirect the write.
+		rmSync(dir, { recursive: true, force: true });
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
+		writeFileSync(file, text, { flag: "wx" });
+	}
 }
 
 function copyTargets(ws: RunWorkspace): CopyTarget[] {
@@ -909,14 +931,7 @@ async function runFollowUp(
 					afterRestart: !!resume.afterRestart,
 				})
 			: null;
-		if (seed) {
-			const file = join(workspace.cwd, HANDOFF_TRANSCRIPT_PATH);
-			const dir = dirname(file);
-			// The clone is untrusted: a committed symlink here must not redirect the write.
-			rmSync(dir, { recursive: true, force: true });
-			mkdirSync(dir, { recursive: true });
-			writeFileSync(file, seed.transcript, { flag: "wx" });
-		}
+		if (seed) writeHandoffTranscript(workspace, seed.transcript);
 		// The new session's first usage lands after the old one is cleared (ruling 13).
 		let handedOff: Promise<void> = Promise.resolve();
 		const usage = usageWriter(ports, id, () => handedOff);
@@ -927,6 +942,7 @@ async function runFollowUp(
 				context,
 				harness,
 				cwd: workspace.cwd,
+				roots: rootsOf(workspace),
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
@@ -1027,7 +1043,7 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		clearRunWorkspace(runDir);
+		await clearRunWorkspace(id);
 	}
 
 	// A `continue` that reached its agent ends as a run (I6-I8); everything else is settled here.
@@ -1299,7 +1315,19 @@ const RUN_WORKSPACE = [
 	join("config", GATEWAY_RUN_FILE),
 ];
 
-function clearRunWorkspace(runDir: string): void {
+async function clearRunWorkspace(runId: string): Promise<void> {
+	const runDir = runDirFor(runId);
+	for (const dir of [
+		runWorktreeDir(runId),
+		join(runDir, "repo"),
+		join(runDir, "repos"),
+	]) {
+		try {
+			await releaseWorktreesIn(dir);
+		} catch (e) {
+			logger.warn(`Failed to release the worktrees in ${dir}`, e);
+		}
+	}
 	for (const rel of RUN_WORKSPACE) {
 		try {
 			rmSync(join(runDir, rel), { recursive: true, force: true });
@@ -1311,21 +1339,25 @@ function clearRunWorkspace(runDir: string): void {
 
 /**
  * Called at boot, when nothing is running: a process that died mid-run never
- * reached the run's `finally`, so its clone and harness home are still on disk.
+ * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
  */
-export function sweepRunWorkspaces(): number {
+export async function sweepRunWorkspaces(): Promise<number> {
+	const swept = new Set(await sweepRunWorktrees());
 	const runs = resolve(getAppDataDir(), "runs");
-	if (!existsSync(runs)) return 0;
-	let swept = 0;
+	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
 		if (!entry.isDirectory()) continue;
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
-			clearRunWorkspace(dir);
-			swept++;
+			try {
+				await clearRunWorkspace(entry.name);
+				swept.add(entry.name);
+			} catch (e) {
+				logger.warn(`Could not sweep the run dir ${entry.name}`, e);
+			}
 		}
 	}
-	return swept;
+	return swept.size;
 }
 
 /** `runs/<id>` for a job id, refusing an id that would resolve anywhere else (it is joined, then deleted from). */
@@ -1360,11 +1392,26 @@ function workspaceContext(
 	if (ws.layout !== "multi") return undefined;
 	return {
 		repos: ws.repos.map((r) => ({
-			path: `${r.name}/`,
+			path: r.dir,
 			services: r.services,
 			subPath: r.subPath,
 			head: r.head,
 		})),
+	};
+}
+
+/**
+ * Several repos: an agent that takes `additionalDirectories` starts in the primary
+ * repo with the rest beside it, so each repo keeps its own trust root (#918).
+ */
+function rootsOf(
+	ws: RunWorkspace,
+): { cwd: string; additional: string[] } | undefined {
+	const [primary, ...rest] = ws.repos;
+	if (ws.layout !== "multi" || !primary) return undefined;
+	return {
+		cwd: inside(primary.dir, primary.subPath),
+		additional: rest.map((r) => r.dir),
 	};
 }
 
@@ -1424,10 +1471,22 @@ function onDisk(root: string, dir: string, name: string): string {
 	return dir;
 }
 
-function inCheckout(runDir: string, snap: string, sub: string | null): string {
+function inCheckout(runId: string, snap: string, sub: string | null): string {
 	const dir = inside(snap, sub);
-	onDisk(runDir, snap, relative(runDir, snap));
+	const root = ownerOf(runId, snap);
+	onDisk(root, snap, relative(root, snap));
 	return onDisk(snap, dir, sub ?? ".");
+}
+
+/** The run's own dir that lexically holds `path`: its worktree dir (#918) or its run dir. */
+function ownerOf(runId: string, path: string): string {
+	const roots = [runWorktreeDir(runId), runDirFor(runId)];
+	return (
+		roots.find((r) => {
+			const rel = relative(r, path);
+			return !rel.startsWith("..") && !isAbsolute(rel);
+		}) ?? runDirFor(runId)
+	);
 }
 
 function unmappedDir(runDir: string): string {
@@ -1446,8 +1505,10 @@ function whereFrom(repo: {
 }
 
 /**
- * Fresh snapshots of the incident's repos under the run dir (ADR 0004 §2, #747). A repo
- * not checked out in the budget is skipped and named; with none, the run goes on (#848).
+ * Fresh snapshots of the incident's repos (ADR 0004 §2): one local repo is the worktree
+ * `worktrees/pl-<run>` (#918), one URL keeps the run's `repo/`, several go under
+ * `worktrees/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
+ * and named; with none, the run goes on (#848).
  */
 export async function resolveWorkspace(
 	data: InvestigationJobData,
@@ -1466,6 +1527,7 @@ export async function resolveWorkspace(
 	} catch (e) {
 		logger.warn("Could not list the incident's repos", e);
 	}
+	const runId = data.investigationId;
 	const all = dedupeRepos(listed);
 	const repos = all.slice(0, WORKSPACE_REPOS_GUARD);
 	const guarded: Skip[] = all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
@@ -1494,11 +1556,18 @@ export async function resolveWorkspace(
 					connectionId: repo.connectionId,
 					defaultBranch: repo.defaultBranch,
 				},
-				multi ? join(runDir, "repos", name) : join(runDir, "repo"),
+				multi
+					? join(runWorktreeDir(runId), name)
+					: repo.sourceKind === "folder"
+						? runWorktreeDir(runId)
+						: join(runDir, "repo"),
 				repoSignal,
+				undefined,
+				runId,
 			);
 		},
 		signal,
+		releaseLate,
 	);
 	const taken: RunWorkspaceRepo[] = [];
 	const skipped: Skip[] = [];
@@ -1510,7 +1579,7 @@ export async function resolveWorkspace(
 		}
 		const { snap, credential } = outcome.value;
 		try {
-			inCheckout(runDir, snap.path, repo.subPath);
+			inCheckout(runId, snap.path, repo.subPath);
 		} catch (e) {
 			skipped.push({ repo, reason: messageOf(e), code: "failed" });
 			continue;
@@ -1577,12 +1646,29 @@ export async function resolveWorkspace(
 		.join(", ");
 	return {
 		layout: "multi",
-		cwd: join(runDir, "repos"),
+		cwd: runWorktreeDir(runId),
 		repos: taken,
 		checkoutsSkipped,
 		note: noted(
 			`Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.`,
 		),
+	};
+}
+
+/** Refuses a recorded path outside the run's dir and its worktree dir. */
+function ownedBy(runId: string): (path: string) => void {
+	const roots = [runDirFor(runId), runWorktreeDir(runId)];
+	return (path) => {
+		const ok = roots.some((r) => {
+			try {
+				inside(r, relative(r, path));
+				return true;
+			} catch {
+				return false;
+			}
+		});
+		if (!ok)
+			throw new Error(`Repository sub-path escapes the snapshot: ${path}`);
 	};
 }
 
@@ -1615,6 +1701,7 @@ async function checkoutAll<T>(
 	count: number,
 	run: (i: number, signal: AbortSignal) => Promise<T>,
 	cancel?: AbortSignal,
+	onLate?: (late: NoInfer<T>) => void,
 ): Promise<CheckoutOutcome<T>[]> {
 	const controllers = Array.from(
 		{ length: count },
@@ -1643,7 +1730,7 @@ async function checkoutAll<T>(
 			try {
 				outcomes[i] = {
 					ok: true,
-					value: await untilAborted(run(i, signal), signal),
+					value: await untilAborted(run(i, signal), signal, onLate),
 				};
 			} catch (e) {
 				outcomes[i] =
@@ -1668,16 +1755,38 @@ async function checkoutAll<T>(
 	return outcomes;
 }
 
-/** `work`, rejected as soon as `signal` aborts: a port that never settles is dropped, not awaited. */
-function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+/**
+ * `work`, rejected as soon as `signal` aborts: a port that never settles is dropped, not awaited.
+ * `onLate` gets what a dropped `work` still yields, so nothing it made outlives the run (#918).
+ */
+function untilAborted<T>(
+	work: Promise<T>,
+	signal: AbortSignal,
+	onLate?: (late: NoInfer<T>) => void,
+): Promise<T> {
 	let onAbort = () => {};
 	const aborted = new Promise<never>((_, reject) => {
 		onAbort = () => reject(signal.reason);
 		if (signal.aborted) onAbort();
 		else signal.addEventListener("abort", onAbort, { once: true });
 	});
-	return Promise.race([work, aborted]).finally(() =>
-		signal.removeEventListener("abort", onAbort),
+	const raced = Promise.race([work, aborted]);
+	if (onLate) raced.catch(() => work.then(onLate, () => {}));
+	return raced.finally(() => signal.removeEventListener("abort", onAbort));
+}
+
+/**
+ * A worktree that finished after the run stopped waiting is unlocked and removed now, unless a
+ * later attempt re-added that path. A late URL clone has no lock, so the run's end removes it.
+ */
+function releaseLate({
+	snap,
+}: {
+	snap: { path: string; lock?: string };
+}): void {
+	if (!snap.lock) return;
+	releaseWorktreesIn(snap.path, snap.lock).catch((e) =>
+		logger.warn(`Could not release the late checkout ${snap.path}`, e),
 	);
 }
 
@@ -1705,14 +1814,14 @@ export async function rebuildWorkspace(
 	signal?: AbortSignal,
 	handoff = false,
 ): Promise<Workspace> {
-	const runDir = runDirFor(investigationId);
-	// Paths come back from the row; nothing outside this run's dir is ever replaced.
-	inside(runDir, relative(runDir, ws.cwd));
+	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.
+	const owned = ownedBy(investigationId);
+	owned(ws.cwd);
 	const repos: RunWorkspaceRepo[] = [];
 	const budget = AbortSignal.timeout(CHECKOUT_BUDGET_MS);
 	const bounded = signal ? AbortSignal.any([signal, budget]) : budget;
 	for (const repo of ws.repos) {
-		inside(runDir, relative(runDir, repo.dir));
+		owned(repo.dir);
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
 		const { credential } = await untilAborted(
@@ -1725,14 +1834,19 @@ export async function rebuildWorkspace(
 				repo.dir,
 				bounded,
 				repo.head,
+				investigationId,
 			),
 			bounded,
+			releaseLate,
 		);
-		inCheckout(runDir, repo.dir, repo.subPath);
+		inCheckout(investigationId, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
 	}
+	const runDir = runDirFor(investigationId);
 	if (ws.layout === "unmapped") unmappedDir(runDir);
-	const root = (ws.layout === "single" && ws.repos[0]?.dir) || runDir;
+	const root =
+		(ws.layout === "single" && ws.repos[0]?.dir) ||
+		ownerOf(investigationId, ws.cwd);
 	onDisk(root, ws.cwd, relative(root, ws.cwd));
 	const pinned =
 		ws.repos.length === 1

@@ -72,7 +72,7 @@ function renderSurfaces(
 	const repos = context.workspace?.repos ?? [];
 	if (repos.length) {
 		surfaces.push(
-			`  - Application SOURCE CODE: ${repos.length} repositories under your current working directory:`,
+			`  - Application SOURCE CODE: ${repos.length} repositories, one folder each:`,
 			...repos.map(
 				(r) =>
 					`      ${r.path}  services: ${r.services.join(", ")}  (at ${r.head.slice(0, 12)})${
@@ -285,7 +285,10 @@ function promptPieces(
 	// A phase order the agent works through, the same for every agent and model (#673 w21 prompting).
 	const methodSteps = [
 		`Shell tool calls take the full command as ONE string in the tool's \`command\` field — never an argv array.`,
-		`File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
+		// Several repos sit at absolute paths, some outside the cwd (#918).
+		(context.workspace?.repos.length ?? 0) > 1
+			? "File reads, greps, and globs stay INSIDE the repository folders listed under Application SOURCE CODE — use their absolute paths."
+			: `File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
 		UNTRUSTED_DATA_METHOD_GUARD,
 		...(notes
 			? [

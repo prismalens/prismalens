@@ -19,6 +19,7 @@
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
 // FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_ADDITIONAL_DIRS=1 advertises sessionCapabilities.additionalDirectories.
 // FAKE_MCP_HTTP=1 advertises mcpCapabilities.http, so a run offers it the gateway.
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
@@ -492,6 +493,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 						: {}),
 					...(process.env.FAKE_AUTH_STATUS
 						? { _meta: { authStatus: {} } }
+						: {}),
+					...(process.env.FAKE_ADDITIONAL_DIRS
+						? { sessionCapabilities: { additionalDirectories: {} } }
 						: {}),
 					...(process.env.FAKE_MCP_HTTP
 						? { mcpCapabilities: { http: true } }

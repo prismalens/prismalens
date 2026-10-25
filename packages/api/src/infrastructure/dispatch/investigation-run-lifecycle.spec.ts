@@ -291,6 +291,8 @@ describe("#331 workspace record (in-process run)", () => {
 				expect.objectContaining({ sourceKind: "url", url: "https://github.com/acme/api-gateway" }),
 				join(tmp, "runs", "inv-1", "repo"),
 				expect.any(AbortSignal),
+				undefined,
+				"inv-1",
 			);
 
 			const entry = createTimelineEntry.mock.calls

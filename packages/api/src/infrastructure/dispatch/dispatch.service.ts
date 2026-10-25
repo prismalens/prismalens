@@ -391,7 +391,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					})),
 				);
 			},
-			snapshotWith: async (ref, dest, signal, at) => {
+			snapshotWith: async (ref, dest, signal, at, runId) => {
 				signal?.throwIfAborted();
 				const row =
 					ref.sourceKind === "url"
@@ -419,6 +419,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 								dest,
 								signal,
 								at,
+								runId,
 							),
 						signal,
 					);
@@ -572,7 +573,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			),
 		);
 		try {
-			const swept = sweepRunWorkspaces();
+			const swept = await sweepRunWorkspaces();
 			if (swept > 0)
 				this.logger.warn(`Removed the leftover workspaces of ${swept} run(s)`);
 		} catch (e) {

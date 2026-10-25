@@ -3,8 +3,8 @@
 
 /**
  * RepoSourceService puts the investigated repo under the app-data dir so the
- * harness cwd is never the user's own checkout and never a `git worktree` linked
- * into it (ADR 0004 §2, #629). Real git throughout, no `execFile` mock: every
+ * harness cwd is never the user's own checkout: a folder as a locked worktree of
+ * it, a URL as a clone of its mirror (ADR 0004 §2, #629, #918). Real git throughout, no `execFile` mock: every
  * fixture is a working `mkdtemp` repo or a local bare "remote", and every
  * assertion is on what git actually produced, not on the argv we built.
  * `PRISMALENS_WORKSPACE_DIR` is stubbed per test so `mirrorPathFor`'s default
@@ -12,6 +12,7 @@
  */
 import { execFileSync } from "node:child_process";
 import {
+	chmodSync,
 	existsSync,
 	lstatSync,
 	mkdirSync,
@@ -41,6 +42,12 @@ import {
 	tokenUsernameFor,
 	RepoSourceService,
 } from "./repo-source.service.js";
+import {
+	releaseWorktreesIn,
+	runWorktreeDir,
+	sweepRunWorktrees,
+	worktreeRoot,
+} from "./run-worktree.js";
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
 
@@ -360,34 +367,180 @@ describe("repo-source.service", () => {
 			expect(readFileSync(join(dest, "services/api/src/app.js"), "utf8")).toBe("code");
 		});
 
-		it("the snapshot's .git is its own directory, not a `gitdir:` worktree link", async () => {
+		it("a folder snapshot is a detached worktree of the source, locked for its run, and writes no config into it (#918)", async () => {
+			const src = tmp("pl-src-");
+			const head = initRepo(src);
+			const configBefore = readFileSync(join(src, ".git", "config"), "utf8");
+
+			const dest = runWorktreeDir("run1");
+			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest, undefined, undefined, "run1");
+
+			expect(lstatSync(join(dest, ".git")).isFile()).toBe(true);
+			const list = git(["worktree", "list", "--porcelain"], src);
+			expect(list).toContain(`HEAD ${head}\ndetached\nlocked prismalens run run1`);
+			expect(realpathSync(git(["rev-parse", "--show-toplevel"], dest))).toBe(realpathSync(dest));
+			expect(readFileSync(join(src, ".git", "config"), "utf8")).toBe(configBefore);
+		});
+
+		it("the user's post-checkout hook does not fire when the worktree is made (#918)", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);
+			const fired = join(tmp("pl-hook-"), "fired");
+			const hook = join(src, ".git", "hooks", "post-checkout");
+			mkdirSync(join(hook, ".."), { recursive: true });
+			writeFileSync(hook, `#!/bin/sh\necho fired > '${fired.replaceAll("\\", "/")}'\n`);
+			chmodSync(hook, 0o755);
+			// The hook is live: a plain `worktree add` runs it.
+			git(["worktree", "add", "-q", "--detach", join(tmp("pl-plain-"), "wt"), "HEAD"], src);
+			expect(existsSync(fired)).toBe(true);
+			rmSync(fired);
 
+			await new RepoSourceService().snapshot({ kind: "folder", source: src }, runWorktreeDir("run2"), undefined, undefined, "run2");
+
+			expect(existsSync(fired)).toBe(false);
+			expect(readFileSync(join(runWorktreeDir("run2"), "a.txt"), "utf8")).toBe("v1");
+		});
+
+		it("when the run ends its worktree is unlocked, removed and pruned (#918)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			const dest = runWorktreeDir("run3");
+			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest, undefined, undefined, "run3");
+
+			await releaseWorktreesIn(dest);
+
+			expect(existsSync(dest)).toBe(false);
+			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("run3");
+			expect(existsSync(join(src, ".git", "worktrees", "pl-run3"))).toBe(false);
+		});
+
+		it("the boot sweep removes a dead run's worktree and never touches the user's own (#918)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			const own = join(tmp("pl-user-"), "feature");
+			const ownLocked = join(tmp("pl-user-"), "pinned");
+			git(["worktree", "add", "-q", "-b", "feature", own], src);
+			git(["worktree", "add", "-q", "--detach", ownLocked, "HEAD"], src);
+			git(["worktree", "lock", "--reason", "mine", ownLocked], src);
+			// Even one the user named pl-* under our root, if they locked it themselves.
+			const squatter = join(worktreeRoot(), "pl-theirs");
+			git(["worktree", "add", "-q", "--detach", squatter, "HEAD"], src);
+			git(["worktree", "lock", "--reason", "mine", squatter], src);
+			const dead = runWorktreeDir("crashed");
+			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dead, undefined, undefined, "crashed");
+
+			expect(await sweepRunWorktrees()).toEqual(expect.arrayContaining(["crashed"]));
+
+			expect(existsSync(dead)).toBe(false);
+			const list = git(["worktree", "list", "--porcelain"], src);
+			expect(list).not.toContain("prismalens run crashed");
+			expect(list).toContain("branch refs/heads/feature");
+			expect(list).toContain("locked mine");
+			expect(existsSync(join(own, "a.txt"))).toBe(true);
+			expect(existsSync(join(ownLocked, "a.txt"))).toBe(true);
+			expect(existsSync(join(squatter, "a.txt"))).toBe(true);
+		});
+
+		it("a follow-up re-adds the worktree at the same path and the recorded commit, even after a crash left it registered (#918, #747)", async () => {
+			const src = tmp("pl-src-");
+			const first = initRepo(src);
 			const service = new RepoSourceService();
-			const dest = join(tmp("pl-dest-"), "repo");
-			await service.snapshot({ kind: "folder", source: src }, dest);
+			const dest = runWorktreeDir("run4");
+			await service.snapshot({ kind: "folder", source: src }, dest, undefined, undefined, "run4");
+			writeFileSync(join(src, "a.txt"), "v2");
+			git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-qam", "v2"], src);
+			// A crash: the directory is gone, the locked entry is still in the user's repo.
+			rmSync(dest, { recursive: true, force: true });
 
-			const gitPath = join(dest, ".git");
-			expect(lstatSync(gitPath).isDirectory()).toBe(true);
+			const again = await service.snapshot({ kind: "folder", source: src }, dest, undefined, first, "run4");
+
+			expect(again.path).toBe(dest);
+			expect(again.head).toBe(first);
+			expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("v1");
+			expect(git(["worktree", "list", "--porcelain"], src).match(/prismalens run run4/g)).toHaveLength(1);
 		});
 
-		it("the snapshot can't push to the source checkout, by origin or by its path (#676)", async () => {
+		it("a folder follow-up pinned to a commit the repo lacks fails naming it, and adds no worktree (#918, #747)", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);
+			const dest = runWorktreeDir("run8");
+			const missing = "0123456789abcdef0123456789abcdef01234567";
 
-			const dest = join(tmp("pl-dest-"), "repo");
-			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest);
-
-			expect(gitFails(["push", "origin", "HEAD:refs/heads/x"], dest)).toContain(
-				"transport 'file' not allowed",
-			);
-			expect(gitFails(["push", src, "HEAD:refs/heads/y"], dest)).toContain(
-				"transport 'file' not allowed",
-			);
-			expect(git(["branch", "--list", "x", "y"], src)).toBe("");
-			expect(git(["branch", "-r"], dest)).not.toBe("");
+			await expect(
+				new RepoSourceService().snapshot({ kind: "folder", source: src }, dest, undefined, missing, "run8"),
+			).rejects.toThrow(`Commit ${missing} could not be checked out from this source`);
+			expect(existsSync(dest)).toBe(false);
+			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("run8");
 		});
+
+		it("a folder follow-up whose source is no longer a git repo keeps git's own error, not the missing-commit one (#918)", async () => {
+			const src = tmp("pl-not-a-repo-");
+			const dest = runWorktreeDir("run9");
+
+			const failure = new RepoSourceService().snapshot(
+				{ kind: "folder", source: src }, dest, undefined, "0123456789abcdef0123456789abcdef01234567", "run9",
+			);
+
+			await expect(failure).rejects.toThrow(/git rev-parse failed/);
+			await expect(failure).rejects.not.toThrow(/could not be checked out/);
+			expect(existsSync(dest)).toBe(false);
+		});
+
+		it("a late release of an earlier attempt leaves the worktree a follow-up re-added at the same path (#918)", async () => {
+			const src = tmp("pl-src-");
+			const head = initRepo(src);
+			const service = new RepoSourceService();
+			const dest = runWorktreeDir("run7");
+			const first = await service.snapshot({ kind: "folder", source: src }, dest, undefined, undefined, "run7");
+			const again = await service.snapshot({ kind: "folder", source: src }, dest, undefined, head, "run7");
+			expect(first.lock).toMatch(/^prismalens run run7 /);
+			expect(again.lock).not.toBe(first.lock);
+
+			await releaseWorktreesIn(first.path, first.lock);
+
+			expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("v1");
+			expect(git(["worktree", "list", "--porcelain"], src)).toContain(`locked ${again.lock}`);
+
+			await releaseWorktreesIn(again.path, again.lock);
+
+			expect(existsSync(dest)).toBe(false);
+			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("prismalens run run7");
+		});
+
+		it("three folders of one git repo check out at once, as the run's budget does, while another run is released (#918)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			for (const sub of ["services/api", "services/worker"]) {
+				mkdirSync(join(src, sub), { recursive: true });
+				writeFileSync(join(src, sub, "x.txt"), sub);
+			}
+			git(["add", "-A"], src);
+			git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "services"], src);
+			const head = headOf(src);
+			const service = new RepoSourceService();
+			const sources = [src, join(src, "services", "api"), join(src, "services", "worker")];
+			for (let round = 0; round < 5; round++) {
+				const other = runWorktreeDir(`other${round}`);
+				await service.snapshot({ kind: "folder", source: src }, other, undefined, undefined, `other${round}`);
+				const dests = ["mono", "api", "worker"].map((n) => join(runWorktreeDir(`run6r${round}`), n));
+
+				const [snaps] = await Promise.all([
+					Promise.all(
+						sources.map((source, i) =>
+							service.snapshot({ kind: "folder", source }, dests[i] as string, undefined, undefined, `run6r${round}`),
+						),
+					),
+					releaseWorktreesIn(other),
+				]);
+
+				expect(snaps.map((s) => s.head)).toEqual([head, head, head]);
+				for (const d of dests) expect(readFileSync(join(d, "services", "api", "x.txt"), "utf8")).toBe("services/api");
+				expect(git(["worktree", "list", "--porcelain"], src).match(new RegExp(`prismalens run run6r${round}`, "g"))).toHaveLength(3);
+				await releaseWorktreesIn(runWorktreeDir(`run6r${round}`));
+			}
+			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("prismalens run");
+			// 5 rounds of 4 real worktrees each: macOS git takes well past vitest's 5 s default (#918).
+		}, 60_000);
 
 		it("checkFolder() on a subdirectory returns the top level as root and the subdir as prefix", async () => {
 			const src = tmp("pl-src-");
@@ -511,6 +664,18 @@ describe("repo-source.service", () => {
 			await expect(
 				service.snapshot(src, join(tmp("pl-dest-"), "repo"), undefined, "0123456789abcdef0123456789abcdef01234567"),
 			).rejects.toThrow(/Commit 0123456789abcdef0123456789abcdef01234567 could not be checked out/);
+		});
+
+		it("a URL source is still a clone of the bare mirror, not a worktree of it (#918)", async () => {
+			const { bareDir, work } = makeBareRemote();
+			commitAndPush(work, "a.txt", "v1");
+			const url = `file://${bareDir}`;
+
+			const dest = join(tmp("pl-dest-"), "repo");
+			await new RepoSourceService().snapshot({ kind: "url", source: url }, dest, undefined, undefined, "run5");
+
+			expect(lstatSync(join(dest, ".git")).isDirectory()).toBe(true);
+			expect(git(["worktree", "list"], mirrorPathFor(url)).split("\n")).toHaveLength(1);
 		});
 
 		it("the snapshot can't push to the mirror it was cloned from (#676)", async () => {

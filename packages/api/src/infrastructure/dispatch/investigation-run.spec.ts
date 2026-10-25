@@ -8,6 +8,7 @@
  * No network, no LLM, no real harness — `@prismalens/engine` is mocked wherever a test
  * needs `conductRun` to run at all.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData, t
 import { type conductRun, withPreRunCoverage } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
-import type { Snapshot } from "../../core/harness/repo-source.service.js";
+import { RepoSourceService, type Snapshot } from "../../core/harness/repo-source.service.js";
 import type { IncidentRepo, RepoRef, RunPorts } from "./run-ports.js";
 
 const mocks = vi.hoisted(() => ({ conductRun: vi.fn(), logged: [] as unknown[][] }));
@@ -60,8 +61,10 @@ const {
 	resolveWorkspace,
 	rebuildWorkspace,
 	runDirFor,
+	writeHandoffTranscript,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
+const { releaseWorktreesIn, runWorktreeDir } = await import("../../core/harness/run-worktree.js");
 
 /** A `RunPorts` double covering exactly what the job makes. */
 function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
@@ -157,6 +160,8 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				},
 				join(tmp, "runs", "inv-1", "repo"),
 				expect.any(AbortSignal),
+				undefined,
+				"inv-1",
 			);
 			expect(ws.layout).toBe("single");
 			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo", "services", "api"));
@@ -540,6 +545,8 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				{ sourceKind: "url", url: "https://github.com/acme/x", connectionId: null, defaultBranch: null },
 				join(tmp, "runs", "inv-1", "repo"),
 				expect.any(AbortSignal),
+				undefined,
+				"inv-1",
 			);
 		} finally {
 			vi.unstubAllEnvs();
@@ -556,7 +563,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			vi.unstubAllEnvs();
 			rmSync(appData, { recursive: true, force: true });
 		});
-		const under = (...p: string[]) => join(appData, "runs", "inv-1", ...p);
+		const wt = (...p: string[]) => join(appData, "worktrees", "pl-inv-1", ...p);
 		const at = (dest: string) => ({ path: dest, head: `${dest.endsWith("worker") ? "5d6e7f8" : "1a2b3c4"}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, branch: "main" as const });
 		const repo = (url: string, serviceName: string, subPath: string | null = null) => ({
 			sourceKind: "url" as const,
@@ -584,11 +591,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const ws = await resolveWorkspace(minimalData(), ports);
 
 			expect(snapshot.mock.calls.map((c) => c[1])).toEqual([
-				under("repos", "api"),
-				under("repos", "worker"),
+				wt("api"),
+				wt("worker"),
 			]);
 			expect(ws.layout).toBe("multi");
-			expect(ws.cwd).toBe(under("repos"));
+			expect(ws.cwd).toBe(wt());
 			expect(ws.repos.map((r) => [r.name, r.services, r.subPath])).toEqual([
 				["api", ["checkout"], null],
 				["worker", ["jobs"], "svc/jobs"],
@@ -615,7 +622,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const ws = await resolveWorkspace(minimalData(), ports);
 
 			expect(ws.layout).toBe("single");
-			expect(ws.cwd).toBe(under("repos", "api"));
+			expect(ws.cwd).toBe(wt("api"));
 			expect(ws.repos.map((r) => r.name)).toEqual(["api"]);
 			expect(ws.note).toContain(
 				"Not included, because it could not be copied: URL git@github.com:o/worker.git (repository not found).",
@@ -718,8 +725,18 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					via: "none",
 				});
 			}
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { workspace?: { repos: { path: string }[] } } }];
-			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual(["api/", "worker/"]);
+			const [opts] = mocks.conductRun.mock.calls[0] as [
+				{
+					cwd: string;
+					roots?: { cwd: string; additional: string[] };
+					context: { workspace?: { repos: { path: string }[] } };
+				},
+			];
+			// One parent for an agent without extra directories; the primary repo plus the rest for one with them (#918).
+			const parent = join(process.env.PRISMALENS_WORKSPACE_DIR ?? "", "worktrees", "pl-inv-1");
+			expect(opts.cwd).toBe(parent);
+			expect(opts.roots).toEqual({ cwd: join(parent, "api"), additional: [join(parent, "worker")] });
+			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual([join(parent, "api"), join(parent, "worker")]);
 		});
 
 		it("keeps the harness's last usage_update on the row, and writes nothing for a harness that sends none", async () => {
@@ -872,8 +889,10 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				connectionId: null,
 				defaultBranch: null,
 			},
-			expect.any(String),
+			expect.stringMatching(/worktrees[\\/]pl-inv-1$/),
 			expect.any(AbortSignal),
+			undefined,
+			"inv-1",
 		);
 		expect(ws.note).toContain("folder");
 	});
@@ -1426,6 +1445,7 @@ describe("follow-up on a finished run (#747)", () => {
 			join(tmp, "runs", "inv-1", "repo"),
 			expect.any(AbortSignal),
 			HEAD,
+			"inv-1",
 		);
 		expect(ports.clearEvents).not.toHaveBeenCalled();
 		const [opts] = mocks.conductRun.mock.calls[0] as [
@@ -1797,6 +1817,45 @@ describe("follow-up on a finished run (#747)", () => {
 			harness: "codex",
 			handoff: { from: "opencode", carried: "the alert, 2 messages, the report and 1 refuted hypothesis" },
 		});
+	});
+
+	it("a multi-repo handoff puts the transcript where the agent starts, ignored by git, and the worktrees still release (#918)", async () => {
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		// This block puts a stub bin dir on PATH; git is the real one.
+		vi.stubEnv("PATH", SYSTEM_PATH);
+		const src = mkdtempSync(join(os.tmpdir(), "pl-handoff-src-"));
+		try {
+			const git = (args: string[], cwd = src) => execFileSync("git", args, { cwd }).toString();
+			git(["init", "-q", "-b", "main"]);
+			writeFileSync(join(src, "a.txt"), "v1");
+			git(["add", "a.txt"]);
+			git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "init"]);
+			const service = new RepoSourceService();
+			const root = runWorktreeDir("inv-h");
+			const api = await service.snapshot({ kind: "folder", source: src }, join(root, "api"), undefined, undefined, "inv-h");
+			const worker = await service.snapshot({ kind: "folder", source: src }, join(root, "worker"), undefined, undefined, "inv-h");
+			const repo = (name: string, dir: string, head: string) => ({
+				name, dir, sourceKind: "folder" as const, url: src, subPath: null, connectionId: null, head, branch: null, services: [name],
+			});
+			const ws: RunWorkspace = {
+				layout: "multi",
+				cwd: root,
+				repos: [repo("api", api.path, api.head), repo("worker", worker.path, worker.head)],
+			};
+
+			writeHandoffTranscript(ws, "the transcript");
+
+			// With additionalDirectories the agent starts in the primary repo; without, in the parent.
+			for (const cwd of [root, api.path])
+				expect(readFileSync(join(cwd, ".prismalens-handoff", "transcript.md"), "utf8")).toBe("the transcript");
+			expect(git(["status", "--porcelain", "--ignored=no"], api.path)).toBe("");
+			await releaseWorktreesIn(root);
+			expect(existsSync(root)).toBe(false);
+			expect(git(["worktree", "list", "--porcelain"])).not.toContain("prismalens run inv-h");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(src, { recursive: true, force: true });
+		}
 	});
 
 	it("refuses a recipient that is no longer runnable on handoff (handoff-L7)", async () => {
@@ -2780,6 +2839,56 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 		} finally {
 			vi.useRealTimers();
 			vi.unstubAllEnvs();
+		}
+	});
+
+	it("a folder worktree that finishes after the budget is unlocked and removed, not left for the boot sweep (#918)", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-late-"));
+		const src = mkdtempSync(join(os.tmpdir(), "pl-late-src-"));
+		const git = (args: string[]) => execFileSync("git", args, { cwd: src }).toString();
+		git(["init", "-q", "-b", "main"]);
+		writeFileSync(join(src, "a.txt"), "v1");
+		git(["add", "a.txt"]);
+		git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "init"]);
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		let open = () => {};
+		const gate = new Promise<void>((r) => {
+			open = r;
+		});
+		let finished = false;
+		vi.useFakeTimers();
+		try {
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [{ ...makeRepo(src, "svc-a"), sourceKind: "folder" as const }]),
+				snapshotWith: vi.fn(async (_ref: RepoRef, dest: string, _signal?: AbortSignal, _at?: string, runId?: string) => {
+					await gate;
+					// Past the budget: the real checkout, deaf to the run's signal, as a git that ignored its kill.
+					const snap = await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest, undefined, undefined, runId);
+					finished = true;
+					return { snap, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			const wsPromise = resolveWorkspace(minimalData(), ports);
+			await vi.advanceTimersByTimeAsync(600_000);
+			const ws = await wsPromise;
+			vi.useRealTimers();
+			expect(ws.checkoutsSkipped.map((k) => k.code)).toEqual(["budget"]);
+
+			open();
+			await vi.waitFor(
+				() => {
+					expect(finished).toBe(true);
+					expect(git(["worktree", "list", "--porcelain"])).not.toContain("prismalens run inv-1");
+					expect(existsSync(join(tmpDir, "worktrees", "pl-inv-1"))).toBe(false);
+				},
+				{ timeout: 15_000, interval: 50 },
+			);
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllEnvs();
+			rmSync(tmpDir, { recursive: true, force: true });
+			rmSync(src, { recursive: true, force: true });
 		}
 	});
 
