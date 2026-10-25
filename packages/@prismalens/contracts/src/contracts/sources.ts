@@ -9,6 +9,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	ConnectSourceResponseSchema,
+	GitHostViewSchema,
 	ProbeReportSchema,
 	RunbooksToggleSchema,
 	SourceDraftSchema,
@@ -22,7 +23,7 @@ export const sourcesContract = {
 		.route({
 			method: "GET",
 			path: "/sources",
-			summary: "Every source category with its status, and what was detected",
+			summary: "Every telemetry connection with its state, and the git hosts",
 			tags: ["sources"],
 		})
 		.input(z.object({}))
@@ -32,7 +33,7 @@ export const sourcesContract = {
 		.route({
 			method: "POST",
 			path: "/sources/test",
-			summary: "Run a source type's read-only probes against a draft",
+			summary: "Probe a draft's address and credential without saving it",
 			tags: ["sources"],
 		})
 		.input(SourceDraftSchema)
@@ -42,7 +43,8 @@ export const sourcesContract = {
 		.route({
 			method: "POST",
 			path: "/sources/connect",
-			summary: "Probe a draft and save it when every required probe passes",
+			summary:
+				"Save a draft: probed first unless saveUntested, and not saved when a required probe fails",
 			tags: ["sources"],
 		})
 		.input(SourceDraftSchema)
@@ -67,6 +69,17 @@ export const sourcesContract = {
 		})
 		.input(RunbooksToggleSchema)
 		.output(RunbooksToggleSchema),
+
+	gitHosts: oc
+		.route({
+			method: "GET",
+			path: "/sources/git-hosts",
+			summary:
+				"Each git host's credentials, in the order a repository tries them",
+			tags: ["sources"],
+		})
+		.input(z.object({}))
+		.output(z.array(GitHostViewSchema)),
 
 	preRun: oc
 		.route({

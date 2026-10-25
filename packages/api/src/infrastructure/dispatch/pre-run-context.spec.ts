@@ -17,11 +17,15 @@ import {
 import os from "node:os";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { PreRunDetailSchema } from "@prismalens/contracts/schemas";
 import {
 	buildPreRunSnapshot,
+	markerReason,
+	notSavedMarker,
 	parseStoredSnapshot,
 	snapshotWindow,
 	summaryOf,
+	unavailableMarker,
 	writeReadCopies,
 } from "./pre-run-context.js";
 
@@ -647,6 +651,47 @@ describe("safe writing of read copies and scrubbing (#848)", () => {
 
 		const dumped = JSON.stringify(snap);
 		expect(dumped).not.toContain(secret);
+	});
+});
+
+describe("stored snapshot markers (#848)", () => {
+	const snap = buildPreRunSnapshot({
+		window: WINDOW,
+		telemetry: [
+			{
+				kind: "prometheus",
+				label: "prod prom",
+				from: "set",
+				status: "found",
+				part: { summary: "2 rule alerts", data: { alerts: [] }, count: 1 },
+				secrets: [],
+			},
+		],
+		pastIncidents: [],
+		runbooks: [],
+		now: NOW,
+	});
+
+	it("parseStoredSnapshot(notSavedMarker(snap, 'x')) is null", () => {
+		expect(parseStoredSnapshot(notSavedMarker(snap, "x"))).toBeNull();
+	});
+
+	it("notSavedMarker output parses with PreRunDetailSchema and contains no excerpt or text", () => {
+		const raw = notSavedMarker(snap, "the database write failed");
+		const parsed = JSON.parse(raw);
+		expect(PreRunDetailSchema.safeParse(parsed).success).toBe(true);
+		expect(parsed.state).toBe("not-saved");
+		expect(parsed.saveError).toBe("the database write failed");
+		expect(parsed.sources[0]?.excerpt).toBeUndefined();
+		expect(parsed.files[0]?.text).toBeUndefined();
+	});
+
+	it("markerReason gives 'the run's snapshot was not saved' for not-saved, stored reason for unavailable, and null for snapshot or bad JSON", () => {
+		expect(markerReason(notSavedMarker(snap, "err"))).toBe("the run's snapshot was not saved");
+		expect(markerReason(unavailableMarker("no stored snapshot for this run"))).toBe("no stored snapshot for this run");
+		expect(markerReason(JSON.stringify(snap))).toBeNull();
+		expect(markerReason("not json {")).toBeNull();
+		expect(markerReason(JSON.stringify({ state: "ready" }))).toBeNull();
 	});
 });
 

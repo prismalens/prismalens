@@ -46,7 +46,7 @@ import {
 	followUpBlockedReason,
 	InvestigationsService,
 	type InvestigationWithRelations,
-	preRunSummaryOf,
+	preRunDetailOf,
 } from "./investigations.service.js";
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
 
@@ -138,7 +138,7 @@ export class InvestigationsController {
 				const agentMode = base.report?.fidelity?.mode ?? base.agentMode ?? null;
 				return {
 					...base,
-					preRun: preRunSummaryOf(investigation.preRun),
+					preRun: preRunDetailOf(investigation.preRun),
 					agentMode,
 					agentModeName: this.harnessService.modeName(
 						investigation.harness ?? null,

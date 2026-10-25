@@ -12,6 +12,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./acp-registry": {
+			"types": "./dist/acp-registry.d.ts",
+			"import": "./dist/acp-registry.js"
+		},
 		"./harness": {
 			"types": "./dist/harness.d.ts",
 			"import": "./dist/harness.js"

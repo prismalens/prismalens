@@ -35,7 +35,12 @@ import {
 	repoPath,
 	urlHost,
 } from "../../core/harness/git-credential.js";
-import { diagnoseGitFailure } from "../../core/harness/git-failure.js";
+import {
+	diagnoseGitFailure,
+	type GitErrorKind,
+	gitErrorKind,
+	gitErrorSentence,
+} from "../../core/harness/git-failure.js";
 import {
 	effectiveGitUrl,
 	GIT_LS_REMOTE_TIMEOUT_MS,
@@ -59,6 +64,14 @@ import type {
 	UpdateIntegrationDto,
 } from "./dto/update-connection.dto.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
+import {
+	type ErrorMarker,
+	errorMarker,
+	sourceAnswered,
+	sourceErrorKind,
+	sourceErrorSentence,
+	withShownAddress,
+} from "./source-query.js";
 import { sourceRequestFn } from "./source-request.js";
 import { readStored, type StoredState } from "./stored-credential.js";
 
@@ -90,6 +103,8 @@ export interface TestConnectionResult {
 	untested?: boolean;
 	/** The host refused the token itself, so the row reads "rejected", not "error" (#831 w6-9). */
 	rejected?: boolean;
+	/** The code a git token's failure is stored as; not part of the API answer (#848). */
+	errorKind?: GitErrorKind;
 }
 
 /** The status a failed git host token lands in: a refused token reads "rejected". */
@@ -524,10 +539,10 @@ export class IntegrationsService implements OnModuleInit {
 	 */
 	async recordGitFailure(
 		connectionId: string,
-		failure: { code: string; message: string },
+		failure: { code: string },
 	): Promise<void> {
 		const status = failedTokenStatus(failure.code);
-		const message = failure.message.slice(0, 500);
+		const message = errorMarker(gitErrorKind(failure.code));
 		const conn = await this.prisma.connection.findUnique({
 			where: { id: connectionId },
 			select: { status: true, lastErrorMessage: true },
@@ -617,10 +632,12 @@ export class IntegrationsService implements OnModuleInit {
 		try {
 			const template = getTemplate(connection.integration.templateId);
 			let testResult: TestConnectionResult;
+			let marker: ErrorMarker = { kind: "failed" };
 
 			if (template?.gitHost) {
 				testResult = await this.testGitHostToken(connection);
 				if (testResult.untested) return testResult;
+				marker = { kind: testResult.errorKind ?? "failed" };
 			} else if (template?.urlOnly && template.verify) {
 				const base = await this.connectionBaseUrl(id);
 				if (!base) {
@@ -634,11 +651,15 @@ export class IntegrationsService implements OnModuleInit {
 						? { success: true }
 						: {
 								success: false,
-								error: `${template.name} answered ${res.status}`,
+								error: sourceAnswered(base, res.status),
 							};
+					marker = { kind: "status", status: res.status };
 				}
 			} else {
-				testResult = await this.getAuthManager().verifyConnection(id);
+				const verified = await this.getAuthManager().verifyConnection(id);
+				testResult = verified.error
+					? { ...verified, error: "the check failed" }
+					: verified;
 			}
 
 			await this.prisma.connection.update({
@@ -652,7 +673,7 @@ export class IntegrationsService implements OnModuleInit {
 					lastUsedAt: new Date(),
 					lastErrorMessage: testResult.success
 						? null
-						: (testResult.error ?? null),
+						: errorMarker(marker.kind, marker.status),
 					lastErrorAt: testResult.success ? null : new Date(),
 					consecutiveErrors: testResult.success
 						? 0
@@ -661,16 +682,21 @@ export class IntegrationsService implements OnModuleInit {
 				},
 			});
 
-			return testResult;
+			const { errorKind: _kind, ...answer } = testResult;
+			return answer;
 		} catch (error) {
-			const rawMessage =
-				error instanceof Error ? error.message : "Unknown error";
-			const errorMessage = rawMessage.slice(0, 500);
+			const template = getTemplate(connection.integration.templateId);
+			const caught: ErrorMarker = template?.urlOnly
+				? sourceErrorKind(error)
+				: { kind: "failed" };
+			const errorMessage =
+				sourceErrorSentence(caught, this.baseUrlOf(connection) ?? "") ??
+				"the check failed";
 			await this.prisma.connection.update({
 				where: { id },
 				data: {
 					status: "ERROR",
-					lastErrorMessage: errorMessage,
+					lastErrorMessage: errorMarker(caught.kind, caught.status),
 					lastErrorAt: new Date(),
 					consecutiveErrors: connection.consecutiveErrors + 1,
 				},
@@ -683,23 +709,38 @@ export class IntegrationsService implements OnModuleInit {
 	 * A git host token's Test: `git ls-remote` against each saved repository on its host,
 	 * three at a time, and for github.com its expiry and a 401 check. With no repository
 	 * to try it says so and leaves the status alone, rather than showing a mistyped token green.
+	 * A repository that does not pin this token and that it cannot see does not fail it (#848).
 	 */
 	private async testGitHostToken(
 		connection: ConnectionWithIntegration,
 	): Promise<TestConnectionResult> {
 		const token = readHostToken(connection, this.credentialsService);
 		if (!token)
-			return { success: false, error: "This connection has no host or token." };
-		const { details, rejected } = await this.lsRemoteMatching(token);
+			return {
+				success: false,
+				error: gitErrorSentence("no-token", { host: null, label: "" }) ?? "",
+				errorKind: "no-token",
+			};
+		return this.probeHostToken(token, connection.id);
+	}
+
+	/** A git host token's Test, saved or a draft; only a saved one records its expiry. */
+	async probeHostToken(
+		token: HostToken,
+		connectionId?: string,
+	): Promise<TestConnectionResult> {
+		const { details, rejected, failures } = await this.lsRemoteMatching(token);
+		const who = { host: token.host, label: token.label };
+		const said = (kind: GitErrorKind) => gitErrorSentence(kind, who) ?? "";
 		const api =
 			token.host === "github.com" ? await this.githubUser(token) : null;
-		if (api?.expiresAt !== undefined)
+		if (connectionId && api?.expiresAt !== undefined)
 			await this.prisma.connection.update({
-				where: { id: connection.id },
+				where: { id: connectionId },
 				data: { tokenExpiresAt: api.expiresAt },
 			});
 		if (api?.rejected) {
-			const message = `github.com rejected token "${token.label}" (fp ${token.fingerprint}). It was revoked or mistyped; replace it.`;
+			const message = said("token-rejected");
 			// git's own refusal of the same token reads word for word the same.
 			const rest = details.filter((d) => d !== message);
 			return {
@@ -707,6 +748,7 @@ export class IntegrationsService implements OnModuleInit {
 				rejected: true,
 				error: message,
 				details: [message, ...rest],
+				errorKind: "token-rejected",
 			};
 		}
 		if (details.length === 0)
@@ -718,27 +760,38 @@ export class IntegrationsService implements OnModuleInit {
 				],
 			};
 		if (rejected)
-			return { success: false, rejected: true, error: rejected, details };
-		const failed = details.find((d) => !d.startsWith("ok "));
+			return {
+				success: false,
+				rejected: true,
+				error: said("token-rejected"),
+				details,
+				errorKind: "token-rejected",
+			};
+		const [failed] = failures;
 		return failed
-			? { success: false, error: failed, details }
+			? { success: false, error: said(failed), details, errorKind: failed }
 			: { success: true, details };
 	}
 
-	private async lsRemoteMatching(
-		token: HostToken,
-	): Promise<{ details: string[]; rejected: string | null }> {
+	private async lsRemoteMatching(token: HostToken): Promise<{
+		details: string[];
+		rejected: boolean;
+		failures: GitErrorKind[];
+	}> {
 		const rows = await this.prisma.repository.findMany({
 			where: { sourceKind: "url" },
-			select: { url: true },
+			select: { url: true, metadata: true },
 			orderBy: { updatedAt: "desc" },
 		});
 		const targets: string[] = [];
-		for (const { url } of rows) {
+		const pinned = new Set<string>();
+		for (const { url, metadata } of rows) {
 			if (targets.length >= TEST_REPO_LIMIT) break;
 			const effective = await effectiveGitUrl(url);
-			if (/^https:\/\//i.test(effective) && urlHost(effective) === token.host)
+			if (/^https:\/\//i.test(effective) && urlHost(effective) === token.host) {
 				targets.push(effective);
+				if (pickOf(metadata) === token.connectionId) pinned.add(effective);
+			}
 		}
 		const display = {
 			source: "connection" as const,
@@ -748,7 +801,8 @@ export class IntegrationsService implements OnModuleInit {
 		};
 		const cred = new GitCredential(display, token.token, { host: token.host });
 		const details: string[] = [];
-		let rejected: string | null = null;
+		const failures: GitErrorKind[] = [];
+		let rejected = false;
 		for (let i = 0; i < targets.length; i += TEST_CONCURRENCY) {
 			const batch = targets.slice(i, i + TEST_CONCURRENCY);
 			details.push(
@@ -782,16 +836,22 @@ export class IntegrationsService implements OnModuleInit {
 								tokenExpiresAt: token.tokenExpiresAt,
 								sshAuthSockSet: !!process.env.SSH_AUTH_SOCK,
 							});
+							const kind = gitErrorKind(failure.code);
 							// Any host's refusal reads CREDENTIALS_INVALID, not only github.com's API one.
-							if (failure.code === "token-rejected")
-								rejected ??= failure.message;
-							return failure.message;
+							if (kind === "token-rejected") rejected = true;
+							if (kind !== "no-access" || pinned.has(url)) failures.push(kind);
+							return (
+								gitErrorSentence(kind, {
+									host: token.host,
+									label: token.label,
+								}) ?? ""
+							);
 						}
 					}),
 				)),
 			);
 		}
-		return { details, rejected };
+		return { details, rejected, failures };
 	}
 
 	/** github.com's view of the token: refused, or when it expires (undefined when the call failed). */
@@ -917,6 +977,29 @@ export class IntegrationsService implements OnModuleInit {
 		});
 	}
 
+	/**
+	 * Gives the service's mappings priorities by their place, first highest, in one
+	 * transaction; null when an id is not one of its mappings or repeats. Selection
+	 * reads the same `priority` (#848 C5).
+	 */
+	async setServiceIntegrationOrder(
+		serviceId: string,
+		overrideIds: string[],
+	): Promise<ServiceIntegration[] | null> {
+		const found = await this.prisma.serviceIntegration.count({
+			where: { id: { in: overrideIds }, serviceId },
+		});
+		if (found !== overrideIds.length) return null;
+		return this.prisma.$transaction(
+			overrideIds.map((id, i) =>
+				this.prisma.serviceIntegration.update({
+					where: { id },
+					data: { priority: overrideIds.length - i },
+				}),
+			),
+		);
+	}
+
 	async deleteServiceIntegrationById(id: string): Promise<boolean> {
 		try {
 			await this.prisma.serviceIntegration.delete({ where: { id } });
@@ -989,9 +1072,10 @@ export class IntegrationsService implements OnModuleInit {
 				isGlobal: true,
 				hasOverride: !!override,
 				overrideId: override?.id,
-				globalConfig: connectionConfig,
-				serviceConfig,
-				effectiveConfig: serviceConfig ?? connectionConfig,
+				priority: override?.priority,
+				globalConfig: withShownAddress(connectionConfig),
+				serviceConfig: withShownAddress(serviceConfig),
+				effectiveConfig: withShownAddress(serviceConfig ?? connectionConfig),
 			});
 		}
 

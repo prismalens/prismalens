@@ -9,6 +9,7 @@ import {
 	connectSteps,
 	SOURCE_CATEGORIES,
 	SOURCE_TYPES,
+	SourceDraftSchema,
 	sourceType,
 	sourceTypeBySlug,
 	templateCategory,
@@ -111,6 +112,22 @@ describe("gateway contract (#848)", () => {
 		for (const bad of ["n8n__prod", "N8n", "1n8n", "a".repeat(17)])
 			expect(CONNECTION_NAME.test(bad)).toBe(false);
 		expect(CONNECTION_NAME.test("a".repeat(16))).toBe(true);
+	});
+
+	it("SourceDraftSchema refuses an address carrying user:pass@ (#848)", () => {
+		const draft = (url: string) => SourceDraftSchema.safeParse({ type: "prometheus", url });
+		expect(draft("https://prom.example:9090/").success).toBe(true);
+		expect(draft("https://user:sentinel@prom.example").success).toBe(false);
+		expect(draft("https://sentinel@prom.example").success).toBe(false);
+		expect(draft("https://:sentinel@prom.example").success).toBe(false);
+	});
+
+	it("SourceDraftSchema refuses a query string or fragment, which can carry a credential (#848)", () => {
+		const draft = (url: string) => SourceDraftSchema.safeParse({ type: "prometheus", url });
+		expect(draft("https://prom.example/?api_key=sentinel").success).toBe(false);
+		expect(draft("https://prom.example?token=sentinel").success).toBe(false);
+		expect(draft("https://prom.example/#sentinel").success).toBe(false);
+		expect(draft("https://prom.example/?").success).toBe(false);
 	});
 
 	it("files template-only ids and descriptors under a category", () => {

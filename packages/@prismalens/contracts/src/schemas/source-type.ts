@@ -7,7 +7,10 @@
  */
 import { z } from "zod";
 import { PreRunSourceSchema } from "./investigation.js";
-import type { SourceCredentialKind } from "./source-credential.js";
+import {
+	SOURCE_CREDENTIAL_KINDS,
+	type SourceCredentialKind,
+} from "./source-credential.js";
 
 export const SOURCE_CATEGORIES = [
 	"metrics",
@@ -480,15 +483,67 @@ export const DetectedSourceSchema = z.object({
 });
 export type DetectedSource = z.infer<typeof DetectedSourceSchema>;
 
-export const SourcesOverviewSchema = z.object({
-	categories: z.array(SourceCategoryViewSchema),
-	detected: z.array(DetectedSourceSchema),
+/** Templates the alert pull reads, so one connection is also an Alert intake source. */
+export const ALERT_PULL_TEMPLATES: readonly string[] = [
+	"prometheus",
+	"alertmanager",
+];
+
+/** What a row's state word is built from; the UI shows words only (#848, gap 2). */
+export const SourceProblemSchema = z.enum([
+	"credential-refused",
+	"cant-reach",
+	"needs-credential",
+]);
+export type SourceProblem = z.infer<typeof SourceProblemSchema>;
+
+/** One telemetry connection on Settings, Sources (#848 C17). */
+export const SourceRowSchema = z.object({
+	connectionId: z.string(),
+	label: z.string(),
+	kind: z.string(),
+	/** The stored URL, for display only. */
+	address: z.string().nullable(),
+	status: z.string(),
+	/** The last Test that passed; null reads "Not tested yet". */
+	testedAt: z.string().nullable(),
+	/** `env` only when nothing is stored and a same-origin env token exists. */
+	credential: z.enum(["stored", "env", "none"]),
+	credentialKind: z.enum(SOURCE_CREDENTIAL_KINDS).optional(),
+	/** The env token a stored credential wins over, same origin only. */
+	overridesEnv: z.string().optional(),
+	problem: SourceProblemSchema.nullable(),
+	/** The message behind a problem, shown in the row's details. */
+	lastErrorMessage: z.string().nullable(),
+	usedBy: z.array(z.object({ serviceId: z.string(), name: z.string() })),
+	alsoInAlertIntake: z.boolean(),
 });
-export type SourcesOverview = z.infer<typeof SourcesOverviewSchema>;
+export type SourceRow = z.infer<typeof SourceRowSchema>;
+
+const hasUserinfo = (value: string): boolean => {
+	try {
+		const u = new URL(value);
+		return !!u.username || !!u.password;
+	} catch {
+		return false;
+	}
+};
 
 export const SourceDraftSchema = z.object({
 	type: z.string(),
-	url: z.string().trim().url(),
+	/** No `user:pass@`, `?query` or `#fragment`: a credential goes in `credential`, not the address (#848). */
+	url: z
+		.string()
+		.trim()
+		.url()
+		.refine((u) => !hasUserinfo(u), {
+			message:
+				"Credentials in the address are not supported; choose how to sign in below.",
+		})
+		.refine((u) => !/[?#]/.test(u), {
+			message:
+				"A query string or fragment in the address is not supported; choose how to sign in below.",
+		}),
 	/** `{ kind, ...fields }` as `CREDENTIAL_KIND_FIELDS` names them. */
 	credential: z.record(z.string(), z.string()).optional(),
 	/** Take the token or URL from the variable the api detected. */
@@ -500,6 +555,8 @@ export const SourceDraftSchema = z.object({
 	description: z.string().trim().min(1).max(80).optional(),
 	/** The advanced scope override for a sign-in. */
 	scopes: z.array(z.string().trim().min(1)).optional(),
+	/** `connect` saves without a probe, so the row reads "Not tested yet" (#848). */
+	saveUntested: z.boolean().optional(),
 });
 export type SourceDraft = z.infer<typeof SourceDraftSchema>;
 
@@ -525,13 +582,52 @@ export const ProbeReportSchema = z.object({
 		serviceLabel: z.string().nullable().optional(),
 		identity: z.string().optional(),
 	}),
+	/** A git token with no repository on its host to try: neither passed nor failed. */
+	untested: z.boolean().optional(),
 });
 export type ProbeReport = z.infer<typeof ProbeReportSchema>;
 
+/** `connectionId` is null when a required probe failed and nothing was saved. */
 export const ConnectSourceResponseSchema = z.object({
-	connectionId: z.string(),
+	connectionId: z.string().nullable(),
 	report: ProbeReportSchema,
 });
+
+const GitHostRepoSchema = z.object({
+	repositoryId: z.string(),
+	url: z.string(),
+});
+
+/** `GET /sources/git-hosts`: one git host's credentials, in the order a repository tries them (#848, ADR 0007 §6). */
+export const GitHostViewSchema = z.object({
+	host: z.string(),
+	/** The steps that apply on this host, in the order they are tried. */
+	order: z.array(z.enum(["pin", "stored", "env", "machine"])),
+	stored: z.array(
+		z.object({
+			connectionId: z.string(),
+			label: z.string(),
+			fingerprint: z.string(),
+			status: z.string(),
+			testedAt: z.string().nullable(),
+			pinnedRepos: z.array(GitHostRepoSchema),
+		}),
+	),
+	env: z.object({ variable: z.string(), fingerprint: z.string() }).nullable(),
+	machine: z.object({ helper: z.string() }).nullable(),
+	/** Two or more stored tokens and at least one repository that pins none. */
+	ambiguous: z.boolean(),
+	/** The repositories on this host that pin no token; the "Pick a token" remedy pins them. */
+	unpinnedRepos: z.array(GitHostRepoSchema),
+});
+export type GitHostView = z.infer<typeof GitHostViewSchema>;
+
+/** `GET /sources`: the telemetry connections and the git hosts (#848 C17). */
+export const SourcesOverviewSchema = z.object({
+	sources: z.array(SourceRowSchema),
+	gitHosts: z.array(GitHostViewSchema),
+});
+export type SourcesOverview = z.infer<typeof SourcesOverviewSchema>;
 
 export const SourcesPreRunInputSchema = z.object({
 	serviceId: z.string(),

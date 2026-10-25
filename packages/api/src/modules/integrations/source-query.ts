@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { z } from "zod";
+import { gitErrorSentence } from "../../core/harness/git-failure.js";
 import type { OpenedSource } from "./open-source.js";
 import {
 	OffOriginError,
@@ -114,6 +115,213 @@ export function failureReason(e: unknown): string {
 	return "could not connect to the source";
 }
 
+const UNSHOWN_ADDRESS = "an address PrismaLens cannot show";
+
+const parseUrl = (text: string): URL | null => {
+	try {
+		const u = new URL(text);
+		return u.host ? u : null;
+	} catch {
+		return null;
+	}
+};
+
+/** Fail closed: an address that does not parse is never echoed (#848). */
+export function redactAddress(text: string): string {
+	const trimmed = text.trim();
+	const u = parseUrl(trimmed);
+	if (!u) return UNSHOWN_ADDRESS;
+	const bare = u.pathname === "/" && !/\/[?#]|\/$/.test(trimmed);
+	u.username = u.password = u.search = u.hash = "";
+	return bare ? u.href.replace(/\/$/, "") : u.href;
+}
+
+const ADDRESS_KEY = /url|uri|endpoint|address/i;
+
+/** A config as an answer: every address-like field without userinfo, query or fragment, since a saved one may hold a credential (#848). */
+export function withShownAddress<T>(config: T): T {
+	if (Array.isArray(config)) return config.map(withShownAddress) as T;
+	if (!config || typeof config !== "object") return config;
+	return Object.fromEntries(
+		Object.entries(config).map(([k, v]) => [
+			k,
+			typeof v === "string" && ADDRESS_KEY.test(k)
+				? redactAddress(v)
+				: withShownAddress(v),
+		]),
+	) as T;
+}
+
+const hostOf = (address: string): string =>
+	parseUrl(redactAddress(address))?.host ?? UNSHOWN_ADDRESS;
+
+/** A stored error is a code, never text: only this shape is rendered, so older rows cannot carry a credential through (#848). */
+export interface ErrorMarker {
+	kind: string;
+	status?: number;
+}
+
+export const errorMarker = (kind: string, status?: number): string =>
+	JSON.stringify({ pl: 1, kind, ...(status === undefined ? {} : { status }) });
+
+export function parseMarker(
+	stored: string | null | undefined,
+): ErrorMarker | null {
+	if (!stored) return null;
+	try {
+		const v = JSON.parse(stored) as Record<string, unknown> | null;
+		if (!v || typeof v !== "object" || v.pl !== 1) return null;
+		if (typeof v.kind !== "string" || !/^[a-z-]{1,24}$/.test(v.kind))
+			return null;
+		if (v.status === undefined) return { kind: v.kind };
+		const s = v.status;
+		return typeof s === "number" && Number.isInteger(s) && s >= 100 && s <= 599
+			? { kind: v.kind, status: s }
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+export type SourceErrorKind =
+	| "reach"
+	| "timeout"
+	| "tls"
+	| "redirect"
+	| "credential"
+	| "status"
+	| "response"
+	| "failed";
+
+const UNREACHABLE_CODES = new Set([
+	"ECONNREFUSED",
+	"ENOTFOUND",
+	"EAI_AGAIN",
+	"EHOSTUNREACH",
+	"ENETUNREACH",
+	"ECONNRESET",
+]);
+const TIMEOUT_CODES = new Set([
+	"ETIMEDOUT",
+	"UND_ERR_CONNECT_TIMEOUT",
+	"UND_ERR_HEADERS_TIMEOUT",
+	"UND_ERR_BODY_TIMEOUT",
+]);
+const TLS_CODE =
+	/^(?:CERT_|DEPTH_ZERO_|SELF_SIGNED_|UNABLE_TO_(?:VERIFY|GET)_|ERR_TLS_|ERR_SSL_|HOSTNAME_MISMATCH)/;
+
+function signalsOf(err: unknown): { codes: string[]; names: string[] } {
+	const codes: string[] = [];
+	const names: string[] = [];
+	let e: unknown = err;
+	for (
+		let i = 0;
+		i < 4 && e && typeof e === "object";
+		i++, e = (e as { cause?: unknown }).cause
+	) {
+		const { code, name } = e as { code?: unknown; name?: unknown };
+		if (typeof code === "string") codes.push(code);
+		if (typeof name === "string") names.push(name);
+	}
+	return { codes, names };
+}
+
+function statusOf(err: unknown): number | null {
+	const status = (err as { status?: unknown } | null)?.status;
+	if (typeof status === "number" && status >= 100 && status <= 599)
+		return status;
+	const m =
+		err instanceof QueryFailed && /answered HTTP (\d{3})\b/.exec(err.message);
+	return m ? Number(m[1]) : null;
+}
+
+/** The category of a failed check, read from codes and names; no message text is read into it (#848). */
+export function sourceErrorKind(
+	err: unknown,
+): ErrorMarker & { kind: SourceErrorKind } {
+	if (err instanceof OffOriginError) return { kind: "redirect" };
+	if (err instanceof SourceConfigError) return { kind: "credential" };
+	const status = statusOf(err);
+	if (status !== null) return { kind: "status", status };
+	const { codes, names } = signalsOf(err);
+	if (codes.some((c) => TLS_CODE.test(c))) return { kind: "tls" };
+	if (
+		codes.some((c) => TIMEOUT_CODES.has(c)) ||
+		names.some((n) => n === "TimeoutError" || n === "AbortError")
+	)
+		return { kind: "timeout" };
+	if (
+		codes.some((c) => UNREACHABLE_CODES.has(c)) ||
+		(err instanceof TypeError && err.message === "fetch failed")
+	)
+		return { kind: "reach" };
+	if (names.includes("SyntaxError") || names.includes("ZodError"))
+		return { kind: "response" };
+	return { kind: "failed" };
+}
+
+export const sourceErrorMarker = (err: unknown): string => {
+	const { kind, status } = sourceErrorKind(err);
+	return errorMarker(kind, status);
+};
+
+const REACH = "Could not reach ";
+
+export const sourceAnswered = (address: string, status: number): string =>
+	`The source at ${hostOf(address)} answered ${status}`;
+
+/** The sentence for a category, with only the connection's own host in it. */
+export function sourceErrorSentence(
+	m: ErrorMarker,
+	address: string,
+): string | null {
+	const host = hostOf(address);
+	switch (m.kind) {
+		case "reach":
+			return `${REACH}${host}: connection refused or host not found`;
+		case "timeout":
+			return `${REACH}${host}: no answer in time`;
+		case "tls":
+			return `${REACH}${host}: its TLS certificate was not accepted`;
+		case "redirect":
+			return `${REACH}${host}: it redirected elsewhere, which PrismaLens does not follow`;
+		case "credential":
+			return `Could not use the saved credential for ${host}`;
+		case "status":
+			return m.status === undefined ? null : sourceAnswered(address, m.status);
+		case "response":
+			return `The source at ${host} sent a response this kind of source does not give`;
+		case "failed":
+			return "the check failed";
+		default:
+			return null;
+	}
+}
+
+/** What a failed check says now. */
+export const sourceErrorText = (err: unknown, address: string): string =>
+	sourceErrorSentence(sourceErrorKind(err), address) ?? "the check failed";
+
+/**
+ * A stored error as shown: the sentence for its code and the connection's own host,
+ * or a fixed fallback for anything that is not a code (#848).
+ */
+export function shownError(
+	stored: string | null | undefined,
+	subject:
+		| { address: string | null }
+		| { git: { host: string | null; label: string } },
+): string | null {
+	if (!stored) return null;
+	const m = parseMarker(stored);
+	if ("git" in subject)
+		return gitErrorSentence(m?.kind, subject.git) ?? "the check failed";
+	return (
+		(m && sourceErrorSentence(m, subject.address ?? "")) ??
+		"the last check failed"
+	);
+}
+
 export function cap<T>(
 	items: T[],
 	max: number,
@@ -151,7 +359,11 @@ export async function getJson(
 		await res.body?.cancel();
 		throw new QueryFailed(`the source answered HTTP ${res.status}`);
 	}
-	return JSON.parse(await res.text());
+	try {
+		return JSON.parse(await res.text());
+	} catch {
+		throw new QueryFailed("the source sent a response that is not valid JSON");
+	}
 }
 
 const promResult = (data: unknown) => {

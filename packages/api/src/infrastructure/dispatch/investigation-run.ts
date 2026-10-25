@@ -79,10 +79,13 @@ import { inheritedLevel } from "../../modules/investigations/follow-up-route.js"
 import {
 	buildPreRunSnapshot,
 	type CopyTarget,
+	markerReason,
+	notSavedMarker,
 	parseStoredSnapshot,
 	preRunContext,
 	SNAPSHOT_IO_MS,
 	snapshotWindow,
+	unavailableMarker,
 	writeReadCopies,
 } from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
@@ -527,11 +530,20 @@ async function gatherPreRun(
 			now: new Date(),
 		});
 		const saved = await saveSnapshot(port, runId, JSON.stringify(snap));
+		// The row keeps our own words, never the driver's message: it is served to the UI (#848).
+		if (!saved.ok)
+			void saveMarker(
+				port,
+				runId,
+				notSavedMarker(
+					snap,
+					saved.late ? saved.error : "the database write failed",
+				),
+			);
 		return preRunContext(snap, saved, await copiesOf(workspace, runId, snap));
 	} catch (e) {
 		logger.warn(
-			"Could not build the pre-run context; the run starts without it",
-			e,
+			`Could not build the pre-run context; the run starts without it (${errorTag(e)})`,
 		);
 		return undefined;
 	}
@@ -541,17 +553,36 @@ async function saveSnapshot(
 	port: NonNullable<RunPorts["preRun"]>,
 	runId: string,
 	text: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string; late: boolean }> {
 	try {
 		const got = await within(SNAPSHOT_IO_MS, port.save(runId, text));
 		return got === LATE
 			? {
 					ok: false,
 					error: `the save did not finish in ${SNAPSHOT_IO_MS / 1000} s`,
+					late: true,
 				}
 			: { ok: true };
 	} catch (e) {
-		return { ok: false, error: messageOf(e) };
+		return {
+			ok: false,
+			error: `the database write failed (${errorTag(e)})`,
+			late: false,
+		};
+	}
+}
+
+/** A state marker in the run's `preRun` column, so its detail can say why no snapshot is there; never throws, never awaited. */
+async function saveMarker(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	text: string,
+): Promise<void> {
+	try {
+		if ((await within(SNAPSHOT_IO_MS, port.save(runId, text))) === LATE)
+			logger.warn("pre-run: the state marker did not save in time");
+	} catch (e) {
+		logger.warn(`pre-run: could not save the state marker (${errorTag(e)})`);
 	}
 }
 
@@ -578,7 +609,10 @@ async function reloadPreRun(
 		const got = await within(SNAPSHOT_IO_MS, port.load(runId));
 		if (got === LATE)
 			reason = `the stored snapshot did not load in ${SNAPSHOT_IO_MS / 1000} s`;
-		else if (got !== null) {
+		else if (got === null)
+			// Only an empty column is marked: a value that did not load or parse is kept.
+			void saveMarker(port, runId, unavailableMarker(reason));
+		else {
 			const snap = parseStoredSnapshot(got);
 			if (snap)
 				return preRunContext(
@@ -586,10 +620,10 @@ async function reloadPreRun(
 					{ ok: true },
 					await copiesOf(workspace, runId, snap),
 				);
-			reason = "the stored snapshot could not be read";
+			reason = markerReason(got) ?? "the stored snapshot could not be read";
 		}
 	} catch (e) {
-		logger.warn("Could not load the stored pre-run snapshot", e);
+		logger.warn(`Could not load the stored pre-run snapshot (${errorTag(e)})`);
 		reason = "the stored snapshot could not be read";
 	}
 	logger.warn(`pre-run: not available on this follow-up: ${reason}`);
@@ -631,7 +665,7 @@ async function runbookScan(
 		if (got !== LATE) return got;
 	} catch (e) {
 		if (!deadline.signal.aborted) {
-			logger.warn("Could not read runbooks before the run", e);
+			logger.warn(`Could not read runbooks before the run (${errorTag(e)})`);
 			return { entries: [], skipped: "the runbook scan failed" };
 		}
 	} finally {
@@ -925,6 +959,7 @@ async function runFollowUp(
 							},
 						}
 					: {}),
+				...(kind === "chat" ? { kind: "chat" as const } : {}),
 				resume: {
 					...(sessionId ? { sessionId } : {}),
 					...(seed ? { handoff: seed.text } : {}),
@@ -1618,6 +1653,13 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 	return Promise.race([work, aborted]).finally(() =>
 		signal.removeEventListener("abort", onAbort),
 	);
+}
+
+/** An error's class and code, never its message: a driver's can carry a secret (#848). */
+function errorTag(e: unknown): string {
+	if (!(e instanceof Error)) return "not an Error";
+	const code = (e as { code?: unknown }).code;
+	return typeof code === "string" ? `${e.name} ${code}` : e.name;
 }
 
 function messageOf(e: unknown): string {

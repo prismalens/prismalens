@@ -136,6 +136,8 @@ export interface HarnessDescriptor {
 	gatewayDelivery?: "mcp-config-file";
 	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
 	sessionMeta?: () => Record<string, unknown>;
+	/** PrismaLens's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */
+	systemPromptVia?: "claude-meta";
 	/** One line the doctor prints when the binary is missing. */
 	install: string;
 	/**
@@ -174,6 +176,8 @@ export interface HarnessDescriptor {
 	providerKeys?: readonly string[];
 	/** The row passed the resume probe (scripts/acp-admission.ts R5), so a finished run can be continued with session/load (#747). */
 	resume: boolean;
+	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
+	toolsHint?: { text: string };
 }
 
 type JsonObject = Record<string, unknown>;
@@ -387,6 +391,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 				},
 			},
 		}),
+		// claude-agent-acp 0.81.1 reads `_meta.systemPrompt` on session/new and session/load
+		// (acp-agent.js:6215-6232; load reaches it through getOrCreateSession, :6084-6112).
+		systemPromptVia: "claude-meta",
 		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
 		// The model keys too: a gateway serves its own model ids, not Anthropic's (walk f18).
@@ -540,6 +547,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 		resume: true,
+		// No trust command is quoted: Gemini's own one is unconfirmed (#848 §11 Q4).
+		toolsHint: {
+			text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
+		},
 	},
 	deepagents: {
 		id: "deepagents",

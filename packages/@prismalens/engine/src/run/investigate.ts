@@ -71,6 +71,7 @@ import {
 import {
 	buildChatPrompt,
 	buildInvestigationPrompt,
+	investigationPromptParts,
 	type NewerRun,
 	newerRunNote,
 } from "./prompt.js";
@@ -98,7 +99,10 @@ export interface RunInvestigationOptions {
 		| "companionBinary"
 	> &
 		Partial<
-			Pick<HarnessDescriptor, "modelVia" | "adapterPackage" | "gatewayDelivery">
+			Pick<
+				HarnessDescriptor,
+				"modelVia" | "adapterPackage" | "gatewayDelivery" | "systemPromptVia"
+			>
 		>;
 	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
@@ -488,6 +492,19 @@ export async function* runInvestigation(
 	const offer = opts.gateway
 		? gatewayOffer(opts.gateway, descriptor.gatewayDelivery)
 		: null;
+	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
+	const brief =
+		descriptor.systemPromptVia === "claude-meta" &&
+		opts.kind !== "chat" &&
+		opts.context.alerts.length > 0
+			? investigationPromptParts(opts.context, { level }).brief
+			: null;
+	const investigationPrompt = (
+		o: Parameters<typeof buildInvestigationPrompt>[1],
+	) =>
+		brief
+			? investigationPromptParts(opts.context, o).turn
+			: buildInvestigationPrompt(opts.context, o);
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
@@ -511,7 +528,9 @@ export async function* runInvestigation(
 				opts.limits?.wallClockMs,
 				Date.now() - spawnedAt,
 			),
-		sessionMeta: descriptor.sessionMeta?.(),
+		sessionMeta: brief
+			? { ...descriptor.sessionMeta?.(), systemPrompt: { append: brief } }
+			: descriptor.sessionMeta?.(),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
 		onWire: wire,
@@ -849,7 +868,7 @@ export async function* runInvestigation(
 			].join("\n\n");
 			const seeded = opts.resume.handoff
 				? kind === "continue"
-					? `${buildInvestigationPrompt(opts.context, { modeName, noNetwork, level })}\n\n${opts.resume.handoff}\n\n${said}`
+					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${opts.resume.handoff}\n\n${said}`
 					: buildChatPrompt(opts.context, `${opts.resume.handoff}\n\n${said}`, {
 							noNetwork,
 						})
@@ -882,7 +901,7 @@ export async function* runInvestigation(
 				);
 			outcome = yield* turn(
 				promptParts(
-					buildInvestigationPrompt(opts.context, {
+					investigationPrompt({
 						modeName,
 						noNetwork,
 						level,

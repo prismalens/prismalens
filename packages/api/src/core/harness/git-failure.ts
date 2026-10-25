@@ -21,7 +21,7 @@ export type GitFailureAction =
 	| "pick-credential"
 	| "replace-token";
 
-/** A git call that failed, in words the user can act on. `stderr` is scrubbed and for the server log only. */
+/** A git call that failed, in words the user can act on. `message` is fixed text; `stderr` is scrubbed, for classification only, never logged or returned (#848). */
 export class GitFailure extends Error {
 	constructor(
 		readonly code: GitFailureCode,
@@ -34,9 +34,13 @@ export class GitFailure extends Error {
 	}
 }
 
+/** Only the first 64 KB of remote output is scanned: the patterns below are not all linear (#848). */
+const MAX_SCANNED_STDERR = 64 * 1024;
+
 /** Strips anything that looks like a credential from git's stderr. */
 export function scrubGitStderr(stderr: string): string {
 	return stderr
+		.slice(0, MAX_SCANNED_STDERR)
 		.replace(/Authorization:\s*\S+\s+\S+/gi, "Authorization: ***")
 		.replace(/:\/\/[^/@\s]+@/g, "://***@");
 }
@@ -62,7 +66,7 @@ const UNREACHABLE =
 	/Could not resolve host|Failed to connect|Connection (refused|timed out)|Operation timed out|ssh: connect to host/i;
 
 function tokenName(label: string): string {
-	return label.replace(/^token /, "");
+	return label.replace(/^(token|env) /, "");
 }
 
 /** `(gh, sumit)` from `machine git (gh, sumit)`, or "" when the label has none. */
@@ -75,15 +79,64 @@ export function formatDay(d: Date): string {
 	return d.toISOString().slice(0, 10);
 }
 
+/** What a git token connection stores: a code, never text; its sentence is built when shown (#848). */
+export type GitErrorKind =
+	| "token-expired"
+	| "token-rejected"
+	| "no-access"
+	| "unreachable"
+	| "other"
+	| "no-token"
+	| "failed";
+
+const GIT_ERROR_KINDS: readonly string[] = [
+	"token-expired",
+	"token-rejected",
+	"no-access",
+	"unreachable",
+	"other",
+	"no-token",
+	"failed",
+];
+
+export function gitErrorKind(code: string): GitErrorKind {
+	return GIT_ERROR_KINDS.includes(code) ? (code as GitErrorKind) : "failed";
+}
+
+const GIT_HOST = /^[a-z0-9.-]+(?::\d{1,5})?$/i;
+
+/** The sentence for a stored code, from the token's own host and label only; no repository is named. Null for an unknown code. */
+export function gitErrorSentence(
+	kind: string | undefined,
+	token: { host: string | null; label: string },
+): string | null {
+	const host =
+		token.host && GIT_HOST.test(token.host) ? token.host : "the git host";
+	const label = token.label.replace(/\s+/g, " ");
+	switch (kind) {
+		case "token-expired":
+			return `Token "${label}" has expired. Replace it in Settings → Integrations.`;
+		case "token-rejected":
+			return `${host} rejected token "${label}". It was revoked or mistyped; replace it.`;
+		case "no-access":
+			return `Token "${label}" can't see a repository on ${host}: it doesn't exist or the token has no access to it. Check the URL or grant the repository on the token.`;
+		case "unreachable":
+			return `Could not reach ${host}.`;
+		case "other":
+			return `git could not read a repository on ${host}.`;
+		case "no-token":
+			return "This connection has no host or token.";
+		case "failed":
+			return "the check failed";
+		default:
+			return null;
+	}
+}
+
 /** git's own message prefixes under `LC_ALL=C`, matched in table order (plan §1.4, #673). */
 export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	const { credential, host, repo } = input;
 	const stderr = scrubGitStderr(input.stderr);
-	const first =
-		stderr
-			.split("\n")
-			.find((l) => l.trim())
-			?.trim() ?? "git failed";
 	const token = tokenName(credential.label);
 	const fp = credential.fingerprint ? ` (fp ${credential.fingerprint})` : "";
 	const fail = (
@@ -91,7 +144,8 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 		message: string,
 		action?: GitFailureAction,
 	) => new GitFailure(code, message, action, stderr);
-	const source = credential.source;
+	// An env token is diagnosed like a saved one (#848).
+	const source = credential.source === "env" ? "connection" : credential.source;
 	const now = input.now ?? new Date();
 
 	if (
@@ -157,6 +211,6 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 			"add-credential",
 		);
 	if (has(stderr, UNREACHABLE))
-		return fail("unreachable", `Could not reach ${host}: ${first}.`);
-	return fail("other", first);
+		return fail("unreachable", `Could not reach ${host}.`);
+	return fail("other", `git could not read ${repo} on ${host}.`);
 }
