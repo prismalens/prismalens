@@ -8,6 +8,7 @@
  * No network, no LLM, no real harness — `@prismalens/engine` is mocked wherever a test
  * needs `conductRun` to run at all.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData, t
 import { type conductRun, withPreRunCoverage } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
-import type { Snapshot } from "../../core/harness/repo-source.service.js";
+import { RepoSourceService, type Snapshot } from "../../core/harness/repo-source.service.js";
 import type { IncidentRepo, RepoRef, RunPorts } from "./run-ports.js";
 
 const mocks = vi.hoisted(() => ({ conductRun: vi.fn(), logged: [] as unknown[][] }));
@@ -2797,6 +2798,56 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 		} finally {
 			vi.useRealTimers();
 			vi.unstubAllEnvs();
+		}
+	});
+
+	it("a folder worktree that finishes after the budget is unlocked and removed, not left for the boot sweep (#918)", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-late-"));
+		const src = mkdtempSync(join(os.tmpdir(), "pl-late-src-"));
+		const git = (args: string[]) => execFileSync("git", args, { cwd: src }).toString();
+		git(["init", "-q", "-b", "main"]);
+		writeFileSync(join(src, "a.txt"), "v1");
+		git(["add", "a.txt"]);
+		git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "init"]);
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		let open = () => {};
+		const gate = new Promise<void>((r) => {
+			open = r;
+		});
+		let finished = false;
+		vi.useFakeTimers();
+		try {
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [{ ...makeRepo(src, "svc-a"), sourceKind: "folder" as const }]),
+				snapshotWith: vi.fn(async (_ref: RepoRef, dest: string, _signal?: AbortSignal, _at?: string, runId?: string) => {
+					await gate;
+					// Past the budget: the real checkout, deaf to the run's signal, as a git that ignored its kill.
+					const snap = await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest, undefined, undefined, runId);
+					finished = true;
+					return { snap, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			const wsPromise = resolveWorkspace(minimalData(), ports);
+			await vi.advanceTimersByTimeAsync(600_000);
+			const ws = await wsPromise;
+			vi.useRealTimers();
+			expect(ws.checkoutsSkipped.map((k) => k.code)).toEqual(["budget"]);
+
+			open();
+			await vi.waitFor(
+				() => {
+					expect(finished).toBe(true);
+					expect(git(["worktree", "list", "--porcelain"])).not.toContain("prismalens run inv-1");
+					expect(existsSync(join(tmpDir, "worktrees", "pl-inv-1"))).toBe(false);
+				},
+				{ timeout: 15_000, interval: 50 },
+			);
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllEnvs();
+			rmSync(tmpDir, { recursive: true, force: true });
+			rmSync(src, { recursive: true, force: true });
 		}
 	});
 

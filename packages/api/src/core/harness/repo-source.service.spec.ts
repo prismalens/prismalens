@@ -460,6 +460,40 @@ describe("repo-source.service", () => {
 			expect(git(["worktree", "list", "--porcelain"], src).match(/prismalens run run4/g)).toHaveLength(1);
 		});
 
+		it("three folders of one git repo check out at once, as the run's budget does, while another run is released (#918)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			for (const sub of ["services/api", "services/worker"]) {
+				mkdirSync(join(src, sub), { recursive: true });
+				writeFileSync(join(src, sub, "x.txt"), sub);
+			}
+			git(["add", "-A"], src);
+			git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "services"], src);
+			const head = headOf(src);
+			const service = new RepoSourceService();
+			const sources = [src, join(src, "services", "api"), join(src, "services", "worker")];
+			for (let round = 0; round < 5; round++) {
+				const other = runWorktreeDir(`other${round}`);
+				await service.snapshot({ kind: "folder", source: src }, other, undefined, undefined, `other${round}`);
+				const dests = ["mono", "api", "worker"].map((n) => join(runWorktreeDir(`run6r${round}`), n));
+
+				const [snaps] = await Promise.all([
+					Promise.all(
+						sources.map((source, i) =>
+							service.snapshot({ kind: "folder", source }, dests[i] as string, undefined, undefined, `run6r${round}`),
+						),
+					),
+					releaseWorktreesIn(other),
+				]);
+
+				expect(snaps.map((s) => s.head)).toEqual([head, head, head]);
+				for (const d of dests) expect(readFileSync(join(d, "services", "api", "x.txt"), "utf8")).toBe("services/api");
+				expect(git(["worktree", "list", "--porcelain"], src).match(new RegExp(`prismalens run run6r${round}`, "g"))).toHaveLength(3);
+				await releaseWorktreesIn(runWorktreeDir(`run6r${round}`));
+			}
+			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("prismalens run");
+		});
+
 		it("checkFolder() on a subdirectory returns the top level as root and the subdir as prefix", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);

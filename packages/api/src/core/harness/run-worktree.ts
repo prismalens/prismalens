@@ -61,13 +61,22 @@ export async function addRunWorktree(
 	await releaseWorktree(dest);
 	rmSync(dest, { recursive: true, force: true });
 	mkdirSync(dirname(dest), { recursive: true });
-	// The path is ours: double force re-adds one a crash left registered, even locked.
-	await git(
-		["worktree", "add", "--detach", "--no-checkout", "-f", "-f", dest, commit],
-		source,
-		signal,
-	);
 	try {
+		// The path is ours: double force re-adds one a crash left registered, even locked.
+		await git(
+			[
+				"worktree",
+				"add",
+				"--detach",
+				"--no-checkout",
+				"-f",
+				"-f",
+				dest,
+				commit,
+			],
+			source,
+			signal,
+		);
 		// core.longpaths: Git for Windows refuses paths past MAX_PATH without it.
 		await git(
 			["-c", "core.longpaths=true", "reset", "--hard", "--quiet", commit],

@@ -1558,6 +1558,7 @@ export async function resolveWorkspace(
 			);
 		},
 		signal,
+		releaseLate,
 	);
 	const taken: RunWorkspaceRepo[] = [];
 	const skipped: Skip[] = [];
@@ -1691,6 +1692,7 @@ async function checkoutAll<T>(
 	count: number,
 	run: (i: number, signal: AbortSignal) => Promise<T>,
 	cancel?: AbortSignal,
+	onLate?: (late: NoInfer<T>) => void,
 ): Promise<CheckoutOutcome<T>[]> {
 	const controllers = Array.from(
 		{ length: count },
@@ -1719,7 +1721,7 @@ async function checkoutAll<T>(
 			try {
 				outcomes[i] = {
 					ok: true,
-					value: await untilAborted(run(i, signal), signal),
+					value: await untilAborted(run(i, signal), signal, onLate),
 				};
 			} catch (e) {
 				outcomes[i] =
@@ -1744,16 +1746,30 @@ async function checkoutAll<T>(
 	return outcomes;
 }
 
-/** `work`, rejected as soon as `signal` aborts: a port that never settles is dropped, not awaited. */
-function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+/**
+ * `work`, rejected as soon as `signal` aborts: a port that never settles is dropped, not awaited.
+ * `onLate` gets what a dropped `work` still yields, so nothing it made outlives the run (#918).
+ */
+function untilAborted<T>(
+	work: Promise<T>,
+	signal: AbortSignal,
+	onLate?: (late: NoInfer<T>) => void,
+): Promise<T> {
 	let onAbort = () => {};
 	const aborted = new Promise<never>((_, reject) => {
 		onAbort = () => reject(signal.reason);
 		if (signal.aborted) onAbort();
 		else signal.addEventListener("abort", onAbort, { once: true });
 	});
-	return Promise.race([work, aborted]).finally(() =>
-		signal.removeEventListener("abort", onAbort),
+	const raced = Promise.race([work, aborted]);
+	if (onLate) raced.catch(() => work.then(onLate, () => {}));
+	return raced.finally(() => signal.removeEventListener("abort", onAbort));
+}
+
+/** A checkout that finished after the run stopped waiting: its worktree is unlocked and removed now. */
+function releaseLate({ snap }: { snap: { path: string } }): void {
+	releaseWorktreesIn(snap.path).catch((e) =>
+		logger.warn(`Could not release the late checkout ${snap.path}`, e),
 	);
 }
 
@@ -1804,6 +1820,7 @@ export async function rebuildWorkspace(
 				investigationId,
 			),
 			bounded,
+			releaseLate,
 		);
 		inCheckout(investigationId, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
