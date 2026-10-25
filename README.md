@@ -30,8 +30,8 @@ PrismaLens never calls a model itself. Before you run it on your machine, read
 
 ## Quick start
 
-You need git and a coding agent on PATH; `pl doctor` lists the agents
-PrismaLens knows and how to install each.
+You need git and a coding agent; Settings → Agent in the app lists the ones
+that can run, and Add agent sets one up.
 
 ```bash
 npm install -g prismalens   # needs Node.js 24+
@@ -64,11 +64,8 @@ Windows, Homebrew, Scoop and the desktop app (all preview) are on
 - Once a day it checks GitHub Releases for a newer version and prints one line
   (`PRISMALENS_UPDATE_CHECK=off` turns that off).
 
-`pl doctor` opens an ACP handshake with each agent on PATH and reports whether
-it answers, or why not. An answer is not proof of sign-in: Claude Code checks
-its sign-in only when a run starts, so the doctor warns rather than passing it.
-For OpenCode it names the model OpenCode serves when Settings → Agent sets
-none; with no provider signed in, that is an OpenCode Zen model.
+`pl doctor` checks PrismaLens's own setup (Node, the workspace, Git, the
+webhook URL and port), never a coding agent; Settings → Agent does that.
 
 ### Your first investigation
 

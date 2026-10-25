@@ -312,8 +312,8 @@ export function listHarnessStatus(
 	});
 }
 
-/** Every auto-order row's install line, for the doctor's ERROR and the app's tooltip. */
-export function installHints(): string {
+/** Every auto-order row's install line, for the no-agent selection reason. */
+function installHints(): string {
 	// The local agent has nothing to install; Settings → Agent sets it up.
 	return HARNESS_AUTO_ORDER.filter((id) => id !== "local")
 		.map(

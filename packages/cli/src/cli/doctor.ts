@@ -2,18 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * `prismalens doctor` — preflight checklist for `pl up` (ADR-0008/0010, #337/#610).
- *
- * No config loader, no LLM credential check, no listen-token check: prismalens
- * makes no model calls and has no webhook listener command any more. What is
- * left is what actually gates a boot:
- *  - Node version
- *  - the workspace directory (created by `pl up` itself); `--workspace` and
- *    PRISMALENS_WORKSPACE_DIR are honoured the way `pl up` honours them
- *  - git and the credential helpers this shell would use
- *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4),
- *    and the model a run would ask it for
- *  - the port/host `pl up` will bind, informational only
+ * `prismalens doctor` — preflight checklist for `pl up` (ADR-0008/0010, #337/#610):
+ * Node, the workspace, PATH, the installs of `pl`, Git, the webhook, port/host and
+ * the service. It never checks a coding agent; Settings → Agent does that (#907).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
@@ -30,25 +21,7 @@ import {
 	secretFileName,
 	serviceOwnsWorkspace,
 } from "@prismalens/config";
-import {
-	HARNESS_REGISTRY,
-	type HarnessId,
-	resolveHarnessModel,
-} from "@prismalens/config/harness";
-import {
-	harnessLaunch,
-	installHints,
-	type PathScanOptions,
-	resolveHarnessSelection,
-	resolveOnPath,
-	shippedAdapter,
-	windowsInstallOnPath,
-} from "@prismalens/config/harness-selection";
-import {
-	probeHarness,
-	type SandboxChecks,
-	windowsSpawnPlan,
-} from "@prismalens/engine";
+import { windowsSpawnPlan } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
@@ -99,53 +72,7 @@ function checkAppDataDir(): Check {
 	}
 }
 
-/** The rows a PATH scan can find; the local agent lives in Settings, which the doctor can't read (#907). */
-function registryAgents(): (typeof HARNESS_REGISTRY)[HarnessId][] {
-	return Object.values(HARNESS_REGISTRY).filter((d) => d.id !== "local");
-}
-
-/** For every registry entry, is its binary on PATH — the existing PATH scan. */
-export function checkHarnessesOnPath(
-	path = process.env.PATH ?? "",
-	scan: PathScanOptions = {},
-): Check[] {
-	return registryAgents().map((descriptor) => {
-		const resolved = resolveOnPath(descriptor.binary, path, scan);
-		const companion = descriptor.companionBinary
-			? resolveOnPath(descriptor.companionBinary, path, scan)
-			: null;
-		const shipped =
-			!resolved && companion && descriptor.adapterPackage
-				? harnessLaunch(descriptor, {
-						isOnPath: () => true,
-						shippedAdapter,
-					})
-				: null;
-		const windowsOnly =
-			resolved || shipped
-				? null
-				: (windowsInstallOnPath(descriptor.binary, path, scan) ??
-					(descriptor.companionBinary
-						? windowsInstallOnPath(descriptor.companionBinary, path, scan)
-						: null));
-		return {
-			name: `Harness: ${descriptor.label}`,
-			pass: resolved !== null || shipped !== null,
-			detail: resolved
-				? `${descriptor.binary} found at ${resolved}`
-				: shipped
-					? `${descriptor.label} found at ${companion}; runs through the ${descriptor.binary} PrismaLens ships`
-					: windowsOnly
-						? `${windowsOnly} is the Windows install; it can't run inside WSL. Install it in this distro: ${descriptor.install}`
-						: companion
-							? `${descriptor.label} found at ${companion}, but this install has no ${descriptor.binary}. Install: ${descriptor.install}`
-							: `${descriptor.label} not found on PATH. Install: ${descriptor.install}`,
-			hard: false,
-		};
-	});
-}
-
-/** The PATH the harness scan used, once, so a bare sudo or service PATH shows without a dump per row. */
+/** The PATH, once, so a bare sudo or service PATH shows. */
 function checkPath(): Check {
 	const entries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
 	const head = entries.slice(0, 3).join(", ");
@@ -240,195 +167,6 @@ export function checkInstalls(
 		detail,
 		hard: false,
 	};
-}
-
-const AGENT_READY = "Agent ready";
-
-/**
- * HARD: at least one agent must answer its handshake signed in. An agent that is
- * absent or can't run is not a warning unless none can (#907); this one line names why.
- */
-export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
-	const ready = handshakes.filter((h) => h.ready);
-	if (ready.length > 0)
-		return {
-			name: AGENT_READY,
-			pass: true,
-			detail: `${ready.map((h) => HARNESS_REGISTRY[h.id].label).join(", ")} ready`,
-			hard: true,
-		};
-	const failed = handshakes.map(
-		(h) => `\n  ${HARNESS_REGISTRY[h.id].label}: ${h.check.detail}`,
-	);
-	return {
-		name: AGENT_READY,
-		pass: false,
-		detail: `no agent can run. Set one up with Add agent in Settings → Agent, or install one: ${installHints()}${failed.join("")}\n  Agents set up only in Settings (binary path, local agent) are checked there, not here.`,
-		hard: true,
-	};
-}
-
-/** One harness's handshake row, plus what the Model line and the summary need from it. */
-export interface Handshake {
-	id: HarnessId;
-	check: Check;
-	/** The model the agent reported as current on `session/new`; null when it named none. */
-	servedModel: string | null;
-	/** It answered, but it checks its sign-in only when a run starts. */
-	signInUnchecked: boolean;
-	/** It answered and said it is not signed in (#831). */
-	signedOut: boolean;
-	/** It answered and is not signed out: the only agents the doctor names (#907). */
-	ready: boolean;
-}
-
-/**
- * ACP handshake against every harness on PATH (#630, Unit D on #337): PATH
- * presence says a binary exists; a handshake says it speaks ACP, not that it is
- * signed in (see probeHarness). `initialize` +
- * `session/new`, no prompt turn, 10 s per harness, sequential — a hung
- * harness reports its own line and the doctor moves on to the next one.
- */
-export async function checkHarnessHandshake(
-	path = process.env.PATH ?? "",
-	scan: PathScanOptions = {},
-): Promise<Handshake[]> {
-	// A Windows install under WSL is not "on PATH", so it is never probed (#673 w8).
-	const installed = registryAgents().filter((descriptor) =>
-		harnessLaunch(descriptor, {
-			isOnPath: (bin) => resolveOnPath(bin, path, scan) !== null,
-			shippedAdapter,
-		}),
-	);
-	const results: Handshake[] = [];
-	for (const descriptor of installed) {
-		const probe = await probeHarness(descriptor.id);
-		const answered = probe.outcome === "answers-acp";
-		const signedOut = answered && probe.signedOut === true;
-		const signInUnchecked =
-			answered &&
-			probe.signedOut === undefined &&
-			descriptor.signInAtFirstTurn === true;
-		const signIn = signedOut
-			? `not signed in: ${descriptor.loginHint}`
-			: probe.signedOut === false
-				? "signed in"
-				: signInUnchecked
-					? `sign-in not checked until a run starts: ${descriptor.loginHint}`
-					: `sign-in: ${descriptor.loginHint}`;
-		results.push({
-			id: descriptor.id,
-			servedModel: answered ? (probe.servedModel ?? null) : null,
-			signInUnchecked,
-			signedOut,
-			ready: answered && !signedOut,
-			check: {
-				name: `Harness ACP handshake: ${descriptor.label}`,
-				pass: answered && !signedOut,
-				detail: `${probe.detail}${sandboxSummary(probe.sandbox)}; ${signIn}`,
-				hard: false,
-			},
-		});
-	}
-	return results;
-}
-
-/** "; sandbox: enforced for read-only, agent (why); none for agent-full-access (why)" — modes named only when they differ (#673 w51). */
-export function sandboxSummary(sandbox: SandboxChecks | undefined): string {
-	const groups = new Map<string, string[]>();
-	for (const [mode, check] of Object.entries(sandbox ?? {})) {
-		const key = `${check.state} (${check.reason})`;
-		groups.set(key, [...(groups.get(key) ?? []), mode]);
-	}
-	if (groups.size === 0) return "";
-	if (groups.size === 1) return `; sandbox: ${[...groups.keys()][0]}`;
-	const parts = [...groups].map(([key, modes]) => {
-		const [state, ...why] = key.split(" ");
-		return `${state} for ${modes.join(", ")} ${why.join(" ")}`;
-	});
-	return `; sandbox: ${parts.join("; ")}`;
-}
-
-/**
- * Which harness `pl up` would pick, per the shared selection gate, and the model
- * it would ask for. The doctor cannot see the app's persisted Settings → Harness
- * choice, so it says so: a pin saved there wins over what is printed here.
- */
-export function checkAutoSelection(
-	servedModels: Partial<Record<HarnessId, string | null>> = {},
-	handshakes: Handshake[] = [],
-): Check[] {
-	const selection = doctorSelection(handshakes);
-	// No agent at all is the Agent ready line's to say, once (#907).
-	if (!selection.runnable && selection.failure === "no-harness") return [];
-	if (!selection.runnable) {
-		return [
-			{
-				name: "Selected harness",
-				pass: false,
-				detail: selection.reason,
-				hard: false,
-			},
-		];
-	}
-	const model = resolveHarnessModel(selection.harness, undefined, process.env);
-	const label = HARNESS_REGISTRY[selection.harness].label;
-	const served = servedModels[selection.harness];
-	return [
-		{
-			name: "Selected harness",
-			pass: true,
-			detail: `${selection.harness}${selection.auto ? " (auto; an agent saved under Settings → Agent wins)" : " (pinned by PRISMALENS_HARNESS)"}${testedOf(selection.harness)}`,
-			hard: false,
-		},
-		{
-			name: "Model",
-			pass: true,
-			detail:
-				model.source === "env"
-					? `${model.model} (from ${HARNESS_REGISTRY[selection.harness].envModelKey}; Settings → Agent → Model overrides it)`
-					: model.source === "product-default"
-						? `${model.model} (tested default; Settings → Agent → Model overrides it)`
-						: served
-							? `${label} serves ${served}: the model set in its own config, else its default, unless Settings → Agent → Model sets one${zenNote(served)}`
-							: `${label} runs the model set in its own config, else its default, unless Settings → Agent → Model sets one`,
-			hard: false,
-		},
-	];
-}
-
-/** What `pl up` would pick: auto skips an agent whose handshake failed, as the app does (#907). */
-export function doctorSelection(handshakes: Handshake[] = []) {
-	return resolveHarnessSelection({
-		envHarness: process.env.PRISMALENS_HARNESS,
-		pinSource: "env",
-		isRunnable: (id) => handshakes.find((h) => h.id === id)?.ready ?? true,
-	});
-}
-
-/** PATH rows for the ready agents only; an absent or failing one prints nothing (#907). */
-export function readyPathChecks(
-	pathChecks: Check[],
-	handshakes: Handshake[],
-): Check[] {
-	const ready = new Set(
-		handshakes
-			.filter((h) => h.ready)
-			.map((h) => `Harness: ${HARNESS_REGISTRY[h.id].label}`),
-	);
-	return pathChecks.filter((c) => c.pass && ready.has(c.name));
-}
-
-/** `opencode/` ids are OpenCode Zen, what OpenCode serves with no provider signed in (#673 S2). */
-function zenNote(model: string): string {
-	return model.startsWith("opencode/")
-		? ". That is an OpenCode Zen model, under OpenCode's terms; `opencode auth login` signs in another provider"
-		: "";
-}
-
-function testedOf(id: HarnessId): string {
-	const tested = HARNESS_REGISTRY[id].tested;
-	return tested ? `, tested with ${tested.version}` : "";
 }
 
 export function checkWebhookToken(): Check {
@@ -576,57 +314,23 @@ export function checkWebhookUrl(
 	};
 }
 
-/**
- * The closing line: the selected agent's sign-in the doctor can't see turns a
- * pass into a warning (#673 S1); other agents' sign-in is not its concern (#907).
- */
-export function summary(
-	checks: Check[],
-	handshakes: Handshake[],
-	selected: HarnessId | null = null,
-): { level: "success" | "warn" | "error"; line: string } {
+/** The closing line; agents never reach it (#907). */
+export function summary(checks: Check[]): {
+	level: "success" | "error";
+	line: string;
+} {
 	const hardFailures = checks.filter((c) => c.hard && !c.pass);
 	if (hardFailures.length > 0) {
-		const onlyAgent = hardFailures.every((c) => c.name === AGENT_READY);
 		return {
 			level: "error",
-			line: onlyAgent
-				? "No agent on PATH can run. `pl up` still starts; an agent set up in Settings → Agent is checked there, not here."
-				: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
-		};
-	}
-	const labels = (pick: (h: Handshake) => boolean) =>
-		handshakes
-			.filter((h) => h.id === selected && pick(h))
-			.map((h) => HARNESS_REGISTRY[h.id].label);
-	const signedOut = labels((h) => h.signedOut);
-	const unchecked = labels((h) => h.signInUnchecked);
-	const failing = labels((h) => !h.ready && !h.signedOut);
-	const notes = [
-		...(signedOut.length > 0
-			? [
-					`${signedOut.join(" and ")} ${signedOut.length > 1 ? "are" : "is"} not signed in, so a run fails until ${signedOut.length > 1 ? "they are" : "it is"}.`,
-				]
-			: []),
-		...(failing.length > 0
-			? [
-					`${failing.join(" and ")} does not answer its handshake, so a run on it fails.`,
-				]
-			: []),
-		...(unchecked.length > 0
-			? [
-					`${unchecked.join(" and ")} ${unchecked.length > 1 ? "check their" : "checks its"} sign-in only when a run starts, so a run fails there if it is not signed in.`,
-				]
-			: []),
-	];
-	if (notes.length > 0) {
-		return {
-			level: "warn",
-			line: `Required checks passed. ${notes.join(" ")}`,
+			line: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
 		};
 	}
 	return { level: "success", line: "All required checks passed." };
 }
+
+export const AGENTS_LINE =
+	"Coding agents: pl doctor does not check them. Settings → Agent in the app lists the ones that can run, and Add agent sets one up.";
 
 export default defineCommand({
 	meta: {
@@ -660,24 +364,12 @@ export default defineCommand({
 				process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 			}
 
-			const harnessChecks = checkHarnessesOnPath();
-			const handshakes = await checkHarnessHandshake();
-			const servedModels = Object.fromEntries(
-				handshakes.map((h) => [h.id, h.servedModel]),
-			);
-
-			const selection = doctorSelection(handshakes);
-			// Agents that are absent or can't run print nothing; Agent ready speaks for them (#907).
 			const checks: Check[] = [
 				checkNodeVersion(),
 				checkAppDataDir(),
 				checkPath(),
 				checkInstalls(),
 				...checkGit(),
-				...readyPathChecks(harnessChecks, handshakes),
-				checkAnyAgentRunnable(handshakes),
-				...handshakes.filter((h) => h.ready).map((h) => h.check),
-				...checkAutoSelection(servedModels, handshakes),
 				checkWebhookToken(),
 				checkPortHost(),
 				checkWebhookUrl(),
@@ -691,13 +383,10 @@ export default defineCommand({
 				else if (check.hard) consola.error(line);
 				else consola.warn(line);
 			}
+			consola.log(AGENTS_LINE);
 			consola.log("");
 
-			const verdict = summary(
-				checks,
-				handshakes,
-				selection.runnable ? selection.harness : null,
-			);
+			const verdict = summary(checks);
 			consola[verdict.level](verdict.line);
 			if (verdict.level === "error") process.exit(1);
 		} catch (err) {

@@ -117,15 +117,23 @@ GOT=$("$BIN/prismalens" --version)
 [ "$GOT" = "$EXPECTED" ] || fail "--version printed '$GOT', package.json says '$EXPECTED'"
 echo "    $GOT"
 
-echo "==> doctor fails LOUDLY on a machine with no harness"
-# This is the first command a real user runs on a broken setup: the failure
-# mode is part of the contract. Expect a nonzero exit and an actionable report.
+echo "==> doctor passes on a clean machine with no agent and points at Settings → Agent (#907)"
+# Agents are the app's to check, never the doctor's: no agent is not a failure.
 set +e
 DOCTOR_OUT=$("$BIN/pl" doctor 2>&1)
 DOCTOR_EXIT=$?
 set -e
-[ "$DOCTOR_EXIT" -ne 0 ] || fail "doctor exited 0 in a clean env with no harness/credentials"
-echo "$DOCTOR_OUT" | grep -qi "no agent can run" || fail "doctor output does not say no agent can run (#907):
+# node:24-slim may carry no git, which the doctor rightly fails on.
+if command -v git >/dev/null 2>&1; then
+	[ "$DOCTOR_EXIT" -eq 0 ] || fail "doctor exited $DOCTOR_EXIT in a clean env with no agent:
+$DOCTOR_OUT"
+else
+	[ "$DOCTOR_EXIT" -ne 0 ] && echo "$DOCTOR_OUT" | grep -q "git missing" || fail "doctor did not fail on the missing git alone:
+$DOCTOR_OUT"
+	echo "$DOCTOR_OUT" | grep -q "1 required check(s) failed" || fail "doctor failed on more than git:
+$DOCTOR_OUT"
+fi
+echo "$DOCTOR_OUT" | grep -q "Settings → Agent" || fail "doctor output does not point at Settings → Agent (#907):
 $DOCTOR_OUT"
 
 echo "==> a machine with no agent is told it is not installed, never to run 'claude /login' (#518)"

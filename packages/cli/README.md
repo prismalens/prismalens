@@ -60,15 +60,15 @@ pl up
 
 `pl up` serves the dashboard on http://localhost:6473 and opens your browser
 on a one-time link that pairs it; there is no account. Investigations need a
-coding agent: one on PATH, or one set up with Add agent in Settings → Agent.
-`pl doctor` checks the ones on PATH and lists how to install each.
+coding agent: Settings → Agent in the app lists the ones that can run, and
+Add agent sets one up. `pl doctor` checks PrismaLens's own setup, not agents.
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
 | `up` | Run PrismaLens as a single process serving the API and web dashboard (default port 6473); `--tailscale-serve` also publishes it on your tailnet over HTTPS. |
-| `doctor` | Preflight-check the environment: the coding agents on PATH that answer their ACP handshake (Claude Code checks its sign-in only when a run starts), an error when none does, the model a run gets, and Git. |
+| `doctor` | Preflight-check PrismaLens's own setup: Node, the workspace, Git, the webhook URL and port; coding agents are set up in Settings → Agent. |
 | `pair` | Print a one-time link that pairs another device with this instance, with `--tailscale` on its tailnet HTTPS address, or with `--operator` this machine's own browser. |
 | `reset` | Delete the workspace — database, secrets and logs — after naming the path and asking. |
 | `upgrade` | Upgrade the way PrismaLens was installed: npm, the installer, Homebrew or Scoop. A background service tries the new version first and goes back to the old one and its database if it fails. |
