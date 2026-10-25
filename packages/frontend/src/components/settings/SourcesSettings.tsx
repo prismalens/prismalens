@@ -140,6 +140,11 @@ export function AddSourceButton() {
  * panel beside the table (a sheet below 1280 px).
  */
 export function SourcesSettings({ source }: { source?: string }) {
+	// Keyed: a source reached through history selects and opens afresh (#848).
+	return <SourcesPage key={source ?? ""} source={source} />;
+}
+
+function SourcesPage({ source }: { source?: string }) {
 	const { data, isLoading, isError, refetch } = useSourcesOverview();
 	const { data: connections } = useConnections();
 	const remove = useDeleteConnection();
