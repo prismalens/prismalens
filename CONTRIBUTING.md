@@ -119,75 +119,109 @@ empty workspace; the e2e stack's demo seed is there only for screens that read. 
 fixed together with the journey or scenario that would have caught it. How to write one:
 [`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md#writing-a-journey).
 
-### Agent-loop checks: scripted on PRs, recorded sessions replayed, live on dispatch
+### Agent-loop checks: the real agent on a scripted model, live on dispatch
 
 A PR never waits on a live model, and nothing here spends money on one (#884, #914). The agent loop is checked these ways:
 
 | Check | Model | Runs | Where |
 | --- | --- | --- | --- |
 | `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
-| `harness-admission` (R1-R7) for opencode, claude-code and codex | the real pinned agent on a scripted model server (`scripts/fakes/fake-model-server.mjs`, which speaks chat completions, Messages and Responses) | every PR | `ci.yml` |
-| `agent-replay` | recorded sessions of each agent row, replayed through the real engine (`scripts/fakes/transcripts/<agent>/<scenario>.ndjson`) | every PR | `ci.yml` |
+| `harness-admission`, one leg per agent: the admission (R1-R9) and the behaviour matrix | the real pinned agent, its model calls served by aimock (`@copilotkit/aimock`, pinned) from `scripts/fakes/scenarios/` | every PR; tier-1 legs gate, tier-2 legs do not | `ci.yml` |
 | protocol probe | none: `initialize` and `session/new` against each row's latest release | nightly | `agent-releases.yml` |
 | pin bump | none: a pull request once a release has soaked 3 days | daily | `agent-releases.yml` |
 | `harness-admission-live`, `packed-intake-live` | the real pinned OpenCode on its own free model | on dispatch, and before a release | `ci.yml` (dispatch only: that model stalls, so a nightly would be red most nights) |
 
-Tier 1 is opencode, claude-code and codex; gemini and deepagents are tier 2. A row's `tested` comes from CI only: it equals the pin CI installs (`scripts/agent-pins.json` for the agent, `@prismalens/agent-adapters` for the adapter, checked by `harness-pins.test.ts`) and moves only in a merged bump PR.
+Tier 1 is opencode, claude-code and codex; gemini and deepagents (`dcode`) are tier 2. A row's `tested` comes from CI only: it equals the pin CI installs (`scripts/agent-pins.json` for the agent, `@prismalens/agent-adapters` for the adapter, checked by `harness-pins.test.ts`) and moves only in a merged bump PR, whose CI runs the matrix on the new version.
 
-Run the PR admission yourself, with the agent on PATH (the pins in `scripts/agent-pins.json`):
+Run one agent's qualification yourself, with the agent on PATH at its pin:
 
 ```bash
 pnpm --filter "@prismalens/contracts..." build
-node scripts/admission-fake.mjs opencode "$PWD" --repeat 3
+node scripts/admission-fake.mjs claude-code "$PWD" --repeat 3
 ```
 
 ```text
-run 1/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
-run 2/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
-run 3/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
-fake model served 12 requests
+ROW cancel: pass [cancelled; error: investigation cancelled; 5s]
+ROW http-500: pass [fault; error: Internal error: API Error: 500 scripted server error. ...; 3s]
+...
+run 1/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass | cancel=pass empty-response=pass ...
+run 2/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass | cancel=pass empty-response=pass ...
+run 3/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass | cancel=pass empty-response=pass ...
 ```
 
-The driver starts the server on `127.0.0.1`, points the agent at it (a provider block in a throwaway
-`XDG_CONFIG_HOME` for OpenCode, `ANTHROPIC_BASE_URL` for Claude Code, a `CODEX_HOME` provider with
-`wire_api = "responses"` for Codex), runs
-`packages/@prismalens/engine/scripts/acp-admission.ts`, and exits nonzero if a run fails or the runs disagree.
-R7 runs on Claude Code only, the one agent that takes a base-URL override. A model's text is a pure
-function of the request, so to change what the scripted model says, edit `admissionScript` in the server.
-A change that needs a live model to show up goes to the live jobs in `ci.yml`, not into a PR check.
+The driver starts aimock on `127.0.0.1` with that agent's fixtures, points the agent at it from a throwaway
+home (an OpenCode provider in `XDG_CONFIG_HOME`, `ANTHROPIC_BASE_URL` for Claude Code, a `CODEX_HOME` provider
+with `wire_api = "responses"`, `GOOGLE_GEMINI_BASE_URL` for Gemini, a `DEEPAGENTS_HOME` `config.toml` for dcode),
+then runs `packages/@prismalens/engine/scripts/acp-admission.ts` and `acp-matrix.ts` through the real engine. It exits
+nonzero if a run fails or the runs disagree. `--only admission|matrix`, `--rows a,b` and `--journal` (each request's
+offered tools and which fixture answered it) narrow a local run.
 
-#### Recording an agent session
+#### The behaviour matrix
 
-When a pin moves, the bump PR waits for a recording made on your machine, with the agent's own login:
+Each row is one file in `scripts/fakes/scenarios/rows/`: the fixtures that script the model, the engine-side outcome
+PrismaLens must reach, and any agent that legitimately differs, with its reason. A row passes on what the engine
+observed (its events, the files and processes the run left), never on model text. The fixtures are shared by every
+wire; `scripts/fakes/scenarios/agents.json` maps each agent's shell tool, read from aimock's journal. Outcomes:
+`report` a clean report; `fault` the step's tool ran, then an error and no report; `error` an error and no report;
+`exited` the agent quit before answering and PrismaLens said so; `cancelled` the run ended cancelled and the tool's
+process is gone.
 
-```bash
-git switch pin-bump/opencode-ai-1.19.4
-pnpm record:agent opencode all --clone ~/src/some-small-repo
+MATRIX_TABLE
+
+`R1-R9` (the admission) run beside the matrix in every leg. A fault a wire cannot express is `n/a` with its
+reason in the row's `na` field, and the table shows it; none is today, because aimock serves every fault on all four
+wires the agents use (refusal on Gemini's wire is a safety stop).
+
+#### Turning a field transcript into a fixture
+
+A user's run that went wrong leaves `transcript.jsonl` in the run directory: the agent's ACP traffic, not its
+prompt. Say it shows a Codex run that went quiet after the provider rate-limited it. Read what the model did at each
+step (a tool call, a refusal, an HTTP status) and write those steps as a row, in your own words. Here is
+`rows/http-429.json`: the first request of the row's conversation gets a 429 with `Retry-After`, the agent's retry
+gets a shell step, and the result of that step gets the report.
+
+```json
+{
+	"row": "http-429",
+	"kind": "negative",
+	"title": "429 with Retry-After",
+	"run": {},
+	"expect": "report",
+	"fixtures": [
+		{
+			"match": { "inConversation": "[row:http-429]", "sequenceIndex": 0 },
+			"response": {
+				"error": { "message": "scripted rate limit", "type": "rate_limit_error" },
+				"status": 429,
+				"retryAfter": 1
+			}
+		},
+		{
+			"match": { "inConversation": "[row:http-429]", "hasToolResult": false },
+			"response": {
+				"toolCalls": [{ "name": "$shell", "arguments": { "$command": "ls" } }]
+			}
+		},
+		{
+			"match": { "inConversation": "[row:http-429]" },
+			"response": { "content": "$report" }
+		}
+	]
+}
 ```
 
-```text
-report: wrote .../scripts/fakes/transcripts/opencode/report.ndjson
-tool-call: wrote .../scripts/fakes/transcripts/opencode/tool-call.ndjson
-permission-declined: wrote .../scripts/fakes/transcripts/opencode/permission-declined.ndjson
-cancel: wrote .../scripts/fakes/transcripts/opencode/cancel.ndjson
-error: wrote .../scripts/fakes/transcripts/opencode/error.ndjson
-not-signed-in: wrote .../scripts/fakes/transcripts/opencode/not-signed-in.ndjson
-Commit the transcripts with the bump PR. `tested` stays as the bump PR sets it; this recorder never changes it.
-```
+`[row:<name>]` is the marker the matrix puts in the row's prompt; `inConversation` holds on every turn of that
+conversation, including the engine's report retry. `$shell` and `$command` become the agent's shell tool and its
+argument, `$incident_get` the name the agent gave PrismaLens's gateway tool, and `$report` a report that validates.
+Every other key is aimock's (`hasToolResult`, `sequenceIndex`, `misbehavior`, `chaos`, `streamingProfile`,
+`truncateAfterChunks`; see aimock's fixture docs). Then run the row against each agent, for example
+`node scripts/admission-fake.mjs codex "$PWD" --only matrix --rows http-429 --journal`, and add an `agents` entry for
+any agent whose correct outcome differs.
 
-The recorder runs the engine through one scenario (`packages/@prismalens/engine/scripts/acp-scenarios.ts`),
-copies the engine's wire log into the format of `prismalens/gh-workflows` `docs/acp-recording.md` (a header line, then one
-`{dir, at, frame}` line per JSON-RPC message, plus a `scenario` field), redacts secrets by field name and by shape and
-rewrites your home and the clone's path, and refuses to write a file whose frames fail the
-`@agentclientprotocol/sdk` schema or that still holds a credential-shaped string. `not-signed-in` starts the agent with
-an empty home and no key. Then commit the transcripts, edit the row's `tested` in
-`packages/@prismalens/config/src/providers/harness.ts` to the new pin, and push.
-
-CI replays them with `scripts/fakes/acp-replay.mjs` in strict mode: the real engine runs the same scenario against the
-recording, and a client frame the recording does not have next ends the run with `acp replay: frame N ...`. A value the
-SDK does not know is logged and passed through (#639), so a recording with an unknown enum still replays. A row or scenario
-with no recording is skipped with the command above; run the replay on its own with
-`pnpm --filter @prismalens/engine test:replay`.
+A realistic shape may be seeded once with aimock's record mode in front of a local or Ollama Cloud model (API key),
+then trimmed to the response. Never commit an agent's request body (system prompt, tool descriptions; Claude Code's
+are "All rights reserved"): `scenario-fixtures.test.ts` fails on a request key or an overlong string, and no recording
+is made on a subscription login.
 
 ## Database migrations
 

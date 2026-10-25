@@ -276,7 +276,12 @@ export function checkRow(
 	);
 	const toolResults = kinds.filter((k) => k === "tool_result").length;
 	const report = kinds.includes("report");
-	const saw = `events ${[...new Set(kinds)].join(",") || "none"}${errors.length ? `; error ${errors[0]?.slice(0, 160)}` : ""}`;
+	const firstTool = seen.events.find((e) => e.kind === "tool_result");
+	const tool =
+		firstTool?.kind === "tool_result"
+			? `; tool ${firstTool.result.source.slice(0, 60)} ${firstTool.result.ok ? "ok" : `failed ${firstTool.result.error?.slice(0, 80) ?? ""}`}`
+			: "";
+	const saw = `events ${[...new Set(kinds)].join(",") || "none"}${tool}${errors.length ? `; error ${errors[0]?.slice(0, 160)}` : ""}`;
 	switch (expect) {
 		case "report":
 			return report && errors.length === 0 ? null : `no clean report (${saw})`;
