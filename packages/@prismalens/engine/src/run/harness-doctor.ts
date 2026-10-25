@@ -2,42 +2,43 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Harness handshake probe (#630, Unit D on #337). `pl doctor` and the Settings
- * check both call this, and both print `detail` verbatim, so they use the same
- * words. `initialize` + `session/new` only: no prompt turn, no model call.
- *
- * It never says "ready". A logged-out agent can pass the handshake: opencode
- * needs no provider for `session/new`, and claude-agent-acp checks credentials
- * only at turn start. So a pass means "answers ACP", nothing more.
+ * The readiness check (#630, Unit D on #337): agent-host's `probeAgent` (#916) with the
+ * run's own launch plan, and the words Settings shows. `initialize` + `session/new` only:
+ * no prompt turn, no model call. A pass means "answers ACP", never "ready": opencode needs
+ * no provider for `session/new`, and claude-agent-acp checks credentials at turn start.
  */
-import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	getHarnessProviderKeys,
+	type LaunchPolicy,
+	type ProbeResult,
+	probeAgent,
+	versionOf,
+} from "@prismalens/agent-host";
+import {
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 	type HarnessId,
 	NO_MODE_KEY,
 } from "@prismalens/config/harness";
-import { windowsSpawnPlan } from "../launch/process.js";
 import {
 	type AcpOfferedEffort,
 	type AcpOfferedMode,
 	type AcpOfferedModel,
-	AcpRpcError,
-	AcpSession,
+	offeredEffort,
+	offeredModels,
+	offeredModes,
+	selectedModel,
 } from "../runner/acp-client.js";
 import { prepareRunEnv } from "./investigate.js";
-import { denyAllPolicy } from "./permission.js";
 import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
+
+export { versionOf };
 
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
 /** claude-agent-acp pushes its sign-in after `initialize` from a CLI probe it never waits on. */
 const AUTH_STATUS_WAIT_MS = 3_000;
-/** ACP's auth_required error code. */
-const AUTH_REQUIRED = -32000;
 
 export type HarnessProbeOutcome =
 	| "answers-acp"
@@ -81,27 +82,6 @@ function oneLine(message: string): string {
 	return message.replace(/\s*\r?\n\s*/g, " ").trim();
 }
 
-/** The first x.y.z in `<bin> --version`, or null; never longer than 5 s. */
-export function versionOf(bin: string): Promise<string | null> {
-	return new Promise((resolve) => {
-		const plan = windowsSpawnPlan(bin, ["--version"]);
-		try {
-			execFile(
-				plan.command,
-				plan.args,
-				{ timeout: 5_000, ...plan.options },
-				(err, stdout) =>
-					resolve(
-						err ? null : (/\d+\.\d+\.\d+[\w.-]*/.exec(stdout)?.[0] ?? null),
-					),
-			);
-		} catch {
-			// Windows throws EFTYPE synchronously for a file it cannot exec.
-			resolve(null);
-		}
-	});
-}
-
 /** The check's line for an agent that answered, naming the adapter PrismaLens ships when it ran through it (#831 w6-3). */
 export function answeredDetail(
 	harness: string,
@@ -115,29 +95,16 @@ export function answeredDetail(
 	return `answers ACP${via}${who}`;
 }
 
+/** A probe that did not answer, in the check's words: sign-in, no answer, or failed to start. */
 export function classify(
-	err: unknown,
-	session: AcpSession,
-	timeoutMs: number,
+	probed: Pick<ProbeResult, "outcome" | "detail" | "authMethods">,
 ): Pick<HarnessProbeResult, "outcome" | "detail"> {
-	const message = oneLine(
-		err instanceof AcpRpcError && err.data
-			? `${err.message} ${err.data}`
-			: err instanceof Error
-				? err.message
-				: String(err),
-	);
+	const message = oneLine(probed.detail ?? "");
 	const isCodexAuth = /CODEX_API_KEY or OPENAI_API_KEY is not set/i.test(
 		message,
 	);
-	if (
-		(err instanceof AcpRpcError && err.code === AUTH_REQUIRED) ||
-		/auth_required|authentication required/i.test(message) ||
-		isCodexAuth
-	) {
-		const methods = session.authMethods
-			.map((m) => m.name ?? m.id)
-			.filter(Boolean);
+	if (probed.outcome === "sign-in-needed" || isCodexAuth) {
+		const methods = probed.authMethods.map((m) => m.name || m.id);
 		const authList =
 			methods.length > 0
 				? methods.join(", ")
@@ -149,13 +116,8 @@ export function classify(
 			detail: authList ? `sign in needed (${authList})` : "sign in needed",
 		};
 	}
-	if (/timed out after/.test(message)) {
-		return {
-			outcome: "no-answer",
-			detail: `no answer in ${Math.max(1, Math.round(timeoutMs / 1000))}s`,
-		};
-	}
-	// A spawn error, or a harness that exited before it answered the handshake.
+	if (probed.outcome === "no-answer")
+		return { outcome: "no-answer", detail: message || "no answer" };
 	const tail = message.replace(/^failed to start [^:]*:\s*/, "");
 	return {
 		outcome: "failed-to-start",
@@ -185,8 +147,10 @@ export async function probeHarness(
 		timeoutMs?: number;
 		sandbox?: typeof checkSandbox;
 		authWaitMs?: number;
-		/** The agent's env from Settings (#907); its host provider keys when absent. */
+		/** The agent's stored values from Settings (#907). */
 		env?: Record<string, string>;
+		/** The floor a run on this agent would get (#817). */
+		policy?: LaunchPolicy;
 		binaryPath?: string;
 		launchArgs?: string[];
 	} = {},
@@ -198,35 +162,16 @@ export async function probeHarness(
 	mkdirSync(cwd, { recursive: true });
 
 	try {
-		const { env, runEnv, launch } = prepareRunEnv({
+		const { env, args, runEnv, launch } = prepareRunEnv({
 			harness,
 			...(opts.descriptor ? { descriptor: opts.descriptor } : {}),
 			cwd,
 			runDir,
-			env: opts.env ?? getHarnessProviderKeys(harness, process.env),
+			env: opts.env ?? {},
+			...(opts.policy ? { policy: opts.policy } : {}),
 			...(opts.binaryPath ? { binaryPath: opts.binaryPath } : {}),
 			...(opts.launchArgs ? { launchArgs: opts.launchArgs } : {}),
 		});
-		const session = new AcpSession({
-			command: launch.command,
-			args: [...launch.args, ...descriptor.acpArgs(runEnv)],
-			cwd,
-			env,
-			// open() sends no prompt turn, so no ask can arrive; nobody could answer one.
-			permission: denyAllPolicy,
-			sessionMeta: descriptor.sessionMeta?.(),
-			initTimeoutMs: timeoutMs,
-		});
-		// open() times initialize and session/new separately; the probe promises one deadline for both.
-		let timer: NodeJS.Timeout | undefined;
-		const deadline = new Promise<never>((_, reject) => {
-			timer = setTimeout(
-				() => reject(new Error(`handshake timed out after ${timeoutMs}ms`)),
-				timeoutMs,
-			);
-		});
-		const opening = session.open();
-		opening.catch(() => {});
 		// Only a CLI the adapter is pointed at; a PATH codex-acp runs its own codex.
 		// Read on every outcome, so a signed-out row still names its version (w8-8).
 		const companion = () =>
@@ -234,41 +179,53 @@ export async function probeHarness(
 			Object.values(descriptor.acpEnv(runEnv)).includes(runEnv.companionPath)
 				? versionOf(runEnv.companionPath)
 				: Promise.resolve(null);
-		let answered: HarnessProbeResult;
-		try {
-			await Promise.race([opening, deadline]);
-			const authKind = await session.authStatus(
-				opts.authWaitMs ?? AUTH_STATUS_WAIT_MS,
-			);
-			const agent = session.agent;
-			const detail = answeredDetail(harness, agent, launch.shipped);
-			answered = {
-				id: harness,
-				outcome: "answers-acp",
-				detail,
-				hard: false,
-				version: agent.version ?? null,
-				companionVersion: await companion(),
-				...(session.models.length ? { models: session.models } : {}),
-				servedModel: session.servedModel,
-				effort: session.effort,
-				modes: session.offeredModes.length ? session.offeredModes : null,
-				efforts: effortLevels(session.effort),
-				images: session.takesImages,
-				...(authKind !== null ? { signedOut: authKind === "none" } : {}),
-			};
-		} catch (err) {
+		const meta = descriptor.sessionMeta?.();
+		const probed = await probeAgent({
+			agent: harness,
+			command: launch.command,
+			args,
+			cwd,
+			env,
+			...(meta ? { sessionMeta: meta } : {}),
+			timeoutMs,
+			authStatusWaitMs: opts.authWaitMs ?? AUTH_STATUS_WAIT_MS,
+		});
+		if (probed.outcome !== "answers-acp" || !probed.raw.session) {
 			const companionVersion = await companion();
 			return {
 				id: harness,
-				...classify(err, session, timeoutMs),
+				...classify(probed),
 				hard: false,
 				...(companionVersion ? { companionVersion } : {}),
 			};
-		} finally {
-			clearTimeout(timer);
-			await session.close();
 		}
+		const options = probed.raw.session.configOptions;
+		const models = offeredModels(options);
+		const effort = offeredEffort(options);
+		const modes = offeredModes(probed.raw.session).modes;
+		const agent = {
+			name: probed.agentInfo?.name ?? null,
+			version: probed.agentInfo?.version ?? null,
+		};
+		const answered: HarnessProbeResult = {
+			id: harness,
+			outcome: "answers-acp",
+			detail: answeredDetail(harness, agent, launch.shipped),
+			hard: false,
+			version: agent.version,
+			companionVersion: await companion(),
+			...(models.length ? { models } : {}),
+			servedModel: selectedModel(options),
+			effort,
+			modes: modes.length ? modes : null,
+			efforts: effortLevels(effort),
+			images:
+				probed.raw.initialize?.agentCapabilities?.promptCapabilities?.image ===
+				true,
+			...(probed.authStatus !== null
+				? { signedOut: probed.authStatus === "none" }
+				: {}),
+		};
 		const modeIds = answered.modes?.map((m) => m.id) ?? [NO_MODE_KEY];
 		// A failed sandbox check must not lose an agent that answered ACP.
 		const sandbox = await (opts.sandbox ?? checkSandbox)(harness, modeIds, {

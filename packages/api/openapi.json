@@ -34997,6 +34997,9 @@
                         "args"
                       ]
                     },
+                    "strictEnv": {
+                      "type": "boolean"
+                    },
                     "envNames": {
                       "type": "object",
                       "propertyNames": {
@@ -35369,6 +35372,9 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "strictEnv": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -35613,6 +35619,9 @@
                         "command",
                         "args"
                       ]
+                    },
+                    "strictEnv": {
+                      "type": "boolean"
                     },
                     "envNames": {
                       "type": "object",

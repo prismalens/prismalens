@@ -12,6 +12,9 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PRISMALENS_OWN_SECRETS } from "@prismalens/engine";
+import { QUERY_KINDS } from "../../modules/integrations/source-query.js";
+import { envVars } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import { envVarStates, HarnessService } from "./harness.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
@@ -728,6 +731,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 
 	const refusals: [string, Record<string, unknown>, string, string, boolean][] = [
 		["a paired device", { binaryPaths: { codex: "/usr/bin/codex" } }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
+		["strict mode from a paired device", { strictEnv: false }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
 		["a relative path", { binaryPaths: { codex: "bin/codex" } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a bare name not on PATH", { localAgent: { command: "nowhere-on-path", args: [] } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a config dir on an agent with none", { configDirs: { opencode: "/tmp" } }, "BAD_REQUEST", "OpenCode has no config directory setting.", true],
@@ -768,11 +772,11 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		});
 	});
 
-	it("layers host keys, then the config folder, then Environment rows", async () => {
+	it("holds the config folder and Environment rows; the host's own env reaches the run through the floor (#916)", async () => {
 		process.env.ANTHROPIC_BASE_URL = "https://a.example";
 		const { svc } = runtimeService();
 		const dir = mkdtempSync(join(tmpdir(), "claude-work-"));
-		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://a.example");
+		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBeUndefined();
 		expect((await svc.runtimeFor("claude-code")).note).toBeNull();
 		await svc.updateSettings({
 			configDirs: { "claude-code": dir },
@@ -782,6 +786,23 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(runtime.env).toMatchObject({ ANTHROPIC_BASE_URL: "https://b.example", CLAUDE_CONFIG_DIR: dir });
 		expect(runtime.note).toEqual({ binaryPath: null, configDir: dir, envNames: ["ANTHROPIC_BASE_URL"], args: [] });
 		expect((await svc.runtimeFor("codex")).env.ANTHROPIC_BASE_URL).toBeUndefined();
+	});
+
+	it("counts every telemetry source token PrismaLens reads by name among its own secrets (#817)", () => {
+		for (const kind of QUERY_KINDS) expect(PRISMALENS_OWN_SECRETS.names).toContain(envVars(kind).token);
+	});
+
+	it("strict mode is off by default, saved with the other settings, and gives every agent the allowlist floor (#817)", async () => {
+		const { svc } = runtimeService();
+		expect((await svc.getSettings()).strictEnv).toBeUndefined();
+		expect((await svc.runtimeFor("codex")).policy?.floor).toMatchObject({ mode: "inherit-minus-own-secrets" });
+		expect((await svc.runtimeFor("codex")).policy?.github).toBe("include");
+		await svc.updateSettings({ strictEnv: true });
+		expect(JSON.parse(store.HARNESS?.value ?? "{}").strictEnv).toBe(true);
+		expect((await svc.getSettings()).strictEnv).toBe(true);
+		expect((await svc.runtimeFor("codex")).policy?.floor).toEqual({ mode: "allowlist" });
+		await svc.updateSettings({ strictEnv: false });
+		expect((await svc.getSettings()).strictEnv).toBeUndefined();
 	});
 
 	it("an unsafe host gateway fails only that agent, and a saved https one fixes it (#911)", async () => {

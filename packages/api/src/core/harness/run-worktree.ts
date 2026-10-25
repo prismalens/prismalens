@@ -1,30 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { randomUUID } from "node:crypto";
 /**
  * A local-folder run works in a `git worktree` of the user's repo under
  * `<app-data>/worktrees/pl-<run>`, so the trust the user gave that repo in their
- * agent covers the run (#918, ADR 0004 §2). Locked while the run is live;
- * unlocked, removed and pruned when it ends and at boot.
+ * agent covers the run (#918, ADR 0004 §2). The worktree is agent-host's workspace
+ * (#916): locked while the run is live, released when it ends, and swept at boot.
  */
-import {
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	rmSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { Logger } from "@nestjs/common";
+import {
+	createWorkspace,
+	type RemovalRecord,
+	releaseWorkspace,
+	resolveWorkspacePolicy,
+	sweepWorkspaces,
+	type WorkspaceOwner,
+} from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
-import { gitEnv } from "./git-env.js";
-import { GIT_TIMEOUT_MS, spawnGit } from "./git-spawn.js";
 
 const logger = new Logger("RunWorktree");
 
 export const WORKTREE_PREFIX = "pl-";
-const LOCK_REASON = "prismalens run ";
+const LOCK_PREFIX = "prismalens run ";
+/** No workspace settings yet (#925): a run's worktree goes when the run ends. */
+const RUN_POLICY = resolveWorkspacePolicy({
+	method: "worktree",
+	retention: { kind: "always-remove" },
+}).policy;
 
 export function worktreeRoot(): string {
 	return resolve(getAppDataDir(), "worktrees");
@@ -35,23 +39,33 @@ export function runWorktreeDir(runId: string): string {
 	return join(worktreeRoot(), `${WORKTREE_PREFIX}${runId}`);
 }
 
-function git(
-	args: string[],
-	cwd: string,
-	signal?: AbortSignal,
-): Promise<{ stdout: string }> {
-	return spawnGit(args, {
-		cwd,
-		signal,
-		env: gitEnv({ source: "machine" }),
-		timeoutMs: GIT_TIMEOUT_MS,
-	});
+/** A path as a workspace: owned by its parent folder with no prefix, so a multi-repo run's folders fit too. */
+function asWorkspace(dir: string): WorkspaceOwner & { id: string } {
+	return {
+		parentDir: dirname(dir),
+		prefix: "",
+		lockPrefix: LOCK_PREFIX,
+		id: basename(dir),
+	};
+}
+
+function isLinkedWorktree(dir: string): boolean {
+	try {
+		return /^gitdir:/m.test(readFileSync(join(dir, ".git"), "utf8"));
+	} catch {
+		return false;
+	}
+}
+
+function warnKept(records: RemovalRecord[]): void {
+	for (const r of records)
+		if (!r.removed && r.reason !== "superseded")
+			logger.warn(`Kept the run worktree ${r.dir}: ${r.reason}`);
 }
 
 /**
- * Checks `commit` out at `dest` as a detached, locked worktree of `source`; answers the lock reason,
- * which names this attempt so a late release never removes a later re-add at `dest`.
- * `--no-checkout` then `reset` keeps the user's `post-checkout` hook from firing.
+ * Checks `commit` out at `dest` as a detached, locked worktree of `source`, after releasing
+ * whatever an earlier attempt left there; answers the lock reason, which names this attempt.
  */
 export async function addRunWorktree(
 	source: string,
@@ -60,96 +74,32 @@ export async function addRunWorktree(
 	runId: string,
 	signal?: AbortSignal,
 ): Promise<string> {
-	const reason = `${LOCK_REASON}${runId} ${randomUUID().slice(0, 8)}`;
 	await releaseWorktree(dest);
-	rmSync(dest, { recursive: true, force: true });
-	mkdirSync(dirname(dest), { recursive: true });
-	try {
-		// The path is ours: double force re-adds one a crash left registered, even locked.
-		await git(
-			[
-				"worktree",
-				"add",
-				"--detach",
-				"--no-checkout",
-				"-f",
-				"-f",
-				dest,
-				commit,
-			],
-			source,
-			signal,
-		);
-		// core.longpaths: Git for Windows refuses paths past MAX_PATH without it.
-		await git(
-			["-c", "core.longpaths=true", "reset", "--hard", "--quiet", commit],
-			dest,
-			signal,
-		);
-		await git(["worktree", "lock", "--reason", reason, dest], source, signal);
-	} catch (err) {
-		await releaseWorktree(dest);
-		throw err;
-	}
-	return reason;
-}
-
-/** The admin dir `<repo>/.git/worktrees/<id>` a linked worktree's `.git` file points at, or null. */
-function adminDirOf(dir: string): string | null {
-	const link = join(dir, ".git");
-	try {
-		const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(link, "utf8"));
-		return m?.[1] ? resolve(dir, m[1].trim()) : null;
-	} catch {
-		return null;
-	}
+	const workspace = await createWorkspace({
+		...asWorkspace(dest),
+		lockLabel: runId,
+		source: { kind: "local", repo: source, commit },
+		policy: RUN_POLICY,
+		...(signal ? { signal } : {}),
+	});
+	return workspace.lock;
 }
 
 /**
- * Unlocks, removes and prunes the worktree at `dir` when it is unlocked or held
- * by a PrismaLens run; anything else is left alone. True when it is gone.
+ * Unlocks, removes and prunes the worktree at `dir` unless someone else's lock holds it,
+ * or, with `onlyLock`, a later attempt re-added it. True when it is gone.
  */
 export async function releaseWorktree(
 	dir: string,
 	onlyLock?: string,
 ): Promise<boolean> {
-	const admin = adminDirOf(dir);
-	if (!admin) return !existsSync(dir);
-	const lockFile = join(admin, "locked");
-	const lock = existsSync(lockFile)
-		? readFileSync(lockFile, "utf8").trim()
-		: null;
-	if (lock !== null && !lock.startsWith(LOCK_REASON)) return false;
-	if (onlyLock !== undefined && lock !== onlyLock) return false;
-	let common: string;
-	try {
-		common = resolve(
-			admin,
-			readFileSync(join(admin, "commondir"), "utf8").trim(),
-		);
-	} catch {
-		// The source repo is gone or moved: nothing of the user's to clean.
-		rmSync(dir, { recursive: true, force: true });
-		return true;
-	}
-	// Run from the common dir: Windows refuses to delete a directory that is git's cwd.
-	try {
-		if (lock !== null) await git(["worktree", "unlock", dir], common);
-		await git(["worktree", "remove", "--force", dir], common);
-	} catch (e) {
-		logger.warn(
-			`Could not remove the run worktree ${dir}: ${(e as Error).message}`,
-		);
-		rmSync(dir, { recursive: true, force: true });
-	}
-	try {
-		await git(["worktree", "prune"], common);
-	} catch (e) {
-		logger.warn(
-			`Could not prune worktrees of ${common}: ${(e as Error).message}`,
-		);
-	}
-	return !existsSync(dir);
+	const records = await releaseWorkspace({
+		...asWorkspace(dir),
+		policy: RUN_POLICY,
+		...(onlyLock !== undefined ? { onlyLock } : {}),
+	});
+	warnKept(records);
+	return records[0]?.removed === true;
 }
 
 /**
@@ -162,13 +112,28 @@ export async function releaseWorktreesIn(
 ): Promise<void> {
 	if (!existsSync(dir)) return;
 	let kept = false;
-	if (adminDirOf(dir)) kept = !(await releaseWorktree(dir, onlyLock));
+	if (isLinkedWorktree(dir)) kept = !(await releaseWorktree(dir, onlyLock));
 	else
 		for (const entry of readdirSync(dir, { withFileTypes: true }))
-			if (entry.isDirectory() && adminDirOf(join(dir, entry.name)))
+			if (entry.isDirectory() && isLinkedWorktree(join(dir, entry.name)))
 				kept =
 					!(await releaseWorktree(join(dir, entry.name), onlyLock)) || kept;
 	if (!kept) rmSync(dir, { recursive: true, force: true });
+}
+
+async function sweepIn(
+	parentDir: string,
+	prefix: string,
+): Promise<RemovalRecord[]> {
+	const records = await sweepWorkspaces({
+		parentDir,
+		prefix,
+		lockPrefix: LOCK_PREFIX,
+		policy: RUN_POLICY,
+		isLive: () => false,
+	});
+	warnKept(records);
+	return records;
 }
 
 /**
@@ -178,16 +143,17 @@ export async function releaseWorktreesIn(
 export async function sweepRunWorktrees(): Promise<string[]> {
 	const root = worktreeRoot();
 	if (!existsSync(root)) return [];
-	const swept: string[] = [];
+	// A multi-repo run's entry holds a worktree per repo; those go first.
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
-		if (!entry.isDirectory() || !entry.name.startsWith(WORKTREE_PREFIX))
-			continue;
-		try {
-			await releaseWorktreesIn(join(root, entry.name));
-			swept.push(entry.name.slice(WORKTREE_PREFIX.length));
-		} catch (e) {
-			logger.warn(`Could not sweep the run worktree ${entry.name}`, e);
-		}
+		const dir = join(root, entry.name);
+		if (
+			entry.isDirectory() &&
+			entry.name.startsWith(WORKTREE_PREFIX) &&
+			!isLinkedWorktree(dir)
+		)
+			await sweepIn(dir, "");
 	}
-	return swept;
+	return (await sweepIn(root, WORKTREE_PREFIX))
+		.filter((r) => r.removed)
+		.map((r) => r.id);
 }

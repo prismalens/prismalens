@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AcpSession } from "../runner/acp-client.js";
+import { prismalensLaunchPolicy } from "../launch/policy.js";
 import {
 	answeredDetail,
 	classify,
@@ -164,11 +164,13 @@ describe("probeHarness", () => {
 	});
 
 	it("maps Codex missing-key start error to sign in needed (API Key, ChatGPT)", () => {
-		const session = { authMethods: [] } as unknown as AcpSession;
-		const err = new Error(
-			'Internal error: CODEX_API_KEY or OPENAI_API_KEY is not set — {"envVars":["CODEX_API_KEY","OPENAI_API_KEY"]}',
-		);
-		expect(classify(err, session, 10_000)).toEqual({
+		const probed = {
+			outcome: "failed-to-start" as const,
+			detail:
+				'Internal error: CODEX_API_KEY or OPENAI_API_KEY is not set — {"envVars":["CODEX_API_KEY","OPENAI_API_KEY"]}',
+			authMethods: [],
+		};
+		expect(classify(probed)).toEqual({
 			outcome: "sign-in-needed",
 			detail: "sign in needed (API Key, ChatGPT)",
 		});
@@ -192,7 +194,8 @@ describe("probeHarness", () => {
 			descriptor: descriptor("ok", "/nonexistent/pl-harness-binary"),
 		});
 		expect(result.outcome).toBe("failed-to-start");
-		expect(result.detail).toMatch(/^failed to start: .*ENOENT/);
+		// ENOENT from spawn; cross-spawn's cmd.exe says so in its own words on Windows.
+		expect(result.detail).toMatch(/^failed to start: .*(ENOENT|cannot find the path)/);
 	});
 
 	it('says "failed to start" with the stderr tail when the harness exits before answering', async () => {
@@ -204,20 +207,30 @@ describe("probeHarness", () => {
 		expect(result.detail).not.toMatch(/\n/);
 	});
 
-	it("hands the harness only its provider keys, like the investigation run (ADR 0004 §5)", async () => {
+	it("hands the harness the env a run would get: the user's minus PrismaLens's own, or named ones in strict mode (#817)", async () => {
 		vi.stubEnv("AWS_SECRET_ACCESS_KEY", "planted-aws");
 		vi.stubEnv("ANTHROPIC_API_KEY", "planted-anthropic");
-		const result = await probeHarness("claude-code", {
-			descriptor: {
-				...descriptor("print-env"),
-				acpEnv: () => ({
-					FAKE_ACP_MODE: "print-env",
-					FAKE_ENV_PROBE: "AWS_SECRET_ACCESS_KEY,ANTHROPIC_API_KEY",
-				}),
-			},
-		});
-		expect(result.detail).toMatch(/AWS_SECRET_ACCESS_KEY=unset/);
-		expect(result.detail).toMatch(/ANTHROPIC_API_KEY=set/);
+		vi.stubEnv("PRISMALENS_ENCRYPTION_KEY", "planted-pl");
+		const probe = (strict: boolean) =>
+			probeHarness("claude-code", {
+				descriptor: {
+					...descriptor("print-env"),
+					acpEnv: () => ({
+						FAKE_ACP_MODE: "print-env",
+						FAKE_ENV_PROBE:
+							"AWS_SECRET_ACCESS_KEY,ANTHROPIC_API_KEY,PRISMALENS_ENCRYPTION_KEY",
+					}),
+				},
+				policy: prismalensLaunchPolicy({ strict }),
+			});
+		const inherit = await probe(false);
+		expect(inherit.detail).toMatch(/AWS_SECRET_ACCESS_KEY=set/);
+		expect(inherit.detail).toMatch(/ANTHROPIC_API_KEY=set/);
+		expect(inherit.detail).toMatch(/PRISMALENS_ENCRYPTION_KEY=unset/);
+		const strict = await probe(true);
+		expect(strict.detail).toMatch(/AWS_SECRET_ACCESS_KEY=unset/);
+		expect(strict.detail).toMatch(/ANTHROPIC_API_KEY=set/);
+		expect(strict.detail).toMatch(/PRISMALENS_ENCRYPTION_KEY=unset/);
 	});
 
 	it("holds one deadline across initialize and session/new", async () => {
