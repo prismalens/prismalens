@@ -8,6 +8,7 @@ import {
 	ACCESS_LEVELS,
 	AGENT_IDS,
 	AGENT_REGISTRY,
+	GATEWAY_RUN_FILE,
 	isSafeGatewayUrl,
 	levelOfAgentMode,
 	MODE_NAMES,
@@ -115,6 +116,36 @@ describe("registry facts", () => {
 		const opencodeArgs = AGENT_REGISTRY.opencode.acpArgs({ configDir: "c", dataDir: "d", cwd: "w" });
 		expect(opencodeArgs).toEqual(["acp", "--cwd", "w"]);
 		expect(opencodeArgs).not.toContain("--pure");
+	});
+
+	it("appends the brief to Claude's system prompt, and only Claude's (#817)", () => {
+		expect(AGENT_REGISTRY["claude-code"].systemPromptVia).toBe("claude-meta");
+		for (const id of AGENT_IDS.filter((a) => a !== "claude-code"))
+			expect(AGENT_REGISTRY[id].systemPromptVia, id).toBeUndefined();
+	});
+
+	it("starts Gemini with --acp alone and forces no folder trust (#848)", () => {
+		const env = { configDir: "c", dataDir: "d", cwd: "w" };
+		expect(AGENT_REGISTRY.gemini.acpArgs(env)).toEqual(["--acp"]);
+		expect(AGENT_REGISTRY.gemini.acpEnv(env)).toEqual({});
+	});
+
+	it("hands deepagents the gateway by --mcp-config, and nothing without one (#848)", () => {
+		const row = AGENT_REGISTRY.deepagents;
+		const env = { configDir: "/run/config", dataDir: "d", cwd: "w" };
+		expect(row.gatewayDelivery).toBe("mcp-config-file");
+		expect(row.acpArgs(env)).toEqual(["--acp"]);
+		expect(row.configFiles?.(env)).toEqual({});
+		const gateway = { url: "http://127.0.0.1:9/mcp", token: "tok", name: "prismalens-x" };
+		expect(row.acpArgs({ ...env, gateway })).toEqual([
+			"--acp",
+			"--mcp-config",
+			`/run/config/${GATEWAY_RUN_FILE}`,
+		]);
+		expect(row.acpArgs({ ...env, configDir: "C:\\run\\config", gateway }).at(-1)).toBe(
+			`C:\\run\\config\\${GATEWAY_RUN_FILE}`,
+		);
+		expect(AGENT_IDS.filter((a) => AGENT_REGISTRY[a].gatewayDelivery)).toEqual(["deepagents"]);
 	});
 
 	it("keeps userSetup a setting with more than one value", () => {

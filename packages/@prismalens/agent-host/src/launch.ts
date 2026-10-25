@@ -6,7 +6,7 @@
  * the floor, the row's provider keys from the host, the user's stored values, the
  * row's own env, then the caller's overrides; refusals run over the result (#916).
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { AgentHostError } from "./errors.js";
 import {
@@ -108,6 +108,8 @@ export interface PlanLaunchInput {
 	overrides?: Readonly<Record<string, string>>;
 	/** The user's own agent config the level's overlay keeps rules from (OpenCode); the product reads it. */
 	userConfig?: JsonObject;
+	/** The product's MCP gateway; reaches the run only on a row with `gatewayDelivery` (#848). */
+	gateway?: AgentRunEnv["gateway"];
 	/** Swap the row's facts, as tests and a `local` command do. */
 	descriptor?: AgentDescriptor;
 }
@@ -189,6 +191,7 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 			? { companionPath: input.launch.companionPath }
 			: {}),
 		...(input.launch.shipped ? { shipped: true } : {}),
+		...(input.gateway && row.gatewayDelivery ? { gateway: input.gateway } : {}),
 	};
 
 	const env = floorEnv(policy.floor ?? { mode: "allowlist" }, host);
@@ -264,11 +267,15 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 
 /** Creates the plan's folders and writes its files. */
 export function writeLaunchFiles(
-	plan: Pick<LaunchPlan, "files" | "dirs">,
+	plan: Pick<LaunchPlan, "files" | "dirs" | "runEnv">,
 ): void {
 	for (const dir of plan.dirs) mkdirSync(dir, { recursive: true });
+	// A run file can hold the gateway bearer: owner-only whatever the umask (#848).
+	mkdirSync(plan.runEnv.configDir, { recursive: true, mode: 0o700 });
+	chmodSync(plan.runEnv.configDir, 0o700);
 	for (const [path, content] of Object.entries(plan.files)) {
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, content);
+		writeFileSync(path, content, { mode: 0o600 });
+		chmodSync(path, 0o600);
 	}
 }

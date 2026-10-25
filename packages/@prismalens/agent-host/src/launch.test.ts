@@ -2,11 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentHostError } from "./errors.js";
+import { GATEWAY_RUN_FILE } from "./registry/index.js";
 import {
 	GITHUB_TOKEN_VARS,
 	type LaunchPolicy,
@@ -187,5 +188,44 @@ describe("launch files", () => {
 		expect(p.env.OPENCODE_CONFIG_DIR).toBe(join(runDir, "config"));
 		expect(p.args).toEqual(["acp", "--cwd", "/w"]);
 		expect(p.level.mode).toEqual({ id: "build", name: "Build" });
+	});
+
+	it("writes the gateway run file owner-only and points deepagents at it (#848)", () => {
+		const runDir = mkdtempSync(join(tmpdir(), "ah-launch-"));
+		dirs.push(runDir);
+		const gateway = { url: "http://127.0.0.1:9/mcp", token: "bearer-tok", name: "prismalens-run1" };
+		const p = planLaunch({
+			agent: "deepagents",
+			level: "supervised",
+			policy: POLICY,
+			launch: { command: "dcode" },
+			cwd: "/w",
+			runDir,
+			hostEnv: HOST,
+			gateway,
+		});
+		const file = join(runDir, "config", GATEWAY_RUN_FILE);
+		expect(p.args).toEqual(["--acp", "--mcp-config", file]);
+		writeLaunchFiles(p);
+		expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({
+			mcpServers: {
+				"prismalens-run1": {
+					type: "http",
+					url: gateway.url,
+					headers: { Authorization: "Bearer bearer-tok" },
+				},
+			},
+		});
+		if (process.platform !== "win32") {
+			expect(statSync(file).mode & 0o777).toBe(0o600);
+			expect(statSync(join(runDir, "config")).mode & 0o777).toBe(0o700);
+		}
+	});
+
+	it("gives the gateway only to a row with gatewayDelivery", () => {
+		const gateway = { url: "http://127.0.0.1:9/mcp", token: "t", name: "n" };
+		const p = plan({ gateway });
+		expect(p.runEnv.gateway).toBeUndefined();
+		expect(Object.keys(p.files)).toEqual([]);
 	});
 });

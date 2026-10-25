@@ -29,7 +29,16 @@ export interface AgentRunEnv {
 	companionPath?: string;
 	/** The run starts the adapter the product ships, not one on PATH (#818). */
 	shipped?: boolean;
+	/** The product's MCP gateway and its per-run server name, set for a row with `gatewayDelivery` (#848). */
+	gateway?: { url: string; token: string; name: string };
 }
+
+/** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
+export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
+
+/** `configDir` joined without node:path, which this browser-safe module cannot import. */
+const inConfigDir = (env: AgentRunEnv, file: string) =>
+	`${env.configDir}${env.configDir.includes("\\") ? "\\" : "/"}${file}`;
 
 export interface AgentDescriptor {
 	id: AgentId;
@@ -46,8 +55,12 @@ export interface AgentDescriptor {
 	acpEnv: (env: AgentRunEnv) => Record<string, string>;
 	/** Files written under configDir before the run. */
 	configFiles?: (env: AgentRunEnv) => Record<string, string>;
+	/** The agent ignores ACP `mcpServers`; the gateway goes in a run file instead (#848). */
+	gatewayDelivery?: "mcp-config-file";
 	/** `_meta` on ACP `session/new`. */
 	sessionMeta?: () => Record<string, unknown>;
+	/** The host's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */
+	systemPromptVia?: "claude-meta";
 	/** Each permission level on this agent (#673 w21 ruling 2026-10-10). */
 	levels: Record<AccessLevel, LevelFacts>;
 	/** The agent's own display name for each mode id a level uses, so no product shows a made-up label (#907). */
@@ -157,6 +170,9 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				},
 			},
 		}),
+		// claude-agent-acp 0.81.1 reads `_meta.systemPrompt` on session/new and session/load
+		// (acp-agent.js:6215-6232; load reaches it through getOrCreateSession, :6084-6112).
+		systemPromptVia: "claude-meta",
 		providerKeys: [
 			"ANTHROPIC_API_KEY",
 			"ANTHROPIC_BASE_URL",
@@ -240,7 +256,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
-		acpArgs: () => ["--experimental-acp"],
+		acpArgs: () => ["--acp"],
 		// Trust is the user's own folderTrust setting; this row forces neither way (#817).
 		acpEnv: () => ({}),
 		providerKeys: ["GEMINI_API_KEY"],
@@ -263,10 +279,29 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 	deepagents: {
 		id: "deepagents",
 		label: "deepagents",
-		// deepagents-code's `dcode --acp` is the ACP server (#634); --no-mcp loads no MCP servers.
+		// deepagents-code's `dcode --acp` is the ACP server (#634). It ignores ACP mcpServers:
+		// the gateway goes in by --mcp-config, beside the user's own servers (#848).
 		binary: "dcode",
-		acpArgs: () => ["--acp", "--no-mcp"],
+		gatewayDelivery: "mcp-config-file",
+		acpArgs: (env) =>
+			env.gateway
+				? ["--acp", "--mcp-config", inConfigDir(env, GATEWAY_RUN_FILE)]
+				: ["--acp"],
 		acpEnv: () => ({}),
+		configFiles: (env): Record<string, string> =>
+			env.gateway
+				? {
+						[GATEWAY_RUN_FILE]: JSON.stringify({
+							mcpServers: {
+								[env.gateway.name]: {
+									type: "http",
+									url: env.gateway.url,
+									headers: { Authorization: `Bearer ${env.gateway.token}` },
+								},
+							},
+						}),
+					}
+				: {},
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
 		// No modes over ACP (deepagents #4254): the host answers each ask by the level.
 		levels: noMode(),
