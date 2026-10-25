@@ -385,8 +385,25 @@ describe("git-failure", () => {
 					now,
 				});
 				expect(res.code).toBe("unreachable");
-				expect(res.message).toMatch(/^Could not reach example\.com: /);
+				expect(res.message).toBe("Could not reach example.com.");
 			}
+		});
+
+		it("carries fixed text, never stderr, a URL or its query (#848)", () => {
+			const stderr =
+				"fatal: unable to access 'https://gitlab.com/org/repo.git?api_key=sentinel/': The requested URL returned error: 500";
+			const res = diagnoseGitFailure({
+				stderr,
+				credential: { source: "none", label: "public", via: "none" },
+				host: "gitlab.com",
+				repo: "org/repo",
+				sshAuthSockSet: true,
+				now,
+			});
+			expect(res.code).toBe("other");
+			expect(res.message).toBe("git could not read org/repo on gitlab.com.");
+			expect(res.message).not.toContain("sentinel");
+			expect(res.stderr).not.toContain("sentinel");
 		});
 
 		it("classifies other on unexpected stderr", () => {
@@ -404,7 +421,7 @@ describe("git-failure", () => {
 				now,
 			});
 			expect(res.code).toBe("other");
-			expect(res.message).toBe("fatal: some internal git error occurred");
+			expect(res.message).toBe("git could not read acme/repo on example.com.");
 		});
 	});
 });

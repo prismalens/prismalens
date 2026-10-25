@@ -12,7 +12,11 @@
  */
 import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { RepoSourceService } from "../../core/harness/repo-source.service.js";
+import { GitSpawnError } from "../../core/harness/git-spawn.js";
+import {
+	RepoSourceService,
+	remoteFailure,
+} from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "../integrations/git-credential.service.js";
 import { RepositoriesService } from "./repositories.service.js";
@@ -109,6 +113,28 @@ describe("RepositoriesService.addSource", () => {
 				}),
 			}),
 		);
+	});
+
+	it("stores fixed text as syncError when a URL's git call fails with its query in stderr (#848)", async () => {
+		const source = "https://127.0.0.1:1/org/repo.git?api_key=sentinel";
+		mockGitCredentials.withCredential.mockRejectedValue(
+			remoteFailure(
+				new GitSpawnError(
+					`fatal: unable to access '${source}/': Failed to connect to 127.0.0.1 port 1`,
+					128,
+					`fatal: unable to access '${source}/': Failed to connect to 127.0.0.1 port 1`,
+					false,
+				),
+				{ kind: "url", source },
+			),
+		);
+
+		await service.addSource({ serviceId: "svc-1", source: "https://127.0.0.1:1/org/repo.git" });
+
+		const { data } = mockTx.repository.create.mock.calls[0]?.[0] as {
+			data: { syncError: string };
+		};
+		expect(data.syncError).toBe("Could not reach 127.0.0.1:1.");
 	});
 
 	it("links the new repository as the service's primary", async () => {

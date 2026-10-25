@@ -21,7 +21,7 @@ export type GitFailureAction =
 	| "pick-credential"
 	| "replace-token";
 
-/** A git call that failed, in words the user can act on. `stderr` is scrubbed and for the server log only. */
+/** A git call that failed, in words the user can act on. `message` is fixed text; `stderr` is scrubbed, for classification only, never logged or returned (#848). */
 export class GitFailure extends Error {
 	constructor(
 		readonly code: GitFailureCode,
@@ -38,7 +38,8 @@ export class GitFailure extends Error {
 export function scrubGitStderr(stderr: string): string {
 	return stderr
 		.replace(/Authorization:\s*\S+\s+\S+/gi, "Authorization: ***")
-		.replace(/:\/\/[^/@\s]+@/g, "://***@");
+		.replace(/:\/\/[^/@\s]+@/g, "://***@")
+		.replace(/(:\/\/[^\s?#]*)[?#][^\s'"]*/g, "$1");
 }
 
 export interface DiagnoseInput {
@@ -133,11 +134,6 @@ export function gitErrorSentence(
 export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	const { credential, host, repo } = input;
 	const stderr = scrubGitStderr(input.stderr);
-	const first =
-		stderr
-			.split("\n")
-			.find((l) => l.trim())
-			?.trim() ?? "git failed";
 	const token = tokenName(credential.label);
 	const fp = credential.fingerprint ? ` (fp ${credential.fingerprint})` : "";
 	const fail = (
@@ -212,6 +208,6 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 			"add-credential",
 		);
 	if (has(stderr, UNREACHABLE))
-		return fail("unreachable", `Could not reach ${host}: ${first}.`);
-	return fail("other", first);
+		return fail("unreachable", `Could not reach ${host}.`);
+	return fail("other", `git could not read ${repo} on ${host}.`);
 }

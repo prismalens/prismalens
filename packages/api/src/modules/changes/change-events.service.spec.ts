@@ -7,8 +7,11 @@
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Logger } from "@nestjs/common";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const env = await vi.hoisted(async () => {
@@ -275,6 +278,23 @@ describe("ChangeEventsService", () => {
 		expect(logged).toContain(`What changed: ${bare.host}/leaky-api`);
 		expect(logged).not.toContain("sentinel");
 		warn.mockRestore();
+	});
+
+	it("keeps a failed read's stderr and query out of the logs and the source problem (#848)", async () => {
+		const down = createServer((_req, res) => res.writeHead(500).end());
+		await new Promise<void>((ok) => down.listen(0, "127.0.0.1", ok));
+		const { port } = down.address() as AddressInfo;
+		const url = `http://127.0.0.1:${port}/org/repo.git?api_key=sentinel`;
+		const id = await incidentFor([{ url, sourceKind: "url" }]);
+		const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+		const res = await service.forIncident(id);
+		const logged = warn.mock.calls.map(([m]) => String(m)).join(" | ");
+		warn.mockRestore();
+		down.close();
+		expect(res?.sources[0]?.status).toBe("failed");
+		expect(logged).toContain(`What changed: 127.0.0.1:${port}/org/repo`);
+		expect(logged).not.toContain("sentinel");
+		expect(JSON.stringify(res?.sources[0]?.problem)).not.toContain("sentinel");
 	});
 
 	it("reports partial when one of two repositories fails", async () => {

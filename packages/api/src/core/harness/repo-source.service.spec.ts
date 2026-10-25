@@ -21,8 +21,11 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { Logger } from "@nestjs/common";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type GitHttpServer,
@@ -166,9 +169,40 @@ describe("repo-source.service", () => {
 			"https://github.com/acme/api.git?token=sentinel",
 			"https://github.com/acme/api.git#sentinel",
 			"ssh://git@example.com/acme/api.git?x=1",
-			"git@github.com:acme/api.git?token=sentinel",
+			"https://host/repo.git#x",
 		])("refuses %s", (input) => {
 			expect(() => classifySource(input)).toThrow(/query string or fragment/);
+		});
+
+		it.each([
+			"git@example.com:acme/repo#archive.git",
+			"git@example.com:acme/repo?x.git",
+		])("accepts the scp path %s, where # and ? are path characters", (input) => {
+			expect(classifySource(input)).toEqual({ kind: "url", source: input });
+		});
+	});
+
+	describe("a failed remote (#848)", () => {
+		it("puts the URL's query in neither the error nor the log", async () => {
+			vi.stubEnv("HOME", tmp("pl-home-"));
+			const service = new RepoSourceService();
+			const warn = vi
+				.spyOn((service as unknown as { logger: Logger }).logger, "warn")
+				.mockImplementation(() => {});
+			const down = createServer((_req, res) => res.writeHead(500).end());
+			await new Promise<void>((ok) => down.listen(0, "127.0.0.1", ok));
+			const { port } = down.address() as AddressInfo;
+			const source = `http://127.0.0.1:${port}/org/repo.git?api_key=sentinel`;
+			const failure = await service
+				.validate({ kind: "url", source })
+				.catch((err: unknown) => err);
+			down.close();
+			expect(failure).toBeInstanceOf(GitFailure);
+			expect((failure as GitFailure).message).not.toContain("sentinel");
+			expect(warn).toHaveBeenCalled();
+			const logged = warn.mock.calls.map(([m]) => String(m)).join(" | ");
+			expect(logged).toContain(`127.0.0.1:${port}/org/repo`);
+			expect(logged).not.toContain("sentinel");
 		});
 	});
 
@@ -534,13 +568,13 @@ describe("repo-source.service", () => {
 			expect(b.head).toBe(head);
 		});
 
-		it("a bad URL surfaces git's own verbatim error", async () => {
+		it("a bad URL surfaces a fixed sentence, not git's stderr (#848)", async () => {
 			const service = new RepoSourceService();
 			const badUrl = `file://${join(tmpdir(), "pl-no-such-remote-xyz.git")}`;
 
 			await expect(
 				service.validate({ kind: "url", source: badUrl }),
-			).rejects.toThrow(/does not appear to be a git repository/);
+			).rejects.toMatchObject({ code: "other", message: /^git could not read /i });
 		});
 	});
 
