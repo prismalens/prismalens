@@ -243,13 +243,7 @@ function SourceResult({ source: s }: { source: PreRunSource }) {
 					</p>
 				</div>
 				{s.status === "skipped" && (
-					// On touch the 48 px hit areas of Fix and the chevron must not overlap (#848).
-					<Button
-						variant="secondary"
-						size="sm"
-						asChild
-						className="max-md:mr-3 pointer-coarse:mr-3"
-					>
+					<Button variant="secondary" size="sm" asChild>
 						<Link
 							to="/settings"
 							search={{

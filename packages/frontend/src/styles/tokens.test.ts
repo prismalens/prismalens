@@ -47,25 +47,29 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		expect(touchBlock).toContain("header a");
 	});
 
-	it("gives switches and every Button, asChild anchors included, a 48 px hit area", () => {
-		const layer = parse(css).find((n) => n.prelude === "@layer base");
-		const media = layer?.children.find(
-			(n) => n.prelude === "@media (pointer: coarse), (max-width: 767px)",
+	const TOUCH = "@media (pointer: coarse), (max-width: 767px)";
+	const decls = (nodes: CssNode[] | undefined, prelude: string) =>
+		Object.fromEntries(
+			nodes?.find((n) => n.prelude === prelude)?.decls ?? [],
 		);
+
+	it("gives every Button, asChild anchors included, a real 48 px box on touch", () => {
+		const media = parse(css).find((n) => n.prelude === TOUCH);
+		expect(decls(media?.children, ':where([data-slot="button"])')).toEqual({
+			"min-width": "48px",
+			"min-height": "48px",
+		});
+		expect(css).not.toMatch(/\[data-slot="button"\][^{]*::after/);
+	});
+
+	it("gives a switch a 48 px hit area that keeps its look", () => {
+		const layer = parse(css).find((n) => n.prelude === "@layer base");
+		const media = layer?.children.find((n) => n.prelude === TOUCH);
 		expect(media).toBeDefined();
-		const rule = (pseudo: string) =>
-			media?.children.find((n) => {
-				const m = n.prelude.match(/^:where\((.*)\)((?:::after)?)$/);
-				return (
-					m?.[2] === pseudo &&
-					m[1].split(/,\s*/).sort().join() ===
-						'[data-slot="button"],[data-slot="switch"]'
-				);
-			});
-		expect(Object.fromEntries(rule("")?.decls ?? [])).toEqual({
+		expect(decls(media?.children, ':where([data-slot="switch"])')).toEqual({
 			position: "relative",
 		});
-		const after = Object.fromEntries(rule("::after")?.decls ?? []);
+		const after = decls(media?.children, ':where([data-slot="switch"])::after');
 		expect(after).toEqual({
 			content: '""',
 			position: "absolute",

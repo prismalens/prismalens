@@ -159,17 +159,22 @@
 	) {
 		min-height: 48px;
 	}
+	/* A real box, not an overlay, so a neighbour 4 px away can't take part of it (#848, OBJ-003). */
+	:where([data-slot="button"]) {
+		min-width: 48px;
+		min-height: 48px;
+	}
 }
 
-/* Switches and every Button, anchors through asChild included, keep their look
-   and gain a 48 px hit area (Material 48dp, HIG 44pt); layered so a component's
-   own position wins (#848). */
+/* A switch keeps its 34x20 look and gains a 48 px hit area (Material 48dp); its
+   rows leave the 7 px it spills sideways free. Layered so a component's own
+   position wins (#848). */
 @layer base {
 	@media (pointer: coarse), (max-width: 767px) {
-		:where([data-slot="switch"], [data-slot="button"]) {
+		:where([data-slot="switch"]) {
 			position: relative;
 		}
-		:where([data-slot="switch"], [data-slot="button"])::after {
+		:where([data-slot="switch"])::after {
 			content: "";
 			position: absolute;
 			top: 50%;
