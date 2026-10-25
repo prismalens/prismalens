@@ -679,6 +679,46 @@ describe("GitCredentialService & host-token (#810)", () => {
 			expect(attempts).toBe(2);
 		});
 
+		it("logs a saved repository URL without its userinfo or query, on fall-through and on a failed preview (#848)", async () => {
+			const conn = {
+				id: "conn-single",
+				label: "Single Token",
+				status: "ACTIVE",
+				tokenExpiresAt: null,
+				lastErrorMessage: null,
+				credentialsEnc: credentialsService.encrypt({ token: "ghp_retry" }),
+				connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
+				integration: { templateId: "git-host-token", label: "Git host token" },
+			};
+			mockPrisma.connection.findMany.mockResolvedValue([conn]);
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			vi.mocked(gitSpawnMod.gitConfigRead).mockImplementation(async (args: string[]) =>
+				args.includes("credential.helper") ? { stdout: "gh", stderr: "" } : { stdout: "", stderr: "" },
+			);
+			vi.mocked(gitSpawnMod.spawnGit).mockImplementation(async (_args: string[], opts: any) => {
+				opts?.onStdoutLine?.("username=octocat");
+				opts?.onStdoutLine?.("password=pass");
+				return { stdout: "", stderr: "" };
+			});
+			const logger = (service as any).logger;
+			const lines: string[] = [];
+			vi.spyOn(logger, "log").mockImplementation((m: unknown) => void lines.push(String(m)));
+			vi.spyOn(logger, "warn").mockImplementation((m: unknown) => void lines.push(String(m)));
+			const url = "https://user:sentinel@github.com/org/repo.git?api_key=sentinel";
+			let attempts = 0;
+
+			await service.withCredential({ sourceKind: "url", url, connectionId: null, pick: null }, async () => {
+				if (++attempts === 1) throw new GitFailure("no-access", "Token can't see org/repo");
+				return "ok";
+			});
+			mockPrisma.connection.findMany.mockRejectedValue(new Error("db down"));
+			await service.preview({ sourceKind: "url", url, connectionId: null, pick: null });
+
+			expect(lines.length).toBeGreaterThanOrEqual(2);
+			expect(lines.join(" | ")).not.toContain("sentinel");
+			expect(lines.join(" | ")).toContain("github.com/org/repo");
+		});
+
 		it("withCredential refuses as ambiguous before git runs when two saved tokens match (#848)", async () => {
 			const conn1Enc = credentialsService.encrypt({ token: "tok1" });
 			const conn2Enc = credentialsService.encrypt({ token: "tok2" });

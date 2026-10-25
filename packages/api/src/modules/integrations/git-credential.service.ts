@@ -19,6 +19,7 @@ import {
 	helperName,
 	isSshUrl,
 	normalizeGitHost,
+	repoLabel,
 	urlHost,
 } from "../../core/harness/git-credential.js";
 import { gitEnv } from "../../core/harness/git-env.js";
@@ -153,7 +154,7 @@ export class GitCredentialService {
 			.then((r) => r.display)
 			.catch((err: unknown) => {
 				this.logger.warn(
-					`Could not work out the credential for ${ref.url}: ${err instanceof Error ? err.message : String(err)}`,
+					`Could not work out the credential for ${repoLabel(ref.url)}: ${err instanceof Error ? err.message : String(err)}`,
 				);
 				return PUBLIC;
 			});
@@ -208,7 +209,7 @@ export class GitCredentialService {
 				},
 			});
 			this.logger.log(
-				`${host ?? ref.url} answered ${err.code} to ${cred.display.label}; retrying ${ref.url} with ${fallback.display.label}`,
+				`${host ?? repoLabel(ref.url)} answered ${err.code} to ${cred.display.label}; retrying ${repoLabel(ref.url)} with ${fallback.display.label}`,
 			);
 			try {
 				return { result: await fn(fallback), credential: fallback.display };

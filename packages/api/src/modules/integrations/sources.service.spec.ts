@@ -555,3 +555,19 @@ describe("SourcesService (#848 C17)", () => {
 		});
 	});
 });
+
+describe("getJson (#848)", () => {
+	it("names a 200 body that is not JSON by category, never by the parser's quote of it", async () => {
+		const { getJson } = await import("./source-query.js");
+		const src = {
+			request: async () => new Response("sentinel-credential {", { status: 200 }),
+		};
+
+		const err = await getJson(src as never, "/api/v1/query", {}, new AbortController().signal).catch(
+			(e: unknown) => e,
+		);
+
+		expect(err).toBeInstanceOf(QueryFailed);
+		expect((err as Error).message).toBe("the source sent a response that is not valid JSON");
+	});
+});

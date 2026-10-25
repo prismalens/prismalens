@@ -136,6 +136,22 @@ export function redactAddress(text: string): string {
 	return bare ? u.href.replace(/\/$/, "") : u.href;
 }
 
+const ADDRESS_KEY = /url|uri|endpoint|address/i;
+
+/** A config as an answer: every address-like field without userinfo, query or fragment, since a saved one may hold a credential (#848). */
+export function withShownAddress<T>(config: T): T {
+	if (Array.isArray(config)) return config.map(withShownAddress) as T;
+	if (!config || typeof config !== "object") return config;
+	return Object.fromEntries(
+		Object.entries(config).map(([k, v]) => [
+			k,
+			typeof v === "string" && ADDRESS_KEY.test(k)
+				? redactAddress(v)
+				: withShownAddress(v),
+		]),
+	) as T;
+}
+
 const hostOf = (address: string): string =>
 	parseUrl(redactAddress(address))?.host ?? UNSHOWN_ADDRESS;
 
@@ -343,7 +359,11 @@ export async function getJson(
 		await res.body?.cancel();
 		throw new QueryFailed(`the source answered HTTP ${res.status}`);
 	}
-	return JSON.parse(await res.text());
+	try {
+		return JSON.parse(await res.text());
+	} catch {
+		throw new QueryFailed("the source sent a response that is not valid JSON");
+	}
 }
 
 const promResult = (data: unknown) => {

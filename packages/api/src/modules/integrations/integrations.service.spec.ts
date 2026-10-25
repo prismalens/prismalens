@@ -547,6 +547,38 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			expect(list.baseUrl).toBe("an address PrismaLens cannot show");
 		});
 
+		it("a mapping's config comes back without credentials from reorder, create and update (#848)", async () => {
+			const row = {
+				id: "map-1",
+				serviceId: "svc-1",
+				connectionId: "conn-prom",
+				priority: 1,
+				config: JSON.stringify({
+					baseUrl: "https://user:sentinel@prom.example:9090/p/?api_key=sentinel#sentinel",
+					nested: { grafanaUrl: "https://prom.example/d?token=sentinel" },
+					note: "keep",
+				}),
+				isEnabled: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			};
+			vi.spyOn(service, "setServiceIntegrationOrder").mockResolvedValue([row] as any);
+			vi.spyOn(service, "createServiceIntegration").mockResolvedValue(row as any);
+			vi.spyOn(service, "updateServiceIntegrationById").mockResolvedValue(row as any);
+			const { IntegrationsController } = await import("./integrations.controller.js");
+			const api = new IntegrationsController(service, { invalidate: vi.fn() } as any, { get: vi.fn() } as any).integrations() as any;
+			const call = (name: string, input: object) => api[name]["~orpc"].handler({ input, context: {} });
+
+			const reordered = await call("setServiceIntegrationOrder", { serviceId: "svc-1", overrideIds: ["map-1"] });
+			const created = await call("createServiceIntegration", { serviceId: "svc-1", connectionId: "conn-prom" });
+			const updated = await call("updateServiceIntegration", { id: "map-1" });
+
+			expect(created.config.baseUrl).toBe("https://prom.example:9090/p/");
+			expect(created.config.nested.grafanaUrl).toBe("https://prom.example/d");
+			expect(created.config.note).toBe("keep");
+			expect(JSON.stringify([reordered, created, updated])).not.toContain("sentinel");
+		});
+
 		const REPO = "https://gitlab.com/https://user:sentinel@other.example/org/repo.git";
 		const gitProbe = async (reject: boolean) => {
 			const conn = gitConn(null);

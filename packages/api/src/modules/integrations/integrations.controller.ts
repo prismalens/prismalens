@@ -26,7 +26,7 @@ import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { redactAddress, shownError } from "./source-query.js";
+import { redactAddress, shownError, withShownAddress } from "./source-query.js";
 import { SourcesService } from "./sources.service.js";
 import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 
@@ -516,7 +516,9 @@ export class IntegrationsController {
 			serviceId: si.serviceId,
 			connectionId: si.connectionId,
 			priority: si.priority ?? 0,
-			config: si.config ? this.safeParseJson(si.config) : null,
+			config: si.config
+				? withShownAddress(this.safeParseJson(si.config))
+				: null,
 			isEnabled: si.isEnabled,
 			createdAt: si.createdAt.toISOString(),
 			updatedAt: si.updatedAt.toISOString(),

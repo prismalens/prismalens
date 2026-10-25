@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { isAbsolute } from "node:path";
 import { inspect } from "node:util";
 import type { GitCredentialDisplay } from "@prismalens/contracts/schemas";
 import type { GitEnvInput } from "./git-env.js";
@@ -54,6 +55,13 @@ export function repoPath(url: string): string {
 	} catch {
 		return UNSHOWN_REPO;
 	}
+}
+
+/** A repository for a log line: `host/owner/repo` for a URL, the path for a folder; never userinfo, query or fragment (#848). */
+export function repoLabel(source: string): string {
+	const host = urlHost(source);
+	if (host) return `${host}/${repoPath(source)}`;
+	return isAbsolute(source) ? source : UNSHOWN_REPO;
 }
 
 const HOST_RULE = /^[a-z0-9.-]+(:\d{1,5})?$/;

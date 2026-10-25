@@ -67,10 +67,10 @@ import { type HostToken, pickOf, readHostToken } from "./host-token.js";
 import {
 	type ErrorMarker,
 	errorMarker,
-	redactAddress,
 	sourceAnswered,
 	sourceErrorKind,
 	sourceErrorSentence,
+	withShownAddress,
 } from "./source-query.js";
 import { sourceRequestFn } from "./source-request.js";
 import { readStored, type StoredState } from "./stored-credential.js";
@@ -105,15 +105,6 @@ export interface TestConnectionResult {
 	rejected?: boolean;
 	/** The code a git token's failure is stored as; not part of the API answer (#848). */
 	errorKind?: GitErrorKind;
-}
-
-/** A config as an answer: its `baseUrl` without userinfo, query or fragment, since a saved one may hold a credential (#848). */
-function withShownAddress<T extends Record<string, unknown> | null>(
-	config: T,
-): T {
-	return config && typeof config.baseUrl === "string"
-		? { ...config, baseUrl: redactAddress(config.baseUrl) }
-		: config;
 }
 
 /** The status a failed git host token lands in: a refused token reads "rejected". */

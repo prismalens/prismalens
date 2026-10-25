@@ -262,6 +262,21 @@ describe("ChangeEventsService", () => {
 		});
 	});
 
+	it("logs a failed read without the saved URL's userinfo or query (#848)", async () => {
+		const bare = new URL(server.addRepo("leaky-api", { kind: "reject-401" }));
+		const url = `${bare.protocol}//user:sentinel@${bare.host}${bare.pathname}?api_key=sentinel`;
+		const id = await incidentFor([{ url, sourceKind: "url" }]);
+		const warn = vi.spyOn(
+			(service as unknown as { logger: { warn: (m: string) => void } }).logger,
+			"warn",
+		);
+		await service.forIncident(id);
+		const logged = warn.mock.calls.map(([m]) => String(m)).join(" | ");
+		expect(logged).toContain(`What changed: ${bare.host}/leaky-api`);
+		expect(logged).not.toContain("sentinel");
+		warn.mockRestore();
+	});
+
 	it("reports partial when one of two repositories fails", async () => {
 		const url = server.addRepo("private-web", { kind: "reject-401" });
 		const id = await incidentFor([
