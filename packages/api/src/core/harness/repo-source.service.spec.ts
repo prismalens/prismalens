@@ -477,14 +477,12 @@ describe("repo-source.service", () => {
 			const src = tmp("pl-not-a-repo-");
 			const dest = runWorktreeDir("run9");
 
-			const failure = new RepoSourceService()
-				.snapshot({ kind: "folder", source: src }, dest, undefined, "0123456789abcdef0123456789abcdef01234567", "run9")
-				.catch((e: unknown) => e as Error);
+			const failure = new RepoSourceService().snapshot(
+				{ kind: "folder", source: src }, dest, undefined, "0123456789abcdef0123456789abcdef01234567", "run9",
+			);
 
-			const err = await failure;
-			expect(err).toBeInstanceOf(Error);
-			expect(err.message).toMatch(/git rev-parse failed/);
-			expect(err.message).not.toMatch(/could not be checked out/);
+			await expect(failure).rejects.toThrow(/git rev-parse failed/);
+			await expect(failure).rejects.not.toThrow(/could not be checked out/);
 			expect(existsSync(dest)).toBe(false);
 		});
 
