@@ -47,16 +47,64 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		expect(touchBlock).toContain("header a");
 	});
 
-	it("gives switches and icon buttons a 48 px hit area without resizing them", () => {
-		const hit = css.match(
-			/@layer base\s*\{\s*@media\s*\(pointer:\s*coarse\),\s*\(max-width:\s*767px\)\s*\{([\s\S]*?)\n\}/,
+	it("gives switches and every Button, asChild anchors included, a 48 px hit area", () => {
+		const layer = parse(css).find((n) => n.prelude === "@layer base");
+		const media = layer?.children.find(
+			(n) => n.prelude === "@media (pointer: coarse), (max-width: 767px)",
 		);
-		expect(hit).not.toBeNull();
-		const block = hit ? hit[1] : "";
-		expect(block).toContain('[data-slot="switch"]');
-		expect(block).toContain('[data-slot="button"][data-size^="icon"]');
-		expect(block).toMatch(/\)::after\s*\{[^}]*width:\s*max\(100%,\s*48px\);/);
-		expect(block).toMatch(/\)::after\s*\{[^}]*height:\s*max\(100%,\s*48px\);/);
-		expect(block).toContain("position: absolute;");
+		expect(media).toBeDefined();
+		const rule = (pseudo: string) =>
+			media?.children.find((n) => {
+				const m = n.prelude.match(/^:where\((.*)\)((?:::after)?)$/);
+				return (
+					m?.[2] === pseudo &&
+					m[1].split(/,\s*/).sort().join() ===
+						'[data-slot="button"],[data-slot="switch"]'
+				);
+			});
+		expect(Object.fromEntries(rule("")?.decls ?? [])).toEqual({
+			position: "relative",
+		});
+		const after = Object.fromEntries(rule("::after")?.decls ?? []);
+		expect(after).toEqual({
+			content: '""',
+			position: "absolute",
+			top: "50%",
+			left: "50%",
+			width: "max(100%, 48px)",
+			height: "max(100%, 48px)",
+			transform: "translate(-50%, -50%)",
+		});
 	});
 });
+
+type CssNode = { prelude: string; decls: [string, string][]; children: CssNode[] };
+
+/** Nested blocks with their declarations; enough for this file, no strings holding braces. */
+function parse(src: string): CssNode[] {
+	const root: CssNode = { prelude: "", decls: [], children: [] };
+	const stack = [root];
+	let buf = "";
+	const decl = (node: CssNode, text: string) => {
+		const i = text.indexOf(":");
+		if (i > 0) node.decls.push([text.slice(0, i).trim(), text.slice(i + 1).trim()]);
+	};
+	for (const ch of src.replace(/\/\*[\s\S]*?\*\//g, "")) {
+		const top = stack[stack.length - 1] as CssNode;
+		if (ch === "{") {
+			const node = { prelude: buf.trim().replace(/\s+/g, " "), decls: [], children: [] };
+			node.prelude = node.prelude.replace(/\(\s+/g, "(").replace(/\s+\)/g, ")");
+			top.children.push(node);
+			stack.push(node);
+			buf = "";
+		} else if (ch === "}") {
+			decl(top, buf);
+			stack.pop();
+			buf = "";
+		} else if (ch === ";") {
+			if (stack.length > 1) decl(top, buf);
+			buf = "";
+		} else buf += ch;
+	}
+	return root.children;
+}

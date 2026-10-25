@@ -161,17 +161,15 @@
 	}
 }
 
-/* Switches and icon buttons keep their look and gain a 48 px hit area around it
-   (Material 48dp, HIG 44pt); layered so a component's own position wins (#848). */
+/* Switches and every Button, anchors through asChild included, keep their look
+   and gain a 48 px hit area (Material 48dp, HIG 44pt); layered so a component's
+   own position wins (#848). */
 @layer base {
 	@media (pointer: coarse), (max-width: 767px) {
-		:where([data-slot="switch"], [data-slot="button"][data-size^="icon"]) {
+		:where([data-slot="switch"], [data-slot="button"]) {
 			position: relative;
 		}
-		:where(
-				[data-slot="switch"],
-				[data-slot="button"][data-size^="icon"]
-			)::after {
+		:where([data-slot="switch"], [data-slot="button"])::after {
 			content: "";
 			position: absolute;
 			top: 50%;
