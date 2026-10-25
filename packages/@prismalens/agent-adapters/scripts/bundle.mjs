@@ -108,7 +108,7 @@ export async function bundleAdapters() {
 			bundle: true,
 			platform: "node",
 			format: "esm",
-			target: "node24",
+			target: "node22",
 			outfile: join(OUT, script),
 			external: [SDK],
 			// globalThis, not a binding: codex-acp's own bundle declares a top-level `require`.
