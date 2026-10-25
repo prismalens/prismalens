@@ -3,13 +3,20 @@
 // Copyright 2026 Sumit Patel
 
 import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, createElement, useEffect } from "react";
+import {
+	QueryClient,
+	QueryClientProvider,
+	useQuery,
+} from "@tanstack/react-query";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	serviceIntegrationsKeys,
+	useCreateServiceIntegration,
+	useDeleteServiceIntegration,
 	useSetServiceIntegrationOrder,
+	useUpdateServiceIntegration,
 } from "@/lib/api/hooks/use-integrations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import {
@@ -259,50 +266,106 @@ describe("ServiceTelemetrySection reordering UI (case 11)", () => {
 	});
 });
 
-describe("useSetServiceIntegrationOrder query invalidation", () => {
-	it("invalidates service integrations for the service and orpc sources key", async () => {
-		const queryClient = new QueryClient();
-		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+type Mutate = (vars: never) => Promise<unknown>;
 
-		let triggerMutation!: ReturnType<
-			typeof useSetServiceIntegrationOrder
-		>["mutate"];
-
-		function TestHook() {
-			const mutation = useSetServiceIntegrationOrder();
-			useEffect(() => {
-				triggerMutation = mutation.mutate;
-			}, [mutation]);
-			return null;
-		}
-
-		await act(async () =>
-			root.render(
-				createElement(
-					QueryClientProvider,
-					{ client: queryClient },
-					createElement(TestHook),
-				),
-			),
+/**
+ * The server holds the order; the rows and one matrix column are cached, as on
+ * the service page. A mutation must refetch both, or the screen keeps the old answer.
+ */
+async function afterMutation(
+	useHook: () => { mutateAsync: Mutate },
+	vars: unknown,
+) {
+	const server = { order: "ov-1,ov-2" };
+	const rowsFn = vi.fn(async () => server.order);
+	const matrixFn = vi.fn(async () => server.order.split(",")[0]);
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async () => {
+			server.order = "ov-2,ov-1";
+			return Response.json({});
+		}),
+	);
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+	});
+	let mutateAsync: Mutate | undefined;
+	function View() {
+		const rows = useQuery({
+			queryKey: [...serviceIntegrationsKeys.forService("svc-1")],
+			queryFn: rowsFn,
+		});
+		const matrix = useQuery({
+			queryKey: [
+				...orpc.sources.preRun.queryKey({
+					input: { serviceId: "svc-1", deployment: "prod" },
+				}),
+			],
+			queryFn: matrixFn,
+		});
+		mutateAsync = useHook().mutateAsync;
+		return createElement(
+			"p",
+			{ "data-testid": "view" },
+			`${rows.data ?? ""}|${matrix.data ?? ""}`,
 		);
+	}
+	await act(async () =>
+		root.render(
+			createElement(
+				QueryClientProvider,
+				{ client: queryClient },
+				createElement(View),
+			),
+		),
+	);
+	const view = () =>
+		container.querySelector('[data-testid="view"]')?.textContent;
+	for (let i = 0; i < 50 && view() !== "ov-1,ov-2|ov-1"; i++)
+		await act(() => new Promise((r) => setTimeout(r, 5)));
+	expect(view()).toBe("ov-1,ov-2|ov-1");
+	await act(async () => {
+		await mutateAsync?.(vars as never);
+	});
+	for (let i = 0; i < 50 && view() !== "ov-2,ov-1|ov-2"; i++)
+		await act(() => new Promise((r) => setTimeout(r, 5)));
+	return {
+		view: view(),
+		rows: rowsFn.mock.calls.length,
+		matrix: matrixFn.mock.calls.length,
+	};
+}
 
-		expect(typeof triggerMutation).toBe("function");
+describe("mapping mutations refresh the rows and the matrix (#848 case 11, 12)", () => {
+	afterEach(() => vi.unstubAllGlobals());
 
-		// In useSetServiceIntegrationOrder:
-		// onSuccess: (_data, variables) => {
-		//   queryClient.invalidateQueries({ queryKey: serviceIntegrationsKeys.forService(variables.serviceId) });
-		//   queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
-		// }
-		queryClient.invalidateQueries({
-			queryKey: serviceIntegrationsKeys.forService("svc-123"),
+	it("a move refetches the rows and the preview, so the new order shows", async () => {
+		const r = await afterMutation(useSetServiceIntegrationOrder, {
+			serviceId: "svc-1",
+			overrideIds: ["ov-2", "ov-1"],
 		});
-		queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
+		expect(r).toEqual({ view: "ov-2,ov-1|ov-2", rows: 2, matrix: 2 });
+	});
 
-		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: serviceIntegrationsKeys.forService("svc-123"),
+	it("adding a mapping refetches the preview", async () => {
+		const r = await afterMutation(useCreateServiceIntegration, {
+			serviceId: "svc-1",
+			connectionId: "c-1",
+			config: {},
 		});
-		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: orpc.sources.key(),
+		expect(r).toEqual({ view: "ov-2,ov-1|ov-2", rows: 2, matrix: 2 });
+	});
+
+	it("switching a mapping off refetches the preview", async () => {
+		const r = await afterMutation(useUpdateServiceIntegration, {
+			id: "ov-1",
+			config: { enabled: false },
 		});
+		expect(r).toEqual({ view: "ov-2,ov-1|ov-2", rows: 2, matrix: 2 });
+	});
+
+	it("removing a mapping refetches the preview", async () => {
+		const r = await afterMutation(useDeleteServiceIntegration, { id: "ov-1" });
+		expect(r).toEqual({ view: "ov-2,ov-1|ov-2", rows: 2, matrix: 2 });
 	});
 });

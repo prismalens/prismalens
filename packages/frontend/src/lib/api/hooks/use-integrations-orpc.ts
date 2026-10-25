@@ -314,6 +314,7 @@ export function useCreateServiceIntegration() {
 			queryClient.invalidateQueries({
 				queryKey: serviceIntegrationsKeys.forService(variables.serviceId),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -347,6 +348,7 @@ export function useUpdateServiceIntegration() {
 			queryClient.invalidateQueries({
 				queryKey: orpc.integrations.key(),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -363,6 +365,7 @@ export function useDeleteServiceIntegration() {
 			queryClient.invalidateQueries({
 				queryKey: orpc.integrations.key(),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
