@@ -667,7 +667,7 @@ export class HarnessService implements OnApplicationBootstrap {
 							command: programPath(patch.localAgent.command),
 							args: patch.localAgent.args,
 						};
-		if (patch.env) await this.saveEnv(patch.env);
+		const envValue = patch.env ? await this.envValue(patch.env) : undefined;
 		const models = cleanModels({ ...current.models, ...patch.models });
 		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
 		const efforts = cleanModels({ ...current.efforts, ...patch.efforts });
@@ -701,15 +701,29 @@ export class HarnessService implements OnApplicationBootstrap {
 			...nonEmpty("configDirs", configDirs),
 			...(localAgent ? { localAgent } : {}),
 		};
-		await this.prisma.setting.upsert({
-			where: { key: SETTING_KEY },
-			update: { value: JSON.stringify(next), type: "json" },
-			create: {
-				key: SETTING_KEY,
-				value: JSON.stringify(next),
-				type: "json",
-				category: "ai",
-			},
+		// The variables and the rest of the PATCH land together or not at all (#911).
+		await this.prisma.$transaction(async (tx) => {
+			if (envValue !== undefined)
+				await tx.setting.upsert({
+					where: { key: ENV_KEY },
+					update: { value: envValue, type: "encrypted" },
+					create: {
+						key: ENV_KEY,
+						value: envValue,
+						type: "encrypted",
+						category: "ai",
+					},
+				});
+			await tx.setting.upsert({
+				where: { key: SETTING_KEY },
+				update: { value: JSON.stringify(next), type: "json" },
+				create: {
+					key: SETTING_KEY,
+					value: JSON.stringify(next),
+					type: "json",
+					category: "ai",
+				},
+			});
 		});
 		const changed = new Set<HarnessId>([
 			...(Object.keys(patch.binaryPaths ?? {}) as HarnessId[]),
@@ -725,10 +739,10 @@ export class HarnessService implements OnApplicationBootstrap {
 		return this.withEnvNames(next);
 	}
 
-	/** Validates every name and value first, then writes the ciphertext; a refusal saves nothing. */
-	private async saveEnv(
+	/** Validates every name and value, then returns the stored JSON with the ciphertext; a refusal saves nothing. */
+	private async envValue(
 		patch: NonNullable<HarnessSettingsPatch["env"]>,
-	): Promise<void> {
+	): Promise<string> {
 		const credentials = this.credentials;
 		if (!credentials)
 			throw new HarnessSettingsError("Agent variables can't be stored here.");
@@ -762,12 +776,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			if (Object.keys(next).length) stored[id] = next;
 			else delete stored[id];
 		}
-		const value = JSON.stringify(stored);
-		await this.prisma.setting.upsert({
-			where: { key: ENV_KEY },
-			update: { value, type: "encrypted" },
-			create: { key: ENV_KEY, value, type: "encrypted", category: "ai" },
-		});
+		return JSON.stringify(stored);
 	}
 
 	/**

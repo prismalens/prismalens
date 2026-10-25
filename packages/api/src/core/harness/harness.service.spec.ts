@@ -22,6 +22,7 @@ const mockPrismaService = {
 		findUnique: vi.fn(),
 		upsert: vi.fn(),
 	},
+	$transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(mockPrismaService),
 };
 
 /** A PATH containing exactly the named binaries (registry `binary` values, not ids). */
@@ -644,6 +645,16 @@ describe("HarnessService agent runtime settings (#907)", () => {
 					store[where.key] = prev ? { ...prev, ...update } : { ...create, key: where.key };
 				}),
 			},
+			// Rolls the store back when the callback throws, as a real transaction would.
+			$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+				const before = { ...store };
+				try {
+					return await fn(prisma);
+				} catch (err) {
+					store = before;
+					throw err;
+				}
+			}),
 		};
 		const svc = new HarnessService(
 			prisma as unknown as PrismaService,
@@ -690,6 +701,18 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(store.HARNESS_ENV?.type).toBe("encrypted");
 		expect(store.HARNESS_ENV?.value).not.toContain("b.example");
 		expect(store.HARNESS_ENV?.value).toContain("enc:");
+
+		const { svc: failing } = runtimeService();
+		const write = failing["prisma"].setting.upsert as ReturnType<typeof vi.fn>;
+		write.mockImplementation(async ({ where }: { where: { key: string } }) => {
+			if (where.key === "HARNESS") throw new Error("disk full");
+			store[where.key] = { key: where.key, value: "partial", type: "encrypted" };
+		});
+		const envBefore = store.HARNESS_ENV;
+		await expect(
+			failing.updateSettings({ models: { "claude-code": "opus" }, env: { "claude-code": { ANTHROPIC_MODEL: "x" } } }),
+		).rejects.toThrow("disk full");
+		expect(store.HARNESS_ENV).toEqual(envBefore);
 
 		const cleared = await svc.updateSettings({
 			hiddenModels: { "claude-code": null },
