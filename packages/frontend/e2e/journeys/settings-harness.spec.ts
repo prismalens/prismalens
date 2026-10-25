@@ -59,7 +59,7 @@ type HarnessFixture = {
 			description?: string;
 		}[];
 	};
-	envVars?: { name: string; state: "unset" | "set" | "env" }[];
+	envVars?: { name: string; state: "unset" | "set" | "env"; inEnv?: boolean }[];
 };
 
 const NO_MODELS: HarnessFixture["models"] = {
@@ -1321,7 +1321,7 @@ test.describe("Design evidence (#501/#609)", () => {
 			envVars: [
 				{ name: "ANTHROPIC_API_KEY", state: "unset" },
 				{ name: "OPENAI_API_KEY", state: "env" },
-				{ name: "OPENROUTER_API_KEY", state: "set" },
+				{ name: "OPENROUTER_API_KEY", state: "set", inEnv: true },
 			],
 		};
 		await serveHarnesses(page, [opencode, ...RUNNABLE.slice(1)], {
@@ -1342,6 +1342,12 @@ test.describe("Design evidence (#501/#609)", () => {
 			await expect(page.getByTestId("agent-detail")).toBeVisible({
 				timeout: 15_000,
 			});
+			// A stored key the host has too says so (#911).
+			await expect(
+				page
+					.getByTestId("env-row-OPENROUTER_API_KEY")
+					.getByTestId("env-overrides"),
+			).toHaveText("Overrides the environment");
 			await page.screenshot({
 				path: testInfo.outputPath(`agent-page-${theme}.png`),
 				fullPage: true,

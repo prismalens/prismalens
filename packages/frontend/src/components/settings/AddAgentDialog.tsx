@@ -204,8 +204,8 @@ export function AddAgentDialog({
 				</DialogHeader>
 
 				{step === 0 && (
-					<div className="grid gap-3">
-						<div className="grid grid-cols-2 gap-2">
+					<div className="grid min-w-0 gap-3">
+						<div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
 							{agents.map((h) => (
 								<Tile
 									key={h.id}
@@ -257,7 +257,10 @@ export function AddAgentDialog({
 				)}
 
 				{step === 1 && agent && (
-					<div className="grid gap-3 text-body" data-testid="add-agent-signin">
+					<div
+						className="grid min-w-0 gap-3 text-body"
+						data-testid="add-agent-signin"
+					>
 						{local ? (
 							<p data-testid="add-agent-verdict">
 								{agent.checked?.detail ?? "Not checked yet."}
@@ -318,7 +321,7 @@ export function AddAgentDialog({
 				)}
 
 				{step === 2 && picked && (
-					<div className="grid gap-4" data-testid="add-agent-config">
+					<div className="grid min-w-0 gap-4" data-testid="add-agent-config">
 						<RuntimeFields id={picked} />
 						<EnvironmentRows id={picked} />
 						{result && (

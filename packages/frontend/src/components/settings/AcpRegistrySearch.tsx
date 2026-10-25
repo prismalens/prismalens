@@ -52,7 +52,7 @@ export function AcpRegistrySearch({
 	const id = useId();
 	const found = searchRegistry(query, entries);
 	return (
-		<div className="flex flex-col gap-2" data-testid="acp-registry">
+		<div className="flex min-w-0 flex-col gap-2" data-testid="acp-registry">
 			<label htmlFor={id} className="text-body font-medium">
 				Or find one in the ACP registry
 			</label>
@@ -74,11 +74,14 @@ export function AcpRegistrySearch({
 				<p className="text-meta text-text-2">No agent in the list matches.</p>
 			)}
 			{found.length > 0 && (
-				<ul className="flex flex-col gap-1" aria-label="Registry agents">
+				<ul
+					className="flex min-w-0 flex-col gap-1"
+					aria-label="Registry agents"
+				>
 					{found.map((e) => {
 						const on = chosen === e.id;
 						return (
-							<li key={e.id}>
+							<li key={e.id} className="min-w-0">
 								<button
 									type="button"
 									aria-expanded={on}
@@ -101,7 +104,7 @@ export function AcpRegistrySearch({
 									</span>
 								</button>
 								{on && (
-									<div className="mt-1 mb-2 flex flex-col gap-1.5 pl-2.5">
+									<div className="mt-1 mb-2 flex min-w-0 flex-col gap-1.5 pl-2.5">
 										{e.install.map((line) => (
 											<CommandChip
 												key={line}
