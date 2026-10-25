@@ -473,6 +473,21 @@ describe("repo-source.service", () => {
 			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("run8");
 		});
 
+		it("a folder follow-up whose source is no longer a git repo keeps git's own error, not the missing-commit one (#918)", async () => {
+			const src = tmp("pl-not-a-repo-");
+			const dest = runWorktreeDir("run9");
+
+			const failure = new RepoSourceService()
+				.snapshot({ kind: "folder", source: src }, dest, undefined, "0123456789abcdef0123456789abcdef01234567", "run9")
+				.catch((e: unknown) => e as Error);
+
+			const err = await failure;
+			expect(err).toBeInstanceOf(Error);
+			expect(err.message).toMatch(/git rev-parse failed/);
+			expect(err.message).not.toMatch(/could not be checked out/);
+			expect(existsSync(dest)).toBe(false);
+		});
+
 		it("a late release of an earlier attempt leaves the worktree a follow-up re-added at the same path (#918)", async () => {
 			const src = tmp("pl-src-");
 			const head = initRepo(src);

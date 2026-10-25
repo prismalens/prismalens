@@ -369,9 +369,8 @@ export class RepoSourceService {
 			);
 			return true;
 		} catch (err) {
-			if (signal?.aborted) throw signal.reason;
 			if (err instanceof GitSpawnError && err.exitCode === 1) return false;
-			throw err instanceof Error ? new Error(err.message) : err;
+			throw err;
 		}
 	}
 
