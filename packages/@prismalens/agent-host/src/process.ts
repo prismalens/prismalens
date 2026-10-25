@@ -60,6 +60,44 @@ export function spawnAgent(
 	return crossSpawn(plan.command, plan.args, options) as AgentChild;
 }
 
+/** The first x.y.z in `<bin> --version`, or null; never longer than `timeoutMs`. */
+export function versionOf(
+	bin: string,
+	timeoutMs = 5_000,
+): Promise<string | null> {
+	return new Promise((resolve) => {
+		let out = "";
+		let child: ReturnType<typeof crossSpawn>;
+		try {
+			child = crossSpawn(bin, ["--version"], {
+				stdio: ["ignore", "pipe", "ignore"],
+				windowsHide: true,
+			});
+		} catch {
+			resolve(null);
+			return;
+		}
+		const timer = setTimeout(() => {
+			child.kill("SIGKILL");
+			resolve(null);
+		}, timeoutMs);
+		child.stdout?.setEncoding("utf8");
+		child.stdout?.on("data", (chunk: string) => {
+			out += chunk;
+		});
+		child.once("error", () => {
+			clearTimeout(timer);
+			resolve(null);
+		});
+		child.once("close", (code) => {
+			clearTimeout(timer);
+			resolve(
+				code === 0 ? (/\d+\.\d+\.\d+[\w.-]*/.exec(out)?.[0] ?? null) : null,
+			);
+		});
+	});
+}
+
 export interface DetectOptions {
 	/** PATH to search; the host's by default. */
 	pathEnv?: string;

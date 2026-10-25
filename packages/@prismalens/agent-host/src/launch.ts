@@ -95,7 +95,8 @@ export interface LaunchCommand {
 
 export interface PlanLaunchInput {
 	agent: AgentId;
-	level: AccessLevel;
+	/** Absent: no level's overlay, as for a probe or a follow-up that keeps its session's mode. */
+	level?: AccessLevel;
 	policy: LaunchPolicy;
 	launch: LaunchCommand;
 	cwd: string;
@@ -124,7 +125,7 @@ export interface LaunchPlan {
 	env: Record<string, string>;
 	/** Each variable the row reads or the user stored: Not set, Key set, or From environment. */
 	envState: Record<string, EnvVarState>;
-	level: ResolvedLevel;
+	level: ResolvedLevel | null;
 	sessionMeta?: Record<string, unknown>;
 	runEnv: AgentRunEnv;
 	/** Absolute path → content; `writeLaunchFiles` writes them. */
@@ -252,8 +253,8 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 					? "from-environment"
 					: "not-set";
 
-	const level = resolveLevel(input.agent, input.level);
-	const patch = level.configPatch?.(input.userConfig ?? {});
+	const level = input.level ? resolveLevel(input.agent, input.level) : null;
+	const patch = level?.configPatch?.(input.userConfig ?? {});
 	const files = Object.fromEntries(
 		Object.entries(levelFiles(row.configFiles?.(runEnv) ?? {}, patch)).map(
 			([rel, content]) => [join(runEnv.configDir, rel), content],

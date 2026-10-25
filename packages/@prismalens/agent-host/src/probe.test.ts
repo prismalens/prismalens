@@ -82,4 +82,14 @@ describe("probeAgent", () => {
 		const missing = await probe({}, { command: join(cwd, "no-such-agent"), args: [] });
 		expect(missing.outcome).toBe("failed-to-start");
 	});
+
+	it("waits for the sign-in the agent pushes after the handshake, and returns the raw answers", async () => {
+		const out = await probe({ FAKE_ACP_MODE: "ok", FAKE_AUTH_STATUS: "none", FAKE_AUTH_DELAY_MS: "300", FAKE_IMAGES: "1" }, { authStatusWaitMs: 3_000 });
+		expect(out.outcome).toBe("answers-acp");
+		expect(out.authStatus).toBe("none");
+		expect(out.raw.initialize?.agentCapabilities?.promptCapabilities?.image).toBe(true);
+		expect(out.raw.session?.sessionId).toBeTruthy();
+		const silent = await probe({ FAKE_ACP_MODE: "ok", FAKE_AUTH_STATUS: "silent" }, { authStatusWaitMs: 200 });
+		expect(silent.authStatus).toBeNull();
+	});
 });

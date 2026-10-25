@@ -200,7 +200,7 @@ describe("launch files", () => {
 		expect(json.permission.edit).toEqual({ "*": "allow" });
 		expect(p.env.OPENCODE_CONFIG_DIR).toBe(join(runDir, "config"));
 		expect(p.args).toEqual(["acp", "--cwd", "/w"]);
-		expect(p.level.mode).toEqual({ id: "build", name: "Build" });
+		expect(p.level?.mode).toEqual({ id: "build", name: "Build" });
 	});
 
 	it("writes the gateway run file owner-only and points deepagents at it (#848)", () => {
