@@ -20,6 +20,7 @@ import {
 import { formatClock, formatDate } from "@/lib/format-time";
 import { ConnectionFormDialog } from "./ConnectionFormDialog";
 import { SourceConnectDialog } from "./SourceConnectDialog";
+import { useEnvOrigin } from "./SourcesSettings";
 import {
 	AlsoInNote,
 	hostOf,
@@ -53,6 +54,9 @@ export function AlertIntakeSettings() {
 	const { data: overview } = useSourcesOverview();
 	const { data: connections } = useConnections();
 	const pulled = (overview?.sources ?? []).filter((s) => s.alsoInAlertIntake);
+	const envOrigin = useEnvOrigin(
+		pulled.find((s) => s.connectionId === editing),
+	);
 	const accepted =
 		delivery && delivery.accepted === delivery.received
 			? `${delivery.received} alert${delivery.received === 1 ? "" : "s"}, accepted`
@@ -226,6 +230,7 @@ export function AlertIntakeSettings() {
 				onOpenChange={(o) => !o && setEditing(null)}
 				mode="edit"
 				connection={connections?.find((c) => c.id === editing) ?? null}
+				envOrigin={envOrigin}
 			/>
 		</>
 	);

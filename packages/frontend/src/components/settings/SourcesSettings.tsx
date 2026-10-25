@@ -238,7 +238,7 @@ export function SourcesSettings() {
 }
 
 /** The environment origin for the edited row's kind, from the run's own resolver (C16a). */
-function useEnvOrigin(row: SourceRow | undefined): string | null {
+export function useEnvOrigin(row: SourceRow | undefined): string | null {
 	const preRun = useSourcesPreRun(row?.usedBy[0]?.serviceId ?? null);
 	if (!row) return null;
 	const fallback = preRun.data?.kinds.find((k) => k.kind === row.kind)

@@ -16,7 +16,20 @@ const state = {
 	sources: [] as SourceRow[],
 	delivery: null as { received: number; accepted: number; at: string } | null,
 	webhookToken: { token: "test-token" } as { token: string } | null,
+	envFallback: null as { origin: string } | null,
+	dialogEnvOrigin: [] as (string | null | undefined)[],
 };
+
+vi.mock("./ConnectionFormDialog", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./ConnectionFormDialog")>()),
+	ConnectionFormDialog: (props: {
+		open: boolean;
+		envOrigin?: string | null;
+	}) => {
+		if (props.open) state.dialogEnvOrigin.push(props.envOrigin);
+		return null;
+	},
+}));
 
 vi.mock("@/lib/api/hooks/use-sources-orpc", () => ({
 	useSourcesOverview: () => ({
@@ -33,6 +46,13 @@ vi.mock("@/lib/api/hooks/use-sources-orpc", () => ({
 		mutateAsync: vi.fn(),
 		reset: vi.fn(),
 		isPending: false,
+	}),
+	useSourcesPreRun: () => ({
+		data: {
+			kinds: state.envFallback
+				? [{ kind: "prometheus", envFallback: state.envFallback }]
+				: [],
+		},
 	}),
 }));
 
@@ -60,6 +80,8 @@ beforeEach(() => {
 	state.sources = [];
 	state.delivery = null;
 	state.webhookToken = { token: "test-token" };
+	state.envFallback = null;
+	state.dialogEnvOrigin = [];
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -121,6 +143,47 @@ describe("AlertIntakeSettings (case 9 and delivery)", () => {
 			'[data-testid="source-edit"]',
 		) as HTMLButtonElement;
 		expect(editBtn).not.toBeNull();
+	});
+
+	it("Edit passes the environment token's origin, as Sources does (case 5)", async () => {
+		const row: SourceRow = {
+			connectionId: "conn-env",
+			kind: "prometheus",
+			label: "Env Prom",
+			address: "https://prom.example.com:9090/api",
+			status: "ACTIVE",
+			testedAt: "2026-10-25T00:00:00Z",
+			problem: null,
+			lastErrorMessage: null,
+			credential: "env",
+			alsoInAlertIntake: true,
+			usedBy: [],
+		};
+		state.sources = [row];
+		await act(async () => root.render(createElement(AlertIntakeSettings)));
+		const edit = () =>
+			(
+				container.querySelector(
+					'[data-testid="source-edit"]',
+				) as HTMLButtonElement
+			).click();
+		await act(async () => edit());
+		expect(state.dialogEnvOrigin.at(-1)).toBe("https://prom.example.com:9090");
+
+		// A stored credential: the run's resolver names the env token's origin.
+		state.sources = [
+			{
+				...row,
+				credential: "stored",
+				usedBy: [{ serviceId: "svc-1", name: "api" }],
+			},
+		];
+		state.envFallback = { origin: "https://other.example.com" };
+		await act(async () =>
+			root.render(createElement(AlertIntakeSettings, { key: "2" })),
+		);
+		await act(async () => edit());
+		expect(state.dialogEnvOrigin.at(-1)).toBe("https://other.example.com");
 	});
 
 	it("renders ok pill when received === accepted and warn pill when received !== accepted", async () => {
