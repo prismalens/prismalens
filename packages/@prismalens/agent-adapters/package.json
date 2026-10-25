@@ -1,6 +1,6 @@
 {
 	"name": "@prismalens/agent-adapters",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"license": "Apache-2.0",
 	"private": true,
 	"description": "The ACP adapters PrismaLens ships for agents that do not speak ACP themselves, pinned to the versions the registry tested",
@@ -31,7 +31,7 @@
 		"vitest": "catalog:"
 	},
 	"engines": {
-		"node": ">=24.0.0"
+		"node": ">=22.0.0"
 	},
 	"files": [
 		"dist"

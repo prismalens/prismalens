@@ -907,8 +907,8 @@ export function packCli() {
 			...VENDORED.map((name) => `node_modules/${name}`),
 		],
 		engines: {
-			// Every package in this tarball declares >=24 (#673 s6); the one
-			// published package states that floor itself, whatever cli's manifest says.
+			// The app needs >=24 (#673 s6), though nested agent-adapters allows 22 (#916);
+			// the one published package states that floor itself, whatever cli's manifest says.
 			...cliPkg.manifest.engines,
 			node: ENGINES_NODE,
 		},
