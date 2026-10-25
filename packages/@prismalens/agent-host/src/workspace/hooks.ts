@@ -14,7 +14,7 @@ export interface OsCommands {
 	windows?: string;
 }
 
-export type HookStatus = "ok" | "failed" | "silent" | "capped";
+export type HookStatus = "ok" | "failed" | "silent" | "capped" | "aborted";
 
 export interface HookResult {
 	status: HookStatus;
@@ -40,6 +40,7 @@ export function runHook(
 		silenceMs?: number;
 		capMs?: number;
 		onOutput?: (chunk: string) => void;
+		signal?: AbortSignal;
 	},
 ): Promise<HookResult> {
 	return new Promise((resolve) => {
@@ -75,9 +76,13 @@ export function runHook(
 		child.stdout.on("data", take);
 		child.stderr.on("data", take);
 		arm();
+		const abort = () => stop("aborted");
+		opts.signal?.addEventListener("abort", abort, { once: true });
+		if (opts.signal?.aborted) abort();
 		const finish = (code: number | null) => {
 			clearTimeout(silence);
 			clearTimeout(cap);
+			opts.signal?.removeEventListener("abort", abort);
 			resolve({
 				status: status ?? (code === 0 ? "ok" : "failed"),
 				exitCode: code,

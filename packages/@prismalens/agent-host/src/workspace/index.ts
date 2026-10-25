@@ -12,6 +12,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -348,13 +349,26 @@ async function removeGuarded(
 		: record(dir, id, side, true, reason, teardown);
 }
 
+function unsafeCopy(rel: string): AgentHostError {
+	return new AgentHostError(
+		"unsafe-copy-path",
+		`copy-in path must stay inside the repo: ${rel}`,
+	);
+}
+
 function assertSafeRel(rel: string): void {
 	const norm = normalize(rel);
-	if (isAbsolute(rel) || norm === ".." || norm.startsWith(`..${sep}`))
-		throw new AgentHostError(
-			"unsafe-copy-path",
-			`copy-in path must stay inside the repo: ${rel}`,
-		);
+	const first = norm.split(sep)[0];
+	if (isAbsolute(rel) || first === "." || first === ".." || first === ".git")
+		throw unsafeCopy(rel);
+}
+
+/** The text check cannot see symlinks: resolve the deepest existing parent and keep it under `root`. */
+function assertRealInside(root: string, rel: string): void {
+	let parent = dirname(join(root, rel));
+	while (!existsSync(parent)) parent = dirname(parent);
+	if (!isInside(realpathSync(parent), realpathSync(root)))
+		throw unsafeCopy(rel);
 }
 
 async function pointHead(
@@ -487,7 +501,12 @@ export async function createWorkspace(
 				assertSafeRel(rel);
 				const from = join(source.repo, rel);
 				if (!existsSync(from)) continue;
-				cpSync(from, join(dir, rel), {
+				assertRealInside(source.repo, rel);
+				assertRealInside(dir, rel);
+				const to = join(dir, rel);
+				if (existsSync(to) && lstatSync(to).isSymbolicLink())
+					throw unsafeCopy(rel);
+				cpSync(from, to, {
 					recursive: true,
 					force: true,
 					verbatimSymlinks: true,
@@ -511,7 +530,9 @@ export async function createWorkspace(
 				env,
 				silenceMs: input.setupSilenceMs ?? SETUP_SILENCE_MS,
 				...(input.onOutput ? { onOutput: input.onOutput } : {}),
+				...sig,
 			});
+		signal?.throwIfAborted();
 		return workspace;
 	} catch (err) {
 		await removeDir(dir, env).catch(() => {});

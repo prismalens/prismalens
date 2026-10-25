@@ -95,6 +95,20 @@ describe("createWorkspace", () => {
 		expect(readFileSync(join(ws.dir, ".env"), "utf8")).toBe("SECRET=1\n");
 		expect(sh(ws.dir, "symbolic-ref", "--short", "HEAD")).toBe("prismalens/inc-1-r2");
 		await expect(create("r3", { ...POLICY, copyIn: ["../outside"] })).rejects.toThrow(/inside the repo/);
+		await expect(create("r3", { ...POLICY, copyIn: ["."] })).rejects.toThrow(/inside the repo/);
+		await expect(create("r3", { ...POLICY, copyIn: [".git/hooks"] })).rejects.toThrow(/inside the repo/);
+	}, 60_000);
+
+	it("refuses a copy-in that leaves the repo through a symlinked directory", async () => {
+		const elsewhere = join(root, "elsewhere");
+		mkdirSync(elsewhere);
+		writeFileSync(join(elsewhere, "x"), "outside");
+		try {
+			symlinkSync(elsewhere, join(repo, "link"), "junction");
+		} catch {
+			return; // symlinks need a privilege this machine lacks
+		}
+		await expect(create("r7", { ...POLICY, copyIn: ["link/x"] })).rejects.toThrow(/inside the repo/);
 	}, 60_000);
 
 	it("fetches exact head and base SHAs at depth 1 and never writes the credential to .git/config", async () => {
@@ -134,6 +148,20 @@ describe("createWorkspace", () => {
 		});
 		expect(silent.setup?.status).toBe("silent");
 		expect(silent.setup?.output).toContain("hello");
+	}, 60_000);
+
+	it("stops a setup when the caller aborts, and removes the workspace", async () => {
+		const ctl = new AbortController();
+		const run = createWorkspace({
+			...owner,
+			id: "r8",
+			policy: { ...POLICY, setup: both(nodeCmd("console.log('go');setTimeout(()=>{},20000)")) },
+			source: { kind: "local", repo, commit },
+			signal: ctl.signal,
+			onOutput: () => ctl.abort(),
+		});
+		await expect(run).rejects.toThrow();
+		expect(existsSync(join(owner.parentDir, "pl-r8"))).toBe(false);
 	}, 60_000);
 });
 

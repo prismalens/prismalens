@@ -175,7 +175,7 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			stderr ||= err.message;
 			resolve("died");
 		});
-		child.once("exit", () => resolve("died"));
+		child.once("close", () => resolve("died"));
 	});
 	const deadline = new Promise<"timeout">((resolve) => {
 		timer = setTimeout(() => resolve("timeout"), timeoutMs);
