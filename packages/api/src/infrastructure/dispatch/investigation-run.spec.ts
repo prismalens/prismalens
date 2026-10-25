@@ -19,7 +19,7 @@ import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js
 import type { Snapshot } from "../../core/harness/repo-source.service.js";
 import type { IncidentRepo, RepoRef, RunPorts } from "./run-ports.js";
 
-const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
+const mocks = vi.hoisted(() => ({ conductRun: vi.fn(), logged: [] as unknown[][] }));
 
 vi.mock("@prismalens/engine", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@prismalens/engine")>();
@@ -31,7 +31,8 @@ vi.mock("@prismalens/engine", async (importOriginal) => {
 
 vi.mock("@prismalens/logger", () => ({
 	Logger: vi.fn(function MockLogger() {
-		return { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
+		const record = (...args: unknown[]) => void mocks.logged.push(args);
+		return { info: vi.fn(record), error: vi.fn(record), warn: vi.fn(record), debug: vi.fn(record) };
 	}),
 	enrichContext: vi.fn(),
 }));
@@ -421,6 +422,50 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			await expect(
 				rebuildWorkspace(ws, "inv-1", "OpenCode", ports),
 			).rejects.toThrow(/is not in the repository/);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("a multi-repository follow-up rebuild whose SECONDARY repo has a missing subPath rejects although the primary's is there (OBJ-023 #848)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-subpath-2nd-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const reposDir = join(tmp, "runs", "inv-1", "repos");
+			mkdirSync(reposDir, { recursive: true });
+			const primaryDir = join(reposDir, "primary");
+			const repo = (name: string, dir: string, subPath: string) => ({
+				name,
+				dir,
+				head: "abc123def456789",
+				sourceKind: "url" as const,
+				url: `https://github.com/acme/${name}`,
+				connectionId: null,
+				branch: "main",
+				subPath,
+				services: [name],
+			});
+			const ws: RunWorkspace = {
+				layout: "multi",
+				cwd: reposDir,
+				repos: [
+					repo("primary", primaryDir, "svc/api"),
+					repo("secondary", join(reposDir, "secondary"), "svc/worker"),
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async (_target, dest: string) => {
+					mkdirSync(dest === primaryDir ? join(dest, "svc", "api") : dest, {
+						recursive: true,
+					});
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			await expect(
+				rebuildWorkspace(ws, "inv-1", "OpenCode", ports),
+			).rejects.toThrow(/svc\/worker is not in the repository/);
 		} finally {
 			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });
@@ -2143,7 +2188,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		];
 		const pre = opts.context.preRun;
 		expect(pre?.state).toBe("not-saved");
-		expect(pre?.saveError).toBe("disk full");
+		expect(pre?.saveError).toBe("the database write failed (Error)");
 		expect(pre?.copy.state).toBe("written");
 		const { buildInvestigationPrompt } = await import("@prismalens/engine");
 		const prompt = buildInvestigationPrompt(opts.context as never);
@@ -2222,6 +2267,13 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		expect(secondPayload.state).toBe("not-saved");
 		expect(secondPayload.saveError).toBe("the database write failed");
 		expect(secondRaw).not.toContain(secret);
+		const logged = JSON.stringify(mocks.logged);
+		expect(logged).toContain("the database write failed (Error)");
+		expect(logged).not.toContain(secret);
+		const [opts] = mocks.conductRun.mock.calls.at(-1) as [
+			{ context: { preRun?: { saveError?: string } } },
+		];
+		expect(opts.context.preRun?.saveError).not.toContain(secret);
 	});
 
 	it("a save that never settles still lets conductRun start within 5 s (#848)", async () => {
