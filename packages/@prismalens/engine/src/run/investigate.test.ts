@@ -82,6 +82,28 @@ async function collect(mode: string, extra?: Partial<Parameters<typeof runInvest
 }
 
 describe("runInvestigation over a fake ACP harness", () => {
+	it("offers the gateway in session/new but keeps its bearer out of the transcript (#848)", async () => {
+		const token = "run-bearer-0123456789abcdef";
+		const { runDir } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway: {
+				url: "http://127.0.0.1:1/mcp",
+				token,
+				serverName: "prismalens-abcdefgh23",
+				promptLine: "",
+				tools: [],
+				connected: () => false,
+				waitConnected: async () => false,
+				onCall: () => () => {},
+				calls: () => [],
+			},
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).toContain("http://127.0.0.1:1/mcp");
+		expect(wire).toContain("Bearer [redacted]");
+		expect(wire).not.toContain(token);
+	});
+
 	it("sets the chosen model over session/set_config_option and records what the harness took (R4.2)", async () => {
 		const { events, runDir } = await collect("ok", {
 			model: "asked/model",
@@ -1359,6 +1381,227 @@ describe("the agent's own mode (#673 w21)", () => {
 		const promptIdx = sentMethods.indexOf("session/prompt");
 		expect(setModeIdx).toBeGreaterThanOrEqual(0);
 		expect(promptIdx).toBeGreaterThan(setModeIdx);
+	});
+});
+
+describe("harness tool call live events and summary (#848)", () => {
+	it("a call 5 s before turn end yields a harness_tool_call before the turn's last message, with at before the summary's ts", async () => {
+		let onCallCb: ((c: { name: string; at: string }) => void) | undefined;
+		const callAt = "2026-10-24T10:00:00.000Z";
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get"],
+			connected: () => true,
+			waitConnected: async () => {
+				onCallCb?.({ name: "incident_get", at: callAt });
+				return true;
+			},
+			onCall: (cb: (c: { name: string; at: string }) => void) => {
+				onCallCb = cb;
+				return () => {};
+			},
+			calls: () => [{ name: "incident_get", firstCalledAt: callAt, count: 1 }],
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+		});
+		const toolCallIdx = events.findIndex((e) => e.kind === "harness_tool_call");
+		const lastMsgIdx = events.findLastIndex((e) => e.kind === "agent_step");
+		const summary = events.find((e) => e.kind === "harness_tools");
+
+		expect(toolCallIdx).toBeGreaterThan(-1);
+		expect(lastMsgIdx).toBeGreaterThan(-1);
+		expect(toolCallIdx).toBeLessThan(lastMsgIdx);
+		expect(events[toolCallIdx]).toMatchObject({
+			kind: "harness_tool_call",
+			server: "prismalens-abcdefgh23",
+			name: "incident_get",
+			at: callAt,
+			turn: "first",
+		});
+		expect(summary).toBeDefined();
+		if (summary?.kind === "harness_tools") {
+			expect(summary.server).toBe("prismalens-abcdefgh23");
+			expect(summary.turn).toBe("first");
+			expect(summary.connected).toBe(true);
+			expect(summary.calls).toEqual([{ name: "incident_get", firstCalledAt: callAt, count: 1 }]);
+			expect(new Date(callAt).getTime()).toBeLessThan(new Date(summary.ts).getTime());
+		}
+	});
+
+	it("a two-turn resume yields turn: 'first' and then turn: 'follow-up'", async () => {
+		const gateway1 = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+		};
+		const first = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway: gateway1,
+		});
+		const firstSummary = first.events.find((e) => e.kind === "harness_tools");
+		expect(firstSummary).toMatchObject({
+			kind: "harness_tools",
+			turn: "first",
+		});
+
+		const gateway2 = {
+			...gateway1,
+			calls: () => [{ name: "incident_get", firstCalledAt: "2026-10-24T10:05:00.000Z", count: 1 }],
+		};
+		const followUp = await collect("continue", {
+			env: { ...process.env, FAKE_ACP_MODE: "continue", FAKE_LOAD_SESSION: "1", FAKE_MCP_HTTP: "1" },
+			gateway: gateway2,
+			resume: { sessionId: "ses_old", text: "go on", mode: "queue", heads: [], kind: "continue", sawEvidence: true },
+		});
+		const followUpSummary = followUp.events.find((e) => e.kind === "harness_tools");
+		expect(followUpSummary).toMatchObject({
+			kind: "harness_tools",
+			turn: "follow-up",
+		});
+	});
+
+	it("a gateway tool call fired during the report-repair turn (after an invalid first report) is counted in the final harness-tools summary event, which is emitted once (#848)", async () => {
+		let onCallCb: ((c: { name: string; at: string }) => void) | undefined;
+		const call1At = "2026-10-24T10:00:00.000Z";
+		const call2At = "2026-10-24T10:00:05.000Z";
+		const callList = [{ name: "incident_get", firstCalledAt: call1At, count: 1 }];
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get", "incident_notes"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: (cb: (c: { name: string; at: string }) => void) => {
+				onCallCb = cb;
+				return () => {
+					onCallCb = undefined;
+				};
+			},
+			calls: () => [...callList],
+		};
+		const gate = join(tmp("retry-gate"), "gate");
+		const run = collect("retry", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "retry",
+				FAKE_MCP_HTTP: "1",
+				FAKE_RETRY_GATE: gate,
+			},
+			gateway,
+		});
+
+		await vi.waitFor(() => expect(existsSync(`${gate}.ready`)).toBe(true), {
+			timeout: 10_000,
+			interval: 20,
+		});
+		callList.push({ name: "incident_notes", firstCalledAt: call2At, count: 1 });
+		onCallCb?.({ name: "incident_notes", at: call2At });
+		writeFileSync(`${gate}.release`, "go");
+
+		const { events } = await run;
+
+		const toolCalls = events.filter((e) => e.kind === "harness_tool_call");
+		expect(toolCalls).toHaveLength(1);
+		expect(toolCalls[0]).toMatchObject({
+			kind: "harness_tool_call",
+			name: "incident_notes",
+		});
+
+		const toolSummaries = events.filter((e) => e.kind === "harness_tools");
+		expect(toolSummaries).toHaveLength(1);
+		const summary = toolSummaries[0];
+		expect(summary?.kind).toBe("harness_tools");
+		if (summary?.kind === "harness_tools") {
+			expect(summary.calls).toEqual([
+				{ name: "incident_get", firstCalledAt: call1At, count: 1 },
+				{ name: "incident_notes", firstCalledAt: call2At, count: 1 },
+			]);
+		}
+
+		const callIdx = events.findIndex((e) => e.kind === "harness_tool_call");
+		const summaryIdx = events.findIndex((e) => e.kind === "harness_tools");
+		const terminalIdx = events.findLastIndex(
+			(e) => e.kind === "branch_done" || e.kind === "report" || e.kind === "error",
+		);
+		expect(callIdx).toBeGreaterThanOrEqual(0);
+		expect(summaryIdx).toBeGreaterThan(callIdx);
+		expect(terminalIdx).toBeGreaterThan(summaryIdx);
+	});
+
+	it("with a connected gateway, a model refusal yields exactly one harness_tools event before the final error event (OBJ-018)", async () => {
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+		};
+		const { events } = await collect("ok", {
+			model: "asked/model",
+			modelSource: "operator",
+			gateway,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODELS: "served/model,asked/model",
+				FAKE_REFUSE_SET: "1",
+				FAKE_MCP_HTTP: "1",
+			},
+		});
+
+		const toolsSummaries = events.filter((e) => e.kind === "harness_tools");
+		expect(toolsSummaries).toHaveLength(1);
+		expect(events.at(-1)?.kind).toBe("error");
+		const toolsIdx = events.findIndex((e) => e.kind === "harness_tools");
+		const errorIdx = events.findLastIndex((e) => e.kind === "error");
+		expect(toolsIdx).toBeLessThan(errorIdx);
+	});
+
+	it("with a connected gateway, an effort refusal yields exactly one harness_tools event before the final error event (OBJ-018)", async () => {
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+		};
+		const { events } = await collect("ok", {
+			effort: "high",
+			gateway,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MCP_HTTP: "1",
+			},
+		});
+
+		const toolsSummaries = events.filter((e) => e.kind === "harness_tools");
+		expect(toolsSummaries).toHaveLength(1);
+		expect(events.at(-1)?.kind).toBe("error");
+		const toolsIdx = events.findIndex((e) => e.kind === "harness_tools");
+		const errorIdx = events.findLastIndex((e) => e.kind === "error");
+		expect(toolsIdx).toBeLessThan(errorIdx);
 	});
 });
 

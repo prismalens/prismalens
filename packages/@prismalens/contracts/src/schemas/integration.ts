@@ -58,6 +58,8 @@ export const AuthTemplateResponseSchema = z.object({
 	postCreationNavigateTo: z.string().optional(),
 	/** A git host token: Test runs `git ls-remote` against matching repositories (#673). */
 	gitHost: z.boolean().optional(),
+	/** The credential kinds a source accepts, picked in the form; absent for fixed-shape templates (#848). */
+	credentialKinds: z.array(z.string()).optional(),
 	/** False keeps the template out of the Add menu; saved rows still work. */
 	listed: z.boolean().optional(),
 });

@@ -9,13 +9,16 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type InvestigationContext,
+	telemetrySources,
 } from "@prismalens/contracts/schemas";
 import {
 	fenceClose,
 	fenceOpen,
+	fenceUntrusted,
 	renderAlertPayload,
 	renderContextPack,
 	sanitizeUntrustedBlock,
+	sanitizeUntrustedLine,
 	UNTRUSTED_DATA_METHOD_GUARD,
 } from "./fence.js";
 import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
@@ -39,6 +42,25 @@ function renderSurfaces(
 	if (t?.alertmanagerUrl) {
 		surfaces.push(
 			`  - Alertmanager  ${t.alertmanagerUrl}${online ? `      curl -s '${t.alertmanagerUrl}/api/v2/alerts'` : ""}`,
+		);
+	}
+	// Sources past the two curl recipes above: Loki, and any that need a credential (#848).
+	for (const src of telemetrySources(t)) {
+		if (src.url === t?.prometheusUrl || src.url === t?.alertmanagerUrl)
+			continue;
+		const name = {
+			prometheus: "Prometheus",
+			alertmanager: "Alertmanager",
+			loki: "Loki",
+		}[src.kind];
+		surfaces.push(
+			src.authenticated
+				? `  - ${name} (${src.label})  needs a credential PrismaLens holds: PrismaLens read it before the run (PRE-RUN CONTEXT); query it further only with your own tools`
+				: `  - ${name}  ${src.url}${
+						online && src.kind === "loki"
+							? `\n      curl -sG '${src.url}/loki/api/v1/query_range' --data-urlencode 'query=<logql>' --data-urlencode 'limit=100'`
+							: ""
+					}`,
 		);
 	}
 	if (t?.apiUrl) surfaces.push(`  - Application API ${t.apiUrl}`);
@@ -67,6 +89,73 @@ function renderSurfaces(
 }
 
 /**
+ * What PrismaLens read before the run (#848): the read-copy folder when it was written,
+ * each source's result, the runbooks, then the start of each telemetry file fenced as data.
+ */
+export function renderPreRun(context: InvestigationContext): string {
+	const p = context.preRun;
+	if (!p) return "";
+	if (p.state === "unavailable")
+		return `\n\nPRE-RUN CONTEXT\n  Not available: ${sanitizeUntrustedLine(p.reason)}.`;
+	const lines = [
+		"PRE-RUN CONTEXT",
+		`  PrismaLens read this before the run, at ${sanitizeUntrustedLine(p.fetchedAt)}.`,
+	];
+	if (p.copy.state === "written" && p.copy.dir) {
+		lines.push(
+			`  Read copies are in ${p.copy.dir}/ in your working directory (read-only):`,
+			...p.files.map(
+				(f) =>
+					`  - ${sanitizeUntrustedLine(f.name)}  ${sanitizeUntrustedLine(f.about)}`,
+			),
+		);
+		if (!p.files.length) lines.push("  - nothing was read");
+	}
+	const line = (s: (typeof p.sources)[number]) =>
+		`${sanitizeUntrustedLine(s.label)} (${s.kind}): ${sanitizeUntrustedLine(s.detail)}`;
+	const group = (status: string, title: string) => {
+		const of = p.sources.filter((s) => s.status === status);
+		if (of.length) lines.push(`  ${title}: ${of.map(line).join("; ")}.`);
+	};
+	group("found", "Read");
+	group("empty", "Queried, nothing for the window");
+	group("skipped", "Skipped before the run");
+	group("not-read", "Not read");
+	if (p.runbooks.length)
+		lines.push(
+			"  Runbooks found (read one with runbooks_read):",
+			...p.runbooks.map(
+				(r) =>
+					`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+			),
+		);
+	if (p.runbooksSkipped)
+		lines.push(
+			`  Runbooks: skipped before the run, ${sanitizeUntrustedLine(p.runbooksSkipped)}.`,
+		);
+	if (p.telemetrySkipped)
+		lines.push(
+			`  Telemetry: skipped before the run, ${sanitizeUntrustedLine(p.telemetrySkipped)}.`,
+		);
+	if (p.state === "not-saved")
+		lines.push(
+			"  This snapshot was not saved, so a follow-up on this run will not have it.",
+		);
+	const excerpts = p.sources
+		.filter((s) => (s.status === "found" || s.status === "empty") && s.excerpt)
+		.map((s) => `--- ${s.file} (start)\n${s.excerpt}`);
+	if (excerpts.length)
+		lines.push(
+			fenceUntrusted(
+				"PRE_RUN_TELEMETRY",
+				"Read by PrismaLens from the user's telemetry sources before the run.",
+				sanitizeUntrustedBlock(excerpts.join("\n")),
+			),
+		);
+	return `\n\n${lines.join("\n")}`;
+}
+
+/**
  * A chat run's first turn (#673): the surfaces and the untrusted-data guard,
  * then the person's message. No alert block, no method, no report ask.
  */
@@ -78,7 +167,7 @@ export function buildChatPrompt(
 	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
-${renderSurfaces(context, !options.noNetwork).join("\n")}
+${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}
 
 ${UNTRUSTED_DATA_METHOD_GUARD}
 
@@ -192,7 +281,7 @@ FIRING ALERT
 ${renderAlertPayload(primary, rest)}${serviceBlock}
 
 SURFACES
-${surfaces.join("\n")}${packBlock}
+${surfaces.join("\n")}${renderPreRun(context)}${packBlock}
 
 METHOD (work iteratively — think → run a command → observe → decide)
 ${methodBlock}
