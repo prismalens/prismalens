@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { telemetrySources } from "@prismalens/contracts/schemas";
 import { describe, expect, it, vi } from "vitest";
 import { type ResolvedConnector, telemetryEndpointsFrom, telemetryOrigins } from "./connectors.js";
 
@@ -46,7 +47,7 @@ describe("telemetryEndpointsFrom (#633)", () => {
 		];
 
 		const endpoints = telemetryEndpointsFrom(connectors);
-		expect(endpoints).toEqual({
+		expect(endpoints).toMatchObject({
 			prometheusUrl: "http://prometheus.internal:9090",
 			alertmanagerUrl: "http://alertmanager.internal:9093",
 		});
@@ -85,7 +86,7 @@ describe("telemetryEndpointsFrom (#633)", () => {
 		];
 
 		const endpoints = telemetryEndpointsFrom(connectors);
-		expect(endpoints).toEqual({
+		expect(endpoints).toMatchObject({
 			prometheusUrl: "http://prom-first:9090",
 			alertmanagerUrl: "http://am-first:9093",
 		});
@@ -128,9 +129,10 @@ describe("telemetryEndpointsFrom (#633)", () => {
 				segments: [],
 			},
 		];
-		expect(telemetryEndpointsFrom(mixed)).toEqual({
+		expect(telemetryEndpointsFrom(mixed)).toMatchObject({
 			alertmanagerUrl: "http://alertmanager.internal:9093",
 		});
+		expect(telemetryEndpointsFrom(mixed)?.prometheusUrl).toBeUndefined();
 	});
 
 	it("drops endpoint when only password is present in baseUrl", () => {
@@ -168,6 +170,56 @@ describe("telemetryEndpointsFrom (#633)", () => {
 		expect(warn).toHaveBeenCalledTimes(2);
 		expect(warn.mock.calls.flat().join(" ")).toMatch(/^Prometheus: .*Alertmanager: /);
 		expect(warn.mock.calls.flat().join(" ")).not.toContain("SECRET");
+	});
+});
+
+describe("telemetry as a list of sources, with the old fields as a shim (#848)", () => {
+	const c = (
+		templateId: string,
+		baseUrl: string,
+		authenticated = false,
+	): ResolvedConnector => ({
+		templateId,
+		connectionId: `${templateId}-${baseUrl}`,
+		label: templateId,
+		baseUrl,
+		segments: [],
+		authenticated,
+	});
+
+	it("lists every source and derives prometheusUrl / alertmanagerUrl from the credential-free ones", () => {
+		const t = telemetryEndpointsFrom([
+			c("prometheus", "https://mimir.example/", true),
+			c("prometheus", "http://prom:9090"),
+			c("alertmanager", "http://am:9093"),
+			c("loki", "http://loki:3100"),
+		]);
+		expect(t?.sources?.map((s) => [s.kind, s.url, s.authenticated ?? false])).toEqual([
+			["prometheus", "https://mimir.example", true],
+			["prometheus", "http://prom:9090", false],
+			["alertmanager", "http://am:9093", false],
+			["loki", "http://loki:3100", false],
+		]);
+		expect(t?.prometheusUrl).toBe("http://prom:9090");
+		expect(t?.alertmanagerUrl).toBe("http://am:9093");
+	});
+
+	it("a credentialed source never becomes a legacy URL or a Read-only origin", () => {
+		const t = telemetryEndpointsFrom([c("prometheus", "https://mimir.example", true)]);
+		expect(t?.prometheusUrl).toBeUndefined();
+		expect(telemetryOrigins({ telemetry: t })).toEqual([]);
+	});
+
+	it("a context with only the old fields still reads as sources", () => {
+		const legacy = { prometheusUrl: "http://prom:9090", alertmanagerUrl: "http://am:9093" };
+		expect(telemetrySources(legacy).map((s) => [s.kind, s.url])).toEqual([
+			["prometheus", "http://prom:9090"],
+			["alertmanager", "http://am:9093"],
+		]);
+		expect(telemetryOrigins({ telemetry: legacy })).toEqual([
+			"http://prom:9090",
+			"http://am:9093",
+		]);
 	});
 });
 

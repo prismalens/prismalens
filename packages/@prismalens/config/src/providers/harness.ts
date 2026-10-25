@@ -100,7 +100,16 @@ export interface HarnessRunEnv {
 	companionPath?: string;
 	/** The run starts the adapter PrismaLens ships, not one on PATH (#818). */
 	shipped?: boolean;
+	/** PrismaLens's MCP gateway and its per-run server name, set for a row with `gatewayDelivery` (#848). */
+	gateway?: { url: string; token: string; name: string };
 }
+
+/** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
+export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
+
+/** `configDir` joined without node:path, which this browser-bundled module cannot import. */
+const inConfigDir = (env: HarnessRunEnv, file: string) =>
+	`${env.configDir}${env.configDir.includes("\\") ? "\\" : "/"}${file}`;
 
 export interface HarnessDescriptor {
 	id: HarnessId;
@@ -124,8 +133,12 @@ export interface HarnessDescriptor {
 	acpEnv: (env: HarnessRunEnv) => Record<string, string>;
 	/** Files prismalens writes under configDir before the run; the harness reads nothing else. */
 	configFiles?: (env: HarnessRunEnv) => Record<string, string>;
+	/** The agent ignores ACP `mcpServers`; the gateway goes in a run file instead (#848). */
+	gatewayDelivery?: "mcp-config-file";
 	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
 	sessionMeta?: () => Record<string, unknown>;
+	/** PrismaLens's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */
+	systemPromptVia?: "claude-meta";
 	/** One line the doctor prints when the binary is missing. */
 	install: string;
 	/**
@@ -166,6 +179,8 @@ export interface HarnessDescriptor {
 	resume: boolean;
 	/** The env var naming the agent's own config folder, set from Settings → Agent → Config directory (#907). */
 	configDir?: { envKey: string; shownDefault: string };
+	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
+	toolsHint?: { text: string };
 }
 
 type JsonObject = Record<string, unknown>;
@@ -377,6 +392,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 				},
 			},
 		}),
+		// claude-agent-acp 0.81.1 reads `_meta.systemPrompt` on session/new and session/load
+		// (acp-agent.js:6215-6232; load reaches it through getOrCreateSession, :6084-6112).
+		systemPromptVia: "claude-meta",
 		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
 		// The model keys too: a gateway serves its own model ids, not Anthropic's (walk f18).
@@ -437,8 +455,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			},
 		},
 		modeMechanism: "acp",
-		// scripts/acp-admission.ts through the shipped adapter on claude 2.1.296, Haiku (#818). Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
+		// #848 live runs (gateway tools, a removed source, proxied MCP asks) through the shipped adapter on claude 2.1.303. Must equal @prismalens/agent-adapters' pin.
+		tested: { version: "0.81.1", date: "2026-10-20", companion: "2.1.303" },
 		modelVia: "acp",
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 		signInAtFirstTurn: true,
@@ -501,7 +519,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
-		// scripts/acp-admission.ts 3 of 3 through the shipped adapter on codex 0.163.0, gpt-6-luna (#846). Must equal @prismalens/agent-adapters' pin.
+		// scripts/acp-admission.ts 3 of 3 through the shipped adapter on codex 0.163.0, gpt-6-luna (#846); #848 live runs on codex 0.163.0. Must equal @prismalens/agent-adapters' pin.
 		tested: { version: "2.2.2", date: "2026-10-23" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
 		modelVia: "acp",
@@ -513,8 +531,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
-		acpArgs: () => ["--experimental-acp"],
-		// Trust is the user's own folderTrust setting; this row forces neither way (#817).
+		acpArgs: () => ["--acp"],
+		// Trust is the user's own folderTrust setting; this row forces neither way (#817, #848).
 		acpEnv: () => ({}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
@@ -548,16 +566,38 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			envKey: "GEMINI_CLI_HOME",
 			shownDefault: "your home folder (holds .gemini)",
 		},
+		// No trust command is quoted: Gemini's own one is unconfirmed (#848 §11 Q4).
+		toolsHint: {
+			text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
+		},
 	},
 	deepagents: {
 		id: "deepagents",
 		label: "deepagents",
 		// deepagents-acp ships no console script; deepagents-code's `dcode --acp` is
 		// the ACP server (entry points of deepagents-code 0.1.71 on PyPI, #634).
-		// --no-mcp: no MCP servers from the snapshot or the user's config.
+		// `--acp` ignores ACP mcpServers: the gateway goes in by --mcp-config, beside the user's own servers (#848).
 		binary: "dcode",
-		acpArgs: () => ["--acp", "--no-mcp"],
+		gatewayDelivery: "mcp-config-file",
+		acpArgs: (env) =>
+			env.gateway
+				? ["--acp", "--mcp-config", inConfigDir(env, GATEWAY_RUN_FILE)]
+				: ["--acp"],
 		acpEnv: () => ({}),
+		configFiles: (env): Record<string, string> =>
+			env.gateway
+				? {
+						[GATEWAY_RUN_FILE]: JSON.stringify({
+							mcpServers: {
+								[env.gateway.name]: {
+									type: "http",
+									url: env.gateway.url,
+									headers: { Authorization: `Bearer ${env.gateway.token}` },
+								},
+							},
+						}),
+					}
+				: {},
 		// The two keys `deepagents-acp --help` listed under ENVIRONMENT VARIABLES;
 		// not yet re-checked against `dcode`, which may read more providers.
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],

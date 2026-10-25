@@ -256,6 +256,8 @@ export interface HarnessStatus {
 	configDir: { envKey: string; shownDefault: string } | null;
 	/** Provider key names the agent reads from its env. */
 	providerKeys: string[];
+	/** What the run view says when PrismaLens's tools did not reach this agent. */
+	toolsHint?: { text: string };
 }
 
 /** The launch probe for one agent, with its binary path or local command (#907). */
@@ -305,6 +307,7 @@ export function listHarnessStatus(
 				id,
 				input.envFor?.(id) ?? input.env ?? process.env,
 			),
+			...(d.toolsHint ? { toolsHint: d.toolsHint } : {}),
 		};
 	});
 }

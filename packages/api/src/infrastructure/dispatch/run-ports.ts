@@ -24,12 +24,15 @@ import type {
 	RunCredential,
 	RunUsage,
 } from "@prismalens/contracts/schemas";
-import type { ResolvedConnector } from "@prismalens/engine";
+import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import type {
 	RepoSource,
 	Snapshot,
 } from "../../core/harness/repo-source.service.js";
+import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
+import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
+import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 
@@ -184,6 +187,26 @@ export interface RunPorts {
 	): Promise<ResolvedConnector[]>;
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
+	/** The pre-run fetch (#848 ruling 2026-10-24); each part is best effort and never fails the run. */
+	preRun?: {
+		/** Picked by the incident's services; the selection reads the database inside the run's telemetry budget. */
+		telemetry(
+			incidentId: string,
+			window: SnapshotWindow,
+			signal?: AbortSignal,
+		): Promise<TelemetrySnapshot>;
+		/** Read from the workspace the run recorded, so after `recordWorkspace`; titles and paths only. */
+		runbooks(runId: string, signal?: AbortSignal): Promise<RunbookIndex>;
+		/** Stores the run's snapshot, the source of truth its follow-ups read. */
+		save(runId: string, snapshot: string): Promise<void>;
+		/** The stored snapshot, or null when the run has none. */
+		load(runId: string): Promise<string | null>;
+	};
+	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
+	gateway?: {
+		lease(runId: string, serverName: string): Promise<GatewayEntry | null>;
+		revoke(runId: string): void;
+	};
 	/**
 	 * A fresh clone of the repo's committed HEAD, or of commit `at`, into `dest`, under the
 	 * credential the resolver picks (#673); `credential` is the one that cloned it.

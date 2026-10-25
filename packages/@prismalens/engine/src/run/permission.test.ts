@@ -6,6 +6,7 @@ import {
 	askWindow,
 	createAskChannel,
 	denyAllPolicy,
+	isGatewayToolCall,
 	levelPolicy,
 	type PermissionRequest,
 } from "./permission.js";
@@ -556,5 +557,188 @@ describe("levelPolicy", () => {
 			});
 			expect(channelPolicy).not.toHaveBeenCalled();
 		});
+	});
+});
+
+describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
+	const options = [
+		{ optionId: "allow", name: "Allow", kind: "allow_once" },
+		{ optionId: "reject", name: "Reject", kind: "reject_once" },
+	];
+	const ctx = { askId: "a1", signal: new AbortController().signal };
+	const card = vi.fn(async () => ({
+		allow: false as const,
+		why: "card",
+		outcome: "denied" as const,
+	}));
+	const NAME = "prismalens-abcdefgh23";
+	const gateway = (connected: boolean) => ({
+		connected: () => connected,
+		confirmed: () => connected,
+		serverName: NAME,
+		tools: ["sources_list", "prometheus_query", "incident_get"],
+	});
+	/** Claude Code's ask names the server in `_meta` and qualifies the title. */
+	const claudeAsk = (tool: string, server = NAME): PermissionRequest => ({
+		options,
+		toolCall: {
+			toolCallId: "t1",
+			title: `mcp__${server}__${tool}`,
+			kind: "other",
+			_meta: { claudeCode: { mcpServer: { name: server }, toolName: `mcp__${server}__${tool}` } },
+		},
+	});
+	/** codex-acp 1.13.1 announces the call as `mcp.<server>.<tool>`, marked `is_mcp_tool_call`. */
+	const codexAsk = (tool: string, server = NAME): PermissionRequest => ({
+		options,
+		toolCall: {
+			toolCallId: "c1",
+			title: `mcp.${server}.${tool}`,
+			kind: "execute",
+			_meta: { is_mcp_tool_call: true },
+		},
+	});
+
+	it("allows a Claude ask for a PrismaLens tool once the gateway is confirmed", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		expect(await policy(claudeAsk("sources_list"), ctx)).toMatchObject({ allow: true, optionId: "allow" });
+	});
+
+	it("shows the card while the gateway is unconfirmed", async () => {
+		card.mockClear();
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(false) });
+		expect(await policy(claudeAsk("sources_list"), ctx)).toMatchObject({ allow: false, why: "card" });
+		expect(card).toHaveBeenCalledOnce();
+	});
+
+	it("checks confirmation at ask time, not later", async () => {
+		let connected = false;
+		const policy = levelPolicy("supervised", { policy: card }, {
+			gateway: { connected: () => connected, serverName: NAME, tools: ["sources_list"] },
+		});
+		const verdict = await policy(claudeAsk("sources_list"), ctx);
+		connected = true;
+		expect(verdict).toMatchObject({ allow: false });
+	});
+
+	it("never exempts a proxied tool, even on our server", async () => {
+		const supervised = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		expect(await supervised(claudeAsk("n8n_prod__list_workflows"), ctx)).toMatchObject({ why: "card" });
+		const unattended = levelPolicy("full-access", { policy: card }, { gateway: gateway(true), unattended: true });
+		expect(await unattended(claudeAsk("n8n_prod__list_workflows"), ctx)).toMatchObject({
+			allow: false,
+			outcome: "unattended",
+		});
+	});
+
+	it("never exempts another server's tool of the same name", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		const other: PermissionRequest = {
+			options,
+			toolCall: { title: "mcp__evil__sources_list", kind: "other" },
+		};
+		const lying: PermissionRequest = {
+			options,
+			toolCall: {
+				title: `mcp__${NAME}__sources_list`,
+				kind: "other",
+				_meta: { claudeCode: { mcpServer: { name: "evil" } } },
+			},
+		};
+		expect(await policy(other, ctx)).toMatchObject({ why: "card" });
+		expect(await policy(lying, ctx)).toMatchObject({ why: "card" });
+	});
+
+	it("allows a Codex dotted title, including unattended", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true), unattended: true });
+		expect(await policy(codexAsk("sources_list"), ctx)).toMatchObject({ allow: true });
+	});
+
+	it("an ID-only ask is not exempt on its own", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true), unattended: true });
+		const idOnly: PermissionRequest = { options, toolCall: { toolCallId: "c1", kind: "execute" } };
+		expect(await policy(idOnly, ctx)).toMatchObject({ allow: false, outcome: "unattended" });
+	});
+
+	it("an ask titled mcp__prismalens__incident_get is not auto-allowed", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		const legacy: PermissionRequest = {
+			options,
+			toolCall: {
+				title: "mcp__prismalens__incident_get",
+				kind: "other",
+				_meta: { claudeCode: { mcpServer: { name: "prismalens" }, toolName: "mcp__prismalens__incident_get" } },
+			},
+		};
+		expect(await policy(legacy, ctx)).toMatchObject({ allow: false, why: "card" });
+	});
+
+	it("asks titled mcp__<name>__incident_get and mcp.<name>.incident_get are allowed", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		expect(await policy(claudeAsk("incident_get"), ctx)).toMatchObject({ allow: true });
+		expect(await policy(codexAsk("incident_get"), ctx)).toMatchObject({ allow: true });
+	});
+
+	it("an ask titled with the gateway-qualified incident_get and rawInput: { server: 'evil' } is not a gateway call (#848)", async () => {
+		const gw = gateway(true);
+		const ask = claudeAsk("incident_get");
+		if (ask.toolCall) ask.toolCall.rawInput = { server: "evil" };
+		expect(isGatewayToolCall(ask, gw)).toBe(false);
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw });
+		expect(await policy(ask, ctx)).toMatchObject({ why: "card" });
+	});
+
+	it("a call whose own arguments name our server and tool is not a gateway call (#848)", async () => {
+		const gw = gateway(true);
+		const spoofed: PermissionRequest = {
+			options,
+			toolCall: { title: "run_query", kind: "other", rawInput: { server: NAME, tool: "incident_get" } },
+		};
+		expect(isGatewayToolCall(spoofed, gw)).toBe(false);
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw });
+		expect(await policy(spoofed, ctx)).toMatchObject({ why: "card" });
+	});
+
+	it("a qualified title with the agent's own marker and no rawInput is a gateway call", () => {
+		expect(isGatewayToolCall(claudeAsk("incident_get"), gateway(true))).toBe(true);
+		expect(isGatewayToolCall(codexAsk("incident_get"), gateway(true))).toBe(true);
+	});
+
+	it("a qualified title plus a matching rawInput.server is a gateway call", () => {
+		const ask = claudeAsk("incident_get");
+		if (ask.toolCall) ask.toolCall.rawInput = { server: NAME, id: "inc-1" };
+		expect(isGatewayToolCall(ask, gateway(true))).toBe(true);
+	});
+
+	it("_meta naming our server with a bare incident_get title is not a gateway call", () => {
+		// claude-agent-acp titles an MCP ask with its full mcp__<server>__<tool> name, never the bare tool.
+		const bare: PermissionRequest = {
+			options,
+			toolCall: {
+				title: "incident_get",
+				kind: "other",
+				_meta: { claudeCode: { mcpServer: { name: NAME } } },
+				rawInput: { server: NAME, tool: "incident_get" },
+			},
+		};
+		expect(isGatewayToolCall(bare, gateway(true))).toBe(false);
+	});
+
+	it("a qualified title with no marker is not a gateway call: agents copy titles from arguments", () => {
+		// Claude's Bash and Task, Gemini's `command` and OpenCode's description become the title.
+		const fromArgs: PermissionRequest = {
+			options,
+			toolCall: {
+				title: `mcp__${NAME}__incident_get`,
+				kind: "execute",
+				rawInput: { command: `mcp__${NAME}__incident_get` },
+			},
+		};
+		const dotted: PermissionRequest = {
+			options,
+			toolCall: { toolCallId: "c3", title: `mcp.${NAME}.incident_get`, kind: "execute" },
+		};
+		expect(isGatewayToolCall(fromArgs, gateway(true))).toBe(false);
+		expect(isGatewayToolCall(dotted, gateway(true))).toBe(false);
 	});
 });

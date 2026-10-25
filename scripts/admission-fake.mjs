@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Runs the harness admission (R1-R7) against the scripted model of
+// Runs the harness admission (R1-R9) against the scripted model of
 // scripts/fakes/fake-model-server.mjs, so a PR's verdict never depends on a live model (#884).
 //   node scripts/admission-fake.mjs <opencode|claude-code> <cloneDir> [--repeat N]
 import { spawn } from "node:child_process";
@@ -29,6 +29,8 @@ export function agentEnv(harness, fake, home) {
 			ANTHROPIC_BASE_URL: fake.url,
 			ANTHROPIC_API_KEY: "scripted",
 			CLAUDE_CONFIG_DIR: join(home, "claude"),
+			// MCP tools go in the request, not behind tool search, so the script sees incident_get (#848).
+			ENABLE_TOOL_SEARCH: "false",
 		};
 	const config = join(home, "config");
 	mkdirSync(join(config, "opencode"), { recursive: true });
@@ -77,12 +79,14 @@ export function verdictOf(stdout) {
 		r5: word("R5 resume"),
 		r6: word("R6 user model"),
 		r7: word("R7 resume after a failed report"),
+		r8: word("R8 tool call, first turn"),
+		r9: word("R9 tool call, follow-up"),
 	};
 }
 
 /** One verdict as one comparable line. */
 export const signature = (/** @type {ReturnType<typeof verdictOf>} */ v) =>
-	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7}`;
+	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7} R8=${v.r8} R9=${v.r9}`;
 
 /**
  * @param {string} harness

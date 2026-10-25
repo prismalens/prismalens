@@ -419,7 +419,7 @@ function AgentRow({
 					)}
 					<Link
 						to="/settings"
-						search={{ tab: "harness", agent: harnessId }}
+						search={{ tab: "agent", agent: harnessId }}
 						aria-label={`Open ${harness.label}`}
 						className="inline-flex size-8 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
 						data-testid={`harness-open-${harness.id}`}

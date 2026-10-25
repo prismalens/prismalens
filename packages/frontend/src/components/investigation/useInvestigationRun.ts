@@ -10,8 +10,13 @@ import {
 	type RunState,
 	runState,
 } from "@prismalens/contracts";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+	replaceEqualDeep,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { deriveSteps } from "@/components/run/run-steps";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
@@ -21,11 +26,6 @@ import {
 	useSendInvestigationMessage,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
-
-const eventsKey = (id: string) =>
-	orpc.investigations.getEvents.key({ input: { id } });
-
-import { deriveSteps } from "@/components/run/run-steps";
 import {
 	type AttachmentView,
 	latestAgentText,
@@ -61,6 +61,20 @@ export function mergeRunEvents(
 	return out.sort((a, b) => a.seq - b.seq);
 }
 
+/** `next`, keeping each part of the previous value it deep-equals, so unchanged steps keep identity (#874). */
+export function useShared<T>(next: T): T {
+	// Written after commit, never in render: a discarded render must not leave its input behind.
+	const last = useRef({ next, shared: next });
+	const shared =
+		last.current.next === next
+			? last.current.shared
+			: replaceEqualDeep(last.current.shared, next);
+	useEffect(() => {
+		last.current = { next, shared };
+	});
+	return shared;
+}
+
 /** Only an ended run takes a follow-up; a live one takes messages (#747). */
 export function followUpState(
 	investigation: {
@@ -89,6 +103,8 @@ export function followUpState(
  * the messages the operator sent that have not come back as events, and the
  * polling fallback when SSE is down (ADR-0008 §4, #743).
  */
+const END_CATCH_UP_RETRY_MS = 3000;
+
 export function useInvestigationRun(investigationId: string | null) {
 	const queryClient = useQueryClient();
 	const enabled = !!investigationId;
@@ -109,17 +125,19 @@ export function useInvestigationRun(investigationId: string | null) {
 		seq: number;
 	} | null>(null);
 	const awaitingFollowUp = followUpFrom?.runId === id;
+	const streamFailed = isActive && stream.status === "error";
+	// History is read once; while no stream carries events, they are read on from the last seq (#874).
 	const history = useInvestigationEventsHistory(id, {
 		enabled: !!investigation,
-		refetchInterval: awaitingFollowUp && !isActive ? 2000 : false,
+		pollMs: streamFailed ? 3000 : awaitingFollowUp && !isActive ? 2000 : false,
 	});
+	const { catchUp } = history;
 	const historyEvents = history.data;
 	const liveEvents = isActive ? stream.events : null;
 	const events = useMemo(
 		() => mergeRunEvents(historyEvents ?? [], liveEvents ?? []),
 		[historyEvents, liveEvents],
 	);
-	const streamFailed = isActive && stream.status === "error";
 	const lastSeq = events[events.length - 1]?.seq ?? -1;
 	const ended = !!investigation && isWorkflowTerminal(investigation.status);
 	useEffect(() => {
@@ -133,16 +151,49 @@ export function useInvestigationRun(investigationId: string | null) {
 		refetchInterval: streamFailed ? 3000 : false,
 	});
 
+	const wasActive = useRef(isActive);
+	const endCatchUp = useRef<"idle" | "pending" | "running">("idle");
+	const [endCatchUpRetry, setEndCatchUpRetry] = useState(0);
 	useEffect(() => {
+		// The run just ended, possibly with its stream down: read what was recorded after the last catch-up (#874).
+		if (wasActive.current && !isActive) endCatchUp.current = "pending";
+		wasActive.current = isActive;
+	}, [isActive]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: endCatchUpRetry re-runs the read after a failure.
+	useEffect(() => {
+		// Held until history loads; a failed read retries, since nothing refetches an ended run's history.
+		if (
+			isActive ||
+			endCatchUp.current !== "pending" ||
+			historyEvents === undefined
+		)
+			return;
+		endCatchUp.current = "running";
+		catchUp().then(
+			() => {
+				endCatchUp.current = "idle";
+			},
+			() => {
+				endCatchUp.current = "pending";
+				setTimeout(
+					() => setEndCatchUpRetry((n) => n + 1),
+					END_CATCH_UP_RETRY_MS,
+				);
+			},
+		);
+	}, [isActive, historyEvents, catchUp, endCatchUpRetry]);
+	useEffect(() => {
+		// The stream's first events: what was recorded between the history read and its replay.
+		if (stream.status === "streaming") catchUp().catch(() => {});
 		if (stream.status === "completed" || stream.status === "failed") {
 			queryClient.invalidateQueries({
 				queryKey: investigationKeys.detail(id),
 			});
 			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
-			queryClient.invalidateQueries({ queryKey: eventsKey(id) });
+			catchUp().catch(() => {});
 		}
-	}, [stream.status, id, queryClient]);
+	}, [stream.status, id, queryClient, catchUp]);
 
 	// Stop and messages belong to one run: another selection starts clean.
 	const [stopRequestedFor, setStopRequestedFor] = useState<string | null>(null);
@@ -265,10 +316,10 @@ export function useInvestigationRun(investigationId: string | null) {
 			setStopRequestedFor(null);
 			setFollowUpFrom({ runId: id, seq: lastSeq });
 			queryClient.invalidateQueries({ queryKey: investigationKeys.detail(id) });
-			queryClient.invalidateQueries({ queryKey: eventsKey(id) });
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+			catchUp().catch(() => {});
 		},
-		[messageSend, id, queryClient, lastSeq],
+		[messageSend, id, queryClient, lastSeq, catchUp],
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];
@@ -277,13 +328,17 @@ export function useInvestigationRun(investigationId: string | null) {
 		[isActive, events, pendingItems],
 	);
 	const cwd = investigation?.workspace?.cwd;
-	const steps = useMemo(
-		() => deriveSteps(events, { cwd, ended: !isActive }),
-		[events, cwd, isActive],
+	const steps = useShared(
+		useMemo(
+			() => deriveSteps(events, { cwd, ended: !isActive }),
+			[events, cwd, isActive],
+		),
 	);
-	const asks = useMemo(
-		() => deriveAsks(events, steps, { live: isActive, cwd }),
-		[events, steps, isActive, cwd],
+	const asks = useShared(
+		useMemo(
+			() => deriveAsks(events, steps, { live: isActive, cwd }),
+			[events, steps, isActive, cwd],
+		),
 	);
 	// The run waits on you: an ask streamed in, or the row says so (#673 w5-14).
 	const awaiting =
@@ -298,6 +353,9 @@ export function useInvestigationRun(investigationId: string | null) {
 		refetch: query.refetch,
 		isRefetching: query.isRefetching,
 		events,
+		/** The event history is still loading, or did not load: not the same as no events (#848). */
+		eventsLoading: history.isLoading,
+		eventsError: history.isError,
 		latestText,
 		lastEventAt,
 		state,

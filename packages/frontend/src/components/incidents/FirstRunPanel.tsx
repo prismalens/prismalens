@@ -64,14 +64,14 @@ export function SetupLine() {
 					: p.agent.checked
 						? `${p.agent.label} is not ready, so no run can start.`
 						: `${p.agent.label} has not been checked, so no run can start.`,
-				<Link key="a" to="/settings" search={{ tab: "harness" }}>
+				<Link key="a" to="/settings" search={{ tab: "agent" }}>
 					Set up an agent
 				</Link>,
 			]
 		: !p.alertsIn
 			? [
 					"no alert source yet, so only incidents you create arrive.",
-					<Link key="s" to="/settings" search={{ tab: "sources" }}>
+					<Link key="s" to="/settings" search={{ tab: "alert-intake" }}>
 						Add a source
 					</Link>,
 				]
@@ -197,7 +197,7 @@ export function FirstRunPanel() {
 						</Mono>
 					) : (
 						<span className="mt-1 block">
-							The token is under Settings, Alert sources on the machine
+							The token is under Settings, Alert intake on the machine
 							PrismaLens runs on.
 						</span>
 					)}
@@ -209,7 +209,7 @@ export function FirstRunPanel() {
 					testId="first-run-step-2"
 					action={
 						<Button asChild variant="secondary" size="sm">
-							<Link to="/settings" search={{ tab: "sources" }}>
+							<Link to="/settings" search={{ tab: "alert-intake" }}>
 								Add a source
 							</Link>
 						</Button>
@@ -225,7 +225,7 @@ export function FirstRunPanel() {
 					testId="first-run-step-3"
 					action={
 						<Button asChild variant="secondary" size="sm">
-							<Link to="/settings" search={{ tab: "harness" }}>
+							<Link to="/settings" search={{ tab: "agent" }}>
 								Agent
 							</Link>
 						</Button>

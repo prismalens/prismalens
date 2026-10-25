@@ -143,7 +143,7 @@ async function serve(page: Page) {
 }
 
 async function openAddAgent(page: Page) {
-	await page.goto("/settings?tab=harness");
+	await page.goto("/settings?tab=agent");
 	await expect(page.getByTestId("harness-settings")).toBeVisible({
 		timeout: 15_000,
 	});
@@ -215,7 +215,7 @@ test.describe("Add agent (#907)", () => {
 
 	test("the picker's rail opens Add agent too", async ({ page }) => {
 		await serve(page);
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await page.getByTestId("agent-picker").click();
 		await page.getByTestId("rail-add-agent").click();
 		await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
@@ -232,7 +232,7 @@ test.describe("Add agent on the real stack (#907)", () => {
 			new URL("../../../../scripts/fakes/fake-acp-agent.mjs", import.meta.url),
 		);
 		try {
-			await page.goto("/settings?tab=harness");
+			await page.goto("/settings?tab=agent");
 			await expect(page.getByTestId("harness-settings")).toBeVisible({
 				timeout: 15_000,
 			});

@@ -291,7 +291,7 @@ async function openHarnessSettings(
 	},
 ): Promise<void> {
 	await serveHarnessSettings(page, settings);
-	await page.goto("/settings?tab=harness");
+	await page.goto("/settings?tab=agent");
 	await expect(
 		page.getByRole("heading", { name: "Agent", exact: true }),
 	).toBeVisible({ timeout: 15_000 });
@@ -318,7 +318,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			await expect(row).toContainText(h.label);
 			await expect(row.getByTestId(`harness-open-${h.id}`)).toHaveAttribute(
 				"href",
-				`/settings?tab=harness&agent=${h.id}`,
+				`/settings?tab=agent&agent=${h.id}`,
 			);
 		}
 		await expect(registry.getByTestId("harness-row-deepagents")).toHaveCount(0);
@@ -385,7 +385,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			{ harness: "claude-code", models: { "claude-code": "default" } },
 			patches,
 		);
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		// The chip names the model the agent's default entry runs, never "Default".
 		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Opus");
 		await page.getByTestId("agent-picker").click();
@@ -422,7 +422,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 		const patches: Record<string, unknown>[] = [];
 		await serveHarnessSettings(page, { harness: "opencode" }, patches);
-		await page.goto("/settings?tab=harness&agent=opencode");
+		await page.goto("/settings?tab=agent&agent=opencode");
 		await expect(page.getByTestId("agent-detail-title")).toHaveText("OpenCode");
 		const models = page.getByTestId("agent-models");
 		await expect(page.getByTestId("agent-models-count")).toHaveText(
@@ -494,7 +494,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				}),
 			});
 		});
-		await page.goto("/settings?tab=harness&agent=opencode");
+		await page.goto("/settings?tab=agent&agent=opencode");
 		const input = page.getByTestId("runtime-binary-input");
 		await input.fill("/nope/opencode");
 		await input.press("Enter");
@@ -527,7 +527,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 		const patches: Record<string, unknown>[] = [];
 		await serveHarnessSettings(page, { harness: "opencode" }, patches);
-		await page.goto("/settings?tab=harness&agent=opencode");
+		await page.goto("/settings?tab=agent&agent=opencode");
 		await expect(page.getByTestId("env-state-OPENAI_API_KEY")).toHaveText(
 			"From environment",
 		);
@@ -680,7 +680,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				body: JSON.stringify(current),
 			});
 		});
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -1093,7 +1093,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			await route.fallback();
 		});
 
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -1211,7 +1211,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 
 		// 1. OpenCode
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -1286,7 +1286,7 @@ test.describe("Design evidence (#501/#609)", () => {
 					blockedReason: harnesses === RUNNABLE ? null : NO_HARNESS_REASON,
 				});
 			}
-			await page.goto("/settings?tab=harness");
+			await page.goto("/settings?tab=agent");
 			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 			await expect(card(page)).toBeVisible({ timeout: 15_000 });
 			await page.unroute(isHarnessesUrl);
@@ -1328,7 +1328,7 @@ test.describe("Design evidence (#501/#609)", () => {
 				.addCookies([
 					{ name: "prismalens-theme", value: theme, url: baseURL as string },
 				]);
-			await page.goto("/settings?tab=harness&agent=opencode");
+			await page.goto("/settings?tab=agent&agent=opencode");
 			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 			await expect(page.getByTestId("agent-detail")).toBeVisible({
 				timeout: 15_000,
@@ -1338,7 +1338,7 @@ test.describe("Design evidence (#501/#609)", () => {
 				fullPage: true,
 				animations: "disabled",
 			});
-			await page.goto("/settings?tab=harness");
+			await page.goto("/settings?tab=agent");
 			await page.getByTestId("harness-add-agent").first().click();
 			await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
 			await page.screenshot({

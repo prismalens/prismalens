@@ -12,7 +12,10 @@ import type {
 	GitOrganization,
 	GitRepository,
 } from "@prismalens/config/integrations";
-import { providerHttpError } from "../../engine/provider-http-error.js";
+import {
+	providerHttpError,
+	providerJsonParseError,
+} from "../../engine/provider-http-error.js";
 import type { GitProvider } from "../git.interface.js";
 import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
 
@@ -63,7 +66,14 @@ async function json<T>(response: Response): Promise<T> {
 			response,
 		});
 	}
-	return response.json() as Promise<T>;
+	// A parse error quotes the body, which may echo a credential (#848).
+	return (await response.json().catch(() => {
+		throw providerJsonParseError({
+			operation: "GitHub API request",
+			provider: "github",
+			response,
+		});
+	})) as T;
 }
 
 /**

@@ -41,6 +41,7 @@ import {
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
+import { EnvVarNotes, envStateWord } from "./agent-env";
 
 /**
  * The version the last check read beside the tested one, so neither reads as the
@@ -86,7 +87,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 		<div data-testid="agent-detail">
 			<Link
 				to="/settings"
-				search={{ tab: "harness" }}
+				search={{ tab: "agent" }}
 				className="mb-4 inline-flex items-center gap-1.5 text-body text-text-2 hover:text-text-1"
 				data-testid="agent-detail-back"
 			>
@@ -559,9 +560,9 @@ export const ENV_STATE: Record<
 	AgentEnvVar["state"],
 	{ word: string; tone: StateTone }
 > = {
-	unset: { word: "Not set", tone: "quiet" },
-	set: { word: "Key set", tone: "ok" },
-	env: { word: "From environment", tone: "neutral" },
+	unset: { word: envStateWord("unset"), tone: "quiet" },
+	set: { word: envStateWord("set"), tone: "ok" },
+	env: { word: envStateWord("env"), tone: "neutral" },
 };
 
 /** Variables the agent reads, each Not set, Key set or From environment; values never read back (#907 decision 9). */
@@ -616,6 +617,16 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 							>
 								{ENV_STATE[v.state].word}
 							</StateWord>
+						}
+						below={
+							v.state === "set" ? (
+								<EnvVarNotes
+									agent={label}
+									id={id}
+									name={v.name}
+									state={v.state}
+								/>
+							) : undefined
 						}
 						trailing={
 							canEdit &&

@@ -225,7 +225,7 @@ describe("HarnessSettings agents list (#907)", () => {
 			'[data-testid="harness-open-claude-code"]',
 		);
 		expect(link?.getAttribute("href")).toBe(
-			"/settings?tab=harness&agent=claude-code",
+			"/settings?tab=agent&agent=claude-code",
 		);
 		expect(
 			container.querySelector('[data-testid="harness-custom-models"]'),

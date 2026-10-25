@@ -13,6 +13,10 @@
  *
  * The predicates live in `admission-checks.ts` and are tested there; this file
  * is the unimportable top-level-await entrypoint that drives the run.
+ *
+ * R8 and R9 (#848): a loopback stub of PrismaLens's gateway serves `incident_get`, and
+ * the model must call it on the first turn and on the follow-up. ADMISSION_NO_GATEWAY=1
+ * omits the stub, so the run must fail.
  */
 import { randomBytes } from "node:crypto";
 import {
@@ -23,8 +27,12 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer, type IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
@@ -34,16 +42,20 @@ import type {
 	CanonicalEvent,
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
+import { type GatewayEntry, newGatewayServerName } from "../src/run/gateway.js";
 import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
 import { denyAllPolicy } from "../src/run/permission.js";
 import { AcpSession } from "../src/runner/acp-client.js";
 import {
+	admissionExit,
+	firstWord,
 	initializeVersion,
 	parseTranscript,
 	permissionDecisions,
 	proveCwd,
 	readsAllowed,
 	redactNonce,
+	toolCallLine,
 } from "./admission-checks.js";
 import { startReportBreakingProxy } from "./report-breaking-proxy.js";
 
@@ -102,6 +114,153 @@ const context: InvestigationContext = {
 	service: { name: "admission" },
 };
 
+/** A stand-in for the API's gateway: one read-only tool, the run's bearer, a call count. */
+async function startStubGateway(): Promise<{
+	entry: GatewayEntry;
+	count: () => number;
+	close: () => Promise<void>;
+}> {
+	const token = randomBytes(24).toString("hex");
+	const serverName = newGatewayServerName();
+	let connected = false;
+	let total = 0;
+	const waiters = new Set<(ok: boolean) => void>();
+	const listeners = new Set<(c: { name: string; at: string }) => void>();
+	const calls = new Map<
+		string,
+		{ name: string; firstCalledAt: string; count: number }
+	>();
+	const handler = createMcpHandler(
+		() => {
+			const server = new Server(
+				{ name: "prismalens", version: "0.3.0" },
+				{ capabilities: { tools: {} } },
+			);
+			server.setRequestHandler("tools/list", () => ({
+				tools: [
+					{
+						name: "incident_get",
+						description:
+							"The incident this run investigates: its alerts, deploy and change events PrismaLens recorded.",
+						inputSchema: { type: "object", properties: {} },
+						annotations: { readOnlyHint: true, openWorldHint: false },
+					},
+				],
+			}));
+			server.setRequestHandler("tools/call", (req) => {
+				const at = new Date().toISOString();
+				const name = req.params.name;
+				total++;
+				const seen = calls.get(name);
+				calls.set(
+					name,
+					seen
+						? { ...seen, count: seen.count + 1 }
+						: { name, firstCalledAt: at, count: 1 },
+				);
+				for (const l of [...listeners]) l({ name, at });
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								number: 1,
+								title: "AdmissionProbe",
+								alerts: [{ alertname: "AdmissionProbe" }],
+								changes: [],
+							}),
+						},
+					],
+				};
+			});
+			return server;
+		},
+		{ responseMode: "json" },
+	);
+	const toRequest = (req: IncomingMessage): Request => {
+		const headers = new Headers();
+		for (const [name, value] of Object.entries(req.headers))
+			if (typeof value === "string") headers.set(name, value);
+		const hasBody = req.method !== "GET" && req.method !== "HEAD";
+		return new Request(`http://gateway${req.url ?? "/"}`, {
+			method: req.method,
+			headers,
+			...(hasBody
+				? { body: Readable.toWeb(req) as ReadableStream, duplex: "half" }
+				: {}),
+		} as RequestInit);
+	};
+	const http = createServer((req, res) => {
+		void (async () => {
+			if (req.headers.authorization !== `Bearer ${token}`) {
+				res.writeHead(401, { "WWW-Authenticate": "Bearer" }).end();
+				return;
+			}
+			if (!connected) {
+				connected = true;
+				for (const done of waiters) done(true);
+			}
+			const response = await handler.fetch(toRequest(req), {
+				authInfo: { token, clientId: "admission", scopes: [] },
+			});
+			res.statusCode = response.status;
+			response.headers.forEach((value, name) => {
+				res.setHeader(name, value);
+			});
+			if (!response.body) res.end();
+			else Readable.fromWeb(response.body as never).pipe(res);
+		})().catch(() => {
+			if (!res.headersSent) res.writeHead(500);
+			res.end();
+		});
+	});
+	await new Promise<void>((resolve) =>
+		http.listen(0, "127.0.0.1", () => resolve()),
+	);
+	const { port } = http.address() as AddressInfo;
+	return {
+		entry: {
+			url: `http://127.0.0.1:${port}/mcp`,
+			token,
+			serverName,
+			promptLine: `PrismaLens tools (MCP server \`${serverName}\`, read-only): \`incident_get\`.`,
+			tools: ["incident_get"],
+			connected: () => connected,
+			waitConnected: (ms) =>
+				connected
+					? Promise.resolve(true)
+					: new Promise<boolean>((resolve) => {
+							const done = (ok: boolean) => {
+								clearTimeout(timer);
+								waiters.delete(done);
+								resolve(ok);
+							};
+							const timer = setTimeout(() => done(false), ms);
+							waiters.add(done);
+						}),
+			onCall: (listener) => {
+				listeners.add(listener);
+				return () => listeners.delete(listener);
+			},
+			calls: () => [...calls.values()].map((c) => ({ ...c })),
+		},
+		count: () => total,
+		close: () =>
+			new Promise<void>((resolve) => {
+				http.closeAllConnections();
+				http.close(() => resolve());
+			}),
+	};
+}
+
+const stub =
+	process.env.ADMISSION_NO_GATEWAY === "1" ? null : await startStubGateway();
+const gatewayOpt = stub ? { gateway: stub.entry } : {};
+const turns = {
+	first: { ran: false, calls: 0 },
+	followUp: { ran: false, calls: 0 },
+};
+
 const started = Date.now();
 const events: CanonicalEvent[] = [];
 let session: { sessionId: string; loadSession: boolean } | null = null;
@@ -117,6 +276,7 @@ try {
 	runDir = mkdtempSync(join(tmpdir(), "pl-admission-"));
 	timer = setTimeout(() => {
 		removeCwdProbe();
+		void stub?.close();
 		console.error(
 			JSON.stringify({
 				pass: false,
@@ -128,7 +288,10 @@ try {
 	}, timeoutMs);
 
 	// At Auto, which approves the agent's asks; an alert-started run would refuse them (#818).
+	const before = stub?.count() ?? 0;
+	turns.first.ran = true;
 	for await (const ev of runInvestigation({
+		...gatewayOpt,
 		runId: "00000000-0000-4000-8000-000000000001",
 		context,
 		harness,
@@ -144,10 +307,11 @@ try {
 		onSession: (s) => {
 			session = s;
 		},
-		promptSuffix: `ADMISSION STEP, required: run exactly \`cat ./${CWD_PROBE_BASENAME}\` with the shell tool.`,
+		promptSuffix: `ADMISSION TOOL STEP, required: call \`incident_get\` before anything else.\nADMISSION STEP, required: run exactly \`cat ./${CWD_PROBE_BASENAME}\` with the shell tool.`,
 	})) {
 		events.push(ev);
 	}
+	turns.first.calls = (stub?.count() ?? 0) - before;
 } finally {
 	if (timer) clearTimeout(timer);
 	// Never leave the checkout dirty, even when the run throws.
@@ -241,7 +405,10 @@ const r5 = await (async (): Promise<string> => {
 		),
 	);
 	const followUp: CanonicalEvent[] = [];
+	const before = stub?.count() ?? 0;
+	turns.followUp.ran = true;
 	for await (const ev of runInvestigation({
+		...gatewayOpt,
 		runId: "00000000-0000-4000-8000-000000000001",
 		context,
 		harness,
@@ -262,6 +429,7 @@ const r5 = await (async (): Promise<string> => {
 		},
 	}))
 		followUp.push(ev);
+	turns.followUp.calls = (stub?.count() ?? 0) - before;
 	const failed = followUp.find((e) => e.kind === "error");
 	if (failed?.kind === "error") return `fail (${failed.message})`;
 	const leaked = followUp.some(
@@ -423,5 +591,25 @@ if (pass && installedVersion) {
 		"no tested record: the harness reported no version in initialize",
 	);
 }
-const r7Ok = r7.startsWith("pass") || r7.startsWith("skipped");
-process.exit(pass && !r6.startsWith("fail") && r7Ok ? 0 : 1);
+const resumable = HARNESS_REGISTRY[harness].resume;
+const connected = stub?.entry.connected() ?? false;
+const r8 = toolCallLine({ gateway: !!stub, connected, ...turns.first });
+console.log(`R8 tool call, first turn: ${r8}`);
+const r9 = resumable
+	? toolCallLine(
+			{ gateway: !!stub, connected, ...turns.followUp },
+			`no follow-up ran: R5 ${r5}`,
+		)
+	: "n/a (this agent cannot reopen a session)";
+console.log(`R9 tool call, follow-up: ${r9}`);
+await stub?.close();
+process.exit(
+	admissionExit({
+		pass,
+		r6: firstWord(r6),
+		r7: firstWord(r7),
+		r8: firstWord(r8),
+		r9: firstWord(r9),
+		resumable,
+	}),
+);

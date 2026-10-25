@@ -205,7 +205,7 @@ describe("Add agent tiles (#907)", () => {
 		await click("add-agent-tile-claude-code");
 		expect(navigate).toHaveBeenCalledWith({
 			to: "/settings",
-			search: { tab: "harness", agent: "claude-code" },
+			search: { tab: "agent", agent: "claude-code" },
 		});
 	});
 });

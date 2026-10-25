@@ -28,6 +28,7 @@ export interface PermissionRequest {
 		kind?: string;
 		rawInput?: unknown;
 		locations?: { path?: string }[];
+		_meta?: unknown;
 	};
 }
 
@@ -132,22 +133,77 @@ function allowed(
 	return { allow: true, optionId: allow.optionId, outcome: "allowed" };
 }
 
+/** The run's gateway as the policy sees it: connected, its server name, and PrismaLens's own tool names. */
+export interface GatewayAsks {
+	connected(): boolean;
+	serverName: string;
+	tools: readonly string[];
+}
+
+/**
+ * The MCP server and tool an ask names; null unless the agent's own `_meta` marks an MCP call.
+ * Titles and rawInput can carry the call's own arguments, so rawInput only narrows (#848).
+ */
+function namedTool(
+	tc: NonNullable<PermissionRequest["toolCall"]>,
+): { servers: string[]; tool: string } | null {
+	const meta = tc._meta as
+		| {
+				claudeCode?: { mcpServer?: { name?: unknown } };
+				is_mcp_tool_call?: unknown;
+		  }
+		| undefined;
+	const server = meta?.claudeCode?.mcpServer?.name;
+	const title = tc.title ?? "";
+	const qualified =
+		typeof server === "string"
+			? /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(title)
+			: meta?.is_mcp_tool_call === true
+				? /^mcp\.([^.]+)\.(.+)$/.exec(title)
+				: null;
+	if (!qualified?.[1] || !qualified[2]) return null;
+	const servers = [qualified[1]];
+	if (typeof server === "string") servers.push(server);
+	const raw = tc.rawInput as { server?: unknown } | undefined;
+	if (typeof raw?.server === "string") servers.push(raw.server);
+	return { servers, tool: qualified[2] };
+}
+
+/**
+ * True only for a call to one of PrismaLens's own read-only tools on our confirmed
+ * server; another server's tool of the same name never matches (#848, OBJ-011).
+ */
+export function isGatewayToolCall(
+	req: PermissionRequest,
+	gateway: GatewayAsks | undefined,
+): boolean {
+	if (!gateway?.connected() || !req.toolCall) return false;
+	const named = namedTool(req.toolCall);
+	return (
+		!!named &&
+		named.servers.every((s) => s === gateway.serverName) &&
+		gateway.tools.includes(named.tool)
+	);
+}
+
 /**
  * How the run's level answers an ask, in this order (#673 w21 ruling 2026-10-10):
- * a request to switch mode is refused at every level; reads and searches run;
+ * a request to switch mode is refused at every level; PrismaLens's own read-only
+ * tools on the confirmed gateway run; reads and searches run;
  * Ask always shows the card; Auto-accept edits approves file changes and shows
  * the rest; Auto and Full access approve. A sync verdict never shows a card.
  */
 export function levelPolicy(
 	level: AccessLevel,
 	channel: { policy: PermissionPolicy },
-	opts: { unattended?: boolean } = {},
+	opts: { unattended?: boolean; gateway?: GatewayAsks } = {},
 ): PermissionPolicy {
 	const card = opts.unattended ? unattendedPolicy : channel.policy;
 	return (req, ctx) => {
 		const kind = req.toolCall?.kind;
 		if (kind === "switch_mode")
 			return deny(req, "mode_kept", "the run stays in its mode");
+		if (isGatewayToolCall(req, opts.gateway)) return allowed(req, ctx, card);
 		if (kind && READS.has(kind)) return allowed(req, ctx, card);
 		if (opts.unattended || level === "supervised") return card(req, ctx);
 		if (level === "auto-edits")

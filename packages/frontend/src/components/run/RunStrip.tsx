@@ -19,7 +19,8 @@ export interface StripChip {
 /**
  * The run strip under the header (#811): state, what it is doing (never
  * under 100 px), the model (warn only on a mismatch), which credential
- * cloned the code, Stop run while live, and the runs menu.
+ * cloned the code, a warning when PrismaLens's tools did not reach the
+ * agent (#848), Stop run while live, and the runs menu.
  */
 export function RunStrip({
 	state,
@@ -28,6 +29,7 @@ export function RunStrip({
 	detail,
 	model,
 	code,
+	tools,
 	onStop,
 	stopping,
 	incidentId,
@@ -42,6 +44,8 @@ export function RunStrip({
 	model?: StripChip | null;
 	/** Hidden while the details panel is open: its Summary carries it. */
 	code?: StripChip | null;
+	/** Only when PrismaLens's tools did not reach the agent (#848). */
+	tools?: StripChip | null;
 	/** Live only. */
 	onStop?: () => void;
 	stopping?: boolean;
@@ -76,6 +80,7 @@ export function RunStrip({
 			</span>
 			{model && <Chip chip={model} testId="run-strip-model" />}
 			{code && <Chip chip={code} testId="run-strip-code" />}
+			{tools && <Chip chip={tools} testId="run-strip-tools" />}
 			{onStop && (
 				<Button
 					variant="secondary"

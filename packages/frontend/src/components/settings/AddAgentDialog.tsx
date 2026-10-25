@@ -122,7 +122,7 @@ export function AddAgentDialog({
 	};
 	const openPage = (id: HarnessId) => {
 		close();
-		void navigate({ to: "/settings", search: { tab: "harness", agent: id } });
+		void navigate({ to: "/settings", search: { tab: "agent", agent: id } });
 	};
 
 	const next = async () => {

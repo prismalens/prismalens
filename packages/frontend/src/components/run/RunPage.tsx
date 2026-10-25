@@ -48,7 +48,13 @@ import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handedOff } from "@/lib/handoff-line";
-import { deriveTranscript, runStepText } from "@/lib/investigation-events";
+import {
+	deriveTranscript,
+	runStepText,
+	shareItems,
+	type TranscriptItem,
+} from "@/lib/investigation-events";
+import { useRenderProbe } from "@/lib/render-probe";
 import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import {
@@ -57,8 +63,16 @@ import {
 	useFocusLater,
 } from "./HypothesesCard";
 import { IncidentHeader } from "./IncidentHeader";
-import { type DetailsTab, RunDetailsPanel } from "./RunDetailsPanel";
+import { snapshotLine } from "./PreRunCoverage";
+import {
+	type DetailsTab,
+	overviewSteps,
+	RunDetailsPanel,
+	RunOverview,
+} from "./RunDetailsPanel";
+import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
+import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
 	evidenceSections,
@@ -95,7 +109,6 @@ export function RunPage() {
 	const record = useIncidentRecord();
 	const { toast } = useToast();
 	const { incident, run, runs, draft } = record;
-	const now = useNow(1000);
 	const search = useSearch({
 		from: "/_authenticated/incidents/$id/conversation",
 	});
@@ -103,15 +116,19 @@ export function RunPage() {
 	const { harnesses } = useAgentChoice();
 	const inv = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);
+	// The transcript's own counter has its clock; the strip and panel need a second only while live.
+	const now = useNow(live ? 1000 : 30_000);
+	useRenderProbe("RunPage", { now, run });
 	const chat = inv?.kind === "chat";
 	const name = inv ? viewName(runs, inv) : "Run";
 	const who = useRunAgentModel(inv);
 	const harness = harnesses.find((h) => h.id === who.id);
 	const cwd = inv?.workspace?.cwd;
 
-	const items = useMemo(
+	const shared = useRef<TranscriptItem[]>([]);
+	const derived = useMemo(
 		() =>
-			deriveTranscript(run.events, now ?? Date.now(), {
+			deriveTranscript(run.events, {
 				pending: run.pending,
 				modelName: (id) => modelName(harness, id) ?? id,
 				agentName: (id) => harnesses.find((h) => h.id === id)?.label ?? id,
@@ -134,7 +151,6 @@ export function RunPage() {
 			}),
 		[
 			run.events,
-			now,
 			run.pending,
 			run.stopRequested,
 			run.continuable,
@@ -144,6 +160,10 @@ export function RunPage() {
 			harnesses,
 		],
 	);
+	const items = useMemo(() => shareItems(shared.current, derived), [derived]);
+	useEffect(() => {
+		shared.current = items;
+	}, [items]);
 	const steps = run.steps;
 	const byCall = useMemo(() => stepOfCall(steps), [steps]);
 	const flaggedAt = useMemo(
@@ -265,6 +285,92 @@ export function RunPage() {
 	}, []);
 
 	const report = inv?.report;
+	const reportTitle =
+		report && inv && !chat
+			? `${name} concluded: ${reportOutcome(report.rootCause)}`
+			: null;
+	const transcriptReport = useMemo(
+		() =>
+			reportTitle && report
+				? { title: reportTitle, summary: report.summary }
+				: null,
+		[reportTitle, report],
+	);
+	const toggleStep = useCallback(
+		(n: number) =>
+			setOpen((o) => {
+				const next = new Set(o);
+				if (!next.delete(n)) next.add(n);
+				return next;
+			}),
+		[],
+	);
+	const flaggedSet = useMemo(() => new Set(flaggedAt.values()), [flaggedAt]);
+	const transcriptSteps = useMemo(
+		() => ({
+			all: steps,
+			open,
+			onToggle: toggleStep,
+			highlight,
+			flagged: flaggedSet,
+			onSeeFlag: seeFlag,
+			asks: run.asks,
+			fileOf: fileOfStep,
+			onOpenFile: openStepFile,
+		}),
+		[
+			steps,
+			open,
+			toggleStep,
+			highlight,
+			flaggedSet,
+			seeFlag,
+			run.asks,
+			fileOfStep,
+			openStepFile,
+		],
+	);
+	const toggleWork = useCallback(() => setWorkOpen((o) => !o), []);
+	const workedSeconds =
+		transcriptReport && !live && steps.length > 0 && inv && runTimed(inv)
+			? runElapsed(inv, now)
+			: null;
+	const worked = useMemo(
+		() =>
+			workedSeconds !== null
+				? {
+						seconds: workedSeconds,
+						steps: steps.length,
+						open: workOpen,
+						onToggle: toggleWork,
+					}
+				: null,
+		[workedSeconds, steps.length, workOpen, toggleWork],
+	);
+	const targetOf = useCallback(
+		(e: Parameters<typeof evidenceStep>[0]): CiteTarget | null => {
+			const file = citedFile(e.source, workspace);
+			if (file) return { file };
+			const step = evidenceStep(e, steps);
+			return step ? { step } : null;
+		},
+		[workspace, steps],
+	);
+	const afterReport = useMemo(
+		() =>
+			report && inv ? (
+				<HypothesesCard
+					report={report}
+					at={inv.completedAt ?? null}
+					targetOf={targetOf}
+					onOpenFile={openFile}
+					onJump={jump}
+					preview={preview}
+					onPreview={setPreview}
+				/>
+			) : null,
+		[report, inv, targetOf, openFile, jump, preview],
+	);
 	const recheck = useRecheck();
 	const header = (
 		<IncidentHeader
@@ -338,22 +444,43 @@ export function RunPage() {
 			}
 		: null;
 	const code = codeChip(inv?.workspace);
-
-	const transcriptReport =
-		report && inv && !chat
+	const turns = toolTurns(run.events);
+	const tools = toolsStatus(turns, {
+		loading: run.eventsLoading,
+		error: run.eventsError,
+		live,
+	});
+	const preRun = inv?.preRun ?? null;
+	const overview = inv && !chat && (
+		<RunOverview
+			steps={overviewSteps({
+				snapshot: snapshotLine(preRun),
+				code: codeLine(inv.workspace, preRun?.checkoutsSkipped ?? []),
+				agent: harness?.label ?? who.agent,
+				status: tools,
+			})}
+			status={tools}
+			turns={turns}
+			hint={
+				harness?.toolsHint
+					? {
+							text: harness.toolsHint.text,
+							folder: runsFolder(inv.workspace?.cwd),
+						}
+					: null
+			}
+		/>
+	);
+	const toolsChip: StripChip | null =
+		tools.state === "not-reached"
 			? {
-					title: `${name} concluded: ${reportOutcome(report.rootCause)}`,
-					summary: report.summary,
+					text: "Tools: not connected",
+					title:
+						"PrismaLens's tools did not reach the agent; the details say what to do.",
+					warn: true,
 				}
 			: null;
-	const targetOf = (
-		e: Parameters<typeof evidenceStep>[0],
-	): CiteTarget | null => {
-		const file = citedFile(e.source, workspace);
-		if (file) return { file };
-		const step = evidenceStep(e, steps);
-		return step ? { step } : null;
-	};
+
 	const viewingRepo = viewing
 		? workspace?.repos.find((r) => r.name === viewing.repo)
 		: undefined;
@@ -369,6 +496,7 @@ export function RunPage() {
 					detail={stateWord.detail}
 					model={modelChip}
 					code={panel ? null : code}
+					tools={panel ? null : toolsChip}
 					onStop={
 						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
 					}
@@ -397,45 +525,9 @@ export function RunPage() {
 								startedBy(inv.triggerType) === "you" ? "You" : "PrismaLens"
 							}
 							report={transcriptReport}
-							worked={
-								transcriptReport && !live && steps.length > 0 && runTimed(inv)
-									? {
-											seconds: runElapsed(inv, now),
-											steps: steps.length,
-											open: workOpen,
-											onToggle: () => setWorkOpen((o) => !o),
-										}
-									: null
-							}
-							afterReport={
-								report ? (
-									<HypothesesCard
-										report={report}
-										at={inv.completedAt ?? null}
-										targetOf={targetOf}
-										onOpenFile={openFile}
-										onJump={jump}
-										preview={preview}
-										onPreview={setPreview}
-									/>
-								) : null
-							}
-							steps={{
-								all: steps,
-								open,
-								onToggle: (n) =>
-									setOpen((o) => {
-										const next = new Set(o);
-										if (!next.delete(n)) next.add(n);
-										return next;
-									}),
-								highlight,
-								flagged: new Set(flaggedAt.values()),
-								onSeeFlag: seeFlag,
-								asks: run.asks,
-								fileOf: fileOfStep,
-								onOpenFile: openStepFile,
-							}}
+							worked={worked}
+							afterReport={afterReport}
+							steps={transcriptSteps}
 						/>
 					)}
 				</div>
@@ -451,6 +543,16 @@ export function RunPage() {
 					onTab={setTab}
 					onClose={closePanel}
 					incidentId={incident.id}
+					summaryTop={overview}
+					contextTop={
+						!chat && (
+							<RunRunbooks
+								runId={inv.id}
+								preRun={preRun}
+								loadError={!!run.error}
+							/>
+						)
+					}
 					summary={summarySections(
 						inv,
 						summaryFacts(inv, run, {

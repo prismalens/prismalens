@@ -114,6 +114,29 @@ describe("the credential chip (operator ruling, #811)", () => {
 		);
 		expect(codeChip({ repos: [{ name: "x" }] })).toBeNull();
 	});
+
+	it("marks fallen back credentials (#848)", () => {
+		const chip = codeChip({
+			repos: [
+				{
+					name: "repo1",
+					credential: {
+						source: "connection",
+						label: "token B",
+						via: "git-host-token",
+						fallbackFrom: {
+							source: "connection",
+							label: "token A",
+							code: "token A",
+						},
+					},
+				},
+			],
+		});
+		expect(chip?.text).toBe("Code: token B, fell back");
+		expect(chip?.warn).toBe(true);
+		expect(chip?.title).toContain(". Fell back");
+	});
 });
 
 describe("firingWord (#811)", () => {
