@@ -1043,6 +1043,40 @@ describe("GitCredentialService & host-token (#810)", () => {
 				service.withCredential(ref, async () => "done", ac.signal),
 			).rejects.toThrow("checkout budget ran out");
 		});
+
+		it("resolveForUse refuses an aborted signal for a folder, and a stop that lands during markUsed (#848)", async () => {
+			const folder: GitRepoRef = { sourceKind: "folder", url: "/home/user/project", connectionId: null, pick: null };
+			const gone = new AbortController();
+			gone.abort(new Error("stopped before start"));
+			await expect(service.resolveForUse(folder, gone.signal)).rejects.toThrow("stopped before start");
+
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{
+					id: "conn-abort-use",
+					label: "Token",
+					status: "ACTIVE",
+					tokenExpiresAt: null,
+					lastErrorMessage: null,
+					credentialsEnc: credentialsService.encrypt({ token: "ghp_tok" }),
+					connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
+					integration: { templateId: "git-host-token", label: "Git host token" },
+				},
+			]);
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			vi.mocked(gitSpawnMod.gitConfigRead).mockResolvedValue({ stdout: "", stderr: "" });
+			const mid = new AbortController();
+			mockPrisma.connection.update.mockImplementationOnce(async () => {
+				mid.abort(new Error("stopped during markUsed"));
+				return {};
+			});
+			const ref: GitRepoRef = {
+				sourceKind: "url",
+				url: "https://github.com/org/repo.git",
+				connectionId: null,
+				pick: null,
+			};
+			await expect(service.resolveForUse(ref, mid.signal)).rejects.toThrow("stopped during markUsed");
+		});
 	});
 
 	describe("C12 git order: pin, stored token, env, machine git (#848)", () => {

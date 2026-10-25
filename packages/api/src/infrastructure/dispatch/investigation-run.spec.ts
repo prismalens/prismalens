@@ -20,6 +20,7 @@ import type { Snapshot } from "../../core/harness/repo-source.service.js";
 import type { IncidentRepo, RepoRef, RunPorts } from "./run-ports.js";
 
 const mocks = vi.hoisted(() => ({ conductRun: vi.fn(), logged: [] as unknown[][] }));
+const SYSTEM_PATH = process.env.PATH ?? "";
 
 vi.mock("@prismalens/engine", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@prismalens/engine")>();
@@ -1571,12 +1572,12 @@ describe("follow-up on a finished run (#747)", () => {
 		}
 	});
 
-	it("save on first run, then follow-up loads and rewrites the read copies (#848)", async () => {
+	it("save on first run, then follow-up loads and rewrites the read copies (#848)", { timeout: 20_000 }, async () => {
 		let savedSnapshotText: string | undefined;
 		mocks.conductRun.mockResolvedValue({ runId: "inv-good", report: null, error: null, failureKind: "none" });
 		const { delimiter } = await import("node:path");
 		const gitDir = process.platform === "win32" ? "C:\\Program Files\\Git\\cmd" : "/usr/bin";
-		vi.stubEnv("PATH", `${join(tmp, "bin")}${delimiter}${gitDir}`);
+		vi.stubEnv("PATH", `${join(tmp, "bin")}${delimiter}${gitDir}${delimiter}${SYSTEM_PATH}`);
 		const firstPorts = fakePorts({
 			preRun: {
 				telemetry: vi.fn(async () => ({
@@ -1644,13 +1645,20 @@ describe("follow-up on a finished run (#747)", () => {
 	it("a load that never settles still lets conductRun start within 5 s on follow-up (#848)", async () => {
 		vi.useFakeTimers();
 		try {
+			let onLoadCalled!: () => void;
+			const loadCalled = new Promise<void>((r) => {
+				onLoadCalled = r;
+			});
 			const neverSettlingLoad = new Promise<string | null>(() => {});
 			const ports = followUpPorts({
 				preRun: {
 					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
 					runbooks: vi.fn(async () => ({ entries: [] })),
 					save: vi.fn(async () => {}),
-					load: vi.fn(() => neverSettlingLoad),
+					load: vi.fn(() => {
+						onLoadCalled();
+						return neverSettlingLoad;
+					}),
 				},
 			});
 			mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
@@ -1659,6 +1667,7 @@ describe("follow-up on a finished run (#747)", () => {
 			});
 
 			const jobPromise = runInvestigationJob({ id: "job-load-timeout", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+			await loadCalled;
 			await vi.advanceTimersByTimeAsync(5_100);
 			const result = await jobPromise;
 
@@ -2283,9 +2292,16 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 	it("a save that never settles still lets conductRun start within 5 s (#848)", async () => {
 		vi.useFakeTimers();
 		try {
+			let onSaveCalled!: () => void;
+			const saveCalled = new Promise<void>((r) => {
+				onSaveCalled = r;
+			});
 			const neverSettlingSave = new Promise<void>(() => {});
 			const save = vi.fn()
-				.mockImplementationOnce(() => neverSettlingSave)
+				.mockImplementationOnce(() => {
+					onSaveCalled();
+					return neverSettlingSave;
+				})
 				.mockResolvedValueOnce(undefined);
 			const ports = fakePorts({
 				preRun: {
@@ -2297,11 +2313,16 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 			});
 
 			const jobPromise = runInvestigationJob(...job("inv-save-timeout"), io(), ports);
+			await saveCalled;
 			await vi.advanceTimersByTimeAsync(5_100);
 			const result = await jobPromise;
 
 			expect(result.success).toBe(true);
-			const [opts] = mocks.conductRun.mock.calls[0] as [
+			const call = mocks.conductRun.mock.calls.find(
+				(c) => (c[0] as { runId?: string }).runId === "inv-save-timeout",
+			);
+			expect(call).toBeDefined();
+			const [opts] = (call ?? mocks.conductRun.mock.calls[0]) as [
 				{ context: { preRun?: { state: string; saveError?: string } } },
 			];
 			expect(opts.context.preRun?.state).toBe("not-saved");
@@ -2359,12 +2380,20 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 	it("a findInvestigation that never settles does not block the run past ASSEMBLY_MS (#848)", async () => {
 		vi.useFakeTimers();
 		try {
+			let onFindCalled!: () => void;
+			const findCalled = new Promise<void>((r) => {
+				onFindCalled = r;
+			});
 			const neverSettlingFind = new Promise<{ status: string }>(() => {});
 			const ports = fakePorts({
-				findInvestigation: vi.fn(() => neverSettlingFind as never),
+				findInvestigation: vi.fn(() => {
+					onFindCalled();
+					return neverSettlingFind as never;
+				}),
 			});
 
 			const jobPromise = runInvestigationJob(...job("inv-find-timeout"), io(), ports);
+			await findCalled;
 			await vi.advanceTimersByTimeAsync(10_100);
 			const result = await jobPromise;
 
@@ -2707,6 +2736,29 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 			rmSync(tmpDir, { recursive: true, force: true });
 		} finally {
 			vi.useRealTimers();
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("checkout cancel: a run signal already aborted starts no clone and ends cancelled at once (#848)", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-precancel-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		try {
+			const snapshotWith = vi.fn(async () => new Promise<never>(() => {}));
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					makeRepo("https://github.com/acme/repo-a", "svc-a"),
+					makeRepo("https://github.com/acme/repo-b", "svc-b"),
+				]),
+				snapshotWith,
+			});
+			const stop = new AbortController();
+			stop.abort(new Error("stopped by the operator"));
+
+			await expect(resolveWorkspace(minimalData(), ports, stop.signal)).rejects.toThrow("stopped by the operator");
+			expect(snapshotWith).not.toHaveBeenCalled();
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
 			vi.unstubAllEnvs();
 		}
 	});

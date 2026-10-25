@@ -1603,7 +1603,8 @@ async function checkoutAll<T>(
 	const onCancel = () => {
 		for (const c of controllers) c.abort(cancel?.reason);
 	};
-	cancel?.addEventListener("abort", onCancel, { once: true });
+	if (cancel?.aborted) onCancel();
+	else cancel?.addEventListener("abort", onCancel, { once: true });
 	let next = 0;
 	const worker = async () => {
 		while (next < count) {
