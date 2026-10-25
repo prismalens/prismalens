@@ -215,44 +215,31 @@ describe("RunRunbooks (#848)", () => {
 			)?.textContent,
 		).toContain("runbooks/checkout-5xx.md");
 
-		await act(async () =>
-			(
-				container?.querySelector(
-					'[data-testid="runbooks-service-payments"]',
-				) as HTMLButtonElement
-			).click(),
-		);
+		const press = (id: string) =>
+			act(async () =>
+				container
+					?.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)
+					?.click(),
+			);
+		const type = (text: string) =>
+			act(async () => {
+				const search = container?.querySelector<HTMLInputElement>(
+					'[data-testid="runbooks-search"]',
+				);
+				Object.getOwnPropertyDescriptor(
+					HTMLInputElement.prototype,
+					"value",
+				)?.set?.call(search, text);
+				search?.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+
+		await press("runbooks-service-payments");
 		expect(groups()).toEqual(["payments:2", "Links:1"]);
-
-		const search = container?.querySelector(
-			'[data-testid="runbooks-search"]',
-		) as HTMLInputElement;
-		await act(async () => {
-			const set = Object.getOwnPropertyDescriptor(
-				HTMLInputElement.prototype,
-				"value",
-			)?.set;
-			set?.call(search, "refund");
-			search.dispatchEvent(new Event("input", { bubbles: true }));
-		});
+		await type("refund");
 		expect(groups()).toEqual(["payments:1"]);
-
-		await act(async () => {
-			const set = Object.getOwnPropertyDescriptor(
-				HTMLInputElement.prototype,
-				"value",
-			)?.set;
-			set?.call(search, "no such runbook");
-			search.dispatchEvent(new Event("input", { bubbles: true }));
-		});
+		await type("no such runbook");
 		expect(groups()).toEqual([]);
-		await act(async () =>
-			(
-				container?.querySelector(
-					'[data-testid="runbooks-clear"]',
-				) as HTMLButtonElement
-			).click(),
-		);
+		await press("runbooks-clear");
 		expect(groups()).toEqual([
 			"checkout:4",
 			"payments:2",
