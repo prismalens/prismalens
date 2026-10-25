@@ -374,6 +374,59 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		});
 	});
 
+	it("a multi-repository follow-up rebuild whose primary repo has a missing subPath rejects even though the recorded cwd exists (OBJ-023 #848)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-subpath-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const runDir = join(tmp, "runs", "inv-1");
+			const reposDir = join(runDir, "repos");
+			mkdirSync(reposDir, { recursive: true });
+			const primaryDir = join(reposDir, "primary");
+			const secondaryDir = join(reposDir, "secondary");
+			const ws: RunWorkspace = {
+				layout: "multi",
+				cwd: reposDir,
+				repos: [
+					{
+						name: "primary",
+						dir: primaryDir,
+						head: "abc123def456789",
+						sourceKind: "url",
+						url: "https://github.com/acme/primary",
+						connectionId: null,
+						branch: "main",
+						subPath: "svc/api",
+						services: ["api"],
+					},
+					{
+						name: "secondary",
+						dir: secondaryDir,
+						head: "fedcba987654321",
+						sourceKind: "url",
+						url: "https://github.com/acme/secondary",
+						connectionId: null,
+						branch: "main",
+						subPath: null,
+						services: ["worker"],
+					},
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async (_target, dest: string) => {
+					mkdirSync(dest, { recursive: true });
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			await expect(
+				rebuildWorkspace(ws, "inv-1", "OpenCode", ports),
+			).rejects.toThrow(/is not in the repository/);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
 	it("resolveWorkspace with subPath 'linked/missing' over a junction link skips the repo with code failed (OBJ-001)", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-resolve-junction-"));
 		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-res-"));
