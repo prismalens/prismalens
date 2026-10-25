@@ -1048,3 +1048,48 @@ describe("GET /sources/pre-run and preview (#848 C16a)", () => {
 		);
 	});
 });
+
+describe("cutSnapshot: label and log-line limits (OBJ-019 #848)", () => {
+	it("cuts label values to 512 characters and log lines to 2000, leaves query and summary untouched", () => {
+		const longLabel = "L".repeat(800);
+		const longLine = "X".repeat(3_000);
+		const query = "select * from long_table";
+		const summary = "12 results";
+
+		const data = {
+			query, // not a label key — must survive unchanged
+			summary, // not a label key — must survive unchanged
+			metric: { job: longLabel }, // LABEL_KEYS — cut to 512
+			labels: { env: longLabel }, // LABEL_KEYS — cut to 512
+			annotations: { note: longLabel }, // LABEL_KEYS — cut to 512
+			stream: { app: longLabel }, // LABEL_KEYS — cut to 512
+			values: [["1000000000", longLine]], // log-line array — cut to 2000
+		};
+
+		const cut = cutSnapshot(data) as typeof data;
+		const expectedLabel = "L".repeat(512) + "\u2026";
+		const expectedLine = "X".repeat(2_000) + "\u2026";
+
+		expect(cut.metric.job).toBe(expectedLabel);
+		expect(cut.labels.env).toBe(expectedLabel);
+		expect(cut.annotations.note).toBe(expectedLabel);
+		expect(cut.stream.app).toBe(expectedLabel);
+		expect((cut.values[0] as string[])[1]).toBe(expectedLine);
+
+		// query and summary must pass through unmodified
+		expect(cut.query).toBe(query);
+		expect(cut.summary).toBe(summary);
+	});
+
+	it("cutSnapshot leaves short labels and lines untouched", () => {
+		const data = {
+			metric: { job: "api" },
+			values: [["1", "short log"]],
+			summary: "ok",
+		};
+		const cut = cutSnapshot(data) as typeof data;
+		expect(cut.metric.job).toBe("api");
+		expect((cut.values[0] as string[])[1]).toBe("short log");
+		expect(cut.summary).toBe("ok");
+	});
+});

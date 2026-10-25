@@ -8,7 +8,7 @@
  * No network, no LLM, no real harness — `@prismalens/engine` is mocked wherever a test
  * needs `conductRun` to run at all.
  */
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
@@ -27,6 +27,21 @@ vi.mock("@prismalens/engine", async (importOriginal) => {
 		...actual,
 		conductRun: mocks.conductRun,
 	};
+});
+
+// One-shot hook: runs just before mkdirSync(path), then delegates to the real call (#848).
+const fsHook = vi.hoisted(() => ({ on: undefined as { path: string; run: () => void } | undefined }));
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	const mkdirSync = ((...args: Parameters<typeof actual.mkdirSync>) => {
+		const hook = fsHook.on;
+		if (hook && args[0] === hook.path) {
+			fsHook.on = undefined;
+			hook.run();
+		}
+		return actual.mkdirSync(...args);
+	}) as typeof actual.mkdirSync;
+	return { ...actual, mkdirSync };
 });
 
 vi.mock("@prismalens/logger", () => ({
@@ -328,6 +343,68 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });
 		}
+	});
+
+	describe("rebuildWorkspace re-checks the cwd after creating it (OBJ-020 #848)", () => {
+		function rebuild(seed?: (outside: string) => void) {
+			const tmp = mkdtempSync(join(os.tmpdir(), "pl-mkdir-swap-"));
+			const outside = mkdtempSync(join(os.tmpdir(), "pl-mkdir-out-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+			const runDir = join(tmp, "runs", "inv-1");
+			mkdirSync(runDir, { recursive: true });
+			seed?.(outside);
+			const cwd = join(runDir, "a", "sub", "deep");
+			const ws: RunWorkspace = { layout: "unmapped", cwd, repos: [] };
+			return {
+				outside,
+				cwd,
+				run: () => rebuildWorkspace(ws, "inv-1", "OpenCode", fakePorts({})),
+				swap: () => {
+					fsHook.on = { path: cwd, run: () => symlinkSync(outside, join(runDir, "a"), "junction") };
+				},
+				done: () => {
+					fsHook.on = undefined;
+					vi.unstubAllEnvs();
+					rmSync(tmp, { recursive: true, force: true });
+					rmSync(outside, { recursive: true, force: true });
+				},
+			};
+		}
+
+		it("a parent swapped for a junction during mkdir rejects and leaves nothing outside", async () => {
+			const t = rebuild();
+			try {
+				t.swap();
+				await expect(t.run()).rejects.toThrow(/escapes the snapshot/);
+				expect(readdirSync(t.outside)).toEqual([]);
+			} finally {
+				t.done();
+			}
+		});
+
+		it("a cwd inside the run dir is created without error", async () => {
+			const t = rebuild();
+			try {
+				const result = await t.run();
+				expect(result.cwd).toBe(t.cwd);
+				expect(existsSync(t.cwd)).toBe(true);
+			} finally {
+				t.done();
+			}
+		});
+
+		it("a directory already outside survives the refusal", async () => {
+			const t = rebuild((o) => {
+				mkdirSync(join(o, "sub", "keep"), { recursive: true });
+			});
+			try {
+				t.swap();
+				await expect(t.run()).rejects.toThrow(/escapes the snapshot/);
+				expect(existsSync(join(t.outside, "sub", "keep"))).toBe(true);
+			} finally {
+				t.done();
+			}
+		});
 	});
 
 	it("resolveWorkspace with subPath 'linked/missing' over a junction link skips the repo with code failed (OBJ-001)", async () => {
