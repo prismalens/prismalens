@@ -31,6 +31,8 @@ function pathWith(...binaries: string[]): string {
 		const file = join(dir, bin);
 		writeFileSync(file, "#!/bin/sh\nexit 0\n");
 		chmodSync(file, 0o755);
+		// Windows finds a binary on PATH only by a PATHEXT extension (#937).
+		if (process.platform === "win32") writeFileSync(`${file}.cmd`, "@exit /b 0\r\n");
 	}
 	return dir;
 }
