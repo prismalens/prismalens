@@ -59,6 +59,7 @@ import type {
 	UpdateIntegrationDto,
 } from "./dto/update-connection.dto.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
+import { sourceAnswered, sourceErrorText } from "./source-query.js";
 import { sourceRequestFn } from "./source-request.js";
 import { readStored, type StoredState } from "./stored-credential.js";
 
@@ -634,7 +635,7 @@ export class IntegrationsService implements OnModuleInit {
 						? { success: true }
 						: {
 								success: false,
-								error: `${template.name} answered ${res.status}`,
+								error: sourceAnswered(base, res.status),
 							};
 				}
 			} else {
@@ -663,9 +664,13 @@ export class IntegrationsService implements OnModuleInit {
 
 			return testResult;
 		} catch (error) {
-			const rawMessage =
-				error instanceof Error ? error.message : "Unknown error";
-			const errorMessage = rawMessage.slice(0, 500);
+			const template = getTemplate(connection.integration.templateId);
+			const errorMessage = template?.urlOnly
+				? sourceErrorText(error, this.baseUrlOf(connection) ?? "")
+				: (error instanceof Error ? error.message : "Unknown error").slice(
+						0,
+						500,
+					);
 			await this.prisma.connection.update({
 				where: { id },
 				data: {
@@ -797,12 +802,18 @@ export class IntegrationsService implements OnModuleInit {
 								tokenExpiresAt: token.tokenExpiresAt,
 								sshAuthSockSet: !!process.env.SSH_AUTH_SOCK,
 							});
+							// Those two carry git's own stderr line; Sources never echoes it (#848).
+							const text =
+								failure.code === "unreachable"
+									? `Could not reach ${token.host}.`
+									: failure.code === "other"
+										? `git could not read ${repoPath(url)}.`
+										: failure.message;
 							// Any host's refusal reads CREDENTIALS_INVALID, not only github.com's API one.
-							if (failure.code === "token-rejected")
-								rejected ??= failure.message;
+							if (failure.code === "token-rejected") rejected ??= text;
 							if (failure.code !== "no-access" || pinned.has(url))
-								failures.push(failure.message);
-							return failure.message;
+								failures.push(text);
+							return text;
 						}
 					}),
 				)),

@@ -114,6 +114,116 @@ export function failureReason(e: unknown): string {
 	return "could not connect to the source";
 }
 
+const UNSHOWN_ADDRESS = "an address PrismaLens cannot show";
+
+const parseUrl = (text: string): URL | null => {
+	try {
+		const u = new URL(text);
+		return u.host ? u : null;
+	} catch {
+		return null;
+	}
+};
+
+/** Fail closed: an address that does not parse is never echoed (#848). */
+export function redactAddress(text: string): string {
+	const trimmed = text.trim();
+	const u = parseUrl(trimmed);
+	if (!u) return UNSHOWN_ADDRESS;
+	const bare = u.pathname === "/" && !/\/[?#]|\/$/.test(trimmed);
+	u.username = u.password = u.search = u.hash = "";
+	return bare ? u.href.replace(/\/$/, "") : u.href;
+}
+
+const hostOf = (address: string): string =>
+	parseUrl(redactAddress(address))?.host ?? UNSHOWN_ADDRESS;
+
+// Every Sources error text starts with one of these; a stored one that does not is pre-#848 (#848).
+const REACH = "Could not reach ";
+const CREDENTIAL = "Could not use the saved credential for ";
+const SOURCE_AT = "The source at ";
+const CHECK_FAILED = "the check failed";
+const FIXED_PREFIXES = [REACH, CREDENTIAL, SOURCE_AT, CHECK_FAILED];
+
+const UNREACHABLE_CODES = new Set([
+	"ECONNREFUSED",
+	"ENOTFOUND",
+	"EAI_AGAIN",
+	"EHOSTUNREACH",
+	"ENETUNREACH",
+	"ECONNRESET",
+]);
+const TIMEOUT_CODES = new Set([
+	"ETIMEDOUT",
+	"UND_ERR_CONNECT_TIMEOUT",
+	"UND_ERR_HEADERS_TIMEOUT",
+	"UND_ERR_BODY_TIMEOUT",
+]);
+const TLS_CODE =
+	/^(?:CERT_|DEPTH_ZERO_|SELF_SIGNED_|UNABLE_TO_(?:VERIFY|GET)_|ERR_TLS_|ERR_SSL_|HOSTNAME_MISMATCH)/;
+
+function signalsOf(err: unknown): { codes: string[]; names: string[] } {
+	const codes: string[] = [];
+	const names: string[] = [];
+	let e: unknown = err;
+	for (
+		let i = 0;
+		i < 4 && e && typeof e === "object";
+		i++, e = (e as { cause?: unknown }).cause
+	) {
+		const { code, name } = e as { code?: unknown; name?: unknown };
+		if (typeof code === "string") codes.push(code);
+		if (typeof name === "string") names.push(name);
+	}
+	return { codes, names };
+}
+
+function statusOf(err: unknown): number | null {
+	const status = (err as { status?: unknown } | null)?.status;
+	if (typeof status === "number" && status >= 100 && status <= 599)
+		return status;
+	const m =
+		err instanceof QueryFailed && /answered HTTP (\d{3})\b/.exec(err.message);
+	return m ? Number(m[1]) : null;
+}
+
+export const sourceAnswered = (address: string, status: number): string =>
+	`${SOURCE_AT}${hostOf(address)} answered ${status}`;
+
+/**
+ * What a failed check says: one fixed sentence per cause, with only the host in it.
+ * Upstream and driver message text is never read into it (#848).
+ */
+export function sourceErrorText(err: unknown, address: string): string {
+	const host = hostOf(address);
+	if (err instanceof OffOriginError)
+		return `${REACH}${host}: it redirected elsewhere, which PrismaLens does not follow`;
+	if (err instanceof SourceConfigError) return `${CREDENTIAL}${host}`;
+	const status = statusOf(err);
+	if (status !== null) return sourceAnswered(address, status);
+	const { codes, names } = signalsOf(err);
+	if (codes.some((c) => TLS_CODE.test(c)))
+		return `${REACH}${host}: its TLS certificate was not accepted`;
+	if (
+		codes.some((c) => TIMEOUT_CODES.has(c)) ||
+		names.some((n) => n === "TimeoutError" || n === "AbortError")
+	)
+		return `${REACH}${host}: no answer in time`;
+	if (
+		codes.some((c) => UNREACHABLE_CODES.has(c)) ||
+		(err instanceof TypeError && err.message === "fetch failed")
+	)
+		return `${REACH}${host}: connection refused or host not found`;
+	if (names.includes("SyntaxError") || names.includes("ZodError"))
+		return `${SOURCE_AT}${host} sent a response this kind of source does not give`;
+	return CHECK_FAILED;
+}
+
+export const storedErrorText = (stored: string): string =>
+	FIXED_PREFIXES.some((p) => stored.startsWith(p))
+		? stored
+		: "the last check failed";
+
 export function cap<T>(
 	items: T[],
 	max: number,

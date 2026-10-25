@@ -23,7 +23,18 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { HostToken } from "./host-token.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { mappingConfig, QUERY_KINDS, type QueryKind } from "./source-query.js";
+import {
+	mappingConfig,
+	QUERY_KINDS,
+	type QueryKind,
+	redactAddress,
+	sourceAnswered,
+	sourceErrorText,
+	storedErrorText,
+} from "./source-query.js";
+
+export { redactAddress, sourceErrorText };
+
 import { sourceRequestFn } from "./source-request.js";
 import { writeStored } from "./stored-credential.js";
 import { envVars, originOf } from "./telemetry-snapshot.service.js";
@@ -52,65 +63,6 @@ export function sourceProblem(
 
 const isQueryKind = (t: string): t is QueryKind =>
 	(QUERY_KINDS as readonly string[]).includes(t);
-
-const UNSHOWN_ADDRESS = "an address PrismaLens cannot show";
-const MAX_TEXT = 2_000;
-const EDGE_PUNCT = "()[]<>\"',.;!";
-
-const parseUrl = (text: string): URL | null => {
-	try {
-		const u = new URL(text);
-		return u.host ? u : null;
-	} catch {
-		return null;
-	}
-};
-
-function shown(u: URL, original: string): string {
-	const bare = u.pathname === "/" && !/\/[?#]|\/$/.test(original);
-	u.username = u.password = u.search = u.hash = "";
-	return bare ? u.href.replace(/\/$/, "") : u.href;
-}
-
-/** Fail closed: an address that does not parse is never echoed (#848). */
-export function redactAddress(text: string): string {
-	const trimmed = text.trim();
-	const u = parseUrl(trimmed);
-	return u ? shown(u, trimmed) : UNSHOWN_ADDRESS;
-}
-
-function redactToken(token: string): string {
-	let start = 0;
-	let end = token.length;
-	while (start < end && EDGE_PUNCT.includes(token[start] as string)) start++;
-	while (end > start && EDGE_PUNCT.includes(token[end - 1] as string)) end--;
-	const core = token.slice(start, end);
-	const relative = core.startsWith("//");
-	if (!relative && !/[@?#]|:\/\//.test(core)) return token;
-	const u = parseUrl(relative ? `https:${core}` : core);
-	const out = u ? shown(u, core) : "[redacted]";
-	return (
-		token.slice(0, start) +
-		(u && relative ? out.replace(/^https:/, "") : out) +
-		token.slice(end)
-	);
-}
-
-/** Message text with every URL-like token parsed and cleaned; linear, 2,000 characters at most (#848). */
-export const redactText = (text: string): string =>
-	text
-		.slice(0, MAX_TEXT)
-		.split(/(\s+)/)
-		.map((part, i) => (i % 2 ? part : redactToken(part)))
-		.join("");
-
-function errorText(err: unknown): string {
-	if (!(err instanceof Error)) return redactText(String(err));
-	const code = (err.cause as { code?: unknown } | undefined)?.code;
-	return redactText(
-		typeof code === "string" ? `${err.message} (${code})` : err.message,
-	);
-}
 
 /** What a draft saves: its template, config, the stored credential blob, and the host it reaches. */
 interface Plan {
@@ -182,7 +134,7 @@ export class SourcesService {
 						: {}),
 					problem: sourceProblem(row.status, row.lastErrorMessage, credential),
 					lastErrorMessage: row.lastErrorMessage
-						? redactText(row.lastErrorMessage)
+						? storedErrorText(row.lastErrorMessage)
 						: null,
 					usedBy: row.serviceMappings
 						.filter(
@@ -225,9 +177,15 @@ export class SourcesService {
 				{ ok: true, credential: plan.credential },
 				{ timeoutMs: PROBE_TIMEOUT_MS },
 			)(verify.method, verify.path);
-			return report(res.ok, `${plan.name} answered ${res.status}`);
+			return report(
+				res.ok,
+				sourceAnswered(plan.connectionConfig.baseUrl as string, res.status),
+			);
 		} catch (err) {
-			return report(false, `Could not reach ${plan.host}: ${errorText(err)}`);
+			return report(
+				false,
+				sourceErrorText(err, plan.connectionConfig.baseUrl as string),
+			);
 		}
 	}
 
@@ -336,7 +294,7 @@ export class SourcesService {
 				need: "required",
 				why: "Checks the token against the repositories your services name.",
 				ok: detail.startsWith("ok "),
-				detail: redactText(detail),
+				detail,
 			})),
 			discovered: {},
 			...(result.untested ? { untested: true } : {}),
