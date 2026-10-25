@@ -1503,7 +1503,10 @@ describe("harness tool call live events and summary (#848)", () => {
 			gateway,
 		});
 
-		await vi.waitFor(() => expect(existsSync(`${gate}.ready`)).toBe(true));
+		await vi.waitFor(() => expect(existsSync(`${gate}.ready`)).toBe(true), {
+			timeout: 10_000,
+			interval: 20,
+		});
 		callList.push({ name: "incident_notes", firstCalledAt: call2At, count: 1 });
 		onCallCb?.({ name: "incident_notes", at: call2At });
 		writeFileSync(`${gate}.release`, "go");

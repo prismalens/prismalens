@@ -161,10 +161,14 @@ export class GitCredentialService {
 		ref: GitRepoRef,
 		signal?: AbortSignal,
 	): Promise<GitCredential> {
+		signal?.throwIfAborted();
 		if (ref.sourceKind === "folder") return new GitCredential(FOLDER);
 		const r = await this.resolve(ref, "use", signal);
 		signal?.throwIfAborted();
-		if (r.token) await this.markUsed(r.token.connectionId);
+		if (r.token) {
+			await this.markUsed(r.token.connectionId);
+			signal?.throwIfAborted();
+		}
 		return this.credentialFor(r);
 	}
 
@@ -192,6 +196,7 @@ export class GitCredentialService {
 			const matches = host
 				? (await this.tokens()).filter((t) => t.host === host && usable(t))
 				: [];
+			signal?.throwIfAborted();
 			if (matches.length > 1)
 				throw new GitFailure(
 					err.code,
@@ -205,6 +210,7 @@ export class GitCredentialService {
 				`${host} refused the machine's git; retrying ${ref.url} with token ${only.label}`,
 			);
 			await this.markUsed(only.connectionId);
+			signal?.throwIfAborted();
 			const fallback = this.credentialFor({
 				display: { ...tokenDisplay(only), fallback: true },
 				effectiveUrl,

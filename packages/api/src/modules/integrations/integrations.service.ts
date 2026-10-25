@@ -848,6 +848,8 @@ export class IntegrationsService implements OnModuleInit {
 			where: { id: connectionId },
 			data: {
 				connectionConfigEnc: this.credentialsService.encrypt(mergedConfig),
+				// A changed address has not passed a Test (#848).
+				testedAt: null,
 			},
 		});
 	}

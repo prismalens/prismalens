@@ -2489,6 +2489,29 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 		}
 	});
 
+	it("checkout cancel: a run signal already aborted starts no clone and ends cancelled at once (#848)", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-precancel-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		try {
+			const snapshotWith = vi.fn(async () => new Promise<never>(() => {}));
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					makeRepo("https://github.com/acme/repo-a", "svc-a"),
+					makeRepo("https://github.com/acme/repo-b", "svc-b"),
+				]),
+				snapshotWith,
+			});
+			const stop = new AbortController();
+			stop.abort(new Error("stopped by the operator"));
+
+			await expect(resolveWorkspace(minimalData(), ports, stop.signal)).rejects.toThrow("stopped by the operator");
+			expect(snapshotWith).not.toHaveBeenCalled();
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("checkout guard: 40 repos -> 32 attempted, 8 skipped as guard", async () => {
 		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-guard-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);

@@ -774,7 +774,7 @@ describe("connection selection and credential matrix (#848 C5)", () => {
 			],
 		});
 		const svc = new TelemetrySnapshotService(prisma as never);
-		const out = await svc.select("inc-1");
+		const out = await svc.select("inc-1", {});
 		expect(out.units).toEqual([]);
 		expect(out.skipped).toEqual([
 			expect.objectContaining({

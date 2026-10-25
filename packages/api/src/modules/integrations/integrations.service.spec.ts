@@ -555,5 +555,31 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 				}),
 			);
 		});
+
+		it("updateConnectionConfig clears testedAt when the address changes (#848)", async () => {
+			const conn = {
+				id: "conn-tested-2",
+				label: "Prometheus",
+				status: "ACTIVE",
+				testedAt: new Date(),
+				integration: { templateId: "prometheus", label: "Prometheus" },
+				credentialsEnc: credentialsService.encrypt({ kind: "none" }),
+				connectionConfigEnc: credentialsService.encrypt({ baseUrl: "http://prom:9090" }),
+			};
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			await service.updateConnectionConfig("conn-tested-2", { baseUrl: "http://new-prom:9090" });
+
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "conn-tested-2" },
+					data: expect.objectContaining({
+						connectionConfigEnc: expect.anything(),
+						testedAt: null,
+					}),
+				}),
+			);
+		});
 	});
 });
