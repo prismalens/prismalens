@@ -166,11 +166,36 @@ wire; `scripts/fakes/scenarios/agents.json` maps each agent's shell tool, read f
 `exited` the agent quit before answering and PrismaLens said so; `cancelled` the run ended cancelled and the tool's
 process is gone.
 
-MATRIX_TABLE
+| Row | PrismaLens must | opencode | claude-code | codex | gemini | dcode |
+| --- | --- | --- | --- | --- | --- | --- |
+| R1-R4 admission | run in the clone, read allowed, report validates | pass | pass | pass | **fail**: Gemini's ACP shell update carries no output, so the nonce never reaches PrismaLens | pass |
+| R5 resume | reopen with `session/load`, no replayed history as new events | pass | pass | pass | **fail**: Gemini's replayed tool calls come back as new events | pass |
+| R6 user model | serve the user's OpenCode model | pass | n/a: OpenCode only | n/a | n/a | n/a |
+| R7 resume after a failed report | reopen after a broken report | n/a: no base-URL proxy | pass | n/a: no base-URL proxy | n/a: no base-URL proxy | n/a: cannot reopen |
+| R8, R9 gateway tool call | call `incident_get` on the first turn and the follow-up | pass | pass | pass | pass | pass (R9 n/a: cannot reopen) |
+| report | `report` | pass | pass | pass | pass | pass |
+| tool-call | `tool-report` | pass | pass | pass | pass | pass |
+| permission-allowed | the ask is approved, the file is written, `report` | pass | pass | pass (escalated command: Codex's Ask-for-approval mode writes the workspace unasked) | pass | pass |
+| permission-declined | only refused asks, no file | pass | pass | pass (escalated, as above) | pass | pass |
+| cancel | `cancelled`, the tool's process gone | pass | pass | pass | pass | **fail**: dcode's command outlives the cancelled run |
+| not-signed-in | `error` | pass | pass | pass | pass | pass (`exited`: dcode exits before `initialize` with no provider key) |
+| modes | modes and model options from `session/new` as the registry row says | pass | pass | pass | pass | pass (none, as the row says) |
+| invalid-tool-args | `report` | pass | pass | pass | pass (`fault`: Gemini re-sends the request on a malformed call, then ends the turn empty) | pass |
+| unknown-tool | `report` | pass | pass | pass | pass | pass |
+| empty-response | `fault` | pass | pass | pass | pass | pass |
+| length-cutoff | `fault` | pass (the prompt limit ends it: OpenCode re-asks) | pass | pass | pass | pass (prompt limit) |
+| refusal | `fault` | pass | pass | pass | pass (as a safety stop) | pass |
+| http-500 | `fault` | pass | pass | pass | pass | pass |
+| http-429 | `report` after the agent's own retry | pass | pass | pass | pass | pass |
+| stream-dropped | `fault` | pass | pass | pass | pass | pass |
+| slow-first-token | `fault`: the engine's prompt limit (15 s here) ends the turn | pass | pass | pass | pass | pass |
+| parallel-tool-calls | two tool results, `report` | pass | pass | pass | pass | pass |
+
+As of CI run 40182891095 on 7b68402a (3 agreeing runs per leg). The gemini and dcode legs are red on the cells in bold; they gate nothing until those are fixed.
 
 `R1-R9` (the admission) run beside the matrix in every leg. A fault a wire cannot express is `n/a` with its
-reason in the row's `na` field, and the table shows it; none is today, because aimock serves every fault on all four
-wires the agents use (refusal on Gemini's wire is a safety stop).
+reason in the row's `na` field, and the table shows it; none is today: aimock serves every fault on the wires these
+agents use, and on Gemini's wire, which has no refusal, the refusal row is a safety stop (`content-filter`).
 
 #### Turning a field transcript into a fixture
 

@@ -162,7 +162,7 @@ export function verdictOf(stdout) {
 		// an unparseable report is a failed run
 	}
 	const word = (/** @type {string} */ label) =>
-		new RegExp(`^${label}: (\\w+)`, "m").exec(stdout)?.[1] ?? "missing";
+		new RegExp(`^${label}: ([\\w/]+)`, "m").exec(stdout)?.[1] ?? "missing";
 	return {
 		pass: report.pass === true,
 		failedChecks: Object.entries(report.checks ?? {})
