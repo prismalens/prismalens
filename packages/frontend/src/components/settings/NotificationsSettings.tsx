@@ -23,6 +23,7 @@ export function NotificationsSettings() {
 	const [url, setUrl] = useState("");
 	const [replacing, setReplacing] = useState(false);
 	const inputId = useId();
+	const switchId = useId();
 	const settings = useQuery(orpc.settings.delivery.get.queryOptions());
 	const update = useMutation({
 		...orpc.settings.delivery.update.mutationOptions(),
@@ -39,7 +40,7 @@ export function NotificationsSettings() {
 		<SettingGroup title="Reports" testId="slack-delivery">
 			<Pool>
 				<SettingRow
-					label="Post reports to Slack"
+					label={<label htmlFor={switchId}>Post reports to Slack</label>}
 					description={
 						configured
 							? "Each finished report goes to the channel of this webhook."
@@ -47,6 +48,7 @@ export function NotificationsSettings() {
 					}
 				>
 					<Switch
+						id={switchId}
 						checked={configured}
 						disabled={update.isPending || (!configured && !url.trim())}
 						onCheckedChange={(on) =>

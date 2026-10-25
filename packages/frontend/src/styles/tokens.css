@@ -140,7 +140,7 @@
 	--sev-low: oklch(0.72 0.12 250);
 }
 
-/* Touch layouts: every control is a 48 px target (#848, OBJ-012); a switch's row is its target. */
+/* Touch layouts: every control is a 48 px target (#848, OBJ-012). */
 @media (pointer: coarse), (max-width: 767px) {
 	:root {
 		--header-h: 48px;
@@ -158,6 +158,28 @@
 		header a
 	) {
 		min-height: 48px;
+	}
+}
+
+/* Switches and icon buttons keep their look and gain a 48 px hit area around it
+   (Material 48dp, HIG 44pt); layered so a component's own position wins (#848). */
+@layer base {
+	@media (pointer: coarse), (max-width: 767px) {
+		:where([data-slot="switch"], [data-slot="button"][data-size^="icon"]) {
+			position: relative;
+		}
+		:where(
+				[data-slot="switch"],
+				[data-slot="button"][data-size^="icon"]
+			)::after {
+			content: "";
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			width: max(100%, 48px);
+			height: max(100%, 48px);
+			transform: translate(-50%, -50%);
+		}
 	}
 }
 

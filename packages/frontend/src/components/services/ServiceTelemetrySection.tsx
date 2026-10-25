@@ -222,12 +222,19 @@ function ConnectionRow({
 	const selector = str(config.selector);
 	const on = isOn(item);
 	const moreId = useId();
+	const switchId = useId();
 	return (
 		<li className="py-3" data-testid="service-telemetry-row">
 			<div className="flex items-start gap-3">
 				<KindIcon kind={item.templateId} />
 				<div className="min-w-0 flex-1">
-					<p className="text-heading">{item.connectionName}</p>
+					{item.hasOverride && item.overrideId ? (
+						<label htmlFor={switchId} className="block text-heading">
+							{item.connectionName}
+						</label>
+					) : (
+						<p className="text-heading">{item.connectionName}</p>
+					)}
 					<p className="truncate font-mono text-mono text-text-2">
 						{hostOf(addressOf(item))}
 					</p>
@@ -258,8 +265,9 @@ function ConnectionRow({
 					)}
 				</div>
 				{item.hasOverride && item.overrideId ? (
-					<span className="flex shrink-0 items-center gap-1">
+					<span className="flex shrink-0 items-center gap-1 max-md:gap-4.5 pointer-coarse:gap-4.5">
 						<Switch
+							id={switchId}
 							checked={on}
 							disabled={pending}
 							onCheckedChange={(v) =>

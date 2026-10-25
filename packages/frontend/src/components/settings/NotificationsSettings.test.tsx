@@ -107,4 +107,19 @@ describe("NotificationsSettings (case 1 rest and notifications)", () => {
 			slackWebhookUrl: null,
 		});
 	});
+
+	it("the row's label is the switch's: tapping it toggles the switch (#848 touch)", async () => {
+		state.slackConfigured = true;
+		await act(async () => root.render(createElement(NotificationsSettings)));
+		const switchEl = container.querySelector('[data-testid="slack-switch"]');
+		const label = Array.from(container.querySelectorAll("label")).find(
+			(l) => l.textContent === "Post reports to Slack",
+		);
+		expect(label?.htmlFor).toBe(switchEl?.id);
+		expect(switchEl?.id).not.toBe("");
+		await act(async () => label?.click());
+		expect(state.updateMutate).toHaveBeenCalledWith({
+			slackWebhookUrl: null,
+		});
+	});
 });

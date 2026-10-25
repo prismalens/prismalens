@@ -30,10 +30,14 @@ import {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 const reorderMutate = vi.fn();
+const updateMutate = vi.fn();
 let reorderPending = false;
 
 vi.mock("@/lib/api/hooks", () => ({
-	useUpdateServiceIntegration: () => ({ mutate: vi.fn(), isPending: false }),
+	useUpdateServiceIntegration: () => ({
+		mutate: updateMutate,
+		isPending: false,
+	}),
 	useCreateServiceIntegration: () => ({ mutate: vi.fn(), isPending: false }),
 	useDeleteServiceIntegration: () => ({ mutate: vi.fn(), isPending: false }),
 	useSetServiceIntegrationOrder: () => ({
@@ -61,6 +65,7 @@ let root: Root;
 
 beforeEach(() => {
 	reorderMutate.mockReset();
+	updateMutate.mockReset();
 	reorderPending = false;
 	container = document.createElement("div");
 	document.body.appendChild(container);
@@ -231,6 +236,28 @@ describe("ServiceTelemetrySection reordering UI (case 11)", () => {
 
 		const liveRegion = container.querySelector('p[aria-live="polite"]');
 		expect(liveRegion?.textContent).toBe("Prom A moved down");
+	});
+
+	it("a mapped row's name is its switch's label: tapping it switches the mapping (#848 touch)", async () => {
+		await act(async () =>
+			root.render(
+				createElement(ServiceTelemetrySection, {
+					serviceId: "svc-1",
+					integrations: [makeRow("ov-1", 10, "Prom A")],
+				}),
+			),
+		);
+		const sw = container.querySelector('[data-testid="mapping-switch"]');
+		const label = Array.from(container.querySelectorAll("label")).find(
+			(l) => l.textContent === "Prom A",
+		);
+		expect(sw?.id).not.toBe("");
+		expect(label?.htmlFor).toBe(sw?.id);
+		await act(async () => label?.click());
+		expect(updateMutate).toHaveBeenCalledWith({
+			id: "ov-1",
+			config: { enabled: false },
+		});
 	});
 
 	it("disables both move buttons when reorder is pending", async () => {

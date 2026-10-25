@@ -46,4 +46,17 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		expect(touchBlock).toContain("nav a");
 		expect(touchBlock).toContain("header a");
 	});
+
+	it("gives switches and icon buttons a 48 px hit area without resizing them", () => {
+		const hit = css.match(
+			/@layer base\s*\{\s*@media\s*\(pointer:\s*coarse\),\s*\(max-width:\s*767px\)\s*\{([\s\S]*?)\n\}/,
+		);
+		expect(hit).not.toBeNull();
+		const block = hit ? hit[1] : "";
+		expect(block).toContain('[data-slot="switch"]');
+		expect(block).toContain('[data-slot="button"][data-size^="icon"]');
+		expect(block).toMatch(/\)::after\s*\{[^}]*width:\s*max\(100%,\s*48px\);/);
+		expect(block).toMatch(/\)::after\s*\{[^}]*height:\s*max\(100%,\s*48px\);/);
+		expect(block).toContain("position: absolute;");
+	});
 });
