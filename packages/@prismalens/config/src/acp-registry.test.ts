@@ -2,7 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { ACP_REGISTRY, AcpRegistrySchema } from "./acp-registry.js";
+import {
+	ACP_REGISTRY,
+	AcpRegistrySchema,
+	parseAcpRegistry,
+} from "./acp-registry.js";
+import bundled from "./acp-registry.json" with { type: "json" };
 import { HARNESS_REGISTRY } from "./providers/harness.js";
 import { listHarnessStatus } from "./harness-selection.js";
 // @ts-expect-error script helper module
@@ -43,6 +48,41 @@ describe("ACP Registry and toolsHint (#848 C17)", () => {
 			"darwin-arm64: https://example.com/bin-arm64.tar.gz",
 			"linux-x64: https://example.com/bin-linux.tar.gz",
 		]);
+	});
+
+	it("keeps registry text inert: unsafe args, schemes and install lines are dropped (#848)", () => {
+		expect(
+			installOf({ npx: { package: "pkg", args: ["'; echo INJECTED; #"] } }),
+		).toEqual([]);
+		expect(installOf({ uvx: { package: "-e", args: [] } })).toEqual([]);
+		expect(
+			installOf({
+				binary: {
+					a: { archive: "javascript:alert(1)" },
+					b: { archive: "http://example.com/b.tgz" },
+					c: { archive: "https://example.com/c.tgz;rm" },
+					"d e": { archive: "https://example.com/d.tgz" },
+					ok: { archive: "https://example.com/ok.tgz" },
+				},
+			}),
+		).toEqual(["ok: https://example.com/ok.tgz"]);
+
+		const entry = (install: string[]) => ({
+			id: "x",
+			name: "X",
+			description: "",
+			install,
+		});
+		expect(
+			parseAcpRegistry([
+				entry(["npx -y pkg --acp"]),
+				entry(["npx -y pkg ''; echo INJECTED; #'"]),
+				entry(["npx -y pkg\nrm -rf ~"]),
+				entry(["linux: javascript:alert(1)"]),
+				entry(["linux: http://example.com/a.tgz"]),
+			]),
+		).toEqual([entry(["npx -y pkg --acp"])]);
+		expect(ACP_REGISTRY).toHaveLength(bundled.length);
 	});
 
 	it("snapshotOf drops entries without install lines and throws without agents array", () => {

@@ -21,27 +21,35 @@ const OUT = join(
 	"packages/@prismalens/config/src/acp-registry.json",
 );
 
-const quote = (arg) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg}'`);
-const command = (...parts) => parts.flat().filter(Boolean).map(quote).join(" ");
+// Registry text is untrusted: a part outside these charsets drops its line (#848).
+const SAFE_ARG = /^[\w@%+=:,./-]+$/;
+const SAFE_PACKAGE = /^[\w@%+=:,./][\w@%+=:,./-]*$/;
+const SAFE_ARCHIVE = /^https:\/\/[\w.~%+:,=/-]+$/;
+const SAFE_PLATFORM = /^[\w-]+$/;
+
+const command = (tool, pkg, args) => {
+	const parts = [...tool, pkg, ...args];
+	return typeof pkg === "string" &&
+		SAFE_PACKAGE.test(pkg) &&
+		parts.every((p) => typeof p === "string" && SAFE_ARG.test(p))
+		? parts.join(" ")
+		: null;
+};
 
 /** The lines a person copies to install one agent; a binary names its archive per platform. */
 export function installOf(distribution = {}) {
 	const lines = [];
-	if (distribution.npx)
-		lines.push(
-			command(
-				"npx",
-				"-y",
-				distribution.npx.package,
-				distribution.npx.args ?? [],
-			),
-		);
-	if (distribution.uvx)
-		lines.push(
-			command("uvx", distribution.uvx.package, distribution.uvx.args ?? []),
-		);
+	const argsOf = (d) => (Array.isArray(d.args) ? d.args : []);
+	for (const [tool, d] of [
+		[["npx", "-y"], distribution.npx],
+		[["uvx"], distribution.uvx],
+	]) {
+		const line = d && command(tool, d.package, argsOf(d));
+		if (line) lines.push(line);
+	}
 	for (const [platform, b] of Object.entries(distribution.binary ?? {}))
-		if (b?.archive) lines.push(`${platform}: ${b.archive}`);
+		if (SAFE_PLATFORM.test(platform) && SAFE_ARCHIVE.test(b?.archive ?? ""))
+			lines.push(`${platform}: ${b.archive}`);
 	return lines;
 }
 
