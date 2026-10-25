@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	admissionProblem,
 	agentEnv,
 	FAKE_MODEL,
 	matrixSignature,
@@ -275,5 +276,37 @@ describe("admission-fake for the tier-2 agents and the signed-out row (#914)", (
 		});
 		expect(parseArgs(["nope", "."])).toBeNull();
 		expect(parseArgs(["codex", ".", "--only", "both"])).toBeNull();
+	});
+});
+
+describe("admissionProblem known failures (#914)", () => {
+	const v = {
+		pass: false,
+		failedChecks: ["cwdProved", "readAllowed"],
+		r5: "fail",
+		r6: "skipped",
+		r7: "skipped",
+		r8: "pass",
+		r9: "pass",
+	};
+
+	it("accepts gemini failing exactly as its open upstream bugs predict", () => {
+		expect(admissionProblem("gemini", v, 1)).toBeNull();
+	});
+
+	it("fails once gemini's known failure is fixed", () => {
+		expect(admissionProblem("gemini", { ...v, r5: "pass" }, 1)).toMatch(/fixed/);
+		expect(
+			admissionProblem("gemini", { ...v, pass: true, failedChecks: [], r5: "pass" }, 0),
+		).toMatch(/fixed/);
+	});
+
+	it("fails gemini when it fails some other way", () => {
+		expect(admissionProblem("gemini", { ...v, r8: "fail" }, 1)).toMatch(/differently/);
+	});
+
+	it("keeps every other agent strict", () => {
+		expect(admissionProblem("claude-code", v, 1)).toBe("the admission failed");
+		expect(admissionProblem("claude-code", v, 0)).toBeNull();
 	});
 });

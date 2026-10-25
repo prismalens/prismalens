@@ -176,6 +176,39 @@ export function verdictOf(stdout) {
 	};
 }
 
+/**
+ * Admission failures caused by an agent's own open bug. The run passes while the agent
+ * fails exactly this way, and fails once it no longer does, so a fix upstream is noticed (#914).
+ * @type {Record<string, { failedChecks: string[], r5: string, why: string }>}
+ */
+export const KNOWN_ADMISSION_FAILURES = {
+	gemini: {
+		failedChecks: ["cwdProved", "readAllowed"],
+		r5: "fail",
+		why: "shell output never reaches ACP clients (google-gemini/gemini-cli#29930); history replays after the session/load answer (google-gemini/gemini-cli#29707)",
+	},
+};
+
+/**
+ * `null` when the admission's outcome is acceptable for this agent, else why not.
+ * @param {string} harness
+ * @param {ReturnType<typeof verdictOf>} v
+ * @param {number} code
+ */
+export function admissionProblem(harness, v, code) {
+	const known = KNOWN_ADMISSION_FAILURES[harness];
+	if (!known) return code === 0 ? null : "the admission failed";
+	const same =
+		!v.pass &&
+		v.failedChecks.join(",") === known.failedChecks.join(",") &&
+		v.r5 === known.r5 &&
+		[v.r8, v.r9].every((r) => r === "pass" || r === "n/a");
+	if (same) return null;
+	return code === 0 || v.pass || v.r5 === "pass"
+		? `the known failure is fixed (${known.why}); remove it from KNOWN_ADMISSION_FAILURES`
+		: "the admission failed differently from its known failure";
+}
+
 /** One verdict as one comparable line. */
 export const signature = (/** @type {ReturnType<typeof verdictOf>} */ v) =>
 	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7} R8=${v.r8} R9=${v.r9}`;
@@ -297,9 +330,16 @@ async function main() {
 					[args.harness, args.cloneDir],
 					env,
 				);
-				parts.push(signature(verdictOf(out.stdout)));
-				if (out.code !== 0) {
+				const verdict = verdictOf(out.stdout);
+				parts.push(signature(verdict));
+				const problem = admissionProblem(args.harness, verdict, out.code);
+				if (out.code !== 0 && !problem)
+					console.log(
+						`known failure: ${KNOWN_ADMISSION_FAILURES[args.harness]?.why}`,
+					);
+				if (problem) {
 					failed = true;
+					console.log(problem);
 					console.log(out.stdout);
 					console.error(out.stderr.slice(-2000));
 				}

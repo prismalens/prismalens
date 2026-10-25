@@ -25,6 +25,17 @@ export function verdictOf(stdout: string): AdmissionVerdict;
 
 export function signature(verdict: AdmissionVerdict): string;
 
+export const KNOWN_ADMISSION_FAILURES: Record<
+	string,
+	{ failedChecks: string[]; r5: string; why: string }
+>;
+
+export function admissionProblem(
+	harness: string,
+	verdict: AdmissionVerdict,
+	code: number,
+): string | null;
+
 export function matrixSignature(stdout: string): string;
 
 export function parseArgs(argv: string[]): {

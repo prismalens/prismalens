@@ -169,8 +169,8 @@ row fails once the agent fixes it.
 
 | Row | PrismaLens must | opencode | claude-code | codex | gemini | dcode |
 | --- | --- | --- | --- | --- | --- | --- |
-| R1-R4 admission | run in the clone, read allowed, report validates | pass | pass | pass | **fail**: Gemini's ACP shell update carries no output, so the nonce never reaches PrismaLens | pass |
-| R5 resume | reopen with `session/load`, no replayed history as new events | pass | pass | pass | **fail**: Gemini's replayed tool calls come back as new events | pass |
+| R1-R4 admission | run in the clone, read allowed, report validates | pass | pass | pass | known failure: Gemini's ACP shell update carries no output, so the nonce never reaches PrismaLens (google-gemini/gemini-cli#29930) | pass |
+| R5 resume | reopen with `session/load`, no replayed history as new events | pass | pass | pass | known failure: Gemini answers `session/load` before its replay ends (google-gemini/gemini-cli#29707; worked around in #942) | pass |
 | R6 user model | serve the user's OpenCode model | pass | n/a: OpenCode only | n/a | n/a | n/a |
 | R7 resume after a failed report | reopen after a broken report | n/a: no base-URL proxy | pass | n/a: no base-URL proxy | n/a: no base-URL proxy | n/a: cannot reopen |
 | R8, R9 gateway tool call | call `incident_get` on the first turn and the follow-up | pass | pass | pass | pass | pass (R9 n/a: cannot reopen) |
