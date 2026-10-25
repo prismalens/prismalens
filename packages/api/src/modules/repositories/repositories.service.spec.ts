@@ -19,7 +19,9 @@ import {
 } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "../integrations/git-credential.service.js";
+import type { Repository as PrismaRepository } from "@prismalens/database";
 import { RepositoriesService } from "./repositories.service.js";
+import { serializeRepository } from "./serialize-repository.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 
@@ -348,3 +350,30 @@ describe("RepositoriesService.addSource", () => {
 	});
 });
 
+
+describe("serializeRepository url (#848)", () => {
+	const row = (url: string, sourceKind = "url") =>
+		({
+			id: "repo-1",
+			sourceKind,
+			url,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+			syncedAt: null,
+			metadata: null,
+		}) as unknown as PrismaRepository;
+	const shown = async (url: string, sourceKind?: string) =>
+		(await serializeRepository(row(url, sourceKind), async () => ({}) as never))
+			.url;
+
+	it("returns a legacy https url without its query, fragment or userinfo", async () => {
+		const out = await shown("https://u:pw@host/acme/api.git?token=sentinel#frag");
+		expect(out).toBe("https://host/acme/api.git");
+	});
+
+	it("leaves a clean ssh url, an scp remote and a folder as saved", async () => {
+		expect(await shown("ssh://git@host/acme/api.git")).toBe("ssh://git@host/acme/api.git");
+		expect(await shown("git@host:acme/repo#archive.git")).toBe("git@host:acme/repo#archive.git");
+		expect(await shown("/srv/repo?x", "folder")).toBe("/srv/repo?x");
+	});
+});

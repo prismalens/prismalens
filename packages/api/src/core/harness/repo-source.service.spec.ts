@@ -174,10 +174,14 @@ describe("repo-source.service", () => {
 			expect(() => classifySource(input)).toThrow(/query string or fragment/);
 		});
 
-		it.each([
-			"git@example.com:acme/repo#archive.git",
-			"git@example.com:acme/repo?x.git",
-		])("accepts the scp path %s, where # and ? are path characters", (input) => {
+		it("refuses an scp remote's query, which would be echoed back as a credential", () => {
+			expect(() =>
+				classifySource("git@host:acme/api.git?token=sentinel"),
+			).toThrow(/query string/);
+		});
+
+		it("accepts an scp path's #, a path character", () => {
+			const input = "git@example.com:acme/repo#archive.git";
 			expect(classifySource(input)).toEqual({ kind: "url", source: input });
 		});
 	});
@@ -492,7 +496,7 @@ describe("repo-source.service", () => {
 			expect(check).toEqual({ branch: "main", head });
 		});
 
-		it("snapshot() pinned to an earlier commit checks that commit out, and a commit the source lacks fails with git's text (#747)", async () => {
+		it("snapshot() pinned to an earlier commit checks that commit out, and a commit the source lacks fails naming it (#747)", async () => {
 			const { bareDir, work } = makeBareRemote();
 			const first = commitAndPush(work, "a.txt", "v1");
 			commitAndPush(work, "a.txt", "v2");
@@ -506,7 +510,7 @@ describe("repo-source.service", () => {
 
 			await expect(
 				service.snapshot(src, join(tmp("pl-dest-"), "repo"), undefined, "0123456789abcdef0123456789abcdef01234567"),
-			).rejects.toThrow(/0123456789abcdef0123456789abcdef01234567|reference is not a tree|did not match/);
+			).rejects.toThrow(/Commit 0123456789abcdef0123456789abcdef01234567 could not be checked out/);
 		});
 
 		it("the snapshot can't push to the mirror it was cloned from (#676)", async () => {

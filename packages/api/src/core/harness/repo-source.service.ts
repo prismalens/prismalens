@@ -100,8 +100,10 @@ export function classifySource(input: string): {
 			throw new Error(
 				"Repository URL must not carry credentials; add a Git host token in Settings instead",
 			);
-		// Only a URL's `?` and `#` are a query or fragment; in an scp path they are path characters (#848).
-		if (/^[a-z]+:\/\//i.test(trimmed) && /[?#]/.test(trimmed))
+		// A URL's `#` is a fragment; in an scp path it is a path character, but `?` is refused either way (#848).
+		if (
+			/^[a-z]+:\/\//i.test(trimmed) ? /[?#]/.test(trimmed) : /\?/.test(trimmed)
+		)
 			throw new Error(
 				"Repository URL must not carry a query string or fragment; add a Git host token in Settings instead",
 			);
@@ -240,7 +242,12 @@ export class RepoSourceService {
 				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
 				undefined,
 				signal,
-			);
+			).catch((err: unknown) => {
+				if (signal?.aborted) throw err;
+				throw new Error(
+					`Commit ${at} could not be checked out from this source`,
+				);
+			});
 		// origin is the user's checkout or our mirror: refuse local-path push and fetch from the run (#676).
 		await this.git(
 			["-C", dest, "config", "protocol.file.allow", "never"],

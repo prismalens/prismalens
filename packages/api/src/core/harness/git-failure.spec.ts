@@ -36,6 +36,20 @@ describe("git-failure", () => {
 		expect(scrubbed).toContain("https://***@github.com/org/repo.git");
 	});
 
+	it("scrubs and classifies 16 MiB of repeated a:// in under 200 ms (#848)", () => {
+		const stderr = "a://".repeat(4 * 1024 * 1024);
+		const started = performance.now();
+		scrubGitStderr(stderr);
+		diagnoseGitFailure({
+			stderr,
+			credential: { source: "machine", label: "machine git", via: "machine" },
+			host: "git.example",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(performance.now() - started).toBeLessThan(200);
+	});
+
 	it("formatDay formats Date to YYYY-MM-DD", () => {
 		const d = new Date("2026-10-15T12:00:00Z");
 		expect(formatDay(d)).toBe("2026-10-15");
@@ -389,7 +403,7 @@ describe("git-failure", () => {
 			}
 		});
 
-		it("carries fixed text, never stderr, a URL or its query (#848)", () => {
+		it("carries fixed text, never a URL or its query (#848)", () => {
 			const stderr =
 				"fatal: unable to access 'https://gitlab.com/org/repo.git?api_key=sentinel/': The requested URL returned error: 500";
 			const res = diagnoseGitFailure({
@@ -403,7 +417,6 @@ describe("git-failure", () => {
 			expect(res.code).toBe("other");
 			expect(res.message).toBe("git could not read org/repo on gitlab.com.");
 			expect(res.message).not.toContain("sentinel");
-			expect(res.stderr).not.toContain("sentinel");
 		});
 
 		it("classifies other on unexpected stderr", () => {

@@ -421,6 +421,22 @@ describe("git-spawn", () => {
 		expect((failure as GitSpawnError).timedOut).toBe(false);
 	});
 
+	it("GitSpawnError.message is fixed text; git's stderr stays in .stderr (#848)", async () => {
+		let failure: unknown;
+		try {
+			await spawnGit(["ls-remote", "--", "/no/such/repo-sentinel"], {
+				env: gitEnv({ source: "machine" }),
+				timeoutMs: 5000,
+			});
+		} catch (err) {
+			failure = err;
+		}
+		const err = failure as GitSpawnError;
+		expect(err).toBeInstanceOf(GitSpawnError);
+		expect(err.stderr).toContain("sentinel");
+		expect(err.message).toBe(`git ls-remote failed (exit ${err.exitCode})`);
+	});
+
 	it("spawnGit respects abort signal and aborts promptly", async () => {
 		const controller = new AbortController();
 		controller.abort(new Error("user aborted"));
