@@ -296,7 +296,7 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 			where: { label: "Token A" },
 		});
 		expect(conn?.status).toBe("CREDENTIALS_INVALID");
-		expect(conn?.lastErrorMessage).toMatch(/rejected token "Token A"/);
+		expect(conn?.lastErrorMessage).toBe('{"pl":1,"kind":"token-rejected"}');
 	});
 
 	it("S6: tokenExpiresAt in the past -> fails with token-expired before network call", async () => {

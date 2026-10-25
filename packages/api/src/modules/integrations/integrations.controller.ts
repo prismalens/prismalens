@@ -22,12 +22,11 @@ import {
 	getTemplate,
 	isLegacyTemplateId,
 } from "@prismalens/integrations";
-import { gitFailureText } from "../../core/harness/git-failure.js";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { storedErrorText } from "./source-query.js";
+import { redactAddress, shownError } from "./source-query.js";
 import { SourcesService } from "./sources.service.js";
 import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 
@@ -469,6 +468,9 @@ export class IntegrationsController {
 		// Settings, Alert sources shows (study-v3 §7). A git host token's errors are
 		// git's scrubbed taxonomy messages (#673); other token errors stay redacted.
 		const urlOnly = template?.urlOnly === true;
+		const base = urlOnly
+			? this.integrationsService.baseUrlOf(connection)
+			: null;
 		const git = template?.gitHost
 			? this.integrationsService.gitHostInfo(connection)
 			: null;
@@ -482,17 +484,17 @@ export class IntegrationsController {
 			...(expired ? { status: "TOKEN_EXPIRED" as const } : {}),
 			...(urlOnly
 				? {
-						baseUrl: this.integrationsService.baseUrlOf(connection),
-						lastErrorMessage: connection.lastErrorMessage
-							? storedErrorText(connection.lastErrorMessage)
-							: null,
+						baseUrl: base === null ? null : redactAddress(base),
+						lastErrorMessage: shownError(connection.lastErrorMessage, {
+							address: base,
+						}),
 					}
 				: {}),
 			...(template?.gitHost
 				? {
-						lastErrorMessage: connection.lastErrorMessage
-							? gitFailureText(connection.lastErrorMessage)
-							: null,
+						lastErrorMessage: shownError(connection.lastErrorMessage, {
+							git: { host: git?.host ?? null, label: connection.label ?? "" },
+						}),
 					}
 				: {}),
 			...(git ? { host: git.host, fingerprint: git.fingerprint } : {}),

@@ -190,7 +190,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 			label: "Error Token",
 			status: "ERROR",
 			tokenExpiresAt: null,
-			lastErrorMessage: "github.com rejected token \"Error Token\". It was revoked or mistyped; replace it.",
+			lastErrorMessage: '{"pl":1,"kind":"token-rejected"}',
 			credentialsEnc: connEnc,
 			connectionConfigEnc: configEnc,
 			integration: {

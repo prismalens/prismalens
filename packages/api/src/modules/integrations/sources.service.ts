@@ -19,7 +19,6 @@ import {
 } from "@prismalens/contracts/schemas";
 import { getTemplate } from "@prismalens/integrations";
 import { normalizeGitHost } from "../../core/harness/git-credential.js";
-import { gitDetailText } from "../../core/harness/git-failure.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { HostToken } from "./host-token.js";
@@ -29,9 +28,9 @@ import {
 	QUERY_KINDS,
 	type QueryKind,
 	redactAddress,
+	shownError,
 	sourceAnswered,
 	sourceErrorText,
-	storedErrorText,
 } from "./source-query.js";
 
 export { redactAddress, sourceErrorText };
@@ -119,6 +118,9 @@ export class SourcesService {
 					row.status === "ACTIVE" &&
 					!!row.tokenExpiresAt &&
 					row.tokenExpiresAt < new Date();
+				const lastError = shownError(row.lastErrorMessage, {
+					address: storedUrl,
+				});
 				return {
 					connectionId: row.id,
 					label: row.label || row.integration.label,
@@ -133,10 +135,8 @@ export class SourcesService {
 					...(read.state === "set" && sameOriginToken
 						? { overridesEnv: vars.token }
 						: {}),
-					problem: sourceProblem(row.status, row.lastErrorMessage, credential),
-					lastErrorMessage: row.lastErrorMessage
-						? storedErrorText(row.lastErrorMessage)
-						: null,
+					problem: sourceProblem(row.status, lastError, credential),
+					lastErrorMessage: lastError,
 					usedBy: row.serviceMappings
 						.filter(
 							(m) => m.isEnabled && mappingConfig(m.config).enabled !== false,
@@ -295,7 +295,7 @@ export class SourcesService {
 				need: "required",
 				why: "Checks the token against the repositories your services name.",
 				ok: detail.startsWith("ok "),
-				detail: gitDetailText(detail),
+				detail,
 			})),
 			discovered: {},
 			...(result.untested ? { untested: true } : {}),

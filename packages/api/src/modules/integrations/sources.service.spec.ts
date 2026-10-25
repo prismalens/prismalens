@@ -111,7 +111,7 @@ describe("SourcesService (#848 C17)", () => {
 					status: "ERROR",
 					tokenExpiresAt: null,
 					testedAt: null,
-					lastErrorMessage: "fetch failed",
+					lastErrorMessage: '{"pl":1,"kind":"reach"}',
 					integration: { templateId: "prometheus", label: "Prometheus" },
 					connectionConfig: { baseUrl: "http://prom.example:9091" },
 					serviceMappings: [],
@@ -171,7 +171,7 @@ describe("SourcesService (#848 C17)", () => {
 					status: "ERROR",
 					tokenExpiresAt: null,
 					testedAt: null,
-					lastErrorMessage: "fetch failed: https://user:sentinel@prom.example/-/ready",
+					lastErrorMessage: '{"pl":1,"kind":"reach"}',
 					connectionConfig: { baseUrl: "https://user:sentinel@prom.example:9090" },
 					integration: { templateId: "prometheus", label: "Prometheus" },
 					serviceMappings: [],
@@ -183,6 +183,9 @@ describe("SourcesService (#848 C17)", () => {
 
 			expect(overview.sources[0]?.address).toBe("https://prom.example:9090");
 			expect(overview.sources[0]?.problem).toBe("cant-reach");
+			expect(overview.sources[0]?.lastErrorMessage).toBe(
+				"Could not reach prom.example:9090: connection refused or host not found",
+			);
 			expect(JSON.stringify(overview)).not.toContain("sentinel");
 		});
 
@@ -304,7 +307,10 @@ describe("SourcesService (#848 C17)", () => {
 		it.each([
 			"fetch failed: https://user:\nsentinel\n@prom.example/-/ready",
 			"a,https://user:sentinel@other.example/b",
-		])("overview shows a stored error written before this change as the last check failed: %s", async (stored) => {
+			"Could not reach prom.example: https://user:\nsentinel\n@prom.example/-/ready",
+			"Could not reach prom.example: https://prom.example/a,https://user:sentinel@other.example/b",
+			"The source at prom.example answered 401 https:user:sentinel@prom.example",
+		])("overview shows a stored error that is not a code as the last check failed: %s", async (stored) => {
 			mockPrisma.connection.findMany.mockResolvedValue([
 				{
 					id: "conn-old",
@@ -326,8 +332,8 @@ describe("SourcesService (#848 C17)", () => {
 			expect(JSON.stringify(overview)).not.toContain("sentinel");
 		});
 
-		it("overview shows a stored error PrismaLens wrote as it is", async () => {
-			const written = "Could not reach prom.example:9090: no answer in time";
+		it("overview renders a stored error code as its sentence", async () => {
+			const written = '{"pl":1,"kind":"timeout"}';
 			mockPrisma.connection.findMany.mockResolvedValue([
 				{
 					id: "conn-new",
@@ -345,7 +351,7 @@ describe("SourcesService (#848 C17)", () => {
 
 			const overview = await service.overview({});
 
-			expect(overview.sources[0]?.lastErrorMessage).toBe(written);
+			expect(overview.sources[0]?.lastErrorMessage).toBe("Could not reach prom.example:9090: no answer in time");
 			expect(overview.sources[0]?.problem).toBe("cant-reach");
 		});
 

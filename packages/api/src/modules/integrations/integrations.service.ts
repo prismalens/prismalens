@@ -37,8 +37,9 @@ import {
 } from "../../core/harness/git-credential.js";
 import {
 	diagnoseGitFailure,
-	fixedGitFailureText,
-	gitFailureText,
+	type GitErrorKind,
+	gitErrorKind,
+	gitErrorSentence,
 } from "../../core/harness/git-failure.js";
 import {
 	effectiveGitUrl,
@@ -63,7 +64,14 @@ import type {
 	UpdateIntegrationDto,
 } from "./dto/update-connection.dto.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
-import { sourceAnswered, sourceErrorText } from "./source-query.js";
+import {
+	type ErrorMarker,
+	errorMarker,
+	redactAddress,
+	sourceAnswered,
+	sourceErrorKind,
+	sourceErrorSentence,
+} from "./source-query.js";
 import { sourceRequestFn } from "./source-request.js";
 import { readStored, type StoredState } from "./stored-credential.js";
 
@@ -95,6 +103,17 @@ export interface TestConnectionResult {
 	untested?: boolean;
 	/** The host refused the token itself, so the row reads "rejected", not "error" (#831 w6-9). */
 	rejected?: boolean;
+	/** The code a git token's failure is stored as; not part of the API answer (#848). */
+	errorKind?: GitErrorKind;
+}
+
+/** A config as an answer: its `baseUrl` without userinfo, query or fragment, since a saved one may hold a credential (#848). */
+function withShownAddress<T extends Record<string, unknown> | null>(
+	config: T,
+): T {
+	return config && typeof config.baseUrl === "string"
+		? { ...config, baseUrl: redactAddress(config.baseUrl) }
+		: config;
 }
 
 /** The status a failed git host token lands in: a refused token reads "rejected". */
@@ -529,10 +548,10 @@ export class IntegrationsService implements OnModuleInit {
 	 */
 	async recordGitFailure(
 		connectionId: string,
-		failure: { code: string; message: string },
+		failure: { code: string },
 	): Promise<void> {
 		const status = failedTokenStatus(failure.code);
-		const message = gitFailureText(failure.message).slice(0, 500);
+		const message = errorMarker(gitErrorKind(failure.code));
 		const conn = await this.prisma.connection.findUnique({
 			where: { id: connectionId },
 			select: { status: true, lastErrorMessage: true },
@@ -622,10 +641,12 @@ export class IntegrationsService implements OnModuleInit {
 		try {
 			const template = getTemplate(connection.integration.templateId);
 			let testResult: TestConnectionResult;
+			let marker: ErrorMarker = { kind: "failed" };
 
 			if (template?.gitHost) {
 				testResult = await this.testGitHostToken(connection);
 				if (testResult.untested) return testResult;
+				marker = { kind: testResult.errorKind ?? "failed" };
 			} else if (template?.urlOnly && template.verify) {
 				const base = await this.connectionBaseUrl(id);
 				if (!base) {
@@ -641,12 +662,14 @@ export class IntegrationsService implements OnModuleInit {
 								success: false,
 								error: sourceAnswered(base, res.status),
 							};
+					marker = { kind: "status", status: res.status };
 				}
 			} else {
-				testResult = await this.getAuthManager().verifyConnection(id);
+				const verified = await this.getAuthManager().verifyConnection(id);
+				testResult = verified.error
+					? { ...verified, error: "the check failed" }
+					: verified;
 			}
-			if (testResult.error && !template?.urlOnly)
-				testResult = { ...testResult, error: gitFailureText(testResult.error) };
 
 			await this.prisma.connection.update({
 				where: { id },
@@ -659,7 +682,7 @@ export class IntegrationsService implements OnModuleInit {
 					lastUsedAt: new Date(),
 					lastErrorMessage: testResult.success
 						? null
-						: (testResult.error ?? null),
+						: errorMarker(marker.kind, marker.status),
 					lastErrorAt: testResult.success ? null : new Date(),
 					consecutiveErrors: testResult.success
 						? 0
@@ -668,17 +691,21 @@ export class IntegrationsService implements OnModuleInit {
 				},
 			});
 
-			return testResult;
+			const { errorKind: _kind, ...answer } = testResult;
+			return answer;
 		} catch (error) {
 			const template = getTemplate(connection.integration.templateId);
-			const errorMessage = template?.urlOnly
-				? sourceErrorText(error, this.baseUrlOf(connection) ?? "")
-				: "the check failed";
+			const caught: ErrorMarker = template?.urlOnly
+				? sourceErrorKind(error)
+				: { kind: "failed" };
+			const errorMessage =
+				sourceErrorSentence(caught, this.baseUrlOf(connection) ?? "") ??
+				"the check failed";
 			await this.prisma.connection.update({
 				where: { id },
 				data: {
 					status: "ERROR",
-					lastErrorMessage: errorMessage,
+					lastErrorMessage: errorMarker(caught.kind, caught.status),
 					lastErrorAt: new Date(),
 					consecutiveErrors: connection.consecutiveErrors + 1,
 				},
@@ -698,7 +725,11 @@ export class IntegrationsService implements OnModuleInit {
 	): Promise<TestConnectionResult> {
 		const token = readHostToken(connection, this.credentialsService);
 		if (!token)
-			return { success: false, error: "This connection has no host or token." };
+			return {
+				success: false,
+				error: gitErrorSentence("no-token", { host: null, label: "" }) ?? "",
+				errorKind: "no-token",
+			};
 		return this.probeHostToken(token, connection.id);
 	}
 
@@ -708,6 +739,8 @@ export class IntegrationsService implements OnModuleInit {
 		connectionId?: string,
 	): Promise<TestConnectionResult> {
 		const { details, rejected, failures } = await this.lsRemoteMatching(token);
+		const who = { host: token.host, label: token.label };
+		const said = (kind: GitErrorKind) => gitErrorSentence(kind, who) ?? "";
 		const api =
 			token.host === "github.com" ? await this.githubUser(token) : null;
 		if (connectionId && api?.expiresAt !== undefined)
@@ -716,7 +749,7 @@ export class IntegrationsService implements OnModuleInit {
 				data: { tokenExpiresAt: api.expiresAt },
 			});
 		if (api?.rejected) {
-			const message = `github.com rejected token "${token.label}" (fp ${token.fingerprint}). It was revoked or mistyped; replace it.`;
+			const message = said("token-rejected");
 			// git's own refusal of the same token reads word for word the same.
 			const rest = details.filter((d) => d !== message);
 			return {
@@ -724,6 +757,7 @@ export class IntegrationsService implements OnModuleInit {
 				rejected: true,
 				error: message,
 				details: [message, ...rest],
+				errorKind: "token-rejected",
 			};
 		}
 		if (details.length === 0)
@@ -735,17 +769,23 @@ export class IntegrationsService implements OnModuleInit {
 				],
 			};
 		if (rejected)
-			return { success: false, rejected: true, error: rejected, details };
+			return {
+				success: false,
+				rejected: true,
+				error: said("token-rejected"),
+				details,
+				errorKind: "token-rejected",
+			};
 		const [failed] = failures;
 		return failed
-			? { success: false, error: failed, details }
+			? { success: false, error: said(failed), details, errorKind: failed }
 			: { success: true, details };
 	}
 
 	private async lsRemoteMatching(token: HostToken): Promise<{
 		details: string[];
-		rejected: string | null;
-		failures: string[];
+		rejected: boolean;
+		failures: GitErrorKind[];
 	}> {
 		const rows = await this.prisma.repository.findMany({
 			where: { sourceKind: "url" },
@@ -770,8 +810,8 @@ export class IntegrationsService implements OnModuleInit {
 		};
 		const cred = new GitCredential(display, token.token, { host: token.host });
 		const details: string[] = [];
-		const failures: string[] = [];
-		let rejected: string | null = null;
+		const failures: GitErrorKind[] = [];
+		let rejected = false;
 		for (let i = 0; i < targets.length; i += TEST_CONCURRENCY) {
 			const batch = targets.slice(i, i + TEST_CONCURRENCY);
 			details.push(
@@ -805,16 +845,16 @@ export class IntegrationsService implements OnModuleInit {
 								tokenExpiresAt: token.tokenExpiresAt,
 								sshAuthSockSet: !!process.env.SSH_AUTH_SOCK,
 							});
-							const text = fixedGitFailureText(
-								failure,
-								token.host,
-								repoPath(url),
-							);
+							const kind = gitErrorKind(failure.code);
 							// Any host's refusal reads CREDENTIALS_INVALID, not only github.com's API one.
-							if (failure.code === "token-rejected") rejected ??= text;
-							if (failure.code !== "no-access" || pinned.has(url))
-								failures.push(text);
-							return text;
+							if (kind === "token-rejected") rejected = true;
+							if (kind !== "no-access" || pinned.has(url)) failures.push(kind);
+							return (
+								gitErrorSentence(kind, {
+									host: token.host,
+									label: token.label,
+								}) ?? ""
+							);
 						}
 					}),
 				)),
@@ -1040,9 +1080,9 @@ export class IntegrationsService implements OnModuleInit {
 				hasOverride: !!override,
 				overrideId: override?.id,
 				priority: override?.priority,
-				globalConfig: connectionConfig,
-				serviceConfig,
-				effectiveConfig: serviceConfig ?? connectionConfig,
+				globalConfig: withShownAddress(connectionConfig),
+				serviceConfig: withShownAddress(serviceConfig),
+				effectiveConfig: withShownAddress(serviceConfig ?? connectionConfig),
 			});
 		}
 

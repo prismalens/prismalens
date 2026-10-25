@@ -75,40 +75,58 @@ export function formatDay(d: Date): string {
 	return d.toISOString().slice(0, 10);
 }
 
-const GIT_TEXT: RegExp[] = [
-	/^Token "[^\n]*" expired on \d{4}-\d{2}-\d{2}\. Replace it in Settings → Integrations\.$/,
-	/^\S+ rejected token "[^\n]*"(?: \(fp [^\s)]*\))?\. It was revoked or mistyped; replace it\.$/,
-	/^Token "[^\n]*" can't see [^\n]+: it doesn't exist or the token has no access to it\. Check the URL or grant the repository on the token\.$/,
-	/^Could not reach \S+\.$/,
-	/^git could not read [^\n]+\.$/,
-	/^This connection has no host or token\.$/,
-	/^the check failed$/,
-];
-const GIT_DETAIL: RegExp[] = [
-	/^ok [^\n]+$/,
-	/^No repository on \S+ yet\. Add one to a service, then test again\.$/,
+/** What a git token connection stores: a code, never text; its sentence is built when shown (#848). */
+export type GitErrorKind =
+	| "token-expired"
+	| "token-rejected"
+	| "no-access"
+	| "unreachable"
+	| "other"
+	| "no-token"
+	| "failed";
+
+const GIT_ERROR_KINDS: readonly string[] = [
+	"token-expired",
+	"token-rejected",
+	"no-access",
+	"unreachable",
+	"other",
+	"no-token",
+	"failed",
 ];
 
-/** The git token texts PrismaLens writes; anything else, such as a row from before this, reads as a plain failure (#848). */
-export function gitFailureText(text: string): string {
-	return GIT_TEXT.some((re) => re.test(text)) ? text : "the check failed";
+export function gitErrorKind(code: string): GitErrorKind {
+	return GIT_ERROR_KINDS.includes(code) ? (code as GitErrorKind) : "failed";
 }
 
-/** A git token Test line: ok, untested, or a failure text. */
-export function gitDetailText(line: string): string {
-	return GIT_DETAIL.some((re) => re.test(line)) ? line : gitFailureText(line);
-}
+const GIT_HOST = /^[a-z0-9.-]+(?::\d{1,5})?$/i;
 
-/** The failure's text, with the two codes that carry git's own stderr line given a fixed sentence. */
-export function fixedGitFailureText(
-	failure: GitFailure,
-	host: string,
-	repo: string,
-): string {
-	if (failure.code === "unreachable") return `Could not reach ${host}.`;
-	return failure.code === "other"
-		? `git could not read ${repo}.`
-		: failure.message;
+/** The sentence for a stored code, from the token's own host and label only; no repository is named. Null for an unknown code. */
+export function gitErrorSentence(
+	kind: string | undefined,
+	token: { host: string | null; label: string },
+): string | null {
+	const host =
+		token.host && GIT_HOST.test(token.host) ? token.host : "the git host";
+	const label = token.label.replace(/\s+/g, " ");
+	switch (kind) {
+		case "token-expired":
+			return `Token "${label}" has expired. Replace it in Settings → Integrations.`;
+		case "token-rejected":
+			return `${host} rejected token "${label}". It was revoked or mistyped; replace it.`;
+		case "no-access":
+			return `Token "${label}" can't see a repository on ${host}: it doesn't exist or the token has no access to it. Check the URL or grant the repository on the token.`;
+		case "unreachable":
+			return `Could not reach ${host}.`;
+		case "other":
+			return `git could not read a repository on ${host}.`;
+		case "no-token":
+			return "This connection has no host or token.";
+		case "failed":
+			return "the check failed";
+		default:
+			return null;
+	}
 }
 
 /** git's own message prefixes under `LC_ALL=C`, matched in table order (plan §1.4, #673). */

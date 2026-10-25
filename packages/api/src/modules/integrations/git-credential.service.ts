@@ -26,7 +26,6 @@ import {
 	formatDay,
 	GitFailure,
 	type GitFailureCode,
-	gitFailureText,
 } from "../../core/harness/git-failure.js";
 import {
 	effectiveGitUrl,
@@ -39,6 +38,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
 import { IntegrationsService } from "./integrations.service.js";
+import { shownError } from "./source-query.js";
 
 export {
 	GitCredential,
@@ -386,7 +386,7 @@ export class GitCredentialService {
 					};
 				const why = expired(picked)
 					? `expired on ${formatDay(picked.tokenExpiresAt as Date)}`
-					: `in error: ${picked.lastErrorMessage ? gitFailureText(picked.lastErrorMessage) : picked.status}`;
+					: `in error: ${shownError(picked.lastErrorMessage, { git: picked }) ?? picked.status}`;
 				const message = `Pinned token ${picked.label} is ${why}; replace it or set Auto.`;
 				if (mode === "use")
 					throw new GitFailure(
