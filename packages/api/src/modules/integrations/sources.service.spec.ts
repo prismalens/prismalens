@@ -159,6 +159,49 @@ describe("SourcesService (#848 C17)", () => {
 		});
 	});
 
+	describe("a URL with user:pass@ never leaves in a response (#848)", () => {
+		it("overview redacts a stored address and its last error", async () => {
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{
+					id: "conn-userinfo",
+					label: "Prom",
+					status: "ERROR",
+					tokenExpiresAt: null,
+					testedAt: null,
+					lastErrorMessage: "fetch failed: https://user:sentinel@prom.example/-/ready",
+					connectionConfig: { baseUrl: "https://user:sentinel@prom.example:9090" },
+					integration: { templateId: "prometheus", label: "Prometheus" },
+					serviceMappings: [],
+				},
+			]);
+			mockIntegrations.baseUrlOf.mockImplementation((c: any) => c.connectionConfig.baseUrl);
+
+			const overview = await service.overview({});
+
+			expect(overview.sources[0]?.address).toBe("https://prom.example:9090");
+			expect(overview.sources[0]?.problem).toBe("cant-reach");
+			expect(JSON.stringify(overview)).not.toContain("sentinel");
+		});
+
+		it("a probe failure does not echo the draft URL's credentials", async () => {
+			const { sourceRequestFn } = await import("./source-request.js");
+			vi.mocked(sourceRequestFn).mockReturnValue(async () => {
+				throw new TypeError(
+					"Request cannot be constructed from a URL that includes credentials: https://user:sentinel@prom.example/-/ready",
+				);
+			});
+
+			const report = await service.test({
+				type: "prometheus",
+				url: "https://user:sentinel@prom.example",
+				credential: { kind: "none" },
+			} as any);
+
+			expect(report.ok).toBe(false);
+			expect(JSON.stringify(report)).not.toContain("sentinel");
+		});
+	});
+
 	describe("POST /sources/test (draft probe)", () => {
 		it("a draft probe saves nothing and reports ok on 200", async () => {
 			const { sourceRequestFn } = await import("./source-request.js");
