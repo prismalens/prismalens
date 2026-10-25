@@ -34,8 +34,11 @@ export const ROWS = [
 		npm: "@agentclientprotocol/codex-acp",
 		bin: "codex-acp",
 		args: [],
-		// Like dcode, codex refuses `session/new` with no key; this one never reaches a model (#914).
-		env: { OPENAI_API_KEY: "probe-no-model", CODEX_API_KEY: "probe-no-model" },
+		// codex-acp signs in with this key only through DEFAULT_AUTH_REQUEST; it never reaches a model (#914).
+		env: {
+			CODEX_API_KEY: "probe-no-model",
+			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
+		},
 		home: "CODEX_HOME",
 	},
 	{
