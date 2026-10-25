@@ -140,11 +140,6 @@ export function AddSourceButton() {
  * panel beside the table (a sheet below 1280 px).
  */
 export function SourcesSettings({ source }: { source?: string }) {
-	// Keyed: a source reached through history selects and opens afresh (#848).
-	return <SourcesPage key={source ?? ""} source={source} />;
-}
-
-function SourcesPage({ source }: { source?: string }) {
 	const { data, isLoading, isError, refetch } = useSourcesOverview();
 	const { data: connections } = useConnections();
 	const remove = useDeleteConnection();
@@ -152,6 +147,12 @@ function SourcesPage({ source }: { source?: string }) {
 	const [deleting, setDeleting] = useState<string | null>(null);
 	const [adding, setAdding] = useState<string | null>(null);
 	const [selected, setSelected] = useState<string | null>(source ?? null);
+	// A source reached through history selects afresh; an open edit keeps its draft (#848).
+	const [shownSource, setShownSource] = useState(source);
+	if (source !== shownSource) {
+		setShownSource(source);
+		setSelected(source ?? null);
+	}
 	const items = useMemo(
 		() => sourceItems(data?.sources ?? [], data?.gitHosts ?? []),
 		[data],
@@ -306,6 +307,11 @@ function SourceList({
 	const [open, setOpen] = useState<Set<string>>(
 		() => new Set(initialOpen ? [initialOpen] : []),
 	);
+	const [shownOpen, setShownOpen] = useState(initialOpen);
+	if (initialOpen !== shownOpen) {
+		setShownOpen(initialOpen);
+		setOpen(new Set(initialOpen ? [initialOpen] : []));
+	}
 	useEffect(() => {
 		if (initialOpen)
 			document

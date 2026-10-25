@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { GitHostView, SourceRow } from "@prismalens/contracts/schemas";
+import type {
+	AuthTemplateResponse,
+	ConnectionWithIntegration,
+	GitHostView,
+	SourceRow,
+} from "@prismalens/contracts/schemas";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +21,11 @@ import { SourcesSettings } from "./SourcesSettings";
 const mockData = {
 	sources: [] as SourceRow[],
 	gitHosts: [] as GitHostView[],
+};
+
+const mockHooks = {
+	connections: [] as ConnectionWithIntegration[],
+	templates: [] as AuthTemplateResponse[],
 };
 
 const pinMutate = vi.fn();
@@ -45,13 +55,14 @@ vi.mock("@/lib/api/orpc-client", () => ({
 
 vi.mock("@/lib/api/hooks/use-sources-orpc", () => ({
 	useSourcesOverview: () => ({
-		data: mockData,
+		// A fresh object, as a refetch gives, so swapping the rows reaches the memo.
+		data: { ...mockData },
 		isError: false,
 		isPending: false,
 		refetch: vi.fn(),
 	}),
 	useSourcesPreRun: () => ({
-		data: { envFallback: [] },
+		data: { kinds: [] },
 	}),
 	useSetRepositoryCredential: () => ({
 		mutate: pinMutate,
@@ -77,8 +88,8 @@ vi.mock("@/lib/api/hooks/use-sources-orpc", () => ({
 
 vi.mock("@/lib/api/hooks", () => ({
 	useIntegrations: () => ({ data: [] }),
-	useTemplates: () => ({ data: [] }),
-	useConnections: () => ({ data: [] }),
+	useTemplates: () => ({ data: mockHooks.templates }),
+	useConnections: () => ({ data: mockHooks.connections }),
 	useDeleteConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useCreateConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	useCreateIntegration: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -106,6 +117,8 @@ beforeEach(() => {
 afterEach(async () => {
 	await act(async () => root.unmount());
 	container.remove();
+	mockHooks.connections = [];
+	mockHooks.templates = [];
 	vi.restoreAllMocks();
 });
 
@@ -286,6 +299,89 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 				root.render(createElement(SourcesSettings, { source })),
 			);
 		expect(selectedRows()).toEqual(["Prometheus 6"]);
+	});
+
+	it("keeps an open edit and its draft when the source changes (#848)", async () => {
+		const row = (i: number): SourceRow => ({
+			connectionId: `s-${i}`,
+			kind: "prometheus",
+			label: `Prometheus ${i}`,
+			address: `http://localhost:${9090 + i}`,
+			status: "ACTIVE",
+			testedAt: "2026-10-25T00:00:00Z",
+			problem: null,
+			lastErrorMessage: null,
+			credential: "none",
+			alsoInAlertIntake: false,
+			usedBy: [],
+		});
+		mockData.gitHosts = [];
+		mockData.sources = [0, 1, 2].map(row);
+		mockHooks.templates = [
+			{
+				id: "prometheus",
+				name: "Prometheus",
+				version: "1.0",
+				category: "metrics",
+				authMode: "basic",
+				hasOAuth: false,
+				authModeLabel: "Basic",
+				connectionCreationMode: "form",
+				postCreationAction: "none",
+				connectionFields: [
+					{ name: "baseUrl", label: "Address", type: "string" },
+				],
+			},
+		];
+		mockHooks.connections = [
+			{
+				id: "s-1",
+				integrationId: "i-1",
+				label: "Prometheus 1",
+				status: "ACTIVE",
+				tokenExpiresAt: null,
+				grantedScopes: [],
+				lastUsedAt: null,
+				lastRefreshedAt: null,
+				lastErrorMessage: null,
+				lastErrorAt: null,
+				consecutiveErrors: 0,
+				createdAt: "2026-10-25T00:00:00Z",
+				updatedAt: "2026-10-25T00:00:00Z",
+				baseUrl: "http://localhost:9091",
+				templateId: "prometheus",
+			},
+		];
+		await act(async () =>
+			root.render(createElement(SourcesSettings, { source: "s-1" })),
+		);
+		const edit = container.querySelector<HTMLButtonElement>(
+			'[data-testid="source-edit"]',
+		);
+		await act(async () => edit?.click());
+		const address = () =>
+			document.getElementById("cred-baseUrl") as HTMLInputElement | null;
+		const input = address();
+		expect(input?.value).toBe("http://localhost:9091");
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(
+				HTMLInputElement.prototype,
+				"value",
+			)?.set?.call(input, "http://draft:9091");
+			input?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		expect(address()?.value).toBe("http://draft:9091");
+
+		await act(async () =>
+			root.render(createElement(SourcesSettings, { source: "s-2" })),
+		);
+		expect(address()?.value).toBe("http://draft:9091");
+		const open = Array.from(
+			container.querySelectorAll('[data-testid="source-row"]'),
+		).filter((r) => r.querySelector('[data-testid="source-detail"]'));
+		expect(open.map((r) => r.getAttribute("data-source"))).toEqual([
+			"Prometheus 2",
+		]);
 	});
 
 	it("renders pick-token-select for unpinned repositories (case 8)", async () => {
