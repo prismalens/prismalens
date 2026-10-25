@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { randomUUID } from "node:crypto";
 /**
  * A local-folder run works in a `git worktree` of the user's repo under
  * `<app-data>/worktrees/pl-<run>`, so the trust the user gave that repo in their
@@ -48,7 +49,8 @@ function git(
 }
 
 /**
- * Checks `commit` out at `dest` as a detached, locked worktree of `source`.
+ * Checks `commit` out at `dest` as a detached, locked worktree of `source`; answers the lock reason,
+ * which names this attempt so a late release never removes a later re-add at `dest`.
  * `--no-checkout` then `reset` keeps the user's `post-checkout` hook from firing.
  */
 export async function addRunWorktree(
@@ -57,7 +59,8 @@ export async function addRunWorktree(
 	commit: string,
 	runId: string,
 	signal?: AbortSignal,
-): Promise<void> {
+): Promise<string> {
+	const reason = `${LOCK_REASON}${runId} ${randomUUID().slice(0, 8)}`;
 	await releaseWorktree(dest);
 	rmSync(dest, { recursive: true, force: true });
 	mkdirSync(dirname(dest), { recursive: true });
@@ -83,15 +86,12 @@ export async function addRunWorktree(
 			dest,
 			signal,
 		);
-		await git(
-			["worktree", "lock", "--reason", `${LOCK_REASON}${runId}`, dest],
-			source,
-			signal,
-		);
+		await git(["worktree", "lock", "--reason", reason, dest], source, signal);
 	} catch (err) {
 		await releaseWorktree(dest);
 		throw err;
 	}
+	return reason;
 }
 
 /** The admin dir `<repo>/.git/worktrees/<id>` a linked worktree's `.git` file points at, or null. */
@@ -109,7 +109,10 @@ function adminDirOf(dir: string): string | null {
  * Unlocks, removes and prunes the worktree at `dir` when it is unlocked or held
  * by a PrismaLens run; anything else is left alone. True when it is gone.
  */
-export async function releaseWorktree(dir: string): Promise<boolean> {
+export async function releaseWorktree(
+	dir: string,
+	onlyLock?: string,
+): Promise<boolean> {
 	const admin = adminDirOf(dir);
 	if (!admin) return !existsSync(dir);
 	const lockFile = join(admin, "locked");
@@ -117,6 +120,7 @@ export async function releaseWorktree(dir: string): Promise<boolean> {
 		? readFileSync(lockFile, "utf8").trim()
 		: null;
 	if (lock !== null && !lock.startsWith(LOCK_REASON)) return false;
+	if (onlyLock !== undefined && lock !== onlyLock) return false;
 	let common: string;
 	try {
 		common = resolve(
@@ -152,14 +156,18 @@ export async function releaseWorktree(dir: string): Promise<boolean> {
  * Releases `dir` if it is a worktree, else every worktree directly inside it,
  * then deletes what is left. A worktree locked by someone else keeps `dir`.
  */
-export async function releaseWorktreesIn(dir: string): Promise<void> {
+export async function releaseWorktreesIn(
+	dir: string,
+	onlyLock?: string,
+): Promise<void> {
 	if (!existsSync(dir)) return;
 	let kept = false;
-	if (adminDirOf(dir)) kept = !(await releaseWorktree(dir));
+	if (adminDirOf(dir)) kept = !(await releaseWorktree(dir, onlyLock));
 	else
 		for (const entry of readdirSync(dir, { withFileTypes: true }))
 			if (entry.isDirectory() && adminDirOf(join(dir, entry.name)))
-				kept = !(await releaseWorktree(join(dir, entry.name))) || kept;
+				kept =
+					!(await releaseWorktree(join(dir, entry.name), onlyLock)) || kept;
 	if (!kept) rmSync(dir, { recursive: true, force: true });
 }
 

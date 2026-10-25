@@ -460,6 +460,27 @@ describe("repo-source.service", () => {
 			expect(git(["worktree", "list", "--porcelain"], src).match(/prismalens run run4/g)).toHaveLength(1);
 		});
 
+		it("a late release of an earlier attempt leaves the worktree a follow-up re-added at the same path (#918)", async () => {
+			const src = tmp("pl-src-");
+			const head = initRepo(src);
+			const service = new RepoSourceService();
+			const dest = runWorktreeDir("run7");
+			const first = await service.snapshot({ kind: "folder", source: src }, dest, undefined, undefined, "run7");
+			const again = await service.snapshot({ kind: "folder", source: src }, dest, undefined, head, "run7");
+			expect(first.lock).toMatch(/^prismalens run run7 /);
+			expect(again.lock).not.toBe(first.lock);
+
+			await releaseWorktreesIn(first.path, first.lock);
+
+			expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("v1");
+			expect(git(["worktree", "list", "--porcelain"], src)).toContain(`locked ${again.lock}`);
+
+			await releaseWorktreesIn(again.path, again.lock);
+
+			expect(existsSync(dest)).toBe(false);
+			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("prismalens run run7");
+		});
+
 		it("three folders of one git repo check out at once, as the run's budget does, while another run is released (#918)", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);

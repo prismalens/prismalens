@@ -1766,9 +1766,17 @@ function untilAborted<T>(
 	return raced.finally(() => signal.removeEventListener("abort", onAbort));
 }
 
-/** A checkout that finished after the run stopped waiting: its worktree is unlocked and removed now. */
-function releaseLate({ snap }: { snap: { path: string } }): void {
-	releaseWorktreesIn(snap.path).catch((e) =>
+/**
+ * A worktree that finished after the run stopped waiting is unlocked and removed now, unless a
+ * later attempt re-added that path. A late URL clone has no lock, so the run's end removes it.
+ */
+function releaseLate({
+	snap,
+}: {
+	snap: { path: string; lock?: string };
+}): void {
+	if (!snap.lock) return;
+	releaseWorktreesIn(snap.path, snap.lock).catch((e) =>
 		logger.warn(`Could not release the late checkout ${snap.path}`, e),
 	);
 }

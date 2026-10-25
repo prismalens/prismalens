@@ -60,6 +60,8 @@ export interface Snapshot {
 	path: string;
 	head: string;
 	branch: string | null;
+	/** A folder's worktree: the lock reason naming this attempt (#918). */
+	lock?: string;
 }
 
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
@@ -200,10 +202,17 @@ export class RepoSourceService {
 		runId?: string,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
+		let lock: string | undefined;
 		if (src.kind === "folder") {
 			const commit = at ?? (await this.headOf(src.source)).head;
 			try {
-				await addRunWorktree(src.source, dest, commit, runId ?? dest, signal);
+				lock = await addRunWorktree(
+					src.source,
+					dest,
+					commit,
+					runId ?? dest,
+					signal,
+				);
 			} catch (err) {
 				if (signal?.aborted) throw signal.reason;
 				throw err instanceof Error ? new Error(err.message) : err;
@@ -213,7 +222,7 @@ export class RepoSourceService {
 		this.logger.log(
 			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}`,
 		);
-		return { path: dest, ...check };
+		return { path: dest, ...check, ...(lock ? { lock } : {}) };
 	}
 
 	private async cloneMirror(
