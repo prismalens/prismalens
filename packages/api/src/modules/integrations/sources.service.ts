@@ -53,29 +53,61 @@ export function sourceProblem(
 const isQueryKind = (t: string): t is QueryKind =>
 	(QUERY_KINDS as readonly string[]).includes(t);
 
-/** Userinfo, query and fragment dropped from every URL in `text`; a legacy address may carry a secret in any of them (#848). */
-export const withoutUserinfo = (text: string): string => {
-	if (!/\s/.test(text)) {
-		try {
-			const u = new URL(text);
-			if (/^[a-z][a-z0-9+.-]*:[/\\]+/i.test(text) && u.host) {
-				const bare = u.pathname === "/" && !/\/[?#]|\/$/.test(text);
-				u.username = u.password = u.search = u.hash = "";
-				return bare ? u.href.replace(/\/$/, "") : u.href;
-			}
-		} catch {
-			// not one URL: scrub the text below
-		}
+const UNSHOWN_ADDRESS = "an address PrismaLens cannot show";
+const MAX_TEXT = 2_000;
+const EDGE_PUNCT = "()[]<>\"',.;!";
+
+const parseUrl = (text: string): URL | null => {
+	try {
+		const u = new URL(text);
+		return u.host ? u : null;
+	} catch {
+		return null;
 	}
-	return text
-		.replace(/([a-z][a-z0-9+.-]*:[/\\]+)[^/\\?#\n]*@/gi, "$1")
-		.replace(/([a-z][a-z0-9+.-]*:[/\\]+[^\s?#]*)[?#]\S*/gi, "$1");
 };
 
+function shown(u: URL, original: string): string {
+	const bare = u.pathname === "/" && !/\/[?#]|\/$/.test(original);
+	u.username = u.password = u.search = u.hash = "";
+	return bare ? u.href.replace(/\/$/, "") : u.href;
+}
+
+/** Fail closed: an address that does not parse is never echoed (#848). */
+export function redactAddress(text: string): string {
+	const trimmed = text.trim();
+	const u = parseUrl(trimmed);
+	return u ? shown(u, trimmed) : UNSHOWN_ADDRESS;
+}
+
+function redactToken(token: string): string {
+	let start = 0;
+	let end = token.length;
+	while (start < end && EDGE_PUNCT.includes(token[start] as string)) start++;
+	while (end > start && EDGE_PUNCT.includes(token[end - 1] as string)) end--;
+	const core = token.slice(start, end);
+	const relative = core.startsWith("//");
+	if (!relative && !/[@?#]|:\/\//.test(core)) return token;
+	const u = parseUrl(relative ? `https:${core}` : core);
+	const out = u ? shown(u, core) : "[redacted]";
+	return (
+		token.slice(0, start) +
+		(u && relative ? out.replace(/^https:/, "") : out) +
+		token.slice(end)
+	);
+}
+
+/** Message text with every URL-like token parsed and cleaned; linear, 2,000 characters at most (#848). */
+export const redactText = (text: string): string =>
+	text
+		.slice(0, MAX_TEXT)
+		.split(/(\s+)/)
+		.map((part, i) => (i % 2 ? part : redactToken(part)))
+		.join("");
+
 function errorText(err: unknown): string {
-	if (!(err instanceof Error)) return withoutUserinfo(String(err));
+	if (!(err instanceof Error)) return redactText(String(err));
 	const code = (err.cause as { code?: unknown } | undefined)?.code;
-	return withoutUserinfo(
+	return redactText(
 		typeof code === "string" ? `${err.message} (${code})` : err.message,
 	);
 }
@@ -121,7 +153,7 @@ export class SourcesService {
 			rows.map(async (row): Promise<SourceRow> => {
 				const kind = row.integration.templateId as QueryKind;
 				const storedUrl = this.integrations.baseUrlOf(row);
-				const address = storedUrl && withoutUserinfo(storedUrl);
+				const address = storedUrl && redactAddress(storedUrl);
 				const read = await this.integrations.sourceCredential(row.id);
 				const vars = envVars(kind);
 				const sameOriginToken =
@@ -150,7 +182,7 @@ export class SourcesService {
 						: {}),
 					problem: sourceProblem(row.status, row.lastErrorMessage, credential),
 					lastErrorMessage: row.lastErrorMessage
-						? withoutUserinfo(row.lastErrorMessage)
+						? redactText(row.lastErrorMessage)
 						: null,
 					usedBy: row.serviceMappings
 						.filter(
@@ -304,7 +336,7 @@ export class SourcesService {
 				need: "required",
 				why: "Checks the token against the repositories your services name.",
 				ok: detail.startsWith("ok "),
-				detail: withoutUserinfo(detail),
+				detail: redactText(detail),
 			})),
 			discovered: {},
 			...(result.untested ? { untested: true } : {}),

@@ -8,7 +8,7 @@ import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { GitCredentialService } from "./git-credential.service.js";
 import type { IntegrationsService } from "./integrations.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
-import { sourceProblem, SourcesService } from "./sources.service.js";
+import { redactAddress, redactText, sourceProblem, SourcesService } from "./sources.service.js";
 
 vi.mock("./source-request.js", () => ({
 	sourceRequestFn: vi.fn(),
@@ -189,6 +189,8 @@ describe("SourcesService (#848 C17)", () => {
 			["a password with an @", "https://user:sen@tinel@prom.example:9090"],
 			["a query credential", "https://prom.example:9090/?api_key=sentinel"],
 			["a fragment credential", "https://prom.example:9090/#sentinel"],
+			["slashless userinfo", "https:user:sentinel@prom.example:9090"],
+			["a slashless query", "https:prom.example?api_key=sentinel"],
 		])("overview redacts %s on the address and in the error text", async (_name, stored) => {
 			mockPrisma.connection.findMany.mockResolvedValue([
 				{
@@ -209,7 +211,52 @@ describe("SourcesService (#848 C17)", () => {
 
 			expect(JSON.stringify(overview)).not.toContain("sentinel");
 			expect(JSON.stringify(overview)).not.toContain("tinel");
-			expect(overview.sources[0]?.address).toMatch(/^https:\/+prom\.example:9090\/?$/);
+			expect(overview.sources[0]?.address).toMatch(/^https:\/+prom\.example(:9090)?\/?$/);
+		});
+
+		it.each([
+			["slashless userinfo", "https:user:sentinel@prom.example:9090", "https://prom.example:9090"],
+			["slashless query", "https:prom.example?api_key=sentinel", "https://prom.example"],
+			["a password with a space", "https://user:sen tinel@prom.example:9090", "https://prom.example:9090"],
+			["an @ in the password", "https://user:sen@tinel@prom.example:9090", "https://prom.example:9090"],
+		])("redactAddress clears %s", (_name, stored, shown) => {
+			expect(redactAddress(stored)).toBe(shown);
+		});
+
+		it.each(["//user:sentinel@prom.example", "user:sentinel@prom.example", "not a url sentinel"])(
+			"redactAddress never returns an unparseable address: %s",
+			(stored) => {
+				expect(redactAddress(stored)).toBe("an address PrismaLens cannot show");
+			},
+		);
+
+		it.each([
+			["slashless userinfo", "fetch failed: https:user:sentinel@prom.example:9090 (ECONNREFUSED)"],
+			["slashless query", "fetch failed: https:prom.example?api_key=sentinel."],
+			["scheme-relative userinfo", "fetch failed: //user:sentinel@prom.example/-/ready, retry"],
+			["a password with a space", "fetch failed: https://user:sen tinel@prom.example/-/ready"],
+			["an @ in the password", "fetch failed: (https://user:sen@tinel@prom.example/-/ready)"],
+			["a newline in the userinfo", "fetch failed: https://user:sen\ntinel@prom.example/-/ready"],
+		])("redactText clears %s", (_name, message) => {
+			const out = redactText(message);
+			expect(out).not.toContain("sentinel");
+			expect(out).not.toContain("tinel");
+			expect(out).not.toContain("sen");
+			expect(out.startsWith("fetch failed:")).toBe(true);
+		});
+
+		it("redactText keeps a clean URL and the prose around it", () => {
+			expect(redactText("Could not reach https://prom.example:9090/-/ready (ECONNREFUSED)")).toBe(
+				"Could not reach https://prom.example:9090/-/ready (ECONNREFUSED)",
+			);
+		});
+
+		it("redactText caps long text, so 64 KB finishes in under 50 ms", () => {
+			const long = `fetch failed: https://prom.example/${"a".repeat(65_000)}`;
+			const t0 = performance.now();
+			const out = redactText(long);
+			expect(performance.now() - t0).toBeLessThan(50);
+			expect(out.length).toBeLessThanOrEqual(2_000);
 		});
 
 		it("a probe failure does not echo the draft URL's credentials", async () => {
@@ -234,6 +281,8 @@ describe("SourcesService (#848 C17)", () => {
 			"fetch failed: https://prom.example/-/ready?api_key=sentinel",
 			"fetch failed: https:/user:sentinel@prom.example/-/ready",
 			"fetch failed: https://user:sen tinel@prom.example/-/ready",
+			"fetch failed: https:user:sentinel@prom.example/-/ready",
+			"fetch failed: //user:sentinel@prom.example/-/ready",
 		])("a probe failure redacts %s", async (message) => {
 			const { sourceRequestFn } = await import("./source-request.js");
 			vi.mocked(sourceRequestFn).mockReturnValue(async () => {
