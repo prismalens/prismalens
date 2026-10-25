@@ -1,0 +1,49 @@
+{
+	"row": "length-cutoff",
+	"kind": "negative",
+	"title": "Length cut-off",
+	"run": {
+		"promptTimeoutMs": 40000
+	},
+	"expect": "fault",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:length-cutoff]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:length-cutoff]"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls -la"
+						}
+					}
+				]
+			},
+			"misbehavior": {
+				"faults": [
+					{
+						"fault": "stop-length-mid-tool"
+					}
+				]
+			}
+		}
+	]
+}

@@ -1,0 +1,35 @@
+{
+	"row": "cancel",
+	"kind": "happy",
+	"title": "Cancel mid-tool",
+	"run": {
+		"cancelWhenRunning": "299700"
+	},
+	"expect": "cancelled",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:cancel]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "node -e \"setTimeout(() => {}, 299700)\""
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:cancel]"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

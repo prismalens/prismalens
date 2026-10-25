@@ -1,0 +1,8 @@
+{
+	"row": "not-signed-in",
+	"kind": "happy",
+	"title": "Not signed in",
+	"run": { "signedOut": true },
+	"expect": "error",
+	"fixtures": []
+}

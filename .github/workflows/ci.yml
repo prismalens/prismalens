@@ -419,16 +419,20 @@ jobs:
           node scripts/gate-side-checks.mjs --no-skip --tarball "$(ls tarballs/prismalens-[0-9]*.tgz | head -1)"
 
   harness-admission:
-    # Compatibility run (ADR 0003 §10): the pinned agent is real, its model is the
-    # scripted one in scripts/fakes/fake-model-server.mjs, so a red run means the code
-    # is wrong and the same commit gives the same verdict (#884). The live-model run is
+    # Qualification (ADR 0003 §10, #914): the pinned agent is real, its model is aimock
+    # serving scripts/fakes/scenarios/, so a red run means the code is wrong and the same
+    # commit gives the same verdict (#884). Each leg runs the admission (R1-R9) and the
+    # behaviour matrix 3 times; the runs must agree. The live-model run is
     # `harness-admission-live` below.
     #
-    # REQUIRED: listed in `ci-gate`'s `needs`; the scripted model makes the verdict deterministic (#884).
-    name: Harness admission (${{ matrix.harness }}, scripted model)
+    # REQUIRED for the tier-1 legs (opencode, claude-code, codex): listed in `ci-gate`'s
+    # `needs`. gemini and dcode run on every PR, but a red tier-2 leg leaves the job green
+    # (`continue-on-error`), so it gates nothing (#914 rulings of 2026-10-24).
+    name: Harness admission (${{ matrix.harness }}, aimock)
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
+    continue-on-error: ${{ matrix.tier == 2 }}
     strategy:
       fail-fast: false
       matrix:
@@ -436,13 +440,24 @@ jobs:
           - harness: opencode
             pin: opencode-ai
             binary: opencode
+            tier: 1
           - harness: claude-code
             pin: "@anthropic-ai/claude-code"
             binary: claude
+            tier: 1
           # The adapter is the shipped one (its pin is in agent-adapters); it runs the codex on PATH.
           - harness: codex
             pin: "@openai/codex"
             binary: codex
+            tier: 1
+          - harness: gemini
+            pin: "@google/gemini-cli"
+            binary: gemini
+            tier: 2
+          - harness: deepagents
+            pin: deepagents-code
+            binary: dcode
+            tier: 2
     steps:
       - uses: actions/checkout@v7
         with:
@@ -463,21 +478,30 @@ jobs:
       - name: Build the packages the engine imports
         run: pnpm --filter "@prismalens/contracts..." build
 
+      - name: Setup uv
+        if: matrix.harness == 'deepagents'
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
       - name: Install the pinned agent
-        if: matrix.pin != ''
         env:
           PIN: ${{ matrix.pin }}
           BINARY: ${{ matrix.binary }}
         run: |
           version=$(node -p "require('./scripts/agent-pins.json').pins[process.env.PIN]")
-          npm install -g "$PIN@$version" && "$BINARY" --version
+          if [ "$PIN" = deepagents-code ]; then
+            # deepagents-code needs Python 3.14; uv fetches it.
+            uv tool install --python 3.14 "$PIN==$version" --with deepagents-acp
+          else
+            npm install -g "$PIN@$version"
+          fi
+          "$BINARY" --version
 
       # Codex's bwrap sandbox needs unprivileged user namespaces, which ubuntu-24.04 restricts.
       - name: Allow Codex's sandbox
         if: matrix.harness == 'codex'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      - name: Run the admission (R1-R9) against the scripted model, 3 times
+      - name: Run the admission (R1-R9) and the behaviour matrix against aimock, 3 times
         run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3
 
       # The negative run (#848): with no gateway the model calls no PrismaLens tool, so R8 must fail the gate.
@@ -486,42 +510,10 @@ jobs:
         env:
           ADMISSION_NO_GATEWAY: "1"
         run: |
-          if node scripts/admission-fake.mjs opencode "$GITHUB_WORKSPACE"; then
+          if node scripts/admission-fake.mjs opencode "$GITHUB_WORKSPACE" --only admission; then
             echo "::error::the admission passed with no PrismaLens gateway; R8 is not gating"
             exit 1
           fi
-
-  agent-replay:
-    # Recorded sessions of each agent row replayed through the real engine against
-    # scripts/fakes/acp-replay.mjs in strict mode (#914). A row with no recording on
-    # disk is skipped with the command that records one, so nothing here needs a login.
-    # Advisory until recordings exist for every tier-1 row and it has three greens.
-    name: Agent replay (recorded transcripts)
-    if: github.event_name != 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build the packages the engine imports
-        run: pnpm --filter "@prismalens/engine^..." build
-
-      - name: Replay the transcripts that exist
-        run: pnpm --filter @prismalens/engine test:replay
 
   lint:
     name: Lint (Biome)

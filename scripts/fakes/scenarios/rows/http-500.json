@@ -1,0 +1,37 @@
+{
+	"row": "http-500",
+	"kind": "negative",
+	"title": "HTTP 500",
+	"run": {},
+	"expect": "fault",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:http-500]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:http-500]"
+			},
+			"response": {
+				"error": {
+					"message": "scripted server error",
+					"type": "server_error"
+				},
+				"status": 500
+			}
+		}
+	]
+}

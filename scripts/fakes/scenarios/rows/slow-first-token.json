@@ -1,0 +1,38 @@
+{
+	"row": "slow-first-token",
+	"kind": "negative",
+	"title": "First token slower than the prompt limit",
+	"run": {
+		"promptTimeoutMs": 15000
+	},
+	"expect": "fault",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:slow-first-token]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:slow-first-token]"
+			},
+			"response": {
+				"content": "$report"
+			},
+			"streamingProfile": {
+				"ttft": 45000
+			}
+		}
+	]
+}

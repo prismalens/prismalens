@@ -63,9 +63,5 @@ export function installFakeAgent(
 		session?: string;
 		binaries?: string[];
 		stateDir?: string;
-		/** Play this recording instead of a session script. */
-		replay?: string;
-		/** With `replay`: let a frame the recording lacks pass. */
-		lenient?: boolean;
 	},
 ): string[];

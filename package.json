@@ -30,11 +30,11 @@
 		"pack": "node scripts/pack-cli.mjs",
 		"gate:side-checks": "node scripts/gate-side-checks.mjs",
 		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs",
-		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs",
-		"record:agent": "pnpm --filter @prismalens/engine exec tsx scripts/acp-record.ts"
+		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",
+		"@copilotkit/aimock": "1.46.0",
 		"@lydell/node-pty": "1.1.0",
 		"@types/node": "catalog:",
 		"cross-spawn": "^7.0.6",

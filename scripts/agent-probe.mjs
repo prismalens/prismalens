@@ -46,6 +46,8 @@ export const ROWS = [
 		pip: ["deepagents-code", "deepagents-acp"],
 		bin: "dcode",
 		args: ["--acp", "--no-mcp"],
+		// dcode refuses `initialize` with no provider key; this one never reaches a model (#914).
+		env: { OPENAI_API_KEY: "probe-no-model" },
 	},
 ];
 
@@ -98,17 +100,26 @@ function install(row, version, dir, companion) {
 			},
 		};
 	}
+	// deepagents-code needs Python 3.14, which uv fetches when the runner has none.
 	const venv = join(dir, "venv");
-	run("python3", ["-m", "venv", venv]);
+	run("uv", ["venv", "--quiet", "--python", "3.14", venv]);
 	const bin = join(venv, WINDOWS ? "Scripts" : "bin");
-	run(join(bin, "pip"), [
+	run("uv", [
+		"pip",
 		"install",
 		"--quiet",
+		"--python",
+		join(bin, WINDOWS ? "python.exe" : "python"),
 		...row.pip.map((p, i) => (i === 0 && version ? `${p}==${version}` : p)),
 	]);
 	return {
 		command: join(bin, row.bin),
-		env: { PATH: `${bin}${delimiter}${process.env.PATH}` },
+		env: {
+			PATH: `${bin}${delimiter}${process.env.PATH}`,
+			// Its own empty profile, so no user config or sign-in is read.
+			DEEPAGENTS_HOME: join(dir, "profile"),
+			...row.env,
+		},
 	};
 }
 

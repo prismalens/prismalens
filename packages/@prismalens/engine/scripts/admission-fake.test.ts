@@ -6,8 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-	FAKE_MODEL,
 	agentEnv,
+	FAKE_MODEL,
+	matrixSignature,
+	parseArgs,
 	signature,
 	verdictOf,
 } from "../../../../scripts/admission-fake.mjs";
@@ -195,5 +197,83 @@ describe("admission-fake agentEnv", () => {
 			(k) => k.startsWith("PRISMALENS_") && k !== "PRISMALENS_HARNESS_MODEL",
 		);
 		expect(claudePrismaKeys).toEqual([]);
+	});
+});
+
+describe("admission-fake for the tier-2 agents and the signed-out row (#914)", () => {
+	const model = {
+		url: "http://127.0.0.1:45678",
+		openaiBaseUrl: "http://127.0.0.1:45678/v1",
+	};
+
+	it("points gemini at aimock's Gemini REST from a throwaway home", () => {
+		tempHome = mkdtempSync(join(tmpdir(), "pl-test-home-"));
+		const env = agentEnv("gemini", model, tempHome);
+		expect(env.GOOGLE_GEMINI_BASE_URL).toBe(model.url);
+		expect(env.GEMINI_API_KEY).toBe("scripted");
+		expect(env.GEMINI_CLI_HOME?.startsWith(tempHome)).toBe(true);
+		const settings = JSON.parse(
+			readFileSync(
+				join(env.GEMINI_CLI_HOME as string, ".gemini", "settings.json"),
+				"utf8",
+			),
+		);
+		expect(settings.security.auth.selectedType).toBe("gemini-api-key");
+	});
+
+	it("points dcode's OpenAI provider at aimock from its own profile", () => {
+		tempHome = mkdtempSync(join(tmpdir(), "pl-test-home-"));
+		const env = agentEnv("deepagents", model, tempHome);
+		expect(env.OPENAI_API_KEY).toBe("scripted");
+		const toml = readFileSync(
+			join(env.DEEPAGENTS_HOME as string, "config.toml"),
+			"utf8",
+		);
+		expect(toml).toContain(`base_url = "${model.openaiBaseUrl}"`);
+	});
+
+	it.each(["opencode", "claude-code", "codex", "gemini", "deepagents"])(
+		"leaves %s with no key when signed out, still pointed at aimock",
+		(agent) => {
+			tempHome = mkdtempSync(join(tmpdir(), "pl-test-home-"));
+			const env = agentEnv(agent, model, tempHome, null);
+			for (const key of [
+				"ANTHROPIC_API_KEY",
+				"OPENAI_API_KEY",
+				"GEMINI_API_KEY",
+			])
+				expect(env[key]).toBeUndefined();
+			if (agent === "opencode") {
+				const config = JSON.parse(
+					readFileSync(
+						join(env.XDG_CONFIG_HOME as string, "opencode", "opencode.json"),
+						"utf8",
+					),
+				);
+				expect(config.provider.fake.options.apiKey).toBeUndefined();
+				expect(config.model).toBe(FAKE_MODEL);
+			}
+		},
+	);
+
+	it("reads each matrix row's verdict word", () => {
+		const out = [
+			"ROW cancel: pass [cancelled; 2s]",
+			"ROW http-500: fail (hung) [fault; 200s]",
+			"ROW refusal: n/a (no refusal on this wire)",
+		].join("\n");
+		expect(matrixSignature(out)).toBe("cancel=pass http-500=fail refusal=n/a");
+		expect(matrixSignature("")).toBe("no rows");
+	});
+
+	it("parses the agent, the repeat and the part to run", () => {
+		expect(parseArgs(["gemini", ".", "--repeat", "3", "--only", "matrix"])).toMatchObject({
+			harness: "gemini",
+			repeat: 3,
+			admission: false,
+			matrix: true,
+		});
+		expect(parseArgs(["nope", "."])).toBeNull();
+		expect(parseArgs(["codex", ".", "--only", "both"])).toBeNull();
 	});
 });

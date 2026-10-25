@@ -2,34 +2,44 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The scenarios every supported agent is proven by (#914). The recorder drives
- * a real agent through one with `runScenario`; the replay test drives the same
- * run against its recording, so a recording is only ever replayed by the code
- * that made it.
+ * The behaviour matrix (#914): each row of scripts/fakes/scenarios/rows/ runs the real
+ * engine against the real agent, whose model is the scripted aimock. A row passes on what
+ * the engine observed (events, the files and processes the run left), never on model text.
  */
-import type { AccessLevel } from "@prismalens/config/harness";
+import { execFileSync } from "node:child_process";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
+import type {
+	Expectation,
+	Row,
+} from "../../../../scripts/fakes/scripted-model.mjs";
 import {
 	isCancelledError,
-	type RunInvestigationOptions,
+	prepareRunEnv,
 	runInvestigation,
 } from "../src/run/investigate.js";
-import { denyAllPolicy } from "../src/run/permission.js";
+import {
+	deny,
+	optionOf,
+	type PermissionPolicy,
+} from "../src/run/permission.js";
+import { AcpSession } from "../src/runner/acp-client.js";
+import { parseTranscript } from "./admission-checks.js";
 
-export const SCENARIOS = [
-	"report",
-	"tool-call",
-	"permission-declined",
-	"cancel",
-	"error",
-	"not-signed-in",
-] as const;
-export type ScenarioName = (typeof SCENARIOS)[number];
-
-export const SCENARIO_RUN_ID = "00000000-0000-4000-8000-0000000000a1";
+export const ROW_RUN_ID = "00000000-0000-4000-8000-0000000000a1";
+const DEFAULT_PROMPT_MS = 120_000;
 
 const CONTEXT: InvestigationContext = {
 	alerts: [
@@ -39,7 +49,7 @@ const CONTEXT: InvestigationContext = {
 			labels: { service: "scenario" },
 			annotations: {
 				description:
-					"Synthetic alert for the recorded-scenario run. Find the repository's main entry point and name the file.",
+					"Synthetic alert for the behaviour matrix. Find the repository's main entry point and name the file.",
 			},
 			startsAt: "2026-01-01T00:00:00.000Z",
 		},
@@ -47,117 +57,268 @@ const CONTEXT: InvestigationContext = {
 	service: { name: "scenario" },
 };
 
-interface Plan {
-	accessLevel: AccessLevel;
-	promptSuffix?: string;
-	/** A model id no agent offers: the run must refuse it. */
-	model?: string;
-	/** Aborts the run when this event arrives. */
-	abortOn?: (ev: CanonicalEvent) => boolean;
-	/** The recorder starts the agent with no key and an empty home. */
-	signedOut?: boolean;
-}
+/** The person at the run's card: allows each ask once, or refuses it. */
+const answerPolicy =
+	(answer: "allow" | "deny"): PermissionPolicy =>
+	(req) => {
+		const allow = optionOf(req, "allow");
+		return answer === "allow" && allow
+			? { allow: true, optionId: allow.optionId, outcome: "approved" }
+			: deny(req, "denied", "the matrix row refuses every ask");
+	};
 
-const PLANS: Record<ScenarioName, Plan> = {
-	report: { accessLevel: "auto" },
-	"tool-call": {
-		accessLevel: "auto",
-		promptSuffix:
-			"Run `ls` once in the repository before you answer, and cite its output.",
-	},
-	"permission-declined": {
-		accessLevel: "supervised",
-		promptSuffix:
-			"Create a file named SCENARIO_NOTES.txt containing the word done, then report.",
-	},
-	cancel: {
-		accessLevel: "auto",
-		promptSuffix:
-			"List every file in the repository recursively and read each one before you answer.",
-		abortOn: (ev) => ev.kind === "agent_step" || ev.kind === "tool_result",
-	},
-	error: { accessLevel: "auto", model: "scenario-no-such-model" },
-	"not-signed-in": { accessLevel: "auto", signedOut: true },
-};
-
-export const needsSignedOutAgent = (name: ScenarioName): boolean =>
-	PLANS[name].signedOut === true;
-
-export type ScenarioBase = Pick<
-	RunInvestigationOptions,
-	"harness" | "cwd" | "runDir" | "env" | "descriptor"
->;
-
-export interface ScenarioRun {
+/** What one row left behind, for `checkRow`. */
+export interface RowObservation {
 	events: CanonicalEvent[];
-	drift: string[];
+	elapsedMs: number;
+	/** The agent answered a request on the wire, so a failure is not a launch failure. */
+	agentSpoke: boolean;
+	/** Files the row's shell step may have written, by name. */
+	files: Record<string, boolean>;
+	/** The cancelled tool's process outlived the run. */
+	orphan?: boolean;
+	/** The tool to cancel never started. */
+	neverRan?: boolean;
+	/** The run outlived the row's whole budget and was stopped. */
+	hung?: boolean;
+	session?: { modes: string[]; models: string[] };
 }
 
-/** Runs the real engine through one scenario against whatever agent `base` names. */
-export async function runScenario(
-	name: ScenarioName,
-	base: ScenarioBase,
-): Promise<ScenarioRun> {
-	const plan = PLANS[name];
-	const controller = new AbortController();
-	const events: CanonicalEvent[] = [];
-	const drift: string[] = [];
-	for await (const ev of runInvestigation({
-		...base,
-		runId: SCENARIO_RUN_ID,
-		context: CONTEXT,
-		accessLevel: plan.accessLevel,
-		...(plan.promptSuffix ? { promptSuffix: plan.promptSuffix } : {}),
-		...(plan.model ? { model: plan.model } : {}),
-		permission: denyAllPolicy,
-		sandboxCheck: async () => ({}),
+export interface RowEnv {
+	harness: HarnessId;
+	env: NodeJS.ProcessEnv;
+	/** The same agent with no key and an empty home. */
+	signedOutEnv: NodeJS.ProcessEnv;
+}
+
+/** Command lines of every process on this machine. */
+function commandLines(): string[] {
+	const out =
+		process.platform === "win32"
+			? execFileSync(
+					"powershell",
+					[
+						"-NoProfile",
+						"-Command",
+						"Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }",
+					],
+					{ encoding: "utf8" },
+				)
+			: execFileSync("ps", ["-eo", "args="], { encoding: "utf8" });
+	return out.split(/\r?\n/);
+}
+const running = (needle: string): boolean =>
+	commandLines().some((line) => line.includes(needle));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function openSession(
+	harness: HarnessId,
+	cwd: string,
+	runDir: string,
+	env: NodeJS.ProcessEnv,
+): Promise<{ modes: string[]; models: string[] }> {
+	const {
+		env: runEnvVars,
+		runEnv,
+		launch,
+	} = prepareRunEnv({
+		harness,
+		cwd,
+		runDir,
+		env,
+	});
+	const acp = new AcpSession({
+		command: launch.command,
+		args: [...launch.args, ...HARNESS_REGISTRY[harness].acpArgs(runEnv)],
+		cwd,
+		env: runEnvVars,
+		permission: answerPolicy("deny"),
 		initTimeoutMs: 60_000,
-		promptTimeoutMs: 180_000,
-		signal: controller.signal,
-		onHarnessDrift: (message) => drift.push(message),
-	})) {
-		events.push(ev);
-		if (plan.abortOn?.(ev)) controller.abort();
+	});
+	try {
+		await acp.open();
+		return {
+			modes: acp.offeredModes.map((m) => m.id),
+			models: acp.models.map((m) => m.id),
+		};
+	} finally {
+		await acp.close();
 	}
-	return { events, drift };
 }
 
-/** What the scenario must have produced, or the reason it did not. */
-export function checkScenario(
-	name: ScenarioName,
-	run: ScenarioRun,
+/** Runs one row through the engine in a fresh workspace. */
+export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
+	const workspace = mkdtempSync(join(tmpdir(), "pl-matrix-ws-"));
+	const runDir = mkdtempSync(join(tmpdir(), "pl-matrix-run-"));
+	writeFileSync(join(workspace, "README.md"), "# scenario\n");
+	writeFileSync(
+		join(workspace, "package.json"),
+		'{ "name": "scenario", "main": "index.js" }\n',
+	);
+	const started = Date.now();
+	const env = row.run.signedOut ? base.signedOutEnv : base.env;
+	const transcript = join(runDir, "transcript.jsonl");
+	const agentSpoke = () =>
+		existsSync(transcript) &&
+		parseTranscript(readFileSync(transcript, "utf8")).some(
+			(l) => l.d === "in" && l.m.includes('"result"'),
+		);
+	const files = () =>
+		Object.fromEntries(
+			["scenario-allowed.txt", "scenario-declined.txt"].map((f) => [
+				f,
+				existsSync(join(workspace, f)),
+			]),
+		);
+	try {
+		if (row.run.sessionOnly) {
+			const session = await openSession(base.harness, workspace, runDir, env);
+			return {
+				events: [],
+				elapsedMs: Date.now() - started,
+				agentSpoke: true,
+				files: {},
+				session,
+			};
+		}
+		const promptMs = row.run.promptTimeoutMs ?? DEFAULT_PROMPT_MS;
+		const controller = new AbortController();
+		let hung = false;
+		// A first prompt, the report retry and a margin: past that the run is hung.
+		const watchdog = setTimeout(
+			() => {
+				hung = true;
+				controller.abort();
+			},
+			60_000 + 3 * promptMs,
+		);
+		const needle = row.run.cancelWhenRunning;
+		let sawTool = false;
+		const poll = needle
+			? setInterval(() => {
+					if (!sawTool && running(needle)) {
+						sawTool = true;
+						controller.abort();
+					}
+				}, 500)
+			: undefined;
+		const events: CanonicalEvent[] = [];
+		try {
+			for await (const ev of runInvestigation({
+				harness: base.harness,
+				runId: ROW_RUN_ID,
+				context: CONTEXT,
+				accessLevel: row.run.accessLevel ?? "auto",
+				cwd: workspace,
+				runDir,
+				env,
+				permission: answerPolicy(row.run.answer ?? "deny"),
+				promptSuffix: `[row:${row.row}] Follow the scripted steps, then report.`,
+				sandboxCheck: async () => ({}),
+				initTimeoutMs: 60_000,
+				promptTimeoutMs: promptMs,
+				signal: controller.signal,
+			}))
+				events.push(ev);
+		} finally {
+			clearTimeout(watchdog);
+			if (poll) clearInterval(poll);
+		}
+		let orphan: boolean | undefined;
+		if (needle && sawTool) {
+			orphan = true;
+			for (let i = 0; i < 20 && orphan; i++) {
+				orphan = running(needle);
+				if (orphan) await sleep(500);
+			}
+		}
+		return {
+			events,
+			elapsedMs: Date.now() - started,
+			agentSpoke: agentSpoke(),
+			files: files(),
+			...(needle ? { neverRan: !sawTool } : {}),
+			...(orphan !== undefined ? { orphan } : {}),
+			...(hung ? { hung } : {}),
+		};
+	} finally {
+		for (const dir of [workspace, runDir])
+			rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+	}
+}
+
+/** The outcome a row expects of this agent, and why it differs from the row's, if it does. */
+export function expectationFor(
+	row: Row,
+	harness: string,
+): { expect: Expectation; why?: string } {
+	return row.agents?.[harness] ?? { expect: row.expect };
+}
+
+/** `null` when the row saw what it expects, else what it saw instead. */
+export function checkRow(
+	harness: HarnessId,
+	expect: Expectation,
+	seen: RowObservation,
 ): string | null {
-	const kinds = run.events.map((e) => e.kind);
-	const errors = run.events.flatMap((e) =>
+	if (seen.hung) return `hung: still running after ${seen.elapsedMs}ms`;
+	if (!seen.agentSpoke) return "the agent never answered on the wire";
+	const kinds = seen.events.map((e) => e.kind);
+	const errors = seen.events.flatMap((e) =>
 		e.kind === "error" ? [e.message] : [],
 	);
-	switch (name) {
+	const answers = seen.events.flatMap((e) =>
+		e.kind === "permission_answer" ? [e.outcome] : [],
+	);
+	const toolResults = kinds.filter((k) => k === "tool_result").length;
+	const report = kinds.includes("report");
+	const saw = `events ${[...new Set(kinds)].join(",") || "none"}${errors.length ? `; error ${errors[0]?.slice(0, 160)}` : ""}`;
+	switch (expect) {
 		case "report":
-			return kinds.includes("report") ? null : `no report (${kinds.join(",")})`;
-		case "tool-call":
-			return kinds.includes("tool_result") && kinds.includes("report")
+			return report && errors.length === 0 ? null : `no clean report (${saw})`;
+		case "tool-report":
+			return toolResults > 0 && report
 				? null
-				: `no tool result and report (${kinds.join(",")})`;
-		case "permission-declined": {
-			const answers = run.events.flatMap((e) =>
-				e.kind === "permission_answer" ? [e.outcome] : [],
-			);
+				: `no tool result and report (${saw})`;
+		case "parallel":
+			return toolResults >= 2 && report
+				? null
+				: `${toolResults} tool results (${saw})`;
+		case "allowed":
+			return answers.some((o) => o === "approved" || o === "allowed") &&
+				seen.files["scenario-allowed.txt"] &&
+				report
+				? null
+				: `asks ${JSON.stringify(answers)}, file ${seen.files["scenario-allowed.txt"] ? "written" : "absent"} (${saw})`;
+		case "declined":
 			return answers.length > 0 &&
-				!answers.some((o) => o === "approved" || o === "allowed")
+				!answers.some((o) => o === "approved" || o === "allowed") &&
+				!seen.files["scenario-declined.txt"]
 				? null
-				: `expected only refused asks, got ${JSON.stringify(answers)}`;
-		}
-		case "cancel":
-			return errors.some(isCancelledError)
-				? null
-				: `not cancelled (${errors.join("; ")})`;
+				: `asks ${JSON.stringify(answers)}, file ${seen.files["scenario-declined.txt"] ? "written" : "absent"} (${saw})`;
+		case "cancelled":
+			if (seen.neverRan) return `the tool never started (${saw})`;
+			if (seen.orphan) return "the cancelled tool's process outlived the run";
+			return errors.some(isCancelledError) ? null : `not cancelled (${saw})`;
 		case "error":
-			return errors.length > 0 && !kinds.includes("report")
+			return errors.length > 0 && !report
 				? null
-				: `expected a refusal and no report (${kinds.join(",")})`;
-		case "not-signed-in":
-			return errors.length > 0 && !kinds.includes("report")
+				: `expected an error and no report (${saw})`;
+		case "fault":
+			return toolResults > 0 && errors.length > 0 && !report
 				? null
-				: `expected an error and no report (${kinds.join(",")})`;
+				: `expected the step's tool result, then an error and no report (${saw})`;
+		case "modes": {
+			const row = HARNESS_REGISTRY[harness];
+			const s = seen.session ?? { modes: [], models: [] };
+			const wantModes = row.modeMechanism === "acp";
+			const wantModels = row.modelVia === "acp";
+			const ok =
+				s.modes.length > 0 === wantModes &&
+				(!wantModels || s.models.length > 0);
+			return ok
+				? null
+				: `modes [${s.modes.join(",")}] (registry ${row.modeMechanism}), ${s.models.length} models (registry ${row.modelVia})`;
+		}
 	}
 }

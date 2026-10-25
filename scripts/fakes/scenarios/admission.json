@@ -1,0 +1,68 @@
+{
+	"description": "The admission (R1-R9, acp-admission.ts): incident_get first when the gateway offers it, then the shell step the prompt names, then the report; the follow-up names the alert (#848, #914).",
+	"fixtures": [
+		{
+			"match": {
+				"userMessage": "ADMISSION STEP, required: run exactly `cat ./PRISMALENS_CWD_PROBE.txt`",
+				"toolName": "$incident_get",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [{ "name": "$incident_get", "arguments": {} }]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "ADMISSION STEP, required: run exactly `cat ./PRISMALENS_CWD_PROBE.txt`",
+				"toolResultContains": "AdmissionProbe"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": { "$command": "cat ./PRISMALENS_CWD_PROBE.txt" }
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "ADMISSION STEP, required: run exactly `cat ./PRISMALENS_CWD_PROBE.txt`",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": { "$command": "cat ./PRISMALENS_CWD_PROBE.txt" }
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "Reply with the alert name from our conversation",
+				"toolName": "$incident_get",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [{ "name": "$incident_get", "arguments": {} }]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "Reply with the alert name from our conversation"
+			},
+			"response": { "content": "AdmissionProbe" }
+		},
+		{
+			"match": {
+				"userMessage": "ADMISSION STEP, required: run `ls` once",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [{ "name": "$shell", "arguments": { "$command": "ls" } }]
+			}
+		}
+	]
+}
