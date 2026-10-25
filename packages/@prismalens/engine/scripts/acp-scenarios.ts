@@ -6,7 +6,7 @@
  * engine against the real agent, whose model is the scripted aimock. A row passes on what
  * the engine observed (events, the files and processes the run left), never on model text.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
 	existsSync,
 	mkdtempSync,
@@ -234,6 +234,9 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				orphan = running(needle);
 				if (orphan) await sleep(500);
 			}
+			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
+			if (orphan && process.platform !== "win32")
+				spawnSync("pkill", ["-f", needle], { stdio: "ignore" });
 		}
 		return {
 			events,
@@ -308,6 +311,11 @@ export function checkRow(
 		case "cancelled":
 			if (seen.neverRan) return `the tool never started (${saw})`;
 			if (seen.orphan) return "the cancelled tool's process outlived the run";
+			return errors.some(isCancelledError) ? null : `not cancelled (${saw})`;
+		case "cancelled-orphaned":
+			if (seen.neverRan) return `the tool never started (${saw})`;
+			if (!seen.orphan)
+				return "the cancelled tool's process stopped: the known failure is fixed, so expect `cancelled` for this agent";
 			return errors.some(isCancelledError) ? null : `not cancelled (${saw})`;
 		case "error":
 			return errors.length > 0 && !report

@@ -37,6 +37,8 @@ export type Expectation =
 	| "allowed"
 	| "declined"
 	| "cancelled"
+	/** Known failure: cancelled, but the tool's process outlives the run; fails once the agent fixes it. */
+	| "cancelled-orphaned"
 	| "error"
 	| "fault"
 	/** The agent exits before it answers anything, and PrismaLens says so. */

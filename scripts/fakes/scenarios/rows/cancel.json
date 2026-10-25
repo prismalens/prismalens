@@ -6,6 +6,12 @@
 		"cancelWhenRunning": "299700"
 	},
 	"expect": "cancelled",
+	"agents": {
+		"deepagents": {
+			"expect": "cancelled-orphaned",
+			"why": "deepagents-acp's cancel() only sets a flag, so the running command is not killed (langchain-ai/deepagents#5907)"
+		}
+	},
 	"fixtures": [
 		{
 			"match": {

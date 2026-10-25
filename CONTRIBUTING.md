@@ -164,7 +164,8 @@ observed (its events, the files and processes the run left), never on model text
 wire; `scripts/fakes/scenarios/agents.json` maps each agent's shell tool, read from aimock's journal. Outcomes:
 `report` a clean report; `fault` the step's tool ran, then an error and no report; `error` an error and no report;
 `exited` the agent quit before answering and PrismaLens said so; `cancelled` the run ended cancelled and the tool's
-process is gone.
+process is gone; `cancelled-orphaned` a known agent bug: cancelled, but the tool's process outlives the run, and the
+row fails once the agent fixes it.
 
 | Row | PrismaLens must | opencode | claude-code | codex | gemini | dcode |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -177,7 +178,7 @@ process is gone.
 | tool-call | `tool-report` | pass | pass | pass | pass | pass |
 | permission-allowed | the ask is approved, the file is written, `report` | pass | pass | pass (escalated command: Codex's Ask-for-approval mode writes the workspace unasked) | pass | pass |
 | permission-declined | only refused asks, no file | pass | pass | pass (escalated, as above) | pass | pass |
-| cancel | `cancelled`, the tool's process gone | pass | pass | pass | pass | **fail**: dcode's command outlives the cancelled run |
+| cancel | `cancelled`, the tool's process gone | pass | pass | pass | pass | known failure (`cancelled-orphaned`): dcode's command outlives the cancelled run, langchain-ai/deepagents#5907 |
 | not-signed-in | `error` | pass | pass | pass | pass | pass (`exited`: dcode exits before `initialize` with no provider key) |
 | modes | modes and model options from `session/new` as the registry row says | pass | pass | pass | pass | pass (none, as the row says) |
 | invalid-tool-args | `report` | pass | pass | pass | pass (`fault`: Gemini re-sends the request on a malformed call, then ends the turn empty) | pass |
