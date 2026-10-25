@@ -245,8 +245,8 @@ export function checkInstalls(
 const AGENT_READY = "Agent ready";
 
 /**
- * One agent on PATH should answer its handshake signed in. None ready warns, never
- * fails: Settings-only agents are out of the doctor's sight (#907).
+ * HARD: at least one agent must answer its handshake signed in. An agent that is
+ * absent or can't run is not a warning unless none can (#907); this one line names why.
  */
 export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
 	const ready = handshakes.filter((h) => h.ready);
@@ -255,7 +255,7 @@ export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
 			name: AGENT_READY,
 			pass: true,
 			detail: `${ready.map((h) => HARNESS_REGISTRY[h.id].label).join(", ")} ready`,
-			hard: false,
+			hard: true,
 		};
 	const failed = handshakes.map(
 		(h) => `\n  ${HARNESS_REGISTRY[h.id].label}: ${h.check.detail}`,
@@ -263,8 +263,8 @@ export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
 	return {
 		name: AGENT_READY,
 		pass: false,
-		detail: `no agent on PATH can run. Set one up with Add agent in Settings → Agent, or install one: ${installHints()}${failed.join("")}\n  Agents set up only in Settings (binary path, local agent) are checked there, not here.`,
-		hard: false,
+		detail: `no agent can run. Set one up with Add agent in Settings → Agent, or install one: ${installHints()}${failed.join("")}\n  Agents set up only in Settings (binary path, local agent) are checked there, not here.`,
+		hard: true,
 	};
 }
 
@@ -587,16 +587,14 @@ export function summary(
 ): { level: "success" | "warn" | "error"; line: string } {
 	const hardFailures = checks.filter((c) => c.hard && !c.pass);
 	if (hardFailures.length > 0) {
+		const onlyAgent = hardFailures.every((c) => c.name === AGENT_READY);
 		return {
 			level: "error",
-			line: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
+			line: onlyAgent
+				? "No agent on PATH can run. `pl up` still starts; an agent set up in Settings → Agent is checked there, not here."
+				: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
 		};
 	}
-	if (checks.some((c) => c.name === AGENT_READY && !c.pass))
-		return {
-			level: "warn",
-			line: "Required checks passed. No agent on PATH can run; the doctor checks PATH agents only, so one set up in Settings → Agent may still run.",
-		};
 	const labels = (pick: (h: Handshake) => boolean) =>
 		handshakes
 			.filter((h) => h.id === selected && pick(h))
