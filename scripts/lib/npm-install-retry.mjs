@@ -36,6 +36,8 @@ export function installWithRetry(
 ) {
 	for (let attempt = 0; ; attempt++) {
 		const r = run(command, args, {
+			// spawnSync's 1 MiB default kills a chatty install instead of retrying it.
+			maxBuffer: 256 * 1024 * 1024,
 			...options,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],

@@ -159,7 +159,10 @@ export function checkArtifact(file, budgets) {
 					`${info.key}: ${entries.length} files is over its budget of ${budget.files}`,
 				);
 		}
-		const missing = missingLicences(root);
+		// An npm tarball's own bundled.json sits under package/, which the node_modules walk skips.
+		const missing = missingLicences(
+			info.kind === "npm" ? join(root, info.top) : root,
+		);
 		lines.push(
 			`licences: ${missing.length === 0 ? "every package carries one" : `${missing.length} missing`}`,
 		);

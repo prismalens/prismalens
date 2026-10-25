@@ -64,7 +64,7 @@ test("an npm tarball named prismalens is also measured as the archive it becomes
 	);
 });
 
-function fixture({ deep = 10, licence = true } = {}) {
+function fixture({ deep = 10, licence = true, inlined = false } = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "check-artifact-"));
 	const pkg = join(dir, "src", "package");
 	const write = (rel, body) => {
@@ -78,6 +78,11 @@ function fixture({ deep = 10, licence = true } = {}) {
 		JSON.stringify({ name: "dep", version: "2.0.0" }),
 	);
 	if (licence) write("node_modules/dep/LICENSE", "MIT");
+	if (inlined)
+		write(
+			"dist/adapters/bundled.json",
+			JSON.stringify({ "a.mjs": { inlined: ["inl@1.0.0"] } }),
+		);
 	execFileSync("tar", ["-czf", "../fixture-1.0.0.tgz", "package"], {
 		cwd: join(dir, "src"),
 	});
@@ -108,6 +113,13 @@ test("a missing budget key, a breach and a missing licence each fail", () => {
 	r = run(tarball, { fixture: { bytes: 1, files: 1 } }, dir);
 	assert.match(r.stdout, /bytes is over its budget of 1/);
 	assert.match(r.stdout, /files is over its budget of 1/);
+});
+
+test("a package's own inlined dependency without a licence text fails", () => {
+	const { tarball, dir } = fixture({ inlined: true });
+	const r = run(tarball, { fixture: { bytes: 1e6, files: 10 } }, dir);
+	assert.equal(r.status, 1, r.stdout + r.stderr);
+	assert.match(r.stdout, /no licence text: inl@1.0.0/);
 });
 
 test("a path one char over the limit fails", () => {
