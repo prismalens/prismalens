@@ -42,6 +42,10 @@ vi.mock("@/lib/api/hooks", () => ({
 		mutate: vi.fn(),
 		isPending: false,
 	}),
+	useSetServiceIntegrationOrder: () => ({
+		mutate: vi.fn(),
+		isPending: false,
+	}),
 }));
 
 vi.mock("@/lib/api/hooks/use-sources-orpc", () => ({
@@ -92,16 +96,19 @@ describe("ServiceTelemetrySection (cases 10, 12)", () => {
 	it("toggles mapping-switch to send enabled: false", async () => {
 		const integrations: ServiceIntegrationWithStatus[] = [
 			{
-				integrationId: "i1",
 				templateId: "prometheus",
+				templateName: "Prometheus",
 				connectionId: "c1",
 				connectionName: "Prometheus Main",
+				category: "observability",
+				status: "ACTIVE",
+				isGlobal: false,
 				hasOverride: true,
 				overrideId: "ov-1",
 				serviceConfig: { enabled: true, deployment: "prod" },
 				globalConfig: { baseUrl: "http://prom:9090" },
-				category: "observability",
-			} as ServiceIntegrationWithStatus,
+				effectiveConfig: { enabled: true, deployment: "prod" },
+			},
 		];
 
 		await act(async () =>
@@ -128,16 +135,18 @@ describe("ServiceTelemetrySection (cases 10, 12)", () => {
 	it("renders unmapped connection state and mapping-add posts empty config", async () => {
 		const integrations: ServiceIntegrationWithStatus[] = [
 			{
-				integrationId: "i2",
 				templateId: "loki",
+				templateName: "Loki",
 				connectionId: "c2",
 				connectionName: "Loki Logs",
+				category: "observability",
+				status: "ACTIVE",
+				isGlobal: false,
 				hasOverride: false,
-				overrideId: null,
 				serviceConfig: null,
 				globalConfig: { baseUrl: "http://loki:3100" },
-				category: "observability",
-			} as ServiceIntegrationWithStatus,
+				effectiveConfig: null,
+			},
 		];
 
 		await act(async () =>
@@ -171,16 +180,18 @@ describe("ServiceTelemetrySection (cases 10, 12)", () => {
 		];
 		const integrations: ServiceIntegrationWithStatus[] = [
 			{
-				integrationId: "i1",
 				templateId: "prometheus",
+				templateName: "Prometheus",
 				connectionId: "c1",
 				connectionName: "Prom 1",
+				category: "observability",
+				status: "ACTIVE",
+				isGlobal: false,
 				hasOverride: false,
-				overrideId: null,
 				serviceConfig: null,
 				globalConfig: { baseUrl: "http://prom:9090" },
-				category: "observability",
-			} as ServiceIntegrationWithStatus,
+				effectiveConfig: null,
+			},
 		];
 
 		await act(async () =>

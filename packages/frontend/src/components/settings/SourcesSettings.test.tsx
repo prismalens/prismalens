@@ -120,12 +120,13 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 				status: "ACTIVE",
 				testedAt: "2026-10-25T00:00:00Z",
 				problem: null,
+				lastErrorMessage: null,
 				credential: "stored",
 				credentialKind: "bearer",
 				overridesEnv: "PROMETHEUS_TOKEN",
 				alsoInAlertIntake: false,
 				usedBy: [],
-			} as SourceRow,
+			},
 		];
 		mockData.gitHosts = [];
 
@@ -147,12 +148,11 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 				status: "ACTIVE",
 				testedAt: "2026-10-25T00:00:00Z",
 				problem: null,
+				lastErrorMessage: null,
 				credential: "none",
-				credentialKind: null,
-				overridesEnv: null,
 				alsoInAlertIntake: true,
 				usedBy: [],
-			} as SourceRow,
+			},
 			{
 				connectionId: "s3",
 				kind: "prometheus",
@@ -161,12 +161,13 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 				status: "ACTIVE",
 				testedAt: "2026-10-25T00:00:00Z",
 				problem: null,
+				lastErrorMessage: null,
 				credential: "stored",
 				credentialKind: "bearer",
 				overridesEnv: "PROM_KEY",
 				alsoInAlertIntake: true,
 				usedBy: [],
-			} as SourceRow,
+			},
 		];
 		mockData.gitHosts = [];
 
@@ -187,12 +188,11 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 			status: i === 0 ? "ERROR" : "ACTIVE",
 			testedAt: "2026-10-25T00:00:00Z",
 			problem: i === 0 ? "cant-reach" : null,
+			lastErrorMessage: null,
 			credential: "none",
-			credentialKind: null,
-			overridesEnv: null,
 			alsoInAlertIntake: false,
 			usedBy: [],
-		})) as SourceRow[];
+		}));
 		mockData.gitHosts = [];
 
 		await act(async () => root.render(createElement(SourcesSettings)));
@@ -215,17 +215,20 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 	it("renders pick-token-select for unpinned repositories (case 8)", async () => {
 		const host: GitHostView = {
 			host: "github.com",
+			order: ["stored"],
 			ambiguous: true,
 			stored: [
 				{
 					connectionId: "conn-1",
 					label: "Personal Token",
+					fingerprint: "fp-1",
 					status: "ACTIVE",
 					testedAt: "2026-10-25T00:00:00Z",
 					pinnedRepos: [],
 				},
 			],
 			env: null,
+			machine: null,
 			unpinnedRepos: [
 				{
 					repositoryId: "repo-1",
@@ -239,11 +242,9 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 				createElement(HostDetail, {
 					host,
 					actions: {
-						onTestConnection: vi.fn(),
-						onEditConnection: vi.fn(),
-						onDeleteConnection: vi.fn(),
-						onOpenConnect: vi.fn(),
-						onEditUrl: vi.fn(),
+						onEdit: vi.fn(),
+						onDelete: vi.fn(),
+						onAddToken: vi.fn(),
 					},
 				}),
 			),

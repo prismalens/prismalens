@@ -64,7 +64,21 @@ describe("WhyCard preRun coverage (#848 case 14)", () => {
 			latest,
 			latestRun: {
 				...overview("test").latestRun,
-				investigation: { preRun: { sources: [], checkoutsSkipped: [] } },
+				investigation: {
+					preRun: {
+						state: "ready",
+						fetchedAt: "2026-10-25T00:00:00Z",
+						window: {
+							start: "2026-10-25T00:00:00Z",
+							end: "2026-10-25T01:00:00Z",
+						},
+						notConfigured: [],
+						runbooks: [],
+						files: [],
+						sources: [],
+						checkoutsSkipped: [],
+					},
+				},
 			},
 		} as unknown as Overview;
 

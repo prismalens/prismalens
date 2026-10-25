@@ -44,15 +44,19 @@ describe("runsFolder and codeLine (#848)", () => {
 		expect(codeLine({ repos: [{ name: "booklogr" }] as never }, [])).toBe(
 			"booklogr",
 		);
-		expect(codeLine({ repos: [] }, [{ repo: "api", code: "budget" }])).toBe(
-			"None, 1 skipped",
-		);
+		expect(
+			codeLine({ repos: [] }, [
+				{ repo: "api", reason: "budget exceeded", code: "budget" },
+			]),
+		).toBe("None, 1 skipped");
 		const repos = Array.from({ length: 7 }, (_, i) => ({
 			name: `r${i}`,
 		})) as never;
-		expect(codeLine({ repos }, [{ repo: "r8", code: "budget" }])).toBe(
-			"8 repositories, 1 skipped",
-		);
+		expect(
+			codeLine({ repos }, [
+				{ repo: "r8", reason: "budget exceeded", code: "budget" },
+			]),
+		).toBe("8 repositories, 1 skipped");
 	});
 
 	it("translates checkout skipped reasons", () => {
@@ -301,7 +305,7 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 		await act(async () => {
 			root?.render(
 				<RunStrip
-					state="running"
+					state="working"
 					label="Run 1"
 					detail="Investigating"
 					incidentId="inc-1"
@@ -322,7 +326,7 @@ describe("overviewSteps and RunOverview component (#848)", () => {
 		await act(async () => {
 			root?.render(
 				<RunStrip
-					state="running"
+					state="working"
 					label="Run 1"
 					detail="Investigating"
 					incidentId="inc-1"

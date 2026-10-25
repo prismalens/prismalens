@@ -124,7 +124,11 @@ describe("the credential chip (operator ruling, #811)", () => {
 						source: "connection",
 						label: "token B",
 						via: "git-host-token",
-						fallbackFrom: "token A",
+						fallbackFrom: {
+							source: "connection",
+							label: "token A",
+							code: "token A",
+						},
 					},
 				},
 			],

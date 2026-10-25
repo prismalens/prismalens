@@ -33,7 +33,7 @@ describe("SETTINGS_SECTIONS (case 1)", () => {
 			"about",
 		]);
 		for (const s of SETTINGS_SECTIONS) {
-			expect((s as Record<string, unknown>).line).toBeUndefined();
+			expect("line" in s).toBe(false);
 		}
 	});
 });

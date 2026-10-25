@@ -59,7 +59,7 @@ let root: Root;
 beforeEach(() => {
 	state.sources = [];
 	state.delivery = null;
-	state.webhookToken = "test-token";
+	state.webhookToken = { token: "test-token" };
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -82,12 +82,11 @@ describe("AlertIntakeSettings (case 9 and delivery)", () => {
 				status: "ACTIVE",
 				testedAt: "2026-10-25T00:00:00Z",
 				problem: null,
+				lastErrorMessage: null,
 				credential: "none",
-				credentialKind: null,
-				overridesEnv: null,
 				alsoInAlertIntake: true,
 				usedBy: [],
-			} as SourceRow,
+			},
 			{
 				connectionId: "conn-2",
 				kind: "loki",
@@ -96,12 +95,11 @@ describe("AlertIntakeSettings (case 9 and delivery)", () => {
 				status: "ACTIVE",
 				testedAt: "2026-10-25T00:00:00Z",
 				problem: null,
+				lastErrorMessage: null,
 				credential: "none",
-				credentialKind: null,
-				overridesEnv: null,
 				alsoInAlertIntake: false,
 				usedBy: [],
-			} as SourceRow,
+			},
 		];
 
 		await act(async () => root.render(createElement(AlertIntakeSettings)));

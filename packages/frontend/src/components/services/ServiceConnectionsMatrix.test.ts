@@ -16,11 +16,12 @@ describe("matrixCell server preview (case 10)", () => {
 				{
 					kind: "prometheus",
 					notConfigured: true,
-					skipped: false,
+					skipped: null,
+					envFallback: null,
 					units: [],
 				},
 			],
-			checkoutsSkipped: [],
+			deploymentsSeen: [],
 		};
 		expect(matrixCell(answer, "prometheus")).toEqual({ text: "Not set up" });
 	});
@@ -31,11 +32,12 @@ describe("matrixCell server preview (case 10)", () => {
 				{
 					kind: "prometheus",
 					notConfigured: false,
-					skipped: true,
+					skipped: "several connections",
+					envFallback: null,
 					units: [],
 				},
 			],
-			checkoutsSkipped: [],
+			deploymentsSeen: [],
 		};
 		expect(matrixCell(answer, "prometheus")).toEqual({
 			text: "Choose one",
@@ -49,20 +51,19 @@ describe("matrixCell server preview (case 10)", () => {
 				{
 					kind: "prometheus",
 					notConfigured: false,
-					skipped: false,
+					skipped: null,
+					envFallback: null,
 					units: [
 						{
+							kind: "prometheus",
 							from: "env",
 							label: "Prometheus ENV",
-							sourceKind: "url",
-							url: "http://env:9090",
-							connectionId: null,
-							selection: { rule: "env" },
+							selection: { rule: "env", service: "s1" },
 						},
 					],
 				},
 			],
-			checkoutsSkipped: [],
+			deploymentsSeen: [],
 		};
 		expect(matrixCell(answer, "prometheus")).toEqual({
 			text: "From environment",
@@ -75,20 +76,20 @@ describe("matrixCell server preview (case 10)", () => {
 				{
 					kind: "prometheus",
 					notConfigured: false,
-					skipped: false,
+					skipped: null,
+					envFallback: null,
 					units: [
 						{
+							kind: "prometheus",
+							from: "set",
 							label: "Staging Prom",
 							deployment: "staging",
-							sourceKind: "connection",
-							url: "http://staging:9090",
-							connectionId: "c1",
-							selection: { rule: "other-tag" },
+							selection: { rule: "other-tag", service: "s1" },
 						},
 					],
 				},
 			],
-			checkoutsSkipped: [],
+			deploymentsSeen: [],
 		};
 		expect(matrixCell(answer, "prometheus")).toEqual({
 			text: "Staging Prom",
@@ -103,20 +104,20 @@ describe("matrixCell server preview (case 10)", () => {
 				{
 					kind: "prometheus",
 					notConfigured: false,
-					skipped: false,
+					skipped: null,
+					envFallback: null,
 					units: [
 						{
+							kind: "prometheus",
+							from: "set",
 							label: "Prod Prom",
 							deployment: "prod",
-							sourceKind: "connection",
-							url: "http://prod:9090",
-							connectionId: "c2",
-							selection: { rule: "tag-match" },
+							selection: { rule: "tag-match", service: "s1" },
 						},
 					],
 				},
 			],
-			checkoutsSkipped: [],
+			deploymentsSeen: [],
 		};
 		expect(matrixCell(answer, "prometheus")).toEqual({
 			text: "Prod Prom",
@@ -129,19 +130,19 @@ describe("matrixCell server preview (case 10)", () => {
 				{
 					kind: "prometheus",
 					notConfigured: false,
-					skipped: false,
+					skipped: null,
+					envFallback: null,
 					units: [
 						{
+							kind: "prometheus",
+							from: "set",
 							label: "Global Prom",
-							sourceKind: "connection",
-							url: "http://global:9090",
-							connectionId: "c3",
-							selection: { rule: "default" },
+							selection: { rule: "untagged", service: "s1" },
 						},
 					],
 				},
 			],
-			checkoutsSkipped: [],
+			deploymentsSeen: [],
 		};
 		expect(matrixCell(answer, "prometheus")).toEqual({
 			text: "Global Prom",
@@ -155,20 +156,20 @@ describe("matrixCell server preview (case 10)", () => {
 				{
 					kind: "prometheus",
 					notConfigured: false,
-					skipped: false,
+					skipped: null,
+					envFallback: null,
 					units: [
 						{
+							kind: "prometheus",
+							from: "set",
 							label: "Unexpected Tag Match",
 							deployment: "different-tag",
-							sourceKind: "connection",
-							url: "http://other:9090",
-							connectionId: "c4",
-							selection: { rule: "tag-match" },
+							selection: { rule: "tag-match", service: "s1" },
 						},
 					],
 				},
 			],
-			checkoutsSkipped: [],
+			deploymentsSeen: [],
 		};
 		expect(matrixCell(answer, "prometheus")).toEqual({
 			text: "Unexpected Tag Match",

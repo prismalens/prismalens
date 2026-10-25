@@ -2,16 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PreRunSource } from "@prismalens/contracts";
+import type { PreRunDetail, PreRunSource } from "@prismalens/contracts";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	coverageCounts,
-	coverageLine,
-	PreRunCoverage,
-	type PreRunView,
-} from "./PreRunCoverage";
+import { coverageCounts, coverageLine, PreRunCoverage } from "./PreRunCoverage";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -75,26 +70,35 @@ describe("PreRunCoverage counts and line (case 13)", () => {
 	});
 
 	it("renders coverage-read count and coverage-line text", async () => {
-		const preRun: PreRunView = {
+		const preRun: PreRunDetail = {
+			state: "ready",
+			fetchedAt: "2026-10-25T00:00:00Z",
+			window: { start: "2026-10-25T00:00:00Z", end: "2026-10-25T01:00:00Z" },
+			notConfigured: [],
+			runbooks: [],
+			files: [],
 			sources: [
 				{
 					kind: "prometheus",
 					label: "Prometheus",
+					from: "set",
 					status: "found",
 					detail: "12 metrics matched",
-				} as PreRunSource,
+				},
 				{
 					kind: "alertmanager",
 					label: "Alertmanager",
+					from: "env",
 					status: "empty",
 					detail: "No firing alerts",
-				} as PreRunSource,
+				},
 				{
 					kind: "loki",
 					label: "Loki",
+					from: "set",
 					status: "skipped",
 					detail: "Auth failed",
-				} as PreRunSource,
+				},
 			],
 			checkoutsSkipped: [],
 		};
@@ -113,8 +117,14 @@ describe("PreRunCoverage counts and line (case 13)", () => {
 
 describe("PreRunCoverage snapshot states and rows (case 14)", () => {
 	it("renders coverage-not-saved when state is not-saved", async () => {
-		const preRun: PreRunView = {
+		const preRun: PreRunDetail = {
 			state: "not-saved",
+			saveError: "disk full",
+			fetchedAt: "2026-10-25T00:00:00Z",
+			window: { start: "2026-10-25T00:00:00Z", end: "2026-10-25T01:00:00Z" },
+			notConfigured: [],
+			runbooks: [],
+			files: [],
 			sources: [],
 			checkoutsSkipped: [],
 		};
@@ -128,9 +138,9 @@ describe("PreRunCoverage snapshot states and rows (case 14)", () => {
 	});
 
 	it("renders coverage-unavailable without throwing when state is unavailable", async () => {
-		const preRun: PreRunView = {
+		const preRun: PreRunDetail = {
 			state: "unavailable",
-			sources: undefined as never,
+			reason: "no snapshot",
 			checkoutsSkipped: [],
 		};
 
@@ -142,8 +152,14 @@ describe("PreRunCoverage snapshot states and rows (case 14)", () => {
 		).not.toBeNull();
 	});
 
-	it("renders as saved when state is absent", async () => {
-		const preRun: PreRunView = {
+	it("renders as saved when state is ready", async () => {
+		const preRun: PreRunDetail = {
+			state: "ready",
+			fetchedAt: "2026-10-25T00:00:00Z",
+			window: { start: "2026-10-25T00:00:00Z", end: "2026-10-25T01:00:00Z" },
+			notConfigured: [],
+			runbooks: [],
+			files: [],
 			sources: [],
 			checkoutsSkipped: [],
 		};
@@ -160,9 +176,14 @@ describe("PreRunCoverage snapshot states and rows (case 14)", () => {
 	});
 
 	it("renders telemetrySkipped and notConfigured notes", async () => {
-		const preRun: PreRunView = {
+		const preRun: PreRunDetail = {
+			state: "ready",
+			fetchedAt: "2026-10-25T00:00:00Z",
+			window: { start: "2026-10-25T00:00:00Z", end: "2026-10-25T01:00:00Z" },
 			telemetrySkipped: "timed out",
 			notConfigured: [{ kind: "prometheus", services: ["api-gateway"] }],
+			runbooks: [],
+			files: [],
 			sources: [],
 			checkoutsSkipped: [],
 		};
@@ -170,27 +191,35 @@ describe("PreRunCoverage snapshot states and rows (case 14)", () => {
 		await act(async () =>
 			root.render(createElement(PreRunCoverage, { preRun })),
 		);
-		const notes = container.querySelector('[data-testid="coverage-notes"]');
-		expect(notes?.textContent).toContain(
-			"Telemetry: skipped before the run, timed out",
+		const skipped = container.querySelector(
+			'[data-testid="coverage-telemetry-skipped"]',
 		);
+		expect(skipped?.textContent).toContain("timed out");
+		const notes = container.querySelector('[data-testid="coverage-notes"]');
 		expect(notes?.textContent).toContain(
 			"No Prometheus is set up for api-gateway.",
 		);
 	});
 
 	it("renders row results, truncated marker, fix link on skipped, and overridesEnv in details", async () => {
-		const preRun: PreRunView = {
+		const preRun: PreRunDetail = {
+			state: "ready",
+			fetchedAt: "2026-10-25T00:00:00Z",
+			window: { start: "2026-10-25T00:00:00Z", end: "2026-10-25T01:00:00Z" },
+			notConfigured: [],
+			runbooks: [],
+			files: [],
 			sources: [
 				{
 					kind: "prometheus",
 					label: "Prometheus",
+					from: "set",
 					status: "skipped",
 					detail: "Token invalid",
-					truncated: true,
+					truncated: { dropped: 10, reason: "limit" },
 					overridesEnv: "PROMETHEUS_KEY",
 					credentialFrom: "stored",
-				} as PreRunSource,
+				},
 			],
 			checkoutsSkipped: [],
 		};

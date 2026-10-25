@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 // @vitest-environment happy-dom
 
-import type { PreRunSummary } from "@prismalens/contracts";
+import type { PreRunDetail } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,20 @@ import { RunRunbooks } from "./RunRunbooks";
 vi.mock("@/components/run/EvidenceFileView", () => ({
 	EvidenceFileView: () => null,
 }));
+
+const makePreRun = (
+	p: Partial<PreRunDetail & { state: "ready" }> = {},
+): PreRunDetail => ({
+	state: "ready",
+	fetchedAt: "2026-10-25T00:00:00Z",
+	window: { start: "2026-10-25T00:00:00Z", end: "2026-10-25T01:00:00Z" },
+	notConfigured: [],
+	files: [],
+	sources: [],
+	checkoutsSkipped: [],
+	runbooks: [],
+	...p,
+});
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: React.ReactNode }) => children,
@@ -52,12 +66,9 @@ describe("RunRunbooks (#848)", () => {
 	});
 
 	it("renders runbooks-skipped when runbooks were skipped with a reason", async () => {
-		const preRun: PreRunSummary = {
-			runbooks: [],
+		const preRun = makePreRun({
 			runbooksSkipped: "the scan timed out",
-			coverage: [],
-			checkoutsSkipped: [],
-		};
+		});
 		await act(async () => {
 			root?.render(<RunRunbooks preRun={preRun} />);
 		});
@@ -84,11 +95,7 @@ describe("RunRunbooks (#848)", () => {
 	});
 
 	it("renders runbooks-none when no runbooks found", async () => {
-		const preRun: PreRunSummary = {
-			runbooks: [],
-			coverage: [],
-			checkoutsSkipped: [],
-		};
+		const preRun = makePreRun();
 		await act(async () => {
 			root?.render(<RunRunbooks preRun={preRun} />);
 		});
@@ -100,23 +107,23 @@ describe("RunRunbooks (#848)", () => {
 	});
 
 	it("renders cards with File chip for local runbooks and Link chip with Open anchor for linked ones", async () => {
-		const preRun: PreRunSummary = {
+		const preRun = makePreRun({
 			runbooks: [
 				{
 					title: "Deploy guide",
 					path: "docs/deploy.md",
 					service: "auth-service",
+					origin: "repo",
 				},
 				{
 					title: "Incident runbook",
 					path: "https://wiki.internal/runbook",
 					link: "https://wiki.internal/runbook",
 					service: "api-service",
+					origin: "repo",
 				},
 			],
-			coverage: [],
-			checkoutsSkipped: [],
-		};
+		});
 
 		await act(async () => {
 			root?.render(<RunRunbooks preRun={preRun} />);
@@ -159,9 +166,15 @@ describe("RunRunbooks (#848)", () => {
 					steps={[]}
 					onJump={vi.fn()}
 					files={{
+						runId: "run-1",
 						viewing: null,
 						onOpen: vi.fn(),
 						onClose: vi.fn(),
+						backLabel: "Back",
+						phone: false,
+						reads: [],
+						codeHost: null,
+						stepFile: () => null,
 						onOpenHypotheses: vi.fn(),
 					}}
 					contextTop={

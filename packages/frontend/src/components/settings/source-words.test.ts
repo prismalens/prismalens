@@ -21,10 +21,10 @@ describe("source words and states (#848 Sources)", () => {
 		expect(
 			credentialWord({ credential: "stored", credentialKind: "none" }),
 		).toBe("No credential");
-		expect(credentialWord({ credential: "env", credentialKind: null })).toBe(
+		expect(credentialWord({ credential: "env" })).toBe(
 			"From environment",
 		);
-		expect(credentialWord({ credential: "none", credentialKind: null })).toBe(
+		expect(credentialWord({ credential: "none" })).toBe(
 			"Not set",
 		);
 	});
@@ -68,15 +68,21 @@ describe("source words and states (#848 Sources)", () => {
 	});
 
 	it("formats probeWord correctly (case 6)", () => {
-		expect(probeWord({ ok: true, untested: false, probes: [] })).toEqual({
+		const baseProbe = {
+			type: "prometheus",
+			host: "localhost",
+			probes: [],
+			discovered: {},
+		};
+		expect(probeWord({ ...baseProbe, ok: true, untested: false })).toEqual({
 			text: "Connected",
 			tone: "ok",
 		});
-		expect(probeWord({ ok: false, untested: true, probes: [] })).toEqual({
+		expect(probeWord({ ...baseProbe, ok: false, untested: true })).toEqual({
 			text: "Not tested yet",
 			tone: "neutral",
 		});
-		expect(probeWord({ ok: false, untested: false, probes: [] })).toEqual({
+		expect(probeWord({ ...baseProbe, ok: false, untested: false })).toEqual({
 			text: "Failed",
 			tone: "danger",
 		});
@@ -108,17 +114,20 @@ describe("source words and states (#848 Sources)", () => {
 
 		const hostUntested: GitHostView = {
 			host: "github.com",
+			order: ["stored"],
 			ambiguous: false,
 			stored: [
 				{
 					connectionId: "c1",
 					label: "token 1",
+					fingerprint: "fp1",
 					status: "ACTIVE",
 					testedAt: null,
 					pinnedRepos: [],
 				},
 			],
 			env: null,
+			machine: null,
 			unpinnedRepos: [],
 		};
 		expect(hostState(hostUntested)).toEqual({
@@ -160,9 +169,11 @@ describe("source words and states (#848 Sources)", () => {
 	it("returns Pick a token when git host is ambiguous (case 8)", () => {
 		const ambiguousHost: GitHostView = {
 			host: "github.com",
+			order: ["stored"],
 			ambiguous: true,
 			stored: [],
 			env: null,
+			machine: null,
 			unpinnedRepos: [],
 		};
 		expect(hostState(ambiguousHost)).toEqual({
