@@ -317,7 +317,7 @@ describe("ImpactService", () => {
 			const { incidentId } = await incidentWith({});
 			const chart = await impact.chart(incidentId);
 			expect(chart).toMatchObject({ state: "error", series: [] });
-			expect(chart.error).toBeTruthy();
+			expect(chart?.error).toBeTruthy();
 			expect(JSON.stringify(chart)).not.toContain("sentinel");
 		});
 
