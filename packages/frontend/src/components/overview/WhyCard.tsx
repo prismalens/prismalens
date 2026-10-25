@@ -54,8 +54,11 @@ export function WhyCard({
 			: null;
 	const tag = report ? answerWord(report).word : null;
 	const transcriptRun = reported ?? failedLatest;
+	// Coverage is the shown report's run's, or none: never another run's (#848).
 	const preRun =
-		o.reportInvestigation?.preRun ?? o.latestRun.investigation?.preRun ?? null;
+		(reported
+			? o.reportInvestigation?.preRun
+			: o.latestRun.investigation?.preRun) ?? null;
 	const run = (id: string) => ({
 		to: "/incidents/$id/conversation" as const,
 		params: { id: incident.id },

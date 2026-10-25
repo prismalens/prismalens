@@ -368,4 +368,62 @@ describe("WhyCard with each PreRunDetail state", () => {
 			expect(html).toContain('data-testid="why-coverage"');
 		}
 	});
+
+	it("never shows a newer run's coverage under an older report that has none", () => {
+		const old = {
+			id: "run-1",
+			kind: "investigation",
+			status: "completed",
+			createdAt: "2026-10-12T00:00:00Z",
+			completedAt: "2026-10-12T00:10:00Z",
+		};
+		const newer: PreRunDetail = {
+			state: "ready",
+			fetchedAt: "2026-10-13T00:00:00Z",
+			window: { start: "2026-10-13T00:00:00Z", end: "2026-10-13T01:00:00Z" },
+			notConfigured: [],
+			runbooks: [],
+			files: [],
+			sources: [{ ...sampleSources[0], label: "Newer run's Prometheus" }],
+			checkoutsSkipped: [],
+		};
+		const o = {
+			...makeOverview(newer),
+			record: { incident: { id: "inc-4" }, runs: [latest, old] },
+			reported: old,
+			reportInvestigation: { preRun: null },
+			report: {
+				rootCause: "The old finding",
+				summary: "The old finding",
+				hypotheses: [],
+				ruledOut: [],
+				coverage: { notQueried: [] },
+			},
+			options: { lasting: null },
+		} as unknown as Overview;
+		const html = renderToStaticMarkup(
+			createElement(WhyCard, { o, onInvestigate: vi.fn() }),
+		);
+		expect(html).toContain("The old finding");
+		expect(html).not.toContain('data-testid="why-coverage"');
+		expect(html).not.toContain("Newer run");
+
+		const own = renderToStaticMarkup(
+			createElement(WhyCard, {
+				o: {
+					...o,
+					reportInvestigation: {
+						preRun: {
+							...newer,
+							sources: [{ ...sampleSources[2], label: "Old run's Loki" }],
+						},
+					},
+				} as unknown as Overview,
+				onInvestigate: vi.fn(),
+			}),
+		);
+		expect(own).toContain('data-testid="why-coverage"');
+		expect(own).toContain("Old run");
+		expect(own).not.toContain("Newer run");
+	});
 });
