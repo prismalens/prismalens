@@ -196,6 +196,7 @@ export class GitCredentialService {
 			const host = urlHost(r.effectiveUrl);
 			signal?.throwIfAborted();
 			const next = await this.after(r.tier, r.effectiveUrl, host, signal);
+			signal?.throwIfAborted();
 			const { problem: _problem, ...display } = next.display;
 			const fallback = this.credentialFor({
 				...next,
@@ -338,11 +339,15 @@ export class GitCredentialService {
 		ref: GitRepoRef,
 		signal?: AbortSignal,
 	): Promise<Resolution> {
+		signal?.throwIfAborted();
 		if (ref.sourceKind === "folder")
 			return { display: FOLDER, effectiveUrl: ref.url, tier: "public" };
 		const r = await this.resolve(ref, "use", signal);
 		signal?.throwIfAborted();
-		if (r.token) await this.markUsed(r.token.connectionId);
+		if (r.token) {
+			await this.markUsed(r.token.connectionId);
+			signal?.throwIfAborted();
+		}
 		return r;
 	}
 

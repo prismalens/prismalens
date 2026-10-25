@@ -70,12 +70,15 @@ export function credentialSecrets(c: SourceCredential): string[] {
 
 /** Each secret, and its JSON-escaped form, so a secret with a quote or newline is caught in JSON too (#848). */
 export function scrubSecrets(text: string, secrets: string[]): string {
-	let out = text;
+	const forms = new Set<string>();
 	for (const s of secrets) {
 		if (s.length < 4) continue;
-		for (const form of new Set([s, JSON.stringify(s).slice(1, -1)]))
-			out = out.split(form).join("[redacted]");
+		forms.add(s);
+		forms.add(JSON.stringify(s).slice(1, -1));
 	}
+	let out = text;
+	for (const form of [...forms].sort((a, b) => b.length - a.length))
+		out = out.split(form).join("[redacted]");
 	return out;
 }
 

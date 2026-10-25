@@ -24,6 +24,7 @@ import {
 } from "./__fixtures__/mtls.js";
 import {
 	OffOriginError,
+	scrubSecrets,
 	SourceConfigError,
 	sourceRequestFn,
 	TRUNCATED_HEADER,
@@ -246,5 +247,13 @@ describe("sourceRequestFn: the first request stays on the origin (#848, OBJ-003)
 		);
 		await expect(fn("GET", `${other}/x`)).rejects.toBeInstanceOf(OffOriginError);
 		expect(otherHit).toBe(false);
+	});
+});
+
+describe("scrubSecrets: longer secrets go first (#848)", () => {
+	it("redacts token1234XYZ whole when token1234 is listed before it", () => {
+		expect(scrubSecrets("a token1234XYZ b token1234", ["token1234", "token1234XYZ"])).toBe(
+			"a [redacted] b [redacted]",
+		);
 	});
 });
