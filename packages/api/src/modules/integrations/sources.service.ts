@@ -53,9 +53,24 @@ export function sourceProblem(
 const isQueryKind = (t: string): t is QueryKind =>
 	(QUERY_KINDS as readonly string[]).includes(t);
 
-/** `user:pass@` dropped from every URL in `text`: an address may have been saved with one (#848). */
-export const withoutUserinfo = (text: string): string =>
-	text.replace(/\/\/[^/?#\s]*@/g, "//");
+/** Userinfo, query and fragment dropped from every URL in `text`; a legacy address may carry a secret in any of them (#848). */
+export const withoutUserinfo = (text: string): string => {
+	if (!/\s/.test(text)) {
+		try {
+			const u = new URL(text);
+			if (/^[a-z][a-z0-9+.-]*:[/\\]+/i.test(text) && u.host) {
+				const bare = u.pathname === "/" && !/\/[?#]|\/$/.test(text);
+				u.username = u.password = u.search = u.hash = "";
+				return bare ? u.href.replace(/\/$/, "") : u.href;
+			}
+		} catch {
+			// not one URL: scrub the text below
+		}
+	}
+	return text
+		.replace(/([a-z][a-z0-9+.-]*:[/\\]+)[^/\\?#\n]*@/gi, "$1")
+		.replace(/([a-z][a-z0-9+.-]*:[/\\]+[^\s?#]*)[?#]\S*/gi, "$1");
+};
 
 function errorText(err: unknown): string {
 	if (!(err instanceof Error)) return withoutUserinfo(String(err));
@@ -289,7 +304,7 @@ export class SourcesService {
 				need: "required",
 				why: "Checks the token against the repositories your services name.",
 				ok: detail.startsWith("ok "),
-				detail,
+				detail: withoutUserinfo(detail),
 			})),
 			discovered: {},
 			...(result.untested ? { untested: true } : {}),

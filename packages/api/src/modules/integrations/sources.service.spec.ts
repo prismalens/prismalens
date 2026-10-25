@@ -183,6 +183,35 @@ describe("SourcesService (#848 C17)", () => {
 			expect(JSON.stringify(overview)).not.toContain("sentinel");
 		});
 
+		it.each([
+			["a single-slash legacy URL", "https:/user:sentinel@prom.example:9090"],
+			["a password with a space", "https://user:sen tinel@prom.example:9090"],
+			["a password with an @", "https://user:sen@tinel@prom.example:9090"],
+			["a query credential", "https://prom.example:9090/?api_key=sentinel"],
+			["a fragment credential", "https://prom.example:9090/#sentinel"],
+		])("overview redacts %s on the address and in the error text", async (_name, stored) => {
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{
+					id: "conn-legacy",
+					label: "Prom",
+					status: "ERROR",
+					tokenExpiresAt: null,
+					testedAt: null,
+					lastErrorMessage: `fetch failed: ${stored}/-/ready (ECONNREFUSED)`,
+					connectionConfig: { baseUrl: stored },
+					integration: { templateId: "prometheus", label: "Prometheus" },
+					serviceMappings: [],
+				},
+			]);
+			mockIntegrations.baseUrlOf.mockImplementation((c: any) => c.connectionConfig.baseUrl);
+
+			const overview = await service.overview({});
+
+			expect(JSON.stringify(overview)).not.toContain("sentinel");
+			expect(JSON.stringify(overview)).not.toContain("tinel");
+			expect(overview.sources[0]?.address).toMatch(/^https:\/+prom\.example:9090\/?$/);
+		});
+
 		it("a probe failure does not echo the draft URL's credentials", async () => {
 			const { sourceRequestFn } = await import("./source-request.js");
 			vi.mocked(sourceRequestFn).mockReturnValue(async () => {
@@ -199,6 +228,27 @@ describe("SourcesService (#848 C17)", () => {
 
 			expect(report.ok).toBe(false);
 			expect(JSON.stringify(report)).not.toContain("sentinel");
+		});
+
+		it.each([
+			"fetch failed: https://prom.example/-/ready?api_key=sentinel",
+			"fetch failed: https:/user:sentinel@prom.example/-/ready",
+			"fetch failed: https://user:sen tinel@prom.example/-/ready",
+		])("a probe failure redacts %s", async (message) => {
+			const { sourceRequestFn } = await import("./source-request.js");
+			vi.mocked(sourceRequestFn).mockReturnValue(async () => {
+				throw new TypeError(message);
+			});
+
+			const report = await service.test({
+				type: "prometheus",
+				url: "https://prom.example",
+				credential: { kind: "none" },
+			} as any);
+
+			expect(report.ok).toBe(false);
+			expect(JSON.stringify(report)).not.toContain("sentinel");
+			expect(JSON.stringify(report)).not.toContain("tinel");
 		});
 	});
 
