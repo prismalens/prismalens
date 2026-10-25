@@ -316,7 +316,7 @@ When("I open Settings", async ({ page }) => {
 });
 
 Then(
-	"the sidebar shows the settings sections with {string} above them and no incident rows",
+	"the sidebar shows the settings sections with {string} below them and no incident rows",
 	async ({ page }, back: string) => {
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar.getByTestId("settings-back")).toContainText(back);
@@ -325,14 +325,14 @@ Then(
 		const listBox = await sidebar
 			.getByTestId("settings-sections")
 			.boundingBox();
-		expect(backBox?.y ?? 0).toBeLessThan(listBox?.y ?? 0);
+		expect(backBox?.y ?? 0).toBeGreaterThan(listBox?.y ?? 0);
 		await expect(page.locator('[data-testid="tree-incident"]')).toHaveCount(0);
 	},
 );
 
 const KEYS = new Set(["Escape", "Enter", "Tab", "?"]);
 const OPENS_ON: Record<string, string> = {
-	"Add a source": "/settings?tab=sources",
+	"Add a source": "/settings?tab=alert-intake",
 };
 
 /** A key by its name, Back in Settings' bar, else the button with that label, an open dialog's first. */

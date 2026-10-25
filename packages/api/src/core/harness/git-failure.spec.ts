@@ -76,7 +76,7 @@ describe("git-failure", () => {
 			expect(res.code).toBe("token-expired");
 			expect(res.action).toBe("replace-token");
 			expect(res.message).toBe(
-				'Token "A" expired on 2026-10-01. Replace it in Settings → Integrations.',
+				'Token "A" expired on 2026-10-01. Replace it in Settings → Sources.',
 			);
 		});
 
@@ -225,7 +225,7 @@ describe("git-failure", () => {
 			expect(resNone.code).toBe("no-credential");
 			expect(resNone.action).toBe("add-credential");
 			expect(resNone.message).toBe(
-				"No credential for github.com. Add a Git host token in Settings → Integrations, or sign your machine's git in to github.com.",
+				"No credential for github.com. Add a Git host token in Settings → Sources, or sign your machine's git in to github.com.",
 			);
 
 			const resMachine = diagnoseGitFailure({

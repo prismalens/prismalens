@@ -63,8 +63,16 @@ import {
 	useFocusLater,
 } from "./HypothesesCard";
 import { IncidentHeader } from "./IncidentHeader";
-import { type DetailsTab, RunDetailsPanel } from "./RunDetailsPanel";
+import { snapshotLine } from "./PreRunCoverage";
+import {
+	type DetailsTab,
+	overviewSteps,
+	RunDetailsPanel,
+	RunOverview,
+} from "./RunDetailsPanel";
+import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
+import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
 	evidenceSections,
@@ -436,6 +444,42 @@ export function RunPage() {
 			}
 		: null;
 	const code = codeChip(inv?.workspace);
+	const turns = toolTurns(run.events);
+	const tools = toolsStatus(turns, {
+		loading: run.eventsLoading,
+		error: run.eventsError,
+		live,
+	});
+	const preRun = inv?.preRun ?? null;
+	const overview = inv && !chat && (
+		<RunOverview
+			steps={overviewSteps({
+				snapshot: snapshotLine(preRun),
+				code: codeLine(inv.workspace, preRun?.checkoutsSkipped ?? []),
+				agent: harness?.label ?? who.agent,
+				status: tools,
+			})}
+			status={tools}
+			turns={turns}
+			hint={
+				harness?.toolsHint
+					? {
+							text: harness.toolsHint.text,
+							folder: runsFolder(inv.workspace?.cwd),
+						}
+					: null
+			}
+		/>
+	);
+	const toolsChip: StripChip | null =
+		tools.state === "not-reached"
+			? {
+					text: "Tools: not connected",
+					title:
+						"PrismaLens's tools did not reach the agent; the details say what to do.",
+					warn: true,
+				}
+			: null;
 
 	const viewingRepo = viewing
 		? workspace?.repos.find((r) => r.name === viewing.repo)
@@ -452,6 +496,7 @@ export function RunPage() {
 					detail={stateWord.detail}
 					model={modelChip}
 					code={panel ? null : code}
+					tools={panel ? null : toolsChip}
 					onStop={
 						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
 					}
@@ -498,6 +543,16 @@ export function RunPage() {
 					onTab={setTab}
 					onClose={closePanel}
 					incidentId={incident.id}
+					summaryTop={overview}
+					contextTop={
+						!chat && (
+							<RunRunbooks
+								runId={inv.id}
+								preRun={preRun}
+								loadError={!!run.error}
+							/>
+						)
+					}
 					summary={summarySections(
 						inv,
 						summaryFacts(inv, run, {

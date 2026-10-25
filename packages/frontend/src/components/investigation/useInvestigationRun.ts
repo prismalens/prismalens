@@ -353,6 +353,9 @@ export function useInvestigationRun(investigationId: string | null) {
 		refetch: query.refetch,
 		isRefetching: query.isRefetching,
 		events,
+		/** The event history is still loading, or did not load: not the same as no events (#848). */
+		eventsLoading: history.isLoading,
+		eventsError: history.isError,
 		latestText,
 		lastEventAt,
 		state,

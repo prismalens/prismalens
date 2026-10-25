@@ -52,7 +52,7 @@ export function SetupNextStepHint({
 			message: "No coding agent is on PATH, so investigations cannot run yet.",
 			actions: (
 				<Button variant="secondary" size="sm" asChild>
-					<Link to="/settings" search={{ tab: "harness" }}>
+					<Link to="/settings" search={{ tab: "agent" }}>
 						Investigation agent settings
 					</Link>
 				</Button>
@@ -78,7 +78,7 @@ export function SetupNextStepHint({
 						<Link to="/incidents">Go to incidents</Link>
 					</Button>
 					<Button variant="text" size="sm" asChild>
-						<Link to="/settings" search={{ tab: "integrations" }}>
+						<Link to="/settings" search={{ tab: "sources" }}>
 							Connect a tool
 						</Link>
 					</Button>

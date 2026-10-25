@@ -250,7 +250,7 @@ async function openHarnessSettings(
 	},
 ): Promise<void> {
 	await serveHarnessSettings(page, settings);
-	await page.goto("/settings?tab=harness");
+	await page.goto("/settings?tab=agent");
 	await expect(
 		page.getByRole("heading", { name: "Agent", exact: true }),
 	).toBeVisible({ timeout: 15_000 });
@@ -390,7 +390,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				body: JSON.stringify(current),
 			});
 		});
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -802,7 +802,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			await route.fallback();
 		});
 
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -916,7 +916,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 
 		// 1. OpenCode
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -991,7 +991,7 @@ test.describe("Design evidence (#501/#609)", () => {
 					blockedReason: harnesses === RUNNABLE ? null : NO_HARNESS_REASON,
 				});
 			}
-			await page.goto("/settings?tab=harness");
+			await page.goto("/settings?tab=agent");
 			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 			await expect(card(page)).toBeVisible({ timeout: 15_000 });
 			await page.unroute(isHarnessesUrl);
