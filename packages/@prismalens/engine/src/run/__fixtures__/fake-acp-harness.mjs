@@ -34,6 +34,11 @@
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
 // FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
 // tool call whose output is the file's text, as an agent reading the pre-run copies would.
+// Reopen paths (#942): FAKE_SESSION_RESUME=1 advertises sessionCapabilities.resume and answers
+// session/resume with no replay (FAKE_SESSION_RESUME=replay sends one replayed update anyway);
+// FAKE_REPLAY_COMPLETE=1 advertises replayComplete and ends the load replay with the marker, then one
+// live update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
+// with ids; FAKE_AGENT_NAME names the agent in initialize.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -512,9 +517,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			id: msg.id,
 			result: {
 				protocolVersion: 1,
-				agentInfo: { name: "fake", version: "0" },
+				agentInfo: {
+					name: process.env.FAKE_AGENT_NAME ?? "fake",
+					version: "0",
+				},
 				agentCapabilities: {
 					...(process.env.FAKE_LOAD_SESSION ? { loadSession: true } : {}),
+					...(process.env.FAKE_SESSION_RESUME ||
+					process.env.FAKE_REPLAY_COMPLETE
+						? {
+								sessionCapabilities: {
+									...(process.env.FAKE_SESSION_RESUME ? { resume: {} } : {}),
+									...(process.env.FAKE_REPLAY_COMPLETE
+										? { replayComplete: {} }
+										: {}),
+								},
+							}
+						: {}),
 					...(process.env.FAKE_IMAGES
 						? { promptCapabilities: { image: true } }
 						: {}),
@@ -567,16 +586,42 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
-	} else if (msg.method === "session/load") {
+	} else if (msg.method === "session/load" || msg.method === "session/resume") {
 		const sessionId = msg.params?.sessionId;
-		notify(sessionId, {
-			sessionUpdate: "user_message_chunk",
-			content: { type: "text", text: "the first prompt" },
-		});
-		notify(sessionId, {
-			sessionUpdate: "agent_message_chunk",
-			content: { type: "text", text: "REPLAYED" },
-		});
+		const history = [
+			{
+				sessionUpdate: "user_message_chunk",
+				messageId: "m_user",
+				content: { type: "text", text: "the first prompt" },
+			},
+			{
+				sessionUpdate: "agent_message_chunk",
+				messageId: "m_agent",
+				content: { type: "text", text: "REPLAYED" },
+			},
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: "t_old",
+				title: "REPLAYED tool",
+				kind: "read",
+				status: "completed",
+			},
+		];
+		const resuming = msg.method === "session/resume";
+		const late = !resuming && process.env.FAKE_LATE_REPLAY;
+		if (resuming) {
+			if (process.env.FAKE_SESSION_RESUME === "replay")
+				notify(sessionId, history[1]);
+		} else {
+			for (const u of history.slice(0, 2)) notify(sessionId, u);
+			if (process.env.FAKE_REPLAY_COMPLETE) {
+				notify(sessionId, { sessionUpdate: "replay_complete" });
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "LIVE before the answer" },
+				});
+			}
+		}
 		const options = configOptions();
 		const modes = sessionModes();
 		send({
@@ -587,6 +632,8 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
+		// gemini-cli's shape (google-gemini/gemini-cli#29707): the history after the answer.
+		if (late) for (const u of history) notify(sessionId, u);
 	} else if (msg.method === "session/set_config_option") {
 		const { configId, value } = msg.params ?? {};
 		// FAKE_REJECT_SET: the agent answers with an RPC error instead of a silent non-switch.
