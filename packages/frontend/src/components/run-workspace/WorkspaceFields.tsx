@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { Retention, RunWorkspaceSettings } from "@prismalens/contracts";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -157,6 +157,43 @@ function CommandsEditor({
 	);
 }
 
+const toPaths = (text: string) =>
+	text
+		.split("\n")
+		.map((l) => l.trim())
+		.filter(Boolean);
+
+/** Keeps the typed text, blank lines included, so Enter starts a new path instead of vanishing. */
+function CopyInEditor({
+	value,
+	onChange,
+	disabled,
+}: {
+	value: string[];
+	onChange: (v: string[]) => void;
+	disabled?: boolean;
+}) {
+	const [text, setText] = useState(value.join("\n"));
+	const joined = value.join("\n");
+	useEffect(() => {
+		setText((t) => (toPaths(t).join("\n") === joined ? t : joined));
+	}, [joined]);
+	return (
+		<Textarea
+			aria-label="Files to copy in"
+			placeholder={".env\nconfig/local.json"}
+			value={text}
+			onChange={(e) => {
+				setText(e.target.value);
+				onChange(toPaths(e.target.value));
+			}}
+			disabled={disabled}
+			className="font-mono"
+			rows={3}
+		/>
+	);
+}
+
 /** The control for one field; `onChange` gets the whole field value. */
 export function FieldEditor({
 	field,
@@ -263,22 +300,10 @@ export function FieldEditor({
 			);
 		case "copyIn":
 			return (
-				<Textarea
-					aria-label="Files to copy in"
-					placeholder={".env\nconfig/local.json"}
-					value={value.copyIn.join("\n")}
-					onChange={(e) =>
-						onChange(
-							"copyIn",
-							e.target.value
-								.split("\n")
-								.map((l) => l.trim())
-								.filter(Boolean),
-						)
-					}
+				<CopyInEditor
+					value={value.copyIn}
+					onChange={(v) => onChange("copyIn", v)}
 					disabled={disabled}
-					className="font-mono"
-					rows={3}
 				/>
 			);
 		case "submodules":

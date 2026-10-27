@@ -334,6 +334,50 @@ describe("Codex pass (#925)", () => {
 		expect(existsSync(newer.dest)).toBe(true);
 		unbindRun("r1");
 	});
+
+	it("a location named pl-* still reads its workspaces' own runs: the cap spares a live one", async () => {
+		global = {
+			...global,
+			location: join(tmp, "pl-workspaces"),
+			retention: { kind: "keep-days", days: 30 },
+			keptPerProject: 1,
+		};
+		const a = initRepo("a");
+		const older = await run("r1", a);
+		await end("r1");
+		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
+		const newer = await run("r2", a);
+		await end("r2");
+		await sweepRunWorktrees();
+		expect(existsSync(older.dest)).toBe(true);
+		expect(existsSync(newer.dest)).toBe(true);
+		unbindRun("r1");
+	});
+
+	it("never follows a linked multi-repo run folder into its target", async () => {
+		const target = join(tmp, "moved");
+		const repo = initRepo();
+		await bindRun("r9", { incidentId: "inc", serviceName: "svc" });
+		await addRunWorktree(repo.dir, join(target, "api"), repo.head, "r9");
+		unbindRun("r9");
+		const link = join(tmp, "app", "worktrees", "pl-r9");
+		mkdirSync(join(tmp, "app", "worktrees"), { recursive: true });
+		symlinkSync(target, link, "junction");
+		await releaseWorktreesIn(link);
+		expect(existsSync(join(target, "api", "a.txt"))).toBe(true);
+	});
+
+	it("an earlier version's plain clone stays while it holds changes, and goes once clean", async () => {
+		const repo = initRepo();
+		const clone = join(tmp, "runs", "r5", "repo");
+		git(["clone", "-q", repo.dir, clone], tmp);
+		writeFileSync(join(clone, "a.txt"), "edited");
+		await releaseWorktreesIn(clone);
+		expect(readFileSync(join(clone, "a.txt"), "utf8")).toBe("edited");
+		git(["checkout", "--", "a.txt"], clone);
+		await releaseWorktreesIn(clone);
+		expect(existsSync(clone)).toBe(false);
+	});
 });
 
 describe("review round 2 (#925)", () => {

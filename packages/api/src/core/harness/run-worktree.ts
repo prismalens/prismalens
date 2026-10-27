@@ -19,7 +19,9 @@ import { basename, dirname, join, resolve } from "node:path";
 import { Logger } from "@nestjs/common";
 import {
 	createWorkspace,
+	gitEnv,
 	type HookResult,
+	isChanged,
 	protectedBy,
 	type RemovalRecord,
 	releaseWorkspace,
@@ -223,12 +225,16 @@ function mustStay(dir: string): boolean {
 	}
 }
 
-/** The `pl-<run>` a multi-repo folder sits in, else `pl-<run>` itself: a repo may be named `pl-*` too. */
+/** `pl-<run>` directly in a location, else the `pl-<run>` a multi-repo folder sits in: a location or a repo may be named `pl-*` too. */
 function runIdOf(dir: string): string | null {
-	for (const name of [basename(dirname(dir)), basename(dir)])
-		if (name.startsWith(WORKTREE_PREFIX))
-			return name.slice(WORKTREE_PREFIX.length);
-	return null;
+	const roots = worktreeRoots();
+	if (roots.includes(resolve(dir))) return null;
+	const name = basename(
+		roots.includes(resolve(dirname(dir))) ? dir : dirname(dir),
+	);
+	return name.startsWith(WORKTREE_PREFIX)
+		? name.slice(WORKTREE_PREFIX.length)
+		: null;
 }
 
 function policyForDir(dir: string): WorkspacePolicy {
@@ -287,8 +293,9 @@ export async function addRunWorktree(
 		mirror?: boolean;
 	} = {},
 ): Promise<AddedWorktree> {
-	// A cap or Remove already deciding on this folder finishes first; a follow-up never resumes mid-removal.
+	// A cap, Remove or sweep already deciding on this folder finishes first; a follow-up never resumes mid-removal.
 	await removing.get(dest);
+	await sweeping;
 	const resumed = await resumeWorkspace({
 		...asWorkspace(dest),
 		lockLabel: runId,
@@ -352,14 +359,37 @@ export async function releaseWorktreesIn(
 	if (!existsSync(dir)) return;
 	let kept = false;
 	if (isWorkspace(dir)) kept = !(await releaseWorktree(dir, onlyLock));
+	// Never followed: deleting through a link would take the target's checkouts.
+	else if (lstatSync(dir).isSymbolicLink()) kept = true;
+	else if (isPlainClone(dir)) kept = await keptClone(dir);
 	else {
-		for (const entry of readdirSync(dir, { withFileTypes: true }))
-			if (entry.isDirectory() && isWorkspace(join(dir, entry.name)))
-				kept =
-					!(await releaseWorktree(join(dir, entry.name), onlyLock)) || kept;
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const child = join(dir, entry.name);
+			if (!entry.isDirectory()) continue;
+			if (isWorkspace(child))
+				kept = !(await releaseWorktree(child, onlyLock)) || kept;
+			else if (isPlainClone(child)) kept = (await keptClone(child)) || kept;
+		}
 		kept ||= readdirSync(dir).some((name) => mustStay(join(dir, name)));
 	}
 	if (!kept) rmSync(dir, { recursive: true, force: true });
+}
+
+/** A clone an earlier version made without a sidecar (`runs/<id>/repo`). */
+function isPlainClone(dir: string): boolean {
+	try {
+		return lstatSync(join(dir, ".git")).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+/** Such a clone holding changes stays, as the default rule would keep it; a clean one goes. */
+async function keptClone(dir: string): Promise<boolean> {
+	if (!(await isChanged(dir, gitEnv(process.env)).catch(() => true)))
+		return false;
+	logger.warn(`Kept the earlier run's clone ${dir}: it holds changes`);
+	return true;
 }
 
 export interface SweepOptions {
@@ -390,9 +420,15 @@ async function sweepIn(
  * outlived the process; hourly, `isLive` names the runs still going. Each workspace gets
  * its own retention rule. Answers the run ids whose workspaces are gone.
  */
-export async function sweepRunWorktrees(
-	opts: SweepOptions = {},
-): Promise<string[]> {
+export function sweepRunWorktrees(opts: SweepOptions = {}): Promise<string[]> {
+	const work = sweepAll(opts);
+	sweeping = work.catch(() => {});
+	return work;
+}
+
+let sweeping: Promise<unknown> = Promise.resolve();
+
+async function sweepAll(opts: SweepOptions): Promise<string[]> {
 	const gone: string[] = [];
 	for (const root of worktreeRoots()) {
 		if (!existsSync(root)) continue;
