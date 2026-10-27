@@ -12,6 +12,7 @@ import {
 } from "@/components/run-workspace/WorkspaceFields";
 import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
+import { Row } from "@/components/shared/Row";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
 
@@ -57,36 +58,34 @@ export function ServiceWorkspaceSection({ serviceId }: { serviceId: string }) {
 				afterwards.
 			</p>
 			{FIELDS.map(({ key, label }) => (
-				<div
+				<Row
 					key={key}
-					className="flex min-h-14 flex-col justify-center gap-2 border-t border-hairline py-3 first:border-t-0"
-					data-testid={`service-workspace-${key}`}
-				>
-					<div className="flex items-center gap-4">
-						<div className="min-w-0 flex-1">
-							<p className="font-semibold">{label}</p>
-							{!own(key) && (
-								<p className="truncate text-meta text-text-2">
-									{FROM_GLOBAL} · {describeField(key, base, where)}
-								</p>
-							)}
-						</div>
-						{canEdit && (
+					testId={`service-workspace-${key}`}
+					label={label}
+					meta={
+						own(key)
+							? undefined
+							: `${FROM_GLOBAL} · ${describeField(key, base, where)}`
+					}
+					trailing={
+						canEdit && (
 							<Button size="sm" variant="text" onClick={() => toggle(key)}>
 								{own(key) ? "Use global" : "Set for this service"}
 							</Button>
-						)}
-					</div>
-					{own(key) && (
-						<FieldEditor
-							field={key}
-							value={value}
-							defaultLocation={where}
-							onChange={(k, v) => setDraft({ ...draft, [k]: v })}
-							disabled={!canEdit}
-						/>
-					)}
-				</div>
+						)
+					}
+					below={
+						own(key) && (
+							<FieldEditor
+								field={key}
+								value={value}
+								defaultLocation={where}
+								onChange={(k, v) => setDraft({ ...draft, [k]: v })}
+								disabled={!canEdit}
+							/>
+						)
+					}
+				/>
 			))}
 			{canEdit && dirty && (
 				<div className="mt-2 flex items-center gap-2">
