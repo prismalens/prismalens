@@ -24,7 +24,9 @@
 				"toolCalls": [
 					{
 						"name": "$gw:investigations_search",
-						"arguments": { "query": "checkout timeouts" }
+						"arguments": {
+							"query": "checkout timeouts"
+						}
 					}
 				]
 			}
@@ -39,7 +41,9 @@
 				"toolCalls": [
 					{
 						"name": "$gw:tools_search",
-						"arguments": { "query": "past investigations" }
+						"arguments": {
+							"query": "past investigations"
+						}
 					}
 				]
 			}
@@ -48,7 +52,7 @@
 			"match": {
 				"inConversation": "[row:gateway-knowledge]",
 				"afterTool": "$gw:tools_search",
-				"resultContains": "investigations_search"
+				"resultContains": ["investigations_search", "inputSchema", "query"]
 			},
 			"response": {
 				"toolCalls": [
@@ -56,7 +60,9 @@
 						"name": "$gw:tools_call",
 						"arguments": {
 							"name": "investigations_search",
-							"arguments": { "query": "checkout timeouts" }
+							"arguments": {
+								"query": "checkout timeouts"
+							}
 						}
 					}
 				]
@@ -67,7 +73,9 @@
 				"inConversation": "[row:gateway-knowledge]",
 				"resultContains": "ScenarioPastCause"
 			},
-			"response": { "content": "$report" }
+			"response": {
+				"content": "$report"
+			}
 		}
 	]
 }

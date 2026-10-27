@@ -428,6 +428,8 @@ export function gatewayProblem(
 			(c, n) =>
 				n >= at &&
 				c.name === w.name &&
+				c.input !== undefined &&
+				typeof c.callId === "string" &&
 				(c.isError === true) === !w.ok &&
 				(!w.outputHas || (c.output ?? "").includes(w.outputHas)),
 		);
@@ -437,7 +439,11 @@ export function gatewayProblem(
 	}
 	const ids = (type: "evidence" | "hypothesis") =>
 		events.flatMap((e) =>
-			e.kind === "finding_recorded" && e.finding.type === type
+			e.kind === "finding_recorded" &&
+			e.finding.type === type &&
+			(e.finding.type === "evidence"
+				? e.finding.observation.trim() && e.finding.quote.trim()
+				: e.finding.statement.trim())
 				? [e.finding.id]
 				: [],
 		);

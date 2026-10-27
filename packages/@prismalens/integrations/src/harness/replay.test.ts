@@ -297,3 +297,21 @@ describe("fixturesFrom", () => {
 		});
 	});
 });
+
+describe("fixturesFrom through tools_call (#848)", () => {
+	it("replays a call that went through tools_call the same way", () => {
+		const entries = fixturesFrom(
+			[
+				{ name: "tools_search", input: { query: "past" } },
+				{ name: "investigations_search", input: { query: "x" }, via: "tools_call" },
+				{ name: "incident_get", input: {} },
+			],
+			"[row:r]",
+		);
+		expect(entries[1]?.response.toolCalls[0]).toEqual({
+			name: "$gw:tools_call",
+			arguments: { name: "investigations_search", arguments: { query: "x" } },
+		});
+		expect(entries[2]?.match.afterTool).toBe("$gw:tools_call");
+	});
+});
