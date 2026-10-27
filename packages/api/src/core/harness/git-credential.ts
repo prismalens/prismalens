@@ -60,22 +60,26 @@ export function repoPath(url: string): string {
 const SCHEME_URL = /^[a-z][a-z0-9+.-]*:\/\//i;
 const SCP_REMOTE = /^[\w.-]+@[\w.-]+:(?!\/\/)/;
 const SSH_SCHEME = /^(?:ssh|git\+ssh|ssh\+git):$/i;
-/** A path holding another address, such as `host/https://u:pw@other/x`, is never echoed. */
-const NESTED = /@|:\/\/|%40/i;
+/** A path holding another address, such as `host/https://u:pw@other/x`, is never echoed; `api@2.git` is a path. */
+function nested(path: string): boolean {
+	return (
+		path.includes("://") ||
+		/%40/i.test(path) ||
+		path.split("/").some((s) => s.includes("@") && s.includes(":"))
+	);
+}
 
 /** A stored address as it may be shown: rows saved before #934 can hold userinfo or a query, so a URL keeps only an ssh username and an scp remote loses its query (#938). */
 export function shownRepoUrl(sourceKind: string, url: string): string {
 	if (sourceKind === "folder") return url;
 	if (SCP_REMOTE.test(url)) {
 		const shown = url.split("?")[0] as string;
-		return NESTED.test(shown.slice(shown.indexOf(":") + 1))
-			? UNSHOWN_REPO
-			: shown;
+		return nested(shown.slice(shown.indexOf(":") + 1)) ? UNSHOWN_REPO : shown;
 	}
 	if (!SCHEME_URL.test(url)) return UNSHOWN_REPO;
 	try {
 		const u = new URL(url);
-		if (!u.host || NESTED.test(u.pathname)) return UNSHOWN_REPO;
+		if (!u.host || nested(u.pathname)) return UNSHOWN_REPO;
 		const user = SSH_SCHEME.test(u.protocol) ? u.username : "";
 		if (!u.password && !u.search && !u.hash && u.username === user) return url;
 		u.password = u.search = u.hash = "";
@@ -91,17 +95,26 @@ export function shownRepoName(sourceKind: string, name: string): string {
 	if (sourceKind === "folder") return name;
 	if (SCHEME_URL.test(name) || SCP_REMOTE.test(name))
 		return shownRepoUrl("url", name);
-	return NESTED.test(name) || name.includes("?") ? UNSHOWN_REPO : name;
+	return nested(name) || name.includes("?") ? UNSHOWN_REPO : name;
 }
 
-const ADDRESS_IN_TEXT =
-	/[a-z][a-z0-9+.-]*:\/\/[^\s'"<>()]+|[\w.-]+@[\w.-]+:[^\s'"<>()]+/gi;
+/** One whitespace-separated word of a note, its address shown; `(` and `).,;` around it are kept. */
+function shownWord(word: string): string {
+	let start = 0;
+	let end = word.length;
+	if (word[0] === "(") start = 1;
+	while (end > start && ").,;".includes(word[end - 1] as string)) end--;
+	const core = word.slice(start, end);
+	if (!core.includes("://") && !SCP_REMOTE.test(core)) return word;
+	const shown = shownRepoUrl("url", core);
+	return shown === core
+		? word
+		: `${word.slice(0, start)}${shown}${word.slice(end)}`;
+}
 
-/** Free text written before #938 from a stored address, with each address in it as shownRepoUrl shows it. */
+/** Free text written before #938 from a stored address, each address in it shown as shownRepoUrl shows it; a folder path is left as written. */
 export function shownText(text: string): string {
-	return text.replace(ADDRESS_IN_TEXT, (address) =>
-		shownRepoUrl("url", address),
-	);
+	return text.split(/(\s+)/).map(shownWord).join("");
 }
 
 /** shownRepoUrl for a recorded address whose kind was not kept: an absolute path is a folder. */

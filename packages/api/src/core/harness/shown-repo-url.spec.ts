@@ -76,3 +76,29 @@ describe("shownRepoName and shownText (#938)", () => {
 		expect(name).not.toContain(SENTINEL);
 	});
 });
+
+describe("round 3 (#938)", () => {
+	it.each([
+		["a query with parentheses", `(URL https://github.com/x/y?token=(${SENTINEL})) at main`],
+		["a password with an apostrophe", `URL https://u:p'${SENTINEL}@github.com/x/y at main`],
+	])("%s leaves no credential in a note", (_name, note) => {
+		expect(shownText(note)).not.toContain(SENTINEL);
+	});
+
+	it("a folder path in a note is kept byte for byte", () => {
+		const note = "Investigating a snapshot of folder /srv/code/u@host:api?draft at main abc.";
+		expect(shownText(note)).toBe(note);
+	});
+
+	it("scans a 1 MiB note with no address in linear time", () => {
+		const started = performance.now();
+		shownText("a".repeat(1024 * 1024));
+		shownText("x@y:".repeat(256 * 1024));
+		expect(performance.now() - started).toBeLessThan(500);
+	});
+
+	it("a credential-free path with @ keeps its name", () => {
+		expect(shownRepoUrl("url", "https://git.example/acme/api@2.git")).toBe("https://git.example/acme/api@2.git");
+		expect(displayNameFor("url", "https://git.example/acme/api@2.git")).toBe("acme/api@2");
+	});
+});

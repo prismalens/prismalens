@@ -8,9 +8,20 @@ import type {
 	TimelineEntry,
 	TimelineEntryWithRelations,
 } from "@prismalens/contracts/schemas";
-import { shownAddress, shownText } from "../../core/harness/git-credential.js";
+import {
+	shownAddress,
+	shownText,
+	UNSHOWN_REPO,
+} from "../../core/harness/git-credential.js";
 import type { CreateTimelineEntryDto } from "./dto/index.js";
 import { TimelineService } from "./timeline.service.js";
+
+function shownRepoEntry(r: { url: string }, i: number) {
+	const url = shownAddress(r.url);
+	return url === UNSHOWN_REPO
+		? { ...r, url, name: `repo-${i + 1}` }
+		: { ...r, url };
+}
 
 /** A run's start entry names its repositories; rows written before #938 kept the stored address. */
 export function shownMetadata(type: string, meta: unknown): unknown {
@@ -22,11 +33,11 @@ export function shownMetadata(type: string, meta: unknown): unknown {
 		...(typeof m.repo === "string" ? { repo: shownAddress(m.repo) } : {}),
 		...(Array.isArray(m.repos)
 			? {
-					repos: m.repos.map((r: unknown) =>
+					repos: m.repos.map((r: unknown, i: number) =>
 						r &&
 						typeof r === "object" &&
 						typeof (r as { url?: unknown }).url === "string"
-							? { ...r, url: shownAddress((r as { url: string }).url) }
+							? shownRepoEntry(r as { url: string }, i)
 							: r,
 					),
 				}

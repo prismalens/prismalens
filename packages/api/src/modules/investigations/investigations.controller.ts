@@ -26,7 +26,10 @@ import {
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
-import { shownRepoUrl } from "../../core/harness/git-credential.js";
+import {
+	shownRepoUrl,
+	UNSHOWN_REPO,
+} from "../../core/harness/git-credential.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -49,10 +52,13 @@ export function shownWorkspace(ws: RunWorkspace | null): RunWorkspace | null {
 	return ws
 		? {
 				...ws,
-				repos: ws.repos.map((r) => ({
-					...r,
-					url: shownRepoUrl(r.sourceKind, r.url),
-				})),
+				repos: ws.repos.map((r, i) => {
+					const url = shownRepoUrl(r.sourceKind, r.url);
+					// A run before #938 named a nested address's folder from its raw path.
+					return url === UNSHOWN_REPO
+						? { ...r, url, name: `repo-${i + 1}`, dir: UNSHOWN_REPO }
+						: { ...r, url };
+				}),
 			}
 		: null;
 }

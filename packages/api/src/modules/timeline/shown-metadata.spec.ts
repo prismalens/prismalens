@@ -41,6 +41,31 @@ describe("a run's recorded repositories as answered (#938)", () => {
 		expect(JSON.stringify(out)).toContain("https://github.com/x/y");
 	});
 
+	it("a pre-#938 run's folder name for a nested address is not returned", () => {
+		const ws = {
+			layout: "multi" as const,
+			cwd: "/runs/r1",
+			repos: [
+				{
+					name: `u_${SENTINEL}_other`,
+					dir: `/runs/r1/u_${SENTINEL}_other`,
+					sourceKind: "url" as const,
+					url: `https://github.com/https://u:${SENTINEL}@other`,
+					subPath: null,
+					connectionId: null,
+					head: "abc123def456",
+					branch: "main",
+					services: ["api"],
+				},
+			],
+		};
+		expect(JSON.stringify(shownWorkspace(ws as never))).not.toContain(SENTINEL);
+		const meta = shownMetadata("investigation_started", {
+			repos: [{ name: `u_${SENTINEL}_other`, url: `https://github.com/https://u:${SENTINEL}@other`, head: "abc" }],
+		});
+		expect(JSON.stringify(meta)).not.toContain(SENTINEL);
+	});
+
 	it("other entries are left alone", () => {
 		const meta = { repo: "acme/api" };
 		expect(shownMetadata("status_changed", meta)).toBe(meta);
