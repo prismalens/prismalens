@@ -18616,6 +18616,9 @@
                               },
                               "schemaHash": {
                                 "type": "string"
+                              },
+                              "via": {
+                                "const": "tools_call"
                               }
                             },
                             "required": [
