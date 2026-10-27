@@ -152,6 +152,8 @@ export interface GatewayAsks {
 	connected(): boolean;
 	serverName: string;
 	tools: readonly string[];
+	/** The tools answered without a card: those that only read or write the run's own record (#848). */
+	autoAllow?: readonly string[];
 }
 
 /**
@@ -196,7 +198,7 @@ export function isGatewayToolCall(
 	return (
 		!!named &&
 		named.servers.every((s) => s === gateway.serverName) &&
-		gateway.tools.includes(named.tool)
+		(gateway.autoAllow ?? gateway.tools).includes(named.tool)
 	);
 }
 
