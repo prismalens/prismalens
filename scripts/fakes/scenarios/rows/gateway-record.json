@@ -7,9 +7,9 @@
 	"gateway": {
 		"calls": [
 			{ "name": "evidence_record", "ok": true, "outputHas": "e1" },
-			{ "name": "hypothesis_record", "ok": true, "outputHas": "h1" }
+			{ "name": "hypothesis_record", "ok": true, "outputHas": "rh1" }
 		],
-		"records": { "evidence": ["e1"], "hypotheses": ["h1"] }
+		"records": { "evidence": ["e1"], "hypotheses": ["rh1"] }
 	},
 	"fixtures": [
 		{
