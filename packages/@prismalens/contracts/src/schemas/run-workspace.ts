@@ -84,10 +84,22 @@ export const RunWorkspaceGlobalSchema = z.object({
 	settings: RunWorkspaceSettingsSchema,
 	/** `<app data>/worktrees`, what a null location means. */
 	defaultLocation: z.string(),
+	/** Where a git URL is cloned once (global only: one copy serves every service). */
+	copies: z.object({
+		location: LocationSchema.nullable(),
+		/** `<app data>/repos`, what a null location means. */
+		defaultLocation: z.string(),
+		/** Folders named before that still hold a copy a workspace uses. */
+		previous: z.array(z.string()),
+	}),
 	/** Only the host's own session edits these: they run commands on this computer. */
 	canEdit: z.boolean(),
 });
 export type RunWorkspaceGlobal = z.infer<typeof RunWorkspaceGlobalSchema>;
+
+export const UpdateRunWorkspaceCopiesSchema = z.object({
+	location: LocationSchema.nullable(),
+});
 
 export const ServiceWorkspaceSchema = z.object({
 	serviceId: z.string(),

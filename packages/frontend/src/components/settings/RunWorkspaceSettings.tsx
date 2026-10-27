@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	RunWorkspaceGlobal,
 	RunWorkspaceSettings as Settings,
 	WorkspaceRemoval,
 } from "@prismalens/contracts";
@@ -19,6 +20,7 @@ import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup } from "@/components/shared/SettingRow";
 import { Empty } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { orpc } from "@/lib/api/orpc-client";
 
 /** Settings → Runs → Workspace (#925): the global settings, and what was removed and why. */
@@ -98,6 +100,9 @@ export function RunWorkspaceSettings() {
 					</div>
 				)}
 			</SettingGroup>
+			{query.data.copies && (
+				<CopiesGroup copies={query.data.copies} canEdit={canEdit} />
+			)}
 			<SettingGroup
 				title="Recent removals"
 				count={removals.data?.removals.length}
@@ -128,5 +133,67 @@ function RemovalRow({ removal: r }: { removal: WorkspaceRemoval }) {
 			label={<Mono className="truncate">{r.dir}</Mono>}
 			meta={`${r.removed ? "Removed" : "Kept"}: ${reason}.${teardown} ${new Date(r.at).toLocaleString()}`}
 		/>
+	);
+}
+
+/** Where a git URL is cloned once (#925); global only, since one copy serves every service. */
+function CopiesGroup({
+	copies,
+	canEdit,
+}: {
+	copies: RunWorkspaceGlobal["copies"];
+	canEdit: boolean;
+}) {
+	const queryClient = useQueryClient();
+	const [draft, setDraft] = useState(copies.location ?? "");
+	useEffect(() => setDraft(copies.location ?? ""), [copies.location]);
+	const update = useMutation({
+		...orpc.runWorkspaces.updateCopies.mutationOptions(),
+		onSuccess: (data) =>
+			queryClient.setQueryData(orpc.runWorkspaces.get.queryKey(), data),
+	});
+	const next = draft.trim() || null;
+	const dirty = next !== (copies.location ?? null);
+	return (
+		<SettingGroup
+			title="Git URLs"
+			description="A git URL is cloned once, into this folder, and fetched after that. Each run's workspace is a worktree or a clone of that copy, as Method says."
+			testId="run-workspace-copies"
+		>
+			<Pool>
+				<Row
+					label="Cloned copies"
+					meta={
+						copies.previous.length
+							? `New copies go here. Copies still in ${copies.previous.join(", ")} are used until no kept workspace needs them, then removed.`
+							: "Changing it clones each URL again on its next run; the old copies are removed once no kept workspace uses them."
+					}
+					stackOnPhone
+					below={
+						<div className="mt-2 flex flex-wrap items-center gap-2">
+							<Input
+								aria-label="Cloned copies"
+								placeholder={copies.defaultLocation}
+								value={draft}
+								onChange={(e) => setDraft(e.target.value)}
+								disabled={!canEdit}
+								className="min-w-0 flex-1 basis-64 font-mono"
+							/>
+							{canEdit && (
+								<Button
+									size="sm"
+									disabled={!dirty || update.isPending}
+									onClick={() => update.mutate({ location: next })}
+									data-testid="run-workspace-copies-save"
+								>
+									Save
+								</Button>
+							)}
+						</div>
+					}
+				/>
+			</Pool>
+			<MutationError error={update.error} className="mt-2" />
+		</SettingGroup>
 	);
 }

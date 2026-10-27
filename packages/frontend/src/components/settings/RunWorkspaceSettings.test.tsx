@@ -33,6 +33,9 @@ const state = {
 	settings: { ...defaultSettings },
 	removals: [] as WorkspaceRemoval[],
 	updateMutate: vi.fn(),
+	copies: undefined as
+		| { location: string | null; defaultLocation: string; previous: string[] }
+		| undefined,
 };
 
 vi.mock("@tanstack/react-query", () => ({
@@ -50,6 +53,7 @@ vi.mock("@tanstack/react-query", () => ({
 				settings: state.settings,
 				defaultLocation: state.defaultLocation,
 				canEdit: state.canEdit,
+				copies: state.copies,
 			},
 		};
 	},
@@ -70,6 +74,9 @@ vi.mock("@/lib/api/orpc-client", () => ({
 			update: {
 				mutationOptions: () => ({}),
 			},
+			updateCopies: {
+				mutationOptions: () => ({}),
+			},
 			removals: {
 				queryOptions: () => ({ queryKey: () => ["runWorkspaces", "removals"] }),
 			},
@@ -87,6 +94,7 @@ beforeEach(() => {
 	state.settings = { ...defaultSettings };
 	state.removals = [];
 	state.updateMutate = vi.fn();
+	state.copies = undefined;
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -191,5 +199,51 @@ describe("RunWorkspaceSettings", () => {
 
 		expect(container.textContent).toContain("/worktrees/pl-run-1");
 		expect(container.textContent).toContain("Removed: you removed it.");
+	});
+});
+
+describe("RunWorkspaceSettings, Git URLs (#925)", () => {
+	it("shows where URLs are cloned once and saves a new folder", async () => {
+		state.copies = {
+			location: null,
+			defaultLocation: "/data/repos",
+			previous: [],
+		};
+		await act(async () => root.render(createElement(RunWorkspaceSettings)));
+
+		const input = container.querySelector(
+			'input[aria-label="Cloned copies"]',
+		) as HTMLInputElement;
+		expect(input.placeholder).toBe("/data/repos");
+		const save = container.querySelector(
+			'[data-testid="run-workspace-copies-save"]',
+		) as HTMLButtonElement;
+		expect(save.disabled).toBe(true);
+
+		await act(async () => {
+			const setter = Object.getOwnPropertyDescriptor(
+				window.HTMLInputElement.prototype,
+				"value",
+			)?.set;
+			setter?.call(input, "/fast/disk");
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await act(async () => save.click());
+		expect(state.updateMutate).toHaveBeenCalledWith({ location: "/fast/disk" });
+	});
+
+	it("names the old folders still in use, and a paired device cannot save", async () => {
+		state.canEdit = false;
+		state.copies = {
+			location: "/fast/disk",
+			defaultLocation: "/data/repos",
+			previous: ["/data/repos"],
+		};
+		await act(async () => root.render(createElement(RunWorkspaceSettings)));
+
+		expect(container.textContent).toContain("Copies still in /data/repos");
+		expect(
+			container.querySelector('[data-testid="run-workspace-copies-save"]'),
+		).toBeNull();
 	});
 });

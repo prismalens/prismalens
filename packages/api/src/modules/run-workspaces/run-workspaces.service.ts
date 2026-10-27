@@ -11,6 +11,7 @@ import {
 import {
 	DEFAULT_RUN_WORKSPACE_SETTINGS,
 	type KeptWorkspace,
+	type RunWorkspaceGlobal,
 	type RunWorkspaceOverride,
 	RunWorkspaceOverrideSchema,
 	type RunWorkspaceSettings,
@@ -21,6 +22,11 @@ import {
 	WorkspaceRemovalSchema,
 } from "@prismalens/contracts";
 import { z } from "zod";
+import {
+	defaultMirrorRoot,
+	setMirrorLocations,
+	sweepOldMirrors,
+} from "../../core/harness/mirror-location.js";
 import {
 	defaultWorktreeRoot,
 	keptWorkspaces,
@@ -34,6 +40,11 @@ const GLOBAL_KEY = "runWorkspace.global";
 const OVERRIDE_PREFIX = "runWorkspace.service.";
 const REMOVALS_KEY = "runWorkspace.removals";
 const LOCATIONS_KEY = "runWorkspace.locations";
+const COPIES_KEY = "runWorkspace.copies";
+const CopiesSchema = z.object({
+	location: z.string().nullable(),
+	previous: z.array(z.string()),
+});
 const REMOVALS_KEPT = 100;
 const HOUR_MS = 60 * 60_000;
 
@@ -51,6 +62,10 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 	private overrides = new Map<string, RunWorkspaceOverride>();
 	/** Every location a setting ever named, so a workspace left there is still swept and listed. */
 	private locations = new Set<string>();
+	private copies: z.infer<typeof CopiesSchema> = {
+		location: null,
+		previous: [],
+	};
 	private loaded: Promise<void> | null = null;
 	private timer: NodeJS.Timeout | null = null;
 	private sweeping: Promise<void> | null = null;
@@ -105,7 +120,10 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		});
 		for (const row of rows) {
 			const value = parseJson(row.value);
-			if (row.key === LOCATIONS_KEY) {
+			if (row.key === COPIES_KEY) {
+				const parsed = CopiesSchema.safeParse(value);
+				if (parsed.success) this.copies = parsed.data;
+			} else if (row.key === LOCATIONS_KEY) {
 				const parsed = z.array(z.string()).safeParse(value);
 				if (parsed.success) for (const l of parsed.data) this.locations.add(l);
 			} else if (row.key === GLOBAL_KEY) {
@@ -123,6 +141,7 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 					);
 			}
 		}
+		setMirrorLocations(this.copies.location, this.copies.previous);
 	}
 
 	/** The hourly sweep; a live run's workspace is never touched, and two sweeps never overlap. */
@@ -146,6 +165,7 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 					isLive: (id) => liveIds.has(id),
 					isResolved: (id) => resolvedIds.has(id),
 				});
+				await this.sweepCopies();
 			} catch (e) {
 				this.logger.warn(
 					`Could not sweep run workspaces: ${(e as Error).message}`,
@@ -157,12 +177,49 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		return this.sweeping;
 	}
 
-	async getGlobal(): Promise<{
-		settings: RunWorkspaceSettings;
-		defaultLocation: string;
-	}> {
+	async getGlobal(): Promise<Omit<RunWorkspaceGlobal, "canEdit">> {
 		await this.ready();
-		return { settings: this.global, defaultLocation: defaultWorktreeRoot() };
+		return {
+			settings: this.global,
+			defaultLocation: defaultWorktreeRoot(),
+			copies: { ...this.copies, defaultLocation: defaultMirrorRoot() },
+		};
+	}
+
+	/** New copies go to `location`; the folder before it is remembered until its copies are unused. */
+	async setCopies(location: string | null) {
+		await this.ready();
+		const before = this.copies.location;
+		const previous =
+			before === location
+				? this.copies.previous
+				: [
+						...new Set([
+							...this.copies.previous,
+							before ?? defaultMirrorRoot(),
+						]),
+					];
+		await this.saveCopies({ location, previous });
+		return this.getGlobal();
+	}
+
+	private async saveCopies(next: z.infer<typeof CopiesSchema>): Promise<void> {
+		const value = JSON.stringify(next);
+		await this.prisma.setting.upsert({
+			where: { key: COPIES_KEY },
+			create: { key: COPIES_KEY, value, type: "json", category: "runs" },
+			update: { value },
+		});
+		this.copies = next;
+		setMirrorLocations(next.location, next.previous);
+	}
+
+	/** Old copy folders are dropped once no workspace uses a copy in them. */
+	private async sweepCopies(): Promise<void> {
+		if (!this.copies.previous.length) return;
+		const still = await sweepOldMirrors();
+		if (still.length !== this.copies.previous.length)
+			await this.saveCopies({ ...this.copies, previous: still });
 	}
 
 	async setGlobal(settings: RunWorkspaceSettings) {

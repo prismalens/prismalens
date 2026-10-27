@@ -11,6 +11,7 @@ import {
 	RunWorkspacesSchema,
 	RunWorkspaceTargetSchema,
 	ServiceWorkspaceSchema,
+	UpdateRunWorkspaceCopiesSchema,
 	UpdateServiceWorkspaceSchema,
 	WorkspaceRemovalsSchema,
 } from "../schemas/run-workspace.js";
@@ -35,6 +36,17 @@ export const runWorkspacesContract = {
 			tags,
 		})
 		.input(RunWorkspaceSettingsSchema)
+		.output(RunWorkspaceGlobalSchema),
+
+	updateCopies: oc
+		.route({
+			method: "PUT",
+			path: "/settings/run-workspace/copies",
+			summary:
+				"Set where a git URL is cloned once; new copies go there. Host only",
+			tags,
+		})
+		.input(UpdateRunWorkspaceCopiesSchema)
 		.output(RunWorkspaceGlobalSchema),
 
 	getService: oc

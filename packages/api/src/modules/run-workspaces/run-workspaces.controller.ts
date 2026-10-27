@@ -61,6 +61,15 @@ export class RunWorkspacesController {
 					return { ...(await this.service.setGlobal(input)), canEdit: true };
 				},
 			),
+			updateCopies: implement(runWorkspacesContract.updateCopies).handler(
+				async ({ input, context }) => {
+					hostOnly(context.request);
+					return {
+						...(await this.service.setCopies(input.location)),
+						canEdit: true,
+					};
+				},
+			),
 			getService: implement(runWorkspacesContract.getService).handler(
 				async ({ input, context }) => ({
 					...(await notFoundAsync(() =>

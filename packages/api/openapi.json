@@ -26057,6 +26057,36 @@
                     "defaultLocation": {
                       "type": "string"
                     },
+                    "copies": {
+                      "type": "object",
+                      "properties": {
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "defaultLocation": {
+                          "type": "string"
+                        },
+                        "previous": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "location",
+                        "defaultLocation",
+                        "previous"
+                      ]
+                    },
                     "canEdit": {
                       "type": "boolean"
                     }
@@ -26064,6 +26094,7 @@
                   "required": [
                     "settings",
                     "defaultLocation",
+                    "copies",
                     "canEdit"
                   ]
                 }
@@ -26382,6 +26413,36 @@
                     "defaultLocation": {
                       "type": "string"
                     },
+                    "copies": {
+                      "type": "object",
+                      "properties": {
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "defaultLocation": {
+                          "type": "string"
+                        },
+                        "previous": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "location",
+                        "defaultLocation",
+                        "previous"
+                      ]
+                    },
                     "canEdit": {
                       "type": "boolean"
                     }
@@ -26389,6 +26450,241 @@
                   "required": [
                     "settings",
                     "defaultLocation",
+                    "copies",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/run-workspace/copies": {
+      "put": {
+        "operationId": "runWorkspaces.updateCopies",
+        "summary": "Set where a git URL is cloned once; new copies go there. Host only",
+        "tags": [
+          "run-workspaces"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "location"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "settings": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "keptPerProject": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "location",
+                        "retention",
+                        "keptPerProject",
+                        "setup",
+                        "teardown",
+                        "copyIn",
+                        "submodules",
+                        "branch"
+                      ]
+                    },
+                    "defaultLocation": {
+                      "type": "string"
+                    },
+                    "copies": {
+                      "type": "object",
+                      "properties": {
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "defaultLocation": {
+                          "type": "string"
+                        },
+                        "previous": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "location",
+                        "defaultLocation",
+                        "previous"
+                      ]
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "settings",
+                    "defaultLocation",
+                    "copies",
                     "canEdit"
                   ]
                 }

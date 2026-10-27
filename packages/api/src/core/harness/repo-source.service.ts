@@ -30,6 +30,7 @@ import {
 	remoteGitEnv,
 	spawnGit,
 } from "./git-spawn.js";
+import { mirrorRoot } from "./mirror-location.js";
 import { addRunWorktree } from "./run-worktree.js";
 
 export { tokenUsernameFor } from "./git-credential.js";
@@ -109,10 +110,7 @@ export function displayNameFor(kind: RepoSourceKind, source: string): string {
 	return segments.slice(-2).join("/") || source;
 }
 
-export function mirrorPathFor(
-	url: string,
-	root = join(getAppDataDir(), "repos"),
-): string {
+export function mirrorPathFor(url: string, root = mirrorRoot()): string {
 	const u = new URL(url.replace(/^([\w.-]+)@([^:]+):/, "ssh://$1@$2/"));
 	const segments = urlSegments(url).map((s) =>
 		s.replace(/[^A-Za-z0-9._-]/g, "_"),

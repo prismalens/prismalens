@@ -262,3 +262,31 @@ describe("RunWorkspacesService location history (#925 review)", () => {
 		expect(JSON.parse(rows.get("runWorkspace.global") as string).location).toBe("/runs/d");
 	});
 });
+
+describe("RunWorkspacesService cloned copies (#925)", () => {
+	it("a new folder remembers the one before it until its copies are unused", async () => {
+		const rows = new Map<string, string>();
+		const prisma = {
+			setting: {
+				findMany: vi.fn(async () => []),
+				findUnique: vi.fn(async () => null),
+				upsert: vi.fn(async ({ where, create }: { where: { key: string }; create: { value: string } }) => {
+					rows.set(where.key, create.value);
+				}),
+				deleteMany: vi.fn(async () => ({ count: 0 })),
+			},
+		};
+		const svc = new RunWorkspacesService(prisma as never);
+		const first = await svc.setCopies("/copies/a");
+		expect(first.copies.location).toBe("/copies/a");
+		expect(first.copies.previous).toEqual([first.copies.defaultLocation]);
+		const second = await svc.setCopies("/copies/b");
+		expect(second.copies.previous).toEqual([first.copies.defaultLocation, "/copies/a"]);
+		expect(JSON.parse(rows.get("runWorkspace.copies") as string)).toEqual({
+			location: "/copies/b",
+			previous: [first.copies.defaultLocation, "/copies/a"],
+		});
+		const same = await svc.setCopies("/copies/b");
+		expect(same.copies.previous).toHaveLength(2);
+	});
+});
