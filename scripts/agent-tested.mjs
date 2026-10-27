@@ -67,7 +67,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 	const date = values.date ?? new Date().toISOString().slice(0, 10);
 	const rows = wanted(
 		json("scripts/agent-pins.json").pins,
-		json("packages/@prismalens/agent-adapters/package.json").dependencies,
+		json("packages/@prismalens/agent-adapters/package.json").devDependencies,
 	);
 	const { source, moved } = retest(readFileSync(HARNESS, "utf8"), rows, date);
 	writeFileSync(HARNESS, source);

@@ -68,7 +68,7 @@ jobs:
         {"package": "@openai/codex", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@openai/codex\"]"}]
       soak-days: 3
       probe: |
-        adapter() { node -p "require('./packages/@prismalens/agent-adapters/package.json').dependencies['$1']"; }
+        adapter() { node -p "require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']"; }
         case "$PIN_PACKAGE" in
           @agentclientprotocol/claude-agent-acp) node scripts/agent-probe.mjs --agent claude-code --version "$PIN_VERSION" ;;
           @agentclientprotocol/codex-acp) node scripts/agent-probe.mjs --agent codex --version "$PIN_VERSION" ;;

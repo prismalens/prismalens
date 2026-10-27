@@ -24,7 +24,7 @@ const adapters = JSON.parse(
 		),
 		"utf8",
 	),
-).dependencies;
+).devDependencies;
 
 test("rows already on their pins stay byte for byte", () => {
 	const { source, moved } = retest(
