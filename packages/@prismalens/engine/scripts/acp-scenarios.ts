@@ -23,6 +23,7 @@ import type {
 } from "@prismalens/contracts/schemas";
 import type {
 	Expectation,
+	GatewayExpectation,
 	Row,
 } from "../../../../scripts/fakes/scripted-model.mjs";
 import {
@@ -37,6 +38,7 @@ import {
 } from "../src/run/permission.js";
 import { AcpSession } from "../src/runner/acp-client.js";
 import { parseTranscript } from "./admission-checks.js";
+import { startStubGateway } from "./stub-gateway.js";
 
 export const ROW_RUN_ID = "00000000-0000-4000-8000-0000000000a1";
 const DEFAULT_PROMPT_MS = 120_000;
@@ -206,6 +208,9 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				}, 500)
 			: undefined;
 		const events: CanonicalEvent[] = [];
+		// Every row runs with PrismaLens's tools, as a real run does (#848); off only to compare.
+		const stub =
+			process.env.PL_MATRIX_GATEWAY === "off" ? null : await startStubGateway();
 		try {
 			for await (const ev of runInvestigation({
 				harness: base.harness,
@@ -221,11 +226,13 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				initTimeoutMs: 60_000,
 				promptTimeoutMs: promptMs,
 				signal: controller.signal,
+				...(stub ? { gateway: stub.entry } : {}),
 			}))
 				events.push(ev);
 		} finally {
 			clearTimeout(watchdog);
 			if (poll) clearInterval(poll);
+			await stub?.close();
 		}
 		let orphan: boolean | undefined;
 		if (needle && sawTool) {
@@ -266,6 +273,7 @@ export function checkRow(
 	harness: HarnessId,
 	expect: Expectation,
 	seen: RowObservation,
+	gateway?: GatewayExpectation,
 ): string | null {
 	if (seen.hung) return `hung: still running after ${seen.elapsedMs}ms`;
 	if (!seen.agentSpoke && expect !== "exited")
@@ -331,6 +339,9 @@ export function checkRow(
 			return toolResults > 0 && errors.length > 0 && !report
 				? null
 				: `expected the step's tool result, then an error and no report (${saw})`;
+		case "gateway":
+			if (!report) return `no report (${saw})`;
+			return gatewayProblem(seen.events, gateway);
 		case "modes": {
 			const row = HARNESS_REGISTRY[harness];
 			const s = seen.session ?? { modes: [], models: [] };
@@ -344,4 +355,45 @@ export function checkRow(
 				: `modes [${s.modes.join(",")}] (registry ${row.modeMechanism}), ${s.models.length} models (registry ${row.modelVia})`;
 		}
 	}
+}
+
+/**
+ * `null` when the run recorded PrismaLens's tool calls a `gateway` row expects, in order,
+ * each with the outcome and the text the real tool answers with (#848).
+ */
+export function gatewayProblem(
+	events: readonly CanonicalEvent[],
+	want: GatewayExpectation | undefined,
+): string | null {
+	if (!want) return "the row names no gateway expectation";
+	const calls = events.flatMap((e) =>
+		e.kind === "harness_tool_call" ? [e] : [],
+	);
+	let at = 0;
+	for (const w of want.calls) {
+		const i = calls.findIndex(
+			(c, n) =>
+				n >= at &&
+				c.name === w.name &&
+				(c.isError === true) === !w.ok &&
+				(!w.outputHas || (c.output ?? "").includes(w.outputHas)),
+		);
+		if (i < 0)
+			return `no ${w.ok ? "successful" : "failed"} ${w.name}${w.outputHas ? ` answering "${w.outputHas}"` : ""} after call ${at}; saw ${calls.map((c) => `${c.name}${c.isError ? "!" : ""}`).join(",") || "no PrismaLens call"}`;
+		at = i + 1;
+	}
+	const ids = (type: "evidence" | "hypothesis") =>
+		events.flatMap((e) =>
+			e.kind === "finding_recorded" && e.finding.type === type
+				? [e.finding.id]
+				: [],
+		);
+	for (const [type, wanted] of [
+		["evidence", want.records?.evidence],
+		["hypothesis", want.records?.hypotheses],
+	] as const)
+		for (const id of wanted ?? [])
+			if (!ids(type).includes(id))
+				return `no recorded ${type} "${id}" (saw ${ids(type).join(",") || "none"})`;
+	return null;
 }

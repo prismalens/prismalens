@@ -993,6 +993,16 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		name: z.string(),
 		at: z.string(),
 		turn: z.enum(["first", "follow-up"]),
+		/** What the call carried, for replay; absent on events from before #848's framework. */
+		callId: z.string().optional(),
+		input: z.unknown().optional(),
+		/** The input was over the cap and dropped whole, never cut (#453). */
+		inputDropped: z.literal(true).optional(),
+		/** The text the agent received, scrubbed and capped. */
+		output: z.string().optional(),
+		isError: z.boolean().optional(),
+		ms: z.number().int().min(0).optional(),
+		schemaHash: z.string().optional(),
 	}),
 	z.object({
 		/** Once at the turn's end: whether the agent connected to PrismaLens's tools, and what it called (#848). */

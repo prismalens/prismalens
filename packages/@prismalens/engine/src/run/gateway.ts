@@ -38,9 +38,17 @@ export interface GatewayEntry {
 	restore?(found: Findings): void;
 }
 
+/** One call as the gateway executed it; what replay needs rides on the event (#848). */
 export interface GatewayCall {
 	name: string;
 	at: string;
+	callId?: string;
+	input?: unknown;
+	inputDropped?: true;
+	output?: string;
+	isError?: boolean;
+	ms?: number;
+	schemaHash?: string;
 }
 
 export interface GatewayCallCount {

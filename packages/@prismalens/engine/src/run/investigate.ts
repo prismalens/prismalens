@@ -683,8 +683,7 @@ export async function* runInvestigation(
 				if (opts.gateway)
 					yield adapter.harnessToolCall(
 						opts.gateway.serverName,
-						item.name,
-						item.at,
+						item.call,
 						toolsTurn,
 					);
 			} else if (item.kind === "harness_finding") {
@@ -756,7 +755,7 @@ export async function* runInvestigation(
 	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
 	let summarized = false;
 	const unCalled = opts.gateway?.onCall((c) =>
-		session.inject({ kind: "harness_tool_call", ...c }),
+		session.inject({ kind: "harness_tool_call", call: c }),
 	);
 	const unFound = opts.gateway?.onFinding?.((finding) =>
 		session.inject({ kind: "harness_finding", finding }),

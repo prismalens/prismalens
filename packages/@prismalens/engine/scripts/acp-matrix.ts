@@ -55,7 +55,7 @@ for (const row of matrixRows()) {
 	const problem =
 		"crash" in seen
 			? `the runner threw: ${seen.crash}`
-			: checkRow(harness, expect, seen);
+			: checkRow(harness, expect, seen, row.gateway);
 	if (problem) failed++;
 	const error = seen.events.find((e) => e.kind === "error");
 	const ended =

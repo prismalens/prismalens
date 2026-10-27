@@ -10,7 +10,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { SCRIPTED_KEY, startScriptedModel } from "./fakes/scripted-model.mjs";
+import {
+	agentTools,
+	SCRIPTED_KEY,
+	startScriptedModel,
+} from "./fakes/scripted-model.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const AGENTS = [
@@ -296,6 +300,46 @@ export function parseArgs(argv) {
 	};
 }
 
+/**
+ * What PrismaLens's own tools cost the model over a matrix run (#848): definition characters
+ * summed over every main-loop request (each resends its tools), `tools_search` results once
+ * each, the first request of each row, and side requests apart. Tokens are chars/4, an estimate.
+ * @param {import("./fakes/scripted-model.d.mts").RequestSummary[]} requests
+ * @param {string} shell
+ * @param {boolean} search
+ */
+export function toolCost(requests, shell, search) {
+	const main = requests.filter((r) => r.tools.some((t) => t.endsWith(shell)));
+	const side = requests.filter((r) => !main.includes(r));
+	const rows = new Set(main.map((r) => r.row).filter(Boolean));
+	const defs = main.reduce((n, r) => n + r.plDefChars, 0);
+	/** @type {Map<string, number>} */
+	const results = new Map();
+	for (const r of main)
+		for (const [id, chars] of Object.entries(r.searchResults))
+			results.set(id, chars);
+	const searched = [...results.values()].reduce((n, c) => n + c, 0);
+	const first = [...rows].reduce(
+		(n, row) => n + (main.find((r) => r.row === row)?.plDefChars ?? 0),
+		0,
+	);
+	const perRun = rows.size ? Math.round((defs + searched) / rows.size) : 0;
+	return `TOOLCOST search=${search ? "on" : "off"} rows=${rows.size} requests=${main.length} defChars=${defs} searchChars=${searched} firstRequestChars=${rows.size ? Math.round(first / rows.size) : 0} perRunChars=${perRun} perRunTokensEst=${Math.round(perRun / 4)} sideDefChars=${side.reduce((n, r) => n + r.plDefChars, 0)}`;
+}
+
+/**
+ * Passing rows over applicable rows (n/a left out), from the matrix's ROW lines.
+ * @param {string} stdout
+ */
+export function passRate(stdout) {
+	const verdicts = [...stdout.matchAll(/^ROW [^:]+: (pass|fail|n\/a)/gm)].map(
+		(m) => m[1],
+	);
+	const applicable = verdicts.filter((v) => v !== "n/a").length;
+	const passed = verdicts.filter((v) => v === "pass").length;
+	return `PASSRATE ${passed}/${applicable}${applicable ? ` ${Math.round((100 * passed) / applicable)}%` : ""}`;
+}
+
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
 	if (!args) {
@@ -345,6 +389,7 @@ async function main() {
 				}
 			}
 			if (args.matrix) {
+				const from = model.requests().length;
 				const out = await engineScript(
 					"acp-matrix.ts",
 					[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
@@ -355,6 +400,14 @@ async function main() {
 					},
 				);
 				parts.push(matrixSignature(out.stdout));
+				console.log(
+					toolCost(
+						model.requests().slice(from),
+						agentTools()[args.harness]?.shell ?? "",
+						process.env.PL_TOOL_SEARCH === "on",
+					),
+				);
+				console.log(passRate(out.stdout));
 				if (out.code !== 0) {
 					failed = true;
 					console.error(out.stderr.slice(-2000));

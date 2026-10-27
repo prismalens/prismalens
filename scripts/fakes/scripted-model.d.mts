@@ -44,7 +44,15 @@ export type Expectation =
 	/** The agent exits before it answers anything, and PrismaLens says so. */
 	| "exited"
 	| "modes"
-	| "parallel";
+	| "parallel"
+	/** PrismaLens's own tools were called as `gateway` says, and the run reported (#848). */
+	| "gateway";
+
+/** What a `gateway` row expects PrismaLens's tools to have recorded, in order. */
+export interface GatewayExpectation {
+	calls: { name: string; ok: boolean; outputHas?: string }[];
+	records?: { evidence?: string[]; hypotheses?: string[] };
+}
 
 export interface Row {
 	row: string;
@@ -56,6 +64,7 @@ export interface Row {
 	agents?: Record<string, { expect: Expectation; why: string }>;
 	/** A fault this agent's wire cannot express, and why. */
 	na?: Record<string, string>;
+	gateway?: GatewayExpectation;
 	fixtures: FixtureFileEntry[];
 }
 
@@ -89,5 +98,11 @@ export interface RequestSummary {
 	model: string;
 	tools: string[];
 	last: string;
+	/** The matrix row the conversation belongs to, from its `[row:<id>]` marker. */
+	row: string | null;
+	/** Characters of PrismaLens's own tool definitions in this request (#848). */
+	plDefChars: number;
+	/** `tools_search` results carried back to the model, characters by call id. */
+	searchResults: Record<string, number>;
 }
 export function requestSummary(req: ChatCompletionRequest): RequestSummary;

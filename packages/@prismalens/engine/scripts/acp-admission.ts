@@ -27,12 +27,8 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { createServer, type IncomingMessage } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
-import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
@@ -42,7 +38,6 @@ import type {
 	CanonicalEvent,
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
-import { type GatewayEntry, newGatewayServerName } from "../src/run/gateway.js";
 import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
 import { denyAllPolicy } from "../src/run/permission.js";
 import { AcpSession } from "../src/runner/acp-client.js";
@@ -58,6 +53,7 @@ import {
 	toolCallLine,
 } from "./admission-checks.js";
 import { startReportBreakingProxy } from "./report-breaking-proxy.js";
+import { startStubGateway } from "./stub-gateway.js";
 
 const [harnessArg, cloneDir] = process.argv.slice(2);
 if (!harnessArg || !cloneDir) {
@@ -114,147 +110,10 @@ const context: InvestigationContext = {
 	service: { name: "admission" },
 };
 
-/** A stand-in for the API's gateway: one read-only tool, the run's bearer, a call count. */
-async function startStubGateway(): Promise<{
-	entry: GatewayEntry;
-	count: () => number;
-	close: () => Promise<void>;
-}> {
-	const token = randomBytes(24).toString("hex");
-	const serverName = newGatewayServerName();
-	let connected = false;
-	let total = 0;
-	const waiters = new Set<(ok: boolean) => void>();
-	const listeners = new Set<(c: { name: string; at: string }) => void>();
-	const calls = new Map<
-		string,
-		{ name: string; firstCalledAt: string; count: number }
-	>();
-	const handler = createMcpHandler(
-		() => {
-			const server = new Server(
-				{ name: "prismalens", version: "0.3.0" },
-				{ capabilities: { tools: {} } },
-			);
-			server.setRequestHandler("tools/list", () => ({
-				tools: [
-					{
-						name: "incident_get",
-						description:
-							"The incident this run investigates: its alerts, deploy and change events PrismaLens recorded.",
-						inputSchema: { type: "object", properties: {} },
-						annotations: { readOnlyHint: true, openWorldHint: false },
-					},
-				],
-			}));
-			server.setRequestHandler("tools/call", (req) => {
-				const at = new Date().toISOString();
-				const name = req.params.name;
-				total++;
-				const seen = calls.get(name);
-				calls.set(
-					name,
-					seen
-						? { ...seen, count: seen.count + 1 }
-						: { name, firstCalledAt: at, count: 1 },
-				);
-				for (const l of [...listeners]) l({ name, at });
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: JSON.stringify({
-								number: 1,
-								title: "AdmissionProbe",
-								alerts: [{ alertname: "AdmissionProbe" }],
-								changes: [],
-							}),
-						},
-					],
-				};
-			});
-			return server;
-		},
-		{ responseMode: "json" },
-	);
-	const toRequest = (req: IncomingMessage): Request => {
-		const headers = new Headers();
-		for (const [name, value] of Object.entries(req.headers))
-			if (typeof value === "string") headers.set(name, value);
-		const hasBody = req.method !== "GET" && req.method !== "HEAD";
-		return new Request(`http://gateway${req.url ?? "/"}`, {
-			method: req.method,
-			headers,
-			...(hasBody
-				? { body: Readable.toWeb(req) as ReadableStream, duplex: "half" }
-				: {}),
-		} as RequestInit);
-	};
-	const http = createServer((req, res) => {
-		void (async () => {
-			if (req.headers.authorization !== `Bearer ${token}`) {
-				res.writeHead(401, { "WWW-Authenticate": "Bearer" }).end();
-				return;
-			}
-			if (!connected) {
-				connected = true;
-				for (const done of waiters) done(true);
-			}
-			const response = await handler.fetch(toRequest(req), {
-				authInfo: { token, clientId: "admission", scopes: [] },
-			});
-			res.statusCode = response.status;
-			response.headers.forEach((value, name) => {
-				res.setHeader(name, value);
-			});
-			if (!response.body) res.end();
-			else Readable.fromWeb(response.body as never).pipe(res);
-		})().catch(() => {
-			if (!res.headersSent) res.writeHead(500);
-			res.end();
-		});
-	});
-	await new Promise<void>((resolve) =>
-		http.listen(0, "127.0.0.1", () => resolve()),
-	);
-	const { port } = http.address() as AddressInfo;
-	return {
-		entry: {
-			url: `http://127.0.0.1:${port}/mcp`,
-			token,
-			serverName,
-			promptLine: `PrismaLens tools (MCP server \`${serverName}\`, read-only): \`incident_get\`.`,
-			tools: ["incident_get"],
-			connected: () => connected,
-			waitConnected: (ms) =>
-				connected
-					? Promise.resolve(true)
-					: new Promise<boolean>((resolve) => {
-							const done = (ok: boolean) => {
-								clearTimeout(timer);
-								waiters.delete(done);
-								resolve(ok);
-							};
-							const timer = setTimeout(() => done(false), ms);
-							waiters.add(done);
-						}),
-			onCall: (listener) => {
-				listeners.add(listener);
-				return () => listeners.delete(listener);
-			},
-			calls: () => [...calls.values()].map((c) => ({ ...c })),
-		},
-		count: () => total,
-		close: () =>
-			new Promise<void>((resolve) => {
-				http.closeAllConnections();
-				http.close(() => resolve());
-			}),
-	};
-}
-
 const stub =
-	process.env.ADMISSION_NO_GATEWAY === "1" ? null : await startStubGateway();
+	process.env.ADMISSION_NO_GATEWAY === "1"
+		? null
+		: await startStubGateway({ incidentTitle: "AdmissionProbe" });
 const gatewayOpt = stub ? { gateway: stub.entry } : {};
 const turns = {
 	first: { ran: false, calls: 0 },

@@ -7,6 +7,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import {
 	type QuoteAnchor,
 	type RecordedFinding,
@@ -20,11 +21,17 @@ import {
 	type GatewayEntry,
 	quoteLine,
 } from "@prismalens/engine";
-import type { SourceRegistry } from "@prismalens/integrations";
+import {
+	type HarnessTool,
+	harnessMcpServer,
+	harnessPromptLine,
+	type RunView,
+	runView,
+} from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
-import { gatewayMcpServer } from "./mcp-delivery.js";
+import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 import { bearerOf, RunTokens } from "./run-tokens.js";
 import {
 	listRunbooks,
@@ -34,7 +41,7 @@ import {
 } from "./runbooks.js";
 import {
 	type GatewayToolData,
-	gatewayRegistry,
+	gatewayTools,
 	type IncidentView,
 	type InvestigationsQuery,
 	type PastInvestigation,
@@ -66,7 +73,11 @@ interface RunState {
 	listeners: Set<(c: GatewayCall) => void>;
 	ledger: FindingsLedger;
 	found: Set<(f: RecordedFinding) => void>;
+	/** What this run lists and may execute (#848). */
+	view: RunView;
 }
+
+const NO_TOOLS: RunView = { direct: [], deferred: [] };
 
 /** The largest file a recorded quote is looked up in. */
 const QUOTE_FILE_BYTES = 2_000_000;
@@ -80,12 +91,24 @@ const NOT_LIVE = "This run is not live, so nothing can be recorded on it";
 export class GatewayService {
 	private readonly tokens = new RunTokens();
 	private readonly runs = new Map<string, RunState>();
-	readonly registry: SourceRegistry;
+	/** Whether an agent's runs get a core plus `tools_search`: its registry row says (#848). */
+	toolSearch = (harness?: string): boolean =>
+		!!harness &&
+		HARNESS_REGISTRY[harness as keyof typeof HARNESS_REGISTRY]
+			?.harnessToolSearch === true;
+	/** Every harness tool PrismaLens serves; each run gets a view of them. */
+	readonly tools: readonly HarnessTool[];
+	private readonly version = resolveServiceVersion();
 	private readonly handler = createMcpHandler(
-		({ authInfo }) =>
-			gatewayMcpServer(this.registry, authInfo?.clientId ?? "", (name) =>
-				this.called(authInfo?.clientId ?? "", name),
-			),
+		({ authInfo }) => {
+			const runId = authInfo?.clientId ?? "";
+			return harnessMcpServer({
+				runId,
+				view: this.runs.get(runId)?.view ?? NO_TOOLS,
+				version: this.version,
+				onCall: (call) => this.called(runId, call),
+			});
+		},
 		{
 			responseMode: "json",
 			onerror: (e) => logger.warn(`gateway: ${e.message}`),
@@ -96,11 +119,15 @@ export class GatewayService {
 		private readonly prisma: PrismaService,
 		@Optional() private readonly http?: HttpAdapterHost,
 	) {
-		this.registry = gatewayRegistry(this.data);
+		this.tools = gatewayTools(this.data);
 	}
 
 	/** The run's gateway entry, or null when the api is not listening on a reachable address. */
-	async lease(runId: string, serverName: string): Promise<GatewayEntry | null> {
+	async lease(
+		runId: string,
+		serverName: string,
+		harness?: string,
+	): Promise<GatewayEntry | null> {
 		const base = this.baseUrl();
 		if (!base) return null;
 		const token = this.tokens.mint(runId);
@@ -111,14 +138,17 @@ export class GatewayService {
 			listeners: new Set(),
 			ledger: new FindingsLedger(),
 			found: new Set(),
+			view: runView(this.tools, { search: this.toolSearch(harness) }),
 		};
 		this.runs.set(runId, state);
-		const tools = this.registry.list().map((t) => t.name);
+		const tools = [...state.view.direct, ...state.view.deferred].map(
+			(t) => t.name,
+		);
 		return {
 			url: `${base}/api/mcp/runs/${runId}`,
 			token,
 			serverName,
-			promptLine: gatewayPromptLine(tools, serverName),
+			promptLine: harnessPromptLine(state.view, serverName),
 			tools,
 			connected: () => state.connected,
 			onCall: (listener) => {
@@ -196,10 +226,10 @@ export class GatewayService {
 		}
 	}
 
-	private called(runId: string, name: string): void {
+	private called(runId: string, call: GatewayCall): void {
 		const state = this.runs.get(runId);
 		if (!state) return;
-		const at = new Date().toISOString();
+		const { name, at } = call;
 		const seen = state.calls.get(name);
 		state.calls.set(
 			name,
@@ -207,7 +237,7 @@ export class GatewayService {
 				? { ...seen, count: seen.count + 1 }
 				: { name, firstCalledAt: at, count: 1 },
 		);
-		for (const listener of [...state.listeners]) listener({ name, at });
+		for (const listener of [...state.listeners]) listener(call);
 	}
 
 	async serve(runId: string, request: Request): Promise<Response> {
@@ -255,6 +285,7 @@ export class GatewayService {
 					: {
 							ok: false,
 							error: "Runbook discovery is turned off in PrismaLens.",
+							disabled: true,
 						},
 		},
 		searchInvestigations: (q) => this.searchInvestigations(q),
@@ -507,20 +538,4 @@ export class GatewayService {
 				: null,
 		}));
 	}
-}
-
-/** The prompt's tools paragraph (#848): PrismaLens's own tools, and that data access is the agent's own. */
-export function gatewayPromptLine(
-	tools: readonly string[],
-	serverName: string,
-): string {
-	return [
-		`PrismaLens tools (MCP server \`${serverName}\`, read-only): ${tools.map((t) => `\`${t}\``).join(", ")}.`,
-		...(tools.includes("evidence_record")
-			? [
-					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
-				]
-			: []),
-		"For metrics, logs and other live data, use the tools your own setup gives you.",
-	].join("\n");
 }

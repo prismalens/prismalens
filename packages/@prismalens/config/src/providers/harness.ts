@@ -135,6 +135,11 @@ export interface HarnessDescriptor {
 	configFiles?: (env: HarnessRunEnv) => Record<string, string>;
 	/** The agent ignores ACP `mcpServers`; the gateway goes in a run file instead (#848). */
 	gatewayDelivery?: "mcp-config-file";
+	/**
+	 * PrismaLens's tools come as a core plus `tools_search`, not all listed; on only where the
+	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
+	 */
+	harnessToolSearch?: true;
 	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
 	sessionMeta?: () => Record<string, unknown>;
 	/** PrismaLens's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */

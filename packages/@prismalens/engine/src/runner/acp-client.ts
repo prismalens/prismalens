@@ -32,6 +32,7 @@ import type {
 	HarnessLauncher,
 	RunLimits,
 } from "../launch/types.js";
+import type { GatewayCall } from "../run/gateway.js";
 import {
 	newAskId,
 	type PermissionDecision,
@@ -66,7 +67,7 @@ export type AcpStreamItem =
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
 	| { kind: "nudge" }
 	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
-	| { kind: "harness_tool_call"; name: string; at: string }
+	| { kind: "harness_tool_call"; call: GatewayCall }
 	/** The agent recorded evidence or a hypothesis through the gateway (#930). */
 	| { kind: "harness_finding"; finding: RecordedFinding };
 
