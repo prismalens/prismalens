@@ -24,6 +24,8 @@ export interface GatewayEntry {
 	promptLine: string;
 	/** PrismaLens's own harness tool names, the only ones the gateway serves. */
 	tools: readonly string[];
+	/** The tools the permission policy answers without a card; an `ask` or `act` tool is never one (#848). */
+	autoAllow?: readonly string[];
 	/** True once a request carrying the run's token reached the gateway. */
 	connected(): boolean;
 	waitConnected(ms: number): Promise<boolean>;

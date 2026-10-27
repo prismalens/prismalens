@@ -27,6 +27,7 @@ import {
 	quoteLine,
 } from "@prismalens/engine";
 import {
+	autoAllowed,
 	type HarnessTool,
 	harnessMcpServer,
 	harnessPromptLine,
@@ -208,6 +209,7 @@ export class GatewayService {
 			serverName,
 			promptLine: harnessPromptLine(state.view, serverName),
 			tools,
+			autoAllow: autoAllowed(state.view),
 			connected: () => state.connected,
 			onCall: (listener) => {
 				state.listeners.add(listener);

@@ -691,6 +691,16 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		expect(await policy(legacy, ctx)).toMatchObject({ allow: false, why: "card" });
 	});
 
+	it("a gateway tool outside autoAllow gets the card, even unattended (#848)", async () => {
+		const gw = { ...gateway(true), autoAllow: ["incident_get"] };
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw, unattended: true });
+		expect(await policy(claudeAsk("incident_get"), ctx)).toMatchObject({ allow: true });
+		expect(await policy(claudeAsk("sources_list"), ctx)).toMatchObject({
+			allow: false,
+			outcome: "unattended",
+		});
+	});
+
 	it("asks titled mcp__<name>__incident_get and mcp.<name>.incident_get are allowed", async () => {
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
 		expect(await policy(claudeAsk("incident_get"), ctx)).toMatchObject({ allow: true });
