@@ -47,7 +47,26 @@ function toWhitespace(text: string): string {
 	return text.slice(0, end);
 }
 
-/** From the first line start in the last 32 KB; a last line longer than that keeps its own start, where git names the failure (#938). */
+/** A run of non-space characters over 2 KB keeps only its end characters, so `'…'` still holds the quotes a pattern reads; one cut by the window loses the end the window lacks. */
+function collapseLongTokens(piece: string, cut: "end" | "start"): string {
+	return piece.replace(/\S{2048,}/g, (run, at: number) => {
+		const first = cut === "start" && at === 0 ? "" : (run[0] as string);
+		const last =
+			cut === "end" && at + run.length === piece.length ? "" : run.at(-1);
+		return `${first}…${last}`;
+	});
+}
+
+/** The start and the end of a line over the window, each cut at whitespace unless it ends in a collapsed token. */
+function edgesOf(line: string): string {
+	const quarter = Math.floor(HALF / 2);
+	const head = collapseLongTokens(line.slice(0, quarter), "end");
+	const tail = collapseLongTokens(line.slice(-quarter), "start");
+	const word = tail.search(/\s/);
+	return `${head.endsWith("…") ? head : toWhitespace(head)} ${tail.startsWith("…") ? tail : word < 0 ? "" : tail.slice(word + 1)}`;
+}
+
+/** From the first line start in the last 32 KB; a last line longer than that keeps its start and its end, where git names the failure and gives its reason (#938). */
 function tailOf(stderr: string): string {
 	let end = stderr.length;
 	while (end > 0 && BREAK.test(stderr[end - 1] as string)) end--;
@@ -56,8 +75,7 @@ function tailOf(stderr: string): string {
 			stderr.lastIndexOf("\n", end - 1),
 			stderr.lastIndexOf("\r", end - 1),
 		) + 1;
-	if (end - lastLine > HALF)
-		return toWhitespace(stderr.slice(lastLine, lastLine + HALF));
+	if (end - lastLine > HALF) return edgesOf(stderr.slice(lastLine, end));
 	const from = end - HALF;
 	if (from <= 0) return stderr.slice(0, end);
 	if (BREAK.test(stderr[from - 1] as string)) return stderr.slice(from, end);

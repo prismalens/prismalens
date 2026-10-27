@@ -77,6 +77,21 @@ describe("shownRepoName and shownText (#938)", () => {
 	});
 });
 
+describe("encoded and spaced credentials (#938)", () => {
+	it.each([
+		`https://github.com/https%3A%2F%2Fu%3A${SENTINEL}@other/x`,
+		`https://github.com/u%3A${SENTINEL}@other/x`,
+		`https://github.com/u%3${SENTINEL}@other/x`,
+	])("%s is not echoed", (url) => {
+		expect(shownRepoUrl("url", url)).toBe(UNSHOWN_REPO);
+	});
+
+	it("a password with a space is gone from a note", () => {
+		const note = `cloned https://u:p ${SENTINEL}@github.com/x/y for the run`;
+		expect(shownText(note)).not.toContain(SENTINEL);
+	});
+});
+
 describe("round 3 (#938)", () => {
 	it.each([
 		["a query with parentheses", `(URL https://github.com/x/y?token=(${SENTINEL})) at main`],

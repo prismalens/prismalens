@@ -84,6 +84,34 @@ describe("git-failure", () => {
 	});
 
 	it.each([
+		[
+			"a 403 reason after a 40 KB address",
+			`fatal: unable to access 'https://github.com/${"a".repeat(40_000)}': The requested URL returned error: 403\n`,
+			"no-access",
+		],
+		[
+			"a not-found suffix after a 40 KB address",
+			`fatal: repository 'https://github.com/${"a".repeat(40_000)}' not found\n`,
+			"no-access",
+		],
+		[
+			"a 403 reason after a long line of short words",
+			`fatal: unable to access ${"ab ".repeat(30_000)}: The requested URL returned error: 403\n`,
+			"no-access",
+		],
+	])("a last line over the window still classifies by its end: %s (#938)", (_n, last, code) => {
+		const failure = diagnoseGitFailure({
+			stderr: `${"remote: progress\r".repeat(10_000)}${last}`,
+			credential: { source: "connection", label: "token A", via: "git-host-token" },
+			host: "github.com",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(failure.code).toBe(code);
+		expect(failure.stderr?.length).toBeLessThanOrEqual(64 * 1024);
+	});
+
+	it.each([
 		["Authorization headers", "Authorization:".repeat(1_200_000)],
 		["repository-not-found lines", "repository '".repeat(1_400_000)],
 	])("16 MiB of %s scrubs and classifies in under 500 ms: the cap holds (#938)", (_name, stderr) => {

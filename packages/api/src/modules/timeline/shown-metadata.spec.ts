@@ -66,6 +66,31 @@ describe("a run's recorded repositories as answered (#938)", () => {
 		expect(JSON.stringify(meta)).not.toContain(SENTINEL);
 	});
 
+	it("a folder named from a legacy query token is not returned", () => {
+		const url = `https://git.example/?token=${SENTINEL}`;
+		const name = `_token_${SENTINEL}`;
+		const ws = {
+			layout: "multi" as const,
+			cwd: "/runs/r1",
+			repos: [
+				{
+					name,
+					dir: `/runs/r1/${name}`,
+					sourceKind: "url" as const,
+					url,
+					subPath: null,
+					connectionId: null,
+					head: "abc123def456",
+					branch: "main",
+					services: ["api"],
+				},
+			],
+		};
+		expect(JSON.stringify(shownWorkspace(ws as never))).not.toContain(SENTINEL);
+		const meta = shownMetadata("investigation_started", { repos: [{ name, url, head: "abc" }] });
+		expect(JSON.stringify(meta)).not.toContain(SENTINEL);
+	});
+
 	it("other entries are left alone", () => {
 		const meta = { repo: "acme/api" };
 		expect(shownMetadata("status_changed", meta)).toBe(meta);

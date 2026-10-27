@@ -9,6 +9,7 @@ import type {
 	TimelineEntryWithRelations,
 } from "@prismalens/contracts/schemas";
 import {
+	holdsRemoved,
 	shownAddress,
 	shownText,
 	UNSHOWN_REPO,
@@ -16,9 +17,10 @@ import {
 import type { CreateTimelineEntryDto } from "./dto/index.js";
 import { TimelineService } from "./timeline.service.js";
 
-function shownRepoEntry(r: { url: string }, i: number) {
+function shownRepoEntry(r: { url: string; name?: unknown }, i: number) {
 	const url = shownAddress(r.url);
-	return url === UNSHOWN_REPO
+	return url === UNSHOWN_REPO ||
+		(typeof r.name === "string" && holdsRemoved(r.url, r.name))
 		? { ...r, url, name: `repo-${i + 1}` }
 		: { ...r, url };
 }

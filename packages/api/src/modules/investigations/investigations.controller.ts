@@ -27,6 +27,7 @@ import {
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
 import {
+	holdsRemoved,
 	shownRepoUrl,
 	UNSHOWN_REPO,
 } from "../../core/harness/git-credential.js";
@@ -54,8 +55,9 @@ export function shownWorkspace(ws: RunWorkspace | null): RunWorkspace | null {
 				...ws,
 				repos: ws.repos.map((r, i) => {
 					const url = shownRepoUrl(r.sourceKind, r.url);
-					// A run before #938 named a nested address's folder from its raw path.
-					return url === UNSHOWN_REPO
+					// A run before #938 named a folder from its raw address, nested path or query included.
+					return url === UNSHOWN_REPO ||
+						holdsRemoved(r.url, `${r.name}\0${r.dir}`)
 						? { ...r, url, name: `repo-${i + 1}`, dir: UNSHOWN_REPO }
 						: { ...r, url };
 				}),

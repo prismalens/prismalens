@@ -114,7 +114,18 @@ const SSH: GitCredentialDisplay = {
 
 /** Codes on which an unpinned token falls through to the next credential (ADR 0007 §6). */
 const FALL_THROUGH_ON: GitFailureCode[] = ["no-access", "token-rejected"];
+/** An expired token cannot explain these, so they surface as themselves (#950). */
+const UNRELATED_TO_TOKEN: GitFailureCode[] = ["unreachable", "other"];
 const PREVIEW_TTL_MS = 60_000;
+
+function blamed(
+	passedOver: GitFailure | undefined,
+	err: GitFailure,
+): GitFailure {
+	return passedOver && !UNRELATED_TO_TOKEN.includes(err.code)
+		? passedOver
+		: err;
+}
 
 type Tier = "pin" | "stored" | "env" | "machine" | "public";
 
@@ -195,7 +206,7 @@ export class GitCredentialService {
 				(r.tier !== "stored" && r.tier !== "env") ||
 				!FALL_THROUGH_ON.includes(err.code)
 			)
-				throw r.passedOver ?? err;
+				throw blamed(r.passedOver, err);
 			const host = urlHost(r.effectiveUrl);
 			signal?.throwIfAborted();
 			const next = await this.after(r.tier, r.effectiveUrl, host, signal);
@@ -222,7 +233,7 @@ export class GitCredentialService {
 				if (!(retryErr instanceof GitFailure)) throw retryErr;
 				await this.recordFailure(fallback, retryErr);
 				// The token's own refusal names what to fix; the retry's error would not (#848).
-				throw r.passedOver ?? err;
+				throw blamed(r.passedOver, err);
 			}
 		}
 	}

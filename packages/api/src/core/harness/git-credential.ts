@@ -62,10 +62,16 @@ const SCP_REMOTE = /^[\w.-]+@[\w.-]+:(?!\/\/)/;
 const SSH_SCHEME = /^(?:ssh|git\+ssh|ssh\+git):$/i;
 /** A path holding another address, such as `host/https://u:pw@other/x`, is never echoed; `api@2.git` is a path. */
 function nested(path: string): boolean {
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(path);
+	} catch {
+		return true;
+	}
 	return (
-		path.includes("://") ||
+		decoded.includes("://") ||
 		/%40/i.test(path) ||
-		path.split("/").some((s) => s.includes("@") && s.includes(":"))
+		decoded.split("/").some((s) => s.includes("@") && s.includes(":"))
 	);
 }
 
@@ -88,6 +94,26 @@ export function shownRepoUrl(sourceKind: string, url: string): string {
 	} catch {
 		return UNSHOWN_REPO;
 	}
+}
+
+const fold = (s: string) => s.replace(/[^A-Za-z0-9]/g, "_");
+
+/** Whether `text`, such as a run's folder name, holds a part `shownRepoUrl` removes from `raw`, kept as is or folded to `_` (#938). */
+export function holdsRemoved(raw: string, text: string): boolean {
+	const pieces: string[] = [];
+	if (SCP_REMOTE.test(raw)) pieces.push(raw.split("?").slice(1).join("?"));
+	else {
+		try {
+			const u = new URL(raw);
+			if (!SSH_SCHEME.test(u.protocol)) pieces.push(u.username);
+			pieces.push(u.password, u.search.slice(1), u.hash.slice(1));
+			for (const v of u.searchParams.values()) pieces.push(v);
+		} catch {
+			return false;
+		}
+	}
+	const folded = fold(text);
+	return pieces.some((p) => p.length >= 4 && folded.includes(fold(p)));
 }
 
 /** A stored repository name: one a legacy address was named by may be that address (#938). */
@@ -114,7 +140,8 @@ function shownWord(word: string): string {
 
 /** Free text written before #938 from a stored address, each address in it shown as shownRepoUrl shows it; a folder path is left as written. */
 export function shownText(text: string): string {
-	return text.split(/(\s+)/).map(shownWord).join("");
+	const unspaced = text.replace(/:\/\/[^/@\s]*(?:\s[^/@\s]*)+@/g, "://");
+	return unspaced.split(/(\s+)/).map(shownWord).join("");
 }
 
 /** shownRepoUrl for a recorded address whose kind was not kept: an absolute path is a folder. */

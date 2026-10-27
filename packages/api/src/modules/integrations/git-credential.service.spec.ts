@@ -351,6 +351,20 @@ describe("GitCredentialService & host-token (#810)", () => {
 			}
 		});
 
+		it("a failure the token cannot explain surfaces as itself, with the expiry kept as fallbackFrom", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_ok");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				await expect(
+					service.withCredential(unpinned, async () => {
+						throw new GitFailure("unreachable", "Could not reach github.com.");
+					}),
+				).rejects.toMatchObject({ code: "unreachable" });
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
 		it("a row already marked TOKEN_EXPIRED is passed over with the same reason", async () => {
 			vi.stubEnv("GH_TOKEN", "ghp_env_ok");
 			try {
