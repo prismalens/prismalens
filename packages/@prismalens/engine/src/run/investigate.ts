@@ -51,6 +51,7 @@ import {
 	AcpAdapter,
 	type HarnessToolsTurn,
 	mapStopReason,
+	toolOutputText,
 } from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
 import {
@@ -59,6 +60,7 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
+import { withFindings } from "./findings.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
 import { RESTART_NOTE } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
@@ -570,6 +572,7 @@ export async function* runInvestigation(
 
 	let text = "";
 	let sawEvidence = false;
+	const ownCalls = new Set<string>();
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
 	let heldMode: string | null = null;
 	let lastCall: { title?: string; toolCallId?: string } | null = null;
@@ -611,6 +614,18 @@ export async function* runInvestigation(
 				}
 				if (u.sessionUpdate === "tool_call")
 					lastCall = { title: u.title, toolCallId: u.toolCallId };
+				if (u.toolCallId && opts.gateway?.sawOutput) {
+					// A call to PrismaLens's own tools carries the quote it records, so it never anchors one (#930).
+					if (u.title?.includes(opts.gateway.serverName))
+						ownCalls.add(u.toolCallId);
+					const done =
+						u.sessionUpdate === "tool_call_update" ||
+						u.status === "completed" ||
+						u.status === "failed";
+					const out = done ? toolOutputText(u) : "";
+					if (out && !ownCalls.has(u.toolCallId))
+						opts.gateway.sawOutput(u.toolCallId, out);
+				}
 				for (const ev of adapter.events(u)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
@@ -671,6 +686,8 @@ export async function* runInvestigation(
 						item.at,
 						toolsTurn,
 					);
+			} else if (item.kind === "harness_finding") {
+				yield adapter.findingRecorded(item.finding);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -701,6 +718,7 @@ export async function* runInvestigation(
 	 */
 	const toolsSummary = function* (): Generator<CanonicalEvent> {
 		unCalled?.();
+		unFound?.();
 		if (offer && opts.gateway && !summarized) {
 			summarized = true;
 			yield adapter.harnessTools(
@@ -738,6 +756,9 @@ export async function* runInvestigation(
 	let summarized = false;
 	const unCalled = opts.gateway?.onCall((c) =>
 		session.inject({ kind: "harness_tool_call", ...c }),
+	);
+	const unFound = opts.gateway?.onFinding?.((finding) =>
+		session.inject({ kind: "harness_finding", finding }),
 	);
 	const onAbort = (): void => session.cancel();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
@@ -1029,9 +1050,9 @@ export async function* runInvestigation(
 		}
 		yield* toolsSummary();
 		yield adapter.branchDone(mapStopReason(outcome.stop));
-		const gapped = noNetwork
-			? withSandboxGap(parsed.report, label)
-			: parsed.report;
+		const found = opts.gateway?.findings?.();
+		const answered = found ? withFindings(parsed.report, found) : parsed.report;
+		const gapped = noNetwork ? withSandboxGap(answered, label) : answered;
 		yield adapter.report(
 			stampReport(withPreRunCoverage(gapped, opts.context), fidelity),
 		);

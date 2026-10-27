@@ -2,11 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	CanonicalEvent,
 	Evidence,
 	InvestigationReport,
 	InvestigationWithRelations,
+	RecordedEvidence,
+	RecordedHypothesis,
 } from "@prismalens/contracts";
 import type { FileAt } from "@/lib/evidence-files";
+import { STATUS_WORD } from "@/lib/hypothesis-tree";
 import type { OperatorState, TranscriptItem } from "@/lib/investigation-events";
 import { commandText } from "@/lib/report-view";
 import { skippedWord } from "./RunTools";
@@ -210,6 +214,7 @@ export function evidenceSections(
 		live: boolean;
 		standing: { runId: string; name: string } | null;
 		fileOf?: FileOf;
+		recorded?: Recorded;
 	},
 ): DetailSection[] {
 	const report = inv.report;
@@ -228,9 +233,82 @@ export function evidenceSections(
 				link: { kind: "run", id: opts.standing.runId },
 				action: `Open ${opts.standing.name}`,
 			});
-		return [{ title: opts.live ? "So far" : "No report", rows }];
+		return [
+			{ title: opts.live ? "So far" : "No report", rows },
+			...recordedSections(opts.recorded, steps, opts.fileOf),
+		];
 	}
 	return reportSections(report, steps, opts.fileOf);
+}
+
+export interface Recorded {
+	evidence: RecordedEvidence[];
+	hypotheses: RecordedHypothesis[];
+}
+
+/** Each id's latest record in the run's events (#930). */
+export function recordedFindings(events: readonly CanonicalEvent[]): Recorded {
+	const evidence = new Map<string, RecordedEvidence>();
+	const hypotheses = new Map<string, RecordedHypothesis>();
+	for (const e of events) {
+		if (e.kind !== "finding_recorded") continue;
+		const f = e.finding;
+		if (f.type === "evidence") evidence.set(f.id, f);
+		else hypotheses.set(f.id, f);
+	}
+	return {
+		evidence: Array.from(evidence.values()),
+		hypotheses: Array.from(hypotheses.values()),
+	};
+}
+
+const QUOTE_CHARS = 200;
+
+/** What the agent recorded before any report: hypotheses, then evidence with where code found each quote. */
+function recordedSections(
+	r: Recorded | undefined,
+	steps: StepOf,
+	fileOf?: FileOf,
+): DetailSection[] {
+	const out: DetailSection[] = [];
+	if (r?.hypotheses.length)
+		out.push({
+			title: "Hypotheses so far",
+			rows: r.hypotheses.map((h) => ({
+				label: h.id,
+				text: h.statement,
+				sub: `${STATUS_WORD[h.status]}${h.evidenceIds.length ? `, from ${h.evidenceIds.join(", ")}` : ""}`,
+			})),
+		});
+	if (r?.evidence.length)
+		out.push({
+			title: "Evidence so far",
+			rows: r.evidence.map((e) => {
+				const a = e.anchor;
+				const row = evidenceRow(
+					{
+						observation: e.observation,
+						source: a?.in === "file" ? `${a.path}:${a.line}` : e.source,
+						direction: e.direction,
+						status: a ? "verified" : "inferred",
+						toolCallId: a?.in === "tool-output" ? a.toolCallId : null,
+					},
+					steps,
+					fileOf,
+				);
+				const quote =
+					e.quote.length > QUOTE_CHARS
+						? `${e.quote.slice(0, QUOTE_CHARS)}…`
+						: e.quote;
+				return {
+					...row,
+					label: e.id,
+					sub: `"${quote}"${row.sub ? ` ${row.sub}` : ""}`,
+					...(a ? {} : { flag: "Quote not found" }),
+				};
+			}),
+		});
+	return out;
 }
 
 /** `6 hypotheses`, `1 hypothesis`. */

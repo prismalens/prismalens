@@ -76,6 +76,7 @@ import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
 	evidenceSections,
+	recordedFindings,
 	type SummaryFacts,
 	summarySections,
 } from "./run-details";
@@ -567,6 +568,7 @@ export function RunPage() {
 						live,
 						standing: standingRun(record, inv.id),
 						fileOf: (source) => citedFile(source, workspace),
+						recorded: recordedFindings(run.events),
 					})}
 					context={contextSections({
 						report,
