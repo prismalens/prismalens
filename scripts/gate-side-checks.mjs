@@ -418,16 +418,30 @@ function up(sb, { tty = false, env = {}, args = [], port = sb.port } = {}) {
 	return handle;
 }
 
-/** A kill at `timeoutMs` reports as `code: "timeout"`, not exit 1 (#927). */
+/**
+ * A kill at `timeoutMs` reports as `code: "timeout"`, not exit 1 (#927). The timeout ends the
+ * whole tree: `pl upgrade` on Windows leaves `cmd /c npm install` behind otherwise.
+ */
 function run(file, args, env, timeoutMs = 120_000) {
-	return new Promise((r) =>
-		execFile(file, args, { env, timeout: timeoutMs }, (error, stdout, stderr) =>
-			r({
-				code: error ? (error.killed ? "timeout" : (error.code ?? 1)) : 0,
-				out: stripVTControlCharacters(`${stdout}${stderr}`),
-			}),
-		),
-	);
+	return new Promise((r) => {
+		let timedOut = false;
+		const child = execFile(
+			file,
+			args,
+			{ env, detached: !WIN },
+			(error, stdout, stderr) => {
+				clearTimeout(timer);
+				r({
+					code: timedOut ? "timeout" : error ? (error.code ?? 1) : 0,
+					out: stripVTControlCharacters(`${stdout}${stderr}`),
+				});
+			},
+		);
+		const timer = setTimeout(() => {
+			timedOut = true;
+			killTree(child.pid, "SIGKILL");
+		}, timeoutMs);
+	});
 }
 
 /** The installed `pl` (or `cli`, another install's) as `node <bin> ...args`. */
