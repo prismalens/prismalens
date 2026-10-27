@@ -1,0 +1,77 @@
+{
+	"row": "gateway-changes-list",
+	"kind": "happy",
+	"title": "Lists recent deploys and changes through PrismaLens's changes tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "changes_list",
+				"ok": true,
+				"outputHas": "ScenarioDeploy"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-changes-list]",
+				"toolName": "$gw:changes_list",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:changes_list",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-changes-list]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "list changes"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-changes-list]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "changes_list"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "changes_list",
+							"arguments": {}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-changes-list]",
+				"resultContains": "ScenarioDeploy"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

@@ -1,0 +1,77 @@
+{
+	"row": "gateway-timeline-read",
+	"kind": "happy",
+	"title": "Reads the incident timeline through PrismaLens's timeline tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "timeline_read",
+				"ok": true,
+				"outputHas": "ScenarioTimelineNote"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-timeline-read]",
+				"toolName": "$gw:timeline_read",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:timeline_read",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-timeline-read]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "read timeline"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-timeline-read]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "timeline_read"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "timeline_read",
+							"arguments": {}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-timeline-read]",
+				"resultContains": "ScenarioTimelineNote"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}
