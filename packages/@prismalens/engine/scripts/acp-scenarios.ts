@@ -6,7 +6,7 @@
  * engine against the real agent, whose model is the scripted aimock. A row passes on what
  * the engine observed (events, the files and processes the run left), never on model text.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
 	existsSync,
 	mkdtempSync,
@@ -111,14 +111,23 @@ function processes(): { pid: number; args: string }[] {
 		return m ? [{ pid: Number(m[1]), args: m[2] ?? "" }] : [];
 	});
 }
+/** The program a command line runs: `node` for `"C:\…\node.exe" -e …` or `node -e …`. */
+const program = (args: string): string =>
+	(/^"([^"]+)"|^(\S+)/.exec(args.trim())?.slice(1).find(Boolean) ?? "")
+		.split(/[\\/]/)
+		.pop()
+		?.replace(/\.exe$/i, "")
+		.toLowerCase() ?? "";
+
 /**
- * This row's processes running `needle`. On Linux only those whose cwd is the row's workspace,
- * so matrix runs going at once (admission-fake.mjs) never see or kill each other's (#885).
+ * This row's `node` processes running `needle`: the tool itself, never the agent's shell wrapper
+ * around it, which shows the needle before the tool starts (#885). On Linux only those whose cwd is
+ * the row's workspace, so matrix runs going at once (admission-fake.mjs) never see each other's.
  */
 function running(needle: string, workspace: string): number[] {
 	return processes()
 		.filter(({ pid, args }) => {
-			if (!args.includes(needle)) return false;
+			if (!args.includes(needle) || program(args) !== "node") return false;
 			if (process.platform !== "linux") return true;
 			try {
 				return readlinkSync(`/proc/${pid}/cwd`).startsWith(workspace);
@@ -255,6 +264,17 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				orphan = pids.length > 0;
 				if (orphan) await sleep(500);
 			}
+			// Who outlived the cancel, on stderr, which admission-fake.mjs prints only for a failed run.
+			if (orphan && process.platform !== "win32")
+				console.error(
+					spawnSync(
+						"ps",
+						["-o", "pid,ppid,pgid,stat,etime,args", "-p", pids.join(",")],
+						{
+							encoding: "utf8",
+						},
+					).stdout,
+				);
 			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
 			for (const pid of orphan ? pids : []) {
 				try {
