@@ -143,11 +143,10 @@ const PINNED = {
 const VENDORED = ["@prisma/adapter-better-sqlite3"];
 
 /**
- * Staged as npm gets them, with their own node_modules, never hoisted: agent-adapters by
- * its own pack script (pins, native-copy strip, licence texts, #818), agent-host from
- * `pnpm pack` (#916).
+ * Staged by the package's own pack script, never hoisted: its pins, the native-copy
+ * strip and the licence texts live there once, for npm and for this tarball (#818).
  */
-const NESTED = ["@prismalens/agent-adapters", "@prismalens/agent-host"];
+const NESTED = ["@prismalens/agent-adapters"];
 const NESTED_SHORT = new Set(NESTED.map((n) => n.replace("@prismalens/", "")));
 
 const argv = process.argv.slice(2);
@@ -514,49 +513,6 @@ function scanImports(stagedModules, union, copiedNames, optional) {
 	}
 }
 
-/** agent-host as npm gets it: `pnpm pack` resolves `catalog:`, then its own deps install beside it. */
-function stageAgentHost(dir, target) {
-	if (!existsSync(join(dir, "dist", "index.js")))
-		fail("@prismalens/agent-host has no dist/ — it was never built");
-	// Inside STAGING, on one drive with `target`: tar reads the tarball by a relative path.
-	const packDir = join(STAGING, ".agent-host-pack");
-	rmSync(packDir, { recursive: true, force: true });
-	mkdirSync(packDir, { recursive: true });
-	try {
-		run("pnpm", ["pack", "--pack-destination", packDir], dir);
-		const tgz = readdirSync(packDir).find((f) => f.endsWith(".tgz"));
-		if (!tgz) fail("pnpm pack of @prismalens/agent-host wrote no tarball");
-		execFileSync(
-			"tar",
-			[
-				"-xzf",
-				relative(target, join(packDir, tgz)).split(sep).join("/"),
-				"--strip-components=1",
-			],
-			{ cwd: target, stdio: "inherit" },
-		);
-	} finally {
-		rmSync(packDir, { recursive: true, force: true });
-	}
-	run(
-		"npm",
-		[
-			"install",
-			"--omit=dev",
-			"--omit=optional",
-			"--ignore-scripts",
-			"--no-package-lock",
-			"--no-audit",
-			"--no-fund",
-			"--loglevel",
-			"warn",
-		],
-		target,
-	);
-	for (const entry of readdirSync(target, { recursive: true }))
-		if (/\.(map|tsbuildinfo)$/.test(entry)) rmSync(join(target, entry));
-}
-
 // ---------------------------------------------------------------------------
 // 5. Tarball assertions
 // ---------------------------------------------------------------------------
@@ -662,7 +618,6 @@ function assertTarball(tarball, copiedNames) {
 				fail(`the tarball has no ${dep} inside ${name}`);
 		}
 		if (
-			name === "@prismalens/agent-adapters" &&
 			!has((e) =>
 				e.startsWith(
 					`package/node_modules/@prismalens/${short}/THIRD_PARTY_LICENSES/`,
@@ -670,7 +625,6 @@ function assertTarball(tarball, copiedNames) {
 			)
 		)
 			fail(`the tarball has no THIRD_PARTY_LICENSES inside ${name}`);
-		if (name !== "@prismalens/agent-adapters") continue;
 		const manifestEntry = `package/node_modules/@prismalens/${short}/dist/adapters/bundled.json`;
 		if (!has((e) => e === manifestEntry))
 			fail(`the tarball has no dist/adapters/bundled.json inside ${name}`);
@@ -832,12 +786,8 @@ export function packCli() {
 		const { dir, manifest } = workspace.get(name);
 		const target = join(stagedModules, name.replace("@prismalens/", ""));
 		mkdirSync(target, { recursive: true });
-		if (name === "@prismalens/agent-adapters") {
+		if (NESTED.includes(name)) {
 			stageAdapters(target);
-			continue;
-		}
-		if (name === "@prismalens/agent-host") {
-			stageAgentHost(dir, target);
 			continue;
 		}
 

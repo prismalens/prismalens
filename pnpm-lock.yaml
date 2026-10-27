@@ -132,7 +132,7 @@ importers:
         specifier: 1.9.0
         version: 1.9.0(zod@4.6.7)
       cross-spawn:
-        specifier: 7.0.6
+        specifier: ^7.0.6
         version: 7.0.6
       which:
         specifier: 6.0.1
