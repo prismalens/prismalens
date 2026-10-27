@@ -54,8 +54,16 @@ jobs:
       - name: Build monorepo packages
         run: pnpm build
 
+      # The runner image already carries Chromium's libraries; `--with-deps` only adds fonts and
+      # xvfb, and twice in one day the apt mirror served them at 20-80 kB/s (#885). No test compares
+      # pixels, so apt runs only when the browser cannot launch.
       - name: Install Playwright Chromium Browser
-        run: pnpm --filter @prismalens/frontend exec playwright install chromium --with-deps
+        working-directory: packages/frontend
+        run: |
+          pnpm exec playwright install chromium
+          if ! node -e "require('@playwright/test').chromium.launch().then((b) => b.close())"; then
+            pnpm exec playwright install-deps chromium
+          fi
 
       # Phone and tablet run nightly (e2e-browser-mobile.yml), not per PR. `@quarantine`
       # tests are excluded here and run in the next step (CONTRIBUTING.md, "Browser e2e tier").
