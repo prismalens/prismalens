@@ -14,6 +14,7 @@ import type {
 	InvestigationReport,
 	QuoteAnchor,
 	RecordedEvidence,
+	RecordedFindings,
 	RecordedHypothesis,
 } from "@prismalens/contracts/schemas";
 
@@ -50,14 +51,12 @@ export interface HypothesisInput {
 	id?: string;
 	statement: string;
 	status: HypothesisStatus;
-	evidence: string[];
+	/** On an update, replaces the linked evidence; absent keeps it. */
+	evidence?: string[];
 	parentId?: string;
 }
 
-export interface Findings {
-	evidence: RecordedEvidence[];
-	hypotheses: RecordedHypothesis[];
-}
+export type Findings = RecordedFindings;
 
 /** One run's record: the tool outputs it saw, and what the agent recorded against them. */
 export class FindingsLedger {
@@ -65,16 +64,39 @@ export class FindingsLedger {
 	private readonly evidence = new Map<string, RecordedEvidence>();
 	private readonly hypotheses = new Map<string, RecordedHypothesis>();
 
-	/** A tool's output as the run saw it; the newest is searched first. */
-	sawOutput(toolCallId: string, text: string): void {
-		if (!toolCallId || !text) return;
+	/** What an earlier turn of the run recorded, so a follow-up keeps it and links to it. */
+	restore(found: Findings): void {
+		for (const e of found.evidence) this.evidence.set(e.id, e);
+		for (const h of found.hypotheses) this.hypotheses.set(h.id, h);
+	}
+
+	/**
+	 * A tool's output as the run saw it; the newest is searched first. Returns the
+	 * evidence it anchors that had none, so the run view stops saying "not found".
+	 */
+	sawOutput(toolCallId: string, text: string): RecordedEvidence[] {
+		if (!toolCallId || !text) return [];
+		const kept = text.slice(0, FINDINGS_LIMITS.outputChars);
 		this.outputs.delete(toolCallId);
-		this.outputs.set(toolCallId, text.slice(0, FINDINGS_LIMITS.outputChars));
+		this.outputs.set(toolCallId, kept);
 		while (this.outputs.size > FINDINGS_LIMITS.outputs) {
 			const oldest = this.outputs.keys().next().value;
 			if (oldest === undefined) break;
 			this.outputs.delete(oldest);
 		}
+		const anchored: RecordedEvidence[] = [];
+		for (const e of this.evidence.values()) {
+			if (e.anchor || e.path) continue;
+			const line = quoteLine(kept, e.quote);
+			if (!line) continue;
+			const now = {
+				...e,
+				anchor: { in: "tool-output" as const, toolCallId, line },
+			};
+			this.evidence.set(e.id, now);
+			anchored.push(now);
+		}
+		return anchored;
 	}
 
 	/** The newest output holding the quote. */
@@ -115,7 +137,9 @@ export class FindingsLedger {
 		input: HypothesisInput,
 		at: string,
 	): RecordedHypothesis | { error: string } {
-		const unknown = input.evidence.filter((id) => !this.evidence.has(id));
+		const unknown = (input.evidence ?? []).filter(
+			(id) => !this.evidence.has(id),
+		);
 		if (unknown.length)
 			return {
 				error: `No recorded evidence ${unknown.join(", ")}; record it with evidence_record first`,
@@ -131,15 +155,14 @@ export class FindingsLedger {
 			return {
 				error: `This run already holds ${FINDINGS_LIMITS.hypotheses} hypotheses`,
 			};
-		const id = had?.id ?? `h${this.hypotheses.size + 1}`;
+		// `rh`, not `h`: a final answer numbering its own hypotheses h1, h2 must not join these by accident.
+		const id = had?.id ?? `rh${this.hypotheses.size + 1}`;
 		const parentId = input.parentId ?? had?.parentId;
 		const item: RecordedHypothesis = {
 			id,
 			statement: input.statement,
 			status: input.status,
-			evidenceIds: [
-				...new Set([...(had?.evidenceIds ?? []), ...input.evidence]),
-			],
+			evidenceIds: [...new Set(input.evidence ?? had?.evidenceIds ?? [])],
 			...(parentId && parentId !== id ? { parentId } : {}),
 			at,
 		};
@@ -179,14 +202,22 @@ export function reportEvidence(e: RecordedEvidence): Evidence {
 type Body = Omit<InvestigationReport, "fidelity">;
 
 /**
- * The report from the agent's final answer plus what it recorded (#930). A recorded
- * hypothesis joins the report's one with its id or statement, else follows the
- * report's own; an agent that recorded nothing gets its final answer unchanged.
+ * The report from the agent's final answer plus what it recorded (#930). Answer evidence
+ * with a recorded observation takes the recorded copy, whose status is what code found.
+ * A recorded hypothesis joins the answer's with its id or statement, else follows the
+ * answer's own. An agent that recorded nothing gets its final answer unchanged.
  */
 export function withFindings(report: Body, found: Findings): Body {
-	if (!found.hypotheses.length) return report;
+	if (!found.evidence.length && !found.hypotheses.length) return report;
 	const byId = new Map(found.evidence.map((e) => [e.id, reportEvidence(e)]));
-	const hypotheses: Hypothesis[] = report.hypotheses.map((h) => ({ ...h }));
+	const byObservation = new Map(
+		[...byId.values()].map((e) => [norm(e.observation), e]),
+	);
+	const recorded = (e: Evidence) => byObservation.get(norm(e.observation)) ?? e;
+	const hypotheses: Hypothesis[] = report.hypotheses.map((h) => ({
+		...h,
+		evidence: h.evidence.map(recorded),
+	}));
 	for (const r of found.hypotheses) {
 		const evidence = r.evidenceIds.flatMap((id) => byId.get(id) ?? []);
 		const match = hypotheses.find(
@@ -203,12 +234,18 @@ export function withFindings(report: Body, found: Findings): Body {
 			});
 			continue;
 		}
-		// The recorded copy wins: its status is what code found, not what the answer claims.
-		const recorded = new Set(evidence.map((e) => norm(e.observation)));
+		const have = new Set(match.evidence.map((e) => norm(e.observation)));
 		match.evidence = [
-			...match.evidence.filter((e) => !recorded.has(norm(e.observation))),
-			...evidence,
+			...match.evidence,
+			...evidence.filter((e) => !have.has(norm(e.observation))),
 		];
 	}
-	return { ...report, hypotheses };
+	return {
+		...report,
+		hypotheses,
+		ruledOut: report.ruledOut.map((r) => ({
+			...r,
+			evidence: r.evidence.map(recorded),
+		})),
+	};
 }

@@ -10,6 +10,7 @@ import {
 	isRunStateLive,
 	modelSubstituted,
 	type RunState,
+	recordedFindings,
 } from "@prismalens/contracts";
 import {
 	useLocation,
@@ -98,7 +99,6 @@ import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
 	evidenceSections,
-	recordedFindings,
 	type SummaryFacts,
 	summarySections,
 } from "./run-details";
