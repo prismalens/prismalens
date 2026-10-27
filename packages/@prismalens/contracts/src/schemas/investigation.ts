@@ -863,11 +863,9 @@ export type LogSystemContext = z.infer<typeof LogSystemContextSchema>;
 /**
  * A prior investigation summary — an episodic-memory seed (top-N similar past).
  *
- * Superseded in practice by `contextPack.priorIncidents`, which carries the same
- * intent with a fence, a rank, and an honest `matchedOn`. Retained because ADR-0015
- * names this field in the host->engine contract and that contract is EXTEND-ONLY:
- * removing it is a breaking narrowing, not a cleanup, even while no host populates
- * it and no stage reads it. Retire it via an ADR-0015 amendment, not a diff.
+ * Superseded by `contextPack.priorIncidents`. The host->engine contract may rename
+ * or drop a field while both sides ship in one bundle; it is extend-only again once
+ * they are versioned separately (#916 - agent-host package).
  */
 export const PriorInvestigationSchema = z.object({
 	incidentTitle: z.string().optional(),
