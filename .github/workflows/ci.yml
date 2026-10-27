@@ -50,7 +50,7 @@ concurrency:
 env:
   TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo-cache
   # The live jobs' model: OpenCode's own free one. Their agent versions are the pins in
-  # scripts/agent-pins.json, which `agent-releases.yml` moves (#639, #712, #914).
+  # scripts/agent-pins.json, which `agent-release-watch.yml` moves (#639, #712, #914).
   FREE_MODEL: opencode/deepseek-v4.1-flash-free
 
 jobs:
@@ -579,12 +579,12 @@ jobs:
   # guards. All of it was deleted with the `review-evidence` gate in #415, so the
   # directory is gone and there is nothing left for this job to run.
 
-  # Playwright (e2e.yml, called here so `CI gate` can wait on it and the merge queue runs it).
+  # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it and the merge queue runs it).
   e2e:
     name: E2E
     needs: build
     if: github.event_name != 'workflow_dispatch'
-    uses: ./.github/workflows/e2e.yml
+    uses: ./.github/workflows/e2e-browser.yml
 
   # The single aggregating required status check. The branch ruleset requires
   # THIS context instead of enumerating every job above, so adding, renaming, or

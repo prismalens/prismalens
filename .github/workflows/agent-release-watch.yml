@@ -10,7 +10,7 @@ on:
   # A change to the probe or to this file runs the probe, so it is seen working before it merges.
   pull_request:
     paths:
-      - ".github/workflows/agent-releases.yml"
+      - ".github/workflows/agent-release-watch.yml"
       - "scripts/agent-probe.mjs"
       - "scripts/agent-pins.json"
 

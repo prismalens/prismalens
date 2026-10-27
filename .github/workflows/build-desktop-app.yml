@@ -12,7 +12,7 @@ on:
       - "scripts/pack-cli.mjs"
       - "scripts/lib/**"
       - "scripts/artifact-budgets.json"
-      - ".github/workflows/desktop.yml"
+      - ".github/workflows/build-desktop-app.yml"
   push:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ on:
       - "scripts/pack-cli.mjs"
       - "scripts/lib/**"
       - "scripts/artifact-budgets.json"
-      - ".github/workflows/desktop.yml"
+      - ".github/workflows/build-desktop-app.yml"
   workflow_call:
     inputs:
       release-tag:

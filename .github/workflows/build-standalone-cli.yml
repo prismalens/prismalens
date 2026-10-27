@@ -12,7 +12,7 @@ on:
       - "scripts/artifact-budgets.json"
       - "scripts/lib/**"
       - "packages/@prismalens/agent-adapters/scripts/**"
-      - ".github/workflows/standalone.yml"
+      - ".github/workflows/build-standalone-cli.yml"
   # release.yml calls this with the draft release's tag to attach the archives (#717).
   workflow_call:
     inputs:

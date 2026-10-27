@@ -4,7 +4,7 @@
 #
 # Cross-OS from-scratch CLI smoke: drives an ALREADY-INSTALLED `prismalens`
 # package (tarball or registry install, doesn't matter which — see
-# .github/workflows/cross-os-smoke.yml) as a real subprocess on Linux,
+# .github/workflows/cli-smoke-cross-os.yml) as a real subprocess on Linux,
 # macOS, and Windows (git-bash). This is phase-gate testing part 2 (the
 # released-artifact verification), not sreforge — sreforge is the separate
 # clean-env engine/eval capabilities ground.

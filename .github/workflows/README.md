@@ -53,7 +53,7 @@ the packed tarball starts with `Tarball:`.
 | `Tarball: release side checks (<os>)` (`gate-side-checks`) | the release gate's side checks on Linux, macOS and Windows, `--no-skip` | scripted fake ACP agent | every PR | yes |
 | `Agent qualification (<agent>, scripted model)` (`harness-admission`): opencode, claude-code, codex | the real pinned agent passes the admission (R1-R9) and the behaviour matrix, 3 runs that must agree | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned) | every PR | yes |
 | the same: gemini, deepagents | the same, for the tier-2 agents | the same | every PR | no: `continue-on-error`, so a red leg leaves the job green |
-| `E2E / Playwright (Chromium, shard <n>/2)` (`e2e`, calls `e2e.yml`) | the browser suite | none | every PR, push and merge-queue build | yes |
+| `E2E / Playwright (Chromium, shard <n>/2)` (`e2e`, calls `e2e-browser.yml`) | the browser suite | none | every PR, push and merge-queue build | yes |
 
 Agent qualification runs its 3 admissions one at a time, because each writes a probe file into the
 checkout. On Linux, as in CI, its 3 behaviour matrices run at once, each with its own scripted model, home
@@ -62,12 +62,12 @@ timeouts. Elsewhere they take turns, because only Linux's `/proc` lets the `canc
 tool process from another run's.
 
 The pins for the agents these jobs install are in `scripts/agent-pins.json` (the agent) and
-`@prismalens/agent-adapters` (the adapter); `agent-releases.yml` moves them.
+`@prismalens/agent-adapters` (the adapter); `agent-release-watch.yml` moves them.
 
 One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turbo-cache`) under
 `turbo-<os>-<sha>`; `test` (ubuntu) and `pack` need it and restore it, so their `pnpm build` replays.
 `e2e` needs `build`, so it restores this commit's own cache.
-`cross-os-smoke.yml` waits for `Pack npm tarball` on the same commit and installs that artifact,
+`cli-smoke-cross-os.yml` waits for `Pack npm tarball` on the same commit and installs that artifact,
 packing itself only if that job is missing or red.
 
 ```mermaid
@@ -75,13 +75,13 @@ flowchart LR
     build["ci.yml build"] -- "saves turbo-OS-SHA" --> cache[(".turbo-cache")]
     cache -- "restores" --> test["test (ubuntu)"]
     cache -- "restores" --> pack["Pack npm tarball"]
-    cache -- "restores" --> e2e["e2e (e2e.yml)"]
+    cache -- "restores" --> e2e["e2e (e2e-browser.yml)"]
     pack -- "npm-tarballs artifact" --> packed["packed-smoke, packed-intake, packed-service,<br/>packed-upgrade-smoke, gate-side-checks x3"]
-    pack -. "polled, then downloaded" .-> xos["cross-os-smoke.yml"]
+    pack -. "polled, then downloaded" .-> xos["cli-smoke-cross-os.yml"]
     xos -. "pack missing or red: packs itself" .-> xos
 ```
 
-## `e2e.yml`: sharded, with a quarantine
+## `e2e-browser.yml`: sharded, with a quarantine
 
 The suite runs as 2 shards (`--shard=n/2`), each on its own runner with its own stacks; the `pair`
 setup project runs in both. Every shard writes its flaky and failed tests to the job summary.
@@ -132,7 +132,7 @@ cancel each other.
   `/api/investigations/:id/events` as `intake-events-attempt-<n>`, kept 30 days.
   That is the recording source for #533.
 
-## `agent-releases.yml`: what the agents released
+## `agent-release-watch.yml`: what the agents released
 
 Two jobs, neither required, neither spending a model call (#914):
 
@@ -219,7 +219,13 @@ could not, because GitHub owns both the artifact and the rule.
 
 ## Full inventory
 
-Every workflow in this directory, by file and by the name the Actions tab shows. Every job sets
+Every workflow in this directory, by file and by the name the Actions tab shows. A file name starts with what
+the workflow is: `ci`, `e2e-browser`, `build-`, `cli-smoke`, and so on. Two groups keep their old names
+(#885). `release.yml` and the two `publish-*.yml` publish to npm by OIDC, and npm's trusted-publisher
+setting names the workflow file. The caller stubs for `prismalens/gh-workflows`
+(`claude.yml`, `claude-code-review.yml`, `pr-title.yml`, `pr-state.yml`, `review-findings-sweep.yml`,
+`telemetry-health.yml`, `dependabot-auto-merge.yml`) carry the names its `scripts/setup-repo.sh`
+checks for in every repository. Every job sets
 `timeout-minutes`, except a job that calls a reusable workflow, which cannot (#885). Two of them — `ci.yml` and `pr-title.yml` —
 publish the required checks described above and are the exceptions to watch; the
 rest are advisory or out-of-band and cannot affect a merge.
@@ -227,16 +233,16 @@ rest are advisory or out-of-band and cannot affect a merge.
 | Workflow (Actions name) | Trigger | What it does |
 | --- | --- | --- |
 | `ci.yml` (CI) | `pull_request`, `push`, `merge_group`, dispatch | build, test, lint, pack (the pack job gates both npm tarballs with `scripts/check-artifact.mjs`: path limit, size budget and licence texts; packs twice and compares; publint on the packed manifests), the packed-tarball checks, harness admission and e2e; aggregates to `CI gate`. On dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
-| `agent-releases.yml` (Agent releases (probe and pin bumps)) | schedule, dispatch | the protocol probe of every agent row's latest release, and the pin-bump pull requests |
-| `e2e.yml` (Playwright E2E) | called by `ci.yml`, dispatch | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
-| `e2e-responsive.yml` (Playwright E2E (phone and tablet)) | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
-| `cross-os-smoke.yml` (Cross-OS CLI smoke) | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
-| `audit.yml` (Dependency audit) | schedule, dispatch | dependency/security audit |
-| `release.yml` (Release) | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then the `sums` job (one `SHA256SUMS` over every asset and one build-provenance attestation over it), then npm (provenance required), then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows |
-| `standalone.yml` (Standalone CLI build) | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node, each gated by `scripts/check-artifact.mjs`; a CycloneDX SBOM on linux-x64; attaches them to the draft release when called |
-| `desktop.yml` (Desktop app build) | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, held to its `scripts/artifact-budgets.json` size and file count, launched and checked; attaches the zips to the draft release when called |
+| `agent-release-watch.yml` (Agent releases (probe and pin bumps)) | schedule, dispatch | the protocol probe of every agent row's latest release, and the pin-bump pull requests |
+| `e2e-browser.yml` (Playwright E2E) | called by `ci.yml`, dispatch | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
+| `e2e-browser-mobile.yml` (Playwright E2E (phone and tablet)) | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
+| `cli-smoke-cross-os.yml` (Cross-OS CLI smoke) | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
+| `dependency-audit.yml` (Dependency audit) | schedule, dispatch | dependency/security audit |
+| `release.yml` (Release) | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `build-standalone-cli.yml` and `build-desktop-app.yml`, then the `sums` job (one `SHA256SUMS` over every asset and one build-provenance attestation over it), then npm (provenance required), then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows |
+| `build-standalone-cli.yml` (Standalone CLI build) | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node, each gated by `scripts/check-artifact.mjs`; a CycloneDX SBOM on linux-x64; attaches them to the draft release when called |
+| `build-desktop-app.yml` (Desktop app build) | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, held to its `scripts/artifact-budgets.json` size and file count, launched and checked; attaches the zips to the draft release when called |
 | `dependabot-auto-merge.yml` (Dependabot auto-merge) | Dependabot PRs | auto-merges machine dependency bumps |
-| `phase-gate.yml` (Milestone release checklist) | `milestone` | milestone bookkeeping |
+| `milestone-release-checklist.yml` (Milestone release checklist) | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` (Claude Code Review) | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |
 | `claude.yml` (Claude Code) | `@claude` mentions | labour tool; cannot submit or resolve reviews |
 | `pr-title.yml` (Lint PR title) | `pull_request_target` | conventional-commit title check |

@@ -107,7 +107,7 @@ jobs:
 
   standalone:
     needs: draft
-    uses: ./.github/workflows/standalone.yml
+    uses: ./.github/workflows/build-standalone-cli.yml
     with:
       release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
@@ -115,7 +115,7 @@ jobs:
 
   desktop:
     needs: draft
-    uses: ./.github/workflows/desktop.yml
+    uses: ./.github/workflows/build-desktop-app.yml
     with:
       release-tag: ${{ needs.draft.outputs.tag }}
     permissions:

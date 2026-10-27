@@ -159,7 +159,7 @@ New-Item -ItemType Directory -Path $staging -Force | Out-Null
 try {
 	$sums = Join-Path $staging "SHA256SUMS"
 
-	# The newest release with its archives attached. standalone.yml builds them for
+	# The newest release with its archives attached. build-standalone-cli.yml builds them for
 	# about 20 minutes after a release publishes, so fall back to the one before.
 	if ($Version) {
 		if (-not (Fetch "$baseUrl/v$Version/SHA256SUMS" $sums)) { Fail "PrismaLens $Version has no installer archives" }
@@ -208,7 +208,7 @@ try {
 	$dest = Join-Path $runtimeRoot $Version
 	Step "Installing to $dest"
 	# Unpack beside $dest, not under %TEMP%: Windows PowerShell 5.1 can't reach paths of 260+
-	# chars on a default box, and standalone.yml holds the archive to that from here (#902).
+	# chars on a default box, and build-standalone-cli.yml holds the archive to that from here (#902).
 	# System32's bsdtar, not a tar on PATH: Git's GNU tar can't read a zip.
 	$unpacked = Join-Path $runtimeRoot ".new"
 	$tar = Join-Path $env:SystemRoot "System32\tar.exe"

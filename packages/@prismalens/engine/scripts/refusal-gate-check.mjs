@@ -14,7 +14,7 @@
  *
  * WHAT MAY NOT MOVE IN HERE. This module imports NOTHING, and must not — not
  * even @prismalens/config. Both CI jobs sparse-checkout only their own script
- * plus this file (.github/workflows/ci.yml, .github/workflows/cross-os-smoke.yml),
+ * plus this file (.github/workflows/ci.yml, .github/workflows/cli-smoke-cross-os.yml),
  * so neither caller's checkout has a node_modules a bare specifier could resolve
  * through. Each caller already has working, environment-specific code to reach
  * the INSTALLED package's own copy of the harness gate; the caller resolves the
@@ -22,7 +22,7 @@
  * that is shared, and it is the only part that has ever been intended to match.
  *
  * THIS PATH IS NAMED IN THREE PLACES, and all three must keep naming it: both
- * jobs' `sparse-checkout` lists, and cross-os-smoke.yml's `on.pull_request.paths`
+ * jobs' `sparse-checkout` lists, and cli-smoke-cross-os.yml's `on.pull_request.paths`
  * / `on.push.paths`. Drop it from a sparse list and the job fails loudly; drop it
  * from the paths triggers and the cross-OS jobs simply never run for a change to
  * this file, which is the failure that says nothing at all.
