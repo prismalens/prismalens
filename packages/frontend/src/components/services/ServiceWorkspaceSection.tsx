@@ -53,7 +53,7 @@ export function ServiceWorkspaceSection({ serviceId }: { serviceId: string }) {
 	return (
 		<RecordSection id="workspace" title="Workspace">
 			<p className="py-2 text-meta text-text-2">
-				Where this service's runs check out a local repo, and what happens to it
+				Where this service's runs check out its code, and what happens to it
 				afterwards.
 			</p>
 			{FIELDS.map(({ key, label }) => (

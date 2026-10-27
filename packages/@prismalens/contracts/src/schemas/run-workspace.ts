@@ -46,7 +46,7 @@ const LocationSchema = z
 	);
 
 export const RunWorkspaceSettingsSchema = z.object({
-	/** For a local folder; a git URL is always cloned. */
+	/** Of a local folder, or of the one copy a git URL is cloned into. */
 	method: z.enum(["worktree", "clone"]),
 	/** Null: `<app data>/worktrees`. */
 	location: LocationSchema.nullable(),

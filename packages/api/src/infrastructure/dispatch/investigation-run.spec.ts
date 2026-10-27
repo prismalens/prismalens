@@ -127,7 +127,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		}
 	});
 
-	it("a linked repo: snapshotWith gets sourceKind/url/connectionId/defaultBranch and a dest under the run dir, cwd is the snapshot path plus subPath, and the note names the commit", async () => {
+	it("a linked repo: snapshotWith gets sourceKind/url/connectionId/defaultBranch and a dest in the run workspace location (#925), cwd is the snapshot path plus subPath, and the note names the commit", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
@@ -158,13 +158,13 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					connectionId: "conn-1",
 					defaultBranch: "main",
 				},
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
 			);
 			expect(ws.layout).toBe("single");
-			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo", "services", "api"));
+			expect(ws.cwd).toBe(join(tmp, "worktrees", "pl-inv-1", "services", "api"));
 			expect(ws.note).toContain("https://github.com/acme/api-gateway");
 			expect(ws.note).toContain("abc123def456");
 		} finally {
@@ -186,7 +186,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 			const ws = await resolveWorkspace(minimalData(), ports);
 
-			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo"));
+			expect(ws.cwd).toBe(join(tmp, "worktrees", "pl-inv-1"));
 		} finally {
 			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });
@@ -216,7 +216,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-junction-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const repoDir = join(tmp, "worktrees", "pl-inv-1");
 			const outsideDir = join(tmp, "outside");
 			mkdirSync(repoDir, { recursive: true });
 			mkdirSync(outsideDir, { recursive: true });
@@ -484,7 +484,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-res-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const repoDir = join(tmp, "worktrees", "pl-inv-1");
 			const linked = join(repoDir, "linked");
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
@@ -543,7 +543,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 			expect(snapshot).toHaveBeenCalledWith(
 				{ sourceKind: "url", url: "https://github.com/acme/x", connectionId: null, defaultBranch: null },
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
@@ -1392,7 +1392,7 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	}
 	function followUpPorts(overrides: Partial<RunPorts> = {}) {
-		const dir = join(tmp, "runs", "inv-1", "repo");
+		const dir = join(tmp, "worktrees", "pl-inv-1");
 		return fakePorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
@@ -1439,7 +1439,7 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(result.success).toBe(true);
 		expect(ports.snapshotWith).toHaveBeenCalledWith(
 			{ sourceKind: "url", url: "https://github.com/acme/api", connectionId: null },
-			join(tmp, "runs", "inv-1", "repo"),
+			join(tmp, "worktrees", "pl-inv-1"),
 			expect.any(AbortSignal),
 			HEAD,
 			"inv-1",
@@ -1467,11 +1467,11 @@ describe("follow-up on a finished run (#747)", () => {
 				{ stopped: false },
 			],
 		]);
-		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
 	it("runFollowUp passes kind: 'chat' to conductRun when investigation is a chat run (#817)", async () => {
-		const dir = join(tmp, "runs", "inv-1", "repo");
+		const dir = join(tmp, "worktrees", "pl-inv-1");
 		const ports = followUpPorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
@@ -1765,7 +1765,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
@@ -1777,7 +1777,7 @@ describe("follow-up on a finished run (#747)", () => {
 				return { path: dest, head: HEAD, branch: null };
 			}),
 		});
-		const repo = join(tmp, "runs", "inv-1", "repo");
+		const repo = join(tmp, "worktrees", "pl-inv-1");
 		const outside = join(tmp, "outside");
 		mkdirSync(outside, { recursive: true });
 		let written: { linked: boolean; text: string } | undefined;
@@ -1872,7 +1872,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => []),
@@ -2041,7 +2041,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "deepagents",
 				model: "deepagents/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 			})),
 		});
 
@@ -2064,7 +2064,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(result.error).toBe(`fatal: reference is not a tree: ${HEAD}`);
-		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
 	it("the new session's usage is written after the handoff is recorded (handoff-L8)", async () => {
@@ -2095,7 +2095,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),

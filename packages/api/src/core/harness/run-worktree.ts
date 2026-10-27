@@ -281,7 +281,11 @@ export async function addRunWorktree(
 	commit: string,
 	runId: string,
 	signal?: AbortSignal,
-	onOutput?: (chunk: string) => void,
+	opts: {
+		onOutput?: (chunk: string) => void;
+		/** `repo` is a URL's shared mirror: a branch in it would be pruned by its next fetch. */
+		mirror?: boolean;
+	} = {},
 ): Promise<AddedWorktree> {
 	// A cap or Remove already deciding on this folder finishes first; a follow-up never resumes mid-removal.
 	await removing.get(dest);
@@ -298,9 +302,14 @@ export async function addRunWorktree(
 		lockLabel: runId,
 		...(binding?.serviceId ? { project: binding.serviceId } : {}),
 		source: { kind: "local", repo, commit },
-		policy: toPolicy(settings, binding?.branch),
+		policy: toPolicy(
+			settings,
+			opts.mirror && settings.method === "worktree"
+				? undefined
+				: binding?.branch,
+		),
 		...(signal ? { signal } : {}),
-		...(onOutput ? { onOutput } : {}),
+		...(opts.onOutput ? { onOutput: opts.onOutput } : {}),
 	});
 	return {
 		lock: workspace.lock,

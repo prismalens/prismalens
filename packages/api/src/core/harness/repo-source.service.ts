@@ -9,7 +9,7 @@
  * rides as a per-command header, never in the URL or the mirror's config.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { Injectable, Logger } from "@nestjs/common";
@@ -205,73 +205,43 @@ export class RepoSourceService {
 		runId?: string,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
-		let added: { lock: string; setup?: HookResult } | undefined;
-		if (src.kind === "folder") {
-			const commit = at ?? (await this.headOf(src.source)).head;
-			if (at && !(await this.hasCommit(src.source, at, signal)))
-				throw new Error(
-					`Commit ${at} could not be checked out from this source`,
-				);
-			try {
-				added = await addRunWorktree(
-					src.source,
-					dest,
-					commit,
-					runId ?? dest,
-					signal,
-				);
-			} catch (err) {
-				if (signal?.aborted) throw signal.reason;
-				throw err instanceof Error ? new Error(err.message) : err;
-			}
-		} else await this.cloneMirror(src, dest, signal, at);
+		// A URL is cloned once, into its mirror; each run gets a workspace of that (#925).
+		const mirror = src.kind === "url";
+		const repo = mirror
+			? await abortable(this.ensureMirror(src), signal)
+			: src.source;
+		const tip = at
+			? null
+			: await this.headOf(repo, mirror ? src.defaultBranch : undefined);
+		const commit = at ?? (tip as SourceCheck).head;
+		if (at && !(await this.hasCommit(repo, at, signal)))
+			throw new Error(`Commit ${at} could not be checked out from this source`);
+		let added: { lock: string; setup?: HookResult };
+		try {
+			added = await addRunWorktree(repo, dest, commit, runId ?? dest, signal, {
+				mirror,
+			});
+		} catch (err) {
+			if (signal?.aborted) throw signal.reason;
+			throw err instanceof Error ? new Error(err.message) : err;
+		}
+		// A clone's origin is the mirror: refuse local-path push and fetch from the run (#676).
+		if (mirror && statSync(join(dest, ".git")).isDirectory())
+			await this.git(
+				["-C", dest, "config", "protocol.file.allow", "never"],
+				undefined,
+				signal,
+			);
 		const check = await this.headOf(dest);
 		this.logger.log(
 			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}`,
 		);
-		return { path: dest, ...check, ...added };
-	}
-
-	private async cloneMirror(
-		src: RepoSource,
-		dest: string,
-		signal?: AbortSignal,
-		at?: string,
-	): Promise<void> {
-		const from = await abortable(this.ensureMirror(src), signal);
-		rmSync(dest, { recursive: true, force: true });
-		mkdirSync(join(dest, ".."), { recursive: true });
-		const branch = !at ? src.defaultBranch?.trim() || null : null;
-		await this.git(
-			[
-				"clone",
-				"--quiet",
-				...(at ? ["--no-checkout"] : []),
-				...(branch ? ["--branch", branch] : []),
-				"--",
-				from,
-				dest,
-			],
-			undefined,
-			signal,
-		);
-		if (at)
-			await this.git(
-				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
-				undefined,
-				signal,
-			).catch((err: unknown) => {
-				if (signal?.aborted) throw err;
-				throw new Error(
-					`Commit ${at} could not be checked out from this source`,
-				);
-			});
-		// origin is our mirror: refuse local-path push and fetch from the run (#676).
-		await this.git(
-			["-C", dest, "config", "protocol.file.allow", "never"],
-			undefined,
-			signal,
-		);
+		return {
+			path: dest,
+			...check,
+			branch: check.branch ?? (mirror ? (tip?.branch ?? null) : null),
+			...added,
+		};
 	}
 
 	/**
@@ -315,6 +285,12 @@ export class RepoSourceService {
 					{ env, timeoutMs: GIT_TIMEOUT_MS },
 				);
 			}
+			// Run worktrees share this repo and its remote: a push from one, which on a mirror pushes
+			// every ref, fails here instead (#676, #925). The mirror itself only ever fetches.
+			await spawnGit(
+				["config", "remote.origin.pushurl", "never-push://prismalens"],
+				{ cwd: path, env, timeoutMs: GIT_TIMEOUT_MS },
+			);
 		} catch (err) {
 			const failure = remoteFailure(err, src);
 			if (failure instanceof GitFailure && failure.stderr)

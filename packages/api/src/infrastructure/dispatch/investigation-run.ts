@@ -1579,9 +1579,9 @@ function whereFrom(repo: {
 }
 
 /**
- * Fresh snapshots of the incident's repos (ADR 0004 §2): one local repo is the worktree
- * `worktrees/pl-<run>` (#918), one URL keeps the run's `repo/`, several go under
- * `worktrees/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
+ * Fresh snapshots of the incident's repos (ADR 0004 §2): one repo is the workspace
+ * `<location>/pl-<run>` (#918), of its folder or of a URL's mirror (#925); several go under
+ * `<location>/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
  * and named; with none, the run goes on (#848).
  */
 export async function resolveWorkspace(
@@ -1634,11 +1634,7 @@ export async function resolveWorkspace(
 					connectionId: repo.connectionId,
 					defaultBranch: repo.defaultBranch,
 				},
-				multi
-					? join(runWorktreeDir(runId), name)
-					: repo.sourceKind === "folder"
-						? runWorktreeDir(runId)
-						: join(runDir, "repo"),
+				multi ? join(runWorktreeDir(runId), name) : runWorktreeDir(runId),
 				repoSignal,
 				undefined,
 				runId,
@@ -1856,7 +1852,7 @@ function untilAborted<T>(
 
 /**
  * A worktree that finished after the run stopped waiting is unlocked and removed now, unless a
- * later attempt re-added that path. A late URL clone has no lock, so the run's end removes it.
+ * later attempt re-added that path.
  */
 function releaseLate({
 	snap,

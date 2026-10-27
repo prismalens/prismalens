@@ -46,7 +46,7 @@ const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
 	runs: {
 		title: "Runs",
 		intro:
-			"Where a run works on a local repo, and what is left of it afterwards.",
+			"Where a run checks out the code, and what is left of it afterwards.",
 	},
 	"alert-intake": {
 		title: "Alert intake",

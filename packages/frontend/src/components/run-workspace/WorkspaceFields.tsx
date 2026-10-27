@@ -307,7 +307,7 @@ export function FieldEditor({
 /** What each field is for, under its label. */
 export const HELP: Record<WorkspaceField, string> = {
 	method:
-		"A local folder is checked out as a worktree of it, or cloned. A git URL is always cloned.",
+		"A worktree, or a clone, of your folder. A git URL is cloned once, and each run then gets a worktree or a clone of that copy.",
 	location: "The folder run workspaces are made in.",
 	retention:
 		"Changed means uncommitted edits or new files that are not ignored. Ignored files never count.",
@@ -317,10 +317,10 @@ export const HELP: Record<WorkspaceField, string> = {
 	teardown:
 		"Runs before a workspace is removed, for 60 seconds at most. Changes are checked again after it.",
 	copyIn:
-		"Paths from the top of your repo, such as ignored .env files, copied into each workspace.",
+		"Paths from the top of your folder, such as ignored .env files, copied into each workspace. A git URL has no folder to copy from.",
 	submodules: "Whether to check out the repo's submodules.",
 	branch:
-		"A run reads the code at a commit; a named branch is there if you want to keep its work.",
+		"A run reads the code at a commit; a named branch is there if you want to keep its work. A worktree of a git URL's copy is always detached.",
 };
 
 /** Why a workspace was removed or kept, as the history and the run page say it. */
