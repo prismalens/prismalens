@@ -226,9 +226,10 @@ export const matrixSignature = (stdout) =>
  * @param {string} script
  * @param {string[]} args
  * @param {Record<string, string>} env
+ * @param {boolean} [live] echo stdout as it arrives
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
-function engineScript(script, args, env) {
+function engineScript(script, args, env, live = false) {
 	return new Promise((resolveRun) => {
 		const all = [
 			"--filter",
@@ -250,7 +251,7 @@ function engineScript(script, args, env) {
 		let stderr = "";
 		child.stdout.on("data", (d) => {
 			stdout += d;
-			if (script === "acp-matrix.ts") process.stdout.write(d);
+			if (live) process.stdout.write(d);
 		});
 		child.stderr.on("data", (d) => {
 			stderr += d;
@@ -304,69 +305,99 @@ async function main() {
 		);
 		process.exit(2);
 	}
-	const model = await startScriptedModel(args.harness);
 	const home = mkdtempSync(join(tmpdir(), "pl-admission-fake-"));
 	const workdir = mkdtempSync(join(homedir(), ".pl-matrix-"));
+	/** @type {Awaited<ReturnType<typeof startScriptedModel>>[]} */
+	const models = [];
+	const startModel = async () => {
+		const model = await startScriptedModel(args.harness);
+		models.push(model);
+		return model;
+	};
+	const runs = Array.from({ length: args.repeat }, () => ({
+		/** @type {string[]} */ parts: [],
+		failed: false,
+		/** @type {Awaited<ReturnType<typeof startScriptedModel>>[]} */ models: [],
+	}));
 	const lines = [];
 	let worst = 0;
 	try {
-		const env = agentEnv(args.harness, model, home);
-		const signedOut = agentEnv(
-			args.harness,
-			model,
-			mkdtempSync(join(home, "signed-out-")),
-			null,
-		);
-		/** @type {Record<string, string | null>} */
-		const overrides = Object.fromEntries(KEYS.map((k) => [k, null]));
-		Object.assign(overrides, signedOut);
-		for (let run = 1; run <= args.repeat; run++) {
-			model.resetMatchCounts();
-			const parts = [];
-			let failed = false;
-			if (args.admission) {
+		if (args.admission) {
+			const model = await startModel();
+			const env = agentEnv(args.harness, model, home);
+			// The admission writes its cwd probe into the one clone, so its runs take turns.
+			for (const run of runs) {
+				model.resetMatchCounts();
+				run.models.push(model);
 				const out = await engineScript(
 					"acp-admission.ts",
 					[args.harness, args.cloneDir],
 					env,
 				);
 				const verdict = verdictOf(out.stdout);
-				parts.push(signature(verdict));
+				run.parts.push(signature(verdict));
 				const problem = admissionProblem(args.harness, verdict, out.code);
 				if (out.code !== 0 && !problem)
 					console.log(
 						`known failure: ${KNOWN_ADMISSION_FAILURES[args.harness]?.why}`,
 					);
 				if (problem) {
-					failed = true;
+					run.failed = true;
 					console.log(problem);
 					console.log(out.stdout);
 					console.error(out.stderr.slice(-2000));
 				}
 			}
-			if (args.matrix) {
-				const out = await engineScript(
-					"acp-matrix.ts",
-					[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
-					{
-						...env,
-						PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),
-						PL_MATRIX_WORKDIR: workdir,
-					},
-				);
-				parts.push(matrixSignature(out.stdout));
-				if (out.code !== 0) {
-					failed = true;
-					console.error(out.stderr.slice(-2000));
-				}
-			}
-			const line = parts.join(" | ");
+		}
+		if (args.matrix) {
+			// Each matrix run has its own scripted model, home and workspace, so the runs go at
+			// once: most of a run is waiting on the agent's own retries and timeouts (#885).
+			await Promise.all(
+				runs.map(async (run, i) => {
+					const model = await startModel();
+					run.models.push(model);
+					const runHome = mkdtempSync(join(home, `matrix-${i + 1}-`));
+					const signedOut = agentEnv(
+						args.harness,
+						model,
+						mkdtempSync(join(runHome, "signed-out-")),
+						null,
+					);
+					/** @type {Record<string, string | null>} */
+					const overrides = Object.fromEntries(KEYS.map((k) => [k, null]));
+					Object.assign(overrides, signedOut);
+					const out = await engineScript(
+						"acp-matrix.ts",
+						[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
+						{
+							...agentEnv(args.harness, model, runHome),
+							PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),
+							PL_MATRIX_WORKDIR: mkdtempSync(join(workdir, `run-${i + 1}-`)),
+						},
+						args.repeat === 1,
+					);
+					if (args.repeat > 1)
+						process.stdout.write(
+							`matrix run ${i + 1}/${args.repeat}:
+${out.stdout}`,
+						);
+					run.parts.push(matrixSignature(out.stdout));
+					if (out.code !== 0) {
+						run.failed = true;
+						console.error(out.stderr.slice(-2000));
+					}
+				}),
+			);
+		}
+		for (const [i, run] of runs.entries()) {
+			const line = run.parts.join(" | ");
 			lines.push(line);
 			console.log(
-				`run ${run}/${args.repeat}: ${failed ? "FAIL" : "ok"} ${line}`,
+				`run ${i + 1}/${args.repeat}: ${run.failed ? "FAIL" : "ok"} ${line}`,
 			);
-			if (failed) worst = 1;
-			if (failed || args.journal) {
+			if (run.failed) worst = 1;
+			if (!run.failed && !args.journal) continue;
+			for (const model of run.models) {
 				const statuses = model.journal().map((e) => {
 					const m = /** @type {any} */ (e.response.fixture)?.match;
 					const tag = m
@@ -386,8 +417,9 @@ async function main() {
 			}
 		}
 	} finally {
-		console.log(`scripted model served ${model.journal().length} requests`);
-		await model.close();
+		const served = models.reduce((n, m) => n + m.journal().length, 0);
+		console.log(`scripted model served ${served} requests`);
+		await Promise.all(models.map((m) => m.close()));
 		rmSync(home, { recursive: true, force: true });
 		rmSync(workdir, { recursive: true, force: true, maxRetries: 5 });
 	}
