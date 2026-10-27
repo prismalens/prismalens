@@ -37,17 +37,27 @@ renamed or refused (#884). No job here spends money on a model call (#914), and
 live-model jobs are advisory and leave the gate. `CI gate` waits on every job marked
 yes (#920, the operator's ruling of 2026-10-24).
 
-| Job | Model | Cadence | Required |
-| --- | --- | --- | --- |
-| `build`, `lint`, `pack`, `packed-smoke` | none | every PR | yes |
-| `test` | scripted fake agent | every PR on ubuntu, with the coverage floors (#58); macOS also on `merge_group` and pushes to `main` | yes |
-| `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | yes |
-| `packed-service` | none | every PR | yes |
-| `packed-upgrade-smoke` | scripted fake ACP agent, on the packed tarball; then every release npm lists upgraded to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | every PR | yes |
-| `gate-side-checks` (Linux, macOS, Windows) | scripted fake ACP agent, on the packed tarball; `--no-skip` | every PR | yes |
-| `harness-admission` (opencode, claude-code, codex) | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned), the real pinned agent; the admission (R1-R9) and the behaviour matrix, 3 runs that must agree | every PR | yes |
-| `harness-admission` (gemini, deepagents) | the same, for the tier-2 agents | every PR | no: `continue-on-error`, so a red leg leaves the job green |
-| `e2e` (calls `e2e.yml`) | none | every PR, push and merge-queue build | yes |
+A PR shows the check name; `needs:` and the prose here use the job id. Every check that runs
+the packed tarball starts with `Tarball:`.
+
+| Check name (job id) | What it proves | Model | Cadence | Required |
+| --- | --- | --- | --- | --- |
+| `Build & typecheck` (`build`) | builds and type-checks; OpenAPI spec drift; publint | none | every PR | yes |
+| `Lint (Biome)` (`lint`) | format and lint | none | every PR | yes |
+| `Unit tests (<os>)` (`test`) | every package's tests; on ubuntu with the coverage floors (#58) | scripted fake agent | ubuntu on every PR; macOS on `merge_group`, `main`, and a PR touching `packages/api` or `packages/@prismalens/engine` | yes |
+| `Pack npm tarball` (`pack`) | packs both tarballs and gates them (`scripts/check-artifact.mjs`; a second pack gives the same bytes) | none | every PR | yes |
+| `Tarball: installs and boots` (`packed-smoke`) | the tarball installs and boots in a clean container | none | every PR | yes |
+| `Tarball: alert to incident to report, unattended` (`packed-intake`) | a webhook becomes an incident, is investigated without a human, and resolves | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | yes |
+| `Tarball: pl service under systemd` (`packed-service`) | `pl service` installs, restarts and uninstalls | none | every PR | yes |
+| `Tarball: upgrades an old database and every release` (`packed-upgrade-smoke`) | an old database upgrades; every release npm lists upgrades to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | scripted fake ACP agent | every PR | yes |
+| `Tarball: release side checks (<os>)` (`gate-side-checks`) | the release gate's side checks on Linux, macOS and Windows, `--no-skip` | scripted fake ACP agent | every PR | yes |
+| `Agent qualification (<agent>, scripted model)` (`harness-admission`): opencode, claude-code, codex | the real pinned agent passes the admission (R1-R9) and the behaviour matrix, 3 runs that must agree | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned) | every PR | yes |
+| the same: gemini, deepagents | the same, for the tier-2 agents | the same | every PR | no: `continue-on-error`, so a red leg leaves the job green |
+| `E2E / Playwright (Chromium, shard <n>/2)` (`e2e`, calls `e2e.yml`) | the browser suite | none | every PR, push and merge-queue build | yes |
+
+Agent qualification runs its 3 admissions one at a time, because each writes a probe file into the
+checkout. Its 3 behaviour matrices run at once, each with its own scripted model, home and workspace
+(#885); a matrix run spends most of its time waiting out the agent's own retries and timeouts.
 
 The pins for the agents these jobs install are in `scripts/agent-pins.json` (the agent) and
 `@prismalens/agent-adapters` (the adapter); `agent-releases.yml` moves them.
@@ -81,9 +91,13 @@ when the tag comes off (CONTRIBUTING.md, "Browser e2e tier").
 
 - **In `ci-gate`.** `ci.yml` calls this workflow as its `e2e` job (`workflow_call`), which `CI gate`
   waits on, so it also runs on `merge_group` (#920).
-- **`strict_required_status_checks_policy` is undecided.** The live ruleset still sets it to `true`
-  next to the merge queue. Whether to drop it is unconfirmed and recorded here as open; this file does
-  not decide it, and no workflow depends on either answer.
+- **`strict_required_status_checks_policy`: drop it (#885).** The live ruleset sets it to `true` next
+  to the merge queue. The queue already tests each PR on top of `main` and everything queued ahead of
+  it, which is what strict was for. GitHub's merge-queue docs say the queue gives that guarantee
+  without making the author update the branch first. Strict adds only an "Update branch" round trip
+  and a full CI rerun before a PR can join the queue. The operator makes the ruleset edit: set the
+  `required_status_checks` rule's `strict_required_status_checks_policy` to `false` with
+  `gh api -X PUT repos/prismalens/prismalens/rulesets/18441175`. No workflow depends on either value.
 
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
 script against the real harness on PATH; `packed-intake-live` in `ci.yml` calls it that way.
@@ -104,9 +118,9 @@ cancel each other.
 
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
-| `live-pack` | none; packs the tarball the live intake installs | dispatch | no |
-| `packed-intake-live` | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | dispatch | no |
-| `harness-admission-live` | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | dispatch | no |
+| `Live: pack npm tarball` (`live-pack`) | none; packs the tarball the live intake installs | dispatch | no |
+| `Live: alert to report on the free model (2 of 3)` (`packed-intake-live`) | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | dispatch | no |
+| `Live: agent qualification (opencode, free model)` (`harness-admission-live`) | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | dispatch | no |
 
 - **Release gate:** dispatch it on `main` with `ref` set to the release PR's base SHA
   (`gh workflow run ci.yml --ref main -f ref=<sha>`) and link the run from the PR.
@@ -203,27 +217,29 @@ could not, because GitHub owns both the artifact and the rule.
 
 ## Full inventory
 
-Every workflow in this directory. Two of them — `ci.yml` and `pr-title.yml` —
+Every workflow in this directory, by file and by the name the Actions tab shows. Every job sets
+`timeout-minutes`, except a job that calls a reusable workflow, which cannot (#885). Two of them — `ci.yml` and `pr-title.yml` —
 publish the required checks described above and are the exceptions to watch; the
 rest are advisory or out-of-band and cannot affect a merge.
 
-| Workflow | Trigger | What it does |
+| Workflow (Actions name) | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | `pull_request`, `push`, `merge_group`, dispatch | build, test, lint, pack (the pack job gates both npm tarballs with `scripts/check-artifact.mjs`: path limit, size budget and licence texts; packs twice and compares; publint on the packed manifests), the packed-tarball checks, harness admission and e2e; aggregates to `CI gate`. On dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
-| `agent-releases.yml` | schedule, dispatch | the protocol probe of every agent row's latest release, and the pin-bump pull requests |
-| `e2e.yml` | called by `ci.yml`, dispatch | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
-| `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
-| `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
-| `audit.yml` | schedule, dispatch | dependency/security audit |
-| `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then the `sums` job (one `SHA256SUMS` over every asset and one build-provenance attestation over it), then npm (provenance required), then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows |
-| `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node, each gated by `scripts/check-artifact.mjs`; a CycloneDX SBOM on linux-x64; attaches them to the draft release when called |
-| `desktop.yml` | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, held to its `scripts/artifact-budgets.json` size and file count, launched and checked; attaches the zips to the draft release when called |
-| `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
-| `phase-gate.yml` | `milestone` | milestone bookkeeping |
-| `claude-code-review.yml` | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |
-| `claude.yml` | `@claude` mentions | labour tool; cannot submit or resolve reviews |
-| `pr-title.yml` | `pull_request_target` | conventional-commit title check |
-| `publish-agent-adapters.yml` | dispatch only | publishes `@prismalens/agent-adapters` to npm with provenance (CONTRIBUTING.md, "Publishing `@prismalens/agent-adapters`") |
-| `pr-state.yml` | `pull_request_target` | caller stub for `prismalens/gh-workflows`: reports the PR's state to the review telemetry; checks nothing out |
-| `review-findings-sweep.yml` | `pull_request` closed, `pull_request_review`, weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: sweeps review findings into the review telemetry |
-| `telemetry-health.yml` | weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: weekly health report on the review telemetry |
+| `ci.yml` (CI) | `pull_request`, `push`, `merge_group`, dispatch | build, test, lint, pack (the pack job gates both npm tarballs with `scripts/check-artifact.mjs`: path limit, size budget and licence texts; packs twice and compares; publint on the packed manifests), the packed-tarball checks, harness admission and e2e; aggregates to `CI gate`. On dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
+| `agent-releases.yml` (Agent releases (probe and pin bumps)) | schedule, dispatch | the protocol probe of every agent row's latest release, and the pin-bump pull requests |
+| `e2e.yml` (Playwright E2E) | called by `ci.yml`, dispatch | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
+| `e2e-responsive.yml` (Playwright E2E (phone and tablet)) | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
+| `cross-os-smoke.yml` (Cross-OS CLI smoke) | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
+| `audit.yml` (Dependency audit) | schedule, dispatch | dependency/security audit |
+| `release.yml` (Release) | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then the `sums` job (one `SHA256SUMS` over every asset and one build-provenance attestation over it), then npm (provenance required), then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows |
+| `standalone.yml` (Standalone CLI build) | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node, each gated by `scripts/check-artifact.mjs`; a CycloneDX SBOM on linux-x64; attaches them to the draft release when called |
+| `desktop.yml` (Desktop app build) | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, held to its `scripts/artifact-budgets.json` size and file count, launched and checked; attaches the zips to the draft release when called |
+| `dependabot-auto-merge.yml` (Dependabot auto-merge) | Dependabot PRs | auto-merges machine dependency bumps |
+| `phase-gate.yml` (Milestone release checklist) | `milestone` | milestone bookkeeping |
+| `claude-code-review.yml` (Claude Code Review) | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |
+| `claude.yml` (Claude Code) | `@claude` mentions | labour tool; cannot submit or resolve reviews |
+| `pr-title.yml` (Lint PR title) | `pull_request_target` | conventional-commit title check |
+| `publish-agent-adapters.yml` (Publish agent adapters) | dispatch only | publishes `@prismalens/agent-adapters` to npm with provenance (CONTRIBUTING.md, "Publishing `@prismalens/agent-adapters`") |
+| `publish-agent-host.yml` (Publish agent host) | dispatch only | publishes `@prismalens/agent-host` to npm with provenance; PrismaLens and Assayer pick up a new version when they bump it (#916) |
+| `pr-state.yml` (PR State) | `pull_request_target` | caller stub for `prismalens/gh-workflows`: reports the PR's state to the review telemetry; checks nothing out |
+| `review-findings-sweep.yml` (Review Findings Sweep) | `pull_request` closed, `pull_request_review`, weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: sweeps review findings into the review telemetry |
+| `telemetry-health.yml` (Telemetry Health) | weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: weekly health report on the review telemetry |

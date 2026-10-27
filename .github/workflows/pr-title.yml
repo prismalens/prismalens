@@ -44,6 +44,7 @@ jobs:
   validate:
     name: Validate PR title (conventional commits)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       # validation logic lives in canon; the job/check name must stay stable
       # (pinned as a required check in the ruleset).

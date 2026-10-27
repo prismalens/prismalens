@@ -71,6 +71,7 @@ jobs:
   mode:
     name: Resolve mode
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       mode: ${{ steps.resolve.outputs.mode }}
       version: ${{ steps.resolve.outputs.version }}
@@ -213,6 +214,7 @@ jobs:
       needs.pack.result != 'failure' &&
       needs.pack.result != 'cancelled'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

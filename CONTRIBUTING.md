@@ -632,11 +632,11 @@ PASS, FAIL, SKIP or N/A line per check and exits non-zero on any FAIL, and on a 
 under `--no-skip`, which CI passes. `rollback` is N/A off Linux (the trial runs under
 systemd), `upgrade` is N/A on Windows (the runner's `pl upgrade` dies when npm moves the running `pl`'s own directory; see #921), and `rollback` is skipped on Linux when there is no systemd user manager or a
 `prismalens.service` already exists. On Windows there is no SIGTERM: the lock check ends the holder
-outright and expects the next boot to take the stale lock. CI's `Gate side checks`
+outright and expects the next boot to take the stale lock. CI's `Tarball: release side checks`
 job runs them on Linux, macOS and Windows on every PR and every push to `main`, and its run on the release PR's base
 SHA is the gate's record.
 
-`pnpm gate:upgrade-chain <dir-with-tarball>` is the chain behind `Packed upgrade smoke`: it reads the stable
+`pnpm gate:upgrade-chain <dir-with-tarball>` is the chain behind `Tarball: upgrades an old database and every release`: it reads the stable
 releases from `npm view prismalens versions`, starts a local registry that proxies npm and carries the tarball
 (re-versioned to the next patch when its own version is already published), installs the oldest release from 0.5.0 on, and
 upgrades it release by release to the tarball with each release's own `pl upgrade`, booting after every hop and

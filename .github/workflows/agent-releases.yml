@@ -1,7 +1,7 @@
 # What the agents we support have released (#914): a zero-token protocol probe of each row's
 # latest version, and a pull request that moves a pin once its release has soaked 3 days.
 # Neither spends a model call, and neither is required by `CI gate`.
-name: Agent releases
+name: Agent releases (probe and pin bumps)
 
 on:
   schedule:

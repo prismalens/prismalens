@@ -1,4 +1,4 @@
-name: Phase Gate
+name: Milestone release checklist
 
 on:
   milestone:
@@ -13,6 +13,7 @@ jobs:
     name: File the release checklist
     if: github.event.action == 'created'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -43,6 +44,7 @@ jobs:
     name: Flag a milestone closed before its gate
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}

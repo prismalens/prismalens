@@ -18,6 +18,7 @@ jobs:
   responsive:
     name: Playwright E2E (Pixel 7, iPad)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 

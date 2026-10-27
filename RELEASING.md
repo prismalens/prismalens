@@ -35,18 +35,18 @@ flowchart TD
 
 | Job | What it proves |
 | :--- | :--- |
-| `Build & typecheck`, `Lint (Biome)`, `Test` | the code builds, type-checks and passes its tests |
-| `Pack npm tarball`, `Packed smoke` | the one published tarball installs and boots in a clean container |
-| `Packed intake` | a webhook becomes an incident, an unattended investigation reports, a resolution closes it |
-| `Packed service` | `pl service` installs, restarts and uninstalls on a real systemd user manager |
-| `Packed upgrade smoke` | a database that predates `investigation_turns` upgrades, and every release npm lists from 0.5.0 on upgrades to the tarball through its own `pl upgrade`, with its data |
-| `Gate side checks` on Linux, macOS and Windows | telemetry, update notice, workspace lock, reset and Host allowlist; `pl upgrade` through npm on Linux and macOS; on Linux also the trial upgrade and its rollback |
-| `Harness admission` for opencode, claude-code and codex | each agent's real binary and adapter against the scripted model |
+| `Build & typecheck`, `Lint (Biome)`, `Unit tests` | the code builds, type-checks and passes its tests |
+| `Pack npm tarball`, `Tarball: installs and boots` | the one published tarball installs and boots in a clean container |
+| `Tarball: alert to incident to report, unattended` | a webhook becomes an incident, an unattended investigation reports, a resolution closes it |
+| `Tarball: pl service under systemd` | `pl service` installs, restarts and uninstalls on a real systemd user manager |
+| `Tarball: upgrades an old database and every release` | a database that predates `investigation_turns` upgrades, and every release npm lists from 0.5.0 on upgrades to the tarball through its own `pl upgrade`, with its data |
+| `Tarball: release side checks` on Linux, macOS and Windows | telemetry, update notice, workspace lock, reset and Host allowlist; `pl upgrade` through npm on Linux and macOS; on Linux also the trial upgrade and its rollback |
+| `Agent qualification` for opencode, claude-code and codex | each agent's real binary and adapter against the scripted model |
 | `E2E` | the browser suite |
 
 Also on the base SHA, outside the gate:
-- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run standalone.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow standalone.yml --json headSha`).
-- [ ] `Desktop` on the base. The desktop part of the walk uses its artifact.
+- [ ] `Standalone CLI build` dispatched on the base branch (`gh workflow run standalone.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow standalone.yml --json headSha`).
+- [ ] `Desktop app build` on the base. The desktop part of the walk uses its artifact.
 - [ ] Docs for this release's screens merged in `prismalens/prismalens.io`.
 
 What stays manual, because a runner cannot do it:
