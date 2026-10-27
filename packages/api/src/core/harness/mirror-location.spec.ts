@@ -105,4 +105,15 @@ describe("the cloned copies folder", () => {
 		await sweepOldMirrors();
 		expect(existsSync(join(theirs, "HEAD"))).toBe(true);
 	});
+
+	it("never deletes a --mirror clone the user made in an old location", async () => {
+		const url = remote();
+		const old = join(tmp, "old");
+		const theirs = join(old, "host", "personal.git");
+		mkdirSync(join(old, "host"), { recursive: true });
+		git(["clone", "-q", "--mirror", url, theirs], tmp);
+		setMirrorLocations(join(tmp, "copies"), [old]);
+		await sweepOldMirrors();
+		expect(existsSync(join(theirs, "HEAD"))).toBe(true);
+	});
 });

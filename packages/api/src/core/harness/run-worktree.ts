@@ -223,9 +223,9 @@ function mustStay(dir: string): boolean {
 	}
 }
 
-/** `pl-<run>` itself, or the `pl-<run>` a multi-repo folder sits in. */
+/** The `pl-<run>` a multi-repo folder sits in, else `pl-<run>` itself: a repo may be named `pl-*` too. */
 function runIdOf(dir: string): string | null {
-	for (const name of [basename(dir), basename(dirname(dir))])
+	for (const name of [basename(dirname(dir)), basename(dir)])
 		if (name.startsWith(WORKTREE_PREFIX))
 			return name.slice(WORKTREE_PREFIX.length);
 	return null;

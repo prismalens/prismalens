@@ -318,6 +318,24 @@ describe("review round 1 (#925)", () => {
 	});
 });
 
+describe("Codex pass (#925)", () => {
+	it("a multi-repo child named pl-* is its parent run's: the cap spares it while that run is live", async () => {
+		global = { ...global, retention: { kind: "keep-days", days: 30 }, keptPerProject: 1 };
+		const a = initRepo("a");
+		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
+		const child = join(runWorktreeDir("r1"), "pl-library");
+		await addRunWorktree(a.dir, child, a.head, "r1");
+		await end("r1");
+		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
+		const newer = await run("r2", a);
+		await end("r2");
+		await sweepRunWorktrees();
+		expect(existsSync(child)).toBe(true);
+		expect(existsSync(newer.dest)).toBe(true);
+		unbindRun("r1");
+	});
+});
+
 describe("review round 2 (#925)", () => {
 	it("a multi-repo run's folder stays at run end and in a sweep while a clone in it holds a set-up checkout", async () => {
 		const parent = join(tmp, "app", "worktrees", "pl-r8");

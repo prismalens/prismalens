@@ -545,12 +545,10 @@ export function RunPage() {
 					onClose={closePanel}
 					incidentId={incident.id}
 					summaryTop={
-						overview && (
-							<>
-								{overview}
-								{inv && !live && <KeptWorkspaces runId={inv.id} />}
-							</>
-						)
+						<>
+							{overview}
+							{!live && <KeptWorkspaces runId={inv.id} />}
+						</>
 					}
 					contextTop={
 						!chat && (

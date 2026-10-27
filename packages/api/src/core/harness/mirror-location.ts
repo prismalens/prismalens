@@ -47,14 +47,14 @@ export function mirrorRoots(): string[] {
 	return [...new Set([mirrorRoot(), ...past])];
 }
 
-/** A bare repository `git clone --mirror` made: only those are ever deleted here. */
+/** A `--mirror` clone this product synced (every sync sets the refusing push URL): only those are ever deleted here. */
 function isMirror(dir: string): boolean {
 	try {
+		const config = readFileSync(join(dir, "config"), "utf8");
 		return (
 			existsSync(join(dir, "HEAD")) &&
-			/^\s*mirror\s*=\s*true\s*$/m.test(
-				readFileSync(join(dir, "config"), "utf8"),
-			)
+			/^\s*mirror\s*=\s*true\s*$/m.test(config) &&
+			config.includes("never-push://prismalens")
 		);
 	} catch {
 		return false;

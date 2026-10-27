@@ -356,6 +356,9 @@ async function removeGuarded(
 	if (after) return record(dir, id, side, false, after, teardown);
 	if (keepIfChanged && (await isChanged(dir, judge.env).catch(() => true)))
 		return record(dir, id, side, false, "changed", teardown);
+	// The awaits above leave a window for a follow-up to resume it; look once more right before removing.
+	const last = guard(dir, id, side, judge);
+	if (last) return record(dir, id, side, false, last, teardown);
 	await removeDir(dir, judge.env);
 	return existsSync(dir)
 		? record(dir, id, side, false, "remove-failed", teardown)

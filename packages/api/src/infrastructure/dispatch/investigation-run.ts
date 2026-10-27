@@ -1401,6 +1401,8 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 		}
 	}
 	for (const rel of RUN_WORKSPACE) {
+		// repo and repos were released above, which removes what no rule or guard kept.
+		if (rel === "repo" || rel === "repos") continue;
 		try {
 			rmSync(join(runDir, rel), { recursive: true, force: true });
 		} catch (e) {
