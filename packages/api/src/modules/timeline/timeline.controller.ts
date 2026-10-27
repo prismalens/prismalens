@@ -8,8 +8,31 @@ import type {
 	TimelineEntry,
 	TimelineEntryWithRelations,
 } from "@prismalens/contracts/schemas";
+import { shownAddress } from "../../core/harness/git-credential.js";
 import type { CreateTimelineEntryDto } from "./dto/index.js";
 import { TimelineService } from "./timeline.service.js";
+
+/** A run's start entry names its repositories; rows written before #938 kept the stored address. */
+export function shownMetadata(type: string, meta: unknown): unknown {
+	if (type !== "investigation_started" || !meta || typeof meta !== "object")
+		return meta;
+	const m = meta as Record<string, unknown>;
+	return {
+		...m,
+		...(typeof m.repo === "string" ? { repo: shownAddress(m.repo) } : {}),
+		...(Array.isArray(m.repos)
+			? {
+					repos: m.repos.map((r: unknown) =>
+						r &&
+						typeof r === "object" &&
+						typeof (r as { url?: unknown }).url === "string"
+							? { ...r, url: shownAddress((r as { url: string }).url) }
+							: r,
+					),
+				}
+			: {}),
+	};
+}
 
 @Controller()
 export class TimelineController {
@@ -65,7 +88,9 @@ export class TimelineController {
 	private serializeTimelineEntry(entry: Record<string, any>): TimelineEntry {
 		return {
 			...entry,
-			metadata: entry.metadata ? JSON.parse(entry.metadata) : null,
+			metadata: entry.metadata
+				? shownMetadata(entry.type, JSON.parse(entry.metadata))
+				: null,
 			occurredAt: entry.occurredAt?.toISOString(),
 		} as TimelineEntry;
 	}

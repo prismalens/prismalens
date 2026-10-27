@@ -20,6 +20,7 @@ import {
 	isSshUrl,
 	normalizeGitHost,
 	repoLabel,
+	shownRepoUrl,
 	urlHost,
 } from "../../core/harness/git-credential.js";
 import { gitEnv } from "../../core/harness/git-env.js";
@@ -204,7 +205,8 @@ export class GitCredentialService {
 				...next,
 				display: {
 					...display,
-					fallbackFrom: {
+					// A passed-over expired token stays the reason the run left the saved token (#950).
+					fallbackFrom: cred.display.fallbackFrom ?? {
 						source: cred.display.source,
 						label: cred.display.label,
 						code: err.code,
@@ -274,7 +276,7 @@ export class GitCredentialService {
 				const onHost = repos.filter((r) => r.host === host);
 				const ref = ({ repositoryId, url }: (typeof repos)[number]) => ({
 					repositoryId,
-					url,
+					url: shownRepoUrl("url", url),
 				});
 				const unpinnedRepos = onHost
 					.filter((r) => !r.pick || !ids.has(r.pick))
@@ -442,24 +444,30 @@ export class GitCredentialService {
 			};
 		}
 		const [only] = stored;
+		// Unpinned, so an expired token is skipped like a refused one; a pin fails closed above (#950).
+		if (
+			only &&
+			(only.status === "TOKEN_EXPIRED" ||
+				(only.status === "ACTIVE" && expired(only)))
+		) {
+			const next = await this.after("stored", effectiveUrl, host, signal);
+			const { label, source } = tokenDisplay(only);
+			return withLegacy({
+				...next,
+				passedOver: new GitFailure(
+					"token-expired",
+					only.tokenExpiresAt
+						? `Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt)}. Replace it in Settings → Sources.`
+						: `Token "${only.label}" has expired. Replace it in Settings → Sources.`,
+					"replace-token",
+				),
+				display: {
+					...next.display,
+					fallbackFrom: { source, label, code: "token-expired" },
+				},
+			});
+		}
 		if (only?.status === "ACTIVE") {
-			// Unpinned, so an expired token is skipped like a refused one; a pin fails closed above (#950).
-			if (expired(only)) {
-				const next = await this.after("stored", effectiveUrl, host, signal);
-				const { label, source } = tokenDisplay(only);
-				return withLegacy({
-					...next,
-					passedOver: new GitFailure(
-						"token-expired",
-						`Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt as Date)}. Replace it in Settings → Sources.`,
-						"replace-token",
-					),
-					display: {
-						...next.display,
-						fallbackFrom: { source, label, code: "token-expired" },
-					},
-				});
-			}
 			return withLegacy({
 				display: tokenDisplay(only),
 				effectiveUrl,

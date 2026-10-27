@@ -70,6 +70,19 @@ describe("git-failure", () => {
 		expect(scrubbed).not.toMatch(/SECRET/);
 	});
 
+	it("a last line longer than the tail window keeps its start, and no partial token (#938)", () => {
+		const failure = diagnoseGitFailure({
+			stderr: `${"remote: progress\r".repeat(10_000)}fatal: Authentication failed for 'https://github.com/${"a".repeat(40_000)}'\n`,
+			credential: { source: "connection", label: "token A", via: "git-host-token" },
+			host: "github.com",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(failure.code).toBe("token-rejected");
+		expect(failure.stderr?.length).toBeLessThanOrEqual(64 * 1024);
+		expect(failure.stderr).not.toMatch(/a{100}/);
+	});
+
 	it.each([
 		["Authorization headers", "Authorization:".repeat(1_200_000)],
 		["repository-not-found lines", "repository '".repeat(1_400_000)],

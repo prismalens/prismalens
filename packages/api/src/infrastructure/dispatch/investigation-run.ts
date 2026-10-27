@@ -1916,11 +1916,11 @@ async function recordWorkspace(
 				cwd: ws.cwd,
 				mapped: ws.layout !== "unmapped",
 				...(ws.layout === "single" && only
-					? { repo: only.url, head: only.head }
+					? { repo: shownRepoUrl(only.sourceKind, only.url), head: only.head }
 					: {}),
 				repos: ws.repos.map((r) => ({
 					name: r.name,
-					url: r.url,
+					url: shownRepoUrl(r.sourceKind, r.url),
 					head: r.head,
 				})),
 				...(telemetry ? { telemetry } : {}),

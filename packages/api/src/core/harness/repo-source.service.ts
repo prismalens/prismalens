@@ -19,6 +19,7 @@ import {
 	MACHINE_CREDENTIAL,
 	repoLabel,
 	repoPath,
+	shownRepoUrl,
 	urlHost,
 } from "./git-credential.js";
 import { gitEnv } from "./git-env.js";
@@ -103,7 +104,7 @@ export function classifySource(input: string): {
 export function displayNameFor(kind: RepoSourceKind, source: string): string {
 	if (kind === "folder") return basename(source);
 	const segments = urlSegments(source);
-	return segments.slice(-2).join("/") || source;
+	return segments.slice(-2).join("/") || shownRepoUrl(kind, source);
 }
 
 export function mirrorPathFor(

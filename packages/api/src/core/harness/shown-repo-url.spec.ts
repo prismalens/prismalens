@@ -35,6 +35,9 @@ describe("shownRepoUrl (#938)", () => {
 		["scp-like userinfo with a password", `u:${SENTINEL}@github.com:acme/api.git`],
 		["an unparsable URL", `https://${SENTINEL}@[bad/x`],
 		["neither a URL nor an scp remote", `token=${SENTINEL}`],
+		["a URL nested in a URL's path", `https://github.com/https://u:${SENTINEL}@other/x`],
+		["a URL nested in an scp path", `git@github.com:https://u:${SENTINEL}@other/x`],
+		["an encoded userinfo in a path", `https://github.com/u:${SENTINEL}%40other/x`],
 	])("%s is never echoed", (_name, stored) => {
 		expect(shownRepoUrl("url", stored)).toBe(UNSHOWN_REPO);
 	});

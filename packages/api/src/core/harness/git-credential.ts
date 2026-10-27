@@ -60,15 +60,22 @@ export function repoPath(url: string): string {
 const SCHEME_URL = /^[a-z][a-z0-9+.-]*:\/\//i;
 const SCP_REMOTE = /^[\w.-]+@[\w.-]+:(?!\/\/)/;
 const SSH_SCHEME = /^(?:ssh|git\+ssh|ssh\+git):$/i;
+/** A path holding another address, such as `host/https://u:pw@other/x`, is never echoed. */
+const NESTED = /@|:\/\/|%40/i;
 
 /** A stored address as it may be shown: rows saved before #934 can hold userinfo or a query, so a URL keeps only an ssh username and an scp remote loses its query (#938). */
 export function shownRepoUrl(sourceKind: string, url: string): string {
 	if (sourceKind === "folder") return url;
-	if (SCP_REMOTE.test(url)) return url.split("?")[0] as string;
+	if (SCP_REMOTE.test(url)) {
+		const shown = url.split("?")[0] as string;
+		return NESTED.test(shown.slice(shown.indexOf(":") + 1))
+			? UNSHOWN_REPO
+			: shown;
+	}
 	if (!SCHEME_URL.test(url)) return UNSHOWN_REPO;
 	try {
 		const u = new URL(url);
-		if (!u.host) return UNSHOWN_REPO;
+		if (!u.host || NESTED.test(u.pathname)) return UNSHOWN_REPO;
 		const user = SSH_SCHEME.test(u.protocol) ? u.username : "";
 		if (!u.password && !u.search && !u.hash && u.username === user) return url;
 		u.password = u.search = u.hash = "";
@@ -77,6 +84,11 @@ export function shownRepoUrl(sourceKind: string, url: string): string {
 	} catch {
 		return UNSHOWN_REPO;
 	}
+}
+
+/** shownRepoUrl for a recorded address whose kind was not kept: an absolute path is a folder. */
+export function shownAddress(address: string): string {
+	return shownRepoUrl(isAbsolute(address) ? "folder" : "url", address);
 }
 
 /** A repository for a log line: `host/owner/repo` for a URL, the path for a folder; never userinfo, query or fragment (#848). */

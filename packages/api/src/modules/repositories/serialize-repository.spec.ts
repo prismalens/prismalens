@@ -7,12 +7,13 @@ import { serializeRepository } from "./serialize-repository.js";
 
 const SENTINEL = "ghp_SENTINEL938";
 
-function row(url: string, sourceKind = "url"): PrismaRepository {
+function row(url: string, sourceKind = "url", fullName = "acme/api"): PrismaRepository {
 	const at = new Date("2026-10-01T00:00:00Z");
 	return {
 		id: "repo-1",
 		url,
 		sourceKind,
+		fullName,
 		createdAt: at,
 		updatedAt: at,
 		syncedAt: null,
@@ -30,5 +31,16 @@ describe("serializeRepository legacy rows (#938)", () => {
 	])("%s comes back without the credential", async (url) => {
 		const out = await serializeRepository(row(url), credentialFor);
 		expect(JSON.stringify(out)).not.toContain(SENTINEL);
+	});
+
+	it("a root address whose fullName was the address itself comes back without it", async () => {
+		const url = `https://github.com/?token=${SENTINEL}`;
+		const out = await serializeRepository(row(url, "url", url), credentialFor);
+		expect(JSON.stringify(out)).not.toContain(SENTINEL);
+	});
+
+	it("a clean row keeps its fullName", async () => {
+		const out = await serializeRepository(row("https://github.com/acme/api.git"), credentialFor);
+		expect(out.fullName).toBe("acme/api");
 	});
 });

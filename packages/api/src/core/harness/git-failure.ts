@@ -38,14 +38,38 @@ export class GitFailure extends Error {
 const MAX_SCANNED_STDERR = 64 * 1024;
 const HALF = MAX_SCANNED_STDERR / 2 - 1;
 
+const BREAK = /[\r\n]/;
+
+/** `text` up to its last whitespace, so no token is split where it is cut. */
+function toWhitespace(text: string): string {
+	let end = text.length;
+	while (end > 0 && !/\s/.test(text[end - 1] as string)) end--;
+	return text.slice(0, end);
+}
+
+/** From the first line start in the last 32 KB; a last line longer than that keeps its own start, where git names the failure (#938). */
+function tailOf(stderr: string): string {
+	let end = stderr.length;
+	while (end > 0 && BREAK.test(stderr[end - 1] as string)) end--;
+	const lastLine =
+		Math.max(
+			stderr.lastIndexOf("\n", end - 1),
+			stderr.lastIndexOf("\r", end - 1),
+		) + 1;
+	if (end - lastLine > HALF)
+		return toWhitespace(stderr.slice(lastLine, lastLine + HALF));
+	const from = end - HALF;
+	if (from <= 0) return stderr.slice(0, end);
+	if (BREAK.test(stderr[from - 1] as string)) return stderr.slice(from, end);
+	return stderr.slice(from + stderr.slice(from, end).search(BREAK) + 1, end);
+}
+
 /** The first and last 32 KB, each cut at a line break: git's `fatal:` line comes last (#938). */
 function scanned(stderr: string): string {
 	if (stderr.length <= MAX_SCANNED_STDERR) return stderr;
 	const head = stderr.slice(0, HALF);
-	const tail = stderr.slice(-HALF);
 	const headEnd = Math.max(head.lastIndexOf("\n"), head.lastIndexOf("\r")) + 1;
-	const tailStart = tail.search(/[\r\n]/);
-	return `${head.slice(0, headEnd)}\n${tailStart < 0 ? "" : tail.slice(tailStart + 1)}`;
+	return `${head.slice(0, headEnd)}\n${tailOf(stderr)}`;
 }
 
 /** Strips anything that looks like a credential from git's stderr. */
