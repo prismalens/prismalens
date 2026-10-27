@@ -97,6 +97,23 @@ describe("planLaunch env", () => {
 		);
 	});
 
+	it("holds a row to a host gateway URL only when it reads ANTHROPIC_BASE_URL or the user stored one", () => {
+		const hostEnv = { ...HOST, ANTHROPIC_BASE_URL: "http://gw.lan:4000" };
+		const floor = { mode: "inherit-minus-own-secrets", ownSecrets: {} } as const;
+		const policy = { ...POLICY, floor };
+		expect(() => plan({ agent: "codex", launch: { command: "codex-acp" }, policy, hostEnv })).not.toThrow();
+		expect(() => plan({ policy, hostEnv })).toThrow(/ANTHROPIC_BASE_URL/);
+		expect(() =>
+			plan({
+				agent: "codex",
+				launch: { command: "codex-acp" },
+				policy,
+				hostEnv,
+				stored: { ANTHROPIC_BASE_URL: "http://gw.lan:4000" },
+			}),
+		).toThrow(/ANTHROPIC_BASE_URL/);
+	});
+
 	it("layers floor, row keys, stored values, then overrides, last wins", () => {
 		const p = plan({
 			hostEnv: { ...HOST, HOME: "/host-home" },
@@ -251,11 +268,30 @@ describe("launch files", () => {
 		});
 		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
 		expect(json.model).toBe("mine/m");
-		expect(json.permission.bash["rm *"]).toBe("deny");
+		expect(json.agent.build.permission.bash["rm *"]).toBe("deny");
 		expect(json.share).toBe("disabled");
 		expect(() =>
 			plan({ agent: "opencode", launch: { command: "opencode" }, stored: { OPENCODE_CONFIG_CONTENT: "{ model: x" } }),
 		).toThrow(/OPENCODE_CONFIG_CONTENT/);
+	});
+
+	it("lists the user's inline deny rules after the level's catch-all at full-access", () => {
+		const user = { permission: { bash: { "rm *": "deny" } }, agent: { build: { permission: { bash: { "git push *": "deny" } } } } };
+		const p = plan({
+			agent: "opencode",
+			level: "full-access",
+			launch: { command: "opencode" },
+			stored: { OPENCODE_CONFIG_CONTENT: JSON.stringify(user) },
+		});
+		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
+		expect(Object.entries(json.agent.explore.permission.bash)).toEqual([
+			["*", "allow"],
+			["rm *", "deny"],
+		]);
+		expect(Object.entries(json.agent.build.permission.bash)).toEqual([
+			["rm *", "deny"],
+			["git push *", "deny"],
+		]);
 	});
 
 	it("writes the gateway run file owner-only and points deepagents at it (#848)", () => {

@@ -36,7 +36,12 @@ describe("windowsSpawnPlan (#634 — npm .cmd/.bat shims can't execve on Windows
 		mocks.resolveOnPath.mockReturnValue("C:\\npm\\opencode.cmd");
 		const plan = windowsSpawnPlan("opencode", ["acp"], "win32");
 		expect(plan.command).toBe(process.env.ComSpec ?? "cmd.exe");
-		expect(plan.args).toEqual(["/d", "/s", "/c", '"opencode ^^^"acp^^^""']);
+		expect(plan.args).toEqual([
+			"/d",
+			"/s",
+			"/c",
+			`"${escapeCommand("C:\\npm\\opencode.cmd")} ^^^"acp^^^""`,
+		]);
 		expect(mocks.resolveOnPath).toHaveBeenCalledWith("opencode");
 	});
 

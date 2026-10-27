@@ -431,7 +431,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		// Checked after the rows overlay the host: a saved https gateway fixes an unsafe host one (#911).
 		const gateway =
 			rows.ANTHROPIC_BASE_URL ??
-			(!strict || row.providerKeys.includes("ANTHROPIC_BASE_URL")
+			(row.providerKeys.includes("ANTHROPIC_BASE_URL")
 				? process.env.ANTHROPIC_BASE_URL
 				: undefined);
 		if (gateway && !isSafeGatewayUrl(gateway))

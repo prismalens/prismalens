@@ -82,12 +82,12 @@ export function windowsSpawnPlan(
 } {
 	if (platform !== "win32") return { command, args, options: {} };
 	const resolved = resolveOnPath(command);
-	const isShim =
-		CMD_SHIM_RE.test(command) ||
-		(resolved !== null && CMD_SHIM_RE.test(resolved));
-	if (!isShim) return { command, args, options: {} };
+	// A bare name goes to cmd.exe as its resolved path, so cmd.exe's own lookup cannot pick another file.
+	const target = CMD_SHIM_RE.test(command) ? command : resolved;
+	if (target === null || !CMD_SHIM_RE.test(target))
+		return { command, args, options: {} };
 	const comSpec = process.env.ComSpec ?? "cmd.exe";
-	const escapedCmd = escapeCommand(command);
+	const escapedCmd = escapeCommand(target);
 	const escapedArgs = args.map((arg) => escapeArgument(arg, true));
 	const line = [escapedCmd, ...escapedArgs].join(" ");
 	return {

@@ -17,7 +17,15 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	normalize,
+	resolve,
+	sep,
+} from "node:path";
 import { AgentHostError } from "../errors.js";
 import { type FetchCredential, git, gitEnv, gitOk, hasCommit } from "./git.js";
 import {
@@ -598,6 +606,12 @@ async function dropRegistration(
 	);
 	const admins = join(common, "worktrees");
 	if (!existsSync(admins)) return;
+	// Git stores the real path, so a symlinked parent (macOS /var) must be resolved to match it.
+	let parent = dirname(dir);
+	try {
+		parent = realpathSync(parent);
+	} catch {}
+	const target = join(parent, basename(dir));
 	for (const name of readdirSync(admins)) {
 		const entry = join(admins, name);
 		let gitdir: string;
@@ -606,7 +620,7 @@ async function dropRegistration(
 		} catch {
 			continue;
 		}
-		if (!samePath(dirname(gitdir), dir)) continue;
+		if (!samePath(dirname(gitdir), target)) continue;
 		const lockFile = join(entry, "locked");
 		const lock = existsSync(lockFile)
 			? readFileSync(lockFile, "utf8").trim()
