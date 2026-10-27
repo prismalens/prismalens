@@ -93,13 +93,11 @@ when the tag comes off (CONTRIBUTING.md, "Browser e2e tier").
 
 - **In `ci-gate`.** `ci.yml` calls this workflow as its `e2e` job (`workflow_call`), which `CI gate`
   waits on, so it also runs on `merge_group` (#920).
-- **`strict_required_status_checks_policy`: drop it (#885).** The live ruleset sets it to `true` next
-  to the merge queue. The queue already tests each PR on top of `main` and everything queued ahead of
-  it, which is what strict was for. GitHub's merge-queue docs say the queue gives that guarantee
-  without making the author update the branch first. Strict adds only an "Update branch" round trip
-  and a full CI rerun before a PR can join the queue. The operator makes the ruleset edit: set the
-  `required_status_checks` rule's `strict_required_status_checks_policy` to `false` with
-  `gh api -X PUT repos/prismalens/prismalens/rulesets/18441175`. No workflow depends on either value.
+- **`strict_required_status_checks_policy` is `false` (#885, set 2026-10-27 on the operator's word).**
+  The merge queue already tests each PR on top of `main` and everything queued ahead of it, which is
+  what strict was for. GitHub's merge-queue docs say the queue gives that guarantee without making the
+  author update the branch first. Strict added only an "Update branch" round trip and a full CI rerun
+  before a PR could join the queue. No workflow depends on either value.
 
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
 script against the real harness on PATH; `packed-intake-live` in `ci.yml` calls it that way.
