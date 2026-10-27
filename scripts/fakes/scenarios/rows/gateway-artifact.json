@@ -1,0 +1,39 @@
+{
+	"row": "gateway-artifact",
+	"kind": "happy",
+	"title": "Publishes an HTML page into the run through PrismaLens's tool while every ask is refused",
+	"run": { "accessLevel": "supervised", "answer": "deny" },
+	"expect": "gateway",
+	"gateway": {
+		"calls": [{ "name": "artifact_publish", "ok": true, "outputHas": "a1" }],
+		"artifacts": ["Entry point"]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-artifact]",
+				"toolName": "$gw:artifact_publish",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:artifact_publish",
+						"arguments": {
+							"title": "Entry point",
+							"html": "<!doctype html><table><tr><th>File</th><td>index.js</td></tr></table>"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-artifact]",
+				"afterTool": "$gw:artifact_publish",
+				"resultContains": "a1"
+			},
+			"response": { "content": "$report" }
+		}
+	]
+}

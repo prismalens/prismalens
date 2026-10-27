@@ -9,6 +9,7 @@ import { Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import {
+	type Artifact,
 	type QuoteAnchor,
 	type RecordedFinding,
 	type RunWorkspace,
@@ -77,6 +78,9 @@ interface RunState {
 	/** The read of what earlier turns recorded, kept until it succeeds (#930 OBJ-006). */
 	history?: () => Promise<Findings>;
 	loading?: Promise<void>;
+	/** HTML pages the agent published, and who hears the next one (#871). */
+	artifacts: number;
+	published: Set<(a: Artifact) => void>;
 	/** What this run lists and may execute (#848). */
 	view: RunView;
 }
@@ -85,6 +89,8 @@ const NO_TOOLS: RunView = { direct: [], deferred: [] };
 
 /** The largest file a recorded quote is looked up in. */
 const QUOTE_FILE_BYTES = 2_000_000;
+/** Pages one run may publish (#871). */
+const ARTIFACTS_PER_RUN = 20;
 const NOT_LIVE = "This run is not live, so nothing can be recorded on it";
 const NO_HISTORY =
 	"PrismaLens could not read what this run recorded earlier, so nothing was recorded; retry this call";
@@ -144,6 +150,8 @@ export class GatewayService {
 			listeners: new Set(),
 			ledger: new FindingsLedger(),
 			found: new Set(),
+			artifacts: 0,
+			published: new Set(),
 			view: runView(this.tools, { search: this.toolSearch(harness) }),
 		};
 		this.runs.set(runId, state);
@@ -175,6 +183,10 @@ export class GatewayService {
 				return () => state.found.delete(listener);
 			},
 			findings: () => state.ledger.snapshot(),
+			onArtifact: (listener) => {
+				state.published.add(listener);
+				return () => state.published.delete(listener);
+			},
 			waitConnected: (ms) =>
 				state.connected
 					? Promise.resolve(true)
@@ -197,6 +209,7 @@ export class GatewayService {
 		for (const done of state?.waiters ?? []) done(false);
 		state?.listeners.clear();
 		state?.found.clear();
+		state?.published.clear();
 	}
 
 	/** False while earlier records are unread: numbering on an empty ledger would reissue their ids. */
@@ -322,6 +335,24 @@ export class GatewayService {
 		},
 		searchInvestigations: (q) => this.searchInvestigations(q),
 		incident: (q) => this.incident(q),
+		artifacts: {
+			publish: async (runId, page) => {
+				const state = this.runs.get(runId);
+				if (!state) return { error: NOT_LIVE, ended: true };
+				if (state.artifacts >= ARTIFACTS_PER_RUN)
+					return {
+						error: `This run already holds ${ARTIFACTS_PER_RUN} pages`,
+					};
+				state.artifacts++;
+				const artifact: Artifact = {
+					id: `a${state.artifacts}`,
+					...page,
+					at: new Date().toISOString(),
+				};
+				for (const listener of [...state.published]) listener(artifact);
+				return { id: artifact.id };
+			},
+		},
 		findings: {
 			recordEvidence: async (runId, input) => {
 				const state = this.runs.get(runId);

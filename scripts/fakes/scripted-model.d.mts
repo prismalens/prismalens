@@ -52,6 +52,8 @@ export type Expectation =
 export interface GatewayExpectation {
 	calls: { name: string; ok: boolean; outputHas?: string }[];
 	records?: { evidence?: string[]; hypotheses?: string[] };
+	/** Titles of the HTML pages the run must have published (#871). */
+	artifacts?: string[];
 }
 
 export interface Row {
