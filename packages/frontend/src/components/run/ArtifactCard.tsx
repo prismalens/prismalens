@@ -40,10 +40,10 @@ function drawable(html: string): string | null {
 
 const TOO_BIG = "This page is empty or too large to draw.";
 
-/** `sandbox=""` is the whole contract: no scripts, no same-origin, no navigation. */
 /** The frame's own policy: nothing is fetched, only inline style and data images (#871). */
 export const NO_FETCH = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">`;
 
+/** `sandbox=""` plus NO_FETCH: no scripts, no same-origin, no navigation, nothing fetched. */
 function Frame({
 	artifact,
 	className,
