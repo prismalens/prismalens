@@ -2,12 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import type {
-	CanonicalEvent,
 	Evidence,
 	InvestigationReport,
 	InvestigationWithRelations,
-	RecordedEvidence,
-	RecordedHypothesis,
+	RecordedFindings,
 } from "@prismalens/contracts";
 import type { FileAt } from "@/lib/evidence-files";
 import { STATUS_WORD } from "@/lib/hypothesis-tree";
@@ -214,7 +212,7 @@ export function evidenceSections(
 		live: boolean;
 		standing: { runId: string; name: string } | null;
 		fileOf?: FileOf;
-		recorded?: Recorded;
+		recorded?: RecordedFindings;
 	},
 ): DetailSection[] {
 	const report = inv.report;
@@ -241,32 +239,11 @@ export function evidenceSections(
 	return reportSections(report, steps, opts.fileOf);
 }
 
-export interface Recorded {
-	evidence: RecordedEvidence[];
-	hypotheses: RecordedHypothesis[];
-}
-
-/** Each id's latest record in the run's events (#930). */
-export function recordedFindings(events: readonly CanonicalEvent[]): Recorded {
-	const evidence = new Map<string, RecordedEvidence>();
-	const hypotheses = new Map<string, RecordedHypothesis>();
-	for (const e of events) {
-		if (e.kind !== "finding_recorded") continue;
-		const f = e.finding;
-		if (f.type === "evidence") evidence.set(f.id, f);
-		else hypotheses.set(f.id, f);
-	}
-	return {
-		evidence: Array.from(evidence.values()),
-		hypotheses: Array.from(hypotheses.values()),
-	};
-}
-
 const QUOTE_CHARS = 200;
 
 /** What the agent recorded before any report: hypotheses, then evidence with where code found each quote. */
 function recordedSections(
-	r: Recorded | undefined,
+	r: RecordedFindings | undefined,
 	steps: StepOf,
 	fileOf?: FileOf,
 ): DetailSection[] {

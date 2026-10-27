@@ -51,8 +51,21 @@ describe("FindingsLedger (#930)", () => {
 			AT,
 		);
 		expect(r).toMatchObject({ id: "e1", anchor: null });
-		l.sawOutput("call-3", "< HTTP 503 upstream");
-		expect(l.snapshot().evidence[0]?.anchor).toEqual({ in: "tool-output", toolCallId: "call-3", line: 1 });
+		const anchored = l.sawOutput("call-3", "< HTTP 503 upstream");
+		const at = { in: "tool-output", toolCallId: "call-3", line: 1 };
+		expect(anchored).toEqual([expect.objectContaining({ id: "e1", anchor: at })]);
+		expect(l.snapshot().evidence[0]?.anchor).toEqual(at);
+		expect(l.sawOutput("call-4", "< HTTP 503 upstream")).toEqual([]);
+	});
+
+	it("restores what an earlier turn recorded, and numbers on after it", () => {
+		const l = new FindingsLedger();
+		l.restore({
+			evidence: [{ id: "e1", observation: "o", source: "s", quote: "q quote", direction: "supports", anchor: null, at: AT }],
+			hypotheses: [{ id: "rh1", statement: "pool", status: "speculative", evidenceIds: ["e1"], at: AT }],
+		});
+		expect(l.addEvidence({ observation: "p", source: "s", quote: "never", direction: "supports" }, null, AT)).toMatchObject({ id: "e2" });
+		expect(l.addHypothesis({ id: "rh1", statement: "pool", status: "confirmed" }, AT)).toMatchObject({ evidenceIds: ["e1"] });
 	});
 
 	it("with a path, only the caller's file lookup counts; the outputs are not searched", () => {
@@ -69,15 +82,17 @@ describe("FindingsLedger (#930)", () => {
 		expect(r).toEqual({ error: "No recorded evidence e9; record it with evidence_record first" });
 	});
 
-	it("updates a hypothesis by id, keeping its earlier evidence", () => {
+	it("updates a hypothesis by id: evidence given replaces the links, left out keeps them", () => {
 		const l = ledger();
 		for (const quote of ["ERROR pool exhausted", "retrying"])
 			l.addEvidence({ observation: quote, source: "logs", quote, direction: "supports" }, null, AT);
 		l.addHypothesis({ statement: "pool", status: "speculative", evidence: ["e1"] }, AT);
-		const r = l.addHypothesis({ id: "h1", statement: "pool exhausted", status: "confirmed", evidence: ["e2"] }, AT);
-		expect(r).toMatchObject({ id: "h1", status: "confirmed", evidenceIds: ["e1", "e2"] });
+		const kept = l.addHypothesis({ id: "rh1", statement: "pool exhausted", status: "supported" }, AT);
+		expect(kept).toMatchObject({ id: "rh1", status: "supported", evidenceIds: ["e1"] });
+		const swapped = l.addHypothesis({ id: "rh1", statement: "pool exhausted", status: "confirmed", evidence: ["e2"] }, AT);
+		expect(swapped).toMatchObject({ evidenceIds: ["e2"] });
 		expect(l.snapshot().hypotheses).toHaveLength(1);
-		expect(l.addHypothesis({ id: "h7", statement: "x", status: "speculative", evidence: [] }, AT)).toHaveProperty("error");
+		expect(l.addHypothesis({ id: "rh7", statement: "x", status: "speculative" }, AT)).toHaveProperty("error");
 	});
 });
 
@@ -121,7 +136,39 @@ describe("withFindings (#930: the report is the final answer plus what was recor
 				anchor: { in: "tool-output", toolCallId: "call-2", line: 3 },
 			}),
 		]);
-		expect(dns).toMatchObject({ id: "h2", statement: "DNS flake", status: "refuted", evidence: [] });
+		expect(dns).toMatchObject({ id: "rh2", statement: "DNS flake", status: "refuted", evidence: [] });
+	});
+
+	it("evidence recorded with no hypothesis still replaces the answer's copy, in hypotheses and ruled-out causes", () => {
+		const l = ledger();
+		l.addEvidence({ observation: "Pool  FULL", source: "logs", quote: "ERROR pool exhausted", direction: "supports" }, null, AT);
+		const out = withFindings(
+			{
+				...base,
+				ruledOut: [
+					{
+						statement: "DNS",
+						why: "resolved fine",
+						evidence: [{ observation: "pool full", source: "x", direction: "contradicts", status: "verified" }],
+					},
+				],
+			},
+			l.snapshot(),
+		);
+		const anchored = expect.objectContaining({ status: "verified", toolCallId: "call-2", quote: "ERROR pool exhausted" });
+		expect(out.hypotheses[0]?.evidence).toEqual([anchored]);
+		expect(out.ruledOut[0]?.evidence).toEqual([anchored]);
+	});
+
+	it("an answer numbering its own hypotheses h1, h2 does not join a recorded one by accident", () => {
+		const l = ledger();
+		l.addHypothesis({ statement: "Stale cache", status: "speculative" }, AT);
+		const answer = { ...base, hypotheses: [{ ...base.hypotheses[0], id: "h1" } as InvestigationReport["hypotheses"][number]] };
+		const out = withFindings(answer, l.snapshot());
+		expect(out.hypotheses.map((h) => [h.id, h.statement])).toEqual([
+			["h1", "Pool exhausted"],
+			["rh1", "Stale cache"],
+		]);
 	});
 
 	it("a file anchor becomes a path:line source the run view opens", () => {
@@ -140,7 +187,7 @@ describe("withFindings (#930: the report is the final answer plus what was recor
 						at: AT,
 					},
 				],
-				hypotheses: [{ id: "h1", statement: "pool", status: "supported", evidenceIds: ["e1"], at: AT }],
+				hypotheses: [{ id: "rh1", statement: "pool", status: "supported", evidenceIds: ["e1"], at: AT }],
 			},
 		);
 		expect(out.hypotheses[0]?.evidence[0]).toMatchObject({ source: "/w/repo/db.yaml:4 (config)", status: "verified", toolCallId: null });

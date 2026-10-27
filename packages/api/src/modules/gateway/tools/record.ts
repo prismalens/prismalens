@@ -25,10 +25,14 @@ export interface FindingsData {
 	): Promise<ReturnType<FindingsLedger["addHypothesis"]>>;
 }
 
-const ID = z
+const EVIDENCE_ID = z
 	.string()
 	.trim()
-	.regex(/^[eh]\d{1,4}$/);
+	.regex(/^e\d{1,4}$/);
+const HYPOTHESIS_ID = z
+	.string()
+	.trim()
+	.regex(/^rh\d{1,4}$/);
 
 /**
  * Evidence and hypotheses the agent records as it works (#930). A result never
@@ -73,13 +77,13 @@ export function recordTools(data: FindingsData): SourceTool[] {
 			name: "hypothesis_record",
 			title: "Record a hypothesis",
 			description:
-				"Record a hypothesis, or update one by its `id`, as your thinking changes; the run view shows it at once. `evidence` lists ids evidence_record returned. Your report's hypothesis with the same id or statement takes the recorded evidence.",
+				"Record a hypothesis, or update one by its `id` (rh1, rh2…), as your thinking changes; the run view shows it at once. `evidence` lists ids evidence_record returned; on an update it replaces the list, and leaving it out keeps it. Give the hypothesis the same `id` in your report, so the report joins its recorded evidence.",
 			input: z.object({
-				id: ID.optional(),
+				id: HYPOTHESIS_ID.optional(),
 				statement: z.string().trim().min(1).max(1_000),
 				status: HypothesisStatusSchema,
-				evidence: z.array(ID).max(50).default([]),
-				parentId: ID.optional(),
+				evidence: z.array(EVIDENCE_ID).max(50).optional(),
+				parentId: HYPOTHESIS_ID.optional(),
 			}),
 			run: async (input, ctx) => {
 				const r = await data.recordHypothesis(ctx.runId, input);
