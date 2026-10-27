@@ -181,12 +181,12 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
 
       - name: Pack script tests
-        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/agent-probe.test.mjs
+        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs
 
       - name: Agent adapters tarball
         run: |
           pnpm --filter @prismalens/agent-adapters build
-          node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs
+          node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs packages/@prismalens/agent-adapters/scripts/bundle.test.mjs
 
       - name: Pack tarball
         # `pnpm pack` cannot produce this artifact: the published package carries
@@ -198,6 +198,16 @@ jobs:
           mkdir -p /tmp/tarballs
           node scripts/pack-cli.mjs --out /tmp/tarballs
           ls -l /tmp/tarballs
+
+      # Path limit under the npm, installer and Scoop prefixes, size budget and licence texts
+      # (#906); a second pack must give the same bytes; publint reads the packed manifests.
+      - name: Gate the packed tarballs
+        run: |
+          node packages/@prismalens/agent-adapters/scripts/pack.mjs
+          node scripts/check-artifact.mjs /tmp/tarballs/prismalens-*.tgz packages/@prismalens/agent-adapters/dist-pack/prismalens-agent-adapters-*.tgz
+          node scripts/pack-cli.mjs --skip-build --out /tmp/tarballs-2
+          cmp /tmp/tarballs/prismalens-*.tgz /tmp/tarballs-2/prismalens-*.tgz
+          pnpm publint:packed
 
       - uses: actions/upload-artifact@v7
         with:
@@ -228,8 +238,10 @@ jobs:
           # runtime, so leaving it out fails here, not at build time.
           sparse-checkout: |
             scripts/packed-smoke.sh
+            scripts/lib/npm-install-retry.mjs
             packages/@prismalens/engine/scripts/refusal-gate-check.mjs
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - uses: actions/download-artifact@v8
         with:
@@ -288,6 +300,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/lib/npm-install-retry.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
@@ -309,7 +327,7 @@ jobs:
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
           prefix=$(mktemp -d); ws=$(mktemp -d)
-          npm install -g --prefix "$prefix" ./tarballs/prismalens-*.tgz
+          node scripts/lib/npm-install-retry.mjs npm install -g --prefix "$prefix" ./tarballs/prismalens-*.tgz
           export PATH="$prefix/bin:$PATH"
           pl service install --port 3190 --workspace "$ws"
           pl service status

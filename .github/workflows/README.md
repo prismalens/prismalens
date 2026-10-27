@@ -199,15 +199,15 @@ rest are advisory or out-of-band and cannot affect a merge.
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | `pull_request`, `push`, `merge_group`, dispatch | build, test, lint, pack, the packed-tarball checks, harness admission and e2e; aggregates to `CI gate`. On dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
+| `ci.yml` | `pull_request`, `push`, `merge_group`, dispatch | build, test, lint, pack (the pack job gates both npm tarballs with `scripts/check-artifact.mjs`: path limit, size budget and licence texts; packs twice and compares; publint on the packed manifests), the packed-tarball checks, harness admission and e2e; aggregates to `CI gate`. On dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
 | `agent-releases.yml` | schedule, dispatch | the protocol probe of every agent row's latest release, and the pin-bump pull requests |
 | `e2e.yml` | called by `ci.yml`, dispatch | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
 | `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
-| `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then npm, then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows |
-| `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node; attaches them to the draft release when called |
-| `desktop.yml` | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, launched and checked; attaches the zips to the draft release when called |
+| `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then the `sums` job (one `SHA256SUMS` over every asset and one build-provenance attestation over it), then npm (provenance required), then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows |
+| `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node, each gated by `scripts/check-artifact.mjs`; a CycloneDX SBOM on linux-x64; attaches them to the draft release when called |
+| `desktop.yml` | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, held to its `scripts/artifact-budgets.json` size and file count, launched and checked; attaches the zips to the draft release when called |
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |

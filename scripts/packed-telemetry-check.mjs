@@ -51,6 +51,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = process.env.PACKED_TELEMETRY_PORT ?? "3172";
@@ -114,7 +115,7 @@ async function main() {
 	const tgz = findOrPackTarball();
 	console.log(`[packed-telemetry] tarball: ${tgz}`);
 	console.log(`[packed-telemetry] installing into ${prefix}`);
-	execFileSync(
+	installWithRetry(
 		"npm",
 		[
 			"install",

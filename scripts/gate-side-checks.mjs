@@ -76,6 +76,7 @@ import {
 } from "./lib/gate-portable.mjs";
 import { isolateService, UNIT } from "./lib/gate-service-sandbox.mjs";
 import { freePort, startLocalRegistry } from "./lib/local-registry.mjs";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 // pnpm's npm_config_* would reach the npm we spawn as unknown-config warnings.
 const CLEAN_ENV = Object.fromEntries(
@@ -153,7 +154,8 @@ function npm(args, { env = CLEAN_ENV, cwd, capture = false } = {}) {
 }
 
 function npmInstall(prefix, spec, extraEnv = {}) {
-	npm(
+	installWithRetry(
+		"npm",
 		[
 			"install",
 			"--prefix",
@@ -163,7 +165,11 @@ function npmInstall(prefix, spec, extraEnv = {}) {
 			"--loglevel=error",
 			spec,
 		],
-		{ env: { ...CLEAN_ENV, ...extraEnv } },
+		{
+			stdout: "ignore",
+			run: crossSpawn.sync,
+			env: { ...CLEAN_ENV, ...extraEnv },
+		},
 	);
 }
 

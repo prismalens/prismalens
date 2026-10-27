@@ -12,7 +12,7 @@ const json = <T>(path: string): T =>
 	JSON.parse(readFileSync(join(ROOT, path), "utf8")) as T;
 
 const { pins } = json<{ pins: Record<string, string> }>("scripts/agent-pins.json");
-const { dependencies: adapters } = json<{ dependencies: Record<string, string> }>(
+const { devDependencies: adapters } = json<{ devDependencies: Record<string, string> }>(
 	"packages/@prismalens/agent-adapters/package.json",
 );
 
