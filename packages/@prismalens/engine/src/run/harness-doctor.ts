@@ -177,7 +177,7 @@ export async function probeHarness(
 		const companion = () =>
 			runEnv.companionPath &&
 			Object.values(descriptor.acpEnv(runEnv)).includes(runEnv.companionPath)
-				? versionOf(runEnv.companionPath)
+				? versionOf(runEnv.companionPath, undefined, env)
 				: Promise.resolve(null);
 		const meta = descriptor.sessionMeta?.();
 		const probed = await probeAgent({

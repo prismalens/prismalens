@@ -145,6 +145,29 @@ describe("planLaunch env", () => {
 		expect(env.PRISMALENS_DB).toBeUndefined();
 	});
 
+	it("drops a refuseEnvNames name from a stored value under the allowlist floor", () => {
+		const env = plan({
+			policy: { ...POLICY, floor: { mode: "allowlist" }, refuseEnvNames: ["ENCRYPTION_KEY"] },
+			stored: { ENCRYPTION_KEY: "stored", OTHER: "kept" },
+		}).env;
+		expect(env.ENCRYPTION_KEY).toBeUndefined();
+		expect(env.OTHER).toBe("kept");
+	});
+
+	it("drops an own secret whatever its case, as Windows would read it", () => {
+		const env = plan({
+			policy: {
+				...POLICY,
+				floor: { mode: "inherit-minus-own-secrets", ownSecrets: { names: ["ENCRYPTION_KEY"], prefixes: ["PRISMALENS_"] } },
+			},
+			hostEnv: { ...HOST, prismalens_auth_secret: "host", encryption_key: "host" },
+			stored: { Prismalens_Db: "stored" },
+		}).env;
+		expect(env.prismalens_auth_secret).toBeUndefined();
+		expect(env.encryption_key).toBeUndefined();
+		expect(env.Prismalens_Db).toBeUndefined();
+	});
+
 	it("refuses a userSetup with no rows yet", () => {
 		expect(() => plan({ policy: { ...POLICY, userSetup: "supplied" } })).toThrow(/user-setup|supplied/);
 	});

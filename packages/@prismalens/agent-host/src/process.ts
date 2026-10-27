@@ -64,6 +64,7 @@ export function spawnAgent(
 export function versionOf(
 	bin: string,
 	timeoutMs = 5_000,
+	env?: NodeJS.ProcessEnv,
 ): Promise<string | null> {
 	return new Promise((resolve) => {
 		let out = "";
@@ -72,6 +73,7 @@ export function versionOf(
 			child = crossSpawn(bin, ["--version"], {
 				stdio: ["ignore", "pipe", "ignore"],
 				windowsHide: true,
+				...(env ? { env } : {}),
 			});
 		} catch {
 			resolve(null);

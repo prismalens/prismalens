@@ -928,7 +928,7 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 				cwd: tmp("clone"),
 				runDir: tmp("run"),
 				hostEnv,
-				env: { PRISMALENS_STORED: "x" },
+				env: { PRISMALENS_STORED: "x", LOKI_TOKEN: "stored-source-token" },
 				policy: prismalensLaunchPolicy({ strict }),
 			}).env;
 
@@ -952,6 +952,14 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 			for (const strict of [false, true]) {
 				const names = Object.keys(envOf(strict));
 				expect(names.filter((n) => n.startsWith("PRISMALENS_")), `strict ${strict}`).toEqual([]);
+			}
+		});
+
+		it("a data-source token stored for the agent never reaches it in either mode", () => {
+			for (const strict of [false, true]) {
+				const env = envOf(strict);
+				expect(env.LOKI_TOKEN, `strict ${strict}`).toBeUndefined();
+				expect(env.PROMETHEUS_TOKEN, `strict ${strict}`).toBeUndefined();
 			}
 		});
 	});

@@ -82,6 +82,8 @@ export interface LaunchPolicy {
 	floor?: EnvFloor;
 	/** Names with these prefixes never reach the child, from any layer. */
 	refuseEnvPrefixes?: readonly string[];
+	/** These exact names never reach the child, from any layer, whatever the floor. */
+	refuseEnvNames?: readonly string[];
 }
 
 /** What starts the agent: its binary on PATH, a shipped adapter, or a user-set command. */
@@ -134,21 +136,28 @@ export interface LaunchPlan {
 	dirs: string[];
 }
 
+/** Case-insensitive: Windows env names are, so `prismalens_x` reaches a child as `PRISMALENS_X`. */
+function refusal(
+	names: readonly string[] = [],
+	prefixes: readonly string[] = [],
+): (key: string) => boolean {
+	const upNames = new Set(names.map((n) => n.toUpperCase()));
+	const upPrefixes = prefixes.map((p) => p.toUpperCase());
+	return (key) => {
+		const up = key.toUpperCase();
+		return upNames.has(up) || upPrefixes.some((p) => up.startsWith(p));
+	};
+}
+
 function floorEnv(
 	floor: EnvFloor,
 	host: PlanLaunchInput["hostEnv"],
 ): Record<string, string> {
 	const env: Record<string, string> = {};
 	if (floor.mode === "inherit-minus-own-secrets") {
-		const names = new Set(floor.ownSecrets.names ?? []);
-		const prefixes = floor.ownSecrets.prefixes ?? [];
+		const own = refusal(floor.ownSecrets.names, floor.ownSecrets.prefixes);
 		for (const [key, value] of Object.entries(host))
-			if (
-				value !== undefined &&
-				!names.has(key) &&
-				!prefixes.some((p) => key.startsWith(p))
-			)
-				env[key] = value;
+			if (value !== undefined && !own(key)) env[key] = value;
 		return env;
 	}
 	const allow = [...SAFE_ENV_ALLOWLIST, ...(floor.extraAllow ?? [])];
@@ -203,19 +212,15 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	Object.assign(env, stored, input.launch.env ?? {}, row.acpEnv(runEnv));
 	Object.assign(env, input.overrides ?? {});
 
-	const refused = policy.refuseEnvPrefixes ?? [];
 	const own =
 		policy.floor?.mode === "inherit-minus-own-secrets"
 			? policy.floor.ownSecrets
 			: {};
-	const ownNames = new Set(own.names ?? []);
-	const ownPrefixes = own.prefixes ?? [];
-	for (const key of Object.keys(env))
-		if (
-			ownNames.has(key) ||
-			[...refused, ...ownPrefixes].some((p) => key.startsWith(p))
-		)
-			delete env[key];
+	const refused = refusal(
+		[...(policy.refuseEnvNames ?? []), ...(own.names ?? [])],
+		[...(policy.refuseEnvPrefixes ?? []), ...(own.prefixes ?? [])],
+	);
+	for (const key of Object.keys(env)) if (refused(key)) delete env[key];
 
 	const dirs = [runEnv.configDir, runEnv.dataDir];
 	if (policy.github === "exclude") {

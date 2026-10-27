@@ -29,5 +29,6 @@ export function prismalensLaunchPolicy(
 					ownSecrets: PRISMALENS_OWN_SECRETS,
 				},
 		refuseEnvPrefixes: PRISMALENS_OWN_SECRETS.prefixes,
+		refuseEnvNames: PRISMALENS_OWN_SECRETS.names,
 	};
 }
