@@ -1,0 +1,77 @@
+{
+	"row": "gateway-incidents-similar",
+	"kind": "happy",
+	"title": "Finds past incidents like this one through PrismaLens's similarity tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "incidents_similar",
+				"ok": true,
+				"outputHas": "ScenarioSimilarTitle"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-incidents-similar]",
+				"toolName": "$gw:incidents_similar",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:incidents_similar",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-incidents-similar]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "similar incidents"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-incidents-similar]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "incidents_similar"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "incidents_similar",
+							"arguments": {}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-incidents-similar]",
+				"resultContains": "ScenarioSimilarTitle"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

@@ -3,7 +3,7 @@
 
 import { readFile, realpath, stat } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
@@ -11,6 +11,7 @@ import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
 	type Artifact,
+	FixVerdictSchema,
 	InvestigationReportSchema,
 	type QuoteAnchor,
 	type RecordedFinding,
@@ -37,6 +38,7 @@ import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
+import { attachmentsDir } from "../investigations/attachments.service.js";
 import { bearerOf, RunTokens } from "./run-tokens.js";
 import {
 	listRunbooks,
@@ -45,14 +47,17 @@ import {
 	readRunbook,
 } from "./runbooks.js";
 import {
+	type AttachmentItem,
 	type ChangeItem,
 	type GatewayToolData,
 	gatewayTools,
 	type IncidentView,
 	type InvestigationsQuery,
+	type PastFix,
 	type PastInvestigation,
 	type RunStatusView,
 	type ServiceView,
+	type SimilarIncident,
 	type ThreadSummary,
 	type ThreadView,
 	type TimelineItem,
@@ -74,6 +79,9 @@ const THREAD_STEP_ROWS = 60;
 const STEP_CHARS = 1_000;
 const TIMELINE_TEXT_CHARS = 500;
 const SERVICE_LINKS = 50;
+/** Attachments one listing returns, and the fix-check entries one fixes_list reads (#848). */
+const ATTACHMENTS_LISTED = 100;
+const FIX_CHECK_ROWS = 500;
 
 /** `raw` as JSON that satisfies `schema`; null when it is absent or not. */
 function parseWith<T>(
@@ -360,6 +368,14 @@ export class GatewayService {
 		},
 		service: (name) => this.serviceView(name),
 		runStatus: (runId) => this.runStatus(runId),
+		attachments: {
+			list: (runId) => this.attachmentsOf(runId),
+			read: (runId, id) => this.attachmentOf(runId, id),
+		},
+		history: {
+			similar: (runId, limit) => this.similarTo(runId, limit),
+			fixes: (runId, limit) => this.pastFixes(runId, limit),
+		},
 		artifacts: {
 			publish: async (runId, page) => {
 				const state = this.runs.get(runId);
@@ -783,6 +799,191 @@ export class GatewayService {
 				name: d.dependent.name,
 				criticality: d.criticality,
 			})),
+		};
+	}
+
+	private async attachmentsOf(
+		runId: string,
+	): Promise<{ incident: number; attachments: AttachmentItem[] } | null> {
+		const incident = await this.runIncident(runId);
+		if (!incident) return null;
+		const rows = await this.prisma.attachment.findMany({
+			where: { incidentId: incident.id },
+			orderBy: { createdAt: "desc" },
+			take: ATTACHMENTS_LISTED,
+			select: {
+				id: true,
+				name: true,
+				mimeType: true,
+				size: true,
+				createdAt: true,
+			},
+		});
+		return {
+			incident: incident.number,
+			attachments: rows.map((r) => ({
+				id: r.id,
+				name: r.name,
+				mimeType: r.mimeType,
+				size: r.size,
+				at: r.createdAt.toISOString(),
+			})),
+		};
+	}
+
+	private async attachmentOf(runId: string, id: string) {
+		const incident = await this.runIncident(runId);
+		if (!incident) return null;
+		const row = await this.prisma.attachment.findFirst({
+			where: { id, incidentId: incident.id },
+			select: { id: true, name: true, mimeType: true, size: true },
+		});
+		if (!row) return null;
+		return {
+			name: row.name,
+			mimeType: row.mimeType,
+			size: row.size,
+			// The bytes sit under the attachments directory by row id, as AttachmentsService writes them.
+			text: () =>
+				readFile(join(attachmentsDir(), row.id), "utf8").catch(() => null),
+		};
+	}
+
+	private async similarTo(
+		runId: string,
+		limit: number,
+	): Promise<{ incident: number; similar: SimilarIncident[] } | null> {
+		const incident = await this.runIncident(runId);
+		if (!incident) return null;
+		const scored = await this.prisma.incidentSimilarity.findMany({
+			where: { incidentId: incident.id },
+			orderBy: [{ similarityScore: "desc" }, { calculatedAt: "desc" }],
+			take: limit,
+			select: {
+				similarIncidentId: true,
+				similarityScore: true,
+				matchFactors: true,
+			},
+		});
+		const rows = scored.length
+			? await this.prisma.incident.findMany({
+					where: { id: { in: scored.map((s) => s.similarIncidentId) } },
+					select: {
+						id: true,
+						number: true,
+						title: true,
+						status: true,
+						resolvedAt: true,
+						actualCause: true,
+						actualCauseCategory: true,
+						service: { select: { name: true } },
+					},
+				})
+			: [];
+		const byId = new Map(rows.map((r) => [r.id, r]));
+		return {
+			incident: incident.number,
+			similar: scored.flatMap((s) => {
+				const r = byId.get(s.similarIncidentId);
+				if (!r) return [];
+				const matched = safeParseJsonObject(s.matchFactors)?.matchedOn;
+				return [
+					{
+						number: r.number,
+						title: r.title,
+						service: r.service?.name ?? null,
+						status: r.status,
+						resolvedAt: r.resolvedAt?.toISOString() ?? null,
+						actualCause: r.actualCause
+							? { cause: r.actualCause, category: r.actualCauseCategory }
+							: null,
+						similarityScore: s.similarityScore,
+						matchedOn: Array.isArray(matched)
+							? matched.filter((m): m is string => typeof m === "string")
+							: [],
+					},
+				];
+			}),
+		};
+	}
+
+	private async pastFixes(
+		runId: string,
+		limit: number,
+	): Promise<{ incident: number; fixes: PastFix[] } | null> {
+		const incident = await this.runIncident(runId);
+		if (!incident) return null;
+		const serviceIds = await this.serviceIdsOf(incident.id, incident.serviceId);
+		const recs = serviceIds.length
+			? await this.prisma.recommendation.findMany({
+					where: {
+						investigation: {
+							id: { not: runId },
+							incident: { serviceId: { in: serviceIds } },
+						},
+					},
+					orderBy: { createdAt: "desc" },
+					take: limit,
+					select: {
+						id: true,
+						investigationId: true,
+						title: true,
+						description: true,
+						priority: true,
+						category: true,
+						status: true,
+						implementedAt: true,
+						investigation: {
+							select: { incident: { select: { id: true, number: true } } },
+						},
+					},
+				})
+			: [];
+		// A check is on the timeline of the incident whose run it was, in FixesService's own metadata.
+		const checks = recs.length
+			? await this.prisma.timelineEntry.findMany({
+					where: {
+						incidentId: {
+							in: [...new Set(recs.map((r) => r.investigation.incident.id))],
+						},
+						type: "custom",
+						metadata: { contains: '"event":"fix_check"' },
+					},
+					orderBy: { occurredAt: "desc" },
+					take: FIX_CHECK_ROWS,
+					select: { metadata: true, occurredAt: true },
+				})
+			: [];
+		const checked = checks.flatMap((c) => {
+			const m = safeParseJsonObject(c.metadata);
+			const verdict = FixVerdictSchema.safeParse(m?.verdict);
+			return typeof m?.stepId === "string" && verdict.success
+				? [{ stepId: m.stepId, verdict: verdict.data, at: c.occurredAt }]
+				: [];
+		});
+		return {
+			incident: incident.number,
+			fixes: recs.map((r) => {
+				// Newest first, so the first check since it was applied is the latest.
+				const last = checked.find(
+					(c) =>
+						c.stepId === r.id && (!r.implementedAt || c.at >= r.implementedAt),
+				);
+				return {
+					id: r.id,
+					title: r.title,
+					detail: r.description,
+					incident: r.investigation.incident.number,
+					investigationId: r.investigationId,
+					status: r.status === "completed" ? "applied" : r.status,
+					priority: r.priority,
+					category: r.category,
+					appliedAt: r.implementedAt?.toISOString() ?? null,
+					lastCheck: last
+						? { verdict: last.verdict, at: last.at.toISOString() }
+						: null,
+				};
+			}),
 		};
 	}
 

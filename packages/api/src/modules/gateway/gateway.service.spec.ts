@@ -171,11 +171,16 @@ describe("gateway bearer (#848)", () => {
 
 const ALL_TOOLS = [
 	"artifact_publish",
+	"attachment_read",
+	"attachments_list",
 	"changes_list",
 	"evidence_record",
+	"fixes_list",
 	"hypothesis_record",
 	"incident_get",
+	"incidents_similar",
 	"investigations_search",
+	"report_validate",
 	"run_status",
 	"runbooks_list",
 	"runbooks_read",
@@ -886,8 +891,139 @@ describe("read tools for the coding agent (#848)", () => {
 		dependents: [{ criticality: "degraded", dependent: { name: "storefront" } }],
 	};
 
+	type AttachmentRow = {
+		id: string;
+		incidentId: string;
+		name: string;
+		mimeType: string;
+		size: number;
+		createdAt: Date;
+	};
+	const attachmentRows: AttachmentRow[] = [
+		{
+			id: "att-1",
+			incidentId: "inc-1",
+			name: "app.log",
+			mimeType: "text/plain",
+			size: 20,
+			createdAt: new Date("2026-10-24T09:40:00Z"),
+		},
+		{
+			id: "att-2",
+			incidentId: "inc-1",
+			name: "graph.png",
+			mimeType: "image/png",
+			size: 4_000,
+			createdAt: new Date("2026-10-24T09:10:00Z"),
+		},
+		{
+			id: "att-big",
+			incidentId: "inc-1",
+			name: "big.log",
+			mimeType: "text/plain",
+			size: 32_004,
+			createdAt: new Date("2026-10-24T09:00:00Z"),
+		},
+		{
+			id: "att-other",
+			incidentId: "inc-9",
+			name: "other.log",
+			mimeType: "text/plain",
+			size: 14,
+			createdAt: new Date("2026-10-24T09:00:00Z"),
+		},
+	];
+	const recommendationRow = (id: string, over: Record<string, unknown>) => ({
+		id,
+		investigationId: FINISHED,
+		title: "Raise the pool",
+		description: null,
+		priority: "medium",
+		category: null,
+		status: "pending",
+		implementedAt: null,
+		investigation: { incident: { id: "inc-7", number: 7 } },
+		...over,
+	});
+	const fixCheck = (verdict: string, at: string) => ({
+		metadata: JSON.stringify({
+			investigationId: FINISHED,
+			stepId: "rec-1",
+			event: "fix_check",
+			verdict,
+			checkedAt: at,
+		}),
+		occurredAt: new Date(at),
+	});
+
 	function mocks(over: { run?: unknown } = {}) {
 		return {
+			attachment: {
+				findMany: vi.fn(async () =>
+					attachmentRows.filter((a) => a.incidentId === "inc-1"),
+				),
+				findFirst: vi.fn(
+					async ({ where }: { where: { id: string; incidentId: string } }) =>
+						attachmentRows.find(
+							(a) => a.id === where.id && a.incidentId === where.incidentId,
+						) ?? null,
+				),
+			},
+			incidentSimilarity: {
+				findMany: vi.fn(async () => [
+					{
+						similarIncidentId: "inc-7",
+						similarityScore: 72,
+						matchFactors: JSON.stringify({
+							matchedOn: ["same service", "alert labels"],
+						}),
+					},
+					{
+						similarIncidentId: "inc-3",
+						similarityScore: 41,
+						matchFactors: null,
+					},
+				]),
+			},
+			incident: {
+				findMany: vi.fn(async () => [
+					{
+						id: "inc-3",
+						number: 3,
+						title: "checkout 5xx",
+						status: "investigating",
+						resolvedAt: null,
+						actualCause: null,
+						actualCauseCategory: null,
+						service: null,
+					},
+					{
+						id: "inc-7",
+						number: 7,
+						title: "payments timeouts",
+						status: "resolved",
+						resolvedAt: new Date("2026-09-01T10:00:00Z"),
+						actualCause: "pool max too low",
+						actualCauseCategory: "config",
+						service: { name: "payments" },
+					},
+				]),
+			},
+			recommendation: {
+				findMany: vi.fn(async () => [
+					recommendationRow("rec-1", {
+						description: "max 50 to 100",
+						priority: "high",
+						category: "config_change",
+						status: "completed",
+						implementedAt: new Date("2026-10-20T11:00:00Z"),
+					}),
+					recommendationRow("rec-2", {
+						title: "Roll back v2.1.0",
+						status: "rejected",
+					}),
+				]),
+			},
 			investigation: {
 				findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
 					where.id === RUN_A
@@ -939,7 +1075,13 @@ describe("read tools for the coding agent (#848)", () => {
 			},
 			timelineEntry: {
 				count: vi.fn(async () => 3),
-				findMany: vi.fn(async () => [
+				findMany: vi.fn(async ({ where }: { where: { metadata?: unknown } }) =>
+					where.metadata
+						? [
+								fixCheck("it_worked", "2026-10-20T12:00:00Z"),
+								fixCheck("not_yet", "2026-10-20T10:00:00Z"),
+							]
+						: [
 					{
 						type: "status_changed",
 						title: "Status changed to identified",
@@ -985,6 +1127,7 @@ describe("read tools for the coding agent (#848)", () => {
 	type Result = {
 		isError: boolean;
 		value: Record<string, unknown> & {
+			problems?: { field: string; expected: string }[];
 			threads?: Record<string, unknown>[];
 			entries?: Record<string, unknown>[];
 			changes?: Record<string, unknown>[];
@@ -1405,14 +1548,394 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 	});
 
+	describe("report_validate", () => {
+		const valid = JSON.stringify({
+			summary: "checkout ran out of connections",
+			rootCause: null,
+			rootCauseCategory: null,
+			hypotheses: [],
+			ruledOut: [],
+			coverage: { queried: ["logs"], notQueried: [] },
+			nextSteps: [],
+		});
+		const fenced = (json: string) => `Done.\n\n\`\`\`json\n${json}\n\`\`\`\n`;
+
+		it("says valid for a final answer that carries a valid report", async () => {
+			const out = await use(mocks(), "report_validate", {
+				report: fenced(valid),
+			});
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({ valid: true });
+		});
+
+		it("names each field that fails and what it expects", async () => {
+			const bad = JSON.stringify({ ...JSON.parse(valid), summary: 7 });
+			const out = await use(mocks(), "report_validate", {
+				report: fenced(bad),
+			});
+			expect(out.isError).toBe(false);
+			expect(out.value.valid).toBe(false);
+			expect(out.value.problems).toEqual([
+				{ field: "summary", expected: expect.stringContaining("string") },
+			]);
+			expect(out.value.next).toEqual(expect.any(String));
+		});
+
+		it("lists a missing field by its path", async () => {
+			const { coverage: _c, ...rest } = JSON.parse(valid);
+			const out = await use(mocks(), "report_validate", {
+				report: fenced(JSON.stringify(rest)),
+			});
+			expect(out.value.valid).toBe(false);
+			expect(out.value.problems?.map((p) => p.field)).toEqual(["coverage"]);
+		});
+
+		it("an answer with no json block has one problem about the block", async () => {
+			const out = await use(mocks(), "report_validate", {
+				report: "All done.",
+			});
+			expect(out.value.valid).toBe(false);
+			expect(out.value.problems).toEqual([
+				{ field: "report", expected: expect.stringContaining("```json") },
+			]);
+		});
+
+		it("a block that is not JSON is a problem about the block", async () => {
+			const out = await use(mocks(), "report_validate", {
+				report: fenced("{ not json"),
+			});
+			expect(out.value.valid).toBe(false);
+			expect(out.value.problems?.[0]?.field).toBe("report");
+		});
+
+		it("an empty answer is invalid_input", async () => {
+			const out = await use(mocks(), "report_validate", { report: "" });
+			expect(out.isError).toBe(true);
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+	});
+
+	describe("attachments_list", () => {
+		it("lists the incident's attached files, newest first", async () => {
+			const m = mocks();
+			const out = await use(m, "attachments_list");
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				incident: 12,
+				attachments: [
+					{
+						id: "att-1",
+						name: "app.log",
+						mimeType: "text/plain",
+						size: 20,
+						at: "2026-10-24T09:40:00.000Z",
+					},
+					{
+						id: "att-2",
+						name: "graph.png",
+						mimeType: "image/png",
+						size: 4_000,
+						at: "2026-10-24T09:10:00.000Z",
+					},
+					{
+						id: "att-big",
+						name: "big.log",
+						mimeType: "text/plain",
+						size: 32_004,
+						at: "2026-10-24T09:00:00.000Z",
+					},
+				],
+			});
+			expect(m.attachment.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { incidentId: "inc-1" },
+					orderBy: { createdAt: "desc" },
+				}),
+			);
+		});
+
+		it("an incident with none gives an empty list", async () => {
+			const m = mocks();
+			m.attachment.findMany.mockResolvedValueOnce([]);
+			const out = await use(m, "attachments_list");
+			expect(out.value).toEqual({ incident: 12, attachments: [] });
+		});
+
+		it("a run with no incident is not_found", async () => {
+			const out = await use(
+				mocks({ run: { incident: null } }),
+				"attachments_list",
+			);
+			expect(out.value).toEqual(failure("not_found"));
+		});
+	});
+
+	describe("attachment_read", () => {
+		let dir: string;
+		beforeEach(() => {
+			dir = mkdtempSync(join(tmpdir(), "pl-att-"));
+			mkdirSync(join(dir, "attachments"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", dir);
+			writeFileSync(join(dir, "attachments", "att-1"), "ERROR pool exhausted\n");
+			writeFileSync(
+				join(dir, "attachments", "att-big"),
+				`${"x".repeat(32_000)}TAIL`,
+			);
+			writeFileSync(join(dir, "attachments", "att-2"), "not text");
+			writeFileSync(join(dir, "attachments", "att-other"), "someone else's");
+		});
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			rmSync(dir, { recursive: true, force: true });
+		});
+
+		it("returns the text of an attachment on the run's incident", async () => {
+			const m = mocks();
+			const out = await use(m, "attachment_read", { id: "att-1" });
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				id: "att-1",
+				name: "app.log",
+				mimeType: "text/plain",
+				size: 20,
+				text: "ERROR pool exhausted\n",
+				truncated: false,
+			});
+			expect(m.attachment.findFirst).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "att-1", incidentId: "inc-1" },
+				}),
+			);
+		});
+
+		it("an attachment of another incident is not_found, and its file is not read", async () => {
+			const out = await use(mocks(), "attachment_read", { id: "att-other" });
+			expect(out.isError).toBe(true);
+			expect(out.value).toEqual(failure("not_found"));
+			expect(JSON.stringify(out.value)).not.toContain("someone else's");
+		});
+
+		it("an id nobody has is not_found", async () => {
+			const out = await use(mocks(), "attachment_read", { id: "missing" });
+			expect(out.value).toEqual(failure("not_found"));
+		});
+
+		it("a file that is not text is invalid_input and next says so", async () => {
+			const out = await use(mocks(), "attachment_read", { id: "att-2" });
+			expect(out.isError).toBe(true);
+			expect(out.value).toEqual({
+				...failure("invalid_input"),
+				message: expect.stringContaining("image/png"),
+				next: expect.stringContaining("not text"),
+			});
+		});
+
+		it("cuts a long file and says so, keeping the whole result valid JSON", async () => {
+			const out = await use(mocks(), "attachment_read", { id: "att-big" });
+			expect(out.isError).toBe(false);
+			const shown = (out.value.text as string).length;
+			expect(shown).toBeLessThanOrEqual(32_000);
+			expect(shown).toBeGreaterThan(31_000);
+			expect(out.value.text).not.toContain("TAIL");
+			expect(out.value.truncated).toBe(true);
+			expect(out.value.note).toBe(`Cut at ${shown} of 32004 characters.`);
+		});
+
+		it("cuts sooner when escaping makes the result longer than the text", async () => {
+			writeFileSync(join(dir, "attachments", "att-1"), "line\n".repeat(10_000));
+			const out = await use(mocks(), "attachment_read", { id: "att-1" });
+			expect(out.value.truncated).toBe(true);
+			expect((out.value.text as string).length).toBeLessThan(32_000);
+			expect(out.value.note).toEqual(expect.stringContaining("of 50000"));
+		});
+
+		it("a row whose file is gone is not_found", async () => {
+			rmSync(join(dir, "attachments", "att-1"));
+			const out = await use(mocks(), "attachment_read", { id: "att-1" });
+			expect(out.value).toEqual(failure("not_found"));
+		});
+
+		it("takes JSON, YAML, XML and CSV as text", async () => {
+			for (const mimeType of [
+				"application/json",
+				"application/x-yaml",
+				"application/xml",
+				"text/csv",
+				"application/vnd.api+json",
+			]) {
+				const m = mocks();
+				m.attachment.findFirst.mockResolvedValueOnce({
+					id: "att-1",
+					incidentId: "inc-1",
+					name: "f",
+					mimeType,
+					size: 20,
+					createdAt: new Date(),
+				});
+				const out = await use(m, "attachment_read", { id: "att-1" });
+				expect(out.isError, mimeType).toBe(false);
+			}
+		});
+
+		it("an empty id is invalid_input", async () => {
+			const out = await use(mocks(), "attachment_read", { id: "" });
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+	});
+
+	describe("incidents_similar", () => {
+		it("lists the past incidents the table holds for this one, best first, with the recorded cause", async () => {
+			const m = mocks();
+			const out = await use(m, "incidents_similar");
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				incident: 12,
+				similar: [
+					{
+						number: 7,
+						title: "payments timeouts",
+						service: "payments",
+						status: "resolved",
+						resolvedAt: "2026-09-01T10:00:00.000Z",
+						actualCause: { cause: "pool max too low", category: "config" },
+						similarityScore: 72,
+						matchedOn: ["same service", "alert labels"],
+					},
+					{
+						number: 3,
+						title: "checkout 5xx",
+						service: null,
+						status: "investigating",
+						resolvedAt: null,
+						actualCause: null,
+						similarityScore: 41,
+						matchedOn: [],
+					},
+				],
+			});
+			expect(m.incidentSimilarity.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { incidentId: "inc-1" },
+					orderBy: [{ similarityScore: "desc" }, { calculatedAt: "desc" }],
+					take: 5,
+				}),
+			);
+		});
+
+		it("takes the limit and refuses one over 20", async () => {
+			const m = mocks();
+			await use(m, "incidents_similar", { limit: 20 });
+			expect(m.incidentSimilarity.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({ take: 20 }),
+			);
+			const out = await use(mocks(), "incidents_similar", { limit: 21 });
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+
+		it("an incident with no similarity rows gives an empty list", async () => {
+			const m = mocks();
+			m.incidentSimilarity.findMany.mockResolvedValueOnce([]);
+			const out = await use(m, "incidents_similar");
+			expect(out.value).toEqual({ incident: 12, similar: [] });
+		});
+
+		it("a run with no incident is not_found", async () => {
+			const out = await use(
+				mocks({ run: { incident: null } }),
+				"incidents_similar",
+			);
+			expect(out.value).toEqual(failure("not_found"));
+		});
+	});
+
+	describe("fixes_list", () => {
+		it("lists fixes proposed on past investigations of the incident's services, with status and the latest check since it was applied", async () => {
+			const m = mocks();
+			const out = await use(m, "fixes_list");
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				incident: 12,
+				fixes: [
+					{
+						id: "rec-1",
+						title: "Raise the pool",
+						detail: "max 50 to 100",
+						incident: 7,
+						investigationId: FINISHED,
+						status: "applied",
+						priority: "high",
+						category: "config_change",
+						appliedAt: "2026-10-20T11:00:00.000Z",
+						lastCheck: {
+							verdict: "it_worked",
+							at: "2026-10-20T12:00:00.000Z",
+						},
+					},
+					{
+						id: "rec-2",
+						title: "Roll back v2.1.0",
+						detail: null,
+						incident: 7,
+						investigationId: FINISHED,
+						status: "rejected",
+						priority: "medium",
+						category: null,
+						appliedAt: null,
+						lastCheck: null,
+					},
+				],
+			});
+			expect(m.recommendation.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						investigation: {
+							id: { not: RUN_A },
+							incident: { serviceId: { in: ["svc-1", "svc-2"] } },
+						},
+					},
+					orderBy: { createdAt: "desc" },
+					take: 10,
+				}),
+			);
+		});
+
+		it("takes the limit and refuses one over 50", async () => {
+			const m = mocks();
+			await use(m, "fixes_list", { limit: 50 });
+			expect(m.recommendation.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({ take: 50 }),
+			);
+			const out = await use(mocks(), "fixes_list", { limit: 51 });
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+
+		it("reads no checks when there are no fixes", async () => {
+			const m = mocks();
+			m.recommendation.findMany.mockResolvedValueOnce([]);
+			const out = await use(m, "fixes_list");
+			expect(out.value).toEqual({ incident: 12, fixes: [] });
+			expect(m.timelineEntry.findMany).not.toHaveBeenCalled();
+		});
+
+		it("a run with no incident is not_found", async () => {
+			const out = await use(mocks({ run: { incident: null } }), "fixes_list");
+			expect(out.value).toEqual(failure("not_found"));
+		});
+	});
+
 	describe("every tool", () => {
-		const SIX = [
+		const LANE_TOOLS = [
 			"thread_list",
 			"thread_read",
 			"timeline_read",
 			"service_get",
 			"changes_list",
 			"run_status",
+			"report_validate",
+			"attachments_list",
+			"attachment_read",
+			"incidents_similar",
+			"fixes_list",
 		];
 
 		it("is read-only and takes no run id", async () => {
@@ -1430,7 +1953,7 @@ describe("read tools for the coding agent (#848)", () => {
 					}[];
 				}
 			).tools;
-			for (const name of SIX) {
+			for (const name of LANE_TOOLS) {
 				const tool = tools.find((t) => t.name === name);
 				expect(tool, name).toBeDefined();
 				expect(Object.keys(tool?.inputSchema.properties ?? {})).not.toContain(
@@ -1463,7 +1986,7 @@ describe("read tools for the coding agent (#848)", () => {
 					)
 				).result as { tools: { name: string }[] }
 			).tools.map((t) => t.name);
-			for (const name of SIX) {
+			for (const name of LANE_TOOLS) {
 				expect(listed).not.toContain(name);
 				expect(
 					text(await send("tools_search", { query: name })).tools[0].name,
