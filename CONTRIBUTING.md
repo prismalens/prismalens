@@ -469,14 +469,6 @@ New source files carry the same two-line SPDX header as their neighbours
 (`// SPDX-License-Identifier: Apache-2.0` / `// Copyright 2026 Sumit Patel`).
 Nothing enforces it.
 
-## Knowledge base (mage)
-
-Durable design and spec knowledge lives in an **external mage hub**, not in this
-repo — see [AGENTS.md](AGENTS.md). Before non-trivial work, read the hub's
-`INDEX.md` and the `prismalens-platform` wing. When you learn something durable
-(an interface detail, a gotcha, a decision), capture it as a note there rather
-than letting it evaporate.
-
 ## Releases and package publishing
 
 Two packages publish to npm: `prismalens` (the CLI) and

@@ -180,11 +180,19 @@ any workflow that can post a status named `CI gate` satisfies that gate, and Git
 will not distinguish it from the real one. The one workflow that ever held
 `statuses: write` is gone.
 
-`claude-code-review.yml` runs a model over attacker-influencable diff text on a
-**read-only** token. It posts through the action's own app installation, not the
-workflow token. It must never acquire a write: a prompt injected into a reviewed
-diff would then reach a job that can act on it, and under the current arrangement
-the most valuable thing to inject is "resolve these threads".
+`claude-code-review.yml` is a caller stub; the lane lives in
+`prismalens/gh-workflows`. The caller's `permissions:` block is a ceiling: `contents: write`,
+`pull-requests: write`, `issues: read`, `id-token: write`, `checks: read`, `actions: read`.
+Each callee job declares its own subset. Two jobs run a model over attacker-influencable
+diff text: `review`, pinned to `contents: read`, `issues: read`, `id-token: write`,
+`checks: read` and `actions: read`, which posts through the action's own app installation,
+not the workflow token; and `verify`, which reads `gh pr diff` and holds no write and no
+`id-token`. Three jobs hold a write and run no model: `mutate` (`contents: write`,
+`pull-requests: write`) resolves review threads, which GitHub refuses at `contents: read`,
+`announce` (`pull-requests: write`) upserts the liveness comment, and `fork-notice`
+(`pull-requests: write`) answers a fork PR.
+`review` and `verify` must never acquire a write: a prompt injected into a reviewed diff
+would then reach a job that can act on it, and the most valuable thing to inject is "resolve these threads".
 
 ## Rule for new enforcement
 
