@@ -168,6 +168,22 @@ describe("planLaunch env", () => {
 		expect(env.Prismalens_Db).toBeUndefined();
 	});
 
+	it("on Windows a stored value replaces a host variable spelled in another case", () => {
+		const platform = Object.getOwnPropertyDescriptor(process, "platform");
+		Object.defineProperty(process, "platform", { value: "win32" });
+		try {
+			const env = plan({
+				policy: { ...POLICY, floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} } },
+				hostEnv: { ...HOST, my_var: "from-host" },
+				stored: { MY_VAR: "from-settings" },
+			}).env;
+			expect(env.my_var).toBeUndefined();
+			expect(env.MY_VAR).toBe("from-settings");
+		} finally {
+			if (platform) Object.defineProperty(process, "platform", platform);
+		}
+	});
+
 	it("refuses a userSetup with no rows yet", () => {
 		expect(() => plan({ policy: { ...POLICY, userSetup: "supplied" } })).toThrow(/user-setup|supplied/);
 	});

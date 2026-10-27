@@ -149,6 +149,21 @@ function refusal(
 	};
 }
 
+/** A later layer wins. On Windows a name differing only in case is the same variable, and a child gets just one of them. */
+function overlay(
+	env: Record<string, string>,
+	layer: Readonly<Record<string, string>>,
+): void {
+	for (const [key, value] of Object.entries(layer)) {
+		if (process.platform === "win32") {
+			const up = key.toUpperCase();
+			for (const k of Object.keys(env))
+				if (k !== key && k.toUpperCase() === up) delete env[k];
+		}
+		env[key] = value;
+	}
+}
+
 function floorEnv(
 	floor: EnvFloor,
 	host: PlanLaunchInput["hostEnv"],
@@ -209,8 +224,13 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		const value = host[key];
 		if (value !== undefined) env[key] = value;
 	}
-	Object.assign(env, stored, input.launch.env ?? {}, row.acpEnv(runEnv));
-	Object.assign(env, input.overrides ?? {});
+	for (const layer of [
+		stored,
+		input.launch.env ?? {},
+		row.acpEnv(runEnv),
+		input.overrides ?? {},
+	])
+		overlay(env, layer);
 
 	const own =
 		policy.floor?.mode === "inherit-minus-own-secrets"
