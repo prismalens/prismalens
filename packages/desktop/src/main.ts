@@ -110,6 +110,7 @@ import {
 	parseWslSettings,
 	planWslLaunch,
 	portTakenByWslDialog,
+	UNNAMED_DEFAULT,
 	type WslRun,
 	type WslSettings,
 	withCheck,
@@ -355,6 +356,10 @@ async function bootWsl(): Promise<void> {
 		});
 		return leaveOrRetry(missingPlChoice(wsl, response));
 	}
+	if (Object.keys(wsl.unusable).length > 0) {
+		const name = wsl.distro ?? (await listDistros()).defaultName;
+		storeWslSettings(withCheck(wsl, name, null));
+	}
 	const probe = parseProbe(output);
 	if (!probe.hasPl) {
 		const defaultName = wsl.distro ? null : (await listDistros()).defaultName;
@@ -414,7 +419,9 @@ function runWsl(plan: WslRun): Promise<string> {
 			{ env: plan.env, windowsHide: true, timeout: 60_000 },
 			(error, stdout, stderr) =>
 				error
-					? reject(new Error(`${error.message}\n${stderr}`.trim()))
+					? reject(
+							new WslRunFailed(`${error.message}\n${stderr}`.trim(), stdout),
+						)
 					: resolve(stdout),
 		);
 		proc.stdin?.on("error", () => {});
@@ -830,7 +837,7 @@ function wslTrayItems(): MenuItemConstructorOptions[] {
 				checked: item.checked,
 				click: () => {
 					const name = item.distro ?? defaultDistro;
-					const failed = name !== null && name in wsl.unusable;
+					const failed = (name ?? UNNAMED_DEFAULT) in wsl.unusable;
 					if (item.distro === wsl.distro && !failed) return;
 					void chooseWsl({ ...wsl, distro: item.distro ?? null });
 				},

@@ -58,8 +58,10 @@ describe("WSL settings", () => {
 		const failed = withCheck(off, "rd", "no bash");
 		expect(failed.unusable).toEqual({ rd: "no bash" });
 		expect(withCheck(failed, "rd", null).unusable).toEqual({});
-		// The default distro unnamed: nothing to key the reason on.
-		expect(withCheck(off, null, "no bash")).toBe(off);
+		// The default distro, when wsl.exe didn't name it, still keeps its reason.
+		const unnamed = withCheck(off, null, "no bash");
+		expect(wslMenuItems(unnamed, []).distros[0].label).toBe("Default distro (no bash)");
+		expect(withCheck(unnamed, null, null).unusable).toEqual({});
 	});
 
 	it("only applies on Windows", () => {
@@ -232,6 +234,16 @@ describe("wslMenuItems", () => {
 			"rd (no bash)",
 			"Ubuntu",
 		]);
+	});
+
+	it("keeps a saved distro that WSL no longer lists, with its reason (#908)", () => {
+		const settings = { enabled: true, distro: "gone", unusable: { gone: "not installed" } };
+		expect(wslMenuItems(settings, ["Ubuntu"]).distros.map((d) => [d.label, d.checked])).toEqual([
+			["Default distro", false],
+			["Ubuntu", false],
+			["gone (not installed)", true],
+		]);
+		expect(wslMenuItems({ ...settings, distro: "Ubuntu" }, ["Ubuntu"]).distros).toHaveLength(2);
 	});
 
 	it("checks the stored distro and names WSL's default", () => {

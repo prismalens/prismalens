@@ -357,15 +357,21 @@ export function portTakenByWslDialog(input: {
 	};
 }
 
-/** Settings after a check of `name`: its reason recorded, or cleared when it passed. */
+/** WSL refuses an empty distro name, so this key can't collide with one. */
+export const UNNAMED_DEFAULT = "";
+
+/**
+ * Settings after a check of `name`: its reason recorded, or cleared when it
+ * passed. Null is the default distro when `wsl.exe` didn't name it.
+ */
 export function withCheck(
 	settings: WslSettings,
 	name: string | null,
 	reason: string | null,
 ): WslSettings {
-	if (!name) return settings;
-	const { [name]: _cleared, ...rest } = settings.unusable;
-	return { ...settings, unusable: reason ? { ...rest, [name]: reason } : rest };
+	const key = name ?? UNNAMED_DEFAULT;
+	const { [key]: _cleared, ...rest } = settings.unusable;
+	return { ...settings, unusable: reason ? { ...rest, [key]: reason } : rest };
 }
 
 export const WSL_TOGGLE_LABEL = "Use PrismaLens in WSL";
@@ -388,9 +394,14 @@ export function wslMenuItems(
 	defaultDistro: string | null = null,
 ): { toggle: WslMenuItem; distros: WslMenuItem[] } {
 	const why = (name: string | null) => {
-		const reason = name ? settings.unusable[name] : undefined;
+		const reason = settings.unusable[name ?? UNNAMED_DEFAULT];
 		return reason ? ` (${reason})` : "";
 	};
+	// A saved distro that WSL no longer lists keeps its item, so it can be rechecked.
+	const names =
+		settings.distro && !distros.includes(settings.distro)
+			? [...distros, settings.distro]
+			: distros;
 	return {
 		toggle: {
 			label: WSL_TOGGLE_LABEL,
@@ -401,12 +412,12 @@ export function wslMenuItems(
 			{
 				label: defaultDistro
 					? `Default distro (${defaultDistro})${why(defaultDistro)}`
-					: "Default distro",
+					: `Default distro${why(null)}`,
 				type: "radio",
 				checked: settings.distro === null,
 				distro: null,
 			},
-			...distros.map((name) => ({
+			...names.map((name) => ({
 				label: `${name}${why(name)}`,
 				type: "radio" as const,
 				checked: settings.distro === name,
