@@ -221,6 +221,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				incidentRepos: vi.fn(async () => [
 					{ sourceKind: "url" as const, url: "https://x:ghp_SENTINEL938@github.com/acme/api", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "api" },
 					{ sourceKind: "url" as const, url: "git@github.com:acme/web.git?token=ghp_SENTINEL938", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "web" },
+					{ sourceKind: "url" as const, url: "https://github.com/https://u:ghp_SENTINEL938@other", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "nested" },
 				]),
 				snapshotWith: cloneAs(async (ref, dest) => {
 					if (ref.url.includes("web")) throw new Error("clone failed");
@@ -232,7 +233,8 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 			expect(ws.checkoutsSkipped.map((k) => k.repo)).toEqual(["git@github.com:acme/web.git"]);
 			expect(ws.note).toContain("https://github.com/acme/api");
-			expect(JSON.stringify({ note: ws.note, skipped: ws.checkoutsSkipped })).not.toContain("SENTINEL");
+			expect(ws.repos).toHaveLength(2);
+			expect(JSON.stringify({ note: ws.note, skipped: ws.checkoutsSkipped, names: ws.repos.map((r) => r.name) })).not.toContain("SENTINEL");
 			expect(JSON.stringify(mocks.logged)).not.toContain("SENTINEL");
 		} finally {
 			vi.unstubAllEnvs();

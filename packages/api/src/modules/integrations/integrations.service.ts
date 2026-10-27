@@ -33,6 +33,7 @@ import {
 	GitCredential,
 	normalizeGitHost,
 	repoPath,
+	shownRepoName,
 	urlHost,
 } from "../../core/harness/git-credential.js";
 import {
@@ -1280,7 +1281,10 @@ export class IntegrationsService implements OnModuleInit {
 				...conn.repositories,
 				...(await pinnedRepositories(this.prisma, conn.id)),
 			])
-				repos.set(repo.id, { id: repo.id, fullName: repo.fullName });
+				repos.set(repo.id, {
+					id: repo.id,
+					fullName: shownRepoName("url", repo.fullName),
+				});
 
 			for (const sm of conn.serviceMappings) {
 				if (!affectedMap.has(`${sm.service.id}:integration_override_lost`)) {

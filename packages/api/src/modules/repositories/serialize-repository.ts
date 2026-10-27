@@ -7,6 +7,7 @@ import type {
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
 import {
+	shownRepoName,
 	shownRepoUrl,
 	UNSHOWN_REPO,
 } from "../../core/harness/git-credential.js";
@@ -14,7 +15,7 @@ import { displayNameFor } from "../../core/harness/repo-source.service.js";
 
 /** A legacy row's fullName was derived from its address and may hold the same credential (#938). */
 function shownFullName(repo: PrismaRepository, url: string): string {
-	if (url === repo.url) return repo.fullName;
+	if (url === repo.url) return shownRepoName(repo.sourceKind, repo.fullName);
 	if (url === UNSHOWN_REPO) return UNSHOWN_REPO;
 	try {
 		return displayNameFor("url", url);

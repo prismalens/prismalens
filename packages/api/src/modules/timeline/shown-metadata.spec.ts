@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { shownWorkspace } from "../investigations/investigations.controller.js";
-import { shownMetadata } from "./timeline.controller.js";
+import { shownMetadata, TimelineController } from "./timeline.controller.js";
 
 const SENTINEL = "ghp_SENTINEL938";
 
@@ -26,6 +26,19 @@ describe("a run's recorded repositories as answered (#938)", () => {
 				{ url: "/srv/code/local" },
 			],
 		});
+	});
+
+	it("a whole pre-#938 row through the serializer keeps no credential, description included", () => {
+		const controller = new TimelineController({} as never);
+		const out = (controller as unknown as { serializeTimelineEntry(e: unknown): unknown }).serializeTimelineEntry({
+			id: "t1",
+			type: "investigation_started",
+			description: `Investigating a snapshot of URL https://u:${SENTINEL}@github.com/x/y at main abc.`,
+			metadata: JSON.stringify({ repo: `https://u:${SENTINEL}@github.com/x/y` }),
+			occurredAt: new Date("2026-10-01T00:00:00Z"),
+		});
+		expect(JSON.stringify(out)).not.toContain(SENTINEL);
+		expect(JSON.stringify(out)).toContain("https://github.com/x/y");
 	});
 
 	it("other entries are left alone", () => {

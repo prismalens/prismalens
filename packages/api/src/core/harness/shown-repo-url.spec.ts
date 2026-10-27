@@ -2,7 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { shownRepoUrl, UNSHOWN_REPO } from "./git-credential.js";
+import { shownRepoName, shownRepoUrl, shownText, UNSHOWN_REPO } from "./git-credential.js";
+import { displayNameFor } from "./repo-source.service.js";
 
 const SENTINEL = "ghp_SENTINEL938";
 
@@ -44,5 +45,34 @@ describe("shownRepoUrl (#938)", () => {
 
 	it("a folder is shown as stored", () => {
 		expect(shownRepoUrl("folder", "/srv/code/api")).toBe("/srv/code/api");
+	});
+});
+
+describe("shownRepoName and shownText (#938)", () => {
+	it.each([
+		["a legacy root address", `https://github.com/?token=${SENTINEL}`, "https://github.com/"],
+		["a name with a query", `acme/api?token=${SENTINEL}`, UNSHOWN_REPO],
+		["a name holding userinfo", `u:${SENTINEL}@other/x`, UNSHOWN_REPO],
+		["an owner/repo name", "acme/api", "acme/api"],
+	])("%s", (_name, stored, shown) => {
+		expect(shownRepoName("url", stored)).toBe(shown);
+	});
+
+	it("a folder's name is its basename, kept as is", () => {
+		expect(shownRepoName("folder", "me@laptop")).toBe("me@laptop");
+	});
+
+	it("every address in a pre-#938 note is shown without its credential", () => {
+		const note = `Investigating a snapshot of URL https://x:${SENTINEL}@github.com/acme/api at main abc. Not included: URL git@github.com:acme/web.git?token=${SENTINEL} (clone failed); folder /srv/code/x.`;
+		const shown = shownText(note);
+		expect(shown).not.toContain(SENTINEL);
+		expect(shown).toContain("URL https://github.com/acme/api at main");
+		expect(shown).toContain("URL git@github.com:acme/web.git (clone failed)");
+		expect(shown).toContain("folder /srv/code/x.");
+	});
+
+	it("a credential nested in a path never becomes a repository's name", () => {
+		const name = displayNameFor("url", `https://github.com/https://u:${SENTINEL}@other`);
+		expect(name).not.toContain(SENTINEL);
 	});
 });

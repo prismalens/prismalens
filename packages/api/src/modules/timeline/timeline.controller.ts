@@ -8,7 +8,7 @@ import type {
 	TimelineEntry,
 	TimelineEntryWithRelations,
 } from "@prismalens/contracts/schemas";
-import { shownAddress } from "../../core/harness/git-credential.js";
+import { shownAddress, shownText } from "../../core/harness/git-credential.js";
 import type { CreateTimelineEntryDto } from "./dto/index.js";
 import { TimelineService } from "./timeline.service.js";
 
@@ -88,6 +88,10 @@ export class TimelineController {
 	private serializeTimelineEntry(entry: Record<string, any>): TimelineEntry {
 		return {
 			...entry,
+			...(entry.type === "investigation_started" &&
+			typeof entry.description === "string"
+				? { description: shownText(entry.description) }
+				: {}),
 			metadata: entry.metadata
 				? shownMetadata(entry.type, JSON.parse(entry.metadata))
 				: null,

@@ -20,6 +20,7 @@ import {
 	repoLabel,
 	repoPath,
 	shownRepoUrl,
+	UNSHOWN_REPO,
 	urlHost,
 } from "./git-credential.js";
 import { gitEnv } from "./git-env.js";
@@ -103,8 +104,10 @@ export function classifySource(input: string): {
 /** "owner/repo" for a URL, the folder name for a path. */
 export function displayNameFor(kind: RepoSourceKind, source: string): string {
 	if (kind === "folder") return basename(source);
-	const segments = urlSegments(source);
-	return segments.slice(-2).join("/") || shownRepoUrl(kind, source);
+	// Named from the shown address, so a credential nested in a path never becomes a name (#938).
+	const shown = shownRepoUrl(kind, source);
+	if (shown === UNSHOWN_REPO) return UNSHOWN_REPO;
+	return urlSegments(shown).slice(-2).join("/") || shown;
 }
 
 export function mirrorPathFor(

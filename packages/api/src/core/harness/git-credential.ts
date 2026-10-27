@@ -86,6 +86,24 @@ export function shownRepoUrl(sourceKind: string, url: string): string {
 	}
 }
 
+/** A stored repository name: one a legacy address was named by may be that address (#938). */
+export function shownRepoName(sourceKind: string, name: string): string {
+	if (sourceKind === "folder") return name;
+	if (SCHEME_URL.test(name) || SCP_REMOTE.test(name))
+		return shownRepoUrl("url", name);
+	return NESTED.test(name) || name.includes("?") ? UNSHOWN_REPO : name;
+}
+
+const ADDRESS_IN_TEXT =
+	/[a-z][a-z0-9+.-]*:\/\/[^\s'"<>()]+|[\w.-]+@[\w.-]+:[^\s'"<>()]+/gi;
+
+/** Free text written before #938 from a stored address, with each address in it as shownRepoUrl shows it. */
+export function shownText(text: string): string {
+	return text.replace(ADDRESS_IN_TEXT, (address) =>
+		shownRepoUrl("url", address),
+	);
+}
+
 /** shownRepoUrl for a recorded address whose kind was not kept: an absolute path is a folder. */
 export function shownAddress(address: string): string {
 	return shownRepoUrl(isAbsolute(address) ? "folder" : "url", address);

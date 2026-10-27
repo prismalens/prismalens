@@ -14,7 +14,11 @@ import type {
 	IncidentChanges,
 	RunCredential,
 } from "@prismalens/contracts/schemas";
-import { repoLabel, urlHost } from "../../core/harness/git-credential.js";
+import {
+	repoLabel,
+	shownRepoName,
+	urlHost,
+} from "../../core/harness/git-credential.js";
 import {
 	GitFailure,
 	type GitFailureCode,
@@ -379,7 +383,7 @@ export class ChangeEventsService {
 	private sourceOf(link: Link): ChangeSource {
 		return {
 			repositoryId: link.repository.id,
-			repo: link.repository.fullName,
+			repo: shownRepoName(link.repository.sourceKind, link.repository.fullName),
 			serviceId: link.serviceId,
 			serviceName: link.serviceName,
 			status: "pending",
