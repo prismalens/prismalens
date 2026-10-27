@@ -81,9 +81,12 @@ childProcess.spawnSync = (cmd, args, opts) =>
 syncBuiltinESMExports();
 '@ | Out-File $hook -Encoding utf8
 	$saved = @{}
+	# PSModulePath is dropped, as in a cmd or Windows PowerShell terminal: pwsh 7's own value reaches the
+	# powershell.exe that pl spawns and hides Get-FileHash from it. Released pl copies pass it on (#965).
 	$set = @{
 		PRISMALENS_RELEASE_BASE_URL = $base; PRISMALENS_UPDATE_CHECK = "off"; PRISMALENS_TELEMETRY = "off"
 		PL_SMOKE_INSTALLER = $installer; NODE_OPTIONS = "--import=file:///$($hook.Replace('\', '/'))"
+		PSModulePath = $null
 	}
 	foreach ($k in $set.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $set[$k]) }
 	try {
