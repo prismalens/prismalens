@@ -478,6 +478,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	codex: {
 		id: "codex",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "Codex",
 		acpRegistryIds: ["codex-acp"],
 		binary: "codex-acp",
