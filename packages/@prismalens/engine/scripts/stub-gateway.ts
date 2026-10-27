@@ -13,6 +13,7 @@ import { Readable } from "node:stream";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import type { Artifact, RecordedFinding } from "@prismalens/contracts/schemas";
 import {
+	autoAllowed,
 	type HarnessCall,
 	type HarnessTool,
 	harnessMcpServer,
@@ -326,6 +327,7 @@ export async function startStubGateway(
 			serverName,
 			promptLine: harnessPromptLine(view, serverName),
 			tools: [...view.direct, ...view.deferred].map((t) => t.name),
+			autoAllow: autoAllowed(view),
 			connected: () => connected,
 			waitConnected: (ms) =>
 				connected

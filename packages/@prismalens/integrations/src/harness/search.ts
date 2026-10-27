@@ -35,6 +35,12 @@ export function runView(
 	};
 }
 
+/** Tools the agent may run without a card: every level here only reads or writes the run's own record. */
+export const autoAllowed = (view: RunView): string[] =>
+	[...view.direct, ...view.deferred]
+		.filter((t) => t.effect === "read" || t.effect === "record")
+		.map((t) => t.name);
+
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
 function score(tool: HarnessTool, query: string[]): number {
