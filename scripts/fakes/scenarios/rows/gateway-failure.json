@@ -4,10 +4,24 @@
 	"title": "A PrismaLens tool's failure tells the agent what to do next, and the agent recovers",
 	"run": {},
 	"expect": "gateway",
+	"agents": {
+		"gemini": {
+			"expect": "report",
+			"why": "gemini checks the arguments against the input schema itself, so a bad call never reaches PrismaLens"
+		}
+	},
 	"gateway": {
 		"calls": [
-			{ "name": "incident_get", "ok": false, "outputHas": "invalid_input" },
-			{ "name": "incident_get", "ok": true, "outputHas": "ScenarioIncident" }
+			{
+				"name": "incident_get",
+				"ok": false,
+				"outputHas": "invalid_input"
+			},
+			{
+				"name": "incident_get",
+				"ok": true,
+				"outputHas": "ScenarioIncident"
+			}
 		]
 	},
 	"fixtures": [
@@ -19,7 +33,12 @@
 			},
 			"response": {
 				"toolCalls": [
-					{ "name": "$gw:incident_get", "arguments": { "number": "one" } }
+					{
+						"name": "$gw:incident_get",
+						"arguments": {
+							"number": "one"
+						}
+					}
 				]
 			}
 		},
@@ -30,7 +49,12 @@
 				"resultContains": ["invalid_input", "next"]
 			},
 			"response": {
-				"toolCalls": [{ "name": "$gw:incident_get", "arguments": {} }]
+				"toolCalls": [
+					{
+						"name": "$gw:incident_get",
+						"arguments": {}
+					}
+				]
 			}
 		},
 		{
@@ -39,7 +63,9 @@
 				"afterTool": "$gw:incident_get",
 				"resultContains": "ScenarioIncident"
 			},
-			"response": { "content": "$report" }
+			"response": {
+				"content": "$report"
+			}
 		}
 	]
 }

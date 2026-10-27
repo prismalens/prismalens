@@ -2,14 +2,34 @@
 	"row": "gateway-record",
 	"kind": "happy",
 	"title": "Records evidence and a hypothesis through PrismaLens's tools while every ask is refused",
-	"run": { "accessLevel": "supervised", "answer": "deny" },
+	"run": {
+		"accessLevel": "supervised",
+		"answer": "deny"
+	},
 	"expect": "gateway",
+	"agents": {
+		"gemini": {
+			"expect": "report",
+			"why": "gemini's permission ask for an MCP tool names no server (its title can be the call's own command argument), so PrismaLens cannot tell its own tool apart: a supervised run shows the card, an unattended one refuses"
+		}
+	},
 	"gateway": {
 		"calls": [
-			{ "name": "evidence_record", "ok": true, "outputHas": "e1" },
-			{ "name": "hypothesis_record", "ok": true, "outputHas": "rh1" }
+			{
+				"name": "evidence_record",
+				"ok": true,
+				"outputHas": "e1"
+			},
+			{
+				"name": "hypothesis_record",
+				"ok": true,
+				"outputHas": "rh1"
+			}
 		],
-		"records": { "evidence": ["e1"], "hypotheses": ["rh1"] }
+		"records": {
+			"evidence": ["e1"],
+			"hypotheses": ["rh1"]
+		}
 	},
 	"fixtures": [
 		{
@@ -58,7 +78,9 @@
 				"resultContains": "h1",
 				"resultLacks": "not_found"
 			},
-			"response": { "content": "$report" }
+			"response": {
+				"content": "$report"
+			}
 		}
 	]
 }
