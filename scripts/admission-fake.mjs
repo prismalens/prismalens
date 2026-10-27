@@ -143,6 +143,8 @@ export function agentEnv(harness, model, home, key = SCRIPTED_KEY) {
 	return {
 		XDG_CONFIG_HOME: config,
 		XDG_DATA_HOME: join(home, "data"),
+		XDG_CACHE_HOME: join(home, "cache"),
+		XDG_STATE_HOME: join(home, "state"),
 		PRISMALENS_HARNESS_MODEL: FAKE_MODEL,
 	};
 }
@@ -350,44 +352,46 @@ async function main() {
 			}
 		}
 		if (args.matrix) {
-			// Each matrix run has its own scripted model, home and workspace, so the runs go at
+			// Each matrix run has its own scripted model, home and workspace, so the runs can go at
 			// once: most of a run is waiting on the agent's own retries and timeouts (#885).
-			await Promise.all(
-				runs.map(async (run, i) => {
-					const model = await startModel();
-					run.models.push(model);
-					const runHome = mkdtempSync(join(home, `matrix-${i + 1}-`));
-					const signedOut = agentEnv(
-						args.harness,
-						model,
-						mkdtempSync(join(runHome, "signed-out-")),
-						null,
+			/** @param {(typeof runs)[number]} run @param {number} i */
+			const matrixRun = async (run, i) => {
+				const model = await startModel();
+				run.models.push(model);
+				const runHome = mkdtempSync(join(home, `matrix-${i + 1}-`));
+				const signedOut = agentEnv(
+					args.harness,
+					model,
+					mkdtempSync(join(runHome, "signed-out-")),
+					null,
+				);
+				/** @type {Record<string, string | null>} */
+				const overrides = Object.fromEntries(KEYS.map((k) => [k, null]));
+				Object.assign(overrides, signedOut);
+				const out = await engineScript(
+					"acp-matrix.ts",
+					[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
+					{
+						...agentEnv(args.harness, model, runHome),
+						PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),
+						PL_MATRIX_WORKDIR: mkdtempSync(join(workdir, `run-${i + 1}-`)),
+					},
+					args.repeat === 1,
+				);
+				if (args.repeat > 1)
+					process.stdout.write(
+						`matrix run ${i + 1}/${args.repeat}:\n${out.stdout}`,
 					);
-					/** @type {Record<string, string | null>} */
-					const overrides = Object.fromEntries(KEYS.map((k) => [k, null]));
-					Object.assign(overrides, signedOut);
-					const out = await engineScript(
-						"acp-matrix.ts",
-						[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
-						{
-							...agentEnv(args.harness, model, runHome),
-							PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),
-							PL_MATRIX_WORKDIR: mkdtempSync(join(workdir, `run-${i + 1}-`)),
-						},
-						args.repeat === 1,
-					);
-					if (args.repeat > 1)
-						process.stdout.write(
-							`matrix run ${i + 1}/${args.repeat}:
-${out.stdout}`,
-						);
-					run.parts.push(matrixSignature(out.stdout));
-					if (out.code !== 0) {
-						run.failed = true;
-						console.error(out.stderr.slice(-2000));
-					}
-				}),
-			);
+				run.parts.push(matrixSignature(out.stdout));
+				if (out.code !== 0) {
+					run.failed = true;
+					console.error(out.stderr.slice(-2000));
+				}
+			};
+			// Only Linux: the cancel row tells its own tool process from another run's by cwd,
+			// which only /proc gives (acp-scenarios.ts), so elsewhere the runs take turns.
+			if (process.platform === "linux") await Promise.all(runs.map(matrixRun));
+			else for (const [i, run] of runs.entries()) await matrixRun(run, i);
 		}
 		for (const [i, run] of runs.entries()) {
 			const line = run.parts.join(" | ");

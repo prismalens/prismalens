@@ -56,8 +56,10 @@ the packed tarball starts with `Tarball:`.
 | `E2E / Playwright (Chromium, shard <n>/2)` (`e2e`, calls `e2e.yml`) | the browser suite | none | every PR, push and merge-queue build | yes |
 
 Agent qualification runs its 3 admissions one at a time, because each writes a probe file into the
-checkout. Its 3 behaviour matrices run at once, each with its own scripted model, home and workspace
-(#885); a matrix run spends most of its time waiting out the agent's own retries and timeouts.
+checkout. On Linux, as in CI, its 3 behaviour matrices run at once, each with its own scripted model, home
+and workspace (#885); a matrix run spends most of its time waiting out the agent's own retries and
+timeouts. Elsewhere they take turns, because only Linux's `/proc` lets the `cancel` row tell its own
+tool process from another run's.
 
 The pins for the agents these jobs install are in `scripts/agent-pins.json` (the agent) and
 `@prismalens/agent-adapters` (the adapter); `agent-releases.yml` moves them.
