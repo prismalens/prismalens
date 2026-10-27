@@ -52,6 +52,7 @@ describe("admission-fake verdictOf and signature", () => {
 			r7: "skipped",
 			r8: "missing",
 			r9: "missing",
+			r10: "missing",
 		});
 	});
 
@@ -112,15 +113,18 @@ describe("admission-fake verdictOf and signature", () => {
 			"R7 resume after a failed report: pass",
 			"R8 tool call, first turn: pass",
 			"R9 tool call, follow-up: pass",
+			"R10 resume streams no history: n/a (reopened by load-dedupe, not session/resume)",
 		].join("\n");
 
 		const v = verdictOf(stdout);
 		expect(v.r8).toBe("pass");
 		expect(v.r9).toBe("pass");
+		expect(v.r10).toBe("n/a");
 
 		const sig = signature(v);
 		expect(sig).toContain("R8=pass");
 		expect(sig).toContain("R9=pass");
+		expect(sig).toContain("R10=n/a");
 	});
 });
 
@@ -283,11 +287,13 @@ describe("admissionProblem known failures (#914)", () => {
 	const v = {
 		pass: false,
 		failedChecks: ["cwdProved", "readAllowed"],
-		r5: "fail",
+		// A fresh session seeded from the stored run, since gemini's load is broken (#942).
+		r5: "pass",
 		r6: "skipped",
 		r7: "skipped",
 		r8: "pass",
 		r9: "pass",
+		r10: "n/a",
 	};
 
 	it("accepts gemini failing exactly as its open upstream bugs predict", () => {
@@ -295,14 +301,14 @@ describe("admissionProblem known failures (#914)", () => {
 	});
 
 	it("fails once gemini's known failure is fixed", () => {
-		expect(admissionProblem("gemini", { ...v, r5: "pass" }, 1)).toMatch(/fixed/);
 		expect(
-			admissionProblem("gemini", { ...v, pass: true, failedChecks: [], r5: "pass" }, 0),
+			admissionProblem("gemini", { ...v, pass: true, failedChecks: [] }, 0),
 		).toMatch(/fixed/);
 	});
 
 	it("fails gemini when it fails some other way", () => {
 		expect(admissionProblem("gemini", { ...v, r8: "fail" }, 1)).toMatch(/differently/);
+		expect(admissionProblem("gemini", { ...v, r5: "fail" }, 1)).toMatch(/differently/);
 	});
 
 	it("keeps every other agent strict", () => {

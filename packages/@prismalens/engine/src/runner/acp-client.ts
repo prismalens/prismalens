@@ -171,8 +171,14 @@ export interface AcpSessionConfig {
 	onDrift?: (drift: AcpDrift) => void;
 	/** Each ask's window, read when it arrives; the policy's own timeout when absent (#673 w21). */
 	askWindow?: () => { timeoutMs: number; clamped: boolean };
-	/** Reopen this session with `session/load` instead of starting one (#747). */
-	resume?: { sessionId: string };
+	/** Reopen this session instead of starting one, by the path {@link reopenPath} picks (#747, #942). */
+	resume?: {
+		sessionId: string;
+		/** The tool call ids the stored run holds; a load drops any update carrying one. */
+		known?: () => Promise<Iterable<string>>;
+		/** The caller can seed a fresh session, so a known-broken load starts one instead. */
+		fresh?: boolean;
+	};
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
 		capabilities:
@@ -188,8 +194,52 @@ const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
 	"unattended",
 ]);
 
-// ACP v2 folds load into session/resume; one constant to move (#747).
 const SESSION_LOAD = "session/load";
+const SESSION_RESUME = "session/resume";
+
+/**
+ * How a stored session is reopened (#942): `resume` streams no history;
+ * `load-marker` drops the replay up to its end marker; `load-dedupe` drops it up
+ * to the load answer, then every update whose id the history held; `fresh` is a
+ * `session/new` the caller seeds with the stored conversation.
+ */
+export type ReopenPath = "resume" | "load-marker" | "load-dedupe" | "fresh";
+
+/** Agents whose `session/load` answers before its replay, so no update after it can be trusted as live. */
+const BROKEN_LOAD: Record<string, string> = {
+	"gemini-cli": "google-gemini/gemini-cli#29707",
+};
+
+/**
+ * The fastest exact path the agent's `initialize` offers; null when it can
+ * reopen nothing. `fresh` only when the caller can seed a new session.
+ */
+export function reopenPath(
+	agent: AcpAgentInfo,
+	capabilities: InitializeResponse["agentCapabilities"] | undefined,
+	canStartFresh: boolean,
+): ReopenPath | null {
+	const session = capabilities?.sessionCapabilities as
+		| Record<string, unknown>
+		| null
+		| undefined;
+	if (session?.resume != null) return "resume";
+	if (agent.name && BROKEN_LOAD[agent.name])
+		return canStartFresh ? "fresh" : null;
+	if (capabilities?.loadSession !== true) return null;
+	return session?.replayComplete != null ? "load-marker" : "load-dedupe";
+}
+
+/** ACP's `replay_complete` (RFD agent-client-protocol#2407), or claude-agent-acp's AIR `loadReplayEnd`. */
+function endsReplay(u: Record<string, unknown>): boolean {
+	if (u.sessionUpdate === "replay_complete") return true;
+	const air = (u._meta as { jetbrains?: { air?: { loadReplayEnd?: unknown } } })
+		?.jetbrains?.air;
+	return (
+		u.sessionUpdate === "session_info_update" && air?.loadReplayEnd === true
+	);
+}
+
 /** claude-agent-acp's push-only sign-in extension (0.81.1 `dist/auth-status.js`). */
 const AUTH_STATUS_UPDATE = "_auth/status_update";
 
@@ -489,7 +539,7 @@ export class AcpSession {
 	modelOptionId: string | null = null;
 	/** `initialize` advertised `promptCapabilities.image` (R4.3). */
 	takesImages = false;
-	/** The harness advertised `loadSession` at `initialize`. */
+	/** The harness advertised `loadSession` or `session/resume` at `initialize`, so a follow-up can reopen it. */
 	loadSession = false;
 	/** The modes `session/new` (or `session/load`) offered. */
 	private modes: AcpModeSurface = { configId: null, modes: [], current: null };
@@ -497,8 +547,14 @@ export class AcpSession {
 	private options: Array<Record<string, unknown>> = [];
 	/** Counts mode reports from the agent, so `setMode` can tell whether one answered it. */
 	private modeReports = 0;
-	/** History updates `session/load` replayed; dropped, never yielded. */
+	/** History updates the reopen replayed; dropped, never yielded. */
 	replayed = 0;
+	/** How `open` reopened the stored session; null when it started a new one unasked. */
+	reopen: ReopenPath | null = null;
+	/** Milliseconds the reopen request took, `initialize` excluded. */
+	reopenMs = 0;
+	/** Tool call and message ids of the history; a later update carrying one is replay too. */
+	private readonly history = new Set<string>();
 	/** `initialize` advertised `_meta.authStatus`: the agent pushes its sign-in on `_auth/status_update`. */
 	pushesAuthStatus = false;
 	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
@@ -588,6 +644,7 @@ export class AcpSession {
 				protocolVersion: PROTOCOL_VERSION,
 				clientCapabilities: {
 					fs: { readTextFile: false, writeTextFile: false },
+					session: { replayComplete: {} },
 				},
 			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
@@ -596,7 +653,9 @@ export class AcpSession {
 		this.authMethods = Array.isArray(init?.authMethods)
 			? (init.authMethods as AcpAuthMethod[])
 			: [];
-		this.loadSession = init?.agentCapabilities?.loadSession === true;
+		this.loadSession =
+			init?.agentCapabilities?.loadSession === true ||
+			init?.agentCapabilities?.sessionCapabilities?.resume != null;
 		this.takesImages =
 			init?.agentCapabilities?.promptCapabilities?.image === true;
 		this.pushesAuthStatus =
@@ -612,20 +671,37 @@ export class AcpSession {
 				config.mcpServers?.(init?.agentCapabilities?.mcpCapabilities) ?? [],
 			...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 		};
+		const started = Date.now();
 		if (config.resume) {
-			if (!this.loadSession)
+			const path = reopenPath(
+				this.agent,
+				init?.agentCapabilities,
+				!!config.resume.fresh,
+			);
+			const name = `${this.agent.name ?? config.command} ${this.agent.version ?? ""}`;
+			if (!path) {
+				const broken = this.agent.name && BROKEN_LOAD[this.agent.name];
 				throw new Error(
-					`${this.agent.name ?? config.command} ${this.agent.version ?? ""} does not support session/load`,
+					broken
+						? `${name} cannot reopen a session: its session/load answers before the history (${broken})`
+						: `${name} does not support session/load or session/resume`,
 				);
+			}
+			this.reopen = path;
+		}
+		if (config.resume && this.reopen !== "fresh") {
+			for (const id of (await config.resume.known?.()) ?? [])
+				this.history.add(id);
 			this.loading = true;
 			this.loadRequestId = this.nextId;
 			this.currentSessionId = config.resume.sessionId;
 			const loaded = (await this.request(
-				SESSION_LOAD,
+				this.reopen === "resume" ? SESSION_RESUME : SESSION_LOAD,
 				{ sessionId: config.resume.sessionId, ...params },
 				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 			).finally(() => {
 				this.loading = false;
+				this.reopenMs = Date.now() - started;
 			})) as Partial<LoadSessionResponse> | null;
 			this.takeOptions(loaded?.configOptions);
 			this.modes = offeredModes(loaded);
@@ -638,6 +714,7 @@ export class AcpSession {
 		)) as Partial<NewSessionResponse> | null;
 		if (!session?.sessionId)
 			throw new Error("ACP session/new returned no sessionId");
+		if (this.reopen === "fresh") this.reopenMs = Date.now() - started;
 		this.currentSessionId = session.sessionId;
 		this.takeOptions(session.configOptions);
 		this.modes = offeredModes(session);
@@ -910,7 +987,7 @@ export class AcpSession {
 		if (msg.id !== undefined && msg.method) {
 			this.onServerRequest(msg);
 		} else if (msg.id !== undefined) {
-			// Updates after the load answer are live, even in the same stdout chunk.
+			// Updates after the load answer are live unless their id is history, even in the same stdout chunk.
 			if (msg.id === this.loadRequestId) this.loading = false;
 			const p = this.pending.get(msg.id);
 			if (!p) return;
@@ -926,7 +1003,24 @@ export class AcpSession {
 			else p.resolve(msg.result);
 		} else if (msg.method === "session/update") {
 			const update = msg.params?.update;
+			const fields =
+				update && typeof update === "object"
+					? (update as Record<string, unknown>)
+					: null;
+			const ids = [fields?.toolCallId, fields?.messageId].filter(
+				(id): id is string => typeof id === "string" && !!id,
+			);
+			if (this.reopen && fields && endsReplay(fields)) {
+				this.loading = false;
+				return;
+			}
 			if (this.loading) {
+				this.replayed += 1;
+				for (const id of ids) this.history.add(id);
+				return;
+			}
+			// An agent that streams history after its answer still sends its ids (#942).
+			if (ids.some((id) => this.history.has(id))) {
 				this.replayed += 1;
 				return;
 			}

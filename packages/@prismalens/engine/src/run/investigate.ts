@@ -57,6 +57,7 @@ import {
 	AcpSession,
 	type AcpStreamItem,
 	type PromptPart,
+	type ReopenPath,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
@@ -84,6 +85,15 @@ import {
 } from "./report.js";
 import { checkSandbox } from "./sandbox-check.js";
 import { parseUsageUpdate } from "./usage.js";
+
+/** What a fresh session is given in place of a session the agent cannot reload (#942). */
+export interface FreshSeed {
+	text: string;
+	/** The agent the run was in; null when it named none. */
+	from: string | null;
+	carried: string;
+	omitted: string | null;
+}
 
 export interface RunInvestigationOptions {
 	runId: string;
@@ -170,6 +180,10 @@ export interface RunInvestigationOptions {
 	resume?: {
 		sessionId?: string;
 		handoff?: string;
+		/** The tool call ids the stored run holds; a reopened load drops any update carrying one (#942). */
+		known?: () => Promise<Iterable<string>>;
+		/** The stored conversation for a fresh session, when the agent's load is known broken (#942). */
+		fresh?: () => Promise<FreshSeed>;
 		/** A restart cut the run off; a reopened session is told so too. */
 		afterRestart?: boolean;
 		/** Recorded on the follow-up's first message. */
@@ -189,6 +203,8 @@ export interface RunInvestigationOptions {
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
 	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
+	/** How a follow-up reopened its session, what it dropped as replay, and how long it took (#942). */
+	onReopen?: (r: { path: ReopenPath; replayed: number; ms: number }) => void;
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
 	gateway?: GatewayEntry;
 	signal?: AbortSignal;
@@ -557,7 +573,13 @@ export async function* runInvestigation(
 		onWire: wire,
 		onStderr: opts.onHarnessStderr,
 		...(opts.resume?.sessionId
-			? { resume: { sessionId: opts.resume.sessionId } }
+			? {
+					resume: {
+						sessionId: opts.resume.sessionId,
+						...(opts.resume.known ? { known: opts.resume.known } : {}),
+						fresh: !!opts.resume.fresh,
+					},
+				}
 			: {}),
 		...(offer ? { mcpServers: offer.pick } : {}),
 		onDrift: (drift) => {
@@ -754,8 +776,18 @@ export async function* runInvestigation(
 				loadSession: session.loadSession,
 			});
 		}
-		if (opts.resume?.sessionId)
-			wire("in", JSON.stringify({ replayed: session.replayed }));
+		let fresh: FreshSeed | null = null;
+		if (session.reopen) {
+			const reopen = {
+				path: session.reopen,
+				replayed: session.replayed,
+				ms: session.reopenMs,
+			};
+			wire("in", JSON.stringify({ reopen }));
+			opts.onReopen?.(reopen);
+			if (session.reopen === "fresh" && opts.resume?.fresh)
+				fresh = await opts.resume.fresh();
+		}
 		// Only a request with the run's token proves the agent loaded our server (OBJ-011).
 		const connected =
 			opts.gateway && offer?.offered()
@@ -870,6 +902,8 @@ export async function* runInvestigation(
 		let outcome: { stop: string } | { error: string };
 		if (opts.resume) {
 			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
+			const handoff = fresh?.text ?? opts.resume.handoff;
+			const via = opts.resume.via;
 			yield adapter.operatorMessage(
 				line,
 				mode,
@@ -878,19 +912,26 @@ export async function* runInvestigation(
 				refsOf(attachments),
 				kind ?? "chat",
 				undefined,
-				opts.resume.via,
+				fresh && via
+					? {
+							...via,
+							handoff: {
+								from: fresh.from,
+								carried: fresh.carried,
+								omitted: fresh.omitted,
+							},
+						}
+					: via,
 			);
 			const said = [
-				...(opts.resume.afterRestart && !opts.resume.handoff
-					? [RESTART_NOTE]
-					: []),
+				...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
 				line,
 				...(newer ? [newerRunNote(newer)] : []),
 			].join("\n\n");
-			const seeded = opts.resume.handoff
+			const seeded = handoff
 				? kind === "continue"
-					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${opts.resume.handoff}\n\n${said}`
-					: buildChatPrompt(opts.context, `${opts.resume.handoff}\n\n${said}`, {
+					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${handoff}\n\n${said}`
+					: buildChatPrompt(opts.context, `${handoff}\n\n${said}`, {
 							noNetwork,
 						})
 				: said;

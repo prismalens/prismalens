@@ -27,6 +27,7 @@ import {
 	offeredEffort,
 	offeredModes,
 	offeredModels,
+	reopenPath,
 	selectedModel,
 } from "./acp-client.js";
 
@@ -493,6 +494,124 @@ describe("AcpSession session/load (#747)", () => {
 		await session.close();
 		expect(session.sessionId).toBe("s1");
 		expect(session.loadSession).toBe(true);
+		expect(session.reopen).toBeNull();
+	});
+});
+
+describe("AcpSession reopen paths (#942)", () => {
+	const reopen = (
+		env: Record<string, string>,
+		resume: NonNullable<ConstructorParameters<typeof AcpSession>[0]["resume"]>,
+	) => {
+		const wire: string[] = [];
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: tmpdir(),
+			env: { ...process.env, FAKE_ACP_MODE: "resume", ...env },
+			permission: () => ({ allow: true, optionId: "once" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+			onWire: (d, line) => {
+				if (d === "out") wire.push(line);
+			},
+			resume,
+		});
+		return { session, wire };
+	};
+	const turn = async (session: AcpSession) => {
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("and now?")) items.push(item);
+		await session.close();
+		return JSON.stringify(items);
+	};
+
+	it("takes session/resume when the agent offers it, even with loadSession", async () => {
+		const { session, wire } = reopen(
+			{ FAKE_LOAD_SESSION: "1", FAKE_SESSION_RESUME: "1" },
+			{ sessionId: "ses_old" },
+		);
+		const items = await turn(session);
+		expect(session.reopen).toBe("resume");
+		expect(session.replayed).toBe(0);
+		expect(wire.some((l) => l.includes('"session/resume"'))).toBe(true);
+		expect(wire.some((l) => l.includes('"session/load"'))).toBe(false);
+		expect(items).toContain("Heard: and now?");
+	});
+
+	it("drops and counts anything a session/resume replays anyway", async () => {
+		const { session } = reopen(
+			{ FAKE_SESSION_RESUME: "replay" },
+			{ sessionId: "ses_old" },
+		);
+		const items = await turn(session);
+		expect(session.replayed).toBe(1);
+		expect(items).not.toContain("REPLAYED");
+	});
+
+	it("ends a load at the replay_complete marker, keeping a live update that precedes the answer", async () => {
+		const { session } = reopen(
+			{ FAKE_LOAD_SESSION: "1", FAKE_REPLAY_COMPLETE: "1" },
+			{ sessionId: "ses_old" },
+		);
+		const items = await turn(session);
+		expect(session.reopen).toBe("load-marker");
+		expect(session.replayed).toBe(2);
+		expect(items).not.toContain("REPLAYED");
+		expect(items).not.toContain("replay_complete");
+		expect(items).toContain("LIVE before the answer");
+	});
+
+	it("drops history streamed after the load answer by the ids the replay and the stored run hold", async () => {
+		const { session } = reopen(
+			{ FAKE_LOAD_SESSION: "1", FAKE_LATE_REPLAY: "1" },
+			{ sessionId: "ses_old", known: async () => ["t_old"] },
+		);
+		const items = await turn(session);
+		expect(session.reopen).toBe("load-dedupe");
+		expect(session.replayed).toBe(5);
+		expect(items).not.toContain("REPLAYED");
+		expect(items).toContain("Heard: and now?");
+	});
+
+	it("starts a fresh session for gemini-cli, whose load answers before its history", async () => {
+		const { session, wire } = reopen(
+			{ FAKE_LOAD_SESSION: "1", FAKE_AGENT_NAME: "gemini-cli" },
+			{ sessionId: "ses_old", fresh: true },
+		);
+		await turn(session);
+		expect(session.reopen).toBe("fresh");
+		expect(session.sessionId).toBe("s1");
+		expect(wire.some((l) => l.includes('"session/load"'))).toBe(false);
+	});
+
+	it("refuses gemini-cli's load when the caller has no conversation to seed a fresh session", async () => {
+		const { session, wire } = reopen(
+			{ FAKE_LOAD_SESSION: "1", FAKE_AGENT_NAME: "gemini-cli" },
+			{ sessionId: "ses_old" },
+		);
+		await expect(session.open()).rejects.toThrow(
+			/gemini-cli 0 cannot reopen a session: .*gemini-cli#29707/,
+		);
+		await session.close();
+		expect(wire.some((l) => l.includes('"session/load"'))).toBe(false);
+	});
+});
+
+describe("reopenPath (#942)", () => {
+	it("prefers resume, then a fresh session for a known-broken load, then a marked load, then dedupe", () => {
+		const gemini = { name: "gemini-cli", version: "0.65.0" };
+		expect(reopenPath({}, { loadSession: true, sessionCapabilities: { resume: {} } }, false)).toBe("resume");
+		expect(reopenPath(gemini, { loadSession: true }, true)).toBe("fresh");
+		expect(reopenPath(gemini, { loadSession: true }, false)).toBeNull();
+		expect(reopenPath(gemini, { loadSession: true, sessionCapabilities: { resume: {} } }, false)).toBe("resume");
+		expect(
+			reopenPath({}, { loadSession: true, sessionCapabilities: { replayComplete: {} } as never }, false),
+		).toBe("load-marker");
+		expect(reopenPath({}, { loadSession: true }, false)).toBe("load-dedupe");
+		expect(reopenPath({}, {}, true)).toBeNull();
+		expect(reopenPath({}, { sessionCapabilities: { resume: null } }, false)).toBeNull();
 	});
 });
 

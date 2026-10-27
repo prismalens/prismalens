@@ -222,10 +222,12 @@ describe("initializeVersion", () => {
 describe("admissionExit (#848): the gate's truth table", () => {
 	const passing: AdmissionVerdictWords = {
 		pass: true,
+		r5: "pass",
 		r6: "pass",
 		r7: "pass",
 		r8: "pass",
 		r9: "pass",
+		r10: "pass",
 		resumable: true,
 	};
 
@@ -235,12 +237,18 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		["R7 skipped (no proxy for this agent)", { ...passing, r7: "skipped" }],
 		["R9 n/a on an agent that cannot resume", { ...passing, r9: "n/a", resumable: false }],
 		["R9 passing on an agent that cannot resume", { ...passing, resumable: false }],
+		["R5 failing on an agent that cannot resume", { ...passing, r5: "fail", resumable: false }],
+		["R10 n/a on an agent that offers no session/resume", { ...passing, r10: "n/a" }],
 	])("returns 0 with %s", (_, v) => {
 		expect(admissionExit(v)).toBe(0);
 	});
 
 	it.each<[string, Partial<AdmissionVerdictWords>]>([
 		["pass = false", { pass: false }],
+		["r5 = fail (a replayed event came back as new, #942)", { r5: "fail" }],
+		["r5 = missing", { r5: "missing" }],
+		["r10 = fail (session/resume streamed history)", { r10: "fail" }],
+		["r10 = missing", { r10: "missing" }],
 		["r6 = fail", { r6: "fail" }],
 		["r6 = missing", { r6: "missing" }],
 		["r7 = fail", { r7: "fail" }],

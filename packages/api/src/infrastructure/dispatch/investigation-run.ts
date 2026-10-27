@@ -982,7 +982,36 @@ async function runFollowUp(
 					: {}),
 				...(kind === "chat" ? { kind: "chat" as const } : {}),
 				resume: {
-					...(sessionId ? { sessionId } : {}),
+					...(sessionId
+						? {
+								sessionId,
+								known: async () =>
+									(await ports.events(id)).flatMap((e) =>
+										e.kind === "agent_step"
+											? e.toolCalls.map((c) => c.toolCallId)
+											: e.kind === "tool_result"
+												? [e.result.toolCallId]
+												: [],
+									),
+								// The agent's load is known broken (#942): the stored conversation seeds a new session.
+								fresh: async () => {
+									const fresh = buildHandoff({
+										events: await ports.events(id),
+										report: storedReport(inv.report),
+										accessLevel: inheritedLevel(data.accessLevel),
+										from: row.label,
+										afterRestart: !!resume.afterRestart,
+									});
+									writeHandoffTranscript(workspace, fresh.transcript);
+									return {
+										text: fresh.text,
+										from: harness,
+										carried: fresh.carried,
+										omitted: fresh.omitted,
+									};
+								},
+							}
+						: {}),
 					...(seed ? { handoff: seed.text } : {}),
 					...(resume.afterRestart ? { afterRestart: true } : {}),
 					via: {
