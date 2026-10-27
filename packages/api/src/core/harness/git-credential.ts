@@ -57,6 +57,28 @@ export function repoPath(url: string): string {
 	}
 }
 
+const SCHEME_URL = /^[a-z][a-z0-9+.-]*:\/\//i;
+const SCP_REMOTE = /^[\w.-]+@[\w.-]+:(?!\/\/)/;
+const SSH_SCHEME = /^(?:ssh|git\+ssh|ssh\+git):$/i;
+
+/** A stored address as it may be shown: rows saved before #934 can hold userinfo or a query, so a URL keeps only an ssh username and an scp remote loses its query (#938). */
+export function shownRepoUrl(sourceKind: string, url: string): string {
+	if (sourceKind === "folder") return url;
+	if (SCP_REMOTE.test(url)) return url.split("?")[0] as string;
+	if (!SCHEME_URL.test(url)) return UNSHOWN_REPO;
+	try {
+		const u = new URL(url);
+		if (!u.host) return UNSHOWN_REPO;
+		const user = SSH_SCHEME.test(u.protocol) ? u.username : "";
+		if (!u.password && !u.search && !u.hash && u.username === user) return url;
+		u.password = u.search = u.hash = "";
+		u.username = user;
+		return u.href;
+	} catch {
+		return UNSHOWN_REPO;
+	}
+}
+
 /** A repository for a log line: `host/owner/repo` for a URL, the path for a folder; never userinfo, query or fragment (#848). */
 export function repoLabel(source: string): string {
 	const host = urlHost(source);

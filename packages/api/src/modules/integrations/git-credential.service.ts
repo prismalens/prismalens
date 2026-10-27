@@ -441,12 +441,18 @@ export class GitCredentialService {
 		}
 		const [only] = stored;
 		if (only?.status === "ACTIVE") {
-			if (mode === "use" && expired(only))
-				throw new GitFailure(
-					"token-expired",
-					`Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt as Date)}. Replace it in Settings → Sources.`,
-					"replace-token",
-				);
+			// Unpinned, so an expired token is skipped like a refused one; a pin fails closed above (#950).
+			if (expired(only)) {
+				const next = await this.after("stored", effectiveUrl, host, signal);
+				const { label, source } = tokenDisplay(only);
+				return withLegacy({
+					...next,
+					display: {
+						...next.display,
+						fallbackFrom: { source, label, code: "token-expired" },
+					},
+				});
+			}
 			return withLegacy({
 				display: tokenDisplay(only),
 				effectiveUrl,

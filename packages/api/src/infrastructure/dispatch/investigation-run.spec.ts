@@ -212,6 +212,34 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		]);
 	});
 
+	it("a legacy row's userinfo or query never reaches the note, the skip list or the log (#938)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-legacy-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		mocks.logged.length = 0;
+		try {
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					{ sourceKind: "url" as const, url: "https://x:ghp_SENTINEL938@github.com/acme/api", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "api" },
+					{ sourceKind: "url" as const, url: "git@github.com:acme/web.git?token=ghp_SENTINEL938", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "web" },
+				]),
+				snapshotWith: cloneAs(async (ref, dest) => {
+					if (ref.url.includes("web")) throw new Error("clone failed");
+					return { path: dest, head: "abc123def456789", branch: "main" as const };
+				}),
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+
+			expect(ws.checkoutsSkipped.map((k) => k.repo)).toEqual(["git@github.com:acme/web.git"]);
+			expect(ws.note).toContain("https://github.com/acme/api");
+			expect(JSON.stringify({ note: ws.note, skipped: ws.checkoutsSkipped })).not.toContain("SENTINEL");
+			expect(JSON.stringify(mocks.logged)).not.toContain("SENTINEL");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
 	it("a repo whose subPath is a junction to an outside dir throws escapes the snapshot and is skipped (#848)", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-junction-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);

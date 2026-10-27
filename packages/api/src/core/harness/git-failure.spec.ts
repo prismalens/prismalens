@@ -50,6 +50,42 @@ describe("git-failure", () => {
 		expect(performance.now() - started).toBeLessThan(200);
 	});
 
+	it("a token rejection after 1 MiB of progress is still token-rejected: the tail is scanned (#938)", () => {
+		const progress = "remote: Counting objects: 42% (420/1000)\r".repeat(25_000);
+		const failure = diagnoseGitFailure({
+			stderr: `${progress}\nfatal: Authentication failed for 'https://github.com/acme/api.git/'\n`,
+			credential: { source: "connection", label: "token A", via: "git-host-token" },
+			host: "github.com",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(failure.code).toBe("token-rejected");
+	});
+
+	it("the head and the tail are scrubbed, and the cut never leaves part of a header (#938)", () => {
+		const header = "Authorization: Basic SECRETHEAD\n";
+		const tailHeader = "\nAuthorization: Basic SECRETTAIL\n";
+		const scrubbed = scrubGitStderr(`${header}${"x".repeat(1024 * 1024)}${tailHeader}`);
+		expect(scrubbed.length).toBeLessThanOrEqual(64 * 1024);
+		expect(scrubbed).not.toMatch(/SECRET/);
+	});
+
+	it.each([
+		["Authorization headers", "Authorization:".repeat(1_200_000)],
+		["repository-not-found lines", "repository '".repeat(1_400_000)],
+	])("16 MiB of %s scrubs and classifies in under 500 ms: the cap holds (#938)", (_name, stderr) => {
+		const started = performance.now();
+		scrubGitStderr(stderr);
+		diagnoseGitFailure({
+			stderr,
+			credential: { source: "machine", label: "machine git", via: "machine" },
+			host: "git.example",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(performance.now() - started).toBeLessThan(500);
+	});
+
 	it("formatDay formats Date to YYYY-MM-DD", () => {
 		const d = new Date("2026-10-15T12:00:00Z");
 		expect(formatDay(d)).toBe("2026-10-15");

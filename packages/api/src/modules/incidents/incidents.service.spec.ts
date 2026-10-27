@@ -1004,6 +1004,28 @@ describe("IncidentsService", () => {
 			expect(entry.description).toContain("the next run also clones orders");
 		});
 
+		it("names a legacy row's repo without its query or userinfo (#938)", async () => {
+			mockTx.alert.findMany.mockResolvedValue([
+				{
+					id: "a1",
+					service: {
+						name: "orders",
+						displayName: null,
+						repositories: [
+							{ repository: { sourceKind: "url", url: "git@github.com:acme/orders.git?token=ghp_SENTINEL938" } },
+						],
+					},
+				},
+			]);
+			given(source, { ...target, investigations: [{ id: "run-1" }] });
+
+			await service.merge("inc-src", "inc-tgt");
+
+			const entry = mockTx.timelineEntry.create.mock.calls[1][0].data;
+			expect(entry.description).toContain("the next run also clones orders");
+			expect(entry.description).not.toContain("SENTINEL");
+		});
+
 		it.each([
 			["same-incident", "inc-src", source, source],
 			["target-missing", "inc-tgt", source, null],

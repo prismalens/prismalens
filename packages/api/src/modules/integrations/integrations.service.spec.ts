@@ -514,7 +514,7 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 		});
 
 		const GIT_KINDS: [string, string][] = [
-			["token-expired", 'Token "GitLab Token" has expired. Replace it in Settings → Integrations.'],
+			["token-expired", 'Token "GitLab Token" has expired. Replace it in Settings → Sources.'],
 			["token-rejected", 'gitlab.example:8443 rejected token "GitLab Token". It was revoked or mistyped; replace it.'],
 			["no-access", `Token "GitLab Token" can't see a repository on gitlab.example:8443: it doesn't exist or the token has no access to it. Check the URL or grant the repository on the token.`],
 			["unreachable", "Could not reach gitlab.example:8443."],

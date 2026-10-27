@@ -73,6 +73,7 @@ import {
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
+import { shownRepoUrl } from "../../core/harness/git-credential.js";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import {
@@ -1501,7 +1502,7 @@ function whereFrom(repo: {
 	subPath: string | null;
 }): string {
 	const from = repo.sourceKind === "folder" ? "folder" : "URL";
-	return `${from} ${repo.url}${repo.subPath ? `/${repo.subPath}` : ""}`;
+	return `${from} ${shownRepoUrl(repo.sourceKind, repo.url)}${repo.subPath ? `/${repo.subPath}` : ""}`;
 }
 
 /**
@@ -1601,7 +1602,7 @@ export async function resolveWorkspace(
 	for (const k of skipped)
 		logger.warn(`Skipped ${whereFrom(k.repo)}: ${k.reason}`);
 	const checkoutsSkipped = skipped.map((k) => ({
-		repo: k.repo.url,
+		repo: shownRepoUrl(k.repo.sourceKind, k.repo.url),
 		reason: k.reason,
 		code: k.code,
 	}));

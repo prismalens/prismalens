@@ -34,13 +34,23 @@ export class GitFailure extends Error {
 	}
 }
 
-/** Only the first 64 KB of remote output is scanned: the patterns below are not all linear (#848). */
+/** At most 64 KB of remote output is scanned, since the patterns below are not all linear (#848). */
 const MAX_SCANNED_STDERR = 64 * 1024;
+const HALF = MAX_SCANNED_STDERR / 2 - 1;
+
+/** The first and last 32 KB, each cut at a line break: git's `fatal:` line comes last (#938). */
+function scanned(stderr: string): string {
+	if (stderr.length <= MAX_SCANNED_STDERR) return stderr;
+	const head = stderr.slice(0, HALF);
+	const tail = stderr.slice(-HALF);
+	const headEnd = Math.max(head.lastIndexOf("\n"), head.lastIndexOf("\r")) + 1;
+	const tailStart = tail.search(/[\r\n]/);
+	return `${head.slice(0, headEnd)}\n${tailStart < 0 ? "" : tail.slice(tailStart + 1)}`;
+}
 
 /** Strips anything that looks like a credential from git's stderr. */
 export function scrubGitStderr(stderr: string): string {
-	return stderr
-		.slice(0, MAX_SCANNED_STDERR)
+	return scanned(stderr)
 		.replace(/Authorization:\s*\S+\s+\S+/gi, "Authorization: ***")
 		.replace(/:\/\/[^/@\s]+@/g, "://***@");
 }
@@ -115,7 +125,7 @@ export function gitErrorSentence(
 	const label = token.label.replace(/\s+/g, " ");
 	switch (kind) {
 		case "token-expired":
-			return `Token "${label}" has expired. Replace it in Settings → Integrations.`;
+			return `Token "${label}" has expired. Replace it in Settings → Sources.`;
 		case "token-rejected":
 			return `${host} rejected token "${label}". It was revoked or mistyped; replace it.`;
 		case "no-access":

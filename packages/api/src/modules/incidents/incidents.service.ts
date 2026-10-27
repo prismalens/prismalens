@@ -18,6 +18,7 @@ import {
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import type { Alert, Incident, Prisma, Service } from "@prismalens/database";
+import { shownRepoUrl } from "../../core/harness/git-credential.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -904,7 +905,9 @@ export class IncidentsService {
 								name: true,
 								displayName: true,
 								repositories: {
-									select: { repository: { select: { url: true } } },
+									select: {
+										repository: { select: { sourceKind: true, url: true } },
+									},
 								},
 							},
 						},
@@ -947,7 +950,9 @@ export class IncidentsService {
 						alerts.flatMap(
 							(a) =>
 								a.service?.repositories.map((r) =>
-									repoName(r.repository.url),
+									repoName(
+										shownRepoUrl(r.repository.sourceKind, r.repository.url),
+									),
 								) ?? [],
 						),
 					),
