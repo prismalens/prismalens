@@ -3,10 +3,8 @@
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { RunRecord, recordTools } from "./record.js";
 import { executeTool } from "./registry.js";
 import { type RecordedCall, fixturesFrom, replayCalls } from "./replay.js";
-import { runbookTools } from "./runbooks.js";
 import { defineHarnessTool } from "./tool.js";
 
 describe("replayCalls", () => {
@@ -22,14 +20,12 @@ describe("replayCalls", () => {
 				run: async ({ msg }) => ({ value: { echo: msg } }),
 			}),
 		];
-		const record = new RunRecord();
 		const call1 = await executeTool(
 			tools[0],
 			{ msg: "hello" },
 			{
 				runId: "run-orig",
 				signal: new AbortController().signal,
-				record,
 			},
 		);
 
@@ -51,23 +47,29 @@ describe("replayCalls", () => {
 
 	it("returns differs when a changed fake port produces different output", async () => {
 		let runbookContent = "initial content";
-		const tools = runbookTools({
-			list: async () => [],
-			read: async () => ({
-				ok: true,
-				path: "rb.md",
-				markdown: runbookContent,
+		const runbooksRead = defineHarnessTool({
+			name: "runbooks_read",
+			title: "Read runbook",
+			description: "desc",
+			group: "core",
+			effect: "read",
+			input: z.object({ path: z.string(), service: z.string().optional() }),
+			run: async ({ path }) => ({
+				value: {
+					ok: true,
+					path,
+					markdown: runbookContent,
+				},
 			}),
 		});
+		const tools = [runbooksRead];
 
-		const record = new RunRecord();
 		const call1 = await executeTool(
-			tools[1], // runbooks_read
+			tools[0],
 			{ path: "rb.md", service: "svc" },
 			{
 				runId: "run-orig",
 				signal: new AbortController().signal,
-				record,
 			},
 		);
 
@@ -174,20 +176,42 @@ describe("replayCalls", () => {
 		});
 	});
 
-	it("never touches the original RunRecord when replaying record tools", async () => {
-		const tools = recordTools();
-		const origRecord = new RunRecord();
+	it("never touches the original array when replaying record tools bound to a fresh array", async () => {
+		const originalItems: unknown[] = [];
+		const makeRecordTool = (items: unknown[]) =>
+			defineHarnessTool({
+				name: "evidence_record",
+				title: "Record evidence",
+				description: "desc",
+				group: "record",
+				effect: "record",
+				input: z.object({
+					id: z.string(),
+					observation: z.string().optional(),
+					source: z.string().optional(),
+				}),
+				run: async (input) => {
+					items.push(input);
+					return { value: { recorded: true } };
+				},
+			});
+
+		const origTools = [makeRecordTool(originalItems)];
 		const call = await executeTool(
-			tools[0], // evidence_record
+			origTools[0],
 			{ id: "e1", observation: "Database crashed", source: "log" },
 			{
 				runId: "run-orig",
 				signal: new AbortController().signal,
-				record: origRecord,
 			},
 		);
 
-		expect(origRecord.evidence("e1")).toBeDefined();
+		expect(originalItems).toHaveLength(1);
+		expect(originalItems[0]).toEqual({
+			id: "e1",
+			observation: "Database crashed",
+			source: "log",
+		});
 
 		const recorded: RecordedCall[] = [
 			{
@@ -199,10 +223,12 @@ describe("replayCalls", () => {
 			},
 		];
 
-		// Clear original record or verify items don't leak/change
-		const emptyOrigRecord = new RunRecord();
-		await replayCalls(recorded, tools, "run-replay");
-		expect(emptyOrigRecord.evidence("e1")).toBeUndefined();
+		const freshItems: unknown[] = [];
+		const replayTools = [makeRecordTool(freshItems)];
+		await replayCalls(recorded, replayTools, "run-replay");
+
+		expect(freshItems).toHaveLength(1);
+		expect(originalItems).toHaveLength(1);
 	});
 });
 
