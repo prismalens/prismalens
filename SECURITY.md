@@ -43,18 +43,20 @@ dashboard as one process on the user's machine, with a SQLite database in the
 workspace (`~/.prismalens` by default). Every browser, this machine's included,
 gets in only through a one-time pairing link; there is no account.
 
-For each investigation PrismaLens clones the service's repository at its last
-commit into a throwaway directory and starts the coding agent the user
-installed, over the Agent Client Protocol (ACP), with that clone as its working
-directory and an allowlisted environment. The run's permission level (Ask
-always, Auto-accept edits, Auto or Full access) picks the agent's own mode and
+For each investigation PrismaLens checks the service's repository out at its
+last commit into a throwaway directory (a git worktree of a local folder, a
+clone of a URL's mirror) and starts the coding agent the user installed, over
+the Agent Client Protocol (ACP), with that snapshot as its working directory
+and an allowlisted environment. The run's permission level (Ask always,
+Auto-accept edits, Auto or Full access) picks the agent's own mode and
 decides which of its permission requests wait for the user; a run an alert
 starts runs at Auto and refuses anything the agent asks. The agent's own mode is
 the limit: PrismaLens adds no sandbox, and the agent runs as the user who
 started `pl up`.
 
 The agent signs in to its own provider; PrismaLens never reads or stores that
-login, and never calls a model itself.
+login, and never calls a model itself. An API key or variable you enter under an
+agent is stored encrypted, passed only to that agent and never shown again.
 
 ## Scope
 

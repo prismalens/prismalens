@@ -13,17 +13,34 @@ import { DateStringSchema } from "./common.js";
 
 export const RepositorySourceKindSchema = z.enum(["folder", "url"]);
 
-/** Which credential git uses for a repository (#673). Never holds a secret. */
+const RunCredentialSourceSchema = z.enum([
+	"connection",
+	"env",
+	"machine",
+	"none",
+]);
+
+/** Which credential git uses for a repository (#673): pin, stored token, env token, the machine's git, public (#848). Never holds a secret. */
 export const RunCredentialSchema = z.object({
-	source: z.enum(["connection", "machine", "none"]),
-	/** The `Code:` text: "machine git (gh, sumit)", "token A", "public", "folder". */
+	source: RunCredentialSourceSchema,
+	/** The `Code:` text: "machine git (gh, sumit)", "token A", "env GH_TOKEN", "public", "folder". */
 	label: z.string(),
-	/** The tooltip: the helper value, "ssh keys" or the template id, plus "fp <8 hex>" for a token. */
+	/** The tooltip: the helper value, "ssh keys", the template id or the variable, plus "fp <8 hex>" for a token. */
 	via: z.string(),
 	connectionId: z.string().optional(),
 	fingerprint: z.string().optional(),
-	/** The machine's credential was refused and the one matching saved token was used. */
+	/** The environment variable an `env` credential came from. */
+	envVar: z.string().optional(),
+	/** Runs before #848 only: the machine's credential was refused and the one matching saved token was used. */
 	fallback: z.literal(true).optional(),
+	/** An unpinned credential got this refusal, so the next one in the order was used (#848). */
+	fallbackFrom: z
+		.object({
+			source: RunCredentialSourceSchema,
+			label: z.string(),
+			code: z.string(),
+		})
+		.optional(),
 });
 export type RunCredential = z.infer<typeof RunCredentialSchema>;
 

@@ -128,6 +128,49 @@ export function redactNonce(text: string, nonce: string): string {
 	return text.split(nonce).join("<nonce>");
 }
 
+/** The R-lines the exit code reads, each as its first word (`verdictOf` in scripts/admission-fake.mjs). */
+export interface AdmissionVerdictWords {
+	pass: boolean;
+	r6: string;
+	r7: string;
+	r8: string;
+	r9: string;
+	/** The row passed the resume probe, so R9 must run (#848). */
+	resumable: boolean;
+}
+
+/** The gate: R1-R4, R6 not failed, R7 passed or skipped, R8 passed, R9 passed or n/a for an agent that cannot resume (#848). */
+export function admissionExit(v: AdmissionVerdictWords): 0 | 1 {
+	const r6Ok = !v.r6.startsWith("fail") && v.r6 !== "missing";
+	const r7Ok = v.r7.startsWith("pass") || v.r7.startsWith("skipped");
+	const r8Ok = v.r8 === "pass";
+	const r9Ok = v.r9 === "pass" || (!v.resumable && v.r9 === "n/a");
+	return v.pass && r6Ok && r7Ok && r8Ok && r9Ok ? 0 : 1;
+}
+
+/** An R-line's first word: `pass (…)` is `pass`. */
+export function firstWord(line: string): string {
+	return /^\S+/.exec(line)?.[0] ?? "missing";
+}
+
+/**
+ * R8 and R9 (#848): the model called a PrismaLens tool on this turn. `calls` counts the
+ * stub gateway's `tools/call`s during the turn, so only a real call through the run's
+ * own server passes.
+ */
+export function toolCallLine(
+	turn: { gateway: boolean; ran: boolean; calls: number; connected: boolean },
+	notRan = "the turn did not run",
+): string {
+	if (!turn.gateway) return "fail (no PrismaLens gateway was offered)";
+	if (!turn.ran) return `fail (${notRan})`;
+	if (turn.calls > 0)
+		return `pass (${turn.calls} PrismaLens tool call${turn.calls === 1 ? "" : "s"})`;
+	return turn.connected
+		? "fail (the agent reached the gateway but the model called no PrismaLens tool)"
+		: "fail (the agent never reached the gateway)";
+}
+
 /**
  * Extract `agentInfo.version` from the ACP `initialize` JSON-RPC response on the wire.
  * Returns the version string, or null if absent / not found.

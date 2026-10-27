@@ -1,0 +1,30 @@
+{
+	"row": "permission-declined",
+	"kind": "happy",
+	"title": "Permission declined",
+	"run": { "accessLevel": "supervised", "answer": "deny" },
+	"expect": "declined",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:permission-declined]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "echo declined > scenario-declined.txt",
+							"$ask": true
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": { "inConversation": "[row:permission-declined]" },
+			"response": { "content": "$report" }
+		}
+	]
+}

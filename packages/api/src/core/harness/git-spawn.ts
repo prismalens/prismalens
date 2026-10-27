@@ -33,7 +33,7 @@ export interface GitOutput {
 	bytes?: Buffer;
 }
 
-/** A git child that exited non-zero, timed out or overflowed. `stderr` is raw: scrub it before showing it. */
+/** A git child that failed. `message` is fixed text; `stderr` is scrubbed and capped, for classification only, never shown (#848). */
 export class GitSpawnError extends Error {
 	constructor(
 		message: string,
@@ -109,12 +109,7 @@ export function spawnGit(
 		const timer = setTimeout(
 			() =>
 				fail(
-					new GitSpawnError(
-						`git ${args[0] ?? ""} timed out after ${Math.round(opts.timeoutMs / 1000)} s`,
-						null,
-						"",
-						true,
-					),
+					new GitSpawnError(`git ${args[0] ?? ""} timed out`, null, "", true),
 				),
 			opts.timeoutMs,
 		);
@@ -140,10 +135,9 @@ export function spawnGit(
 				);
 			reject(
 				new GitSpawnError(
-					scrubGitStderr(stderr.trim()) ||
-						`git ${args[0] ?? ""} exited ${code}`,
+					`git ${args[0] ?? ""} failed (exit ${code})`,
 					code,
-					stderr,
+					scrubGitStderr(stderr),
 					false,
 				),
 			);

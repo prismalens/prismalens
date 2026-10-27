@@ -1,42 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const require = createRequire(import.meta.url);
+type Bundled = Record<string, { version: string; script: string }>;
 
-/**
- * The script of a shipped adapter's bin, or null when this install has none.
- * `scripts/pack-cli.mjs` installs the pins without optional dependencies, so
- * the adapters run the user's own `claude` / `codex`, never a bundled one (#818).
- */
-export function shippedAdapter(pkg: string): string | null {
+const MANIFEST = new URL("./adapters/bundled.json", import.meta.url);
+
+function bundled(pkg: string): { version: string; script: string } | null {
 	try {
-		const manifestPath = require.resolve(`${pkg}/package.json`);
-		const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-			bin?: string | Record<string, string>;
-		};
-		const bin =
-			typeof manifest.bin === "string"
-				? manifest.bin
-				: Object.values(manifest.bin ?? {})[0];
-		return bin ? join(dirname(manifestPath), bin) : null;
+		const all = JSON.parse(readFileSync(MANIFEST, "utf8")) as Bundled;
+		return Object.hasOwn(all, pkg) ? all[pkg] : null;
 	} catch {
 		return null;
 	}
 }
 
+/**
+ * The single-file script of a shipped adapter, or null when this install has none.
+ * `scripts/bundle.mjs` writes it; the adapters run the user's own `claude` / `codex`,
+ * never a bundled one (#818, #906).
+ */
+export function shippedAdapter(pkg: string): string | null {
+	const entry = bundled(pkg);
+	if (!entry) return null;
+	const script = fileURLToPath(new URL(entry.script, MANIFEST));
+	return existsSync(script) ? script : null;
+}
+
 /** The version this install ships of `pkg`, or null. */
 export function shippedVersion(pkg: string): string | null {
-	try {
-		const manifestPath = require.resolve(`${pkg}/package.json`);
-		return (
-			(JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: string })
-				.version ?? null
-		);
-	} catch {
-		return null;
-	}
+	return bundled(pkg)?.version ?? null;
 }

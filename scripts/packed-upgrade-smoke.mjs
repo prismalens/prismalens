@@ -36,6 +36,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { installFakeAgent, releaseRun } from "./fakes/fake-acp-agent.mjs";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const PORT = process.env.PACKED_UPGRADE_PORT ?? "3103";
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -269,7 +270,7 @@ async function seed(pkgRoot) {
 async function main() {
 	const tgz = findTarball();
 	console.log(`[packed-upgrade] tarball: ${tgz}`);
-	execFileSync(
+	installWithRetry(
 		"npm",
 		[
 			"install",

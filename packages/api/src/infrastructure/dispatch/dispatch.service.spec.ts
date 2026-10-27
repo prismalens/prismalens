@@ -299,6 +299,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 			})),
 			getSettings: vi.fn(async () => settings),
 			localDefaultOf: vi.fn(() => ({ permission: null })),
+			runtimeFor: vi.fn(async () => ({ env: {}, note: null })),
 		};
 		const service = new DispatchService(
 			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
@@ -802,6 +803,7 @@ describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 				pick: "pinned-conn-id",
 			},
 			expect.any(Function),
+			undefined,
 		);
 		expect(mockRepoSource.snapshot).toHaveBeenCalledWith(
 			{
@@ -811,6 +813,7 @@ describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 				credential: expect.anything(),
 			},
 			"/target/dest",
+			undefined,
 			undefined,
 			undefined,
 		);

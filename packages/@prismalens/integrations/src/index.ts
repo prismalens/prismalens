@@ -33,6 +33,8 @@ export {
 	TokenVault,
 	urlOnlyRequestFn,
 } from "./engine/index.js";
+// Ports: tool and credential (#848)
+export * from "./port/index.js";
 // Providers — deployment
 export type {
 	DeploymentEvent,
@@ -90,6 +92,7 @@ export {
 	githubToken,
 	isLegacyTemplateId,
 	LEGACY_TEMPLATE_IDS,
+	loki,
 	prometheus,
 	render,
 } from "./templates/index.js";

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller, Logger } from "@nestjs/common";
+import { Controller, Logger, Optional } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { integrationsContract } from "@prismalens/contracts";
+import { integrationsContract, sourcesContract } from "@prismalens/contracts";
 import type {
 	AuthTemplateResponse,
 	Connection as ConnectionResponse,
@@ -26,6 +26,9 @@ import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
+import { redactAddress, shownError, withShownAddress } from "./source-query.js";
+import { SourcesService } from "./sources.service.js";
+import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 
 @Controller()
 export class IntegrationsController {
@@ -35,7 +38,58 @@ export class IntegrationsController {
 		private readonly integrationsService: IntegrationsService,
 		private readonly gitCredentials: GitCredentialService,
 		private readonly moduleRef: ModuleRef,
+		@Optional() private readonly telemetrySnapshot?: TelemetrySnapshotService,
+		@Optional() private readonly sources?: SourcesService,
 	) {}
+
+	private sourcesOrThrow(): SourcesService {
+		if (!this.sources)
+			throw new ORPCError("SERVICE_UNAVAILABLE", {
+				message: "Sources are not available here",
+			});
+		return this.sources;
+	}
+
+	@Implement(sourcesContract.overview)
+	sourcesOverview() {
+		return implement(sourcesContract.overview).handler(() =>
+			this.sourcesOrThrow().overview(),
+		);
+	}
+
+	@Implement(sourcesContract.test)
+	sourcesTest() {
+		return implement(sourcesContract.test).handler(({ input }) =>
+			this.sourcesOrThrow().test(input),
+		);
+	}
+
+	@Implement(sourcesContract.connect)
+	sourcesConnect() {
+		return implement(sourcesContract.connect).handler(async ({ input }) => {
+			const saved = await this.sourcesOrThrow().connect(input);
+			if (saved.connectionId) this.gitCredentials.invalidate();
+			return saved;
+		});
+	}
+
+	@Implement(sourcesContract.gitHosts)
+	sourcesGitHosts() {
+		return implement(sourcesContract.gitHosts).handler(() =>
+			this.gitCredentials.hosts(),
+		);
+	}
+
+	@Implement(sourcesContract.preRun)
+	sourcesPreRun() {
+		return implement(sourcesContract.preRun).handler(({ input }) => {
+			if (!this.telemetrySnapshot)
+				throw new ORPCError("SERVICE_UNAVAILABLE", {
+					message: "The pre-run preview is not available here",
+				});
+			return this.telemetrySnapshot.preview(input.serviceId, input.deployment);
+		});
+	}
 
 	@Implement(integrationsContract)
 	integrations() {
@@ -280,6 +334,20 @@ export class IntegrationsController {
 				);
 			}),
 
+			setServiceIntegrationOrder: implement(
+				integrationsContract.setServiceIntegrationOrder,
+			).handler(async ({ input }) => {
+				const rows = await this.integrationsService.setServiceIntegrationOrder(
+					input.serviceId,
+					input.overrideIds,
+				);
+				if (!rows)
+					throw new ORPCError("BAD_REQUEST", {
+						message: "Every id must be a mapping of this service, listed once",
+					});
+				return rows.map((si) => this.serializeServiceIntegration(si));
+			}),
+
 			createServiceIntegration: implement(
 				integrationsContract.createServiceIntegration,
 			).handler(async ({ input }) => {
@@ -349,6 +417,9 @@ export class IntegrationsController {
 			postCreationAction: template.postIntegrationCreation.action,
 			postCreationNavigateTo: template.postIntegrationCreation.navigateTo,
 			...(template.gitHost ? { gitHost: true } : {}),
+			...(template.credentialKinds
+				? { credentialKinds: [...template.credentialKinds] }
+				: {}),
 			...(template.display.listed === false ? { listed: false } : {}),
 		};
 	}
@@ -397,6 +468,9 @@ export class IntegrationsController {
 		// Settings, Alert sources shows (study-v3 §7). A git host token's errors are
 		// git's scrubbed taxonomy messages (#673); other token errors stay redacted.
 		const urlOnly = template?.urlOnly === true;
+		const base = urlOnly
+			? this.integrationsService.baseUrlOf(connection)
+			: null;
 		const git = template?.gitHost
 			? this.integrationsService.gitHostInfo(connection)
 			: null;
@@ -410,12 +484,18 @@ export class IntegrationsController {
 			...(expired ? { status: "TOKEN_EXPIRED" as const } : {}),
 			...(urlOnly
 				? {
-						baseUrl: this.integrationsService.baseUrlOf(connection),
-						lastErrorMessage: connection.lastErrorMessage ?? null,
+						baseUrl: base === null ? null : redactAddress(base),
+						lastErrorMessage: shownError(connection.lastErrorMessage, {
+							address: base,
+						}),
 					}
 				: {}),
 			...(template?.gitHost
-				? { lastErrorMessage: connection.lastErrorMessage ?? null }
+				? {
+						lastErrorMessage: shownError(connection.lastErrorMessage, {
+							git: { host: git?.host ?? null, label: connection.label ?? "" },
+						}),
+					}
 				: {}),
 			...(git ? { host: git.host, fingerprint: git.fingerprint } : {}),
 			...(legacy ? { legacy: true as const } : {}),
@@ -436,7 +516,9 @@ export class IntegrationsController {
 			serviceId: si.serviceId,
 			connectionId: si.connectionId,
 			priority: si.priority ?? 0,
-			config: si.config ? this.safeParseJson(si.config) : null,
+			config: si.config
+				? withShownAddress(this.safeParseJson(si.config))
+				: null,
 			isEnabled: si.isEnabled,
 			createdAt: si.createdAt.toISOString(),
 			updatedAt: si.updatedAt.toISOString(),

@@ -57,6 +57,7 @@ model Connection {
   lastRefreshedAt     DateTime?
   lastErrorMessage    String?
   lastErrorAt         DateTime?
+  testedAt            DateTime? // the last Test that passed; cleared when the address or credential changes (#848)
   consecutiveErrors   Int      @default(0)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

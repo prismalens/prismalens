@@ -185,6 +185,10 @@ export async function probeHarness(
 		timeoutMs?: number;
 		sandbox?: typeof checkSandbox;
 		authWaitMs?: number;
+		/** The agent's env from Settings (#907); its host provider keys when absent. */
+		env?: Record<string, string>;
+		binaryPath?: string;
+		launchArgs?: string[];
 	} = {},
 ): Promise<HarnessProbeResult> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[harness];
@@ -199,7 +203,9 @@ export async function probeHarness(
 			...(opts.descriptor ? { descriptor: opts.descriptor } : {}),
 			cwd,
 			runDir,
-			env: getHarnessProviderKeys(harness, process.env),
+			env: opts.env ?? getHarnessProviderKeys(harness, process.env),
+			...(opts.binaryPath ? { binaryPath: opts.binaryPath } : {}),
+			...(opts.launchArgs ? { launchArgs: opts.launchArgs } : {}),
 		});
 		const session = new AcpSession({
 			command: launch.command,

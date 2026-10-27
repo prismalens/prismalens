@@ -58,17 +58,21 @@ $ink = C "226;232;240"; $beam = C "148;163;184"
 $sky = C "56;189;248"; $ind = C "99;102;241"; $vio = C "139;92;246"
 $okC = C "52;211;153"; $warnC = C "251;191;36"; $errC = C "248;113;113"
 
+# Glyphs from code points: the file stays ASCII, so Windows PowerShell 5.1 parses it under -File (#906).
+$slash = [string][char]0x2571; $bslash = [string][char]0x2572; $low1 = [string][char]0x2582; $low2 = [string][char]0x2584; $low3 = [string][char]0x2586; $high = [string][char]0x2580
+$heavy = [string][char]0x2501; $thin = [string][char]0x2500; $bullet = [string][char]0x2022; $tick = [string][char]0x2714; $cross = [string][char]0x2718; $middot = [string][char]0x00B7
+
 function Banner([string]$what) {
 	if (-not $fancy) { return }
 	[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 	$lines = @(
 		"",
-		"               ${ink}╱╲${r}",
-		"              ${ink}╱  ╲${r}            ${sky}▂▄▆${r}",
-		"             ${ink}╱    ╲${r}      ${sky}▂▄▆▀▀${r}",
-		"  ${beam}━━━━━━━━━━${ink}╱${r}      ${ink}╲${ind}━━━━━━━━━━━━━${r}",
-		"           ${ink}╱        ╲${r}    ${vio}▀▀▆▄▂${r}",
-		"          ${ink}╱──────────╲${r}        ${vio}▀▆▄▂${r}",
+		"               ${ink}${slash}${bslash}${r}",
+		"              ${ink}${slash}  ${bslash}${r}            ${sky}${low1}${low2}${low3}${r}",
+		"             ${ink}${slash}    ${bslash}${r}      ${sky}${low1}${low2}${low3}$($high * 2)${r}",
+		"  ${beam}$($heavy * 10)${ink}${slash}${r}      ${ink}${bslash}${ind}$($heavy * 13)${r}",
+		"           ${ink}${slash}        ${bslash}${r}    ${vio}$($high * 2)${low3}${low2}${low1}${r}",
+		"          ${ink}${slash}$($thin * 10)${bslash}${r}        ${vio}${high}${low3}${low2}${low1}${r}",
 		"",
 		"   ${bold}${ind}Prisma${ink}Lens${r}  ${dim}$what${r}",
 		"   ${dim}AI root-cause investigation, in your terminal${r}",
@@ -76,11 +80,11 @@ function Banner([string]$what) {
 	)
 	foreach ($l in $lines) { [Console]::Error.WriteLine($l) }
 }
-function Step([string]$m) { [Console]::Error.WriteLine("  ${dim}•${r} $m") }
-function Done([string]$m) { [Console]::Error.WriteLine("  ${okC}✔${r} $m") }
+function Step([string]$m) { [Console]::Error.WriteLine("  ${dim}${bullet}${r} $m") }
+function Done([string]$m) { [Console]::Error.WriteLine("  ${okC}${tick}${r} $m") }
 function Warn([string]$m) { [Console]::Error.WriteLine("  ${warnC}!${r} $m") }
 # throw, not exit: under `irm | iex`, exit would close the user's PowerShell window.
-function Fail([string]$m) { [Console]::Error.WriteLine("  ${errC}✘${r} $m"); throw "PrismaLens installer stopped." }
+function Fail([string]$m) { [Console]::Error.WriteLine("  ${errC}${cross}${r} $m"); throw "PrismaLens installer stopped." }
 
 # --- helpers ----------------------------------------------------------------
 
@@ -275,7 +279,7 @@ try {
 
 	$v = (& (Join-Path $binDir "pl.cmd") --version).Trim()
 	Done "PrismaLens $v installed"
-	[Console]::Error.WriteLine("`n  Start it with ${bold}pl up${r}   ·   Upgrade with ${bold}pl upgrade${r}   ·   Docs: https://docs.prismalens.io`n")
+	[Console]::Error.WriteLine("`n  Start it with ${bold}pl up${r}   ${middot}   Upgrade with ${bold}pl upgrade${r}   ${middot}   Docs: https://docs.prismalens.io`n")
 } finally {
 	Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
 }

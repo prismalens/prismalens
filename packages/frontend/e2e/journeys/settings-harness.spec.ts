@@ -52,8 +52,14 @@ type HarnessFixture = {
 	models: {
 		source: "harness" | "catalogue";
 		asOf: string;
-		entries: { id: string; name: string; status: string | null }[];
+		entries: {
+			id: string;
+			name: string;
+			status: string | null;
+			description?: string;
+		}[];
 	};
+	envVars?: { name: string; state: "unset" | "set" | "env"; inEnv?: boolean }[];
 };
 
 const NO_MODELS: HarnessFixture["models"] = {
@@ -166,9 +172,22 @@ async function serveHarnesses(
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
-			body: JSON.stringify({ harnesses, selection }),
+			body: JSON.stringify({ harnesses: withRunnable(harnesses), selection }),
 		});
 	});
+}
+
+/** The #907 fields a fixture leaves out: it can run when installed and its last check, if any, answered. */
+function withRunnable(harnesses: HarnessFixture[]) {
+	return harnesses.map((h) => ({
+		runnable:
+			h.installed && (!h.checked || h.checked.outcome === "answers-acp"),
+		cliBinary: h.binary,
+		configDir: null,
+		providerKeys: [],
+		envVars: [],
+		...h,
+	}));
 }
 
 async function failHarnesses(page: Page): Promise<void> {
@@ -194,23 +213,45 @@ type SettingsFixture = {
 	efforts?: Record<string, string | null>;
 	accessLevels?: Record<string, string | null>;
 	favourites?: { harness: string; model: string }[];
+	hiddenModels?: Record<string, string[] | null>;
+	modelOrder?: Record<string, string[] | null>;
+	envNames?: Record<string, string[]>;
 };
 
 /** The persisted harness choice `GET /settings/harness` answers with. */
 async function serveHarnessSettings(
 	page: Page,
 	settings: SettingsFixture,
+	patches: Record<string, unknown>[] = [],
 ): Promise<void> {
 	let current = { ...settings };
 	await page.route(isHarnessSettingsUrl, async (route) => {
 		if (route.request().method() === "PATCH") {
-			const body = (route.request().postDataJSON() || {}) as Record<
+			const { env, ...body } = (route.request().postDataJSON() || {}) as Record<
 				string,
 				unknown
 			>;
+			patches.push(env ? { ...body, env } : body);
+			// The server keeps values and answers names only (#907).
+			const names = { ...current.envNames };
+			for (const [id, rows] of Object.entries(
+				(env ?? {}) as Record<string, Record<string, string | null>>,
+			))
+				names[id] = Object.entries(rows)
+					.filter(([, v]) => v !== null)
+					.map(([n]) => n);
 			current = {
 				...current,
 				...body,
+				envNames: names,
+				hiddenModels: {
+					...current.hiddenModels,
+					...(body.hiddenModels as Record<string, string[] | null> | undefined),
+				},
+				modelOrder: {
+					...current.modelOrder,
+					...(body.modelOrder as Record<string, string[] | null> | undefined),
+				},
 				models: {
 					...current.models,
 					...(body.models as Record<string, string | null> | undefined),
@@ -250,7 +291,7 @@ async function openHarnessSettings(
 	},
 ): Promise<void> {
 	await serveHarnessSettings(page, settings);
-	await page.goto("/settings?tab=harness");
+	await page.goto("/settings?tab=agent");
 	await expect(
 		page.getByRole("heading", { name: "Agent", exact: true }),
 	).toBeVisible({ timeout: 15_000 });
@@ -259,7 +300,7 @@ async function openHarnessSettings(
 const card = (page: Page) => page.getByTestId("harness-settings");
 
 test.describe("Investigation agent settings card (#501/#609)", () => {
-	test("lists every registry harness, marking the one not installed", async ({
+	test("only runnable agents are listed; one warning when none can run (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -275,14 +316,250 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		for (const h of [OPENCODE_INSTALLED, CLAUDE_INSTALLED, CODEX_INSTALLED]) {
 			const row = registry.getByTestId(`harness-row-${h.id}`);
 			await expect(row).toContainText(h.label);
-			await expect(row).not.toContainText("not installed");
+			await expect(row.getByTestId(`harness-open-${h.id}`)).toHaveAttribute(
+				"href",
+				`/settings?tab=agent&agent=${h.id}`,
+			);
 		}
-		await expect(registry.getByTestId("harness-row-deepagents")).toContainText(
-			"not installed",
+		await expect(registry.getByTestId("harness-row-deepagents")).toHaveCount(0);
+		await expect(registry.getByText("not installed")).toHaveCount(0);
+		await expect(registry.getByTestId("harness-add-agent")).toBeVisible();
+		await expect(page.getByTestId("harness-none-available")).toHaveCount(0);
+
+		await page.unroute(isHarnessesUrl);
+		await serveHarnesses(page, NOTHING, {
+			runnable: false,
+			harness: null,
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: NO_HARNESS_REASON,
+		});
+		await page.reload();
+		await expect(page.getByTestId("harness-none-available")).toHaveText(
+			"No agent can run. Add one to start investigations.",
 		);
+		await expect(registry.locator('[data-testid^="harness-row-"]')).toHaveCount(
+			0,
+		);
+	});
+
+	test("no Default row: the agent's own default shows as the model it runs (#902 f10, #907)", async ({
+		page,
+	}) => {
+		const claude: HarnessFixture = {
+			...CLAUDE_INSTALLED,
+			modelVia: "acp",
+			models: {
+				source: "harness",
+				asOf: "2026-10-23T00:00:00Z",
+				entries: [
+					{
+						id: "default",
+						name: "Default (recommended)",
+						status: null,
+						description: "Fixture Opus",
+					},
+					{ id: "fixture-sonnet", name: "Fixture Sonnet", status: null },
+					{ id: "fixture-opus", name: "Fixture Opus", status: null },
+				],
+			},
+			checked: {
+				at: "2026-10-23T00:00:00Z",
+				outcome: "answers-acp",
+				detail: "answers ACP",
+				servedModel: "default",
+				effort: null,
+				images: false,
+			},
+		};
+		await serveHarnesses(page, [claude], {
+			runnable: true,
+			harness: "claude-code",
+			pinned: true,
+			pinnedBy: "settings",
+			blockedReason: null,
+		});
+		const patches: Record<string, unknown>[] = [];
+		await serveHarnessSettings(
+			page,
+			{ harness: "claude-code", models: { "claude-code": "default" } },
+			patches,
+		);
+		await page.goto("/settings?tab=agent");
+		// The chip names the model the agent's default entry runs, never "Default".
+		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Opus");
+		await page.getByTestId("agent-picker").click();
+		const list = page.getByTestId("agent-picker-list");
+		await expect(list.getByTestId("model-default")).toHaveCount(0);
+		await expect(list).not.toContainText("Default");
+		await expect(list.getByTestId("model-option")).toHaveCount(2);
 		await expect(
-			registry.getByText("not installed", { exact: true }),
-		).toHaveCount(1);
+			list.locator('[data-testid=model-option][data-model="Fixture Opus"]'),
+		).toHaveAttribute("data-checked", "");
+		// The star is the agent's model in Settings: one per agent.
+		await list
+			.locator('[data-testid=model-option][data-model="Fixture Sonnet"]')
+			.getByTestId("model-star")
+			.click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({ models: { "claude-code": "fixture-sonnet" } });
+	});
+
+	test("hide, star and reorder a model from the agent page", async ({
+		page,
+	}) => {
+		await serveHarnesses(
+			page,
+			[{ ...OPENCODE_INSTALLED, modelVia: "acp" }, CLAUDE_INSTALLED],
+			{
+				runnable: true,
+				harness: "opencode",
+				pinned: false,
+				pinnedBy: null,
+				blockedReason: null,
+			},
+		);
+		const patches: Record<string, unknown>[] = [];
+		await serveHarnessSettings(page, { harness: "opencode" }, patches);
+		await page.goto("/settings?tab=agent&agent=opencode");
+		await expect(page.getByTestId("agent-detail-title")).toHaveText("OpenCode");
+		const models = page.getByTestId("agent-models");
+		await expect(page.getByTestId("agent-models-count")).toHaveText(
+			"2 of 2 shown",
+		);
+
+		await models.getByLabel("Show Fixture Old in the picker").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({
+				hiddenModels: { opencode: ["vendor/fixture-old"] },
+			});
+		await models.getByLabel("Star Fixture Old").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({ models: { opencode: "vendor/fixture-old" } });
+		await expect(models).toContainText(
+			"A run with no model picked uses the starred one, Fixture Old.",
+		);
+		await expect(models).not.toContainText("Default");
+		await models.getByLabel("Move Fixture Old up").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({
+				modelOrder: {
+					opencode: ["vendor/fixture-old", "vendor/fixture-current"],
+				},
+			});
+		await expect(models.getByLabel("Move Fixture Old up")).toBeDisabled();
+
+		// Hidden, the starred model still lists, first: a run with none picked uses it.
+		await page.getByTestId("agent-detail-back").click();
+		await page.getByTestId("agent-picker").click();
+		const list = page.getByTestId("agent-picker-list");
+		await list.getByTestId("rail-opencode").click();
+		await expect(list.getByTestId("model-option")).toHaveCount(2);
+		await expect(list.getByTestId("model-option").first()).toHaveAttribute(
+			"data-model",
+			"Fixture Old",
+		);
+		// Unstarred, the hidden model leaves the picker.
+		await list.getByLabel("Unstar Fixture Old").click();
+		await expect(list.getByTestId("model-option")).toHaveCount(1);
+		await expect(list.getByTestId("model-option")).toHaveAttribute(
+			"data-model",
+			"Fixture Current",
+		);
+	});
+
+	test("binary path refusal shows under the field", async ({ page }) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+		await serveHarnessSettings(page, { harness: "opencode" });
+		await page.route(isHarnessSettingsUrl, async (route) => {
+			if (route.request().method() !== "PATCH") return route.fallback();
+			await route.fulfill({
+				status: 400,
+				contentType: "application/json",
+				body: JSON.stringify({
+					defined: false,
+					code: "BAD_REQUEST",
+					status: 400,
+					message: "No program at /nope/opencode.",
+				}),
+			});
+		});
+		await page.goto("/settings?tab=agent&agent=opencode");
+		const input = page.getByTestId("runtime-binary-input");
+		await input.fill("/nope/opencode");
+		await input.press("Enter");
+		await expect(page.getByTestId("runtime-binary-error")).toHaveText(
+			"No program at /nope/opencode.",
+		);
+	});
+
+	test("env variables read Not set, From environment or Key set; a value is never shown (#907)", async ({
+		page,
+	}) => {
+		const opencode = (state: "unset" | "set"): HarnessFixture => ({
+			...OPENCODE_INSTALLED,
+			envVars: [
+				{ name: "OPENAI_API_KEY", state: "env" },
+				{ name: "OPENROUTER_API_KEY", state },
+			],
+		});
+		const selection = {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		};
+		await serveHarnesses(
+			page,
+			[opencode("unset"), CLAUDE_INSTALLED],
+			selection,
+		);
+		const patches: Record<string, unknown>[] = [];
+		await serveHarnessSettings(page, { harness: "opencode" }, patches);
+		await page.goto("/settings?tab=agent&agent=opencode");
+		await expect(page.getByTestId("env-state-OPENAI_API_KEY")).toHaveText(
+			"From environment",
+		);
+		await expect(page.getByTestId("env-state-OPENROUTER_API_KEY")).toHaveText(
+			"Not set",
+		);
+		await page
+			.getByTestId("env-row-OPENROUTER_API_KEY")
+			.getByTestId("env-set")
+			.click();
+		await expect(page.getByTestId("env-name")).toHaveValue(
+			"OPENROUTER_API_KEY",
+		);
+		await expect(page.getByTestId("env-value")).toHaveAttribute(
+			"type",
+			"password",
+		);
+		// The server answers the new state, never the value.
+		await serveHarnesses(page, [opencode("set"), CLAUDE_INSTALLED], selection);
+		await page.getByTestId("env-value").fill("sk-or-secret");
+		await page.getByTestId("env-add-button").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({
+				env: { opencode: { OPENROUTER_API_KEY: "sk-or-secret" } },
+			});
+		await expect(page.getByTestId("env-state-OPENROUTER_API_KEY")).toHaveText(
+			"Key set",
+		);
+		await expect(page.getByTestId("agent-environment")).not.toContainText(
+			"sk-or-secret",
+		);
 	});
 
 	test("shows the tested version and sign-in per row, and no model list for a harness that has not been checked (#634)", async ({
@@ -297,39 +574,47 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page);
 
+		// A row carries one state word; the version and sign-in line are on the agent's page (#911).
 		const registry = page.getByTestId("harness-registry");
-		await expect(registry.getByTestId("harness-tested-opencode")).toHaveText(
-			"tested with 1.18.30",
+		await expect(registry.getByTestId("harness-tested-opencode")).toHaveCount(
+			0,
 		);
 		await expect(
-			registry.getByTestId("harness-tested-claude-code"),
-		).toHaveCount(0);
+			registry.getByTestId("harness-check-result-opencode"),
+		).toBeVisible();
+		await page.goto("/settings?tab=agent&agent=opencode");
+		await expect(page.getByTestId("harness-tested-opencode")).toHaveText(
+			"tested with 1.18.30",
+		);
 		// The hint renders its backticked spans as code, so match the text without them.
 		await expect(
-			registry.getByText(OPENCODE_INSTALLED.loginHint.replaceAll("`", ""), {
-				exact: false,
-			}),
+			page
+				.getByTestId("agent-detail-capabilities")
+				.locator("code", { hasText: "opencode auth login" }),
 		).toBeVisible();
-		await expect(
-			registry.locator("code", { hasText: "opencode auth login" }),
-		).toBeVisible();
+		await page.goto("/settings?tab=agent&agent=claude-code");
+		await expect(page.getByTestId("agent-detail-title")).toHaveText(
+			"Claude Code",
+		);
+		await expect(page.getByTestId("harness-tested-claude-code")).toHaveCount(0);
+		await page.goto("/settings?tab=agent");
 
-		// OpenCode takes a model: the picker lists Agent default and its models.
-		// The chip never reads a bare "Agent default" (#673 w7).
-		await expect(page.getByTestId("model-pill")).toHaveText("OpenCode default");
+		// OpenCode takes a model: with nothing starred or reported, the chip names
+		// its list's first, never a bare default (#673 w7, #907).
+		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
 		await page.getByTestId("agent-picker").click();
 		const list = page.getByTestId("agent-picker-list");
-		await expect(list.getByTestId("model-default")).toBeVisible();
+		await expect(list.getByTestId("model-default")).toHaveCount(0);
+		await expect(list.getByTestId("model-option")).toHaveCount(2);
 
 		// Codex takes its model by its own settings until a check says otherwise:
-		// Agent default and a line asking for a check, no models.
+		// a line asking for a check, no models.
 		await list.getByTestId("rail-codex").click();
 		await expect(list.getByTestId("model-pending")).toBeVisible();
-		await expect(list.getByTestId("model-default")).toHaveCount(1);
 		await expect(list.getByTestId("model-option")).toHaveCount(0);
 	});
 
-	test("offers only Agent default for a model stored for a harness that cannot take one (#639)", async ({
+	test("a model starred for a harness that cannot take one is its only row, and unstarring clears it (#639, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -338,7 +623,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			pinned: true,
 			pinnedBy: "settings",
 			blockedReason:
-				"Codex picks its own model. Clear vendor/stale in the picker above.",
+				"Codex picks its own model. Unstar vendor/stale in the picker above.",
 		});
 		await openHarnessSettings(page, {
 			harness: "codex",
@@ -348,16 +633,22 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("harness-run-row")).toContainText(
 			"Codex picks its own model",
 		);
-		// A model stored for an agent that cannot take one: Agent default, which
-		// clears it, is the only choice in the model list (#673 replaced Clear).
+		// A model stored for an agent that cannot take one is its only row, starred;
+		// unstarring it clears it.
 		await page.getByTestId("agent-picker").click();
 		const list = page.getByTestId("agent-picker-list");
 		await expect(list.getByRole("option")).toHaveCount(1);
-		await list.getByTestId("model-default").click();
-		await expect(list).toHaveCount(0);
+		await expect(list.getByTestId("model-option")).toContainText(
+			"Codex picks its own model; unstar to clear",
+		);
+		await expect(list.getByTestId("model-default")).toHaveCount(0);
+		await expect(list.getByTestId("model-star")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 	});
 
-	test("works from the keyboard: Enter clears a blocking model with Agent default, picks a starred row, and toggles a star (#781 review)", async ({
+	test("works from the keyboard: Enter on a star clears a blocking model, picks a starred row, and stars a model (#781 review, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -366,23 +657,30 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			pinned: true,
 			pinnedBy: "settings",
 			blockedReason:
-				"Codex picks its own model. Clear vendor/stale in the picker above.",
+				"Codex picks its own model. Unstar vendor/stale in the picker above.",
 		});
 		const patches: Record<string, unknown>[] = [];
 		let current: Record<string, unknown> = {
 			harness: "codex",
-			models: { codex: "vendor/stale" },
 			// deepagents is not installed; its star must not be pickable.
-			favourites: [
-				{ harness: "deepagents", model: "vendor/ghost" },
-				{ harness: "opencode", model: "vendor/fixture-current" },
-			],
+			models: {
+				codex: "vendor/stale",
+				deepagents: "vendor/ghost",
+				opencode: "vendor/fixture-current",
+			},
 		};
 		await page.route(isHarnessSettingsUrl, async (route) => {
 			if (route.request().method() === "PATCH") {
 				const body = route.request().postDataJSON() as Record<string, unknown>;
 				patches.push(body);
-				current = { ...current, ...body };
+				current = {
+					...current,
+					...body,
+					models: {
+						...(current.models as Record<string, string | null>),
+						...(body.models as Record<string, string | null> | undefined),
+					},
+				};
 			}
 			await route.fulfill({
 				status: 200,
@@ -390,21 +688,23 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				body: JSON.stringify(current),
 			});
 		});
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
 		const picker = page.getByTestId("agent-picker");
 		const list = page.getByTestId("agent-picker-list");
 
-		// Agent default, which clears the stored model, is the cursor's first stop.
+		// The blocking model's own row is starred; Enter on its star clears it.
 		await picker.click();
-		await expect(list.getByTestId("model-default")).toBeVisible({
+		await expect(list.getByTestId("model-star")).toBeVisible({
 			timeout: 15_000,
 		});
+		await list.getByTestId("model-star").focus();
 		await page.keyboard.press("Enter");
 		await expect.poll(() => patches.length).toBe(1);
-		expect(patches[0]).toEqual({ harness: "codex", models: { codex: null } });
+		expect(patches[0]).toEqual({ models: { codex: null } });
+		await page.keyboard.press("Escape");
 		await expect(list).toHaveCount(0);
 
 		// Starred lists installed agents only, and Enter picks its row.
@@ -432,16 +732,11 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			.focus();
 		await page.keyboard.press("Enter");
 		await expect.poll(() => patches.length).toBe(3);
-		expect(patches[2]).toEqual({
-			favourites: [
-				{ harness: "deepagents", model: "vendor/ghost" },
-				{ harness: "opencode", model: "vendor/fixture-current" },
-				{ harness: "opencode", model: "vendor/fixture-old" },
-			],
-		});
+		// One star per agent: starring another replaces it.
+		expect(patches[2]).toEqual({ models: { opencode: "vendor/fixture-old" } });
 	});
 
-	test("shows the install hint for a harness that is not installed", async ({
+	test("shows the install hint for a harness that is not installed, under Add agent (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, NOTHING, {
@@ -453,11 +748,15 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page);
 
+		await page.getByTestId("harness-add-agent").first().click();
 		await expect(
-			page
-				.getByTestId("harness-registry")
-				.getByText("pip install deepagents-acp"),
-		).toBeVisible();
+			page.getByTestId("add-agent-tile-deepagents-state"),
+		).toHaveText("Not installed");
+		await page.getByTestId("add-agent-tile-deepagents").click();
+		await page.getByTestId("add-agent-next").click();
+		await expect(page.getByTestId("add-agent-copy")).toContainText(
+			"pip install deepagents-acp",
+		);
 	});
 
 	test("names the agent the gate would start, auto-selected", async ({
@@ -694,13 +993,14 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		await page.getByTestId("harness-check-opencode").click();
 		await expect(page.getByTestId("harness-check-result-opencode")).toHaveText(
-			"answers ACP",
+			"Ready",
 		);
 
 		await page.getByTestId("harness-check-claude-code").click();
 		await expect(
 			page.getByTestId("harness-check-result-claude-code"),
-		).toHaveText(
+		).toHaveText("Sign-in needed");
+		await expect(page.getByTestId("harness-note-claude-code")).toHaveText(
 			"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
 		);
 	});
@@ -739,7 +1039,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		const accessRow = page.getByTestId("harness-access");
 		await expect(accessRow).toBeVisible();
 		await expect(accessRow).toContainText(
-			'Your default: Auto, from ~/.claude/settings.json ("auto").',
+			'Auto, from ~/.claude/settings.json ("auto").',
 		);
 
 		const note = accessRow.getByTestId("harness-agent-note");
@@ -749,7 +1049,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	test("updates Permission via PATCH /settings/harness and clears with Default (#673 w21)", async ({
+	test("updates Permission via PATCH /settings/harness; every option is a level's own name (#673 w21, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -802,11 +1102,15 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			await route.fallback();
 		});
 
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
 
+		// Unset, the select names the level a run takes, never "Default".
+		await expect(page.getByTestId("harness-access-select")).toHaveText(
+			"Ask always",
+		);
 		// Pick Auto-accept edits in Permission select
 		await page.getByTestId("harness-access-select").click();
 		await page
@@ -820,11 +1124,12 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			"Auto-accept edits, set here.",
 		);
 
-		// Reset Permission with Default
 		await page.getByTestId("harness-access-select").click();
-		await page.getByRole("option", { name: "Default", exact: true }).click();
-		await expect.poll(() => patches.length).toBe(2);
-		expect(patches[1]).toEqual({ accessLevels: { "claude-code": null } });
+		await expect(page.getByRole("option")).toHaveCount(4);
+		await expect(
+			page.getByRole("option", { name: "Default", exact: true }),
+		).toHaveCount(0);
+		await page.keyboard.press("Escape");
 	});
 
 	test("Permission row states the alert-run rule under Settings > Agent (#818)", async ({
@@ -863,7 +1168,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				sandbox: null,
 			},
 		};
-		const GEMINI_UNTRUSTED: HarnessFixture = {
+		const GEMINI_AUTO_EDIT: HarnessFixture = {
 			id: "gemini",
 			label: "Gemini CLI",
 			binary: "gemini",
@@ -875,10 +1180,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			loginHint: "`gemini login`",
 			localDefault: {
 				permission: {
-					level: null,
+					level: "auto-edits",
 					file: "~/.gemini/settings.json",
 					value: "auto_edit",
-					reason: "Gemini CLI runs the copy untrusted here",
 				},
 			},
 			models: NO_MODELS,
@@ -894,7 +1198,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 						OPENCODE_INSTALLED,
 						CLAUDE_INSTALLED,
 						CODEX_UNCHECKED,
-						GEMINI_UNTRUSTED,
+						GEMINI_AUTO_EDIT,
 						DEEPAGENTS_MISSING,
 					],
 					selection: {
@@ -916,12 +1220,12 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 
 		// 1. OpenCode
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(
 			page.getByRole("heading", { name: "Agent", exact: true }),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByTestId("harness-access")).toContainText(
-			"Ask always, PrismaLens default. OpenCode has per-tool rules, not one permission level.",
+			"Ask always, PrismaLens's pick. OpenCode has per-tool rules, not one permission level.",
 		);
 		await expect(page.getByTestId("harness-agent-note")).toContainText(
 			"Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.",
@@ -934,21 +1238,21 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			"This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask.",
 		);
 
-		// 3. Gemini with untrusted reason
+		// 3. Gemini: its own auto_edit maps to Auto-accept edits (#907)
 		currentHarness = "gemini";
 		await page.reload();
 		await expect(page.getByTestId("harness-access")).toContainText(
-			'Ask always, PrismaLens default. Gemini CLI runs the copy untrusted here, so "auto_edit" cannot apply.',
+			'Auto-accept edits, from ~/.gemini/settings.json ("auto_edit").',
 		);
 		await expect(page.getByTestId("harness-agent-note")).toContainText(
-			"Gemini CLI runs the copy untrusted, so every level runs as Ask always here.",
+			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
 		);
 
 		// 4. deepagents
 		currentHarness = "deepagents";
 		await page.reload();
 		await expect(page.getByTestId("harness-access")).toContainText(
-			"Ask always, PrismaLens default. deepagents has no modes.",
+			"Ask always, PrismaLens's pick. deepagents has no modes.",
 		);
 	});
 });
@@ -991,7 +1295,7 @@ test.describe("Design evidence (#501/#609)", () => {
 					blockedReason: harnesses === RUNNABLE ? null : NO_HARNESS_REASON,
 				});
 			}
-			await page.goto("/settings?tab=harness");
+			await page.goto("/settings?tab=agent");
 			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 			await expect(card(page)).toBeVisible({ timeout: 15_000 });
 			await page.unroute(isHarnessesUrl);
@@ -1001,5 +1305,61 @@ test.describe("Design evidence (#501/#609)", () => {
 		await renderCard("dark", RUNNABLE);
 		await renderCard("light", NOTHING);
 		await renderCard("light", "error");
+	});
+
+	test("agent page and Add agent dialog, light and dark (#907)", async ({
+		page,
+		baseURL,
+	}, testInfo) => {
+		test.setTimeout(90_000);
+		await serveHarnessSettings(page, {
+			harness: "opencode",
+			envNames: { opencode: ["OPENROUTER_API_KEY"] },
+		});
+		const opencode: HarnessFixture = {
+			...OPENCODE_INSTALLED,
+			envVars: [
+				{ name: "ANTHROPIC_API_KEY", state: "unset" },
+				{ name: "OPENAI_API_KEY", state: "env" },
+				{ name: "OPENROUTER_API_KEY", state: "set", inEnv: true },
+			],
+		};
+		await serveHarnesses(page, [opencode, ...RUNNABLE.slice(1)], {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+		for (const theme of ["light", "dark"] as const) {
+			await page
+				.context()
+				.addCookies([
+					{ name: "prismalens-theme", value: theme, url: baseURL as string },
+				]);
+			await page.goto("/settings?tab=agent&agent=opencode");
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+			await expect(page.getByTestId("agent-detail")).toBeVisible({
+				timeout: 15_000,
+			});
+			// A stored key the host has too says so (#911).
+			await expect(
+				page
+					.getByTestId("env-row-OPENROUTER_API_KEY")
+					.getByTestId("env-overrides"),
+			).toHaveText("Overrides the environment");
+			await page.screenshot({
+				path: testInfo.outputPath(`agent-page-${theme}.png`),
+				fullPage: true,
+				animations: "disabled",
+			});
+			await page.goto("/settings?tab=agent");
+			await page.getByTestId("harness-add-agent").first().click();
+			await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
+			await page.screenshot({
+				path: testInfo.outputPath(`add-agent-${theme}.png`),
+				animations: "disabled",
+			});
+		}
 	});
 });

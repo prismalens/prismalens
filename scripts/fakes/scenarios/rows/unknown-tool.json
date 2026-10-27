@@ -1,0 +1,57 @@
+{
+	"row": "unknown-tool",
+	"kind": "negative",
+	"title": "Unknown tool",
+	"run": {},
+	"expect": "report",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:unknown-tool]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:unknown-tool]",
+				"toolResultContains": "package.json"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "cat README.md"
+						}
+					}
+				]
+			},
+			"misbehavior": {
+				"faults": [
+					{
+						"fault": "tool-unknown-name",
+						"name": "no_such_tool"
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:unknown-tool]"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

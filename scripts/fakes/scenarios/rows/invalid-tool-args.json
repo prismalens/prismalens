@@ -1,0 +1,63 @@
+{
+	"row": "invalid-tool-args",
+	"kind": "negative",
+	"title": "Invalid tool arguments",
+	"run": {},
+	"expect": "report",
+	"agents": {
+		"gemini": {
+			"expect": "fault",
+			"why": "Gemini re-sends the same request on a malformed call, then ends the turn with no text"
+		}
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:invalid-tool-args]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:invalid-tool-args]",
+				"toolResultContains": "package.json"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "cat README.md"
+						}
+					}
+				]
+			},
+			"misbehavior": {
+				"faults": [
+					{
+						"fault": "tool-args-invalid-json",
+						"style": "truncated"
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:invalid-tool-args]"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

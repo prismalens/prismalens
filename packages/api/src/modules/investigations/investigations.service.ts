@@ -21,6 +21,11 @@ import {
 	LIVE_WORKFLOW_STATUSES,
 } from "@prismalens/contracts";
 import {
+	type PreRunDetail,
+	PreRunDetailSchema,
+	PreRunSnapshotSchema,
+} from "@prismalens/contracts/schemas";
+import {
 	type Investigation,
 	Prisma,
 	type Recommendation,
@@ -41,6 +46,36 @@ import {
 } from "./dto/index.js";
 
 export type { Investigation };
+
+/**
+ * The run's stored pre-run context without the files' text or the excerpts: a
+ * snapshot reads as `ready`, a state marker as itself; null on a run from before #848.
+ */
+export function preRunDetailOf(
+	raw: string | null | undefined,
+): PreRunDetail | null {
+	if (!raw) return null;
+	try {
+		const json: unknown = JSON.parse(raw);
+		if (typeof json === "object" && json !== null && "state" in json) {
+			const marker = PreRunDetailSchema.safeParse(json);
+			return marker.success && marker.data.state !== "ready"
+				? marker.data
+				: null;
+		}
+		const parsed = PreRunSnapshotSchema.safeParse(json);
+		if (!parsed.success) return null;
+		const snap = parsed.data;
+		return {
+			state: "ready",
+			...snap,
+			sources: snap.sources.map(({ excerpt: _excerpt, ...s }) => s),
+			files: snap.files.map(({ name, about }) => ({ name, about })),
+		};
+	} catch {
+		return null;
+	}
+}
 
 /**
  * Prisma P2003: a write referenced a row that does not exist. On this path it

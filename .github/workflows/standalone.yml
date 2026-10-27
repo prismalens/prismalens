@@ -8,6 +8,10 @@ on:
       - "scripts/build-standalone.mjs"
       - "scripts/install/**"
       - "scripts/pack-cli.mjs"
+      - "scripts/check-artifact.mjs"
+      - "scripts/artifact-budgets.json"
+      - "scripts/lib/**"
+      - "packages/@prismalens/agent-adapters/scripts/**"
       - ".github/workflows/standalone.yml"
   # release.yml calls this with the draft release's tag to attach the archives (#717).
   workflow_call:
@@ -72,32 +76,33 @@ jobs:
       - name: Build standalone archive
         run: node scripts/build-standalone.mjs --out "$GITHUB_WORKSPACE/dist/standalone"
 
-      - name: Windows archive fits the 260-char path limit
+      # Deepest path under the installer and Scoop prefixes (limit 220), size budget and
+      # licence texts (#906). It replaces #905's inline cap.
+      - name: Gate the archive
+        run: node scripts/check-artifact.mjs dist/standalone/prismalens-*
+
+      - name: install.ps1 parses under Windows PowerShell 5.1 -File
         if: runner.os == 'Windows'
-        shell: pwsh
         run: |
-          $zip = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
-          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
-          $userHome = "C:\Users\$('u' * 20)"
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $z = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
-          $full = $z.Entries.FullName | Sort-Object Length -Descending | Select-Object -First 1
-          $z.Dispose()
-          $stripped = $full -replace '^[^/]+/', ''
-          # The deepest path each Windows install writes (#902): install.ps1 unpacks without the top dir
-          # into runtime\.new and renames it to runtime\<version>; Scoop expands the whole zip into _tmp.
-          $checks = @(
-            @{ prefix = "$userHome\AppData\Local\prismalens\runtime\$version\"; entry = $stripped },
-            @{ prefix = "$userHome\scoop\apps\prismalens\$version\_tmp\"; entry = $full }
-          )
-          $failed = $false
-          foreach ($c in $checks) {
-            $len = $c.prefix.Length + $c.entry.Length
-            "$len = prefix $($c.prefix.Length) ($($c.prefix)) + entry $($c.entry.Length) ($($c.entry))"
-            if ($len -gt 259) { $failed = $true }
-          }
-          "LongPathsEnabled on this runner: $((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem').LongPathsEnabled)"
-          if ($failed) { Write-Error "A path passes 259 chars for a 20-char username; Windows PowerShell 5.1 can't install it on a default box. Shorten the deepest node_modules path."; exit 1 }
+          out=$(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/install.ps1 -Help 2>&1)
+          echo "$out"
+          echo "$out" | grep -q "Install PrismaLens without Node."
+
+      - name: CycloneDX SBOM of the shipped tree (linux-x64)
+        if: matrix.target == 'linux-x64'
+        run: |
+          archive=$(ls dist/standalone/prismalens-*-linux-x64.tar.gz)
+          version=$(basename "$archive" | sed -E 's/^prismalens-(.+)-linux-x64\.tar\.gz$/\1/')
+          dir=$(mktemp -d)
+          tar -xzf "$archive" -C "$dir"
+          sbom="$GITHUB_WORKSPACE/dist/standalone/prismalens-${version}.cdx.json"
+          (cd "$dir/prismalens-${version}-linux-x64/app" && npm sbom --sbom-format cyclonedx --sbom-type application --omit dev > "$sbom")
+          node -e '
+            const bom = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            if (bom.bomFormat !== "CycloneDX") throw new Error(`bomFormat is ${bom.bomFormat}`);
+            if (!bom.components?.some((c) => c.name === "@prismalens/api")) throw new Error("no @prismalens/api component");
+            console.log(`${bom.components.length} components`);
+          ' "$sbom"
 
       - name: Smoke test standalone CLI (Unix)
         if: runner.os != 'Windows'
@@ -203,28 +208,46 @@ jobs:
 
           Remove-Item -Path $smokeDir -Recurse -Force -ErrorAction SilentlyContinue
 
-      - name: Build the published 0.5.0 as an archive, for the upgrade test
+      # Every stable release npm lists from 0.5.0 on, below this build; never a version kept in this file (#920).
+      - name: Build every published release since 0.5.0 as an archive, for the upgrade tests
         run: |
-          mkdir -p "$RUNNER_TEMP/old"
-          npm pack prismalens@0.5.0 --pack-destination "$RUNNER_TEMP/old"
-          node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/prismalens-0.5.0.tgz" --out "$GITHUB_WORKSPACE/dist/old"
+          set -eu
+          version=$(node -p "require('./packages/cli/package.json').version")
+          olds=$(node scripts/install/previous-releases.mjs "$version")
+          [ -n "$olds" ] || { echo "::error::no published release below $version"; exit 1; }
+          for old in $olds; do
+            mkdir -p "$RUNNER_TEMP/old/$old"
+            npm pack "prismalens@$old" --pack-destination "$RUNNER_TEMP/old/$old"
+            node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/$old/prismalens-$old.tgz" --out "$GITHUB_WORKSPACE/dist/old/$old" --allow-missing-licences
+          done
 
-      - name: Installer end to end (Unix)
+      - name: Installer end to end, upgrading from each release (Unix)
         if: runner.os != 'Windows'
         run: |
-          version=$(tar -xzOf packages/cli/dist-pack/*.tgz package/package.json | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8')).version)")
-          sh scripts/install/smoke-installer.sh "$GITHUB_WORKSPACE/dist/standalone" "$version" "$GITHUB_WORKSPACE/dist/old" 0.5.0
+          set -eu
+          version=$(node -p "require('./packages/cli/package.json').version")
+          olds=$(ls "$GITHUB_WORKSPACE/dist/old")
+          [ -n "$olds" ] || { echo "::error::no old release archives were built"; exit 1; }
+          for old in $olds; do
+            echo "::group::upgrade from $old"
+            sh scripts/install/smoke-installer.sh "$GITHUB_WORKSPACE/dist/standalone" "$version" "$GITHUB_WORKSPACE/dist/old/$old" "$old"
+            echo "::endgroup::"
+          done
 
-      - name: Installer end to end (Windows)
+      - name: Installer end to end, upgrading from each release (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $tgz = Get-ChildItem "$env:GITHUB_WORKSPACE\packages\cli\dist-pack\*.tgz" | Select-Object -First 1
-          Push-Location $tgz.DirectoryName
-          $version = (tar -xzOf $tgz.Name package/package.json | ConvertFrom-Json).version
-          Pop-Location
-          & pwsh -NoProfile -File scripts/install/smoke-installer.ps1 -NewDir "$env:GITHUB_WORKSPACE\dist\standalone" -NewVersion $version -OldDir "$env:GITHUB_WORKSPACE\dist\old" -OldVersion 0.5.0
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Get-Content "$env:GITHUB_WORKSPACE\packages\cli\package.json" -Raw | ConvertFrom-Json).version
+          $olds = @((Get-ChildItem "$env:GITHUB_WORKSPACE\dist\old" -Directory -ErrorAction Stop).Name)
+          if ($olds.Count -eq 0) { "::error::no old release archives were built"; exit 1 }
+          foreach ($old in $olds) {
+            "::group::upgrade from $old"
+            & pwsh -NoProfile -File scripts/install/smoke-installer.ps1 -NewDir "$env:GITHUB_WORKSPACE\dist\standalone" -NewVersion $version -OldDir "$env:GITHUB_WORKSPACE\dist\old\$old" -OldVersion $old
+            $rc = $LASTEXITCODE
+            "::endgroup::"
+            if ($rc -ne 0) { exit $rc }
+          }
 
       - name: Installer under Windows PowerShell 5.1, long paths off, 20-char username
         if: runner.os == 'Windows'
@@ -297,12 +320,19 @@ jobs:
           Invoke-RestMethod get.scoop.sh -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
           & "$env:RUNNER_TEMP\install-scoop.ps1" -RunAsAdmin
           $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
-          scoop install "$env:RUNNER_TEMP\manifests\bucket\prismalens.json"
-          if ($LASTEXITCODE -ne 0) { Write-Error "scoop install failed"; exit 1 }
-          Stop-Process -Id $server.Id -Force
-          $out = (pl --version).Trim()
-          if ($out -ne $version) { Write-Error "Expected $version, got $out"; exit 1 }
-          scoop uninstall prismalens
+          # Long paths off, as on a default box (#906).
+          $fs = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+          $was = (Get-ItemProperty $fs).LongPathsEnabled
+          Set-ItemProperty $fs LongPathsEnabled 0
+          try {
+            scoop install "$env:RUNNER_TEMP\manifests\bucket\prismalens.json"
+            if ($LASTEXITCODE -ne 0) { Write-Error "scoop install failed"; exit 1 }
+            Stop-Process -Id $server.Id -Force
+            $out = (pl --version).Trim()
+            if ($out -ne $version) { Write-Error "Expected $version, got $out"; exit 1 }
+            scoop uninstall prismalens
+          }
+          finally { if ($null -ne $was) { Set-ItemProperty $fs LongPathsEnabled $was } }
 
       - name: Upload standalone archive artifact
         uses: actions/upload-artifact@v7
@@ -311,6 +341,7 @@ jobs:
           path: |
             dist/standalone/*.tar.gz
             dist/standalone/*.zip
+            dist/standalone/*.cdx.json
           retention-days: 7
 
   attach:
@@ -320,8 +351,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -334,17 +363,10 @@ jobs:
           path: archives
           merge-multiple: true
 
-      # `gh attestation verify <archive> --repo prismalens/prismalens` proves CI built it.
-      - name: Attest the archives' build provenance
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: archives/prismalens-*
-
-      - name: Generate SHA256SUMS and upload to the draft
+      # release.yml's `sums` job writes SHA256SUMS and one attestation over every asset (#906).
+      - name: Upload to the draft
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release-tag }}
         run: |
-          cd archives
-          sha256sum prismalens-* > SHA256SUMS
-          gh release upload "$TAG" prismalens-* SHA256SUMS "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" archives/prismalens-* "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber

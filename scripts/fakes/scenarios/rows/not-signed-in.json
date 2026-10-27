@@ -1,0 +1,16 @@
+{
+	"row": "not-signed-in",
+	"kind": "happy",
+	"title": "Not signed in",
+	"run": {
+		"signedOut": true
+	},
+	"expect": "error",
+	"agents": {
+		"deepagents": {
+			"expect": "exited",
+			"why": "dcode exits before initialize when it has no provider key"
+		}
+	},
+	"fixtures": []
+}

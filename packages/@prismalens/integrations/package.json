@@ -30,6 +30,8 @@
 	},
 	"dependencies": {
 		"@prismalens/config": "workspace:*",
+		"@prismalens/contracts": "workspace:*",
+		"oauth4webapi": "^3",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

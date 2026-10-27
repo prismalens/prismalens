@@ -1,0 +1,47 @@
+{
+	"row": "http-429",
+	"kind": "negative",
+	"title": "429 with Retry-After",
+	"run": {},
+	"expect": "report",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:http-429]",
+				"sequenceIndex": 0
+			},
+			"response": {
+				"error": {
+					"message": "scripted rate limit",
+					"type": "rate_limit_error"
+				},
+				"status": 429,
+				"retryAfter": 1
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:http-429]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:http-429]"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

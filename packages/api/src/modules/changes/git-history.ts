@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { repoPath, urlHost } from "../../core/harness/git-credential.js";
+import {
+	repoPath,
+	UNSHOWN_REPO,
+	urlHost,
+} from "../../core/harness/git-credential.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_LS_REMOTE_TIMEOUT_MS,
@@ -131,7 +135,7 @@ export function commitUrl(remote: string, sha: string): string | null {
 	const host = urlHost(remote);
 	if (!host || host.includes(":")) return null;
 	const path = repoPath(remote);
-	if (!path || path === remote) return null;
+	if (!path || path === UNSHOWN_REPO) return null;
 	const segment = host === "bitbucket.org" ? "commits" : "commit";
 	return `https://${host}/${path}/${segment}/${sha}`;
 }

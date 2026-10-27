@@ -10,12 +10,16 @@ on:
     paths:
       - "packages/desktop/**"
       - "scripts/pack-cli.mjs"
+      - "scripts/lib/**"
+      - "scripts/artifact-budgets.json"
       - ".github/workflows/desktop.yml"
   push:
     branches: [main]
     paths:
       - "packages/desktop/**"
       - "scripts/pack-cli.mjs"
+      - "scripts/lib/**"
+      - "scripts/artifact-budgets.json"
       - ".github/workflows/desktop.yml"
   workflow_call:
     inputs:
@@ -66,9 +70,12 @@ jobs:
       - name: Build the unpacked app
         run: pnpm --filter @prismalens/desktop dist
 
-      # Extract All must survive it: a file budget everywhere, MAX_PATH under a 100-char folder on Windows (#673 w53).
-      - name: Check the app's file count and path lengths
-        run: node packages/desktop/scripts/check-release-paths.mjs ${{ runner.os == 'Windows' && '--paths' || '' }}
+      # Extract All must survive it: a file budget everywhere, MAX_PATH under a 100-char folder on Windows (#673 w53);
+      # the size and file budgets are scripts/artifact-budgets.json's (#906).
+      - name: Check the app's size, file count and path lengths
+        run: |
+          read -r mb files < <(node -p "const b = require('./scripts/artifact-budgets.json')['desktop-' + process.env.RUNNER_OS]; b.mb + ' ' + b.files")
+          node packages/desktop/scripts/check-release-paths.mjs --max-mb "$mb" --max-files "$files" ${{ runner.os == 'Windows' && '--paths' || '' }}
 
       - name: Launch it and assert the window rendered (xvfb on Linux)
         run: |

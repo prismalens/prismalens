@@ -36,7 +36,7 @@ export function useRunAgentModel(
 		const id = fidelity.servedModel ?? fidelity.model;
 		return {
 			agent: harness?.label ?? fidelity.harness,
-			model: modelName(harness, id) ?? "agent default",
+			model: modelName(harness, id) ?? "its own model",
 			id: fidelity.harness,
 		};
 	}
@@ -44,11 +44,7 @@ export function useRunAgentModel(
 		const harness = harnesses.find((h) => h.id === investigation.harness);
 		return {
 			agent: harness?.label ?? investigation.harness,
-			model:
-				modelName(harness, investigation.model) ??
-				(harness?.modelVia === "unsupported"
-					? "its own model"
-					: "agent default"),
+			model: modelName(harness, investigation.model) ?? "its own model",
 			id: investigation.harness,
 		};
 	}

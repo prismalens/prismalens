@@ -1,0 +1,8 @@
+{
+	"row": "modes",
+	"kind": "happy",
+	"title": "Modes and config options",
+	"run": { "sessionOnly": true },
+	"expect": "modes",
+	"fixtures": []
+}

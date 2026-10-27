@@ -10,6 +10,8 @@ import { useInvestigationRun } from "./useInvestigationRun";
 const h = vi.hoisted(() => ({
 	status: "running",
 	history: undefined as unknown[] | undefined,
+	isLoading: false,
+	isError: false,
 	catchUp: vi.fn(async () => {}),
 }));
 
@@ -34,6 +36,8 @@ vi.mock("@/lib/api/orpc-client", () => ({
 vi.mock("@/lib/api/hooks/use-investigation-events", () => ({
 	useInvestigationEventsHistory: () => ({
 		data: h.history,
+		isLoading: h.isLoading,
+		isError: h.isError,
 		catchUp: h.catchUp,
 	}),
 }));
@@ -116,5 +120,26 @@ describe("useInvestigationRun: a run that ends with its stream down", () => {
 		expect(h.catchUp).toHaveBeenCalledTimes(2);
 		await act(async () => root.unmount());
 		vi.useRealTimers();
+	});
+
+	it("exposes eventsLoading and eventsError from history (#848)", async () => {
+		let captured: ReturnType<typeof useInvestigationRun> | undefined;
+		function Capture() {
+			captured = useInvestigationRun("inv");
+			return null;
+		}
+		const root = createRoot(document.createElement("div"));
+		h.isLoading = true;
+		h.isError = false;
+		await act(async () => root.render(<Capture />));
+		expect(captured?.eventsLoading).toBe(true);
+		expect(captured?.eventsError).toBe(false);
+
+		h.isLoading = false;
+		h.isError = true;
+		await act(async () => root.render(<Capture />));
+		expect(captured?.eventsLoading).toBe(false);
+		expect(captured?.eventsError).toBe(true);
+		await act(async () => root.unmount());
 	});
 });

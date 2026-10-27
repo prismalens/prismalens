@@ -14,6 +14,7 @@ import {
 	Logger,
 	OnApplicationShutdown,
 	OnModuleInit,
+	Optional,
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
 import {
@@ -53,12 +54,14 @@ import {
 	triggerFor,
 } from "../../core/telemetry/telemetry.service.js";
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
+import { GatewayService } from "../../modules/gateway/gateway.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
 import {
 	GitCredentialService,
 	pickOf,
 } from "../../modules/integrations/git-credential.service.js";
+import { TelemetrySnapshotService } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import {
@@ -133,9 +136,13 @@ function startedByAlert(triggerType: string | null): boolean {
 export function resolveHarnessRunModel(
 	harnessId: HarnessId,
 	operatorModel: string | undefined,
+	agentEnv: Record<string, string> = {},
 ): { model?: string; modelSource?: ModelSource } {
 	if (HARNESS_REGISTRY[harnessId].modelVia === "unsupported") return {};
-	const resolved = resolveHarnessModel(harnessId, operatorModel, process.env);
+	const resolved = resolveHarnessModel(harnessId, operatorModel, {
+		...process.env,
+		...agentEnv,
+	});
 	return {
 		...(resolved.model ? { model: resolved.model } : {}),
 		modelSource: resolved.source,
@@ -174,6 +181,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly contextPackService: ContextPackService,
 		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
+		@Optional() private readonly gateway?: GatewayService,
+		@Optional() telemetrySnapshot?: TelemetrySnapshotService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -324,6 +333,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				await this.timelineService.create(dto);
 			},
 			resolveHarness: (requested) => this.resolveHarness(requested),
+			agentRuntime: (id) => this.harnessService.runtimeFor(id),
 			incidentRepos: async (incidentId) => {
 				const service = {
 					select: {
@@ -381,7 +391,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					})),
 				);
 			},
-			snapshotWith: async (ref, dest, signal, at) => {
+			snapshotWith: async (ref, dest, signal, at, runId) => {
+				signal?.throwIfAborted();
 				const row =
 					ref.sourceKind === "url"
 						? await this.prisma.repository.findFirst({
@@ -408,7 +419,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 								dest,
 								signal,
 								at,
+								runId,
 							),
+						signal,
 					);
 				const { problem: _problem, ...run } = credential;
 				return { snap, credential: run };
@@ -420,6 +433,31 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			resolveConnectors: (serviceId) =>
 				this.connectorResolver.resolve({ serviceId }),
 			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
+			...(this.gateway ? { gateway: this.gateway } : {}),
+			...(telemetrySnapshot
+				? {
+						preRun: {
+							telemetry: (incidentId, window, signal) =>
+								telemetrySnapshot.fetch(incidentId, window, signal),
+							runbooks: (runId, signal) =>
+								this.gateway?.runbookIndex(runId, signal) ??
+								Promise.resolve({ entries: [] }),
+							save: async (runId, snapshot) => {
+								await this.prisma.investigation.update({
+									where: { id: runId },
+									data: { preRun: snapshot },
+								});
+							},
+							load: async (runId) =>
+								(
+									await this.prisma.investigation.findUnique({
+										where: { id: runId },
+										select: { preRun: true },
+									})
+								)?.preRun ?? null,
+						},
+					}
+				: {}),
 		};
 
 		this.dispatcher = new Dispatcher(
@@ -459,10 +497,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const pick = (asked: string | null | undefined, stored?: string) =>
 			asked === undefined ? stored : (asked ?? undefined);
 		const effort = pick(requested.effort, settings.efforts?.[h]);
-		const local = this.harnessService.localDefaultOf(h);
+		const runtime = await this.harnessService.runtimeFor(h);
+		const local = this.harnessService.localDefaultOf(h, runtime.env);
 		const model = resolveHarnessRunModel(
 			h,
 			pick(requested.model, settings.models?.[h]),
+			runtime.env,
 		);
 		return {
 			selection,
@@ -533,7 +573,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			),
 		);
 		try {
-			const swept = sweepRunWorkspaces();
+			const swept = await sweepRunWorkspaces();
 			if (swept > 0)
 				this.logger.warn(`Removed the leftover workspaces of ${swept} run(s)`);
 		} catch (e) {

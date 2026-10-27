@@ -12,6 +12,15 @@ describe("httpUrlOrNull", () => {
 		expect(httpUrlOrNull("http://localhost:9090")).toBe("http://localhost:9090/");
 	});
 
+	it("drops userinfo, keeping the rest of the link (#848)", () => {
+		expect(
+			httpUrlOrNull("https://user:sentinel@prom.internal:9090/graph?g0.expr=up"),
+		).toBe("https://prom.internal:9090/graph?g0.expr=up");
+		expect(httpUrlOrNull("http://token@localhost:9090/")).toBe(
+			"http://localhost:9090/",
+		);
+	});
+
 	it("drops every other scheme and non-URLs", () => {
 		expect(httpUrlOrNull("javascript:alert(1)")).toBeNull();
 		expect(httpUrlOrNull("data:text/html,<b>x</b>")).toBeNull();
