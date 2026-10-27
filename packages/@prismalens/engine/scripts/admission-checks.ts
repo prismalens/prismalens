@@ -155,6 +155,58 @@ export function admissionExit(v: AdmissionVerdictWords): 0 | 1 {
 	return v.pass && r5Ok && r6Ok && r7Ok && r8Ok && r9Ok && r10Ok ? 0 : 1;
 }
 
+interface WireUpdate {
+	method?: string;
+	params?: {
+		update?: {
+			sessionUpdate?: string;
+			messageId?: string;
+			content?: { text?: string };
+		};
+	};
+}
+
+/**
+ * R5 (#942): history text the agent re-sent on reopening that came back in the
+ * reply; null when none did. History is what it said before the follow-up's first
+ * `session/prompt`, and any later chunk under one of those message ids. Only what
+ * the agent re-sent counts, never a scripted model repeating itself.
+ */
+export function replayedText(
+	followUp: WireLine[],
+	reply: string,
+): string | null {
+	const history = new Map<string, string>();
+	const ids = new Set<string>();
+	let prompted = false;
+	let run = 0;
+	for (const line of followUp) {
+		let msg: WireUpdate;
+		try {
+			msg = JSON.parse(line.m) as WireUpdate;
+		} catch {
+			continue;
+		}
+		if (line.d === "out" && msg.method === "session/prompt") prompted = true;
+		const u = msg.params?.update;
+		if (line.d !== "in" || msg.method !== "session/update" || !u) continue;
+		if (
+			u.sessionUpdate !== "agent_message_chunk" &&
+			u.sessionUpdate !== "agent_thought_chunk"
+		) {
+			run++;
+			continue;
+		}
+		if (prompted && !(u.messageId && ids.has(u.messageId))) continue;
+		if (u.messageId) ids.add(u.messageId);
+		const key = u.messageId ?? `run-${run}`;
+		history.set(key, (history.get(key) ?? "") + (u.content?.text ?? ""));
+	}
+	for (const text of history.values())
+		if (text.trim() && reply.includes(text.trim())) return text.trim();
+	return null;
+}
+
 /** An R-line's first word: `pass (…)` is `pass`. */
 export function firstWord(line: string): string {
 	return /^\S+/.exec(line)?.[0] ?? "missing";

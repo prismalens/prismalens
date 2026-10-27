@@ -56,6 +56,7 @@ import {
 	proveCwd,
 	readsAllowed,
 	redactNonce,
+	replayedText,
 	toolCallLine,
 } from "./admission-checks.js";
 import { startReportBreakingProxy } from "./report-breaking-proxy.js";
@@ -262,8 +263,6 @@ const turns = {
 	followUp: { ran: false, calls: 0 },
 };
 
-/** A first-run message at least this long showing up in the follow-up is replay, not a coincidence. */
-const REPLAY_TEXT_MIN = 40;
 const started = Date.now();
 const events: CanonicalEvent[] = [];
 let session: { sessionId: string; loadSession: boolean } | null = null;
@@ -412,11 +411,9 @@ const r5 = await (async (): Promise<string> => {
 					: [],
 		),
 	);
-	const said = events.flatMap((e) =>
-		e.kind === "agent_step" && e.text.trim().length >= REPLAY_TEXT_MIN
-			? [e.text.trim()]
-			: [],
-	);
+	const wireBefore = existsSync(transcriptFile)
+		? parseTranscript(readFileSync(transcriptFile, "utf8")).length
+		: 0;
 	const followUp: CanonicalEvent[] = [];
 	const before = stub?.count() ?? 0;
 	turns.followUp.ran = true;
@@ -482,8 +479,12 @@ const r5 = await (async (): Promise<string> => {
 	const reply = followUp
 		.map((e) => (e.kind === "agent_step" ? e.text : ""))
 		.join("");
-	if (said.some((t) => reply.includes(t)))
-		return `fail (replayed text came back as new; ${path})`;
+	const replayed = replayedText(
+		parseTranscript(readFileSync(transcriptFile, "utf8")).slice(wireBefore),
+		reply,
+	);
+	if (replayed)
+		return `fail (replayed text came back as new: ${JSON.stringify(replayed.slice(0, 80))}; ${path})`;
 	return reply.includes(context.alerts[0]?.alertname ?? "")
 		? `pass (the reply named the alert; ${path})`
 		: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))}; ${path})`;
