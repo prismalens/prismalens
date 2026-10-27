@@ -19,18 +19,22 @@ import {
 	wslNothingRunning,
 	wslPairOperator,
 	wslProbe,
+	wslFailureReason,
 	wslShell,
+	wslUnusable,
+	withCheck,
 } from "./wsl.js";
 
 const LOCK = '{"pid":42,"port":6480,"host":"127.0.0.1","startedAt":"2026-10-01T00:00:00Z"}';
 
 describe("WSL settings", () => {
 	it("is off by default and for junk", () => {
-		expect(parseWslSettings(null)).toEqual({ enabled: false, distro: null });
-		expect(parseWslSettings("{not json")).toEqual({ enabled: false, distro: null });
+		expect(parseWslSettings(null)).toEqual({ enabled: false, distro: null, unusable: {} });
+		expect(parseWslSettings("{not json")).toEqual({ enabled: false, distro: null, unusable: {} });
 		expect(parseWslSettings('{"enabled":"yes","distro":""}')).toEqual({
 			enabled: false,
 			distro: null,
+			unusable: {},
 		});
 	});
 
@@ -38,15 +42,34 @@ describe("WSL settings", () => {
 		expect(parseWslSettings('{"enabled":true,"distro":"Ubuntu"}')).toEqual({
 			enabled: true,
 			distro: "Ubuntu",
+			unusable: {},
 		});
 	});
 
+	it("keeps the reasons distros failed their check, dropping junk (#908)", () => {
+		expect(
+			parseWslSettings('{"enabled":false,"distro":null,"unusable":{"rd":"no bash","x":7}}').unusable,
+		).toEqual({ rd: "no bash" });
+		expect(parseWslSettings('{"enabled":true,"unusable":"junk"}').unusable).toEqual({});
+	});
+
+	it("records a failed check and clears it once the distro passes (#908)", () => {
+		const off = { enabled: false, distro: null, unusable: {} };
+		const failed = withCheck(off, "rd", "no bash");
+		expect(failed.unusable).toEqual({ rd: "no bash" });
+		expect(withCheck(failed, "rd", null).unusable).toEqual({});
+		// The default distro, when wsl.exe didn't name it, still keeps its reason.
+		const unnamed = withCheck(off, null, "no bash");
+		expect(wslMenuItems(unnamed, []).distros[0].label).toBe("Default distro (no bash)");
+		expect(withCheck(unnamed, null, null).unusable).toEqual({});
+	});
+
 	it("only applies on Windows", () => {
-		const on = { enabled: true, distro: "Ubuntu" };
+		const on = { enabled: true, distro: "Ubuntu", unusable: {} };
 		expect(wslActive("win32", on)).toBe(true);
 		expect(wslActive("linux", on)).toBe(false);
 		expect(wslActive("darwin", on)).toBe(false);
-		expect(wslActive("win32", { enabled: false, distro: null })).toBe(false);
+		expect(wslActive("win32", { enabled: false, distro: null, unusable: {} })).toBe(false);
 	});
 });
 
@@ -112,11 +135,11 @@ describe("parseProbe and planWslLaunch", () => {
 			buttons: ["Retry", "Run on Windows instead", "Quit"],
 		});
 		expect(wslNothingRunning(null).message).toBe("Nothing is running in the default WSL distro");
-		const on = { enabled: true, distro: "Ubuntu" };
+		const on = { enabled: true, distro: "Ubuntu", unusable: {} };
 		expect(nothingRunningChoice(on, 0)).toEqual({ kind: "retry" });
 		expect(nothingRunningChoice(on, 1)).toEqual({
 			kind: "relaunch",
-			settings: { enabled: false, distro: "Ubuntu" },
+			settings: { enabled: false, distro: "Ubuntu", unusable: {} },
 		});
 		expect(nothingRunningChoice(on, 2)).toEqual({ kind: "quit" });
 	});
@@ -132,10 +155,10 @@ describe("parseProbe and planWslLaunch", () => {
 			"PrismaLens is not installed in the default WSL distro (Debian)",
 		);
 		expect(wslMissingPl(null).message).toBe("PrismaLens is not installed in the default WSL distro");
-		const on = { enabled: true, distro: null };
+		const on = { enabled: true, distro: null, unusable: {} };
 		expect(missingPlChoice(on, 0)).toEqual({
 			kind: "relaunch",
-			settings: { enabled: false, distro: null },
+			settings: { enabled: false, distro: null, unusable: {} },
 		});
 		expect(missingPlChoice(on, 1)).toEqual({ kind: "retry" });
 		expect(missingPlChoice(on, 2)).toEqual({ kind: "quit" });
@@ -169,16 +192,69 @@ describe("parseProbe and planWslLaunch", () => {
 	});
 });
 
+describe("a distro the probe can't run in (#908)", () => {
+	it("names why from wsl.exe's output", () => {
+		// What a container engine's distro prints for `-- bash -l -s` (no bash).
+		expect(wslFailureReason("Error: Command failed: wsl.exe -d rd -- bash -l -s\n/bin/sh: bash: not found")).toBe(
+			"no bash",
+		);
+		expect(wslFailureReason("<3>WSL (12) ERROR: CreateProcessCommon:559: execvpe(bash) failed: No such file or directory")).toBe(
+			"no bash",
+		);
+		// wsl.exe's own messages are UTF-16; a NUL between every character.
+		const utf16 = "There is no distribution with the supplied name.\r\nError code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND"
+			.split("")
+			.join("\0");
+		expect(wslFailureReason(utf16)).toBe("not installed");
+		expect(wslFailureReason("Error: spawn wsl.exe ENOENT")).toBe("WSL is not installed");
+		expect(wslFailureReason("Error: Command failed: timed out")).toBe("WSL could not start it");
+	});
+
+	it("offers the way back to Windows at boot, and only OK from the tray", () => {
+		const atBoot = wslUnusable({ distro: null, defaultName: "rd", reason: "no bash", atBoot: true });
+		expect(atBoot.message).toBe("PrismaLens can't run in the default WSL distro (rd): no bash");
+		expect(atBoot.buttons).toEqual(["Run on Windows instead", "Retry", "Quit"]);
+		const on = { enabled: true, distro: null, unusable: { rd: "no bash" } };
+		expect(missingPlChoice(on, 0)).toEqual({
+			kind: "relaunch",
+			settings: { enabled: false, distro: null, unusable: { rd: "no bash" } },
+		});
+		const fromTray = wslUnusable({ distro: "rd", defaultName: null, reason: "not installed", atBoot: false });
+		expect(fromTray.message).toBe("PrismaLens can't run in the rd WSL distro: not installed");
+		expect(fromTray.detail).toContain("was not saved");
+		expect(fromTray.buttons).toEqual(["OK"]);
+	});
+});
+
 describe("wslMenuItems", () => {
+	it("shows why a distro failed its check beside its name (#908)", () => {
+		const settings = { enabled: false, distro: null, unusable: { rd: "no bash" } };
+		expect(wslMenuItems(settings, ["rd", "Ubuntu"], "rd").distros.map((d) => d.label)).toEqual([
+			"Default distro (rd) (no bash)",
+			"rd (no bash)",
+			"Ubuntu",
+		]);
+	});
+
+	it("keeps a saved distro that WSL no longer lists, with its reason (#908)", () => {
+		const settings = { enabled: true, distro: "gone", unusable: { gone: "not installed" } };
+		expect(wslMenuItems(settings, ["Ubuntu"]).distros.map((d) => [d.label, d.checked])).toEqual([
+			["Default distro", false],
+			["Ubuntu", false],
+			["gone (not installed)", true],
+		]);
+		expect(wslMenuItems({ ...settings, distro: "Ubuntu" }, ["Ubuntu"]).distros).toHaveLength(2);
+	});
+
 	it("checks the stored distro and names WSL's default", () => {
-		const items = wslMenuItems({ enabled: true, distro: "Debian" }, ["Ubuntu", "Debian"], "Ubuntu");
+		const items = wslMenuItems({ enabled: true, distro: "Debian", unusable: {} }, ["Ubuntu", "Debian"], "Ubuntu");
 		expect(items.toggle).toMatchObject({ label: "Use PrismaLens in WSL", checked: true });
 		expect(items.distros.map((d) => [d.label, d.checked])).toEqual([
 			["Default distro (Ubuntu)", false],
 			["Ubuntu", false],
 			["Debian", true],
 		]);
-		expect(wslMenuItems({ enabled: false, distro: null }, []).distros[0].label).toBe(
+		expect(wslMenuItems({ enabled: false, distro: null, unusable: {} }, []).distros[0].label).toBe(
 			"Default distro",
 		);
 	});

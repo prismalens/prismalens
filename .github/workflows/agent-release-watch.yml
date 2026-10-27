@@ -77,8 +77,8 @@ jobs:
           @openai/codex) node scripts/agent-probe.mjs --agent codex --version "$(adapter @agentclientprotocol/codex-acp)" --companion "$PIN_VERSION" ;;
           *) echo "no probe for $PIN_PACKAGE"; exit 1 ;;
         esac
-      # An adapter pin needs its lockfile entry, and every pin its row's `tested`, or CI stays red.
-      sync: npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs
+      # An adapter pin needs its SDK and lockfile entry, and every pin its row's `tested`, or CI stays red.
+      sync: node scripts/agent-adapter-sdk.mjs && npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs
     secrets:
       # A PR opened with GITHUB_TOKEN starts no checks, and the bump PR exists to run them.
       token: ${{ secrets.RELEASE_PAT }}

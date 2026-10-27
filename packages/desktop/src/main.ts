@@ -65,7 +65,6 @@ import {
 	notificationText,
 	reveal,
 	runningCount,
-	runningLabel,
 	runPath,
 	snapshot,
 } from "./notifications.js";
@@ -93,6 +92,7 @@ import {
 	stopDialog,
 	type Target,
 } from "./supervisor.js";
+import { trayStatus } from "./tray.js";
 import {
 	availableUpdate,
 	backendVersion,
@@ -110,14 +110,18 @@ import {
 	parseWslSettings,
 	planWslLaunch,
 	portTakenByWslDialog,
+	UNNAMED_DEFAULT,
 	type WslRun,
 	type WslSettings,
+	withCheck,
 	wslActive,
+	wslFailureReason,
 	wslMenuItems,
 	wslMissingPl,
 	wslNothingRunning,
 	wslPairOperator,
 	wslProbe,
+	wslUnusable,
 } from "./wsl.js";
 
 const READY_TIMEOUT_MS = 60_000;
@@ -166,15 +170,37 @@ function readWslSettings(): WslSettings {
 	}
 }
 
-/** A switch takes effect on relaunch: one backend per app, never two at once. */
-function saveWslSettings(next: WslSettings): void {
+function storeWslSettings(next: WslSettings): void {
 	mkdirSync(app.getPath("userData"), { recursive: true });
 	writeFileSync(wslSettingsPath(), JSON.stringify(next));
+	wsl = next;
+}
+
+/** A switch takes effect on relaunch: one backend per app, never two at once. */
+function saveWslSettings(next: WslSettings): void {
+	storeWslSettings(next);
 	app.relaunch();
 	app.quit();
 }
 
-let wsl: WslSettings = { enabled: false, distro: null };
+/** Run the probe's shell in `distro`: null when it starts, else why not (#908). */
+async function checkDistro(distro: string | null): Promise<string | null> {
+	try {
+		await runWsl(wslProbe(distro));
+		return null;
+	} catch (error) {
+		return wslFailureReason(failureOutput(error));
+	}
+}
+
+function failureOutput(error: unknown): string {
+	return error instanceof WslRunFailed
+		? `${error.message}
+${error.stdout}`
+		: String(error);
+}
+
+let wsl: WslSettings = { enabled: false, distro: null, unusable: {} };
 /** Set once at boot: the window attaches to a `pl` inside WSL, not to this app's packed copy. */
 let inWsl = false;
 let distros: string[] = [];
@@ -306,7 +332,35 @@ function adopt(backend: ChildProcess): void {
  * running there is a dialog, never a spawn: the app starts nothing in WSL.
  */
 async function bootWsl(): Promise<void> {
-	const probe = parseProbe(await runWsl(wslProbe(wsl.distro)));
+	let output: string;
+	try {
+		output = await runWsl(wslProbe(wsl.distro));
+	} catch (error) {
+		const defaultName = wsl.distro ? null : (await listDistros()).defaultName;
+		const reason = wslFailureReason(failureOutput(error));
+		storeWslSettings(withCheck(wsl, wsl.distro ?? defaultName, reason));
+		const d = wslUnusable({
+			distro: wsl.distro,
+			defaultName,
+			reason,
+			atBoot: true,
+		});
+		const { response } = await dialog.showMessageBox({
+			title: TITLE,
+			type: "error",
+			message: d.message,
+			detail: d.detail,
+			buttons: d.buttons,
+			defaultId: 0,
+			cancelId: d.buttons.length - 1,
+		});
+		return leaveOrRetry(missingPlChoice(wsl, response));
+	}
+	if (Object.keys(wsl.unusable).length > 0) {
+		const name = wsl.distro ?? (await listDistros()).defaultName;
+		storeWslSettings(withCheck(wsl, name, null));
+	}
+	const probe = parseProbe(output);
 	if (!probe.hasPl) {
 		const defaultName = wsl.distro ? null : (await listDistros()).defaultName;
 		const d = wslMissingPl(wsl.distro, defaultName);
@@ -346,6 +400,16 @@ async function leaveOrRetry(choice: NothingRunningChoice): Promise<void> {
 	throw new Leaving();
 }
 
+/** wsl.exe prints its own errors to stdout; kept apart so a dialog never shows a script's output. */
+class WslRunFailed extends Error {
+	constructor(
+		message: string,
+		readonly stdout: string,
+	) {
+		super(message);
+	}
+}
+
 /** Run a short script in the distro and return its stdout. */
 function runWsl(plan: WslRun): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -355,7 +419,9 @@ function runWsl(plan: WslRun): Promise<string> {
 			{ env: plan.env, windowsHide: true, timeout: 60_000 },
 			(error, stdout, stderr) =>
 				error
-					? reject(new Error(`${error.message}\n${stderr}`.trim()))
+					? reject(
+							new WslRunFailed(`${error.message}\n${stderr}`.trim(), stdout),
+						)
 					: resolve(stdout),
 		);
 		proc.stdin?.on("error", () => {});
@@ -526,6 +592,7 @@ async function showStop(input: {
 	if (stopShown) return;
 	stopShown = true;
 	ready = false;
+	refreshTray();
 	const d = stopDialog(input);
 	const { response } = await dialog.showMessageBox({
 		title: TITLE,
@@ -757,7 +824,10 @@ function wslTrayItems(): MenuItemConstructorOptions[] {
 			label: items.toggle.label,
 			type: "checkbox",
 			checked: items.toggle.checked,
-			click: () => saveWslSettings({ ...wsl, enabled: !wsl.enabled }),
+			click: () =>
+				wsl.enabled
+					? saveWslSettings({ ...wsl, enabled: false })
+					: void chooseWsl({ ...wsl, enabled: true }),
 		},
 		{
 			label: "WSL distro",
@@ -766,18 +836,49 @@ function wslTrayItems(): MenuItemConstructorOptions[] {
 				type: "radio",
 				checked: item.checked,
 				click: () => {
-					if (item.distro === wsl.distro) return;
-					const next = { ...wsl, distro: item.distro ?? null };
-					if (wsl.enabled) saveWslSettings(next);
-					else {
-						writeFileSync(wslSettingsPath(), JSON.stringify(next));
-						wsl = next;
-						refreshTray();
-					}
+					const name = item.distro ?? defaultDistro;
+					const failed = (name ?? UNNAMED_DEFAULT) in wsl.unusable;
+					if (item.distro === wsl.distro && !failed) return;
+					void chooseWsl({ ...wsl, distro: item.distro ?? null });
 				},
 			})),
 		},
 	];
+}
+
+let wslChoice = 0;
+
+/** A distro is checked before it is stored, so a bad pick never strands the next launch (#908). */
+async function chooseWsl(next: WslSettings): Promise<void> {
+	const name = next.distro ?? defaultDistro;
+	const choice = ++wslChoice;
+	const reason = await checkDistro(next.distro);
+	// A later pick superseded this one while its check ran; its result is stale.
+	if (choice !== wslChoice) return;
+	const checked = withCheck(next, name, reason);
+	if (!reason) {
+		if (checked.enabled) saveWslSettings(checked);
+		else {
+			storeWslSettings(checked);
+			refreshTray();
+		}
+		return;
+	}
+	storeWslSettings(withCheck(wsl, name, reason));
+	refreshTray();
+	const d = wslUnusable({
+		distro: next.distro,
+		defaultName: defaultDistro,
+		reason,
+		atBoot: false,
+	});
+	await dialog.showMessageBox({
+		title: TITLE,
+		type: "error",
+		message: d.message,
+		detail: d.detail,
+		buttons: d.buttons,
+	});
 }
 
 function buildTray(): void {
@@ -785,14 +886,22 @@ function buildTray(): void {
 	tray.setToolTip("PrismaLens");
 	const refresh = () => {
 		const login = app.getLoginItemSettings().openAtLogin;
-		const label = runningLabel(running);
-		tray?.setToolTip(`PrismaLens: ${label.toLowerCase()}`);
+		const status = trayStatus(
+			{
+				ready,
+				owned,
+				baseUrl,
+				wsl: inWsl ? { distro: wsl.distro ?? defaultDistro } : null,
+			},
+			running,
+		);
+		tray?.setToolTip(status.tooltip);
 		// macOS shows a title beside the icon; elsewhere the menu line carries it.
 		if (process.platform === "darwin")
 			tray?.setTitle(running ? String(running) : "");
 		tray?.setContextMenu(
 			Menu.buildFromTemplate([
-				{ label, enabled: false },
+				...status.lines.map((line) => ({ label: line, enabled: false })),
 				...(update
 					? [
 							{

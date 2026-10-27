@@ -140,7 +140,7 @@ Two jobs, neither required, neither spending a model call (#914):
 | `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, its pin moves on one rolling pull request, `pin-bump/agents`, which lists each pin's probe result | nightly, and dispatch |
 
 The bump PR runs ordinary CI, so the new version runs the admission and the behaviour matrix on aimock.
-A pin whose probe fails stays where it was and is listed as held back. After the pins move,
+A pin whose probe fails stays where it was and is listed as held back. After the pins move, `scripts/agent-adapter-sdk.mjs` moves the shipped claude-agent-sdk to the one the claude adapter declares (the bundle refuses any other),
 `pnpm install --lockfile-only` refreshes the lockfile and `scripts/agent-tested.mjs` moves each row's
 `tested` (so `harness-pins.test.ts` holds) with a note that no real-model run backs it yet; the PR's
 recording checkbox is that run. Each night rebuilds the branch from `main` until someone pushes to it,
