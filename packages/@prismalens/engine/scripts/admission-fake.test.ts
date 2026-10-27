@@ -309,6 +309,7 @@ describe("admissionProblem known failures (#914)", () => {
 	it("fails gemini when it fails some other way", () => {
 		expect(admissionProblem("gemini", { ...v, r8: "fail" }, 1)).toMatch(/differently/);
 		expect(admissionProblem("gemini", { ...v, r5: "fail" }, 1)).toMatch(/differently/);
+		expect(admissionProblem("gemini", { ...v, r10: "fail" }, 1)).toMatch(/differently/);
 	});
 
 	it("keeps every other agent strict", () => {

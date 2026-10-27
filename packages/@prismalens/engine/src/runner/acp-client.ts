@@ -230,6 +230,16 @@ export function reopenPath(
 	return session?.replayComplete != null ? "load-marker" : "load-dedupe";
 }
 
+/** Updates that are conversation, so a replay of them is history; state updates are not. */
+const CONVERSATION: ReadonlySet<unknown> = new Set([
+	"user_message_chunk",
+	"agent_message_chunk",
+	"agent_thought_chunk",
+	"tool_call",
+	"tool_call_update",
+	"plan",
+]);
+
 /** ACP's `replay_complete` (RFD agent-client-protocol#2407), or claude-agent-acp's AIR `loadReplayEnd`. */
 function endsReplay(u: Record<string, unknown>): boolean {
 	if (u.sessionUpdate === "replay_complete") return true;
@@ -553,8 +563,10 @@ export class AcpSession {
 	reopen: ReopenPath | null = null;
 	/** Milliseconds the reopen request took, `initialize` excluded. */
 	reopenMs = 0;
-	/** Tool call and message ids of the history; a later update carrying one is replay too. */
+	/** `tool:` and `message:` ids of the history; a later update carrying one is replay too. */
 	private readonly history = new Set<string>();
+	/** A `session/prompt` went out, so the agent may speak live. */
+	private prompted = false;
 	/** `initialize` advertised `_meta.authStatus`: the agent pushes its sign-in on `_auth/status_update`. */
 	pushesAuthStatus = false;
 	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
@@ -691,7 +703,7 @@ export class AcpSession {
 		}
 		if (config.resume && this.reopen !== "fresh") {
 			for (const id of (await config.resume.known?.()) ?? [])
-				this.history.add(id);
+				this.history.add(`tool:${id}`);
 			this.loading = true;
 			this.loadRequestId = this.nextId;
 			this.currentSessionId = config.resume.sessionId;
@@ -840,6 +852,7 @@ export class AcpSession {
 			return;
 		}
 		let turnDone = false;
+		this.prompted = true;
 		this.request(
 			"session/prompt",
 			{ sessionId: this.currentSessionId, prompt },
@@ -1007,20 +1020,29 @@ export class AcpSession {
 				update && typeof update === "object"
 					? (update as Record<string, unknown>)
 					: null;
-			const ids = [fields?.toolCallId, fields?.messageId].filter(
-				(id): id is string => typeof id === "string" && !!id,
-			);
+			const ids = [
+				typeof fields?.toolCallId === "string" && fields.toolCallId
+					? `tool:${fields.toolCallId}`
+					: "",
+				typeof fields?.messageId === "string" && fields.messageId
+					? `message:${fields.messageId}`
+					: "",
+			].filter(Boolean);
 			if (this.reopen && fields && endsReplay(fields)) {
 				this.loading = false;
 				return;
 			}
+			const said = CONVERSATION.has(fields?.sessionUpdate);
 			if (this.loading) {
-				this.replayed += 1;
+				if (said) this.replayed += 1;
 				for (const id of ids) this.history.add(id);
 				return;
 			}
-			// An agent that streams history after its answer still sends its ids (#942).
-			if (ids.some((id) => this.history.has(id))) {
+			// Nothing is said before the first prompt, and history after the answer still carries its ids (#942).
+			if (
+				(said && this.reopen && !this.prompted) ||
+				ids.some((id) => this.history.has(id))
+			) {
 				this.replayed += 1;
 				return;
 			}

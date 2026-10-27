@@ -203,7 +203,7 @@ export interface RunInvestigationOptions {
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
 	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
-	/** How a follow-up reopened its session, what it dropped as replay, and how long it took (#942). */
+	/** After a follow-up's turn: how it reopened its session, what it dropped as replay, and how long the reopen took (#942). */
 	onReopen?: (r: { path: ReopenPath; replayed: number; ms: number }) => void;
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
 	gateway?: GatewayEntry;
@@ -495,7 +495,7 @@ export async function* runInvestigation(
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
 	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
-	const keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
+	let keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
 	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
 	const access = resolveAccess(opts.harness, level);
 	const askedMode = access.mode ?? null;
@@ -776,18 +776,12 @@ export async function* runInvestigation(
 				loadSession: session.loadSession,
 			});
 		}
-		let fresh: FreshSeed | null = null;
-		if (session.reopen) {
-			const reopen = {
-				path: session.reopen,
-				replayed: session.replayed,
-				ms: session.reopenMs,
-			};
-			wire("in", JSON.stringify({ reopen }));
-			opts.onReopen?.(reopen);
-			if (session.reopen === "fresh" && opts.resume?.fresh)
-				fresh = await opts.resume.fresh();
-		}
+		const fresh: FreshSeed | null =
+			session.reopen === "fresh" && opts.resume?.fresh
+				? await opts.resume.fresh()
+				: null;
+		// A fresh session has no mode to keep: it takes the run's level, supervised when it named none.
+		if (session.reopen === "fresh") keepMode = false;
 		// Only a request with the run's token proves the agent loaded our server (OBJ-011).
 		const connected =
 			opts.gateway && offer?.offered()
@@ -936,6 +930,16 @@ export async function* runInvestigation(
 						})
 				: said;
 			outcome = yield* turn(promptParts(seeded, attachments));
+			// After the turn, so history an agent streams late is counted too.
+			if (session.reopen) {
+				const reopen = {
+					path: session.reopen,
+					replayed: session.replayed,
+					ms: session.reopenMs,
+				};
+				wire("in", JSON.stringify({ reopen }));
+				opts.onReopen?.(reopen);
+			}
 		} else if (opts.kind === "chat") {
 			const message = opts.brief?.trim() ?? "";
 			yield adapter.operatorMessage(

@@ -520,7 +520,7 @@ describe("AcpSession reopen paths (#942)", () => {
 		return { session, wire };
 	};
 	const turn = async (session: AcpSession) => {
-		await session.open();
+		if (!session.sessionId) await session.open();
 		const items: AcpStreamItem[] = [];
 		for await (const item of session.prompt("and now?")) items.push(item);
 		await session.close();
@@ -550,7 +550,7 @@ describe("AcpSession reopen paths (#942)", () => {
 		expect(items).not.toContain("REPLAYED");
 	});
 
-	it("ends a load at the replay_complete marker, keeping a live update that precedes the answer", async () => {
+	it("ends a load at the replay_complete marker, keeping a state update that precedes the answer", async () => {
 		const { session } = reopen(
 			{ FAKE_LOAD_SESSION: "1", FAKE_REPLAY_COMPLETE: "1" },
 			{ sessionId: "ses_old" },
@@ -560,7 +560,39 @@ describe("AcpSession reopen paths (#942)", () => {
 		expect(session.replayed).toBe(2);
 		expect(items).not.toContain("REPLAYED");
 		expect(items).not.toContain("replay_complete");
-		expect(items).toContain("LIVE before the answer");
+		expect(items).toContain("after the marker");
+	});
+
+	it("counts no state update as history, so a resume that only reports state replayed nothing", async () => {
+		const { session } = reopen(
+			{ FAKE_SESSION_RESUME: "state" },
+			{ sessionId: "ses_old" },
+		);
+		await turn(session);
+		expect(session.replayed).toBe(0);
+	});
+
+	it("drops a message with no id that arrives after the answer but before any prompt", async () => {
+		const { session } = reopen(
+			{ FAKE_SESSION_RESUME: "straggler" },
+			{ sessionId: "ses_old" },
+		);
+		await session.open();
+		await new Promise((r) => setTimeout(r, 200));
+		const items = await turn(session);
+		expect(session.replayed).toBe(1);
+		expect(items).not.toContain("REPLAYED");
+		expect(items).toContain("Heard: and now?");
+	});
+
+	it("keeps a live message whose id equals a stored tool call id", async () => {
+		const { session } = reopen(
+			{ FAKE_SESSION_RESUME: "1" },
+			{ sessionId: "ses_old", known: async () => ["m_live"] },
+		);
+		const items = await turn(session);
+		expect(session.replayed).toBe(0);
+		expect(items).toContain("Heard: and now?");
 	});
 
 	it("drops history streamed after the load answer by the ids the replay and the stored run hold", async () => {
