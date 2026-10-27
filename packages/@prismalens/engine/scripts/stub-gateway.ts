@@ -36,7 +36,15 @@ export const STUB_FACTS = {
 	incident: "ScenarioIncident",
 	past: "ScenarioPastCause",
 	runbook: "ScenarioRunbookStep",
+	threadSummary: "ScenarioPriorSummary",
+	threadCause: "ScenarioThreadCause",
+	timeline: "ScenarioTimelineNote",
+	team: "ScenarioTeamPlatform",
+	change: "ScenarioDeploy",
+	repo: "ScenarioRepo",
 } as const;
+
+const STUB_THREAD = "00000000-0000-4000-8000-0000000000c1";
 
 /** The API's `gatewayTools`, loaded by path: the engine's build cannot import the api package. */
 type GatewayTools = (data: unknown) => readonly HarnessTool[];
@@ -110,6 +118,102 @@ export async function startStubGateway(
 				},
 			],
 			changes: [],
+		}),
+		threads: {
+			list: async () => ({
+				threads: [
+					{
+						id: STUB_THREAD,
+						kind: "investigation",
+						status: "completed",
+						startedAt: "2026-01-01T00:00:00.000Z",
+						finishedAt: "2026-01-01T00:05:00.000Z",
+						agent: "claude-code",
+						model: null,
+						summary: STUB_FACTS.threadSummary,
+					},
+				],
+			}),
+			read: async (_run: string, threadId: string) =>
+				threadId === STUB_THREAD
+					? {
+							id: STUB_THREAD,
+							kind: "investigation",
+							status: "completed",
+							report: {
+								summary: STUB_FACTS.threadSummary,
+								rootCause: STUB_FACTS.threadCause,
+								hypotheses: [],
+								nextSteps: [],
+								culprit: null,
+							},
+							steps: [],
+							error: null,
+						}
+					: null,
+		},
+		incidentRecord: {
+			timeline: async () => ({
+				incident: 1,
+				total: 1,
+				entries: [
+					{
+						type: "note",
+						source: "operator",
+						text: STUB_FACTS.timeline,
+						at: "2026-01-01T00:01:00.000Z",
+					},
+				],
+			}),
+			scope: async () => ({
+				number: 1,
+				triggeredAt: "2026-01-01T00:00:00.000Z",
+				services: ["scenario"],
+			}),
+			changes: async () => ({
+				unknown: [],
+				changes: [
+					{
+						type: "deploy",
+						source: "scenario",
+						at: "2026-01-01T00:00:00.000Z",
+						service: "scenario",
+						description: STUB_FACTS.change,
+						environment: "production",
+						version: "v1",
+					},
+				],
+			}),
+		},
+		service: async (name: string) =>
+			name === "scenario"
+				? {
+						name,
+						displayName: null,
+						type: "service",
+						tier: "tier_1",
+						team: STUB_FACTS.team,
+						slackChannel: null,
+						tags: [],
+						repos: [],
+						dependsOn: [],
+						dependedOnBy: [],
+					}
+				: null,
+		runStatus: async () => ({
+			status: "running",
+			usage: null,
+			secondsLeft: 600,
+			accessLevel: "supervised",
+			repos: [
+				{
+					name: STUB_FACTS.repo,
+					subPath: null,
+					branch: "main",
+					commit: "0000000000000000000000000000000000000001",
+					services: ["scenario"],
+				},
+			],
 		}),
 		runbooks: {
 			list: async () => [

@@ -7,6 +7,7 @@ import {
 } from "@prismalens/integrations/harness";
 import type { RunbooksData } from "../runbooks.js";
 import { type ArtifactsData, artifactTools } from "./artifacts.js";
+import { type IncidentRecordData, incidentTools } from "./incident.js";
 import {
 	type IncidentLookup,
 	type InvestigationsQuery,
@@ -14,9 +15,17 @@ import {
 	type PastInvestigation,
 } from "./knowledge.js";
 import { type FindingsData, recordTools } from "./record.js";
+import { type RunStatusLookup, runTools } from "./run.js";
 import { runbookTools } from "./runbooks.js";
+import { type ServiceLookup, serviceTools } from "./services.js";
+import { type ThreadsData, threadTools } from "./threads.js";
 
 export type { ArtifactsData } from "./artifacts.js";
+export type {
+	ChangeItem,
+	IncidentRecordData,
+	TimelineItem,
+} from "./incident.js";
 export type {
 	IncidentLookup,
 	IncidentView,
@@ -24,6 +33,14 @@ export type {
 	PastInvestigation,
 } from "./knowledge.js";
 export type { FindingsData } from "./record.js";
+export type { RunStatusLookup, RunStatusView } from "./run.js";
+export type { ServiceLookup, ServiceView } from "./services.js";
+export type {
+	ThreadReport,
+	ThreadSummary,
+	ThreadsData,
+	ThreadView,
+} from "./threads.js";
 
 /** What the tools read; the api answers from its own database. */
 export interface GatewayToolData {
@@ -32,6 +49,10 @@ export interface GatewayToolData {
 	runbooks: RunbooksData;
 	findings: FindingsData;
 	artifacts: ArtifactsData;
+	threads: ThreadsData;
+	incidentRecord: IncidentRecordData;
+	service: ServiceLookup;
+	runStatus: RunStatusLookup;
 }
 
 /**
@@ -45,6 +66,10 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...runbookTools(data.runbooks),
 		...recordTools(data.findings),
 		...artifactTools(data.artifacts),
+		...threadTools(data.threads),
+		...incidentTools(data.incidentRecord),
+		...serviceTools(data.service),
+		...runTools(data.runStatus),
 	])
 		registry.register(tool);
 	return registry.list();

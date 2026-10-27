@@ -151,6 +151,12 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"gateway-record",
 				"gateway-failure",
 				"gateway-artifact",
+				"gateway-thread-list",
+				"gateway-thread-read",
+				"gateway-timeline-read",
+				"gateway-service-get",
+				"gateway-changes-list",
+				"gateway-run-status",
 			].sort(),
 		);
 	});
