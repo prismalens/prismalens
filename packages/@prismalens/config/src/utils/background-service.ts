@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 export const SYSTEMD_UNIT_NAME = "prismalens.service";
 export const LAUNCHD_LABEL = "io.prismalens.server";
@@ -30,15 +30,18 @@ export function serviceUnitPath(
 	home: string = homedir(),
 ): string | null {
 	switch (serviceManagerKind(platform)) {
-		case "systemd":
-			return join(
-				env.XDG_CONFIG_HOME || join(home, ".config"),
-				"systemd",
-				"user",
-				SYSTEMD_UNIT_NAME,
-			);
+		case "systemd": {
+			const xdg = env.XDG_CONFIG_HOME?.replaceAll("\\", "/");
+			const base = xdg || posix.join(home.replaceAll("\\", "/"), ".config");
+			return posix.join(base, "systemd", "user", SYSTEMD_UNIT_NAME);
+		}
 		case "launchd":
-			return join(home, "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
+			return posix.join(
+				home.replaceAll("\\", "/"),
+				"Library",
+				"LaunchAgents",
+				`${LAUNCHD_LABEL}.plist`,
+			);
 		default:
 			return null;
 	}
