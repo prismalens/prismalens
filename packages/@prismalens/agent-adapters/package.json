@@ -22,7 +22,7 @@
 		"pack:npm": "pnpm run build && node scripts/pack.mjs"
 	},
 	"dependencies": {
-		"@agentclientprotocol/claude-agent-acp": "0.81.1",
+		"@agentclientprotocol/claude-agent-acp": "0.95.0",
 		"@agentclientprotocol/codex-acp": "2.2.2"
 	},
 	"devDependencies": {
