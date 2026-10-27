@@ -146,6 +146,10 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"stream-dropped",
 				"slow-first-token",
 				"parallel-tool-calls",
+				"gateway-read",
+				"gateway-knowledge",
+				"gateway-record",
+				"gateway-failure",
 			].sort(),
 		);
 	});

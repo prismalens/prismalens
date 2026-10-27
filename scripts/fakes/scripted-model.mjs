@@ -60,10 +60,32 @@ export function matrixRows() {
 		.map((f) => readJson(join("rows", f)));
 }
 
-const INCIDENT = "$incident_get";
-/** @param {import("@copilotkit/aimock").ChatCompletionRequest} req */
-const incidentTool = (req) =>
-	req.tools?.find((t) => /incident_get$/.test(t.function.name));
+/** `$gw:<tool>` names PrismaLens's own tool however the agent named it; `$incident_get` is the older spelling. */
+const GW = "$gw:";
+/** @param {unknown} name */
+const gwName = (name) =>
+	name === "$incident_get"
+		? "incident_get"
+		: typeof name === "string" && name.startsWith(GW)
+			? name.slice(GW.length)
+			: null;
+/** @param {string} tool */
+const endsWith = (tool) => new RegExp(`(^|[^a-z0-9])${tool}$`);
+/** PrismaLens's per-run server is `prismalens-<random>`; agents carry it in the name or a namespace. */
+const PL_SERVER = /prismalens-[a-z2-7]{10}/;
+/** @param {{ function: { name: string }, namespace?: string }} t */
+const isPrismaLens = (t) =>
+	PL_SERVER.test(t.function.name) || PL_SERVER.test(t.namespace ?? "");
+/**
+ * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
+ * @param {string} tool
+ */
+const gwTool = (req, tool) => {
+	const named = (req.tools ?? []).filter((t) =>
+		endsWith(tool).test(t.function.name),
+	);
+	return named.find(isPrismaLens) ?? named[0];
+};
 /**
  * The name of the tool the request's trailing tool result answers, or "".
  * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
@@ -75,6 +97,14 @@ const answeredTool = (req) => {
 		for (const c of m.tool_calls ?? [])
 			if (c.id === last.tool_call_id) return c.function.name;
 	return "";
+};
+/**
+ * The text of the tool result the request ends with, or "".
+ * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
+ */
+const lastResult = (req) => {
+	const last = req.messages.at(-1);
+	return last?.role === "tool" ? textOf(last) : "";
 };
 /** @param {import("@copilotkit/aimock").ChatMessage} m */
 const textOf = (m) =>
@@ -108,19 +138,40 @@ export function resolveEntry(entry, tools, mainLoop) {
 		}
 	}
 	const { match: fileMatch, response: _, ...opts } = entry;
-	const { inConversation, afterTool, ...rest } = /** @type {any} */ (fileMatch);
+	const {
+		inConversation,
+		afterTool,
+		offers,
+		lacks,
+		resultContains,
+		resultLacks,
+		...rest
+	} = /** @type {any} */ (fileMatch);
 	/** @type {import("@copilotkit/aimock").FixtureMatch} */
 	const match = { ...rest };
 	if (mainLoop && !match.toolName) match.toolName = tools.shell;
 	/** @type {((req: import("@copilotkit/aimock").ChatCompletionRequest) => boolean)[]} */
 	const tests = [];
-	if (match.toolName === INCIDENT) {
+	const offered = gwName(match.toolName);
+	if (offered) {
 		delete match.toolName;
-		tests.push((req) => incidentTool(req) !== undefined);
+		tests.push((req) => gwTool(req, offered) !== undefined);
+	}
+	for (const name of [offers].flat().filter(Boolean)) {
+		const tool = /** @type {string} */ (gwName(name));
+		tests.push((req) => gwTool(req, tool) !== undefined);
+	}
+	for (const name of [lacks].flat().filter(Boolean)) {
+		const tool = /** @type {string} */ (gwName(name));
+		tests.push((req) => gwTool(req, tool) === undefined);
 	}
 	// The result's text differs by agent (Codex wraps an MCP result); the tool it answers does not.
-	if (afterTool === INCIDENT)
-		tests.push((req) => /incident_get$/.test(answeredTool(req)));
+	const answered = gwName(afterTool);
+	if (answered) tests.push((req) => endsWith(answered).test(answeredTool(req)));
+	for (const words of [resultContains].flat().filter(Boolean))
+		tests.push((req) => lastResult(req).includes(words));
+	for (const words of [resultLacks].flat().filter(Boolean))
+		tests.push((req) => !lastResult(req).includes(words));
 	// `userMessage` reads only the last user message; a row's marker must also hold on its retries.
 	if (typeof inConversation === "string")
 		tests.push((req) =>
@@ -131,23 +182,25 @@ export function resolveEntry(entry, tools, mainLoop) {
 	if (tests.length > 0) match.predicate = (req) => tests.every((t) => t(req));
 	const response = normalizeResponse(raw);
 	const named = (raw.toolCalls ?? []).some(
-		(/** @type {{ name: string }} */ c) => c.name === INCIDENT,
+		(/** @type {{ name: string }} */ c) => gwName(c.name) !== null,
 	);
 	return {
 		...opts,
 		match,
 		response: named
 			? (req) => {
-					const tool = incidentTool(req);
 					const calls = /** @type {any} */ (response).toolCalls.map(
-						(/** @type {any} */ c) =>
-							c.name === INCIDENT
+						(/** @type {any} */ c) => {
+							const gw = gwName(c.name);
+							const tool = gw ? gwTool(req, gw) : undefined;
+							return gw
 								? {
 										...c,
 										name: tool?.function.name ?? c.name,
 										...(tool?.namespace ? { namespace: tool.namespace } : {}),
 									}
-								: c,
+								: c;
+						},
 					);
 					return { ...response, toolCalls: calls };
 				}
@@ -231,11 +284,39 @@ export async function startScriptedModel(harness, options = {}) {
  */
 export function requestSummary(req) {
 	const last = req.messages.at(-1);
+	const row = req.messages
+		.filter((m) => m.role === "user")
+		.map((m) => /\[row:([a-z0-9-]+)\]/.exec(textOf(m))?.[1])
+		.find(Boolean);
 	return {
 		model: req.model,
 		tools: (req.tools ?? []).map(
 			(t) => `${t.namespace ? `${t.namespace}/` : ""}${t.function.name}`,
 		),
 		last: `${last?.role ?? "?"}: ${last ? textOf(last).slice(0, 160) : ""}`,
+		row: row ?? null,
+		// Tool-definition characters PrismaLens's own tools cost this request (#848).
+		plDefChars: (req.tools ?? [])
+			.filter(isPrismaLens)
+			.reduce((n, t) => n + JSON.stringify(t).length, 0),
+		searchResults: searchResults(req),
 	};
+}
+
+/**
+ * `tools_search` results the request carries back to the model, characters by call id.
+ * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
+ */
+function searchResults(req) {
+	/** @type {Record<string, number>} */
+	const out = {};
+	for (const m of req.messages)
+		for (const c of m.tool_calls ?? [])
+			if (endsWith("tools_search").test(c.function.name)) {
+				const result = req.messages.find(
+					(r) => r.role === "tool" && r.tool_call_id === c.id,
+				);
+				if (result) out[c.id] = textOf(result).length;
+			}
+	return out;
 }

@@ -1,0 +1,73 @@
+{
+	"row": "gateway-knowledge",
+	"kind": "happy",
+	"title": "Finds a past cause through PrismaLens's knowledge tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "investigations_search",
+				"ok": true,
+				"outputHas": "ScenarioPastCause"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-knowledge]",
+				"toolName": "$gw:investigations_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:investigations_search",
+						"arguments": { "query": "checkout timeouts" }
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-knowledge]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": { "query": "past investigations" }
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-knowledge]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "investigations_search"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "investigations_search",
+							"arguments": { "query": "checkout timeouts" }
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-knowledge]",
+				"resultContains": "ScenarioPastCause"
+			},
+			"response": { "content": "$report" }
+		}
+	]
+}

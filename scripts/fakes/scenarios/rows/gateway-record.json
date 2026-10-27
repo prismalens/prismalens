@@ -1,0 +1,64 @@
+{
+	"row": "gateway-record",
+	"kind": "happy",
+	"title": "Records evidence and a hypothesis through PrismaLens's tools while every ask is refused",
+	"run": { "accessLevel": "supervised", "answer": "deny" },
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{ "name": "evidence_record", "ok": true, "outputHas": "e1" },
+			{ "name": "hypothesis_record", "ok": true, "outputHas": "h1" }
+		],
+		"records": { "evidence": ["e1"], "hypotheses": ["h1"] }
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-record]",
+				"toolName": "$gw:evidence_record",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:evidence_record",
+						"arguments": {
+							"observation": "package.json names index.js as the entry point",
+							"source": "cat package.json",
+							"quote": "\"main\": \"index.js\""
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-record]",
+				"afterTool": "$gw:evidence_record",
+				"resultContains": "e1",
+				"resultLacks": "invalid_input"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:hypothesis_record",
+						"arguments": {
+							"statement": "The entry point is index.js.",
+							"status": "supported",
+							"evidence": ["e1"]
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-record]",
+				"afterTool": "$gw:hypothesis_record",
+				"resultContains": "h1",
+				"resultLacks": "not_found"
+			},
+			"response": { "content": "$report" }
+		}
+	]
+}

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { SourceRegistry } from "@prismalens/integrations";
+import {
+	HarnessRegistry,
+	type HarnessTool,
+} from "@prismalens/integrations/harness";
 import type { RunbooksData } from "../runbooks.js";
 import {
 	type IncidentLookup,
@@ -29,16 +32,16 @@ export interface GatewayToolData {
 }
 
 /**
- * PrismaLens's harness tools, registered through the read-only gate. Data-access tools
- * come from the user's own agent setup, never from here (#848 ruling 2026-10-24).
+ * PrismaLens's harness tools, through the registry's checks. Data-access tools come from
+ * the user's own agent setup, never from here (#848 ruling 2026-10-24).
  */
-export function gatewayRegistry(data: GatewayToolData): SourceRegistry {
-	const registry = new SourceRegistry(() => "the tool failed");
+export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
+	const registry = new HarnessRegistry();
 	for (const tool of [
 		...knowledgeTools((q) => data.searchInvestigations(q), data.incident),
 		...runbookTools(data.runbooks),
 		...recordTools(data.findings),
 	])
 		registry.register(tool);
-	return registry;
+	return registry.list();
 }
