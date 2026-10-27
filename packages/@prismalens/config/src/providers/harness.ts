@@ -188,6 +188,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["codex-acp"],
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
