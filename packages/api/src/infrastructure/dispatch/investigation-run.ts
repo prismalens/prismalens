@@ -73,7 +73,6 @@ import {
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
-import { shownRepoUrl } from "../../core/harness/git-credential.js";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import {
@@ -1502,7 +1501,7 @@ function whereFrom(repo: {
 	subPath: string | null;
 }): string {
 	const from = repo.sourceKind === "folder" ? "folder" : "URL";
-	return `${from} ${shownRepoUrl(repo.sourceKind, repo.url)}${repo.subPath ? `/${repo.subPath}` : ""}`;
+	return `${from} ${repo.url}${repo.subPath ? `/${repo.subPath}` : ""}`;
 }
 
 /**
@@ -1602,7 +1601,7 @@ export async function resolveWorkspace(
 	for (const k of skipped)
 		logger.warn(`Skipped ${whereFrom(k.repo)}: ${k.reason}`);
 	const checkoutsSkipped = skipped.map((k) => ({
-		repo: shownRepoUrl(k.repo.sourceKind, k.repo.url),
+		repo: k.repo.url,
 		reason: k.reason,
 		code: k.code,
 	}));
@@ -1916,11 +1915,11 @@ async function recordWorkspace(
 				cwd: ws.cwd,
 				mapped: ws.layout !== "unmapped",
 				...(ws.layout === "single" && only
-					? { repo: shownRepoUrl(only.sourceKind, only.url), head: only.head }
+					? { repo: only.url, head: only.head }
 					: {}),
 				repos: ws.repos.map((r) => ({
 					name: r.name,
-					url: shownRepoUrl(r.sourceKind, r.url),
+					url: r.url,
 					head: r.head,
 				})),
 				...(telemetry ? { telemetry } : {}),
