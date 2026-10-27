@@ -37,11 +37,14 @@ type Permission = LocalDefault["permission"];
 const NONE: LocalDefault = { permission: null };
 
 /** `~/x` for a path under the home directory, so the line reads as the user wrote it. */
-function shown(path: string, home: string): string {
+export function shown(path: string, home: string): string {
 	const normPath = path.replaceAll("\\", "/");
 	const normHome = home.replaceAll("\\", "/").replace(/\/+$/, "");
-	if (normPath === normHome) return "~";
-	if (normPath.startsWith(`${normHome}/`)) {
+	const isWin = process.platform === "win32";
+	const cmpPath = isWin ? normPath.toLowerCase() : normPath;
+	const cmpHome = isWin ? normHome.toLowerCase() : normHome;
+	if (cmpPath === cmpHome) return "~";
+	if (cmpPath.startsWith(`${cmpHome}/`)) {
 		return `~${normPath.slice(normHome.length)}`;
 	}
 	return path;

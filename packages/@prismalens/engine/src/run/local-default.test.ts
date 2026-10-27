@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, write
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { localDefault, opencodeUserConfig } from "./local-default.js";
+import { localDefault, opencodeUserConfig, shown } from "./local-default.js";
 
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `pl-ld-${name}-`)));
 
@@ -352,4 +352,15 @@ describe("opencodeUserConfig (#809)", () => {
 		write(join(home, ".config", "opencode", "opencode.json"), "{ bad json ");
 		expect(opencodeUserConfig({ HOME: home })).toEqual({});
 	});
+});
+
+describe("shown", () => {
+	it.skipIf(process.platform !== "win32")(
+		"gives '~/.claude/settings.json' on win32",
+		() => {
+			expect(
+				shown("c:\\users\\u\\.claude\\settings.json", "C:\\Users\\u"),
+			).toBe("~/.claude/settings.json");
+		},
+	);
 });

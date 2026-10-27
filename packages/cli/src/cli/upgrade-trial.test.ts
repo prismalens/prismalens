@@ -215,29 +215,30 @@ describe("awaitTrial", () => {
 });
 
 describe("switchInstallerRuntime", () => {
-	it("points the wrappers and receipt at the kept runtime", () => {
-		const data = join(ws, "data");
-		const bin = join(ws, "bin");
-		mkdirSync(join(data, "runtime", "0.5.1", "bin"), { recursive: true });
-		writeFileSync(join(data, "runtime", "0.5.1", "bin", "pl"), "");
-		mkdirSync(bin);
-		for (const name of ["pl", "prismalens"]) {
-			writeFileSync(
-				join(bin, name),
-				`#!/bin/sh\n# marker\nexec "${join(data, "runtime", "0.5.2", "bin", name)}" "$@"\n`,
+	// #937: the installer's sh wrappers only exist on Linux and macOS; Windows uses .cmd
+	it.skipIf(process.platform === "win32")(
+		"points the wrappers and receipt at the kept runtime",
+		() => {
+			const data = join(ws, "data");
+			const bin = join(ws, "bin");
+			mkdirSync(join(data, "runtime", "0.5.1", "bin"), { recursive: true });
+			writeFileSync(join(data, "runtime", "0.5.1", "bin", "pl"), "");
+			mkdirSync(bin);
+			for (const name of ["pl", "prismalens"]) {
+				writeFileSync(
+					join(bin, name),
+					`#!/bin/sh\n# marker\nexec "${data}/runtime/0.5.2/bin/${name}" "$@"\n`,
+				);
+			}
+			writeFileSync(join(data, "receipt"), "version=0.5.2\nchannel=installer\n");
+			expect(switchInstallerRuntime({ dataDir: data, binDir: bin, version: "0.5.1" })).toBe(null);
+			expect(readFileSync(join(bin, "prismalens"), "utf8")).toContain(
+				`exec "${data}/runtime/0.5.1/bin/prismalens" "$@"`,
 			);
-		}
-		writeFileSync(join(data, "receipt"), "version=0.5.2\nchannel=installer\n");
-		expect(switchInstallerRuntime({ dataDir: data, binDir: bin, version: "0.5.1" })).toBe(null);
-		expect(readFileSync(join(bin, "prismalens"), "utf8")).toContain(
-			`exec "${join(data, "runtime", "0.5.1", "bin", "prismalens")}" "$@"`,
-		);
-		// Windows NTFS ignores POSIX permission bits, reporting 0o666 for writable files.
-		expect(statSync(join(bin, "pl")).mode & 0o777).toBe(
-			process.platform === "win32" ? 0o666 : 0o755,
-		);
-		expect(readFileSync(join(data, "receipt"), "utf8")).toContain("version=0.5.1\n");
-	});
+			expect(statSync(join(bin, "pl")).mode & 0o777).toBe(0o755);
+			expect(readFileSync(join(data, "receipt"), "utf8")).toContain("version=0.5.1\n");
+		},
+	);
 
 	it("says so when the previous runtime is gone", () => {
 		expect(
