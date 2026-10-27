@@ -846,10 +846,15 @@ function wslTrayItems(): MenuItemConstructorOptions[] {
 	];
 }
 
+let wslChoice = 0;
+
 /** A distro is checked before it is stored, so a bad pick never strands the next launch (#908). */
 async function chooseWsl(next: WslSettings): Promise<void> {
 	const name = next.distro ?? defaultDistro;
+	const choice = ++wslChoice;
 	const reason = await checkDistro(next.distro);
+	// A later pick superseded this one while its check ran; its result is stale.
+	if (choice !== wslChoice) return;
 	const checked = withCheck(next, name, reason);
 	if (!reason) {
 		if (checked.enabled) saveWslSettings(checked);
