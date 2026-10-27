@@ -72,7 +72,7 @@ const gwName = (name) =>
 /** @param {string} tool */
 const endsWith = (tool) => new RegExp(`(^|[^a-z0-9])${tool}$`);
 /** PrismaLens's per-run server is `prismalens-<random>`; agents carry it in the name or a namespace. */
-const PL_SERVER = /prismalens-[a-z2-7]{10}/;
+const PL_SERVER = /prismalens[-_][a-z2-7]{10}/;
 /** @param {{ function: { name: string }, namespace?: string }} t */
 const isPrismaLens = (t) =>
 	PL_SERVER.test(t.function.name) || PL_SERVER.test(t.namespace ?? "");
