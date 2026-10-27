@@ -63,6 +63,7 @@ import {
 	useFocusLater,
 } from "./HypothesesCard";
 import { IncidentHeader } from "./IncidentHeader";
+import { KeptWorkspaces } from "./KeptWorkspaces";
 import { snapshotLine } from "./PreRunCoverage";
 import {
 	type DetailsTab,
@@ -543,7 +544,14 @@ export function RunPage() {
 					onTab={setTab}
 					onClose={closePanel}
 					incidentId={incident.id}
-					summaryTop={overview}
+					summaryTop={
+						overview && (
+							<>
+								{overview}
+								{inv && !live && <KeptWorkspaces runId={inv.id} />}
+							</>
+						)
+					}
 					contextTop={
 						!chat && (
 							<RunRunbooks

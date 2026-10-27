@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { Injectable, Logger } from "@nestjs/common";
+import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	type GitCredential,
@@ -62,6 +63,8 @@ export interface Snapshot {
 	branch: string | null;
 	/** A folder's worktree: the lock reason naming this attempt (#918). */
 	lock?: string;
+	/** The setup command the run workspace settings name, when one ran (#925). */
+	setup?: HookResult;
 }
 
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
@@ -202,7 +205,7 @@ export class RepoSourceService {
 		runId?: string,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
-		let lock: string | undefined;
+		let added: { lock: string; setup?: HookResult } | undefined;
 		if (src.kind === "folder") {
 			const commit = at ?? (await this.headOf(src.source)).head;
 			if (at && !(await this.hasCommit(src.source, at, signal)))
@@ -210,7 +213,7 @@ export class RepoSourceService {
 					`Commit ${at} could not be checked out from this source`,
 				);
 			try {
-				lock = await addRunWorktree(
+				added = await addRunWorktree(
 					src.source,
 					dest,
 					commit,
@@ -226,7 +229,7 @@ export class RepoSourceService {
 		this.logger.log(
 			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}`,
 		);
-		return { path: dest, ...check, ...(lock ? { lock } : {}) };
+		return { path: dest, ...check, ...added };
 	}
 
 	private async cloneMirror(

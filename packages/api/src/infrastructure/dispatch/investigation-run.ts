@@ -16,6 +16,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	DEFAULT_ACCESS_LEVEL,
@@ -76,9 +77,11 @@ import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import {
+	bindRun,
 	releaseWorktreesIn,
 	runWorktreeDir,
 	sweepRunWorktrees,
+	unbindRun,
 } from "../../core/harness/run-worktree.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
@@ -319,6 +322,7 @@ async function runJobInternal(
 			toolsServer: newGatewayServerName(),
 		};
 		await recordWorkspace(data, workspace, ports, context);
+		await logWorkspaceSetup(data.investigationId, io, ports);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
 
@@ -817,6 +821,10 @@ async function runFollowUp(
 		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
+		await bindRun(id, {
+			incidentId: data.incidentId,
+			serviceName: recorded.repos[0]?.services[0] ?? null,
+		});
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
 		const newer = await ports.newerRun(id).catch(() => null);
 		const moved = newer?.heads.some(
@@ -835,6 +843,7 @@ async function runFollowUp(
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 		};
+		await logWorkspaceSetup(id, io, ports);
 
 		const incident = await assembled(
 			"the incident",
@@ -1316,6 +1325,58 @@ const RUN_WORKSPACE = [
 	join("config", GATEWAY_RUN_FILE),
 ];
 
+const setups = new Map<string, { name: string; result: HookResult }[]>();
+
+function noteSetup(runId: string, name: string, result: HookResult): void {
+	setups.set(runId, [...(setups.get(runId) ?? []), { name, result }]);
+}
+
+const SETUP_WORDS: Record<HookResult["status"], string> = {
+	ok: "finished",
+	failed: "failed",
+	silent: "was cancelled after 5 minutes without output",
+	capped: "was cut off",
+	aborted: "was stopped",
+};
+
+/** The workspace setup commands' output, in the run's log on a branch of its own (#925). */
+async function logWorkspaceSetup(
+	runId: string,
+	io: JobIo,
+	ports: RunPorts,
+): Promise<void> {
+	const ran = setups.get(runId);
+	setups.delete(runId);
+	if (!ran?.length) return;
+	try {
+		let seq = (await ports.lastEventSeq(runId)) + 1;
+		const events: CanonicalEvent[] = ran.map(({ name, result }) => {
+			const ok = result.status === "ok";
+			const words = `Workspace setup in ${name} ${SETUP_WORDS[result.status]}${result.exitCode !== null && !ok ? ` (exit ${result.exitCode})` : ""}`;
+			return {
+				kind: "tool_result",
+				runId,
+				branchId: "workspace",
+				path: [],
+				seq: seq++,
+				ts: new Date().toISOString(),
+				result: {
+					name: "workspace_setup",
+					toolCallId: `workspace-setup-${name}`,
+					source: words,
+					ok,
+					error: ok ? null : words,
+					preview: result.output.slice(-8000),
+				},
+			};
+		});
+		for (const event of events) await io.emit(event);
+		await ports.appendEvents(runId, events);
+	} catch (e) {
+		logger.warn("Could not record the workspace setup in the run's log", e);
+	}
+}
+
 async function clearRunWorkspace(runId: string): Promise<void> {
 	const runDir = runDirFor(runId);
 	for (const dir of [
@@ -1336,6 +1397,8 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 			logger.warn(`Failed to remove the run's ${rel}`, e);
 		}
 	}
+	setups.delete(runId);
+	unbindRun(runId);
 }
 
 /**
@@ -1543,6 +1606,10 @@ export async function resolveWorkspace(
 				? `Ran without code: ${unlisted}.`
 				: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
+	await bindRun(runId, {
+		incidentId: data.incidentId,
+		serviceName: repos[0]?.services[0] ?? null,
+	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
 	const outcomes = await checkoutAll(
@@ -1579,6 +1646,7 @@ export async function resolveWorkspace(
 			continue;
 		}
 		const { snap, credential } = outcome.value;
+		if (snap.setup) noteSetup(runId, names[i] as string, snap.setup);
 		try {
 			inCheckout(runId, snap.path, repo.subPath);
 		} catch (e) {
@@ -1825,7 +1893,7 @@ export async function rebuildWorkspace(
 		owned(repo.dir);
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
-		const { credential } = await untilAborted(
+		const { snap, credential } = await untilAborted(
 			ports.snapshotWith(
 				{
 					sourceKind: repo.sourceKind,
@@ -1840,6 +1908,7 @@ export async function rebuildWorkspace(
 			bounded,
 			releaseLate,
 		);
+		if (snap.setup) noteSetup(investigationId, repo.name, snap.setup);
 		inCheckout(investigationId, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
 	}

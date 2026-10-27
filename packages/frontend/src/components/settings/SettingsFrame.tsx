@@ -12,6 +12,7 @@ export type SettingsTab =
 	| "general"
 	| "appearance"
 	| "agent"
+	| "runs"
 	| "alert-intake"
 	| "sources"
 	| "notifications"
@@ -34,6 +35,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
 	{ tab: "general", label: "General" },
 	{ tab: "appearance", label: "Appearance" },
 	{ tab: "agent", label: "Agent" },
+	{ tab: "runs", label: "Runs" },
 	{ tab: "alert-intake", label: "Alert intake" },
 	{ tab: "sources", label: "Sources" },
 	{ tab: "notifications", label: "Notifications" },

@@ -901,3 +901,59 @@ export function resolveWorkspacePolicy(
 		inherited,
 	};
 }
+
+/** What a workspace's sidecar says about it, or null for an entry with none. */
+export interface WorkspaceInfo {
+	id: string;
+	dir: string;
+	project?: string;
+	method: "worktree" | "clone";
+	createdAt: string;
+	keptAt?: string;
+}
+
+export function workspaceInfo(dir: string): WorkspaceInfo | null {
+	const side = readSidecar(dir);
+	if (!side || !existsSync(dir)) return null;
+	return {
+		id: side.id,
+		dir,
+		...(side.project ? { project: side.project } : {}),
+		method: side.method,
+		createdAt: side.createdAt,
+		...(side.keptAt ? { keptAt: side.keptAt } : {}),
+	};
+}
+
+/**
+ * A kept workspace taken up again by a later attempt of its run (a follow-up): locked
+ * again under a new reason, its kept clock cleared. Null when `dir` is not kept.
+ */
+export async function resumeWorkspace(
+	input: WorkspaceOwner & {
+		id: string;
+		lockLabel?: string;
+		env?: Readonly<Record<string, string | undefined>>;
+	},
+): Promise<{ lock: string } | null> {
+	const dir = workspaceDir(input, input.id);
+	const side = readSidecar(dir);
+	if (!side?.keptAt || !existsSync(dir) || lstatSync(dir).isSymbolicLink())
+		return null;
+	const current = lockOf(dir, side);
+	if (current !== null && !current.startsWith(input.lockPrefix)) return null;
+	const lock = `${input.lockPrefix}${input.lockLabel ?? input.id} ${randomUUID().slice(0, 8)}`;
+	const { keptAt: _kept, lock: _old, ...rest } = side;
+	const admin = linkedGitDir(dir);
+	const common = admin ? commonDirOf(admin) : null;
+	if (admin && common) {
+		const env = gitEnv(input.env ?? process.env);
+		rmSync(join(admin, "locked"), { force: true });
+		await git(["worktree", "lock", "--reason", lock, dir], {
+			cwd: common,
+			env,
+		});
+		writeSidecar(dir, rest);
+	} else writeSidecar(dir, { ...rest, lock });
+	return { lock };
+}

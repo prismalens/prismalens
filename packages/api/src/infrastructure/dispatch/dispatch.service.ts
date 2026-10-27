@@ -70,6 +70,7 @@ import {
 } from "../../modules/investigations/follow-up-route.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import { RunWorkspacesService } from "../../modules/run-workspaces/run-workspaces.service.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { Dispatcher } from "./dispatcher.js";
@@ -183,6 +184,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly reportDelivery: ReportDeliveryService,
 		@Optional() private readonly gateway?: GatewayService,
 		@Optional() telemetrySnapshot?: TelemetrySnapshotService,
+		@Optional() private readonly runWorkspaces?: RunWorkspacesService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -572,6 +574,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`Could not reconcile live runs at boot: ${(e as Error).message}`,
 			),
 		);
+		// The boot sweep applies each workspace's own retention rule, so the settings load first.
+		await this.runWorkspaces?.ready();
 		try {
 			const swept = await sweepRunWorkspaces();
 			if (swept > 0)
