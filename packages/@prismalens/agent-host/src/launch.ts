@@ -149,6 +149,19 @@ function refusal(
 	};
 }
 
+function userConfigEnv(key: string, value: string | undefined): JsonObject {
+	if (!value?.trim()) return {};
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+			return parsed as JsonObject;
+	} catch {}
+	throw new AgentHostError(
+		"bad-config-env",
+		`${key} must hold a JSON object for the run's config to merge into it`,
+	);
+}
+
 /** A later layer wins. On Windows a name differing only in case is the same variable, and a child gets just one of them. */
 function overlay(
 	env: Record<string, string>,
@@ -280,10 +293,22 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 
 	const level = input.level ? resolveLevel(input.agent, input.level) : null;
 	const patch = level?.configPatch?.(input.userConfig ?? {});
+	const planned = levelFiles(row.configFiles?.(runEnv) ?? {}, patch);
+	if (row.configEnv && planned[row.configEnv.file] !== undefined) {
+		const { file, key } = row.configEnv;
+		env[key] = JSON.stringify(
+			mergeConfigPatch(
+				userConfigEnv(key, env[key]),
+				JSON.parse(planned[file] as string) as JsonObject,
+			),
+		);
+		delete planned[file];
+	}
 	const files = Object.fromEntries(
-		Object.entries(levelFiles(row.configFiles?.(runEnv) ?? {}, patch)).map(
-			([rel, content]) => [join(runEnv.configDir, rel), content],
-		),
+		Object.entries(planned).map(([rel, content]) => [
+			join(runEnv.configDir, rel),
+			content,
+		]),
 	);
 	const sessionMeta = row.sessionMeta?.();
 	return {

@@ -45,17 +45,16 @@ describe("harness config (#817: the repo's own agent config loads)", () => {
 
 	it("opencode loads the snapshot's own config and keeps looping after a refusal", () => {
 		const row = HARNESS_REGISTRY.opencode;
-		expect(Object.keys(row.acpEnv(runEnv))).toEqual(["OPENCODE_CONFIG_DIR"]);
+		expect(row.acpEnv(runEnv)).toEqual({});
+		expect(row.configEnv).toEqual({ file: "opencode.json", key: "OPENCODE_CONFIG_CONTENT" });
 		const config = JSON.parse(row.configFiles?.(runEnv)["opencode.json"] ?? "{}");
 		expect(config.permission).toBeUndefined();
 		expect(config.share).toBe("disabled");
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
-	it("opencode keeps the user's own config home, so their model, providers and agents apply (#791)", () => {
-		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({
-			OPENCODE_CONFIG_DIR: "/c",
-		});
+	it("opencode keeps the user's own config home and OPENCODE_CONFIG_DIR, so their model, providers and agents apply (#791, #817)", () => {
+		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({});
 	});
 
 	it("claude-code takes the operator's model over ACP, never from an env it writes (R4.2)", () => {
