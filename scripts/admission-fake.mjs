@@ -205,7 +205,7 @@ export function admissionProblem(harness, v, code) {
 		!v.pass &&
 		v.failedChecks.join(",") === known.failedChecks.join(",") &&
 		v.r5 === known.r5 &&
-		[v.r8, v.r9].every((r) => r === "pass" || r === "n/a");
+		[v.r8, v.r9, v.r10].every((r) => r === "pass" || r === "n/a");
 	if (same) return null;
 	return code === 0 || v.pass
 		? `the known failure is fixed (${known.why}); remove it from KNOWN_ADMISSION_FAILURES`

@@ -12,6 +12,7 @@ import {
 	permissionDecisions,
 	proveCwd,
 	redactNonce,
+	replayedText,
 	initializeVersion,
 	type WireLine,
 } from "./admission-checks.js";
@@ -289,5 +290,37 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		expect(toolCallLine({ gateway: false, ran: true, calls: 3, connected: true })).toBe(
 			"fail (no PrismaLens gateway was offered)",
 		);
+	});
+});
+
+describe("replayedText (#942)", () => {
+	const update = (sessionUpdate: string, text: string, messageId?: string): WireLine => ({
+		t: 0,
+		d: "in",
+		m: JSON.stringify({
+			method: "session/update",
+			params: { update: { sessionUpdate, ...(messageId ? { messageId } : {}), content: { type: "text", text } } },
+		}),
+	});
+	const prompt: WireLine = { t: 0, d: "out", m: JSON.stringify({ id: 9, method: "session/prompt" }) };
+
+	it("finds history the agent re-sent before the prompt, however short", () => {
+		const wire = [update("agent_message_chunk", "Admission"), update("agent_message_chunk", "Probe"), prompt];
+		expect(replayedText(wire, "AdmissionProbe and more")).toBe("AdmissionProbe");
+	});
+
+	it("finds a late chunk under a message id the history used", () => {
+		const wire = [update("agent_message_chunk", "old ", "m1"), prompt, update("agent_message_chunk", "words", "m1")];
+		expect(replayedText(wire, "old words")).toBe("old words");
+	});
+
+	it("never counts the model saying the same thing again after the prompt", () => {
+		const wire = [prompt, update("agent_message_chunk", "the report text", "m2")];
+		expect(replayedText(wire, "the report text")).toBeNull();
+	});
+
+	it("is null when the history never reached the reply", () => {
+		const wire = [update("agent_message_chunk", "REPLAYED"), prompt];
+		expect(replayedText(wire, "AdmissionProbe")).toBeNull();
 	});
 });

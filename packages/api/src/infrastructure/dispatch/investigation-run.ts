@@ -975,9 +975,11 @@ async function runFollowUp(
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
-				...(seed
+				...(seed || sessionId
 					? {
+							// A load the agent replaced with a fresh session records it as a handoff does (#942).
 							onSession: (s: { sessionId: string; loadSession: boolean }) => {
+								if (!seed && s.sessionId === sessionId) return;
 								handedOff = ports
 									.recordHandoff(id, {
 										harness,

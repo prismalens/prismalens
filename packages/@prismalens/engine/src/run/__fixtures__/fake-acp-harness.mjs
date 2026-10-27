@@ -35,9 +35,9 @@
 // FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
 // tool call whose output is the file's text, as an agent reading the pre-run copies would.
 // Reopen paths (#942): FAKE_SESSION_RESUME=1 advertises sessionCapabilities.resume and answers
-// session/resume with no replay (FAKE_SESSION_RESUME=replay sends one replayed update anyway);
-// FAKE_REPLAY_COMPLETE=1 advertises replayComplete and ends the load replay with the marker, then one
-// live update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
+// session/resume with no replay (=replay sends one replayed message anyway, =state one state update,
+// =straggler one id-less message after the answer); FAKE_REPLAY_COMPLETE=1 advertises replayComplete
+// and ends the load replay with the marker, then one state update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
 // with ids; FAKE_AGENT_NAME names the agent in initialize.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -272,6 +272,7 @@ async function turn(sessionId, promptText) {
 			});
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
+			messageId: "m_live",
 			content: {
 				type: "text",
 				text: `Heard: ${promptText}${mode === "continue" ? `\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`\n` : ""}`,
@@ -612,13 +613,20 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		if (resuming) {
 			if (process.env.FAKE_SESSION_RESUME === "replay")
 				notify(sessionId, history[1]);
+			if (process.env.FAKE_SESSION_RESUME === "state")
+				notify(sessionId, {
+					sessionUpdate: "available_commands_update",
+					availableCommands: [{ name: "LIVE", description: "state" }],
+				});
 		} else {
 			for (const u of history.slice(0, 2)) notify(sessionId, u);
 			if (process.env.FAKE_REPLAY_COMPLETE) {
 				notify(sessionId, { sessionUpdate: "replay_complete" });
 				notify(sessionId, {
-					sessionUpdate: "agent_message_chunk",
-					content: { type: "text", text: "LIVE before the answer" },
+					sessionUpdate: "available_commands_update",
+					availableCommands: [
+						{ name: "LIVE", description: "after the marker" },
+					],
 				});
 			}
 		}
@@ -634,6 +642,11 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		});
 		// gemini-cli's shape (google-gemini/gemini-cli#29707): the history after the answer.
 		if (late) for (const u of history) notify(sessionId, u);
+		if (process.env.FAKE_SESSION_RESUME === "straggler")
+			notify(sessionId, {
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "REPLAYED with no id" },
+			});
 	} else if (msg.method === "session/set_config_option") {
 		const { configId, value } = msg.params ?? {};
 		// FAKE_REJECT_SET: the agent answers with an RPC error instead of a silent non-switch.
