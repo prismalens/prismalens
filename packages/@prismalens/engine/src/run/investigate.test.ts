@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import { conductRun } from "./conductor.js";
 import { FindingsLedger } from "./findings.js";
+import type { GatewayCall } from "./gateway.js";
 import {
 	buildRunFidelity,
 	createSteerChannel,
@@ -1001,8 +1002,7 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 		});
 	});
 
-	// On Windows, the test script is written as `claude` (no .exe/.cmd) and accessSync(X_OK) fails to match it on PATH.
-	it.fails("hands the adapter the claude already on PATH", () => {
+	it("hands the adapter the claude already on PATH", () => {
 		const env = envFor(claudeOnPath());
 		expect(env.CLAUDE_CODE_EXECUTABLE).toMatch(/\/claude$/);
 	});
@@ -1718,7 +1718,7 @@ describe("harness tool call live events and summary (#848)", () => {
 	});
 
 	it("yields a harness_tool_call carrying callId, input, output, isError, ms, schemaHash and gateway's server", async () => {
-		let onCallCb: ((c: any) => void) | undefined;
+		let onCallCb: ((c: GatewayCall) => void) | undefined;
 		const callAt = "2026-10-24T10:00:00.000Z";
 		const gateway = {
 			url: "http://127.0.0.1:1/mcp",
@@ -1740,7 +1740,7 @@ describe("harness tool call live events and summary (#848)", () => {
 				});
 				return true;
 			},
-			onCall: (cb: (c: any) => void) => {
+			onCall: (cb: (c: GatewayCall) => void) => {
 				onCallCb = cb;
 				return () => {};
 			},
