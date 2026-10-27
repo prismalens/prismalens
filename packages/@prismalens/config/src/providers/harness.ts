@@ -159,6 +159,8 @@ function noModeLines(label: string): Lines {
 
 const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	opencode: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
 		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
 		install: "npm i -g opencode-ai",
@@ -180,6 +182,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`opencode auth login`, or a provider key in env",
 	},
 	"claude-code": {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["claude-acp"],
 		install:
 			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
@@ -232,6 +236,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	},
 	gemini: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
 		install: "npm i -g @google/gemini-cli",
 		channel: { npm: "@google/gemini-cli" },
@@ -252,6 +258,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		},
 	},
 	deepagents: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		channel: { uv: ["deepagents-code", "deepagents-acp"] },
