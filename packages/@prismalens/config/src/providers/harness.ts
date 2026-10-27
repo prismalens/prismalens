@@ -300,6 +300,8 @@ const LOCAL_NO_MODE = noMode("Local agent");
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
 		id: "opencode",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "OpenCode",
 		acpRegistryIds: ["opencode", "opencode-v2"],
 		binary: "opencode",
@@ -381,6 +383,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	"claude-code": {
 		id: "claude-code",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "Claude Code",
 		acpRegistryIds: ["claude-acp"],
 		binary: "claude-agent-acp",
@@ -540,6 +544,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	gemini: {
 		id: "gemini",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "Gemini CLI",
 		acpRegistryIds: ["gemini"],
 		binary: "gemini",
@@ -585,6 +591,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	deepagents: {
 		id: "deepagents",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "deepagents",
 		acpRegistryIds: ["deepagents"],
 		// deepagents-acp ships no console script; deepagents-code's `dcode --acp` is
