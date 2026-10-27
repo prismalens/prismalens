@@ -119,11 +119,14 @@ jobs:
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
+          # The packument lists a version before its tarball serves (runs 39999353688, 39999926176).
+          url=""
           for _ in $(seq 1 60); do
-            npm view "prismalens@${VERSION}" version >/dev/null 2>&1 && exit 0
+            [ -n "$url" ] || url=$(npm view "prismalens@${VERSION}" dist.tarball 2>/dev/null || true)
+            [ -n "$url" ] && curl -fsSIL "$url" >/dev/null 2>&1 && exit 0
             sleep 15
           done
-          echo "::error::prismalens@${VERSION} did not appear on npm within 15 minutes"
+          echo "::error::prismalens@${VERSION} and its tarball did not appear on npm within 15 minutes"
           exit 1
 
   pack:
@@ -227,6 +230,7 @@ jobs:
         with:
           sparse-checkout: |
             scripts/cross-os-smoke.sh
+            scripts/lib/npm-install-retry.mjs
             .nvmrc
           sparse-checkout-cone-mode: false
 
@@ -275,15 +279,18 @@ jobs:
           }
           EOF
 
-          npm install --engine-strict --no-audit --no-fund --loglevel=error
+          node "$GITHUB_WORKSPACE/scripts/lib/npm-install-retry.mjs" npm install --engine-strict --no-audit --no-fund --loglevel=error
+
+      - name: Make a clean dir for the registry install (registry mode)
+        if: env.MODE == 'registry'
+        run: mkdir -p scratch && cd scratch && npm init -y >/dev/null
 
       - name: Cold-install from the npm registry into a clean dir (registry mode)
         if: env.MODE == 'registry'
-        run: |
-          mkdir -p scratch
-          cd scratch
-          npm init -y >/dev/null
-          npm install --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
+        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+        with:
+          working-directory: scratch
+          command: npm install --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
 
       - name: Run the cross-OS smoke assertions
         run: bash scripts/cross-os-smoke.sh scratch
@@ -332,6 +339,7 @@ jobs:
           sparse-checkout: |
             scripts/cross-os-app-boot.mjs
             scripts/lib/app-boot-retry.mjs
+            scripts/lib/npm-install-retry.mjs
             packages/@prismalens/engine/scripts/refusal-gate-check.mjs
             .nvmrc
           sparse-checkout-cone-mode: false
@@ -368,11 +376,13 @@ jobs:
           }
           CLI_TGZ=$(find_tarball "prismalens-")
           echo "installing $CLI_TGZ globally"
-          npm install -g --engine-strict --no-audit --no-fund --loglevel=error "$CLI_TGZ"
+          node "$GITHUB_WORKSPACE/scripts/lib/npm-install-retry.mjs" npm install -g --engine-strict --no-audit --no-fund --loglevel=error "$CLI_TGZ"
 
       - name: Install from the npm registry GLOBALLY (registry mode)
         if: env.MODE == 'registry'
-        run: npm install -g --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
+        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+        with:
+          command: npm install -g --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
 
       - name: Boot the app and assert it serves a working dashboard and API
         run: node scripts/cross-os-app-boot.mjs

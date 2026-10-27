@@ -36,6 +36,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = process.env.PL_UP_PORT ?? "3100";
@@ -71,7 +72,7 @@ const tgz = tarball();
 console.log(`[pl-up-e2e] installing ${tgz} into ${prefix}`);
 // A global-style install: the same layout `npm i -g prismalens` produces, so the
 // bin wiring and the bundled node_modules are exercised, not bypassed.
-execFileSync(
+installWithRetry(
 	"npm",
 	[
 		"install",

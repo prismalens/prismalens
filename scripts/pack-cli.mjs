@@ -147,6 +147,7 @@ const VENDORED = ["@prisma/adapter-better-sqlite3"];
  * strip and the licence texts live there once, for npm and for this tarball (#818).
  */
 const NESTED = ["@prismalens/agent-adapters"];
+const NESTED_SHORT = new Set(NESTED.map((n) => n.replace("@prismalens/", "")));
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
@@ -475,8 +476,9 @@ function scanImports(stagedModules, union, copiedNames, optional) {
 		// regex. Node never resolves anything in there.
 		const parts = relative(stagedModules, file).split(sep);
 		if (parts.includes("public")) continue;
-		// A NESTED package's own install resolves its imports, not the union.
+		// A NESTED package resolves its own imports: its bundles inline them and it carries its SDK.
 		if (parts.includes("node_modules")) continue;
+		if (NESTED_SHORT.has(parts[0])) continue;
 		const source = readFileSync(file, "utf8");
 		IMPORT_RE.lastIndex = 0;
 		let match = IMPORT_RE.exec(source);
@@ -623,6 +625,21 @@ function assertTarball(tarball, copiedNames) {
 			)
 		)
 			fail(`the tarball has no THIRD_PARTY_LICENSES inside ${name}`);
+		const manifestEntry = `package/node_modules/@prismalens/${short}/dist/adapters/bundled.json`;
+		if (!has((e) => e === manifestEntry))
+			fail(`the tarball has no dist/adapters/bundled.json inside ${name}`);
+		for (const { script } of Object.values(
+			JSON.parse(tar(tarball, ["-xzOf", manifestEntry])),
+		)) {
+			if (
+				!has(
+					(e) =>
+						e ===
+						`package/node_modules/@prismalens/${short}/dist/adapters/${script}`,
+				)
+			)
+				fail(`the tarball has no bundled adapter ${script} inside ${name}`);
+		}
 	}
 	const natives = entries.filter((e) => NATIVE_COPIES.test(e));
 	if (natives.length > 0) {

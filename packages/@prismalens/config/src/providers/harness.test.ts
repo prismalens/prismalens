@@ -409,15 +409,18 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		}
 	});
 
-	it("Given agent-adapters package.json, When checking dependencies, Then each exact version equals the registry row's tested version", () => {
+	it("Given agent-adapters package.json, When checking the adapter pins, Then each exact version equals the registry row's tested version", () => {
 		const pkgPath = join(
 			dirname(fileURLToPath(import.meta.url)),
 			"../../../agent-adapters/package.json",
 		);
 		const manifest = JSON.parse(readFileSync(pkgPath, "utf8")) as {
-			dependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
 		};
-		const deps = Object.entries(manifest.dependencies ?? {});
+		// The adapters are bundled at build time, so their pins are devDependencies (#906).
+		const deps = Object.entries(manifest.devDependencies ?? {}).filter(([pkg]) =>
+			/^@agentclientprotocol\/.+-acp$/.test(pkg),
+		);
 		expect(deps.length).toBeGreaterThan(0);
 		for (const [pkg, version] of deps) {
 			const row = Object.values(HARNESS_REGISTRY).find(
