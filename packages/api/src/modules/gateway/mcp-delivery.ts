@@ -49,6 +49,8 @@ export function gatewayMcpServer(
 			inputSchema: z.toJSONSchema(t.input, {
 				io: "input",
 			}) as JsonSchemaObject,
+			// The recording tools write only the run's own record, never the user's systems,
+			// so they stay read-only and a read-only run can still record (#930).
 			annotations: { readOnlyHint: true, openWorldHint: t.openWorld },
 		})),
 	}));

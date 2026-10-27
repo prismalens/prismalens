@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	CanonicalEvent,
 	InvestigationReport,
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
@@ -13,6 +14,7 @@ import {
 	evidenceRow,
 	evidenceSections,
 	filterSteps,
+	recordedFindings,
 	summarySections,
 } from "./run-details";
 import type { RunStep } from "./run-steps";
@@ -183,6 +185,33 @@ describe("evidenceSections (#811 data mapping)", () => {
 			"No conclusion yet.",
 			"Run 2's finding stands until this run reports.",
 		]);
+	});
+
+	it("shows what the agent recorded while the run is live, each id at its latest (#930)", () => {
+		const base = { runId: "11111111-1111-4111-8111-111111111111", branchId: "run", path: [], label: null, ts: "2026-10-28T10:00:00.000Z" };
+		const at = base.ts;
+		const events: CanonicalEvent[] = [
+			{ kind: "finding_recorded", ...base, seq: 1, finding: { type: "evidence", id: "e1", observation: "Pool full", source: "kubectl logs", quote: "ERROR pool exhausted", direction: "supports", anchor: { in: "tool-output", toolCallId: "b", line: 3 }, at } },
+			{ kind: "finding_recorded", ...base, seq: 2, finding: { type: "evidence", id: "e2", observation: "Made up", source: "memory", quote: "never printed", direction: "supports", anchor: null, at } },
+			{ kind: "finding_recorded", ...base, seq: 3, finding: { type: "hypothesis", id: "h1", statement: "Pool", status: "speculative", evidenceIds: ["e1"], at } },
+			{ kind: "finding_recorded", ...base, seq: 4, finding: { type: "hypothesis", id: "h1", statement: "Pool exhausted", status: "confirmed", evidenceIds: ["e1", "e2"], at } },
+		];
+		const [so, hyps, ev] = evidenceSections(inv({ status: "running" }), stepOf, {
+			live: true,
+			standing: null,
+			recorded: recordedFindings(events),
+		});
+		expect(so?.title).toBe("So far");
+		expect(hyps).toEqual({
+			title: "Hypotheses so far",
+			rows: [{ label: "h1", text: "Pool exhausted", sub: "Confirmed, from e1, e2" }],
+		});
+		expect(ev?.title).toBe("Evidence so far");
+		expect(ev?.rows[0]).toMatchObject({ label: "e1", text: "Pool full", step: 2 });
+		expect(ev?.rows[0]?.sub).toContain('"ERROR pool exhausted"');
+		expect(ev?.rows[0]?.flag).toBeUndefined();
+		expect(ev?.rows[1]).toMatchObject({ label: "e2", flag: "Quote not found" });
+		expect(ev?.rows[1]?.step).toBeUndefined();
 	});
 
 	it("says a failed run failed before it reported", () => {
