@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RecordedFinding } from "@prismalens/contracts/schemas";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import runInvestigationJob from "../../infrastructure/dispatch/investigation-run.js";
 import type { RunPorts } from "../../infrastructure/dispatch/run-ports.js";
 import { GatewayService } from "./gateway.service.js";
@@ -169,6 +169,22 @@ describe("gateway bearer (#848)", () => {
 	});
 });
 
+const ALL_TOOLS = [
+	"artifact_publish",
+	"changes_list",
+	"evidence_record",
+	"hypothesis_record",
+	"incident_get",
+	"investigations_search",
+	"run_status",
+	"runbooks_list",
+	"runbooks_read",
+	"service_get",
+	"thread_list",
+	"thread_read",
+	"timeline_read",
+];
+
 describe("gateway tools (#848 ruling 2026-10-24)", () => {
 	const investigation = {
 		findUnique: vi.fn(async () => ({
@@ -240,29 +256,13 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 				tools: { name: string; annotations?: { readOnlyHint?: boolean } }[];
 			}
 		).tools;
-		expect(tools.map((t) => t.name).sort()).toEqual([
-			"artifact_publish",
-			"evidence_record",
-			"hypothesis_record",
-			"incident_get",
-			"investigations_search",
-			"runbooks_list",
-			"runbooks_read",
-		]);
+		expect(tools.map((t) => t.name).sort()).toEqual(ALL_TOOLS);
 		expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
 	});
 
 	it("the lease names the same tools, and the prompt line sends data access to the agent's own tools", async () => {
 		const entry = await gateway().lease(RUN_A, NAME);
-		expect([...(entry?.tools ?? [])].sort()).toEqual([
-			"artifact_publish",
-			"evidence_record",
-			"hypothesis_record",
-			"incident_get",
-			"investigations_search",
-			"runbooks_list",
-			"runbooks_read",
-		]);
+		expect([...(entry?.tools ?? [])].sort()).toEqual(ALL_TOOLS);
 		expect(entry?.promptLine).toContain("use the tools your own setup gives you");
 		expect(entry?.promptLine).toContain("`evidence_record`, quoting the output exactly");
 		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
@@ -775,5 +775,705 @@ describe("artifact_publish (#871)", () => {
 		const over = await publish("one too many");
 		expect((over.result as { isError?: boolean }).isError).toBe(true);
 		expect(pagesA).toHaveLength(20);
+	});
+});
+
+describe("read tools for the coding agent (#848)", () => {
+	const NOW = new Date("2026-10-25T09:00:00Z");
+	const FINISHED = "33333333-3333-4333-8333-333333333333";
+	const LIVE = "44444444-4444-4444-8444-444444444444";
+	const ON_SERVICE = "55555555-5555-4555-8555-555555555555";
+	const UNRELATED = "66666666-6666-4666-8666-666666666666";
+	const incident = {
+		id: "inc-1",
+		number: 12,
+		triggeredAt: new Date("2026-10-24T09:00:00Z"),
+		serviceId: "svc-1",
+	};
+	const report = {
+		summary: "checkout ran out of connections",
+		rootCause: "pool max 50 is below the load",
+		rootCauseCategory: "config",
+		culprit: { service: "checkout", changeRef: "v2.1.0", mechanism: "pool" },
+		hypotheses: [
+			{ statement: "the pool is too small", status: "supported", evidence: [] },
+			{ statement: "a leak in the cart", status: "refuted", evidence: [] },
+		],
+		ruledOut: [],
+		coverage: { queried: ["logs"], notQueried: [] },
+		nextSteps: [{ title: "Raise the pool", detail: "max 50 to 100" }],
+	};
+	const thread = (id: string, over: Record<string, unknown> = {}) => ({
+		id,
+		kind: "investigation",
+		status: "completed",
+		startedAt: new Date("2026-10-20T10:00:00Z"),
+		completedAt: new Date("2026-10-20T10:09:00Z"),
+		harness: "claude-code",
+		model: "opus",
+		summary: report.summary,
+		rootCause: report.rootCause,
+		report: JSON.stringify(report),
+		error: null,
+		incident: { id: "inc-1", number: 12, serviceId: "svc-1" },
+		...over,
+	});
+	const runRow = (over: Record<string, unknown> = {}) => ({
+		...thread(RUN_A, { status: "running", completedAt: null, report: null }),
+		startedAt: new Date(NOW.getTime() - 60_000),
+		accessLevel: "supervised",
+		usage: JSON.stringify({
+			used: 12_000,
+			size: 200_000,
+			cost: { amount: 0.42, currency: "USD" },
+			at: "2026-10-25T08:59:00Z",
+		}),
+		workspace: JSON.stringify({
+			layout: "multi",
+			cwd: "/w",
+			repos: [
+				{
+					name: "checkout-api",
+					dir: "/w/checkout-api",
+					sourceKind: "url",
+					url: "https://example.test/checkout-api",
+					subPath: "svc",
+					connectionId: null,
+					head: "abc1234def5678",
+					branch: "main",
+					services: ["checkout"],
+				},
+			],
+		}),
+		incident,
+		...over,
+	});
+	const rows: Record<string, unknown> = {
+		[FINISHED]: thread(FINISHED),
+		[LIVE]: thread(LIVE, {
+			status: "running",
+			completedAt: null,
+			report: null,
+			summary: null,
+			rootCause: null,
+		}),
+		[ON_SERVICE]: thread(ON_SERVICE, {
+			incident: { id: "inc-7", number: 7, serviceId: "svc-2" },
+		}),
+		[UNRELATED]: thread(UNRELATED, {
+			incident: { id: "inc-9", number: 9, serviceId: "svc-9" },
+		}),
+	};
+	const known = [
+		{ id: "svc-1", name: "checkout" },
+		{ id: "svc-2", name: "payments" },
+	];
+	const checkout = {
+		...known[0],
+		displayName: "Checkout",
+		type: "service",
+		tier: "tier_1",
+		team: "commerce",
+		slackChannel: "#checkout-oncall",
+		tags: JSON.stringify(["web", "revenue"]),
+		repositories: [
+			{
+				subPath: "svc",
+				repository: { fullName: "acme/checkout-api", defaultBranch: "main" },
+			},
+		],
+		dependencies: [{ criticality: "required", dependency: { name: "payments" } }],
+		dependents: [{ criticality: "degraded", dependent: { name: "storefront" } }],
+	};
+
+	function mocks(over: { run?: unknown } = {}) {
+		return {
+			investigation: {
+				findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+					where.id === RUN_A
+						? "run" in over
+							? over.run
+							: runRow()
+						: (rows[where.id] ?? null),
+				),
+				findMany: vi.fn(async () => [rows[FINISHED], rows[LIVE]]),
+			},
+			investigationEvent: {
+				findMany: vi.fn(async () => [
+					{ event: JSON.stringify({ kind: "tool_result", text: "ignored" }) },
+					...Array.from({ length: 30 }, (_, i) => ({
+						event: JSON.stringify({
+							kind: "agent_step",
+							text: `step ${30 - i}`,
+							toolCalls: [],
+						}),
+					})),
+				]),
+			},
+			alert: {
+				findMany: vi.fn(async () => [
+					{ serviceId: "svc-1" },
+					{ serviceId: "svc-2" },
+				]),
+			},
+			service: {
+				findUnique: vi.fn(async ({ where }: { where: { name: string } }) =>
+					where.name === "checkout"
+						? checkout
+						: where.name === "payments"
+							? { ...known[1], tier: "tier_2" }
+							: null,
+				),
+				findMany: vi.fn(
+					async ({
+						where,
+					}: {
+						where: { id?: { in: string[] }; name?: { in: string[] } };
+					}) =>
+						known.filter((s) =>
+							where.name
+								? where.name.in.includes(s.name)
+								: where.id?.in.includes(s.id),
+						),
+				),
+			},
+			timelineEntry: {
+				count: vi.fn(async () => 3),
+				findMany: vi.fn(async () => [
+					{
+						type: "status_changed",
+						title: "Status changed to identified",
+						description: null,
+						source: "user",
+						occurredAt: new Date("2026-10-24T09:30:00Z"),
+					},
+					{
+						type: "investigation_completed",
+						title: "Investigation finished",
+						description: "pool exhausted",
+						source: "ai_worker",
+						occurredAt: new Date("2026-10-24T09:20:00Z"),
+					},
+					{
+						type: "incident_created",
+						title: "Incident created",
+						description: null,
+						source: "system",
+						occurredAt: new Date("2026-10-24T09:00:00Z"),
+					},
+				]),
+			},
+			changeEvent: {
+				findMany: vi.fn(async () => [
+					{
+						type: "deploy",
+						source: "argocd",
+						timestamp: new Date("2026-10-24T08:30:00Z"),
+						description: "deployed checkout v2.1.0",
+						metadata: JSON.stringify({
+							environment: "production",
+							version: "v2.1.0",
+						}),
+						service: { name: "checkout" },
+					},
+				]),
+			},
+			setting: { findUnique: async () => null },
+		};
+	}
+
+	type Result = {
+		isError: boolean;
+		value: Record<string, unknown> & {
+			threads?: Record<string, unknown>[];
+			entries?: Record<string, unknown>[];
+			changes?: Record<string, unknown>[];
+		};
+	};
+	async function use(
+		m: ReturnType<typeof mocks>,
+		name: string,
+		args: Record<string, unknown> = {},
+	): Promise<Result> {
+		const g = gateway(m);
+		const a = await g.lease(RUN_A, NAME);
+		const res = await g.serve(
+			RUN_A,
+			rpc(RUN_A, "tools/call", { name, arguments: args }, a?.token),
+		);
+		const r = (await body(res)).result as {
+			content: { text: string }[];
+			isError?: boolean;
+		};
+		return {
+			isError: !!r.isError,
+			value: JSON.parse(r.content[0]?.text ?? "{}"),
+		};
+	}
+	const failure = (code: string) => ({
+		error: code,
+		message: expect.any(String),
+		next: expect.any(String),
+	});
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(NOW);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	describe("thread_list", () => {
+		it("lists the incident's other threads, newest first, with what a thread needs to be picked", async () => {
+			const m = mocks();
+			const out = await use(m, "thread_list");
+			expect(out.isError).toBe(false);
+			expect(out.value.threads).toEqual([
+				{
+					id: FINISHED,
+					kind: "investigation",
+					status: "completed",
+					startedAt: "2026-10-20T10:00:00.000Z",
+					finishedAt: "2026-10-20T10:09:00.000Z",
+					agent: "claude-code",
+					model: "opus",
+					summary: report.summary,
+				},
+				{
+					id: LIVE,
+					kind: "investigation",
+					status: "running",
+					startedAt: "2026-10-20T10:00:00.000Z",
+					finishedAt: null,
+					agent: "claude-code",
+					model: "opus",
+				},
+			]);
+			expect(m.investigation.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: { not: RUN_A }, incidentId: "inc-1" },
+					orderBy: { createdAt: "desc" },
+					take: 10,
+				}),
+			);
+		});
+
+		it("lists a named service's threads across its incidents", async () => {
+			const m = mocks();
+			await use(m, "thread_list", { service: "payments", limit: 3 });
+			expect(m.investigation.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: { not: RUN_A }, incident: { serviceId: "svc-2" } },
+					take: 3,
+				}),
+			);
+		});
+
+		it("an unknown service is not_found", async () => {
+			const out = await use(mocks(), "thread_list", { service: "nope" });
+			expect(out.isError).toBe(true);
+			expect(out.value).toEqual(failure("not_found"));
+		});
+
+		it("with no incident and no service is not_found", async () => {
+			const out = await use(mocks({ run: { incident: null } }), "thread_list");
+			expect(out.value).toEqual(failure("not_found"));
+		});
+
+		it("refuses a limit over 50", async () => {
+			const out = await use(mocks(), "thread_list", { limit: 51 });
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+	});
+
+	describe("thread_read", () => {
+		it("returns a finished thread's report", async () => {
+			const out = await use(mocks(), "thread_read", { threadId: FINISHED });
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				id: FINISHED,
+				kind: "investigation",
+				status: "completed",
+				summary: report.summary,
+				rootCause: report.rootCause,
+				hypotheses: [
+					{ statement: "the pool is too small", status: "supported" },
+					{ statement: "a leak in the cart", status: "refuted" },
+				],
+				nextSteps: [{ title: "Raise the pool", detail: "max 50 to 100" }],
+				culprit: { service: "checkout", changeRef: "v2.1.0", mechanism: "pool" },
+			});
+		});
+
+		it("returns an unfinished thread's status and its last 20 agent-step texts, oldest first", async () => {
+			const m = mocks();
+			const out = await use(m, "thread_read", { threadId: LIVE });
+			expect(out.value).toMatchObject({ id: LIVE, status: "running" });
+			expect(out.value.steps).toEqual(
+				Array.from({ length: 20 }, (_, i) => `step ${11 + i}`),
+			);
+			expect(out.value).not.toHaveProperty("hypotheses");
+			expect(m.investigationEvent.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({ investigationId: LIVE }),
+				}),
+			);
+		});
+
+		it("reads a thread on another incident of a service of this run's incident", async () => {
+			const out = await use(mocks(), "thread_read", { threadId: ON_SERVICE });
+			expect(out.isError).toBe(false);
+			expect(out.value.id).toBe(ON_SERVICE);
+		});
+
+		it("refuses a thread on an unrelated incident, and reads nothing of it", async () => {
+			const m = mocks();
+			const out = await use(m, "thread_read", { threadId: UNRELATED });
+			expect(out.isError).toBe(true);
+			expect(out.value).toEqual(failure("not_found"));
+			expect(m.investigationEvent.findMany).not.toHaveBeenCalled();
+		});
+
+		it("an id nobody has is not_found", async () => {
+			const out = await use(mocks(), "thread_read", { threadId: "missing" });
+			expect(out.value).toEqual(failure("not_found"));
+		});
+
+		it("an empty id is invalid_input", async () => {
+			const out = await use(mocks(), "thread_read", { threadId: "" });
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+	});
+
+	describe("timeline_read", () => {
+		it("returns the incident's timeline oldest first with who wrote each line", async () => {
+			const m = mocks();
+			const out = await use(m, "timeline_read");
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				incident: 12,
+				total: 3,
+				entries: [
+					{
+						type: "incident_created",
+						source: "system",
+						text: "Incident created",
+						at: "2026-10-24T09:00:00.000Z",
+					},
+					{
+						type: "investigation_completed",
+						source: "agent",
+						text: "Investigation finished: pool exhausted",
+						at: "2026-10-24T09:20:00.000Z",
+					},
+					{
+						type: "status_changed",
+						source: "operator",
+						text: "Status changed to identified",
+						at: "2026-10-24T09:30:00.000Z",
+					},
+				],
+			});
+			expect(m.timelineEntry.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { incidentId: "inc-1" },
+					orderBy: { occurredAt: "desc" },
+					take: 10,
+				}),
+			);
+		});
+
+		it("takes the limit", async () => {
+			const m = mocks();
+			await use(m, "timeline_read", { limit: 5 });
+			expect(m.timelineEntry.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({ take: 5 }),
+			);
+		});
+
+		it("a run with no incident is not_found", async () => {
+			const out = await use(mocks({ run: { incident: null } }), "timeline_read");
+			expect(out.value).toEqual(failure("not_found"));
+		});
+
+		it("refuses a limit of 0 or over 50", async () => {
+			for (const limit of [0, 51])
+				expect((await use(mocks(), "timeline_read", { limit })).value).toEqual(
+					failure("invalid_input"),
+				);
+		});
+	});
+
+	describe("service_get", () => {
+		it("returns the service's facts with dependencies both ways", async () => {
+			const out = await use(mocks(), "service_get", { name: "checkout" });
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				name: "checkout",
+				displayName: "Checkout",
+				type: "service",
+				tier: "tier_1",
+				team: "commerce",
+				slackChannel: "#checkout-oncall",
+				tags: ["web", "revenue"],
+				repos: [{ name: "acme/checkout-api", subPath: "svc", branch: "main" }],
+				dependsOn: [{ name: "payments", criticality: "required" }],
+				dependedOnBy: [{ name: "storefront", criticality: "degraded" }],
+			});
+		});
+
+		it("an unknown service is not_found and points to incident_get", async () => {
+			const out = await use(mocks(), "service_get", { name: "nope" });
+			expect(out.isError).toBe(true);
+			expect(out.value).toEqual(failure("not_found"));
+			expect(out.value.next).toContain("incident_get");
+			expect(JSON.stringify(out.value)).not.toContain("payments");
+		});
+
+		it("an empty name is invalid_input", async () => {
+			const out = await use(mocks(), "service_get", { name: " " });
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+	});
+
+	describe("changes_list", () => {
+		it("defaults to the incident's services, from a day before it started until now", async () => {
+			const m = mocks();
+			const out = await use(m, "changes_list");
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				window: {
+					from: "2026-10-23T09:00:00.000Z",
+					to: "2026-10-25T09:00:00.000Z",
+				},
+				services: ["checkout", "payments"],
+				changes: [
+					{
+						type: "deploy",
+						source: "argocd",
+						at: "2026-10-24T08:30:00.000Z",
+						service: "checkout",
+						description: "deployed checkout v2.1.0",
+						environment: "production",
+						version: "v2.1.0",
+					},
+				],
+			});
+			expect(m.changeEvent.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						serviceId: { in: ["svc-1", "svc-2"] },
+						timestamp: {
+							gte: new Date("2026-10-23T09:00:00Z"),
+							lte: NOW,
+						},
+					},
+					orderBy: { timestamp: "desc" },
+					take: 10,
+				}),
+			);
+		});
+
+		it("takes named services and an explicit window", async () => {
+			const m = mocks();
+			await use(m, "changes_list", {
+				services: ["payments"],
+				from: "2026-10-22T00:00:00Z",
+				to: "2026-10-23T00:00:00Z",
+				limit: 4,
+			});
+			expect(m.changeEvent.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						serviceId: { in: ["svc-2"] },
+						timestamp: {
+							gte: new Date("2026-10-22T00:00:00Z"),
+							lte: new Date("2026-10-23T00:00:00Z"),
+						},
+					},
+					take: 4,
+				}),
+			);
+		});
+
+		it("a lone old `from` ends seven days later, not now", async () => {
+			const out = await use(mocks(), "changes_list", {
+				from: "2026-10-10T00:00:00Z",
+			});
+			expect(out.value.window).toEqual({
+				from: "2026-10-10T00:00:00.000Z",
+				to: "2026-10-17T00:00:00.000Z",
+			});
+		});
+
+		it("works without an incident when services are named", async () => {
+			const out = await use(mocks({ run: { incident: null } }), "changes_list", {
+				services: ["checkout"],
+			});
+			expect(out.isError).toBe(false);
+			expect(out.value.window).toEqual({
+				from: "2026-10-24T09:00:00.000Z",
+				to: "2026-10-25T09:00:00.000Z",
+			});
+		});
+
+		it("with no incident and no services is not_found", async () => {
+			const out = await use(mocks({ run: { incident: null } }), "changes_list");
+			expect(out.value).toEqual(failure("not_found"));
+		});
+
+		it("an unknown service is not_found and names it", async () => {
+			const out = await use(mocks(), "changes_list", {
+				services: ["checkout", "nope"],
+			});
+			expect(out.value).toEqual(failure("not_found"));
+			expect(out.value.message).toContain("nope");
+		});
+
+		it("a window over seven days is invalid_input", async () => {
+			const out = await use(mocks(), "changes_list", {
+				from: "2026-10-01T00:00:00Z",
+				to: "2026-10-09T00:00:00Z",
+			});
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+
+		it("a window that ends before it starts is invalid_input", async () => {
+			const out = await use(mocks(), "changes_list", {
+				from: "2026-10-24T00:00:00Z",
+				to: "2026-10-23T00:00:00Z",
+			});
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+
+		it("a time that is not ISO is invalid_input", async () => {
+			const out = await use(mocks(), "changes_list", { from: "yesterday" });
+			expect(out.value).toEqual(failure("invalid_input"));
+		});
+	});
+
+	describe("run_status", () => {
+		it("reports usage, time left, access level and the workspace repos at their commits", async () => {
+			const out = await use(mocks(), "run_status");
+			expect(out.isError).toBe(false);
+			expect(out.value).toEqual({
+				status: "running",
+				usage: {
+					used: 12_000,
+					size: 200_000,
+					cost: { amount: 0.42, currency: "USD" },
+				},
+				secondsLeft: 840,
+				accessLevel: "supervised",
+				repos: [
+					{
+						name: "checkout-api",
+						subPath: "svc",
+						branch: "main",
+						commit: "abc1234def5678",
+						services: ["checkout"],
+					},
+				],
+			});
+		});
+
+		it("says null for what the run never recorded, never zero", async () => {
+			const out = await use(
+				mocks({
+					run: runRow({
+						usage: null,
+						startedAt: null,
+						workspace: null,
+						accessLevel: null,
+					}),
+				}),
+				"run_status",
+			);
+			expect(out.value).toEqual({
+				status: "running",
+				usage: null,
+				secondsLeft: null,
+				accessLevel: null,
+				repos: [],
+			});
+		});
+
+		it("a run that is gone is not_found", async () => {
+			const out = await use(mocks({ run: null }), "run_status");
+			expect(out.value).toEqual(failure("not_found"));
+		});
+	});
+
+	describe("every tool", () => {
+		const SIX = [
+			"thread_list",
+			"thread_read",
+			"timeline_read",
+			"service_get",
+			"changes_list",
+			"run_status",
+		];
+
+		it("is read-only and takes no run id", async () => {
+			const g = gateway(mocks());
+			const a = await g.lease(RUN_A, NAME);
+			const res = await body(
+				await g.serve(RUN_A, rpc(RUN_A, "tools/list", {}, a?.token)),
+			);
+			const tools = (
+				res.result as {
+					tools: {
+						name: string;
+						inputSchema: { properties?: Record<string, unknown> };
+						annotations?: { readOnlyHint?: boolean };
+					}[];
+				}
+			).tools;
+			for (const name of SIX) {
+				const tool = tools.find((t) => t.name === name);
+				expect(tool, name).toBeDefined();
+				expect(Object.keys(tool?.inputSchema.properties ?? {})).not.toContain(
+					"runId",
+				);
+				expect(tool?.annotations?.readOnlyHint).toBe(true);
+			}
+		});
+
+		it("is deferred under tool search, found by name and run through tools_call", async () => {
+			const g = gateway(mocks());
+			g.toolSearch = () => true;
+			const a = await g.lease(RUN_A, NAME, "any");
+			const send = async (name: string, args: Record<string, unknown>) =>
+				body(
+					await g.serve(
+						RUN_A,
+						rpc(RUN_A, "tools/call", { name, arguments: args }, a?.token),
+					),
+				);
+			const text = (out: Record<string, unknown>) =>
+				JSON.parse(
+					(out.result as { content: { text: string }[] }).content[0]?.text ??
+						"null",
+				);
+			const listed = (
+				(
+					await body(
+						await g.serve(RUN_A, rpc(RUN_A, "tools/list", {}, a?.token)),
+					)
+				).result as { tools: { name: string }[] }
+			).tools.map((t) => t.name);
+			for (const name of SIX) {
+				expect(listed).not.toContain(name);
+				expect(
+					text(await send("tools_search", { query: name })).tools[0].name,
+				).toBe(name);
+			}
+			expect((await send("run_status", {})).error).toBeDefined();
+			const via = text(
+				await send("tools_call", { name: "run_status", arguments: {} }),
+			);
+			expect(via.status).toBe("running");
+		});
 	});
 });
