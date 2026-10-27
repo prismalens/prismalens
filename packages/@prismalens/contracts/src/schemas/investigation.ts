@@ -1066,6 +1066,34 @@ export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
 export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
 
+export interface RecordedFindings {
+	evidence: RecordedEvidence[];
+	hypotheses: RecordedHypothesis[];
+}
+
+/** What a run's events say the agent recorded, each id at its latest (#930). */
+export function recordedFindings(
+	events: readonly CanonicalEvent[],
+): RecordedFindings {
+	const evidence = new Map<string, RecordedEvidence>();
+	const hypotheses = new Map<string, RecordedHypothesis>();
+	for (const e of events) {
+		if (e.kind !== "finding_recorded") continue;
+		const f = e.finding;
+		if (f.type === "evidence") {
+			const { type: _type, ...item } = f;
+			evidence.set(item.id, item);
+		} else {
+			const { type: _type, ...item } = f;
+			hypotheses.set(item.id, item);
+		}
+	}
+	return {
+		evidence: Array.from(evidence.values()),
+		hypotheses: Array.from(hypotheses.values()),
+	};
+}
+
 // =============================================================================
 // DURABLE EVENT RECORD (ADR-0018 store.append) — bulk-append + replay/history
 // =============================================================================

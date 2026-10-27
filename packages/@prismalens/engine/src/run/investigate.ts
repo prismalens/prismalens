@@ -49,6 +49,7 @@ import {
 } from "@prismalens/contracts/schemas";
 import {
 	AcpAdapter,
+	type AcpUpdate,
 	type HarnessToolsTurn,
 	mapStopReason,
 	toolOutputText,
@@ -616,7 +617,7 @@ export async function* runInvestigation(
 					lastCall = { title: u.title, toolCallId: u.toolCallId };
 				if (u.toolCallId && opts.gateway?.sawOutput) {
 					// A call to PrismaLens's own tools carries the quote it records, so it never anchors one (#930).
-					if (u.title?.includes(opts.gateway.serverName))
+					if (namesServer(u, opts.gateway.serverName))
 						ownCalls.add(u.toolCallId);
 					const done =
 						u.sessionUpdate === "tool_call_update" ||
@@ -1082,6 +1083,19 @@ async function applyMode(
 	return took
 		? null
 		: `${run.label} did not offer mode "${run.target}"; run a check in Settings, Agent`;
+}
+
+/** A call to the run's own MCP server, by its title, Claude Code's `_meta`, or its input's `server`. */
+function namesServer(u: AcpUpdate, server: string): boolean {
+	const meta = u._meta as
+		| { claudeCode?: { mcpServer?: { name?: unknown } } }
+		| undefined;
+	const raw = u.rawInput as { server?: unknown } | undefined;
+	return (
+		(typeof u.title === "string" && u.title.includes(server)) ||
+		meta?.claudeCode?.mcpServer?.name === server ||
+		raw?.server === server
+	);
 }
 
 /** An agent sandbox with no network is named under What we could not check (#778). */

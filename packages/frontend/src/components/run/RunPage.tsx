@@ -9,6 +9,7 @@ import {
 	isRunStateLive,
 	modelSubstituted,
 	type RunState,
+	recordedFindings,
 } from "@prismalens/contracts";
 import { useLocation, useSearch } from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
@@ -76,7 +77,6 @@ import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
 	evidenceSections,
-	recordedFindings,
 	type SummaryFacts,
 	summarySections,
 } from "./run-details";

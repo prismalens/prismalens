@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	CanonicalEvent,
-	InvestigationReport,
-	InvestigationWithRelations,
+import {
+	type CanonicalEvent,
+	type InvestigationReport,
+	type InvestigationWithRelations,
+	recordedFindings,
 } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import type { FileAt } from "@/lib/evidence-files";
@@ -14,7 +15,6 @@ import {
 	evidenceRow,
 	evidenceSections,
 	filterSteps,
-	recordedFindings,
 	summarySections,
 } from "./run-details";
 import type { RunStep } from "./run-steps";

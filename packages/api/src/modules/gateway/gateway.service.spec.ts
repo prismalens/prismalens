@@ -519,6 +519,33 @@ describe("recording evidence and hypotheses (#930)", () => {
 		});
 	});
 
+	it("an output landing after the record anchors it, and the run view hears the update", async () => {
+		const { entry, found, call } = await live();
+		await call("evidence_record", { observation: "o", source: "s", quote: "late line" });
+		entry.sawOutput?.("toolu_9", "a\nlate line\n");
+		expect(found.map((f) => f.type === "evidence" && f.anchor)).toEqual([
+			null,
+			{ in: "tool-output", toolCallId: "toolu_9", line: 2 },
+		]);
+	});
+
+	it("a follow-up's lease restores what earlier turns recorded", async () => {
+		const g = gateway();
+		const first = await g.lease(RUN_A, NAME);
+		const earlier = {
+			evidence: [],
+			hypotheses: [
+				{ id: "rh1", statement: "pool", status: "speculative" as const, evidenceIds: [], at: "2026-10-28T10:00:00.000Z" },
+			],
+		};
+		first?.restore?.(earlier);
+		g.revoke(RUN_A);
+		const next = await g.lease(RUN_A, NAME);
+		expect(next?.findings?.()).toEqual({ evidence: [], hypotheses: [] });
+		next?.restore?.(earlier);
+		expect(next?.findings?.().hypotheses.map((h) => h.id)).toEqual(["rh1"]);
+	});
+
 	it("resolves a quote in a workspace file to its line, relative or absolute", async () => {
 		const { call, cwd } = await live();
 		const rel = await call("evidence_record", {
@@ -571,9 +598,9 @@ describe("recording evidence and hypotheses (#930)", () => {
 			status: "speculative",
 			evidence: ["e1"],
 		});
-		expect(h.value).toEqual({ id: "h1", evidence: ["e1"] });
+		expect(h.value).toEqual({ id: "rh1", evidence: ["e1"] });
 		await call("hypothesis_record", {
-			id: "h1",
+			id: "rh1",
 			statement: "pool exhausted",
 			status: "confirmed",
 		});
@@ -582,7 +609,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 		).toEqual(["speculative", "confirmed"]);
 		expect(entry.findings?.().hypotheses).toEqual([
 			expect.objectContaining({
-				id: "h1",
+				id: "rh1",
 				statement: "pool exhausted",
 				evidenceIds: ["e1"],
 			}),

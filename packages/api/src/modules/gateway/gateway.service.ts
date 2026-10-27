@@ -126,7 +126,11 @@ export class GatewayService {
 				return () => state.listeners.delete(listener);
 			},
 			calls: () => [...state.calls.values()].map((c) => ({ ...c })),
-			sawOutput: (toolCallId, text) => state.ledger.sawOutput(toolCallId, text),
+			sawOutput: (toolCallId, text) => {
+				for (const e of state.ledger.sawOutput(toolCallId, text))
+					this.recorded(state, { type: "evidence", ...e });
+			},
+			restore: (found) => state.ledger.restore(found),
 			onFinding: (listener) => {
 				state.found.add(listener);
 				return () => state.found.delete(listener);
@@ -514,7 +518,7 @@ export function gatewayPromptLine(
 		`PrismaLens tools (MCP server \`${serverName}\`, read-only): ${tools.map((t) => `\`${t}\``).join(", ")}.`,
 		...(tools.includes("evidence_record")
 			? [
-					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required.",
+					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
 				]
 			: []),
 		"For metrics, logs and other live data, use the tools your own setup gives you.",
