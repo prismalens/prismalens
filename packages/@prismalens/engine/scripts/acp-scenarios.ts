@@ -12,6 +12,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	readlinkSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -125,12 +126,15 @@ const program = (args: string): string =>
  * the row's workspace, so matrix runs going at once (admission-fake.mjs) never see each other's.
  */
 function running(needle: string, workspace: string): number[] {
+	// /proc reports the physical path; the workspace may sit under a symlink.
+	const root =
+		process.platform === "linux" ? realpathSync(workspace) : workspace;
 	return processes()
 		.filter(({ pid, args }) => {
 			if (!args.includes(needle) || program(args) !== "node") return false;
 			if (process.platform !== "linux") return true;
 			try {
-				return readlinkSync(`/proc/${pid}/cwd`).startsWith(workspace);
+				return readlinkSync(`/proc/${pid}/cwd`).startsWith(root);
 			} catch {
 				return false;
 			}
