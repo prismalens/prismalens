@@ -65,7 +65,7 @@ export function harnessPromptLine(view: RunView, serverName: string): string {
 		`PrismaLens tools (MCP server \`${serverName}\`): ${names}.${view.deferred.length ? " Find more PrismaLens tools with `tools_search`." : ""}`,
 		...(records
 			? [
-					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required.",
+					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
 				]
 			: []),
 		"For metrics, logs and other live data, use the tools your own setup gives you.",
