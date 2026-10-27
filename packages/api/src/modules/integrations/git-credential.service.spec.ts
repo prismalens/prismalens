@@ -310,6 +310,23 @@ describe("GitCredentialService & host-token (#810)", () => {
 			}
 		});
 
+		it("and when the next credential fails too, the expired token's own failure is what surfaces", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_refused");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				await expect(
+					service.withCredential(unpinned, async () => {
+						throw new GitFailure("no-credential", "No credential for github.com.");
+					}),
+				).rejects.toMatchObject({
+					code: "token-expired",
+					message: expect.stringMatching(/Token "Expired Token" expired on/),
+				});
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
 		it("but a pinned expired token still fails closed with its pin intact", async () => {
 			vi.stubEnv("GH_TOKEN", "ghp_env_ok");
 			try {

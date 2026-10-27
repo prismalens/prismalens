@@ -123,6 +123,8 @@ interface Resolution {
 	tier: Tier;
 	token?: HostToken;
 	env?: EnvGitToken & { host: string };
+	/** An expired unpinned token passed over: its failure names the fix when the next credential fails too (#950). */
+	passedOver?: GitFailure;
 }
 
 type ProbeResult =
@@ -192,7 +194,7 @@ export class GitCredentialService {
 				(r.tier !== "stored" && r.tier !== "env") ||
 				!FALL_THROUGH_ON.includes(err.code)
 			)
-				throw err;
+				throw r.passedOver ?? err;
 			const host = urlHost(r.effectiveUrl);
 			signal?.throwIfAborted();
 			const next = await this.after(r.tier, r.effectiveUrl, host, signal);
@@ -218,7 +220,7 @@ export class GitCredentialService {
 				if (!(retryErr instanceof GitFailure)) throw retryErr;
 				await this.recordFailure(fallback, retryErr);
 				// The token's own refusal names what to fix; the retry's error would not (#848).
-				throw err;
+				throw r.passedOver ?? err;
 			}
 		}
 	}
@@ -447,6 +449,11 @@ export class GitCredentialService {
 				const { label, source } = tokenDisplay(only);
 				return withLegacy({
 					...next,
+					passedOver: new GitFailure(
+						"token-expired",
+						`Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt as Date)}. Replace it in Settings → Sources.`,
+						"replace-token",
+					),
 					display: {
 						...next.display,
 						fallbackFrom: { source, label, code: "token-expired" },
