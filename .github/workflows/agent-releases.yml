@@ -52,42 +52,33 @@ jobs:
         run: node scripts/agent-probe.mjs --all --registry "$GITHUB_WORKSPACE/packages/@prismalens/config/dist/providers/harness.js"
 
   bump:
-    name: Pin bump (${{ matrix.package }})
+    name: Pin bump
     if: github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - package: opencode-ai
-            pin-path: scripts/agent-pins.json
-            pin-key: '["pins","opencode-ai"]'
-            probe: node scripts/agent-probe.mjs --agent opencode --version "$PIN_VERSION"
-          - package: "@anthropic-ai/claude-code"
-            pin-path: scripts/agent-pins.json
-            pin-key: '["pins","@anthropic-ai/claude-code"]'
-            probe: node scripts/agent-probe.mjs --agent claude-code --version "$(node -p "require('./packages/@prismalens/agent-adapters/package.json').dependencies['@agentclientprotocol/claude-agent-acp']")" --companion "$PIN_VERSION"
-          - package: "@openai/codex"
-            pin-path: scripts/agent-pins.json
-            pin-key: '["pins","@openai/codex"]'
-            probe: node scripts/agent-probe.mjs --agent codex --version "$(node -p "require('./packages/@prismalens/agent-adapters/package.json').dependencies['@agentclientprotocol/codex-acp']")" --companion "$PIN_VERSION"
-          - package: "@agentclientprotocol/claude-agent-acp"
-            pin-path: packages/@prismalens/agent-adapters/package.json
-            pin-key: ""
-            probe: node scripts/agent-probe.mjs --agent claude-code --version "$PIN_VERSION"
-          - package: "@agentclientprotocol/codex-acp"
-            pin-path: packages/@prismalens/agent-adapters/package.json
-            pin-key: ""
-            probe: node scripts/agent-probe.mjs --agent codex --version "$PIN_VERSION"
-    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e
     permissions:
       contents: write
       pull-requests: write
     with:
-      package: ${{ matrix.package }}
-      pin-path: ${{ matrix.pin-path }}
-      pin-key: ${{ matrix.pin-key }}
+      # Adapters first: the claude-code probe reads the adapter pin, after a failed probe put it back.
+      pins: >-
+        [{"package": "@agentclientprotocol/claude-agent-acp", "pin-path": "packages/@prismalens/agent-adapters/package.json"},
+        {"package": "@agentclientprotocol/codex-acp", "pin-path": "packages/@prismalens/agent-adapters/package.json"},
+        {"package": "opencode-ai", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"opencode-ai\"]"},
+        {"package": "@anthropic-ai/claude-code", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@anthropic-ai/claude-code\"]"},
+        {"package": "@openai/codex", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@openai/codex\"]"}]
       soak-days: 3
-      probe: ${{ matrix.probe }}
+      probe: |
+        adapter() { node -p "require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']"; }
+        case "$PIN_PACKAGE" in
+          @agentclientprotocol/claude-agent-acp) node scripts/agent-probe.mjs --agent claude-code --version "$PIN_VERSION" ;;
+          @agentclientprotocol/codex-acp) node scripts/agent-probe.mjs --agent codex --version "$PIN_VERSION" ;;
+          opencode-ai) node scripts/agent-probe.mjs --agent opencode --version "$PIN_VERSION" ;;
+          @anthropic-ai/claude-code) node scripts/agent-probe.mjs --agent claude-code --version "$(adapter @agentclientprotocol/claude-agent-acp)" --companion "$PIN_VERSION" ;;
+          @openai/codex) node scripts/agent-probe.mjs --agent codex --version "$(adapter @agentclientprotocol/codex-acp)" --companion "$PIN_VERSION" ;;
+          *) echo "no probe for $PIN_PACKAGE"; exit 1 ;;
+        esac
+      # An adapter pin needs its lockfile entry, and every pin its row's `tested`, or CI stays red.
+      sync: npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs
     secrets:
       # A PR opened with GITHUB_TOKEN starts no checks, and the bump PR exists to run them.
       token: ${{ secrets.RELEASE_PAT }}

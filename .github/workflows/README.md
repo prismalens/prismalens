@@ -123,11 +123,21 @@ Two jobs, neither required, neither spending a model call (#914):
 | Job | What it does | Cadence |
 | --- | --- | --- |
 | `probe` | installs each agent row at its latest release and sends `initialize` and `session/new` unauthenticated; the job summary tables the answer next to the row's `tested` | nightly, and dispatch |
-| `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, one pull request per package moves its pin and carries the probe's result | nightly, and dispatch |
+| `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, its pin moves on one rolling pull request, `pin-bump/agents`, which lists each pin's probe result | nightly, and dispatch |
 
 The bump PR runs ordinary CI, so the new version runs the admission and the behaviour matrix on aimock.
-It stays red on `harness-pins.test.ts` until someone moves the row's `tested` to the new pin on that
-PR, which is how `tested` comes only from a merged bump PR that CI qualified.
+A pin whose probe fails stays where it was and is listed as held back. After the pins move,
+`pnpm install --lockfile-only` refreshes the lockfile and `scripts/agent-tested.mjs` moves each row's
+`tested` (so `harness-pins.test.ts` holds) with a note that no real-model run backs it yet; the PR's
+recording checkbox is that run. Each night rebuilds the branch from `main` until someone pushes to it,
+then leaves it alone; once `main` carries every pin, the run closes the PR.
+
+```text
+night 1: claude-agent-acp 0.94.0 ok, codex 0.163.0 probe failed  -> PR "pin claude-agent-acp 0.94.0", codex held back
+night 2: claude-code 2.1.309 soaked                               -> same PR, force-pushed, title gains claude-code 2.1.309
+operator pushes the recording                                      -> nightly run stops touching the branch
+merged                                                             -> next run finds nothing to move and closes nothing
+```
 The `RELEASE_PAT` secret opens the PR so that CI starts on it; with only `GITHUB_TOKEN` the PR gets no checks.
 
 ## Review is advisory; unresolved threads are what block

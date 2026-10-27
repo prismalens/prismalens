@@ -197,8 +197,9 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 			"full-access": (c) =>
 				`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
 		},
-		// scripts/acp-admission.ts 3 of 3 through the shipped adapter on codex 0.163.0, gpt-6-luna (#846); #848 live runs on codex 0.163.0. Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "2.2.2", date: "2026-10-23" },
+		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
+		// Companion 0.156.1 is the CI pin: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "2.2.2", date: "2026-10-23", companion: "0.156.1" },
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	},
 	gemini: {
