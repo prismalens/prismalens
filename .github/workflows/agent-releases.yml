@@ -54,7 +54,7 @@ jobs:
   bump:
     name: Pin bump
     if: github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request'
-    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@626cc42ef152f603f28344ccf1e5cc6e33c01f35
+    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e
     permissions:
       contents: write
       pull-requests: write
