@@ -53,6 +53,16 @@ export interface Outcome {
 }
 
 function fsyncPath(path: string): void {
+	if (process.platform === "win32") {
+		if (statSync(path).isDirectory()) return;
+		const fd = openSync(path, "r+");
+		try {
+			fsyncSync(fd);
+		} finally {
+			closeSync(fd);
+		}
+		return;
+	}
 	const fd = openSync(path, "r");
 	try {
 		fsyncSync(fd);
@@ -353,7 +363,7 @@ export function switchInstallerRuntime(input: {
 		const path = join(input.binDir, name);
 		if (!existsSync(path)) continue;
 		const body = readFileSync(path, "utf8").replace(
-			/^exec ".*\/bin\/(pl|prismalens)"/m,
+			/^exec ".*[/\\]bin[/\\](pl|prismalens)"/m,
 			`exec "${join(runtime, "bin", name)}"`,
 		);
 		durableWrite(input.binDir, name, body, 0o755);
