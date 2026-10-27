@@ -3,14 +3,12 @@
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { RunRecord } from "./record.js";
 import {
 	CALL_TIMEOUT_MS,
 	HarnessRegistry,
 	INPUT_CHARS,
 	RESULT_CHARS,
 	executeTool,
-	resultText,
 	scrubSecrets,
 } from "./registry.js";
 import {
@@ -24,7 +22,6 @@ import {
 const makeCtx = (overrides?: Partial<Parameters<typeof executeTool>[2]>) => ({
 	runId: "run-1",
 	signal: new AbortController().signal,
-	record: new RunRecord(),
 	...overrides,
 });
 
@@ -268,12 +265,10 @@ describe("annotationsFor", () => {
 		});
 	});
 
-	it("returns non-readOnly hints for record effect", () => {
+	it("returns readOnly hints for record effect", () => {
 		const annotations = annotationsFor("record");
 		expect(annotations).toEqual({
-			readOnlyHint: false,
-			destructiveHint: false,
-			idempotentHint: true,
+			readOnlyHint: true,
 			openWorldHint: false,
 		});
 	});

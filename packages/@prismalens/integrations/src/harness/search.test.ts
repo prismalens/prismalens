@@ -2,64 +2,140 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { knowledgeTools } from "./knowledge.js";
-import { RunRecord, recordTools } from "./record.js";
-import { runbookTools } from "./runbooks.js";
+import { z } from "zod";
+import { executeTool } from "./registry.js";
 import {
 	TOOLS_CALL,
 	TOOLS_SEARCH,
 	resolveCall,
 	runView,
 } from "./search.js";
-import { executeTool } from "./registry.js";
+import { defineHarnessTool } from "./tool.js";
 
-const makeFakeTools = () => {
-	const kTools = knowledgeTools(
-		async () => [
-			{
-				investigationId: "inv-1",
-				incident: { number: 42, title: "DB down", service: "db" },
-				completedAt: "2026-01-01T00:00:00Z",
-				agentFinding: {
-					summary: "OOM",
-					rootCause: "Leak",
-					category: "memory",
-				},
-				operatorRecordedCause: null,
-			},
-		],
-		async () => ({
-			number: 42,
-			title: "DB down",
-			status: "open",
-			severity: "sev1",
-			service: "db",
-			triggeredAt: "2026-01-01T00:00:00Z",
-			description: "DB incident",
-			alerts: [],
-			changes: [],
-		}),
-	);
-
-	const rTools = runbookTools({
-		list: async () => [
-			{
-				title: "Restart DB",
-				path: "runbooks/db.md",
+const makeFakeTools = (recorded: unknown[] = []) => {
+	const incidentGet = defineHarnessTool({
+		name: "incident_get",
+		title: "Get current incident details",
+		description: "Read details of the incident currently being investigated.",
+		group: "core",
+		effect: "read",
+		input: z.object({ number: z.number().optional() }),
+		run: async () => ({
+			value: {
+				number: 42,
+				title: "DB down",
+				status: "open",
+				severity: "sev1",
 				service: "db",
-				matchedBy: "service",
-				origin: "repo",
+				triggeredAt: "2026-01-01T00:00:00Z",
+				description: "DB incident",
+				alerts: [],
+				changes: [],
 			},
-		],
-		read: async () => ({
-			ok: true,
-			path: "runbooks/db.md",
-			markdown: "# Restart DB",
 		}),
 	});
 
-	const recTools = recordTools();
-	return [...kTools, ...rTools, ...recTools];
+	const investigationsSearch = defineHarnessTool({
+		name: "investigations_search",
+		title: "Search past investigations",
+		description: "Find past investigations matching query keywords.",
+		group: "knowledge",
+		effect: "read",
+		input: z.object({ query: z.string() }),
+		run: async () => ({
+			value: [
+				{
+					investigationId: "inv-1",
+					incident: { number: 42, title: "DB down", service: "db" },
+					completedAt: "2026-01-01T00:00:00Z",
+					agentFinding: {
+						summary: "OOM",
+						rootCause: "Leak",
+						category: "memory",
+					},
+					operatorRecordedCause: null,
+				},
+			],
+		}),
+	});
+
+	const runbooksList = defineHarnessTool({
+		name: "runbooks_list",
+		title: "List runbooks",
+		description: "List runbooks matching service.",
+		group: "knowledge",
+		effect: "read",
+		input: z.object({ service: z.string().optional() }),
+		run: async () => ({
+			value: [
+				{
+					title: "Restart DB",
+					path: "runbooks/db.md",
+					service: "db",
+					matchedBy: "service",
+					origin: "repo",
+				},
+			],
+		}),
+	});
+
+	const runbooksRead = defineHarnessTool({
+		name: "runbooks_read",
+		title: "Read runbook",
+		description: "Read the markdown content of a runbook.",
+		group: "core",
+		effect: "read",
+		input: z.object({ path: z.string() }),
+		run: async () => ({
+			value: {
+				ok: true,
+				path: "runbooks/db.md",
+				markdown: "# Restart DB",
+			},
+		}),
+	});
+
+	const evidenceRecord = defineHarnessTool({
+		name: "evidence_record",
+		title: "Record evidence",
+		description: "Record a verified piece of evidence.",
+		group: "record",
+		effect: "record",
+		input: z.object({
+			id: z.string(),
+			observation: z.string().optional(),
+			source: z.string().optional(),
+		}),
+		run: async (input) => {
+			recorded.push({ type: "evidence", ...input });
+			return { value: { recorded: true } };
+		},
+	});
+
+	const hypothesisRecord = defineHarnessTool({
+		name: "hypothesis_record",
+		title: "Record hypothesis",
+		description: "Record a hypothesis being tested.",
+		group: "record",
+		effect: "record",
+		input: z.object({
+			id: z.string(),
+			claim: z.string().optional(),
+		}),
+		run: async (input) => {
+			recorded.push({ type: "hypothesis", ...input });
+			return { value: { recorded: true } };
+		},
+	});
+
+	return [
+		incidentGet,
+		investigationsSearch,
+		runbooksList,
+		runbooksRead,
+		evidenceRecord,
+		hypothesisRecord,
+	];
 };
 
 describe("runView", () => {
@@ -103,7 +179,6 @@ describe("tools_search", () => {
 			{
 				runId: "run-test",
 				signal: new AbortController().signal,
-				record: new RunRecord(),
 			},
 		);
 
@@ -127,7 +202,6 @@ describe("tools_search", () => {
 			{
 				runId: "run-test",
 				signal: new AbortController().signal,
-				record: new RunRecord(),
 			},
 		);
 
@@ -173,7 +247,6 @@ describe("resolveCall", () => {
 		const call = await executeTool(resolved!.tool, resolved!.args, {
 			runId: "run-test",
 			signal: new AbortController().signal,
-			record: new RunRecord(),
 		});
 		expect(call.isError).toBe(true);
 		const parsed = JSON.parse(call.output);
