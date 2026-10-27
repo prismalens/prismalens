@@ -117,7 +117,10 @@ describe("parseHistory", () => {
 });
 
 describe("readHistory", () => {
-	it("keeps a non-ASCII path, and one that starts with a newline, as written", async () => {
+	// #937: NTFS forbids newline characters in filenames on Windows.
+	it.skipIf(process.platform === "win32")(
+		"keeps a non-ASCII path, and one that starts with a newline, as written",
+		async () => {
 		const dir = mkdtempSync(join(tmpdir(), "git-history-"));
 		try {
 			const git = (...a: string[]) =>
