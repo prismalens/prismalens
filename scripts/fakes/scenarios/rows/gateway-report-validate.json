@@ -1,0 +1,81 @@
+{
+	"row": "gateway-report-validate",
+	"kind": "happy",
+	"title": "Checks a draft final answer through PrismaLens's report check, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "report_validate",
+				"ok": true,
+				"outputHas": "problems"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-report-validate]",
+				"toolName": "$gw:report_validate",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:report_validate",
+						"arguments": {
+							"report": "All done, nothing to add."
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-report-validate]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "validate report"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-report-validate]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "report_validate"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "report_validate",
+							"arguments": {
+								"report": "All done, nothing to add."
+							}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-report-validate]",
+				"resultContains": "problems"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}
