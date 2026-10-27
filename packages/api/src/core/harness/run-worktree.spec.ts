@@ -7,6 +7,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	symlinkSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -314,5 +315,45 @@ describe("review round 1 (#925)", () => {
 		expect(existsSync(dest)).toBe(true);
 		expect(keptWorkspaces("r1")).toEqual([]);
 		expect(keptWorkspaces("r1", true).map((w) => w.dir)).toEqual([dest]);
+	});
+});
+
+describe("review round 2 (#925)", () => {
+	it("a multi-repo run's folder stays at run end and in a sweep while a clone in it holds a set-up checkout", async () => {
+		const parent = join(tmp, "app", "worktrees", "pl-r8");
+		const clone = join(parent, "api");
+		mkdirSync(parent, { recursive: true });
+		const repo = initRepo();
+		git(["clone", "-q", repo.dir, clone], tmp);
+		git(["clone", "-q", repo.dir, join(clone, "vendor", "inner")], tmp);
+		await releaseWorktreesIn(parent);
+		await sweepRunWorktrees();
+		expect(existsSync(join(clone, "vendor", "inner", ".git"))).toBe(true);
+	});
+
+	it("lists a kept workspace reached through a link", async () => {
+		global = { ...global, retention: { kind: "keep-days", days: 3 } };
+		const { dest } = await run("r1", initRepo());
+		await end("r1");
+		const link = join(tmp, "app", "worktrees", "pl-r7");
+		symlinkSync(dest, link, "junction");
+		writeFileSync(`${link}.workspace.json`, readFileSync(`${dest}.workspace.json`));
+		expect(keptWorkspaces("r7", true).map((w) => w.dir)).toEqual([link]);
+	});
+
+	it("a rebuild's leftover discard never caps the run's kept siblings", async () => {
+		global = { ...global, retention: { kind: "keep-days", days: 30 }, keptPerProject: 1 };
+		const a = initRepo("a");
+		const older = await run("r0", a);
+		await end("r0");
+		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
+		const sibling = join(runWorktreeDir("r1"), "b");
+		await addRunWorktree(a.dir, sibling, a.head, "r1");
+		await end("r1");
+		expect(existsSync(older.dest)).toBe(false);
+		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
+		await addRunWorktree(a.dir, join(runWorktreeDir("r1"), "c"), a.head, "r1");
+		expect(existsSync(sibling)).toBe(true);
+		unbindRun("r1");
 	});
 });

@@ -232,3 +232,33 @@ describe("RunWorkspacesService", () => {
 		expect(sweepOpts.isResolved("run-pending")).toBe(false);
 	});
 });
+
+describe("RunWorkspacesService location history (#925 review)", () => {
+	it("a failed history write is retried by the next save, and nothing is saved without it", async () => {
+		const rows = new Map<string, string>();
+		let failOnce = true;
+		const prisma = {
+			setting: {
+				findMany: vi.fn(async () => []),
+				findUnique: vi.fn(async ({ where }: { where: { key: string } }) =>
+					rows.has(where.key) ? { key: where.key, value: rows.get(where.key) } : null,
+				),
+				upsert: vi.fn(async ({ where, create }: { where: { key: string }; create: { value: string } }) => {
+					if (where.key === "runWorkspace.locations" && failOnce) {
+						failOnce = false;
+						throw new Error("disk full");
+					}
+					rows.set(where.key, create.value);
+				}),
+				deleteMany: vi.fn(async () => ({ count: 0 })),
+			},
+		};
+		const svc = new RunWorkspacesService(prisma as never);
+		const settings = { ...DEFAULT_RUN_WORKSPACE_SETTINGS, location: "/runs/d" };
+		await expect(svc.setGlobal(settings)).rejects.toThrow("disk full");
+		expect(rows.has("runWorkspace.global")).toBe(false);
+		await svc.setGlobal(settings);
+		expect(JSON.parse(rows.get("runWorkspace.locations") as string)).toEqual(["/runs/d"]);
+		expect(JSON.parse(rows.get("runWorkspace.global") as string).location).toBe("/runs/d");
+	});
+});

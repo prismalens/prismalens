@@ -957,3 +957,15 @@ export async function resumeWorkspace(
 	} else writeSidecar(dir, { ...rest, lock });
 	return { lock };
 }
+
+/** The guard that would keep `dir` from removal, for a folder this module did not make (a run's own clone); null when none would. */
+export function protectedBy(
+	dir: string,
+	lockPrefix: string,
+): RemovalReason | null {
+	if (!lstatSync(dir, { throwIfNoEntry: false })) return null;
+	return guard(dir, "", readSidecar(dir), {
+		owner: { parentDir: dirname(dir), prefix: "", lockPrefix },
+		env: {},
+	});
+}

@@ -1353,9 +1353,12 @@ async function logWorkspaceSetup(
 	const ran = setups.get(runId);
 	setups.delete(runId);
 	if (!ran?.length) return null;
+	// Past every setup seq even when storing them fails part way: the agent's events never reuse one.
+	let seq: number | null = null;
 	try {
-		let seq = (await ports.lastEventSeq(runId)) + 1;
-		const events: CanonicalEvent[] = ran.map(({ name, result }) => {
+		seq = (await ports.lastEventSeq(runId)) + 1;
+		const first = seq;
+		const events: CanonicalEvent[] = ran.map(({ name, result }, i) => {
 			const ok = result.status === "ok";
 			const words = `Workspace setup in ${name} ${SETUP_WORDS[result.status]}${result.exitCode !== null && !ok ? ` (exit ${result.exitCode})` : ""}`;
 			return {
@@ -1363,7 +1366,7 @@ async function logWorkspaceSetup(
 				runId,
 				branchId: "workspace",
 				path: [],
-				seq: seq++,
+				seq: first + i,
 				ts: new Date().toISOString(),
 				result: {
 					name: "workspace_setup",
@@ -1375,13 +1378,13 @@ async function logWorkspaceSetup(
 				},
 			};
 		});
+		seq = first + events.length;
 		for (const event of events) await io.emit(event);
 		await ports.appendEvents(runId, events);
-		return seq;
 	} catch (e) {
 		logger.warn("Could not record the workspace setup in the run's log", e);
 	}
-	return null;
+	return seq;
 }
 
 async function clearRunWorkspace(runId: string): Promise<void> {

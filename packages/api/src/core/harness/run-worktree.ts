@@ -20,6 +20,7 @@ import { Logger } from "@nestjs/common";
 import {
 	createWorkspace,
 	type HookResult,
+	protectedBy,
 	type RemovalRecord,
 	releaseWorkspace,
 	resumeWorkspace,
@@ -216,10 +217,9 @@ function isWorkspace(dir: string): boolean {
 /** A folder in a multi-repo run's folder that deleting the folder must not take: a workspace, a link, or a clone others hang off. */
 function mustStay(dir: string): boolean {
 	try {
-		if (lstatSync(dir).isSymbolicLink() || isWorkspace(dir)) return true;
-		return readdirSync(join(dir, ".git", "worktrees")).length > 0;
+		return isWorkspace(dir) || protectedBy(dir, LOCK_PREFIX) !== null;
 	} catch {
-		return false;
+		return true;
 	}
 }
 
@@ -283,6 +283,8 @@ export async function addRunWorktree(
 	signal?: AbortSignal,
 	onOutput?: (chunk: string) => void,
 ): Promise<AddedWorktree> {
+	// A cap or Remove already deciding on this folder finishes first; a follow-up never resumes mid-removal.
+	await removing.get(dest);
 	const resumed = await resumeWorkspace({
 		...asWorkspace(dest),
 		lockLabel: runId,
@@ -325,7 +327,8 @@ export async function releaseWorktree(
 		...(onlyLock !== undefined ? { onlyLock } : {}),
 	});
 	report(records, discard);
-	await enforceCap(undefined, runIdOf(dir));
+	// A rebuild's leftover discard is not the run's end: its kept siblings stay out of the cap.
+	if (!discard) await enforceCap(undefined, runIdOf(dir));
 	return records[0]?.removed === true;
 }
 
@@ -429,14 +432,18 @@ export function keptWorkspaces(runId?: string, any = false): WorkspaceInfo[] {
 	for (const root of worktreeRoots()) {
 		if (!existsSync(root)) continue;
 		for (const entry of readdirSync(root, { withFileTypes: true })) {
-			if (!entry.isDirectory() || !entry.name.startsWith(WORKTREE_PREFIX))
+			if (
+				!(entry.isDirectory() || entry.isSymbolicLink()) ||
+				!entry.name.startsWith(WORKTREE_PREFIX)
+			)
 				continue;
 			if (runId && entry.name !== `${WORKTREE_PREFIX}${runId}`) continue;
 			const dir = join(root, entry.name);
 			if (isWorkspace(dir)) take(dir);
 			else
 				for (const inner of readdirSync(dir, { withFileTypes: true }))
-					if (inner.isDirectory()) take(join(dir, inner.name));
+					if (inner.isDirectory() || inner.isSymbolicLink())
+						take(join(dir, inner.name));
 		}
 	}
 	return out;
@@ -460,16 +467,33 @@ async function enforceCap(
 		if (kept.length <= cap) continue;
 		kept.sort((a, b) => (b.keptAt ?? "").localeCompare(a.keptAt ?? ""));
 		for (const w of kept.slice(cap)) {
-			const [r] = await releaseWorkspace({
-				...asWorkspace(w.dir),
-				policy: {
-					...toPolicy(settingsFor(project)),
-					retention: { kind: "always-remove" },
-				},
-			});
+			// Checked again right before: a follow-up may have resumed it since the selection.
+			if (live(w.dir) || !workspaceInfo(w.dir)?.keptAt) continue;
+			const [r] = await whileRemoving(
+				w.dir,
+				releaseWorkspace({
+					...asWorkspace(w.dir),
+					policy: {
+						...toPolicy(settingsFor(project)),
+						retention: { kind: "always-remove" },
+					},
+				}),
+			);
 			if (r) source.record([toRemoval(r, r.removed ? "over-cap" : r.reason)]);
 		}
 	}
+}
+
+const removing = new Map<string, Promise<unknown>>();
+
+/** Marks `dir` as being removed until `work` settles, so a follow-up waits instead of resuming it. */
+function whileRemoving<T>(dir: string, work: Promise<T>): Promise<T> {
+	const done = work.finally(() => removing.delete(dir));
+	removing.set(
+		dir,
+		done.catch(() => {}),
+	);
+	return done;
 }
 
 /** The user's own Remove on the run page: changes and all; the other guards still hold. */
@@ -478,13 +502,16 @@ export async function removeKeptWorkspace(
 ): Promise<{ removed: boolean; reason: string }> {
 	const run = runIdOf(dir);
 	if (run && runs.has(run)) return { removed: false, reason: "live" };
-	const [r] = await releaseWorkspace({
-		...asWorkspace(dir),
-		policy: {
-			...policyForDir(dir),
-			retention: { kind: "always-remove" },
-		},
-	});
+	const [r] = await whileRemoving(
+		dir,
+		releaseWorkspace({
+			...asWorkspace(dir),
+			policy: {
+				...policyForDir(dir),
+				retention: { kind: "always-remove" },
+			},
+		}),
+	);
 	if (!r) return { removed: false, reason: "gone" };
 	const reason = r.removed ? "removed-by-user" : r.reason;
 	source.record([toRemoval(r, reason)]);

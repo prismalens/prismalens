@@ -166,6 +166,8 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	async setGlobal(settings: RunWorkspaceSettings) {
+		// Remembered first: a location the settings stop naming is still swept (#925 review).
+		await this.remember(this.global.location, settings.location);
 		await this.prisma.setting.upsert({
 			where: { key: GLOBAL_KEY },
 			create: {
@@ -176,7 +178,6 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 			},
 			update: { value: JSON.stringify(settings) },
 		});
-		await this.remember(this.global.location, settings.location);
 		this.global = settings;
 		return this.getGlobal();
 	}
@@ -205,6 +206,10 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 			await this.prisma.setting.deleteMany({ where: { key } });
 			this.overrides.delete(serviceId);
 		} else {
+			await this.remember(
+				this.overrides.get(serviceId)?.location,
+				own.location,
+			);
 			await this.prisma.setting.upsert({
 				where: { key },
 				create: {
@@ -215,10 +220,6 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 				},
 				update: { value: JSON.stringify(own) },
 			});
-			await this.remember(
-				this.overrides.get(serviceId)?.location,
-				own.location,
-			);
 			this.overrides.set(serviceId, own);
 		}
 		return this.getService(serviceId);
@@ -227,15 +228,17 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 	private async remember(
 		...named: (string | null | undefined)[]
 	): Promise<void> {
-		const before = this.locations.size;
-		for (const l of named) if (l) this.locations.add(l);
-		if (this.locations.size === before) return;
-		const value = JSON.stringify([...this.locations]);
+		const next = new Set(this.locations);
+		for (const l of named) if (l) next.add(l);
+		if (next.size === this.locations.size) return;
+		const value = JSON.stringify([...next]);
 		await this.prisma.setting.upsert({
 			where: { key: LOCATIONS_KEY },
 			create: { key: LOCATIONS_KEY, value, type: "json", category: "runs" },
 			update: { value },
 		});
+		// Only once stored: a failed write is retried by the next save.
+		this.locations = next;
 	}
 
 	private async requireService(id: string): Promise<void> {
