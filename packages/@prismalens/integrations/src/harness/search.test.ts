@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { executeTool } from "./registry.js";
+import { executeTool, resultValue } from "./registry.js";
 import {
 	TOOLS_CALL,
 	TOOLS_SEARCH,
@@ -183,7 +183,7 @@ describe("tools_search", () => {
 		);
 
 		expect(call.isError).toBe(false);
-		const parsed = JSON.parse(call.output);
+		const parsed = resultValue(call.output);
 		expect(parsed.tools).toBeDefined();
 		expect(parsed.tools.length).toBeGreaterThan(0);
 		expect(parsed.tools[0].name).toBe("investigations_search");
@@ -206,7 +206,7 @@ describe("tools_search", () => {
 		);
 
 		expect(call.isError).toBe(false);
-		const parsed = JSON.parse(call.output);
+		const parsed = resultValue(call.output);
 		expect(parsed.tools).toEqual([]);
 		expect(parsed.available).toEqual(
 			expect.arrayContaining(["investigations_search", "runbooks_list"]),
@@ -249,7 +249,7 @@ describe("resolveCall", () => {
 			signal: new AbortController().signal,
 		});
 		expect(call.isError).toBe(true);
-		const parsed = JSON.parse(call.output);
+		const parsed = resultValue(call.output);
 		expect(parsed.error).toBe("not_found");
 	});
 

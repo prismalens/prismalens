@@ -9,6 +9,7 @@ import {
 	type RecordedFinding,
 	recordedFindings,
 } from "@prismalens/contracts/schemas";
+import { resultValue } from "@prismalens/integrations/harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import runInvestigationJob from "../../infrastructure/dispatch/investigation-run.js";
 import type { RunPorts } from "../../infrastructure/dispatch/run-ports.js";
@@ -327,7 +328,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		});
 
 	it("incident_get without a number returns the run's own incident with its alerts", async () => {
-		const got = JSON.parse(
+		const got = resultValue(
 			text(await call("tools/call", { name: "incident_get", arguments: {} })),
 		);
 		expect(got).toMatchObject({
@@ -353,7 +354,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			name: "investigations_search",
 			arguments: { query: "checkout", limit: 3 },
 		});
-		const [hit] = JSON.parse(text(out));
+		const [hit] = resultValue(text(out));
 		expect(hit.agentFinding.rootCause).toBe("pool exhausted");
 		expect(hit.operatorRecordedCause).toEqual({
 			cause: "bad deploy",
@@ -423,7 +424,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		changeEvent.findMany.mockResolvedValueOnce(changeEvents as never);
 
 		const res = await call("tools/call", { name: "incident_get", arguments: {} });
-		const got = JSON.parse(text(res));
+		const got = resultValue(text(res));
 
 		expect(got.changes).toEqual([
 			{
@@ -509,7 +510,7 @@ describe("recording evidence and hypotheses (#930)", () => {
 				isError?: boolean;
 			};
 			const text = r.content[0]?.text ?? "{}";
-			return { isError: !!r.isError, text, value: JSON.parse(text) };
+			return { isError: !!r.isError, text, value: resultValue(text) };
 		};
 		return { g, entry, found, call, root, cwd };
 	}
@@ -703,7 +704,7 @@ describe("gateway views, search and the call record (#848)", () => {
 			),
 		);
 	const textOf = (out: Record<string, unknown>) =>
-		JSON.parse(
+		resultValue(
 			(out.result as { content: { text: string }[] }).content[0]?.text ??
 				"null",
 		);
@@ -823,7 +824,7 @@ describe("artifact_publish (#871)", () => {
 			);
 		const first = await publish("Timeline");
 		expect(
-			JSON.parse((first.result as { content: { text: string }[] }).content[0]?.text ?? ""),
+			resultValue((first.result as { content: { text: string }[] }).content[0]?.text ?? ""),
 		).toEqual({ id: "a1", published: true });
 		expect(pagesA).toMatchObject([{ id: "a1", title: "Timeline", html: "<p>x</p>" }]);
 		expect(pagesB).toEqual([]);
@@ -1201,7 +1202,7 @@ describe("read tools for the coding agent (#848)", () => {
 		};
 		return {
 			isError: !!r.isError,
-			value: JSON.parse(r.content[0]?.text ?? "{}"),
+			value: resultValue(r.content[0]?.text ?? "{}"),
 		};
 	}
 	const failure = (code: string) => ({
@@ -1300,19 +1301,12 @@ describe("read tools for the coding agent (#848)", () => {
 			});
 		});
 
-		it("returns an unfinished thread's status and its last 20 agent-step texts, oldest first", async () => {
+		it("gives a running thread's status only: another run's unfinished reasoning is never read", async () => {
 			const m = mocks();
 			const out = await use(m, "thread_read", { threadId: LIVE });
-			expect(out.value).toMatchObject({ id: LIVE, status: "running" });
-			expect(out.value.steps).toEqual(
-				Array.from({ length: 20 }, (_, i) => `step ${11 + i}`),
-			);
+			expect(out.value).toMatchObject({ id: LIVE, status: "running", steps: [] });
 			expect(out.value).not.toHaveProperty("hypotheses");
-			expect(m.investigationEvent.findMany).toHaveBeenCalledWith(
-				expect.objectContaining({
-					where: expect.objectContaining({ investigationId: LIVE }),
-				}),
-			);
+			expect(m.investigationEvent.findMany).not.toHaveBeenCalled();
 		});
 
 		it("reads a thread on another incident of a service of this run's incident", async () => {
@@ -2026,7 +2020,7 @@ describe("read tools for the coding agent (#848)", () => {
 					),
 				);
 			const text = (out: Record<string, unknown>) =>
-				JSON.parse(
+				resultValue(
 					(out.result as { content: { text: string }[] }).content[0]?.text ??
 						"null",
 				);

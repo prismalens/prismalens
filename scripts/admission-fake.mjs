@@ -309,8 +309,8 @@ const MATRIX_AT_ONCE = 3;
 
 /**
  * What PrismaLens's own tools cost the model over a matrix run (#848): definition characters
- * summed over every main-loop request (each resends its tools), `tools_search` results once
- * each, the first request of each row, and side requests apart. Tokens are chars/4, an estimate.
+ * and `tools_search` results, both summed over every main-loop request that carries them,
+ * the first request of each row, and side requests apart. Tokens are chars/4, an estimate.
  * @param {import("./fakes/scripted-model.d.mts").RequestSummary[]} requests
  * @param {string} shell
  * @param {boolean} search
@@ -320,12 +320,11 @@ export function toolCost(requests, shell, search) {
 	const side = requests.filter((r) => !main.includes(r));
 	const rows = new Set(main.map((r) => r.row).filter(Boolean));
 	const defs = main.reduce((n, r) => n + r.plDefChars, 0);
-	/** @type {Map<string, number>} */
-	const results = new Map();
-	for (const r of main)
-		for (const [id, chars] of Object.entries(r.searchResults))
-			results.set(id, chars);
-	const searched = [...results.values()].reduce((n, c) => n + c, 0);
+	// A search result stays in the conversation, so it is counted in every request that resends it.
+	const searched = main.reduce(
+		(n, r) => n + Object.values(r.searchResults).reduce((m, c) => m + c, 0),
+		0,
+	);
 	const first = [...rows].reduce(
 		(n, row) => n + (main.find((r) => r.row === row)?.plDefChars ?? 0),
 		0,

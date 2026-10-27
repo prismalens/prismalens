@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
 	CALL_TIMEOUT_MS,
+	DATA_NOTE,
 	HarnessRegistry,
 	INPUT_CHARS,
 	RESULT_CHARS,
 	executeTool,
+	resultValue,
 	scrubSecrets,
 } from "./registry.js";
 import {
@@ -271,5 +273,91 @@ describe("annotationsFor", () => {
 			readOnlyHint: true,
 			openWorldHint: false,
 		});
+	});
+});
+
+describe("round-3 guarantees (#848)", () => {
+	const ctx = { runId: "r1", signal: new AbortController().signal };
+
+	it("scrubs secrets from the recorded input as well as the output", async () => {
+		const echo = defineHarnessTool({
+			name: "echo_tool",
+			title: "t",
+			description: "d",
+			group: "core",
+			effect: "read",
+			input: z.object({ q: z.string() }),
+			run: async ({ q }) => ({ value: { q } }),
+		});
+		const call = await executeTool(
+			echo,
+			{ q: "token secret-1234 here" },
+			{ ...ctx, secrets: ["secret-1234"] },
+		);
+		expect(JSON.stringify(call.input)).not.toContain("secret-1234");
+		expect(call.output).not.toContain("secret-1234");
+	});
+
+	it("puts the data line before a success, never before a failure", async () => {
+		const ok = defineHarnessTool({
+			name: "ok_tool",
+			title: "t",
+			description: "d",
+			group: "core",
+			effect: "read",
+			input: z.object({}),
+			run: async () => ({ value: { a: 1 } }),
+		});
+		const call = await executeTool(ok, {}, ctx);
+		expect(call.output.startsWith(DATA_NOTE)).toBe(true);
+		expect(resultValue(call.output)).toEqual({ a: 1 });
+		const bad = await executeTool(
+			{ ...ok, input: z.object({ n: z.number() }) },
+			{ n: "x" },
+			ctx,
+		);
+		expect(bad.output.startsWith(DATA_NOTE)).toBe(false);
+	});
+
+	it("never cuts a record call short, so a late write cannot follow a timeout answer", async () => {
+		const writes: string[] = [];
+		const slow = defineHarnessTool({
+			name: "slow_record",
+			title: "t",
+			description: "d",
+			group: "record",
+			effect: "record",
+			input: z.object({}),
+			run: async () => {
+				await new Promise((r) => setTimeout(r, 40));
+				writes.push("kept");
+				return { value: { recorded: true } };
+			},
+		});
+		const call = await executeTool(slow, {}, { ...ctx, timeoutMs: 5 });
+		expect(call.isError).toBe(false);
+		expect(writes).toEqual(["kept"]);
+	});
+
+	it("aborts a read tool's signal when it times out", async () => {
+		let aborted = false;
+		const hang = defineHarnessTool({
+			name: "hang_tool",
+			title: "t",
+			description: "d",
+			group: "core",
+			effect: "read",
+			input: z.object({}),
+			run: (_i, c) =>
+				new Promise((resolve) => {
+					c.signal.addEventListener("abort", () => {
+						aborted = true;
+						resolve({ value: null });
+					});
+				}),
+		});
+		const call = await executeTool(hang, {}, { ...ctx, timeoutMs: 5 });
+		expect(resultValue(call.output)).toMatchObject({ error: "timeout" });
+		expect(aborted).toBe(true);
 	});
 });

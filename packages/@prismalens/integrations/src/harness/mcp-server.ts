@@ -48,7 +48,11 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 			signal: ctx.mcpReq.signal,
 			...(o.secrets ? { secrets: o.secrets } : {}),
 		});
-		o.onCall?.(call);
+		const recorded =
+			target.tool.name === name
+				? call
+				: { ...call, via: "tools_call" as const };
+		o.onCall?.(recorded);
 		return {
 			content: [{ type: "text" as const, text: call.output }],
 			...(call.isError ? { isError: true } : {}),

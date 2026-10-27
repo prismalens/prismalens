@@ -59,6 +59,7 @@ export interface GatewayCall {
 	isError?: boolean;
 	ms?: number;
 	schemaHash?: string;
+	via?: "tools_call";
 }
 
 export interface GatewayCallCount {

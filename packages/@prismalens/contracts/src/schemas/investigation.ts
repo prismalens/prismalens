@@ -1030,6 +1030,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		isError: z.boolean().optional(),
 		ms: z.number().int().min(0).optional(),
 		schemaHash: z.string().optional(),
+		/** Reached through `tools_call`, so replay calls it the same way. */
+		via: z.literal("tools_call").optional(),
 	}),
 	z.object({
 		/** Once at the turn's end: whether the agent connected to PrismaLens's tools, and what it called (#848). */
