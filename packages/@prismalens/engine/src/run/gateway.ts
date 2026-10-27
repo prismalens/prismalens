@@ -8,7 +8,7 @@
  */
 import { randomBytes } from "node:crypto";
 import type { McpCapabilities, McpServer } from "@agentclientprotocol/sdk";
-import type { RecordedFinding } from "@prismalens/contracts/schemas";
+import type { Artifact, RecordedFinding } from "@prismalens/contracts/schemas";
 import type { Findings } from "./findings.js";
 
 /** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
@@ -36,6 +36,8 @@ export interface GatewayEntry {
 	findings?(): Findings;
 	/** Seeds the lease with what earlier turns of the run recorded. */
 	restore?(found: Findings): void;
+	/** Hears each HTML artifact the agent publishes (#871); returns the unsubscribe. */
+	onArtifact?(listener: (a: Artifact) => void): () => void;
 }
 
 /** One call as the gateway executed it; what replay needs rides on the event (#848). */

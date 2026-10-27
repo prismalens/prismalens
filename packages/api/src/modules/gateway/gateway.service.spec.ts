@@ -241,6 +241,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			}
 		).tools;
 		expect(tools.map((t) => t.name).sort()).toEqual([
+			"artifact_publish",
 			"evidence_record",
 			"hypothesis_record",
 			"incident_get",
@@ -254,6 +255,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 	it("the lease names the same tools, and the prompt line sends data access to the agent's own tools", async () => {
 		const entry = await gateway().lease(RUN_A, NAME);
 		expect([...(entry?.tools ?? [])].sort()).toEqual([
+			"artifact_publish",
 			"evidence_record",
 			"hypothesis_record",
 			"incident_get",
@@ -703,6 +705,7 @@ describe("gateway views, search and the call record (#848)", () => {
 				.result as { tools: { name: string }[] }
 		).tools.map((t) => t.name);
 		expect(listed.sort()).toEqual([
+			"artifact_publish",
 			"evidence_record",
 			"hypothesis_record",
 			"incident_get",
@@ -737,5 +740,40 @@ describe("gateway views, search and the call record (#848)", () => {
 		});
 		expect(textOf(refused).error).toBe("not_found");
 		expect(a.findings?.().evidence).toEqual([]);
+	});
+});
+
+describe("artifact_publish (#871)", () => {
+	it("hands a published page to the run's listener only, numbered per run, and stops at the per-run cap", async () => {
+		const g = gateway();
+		const a = await g.lease(RUN_A, NAME);
+		const b = await g.lease(RUN_B, NAME);
+		if (!a || !b) throw new Error("no lease");
+		const pagesA: { id: string; title: string }[] = [];
+		const pagesB: unknown[] = [];
+		a.onArtifact?.((p) => pagesA.push(p));
+		b.onArtifact?.((p) => pagesB.push(p));
+		const publish = async (title: string) =>
+			body(
+				await g.serve(
+					RUN_A,
+					rpc(
+						RUN_A,
+						"tools/call",
+						{ name: "artifact_publish", arguments: { title, html: "<p>x</p>" } },
+						a.token,
+					),
+				),
+			);
+		const first = await publish("Timeline");
+		expect(
+			JSON.parse((first.result as { content: { text: string }[] }).content[0]?.text ?? ""),
+		).toEqual({ id: "a1", published: true });
+		expect(pagesA).toMatchObject([{ id: "a1", title: "Timeline", html: "<p>x</p>" }]);
+		expect(pagesB).toEqual([]);
+		for (let i = 2; i <= 20; i++) await publish(`p${i}`);
+		const over = await publish("one too many");
+		expect((over.result as { isError?: boolean }).isError).toBe(true);
+		expect(pagesA).toHaveLength(20);
 	});
 });

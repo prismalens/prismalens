@@ -124,6 +124,18 @@ export const RecordedHypothesisSchema = z.object({
 });
 export type RecordedHypothesis = z.infer<typeof RecordedHypothesisSchema>;
 
+/** Characters of one artifact's HTML (#871). */
+export const ARTIFACT_HTML_CHARS = 200_000;
+
+/** A self-contained HTML page the agent published during a run (#871); drawn sandboxed, never fetched. */
+export const ArtifactSchema = z.object({
+	id: z.string(),
+	title: z.string().min(1).max(120),
+	html: z.string().min(1).max(ARTIFACT_HTML_CHARS),
+	at: z.string(),
+});
+export type Artifact = z.infer<typeof ArtifactSchema>;
+
 export const RecordedFindingSchema = z.discriminatedUnion("type", [
 	RecordedEvidenceSchema.extend({ type: z.literal("evidence") }),
 	RecordedHypothesisSchema.extend({ type: z.literal("hypothesis") }),
@@ -1018,6 +1030,12 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 				count: z.number().int().min(1),
 			}),
 		),
+	}),
+	z.object({
+		/** The agent published a self-contained HTML page through PrismaLens's tool (#871). */
+		kind: z.literal("artifact_published"),
+		...StreamBaseShape,
+		artifact: ArtifactSchema,
 	}),
 	z.object({
 		/** The agent recorded evidence or a hypothesis through PrismaLens's tool (#930). */

@@ -11,7 +11,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import type { RecordedFinding } from "@prismalens/contracts/schemas";
+import type { Artifact, RecordedFinding } from "@prismalens/contracts/schemas";
 import {
 	type HarnessCall,
 	type HarnessTool,
@@ -68,6 +68,8 @@ export async function startStubGateway(
 	const waiters = new Set<(ok: boolean) => void>();
 	const listeners = new Set<(c: GatewayCall) => void>();
 	const found = new Set<(f: RecordedFinding) => void>();
+	const published = new Set<(a: Artifact) => void>();
+	let pages = 0;
 	const counts = new Map<string, GatewayCallCount>();
 	const seen: HarnessCall[] = [];
 	const ledger = new FindingsLedger();
@@ -123,6 +125,18 @@ export async function startStubGateway(
 				path === "scenario/runbooks/restart.md" && service === "scenario"
 					? { ok: true, path, markdown: `# Restart\n\n${STUB_FACTS.runbook}` }
 					: { ok: false, error: `"${path}" is not a listed runbook` },
+		},
+		artifacts: {
+			publish: async (_run: string, page: { title: string; html: string }) => {
+				if (!open) return { ...NOT_LIVE, ended: true as const };
+				const artifact: Artifact = {
+					id: `a${++pages}`,
+					...page,
+					at: new Date().toISOString(),
+				};
+				for (const l of [...published]) l(artifact);
+				return { id: artifact.id };
+			},
 		},
 		findings: {
 			recordEvidence: async (_run: string, input: EvidenceInput) => {
@@ -232,6 +246,10 @@ export async function startStubGateway(
 				return () => found.delete(listener);
 			},
 			findings: () => ledger.snapshot(),
+			onArtifact: (listener) => {
+				published.add(listener);
+				return () => published.delete(listener);
+			},
 		},
 		harnessCalls: () => [...seen],
 		count: () => seen.length,

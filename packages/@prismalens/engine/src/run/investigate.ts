@@ -688,6 +688,8 @@ export async function* runInvestigation(
 					);
 			} else if (item.kind === "harness_finding") {
 				yield adapter.findingRecorded(item.finding);
+			} else if (item.kind === "harness_artifact") {
+				yield adapter.artifactPublished(item.artifact);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -719,6 +721,7 @@ export async function* runInvestigation(
 	const toolsSummary = function* (): Generator<CanonicalEvent> {
 		unCalled?.();
 		unFound?.();
+		unPublished?.();
 		if (offer && opts.gateway && !summarized) {
 			summarized = true;
 			yield adapter.harnessTools(
@@ -759,6 +762,9 @@ export async function* runInvestigation(
 	);
 	const unFound = opts.gateway?.onFinding?.((finding) =>
 		session.inject({ kind: "harness_finding", finding }),
+	);
+	const unPublished = opts.gateway?.onArtifact?.((artifact) =>
+		session.inject({ kind: "harness_artifact", artifact }),
 	);
 	const onAbort = (): void => session.cancel();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
