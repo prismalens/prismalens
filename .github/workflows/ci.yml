@@ -513,7 +513,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the packages the engine imports
-        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." build
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
 
       - name: Setup uv
         if: matrix.harness == 'deepagents'
@@ -539,7 +539,9 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Run the admission (R1-R11) and the behaviour matrix against aimock, 3 times
-        run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3 | tee admission.log
+        run: |
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3 | tee admission.log
 
       # Tool search (#848): the matrix again with PrismaLens's tools as a core plus
       # `tools_search`, so a PR labelled `tool-search` shows both costs and pass rates.
@@ -548,7 +550,9 @@ jobs:
         continue-on-error: true
         env:
           PL_TOOL_SEARCH: "on"
-        run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix | tee search-on.log
+        run: |
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix | tee search-on.log
 
       - name: PrismaLens tool cost and pass rate
         if: always()
@@ -802,7 +806,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the packages the engine imports
-        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." build
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
 
       - name: Install the pinned OpenCode
         run: npm install -g "opencode-ai@$(node -p "require('./scripts/agent-pins.json').pins['opencode-ai']")" && opencode --version
