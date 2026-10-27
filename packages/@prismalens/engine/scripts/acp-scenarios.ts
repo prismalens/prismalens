@@ -6,11 +6,12 @@
  * engine against the real agent, whose model is the scripted aimock. A row passes on what
  * the engine observed (events, the files and processes the run left), never on model text.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	mkdtempSync,
 	readFileSync,
+	readlinkSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -91,8 +92,8 @@ export interface RowEnv {
 	signedOutEnv: NodeJS.ProcessEnv;
 }
 
-/** Command lines of every process on this machine. */
-function commandLines(): string[] {
+/** Pid and command line of every process on this machine. */
+function processes(): { pid: number; args: string }[] {
 	const out =
 		process.platform === "win32"
 			? execFileSync(
@@ -100,15 +101,33 @@ function commandLines(): string[] {
 					[
 						"-NoProfile",
 						"-Command",
-						"Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }",
+						'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }',
 					],
 					{ encoding: "utf8" },
 				)
-			: execFileSync("ps", ["-eo", "args="], { encoding: "utf8" });
-	return out.split(/\r?\n/);
+			: execFileSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" });
+	return out.split(/\r?\n/).flatMap((line) => {
+		const m = /^\s*(\d+) (.*)$/.exec(line);
+		return m ? [{ pid: Number(m[1]), args: m[2] ?? "" }] : [];
+	});
 }
-const running = (needle: string): boolean =>
-	commandLines().some((line) => line.includes(needle));
+/**
+ * This row's processes running `needle`. On Linux only those whose cwd is the row's workspace,
+ * so matrix runs going at once (admission-fake.mjs) never see or kill each other's (#885).
+ */
+function running(needle: string, workspace: string): number[] {
+	return processes()
+		.filter(({ pid, args }) => {
+			if (!args.includes(needle)) return false;
+			if (process.platform !== "linux") return true;
+			try {
+				return readlinkSync(`/proc/${pid}/cwd`).startsWith(workspace);
+			} catch {
+				return false;
+			}
+		})
+		.map(({ pid }) => pid);
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function openSession(
@@ -199,7 +218,7 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 		let sawTool = false;
 		const poll = needle
 			? setInterval(() => {
-					if (!sawTool && running(needle)) {
+					if (!sawTool && running(needle, workspace).length > 0) {
 						sawTool = true;
 						controller.abort();
 					}
@@ -230,13 +249,20 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 		let orphan: boolean | undefined;
 		if (needle && sawTool) {
 			orphan = true;
+			let pids: number[] = [];
 			for (let i = 0; i < 20 && orphan; i++) {
-				orphan = running(needle);
+				pids = running(needle, workspace);
+				orphan = pids.length > 0;
 				if (orphan) await sleep(500);
 			}
 			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
-			if (orphan && process.platform !== "win32")
-				spawnSync("pkill", ["-f", needle], { stdio: "ignore" });
+			for (const pid of orphan ? pids : []) {
+				try {
+					process.kill(pid);
+				} catch {
+					// already gone
+				}
+			}
 		}
 		return {
 			events,
