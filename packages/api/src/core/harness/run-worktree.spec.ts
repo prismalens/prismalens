@@ -88,7 +88,7 @@ beforeEach(() => {
 	setRunWorkspaceSource({
 		global: () => global,
 		override: (id) => overrides.get(id),
-		overrideLocations: () =>
+		locations: () =>
 			[...overrides.values()].flatMap((o) => (o.location ? [o.location] : [])),
 		serviceIdOf: async (name) => `id-${name}`,
 		record: (r) => recorded.push(...r),
@@ -264,5 +264,55 @@ describe("a follow-up and the user's own Remove", () => {
 		expect(existsSync(dest)).toBe(false);
 		expect(git(["worktree", "list", "--porcelain"], repo.dir)).not.toContain(basename(dest));
 		expect(keptWorkspaces("r1")).toEqual([]);
+	});
+});
+
+describe("review round 1 (#925)", () => {
+	it("the cap never removes a kept workspace whose run is live again", async () => {
+		global = { ...global, retention: { kind: "keep-days", days: 30 }, keptPerProject: 1 };
+		const repo = initRepo();
+		const first = await run("r1", repo);
+		await end("r1");
+		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
+		const second = await run("r2", repo);
+		await end("r2");
+		await sweepRunWorktrees({ isLive: (id) => id === "r1" });
+		expect(existsSync(first.dest)).toBe(true);
+		expect(existsSync(second.dest)).toBe(true);
+		unbindRun("r1");
+	});
+
+	it("a multi-repo run's folder stays while a clone in it has other worktrees hanging off it", async () => {
+		const parent = join(tmp, "app", "worktrees", "pl-r9");
+		const clone = join(parent, "api");
+		mkdirSync(parent, { recursive: true });
+		const repo = initRepo();
+		git(["clone", "-q", repo.dir, clone], tmp);
+		git(["worktree", "add", "-q", "--detach", join(tmp, "theirs"), "HEAD"], clone);
+		await sweepRunWorktrees();
+		expect(existsSync(join(clone, ".git"))).toBe(true);
+	});
+
+	it("a follow-up keeps its recorded folder in a location the settings no longer name", async () => {
+		const old = join(tmp, "old-runs");
+		global = { ...global, location: old };
+		const { dest } = await run("r1", initRepo());
+		await end("r1");
+		global = { ...global, location: join(tmp, "new-runs") };
+		overrides.set("id-past", { location: old });
+		const bound = await bindRun("r1", { incidentId: "inc", serviceName: null, recorded: dest });
+		expect(bound.root).toBe(old);
+		unbindRun("r1");
+	});
+
+	it("lists a workspace a guard kept, not only those with a kept clock", async () => {
+		global = { ...global, method: "clone", retention: { kind: "always-remove" } };
+		const { dest } = await run("r1", initRepo());
+		// A worktree of the clone itself: removing the clone would break it.
+		git(["worktree", "add", "-q", "--detach", join(tmp, "hang"), "HEAD"], dest);
+		await end("r1");
+		expect(existsSync(dest)).toBe(true);
+		expect(keptWorkspaces("r1")).toEqual([]);
+		expect(keptWorkspaces("r1", true).map((w) => w.dir)).toEqual([dest]);
 	});
 });

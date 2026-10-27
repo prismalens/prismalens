@@ -7,7 +7,13 @@
  * the run (#918, ADR 0004 §2). The checkout is agent-host's workspace (#916), made and
  * released under the user's run workspace settings (#925): global, overridden per service.
  */
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	lstatSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { Logger } from "@nestjs/common";
@@ -41,8 +47,8 @@ const LOCK_PREFIX = "prismalens run ";
 export interface RunWorkspaceSource {
 	global(): RunWorkspaceSettings;
 	override(serviceId: string): RunWorkspaceOverride | undefined;
-	/** Every location a service override names, so a sweep finds their workspaces. */
-	overrideLocations(): string[];
+	/** Every location a service names or any setting ever named, so a sweep still finds their workspaces. */
+	locations(): string[];
 	serviceIdOf(serviceName: string): Promise<string | null>;
 	record(removals: WorkspaceRemoval[]): void;
 }
@@ -50,7 +56,7 @@ export interface RunWorkspaceSource {
 const NO_SOURCE: RunWorkspaceSource = {
 	global: () => DEFAULT_RUN_WORKSPACE_SETTINGS,
 	override: () => undefined,
-	overrideLocations: () => [],
+	locations: () => [],
 	serviceIdOf: async () => null,
 	record: () => {},
 };
@@ -81,7 +87,7 @@ export function worktreeRoots(): string[] {
 	const roots = [
 		defaultWorktreeRoot(),
 		rootOf(source.global().location),
-		...source.overrideLocations().map(rootOf),
+		...source.locations().map(rootOf),
 	];
 	return [...new Set(roots)];
 }
@@ -100,7 +106,12 @@ const runs = new Map<string, RunBinding>();
  */
 export async function bindRun(
 	runId: string,
-	opts: { serviceName?: string | null; incidentId: string },
+	opts: {
+		serviceName?: string | null;
+		incidentId: string;
+		/** A follow-up's recorded workspace path: its folder stays the run's even after the location changed. */
+		recorded?: string;
+	},
 ): Promise<RunBinding> {
 	const serviceId = opts.serviceName
 		? await source.serviceIdOf(opts.serviceName).catch(() => null)
@@ -109,7 +120,10 @@ export async function bindRun(
 	const binding: RunBinding = {
 		serviceId,
 		settings,
-		root: existingRootOf(runId) ?? rootOf(settings.location),
+		root:
+			existingRootOf(runId) ??
+			recordedRootOf(runId, opts.recorded) ??
+			rootOf(settings.location),
 		branch: `prismalens/${opts.incidentId}-${runId}`,
 	};
 	runs.set(runId, binding);
@@ -119,6 +133,21 @@ export async function bindRun(
 export function unbindRun(runId: string): void {
 	runs.delete(runId);
 }
+
+/** The known location a recorded path sits in as `<root>/pl-<run>/...`; never one no setting named. */
+function recordedRootOf(runId: string, recorded?: string): string | null {
+	if (!recorded) return null;
+	const roots = worktreeRoots();
+	for (let dir = resolve(recorded); dirname(dir) !== dir; dir = dirname(dir))
+		if (basename(dir) === `${WORKTREE_PREFIX}${runId}`)
+			return roots.find((r) => samePath(r, dirname(dir))) ?? null;
+	return null;
+}
+
+const samePath = (a: string, b: string) =>
+	process.platform === "win32"
+		? resolve(a).toLowerCase() === resolve(b).toLowerCase()
+		: resolve(a) === resolve(b);
 
 function existingRootOf(runId: string): string | null {
 	return (
@@ -148,7 +177,8 @@ export function toPolicy(
 	return {
 		method: s.method,
 		retention: s.retention,
-		keptPerProject: s.keptPerProject,
+		// The engine's own cap knows no live runs; enforceCap applies the setting across locations.
+		keptPerProject: Number.MAX_SAFE_INTEGER,
 		setup: s.setup,
 		teardown: s.teardown,
 		copyIn: s.copyIn,
@@ -181,6 +211,16 @@ function isLinkedWorktree(dir: string): boolean {
 /** A worktree, or a clone this product made: either way its sidecar or `.git` file says so. */
 function isWorkspace(dir: string): boolean {
 	return isLinkedWorktree(dir) || existsSync(`${dir}.workspace.json`);
+}
+
+/** A folder in a multi-repo run's folder that deleting the folder must not take: a workspace, a link, or a clone others hang off. */
+function mustStay(dir: string): boolean {
+	try {
+		if (lstatSync(dir).isSymbolicLink() || isWorkspace(dir)) return true;
+		return readdirSync(join(dir, ".git", "worktrees")).length > 0;
+	} catch {
+		return false;
+	}
 }
 
 /** `pl-<run>` itself, or the `pl-<run>` a multi-repo folder sits in. */
@@ -285,7 +325,7 @@ export async function releaseWorktree(
 		...(onlyLock !== undefined ? { onlyLock } : {}),
 	});
 	report(records, discard);
-	await enforceCap();
+	await enforceCap(undefined, runIdOf(dir));
 	return records[0]?.removed === true;
 }
 
@@ -300,11 +340,13 @@ export async function releaseWorktreesIn(
 	if (!existsSync(dir)) return;
 	let kept = false;
 	if (isWorkspace(dir)) kept = !(await releaseWorktree(dir, onlyLock));
-	else
+	else {
 		for (const entry of readdirSync(dir, { withFileTypes: true }))
 			if (entry.isDirectory() && isWorkspace(join(dir, entry.name)))
 				kept =
 					!(await releaseWorktree(join(dir, entry.name), onlyLock)) || kept;
+		kept ||= readdirSync(dir).some((name) => mustStay(join(dir, name)));
+	}
 	if (!kept) rmSync(dir, { recursive: true, force: true });
 }
 
@@ -355,8 +397,7 @@ export async function sweepRunWorktrees(
 			)
 				continue;
 			report(await sweepIn(dir, "", opts), true);
-			if (readdirSync(dir).some((name) => isWorkspace(join(dir, name))))
-				continue;
+			if (readdirSync(dir).some((name) => mustStay(join(dir, name)))) continue;
 			try {
 				rmSync(dir, { recursive: true, force: true });
 				gone.push(runId);
@@ -371,16 +412,19 @@ export async function sweepRunWorktrees(
 		);
 		gone.push(...records.filter((r) => r.removed).map((r) => r.id));
 	}
-	await enforceCap();
+	await enforceCap(opts.isLive);
 	return gone;
 }
 
-/** Every kept workspace under every location, single or inside a multi-repo run's folder. */
-export function keptWorkspaces(runId?: string): WorkspaceInfo[] {
+/**
+ * Every kept workspace under every location, single or inside a multi-repo run's folder;
+ * with `any`, also those a guard kept without starting their kept clock.
+ */
+export function keptWorkspaces(runId?: string, any = false): WorkspaceInfo[] {
 	const out: WorkspaceInfo[] = [];
 	const take = (dir: string) => {
 		const info = workspaceInfo(dir);
-		if (info?.keptAt) out.push(info);
+		if (info && (any || info.keptAt)) out.push(info);
 	};
 	for (const root of worktreeRoots()) {
 		if (!existsSync(root)) continue;
@@ -399,10 +443,17 @@ export function keptWorkspaces(runId?: string): WorkspaceInfo[] {
 }
 
 /** The per-service cap across every location and layout: the oldest kept beyond it go. */
-async function enforceCap(): Promise<void> {
+async function enforceCap(
+	isLive?: (runId: string) => boolean,
+	ending?: string | null,
+): Promise<void> {
+	const live = (dir: string) => {
+		const run = runIdOf(dir);
+		return !!run && run !== ending && (runs.has(run) || !!isLive?.(run));
+	};
 	const byProject = new Map<string, WorkspaceInfo[]>();
 	for (const w of keptWorkspaces())
-		if (w.project)
+		if (w.project && !live(w.dir))
 			byProject.set(w.project, [...(byProject.get(w.project) ?? []), w]);
 	for (const [project, kept] of byProject) {
 		const cap = settingsFor(project).keptPerProject;
@@ -425,6 +476,8 @@ async function enforceCap(): Promise<void> {
 export async function removeKeptWorkspace(
 	dir: string,
 ): Promise<{ removed: boolean; reason: string }> {
+	const run = runIdOf(dir);
+	if (run && runs.has(run)) return { removed: false, reason: "live" };
 	const [r] = await releaseWorkspace({
 		...asWorkspace(dir),
 		policy: {

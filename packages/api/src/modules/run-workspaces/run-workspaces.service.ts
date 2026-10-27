@@ -33,6 +33,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 const GLOBAL_KEY = "runWorkspace.global";
 const OVERRIDE_PREFIX = "runWorkspace.service.";
 const REMOVALS_KEY = "runWorkspace.removals";
+const LOCATIONS_KEY = "runWorkspace.locations";
 const REMOVALS_KEPT = 100;
 const HOUR_MS = 60 * 60_000;
 
@@ -48,6 +49,8 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 	private readonly logger = new Logger(RunWorkspacesService.name);
 	private global: RunWorkspaceSettings = DEFAULT_RUN_WORKSPACE_SETTINGS;
 	private overrides = new Map<string, RunWorkspaceOverride>();
+	/** Every location a setting ever named, so a workspace left there is still swept and listed. */
+	private locations = new Set<string>();
 	private loaded: Promise<void> | null = null;
 	private timer: NodeJS.Timeout | null = null;
 	private sweeping: Promise<void> | null = null;
@@ -60,10 +63,12 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		setRunWorkspaceSource({
 			global: () => this.global,
 			override: (id) => this.overrides.get(id),
-			overrideLocations: () =>
-				[...this.overrides.values()]
-					.map((o) => o.location)
-					.filter((l): l is string => !!l),
+			locations: () => [
+				...this.locations,
+				...[...this.overrides.values()].flatMap((o) =>
+					o.location ? [o.location] : [],
+				),
+			],
 			serviceIdOf: async (name) =>
 				(
 					await this.prisma.service.findUnique({
@@ -100,7 +105,10 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		});
 		for (const row of rows) {
 			const value = parseJson(row.value);
-			if (row.key === GLOBAL_KEY) {
+			if (row.key === LOCATIONS_KEY) {
+				const parsed = z.array(z.string()).safeParse(value);
+				if (parsed.success) for (const l of parsed.data) this.locations.add(l);
+			} else if (row.key === GLOBAL_KEY) {
 				const parsed = RunWorkspaceSettingsSchema.safeParse({
 					...DEFAULT_RUN_WORKSPACE_SETTINGS,
 					...(value as object),
@@ -168,6 +176,7 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 			},
 			update: { value: JSON.stringify(settings) },
 		});
+		await this.remember(this.global.location, settings.location);
 		this.global = settings;
 		return this.getGlobal();
 	}
@@ -192,6 +201,7 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		) as RunWorkspaceOverride;
 		const key = `${OVERRIDE_PREFIX}${serviceId}`;
 		if (Object.keys(own).length === 0) {
+			await this.remember(this.overrides.get(serviceId)?.location);
 			await this.prisma.setting.deleteMany({ where: { key } });
 			this.overrides.delete(serviceId);
 		} else {
@@ -205,9 +215,27 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 				},
 				update: { value: JSON.stringify(own) },
 			});
+			await this.remember(
+				this.overrides.get(serviceId)?.location,
+				own.location,
+			);
 			this.overrides.set(serviceId, own);
 		}
 		return this.getService(serviceId);
+	}
+
+	private async remember(
+		...named: (string | null | undefined)[]
+	): Promise<void> {
+		const before = this.locations.size;
+		for (const l of named) if (l) this.locations.add(l);
+		if (this.locations.size === before) return;
+		const value = JSON.stringify([...this.locations]);
+		await this.prisma.setting.upsert({
+			where: { key: LOCATIONS_KEY },
+			create: { key: LOCATIONS_KEY, value, type: "json", category: "runs" },
+			update: { value },
+		});
 	}
 
 	private async requireService(id: string): Promise<void> {
@@ -261,24 +289,33 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 			);
 	}
 
-	listForRun(runId: string): KeptWorkspace[] {
-		return keptWorkspaces(runId).map((w) => ({
+	/** A finished run's workspaces still on disk, kept by its rule or by a guard, with the latest reason recorded. */
+	async listForRun(runId: string): Promise<KeptWorkspace[]> {
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: runId },
+			select: { status: true },
+		});
+		if (run?.status === "pending" || run?.status === "running") return [];
+		const history = await this.removals();
+		return keptWorkspaces(runId, true).map((w) => ({
 			dir: w.dir,
 			serviceId: w.project ?? null,
 			method: w.method,
-			keptAt: w.keptAt as string,
-			reason: keptReason(
-				resolveRunWorkspaceSettings(
-					this.global,
-					w.project ? this.overrides.get(w.project) : undefined,
-				).effective,
-			),
+			keptAt: w.keptAt ?? w.createdAt,
+			reason:
+				history.find((r) => r.dir === w.dir && !r.removed)?.reason ??
+				keptReason(
+					resolveRunWorkspaceSettings(
+						this.global,
+						w.project ? this.overrides.get(w.project) : undefined,
+					).effective,
+				),
 		}));
 	}
 
 	/** Only a directory the listing names for this run; never a path the caller made up. */
 	private kept(runId: string, dir: string): string {
-		const found = keptWorkspaces(runId).find((w) => w.dir === dir);
+		const found = keptWorkspaces(runId, true).find((w) => w.dir === dir);
 		if (!found) throw new RunWorkspaceNotFoundError("No kept workspace there");
 		return found.dir;
 	}

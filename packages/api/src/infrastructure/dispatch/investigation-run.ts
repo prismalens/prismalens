@@ -322,7 +322,7 @@ async function runJobInternal(
 			toolsServer: newGatewayServerName(),
 		};
 		await recordWorkspace(data, workspace, ports, context);
-		await logWorkspaceSetup(data.investigationId, io, ports);
+		const afterSetup = await logWorkspaceSetup(data.investigationId, io, ports);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
 
@@ -397,6 +397,7 @@ async function runJobInternal(
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
 				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
+				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
 				onHarnessStderr: (chunk) => {
@@ -824,6 +825,7 @@ async function runFollowUp(
 		await bindRun(id, {
 			incidentId: data.incidentId,
 			serviceName: recorded.repos[0]?.services[0] ?? null,
+			recorded: recorded.cwd,
 		});
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
 		const newer = await ports.newerRun(id).catch(() => null);
@@ -843,7 +845,7 @@ async function runFollowUp(
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 		};
-		await logWorkspaceSetup(id, io, ports);
+		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
 		const incident = await assembled(
 			"the incident",
@@ -1339,15 +1341,18 @@ const SETUP_WORDS: Record<HookResult["status"], string> = {
 	aborted: "was stopped",
 };
 
-/** The workspace setup commands' output, in the run's log on a branch of its own (#925). */
+/**
+ * The workspace setup commands' output, in the run's log (#925). Answers the seq the agent's
+ * events start at after them, so a poller's cursor never passes over one; null when none ran.
+ */
 async function logWorkspaceSetup(
 	runId: string,
 	io: JobIo,
 	ports: RunPorts,
-): Promise<void> {
+): Promise<number | null> {
 	const ran = setups.get(runId);
 	setups.delete(runId);
-	if (!ran?.length) return;
+	if (!ran?.length) return null;
 	try {
 		let seq = (await ports.lastEventSeq(runId)) + 1;
 		const events: CanonicalEvent[] = ran.map(({ name, result }) => {
@@ -1372,9 +1377,11 @@ async function logWorkspaceSetup(
 		});
 		for (const event of events) await io.emit(event);
 		await ports.appendEvents(runId, events);
+		return seq;
 	} catch (e) {
 		logger.warn("Could not record the workspace setup in the run's log", e);
 	}
+	return null;
 }
 
 async function clearRunWorkspace(runId: string): Promise<void> {
