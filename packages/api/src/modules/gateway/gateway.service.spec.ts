@@ -675,3 +675,118 @@ describe("recording evidence and hypotheses (#930)", () => {
 		).rejects.toThrow("status 401");
 	});
 });
+
+describe("gateway views, search and the call record (#848)", () => {
+	async function leased(g: GatewayService, runId: string, harness?: string) {
+		const entry = await g.lease(runId, NAME, harness);
+		if (!entry) throw new Error("no lease");
+		return entry;
+	}
+	const send = async (
+		g: GatewayService,
+		runId: string,
+		token: string,
+		name: string,
+		args: Record<string, unknown>,
+	) =>
+		body(
+			await g.serve(
+				runId,
+				rpc(runId, "tools/call", { name, arguments: args }, token),
+			),
+		);
+	const textOf = (out: Record<string, unknown>) =>
+		JSON.parse(
+			(out.result as { content: { text: string }[] }).content[0]?.text ??
+				"null",
+		);
+
+	it("onCall carries what replay needs: id, input, the text the agent got, timing and schema", async () => {
+		const g = gateway();
+		const a = await leased(g, RUN_A);
+		const seen: Record<string, unknown>[] = [];
+		a.onCall((c) => seen.push({ ...c }));
+		await send(g, RUN_A, a.token, "runbooks_list", {});
+		expect(seen[0]).toMatchObject({
+			name: "runbooks_list",
+			input: {},
+			isError: false,
+			output: expect.any(String),
+			ms: expect.any(Number),
+		});
+		expect(seen[0]?.callId).toEqual(expect.any(String));
+		expect(seen[0]?.schemaHash).toMatch(/^[0-9a-f]{16}$/);
+	});
+
+	it("a failure reaches the agent as {error, message, next}", async () => {
+		const g = gateway({
+			...EMPTY,
+			incident: { findUnique: async () => null },
+		});
+		const a = await leased(g, RUN_A);
+		const out = await send(g, RUN_A, a.token, "incident_get", { number: 99 });
+		expect((out.result as { isError?: boolean }).isError).toBe(true);
+		expect(textOf(out)).toEqual({
+			error: "not_found",
+			message: expect.stringContaining("#99"),
+			next: expect.any(String),
+		});
+	});
+
+	it("an unknown tool is a protocol error, not a tool result", async () => {
+		const g = gateway();
+		const a = await leased(g, RUN_A);
+		const out = await send(g, RUN_A, a.token, "prometheus_query", {});
+		expect(out.error).toBeDefined();
+		expect(out.result).toBeUndefined();
+	});
+
+	it("with search on, deferred tools are not listed and are refused when called directly, but run through tools_call", async () => {
+		const findMany = vi.fn(async () => []);
+		const g = gateway({
+			...EMPTY,
+			investigation: { findUnique: async () => null, findMany },
+		});
+		g.toolSearch = () => true;
+		const a = await leased(g, RUN_A, "any");
+		const listed = (
+			(await body(await g.serve(RUN_A, rpc(RUN_A, "tools/list", {}, a.token))))
+				.result as { tools: { name: string }[] }
+		).tools.map((t) => t.name);
+		expect(listed.sort()).toEqual([
+			"evidence_record",
+			"hypothesis_record",
+			"incident_get",
+			"runbooks_read",
+			"tools_call",
+			"tools_search",
+		]);
+		expect(a.promptLine).toContain("tools_search");
+		const direct = await send(g, RUN_A, a.token, "investigations_search", {
+			query: "checkout",
+		});
+		expect(direct.error).toBeDefined();
+		expect(findMany).not.toHaveBeenCalled();
+		const found = textOf(
+			await send(g, RUN_A, a.token, "tools_search", {
+				query: "past investigations",
+			}),
+		);
+		expect(found.tools[0].name).toBe("investigations_search");
+		const seen: string[] = [];
+		a.onCall((c) => seen.push(c.name));
+		const out = await send(g, RUN_A, a.token, "tools_call", {
+			name: "investigations_search",
+			arguments: { query: "checkout" },
+		});
+		expect(textOf(out)).toEqual([]);
+		expect(findMany).toHaveBeenCalledTimes(1);
+		expect(seen).toEqual(["investigations_search"]);
+		const refused = await send(g, RUN_A, a.token, "tools_call", {
+			name: "evidence_record",
+			arguments: { observation: "o", source: "s", quote: "abcd" },
+		});
+		expect(textOf(refused).error).toBe("not_found");
+		expect(a.findings?.().evidence).toEqual([]);
+	});
+});

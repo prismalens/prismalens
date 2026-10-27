@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineSourceTool, type SourceTool } from "@prismalens/integrations";
+import {
+	defineHarnessTool,
+	fail,
+	type HarnessTool,
+} from "@prismalens/integrations/harness";
 import { z } from "zod";
 
 export interface PastInvestigation {
@@ -62,18 +66,18 @@ export interface InvestigationsQuery {
 export function knowledgeTools(
 	search: (q: InvestigationsQuery) => Promise<PastInvestigation[]>,
 	incident: IncidentLookup,
-): SourceTool[] {
+): HarnessTool[] {
 	return [
-		defineSourceTool({
+		defineHarnessTool({
 			name: "incident_get",
 			title: "Look up an incident",
 			description:
 				"An incident PrismaLens recorded: title, status, severity and service, with the alerts, deploy and change events PrismaLens recorded for its services from a day before it started. Without `number`, the incident this run investigates.",
+			group: "core",
+			effect: "read",
 			input: z.object({
 				number: z.number().int().min(1).optional(),
 			}),
-			category: "knowledge",
-			openWorld: false,
 			run: async ({ number }, ctx) => {
 				const found = await incident({
 					runId: ctx.runId,
@@ -81,21 +85,29 @@ export function knowledgeTools(
 				});
 				return found
 					? { value: found }
-					: { isError: true, value: { error: "No such incident" } };
+					: fail(
+							"not_found",
+							number
+								? `PrismaLens has no incident #${number}.`
+								: "This run has no incident recorded.",
+							number
+								? "Call incident_get without `number` for the incident this run investigates."
+								: "Continue from the alerts in your prompt.",
+						);
 			},
 		}),
-		defineSourceTool({
+		defineHarnessTool({
 			name: "investigations_search",
 			title: "Search past investigations",
 			description:
 				"Past PrismaLens investigations matching a text query, newest first. `agentFinding` is what the agent concluded; `operatorRecordedCause` is what the operator recorded as the real cause, and wins where they differ.",
+			group: "knowledge",
+			effect: "read",
 			input: z.object({
 				query: z.string().trim().min(1).max(200),
 				service: z.string().trim().min(1).max(200).optional(),
 				limit: z.number().int().min(1).max(20).default(5),
 			}),
-			category: "knowledge",
-			openWorld: false,
 			run: async ({ query, service, limit }, ctx) => ({
 				value: await search({
 					query,

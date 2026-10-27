@@ -101,6 +101,11 @@ interface ProductFacts {
 	acpRegistryIds?: readonly string[];
 	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
 	toolsHint?: { text: string };
+	/**
+	 * PrismaLens's tools come as a core plus `tools_search`, not all listed; on only where the
+	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
+	 */
+	harnessToolSearch?: true;
 }
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
