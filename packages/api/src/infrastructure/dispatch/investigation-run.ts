@@ -1327,6 +1327,8 @@ const RUN_WORKSPACE = [
 	join("config", GATEWAY_RUN_FILE),
 ];
 
+const SETUP_OUTPUT_TAIL = 64 * 1024;
+
 const setups = new Map<string, { name: string; result: HookResult }[]>();
 
 function noteSetup(runId: string, name: string, result: HookResult): void {
@@ -1345,7 +1347,7 @@ const SETUP_WORDS: Record<HookResult["status"], string> = {
  * The workspace setup commands' output, in the run's log (#925). Answers the seq the agent's
  * events start at after them, so a poller's cursor never passes over one; null when none ran.
  */
-async function logWorkspaceSetup(
+export async function logWorkspaceSetup(
 	runId: string,
 	io: JobIo,
 	ports: RunPorts,
@@ -1624,6 +1626,8 @@ export async function resolveWorkspace(
 	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
+	// A budget abort throws the hook's result away; what it printed so far is kept for the run log (#925).
+	const printed: string[] = repos.map(() => "");
 	const outcomes = await checkoutAll(
 		repos.length,
 		(i, repoSignal) => {
@@ -1640,6 +1644,9 @@ export async function resolveWorkspace(
 				repoSignal,
 				undefined,
 				runId,
+				(chunk) => {
+					printed[i] = (printed[i] + chunk).slice(-SETUP_OUTPUT_TAIL);
+				},
 			);
 		},
 		signal,
@@ -1650,6 +1657,12 @@ export async function resolveWorkspace(
 	for (const [i, outcome] of outcomes.entries()) {
 		const { repo, services } = repos[i] as (typeof repos)[number];
 		if (!outcome.ok) {
+			if (printed[i])
+				noteSetup(runId, names[i] as string, {
+					status: "aborted",
+					exitCode: null,
+					output: printed[i] as string,
+				});
 			skipped.push({ repo, reason: outcome.reason, code: outcome.code });
 			continue;
 		}

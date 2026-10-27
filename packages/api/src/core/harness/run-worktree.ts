@@ -22,6 +22,7 @@ import {
 	gitEnv,
 	type HookResult,
 	isChanged,
+	madeHere,
 	protectedBy,
 	type RemovalRecord,
 	releaseWorkspace,
@@ -366,9 +367,12 @@ export async function releaseWorktreesIn(
 		for (const entry of readdirSync(dir, { withFileTypes: true })) {
 			const child = join(dir, entry.name);
 			if (!entry.isDirectory()) continue;
-			if (isWorkspace(child))
-				kept = !(await releaseWorktree(child, onlyLock)) || kept;
-			else if (isPlainClone(child)) kept = (await keptClone(child)) || kept;
+			if (isWorkspace(child)) {
+				// Not ours: it keeps its place and so keeps the run folder.
+				if (madeHere(child, LOCK_PREFIX))
+					kept = !(await releaseWorktree(child, onlyLock)) || kept;
+				else logger.warn(`Kept ${child}: a worktree PrismaLens did not create`);
+			} else if (isPlainClone(child)) kept = (await keptClone(child)) || kept;
 		}
 		kept ||= readdirSync(dir).some((name) => mustStay(join(dir, name)));
 	}

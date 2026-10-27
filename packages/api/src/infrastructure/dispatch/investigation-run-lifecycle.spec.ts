@@ -293,6 +293,7 @@ describe("#331 workspace record (in-process run)", () => {
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 
 			const entry = createTimelineEntry.mock.calls

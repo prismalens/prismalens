@@ -772,6 +772,16 @@ export async function releaseWorkspace(
 	];
 }
 
+/** Made by this product: it wrote the sidecar, or its lock is on a worktree a crash left before the sidecar. */
+export function madeHere(dir: string, lockPrefix: string): boolean {
+	if (existsSync(sidecarPath(dir))) return true;
+	try {
+		return lockOf(dir, null)?.startsWith(lockPrefix) === true;
+	} catch {
+		return false;
+	}
+}
+
 function ownedEntries(owner: WorkspaceOwner): { id: string; dir: string }[] {
 	const root = resolve(owner.parentDir);
 	if (!existsSync(root)) return [];
@@ -780,7 +790,9 @@ function ownedEntries(owner: WorkspaceOwner): { id: string; dir: string }[] {
 			(e) =>
 				e.name.startsWith(owner.prefix) &&
 				!e.name.endsWith(".workspace.json") &&
-				(e.isDirectory() || e.isSymbolicLink()),
+				(e.isDirectory() || e.isSymbolicLink()) &&
+				// No prefix names ours, so a folder of several repos trusts the marker: a worktree someone else added there stays.
+				(owner.prefix !== "" || madeHere(join(root, e.name), owner.lockPrefix)),
 		)
 		.map((e) => ({
 			id: e.name.slice(owner.prefix.length),

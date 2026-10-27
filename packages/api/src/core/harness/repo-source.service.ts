@@ -201,6 +201,7 @@ export class RepoSourceService {
 		signal?: AbortSignal,
 		at?: string,
 		runId?: string,
+		onOutput?: (chunk: string) => void,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
 		// A URL is cloned once, into its mirror; each run gets a workspace of that (#925).
@@ -218,6 +219,7 @@ export class RepoSourceService {
 		try {
 			added = await addRunWorktree(repo, dest, commit, runId ?? dest, signal, {
 				mirror,
+				...(onOutput ? { onOutput } : {}),
 			});
 		} catch (err) {
 			if (signal?.aborted) throw signal.reason;

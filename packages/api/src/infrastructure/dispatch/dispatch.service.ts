@@ -393,7 +393,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					})),
 				);
 			},
-			snapshotWith: async (ref, dest, signal, at, runId) => {
+			snapshotWith: async (ref, dest, signal, at, runId, onOutput) => {
 				signal?.throwIfAborted();
 				const row =
 					ref.sourceKind === "url"
@@ -422,6 +422,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 								signal,
 								at,
 								runId,
+								onOutput,
 							),
 						signal,
 					);

@@ -380,6 +380,35 @@ describe("Codex pass (#925)", () => {
 	});
 });
 
+describe("review round 3 (#925)", () => {
+	/** A multi-repo run folder holding PrismaLens's own checkout and a worktree the user added by hand. */
+	async function runFolderWithForeign() {
+		global = { ...global, retention: { kind: "always-remove" } };
+		const repo = initRepo();
+		const folder = join(tmp, "app", "worktrees", "pl-r11");
+		await bindRun("r11", { incidentId: "inc", serviceName: "svc" });
+		await addRunWorktree(repo.dir, join(folder, "api"), repo.head, "r11");
+		unbindRun("r11");
+		const foreign = join(folder, "personal");
+		git(["worktree", "add", "--detach", foreign, repo.head], repo.dir);
+		return { folder, foreign, ours: join(folder, "api") };
+	}
+
+	it("run-end cleanup removes its own checkout and leaves a worktree someone else added in the run folder", async () => {
+		const { folder, foreign, ours } = await runFolderWithForeign();
+		await releaseWorktreesIn(folder);
+		expect(existsSync(ours)).toBe(false);
+		expect(existsSync(join(foreign, "a.txt"))).toBe(true);
+	});
+
+	it("a sweep leaves a worktree someone else added in the run folder", async () => {
+		const { foreign, ours } = await runFolderWithForeign();
+		await sweepRunWorktrees();
+		expect(existsSync(ours)).toBe(false);
+		expect(existsSync(join(foreign, "a.txt"))).toBe(true);
+	});
+});
+
 describe("review round 2 (#925)", () => {
 	it("a multi-repo run's folder stays at run end and in a sweep while a clone in it holds a set-up checkout", async () => {
 		const parent = join(tmp, "app", "worktrees", "pl-r8");

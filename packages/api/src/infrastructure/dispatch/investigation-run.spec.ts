@@ -58,6 +58,7 @@ function cloneAs(
 }
 
 const {
+	logWorkspaceSetup,
 	resolveWorkspace,
 	rebuildWorkspace,
 	runDirFor,
@@ -162,6 +163,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 			expect(ws.layout).toBe("single");
 			expect(ws.cwd).toBe(join(tmp, "worktrees", "pl-inv-1", "services", "api"));
@@ -547,6 +549,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 		} finally {
 			vi.unstubAllEnvs();
@@ -893,6 +896,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			expect.any(AbortSignal),
 			undefined,
 			"inv-1",
+			expect.any(Function),
 		);
 		expect(ws.note).toContain("folder");
 	});
@@ -2832,6 +2836,46 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 				},
 			]);
 			expect(abortedSignal?.aborted).toBe(true);
+			rmSync(tmpDir, { recursive: true, force: true });
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("a setup the checkout budget aborts leaves what it printed in the run log (#925)", async () => {
+		vi.useFakeTimers();
+		try {
+			const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-budget-log-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [makeRepo("https://github.com/acme/repo-0", "svc-0")]),
+				snapshotWith: vi.fn(
+					async (
+						_ref: any,
+						_dest: string,
+						_signal?: AbortSignal,
+						_at?: string,
+						_runId?: string,
+						onOutput?: (chunk: string) => void,
+					) => {
+						onOutput?.("installing deps\n");
+						onOutput?.("still installing\n");
+						return new Promise<never>(() => {});
+					},
+				),
+			});
+
+			const wsPromise = resolveWorkspace(minimalData(), ports);
+			await vi.advanceTimersByTimeAsync(600_000);
+			await wsPromise;
+			const io = { emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal };
+			await logWorkspaceSetup("inv-1", io, ports);
+
+			const [, events] = vi.mocked(ports.appendEvents).mock.calls[0] as [string, CanonicalEvent[]];
+			const result = (events[0] as { result: { preview: string; ok: boolean } }).result;
+			expect(result.preview).toBe("installing deps\nstill installing\n");
+			expect(result.ok).toBe(false);
 			rmSync(tmpDir, { recursive: true, force: true });
 		} finally {
 			vi.useRealTimers();
