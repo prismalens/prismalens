@@ -27,11 +27,11 @@ These are easy for an agent to break and expensive to undo.
 ## Writing
 - Comments, test names, commit messages and PR text explain current behaviour to a reader who was not in the conversation. Cite a public issue (`#264`) when the story is long; never a review round, a chat, a board card or an iteration ID.
 - A comment carries one non-obvious constraint in three lines or fewer. Don't narrate what the code does.
-- Don't name other products in code, comments, commits or docs.
+- Don't name other products without need. The supported agents (Claude Code, Codex, OpenCode, Gemini CLI) may be named where a doc identifies an integration or its mode.
 - Commits and PR titles follow Conventional Commits; a required check enforces the PR title.
 
 ## Docs
-A change to anything a user sees updates its doc in the same PR, or the PR says why none is affected.
+A change to anything a user sees updates its doc in the same PR, or the PR says why none is affected. Where the doc lives in `prismalens/prismalens.io`, the PR links the website PR or a tracked docs issue.
 
 - `README.md` is the front page: what it is, quick start, repo layout.
 - `packages/cli/README.md` is the npm page: install, quick start, one line per command, a link to the website.
