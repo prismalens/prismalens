@@ -321,8 +321,8 @@ approval_policy = "on-request"
 			expect(localDefault("gemini", { HOME: home }, { geminiSystemFile: null, onDebug })).toEqual({ permission: null });
 			expect(localDefault("opencode", { HOME: home }, { onDebug })).toEqual({ permission: null });
 
-			expect(debugMsgs.some((m) => m.includes(".codex/config.toml"))).toBe(true);
-			expect(debugMsgs.some((m) => m.includes(".gemini/settings.json"))).toBe(true);
+			expect(debugMsgs.some((m) => m.includes(join(".codex", "config.toml")))).toBe(true);
+			expect(debugMsgs.some((m) => m.includes(join(".gemini", "settings.json")))).toBe(true);
 		});
 
 		it("returns null for deepagents, and for OpenCode whose permission default is not read", () => {
