@@ -11,7 +11,7 @@ import type {
 	McpCapabilities,
 	McpServer,
 } from "@agentclientprotocol/sdk/unstable";
-import type { RecordedFinding } from "@prismalens/contracts/schemas";
+import type { Artifact, RecordedFinding } from "@prismalens/contracts/schemas";
 import type { Findings } from "./findings.js";
 
 /** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
@@ -42,6 +42,8 @@ export interface GatewayEntry {
 	 * is refused and retries it. Settles after the first attempt.
 	 */
 	restore?(load: () => Promise<Findings>): Promise<void>;
+	/** Hears each HTML artifact the agent publishes (#871); returns the unsubscribe. */
+	onArtifact?(listener: (a: Artifact) => void): () => void;
 }
 
 /** One call as the gateway executed it; what replay needs rides on the event (#848). */

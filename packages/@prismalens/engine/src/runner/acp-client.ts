@@ -22,6 +22,7 @@ import type {
 } from "@agentclientprotocol/sdk/unstable";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import type {
+	Artifact,
 	PermissionAskOutcome,
 	RecordedFinding,
 } from "@prismalens/contracts/schemas";
@@ -69,7 +70,9 @@ export type AcpStreamItem =
 	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
 	| { kind: "harness_tool_call"; call: GatewayCall }
 	/** The agent recorded evidence or a hypothesis through the gateway (#930). */
-	| { kind: "harness_finding"; finding: RecordedFinding };
+	| { kind: "harness_finding"; finding: RecordedFinding }
+	/** The agent published an HTML artifact through the gateway (#871). */
+	| { kind: "harness_artifact"; artifact: Artifact };
 
 /**
  * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
@@ -928,7 +931,7 @@ export class AcpSession {
 	inject(
 		item: Extract<
 			AcpStreamItem,
-			{ kind: "harness_tool_call" | "harness_finding" }
+			{ kind: "harness_tool_call" | "harness_finding" | "harness_artifact" }
 		>,
 	): void {
 		this.push(item);

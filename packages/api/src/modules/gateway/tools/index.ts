@@ -6,6 +6,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import type { RunbooksData } from "../runbooks.js";
+import { type ArtifactsData, artifactTools } from "./artifacts.js";
 import {
 	type IncidentLookup,
 	type InvestigationsQuery,
@@ -15,6 +16,7 @@ import {
 import { type FindingsData, recordTools } from "./record.js";
 import { runbookTools } from "./runbooks.js";
 
+export type { ArtifactsData } from "./artifacts.js";
 export type {
 	IncidentLookup,
 	IncidentView,
@@ -29,6 +31,7 @@ export interface GatewayToolData {
 	incident: IncidentLookup;
 	runbooks: RunbooksData;
 	findings: FindingsData;
+	artifacts: ArtifactsData;
 }
 
 /**
@@ -41,6 +44,7 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...knowledgeTools((q) => data.searchInvestigations(q), data.incident),
 		...runbookTools(data.runbooks),
 		...recordTools(data.findings),
+		...artifactTools(data.artifacts),
 	])
 		registry.register(tool);
 	return registry.list();

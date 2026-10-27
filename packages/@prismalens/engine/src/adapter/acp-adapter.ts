@@ -32,6 +32,7 @@
  * stream (the UI's idempotent-upsert key is `(branchId, seq)`).
  */
 import type {
+	Artifact,
 	AttachmentRef,
 	CanonicalEvent,
 	FollowUpKind,
@@ -232,6 +233,11 @@ export class AcpAdapter {
 		turn: HarnessToolsTurn,
 	): CanonicalEvent {
 		return { kind: "harness_tool_call", ...this.base(), server, turn, ...call };
+	}
+
+	/** An HTML artifact the agent published through PrismaLens's tool (#871). */
+	artifactPublished(artifact: Artifact): CanonicalEvent {
+		return { kind: "artifact_published", ...this.base(), artifact };
 	}
 
 	/** Evidence or a hypothesis the agent recorded through PrismaLens's tool (#930). */

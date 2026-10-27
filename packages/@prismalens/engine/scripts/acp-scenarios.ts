@@ -448,5 +448,11 @@ export function gatewayProblem(
 		for (const id of wanted ?? [])
 			if (!ids(type).includes(id))
 				return `no recorded ${type} "${id}" (saw ${ids(type).join(",") || "none"})`;
+	const titles = events.flatMap((e) =>
+		e.kind === "artifact_published" ? [e.artifact.title] : [],
+	);
+	for (const title of want.artifacts ?? [])
+		if (!titles.includes(title))
+			return `no published page "${title}" (saw ${titles.join(",") || "none"})`;
 	return null;
 }

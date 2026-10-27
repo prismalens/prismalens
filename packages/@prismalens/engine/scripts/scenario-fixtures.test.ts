@@ -150,6 +150,7 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"gateway-knowledge",
 				"gateway-record",
 				"gateway-failure",
+				"gateway-artifact",
 			].sort(),
 		);
 	});
