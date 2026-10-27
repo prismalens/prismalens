@@ -241,6 +241,7 @@ jobs:
             scripts/lib/npm-install-retry.mjs
             packages/@prismalens/engine/scripts/refusal-gate-check.mjs
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - uses: actions/download-artifact@v8
         with:

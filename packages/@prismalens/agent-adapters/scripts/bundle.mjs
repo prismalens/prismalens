@@ -73,8 +73,14 @@ function copyLicences(root, to) {
 	return files.length;
 }
 
+const licensed = new Map();
+
+// A second inlined version of a package gets its own <name>/<version>/ (#913 review).
 function licenceFor(root, name, version) {
-	const to = join(LICENCES, ...name.split("/"));
+	const first = licensed.get(name);
+	if (first === version) return;
+	if (first === undefined) licensed.set(name, version);
+	const to = join(LICENCES, ...name.split("/"), ...(first ? [version] : []));
 	if (existsSync(to)) return;
 	if (copyLicences(root, to) === 0)
 		fail(`${name}@${version} ships no licence text`);
@@ -90,6 +96,7 @@ export async function bundleAdapters() {
 	const ownSdk = packageDir(PKG_DIR, SDK);
 
 	rmSync(OUT, { recursive: true, force: true });
+	licensed.clear();
 	mkdirSync(LICENCES, { recursive: true });
 	const bundled = {};
 	for (const pkg of adapters) {

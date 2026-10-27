@@ -1,7 +1,7 @@
 {
-	"//": "ceil(1.10 x the size measured in CI on PR #913). Bytes and files per artifact, held by scripts/check-artifact.mjs; desktop entries are the unpacked app in MB, held by packages/desktop/scripts/check-release-paths.mjs (#906). prismalens re-based after #872: @pierre/diffs adds ~300 theme and language chunks to the web assets (5589849 bytes, 834 files in CI).",
+	"//": "ceil(1.10 x the size measured in CI on PR #913). Bytes and files per artifact, held by scripts/check-artifact.mjs; desktop entries are the unpacked app in MB, held by packages/desktop/scripts/check-release-paths.mjs (#906). prismalens re-based after #872: @pierre/diffs adds ~300 theme and language chunks to the web assets (5589849 bytes, 834 files in CI). @prismalens/agent-adapters re-based after codex-acp 2.2.2 (#914) added six licence texts (2027825 bytes, 49 files in CI).",
 	"prismalens": { "bytes": 6148834, "files": 918 },
-	"@prismalens/agent-adapters": { "bytes": 2167432, "files": 48 },
+	"@prismalens/agent-adapters": { "bytes": 2230608, "files": 54 },
 	"linux-x64": { "bytes": 93450240, "files": 10259 },
 	"linux-arm64": { "bytes": 93117426, "files": 10259 },
 	"darwin-arm64": { "bytes": 85961090, "files": 10258 },

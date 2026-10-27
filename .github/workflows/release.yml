@@ -139,6 +139,9 @@ jobs:
       - uses: actions/attest-build-provenance@v4
         with:
           subject-checksums: assets/SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: assets/SHA256SUMS
       - name: Upload SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}
