@@ -13,6 +13,7 @@ import {
 	type Artifact,
 	FixVerdictSchema,
 	InvestigationReportSchema,
+	isWorkflowLive,
 	type QuoteAnchor,
 	type RecordedFinding,
 	RunUsageSchema,
@@ -401,6 +402,8 @@ export class GatewayService {
 				const file = input.path
 					? await this.fileAnchor(runId, input.path, input.quote)
 					: null;
+				// The run can end while the file is read; nothing is kept for an ended run.
+				if (this.runs.get(runId) !== state) return { error: NOT_LIVE };
 				const r = state.ledger.addEvidence(
 					input,
 					file,
@@ -603,6 +606,9 @@ export class GatewayService {
 				error: null,
 			};
 		}
+		// A live thread gives its status only: another run's unfinished reasoning is not evidence.
+		if (isWorkflowLive(row.status))
+			return { ...head, report: null, steps: [], error: null };
 		const events = await this.prisma.investigationEvent.findMany({
 			where: {
 				investigationId: row.id,

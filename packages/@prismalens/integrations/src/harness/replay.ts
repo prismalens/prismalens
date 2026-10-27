@@ -13,6 +13,7 @@ export interface RecordedCall {
 	inputDropped?: boolean;
 	output?: string;
 	schemaHash?: string;
+	via?: "tools_call";
 }
 
 export type ReplayResult =
@@ -87,10 +88,19 @@ export function fixturesFrom(
 				inConversation: marker,
 				...(i === 0
 					? { hasToolResult: false }
-					: { afterTool: `$gw:${kept[i - 1]?.name}` }),
+					: {
+							afterTool: `$gw:${kept[i - 1]?.via === "tools_call" ? "tools_call" : kept[i - 1]?.name}`,
+						}),
 			},
 			response: {
-				toolCalls: [{ name: `$gw:${c.name}`, arguments: c.input }],
+				toolCalls: [
+					c.via === "tools_call"
+						? {
+								name: "$gw:tools_call",
+								arguments: { name: c.name, arguments: c.input },
+							}
+						: { name: `$gw:${c.name}`, arguments: c.input },
+				],
 			},
 		}));
 }

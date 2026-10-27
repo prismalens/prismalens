@@ -41,6 +41,9 @@ function drawable(html: string): string | null {
 const TOO_BIG = "This page is empty or too large to draw.";
 
 /** `sandbox=""` is the whole contract: no scripts, no same-origin, no navigation. */
+/** The frame's own policy: nothing is fetched, only inline style and data images (#871). */
+export const NO_FETCH = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">`;
+
 function Frame({
 	artifact,
 	className,
@@ -56,7 +59,7 @@ function Frame({
 	return (
 		<iframe
 			sandbox=""
-			srcDoc={theme + html}
+			srcDoc={NO_FETCH + theme + html}
 			title={artifact.title}
 			className={`w-full rounded-control border-0 bg-surface-2 ${className}`}
 			data-testid={testId}

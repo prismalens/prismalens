@@ -8,7 +8,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deriveTranscript } from "@/lib/investigation-events";
-import { ArtifactCard } from "./ArtifactCard";
+import { ArtifactCard, NO_FETCH } from "./ArtifactCard";
 
 vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,
@@ -54,6 +54,7 @@ describe("ArtifactCard", () => {
 		expect(doc).toContain(artifact.html);
 		expect(doc).toContain("color-scheme");
 		expect(doc.indexOf("<style>")).toBeLessThan(doc.indexOf(artifact.html));
+		expect(doc.startsWith(NO_FETCH)).toBe(true);
 	});
 
 	it("Open larger opens a dialog with a second sandboxed frame", async () => {

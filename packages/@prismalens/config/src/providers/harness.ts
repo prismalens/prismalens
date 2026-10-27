@@ -383,8 +383,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	"claude-code": {
 		id: "claude-code",
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		label: "Claude Code",
 		acpRegistryIds: ["claude-acp"],
 		binary: "claude-agent-acp",
@@ -478,8 +477,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	codex: {
 		id: "codex",
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		label: "Codex",
 		acpRegistryIds: ["codex-acp"],
 		binary: "codex-acp",

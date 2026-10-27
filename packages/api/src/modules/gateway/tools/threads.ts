@@ -90,7 +90,7 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 			name: "thread_read",
 			title: "Read one thread",
 			description:
-				"One thread thread_list returned, by id. A finished one gives its report: summary, root cause, hypotheses with status, next steps and culprit. An unfinished one gives its status and its last 20 agent-step texts. Only threads on this run's incident or one of its services can be read.",
+				"One thread thread_list returned, by id. A finished one gives its report: summary, root cause, hypotheses with status, next steps and culprit. A failed or stopped one gives its status, error and last 20 agent-step texts; a running one gives only its status. Only threads on this run's incident or one of its services can be read.",
 			group: "knowledge",
 			effect: "read",
 			input: z.object({
