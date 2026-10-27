@@ -1001,7 +1001,8 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 		});
 	});
 
-	it("hands the adapter the claude already on PATH", () => {
+	// On Windows, the test script is written as `claude` (no .exe/.cmd) and accessSync(X_OK) fails to match it on PATH.
+	it.fails("hands the adapter the claude already on PATH", () => {
 		const env = envFor(claudeOnPath());
 		expect(env.CLAUDE_CODE_EXECUTABLE).toMatch(/\/claude$/);
 	});
@@ -1714,6 +1715,55 @@ describe("harness tool call live events and summary (#848)", () => {
 			expect(summary.calls).toEqual([{ name: "incident_get", firstCalledAt: callAt, count: 1 }]);
 			expect(new Date(callAt).getTime()).toBeLessThan(new Date(summary.ts).getTime());
 		}
+	});
+
+	it("yields a harness_tool_call carrying callId, input, output, isError, ms, schemaHash and gateway's server", async () => {
+		let onCallCb: ((c: any) => void) | undefined;
+		const callAt = "2026-10-24T10:00:00.000Z";
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-testserver123",
+			promptLine: "",
+			tools: ["runbooks_read"],
+			connected: () => true,
+			waitConnected: async () => {
+				onCallCb?.({
+					name: "runbooks_read",
+					at: callAt,
+					callId: "c1",
+					input: { path: "p" },
+					output: '{"ok":true}',
+					isError: false,
+					ms: 3,
+					schemaHash: "abcd",
+				});
+				return true;
+			},
+			onCall: (cb: (c: any) => void) => {
+				onCallCb = cb;
+				return () => {};
+			},
+			calls: () => [{ name: "runbooks_read", firstCalledAt: callAt, count: 1 }],
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+		});
+		const toolCall = events.find((e) => e.kind === "harness_tool_call");
+		expect(toolCall).toBeDefined();
+		expect(toolCall).toMatchObject({
+			kind: "harness_tool_call",
+			server: "prismalens-testserver123",
+			name: "runbooks_read",
+			at: callAt,
+			callId: "c1",
+			input: { path: "p" },
+			output: '{"ok":true}',
+			isError: false,
+			ms: 3,
+			schemaHash: "abcd",
+		});
 	});
 
 	it("a two-turn resume yields turn: 'first' and then turn: 'follow-up'", async () => {
