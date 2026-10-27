@@ -7,6 +7,8 @@ import {
 } from "@prismalens/integrations/harness";
 import type { RunbooksData } from "../runbooks.js";
 import { type ArtifactsData, artifactTools } from "./artifacts.js";
+import { type AttachmentsData, attachmentTools } from "./attachments.js";
+import { type HistoryData, historyTools } from "./history.js";
 import { type IncidentRecordData, incidentTools } from "./incident.js";
 import {
 	type IncidentLookup,
@@ -15,12 +17,15 @@ import {
 	type PastInvestigation,
 } from "./knowledge.js";
 import { type FindingsData, recordTools } from "./record.js";
+import { reportTools } from "./report.js";
 import { type RunStatusLookup, runTools } from "./run.js";
 import { runbookTools } from "./runbooks.js";
 import { type ServiceLookup, serviceTools } from "./services.js";
 import { type ThreadsData, threadTools } from "./threads.js";
 
 export type { ArtifactsData } from "./artifacts.js";
+export type { AttachmentItem, AttachmentsData } from "./attachments.js";
+export type { HistoryData, PastFix, SimilarIncident } from "./history.js";
 export type {
 	ChangeItem,
 	IncidentRecordData,
@@ -53,6 +58,8 @@ export interface GatewayToolData {
 	incidentRecord: IncidentRecordData;
 	service: ServiceLookup;
 	runStatus: RunStatusLookup;
+	attachments: AttachmentsData;
+	history: HistoryData;
 }
 
 /**
@@ -70,6 +77,9 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...incidentTools(data.incidentRecord),
 		...serviceTools(data.service),
 		...runTools(data.runStatus),
+		...reportTools(),
+		...attachmentTools(data.attachments),
+		...historyTools(data.history),
 	])
 		registry.register(tool);
 	return registry.list();

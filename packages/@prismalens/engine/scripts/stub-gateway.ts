@@ -43,9 +43,14 @@ export const STUB_FACTS = {
 	team: "ScenarioTeamPlatform",
 	change: "ScenarioDeploy",
 	repo: "ScenarioRepo",
+	attachment: "ScenarioAttachment",
+	attachmentText: "ScenarioAttachmentText",
+	similar: "ScenarioSimilarTitle",
+	fix: "ScenarioFixTitle",
 } as const;
 
 const STUB_THREAD = "00000000-0000-4000-8000-0000000000c1";
+const STUB_ATTACHMENT = "00000000-0000-4000-8000-0000000000d1";
 
 /** The API's `gatewayTools`, loaded by path: the engine's build cannot import the api package. */
 type GatewayTools = (data: unknown) => readonly HarnessTool[];
@@ -216,6 +221,63 @@ export async function startStubGateway(
 				},
 			],
 		}),
+		attachments: {
+			list: async () => ({
+				incident: 1,
+				attachments: [
+					{
+						id: STUB_ATTACHMENT,
+						name: `${STUB_FACTS.attachment}.log`,
+						mimeType: "text/plain",
+						size: STUB_FACTS.attachmentText.length,
+						at: "2026-01-01T00:02:00.000Z",
+					},
+				],
+			}),
+			read: async (_run: string, id: string) =>
+				id === STUB_ATTACHMENT
+					? {
+							name: `${STUB_FACTS.attachment}.log`,
+							mimeType: "text/plain",
+							size: STUB_FACTS.attachmentText.length,
+							text: async () => STUB_FACTS.attachmentText,
+						}
+					: null,
+		},
+		history: {
+			similar: async () => ({
+				incident: 1,
+				similar: [
+					{
+						number: 7,
+						title: STUB_FACTS.similar,
+						service: "scenario",
+						status: "resolved",
+						resolvedAt: "2025-12-01T00:00:00.000Z",
+						actualCause: { cause: STUB_FACTS.past, category: "deploy" },
+						similarityScore: 80,
+						matchedOn: ["same service"],
+					},
+				],
+			}),
+			fixes: async () => ({
+				incident: 1,
+				fixes: [
+					{
+						id: "00000000-0000-4000-8000-0000000000e1",
+						title: STUB_FACTS.fix,
+						detail: null,
+						incident: 7,
+						investigationId: "00000000-0000-4000-8000-0000000000b2",
+						status: "applied",
+						priority: "high",
+						category: "config_change",
+						appliedAt: "2025-12-01T00:00:00.000Z",
+						lastCheck: { verdict: "it_worked", at: "2025-12-01T01:00:00.000Z" },
+					},
+				],
+			}),
+		},
 		runbooks: {
 			list: async () => [
 				{
