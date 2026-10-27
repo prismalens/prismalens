@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { readFile, realpath, stat } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { isAbsolute, relative, resolve } from "node:path";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
-import { RunWorkspaceSchema } from "@prismalens/contracts/schemas";
-import type {
-	GatewayCall,
-	GatewayCallCount,
-	GatewayEntry,
+import {
+	type QuoteAnchor,
+	type RecordedFinding,
+	type RunWorkspace,
+	RunWorkspaceSchema,
+} from "@prismalens/contracts/schemas";
+import {
+	FindingsLedger,
+	type GatewayCall,
+	type GatewayCallCount,
+	type GatewayEntry,
+	quoteLine,
 } from "@prismalens/engine";
 import type { SourceRegistry } from "@prismalens/integrations";
 import { Logger } from "@prismalens/logger";
@@ -55,7 +64,13 @@ interface RunState {
 	waiters: Set<(ok: boolean) => void>;
 	calls: Map<string, GatewayCallCount>;
 	listeners: Set<(c: GatewayCall) => void>;
+	ledger: FindingsLedger;
+	found: Set<(f: RecordedFinding) => void>;
 }
+
+/** The largest file a recorded quote is looked up in. */
+const QUOTE_FILE_BYTES = 2_000_000;
+const NOT_LIVE = "This run is not live, so nothing can be recorded on it";
 
 /**
  * PrismaLens's MCP doorway for the agents it launches (#848, ADR 0007 §5): its own
@@ -94,6 +109,8 @@ export class GatewayService {
 			waiters: new Set(),
 			calls: new Map(),
 			listeners: new Set(),
+			ledger: new FindingsLedger(),
+			found: new Set(),
 		};
 		this.runs.set(runId, state);
 		const tools = this.registry.list().map((t) => t.name);
@@ -109,6 +126,12 @@ export class GatewayService {
 				return () => state.listeners.delete(listener);
 			},
 			calls: () => [...state.calls.values()].map((c) => ({ ...c })),
+			sawOutput: (toolCallId, text) => state.ledger.sawOutput(toolCallId, text),
+			onFinding: (listener) => {
+				state.found.add(listener);
+				return () => state.found.delete(listener);
+			},
+			findings: () => state.ledger.snapshot(),
 			waitConnected: (ms) =>
 				state.connected
 					? Promise.resolve(true)
@@ -130,6 +153,43 @@ export class GatewayService {
 		this.runs.delete(runId);
 		for (const done of state?.waiters ?? []) done(false);
 		state?.listeners.clear();
+		state?.found.clear();
+	}
+
+	private recorded(state: RunState, finding: RecordedFinding): void {
+		for (const listener of [...state.found]) listener(finding);
+	}
+
+	/** The line of the workspace file at `path` holding the quote; null when it is not there or outside the run's workspace. */
+	private async fileAnchor(
+		runId: string,
+		path: string,
+		quote: string,
+	): Promise<QuoteAnchor | null> {
+		const ws = await this.workspaceOf(runId);
+		if (!ws) return null;
+		const file = isAbsolute(path) ? path : resolve(ws.cwd, path);
+		try {
+			const real = await realpath(file);
+			const roots = await Promise.all(
+				[ws.cwd, ...ws.repos.map((r) => r.dir)].map((d) =>
+					realpath(d).catch(() => null),
+				),
+			);
+			// A path the agent names is read only inside the run's own copy, never elsewhere on disk.
+			const inside = roots.some((root) => {
+				if (!root) return false;
+				const rel = relative(root, real);
+				return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+			});
+			if (!inside) return null;
+			const info = await stat(real);
+			if (!info.isFile() || info.size > QUOTE_FILE_BYTES) return null;
+			const line = quoteLine(await readFile(real, "utf8"), quote);
+			return line ? { in: "file", path: file, line } : null;
+		} catch {
+			return null;
+		}
 	}
 
 	private called(runId: string, name: string): void {
@@ -195,6 +255,29 @@ export class GatewayService {
 		},
 		searchInvestigations: (q) => this.searchInvestigations(q),
 		incident: (q) => this.incident(q),
+		findings: {
+			recordEvidence: async (runId, input) => {
+				const state = this.runs.get(runId);
+				if (!state) return { error: NOT_LIVE };
+				const file = input.path
+					? await this.fileAnchor(runId, input.path, input.quote)
+					: null;
+				const r = state.ledger.addEvidence(
+					input,
+					file,
+					new Date().toISOString(),
+				);
+				if (!("error" in r)) this.recorded(state, { type: "evidence", ...r });
+				return r;
+			},
+			recordHypothesis: async (runId, input) => {
+				const state = this.runs.get(runId);
+				if (!state) return { error: NOT_LIVE };
+				const r = state.ledger.addHypothesis(input, new Date().toISOString());
+				if (!("error" in r)) this.recorded(state, { type: "hypothesis", ...r });
+				return r;
+			},
+		},
 	};
 
 	/** The pre-run index of the run's runbooks: titles and paths only, never their text. */
@@ -226,26 +309,29 @@ export class GatewayService {
 
 	/** The repos the run recorded, each at the commit it saw. */
 	private async runbookRepos(runId: string): Promise<RunbookRepo[]> {
+		const ws = await this.workspaceOf(runId);
+		return (ws?.repos ?? [])
+			.filter((r) => r.services.length)
+			.map((r) => ({
+				name: r.name,
+				dir: r.dir,
+				head: r.head,
+				subPath: r.subPath,
+				services: r.services,
+			}));
+	}
+
+	private async workspaceOf(runId: string): Promise<RunWorkspace | null> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id: runId },
 			select: { workspace: true },
 		});
-		if (!row?.workspace) return [];
+		if (!row?.workspace) return null;
 		try {
 			const ws = RunWorkspaceSchema.safeParse(JSON.parse(row.workspace));
-			return ws.success
-				? ws.data.repos
-						.filter((r) => r.services.length)
-						.map((r) => ({
-							name: r.name,
-							dir: r.dir,
-							head: r.head,
-							subPath: r.subPath,
-							services: r.services,
-						}))
-				: [];
+			return ws.success ? ws.data : null;
 		} catch {
-			return [];
+			return null;
 		}
 	}
 
@@ -444,6 +530,11 @@ export function gatewayPromptLine(
 ): string {
 	return [
 		`PrismaLens tools (MCP server \`${serverName}\`, read-only): ${tools.map((t) => `\`${t}\``).join(", ")}.`,
+		...(tools.includes("evidence_record")
+			? [
+					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required.",
+				]
+			: []),
 		"For metrics, logs and other live data, use the tools your own setup gives you.",
 	].join("\n");
 }

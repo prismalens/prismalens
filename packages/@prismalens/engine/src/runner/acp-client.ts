@@ -21,7 +21,10 @@ import type {
 	ToolKind,
 } from "@agentclientprotocol/sdk/unstable";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
-import type { PermissionAskOutcome } from "@prismalens/contracts/schemas";
+import type {
+	PermissionAskOutcome,
+	RecordedFinding,
+} from "@prismalens/contracts/schemas";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessLauncher } from "../launch/process.js";
 import type {
@@ -63,7 +66,9 @@ export type AcpStreamItem =
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
 	| { kind: "nudge" }
 	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
-	| { kind: "harness_tool_call"; name: string; at: string };
+	| { kind: "harness_tool_call"; name: string; at: string }
+	/** The agent recorded evidence or a hypothesis through the gateway (#930). */
+	| { kind: "harness_finding"; finding: RecordedFinding };
 
 /**
  * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
@@ -919,7 +924,12 @@ export class AcpSession {
 	}
 
 	/** Queue an item from outside the agent into the turn's stream, in arrival order (#848). */
-	inject(item: Extract<AcpStreamItem, { kind: "harness_tool_call" }>): void {
+	inject(
+		item: Extract<
+			AcpStreamItem,
+			{ kind: "harness_tool_call" | "harness_finding" }
+		>,
+	): void {
 		this.push(item);
 	}
 

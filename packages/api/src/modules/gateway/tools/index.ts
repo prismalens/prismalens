@@ -9,6 +9,7 @@ import {
 	knowledgeTools,
 	type PastInvestigation,
 } from "./knowledge.js";
+import { type FindingsData, recordTools } from "./record.js";
 import { runbookTools } from "./runbooks.js";
 
 export type {
@@ -17,12 +18,14 @@ export type {
 	InvestigationsQuery,
 	PastInvestigation,
 } from "./knowledge.js";
+export type { FindingsData } from "./record.js";
 
 /** What the tools read; the api answers from its own database. */
 export interface GatewayToolData {
 	searchInvestigations(q: InvestigationsQuery): Promise<PastInvestigation[]>;
 	incident: IncidentLookup;
 	runbooks: RunbooksData;
+	findings: FindingsData;
 }
 
 /**
@@ -34,6 +37,7 @@ export function gatewayRegistry(data: GatewayToolData): SourceRegistry {
 	for (const tool of [
 		...knowledgeTools((q) => data.searchInvestigations(q), data.incident),
 		...runbookTools(data.runbooks),
+		...recordTools(data.findings),
 	])
 		registry.register(tool);
 	return registry;
