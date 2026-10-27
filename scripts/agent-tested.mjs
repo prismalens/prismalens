@@ -28,7 +28,10 @@ export function wanted(pins, adapters) {
 			version: adapters["@agentclientprotocol/claude-agent-acp"],
 			companion: pins["@anthropic-ai/claude-code"],
 		},
-		codex: { version: adapters["@agentclientprotocol/codex-acp"] },
+		codex: {
+			version: adapters["@agentclientprotocol/codex-acp"],
+			companion: pins["@openai/codex"],
+		},
 	};
 }
 

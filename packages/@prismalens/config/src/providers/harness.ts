@@ -525,7 +525,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
 		// scripts/acp-admission.ts 3 of 3 through the shipped adapter on codex 0.163.0, gpt-6-luna (#846); #848 live runs on codex 0.163.0. Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "2.2.2", date: "2026-10-23" },
+		tested: { version: "2.2.2", date: "2026-10-23", companion: "0.156.1" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
 		modelVia: "acp",
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",

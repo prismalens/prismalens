@@ -48,11 +48,22 @@ test("a moved pin rewrites only its row's tested line and the note above it", ()
 			`tested: { version: "${adapters["@agentclientprotocol/claude-agent-acp"]}", date: "2099-01-01", companion: "9.9.9" },`,
 		),
 	);
-	assert.match(source, /tested: \{ version: "8\.8\.8", date: "2099-01-01" \},/);
+	assert.ok(
+		source.includes(
+			`tested: { version: "8.8.8", date: "2099-01-01", companion: "${pins["@openai/codex"]}" },`,
+		),
+	);
 	assert.equal(source.split("\n").length, HARNESS.split("\n").length);
 	assert.equal((source.match(/no real-model run yet/g) ?? []).length, 2);
 	const opencode = /^\t\ttested: \{ version: "[^"]*", date: "[^"]*" \},$/m.exec(
 		HARNESS,
 	)?.[0];
 	assert.ok(opencode && source.includes(opencode));
+});
+
+test("a codex-only bump moves the codex row", () => {
+	const rows = wanted({ ...pins, "@openai/codex": "7.7.7" }, adapters);
+	const { source, moved } = retest(HARNESS, rows, "2099-01-01");
+	assert.deepEqual(moved, ["codex"]);
+	assert.ok(source.includes(`date: "2099-01-01", companion: "7.7.7" },`));
 });

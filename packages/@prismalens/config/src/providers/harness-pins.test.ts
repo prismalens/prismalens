@@ -30,9 +30,10 @@ describe("tested versions follow the pins CI installs (#914)", () => {
 		});
 	});
 
-	it("codex is tested on the adapter the app ships", () => {
-		expect(HARNESS_REGISTRY.codex.tested?.version).toBe(
-			adapters["@agentclientprotocol/codex-acp"],
-		);
+	it("codex is tested on the adapter the app ships, with the pinned codex", () => {
+		expect(HARNESS_REGISTRY.codex.tested).toMatchObject({
+			version: adapters["@agentclientprotocol/codex-acp"],
+			companion: pins["@openai/codex"],
+		});
 	});
 });
