@@ -49,6 +49,8 @@ export interface ProbeInput {
 	/** `_meta` on `session/new`; the row's own by default. */
 	sessionMeta?: Record<string, unknown>;
 	timeoutMs?: number;
+	/** How long to wait after `session/new` for a sign-in the agent pushes on `_auth/status_update`. */
+	authStatusWaitMs?: number;
 }
 
 export interface LevelCheck {
@@ -70,6 +72,13 @@ export interface ProbeResult {
 	levels: Record<AccessLevel, LevelCheck> | null;
 	/** The error's message, or the agent's stderr tail when it died. One line. */
 	detail: string | null;
+	/** The kind the agent pushed on `_auth/status_update`; null when it pushed none in time. */
+	authStatus: string | null;
+	/** The answers as sent, for what a product shows beyond this summary (efforts, images). */
+	raw: {
+		initialize: InitializeResponse | null;
+		session: NewSessionResponse | null;
+	};
 }
 
 function oneLine(text: string): string {
@@ -147,6 +156,8 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		models: null,
 		levels: null,
 		detail: null,
+		authStatus: null,
+		raw: { initialize: null, session: null },
 	};
 	let child: AgentChild;
 	try {
@@ -181,11 +192,23 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		timer = setTimeout(() => resolve("timeout"), timeoutMs);
 	});
 
+	let pushed: (() => void) | null = null;
 	const connection = new ClientSideConnection(
 		() => ({
 			// No prompt turn is sent, so no ask can arrive; refuse any that does.
 			requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
 			sessionUpdate: async () => {},
+			extNotification: async (method, params) => {
+				const kind = (params?.authStatus as { kind?: unknown } | undefined)
+					?.kind;
+				if (
+					/^_?auth\/status_update$/.test(method) &&
+					typeof kind === "string"
+				) {
+					result.authStatus = kind;
+					pushed?.();
+				}
+			},
 		}),
 		ndJsonStream(
 			Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
@@ -220,6 +243,7 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			}),
 		);
 		if (init === "died" || init === "timeout") return ended(init);
+		result.raw.initialize = init;
 		result.agentInfo = init.agentInfo
 			? {
 					name: init.agentInfo.name,
@@ -242,6 +266,20 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			}),
 		);
 		if (session === "died" || session === "timeout") return ended(session);
+		result.raw.session = session;
+		const wait = input.authStatusWaitMs ?? 0;
+		if (
+			wait > 0 &&
+			result.authStatus === null &&
+			init.agentCapabilities?._meta?.authStatus !== undefined
+		)
+			await new Promise<void>((resolve) => {
+				const timer = setTimeout(resolve, wait);
+				pushed = () => {
+					clearTimeout(timer);
+					resolve();
+				};
+			});
 		const modes = offeredModes(session);
 		return {
 			...result,

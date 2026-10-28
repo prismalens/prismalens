@@ -55,6 +55,7 @@
 		"@prismalens/engine": "workspace:*",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "^5.0.5",
+		"cross-spawn": "^7.0.6",
 		"tsup": "^8.5.1",
 		"tsx": "catalog:",
 		"typescript": "catalog:",

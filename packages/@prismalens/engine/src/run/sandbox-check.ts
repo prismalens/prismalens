@@ -20,13 +20,13 @@ import {
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { killProcessTree } from "@prismalens/agent-host";
 import {
 	type HarnessId,
 	runsInSandbox,
 	type SandboxCheck,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
-import { buildChildEnv, killProcessTree } from "../launch/process.js";
 
 export type SandboxChecks = Record<string, SandboxCheck>;
 
@@ -55,7 +55,7 @@ export interface CodexCommand {
 }
 
 export interface SandboxCheckOptions {
-	/** The env the run hands the agent; the probe sees the same HOME and CODEX_HOME. */
+	/** The env a run hands the agent (its launch plan's); the probe sees the same HOME and CODEX_HOME. */
 	env?: NodeJS.ProcessEnv;
 	timeoutMs?: number;
 	run?: ProbeRunner;
@@ -201,7 +201,15 @@ export async function probeCodexSandbox(
 				"sh",
 				outside,
 			],
-			{ cwd: workspace, env: buildChildEnv(opts.env), timeoutMs },
+			{
+				cwd: workspace,
+				env: Object.fromEntries(
+					Object.entries(opts.env ?? process.env).filter(
+						(e): e is [string, string] => e[1] !== undefined,
+					),
+				),
+				timeoutMs,
+			},
 		);
 		return readCodexProbe(
 			{ ...run, wrote: existsSync(outside) },

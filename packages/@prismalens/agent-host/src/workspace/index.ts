@@ -5,6 +5,7 @@
  * Run workspaces (#918, #925). Policy is passed in and nothing is stored, except a
  * sidecar `<dir>.workspace.json` outside the checkout: project, lock, when kept.
  */
+import { randomUUID } from "node:crypto";
 import {
 	cpSync,
 	existsSync,
@@ -18,7 +19,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { AgentHostError } from "../errors.js";
-import { type FetchCredential, git, gitEnv, gitOk } from "./git.js";
+import { type FetchCredential, git, gitEnv, gitOk, hasCommit } from "./git.js";
 import {
 	commandFor,
 	type HookResult,
@@ -83,6 +84,8 @@ export interface WorkspaceOwner {
 
 export interface CreateWorkspaceInput extends WorkspaceOwner {
 	id: string;
+	/** Names the lock after the product's own run; `id` by default. */
+	lockLabel?: string;
 	project?: string;
 	source: WorkspaceSource;
 	policy: WorkspacePolicy;
@@ -101,6 +104,8 @@ export interface Workspace {
 	base?: string;
 	copied: string[];
 	setup?: HookResult;
+	/** This attempt's lock reason; `releaseWorkspace`'s `onlyLock` takes it (#918). */
+	lock: string;
 }
 
 interface Sidecar {
@@ -130,6 +135,7 @@ export const KEPT_REASONS = [
 	"shared",
 	"nested-checkout",
 	"remove-failed",
+	"superseded",
 ] as const;
 export type RemovalReason =
 	| (typeof REMOVED_REASONS)[number]
@@ -350,6 +356,9 @@ async function removeGuarded(
 	if (after) return record(dir, id, side, false, after, teardown);
 	if (keepIfChanged && (await isChanged(dir, judge.env).catch(() => true)))
 		return record(dir, id, side, false, "changed", teardown);
+	// The awaits above leave a window for a follow-up to resume it; look once more right before removing.
+	const last = guard(dir, id, side, judge);
+	if (last) return record(dir, id, side, false, last, teardown);
 	await removeDir(dir, judge.env);
 	return existsSync(dir)
 		? record(dir, id, side, false, "remove-failed", teardown)
@@ -414,7 +423,8 @@ export async function createWorkspace(
 	const signal = input.signal;
 	const sig = signal ? { signal } : {};
 	const { policy, source } = input;
-	const lock = `${input.lockPrefix}${input.id}`;
+	// Names the attempt, so a late release never removes a later re-add at `dir` (#918).
+	const lock = `${input.lockPrefix}${input.lockLabel ?? input.id} ${randomUUID().slice(0, 8)}`;
 	const method = source.kind === "remote" ? "clone" : policy.method;
 	const side: Sidecar = {
 		id: input.id,
@@ -424,14 +434,32 @@ export async function createWorkspace(
 	};
 	let fetchEnv = env;
 	try {
+		if (
+			source.kind === "local" &&
+			!(await hasCommit(source.repo, source.commit, { env, ...sig }))
+		)
+			throw new AgentHostError(
+				"commit-missing",
+				`Commit ${source.commit} could not be checked out from this source`,
+			);
 		if (source.kind === "local" && method === "worktree") {
 			const branchArgs =
 				policy.branch?.kind === "named"
 					? ["-B", policy.branch.name]
 					: ["--detach"];
-			// --no-checkout then reset keeps the user's post-checkout hook from firing (#918).
+			// --no-checkout then reset keeps the user's post-checkout hook from firing; the path is
+			// ours, so double force re-adds one a crash left registered, even locked (#918).
 			await git(
-				["worktree", "add", ...branchArgs, "--no-checkout", dir, source.commit],
+				[
+					"worktree",
+					"add",
+					...branchArgs,
+					"--no-checkout",
+					"-f",
+					"-f",
+					dir,
+					source.commit,
+				],
 				{ cwd: source.repo, env, ...sig },
 			);
 			await git(
@@ -529,6 +557,7 @@ export async function createWorkspace(
 			head,
 			...(source.kind === "remote" && source.base ? { base: source.base } : {}),
 			copied,
+			lock,
 		};
 		const cmd = commandFor(policy.setup);
 		if (cmd)
@@ -543,8 +572,57 @@ export async function createWorkspace(
 		return workspace;
 	} catch (err) {
 		await removeDir(dir, env).catch(() => {});
+		if (source.kind === "local" && method === "worktree")
+			await dropRegistration(source.repo, dir, env, input.lockPrefix).catch(
+				() => {},
+			);
 		throw err;
 	}
+}
+
+const samePath = (a: string, b: string) =>
+	process.platform === "win32"
+		? resolve(a).toLowerCase() === resolve(b).toLowerCase()
+		: resolve(a) === resolve(b);
+
+/**
+ * A `worktree add` killed mid-way leaves its admin entry locked "initializing", which prune
+ * never clears: drop the entry for `dir` unless someone else's lock holds it (#918).
+ */
+async function dropRegistration(
+	repo: string,
+	dir: string,
+	env: Record<string, string>,
+	lockPrefix: string,
+): Promise<void> {
+	const common = resolve(
+		repo,
+		(await git(["rev-parse", "--git-common-dir"], { cwd: repo, env })).trim(),
+	);
+	const admins = join(common, "worktrees");
+	if (!existsSync(admins)) return;
+	for (const name of readdirSync(admins)) {
+		const entry = join(admins, name);
+		let gitdir: string;
+		try {
+			gitdir = readFileSync(join(entry, "gitdir"), "utf8").trim();
+		} catch {
+			continue;
+		}
+		if (!samePath(dirname(gitdir), dir)) continue;
+		const lockFile = join(entry, "locked");
+		const lock = existsSync(lockFile)
+			? readFileSync(lockFile, "utf8").trim()
+			: null;
+		if (
+			lock !== null &&
+			lock !== "initializing" &&
+			!lock.startsWith(lockPrefix)
+		)
+			continue;
+		rmSync(entry, { recursive: true, force: true });
+	}
+	await gitOk(["worktree", "prune"], { cwd: repo, env });
 }
 
 export interface ReleaseInput extends WorkspaceOwner {
@@ -552,6 +630,8 @@ export interface ReleaseInput extends WorkspaceOwner {
 	policy: WorkspacePolicy;
 	env?: Readonly<Record<string, string | undefined>>;
 	teardownCapMs?: number;
+	/** A late release: act only while the lock is still this attempt's `Workspace.lock` (#918). */
+	onlyLock?: string;
 }
 
 function unlock(
@@ -665,6 +745,11 @@ export async function releaseWorkspace(
 		rmSync(sidecarPath(dir), { force: true });
 		return [record(dir, input.id, side, true, "gone")];
 	}
+	if (
+		input.onlyLock !== undefined &&
+		(lstatSync(dir).isSymbolicLink() || lockOf(dir, side) !== input.onlyLock)
+	)
+		return [record(dir, input.id, side, false, "superseded")];
 	if (!lstatSync(dir).isSymbolicLink() && !unlock(dir, side, input.lockPrefix))
 		return [record(dir, input.id, side, false, "locked-by-other")];
 	const rule = atRunEnd(input.policy.retention);
@@ -687,6 +772,16 @@ export async function releaseWorkspace(
 	];
 }
 
+/** Made by this product: it wrote the sidecar, or its lock is on a worktree a crash left before the sidecar. */
+export function madeHere(dir: string, lockPrefix: string): boolean {
+	if (existsSync(sidecarPath(dir))) return true;
+	try {
+		return lockOf(dir, null)?.startsWith(lockPrefix) === true;
+	} catch {
+		return false;
+	}
+}
+
 function ownedEntries(owner: WorkspaceOwner): { id: string; dir: string }[] {
 	const root = resolve(owner.parentDir);
 	if (!existsSync(root)) return [];
@@ -695,7 +790,9 @@ function ownedEntries(owner: WorkspaceOwner): { id: string; dir: string }[] {
 			(e) =>
 				e.name.startsWith(owner.prefix) &&
 				!e.name.endsWith(".workspace.json") &&
-				(e.isDirectory() || e.isSymbolicLink()),
+				(e.isDirectory() || e.isSymbolicLink()) &&
+				// No prefix names ours, so a folder of several repos trusts the marker: a worktree someone else added there stays.
+				(owner.prefix !== "" || madeHere(join(root, e.name), owner.lockPrefix)),
 		)
 		.map((e) => ({
 			id: e.name.slice(owner.prefix.length),
@@ -733,61 +830,11 @@ export async function sweepWorkspaces(
 	for (const { id, dir } of ownedEntries(input)) {
 		const side = readSidecar(dir);
 		if (side?.project) projects.add(side.project);
-		const policy = policyOf(side?.project);
-		const r = policy.retention;
-		if (!side?.keptAt) {
-			const rule = atRunEnd(r);
-			if (input.isLive(id)) {
-				out.push(record(dir, id, side, false, "live"));
-				continue;
-			}
-			if (!rule.remove) {
-				// A dead run with a keep rule: unlock our own lock and start its clock now.
-				if (!lstatSync(dir).isSymbolicLink())
-					unlock(dir, side, input.lockPrefix);
-				out.push(await keep(dir, id, rule.kept));
-				continue;
-			}
-			out.push(
-				await keptIfNotRemoved(
-					await removeGuarded(
-						dir,
-						id,
-						rule.remove,
-						rule.keepIfChanged,
-						policy,
-						judge,
-						cap,
-					),
-				),
-			);
-			continue;
-		}
-		const age = now - Date.parse(side.keptAt);
-		if (r.kind === "keep-days" && age < r.days * 86_400_000) {
-			out.push(record(dir, id, side, false, "keep-days"));
-		} else if (r.kind === "keep-until-resolved" && !input.isResolved?.(id)) {
-			out.push(record(dir, id, side, false, "keep-until-resolved"));
-		} else {
-			const reason: RemovalReason =
-				r.kind === "keep-days"
-					? "expired"
-					: r.kind === "keep-until-resolved"
-						? "resolved"
-						: r.kind === "always-remove"
-							? "always-remove"
-							: "unchanged";
-			out.push(
-				await removeGuarded(
-					dir,
-					id,
-					reason,
-					r.kind === "remove-unless-changed",
-					policy,
-					judge,
-					cap,
-				),
-			);
+		// One entry that throws (EBUSY on Windows) is recorded and the sweep goes on (#918).
+		try {
+			out.push(await sweepOne(id, dir, side, policyOf(side?.project)));
+		} catch {
+			out.push(record(dir, id, side, false, "remove-failed"));
 		}
 	}
 	for (const project of projects)
@@ -795,6 +842,58 @@ export async function sweepWorkspaces(
 			...(await evictOverCap(input, project, policyOf(project), judge, cap)),
 		);
 	return out;
+
+	async function sweepOne(
+		id: string,
+		dir: string,
+		side: Sidecar | null,
+		policy: WorkspacePolicy,
+	): Promise<RemovalRecord> {
+		const r = policy.retention;
+		if (!side?.keptAt) {
+			const rule = atRunEnd(r);
+			if (input.isLive(id)) return record(dir, id, side, false, "live");
+			if (!rule.remove) {
+				// A dead run with a keep rule: unlock our own lock and start its clock now.
+				if (!lstatSync(dir).isSymbolicLink())
+					unlock(dir, side, input.lockPrefix);
+				return keep(dir, id, rule.kept);
+			}
+			return keptIfNotRemoved(
+				await removeGuarded(
+					dir,
+					id,
+					rule.remove,
+					rule.keepIfChanged,
+					policy,
+					judge,
+					cap,
+				),
+			);
+		}
+		const age = now - Date.parse(side.keptAt);
+		if (r.kind === "keep-days" && age < r.days * 86_400_000)
+			return record(dir, id, side, false, "keep-days");
+		if (r.kind === "keep-until-resolved" && !input.isResolved?.(id))
+			return record(dir, id, side, false, "keep-until-resolved");
+		const reason: RemovalReason =
+			r.kind === "keep-days"
+				? "expired"
+				: r.kind === "keep-until-resolved"
+					? "resolved"
+					: r.kind === "always-remove"
+						? "always-remove"
+						: "unchanged";
+		return removeGuarded(
+			dir,
+			id,
+			reason,
+			r.kind === "remove-unless-changed",
+			policy,
+			judge,
+			cap,
+		);
+	}
 }
 
 /** Field by field: a project's own value wins, else the global one; `inherited` names the fields that read "From global settings" (#925). */
@@ -816,4 +915,72 @@ export function resolveWorkspacePolicy(
 		},
 		inherited,
 	};
+}
+
+/** What a workspace's sidecar says about it, or null for an entry with none. */
+export interface WorkspaceInfo {
+	id: string;
+	dir: string;
+	project?: string;
+	method: "worktree" | "clone";
+	createdAt: string;
+	keptAt?: string;
+}
+
+export function workspaceInfo(dir: string): WorkspaceInfo | null {
+	const side = readSidecar(dir);
+	if (!side || !existsSync(dir)) return null;
+	return {
+		id: side.id,
+		dir,
+		...(side.project ? { project: side.project } : {}),
+		method: side.method,
+		createdAt: side.createdAt,
+		...(side.keptAt ? { keptAt: side.keptAt } : {}),
+	};
+}
+
+/**
+ * A kept workspace taken up again by a later attempt of its run (a follow-up): locked
+ * again under a new reason, its kept clock cleared. Null when `dir` is not kept.
+ */
+export async function resumeWorkspace(
+	input: WorkspaceOwner & {
+		id: string;
+		lockLabel?: string;
+		env?: Readonly<Record<string, string | undefined>>;
+	},
+): Promise<{ lock: string } | null> {
+	const dir = workspaceDir(input, input.id);
+	const side = readSidecar(dir);
+	if (!side?.keptAt || !existsSync(dir) || lstatSync(dir).isSymbolicLink())
+		return null;
+	const current = lockOf(dir, side);
+	if (current !== null && !current.startsWith(input.lockPrefix)) return null;
+	const lock = `${input.lockPrefix}${input.lockLabel ?? input.id} ${randomUUID().slice(0, 8)}`;
+	const { keptAt: _kept, lock: _old, ...rest } = side;
+	const admin = linkedGitDir(dir);
+	const common = admin ? commonDirOf(admin) : null;
+	if (admin && common) {
+		const env = gitEnv(input.env ?? process.env);
+		rmSync(join(admin, "locked"), { force: true });
+		await git(["worktree", "lock", "--reason", lock, dir], {
+			cwd: common,
+			env,
+		});
+		writeSidecar(dir, rest);
+	} else writeSidecar(dir, { ...rest, lock });
+	return { lock };
+}
+
+/** The guard that would keep `dir` from removal, for a folder this module did not make (a run's own clone); null when none would. */
+export function protectedBy(
+	dir: string,
+	lockPrefix: string,
+): RemovalReason | null {
+	if (!lstatSync(dir, { throwIfNoEntry: false })) return null;
+	return guard(dir, "", readSidecar(dir), {
+		owner: { parentDir: dirname(dir), prefix: "", lockPrefix },
+		env: {},
+	});
 }

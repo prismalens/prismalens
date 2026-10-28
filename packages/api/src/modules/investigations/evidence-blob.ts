@@ -20,6 +20,7 @@ import {
 	GIT_PROBE_TIMEOUT_MS,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
+import { mirrorRoots } from "../../core/harness/mirror-location.js";
 import { mirrorPathFor } from "../../core/harness/repo-source.service.js";
 
 /** The request names something this run never recorded, or no path at all. */
@@ -36,8 +37,12 @@ export function objectDirFor(
 	if (repo.sourceKind === "folder") {
 		return isAbsolute(repo.url) && existsSync(repo.url) ? repo.url : null;
 	}
-	const mirror = mirrorPathFor(repo.url, mirrorRoot);
-	return existsSync(join(mirror, "HEAD")) ? mirror : null;
+	// A copy cloned before the folder setting changed is still read where it is (#925).
+	for (const root of mirrorRoot ? [mirrorRoot] : mirrorRoots()) {
+		const mirror = mirrorPathFor(repo.url, root);
+		if (existsSync(join(mirror, "HEAD"))) return mirror;
+	}
+	return null;
 }
 
 function git(

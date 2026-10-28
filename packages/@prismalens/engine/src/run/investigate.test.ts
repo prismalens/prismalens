@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { prismalensLaunchPolicy } from "../launch/policy.js";
 import { conductRun } from "./conductor.js";
 import {
 	buildRunFidelity,
@@ -927,9 +928,66 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 	});
 
 	it("leaves the user's own config dir and HOME alone", () => {
-		const env = envFor();
-		expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
-		expect(env.HOME).toBeUndefined();
+		const env = prepareRunEnv({
+			harness: "claude-code",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+			hostEnv: { HOME: "/home/u", CLAUDE_CONFIG_DIR: "/home/u/.claude-alt" },
+		}).env;
+		expect(env.CLAUDE_CONFIG_DIR).toBe("/home/u/.claude-alt");
+		expect(env.HOME).toBe("/home/u");
+	});
+
+	describe("the env floor (operator ruling 2026-10-25, #817)", () => {
+		const hostEnv = {
+			PATH: "/usr/bin",
+			HOME: "/home/u",
+			AWS_PROFILE: "work",
+			GH_TOKEN: "ghp_user",
+			PROMETHEUS_TOKEN: "pl-source-token",
+			PRISMALENS_ENCRYPTION_KEY: "pl-secret",
+			PRISMALENS_WEBHOOK_SECRET: "pl-secret-2",
+		};
+		const envOf = (strict: boolean) =>
+			prepareRunEnv({
+				harness: "claude-code",
+				cwd: tmp("clone"),
+				runDir: tmp("run"),
+				hostEnv,
+				env: { PRISMALENS_STORED: "x", LOKI_TOKEN: "stored-source-token" },
+				policy: prismalensLaunchPolicy({ strict }),
+			}).env;
+
+		it("by default the agent gets the user's environment, GitHub tokens included, minus PrismaLens's own secrets", () => {
+			const env = envOf(false);
+			expect(env.AWS_PROFILE).toBe("work");
+			expect(env.GH_TOKEN).toBe("ghp_user");
+			expect(env.HOME).toBe("/home/u");
+			expect(env.PROMETHEUS_TOKEN).toBeUndefined();
+		});
+
+		it("strict mode passes only named variables", () => {
+			const env = envOf(true);
+			expect(env.AWS_PROFILE).toBeUndefined();
+			expect(env.GH_TOKEN).toBeUndefined();
+			expect(env.HOME).toBe("/home/u");
+			expect(env.PATH).toBe("/usr/bin");
+		});
+
+		it("a PRISMALENS_* variable never reaches the agent in either mode, not even a stored one", () => {
+			for (const strict of [false, true]) {
+				const names = Object.keys(envOf(strict));
+				expect(names.filter((n) => n.startsWith("PRISMALENS_")), `strict ${strict}`).toEqual([]);
+			}
+		});
+
+		it("a data-source token stored for the agent never reaches it in either mode", () => {
+			for (const strict of [false, true]) {
+				const env = envOf(strict);
+				expect(env.LOKI_TOKEN, `strict ${strict}`).toBeUndefined();
+				expect(env.PROMETHEUS_TOKEN, `strict ${strict}`).toBeUndefined();
+			}
+		});
 	});
 
 	it("hands the adapter the claude already on PATH", () => {

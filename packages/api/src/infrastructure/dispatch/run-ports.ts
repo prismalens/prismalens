@@ -217,6 +217,7 @@ export interface RunPorts {
 		signal?: AbortSignal,
 		at?: string,
 		runId?: string,
+		onOutput?: (chunk: string) => void,
 	): Promise<{ snap: Snapshot; credential: RunCredential }>;
 }
 

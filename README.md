@@ -124,7 +124,15 @@ what changed:
   access each pick the agent's own mode and decide which of its requests wait
   for you. A run an alert starts waits for nobody: it runs at Auto and refuses
   anything the agent asks. PrismaLens adds no sandbox: the agent runs as your
-  user, with an allowlisted environment.
+  user.
+- **Your environment, minus PrismaLens's secrets.** The agent gets the
+  environment your terminal has, GitHub tokens included, so its own `gh` and
+  `git` work. PrismaLens removes only its own secrets: every `PRISMALENS_*`
+  variable and the telemetry tokens it reads (`PROMETHEUS_TOKEN`,
+  `ALERTMANAGER_TOKEN`, `LOKI_TOKEN`); its saved git connections never reach
+  the agent. Settings → Agent → **Only pass named variables** switches to strict
+  mode: the basics (`PATH`, home, locale, proxy and certificates), the agent's
+  own provider keys and the variables you set on it.
 - **Every run is durable.** Events, session metadata and the report are written
   to `~/.prismalens/runs/<runId>/`, and the report exports as Markdown.
 
@@ -143,12 +151,14 @@ else, from configuration to commands, is on
 | `packages/desktop` | The desktop app (preview): an Electron window on the same server. |
 | `packages/@prismalens/engine` | The investigation run: ACP session, permission asks, report validation. |
 | `packages/@prismalens/agent-adapters` | The ACP adapters shipped for agents that don't speak ACP themselves. |
+| `packages/@prismalens/agent-host` | How PrismaLens and Assayer launch an agent: registry, levels, env, workspaces, readiness probe. |
 | `packages/@prismalens/*` | Shared contracts, config, auth, database, integrations and logger. |
 
 `packages/cli` is published to npm as `prismalens`, and the other packages travel
 inside its tarball, except the desktop app, which is released as its own zips.
-`@prismalens/agent-adapters` is published to npm on its own, by hand (the
-`Publish agent adapters` workflow), so other tools can depend on the same pinned adapters. For development, see
+`@prismalens/agent-adapters` and `@prismalens/agent-host` are published to npm on
+their own, by hand (the `Publish agent adapters` and `Publish agent host` workflows),
+so other tools can depend on the same pinned adapters and launch code. For development, see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links

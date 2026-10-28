@@ -155,6 +155,7 @@ export interface AcpSessionConfig {
 	cwd: string;
 	/** Sent instead of `cwd` when the agent advertises `additionalDirectories` (#918). */
 	roots?: { cwd: string; additional: string[] };
+	/** The child's whole env, a launch plan's (#916); tests and scripts that pass none hand it the host's. */
 	env?: NodeJS.ProcessEnv;
 	launcher?: HarnessLauncher;
 	limits?: RunLimits;
@@ -582,7 +583,11 @@ export class AcpSession {
 		const { config } = this;
 		const child = this.launcher.spawn(config.command, config.args, {
 			cwd: config.cwd,
-			env: config.env,
+			env: Object.fromEntries(
+				Object.entries(config.env ?? process.env).filter(
+					(e): e is [string, string] => e[1] !== undefined,
+				),
+			),
 			...(config.limits ? { limits: config.limits } : {}),
 		});
 		this.child = child;

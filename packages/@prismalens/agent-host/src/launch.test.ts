@@ -145,6 +145,45 @@ describe("planLaunch env", () => {
 		expect(env.PRISMALENS_DB).toBeUndefined();
 	});
 
+	it("drops a refuseEnvNames name from a stored value under the allowlist floor", () => {
+		const env = plan({
+			policy: { ...POLICY, floor: { mode: "allowlist" }, refuseEnvNames: ["ENCRYPTION_KEY"] },
+			stored: { ENCRYPTION_KEY: "stored", OTHER: "kept" },
+		}).env;
+		expect(env.ENCRYPTION_KEY).toBeUndefined();
+		expect(env.OTHER).toBe("kept");
+	});
+
+	it("drops an own secret whatever its case, as Windows would read it", () => {
+		const env = plan({
+			policy: {
+				...POLICY,
+				floor: { mode: "inherit-minus-own-secrets", ownSecrets: { names: ["ENCRYPTION_KEY"], prefixes: ["PRISMALENS_"] } },
+			},
+			hostEnv: { ...HOST, prismalens_auth_secret: "host", encryption_key: "host" },
+			stored: { Prismalens_Db: "stored" },
+		}).env;
+		expect(env.prismalens_auth_secret).toBeUndefined();
+		expect(env.encryption_key).toBeUndefined();
+		expect(env.Prismalens_Db).toBeUndefined();
+	});
+
+	it("on Windows a stored value replaces a host variable spelled in another case", () => {
+		const platform = Object.getOwnPropertyDescriptor(process, "platform");
+		Object.defineProperty(process, "platform", { value: "win32" });
+		try {
+			const env = plan({
+				policy: { ...POLICY, floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} } },
+				hostEnv: { ...HOST, my_var: "from-host" },
+				stored: { MY_VAR: "from-settings" },
+			}).env;
+			expect(env.my_var).toBeUndefined();
+			expect(env.MY_VAR).toBe("from-settings");
+		} finally {
+			if (platform) Object.defineProperty(process, "platform", platform);
+		}
+	});
+
 	it("refuses a userSetup with no rows yet", () => {
 		expect(() => plan({ policy: { ...POLICY, userSetup: "supplied" } })).toThrow(/user-setup|supplied/);
 	});
@@ -200,7 +239,7 @@ describe("launch files", () => {
 		expect(json.permission.edit).toEqual({ "*": "allow" });
 		expect(p.env.OPENCODE_CONFIG_DIR).toBe(join(runDir, "config"));
 		expect(p.args).toEqual(["acp", "--cwd", "/w"]);
-		expect(p.level.mode).toEqual({ id: "build", name: "Build" });
+		expect(p.level?.mode).toEqual({ id: "build", name: "Build" });
 	});
 
 	it("writes the gateway run file owner-only and points deepagents at it (#848)", () => {

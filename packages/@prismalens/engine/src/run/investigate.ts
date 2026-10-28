@@ -7,14 +7,14 @@
  * permission asks by the run's level, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
-import {
-	appendFileSync,
-	chmodSync,
-	mkdirSync,
-	readFileSync,
-	writeFileSync,
-} from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+	AGENT_REGISTRY,
+	type LaunchPolicy,
+	planLaunch,
+	writeLaunchFiles,
+} from "@prismalens/agent-host";
 import {
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
@@ -24,7 +24,6 @@ import {
 	type HarnessRunEnv,
 	levelOfAgentMode,
 	type ModelSource,
-	mergeConfigPatch,
 	modeFidelity,
 	NO_MODE_KEY,
 	resolveAccess,
@@ -52,6 +51,7 @@ import {
 	type HarnessToolsTurn,
 	mapStopReason,
 } from "../adapter/acp-adapter.js";
+import { prismalensLaunchPolicy } from "../launch/policy.js";
 import type { RunLimits } from "../launch/types.js";
 import {
 	AcpSession,
@@ -137,8 +137,12 @@ export interface RunInvestigationOptions {
 	 * one keeps the reopened session's mode and shows every ask.
 	 */
 	accessLevel?: AccessLevel;
-	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
+	/** The user's stored values for this agent from Settings (#907); they win over the host's. */
 	env?: NodeJS.ProcessEnv;
+	/** Which host variables reach the agent; the user's env minus PrismaLens's own secrets by default (#817). */
+	policy?: LaunchPolicy;
+	/** The host env the floor reads; `process.env` by default. */
+	hostEnv?: NodeJS.ProcessEnv;
 	/** Settings → Agent → Binary path; for `local`, its command (#907). */
 	binaryPath?: string;
 	/** `local` only: its command's arguments. */
@@ -390,36 +394,18 @@ export type PrepareRunEnvOptions = Pick<
 	| "binaryPath"
 	| "launchArgs"
 	| "gateway"
+	| "policy"
+	| "hostEnv"
 >;
 
-/** The row's config files with the level's overlay merged into each JSON one. */
-function levelConfigFiles(
-	files: Record<string, string>,
-	patch: Record<string, unknown> | undefined,
-): Record<string, string> {
-	if (!patch) return files;
-	return Object.fromEntries(
-		Object.entries(files).map(([rel, content]) => {
-			if (!rel.endsWith(".json")) return [rel, content];
-			const base = JSON.parse(content) as Record<string, unknown>;
-			return [rel, JSON.stringify(mergeConfigPatch(base, patch), null, 2)];
-		}),
-	);
-}
-
-/** Materialise the per-run config and data dirs the registry row points the harness at. */
+/** Materialise the per-run config and data dirs, and the child's env, from the agent-host launch plan (#916). */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
-	env: NodeJS.ProcessEnv;
+	env: Record<string, string>;
+	args: string[];
 	runEnv: HarnessRunEnv;
 	launch: HarnessLaunch;
 } {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
-	const configDir = join(opts.runDir, "config");
-	const dataDir = join(opts.runDir, "home");
-	// A run file can hold the run's gateway bearer: owner-only whatever the umask (#848, OBJ-029).
-	mkdirSync(configDir, { recursive: true, mode: 0o700 });
-	chmodSync(configDir, 0o700);
-	mkdirSync(dataDir, { recursive: true });
 	const companionPath = descriptor.companionBinary
 		? (opts.binaryPath ?? resolveOnPath(descriptor.companionBinary))
 		: null;
@@ -436,14 +422,35 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		env: {},
 		shipped: false,
 	};
-	const runEnv: HarnessRunEnv = {
-		configDir,
-		dataDir,
+	const host = opts.hostEnv ?? process.env;
+	const stored = Object.fromEntries(
+		Object.entries(opts.env ?? {}).filter(
+			(e): e is [string, string] => e[1] !== undefined,
+		),
+	);
+	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
+	const plan = planLaunch({
+		agent: opts.harness,
+		...(opts.accessLevel ? { level: opts.accessLevel } : {}),
+		policy: opts.policy ?? prismalensLaunchPolicy(),
+		launch: {
+			command: launch.command,
+			args: launch.args,
+			env: launch.env,
+			shipped: launch.shipped,
+			...(companionPath ? { companionPath } : {}),
+		},
 		cwd: opts.cwd,
-		...(opts.model ? { model: opts.model } : {}),
-		...(companionPath ? { companionPath } : {}),
-		...(launch.shipped ? { shipped: true } : {}),
-		...(opts.gateway && descriptor.gatewayDelivery
+		runDir: opts.runDir,
+		hostEnv: host,
+		stored,
+		...(opts.customModel && opts.model && customKey
+			? { overrides: { [customKey]: opts.model } }
+			: {}),
+		...(opts.harness === "opencode"
+			? { userConfig: opencodeUserConfig({ ...host, ...stored }) }
+			: {}),
+		...(opts.gateway
 			? {
 					gateway: {
 						url: opts.gateway.url,
@@ -452,34 +459,10 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 					},
 				}
 			: {}),
-	};
-	const overlay = opts.accessLevel
-		? HARNESS_REGISTRY[opts.harness]?.access[opts.accessLevel].configPatch
-		: undefined;
-	const patch = overlay?.(
-		opts.harness === "opencode" ? opencodeUserConfig(opts.env) : {},
-	);
-	for (const [rel, content] of Object.entries(
-		levelConfigFiles(descriptor.configFiles?.(runEnv) ?? {}, patch),
-	)) {
-		const path = join(configDir, rel);
-		mkdirSync(join(path, ".."), { recursive: true });
-		writeFileSync(path, content, { mode: 0o600 });
-		chmodSync(path, 0o600);
-	}
-	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
-	return {
-		env: {
-			...(opts.env ?? {}),
-			...launch.env,
-			...descriptor.acpEnv(runEnv),
-			...(opts.customModel && opts.model && customKey
-				? { [customKey]: opts.model }
-				: {}),
-		},
-		runEnv,
-		launch,
-	};
+		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
+	});
+	writeLaunchFiles(plan);
+	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
 }
 
 /** How long a run waits after `session/new` for the agent's first gateway request. */
@@ -506,7 +489,7 @@ export async function* runInvestigation(
 		access.mechanism,
 		opts.runtimeNote,
 	);
-	const { env, runEnv, launch } = prepareRunEnv({
+	const { env, args, launch } = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
@@ -545,7 +528,7 @@ export async function* runInvestigation(
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
 		command: launch.command,
-		args: [...launch.args, ...descriptor.acpArgs(runEnv)],
+		args,
 		cwd: opts.cwd,
 		...(opts.roots ? { roots: opts.roots } : {}),
 		env,

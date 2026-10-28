@@ -11,8 +11,8 @@ export interface RunLimits {
 export interface LaunchOptions {
 	/** The run's snapshot; never the user's checkout (ADR 0004 §2). */
 	cwd: string;
-	/** Provider keys for this harness. Layered over the allowlist, never process.env (ADR 0004 §5). */
-	env?: NodeJS.ProcessEnv;
+	/** The child's whole env: the launch plan's (#916). */
+	env: Record<string, string>;
 	limits?: RunLimits;
 }
 
