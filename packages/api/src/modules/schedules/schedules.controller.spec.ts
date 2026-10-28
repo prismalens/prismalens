@@ -52,7 +52,7 @@ describe("schedule writes are the host's (#979)", () => {
 
 	it("lets the host write, recording its device", async () => {
 		const service = { setEnabled: vi.fn(async () => ({})) };
-		await handlers(service)("setEnabled")({ input: writes.setEnabled, context: { request: HOST } });
+		await handlers(service as never)("setEnabled")({ input: writes.setEnabled, context: { request: HOST } });
 		expect(service.setEnabled).toHaveBeenCalledWith("s", false, "dev-1");
 	});
 
