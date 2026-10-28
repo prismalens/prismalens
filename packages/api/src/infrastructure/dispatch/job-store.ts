@@ -24,7 +24,8 @@ export interface JobFields {
 	id: string;
 	kind: string;
 	investigationId: string;
-	incidentId: string;
+	/** Null for a scheduled service check (#979). */
+	incidentId: string | null;
 	/** JSON-encoded job payload. */
 	payload: string;
 	priority: number;
@@ -45,12 +46,18 @@ export interface JobRecord extends JobFields {
 
 export interface EnqueueJobInput {
 	investigationId: string;
-	incidentId: string;
+	incidentId: string | null;
 	payload: string;
-	/** 1 (critical) … 4 (low). Ordering only — this is not a fairness key. */
+	/** 1 (critical) … 5 (scheduled). Ordering only — this is not a fairness key. */
 	priority: number;
 	kind?: string;
+	/** A scheduled attempt not claimed by then is expired; every other admission clears it (#979). */
+	startBy?: Date | null;
 }
+
+/** Scheduled runs take one slot at a time, so they never crowd out runs a person or an alert started (#979). */
+export const SCHEDULED_KIND = "scheduled";
+export const SCHEDULED_CAP = 1;
 
 export interface JobStore {
 	/** Insert a claimable job. Returns the row id. */
@@ -96,6 +103,9 @@ export interface JobStore {
 	 * ids of every row it failed, so the caller can fail those investigations too.
 	 */
 	failRunning(reason: string): Promise<string[]>;
+
+	/** Cancel pending scheduled jobs whose deadline passed; returns their investigation ids. */
+	expireScheduled(now?: Date): Promise<string[]>;
 }
 
 /** The Prisma delegate surface this store needs. Structural, so tests can fake it. */
@@ -114,6 +124,7 @@ const CLAIMABLE_SELECT = {
 	payload: true,
 	priority: true,
 	attempts: true,
+	startBy: true,
 } as const;
 
 function toJobFields(row: Record<string, unknown>): JobFields {
@@ -121,7 +132,7 @@ function toJobFields(row: Record<string, unknown>): JobFields {
 		id: String(row.id),
 		kind: String(row.kind),
 		investigationId: String(row.investigationId),
-		incidentId: String(row.incidentId),
+		incidentId: row.incidentId == null ? null : String(row.incidentId),
 		payload: String(row.payload),
 		priority: Number(row.priority),
 		attempts: Number(row.attempts),
@@ -158,6 +169,7 @@ export class PrismaJobStore implements JobStore {
 				incidentId: input.incidentId,
 				payload: input.payload,
 				priority: input.priority,
+				startBy: input.startBy ?? null,
 				status: "pending",
 				attempts: 0,
 				runAt: new Date(),
@@ -182,6 +194,7 @@ export class PrismaJobStore implements JobStore {
 				incidentId: input.incidentId,
 				payload: input.payload,
 				priority: input.priority,
+				startBy: input.startBy ?? null,
 				status: "pending",
 				runAt: new Date(),
 			},
@@ -200,12 +213,27 @@ export class PrismaJobStore implements JobStore {
 		// Read candidates, then race for each one. The read is advisory — the write's
 		// `status: "pending"` guard is what makes the claim exclusive, so a stale
 		// candidate list costs a wasted UPDATE, never a double-claim.
-		const candidates = await this.jobs.findMany({
-			where: { status: "pending", runAt: { lte: now } },
-			orderBy: [{ priority: "asc" }, { runAt: "asc" }, { createdAt: "asc" }],
-			take: limit,
-			select: CLAIMABLE_SELECT,
-		});
+		const [rows, scheduledRunning] = await Promise.all([
+			this.jobs.findMany({
+				where: { status: "pending", runAt: { lte: now } },
+				orderBy: [{ priority: "asc" }, { runAt: "asc" }, { createdAt: "asc" }],
+				take: limit + 50,
+				select: CLAIMABLE_SELECT,
+			}),
+			this.jobs.findMany({
+				where: { status: "running", kind: SCHEDULED_KIND },
+				select: { id: true },
+			}),
+		]);
+		let scheduledRoom = SCHEDULED_CAP - scheduledRunning.length;
+		const candidates = rows
+			.filter((row) => {
+				const startBy = row.startBy as Date | null | undefined;
+				if (startBy && startBy.getTime() < now.getTime()) return false;
+				if (row.kind !== SCHEDULED_KIND) return true;
+				return scheduledRoom-- > 0;
+			})
+			.slice(0, limit);
 
 		const claimed: ClaimedJob[] = [];
 		for (const row of candidates) {
@@ -292,5 +320,23 @@ export class PrismaJobStore implements JobStore {
 			},
 		});
 		return running.map((row) => String(row.investigationId));
+	}
+
+	async expireScheduled(now: Date = new Date()): Promise<string[]> {
+		const pending = await this.jobs.findMany({
+			where: { status: "pending", kind: SCHEDULED_KIND },
+			select: { id: true, investigationId: true, startBy: true },
+		});
+		const expired: string[] = [];
+		for (const row of pending) {
+			const startBy = row.startBy as Date | null;
+			if (!startBy || startBy.getTime() >= now.getTime()) continue;
+			const { count } = await this.jobs.updateMany({
+				where: { id: row.id, status: "pending" },
+				data: { status: "cancelled", finishedAt: now, lastError: "host_busy" },
+			});
+			if (count === 1) expired.push(String(row.investigationId));
+		}
+		return expired;
 	}
 }

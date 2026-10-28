@@ -316,4 +316,43 @@ describe("PrismaJobStore", () => {
 			expect(delegate.rows[0].status).toBe("pending");
 		});
 	});
+
+	describe("scheduled jobs (#979)", () => {
+		const sched = (n: number, startBy: Date | null) =>
+			job(n, { kind: "scheduled", incidentId: null, startBy, priority: 5 });
+
+		it("clears a scheduled deadline when a person re-arms the row (adversary OBJ-012)", async () => {
+			await store.enqueue(sched(1, at(1_000)));
+			const [claimed] = await store.claim("o", 1, at(0));
+			await store.complete(claimed?.id as string, "succeeded");
+			await store.enqueue(job(1, { incidentId: null }));
+			expect(delegate.rows[0]?.startBy).toBeNull();
+			expect((await store.claim("o", 1, at(60_000))).map((j) => j.investigationId)).toEqual(["inv-1"]);
+		});
+
+		it("never claims a scheduled job past its deadline, and expires it", async () => {
+			await store.enqueue(sched(1, at(1_000)));
+			expect(await store.claim("o", 1, at(2_000))).toEqual([]);
+			expect(await store.expireScheduled(at(2_000))).toEqual(["inv-1"]);
+			expect(delegate.rows[0]).toMatchObject({ status: "cancelled", lastError: "host_busy" });
+			expect(await store.expireScheduled(at(3_000))).toEqual([]);
+		});
+
+		it("runs one scheduled job at a time without holding back other runs", async () => {
+			for (const n of [1, 2, 3]) await store.enqueue(sched(n, at(600_000)));
+			await store.enqueue(job(4, { priority: 3 }));
+			const first = await store.claim("o", 3, at(0));
+			expect(first.map((j) => j.investigationId).sort()).toEqual(["inv-1", "inv-4"]);
+			expect(await store.claim("o", 3, at(0))).toEqual([]);
+			await store.complete(first.find((j) => j.investigationId === "inv-1")?.id as string, "succeeded");
+			expect((await store.claim("o", 3, at(0))).map((j) => j.investigationId)).toEqual(["inv-2"]);
+		});
+
+		it("keeps a null incident null", async () => {
+			await store.enqueue(sched(1, null));
+			const [claimed] = await store.claim("o", 1, at(0));
+			expect(claimed?.incidentId).toBeNull();
+		});
+	});
 });
+
