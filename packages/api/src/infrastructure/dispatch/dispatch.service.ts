@@ -597,6 +597,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * written — the caller treats that as an enqueue failure and marks the investigation
 	 * failed rather than leaving it pending forever.
 	 */
+	/** A run whose job a schedule committed in its own transaction (#979): open its relay and wake the loop. */
+	startAdmitted(investigationId: string): void {
+		this.streamRelay.attach(investigationId);
+		void this.dispatcher.tick();
+	}
+
+	/** Cancel scheduled jobs no slot took before their deadline; returns their investigation ids (#979). */
+	expireScheduled(now: Date = new Date()): Promise<string[]> {
+		return this.store.expireScheduled(now);
+	}
+
 	async addInvestigationJob(
 		data: InvestigationJobData,
 	): Promise<string | null> {

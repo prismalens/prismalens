@@ -2020,7 +2020,7 @@ async function assembleInvestigationContext(
 }
 
 /** The service's `metadata.investigation.notes`, stored as JSON text or an object; null when absent or empty. */
-function serviceNotes(metadata: unknown): string | null {
+export function serviceNotes(metadata: unknown): string | null {
 	let value: unknown = metadata;
 	if (typeof value === "string") {
 		try {
