@@ -193,26 +193,32 @@ export function RunPage() {
 	const workspace = inv?.workspace;
 	// The file open in Evidence, and the control (and tab) that opened it, which Back returns to.
 	const [viewing, setViewing] = useState<FileAt | null>(null);
-	const origin = useRef<{ id: string; tab: DetailsTab } | null>(null);
+	const origin = useRef<{
+		id: string;
+		tab: DetailsTab;
+		panelWasOpen: boolean;
+	} | null>(null);
 	const tabRef = useRef<DetailsTab>(tab);
 	tabRef.current = tab;
 	const openFile = useCallback(
 		(f: FileAt, from: string) => {
-			origin.current = { id: from, tab: tabRef.current };
+			origin.current = { id: from, tab: tabRef.current, panelWasOpen: panel };
 			setViewing(f);
 			setTab("evidence");
 			setPanel(true);
 			focusLater("evidence-file-back");
 		},
-		[focusLater, setPanel],
+		[focusLater, setPanel, panel],
 	);
 	const closeFile = useCallback(() => {
 		setViewing(null);
 		const from = origin.current;
 		if (!from) return;
 		setTab(from.tab);
+		// A phone's sheet hides what opened the file; one opened only for it closes with it.
+		if (phone && !from.panelWasOpen) setPanel(false);
 		focusLater(from.id);
-	}, [focusLater]);
+	}, [focusLater, phone, setPanel]);
 	const fileOfStep = useCallback(
 		(s: RunStep) => stepFile(s, workspace),
 		[workspace],
