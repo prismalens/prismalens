@@ -94,24 +94,31 @@ test.describe("Shared panel layout (#973)", () => {
 		await expect(page.getByTestId("details-toggle")).toBeFocused();
 	});
 
-	test("390 px: details are a full-screen sheet over an inert run", async ({
+	test("390 px: details are a full-screen modal sheet; focus stays in it and the page behind is hidden", async ({
 		page,
 	}) => {
 		await openRun(page, 390, 844);
 		await page.getByTestId("details-toggle").click();
-		const sheet = page.getByTestId("panel-right");
-		await expect(sheet).toHaveAttribute("aria-modal", "true");
+		const sheet = page.getByRole("dialog", { name: /details/i });
+		await expect(sheet).toBeVisible();
 		const box = await sheet.boundingBox();
 		expect(box?.width).toBe(390);
 		expect(box?.height).toBe(844);
-		await expect(page.getByTestId("shell-route")).toHaveAttribute("inert", "");
+		const hidden = page.locator(
+			"[aria-hidden=true]:has([data-testid=shell-frame])",
+		);
+		await expect(hidden).toHaveCount(1);
 		await lastLineReachable(page);
+		// Tab never leaves the sheet (#974 OBJ-014).
+		for (let i = 0; i < 25; i++) {
+			await page.keyboard.press("Tab");
+			expect(
+				await sheet.evaluate((el) => el.contains(document.activeElement)),
+			).toBe(true);
+		}
 		await page.getByTestId("run-details-close").click();
 		await expect(sheet).toHaveCount(0);
-		await expect(page.getByTestId("shell-route")).not.toHaveAttribute(
-			"inert",
-			"",
-		);
+		await expect(hidden).toHaveCount(0);
 	});
 
 	for (const path of ["/incidents", "/alerts", "/services", "/settings"]) {

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
 	createContext,
 	type ReactNode,
 	useContext,
 	useEffect,
 	useLayoutEffect,
+	useRef,
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
@@ -77,10 +79,30 @@ function slotElement() {
 	return el;
 }
 
-/** Keeps `el` inside whichever region currently shows it. */
+/** Keeps `el` inside whichever region currently shows it, and focus where it was inside it. */
 function useMount(host: HTMLElement | null, el: HTMLElement | null) {
+	const last = useRef<HTMLElement | null>(null);
+	useEffect(() => {
+		if (!el) return;
+		const into = (e: FocusEvent) => {
+			last.current = e.target as HTMLElement;
+		};
+		const out = (e: FocusEvent) => {
+			const to = e.relatedTarget as Node | null;
+			if (to && !el.contains(to)) last.current = null;
+		};
+		el.addEventListener("focusin", into);
+		el.addEventListener("focusout", out);
+		return () => {
+			el.removeEventListener("focusin", into);
+			el.removeEventListener("focusout", out);
+		};
+	}, [el]);
 	useLayoutEffect(() => {
-		if (host && el && el.parentElement !== host) host.append(el);
+		if (!host || !el || el.parentElement === host) return;
+		const had = last.current;
+		host.append(el);
+		if (had && el.contains(had)) had.focus({ preventScroll: true });
 	}, [host, el]);
 }
 
@@ -116,10 +138,10 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	const sheet = !!right && phone;
 	const onClose = right?.onClose;
 
-	// Escape closes a floating panel or a sheet. A DOM listener, because the content is portalled
-	// from the page: React would bubble its keys through the page, not this region (#974 OBJ-013).
+	// Escape closes a floating panel (the sheet's dialog has its own). A DOM listener, because the
+	// content is portalled from the page: React would bubble its keys through the page (#974 OBJ-013).
 	useEffect(() => {
-		if (!rightHost || !onClose || !(floating || sheet)) return;
+		if (!rightHost || !onClose || !floating) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Escape" || e.defaultPrevented) return;
 			e.preventDefault();
@@ -127,26 +149,13 @@ export function PanelShell({ children }: { children: ReactNode }) {
 		};
 		rightHost.addEventListener("keydown", onKey);
 		return () => rightHost.removeEventListener("keydown", onKey);
-	}, [rightHost, onClose, floating, sheet]);
+	}, [rightHost, onClose, floating]);
 
-	// A floating panel or a sheet takes focus when it opens; the page that opened it returns focus on close.
+	// A floating panel takes focus when it opens; the page that opened it returns focus on close.
 	useEffect(() => {
-		if ((floating || sheet) && rightHost)
+		if (floating && rightHost && !rightHost.contains(document.activeElement))
 			rightHost.focus({ preventScroll: true });
-	}, [floating, sheet, rightHost]);
-
-	// A phone's sheet is modal: everything else in the document is inert while it shows (#974 OBJ-014).
-	useEffect(() => {
-		if (!sheet || !rightHost) return;
-		const made = Array.from(document.body.children).filter(
-			(c): c is HTMLElement =>
-				c instanceof HTMLElement && !c.contains(rightHost) && !c.inert,
-		);
-		for (const c of made) c.inert = true;
-		return () => {
-			for (const c of made) c.inert = false;
-		};
-	}, [sheet, rightHost]);
+	}, [floating, rightHost]);
 
 	return (
 		<SlotsContext.Provider value={{ rightEl, bottomEl, setRight, setBottom }}>
@@ -170,7 +179,6 @@ export function PanelShell({ children }: { children: ReactNode }) {
 							<Panel id="route" minSize="160px">
 								<div
 									className="h-full min-h-0 min-w-0"
-									inert={sheet || undefined}
 									data-testid="shell-route"
 								>
 									{children}
@@ -241,19 +249,28 @@ export function PanelShell({ children }: { children: ReactNode }) {
 					)}
 				</Group>
 			</div>
-			{sheet &&
-				createPortal(
-					<div
+			{/* A phone's sheet is the app's modal dialog: focus stays in it, the rest is hidden from
+			    assistive tech, and later dialogs and toasts layer over it (#974 OBJ-014, OBJ-015). */}
+			<DialogPrimitive.Root
+				open={sheet}
+				onOpenChange={(open) => {
+					if (!open) right?.onClose();
+				}}
+			>
+				<DialogPrimitive.Portal>
+					<DialogPrimitive.Content
 						ref={setRightHost}
-						role="dialog"
-						aria-modal="true"
-						aria-label={right.label}
-						tabIndex={-1}
+						aria-describedby={undefined}
+						onCloseAutoFocus={(e) => e.preventDefault()}
 						className="fixed inset-0 z-50 flex flex-col bg-surface-1 pt-(--titlebar-h) outline-none"
 						data-testid="panel-right"
-					/>,
-					document.body,
-				)}
+					>
+						<DialogPrimitive.Title className="sr-only">
+							{right?.label}
+						</DialogPrimitive.Title>
+					</DialogPrimitive.Content>
+				</DialogPrimitive.Portal>
+			</DialogPrimitive.Root>
 		</SlotsContext.Provider>
 	);
 }

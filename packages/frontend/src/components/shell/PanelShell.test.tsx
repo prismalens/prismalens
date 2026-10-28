@@ -109,7 +109,7 @@ describe("PanelShell", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
-	it("makes the panel a full-screen sheet on a phone, with the page behind it inert", () => {
+	it("makes the panel a full-screen modal sheet on a phone", () => {
 		width = 390;
 		render(
 			<>
@@ -121,10 +121,10 @@ describe("PanelShell", () => {
 		);
 		const sheet = q("[data-testid=panel-right]");
 		expect(sheet?.getAttribute("role")).toBe("dialog");
-		expect(sheet?.getAttribute("aria-modal")).toBe("true");
-		expect(sheet?.parentElement).toBe(document.body);
 		expect(sheet?.contains(q("#details"))).toBe(true);
-		expect(q("[data-testid=shell-route]")?.hasAttribute("inert")).toBe(true);
+		expect(
+			q("[data-testid=shell-frame]")?.closest("[aria-hidden=true]"),
+		).not.toBeNull();
 	});
 
 	it("mounts a bottom panel under the route for the terminal", () => {
@@ -215,7 +215,7 @@ describe("PanelShell under adversary review (#974)", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
-	it("makes everything outside a phone's sheet inert, and gives it back on close", () => {
+	it("hides everything outside a phone's sheet while it shows, and gives it back on close", () => {
 		width = 390;
 		const outside = document.createElement("nav");
 		document.body.prepend(outside);
@@ -224,13 +224,25 @@ describe("PanelShell under adversary review (#974)", () => {
 				<p id="details">details</p>
 			</RightPanel>,
 		);
-		expect(outside.hasAttribute("inert")).toBe(true);
-		expect(q("[data-testid=panel-right]")?.hasAttribute("inert")).toBe(false);
+		expect(outside.getAttribute("aria-hidden")).toBe("true");
 		render(
 			<RightPanel open={false} label="Run details" onClose={noop}>
 				<p id="details">details</p>
 			</RightPanel>,
 		);
-		expect(outside.hasAttribute("inert")).toBe(false);
+		expect(outside.hasAttribute("aria-hidden")).toBe(false);
+	});
+
+	it("keeps focus on the control it was on when the panel moves between regions", () => {
+		render(
+			<RightPanel open label="Run details" onClose={noop}>
+				<button type="button" id="inside">
+					inside
+				</button>
+			</RightPanel>,
+		);
+		act(() => q("#inside")?.focus());
+		resize(900);
+		expect(document.activeElement?.id).toBe("inside");
 	});
 });

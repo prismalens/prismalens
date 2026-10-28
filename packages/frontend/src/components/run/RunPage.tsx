@@ -185,6 +185,16 @@ export function RunPage() {
 	const [preview, setPreview] = useState(false);
 	const phone = useMediaQuery(PHONE);
 	const panel = phone ? sheetOpen : rightPanel;
+	// Crossing the phone breakpoint carries the panel's state over (#974 OBJ-012).
+	const wasPhone = useRef(phone);
+	useEffect(() => {
+		if (wasPhone.current === phone) return;
+		const open = wasPhone.current ? sheetOpen : rightPanel;
+		wasPhone.current = phone;
+		if (phone) setSheetOpen(open);
+		else setRightPanel(open);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: only a breakpoint crossing moves the state.
+	}, [phone]);
 	const setPanel = useCallback(
 		(open: boolean) => (phone ? setSheetOpen : setRightPanel)(open),
 		[phone, setRightPanel],
