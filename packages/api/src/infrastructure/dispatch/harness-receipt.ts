@@ -13,6 +13,8 @@ import { promisify } from "node:util";
 export interface Receipt {
 	pid: number;
 	startedAt: number;
+	/** The root's own creation time as the OS reported it, once a snapshot saw it. */
+	rootCreated?: number;
 	/** The tree as last seen while the run worked (Windows), so an orphaned grandchild is still known. */
 	tree?: { pid: number; created: number }[];
 }
@@ -35,8 +37,10 @@ export interface ProcessHost {
 }
 
 const FILE = "harness.pid";
-/** A root whose creation time is this far from the receipt's is a reused pid, not ours. */
+/** How far before the receipt a dead root's children may have been born. */
 const SAME_PROCESS_MS = 10_000;
+/** CIM creation times and Date.now() disagree by clock rounding only. */
+const ROUNDING_MS = 1_000;
 /** A recorded member's creation time read twice through CIM differs by rounding only. */
 const SAME_MEMBER_MS = 2_000;
 export const SNAPSHOT_MS = 30_000;
@@ -45,11 +49,11 @@ export function writeReceipt(
 	runDir: string,
 	pid: number,
 	now = Date.now(),
-	tree?: Receipt["tree"],
+	seen?: Pick<Receipt, "rootCreated" | "tree">,
 ) {
 	writeFileSync(
 		join(runDir, FILE),
-		JSON.stringify({ pid, startedAt: now, ...(tree ? { tree } : {}) }),
+		JSON.stringify({ pid, startedAt: now, ...(seen ?? {}) }),
 	);
 }
 
@@ -69,7 +73,14 @@ export function readReceipt(runDir: string): Receipt | null {
 					(m) => typeof m?.pid === "number" && typeof m?.created === "number",
 				)
 			: undefined;
-		return { pid: r.pid, startedAt: r.startedAt, ...(tree ? { tree } : {}) };
+		return {
+			pid: r.pid,
+			startedAt: r.startedAt,
+			...(typeof r.rootCreated === "number"
+				? { rootCreated: r.rootCreated }
+				: {}),
+			...(tree ? { tree } : {}),
+		};
 	} catch {
 		return null;
 	}
@@ -96,7 +107,24 @@ export function treeOf(
 			until: holder && !ours ? holder.created : Number.POSITIVE_INFINITY,
 		});
 	};
-	seed(receipt.pid, receipt.startedAt, SAME_PROCESS_MS);
+	// No two live processes share a pid: one holding the root's pid that was born before
+	// the receipt was written is the root, however late the receipt (#981 OBJ-010).
+	const holder = all.find((p) => p.pid === receipt.pid);
+	const rootOurs =
+		!!holder &&
+		(receipt.rootCreated !== undefined
+			? Math.abs(holder.created - receipt.rootCreated) <= SAME_MEMBER_MS
+			: holder.created <= receipt.startedAt + ROUNDING_MS);
+	if (rootOurs && holder) out.set(receipt.pid, holder);
+	frontier.push({
+		pid: receipt.pid,
+		from:
+			receipt.rootCreated ??
+			(rootOurs && holder
+				? holder.created
+				: receipt.startedAt - SAME_PROCESS_MS),
+		until: holder && !rootOurs ? holder.created : Number.POSITIVE_INFINITY,
+	});
 	for (const m of receipt.tree ?? []) seed(m.pid, m.created, SAME_MEMBER_MS);
 	const walked = new Set<number>();
 	while (frontier.length) {
@@ -175,7 +203,9 @@ export async function snapshotReceipt(
 	try {
 		const receipt = readReceipt(runDir);
 		if (!receipt) return;
-		const tree = treeOf(receipt, await list())
+		const found = treeOf(receipt, await list());
+		const root = found.find((p) => p.pid === receipt.pid);
+		const tree = found
 			.filter((p) => p.pid !== receipt.pid)
 			.map(({ pid, created }) => ({ pid, created }));
 		// Only the receipt it read, still watched: a later turn's receipt is never overwritten (#981 OBJ-021).
@@ -186,7 +216,14 @@ export async function snapshotReceipt(
 			now.startedAt !== receipt.startedAt
 		)
 			return;
-		writeReceipt(runDir, receipt.pid, receipt.startedAt, tree);
+		writeReceipt(runDir, receipt.pid, receipt.startedAt, {
+			...(root
+				? { rootCreated: root.created }
+				: receipt.rootCreated !== undefined
+					? { rootCreated: receipt.rootCreated }
+					: {}),
+			tree,
+		});
 	} catch {
 		// A missed snapshot leaves the last one; the next tick tries again.
 	}

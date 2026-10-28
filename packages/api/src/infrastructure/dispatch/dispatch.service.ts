@@ -102,7 +102,6 @@ import {
 } from "./job-store.js";
 import {
 	BOOT_LOOP_MS,
-	lastActivityOf,
 	NOT_RESUMED,
 	notResumedReason,
 	RECOVERY_DELAY_MS,
@@ -119,6 +118,8 @@ interface BootContext {
 	bootLoop: boolean;
 	enabled: boolean;
 	activity: Map<string, Date>;
+	/** The agent's own newest event, null when it left none. */
+	agentSeen: Map<string, Date | null>;
 	/** The run's agent from before the stop is proven gone. */
 	contained: Map<string, boolean>;
 	/** Workspaces the boot sweep must leave: resumed runs, and runs whose agent may live. */
@@ -128,6 +129,8 @@ interface BootContext {
 }
 
 const RESTART_SUMMARY_KEY = "runtime.lastRecovery";
+/** How often a boot that could not check its recoveries tries again. */
+const RECHECK_MS = 10_000;
 /** A held recovery's runAt: no dispatch reaches it; a later boot's check re-arms it. */
 const HELD_UNTIL = new Date("9999-01-01T00:00:00Z");
 /** Events only the agent produces: the evidence a run was still working (#981 OBJ-006). */
@@ -257,6 +260,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private readonly store: JobStore;
 	private readonly dispatcher: Dispatcher;
 	private recoveryWake: ReturnType<typeof setTimeout> | undefined;
+	private recheckTimer: ReturnType<typeof setInterval> | undefined;
 
 	constructor(
 		@Inject(EVENT_BUS) private readonly bus: EventBus,
@@ -674,15 +678,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`Could not reconcile live runs at boot: ${(e as Error).message}`,
 			),
 		);
-		if (boot)
-			await this.revalidateRecoveries(boot).catch(async (e) => {
-				this.logger.warn(
-					`Could not re-check recoveries left pending; holding them for the next start: ${(e as Error).message}`,
-				);
-				await this.holdRecoveries({ except: boot.resumed }).catch(
-					() => undefined,
-				);
-			});
+		const checked = boot ? await this.checkRecoveries(boot) : true;
 		// The boot sweep applies each workspace's own retention rule, so the settings load first.
 		await this.runWorkspaces?.ready();
 		try {
@@ -698,6 +694,21 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					`Could not record what this start resumed: ${(e as Error).message}`,
 				),
 			);
+		// Fail closed: with recoveries neither checked nor parked, nothing is claimed until a check succeeds (#981 OBJ-013).
+		if (!checked && boot) {
+			this.dispatcher.hold();
+			this.recheckTimer = setInterval(() => {
+				void this.checkRecoveries(boot).then((ok) => {
+					if (!ok) return;
+					clearInterval(this.recheckTimer);
+					this.dispatcher.unhold();
+					this.recoveryWake = setTimeout(
+						() => void this.dispatcher.tick(),
+						RECOVERY_DELAY_MS + 1_000,
+					).unref();
+				});
+			}, RECHECK_MS).unref();
+		}
 		this.dispatcher.start();
 		// The loop has no poll timer: a recovery waiting out its delay is claimed only by a tick (#981).
 		if (boot?.resumed.length)
@@ -712,6 +723,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 
 	async onApplicationShutdown(): Promise<void> {
 		clearTimeout(this.recoveryWake);
+		clearInterval(this.recheckTimer);
 		await this.dispatcher.stop();
 		// Aborting a run only asks the harness to stop; its own process group
 		// never saw the terminal's signal, so kill it before the API exits.
@@ -1300,10 +1312,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			select: { id: true, acpSessionId: true },
 		});
 		const activity = new Map<string, Date>();
+		const agentSeen = new Map<string, Date | null>();
 		const contained = new Map<string, boolean>();
 		const keep = new Set<string>();
 		for (const { id, acpSessionId } of live) {
-			activity.set(id, await this.lastActivity(id));
+			const seen = await this.lastActivity(id);
+			activity.set(id, seen.at);
+			agentSeen.set(id, seen.agent);
 			const gone = await this.previousGone(id, acpSessionId);
 			contained.set(id, gone);
 			if (!gone) keep.add(id);
@@ -1336,6 +1351,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			bootLoop,
 			enabled: await this.harnessService.resumeAfterRestart().catch(() => true),
 			activity,
+			agentSeen,
 			contained,
 			keep,
 			resumed: [],
@@ -1370,15 +1386,16 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * report. PrismaLens's own lines (a restart message, a refusal) never count; with
 	 * none, when its job was claimed or the run was made, never the boot clock (#981 OBJ-006).
 	 */
-	private async lastActivity(id: string): Promise<Date> {
-		const rows = await this.prisma.investigationEvent.findMany({
+	private async lastActivity(
+		id: string,
+	): Promise<{ agent: Date | null; at: Date }> {
+		const last = await this.prisma.investigationEvent.findFirst({
 			where: {
 				investigationId: id,
 				OR: AGENT_KINDS.map((k) => ({ event: { contains: `"kind":"${k}"` } })),
 			},
 			orderBy: { createdAt: "desc" },
-			take: 1,
-			select: { createdAt: true, event: true },
+			select: { createdAt: true },
 		});
 		const [job, inv] = await Promise.all([
 			this.prisma.job.findUnique({
@@ -1390,10 +1407,11 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				select: { createdAt: true },
 			}),
 		]);
-		return lastActivityOf(
-			rows,
-			job?.claimedAt ?? inv?.createdAt ?? new Date(0),
-		);
+		const agent = last?.createdAt ?? null;
+		return {
+			agent,
+			at: agent ?? job?.claimedAt ?? inv?.createdAt ?? new Date(0),
+		};
 	}
 
 	/**
@@ -1409,8 +1427,16 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		if (!found) return null;
 		const { inv, job, original, turn } = found;
 		if (await this.finishedTurn(id, job.claimedAt)) return null;
-		const lastActivityAt = boot.activity.get(id) ?? boot.now;
 		const prior = original.resume?.restart;
+		// A recovery's age runs from the agent's last own event; a new claim never resets it (#981 OBJ-006).
+		const lastActivityAt = prior
+			? new Date(
+					Math.max(
+						Date.parse(prior.lastActivityAt),
+						boot.agentSeen.get(id)?.getTime() ?? 0,
+					),
+				)
+			: (boot.activity.get(id) ?? boot.now);
 		const plan = await this.planFollowUp(inv, {});
 		const reason = notResumedReason({
 			enabled: boot.enabled,
@@ -1548,7 +1574,23 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * A recovery an earlier boot re-armed but never started is checked again against
 	 * this boot's rules before it may run (#981 OBJ-013).
 	 */
-	private async revalidateRecoveries(boot: BootContext): Promise<void> {
+	/** True once every pending recovery is checked, refused or parked; false leaves dispatch held. */
+	private async checkRecoveries(boot: BootContext): Promise<boolean> {
+		try {
+			return await this.revalidateRecoveries(boot);
+		} catch (e) {
+			this.logger.warn(
+				`Could not re-check recoveries left pending; holding them for the next start: ${(e as Error).message}`,
+			);
+			return this.holdRecoveries({ except: boot.resumed }).then(
+				() => true,
+				() => false,
+			);
+		}
+	}
+
+	private async revalidateRecoveries(boot: BootContext): Promise<boolean> {
+		let settled = true;
 		const pending = await this.prisma.job.findMany({
 			where: { status: "pending" },
 			select: { investigationId: true, payload: true },
@@ -1558,6 +1600,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const resume = jobResume(job.payload);
 			const restart = resume?.restart;
 			if (!resume || !restart || boot.resumed.includes(id)) continue;
+			if (boot.skipped.some((s) => s.id === id)) continue;
 			// Fail closed: a check that cannot run refuses the recovery (#981 OBJ-013).
 			const reason = await this.recheck(id, restart, boot).catch(
 				(e: Error) => `the check before resuming could not run: ${e.message}`,
@@ -1578,9 +1621,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				this.logger.warn(
 					`Could not refuse recovery ${id}; holding it for the next start: ${(e as Error).message}`,
 				);
-				await this.holdRecoveries({ id }).catch(() => undefined);
+				await this.holdRecoveries({ id }).catch(() => {
+					settled = false;
+				});
 			});
 		}
+		return settled;
 	}
 
 	/**
@@ -1811,7 +1857,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`${plan.preflight.problem} ${plan.preflight.fix}`,
 			);
 		const now = new Date();
-		const last = await this.lastActivity(id);
+		const last = (await this.lastActivity(id)).at;
 		const data = recoveryPayload(
 			original,
 			plan,
