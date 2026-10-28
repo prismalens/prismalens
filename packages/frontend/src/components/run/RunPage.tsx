@@ -239,19 +239,26 @@ export function RunPage() {
 		},
 		[setSearch],
 	);
-	// The control that opened the file, which Back returns focus to, and the entry this page pushed for it.
+	// Per file opened: the control that opened it, which Back returns focus to; kept, so Forward then Back finds it again.
+	const origins = useRef(
+		new Map<string, { id: string; tab: DetailsTab; panelWasOpen: boolean }>(),
+	);
 	const origin = useRef<{
 		id: string;
 		tab: DetailsTab;
 		panelWasOpen: boolean;
 	} | null>(null);
+	origin.current = search.file
+		? (origins.current.get(search.file) ?? origin.current)
+		: origin.current;
 	const pushed = useRef<string | null>(null);
 	const tabRef = useRef<DetailsTab>(tab);
 	tabRef.current = tab;
 	const openFile = useCallback(
 		(f: FileAt, from: string) => {
-			origin.current = { id: from, tab: tabRef.current, panelWasOpen: panel };
 			const param = fileParam(f);
+			origin.current = { id: from, tab: tabRef.current, panelWasOpen: panel };
+			origins.current.set(param, origin.current);
 			// The entry it leaves keeps its tab, so Back lands where the reader was.
 			setSearch({ panel: tabRef.current }, true);
 			pushed.current = param;
@@ -268,17 +275,16 @@ export function RunPage() {
 		} else setSearch({ file: undefined, panel: origin.current?.tab }, true);
 	}, [router, search.file, setSearch]);
 	// However the file closed (its Back, or the browser's), focus returns to what opened it (#975 OBJ-008).
-	const wasViewing = useRef(!!viewing);
+	const lastFile = useRef(search.file);
 	useEffect(() => {
-		const closed = wasViewing.current && !viewing;
-		wasViewing.current = !!viewing;
-		const from = origin.current;
-		if (!closed || !from) return;
-		origin.current = null;
+		const closed = lastFile.current && !search.file ? lastFile.current : null;
+		lastFile.current = search.file;
+		const from = closed ? origins.current.get(closed) : undefined;
+		if (!from) return;
 		// A phone's sheet hides what opened the file; one opened only for it closes with it.
 		if (phone && !from.panelWasOpen) setPanel(false);
 		focusLater(from.id);
-	}, [viewing, phone, setPanel, focusLater]);
+	}, [search.file, phone, setPanel, focusLater]);
 	const touched = useMemo(
 		() =>
 			touchedFiles(

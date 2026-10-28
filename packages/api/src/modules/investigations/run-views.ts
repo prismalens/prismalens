@@ -129,12 +129,59 @@ export async function readRunTree(
 		if (self?.[1] !== "tree")
 			return { state: "unavailable", ...at, reason: "not-a-dir" };
 	}
+	if (!opts.recursive) {
+		const entries = await listLevel(dir, sha, prefix, false);
+		const sorted = [
+			...entries.filter((e) => e.type === "dir"),
+			...entries.filter((e) => e.type !== "dir"),
+		];
+		return {
+			state: "ok",
+			...at,
+			entries: sorted.slice(0, RUN_TREE_MAX_ENTRIES),
+			truncated: sorted.length > RUN_TREE_MAX_ENTRIES,
+		};
+	}
+	// Every file, one top-level folder at a time, so a huge repository is cut at the cap
+	// instead of failing past spawnGit's output limit (#975 OBJ-016).
+	const files: RunTreeEntry[] = [];
+	let truncated = false;
+	for (const e of await listLevel(dir, sha, prefix, false)) {
+		if (files.length >= RUN_TREE_MAX_FILES) {
+			truncated = true;
+			break;
+		}
+		if (e.type !== "dir") {
+			files.push(e);
+			continue;
+		}
+		try {
+			files.push(...(await listLevel(dir, sha, e.path, true)));
+		} catch {
+			truncated = true;
+			break;
+		}
+	}
+	return {
+		state: "ok",
+		...at,
+		entries: files.slice(0, RUN_TREE_MAX_FILES),
+		truncated: truncated || files.length > RUN_TREE_MAX_FILES,
+	};
+}
+
+async function listLevel(
+	dir: string,
+	sha: string,
+	prefix: string | undefined,
+	recursive: boolean,
+): Promise<RunTreeEntry[]> {
 	const { stdout } = await git(
 		[
 			"ls-tree",
 			"-z",
 			"--full-tree",
-			...(opts.recursive ? ["-r"] : []),
+			...(recursive ? ["-r"] : []),
 			sha,
 			"--",
 			...(prefix ? [`${prefix}/`] : []),
@@ -157,17 +204,7 @@ export async function readRunTree(
 			type: TYPE[type] ?? (mode === "120000" ? "symlink" : "file"),
 		});
 	}
-	const max = opts.recursive ? RUN_TREE_MAX_FILES : RUN_TREE_MAX_ENTRIES;
-	const sorted = [
-		...entries.filter((e) => e.type === "dir"),
-		...entries.filter((e) => e.type !== "dir"),
-	];
-	return {
-		state: "ok",
-		...at,
-		entries: sorted.slice(0, max),
-		truncated: sorted.length > max,
-	};
+	return entries;
 }
 
 type Run = (args: string[]) => ReturnType<typeof gitIn>;

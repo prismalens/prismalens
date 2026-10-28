@@ -107,11 +107,15 @@ export function RunFileTree({
 		},
 	});
 
-	// A live run touches more files; the tree follows (#975 OBJ-011).
+	// A live run touches more files, or reads then edits one; the tree follows and repaints its marks (#975 OBJ-011).
 	const key = paths.join("\0");
+	const markKey = touched.map((t) => t.mark).join(",");
 	useEffect(() => {
 		model.resetPaths(key ? key.split("\0") : []);
-	}, [model, key]);
+	}, [model, key, markKey]);
+	const failed = all.some(
+		(q) => q.isError || (q.data && q.data.state !== "ok"),
+	);
 
 	// Name the tree: it renders `role=tree` inside an open shadow root with no label (#973 OBJ-010).
 	const label =
@@ -149,6 +153,12 @@ export function RunFileTree({
 		>
 			{mode === "all" && all.some((q) => q.isLoading) && (
 				<p className="px-3 text-meta text-text-3">Listing files</p>
+			)}
+			{mode === "all" && failed && (
+				<p className="px-3 text-meta text-text-2" data-testid="files-failed">
+					The files at this commit could not be listed. Files the run touched
+					are under Touched.
+				</p>
 			)}
 			{truncated && (
 				<p className="px-3 text-meta text-text-3">
