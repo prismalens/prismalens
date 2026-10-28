@@ -156,6 +156,7 @@ beforeAll(async () => {
 		timeline as never,
 		{ computeOverlay: vi.fn(async () => undefined) } as never,
 		{ isResetting: () => false, resetGeneration: () => 0, resetSince: () => false } as never,
+		{} as never,
 	);
 });
 

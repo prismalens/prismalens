@@ -54,6 +54,7 @@ function investigations(options: {
 		{ create: vi.fn() } as unknown as TimelineService,
 		{} as OverlayService,
 		options.settings as SettingsService,
+		{} as never,
 	);
 }
 

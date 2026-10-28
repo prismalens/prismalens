@@ -121,58 +121,7 @@ export class IncidentsService {
 
 		for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
 			try {
-				const incident = await this.prisma.$transaction(async (tx) => {
-					const lastIncident = await tx.incident.findFirst({
-						orderBy: { number: "desc" },
-						select: { number: true },
-					});
-					const nextNumber = (lastIncident?.number ?? 0) + 1;
-
-					return tx.incident.create({
-						data: {
-							number: nextNumber,
-							title: dto.title,
-							description: dto.description,
-							severity: dto.severity ?? "medium",
-							status: "triggered",
-							priority: dto.priority ?? "p3",
-							serviceId: dto.serviceId,
-							correlationReason: dto.correlationReason,
-							tags: dto.tags ? JSON.stringify(dto.tags) : null,
-							customerImpact: dto.customerImpact,
-							priorIncidentId: dto.priorIncident?.id ?? null,
-							alertCount: 0,
-						},
-					});
-				});
-
-				this.logger.log(
-					`Created incident INC-${incident.number}: ${incident.title}`,
-				);
-
-				const prior = dto.priorIncident;
-				await this.timelineService.create({
-					incidentId: incident.id,
-					type: TimelineEntryType.incident_created,
-					title: "Incident created",
-					description: prior
-						? `New incident: ${prior.alertName} fired again after INC-${prior.number} ${prior.status === "closed" ? "was resolved" : "had its alerts cleared"}`
-						: `Incident INC-${incident.number} was created`,
-					source: TimelineSource.system,
-					// The reader's clock formats the time; the text never carries an ISO string (#673).
-					...(prior
-						? {
-								metadata: {
-									priorIncidentId: prior.id,
-									...(prior.endedAt
-										? { priorEndedAt: prior.endedAt.toISOString() }
-										: {}),
-								},
-							}
-						: {}),
-				});
-
-				return incident;
+				return await this.prisma.$transaction((tx) => this.createInTx(tx, dto));
 			} catch (error: unknown) {
 				const isUniqueViolation =
 					error instanceof Error && error.message.includes("Unique constraint");
@@ -188,6 +137,66 @@ export class IncidentsService {
 
 		// Unreachable — loop always returns or throws
 		throw new Error("Failed to create incident after retries");
+	}
+
+	/**
+	 * The incident and its opening timeline entry in the caller's transaction, so a
+	 * rollback leaves neither (#979: a service check's finding creates its incident
+	 * in the same write that links the run).
+	 */
+	async createInTx(
+		tx: Prisma.TransactionClient,
+		dto: CreateIncidentDto,
+	): Promise<Incident> {
+		const lastIncident = await tx.incident.findFirst({
+			orderBy: { number: "desc" },
+			select: { number: true },
+		});
+		const nextNumber = (lastIncident?.number ?? 0) + 1;
+
+		const incident = await tx.incident.create({
+			data: {
+				number: nextNumber,
+				title: dto.title,
+				description: dto.description,
+				severity: dto.severity ?? "medium",
+				status: "triggered",
+				priority: dto.priority ?? "p3",
+				serviceId: dto.serviceId,
+				correlationReason: dto.correlationReason,
+				tags: dto.tags ? JSON.stringify(dto.tags) : null,
+				customerImpact: dto.customerImpact,
+				priorIncidentId: dto.priorIncident?.id ?? null,
+				alertCount: 0,
+			},
+		});
+
+		const prior = dto.priorIncident;
+		await tx.timelineEntry.create({
+			data: {
+				incidentId: incident.id,
+				type: TimelineEntryType.incident_created,
+				title: "Incident created",
+				description: prior
+					? `New incident: ${prior.alertName} fired again after INC-${prior.number} ${prior.status === "closed" ? "was resolved" : "had its alerts cleared"}`
+					: `Incident INC-${incident.number} was created`,
+				source: TimelineSource.system,
+				// The reader's clock formats the time; the text never carries an ISO string (#673).
+				metadata: prior
+					? JSON.stringify({
+							priorIncidentId: prior.id,
+							...(prior.endedAt
+								? { priorEndedAt: prior.endedAt.toISOString() }
+								: {}),
+						})
+					: null,
+				occurredAt: new Date(),
+			},
+		});
+		this.logger.log(
+			`Created incident INC-${incident.number}: ${incident.title}`,
+		);
+		return incident;
 	}
 
 	/**

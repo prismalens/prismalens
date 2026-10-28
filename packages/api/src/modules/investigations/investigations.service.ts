@@ -37,6 +37,7 @@ import {
 } from "../../core/settings/settings.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { IncidentsService } from "../incidents/incidents.service.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { owePush, pushOwedBy } from "../push/push-outbox.js";
 import { TimelineService } from "../timeline/timeline.service.js";
@@ -44,6 +45,7 @@ import {
 	CreateInvestigationDto,
 	type InternalInvestigationResultDto,
 } from "./dto/index.js";
+import { meetsPromotionRule } from "./promotion.js";
 import { runScope } from "./run-scope.js";
 
 export type { Investigation };
@@ -130,6 +132,8 @@ export class InvestigationsService {
 		private readonly timelineService: TimelineService,
 		private readonly overlayService: OverlayService,
 		private readonly settingsService: SettingsService,
+		@Inject(forwardRef(() => IncidentsService))
+		private readonly incidentsService: IncidentsService,
 	) {}
 
 	/**
@@ -593,7 +597,13 @@ export class InvestigationsService {
 		try {
 			const investigation = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { incidentId: true, status: true, kind: true },
+				select: {
+					incidentId: true,
+					serviceId: true,
+					title: true,
+					status: true,
+					kind: true,
+				},
 			});
 
 			if (!investigation) return null;
@@ -633,6 +643,22 @@ export class InvestigationsService {
 						investigationId: id,
 					});
 
+				// A finding links an unlinked service check to an incident (#979).
+				const linked =
+					!investigation.incidentId &&
+					investigation.serviceId &&
+					!chat &&
+					dto.status === "completed" &&
+					meetsPromotionRule(dto.report)
+						? await this.linkFinding(tx, {
+								id,
+								serviceId: investigation.serviceId,
+								title: investigation.title,
+								summary: dto.summary ?? dto.report?.summary ?? "",
+							})
+						: null;
+				const incidentId = linked ?? investigation.incidentId;
+
 				// 2. Create recommendations
 				if (dto.recommendations && dto.recommendations.length > 0) {
 					await tx.recommendation.createMany({
@@ -669,24 +695,25 @@ export class InvestigationsService {
 								? `Root cause identified: ${dto.rootCause}`
 								: "Investigation completed";
 
-				await tx.timelineEntry.create({
-					data: {
-						incidentId: dto.incidentId,
-						type:
-							dto.status === "failed"
-								? "investigation_failed"
-								: "investigation_completed",
-						title: timelineTitle,
-						description: timelineDescription,
-						source: "ai_worker",
-						metadata: JSON.stringify({
-							investigationId: id,
-							rootCause: dto.rootCause,
-							rootCauseCategory: dto.rootCauseCategory,
-							recommendationCount: dto.recommendations?.length ?? 0,
-						}),
-					},
-				});
+				if (incidentId)
+					await tx.timelineEntry.create({
+						data: {
+							incidentId,
+							type:
+								dto.status === "failed"
+									? "investigation_failed"
+									: "investigation_completed",
+							title: timelineTitle,
+							description: timelineDescription,
+							source: "ai_worker",
+							metadata: JSON.stringify({
+								investigationId: id,
+								rootCause: dto.rootCause,
+								rootCauseCategory: dto.rootCauseCategory,
+								recommendationCount: dto.recommendations?.length ?? 0,
+							}),
+						},
+					});
 				return true;
 			});
 			if (!applied) {
@@ -723,6 +750,62 @@ export class InvestigationsService {
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Link a service check to the newest unresolved incident on its service, or a new one,
+	 * inside the result transaction. The link only takes while the run has no incident, so
+	 * a repeated write is a no-op (#979, adversary OBJ-010).
+	 */
+	private async linkFinding(
+		tx: Prisma.TransactionClient,
+		run: {
+			id: string;
+			serviceId: string;
+			title: string | null;
+			summary: string;
+		},
+	): Promise<string | null> {
+		const open = await tx.incident.findFirst({
+			where: {
+				serviceId: run.serviceId,
+				status: { notIn: ["resolved", "closed"] },
+			},
+			orderBy: { createdAt: "desc" },
+			select: { id: true },
+		});
+		const incidentId =
+			open?.id ??
+			(await (async () => {
+				const service = run.title
+					? null
+					: await tx.service.findUnique({
+							where: { id: run.serviceId },
+							select: { name: true },
+						});
+				return (
+					await this.incidentsService.createInTx(tx, {
+						title: `Scheduled check: ${run.title ?? service?.name ?? "service"}`,
+						severity: "medium",
+						serviceId: run.serviceId,
+					})
+				).id;
+			})());
+		const { count } = await tx.investigation.updateMany({
+			where: { id: run.id, incidentId: null },
+			data: { incidentId },
+		});
+		if (count === 0) return null;
+		await tx.timelineEntry.create({
+			data: {
+				incidentId,
+				type: TimelineEntryType.custom,
+				title: `Scheduled check found: ${run.summary}`,
+				source: TimelineSource.ai_worker,
+				metadata: JSON.stringify({ investigationId: run.id }),
+			},
+		});
+		return incidentId;
 	}
 
 	/**
