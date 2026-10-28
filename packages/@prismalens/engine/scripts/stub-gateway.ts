@@ -431,6 +431,7 @@ export async function startStubGateway(
 				open = false;
 			},
 			artifacts: () => [...pages],
+			callLog: () => [...seen],
 			onArtifact: (listener) => {
 				published.add(listener);
 				return () => published.delete(listener);

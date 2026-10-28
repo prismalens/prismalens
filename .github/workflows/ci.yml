@@ -533,7 +533,7 @@ jobs:
           shipped=$(grep -E "^SEARCH (on|off)$" admission.log | head -1 | cut -d' ' -f2)
           export PL_TOOL_SEARCH=$([ "$shipped" = on ] && echo off || echo on)
           set -o pipefail
-          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix | tee search-on.log
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix --repeat 3 | tee search-on.log
 
       - name: PrismaLens tool cost and pass rate
         if: always()

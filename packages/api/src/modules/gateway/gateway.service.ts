@@ -126,6 +126,8 @@ interface RunState {
 	waiters: Set<(ok: boolean) => void>;
 	calls: Map<string, GatewayCallCount>;
 	listeners: Set<(c: GatewayCall) => void>;
+	/** Every call this lease executed, for the engine's end-of-run read (#848). */
+	log: GatewayCall[];
 	ledger: FindingsLedger;
 	found: Set<(f: RecordedFinding) => void>;
 	/** HTML pages the agent published, and who hears the next one (#871). */
@@ -198,6 +200,7 @@ export class GatewayService {
 			waiters: new Set(),
 			calls: new Map(),
 			listeners: new Set(),
+			log: [],
 			ledger: new FindingsLedger(),
 			found: new Set(),
 			artifacts: [],
@@ -236,6 +239,7 @@ export class GatewayService {
 				state.recording = false;
 			},
 			artifacts: () => [...state.artifacts],
+			callLog: () => [...state.log],
 			onArtifact: (listener) => {
 				state.published.add(listener);
 				return () => state.published.delete(listener);
@@ -305,6 +309,7 @@ export class GatewayService {
 		const state = this.runs.get(runId);
 		if (!state) return;
 		const { name, at } = call;
+		state.log.push(call);
 		const seen = state.calls.get(name);
 		state.calls.set(
 			name,
