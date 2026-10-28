@@ -44,6 +44,12 @@ describe("deploy events (#854)", () => {
 		changes = new ChangeEventsService(prisma, {} as never, {} as never, {
 			createRequestFn: () => request,
 		} as never);
+		const integration = await prisma.integration.create({
+			data: { templateId: "github-token", label: "GitHub" },
+		});
+		await prisma.connection.create({
+			data: { id: "c1", integrationId: integration.id, credentialsEnc: Buffer.from("x") },
+		});
 		const service = await prisma.service.create({ data: { name: "checkout" } });
 		serviceId = service.id;
 		const incident = await prisma.incident.create({

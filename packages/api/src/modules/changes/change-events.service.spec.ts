@@ -47,7 +47,9 @@ const { startGitHttpServer } = await import(
 );
 import type { GitHttpServer } from "../../core/harness/__fixtures__/git-http-server.js";
 
-const { GitHubDeploymentsSegment } = await import("@prismalens/integrations");
+const { GitHubDeploymentsSegment, registerAdapter } = await import(
+	"@prismalens/integrations"
+);
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
@@ -428,7 +430,7 @@ describe("ChangeEventsService", () => {
 			expect(requestFn).toHaveBeenLastCalledWith("pin");
 
 			templateId.mockResolvedValue({
-				integration: { templateId: "git-host-token" },
+				integration: { templateId: "github-token" },
 			} as never);
 			await pull(pinned, "link");
 			expect(requestFn).toHaveBeenLastCalledWith("link");
@@ -437,6 +439,81 @@ describe("ChangeEventsService", () => {
 			list.mockRestore();
 			requestFn.mockRestore();
 			templateId.mockRestore();
+		}
+	});
+
+	it("pulls deploys through any registered adapter with a deploy pull and skips one without (#855)", async () => {
+		class FakeCi {
+			readonly name = "fake-ci";
+			readonly deployment = {
+				name: "fake-ci",
+				listDeploymentEvents: async () => [
+					{
+						version: "7.1.0",
+						environment: "production",
+						status: "succeeded" as const,
+						sha: "b".repeat(40),
+						actor: "ci-bot",
+						url: null,
+						at: new Date().toISOString(),
+					},
+				],
+			};
+		}
+		class PlainCi {
+			readonly name = "plain-ci";
+		}
+		const unregister = [
+			registerAdapter("fake-ci", FakeCi),
+			registerAdapter("plain-ci", PlainCi),
+		];
+		const requestFn = vi
+			.spyOn(IntegrationsService.prototype, "createRequestFn")
+			.mockReturnValue(vi.fn());
+		const lookup = vi.spyOn(prisma.connection, "findUnique");
+		const svc = await prisma.service.create({
+			data: { name: `svc-${Math.random().toString(36).slice(2, 8)}` },
+		});
+		const pull = (connectionId: string) =>
+			service["pullDeploys"](
+				{
+					key: "k",
+					serviceId: svc.id,
+					serviceName: svc.name,
+					subPath: null,
+					repository: {
+						id: "r",
+						sourceKind: "url",
+						fullName: "acme/api",
+						url: "https://ci.example/acme/api.git",
+						defaultBranch: "main",
+						connectionId,
+						metadata: null,
+					},
+				},
+				{ start: new Date(Date.now() - HOUR), end: new Date() },
+			);
+		try {
+			lookup.mockResolvedValue({ integration: { templateId: "plain-ci" } } as never);
+			await pull("c1");
+			expect(requestFn).not.toHaveBeenCalled();
+			expect(await prisma.changeEvent.count({ where: { serviceId: svc.id } })).toBe(0);
+
+			lookup.mockResolvedValue({ integration: { templateId: "fake-ci" } } as never);
+			await pull("c2");
+			expect(requestFn).toHaveBeenCalledWith("c2");
+			const rows = await prisma.changeEvent.findMany({ where: { serviceId: svc.id } });
+			expect(rows).toHaveLength(1);
+			expect(rows[0]).toMatchObject({ type: "deployment", source: "fake-ci" });
+			expect(JSON.parse(rows[0]?.metadata ?? "{}")).toMatchObject({
+				source: "fake-ci",
+				version: "7.1.0",
+				repo: "acme/api",
+			});
+		} finally {
+			for (const off of unregister) off();
+			requestFn.mockRestore();
+			lookup.mockRestore();
 		}
 	});
 

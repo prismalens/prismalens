@@ -15,8 +15,9 @@ import type {
 	RunCredential,
 } from "@prismalens/contracts/schemas";
 import {
-	GitHubDeploymentsSegment,
-	isLegacyTemplateId,
+	createAdapter,
+	type DeploymentEvent,
+	type DeploymentWindow,
 } from "@prismalens/integrations";
 import { repoLabel, urlHost } from "../../core/harness/git-credential.js";
 import {
@@ -302,31 +303,25 @@ export class ChangeEventsService {
 		}
 	}
 
-	/** GitHub Deployments of a repository read with a saved token, kept in the push endpoint's row shape (#854). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
+	/** Deploys of a repository, pulled through the registered provider that owns its credential and kept in the push endpoint's row shape (#854, #855). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
 	private async pullDeploys(
 		link: Link,
 		window: { start: Date; end: Date },
 	): Promise<void> {
 		const repo = link.repository;
-		if (
-			link.subPath ||
-			repo.sourceKind === "folder" ||
-			urlHost(repo.url) !== "github.com"
-		)
-			return;
+		if (link.subPath || repo.sourceKind === "folder") return;
 		try {
-			const connectionId = await this.apiConnection(repo);
-			if (!connectionId) return;
-			const events = await new GitHubDeploymentsSegment().listDeploymentEvents(
-				this.integrations.createRequestFn(connectionId),
-				repo.fullName,
-				{ since: window.start, until: window.end },
-			);
+			const puller = await this.deployPuller(repo);
+			if (!puller) return;
+			const events = await puller.pull(repo.fullName, {
+				since: window.start,
+				until: window.end,
+			});
 			const writes = events.map((e) => {
 				const record: DeployRecord = {
 					service: { id: link.serviceId, name: link.serviceName },
 					...e,
-					source: "github",
+					source: puller.source,
 					repo: repo.fullName,
 					at: new Date(e.at),
 				};
@@ -343,24 +338,34 @@ export class ChangeEventsService {
 		}
 	}
 
-	/** The discovery link unless it is a legacy github-app row that runs nothing (#673), else the pinned token when it is a GitHub API token: a git-host-token sends to github.com, not api.github.com. */
-	private async apiConnection(
-		repo: Link["repository"],
-	): Promise<string | null> {
-		const templateOf = async (id: string) =>
-			(
-				await this.prisma.connection.findUnique({
-					where: { id },
-					select: { integration: { select: { templateId: true } } },
-				})
-			)?.integration.templateId;
-		if (repo.connectionId) {
-			const t = await templateOf(repo.connectionId);
-			if (!t || !isLegacyTemplateId(t)) return repo.connectionId;
+	/** The first of the discovery link and the pinned token whose template has an adapter with a deploy pull; one with none (a legacy github-app row, a git-host-token) is passed over. */
+	private async deployPuller(repo: Link["repository"]): Promise<{
+		source: string;
+		pull: (
+			repository: string,
+			window: DeploymentWindow,
+		) => Promise<DeploymentEvent[]>;
+	} | null> {
+		for (const connectionId of [repo.connectionId, pickOf(repo.metadata)]) {
+			if (!connectionId) continue;
+			const connection = await this.prisma.connection.findUnique({
+				where: { id: connectionId },
+				select: { integration: { select: { templateId: true } } },
+			});
+			const adapter = connection
+				? createAdapter(connection.integration.templateId)
+				: null;
+			const list = adapter?.deployment?.listDeploymentEvents?.bind(
+				adapter.deployment,
+			);
+			if (!adapter || !list) continue;
+			const request = this.integrations.createRequestFn(connectionId);
+			return {
+				source: adapter.name,
+				pull: (repository, window) => list(request, repository, window),
+			};
 		}
-		const pick = pickOf(repo.metadata);
-		if (!pick) return null;
-		return (await templateOf(pick)) === "github-token" ? pick : null;
+		return null;
 	}
 
 	/** Upsert by host, repository, commit and service: a re-read or an overlapping window never doubles a row. */

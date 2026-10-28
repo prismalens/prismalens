@@ -61,6 +61,17 @@ export function createAdapter(templateId: string): ProviderAdapter | null {
 
 export const getAdapter = createAdapter;
 
+/** Register a connector under its templateId; the returned function removes it (#855). */
+export function registerAdapter(
+	templateId: string,
+	AdapterClass: new () => ProviderAdapter,
+): () => void {
+	ADAPTER_REGISTRY[templateId] = AdapterClass;
+	return () => {
+		delete ADAPTER_REGISTRY[templateId];
+	};
+}
+
 /** Check if an exact templateId has a registered adapter (#446). */
 export function isAdapterSupported(templateId: string): boolean {
 	return templateId in ADAPTER_REGISTRY;

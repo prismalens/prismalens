@@ -230,5 +230,5 @@ export class RenderDeploymentSegment implements DeploymentProvider {
 
 export class RenderAdapter implements ProviderAdapter {
 	readonly name = "render";
-	readonly deployment: DeploymentProvider = new RenderDeploymentSegment();
+	readonly deployment = new RenderDeploymentSegment();
 }

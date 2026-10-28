@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Deploys as ChangeEvents (#854): pushed from CI or pulled from GitHub, one row shape
+ * Deploys as ChangeEvents (#854): pushed from CI or pulled from a registered provider, one row shape
  * keyed on service, environment, version and status so a repeat never doubles it.
  */
 import { Injectable } from "@nestjs/common";
@@ -17,7 +17,8 @@ export interface DeployRecord {
 	version: string;
 	environment: string;
 	status: "succeeded" | "failed" | "started";
-	source: "push" | "github";
+	/** "push", or the adapter name of the provider the deploy was pulled from. */
+	source: string;
 	actor?: string | null;
 	url?: string | null;
 	sha?: string | null;

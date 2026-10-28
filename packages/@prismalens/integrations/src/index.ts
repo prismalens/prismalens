@@ -38,7 +38,6 @@ export * from "./port/index.js";
 // Providers — deployment
 export type {
 	DeploymentEvent,
-	DeploymentEventSource,
 	DeploymentProvider,
 	DeploymentWindow,
 } from "./providers/deployment.interface.js";
@@ -63,6 +62,7 @@ export {
 	PrometheusMetricsSegment,
 	RenderAdapter,
 	RenderDeploymentSegment,
+	registerAdapter,
 	templatesForSegment,
 } from "./providers/index.js";
 // Providers — metrics (#633)

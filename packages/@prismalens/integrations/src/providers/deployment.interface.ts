@@ -20,16 +20,23 @@ export interface DeploymentProvider {
 	readonly name: string;
 
 	/** List all services/deployments from the platform */
-	listServices(request: AuthenticatedRequestFn): Promise<DeploymentService[]>;
+	listServices?(request: AuthenticatedRequestFn): Promise<DeploymentService[]>;
 
 	/** Get a single service by its platform-specific ID */
-	getService(
+	getService?(
 		request: AuthenticatedRequestFn,
 		serviceId: string,
 	): Promise<DeploymentService>;
 
 	/** Test the connection */
-	testConnection(request: AuthenticatedRequestFn): Promise<boolean>;
+	testConnection?(request: AuthenticatedRequestFn): Promise<boolean>;
+
+	/** Read-only: the deploys of one repository in a window. Present means the platform's deploys are pulled for a linked repository (#855). */
+	listDeploymentEvents?(
+		request: AuthenticatedRequestFn,
+		repository: string,
+		window: DeploymentWindow,
+	): Promise<DeploymentEvent[]>;
 }
 
 /** One deploy as a platform reports it, in the shape the push endpoint records (#854). */
@@ -48,13 +55,4 @@ export interface DeploymentEvent {
 export interface DeploymentWindow {
 	since: Date;
 	until: Date;
-}
-
-/** A platform that can list the deploys of one repository in a window, read-only. */
-export interface DeploymentEventSource {
-	listDeploymentEvents(
-		request: AuthenticatedRequestFn,
-		repository: string,
-		window: DeploymentWindow,
-	): Promise<DeploymentEvent[]>;
 }

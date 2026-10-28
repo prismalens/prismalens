@@ -8,7 +8,7 @@
 import { providerHttpError } from "../../engine/provider-http-error.js";
 import type {
 	DeploymentEvent,
-	DeploymentEventSource,
+	DeploymentProvider,
 	DeploymentWindow,
 } from "../deployment.interface.js";
 import type { AuthenticatedRequestFn } from "../types.js";
@@ -73,7 +73,9 @@ const MAX_PAGES = 10;
 // A deploy created shortly before the window can still finish inside it.
 const LEAD_MS = 60 * 60 * 1000;
 
-export class GitHubDeploymentsSegment implements DeploymentEventSource {
+export class GitHubDeploymentsSegment implements DeploymentProvider {
+	readonly name = "github";
+
 	async listDeploymentEvents(
 		request: AuthenticatedRequestFn,
 		repository: string,

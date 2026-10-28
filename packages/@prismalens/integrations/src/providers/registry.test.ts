@@ -15,8 +15,10 @@ import {
 	GitHubAdapter,
 	isAdapterSupported,
 	RenderAdapter,
+	registerAdapter,
 	templatesForSegment,
 } from "./index.js";
+import type { ProviderAdapter } from "./types.js";
 
 describe("Exact-templateId Adapter Registry (#446)", () => {
 	it("resolves github-token to GitHubAdapter and the removed GitHub App to nothing", () => {
@@ -60,9 +62,9 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 
 		// Segment derivation
 		expect(github.vcs).toBeDefined();
-		expect(github.deployment).toBeUndefined();
-		expect(getAdapterSegments(github)).toEqual(["vcs"]);
-		expect(adapterSegments(github)).toEqual(["vcs"]);
+		expect(github.deployment?.listDeploymentEvents).toBeDefined();
+		expect(getAdapterSegments(github)).toEqual(["vcs", "deployment"]);
+		expect(adapterSegments(github)).toEqual(["vcs", "deployment"]);
 
 		expect(render.deployment).toBeDefined();
 		expect(render.vcs).toBeUndefined();
@@ -72,8 +74,14 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 
 	it("answers reverse-direction queries for segments and capabilities", () => {
 		// templatesForSegment
-		expect(getTemplatesForSegment("deployment")).toEqual(["render"]);
-		expect(templatesForSegment("deployment")).toEqual(["render"]);
+		expect(getTemplatesForSegment("deployment")).toEqual([
+			"github-token",
+			"render",
+		]);
+		expect(templatesForSegment("deployment")).toEqual([
+			"github-token",
+			"render",
+		]);
 		expect(getTemplatesForSegment("vcs")).toEqual(["github-token"]);
 		expect(templatesForSegment("vcs")).toEqual(["github-token"]);
 		expect(getTemplatesForSegment("metrics")).toEqual(["prometheus"]);
@@ -109,5 +117,16 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(getCapabilities(renderTemplate!)).toContain("deployment:get_service");
 		expect(getCapabilities(renderTemplate!)).toContain("deployment:list_deploys");
 		expect(getCapabilities(renderTemplate!)).not.toContain("vcs:list_repos");
+	});
+
+	it("registers and unregisters a connector by templateId (#855)", () => {
+		class FakeAdapter implements ProviderAdapter {
+			readonly name = "fake-ci";
+		}
+		const unregister = registerAdapter("fake-ci", FakeAdapter);
+		expect(createAdapter("fake-ci")).toBeInstanceOf(FakeAdapter);
+		expect(isAdapterSupported("fake-ci")).toBe(true);
+		unregister();
+		expect(createAdapter("fake-ci")).toBeNull();
 	});
 });
