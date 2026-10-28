@@ -17,8 +17,10 @@ import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
+import type { RunLink } from "@/lib/run-links";
 import type { PanelTab, TouchedFile } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
+import { BrowserTab } from "./BrowserTab";
 import { ChangesTab } from "./ChangesTab";
 import { EvidenceFileView } from "./EvidenceFileView";
 import { RunFileTree } from "./RunFileTree";
@@ -48,6 +50,8 @@ export interface EvidenceFiles {
 	workspace: RunWorkspace | null | undefined;
 	/** Files the run's steps named or the report cited, for the tree. */
 	touched: TouchedFile[];
+	/** Pages the run's alerts and report link, for the Browser tab. */
+	links: RunLink[];
 	viewing: FileAt | null;
 	onOpen: OpenFile;
 	onClose: () => void;
@@ -66,7 +70,14 @@ const TONE = {
 	danger: "text-danger",
 } as const;
 
-const ORDER: DetailsTab[] = ["summary", "files", "changes", "steps", "context"];
+const ORDER: DetailsTab[] = [
+	"summary",
+	"files",
+	"changes",
+	"steps",
+	"context",
+	"browser",
+];
 
 const FILTERS: { id: StepFilter; label: string }[] = [
 	{ id: "all", label: "All" },
@@ -138,6 +149,7 @@ export function RunDetailsPanel({
 			),
 		},
 		{ id: "changes", label: "Changes", aria: "Changes" },
+		{ id: "browser", label: "Browser", aria: "Browser" },
 		{
 			id: "context",
 			label: "Context",
@@ -215,6 +227,13 @@ export function RunDetailsPanel({
 					data-testid="run-details-files"
 				>
 					<FilesPane files={files} onJump={onJump} />
+				</TabsPrimitive.Content>
+				<TabsPrimitive.Content
+					value="browser"
+					className="flex min-h-0 flex-1 flex-col"
+					data-testid="run-details-browser"
+				>
+					<BrowserTab links={files.links} />
 				</TabsPrimitive.Content>
 				<TabsPrimitive.Content
 					value="changes"
