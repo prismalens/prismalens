@@ -1445,6 +1445,40 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.runtimeNote).toEqual(note);
 	});
 
+	it("a follow-up on a service check with no incident stays a service check and reads no incident (#979)", async () => {
+		const check: InvestigationJobData = {
+			...data,
+			incidentId: null,
+			brief: "Look at p99.",
+			scheduled: {
+				scheduleId: "sch-1",
+				revision: 1,
+				serviceId: "svc-1",
+				serviceName: "checkout",
+				serviceNotes: null,
+				runbook: null,
+				repos: [],
+			},
+		};
+		const ports = followUpPorts({
+			getIncident: vi.fn(async () => {
+				throw new Error("a service check reads no incident");
+			}),
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		const result = await runInvestigationJob({ id: "job-chk", investigationId: "inv-1", attempts: 1 }, check, io(), ports);
+
+		expect(result.success).toBe(true);
+		expect(ports.getIncident).not.toHaveBeenCalled();
+		expect(ports.resolveConnectors).toHaveBeenCalledWith("svc-1");
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { mode?: string; alerts: unknown[] } }];
+		expect(opts.context).toMatchObject({ mode: "service-check", alerts: [] });
+	});
+
 	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {
 		const ports = followUpPorts();
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
