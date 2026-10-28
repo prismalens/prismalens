@@ -3,7 +3,6 @@
 
 import {
 	createContext,
-	type KeyboardEvent,
 	type ReactNode,
 	useContext,
 	useEffect,
@@ -35,8 +34,7 @@ interface BottomMeta {
 	label: string;
 }
 interface Slots {
-	right: RightMeta | null;
-	bottom: BottomMeta | null;
+	/** One element per panel for the shell's life: moving it between regions never remounts what a page put in it. */
 	rightEl: HTMLElement | null;
 	bottomEl: HTMLElement | null;
 	setRight: (m: RightMeta | null) => void;
@@ -53,12 +51,37 @@ function useSlots(): Slots {
 
 // One storage key per group; the library keeps each set of panels' layout apart.
 const STORAGE_PREFIX = "pl.panels";
-function storage() {
-	try {
-		return window.localStorage;
-	} catch {
-		return undefined;
-	}
+// Storage can be absent or throw (a private window, a policy); sizes then last for the page only.
+const memory = new Map<string, string>();
+const storage = {
+	getItem(key: string) {
+		try {
+			return window.localStorage.getItem(key);
+		} catch {
+			return memory.get(key) ?? null;
+		}
+	},
+	setItem(key: string, value: string) {
+		try {
+			window.localStorage.setItem(key, value);
+		} catch {
+			memory.set(key, value);
+		}
+	},
+};
+
+function slotElement() {
+	if (typeof document === "undefined") return null;
+	const el = document.createElement("div");
+	el.className = "flex h-full min-h-0 flex-col";
+	return el;
+}
+
+/** Keeps `el` inside whichever region currently shows it. */
+function useMount(host: HTMLElement | null, el: HTMLElement | null) {
+	useLayoutEffect(() => {
+		if (host && el && el.parentElement !== host) host.append(el);
+	}, [host, el]);
 }
 
 const SEPARATOR =
@@ -67,8 +90,12 @@ const SEPARATOR =
 export function PanelShell({ children }: { children: ReactNode }) {
 	const [right, setRight] = useState<RightMeta | null>(null);
 	const [bottom, setBottom] = useState<BottomMeta | null>(null);
-	const [rightEl, setRightEl] = useState<HTMLElement | null>(null);
-	const [bottomEl, setBottomEl] = useState<HTMLElement | null>(null);
+	const [rightEl] = useState(slotElement);
+	const [bottomEl] = useState(slotElement);
+	const [rightHost, setRightHost] = useState<HTMLElement | null>(null);
+	const [bottomHost, setBottomHost] = useState<HTMLElement | null>(null);
+	useMount(rightHost, rightEl);
+	useMount(bottomHost, bottomEl);
 	const phone = useMediaQuery(PHONE);
 	const split = useMediaQuery(SPLIT_PANES);
 	const beside = split && !!right;
@@ -77,31 +104,52 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	const h = useDefaultLayout({
 		id: `${STORAGE_PREFIX}.h`,
 		panelIds: beside ? ["main", "right"] : ["main"],
-		storage: storage(),
+		storage,
 	});
 	const v = useDefaultLayout({
 		id: `${STORAGE_PREFIX}.v`,
 		panelIds: below ? ["route", "bottom"] : ["route"],
-		storage: storage(),
+		storage,
 	});
 
 	const floating = !!right && !split && !phone;
 	const sheet = !!right && phone;
-	const onPanelKey = (e: KeyboardEvent) => {
-		if (e.key !== "Escape" || e.defaultPrevented) return;
-		e.preventDefault();
-		right?.onClose();
-	};
+	const onClose = right?.onClose;
+
+	// Escape closes a floating panel or a sheet. A DOM listener, because the content is portalled
+	// from the page: React would bubble its keys through the page, not this region (#974 OBJ-013).
+	useEffect(() => {
+		if (!rightHost || !onClose || !(floating || sheet)) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			e.preventDefault();
+			onClose();
+		};
+		rightHost.addEventListener("keydown", onKey);
+		return () => rightHost.removeEventListener("keydown", onKey);
+	}, [rightHost, onClose, floating, sheet]);
 
 	// A floating panel or a sheet takes focus when it opens; the page that opened it returns focus on close.
 	useEffect(() => {
-		if ((floating || sheet) && rightEl) rightEl.focus({ preventScroll: true });
-	}, [floating, sheet, rightEl]);
+		if ((floating || sheet) && rightHost)
+			rightHost.focus({ preventScroll: true });
+	}, [floating, sheet, rightHost]);
+
+	// A phone's sheet is modal: everything else in the document is inert while it shows (#974 OBJ-014).
+	useEffect(() => {
+		if (!sheet || !rightHost) return;
+		const made = Array.from(document.body.children).filter(
+			(c): c is HTMLElement =>
+				c instanceof HTMLElement && !c.contains(rightHost) && !c.inert,
+		);
+		for (const c of made) c.inert = true;
+		return () => {
+			for (const c of made) c.inert = false;
+		};
+	}, [sheet, rightHost]);
 
 	return (
-		<SlotsContext.Provider
-			value={{ right, bottom, rightEl, bottomEl, setRight, setBottom }}
-		>
+		<SlotsContext.Provider value={{ rightEl, bottomEl, setRight, setBottom }}>
 			<div
 				className="fixed inset-x-0 bottom-0 top-(--frame-top) bg-canvas md:left-(--sidebar-w)"
 				data-testid="shell-frame"
@@ -145,7 +193,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 										maxSize="70%"
 									>
 										<section
-											ref={setBottomEl}
+											ref={setBottomHost}
 											aria-label={bottom.label}
 											className="flex h-full min-h-0 flex-col bg-surface-1"
 											data-testid="panel-bottom"
@@ -156,12 +204,11 @@ export function PanelShell({ children }: { children: ReactNode }) {
 						</Group>
 						{floating && (
 							<div
-								ref={setRightEl}
+								ref={setRightHost}
 								role="dialog"
 								aria-modal="false"
 								aria-label={right.label}
 								tabIndex={-1}
-								onKeyDown={onPanelKey}
 								className="absolute top-2 right-2 bottom-2 z-20 flex w-[min(30rem,calc(100%-4rem))] flex-col overflow-hidden rounded-pool bg-surface-1 shadow-float outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
 								data-testid="panel-right"
 							/>
@@ -184,7 +231,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 								maxSize="70%"
 							>
 								<section
-									ref={setRightEl}
+									ref={setRightHost}
 									aria-label={right.label}
 									className="flex h-full min-h-0 flex-col bg-surface-1"
 									data-testid="panel-right"
@@ -197,12 +244,11 @@ export function PanelShell({ children }: { children: ReactNode }) {
 			{sheet &&
 				createPortal(
 					<div
-						ref={setRightEl}
+						ref={setRightHost}
 						role="dialog"
 						aria-modal="true"
 						aria-label={right.label}
 						tabIndex={-1}
-						onKeyDown={onPanelKey}
 						className="fixed inset-0 z-50 flex flex-col bg-surface-1 pt-(--titlebar-h) outline-none"
 						data-testid="panel-right"
 					/>,
@@ -232,6 +278,7 @@ export function RightPanel({
 		setRight(open ? { label, onClose } : null);
 	}, [open, label, onClose, setRight]);
 	useLayoutEffect(() => () => setRight(null), [setRight]);
+	// Portalled whenever open, into the one element the shell moves between regions.
 	return open && rightEl ? createPortal(children, rightEl) : null;
 }
 
