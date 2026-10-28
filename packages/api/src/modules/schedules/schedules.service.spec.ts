@@ -233,6 +233,19 @@ describe("SchedulesService (#979)", () => {
 		expect(run.status).toBe("cancelled");
 	});
 
+	it("runs now twice in one second without a server error", async () => {
+		const s = scheduler();
+		const created = await s.create(input(), "host", new Date("2026-06-26T08:00:00Z"));
+		await s.runNow(created.id, "host", new Date("2026-06-26T08:30:00.100Z"));
+		await prisma.investigation.updateMany({ where: { scheduleId: created.id }, data: { status: "completed" } });
+		await s.runNow(created.id, "host", new Date("2026-06-26T08:30:00.700Z"));
+		expect((await ticks(created.id)).map((t) => t.outcome)).toEqual(["run_now", "run_now"]);
+		await prisma.investigation.updateMany({ where: { scheduleId: created.id }, data: { status: "completed" } });
+		await expect(s.runNow(created.id, "host", new Date("2026-06-26T08:30:00.700Z"))).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+	});
+
 	it("pauses on three failures before admitting the next due slot (adversary OBJ-015)", async () => {
 		const s = scheduler();
 		const created = await s.create(input(), "host", new Date("2026-06-20T08:00:00Z"));
