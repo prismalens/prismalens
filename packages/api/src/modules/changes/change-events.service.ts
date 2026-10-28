@@ -14,7 +14,10 @@ import type {
 	IncidentChanges,
 	RunCredential,
 } from "@prismalens/contracts/schemas";
-import { GitHubDeploymentsSegment } from "@prismalens/integrations";
+import {
+	GitHubDeploymentsSegment,
+	isLegacyTemplateId,
+} from "@prismalens/integrations";
 import { repoLabel, urlHost } from "../../core/harness/git-credential.js";
 import {
 	GitFailure,
@@ -311,9 +314,9 @@ export class ChangeEventsService {
 			urlHost(repo.url) !== "github.com"
 		)
 			return;
-		const connectionId = await this.apiConnection(repo);
-		if (!connectionId) return;
 		try {
+			const connectionId = await this.apiConnection(repo);
+			if (!connectionId) return;
 			const events = await new GitHubDeploymentsSegment().listDeploymentEvents(
 				this.integrations.createRequestFn(connectionId),
 				repo.fullName,
@@ -340,18 +343,24 @@ export class ChangeEventsService {
 		}
 	}
 
-	/** The discovery link, else the pinned token when it is a GitHub API token: a git-host-token sends to github.com, not api.github.com. */
+	/** The discovery link unless it is a legacy github-app row that runs nothing (#673), else the pinned token when it is a GitHub API token: a git-host-token sends to github.com, not api.github.com. */
 	private async apiConnection(
 		repo: Link["repository"],
 	): Promise<string | null> {
-		if (repo.connectionId) return repo.connectionId;
+		const templateOf = async (id: string) =>
+			(
+				await this.prisma.connection.findUnique({
+					where: { id },
+					select: { integration: { select: { templateId: true } } },
+				})
+			)?.integration.templateId;
+		if (repo.connectionId) {
+			const t = await templateOf(repo.connectionId);
+			if (!t || !isLegacyTemplateId(t)) return repo.connectionId;
+		}
 		const pick = pickOf(repo.metadata);
 		if (!pick) return null;
-		const conn = await this.prisma.connection.findUnique({
-			where: { id: pick },
-			select: { integration: { select: { templateId: true } } },
-		});
-		return conn?.integration.templateId === "github-token" ? pick : null;
+		return (await templateOf(pick)) === "github-token" ? pick : null;
 	}
 
 	/** Upsert by host, repository, commit and service: a re-read or an overlapping window never doubles a row. */

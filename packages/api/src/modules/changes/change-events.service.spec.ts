@@ -418,13 +418,55 @@ describe("ChangeEventsService", () => {
 			await pull(null);
 			expect(requestFn).not.toHaveBeenCalled();
 
+			templateId.mockImplementation((async ({ where }: { where: { id: string } }) => ({
+				integration: {
+					templateId: where.id === "link" ? "github-app" : "github-token",
+				},
+			})) as never);
+			requestFn.mockClear();
+			await pull(pinned, "link");
+			expect(requestFn).toHaveBeenLastCalledWith("pin");
+
+			templateId.mockResolvedValue({
+				integration: { templateId: "git-host-token" },
+			} as never);
 			await pull(pinned, "link");
 			expect(requestFn).toHaveBeenLastCalledWith("link");
-			expect(list).toHaveBeenCalledTimes(2);
+			expect(list).toHaveBeenCalledTimes(3);
 		} finally {
 			list.mockRestore();
 			requestFn.mockRestore();
 			templateId.mockRestore();
+		}
+	});
+
+	it("keeps the sync awaiting commits when the pinned-connection lookup rejects (#854)", async () => {
+		const lookup = vi
+			.spyOn(prisma.connection, "findUnique")
+			.mockRejectedValue(new Error("db down"));
+		try {
+			await expect(
+				service["pullDeploys"](
+					{
+						key: "k",
+						serviceId: "s",
+						serviceName: "svc",
+						subPath: null,
+						repository: {
+							id: "r",
+							sourceKind: "url",
+							fullName: "acme/api",
+							url: "https://github.com/acme/api.git",
+							defaultBranch: "main",
+							connectionId: null,
+							metadata: JSON.stringify({ credentialConnectionId: "pin" }),
+						},
+					},
+					{ start: new Date(Date.now() - HOUR), end: new Date() },
+				),
+			).resolves.toBeUndefined();
+		} finally {
+			lookup.mockRestore();
 		}
 	});
 
