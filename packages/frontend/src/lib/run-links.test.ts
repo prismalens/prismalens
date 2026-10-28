@@ -35,6 +35,16 @@ describe("runLinks", () => {
 		]);
 	});
 
+	it("ends a link at the end of its line in the report (#977 OBJ-015)", () => {
+		const links = runLinks([], {
+			summary: "Dashboard: https://g.example/d/abc\nRunbook: https://r.example/x",
+		});
+		expect(links.map((l) => l.url)).toEqual([
+			"https://g.example/d/abc",
+			"https://r.example/x",
+		]);
+	});
+
 	it("takes nothing that is not http or https", () => {
 		const links = runLinks(
 			[

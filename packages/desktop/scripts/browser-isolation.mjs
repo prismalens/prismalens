@@ -213,6 +213,21 @@ async function main() {
 		asked,
 	);
 
+	await win.webContents.executeJavaScript(
+		`window.prismalensDesktop.browser.go("clear")`,
+	);
+	await wait(800);
+	check(
+		"leaving a run stops its page and forgets its history (#977 OBJ-012)",
+		view.webContents.getURL() === "about:blank" &&
+			!view.webContents.navigationHistory.canGoBack() &&
+			!view.getVisible(),
+		{
+			url: view.webContents.getURL(),
+			back: view.webContents.navigationHistory.canGoBack(),
+		},
+	);
+
 	const failed = Object.entries(results).filter(([, v]) => v !== "pass");
 	log(failed.length ? `${failed.length} failed` : "all passed");
 	server.close();

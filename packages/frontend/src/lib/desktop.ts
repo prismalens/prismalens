@@ -16,7 +16,9 @@ export interface DesktopBrowser {
 	setBounds: (
 		rect: { x: number; y: number; width: number; height: number } | null,
 	) => void;
-	go: (to: "back" | "forward" | "reload" | "external" | "state") => void;
+	go: (
+		to: "back" | "forward" | "reload" | "external" | "state" | "clear",
+	) => void;
 	/** `null` when the view has not been made yet. */
 	onState: (
 		listener: (state: DesktopBrowserState | null) => void,

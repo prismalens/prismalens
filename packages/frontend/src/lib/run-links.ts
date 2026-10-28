@@ -43,7 +43,15 @@ export function runLinks(
 		for (const v of Object.values(a.labels ?? {}))
 			for (const m of v.match(URL_IN_TEXT) ?? []) add(m);
 	}
-	for (const m of JSON.stringify(report ?? "").match(URL_IN_TEXT) ?? [])
-		add(m.replace(/\\+$/, ""));
+	// Each string of the report on its own: a JSON dump would glue an escaped newline onto a link (#977 OBJ-015).
+	for (const text of strings(report))
+		for (const m of text.match(URL_IN_TEXT) ?? []) add(m);
 	return Array.from(out.values());
+}
+
+function strings(v: unknown): string[] {
+	if (typeof v === "string") return [v];
+	if (Array.isArray(v)) return v.flatMap(strings);
+	if (v && typeof v === "object") return Object.values(v).flatMap(strings);
+	return [];
 }
