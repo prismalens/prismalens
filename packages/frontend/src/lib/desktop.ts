@@ -33,6 +33,8 @@ interface DesktopBridge {
 	setTheme: (theme: "light" | "dark") => void;
 	/** Absent in a desktop build from before the panel's browser. */
 	browser?: DesktopBrowser;
+	/** The terminal key the launcher got when it paired (#931); absent in older builds. */
+	terminalKey?: () => string | undefined;
 }
 
 declare global {
