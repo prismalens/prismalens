@@ -147,11 +147,12 @@ export function RunDetailsPanel({
 		},
 	];
 	return (
-		<aside
+		<div
 			id="run-details"
+			role="group"
 			aria-label={title}
 			onKeyDown={onKeyDown}
-			className="flex h-full w-[380px] shrink-0 flex-col bg-surface-1 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
+			className="flex h-full min-h-0 flex-col"
 			data-testid="run-details"
 		>
 			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
@@ -315,7 +316,7 @@ export function RunDetailsPanel({
 					</ol>
 				</TabsPrimitive.Content>
 			</TabsPrimitive.Root>
-		</aside>
+		</div>
 	);
 }
 

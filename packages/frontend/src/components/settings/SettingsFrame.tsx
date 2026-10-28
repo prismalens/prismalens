@@ -92,7 +92,7 @@ export function SettingsFrame({
 	usePageTitle(services ? title : `${title}, Settings`);
 	return (
 		<div
-			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas md:left-(--sidebar-w)"
+			className="flex h-full flex-col bg-canvas"
 			data-testid="settings-frame"
 		>
 			<PageHeader title={services ? "Services" : "Settings"}>

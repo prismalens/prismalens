@@ -33,6 +33,8 @@ import {
 import { Transcript } from "@/components/investigation/Transcript";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
+import { RightPanel } from "@/components/shell/PanelShell";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
@@ -172,7 +174,8 @@ export function RunPage() {
 	);
 	const flaggedCount = inv?.report?.flaggedContent?.length ?? 0;
 
-	const [panel, setPanel] = useState(false);
+	const { rightPanel, setRightPanel } = useLayoutPrefs();
+	const [sheetOpen, setSheetOpen] = useState(false);
 	const [tab, setTab] = useState<DetailsTab>("summary");
 	const [open, setOpen] = useState<Set<number>>(() => new Set());
 	const [highlight, setHighlight] = useState<number | null>(null);
@@ -181,6 +184,11 @@ export function RunPage() {
 	const [workOpen, setWorkOpen] = useState(false);
 	const [preview, setPreview] = useState(false);
 	const phone = useMediaQuery(PHONE);
+	const panel = phone ? sheetOpen : rightPanel;
+	const setPanel = useCallback(
+		(open: boolean) => (phone ? setSheetOpen : setRightPanel)(open),
+		[phone, setRightPanel],
+	);
 	const focusLater = useFocusLater();
 	const workspace = inv?.workspace;
 	// The file open in Evidence, and the control (and tab) that opened it, which Back returns to.
@@ -196,7 +204,7 @@ export function RunPage() {
 			setPanel(true);
 			focusLater("evidence-file-back");
 		},
-		[focusLater],
+		[focusLater, setPanel],
 	);
 	const closeFile = useCallback(() => {
 		setViewing(null);
@@ -264,7 +272,7 @@ export function RunPage() {
 	const closePanel = useCallback(() => {
 		setPanel(false);
 		window.setTimeout(() => toggleRef.current?.focus(), 0);
-	}, []);
+	}, [setPanel]);
 	useEffect(() => {
 		if (!panel) return;
 		// Capture: Esc closes the panel before anything bound to Esc on the page goes Back.
@@ -282,7 +290,7 @@ export function RunPage() {
 	const seeFlag = useCallback(() => {
 		setTab("context");
 		setPanel(true);
-	}, []);
+	}, [setPanel]);
 
 	const report = inv?.report;
 	const reportTitle =
@@ -536,70 +544,78 @@ export function RunPage() {
 					<DockedComposer key={inv?.id ?? "none"} onStep={jump} />
 				)}
 			</div>
-			{panel && inv && (
-				<RunDetailsPanel
-					title={chat ? "Question details" : `${name} details`}
-					tab={tab}
-					onTab={setTab}
-					onClose={closePanel}
-					incidentId={incident.id}
-					summaryTop={overview}
-					contextTop={
-						!chat && (
-							<RunRunbooks
-								runId={inv.id}
-								preRun={preRun}
-								loadError={!!run.error}
-							/>
-						)
-					}
-					summary={summarySections(
-						inv,
-						summaryFacts(inv, run, {
-							now,
-							agent: harness ? `${harness.label}${version}` : who.agent,
-							model: modelChip,
-							asked,
-							harness,
-						}),
-					)}
-					evidence={evidenceSections(inv, (e) => evidenceStep(e, steps), {
-						live,
-						standing: standingRun(record, inv.id),
-						fileOf: (source) => citedFile(source, workspace),
-					})}
-					context={contextSections({
-						report,
-						flaggedStep: flaggedAt,
-						items,
-						briefBy:
-							startedBy(inv.triggerType) === "you"
-								? "you"
-								: `PrismaLens when it started ${name}`,
-						alert: primaryAlert(incident, now),
-					})}
-					flaggedCount={flaggedCount}
-					steps={steps}
-					onJump={jump}
-					files={{
-						runId: inv.id,
-						viewing,
-						onOpen: openFile,
-						onClose: closeFile,
-						backLabel: origin.current?.id.startsWith("open-step-")
-							? "Back to the step"
-							: origin.current?.id.startsWith("steps-row-")
-								? "Back to steps"
-								: "Back to citation",
-						phone,
-						reads: viewing ? readsOf(viewing, steps, workspace) : [],
-						codeHost:
-							viewing && viewingRepo ? codeHostUrl(viewingRepo, viewing) : null,
-						stepFile: fileOfStep,
-						onOpenHypotheses: () => setPreview(true),
-					}}
-				/>
-			)}
+			<RightPanel
+				open={panel && !!inv}
+				label={chat ? "Question details" : `${name} details`}
+				onClose={closePanel}
+			>
+				{inv && (
+					<RunDetailsPanel
+						title={chat ? "Question details" : `${name} details`}
+						tab={tab}
+						onTab={setTab}
+						onClose={closePanel}
+						incidentId={incident.id}
+						summaryTop={overview}
+						contextTop={
+							!chat && (
+								<RunRunbooks
+									runId={inv.id}
+									preRun={preRun}
+									loadError={!!run.error}
+								/>
+							)
+						}
+						summary={summarySections(
+							inv,
+							summaryFacts(inv, run, {
+								now,
+								agent: harness ? `${harness.label}${version}` : who.agent,
+								model: modelChip,
+								asked,
+								harness,
+							}),
+						)}
+						evidence={evidenceSections(inv, (e) => evidenceStep(e, steps), {
+							live,
+							standing: standingRun(record, inv.id),
+							fileOf: (source) => citedFile(source, workspace),
+						})}
+						context={contextSections({
+							report,
+							flaggedStep: flaggedAt,
+							items,
+							briefBy:
+								startedBy(inv.triggerType) === "you"
+									? "you"
+									: `PrismaLens when it started ${name}`,
+							alert: primaryAlert(incident, now),
+						})}
+						flaggedCount={flaggedCount}
+						steps={steps}
+						onJump={jump}
+						files={{
+							runId: inv.id,
+							viewing,
+							onOpen: openFile,
+							onClose: closeFile,
+							backLabel: origin.current?.id.startsWith("open-step-")
+								? "Back to the step"
+								: origin.current?.id.startsWith("steps-row-")
+									? "Back to steps"
+									: "Back to citation",
+							phone,
+							reads: viewing ? readsOf(viewing, steps, workspace) : [],
+							codeHost:
+								viewing && viewingRepo
+									? codeHostUrl(viewingRepo, viewing)
+									: null,
+							stepFile: fileOfStep,
+							onOpenHypotheses: () => setPreview(true),
+						}}
+					/>
+				)}
+			</RightPanel>
 		</div>
 	);
 }
