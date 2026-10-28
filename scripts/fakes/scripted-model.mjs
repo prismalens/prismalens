@@ -145,6 +145,7 @@ export function resolveEntry(entry, tools, mainLoop) {
 		lacks,
 		resultContains,
 		resultLacks,
+		toolResults,
 		...rest
 	} = /** @type {any} */ (fileMatch);
 	/** @type {import("@copilotkit/aimock").FixtureMatch} */
@@ -172,6 +173,12 @@ export function resolveEntry(entry, tools, mainLoop) {
 		tests.push((req) => lastResult(req).includes(words));
 	for (const words of [resultLacks].flat().filter(Boolean))
 		tests.push((req) => !lastResult(req).includes(words));
+	// A replayed run's step: the conversation holds exactly this many tool results.
+	if (typeof toolResults === "number")
+		tests.push(
+			(req) =>
+				req.messages.filter((m) => m.role === "tool").length === toolResults,
+		);
 	// `userMessage` reads only the last user message; a row's marker must also hold on its retries.
 	if (typeof inConversation === "string")
 		tests.push((req) =>

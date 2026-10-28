@@ -38,6 +38,8 @@ export interface GatewayEntry {
 	findings?(): Findings;
 	/** Seeds the lease with what earlier turns of the run recorded. */
 	restore?(found: Findings): void;
+	/** The engine stopped hearing this lease: nothing more is recorded or published on it (#848). */
+	closeRecording?(): void;
 	/** Hears each HTML artifact the agent publishes (#871); returns the unsubscribe. */
 	onArtifact?(listener: (a: Artifact) => void): () => void;
 }
