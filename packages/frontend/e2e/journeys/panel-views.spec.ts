@@ -217,6 +217,27 @@ test.describe("Panel views (#973)", () => {
 		await expect(page.locator("#open-step-1")).toBeFocused();
 	});
 
+	test("on a phone, a sheet opened for a file closes with it on Back, again after Forward", async ({
+		page,
+	}) => {
+		await setup(page, 390);
+		const step1 = page.locator('[data-testid="step"][data-step="1"]');
+		await expect(step1).toBeVisible({ timeout: 15_000 });
+		if (!(await step1.getByTestId("step-body").isVisible()))
+			await step1.getByTestId("step-toggle").click();
+		await page.locator("#open-step-1").click();
+		const sheet = page.getByRole("dialog", { name: /details/i });
+		await expect(sheet.getByTestId("evidence-file")).toBeVisible();
+		for (let i = 0; i < 2; i++) {
+			await page.goBack();
+			await expect(sheet).toHaveCount(0);
+			await page.goForward();
+			await expect(sheet.getByTestId("evidence-file")).toBeVisible();
+		}
+		await page.goBack();
+		await expect(sheet).toHaveCount(0);
+	});
+
 	test("Files lists what the run touched in a named tree", async ({ page }) => {
 		await setup(page);
 		await page.getByTestId("details-toggle").click();

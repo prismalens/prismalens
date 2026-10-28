@@ -161,6 +161,28 @@ describe("splitPatch", () => {
 		expect(files[0]?.text).toContain("+y");
 		expect(files[1]?.text).not.toContain("+y");
 	});
+
+	it("keeps a file that became a symlink as one entry, deletion and creation together", () => {
+		const patch = [
+			"diff --git a/start.sh b/start.sh",
+			"deleted file mode 100755",
+			"--- a/start.sh",
+			"+++ /dev/null",
+			"@@ -1 +0,0 @@",
+			"-echo hi",
+			"diff --git a/start.sh b/start.sh",
+			"new file mode 120000",
+			"--- /dev/null",
+			"+++ b/start.sh",
+			"@@ -0,0 +1 @@",
+			"+bin/start",
+			"",
+		].join("\n");
+		const files = splitPatch(patch);
+		expect(files).toHaveLength(1);
+		expect(files[0]?.text).toContain("-echo hi");
+		expect(files[0]?.text).toContain("+bin/start");
+	});
 });
 
 describe("changeNote", () => {

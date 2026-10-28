@@ -1479,13 +1479,14 @@ const COMPARE_DEPLOYMENTS = 10;
  * the diff endpoint never takes a commit from the caller (#973). A repo that
  * cannot be read is skipped; this never fails the run.
  */
-async function comparisonsFor(
+export async function comparisonsFor(
 	repos: RunWorkspace["repos"],
-	ports: RunPorts,
+	ports: Pick<RunPorts, "deployments">,
 	cancel: AbortSignal,
+	deadlineMs = COMPARE_MS,
 ): Promise<RunComparison[]> {
 	// One deadline for every repo, and Stop still stops: this runs before the agent starts (#975 OBJ-014).
-	const signal = AbortSignal.any([cancel, AbortSignal.timeout(COMPARE_MS)]);
+	const signal = AbortSignal.any([cancel, AbortSignal.timeout(deadlineMs)]);
 	const pairs: RunComparison[] = [];
 	for (const repo of repos) {
 		if (signal.aborted) break;
@@ -1493,7 +1494,10 @@ async function comparisonsFor(
 		if (!dir) continue;
 		try {
 			const deployments = (
-				(await ports.deployments?.(repo.services)) ?? []
+				(await untilAborted(
+					ports.deployments?.(repo.services) ?? Promise.resolve([]),
+					signal,
+				)) ?? []
 			).slice(0, COMPARE_DEPLOYMENTS);
 			const pair = await compareFor(
 				dir,

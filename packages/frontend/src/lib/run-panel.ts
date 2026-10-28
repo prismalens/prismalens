@@ -98,14 +98,19 @@ export function splitPatch(patch: string): PatchFile[] {
 	const starts = Array.from(patch.matchAll(/^diff --git /gm)).map(
 		(m) => m.index ?? 0,
 	);
-	return starts.map((start, i) => {
+	const out: PatchFile[] = [];
+	starts.forEach((start, i) => {
 		const text = patch.slice(start, starts[i + 1] ?? patch.length);
 		const header = /^diff --git a\/(.+?) b\/(.+)$/m.exec(text);
 		const from = /^rename from (.+)$/m.exec(text)?.[1];
 		const to = /^rename to (.+)$/m.exec(text)?.[1];
 		const path = to ?? header?.[2] ?? "";
-		return { path, oldPath: from ?? null, text };
+		// Git splits a file that became a symlink (or back) into a deletion and a creation; one file in numstat (#975 OBJ-013).
+		const prev = out[out.length - 1];
+		if (prev && path && prev.path === path && !from) prev.text += text;
+		else out.push({ path, oldPath: from ?? null, text });
 	});
+	return out;
 }
 
 /** A sentence for a file change with no lines to draw (a mode change, a binary file); null when it has hunks. */
