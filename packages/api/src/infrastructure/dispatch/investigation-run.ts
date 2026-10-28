@@ -1249,6 +1249,7 @@ export function followUpModelSource(
 function runOptionsOf(runtime: AgentRuntime) {
 	return {
 		env: runtime.env,
+		...(runtime.policy ? { policy: runtime.policy } : {}),
 		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
 		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
 		...(runtime.note ? { runtimeNote: runtime.note } : {}),

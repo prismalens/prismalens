@@ -12,9 +12,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import { type AccessLevel, getHarnessProviderKeys, type HarnessId } from "@prismalens/config/harness";
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData, type RunWorkspace } from "@prismalens/contracts";
-import { type conductRun, withPreRunCoverage } from "@prismalens/engine";
+import { type conductRun, prismalensLaunchPolicy, withPreRunCoverage } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { RepoSourceService, type Snapshot } from "../../core/harness/repo-source.service.js";
@@ -85,7 +85,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
-		agentRuntime: vi.fn(async (id: HarnessId) => ({ env: getHarnessProviderKeys(id, process.env), note: null })),
+		agentRuntime: vi.fn(async (_id: HarnessId) => ({ env: {}, note: null })),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
 		})),
@@ -1111,16 +1111,17 @@ describe("harness child env (trust floor, #628)", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("passes the resolved harness's provider keys, never PRISMALENS_* or the rest of process.env", async () => {
+	it("hands the run the agent's stored values and its floor; the host env is the engine's to filter (#916)", async () => {
 		vi.stubEnv("PRISMALENS_AUTH_SECRET", "leak-me");
-		vi.stubEnv("PRISMALENS_WEBHOOK_SECRET", "leak-me-too");
-		vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
 		vi.stubEnv("SOME_UNRELATED_HOST_VAR", "noise");
 		mocks.conductRun.mockReset();
 		mocks.conductRun.mockResolvedValue({
 			report: { summary: "done", rootCause: null, nextSteps: [] },
 		});
-		const ports = fakePorts();
+		const policy = prismalensLaunchPolicy({ strict: true });
+		const ports = fakePorts({
+			agentRuntime: vi.fn(async () => ({ env: { MY_KEY: "v" }, policy, note: null })),
+		});
 
 		await runInvestigationJob(
 			{ id: "job-env", investigationId: "inv-env", attempts: 1 },
@@ -1129,13 +1130,9 @@ describe("harness child env (trust floor, #628)", () => {
 			ports,
 		);
 
-		const [opts] = mocks.conductRun.mock.calls[0] as [{ env: Record<string, string> }];
-		// `resolveHarness` in `fakePorts` defaults to opencode, which lists
-		// ANTHROPIC_API_KEY among its provider keys (registry row).
-		expect(opts.env.ANTHROPIC_API_KEY).toBe("sk-ant-test");
-		expect(opts.env.PRISMALENS_AUTH_SECRET).toBeUndefined();
-		expect(opts.env.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
-		expect(opts.env.SOME_UNRELATED_HOST_VAR).toBeUndefined();
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ env: Record<string, string>; policy?: unknown }];
+		expect(opts.env).toEqual({ MY_KEY: "v" });
+		expect(opts.policy).toEqual(policy);
 	});
 
 	it("spawns with the agent's Settings runtime: env, command and arguments (#907)", async () => {

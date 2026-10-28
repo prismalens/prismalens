@@ -38,9 +38,7 @@ export function wanted(pins, adapters) {
 /** Returns the source with every row in `rows` tested on its wanted versions, and the ids it moved. */
 export function retest(source, rows, date) {
 	const lines = source.split("\n");
-	const start = lines.findIndex((l) =>
-		l.startsWith("export const HARNESS_REGISTRY"),
-	);
+	const start = lines.findIndex((l) => l.startsWith("const PRODUCT"));
 	const moved = [];
 	for (const [id, want] of Object.entries(rows)) {
 		const row = lines.findIndex(

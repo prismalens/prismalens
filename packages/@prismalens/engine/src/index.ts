@@ -6,6 +6,7 @@
  * Adapter, session, run loop, child launch. No model call lives here.
  */
 export * from "./adapter/acp-adapter.js";
+export * from "./launch/policy.js";
 export * from "./launch/process.js";
 export * from "./launch/types.js";
 export * from "./run/conductor.js";

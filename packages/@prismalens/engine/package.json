@@ -48,6 +48,7 @@
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "1.9.0",
+		"@prismalens/agent-host": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"jsonc-parser": "3.3.1",
@@ -58,7 +59,6 @@
 		"@modelcontextprotocol/server": "~2.3.1",
 		"@types/node": "catalog:",
 		"ajv": "^8.20.0",
-		"cross-spawn": "^7.0.6",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

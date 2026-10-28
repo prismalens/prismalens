@@ -73,7 +73,7 @@ export function effectiveAccess(
 export const HarnessSettingSchema = z.enum(["auto", ...HARNESS_IDS]);
 export type HarnessSetting = z.infer<typeof HarnessSettingSchema>;
 
-/** One registry row as the doctor and the settings card show it. */
+/** One registry row as the Settings agent card shows it. */
 /** A harness's `thought_level` option over ACP, with its own default (R4.2). */
 export const EffortOptionSchema = z.object({
 	id: z.string(),
@@ -161,7 +161,7 @@ export const HarnessStatusSchema = z.object({
 	localDefault: LocalDefaultSchema.default({ permission: null }),
 	/** How the Model setting reaches this harness: ACP `session/set_config_option`, or not at all (R4.2). */
 	modelVia: z.enum(["acp", "unsupported"]),
-	/** One line the picker and the doctor show: how to sign this harness in. */
+	/** One line the picker and the Settings check show: how to sign this harness in. */
 	loginHint: z.string(),
 	/** The model the host env names for this harness; a run with no model set uses it (walk f18). Absent from older APIs. */
 	envModel: z
@@ -212,7 +212,7 @@ export const HarnessStatusSchema = z.object({
 		.object({
 			at: z.string(),
 			outcome: HarnessProbeOutcomeSchema,
-			/** The check's one line, as `pl doctor` prints it. */
+			/** The check's one line, as Settings shows it. */
 			detail: z.string(),
 			/** The version the agent reported; null when it reported none (#818 w5-31). */
 			version: z.string().nullable().default(null),
@@ -292,6 +292,8 @@ export const HarnessSettingsSchema = z.object({
 	/** The folder the agent's config-dir env var points at. */
 	configDirs: z.partialRecord(z.enum(HARNESS_IDS), PathSchema).optional(),
 	localAgent: LocalAgentSchema.optional(),
+	/** Only pass named variables: the agent gets an allowlist, not the user's environment (#817). */
+	strictEnv: z.boolean().optional(),
 	/** Names of the variables set per agent; values are never read back. */
 	envNames: z
 		.partialRecord(z.enum(HARNESS_IDS), z.array(EnvNameSchema))
@@ -345,6 +347,8 @@ export const UpdateHarnessSettingsSchema = z
 			.optional(),
 		/** `null` removes the local agent. Host only. */
 		localAgent: LocalAgentSchema.nullable().optional(),
+		/** Only pass named variables (#817). Host only. */
+		strictEnv: z.boolean().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
@@ -355,13 +359,13 @@ export const HarnessesResponseSchema = z.object({
 });
 export type HarnessesResponse = z.infer<typeof HarnessesResponseSchema>;
 
-/** `pl doctor`'s ACP handshake, on demand from the Settings Harness tab (#630, Unit D on #337). */
+/** The readiness check's ACP handshake, on demand from Settings → Agent (#630, Unit D on #337). */
 export const CheckHarnessInputSchema = z.object({
 	id: z.enum(HARNESS_IDS),
 });
 export type CheckHarnessInput = z.infer<typeof CheckHarnessInputSchema>;
 
-/** `initialize` + `session/new`, no prompt turn. Four outcomes; `detail` is the words `pl doctor` prints too, one line. */
+/** `initialize` + `session/new`, no prompt turn. Four outcomes; `detail` is the words Settings shows, one line. */
 export const HarnessProbeResultSchema = z.object({
 	id: z.enum(HARNESS_IDS),
 	outcome: HarnessProbeOutcomeSchema,
