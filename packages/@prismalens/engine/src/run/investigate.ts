@@ -689,7 +689,10 @@ export async function* runInvestigation(
 			} else if (item.kind === "harness_finding") {
 				yield adapter.findingRecorded(item.finding);
 			} else if (item.kind === "harness_artifact") {
-				yield adapter.artifactPublished(item.artifact);
+				if (!shownPages.has(item.artifact.id)) {
+					shownPages.add(item.artifact.id);
+					yield adapter.artifactPublished(item.artifact);
+				}
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -718,11 +721,18 @@ export async function* runInvestigation(
 	 * What the run leaves behind on any end (#820): an ask it never heard back on
 	 * reads stopped, and a message it never read, not delivered.
 	 */
+	const shownPages = new Set<string>();
 	const toolsSummary = function* (): Generator<CanonicalEvent> {
 		unCalled?.();
 		unFound?.();
 		unPublished?.();
 		opts.gateway?.closeRecording?.();
+		// A page acknowledged after the turn's last item was read is still shown, once.
+		for (const page of opts.gateway?.artifacts?.() ?? [])
+			if (!shownPages.has(page.id)) {
+				shownPages.add(page.id);
+				yield adapter.artifactPublished(page);
+			}
 		if (offer && opts.gateway && !summarized) {
 			summarized = true;
 			yield adapter.harnessTools(

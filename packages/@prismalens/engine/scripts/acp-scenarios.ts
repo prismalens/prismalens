@@ -419,6 +419,28 @@ export function gatewayProblem(
 		)
 			return `evidence "${id}" does not hold "${words}"`;
 	}
+	const finding = (type: "evidence" | "hypothesis", id: string) =>
+		events.flatMap((e) =>
+			e.kind === "finding_recorded" &&
+			e.finding.type === type &&
+			e.finding.id === id
+				? [e.finding]
+				: [],
+		)[0];
+	for (const [id, quote] of Object.entries(want.evidenceQuote ?? {})) {
+		const f = finding("evidence", id);
+		if (f?.type !== "evidence" || f.quote !== quote)
+			return `evidence "${id}" quote is not ${JSON.stringify(quote)}`;
+	}
+	for (const [id, is] of Object.entries(want.hypothesisIs ?? {})) {
+		const f = finding("hypothesis", id);
+		if (
+			f?.type !== "hypothesis" ||
+			f.status !== is.status ||
+			JSON.stringify(f.evidenceIds) !== JSON.stringify(is.evidenceIds)
+		)
+			return `hypothesis "${id}" is not ${JSON.stringify(is)}`;
+	}
 	const titles = events.flatMap((e) =>
 		e.kind === "artifact_published" ? [e.artifact.title] : [],
 	);
