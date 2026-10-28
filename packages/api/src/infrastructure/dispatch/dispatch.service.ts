@@ -1615,16 +1615,22 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				this.streamRelay.attach(id);
 				continue;
 			}
-			boot.skipped.push({ id, reason });
 			boot.keep.add(id);
-			await this.refuseRecovery(id, resume, reason).catch(async (e) => {
-				this.logger.warn(
-					`Could not refuse recovery ${id}; holding it for the next start: ${(e as Error).message}`,
-				);
-				await this.holdRecoveries({ id }).catch(() => {
-					settled = false;
-				});
-			});
+			const landed = await this.refuseRecovery(id, resume, reason).then(
+				() => true,
+				(e: Error) => {
+					this.logger.warn(
+						`Could not refuse recovery ${id}; holding it for the next start: ${e.message}`,
+					);
+					return this.holdRecoveries({ id }).then(
+						() => true,
+						() => false,
+					);
+				},
+			);
+			// Handled only once its refusal or parking is written; a retry checks it again (#981 OBJ-013).
+			if (landed) boot.skipped.push({ id, reason });
+			else settled = false;
 		}
 		return settled;
 	}

@@ -1571,6 +1571,31 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		await service.onApplicationShutdown();
 	});
 
+	it("a refusal that could be neither written nor parked is tried again before dispatch is let go (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering({ enabled: false });
+		const transaction = vi.spyOn(prisma, "$transaction").mockRejectedValue(new Error("database is locked"));
+		const updateMany = prisma.job.updateMany.bind(prisma.job);
+		const parking = vi.spyOn(prisma.job, "updateMany").mockImplementation(((args: { data?: { runAt?: Date } }) =>
+			args?.data?.runAt ? Promise.reject(new Error("database is locked")) : updateMany(args as never)) as never);
+		const timers = vi.spyOn(globalThis, "setInterval");
+
+		await service.onModuleInit();
+		expect(service["dispatcher"]["held"]).toBe(true);
+		transaction.mockRestore();
+		parking.mockRestore();
+		const retry = timers.mock.calls.find(([, ms]) => ms === 10_000)?.[0] as () => void;
+		timers.mockRestore();
+		retry();
+
+		await vi.waitFor(() => expect(service["dispatcher"]["held"]).toBe(false));
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+		expect((await read(row.id)).error).toBe("Not resumed: Resume after a restart is off in Settings.");
+		await service.onApplicationShutdown();
+	});
+
 	it("an agent that had a session but left no pid receipt is not proven gone (OBJ-010)", async () => {
 		const service = new DispatchService(fakeBus() as never, {} as never, investigations, {} as never, timeline as never, {} as never, {} as never, prisma, {} as never, {} as never, {} as never, {} as never, {} as never);
 		expect(await service.previousGone("no-receipt-run", "ses_1")).toBe(false);
