@@ -60,6 +60,10 @@ export interface GatewayExpectation {
 	records?: { evidence?: string[]; hypotheses?: string[] };
 	/** Words each recorded evidence item's observation must hold, by id. */
 	evidenceHas?: Record<string, string>;
+	/** Each recorded evidence item's exact quote, by id. */
+	evidenceQuote?: Record<string, string>;
+	/** Each recorded hypothesis's status and the evidence ids it links, by id. */
+	hypothesisIs?: Record<string, { status: string; evidenceIds: string[] }>;
 	/** Titles of the HTML pages the run must have published (#871). */
 	artifacts?: string[];
 }

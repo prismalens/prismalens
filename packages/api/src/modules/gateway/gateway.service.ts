@@ -133,7 +133,7 @@ interface RunState {
 	history?: () => Promise<Findings>;
 	loading?: Promise<void>;
 	/** HTML pages the agent published, and who hears the next one (#871). */
-	artifacts: number;
+	artifacts: Artifact[];
 	published: Set<(a: Artifact) => void>;
 	/** False once the engine stopped hearing the run: a record would reach neither the stream nor the report. */
 	recording: boolean;
@@ -206,7 +206,7 @@ export class GatewayService {
 			listeners: new Set(),
 			ledger: new FindingsLedger(),
 			found: new Set(),
-			artifacts: 0,
+			artifacts: [],
 			published: new Set(),
 			recording: true,
 			view: runView(this.tools, { search: this.toolSearch(harness) }),
@@ -244,6 +244,7 @@ export class GatewayService {
 			closeRecording: () => {
 				state.recording = false;
 			},
+			artifacts: () => [...state.artifacts],
 			onArtifact: (listener) => {
 				state.published.add(listener);
 				return () => state.published.delete(listener);
@@ -419,16 +420,16 @@ export class GatewayService {
 			publish: async (runId, page) => {
 				const state = this.runs.get(runId);
 				if (!state?.recording) return { error: NOT_LIVE, ended: true };
-				if (state.artifacts >= ARTIFACTS_PER_RUN)
+				if (state.artifacts.length >= ARTIFACTS_PER_RUN)
 					return {
 						error: `This run already holds ${ARTIFACTS_PER_RUN} pages`,
 					};
-				state.artifacts++;
 				const artifact: Artifact = {
-					id: `a${state.artifacts}`,
+					id: `a${state.artifacts.length + 1}`,
 					...page,
 					at: new Date().toISOString(),
 				};
+				state.artifacts.push(artifact);
 				for (const listener of [...state.published]) listener(artifact);
 				return { id: artifact.id };
 			},

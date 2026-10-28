@@ -108,7 +108,7 @@ describe("executeTool failure contract", () => {
 
 		const call = await executeTool(tool, { count: "not-a-number" }, makeCtx());
 		expect(call.isError).toBe(true);
-		const parsed = JSON.parse(call.output);
+		const parsed = resultValue(call.output);
 		expect(parsed.error).toBe("invalid_input");
 		expect(parsed.message).toContain("count");
 		expect(parsed.next).toBeDefined();
@@ -134,7 +134,7 @@ describe("executeTool failure contract", () => {
 			makeCtx({ secrets: ["secret-123"] }),
 		);
 		expect(call.isError).toBe(true);
-		const parsed = JSON.parse(call.output);
+		const parsed = resultValue(call.output);
 		expect(parsed.error).toBe("internal");
 		expect(call.output).not.toContain("secret-123");
 		expect(FAILURE_CODES).toContain(parsed.error);
@@ -153,7 +153,7 @@ describe("executeTool failure contract", () => {
 
 		const call = await executeTool(tool, {}, makeCtx({ timeoutMs: 20 }));
 		expect(call.isError).toBe(true);
-		const parsed = JSON.parse(call.output);
+		const parsed = resultValue(call.output);
 		expect(parsed.error).toBe("timeout");
 		expect(FAILURE_CODES).toContain(parsed.error);
 	});
@@ -171,7 +171,7 @@ describe("executeTool failure contract", () => {
 
 		const call = await executeTool(tool, {}, makeCtx());
 		expect(call.isError).toBe(true);
-		const parsed = JSON.parse(call.output);
+		const parsed = resultValue(call.output);
 		expect(parsed).toEqual({ error: "not_found", message: "m", next: "n" });
 		expect(FAILURE_CODES).toContain(parsed.error);
 	});
@@ -298,7 +298,7 @@ describe("round-3 guarantees (#848)", () => {
 		expect(call.output).not.toContain("secret-1234");
 	});
 
-	it("puts the data line before a success, never before a failure", async () => {
+	it("puts the data line before every result, a failure included", async () => {
 		const ok = defineHarnessTool({
 			name: "ok_tool",
 			title: "t",
@@ -316,7 +316,7 @@ describe("round-3 guarantees (#848)", () => {
 			{ n: "x" },
 			ctx,
 		);
-		expect(bad.output.startsWith(DATA_NOTE)).toBe(false);
+		expect(bad.output.startsWith(DATA_NOTE)).toBe(true);
 	});
 
 	it("never cuts a record call short, so a late write cannot follow a timeout answer", async () => {
@@ -394,6 +394,26 @@ describe("round-4 guarantees (#848)", () => {
 		});
 		const call = await executeTool(tool, {}, ctx);
 		expect(call.isError).toBe(true);
-		expect(JSON.parse(call.output).error).toBe("internal");
+		expect(resultValue(call.output).error).toBe("internal");
+	});
+});
+
+describe("round-5 guarantees (#848)", () => {
+	it("scrubs a secret inside string values only, so the recorded input stays valid", async () => {
+		const tool = defineHarnessTool({
+			name: "port_tool",
+			title: "t",
+			description: "d",
+			group: "core",
+			effect: "read",
+			input: z.object({ q: z.string(), port: z.number() }),
+			run: async () => ({ value: { ok: true }, secrets: ["1234"] }),
+		});
+		const call = await executeTool(
+			tool,
+			{ q: "pw 1234", port: 1234 },
+			{ runId: "r1", signal: new AbortController().signal },
+		);
+		expect(call.input).toEqual({ q: "pw [redacted]", port: 1234 });
 	});
 });
