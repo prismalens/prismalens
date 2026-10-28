@@ -64,6 +64,7 @@ import { type GatewayEntry, gatewayOffer } from "./gateway.js";
 import { RESTART_NOTE } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
+	abortOutcome,
 	askWindow,
 	denyAllPolicy,
 	levelPolicy,
@@ -603,7 +604,7 @@ export async function* runInvestigation(
 		items: AsyncGenerator<AcpStreamItem>,
 	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 		for await (const item of items) {
-			if (opts.signal?.aborted) session.cancel();
+			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
 			if (item.kind === "update") {
 				const u = item.update;
 				if (u.sessionUpdate === "agent_message_chunk") {
@@ -721,7 +722,7 @@ export async function* runInvestigation(
 	};
 	const leftovers = function* (tools = true): Generator<CanonicalEvent> {
 		for (const askId of openAsks)
-			yield adapter.permissionAnswer(askId, "stopped");
+			yield adapter.permissionAnswer(askId, abortOutcome(opts.signal));
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
@@ -747,7 +748,7 @@ export async function* runInvestigation(
 	const unCalled = opts.gateway?.onCall((c) =>
 		session.inject({ kind: "harness_tool_call", ...c }),
 	);
-	const onAbort = (): void => session.cancel();
+	const onAbort = (): void => session.cancel(opts.signal?.reason);
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
 	const label = HARNESS_REGISTRY[opts.harness]?.label ?? descriptor.binary;
 	const modelVia =
