@@ -338,6 +338,16 @@ describe("PrismaJobStore", () => {
 			expect(await store.expireScheduled(at(3_000))).toEqual([]);
 		});
 
+		it("leaves a row a person re-armed after the expiry read (adversary OBJ-012)", async () => {
+			await store.enqueue(sched(1, at(1_000)));
+			const [stale] = await store.scheduledPastDeadline(at(2_000));
+			const [claimed] = await store.claim("o", 1, at(500));
+			await store.complete(claimed?.id as string, "succeeded");
+			await store.enqueue(job(1, { incidentId: null }));
+			expect(await store.expireScheduledJob(stale?.id as string, at(2_000))).toBe(false);
+			expect(delegate.rows[0]).toMatchObject({ status: "pending", kind: "investigation", startBy: null });
+		});
+
 		it("runs one scheduled job at a time without holding back other runs", async () => {
 			for (const n of [1, 2, 3]) await store.enqueue(sched(n, at(600_000)));
 			await store.enqueue(job(4, { priority: 3 }));

@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import { ACCESS_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	InvestigationReport,
@@ -23,6 +24,7 @@ import {
 	RunUsageSchema,
 	type RunWorkspace,
 	RunWorkspaceSchema,
+	SCHEDULE_HOST_ONLY,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
@@ -31,6 +33,7 @@ import {
 	shownRepoUrl,
 	UNSHOWN_REPO,
 } from "../../core/harness/git-credential.js";
+import type { Request } from "express";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -406,7 +409,7 @@ export class InvestigationsController {
 			),
 
 			message: implement(investigationsContract.message).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -415,6 +418,10 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
+					scheduledRunHostOnly(
+						investigation,
+						context?.request as Request | undefined,
+					);
 					const refuse = () =>
 						new ORPCError("CONFLICT", {
 							message: "The run ended before your message reached it.",
@@ -522,7 +529,7 @@ export class InvestigationsController {
 
 			// PATCH /investigations/:id/status - Update status (Worker)
 			updateStatus: implement(investigationsContract.updateStatus).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -531,6 +538,10 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
+					scheduledRunHostOnly(
+						investigation,
+						context?.request as Request | undefined,
+					);
 					const updated = await this.investigationsService.updateStatusInternal(
 						input.id,
 						input.status,
@@ -626,7 +637,7 @@ export class InvestigationsController {
 
 			// POST /investigations/:id/result - Write result (Worker)
 			writeResult: implement(investigationsContract.writeResult).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -635,6 +646,10 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
+					scheduledRunHostOnly(
+						investigation,
+						context?.request as Request | undefined,
+					);
 
 					// Map input to InternalInvestigationResultDto structure
 					// Note: The input is already validated by Zod schema in contract
@@ -830,4 +845,19 @@ export class InvestigationsController {
 				: undefined,
 		};
 	}
+}
+
+/**
+ * A scheduled run is a standing permission the host granted, so only the host's session may
+ * message it, rewrite its status or write its result; Stop stays open to every device (#979, #982).
+ */
+function scheduledRunHostOnly(
+	run: { scheduleId?: string | null },
+	request: Request | undefined,
+): void {
+	if (
+		run.scheduleId &&
+		!request?.operator?.device.scopes.includes(ACCESS_SCOPE)
+	)
+		throw new ORPCError("FORBIDDEN", { message: SCHEDULE_HOST_ONLY });
 }
