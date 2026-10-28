@@ -42,9 +42,17 @@ export function browserWebPreferences(packaged: boolean): WebPreferences {
 export function browserUrl(raw: string): URL | null {
 	const text = raw.trim();
 	if (!text) return null;
-	const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(text)
-		? text
-		: `https://${text}`;
+	// `localhost:3000` is a host and port, not a scheme; a typed loopback address is http, as in T3 Code (#977 OBJ-014).
+	const scheme =
+		/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ||
+		/^(javascript|data|about|blob|view-source|mailto|file|chrome|devtools):/i.test(
+			text,
+		);
+	const loopback =
+		/^(localhost|127(\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(
+			text,
+		);
+	const withScheme = scheme ? text : `${loopback ? "http" : "https"}://${text}`;
 	let url: URL;
 	try {
 		url = new URL(withScheme);
@@ -114,7 +122,13 @@ export function trustedSender(
 	);
 }
 
-export type BrowserGo = "back" | "forward" | "reload" | "external" | "state";
+export type BrowserGo =
+	| "back"
+	| "forward"
+	| "reload"
+	| "external"
+	| "state"
+	| "clear";
 
 export function isGo(v: unknown): v is BrowserGo {
 	return (
@@ -122,6 +136,7 @@ export function isGo(v: unknown): v is BrowserGo {
 		v === "forward" ||
 		v === "reload" ||
 		v === "external" ||
-		v === "state"
+		v === "state" ||
+		v === "clear"
 	);
 }

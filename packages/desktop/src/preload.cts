@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld("prismalensDesktop", {
 		setBounds: (
 			rect: { x: number; y: number; width: number; height: number } | null,
 		) => ipcRenderer.send("prismalens:browser:bounds", rect),
-		go: (to: "back" | "forward" | "reload" | "external" | "state") =>
+		go: (to: "back" | "forward" | "reload" | "external" | "state" | "clear") =>
 			ipcRenderer.send("prismalens:browser:go", to),
 		onState: (listener: (state: unknown) => void) => {
 			const on = (_e: unknown, state: unknown) => listener(state);

@@ -166,7 +166,14 @@ export function attachBrowser(
 		else if (go === "forward") wc.navigationHistory.goForward();
 		else if (go === "reload") wc.reload();
 		else if (go === "state") send();
-		else if (browserUrl(wc.getURL())) void shell.openExternal(wc.getURL());
+		else if (go === "clear") {
+			// Another run, or the panel closed: the page stops and its history goes (#977 OBJ-012).
+			view.setVisible(false);
+			void wc.loadURL("about:blank").then(() => {
+				wc.navigationHistory.clear();
+				send();
+			});
+		} else if (browserUrl(wc.getURL())) void shell.openExternal(wc.getURL());
 	};
 
 	ipcMain.on(BROWSER_CHANNEL.open, onOpen);

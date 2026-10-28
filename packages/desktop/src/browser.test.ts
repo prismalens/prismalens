@@ -23,6 +23,15 @@ describe("browserUrl", () => {
 		expect(browserUrl(url)?.href).toBe(new URL(url).href);
 	});
 
+	it.each([
+		["localhost:3000/x", "http://localhost:3000/x"],
+		["127.0.0.1:9090", "http://127.0.0.1:9090/"],
+		["[::1]:8080", "http://[::1]:8080/"],
+		["grafana.internal:3000", "https://grafana.internal:3000/"],
+	])("reads %s with a port as an address, loopback as http (#977 OBJ-014)", (raw, href) => {
+		expect(browserUrl(raw)?.href).toBe(href);
+	});
+
 	it("reads a bare host as https", () => {
 		expect(browserUrl("grafana.example.com/d/x")?.href).toBe(
 			"https://grafana.example.com/d/x",
@@ -114,8 +123,8 @@ describe("trustedSender", () => {
 });
 
 describe("isGo", () => {
-	it("takes the four moves and a state request, nothing else", () => {
-		for (const g of ["back", "forward", "reload", "external", "state"])
+	it("takes the four moves, a state request and a clear, nothing else", () => {
+		for (const g of ["back", "forward", "reload", "external", "state", "clear"])
 			expect(isGo(g)).toBe(true);
 		expect(isGo("close")).toBe(false);
 	});
