@@ -63,6 +63,7 @@ import {
 } from "@/lib/investigation-events";
 import { useRenderProbe } from "@/lib/render-probe";
 import { askTitle } from "@/lib/run-asks";
+import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
 import {
@@ -329,6 +330,10 @@ export function RunPage() {
 				),
 			),
 		[steps, workspace, inv?.report?.hypotheses],
+	);
+	const links = useMemo(
+		() => runLinks(incident.alerts ?? [], inv?.report ?? null),
+		[incident.alerts, inv?.report],
 	);
 	const fileOfStep = useCallback(
 		(s: RunStep) => stepFile(s, workspace),
@@ -751,6 +756,7 @@ export function RunPage() {
 							runId: inv.id,
 							workspace,
 							touched,
+							links,
 							viewing,
 							onOpen: openFile,
 							onClose: closeFile,
