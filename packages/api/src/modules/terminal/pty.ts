@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { PRISMALENS_OWN_SECRETS } from "@prismalens/engine";
@@ -32,7 +33,7 @@ export type PtyFactory = (options: {
  */
 export async function loadPtyFactory(): Promise<PtyFactory | null> {
 	try {
-		const pty = await import("@lydell/node-pty");
+		const pty = importPty();
 		return (o) =>
 			pty.spawn(o.file, o.args, {
 				name: "xterm-256color",
@@ -44,6 +45,34 @@ export async function loadPtyFactory(): Promise<PtyFactory | null> {
 	} catch {
 		return null;
 	}
+}
+
+type NodePty = typeof import("@lydell/node-pty");
+
+/**
+ * The platform package, from the unpacked copy when the backend runs from the
+ * desktop app's asar: node-pty finds its worker and spawn-helper beside its
+ * own files and only rewrites archives named app.asar, ours is prismalens.asar.
+ */
+function importPty(): NodePty {
+	const require = createRequire(import.meta.url);
+	const name = `@lydell/node-pty-${process.platform}-${process.arch}`;
+	let resolved: string;
+	try {
+		resolved = createRequire(require.resolve("@lydell/node-pty")).resolve(name);
+	} catch {
+		return require("@lydell/node-pty") as NodePty;
+	}
+	const unpacked = unpackedPath(resolved);
+	return require(
+		unpacked && existsSync(unpacked) ? unpacked : resolved,
+	) as NodePty;
+}
+
+/** `…/prismalens.asar/…` → `…/prismalens.asar.unpacked/…`; null outside an archive. */
+export function unpackedPath(file: string): string | null {
+	const swapped = file.replace(/\.asar([\\/])/, ".asar.unpacked$1");
+	return swapped === file ? null : swapped;
 }
 
 /** The user's login shell, in their home folder (#931). */

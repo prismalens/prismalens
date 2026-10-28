@@ -13,9 +13,14 @@ import { useTerminalAvailability } from "@/lib/terminal/use-terminal-availabilit
  */
 export function RunInTerminal({ command }: { command: string }) {
 	const hasPanel = useTerminalState((s) => s.hosts > 0);
+	if (!hasPanel || !runnableCommand(command)) return null;
+	return <WhenAvailable command={command} />;
+}
+
+/** Asks the API only once a panel exists, so a page with no terminal makes no request. */
+function WhenAvailable({ command }: { command: string }) {
 	const availability = useTerminalAvailability();
-	if (!hasPanel || !availability?.available || !runnableCommand(command))
-		return null;
+	if (!availability?.available) return null;
 	return (
 		<Button
 			type="button"

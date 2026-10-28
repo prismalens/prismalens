@@ -162,11 +162,7 @@ export function TerminalView({
 			{problem ? (
 				<p className="p-3 text-text-2 text-body">{problem}</p>
 			) : (
-				<div
-					ref={host}
-					className="min-h-0 flex-1 px-2 py-1"
-					aria-label="Terminal"
-				/>
+				<div ref={host} className="min-h-0 flex-1 px-2 py-1" />
 			)}
 		</div>
 	);
