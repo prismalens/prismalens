@@ -252,7 +252,7 @@ export default defineCommand({
 		}
 
 		// The line comes from an earlier run's cache; the unawaited refresh starts only after boot,
-		// whose synchronous import outlasts the check's 3 s timeout on a slow machine.
+		// whose synchronous import outlasts the check's 3 s timeout on a slow machine (#990).
 		const printUpdateNotice = () => {
 			const notice = updateNotice({ current: cliVersion(), workspaceDir });
 			if (notice.line) consola.info(notice.line);
