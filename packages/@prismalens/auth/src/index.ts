@@ -15,6 +15,7 @@ export {
 	authenticateDeviceToken,
 	buildPairingUrl,
 	type CreatedPairingLink,
+	claimOperatorLink,
 	createPairingLink,
 	DEVICE_SCOPES,
 	type DevicePairedListener,
@@ -35,6 +36,7 @@ export {
 	redeemPairingLink,
 	STARTUP_LINK_LABEL,
 } from "./pairing.js";
+export { terminalKeyFor, terminalKeyMatches } from "./terminal-key.js";
 export {
 	createPairingLinkInWorkspace,
 	createStartupLinkInWorkspace,
