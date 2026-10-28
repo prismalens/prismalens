@@ -89,6 +89,7 @@ import { OpenAPIModule } from "./modules/openapi/openapi.module.js";
 import { PushModule } from "./modules/push/push.module.js";
 import { RecommendationsModule } from "./modules/recommendations/recommendations.module.js";
 import { RepositoriesModule } from "./modules/repositories/repositories.module.js";
+import { SchedulesModule } from "./modules/schedules/schedules.module.js";
 import { ServicesModule } from "./modules/services/services.module.js";
 import { TerminalModule } from "./modules/terminal/terminal.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
@@ -182,6 +183,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 
 		// Feature modules (incident-centric architecture)
 		EventsModule, // Raw event ingestion
+		SchedulesModule, // Scheduled tasks (#979)
 		ServicesModule, // Service catalog
 		RepositoriesModule, // Repository management
 		AlertsModule, // Alert processing
