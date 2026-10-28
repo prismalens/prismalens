@@ -24,6 +24,23 @@ const REPORT: InvestigationReport = {
 
 const HOOK = "https://hooks.slack.com/services/T0/B0/xyz";
 
+describe("a service check with no incident (#979)", () => {
+	it("skips the run: no Slack post, no timeline entry", async () => {
+		const { service, prisma, fetchImpl, timeline } = setup();
+		prisma.investigation.findUnique.mockResolvedValue({
+			status: "completed",
+			report: JSON.stringify(REPORT),
+			error: null,
+			incident: null,
+		} as never);
+
+		await service.deliver("inv-unlinked");
+
+		expect(fetchImpl).not.toHaveBeenCalled();
+		expect(timeline.create).not.toHaveBeenCalled();
+	});
+});
+
 function setup(opts: { configured?: boolean; response?: Response | Error } = {}) {
 	const rows = new Map<string, { value: string }>();
 	if (opts.configured !== false) {
