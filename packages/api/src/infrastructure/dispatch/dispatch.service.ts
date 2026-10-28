@@ -1739,11 +1739,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	/** Resume, pressed on a run a restart cut off that PrismaLens left for the operator (#981). */
 	async resumeInterrupted(id: string): Promise<void> {
 		const found = await this.recoverable(id);
-		if (
-			!found ||
-			found.inv.status !== "failed" ||
-			found.inv.endReason !== "interrupted"
-		)
+		if (found?.inv.status !== "failed" || found.inv.endReason !== "interrupted")
 			throw new FollowUpRefused(
 				"Only a run a restart interrupted can be resumed this way.",
 			);
