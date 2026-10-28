@@ -471,7 +471,7 @@ export function ScheduleDialog({
 								<RadioGroupItem
 									id="sch-run-once"
 									value="run_once"
-									className="mt-0.5"
+									className="mt-0.5 size-4 shrink-0 self-start"
 								/>
 								<span>
 									<span className="block text-body">
