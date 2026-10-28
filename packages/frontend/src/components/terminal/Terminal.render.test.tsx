@@ -103,7 +103,7 @@ describe("Run in terminal", () => {
 			),
 		);
 		const tab = terminalStore.get().active as number;
-		const send = vi.fn();
+		const send = vi.fn(() => true);
 		terminalStore.attachSender(tab, send);
 		act(() => (q("run-in-terminal") as HTMLButtonElement).click());
 		const input = q("terminal-draft")?.querySelector(
@@ -130,7 +130,7 @@ describe("Run in terminal", () => {
 				</>,
 			),
 		);
-		const send = vi.fn();
+		const send = vi.fn(() => true);
 		terminalStore.attachSender(terminalStore.get().active as number, send);
 		act(() => (q("run-in-terminal") as HTMLButtonElement).click());
 		const input = q("terminal-draft")?.querySelector(

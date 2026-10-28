@@ -27,7 +27,8 @@ interface State {
 	active: number | null;
 }
 
-type Sender = (frame: TerminalClientFrame) => void;
+/** False when the frame could not be sent (the socket is not open yet). */
+type Sender = (frame: TerminalClientFrame) => boolean;
 
 export function createTerminalStore() {
 	let state: State = { hosts: 0, tabs: [], active: null };
@@ -118,8 +119,8 @@ export function createTerminalStore() {
 			if (!tab || !runnableCommand(tab.draft)) return;
 			const send = senders.get(id);
 			if (!send) return;
-			send({ t: "run", d: tab.draft });
-			patch(id, { draft: "" });
+			// A draft stays until the shell has it: Run before the socket opens keeps it.
+			if (send({ t: "run", d: tab.draft })) patch(id, { draft: "" });
 		},
 	};
 	return store;

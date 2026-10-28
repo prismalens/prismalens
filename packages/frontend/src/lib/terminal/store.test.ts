@@ -53,7 +53,7 @@ describe("terminal store", () => {
 
 	it("sends a confirmed draft as a run frame and clears it", () => {
 		const id = store.newTab();
-		const send = vi.fn();
+		const send = vi.fn(() => true);
 		store.attachSender(id, send);
 		store.setDraft(id, "pl doctor");
 		store.runDraft(id);
@@ -61,9 +61,17 @@ describe("terminal store", () => {
 		expect(store.get().tabs[0].draft).toBe("");
 	});
 
+	it("keeps the draft when the shell's socket is not open yet", () => {
+		const id = store.newTab();
+		store.attachSender(id, () => false);
+		store.setDraft(id, "pl doctor");
+		store.runDraft(id);
+		expect(store.get().tabs[0].draft).toBe("pl doctor");
+	});
+
 	it("keeps a draft that gained control characters while edited", () => {
 		const id = store.newTab();
-		const send = vi.fn();
+		const send = vi.fn(() => true);
 		store.attachSender(id, send);
 		store.setDraft(id, "ls\u001b[201~");
 		store.runDraft(id);

@@ -76,9 +76,10 @@ export function TerminalView({
 
 		let socket: WebSocket | null = null;
 		let disposed = false;
-		const send = (frame: Parameters<typeof terminalStore.send>[1]) => {
-			if (socket?.readyState === WebSocket.OPEN)
-				socket.send(JSON.stringify(frame));
+		const send = (frame: Parameters<typeof terminalStore.send>[1]): boolean => {
+			if (socket?.readyState !== WebSocket.OPEN) return false;
+			socket.send(JSON.stringify(frame));
+			return true;
 		};
 		const detach = terminalStore.attachSender(tabId, send);
 		const input = xterm.onData((d) => send({ t: "in", d }));
@@ -154,8 +155,10 @@ export function TerminalView({
 	useEffect(() => {
 		if (!active) return;
 		fit.current?.fit();
-		term.current?.focus();
-	}, [active]);
+		// A staged command's line keeps focus; Enter there is what runs it.
+		if (!terminalStore.get().tabs.find((t) => t.id === tabId)?.draft)
+			term.current?.focus();
+	}, [active, tabId]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" hidden={!active}>
