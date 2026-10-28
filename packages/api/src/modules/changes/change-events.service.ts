@@ -315,7 +315,10 @@ export class ChangeEventsService {
 				connectionId: repo.connectionId,
 				pick: pickOf(repo.metadata),
 			});
-			const authorization = credential.authorization(`https://${host}/`);
+			const authorization = credential.authorization(
+				`https://${host}/`,
+				"bearer",
+			);
 			if (!authorization || !provider.requestFor) return;
 			const events = await provider.listDeploymentEvents(
 				provider.requestFor(host, authorization),

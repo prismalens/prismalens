@@ -186,12 +186,16 @@ export class GitCredential {
 		this.#host = opts.host;
 	}
 
-	/** `Basic …`, the Authorization value for an https URL on the token's own host, else undefined. */
-	authorization(effectiveUrl: string): string | undefined {
+	/** The Authorization value for an https URL on the token's own host, else undefined: `Basic` for git, `Bearer` for a host's REST API. */
+	authorization(
+		effectiveUrl: string,
+		scheme: "basic" | "bearer" = "basic",
+	): string | undefined {
 		if (!isTokenSource(this.display.source) || !this.#token) return undefined;
 		if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
 		const url = new URL(effectiveUrl);
 		if (this.#host && url.host.toLowerCase() !== this.#host) return undefined;
+		if (scheme === "bearer") return `Bearer ${this.#token}`;
 		const user = tokenUsernameFor(url.hostname);
 		return `Basic ${Buffer.from(`${user}:${this.#token}`).toString("base64")}`;
 	}

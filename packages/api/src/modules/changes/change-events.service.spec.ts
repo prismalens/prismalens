@@ -442,7 +442,7 @@ describe("ChangeEventsService", () => {
 				const [url, init] = fetched.mock.calls[0] ?? [];
 				expect(url).toBe("https://api.github.com/repos/acme/api/deployments");
 				expect((init?.headers as Record<string, string>).Authorization).toBe(
-					`Basic ${Buffer.from("x-access-token:ghp_stored").toString("base64")}`,
+					"Bearer ghp_stored",
 				);
 
 				await pull("https://github.com/acme/api.git", {
@@ -488,7 +488,7 @@ describe("ChangeEventsService", () => {
 				await pull("https://ci.example.test/acme/api.git");
 				expect(requestFor).toHaveBeenCalledWith(
 					"ci.example.test",
-					`Basic ${Buffer.from("x-access-token:ci-secret").toString("base64")}`,
+					"Bearer ci-secret",
 				);
 				const rows = await prisma.changeEvent.findMany({
 					where: { serviceId: svc.id },
