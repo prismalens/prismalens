@@ -105,4 +105,5 @@ jobs:
           path: |
             packages/frontend/playwright-report/
             packages/frontend/playwright-report-quarantine/
+            packages/frontend/test-results/
           retention-days: 7
