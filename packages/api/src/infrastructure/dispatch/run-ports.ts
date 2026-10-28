@@ -35,6 +35,7 @@ import type { SnapshotWindow } from "../../modules/integrations/source-query.js"
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
+import type { RestartFacts } from "./restart-recovery.js";
 
 export interface IncidentRepo {
 	/** "folder" or "url"; `url` holds the folder path for a folder. */
@@ -176,6 +177,13 @@ export interface RunPorts {
 	/** The agent's env, binary path and arguments from Settings → Agent (#907). */
 	agentRuntime(id: HarnessId): Promise<AgentRuntime>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
+	/** What happened on the incident while PrismaLens was stopped, for a restart's message (#981). */
+	restartAlerts?(
+		incidentId: string,
+		since: Date,
+		until: Date,
+		stoppedAt: Date,
+	): Promise<RestartFacts["alerts"]>;
 	/**
 	 * The repos of the incident's service, then of each service its alerts name,
 	 * primary first. Not deduped. Empty means the run is unmapped.

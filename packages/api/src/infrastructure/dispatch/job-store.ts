@@ -50,6 +50,8 @@ export interface EnqueueJobInput {
 	/** 1 (critical) … 4 (low). Ordering only — this is not a fairness key. */
 	priority: number;
 	kind?: string;
+	/** Not claimed before this; a restart recovery waits for alert catch-up (#981). */
+	runAt?: Date;
 }
 
 export interface JobStore {
@@ -160,7 +162,7 @@ export class PrismaJobStore implements JobStore {
 				priority: input.priority,
 				status: "pending",
 				attempts: 0,
-				runAt: new Date(),
+				runAt: input.runAt ?? new Date(),
 				claimedBy: null,
 				claimedAt: null,
 				heartbeatAt: null,
@@ -183,7 +185,7 @@ export class PrismaJobStore implements JobStore {
 				payload: input.payload,
 				priority: input.priority,
 				status: "pending",
-				runAt: new Date(),
+				runAt: input.runAt ?? new Date(),
 			},
 			select: { id: true },
 		});

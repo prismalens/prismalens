@@ -6,6 +6,7 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
+import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	mkdirSync,
@@ -87,6 +88,7 @@ import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
+import { clearReceipt, writeReceipt } from "./harness-receipt.js";
 import {
 	buildPreRunSnapshot,
 	type CopyTarget,
@@ -100,6 +102,11 @@ import {
 	writeReadCopies,
 } from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
+import {
+	composeRestartMessage,
+	type RestartFacts,
+	type WorkspaceState,
+} from "./restart-recovery.js";
 import { isShutdown } from "./run-abort.js";
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
 
@@ -393,6 +400,7 @@ async function runJobInternal(
 				...(effort ? { effort } : {}),
 				accessLevel,
 				...(data.unattended ? { unattended: true } : {}),
+				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
@@ -510,9 +518,11 @@ async function runJobInternal(
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
-			// A run PrismaLens's own exit cut off keeps its workspace for auto-resume (#981).
-			if (!isShutdown(io.signal))
+			// A run PrismaLens's own exit cut off keeps its workspace and pid for auto-resume (#981).
+			if (!isShutdown(io.signal)) {
 				await clearRunWorkspace(unvalidated.investigationId);
+				dropReceipt(unvalidated.investigationId);
+			}
 		}
 	}
 }
@@ -828,6 +838,10 @@ async function runFollowUp(
 		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
+		// Before the rebuild: a workspace still on disk is taken up as is, a missing one is rebuilt (#981).
+		const existed = new Map(
+			recorded.repos.map((r) => [r.dir, existsSync(r.dir)]),
+		);
 		await bindRun(id, {
 			incidentId: data.incidentId,
 			serviceName: recorded.repos[0]?.services[0] ?? null,
@@ -949,6 +963,24 @@ async function runFollowUp(
 				})
 			: null;
 		if (seed) writeHandoffTranscript(workspace, seed.transcript);
+		const restartAt = new Date();
+		const restartText = resume.restart
+			? composeRestartMessage(
+					await restartFacts(
+						resume,
+						restartAt,
+						data.incidentId,
+						await ports.events(id),
+						observeWorkspace(workspace.repos, existed),
+						!ports.preRun
+							? "none"
+							: context.preRun?.state === "unavailable"
+								? "unavailable"
+								: "available",
+						ports,
+					),
+				)
+			: null;
 		// The new session's first usage lands after the old one is cleared (ruling 13).
 		let handedOff: Promise<void> = Promise.resolve();
 		const usage = usageWriter(ports, id, () => handedOff);
@@ -966,6 +998,9 @@ async function runFollowUp(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				...(accessLevel ? { accessLevel } : {}),
+				// A recovered alert-started run is still nobody's to answer (#818, #981).
+				...(data.unattended ? { unattended: true } : {}),
+				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -1032,11 +1067,22 @@ async function runFollowUp(
 							}
 						: {}),
 					...(seed ? { handoff: seed.text } : {}),
-					...(resume.afterRestart ? { afterRestart: true } : {}),
+					...(resume.afterRestart && !restartText
+						? { afterRestart: true }
+						: {}),
 					via: {
 						harness,
 						model,
 						accessLevel: accessLevel ?? null,
+						...(resume.restart
+							? {
+									restart: {
+										stoppedAt: resume.restart.stoppedAt,
+										resumedAt: restartAt.toISOString(),
+										by: resume.restart.by,
+									},
+								}
+							: {}),
 						...(seed
 							? {
 									handoff: {
@@ -1047,7 +1093,7 @@ async function runFollowUp(
 								}
 							: {}),
 					},
-					text: resume.text,
+					text: restartText ?? resume.text,
 					mode: resume.mode,
 					heads: workspace.repos.map((r) => ({ name: r.name, head: r.head })),
 					...(continuing
@@ -1091,7 +1137,10 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		if (!isShutdown(io.signal)) await clearRunWorkspace(id);
+		if (!isShutdown(io.signal)) {
+			await clearRunWorkspace(id);
+			dropReceipt(id);
+		}
 	}
 	// PrismaLens is closing: no end is written, so boot reads this turn as interrupted (#981).
 	if (isShutdown(io.signal)) return interruptedResult(data);
@@ -1458,12 +1507,14 @@ async function clearRunWorkspace(runId: string): Promise<void> {
  * Called at boot, when nothing is running: a process that died mid-run never
  * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
  */
-export async function sweepRunWorkspaces(): Promise<number> {
-	const swept = new Set(await sweepRunWorktrees());
+export async function sweepRunWorkspaces(
+	keep: (runId: string) => boolean = () => false,
+): Promise<number> {
+	const swept = new Set(await sweepRunWorktrees({ isLive: keep }));
 	const runs = resolve(getAppDataDir(), "runs");
 	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
+		if (!entry.isDirectory() || keep(entry.name)) continue;
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
 			try {
@@ -2236,6 +2287,105 @@ function failureResult(
 		findings: {},
 		recommendations: [],
 		error,
+	};
+}
+
+function keepReceipt(runDir: string, pid: number | undefined): void {
+	if (!pid) return;
+	try {
+		mkdirSync(runDir, { recursive: true });
+		writeReceipt(runDir, pid);
+	} catch (e) {
+		logger.warn("Could not record the harness pid", e);
+	}
+}
+
+function dropReceipt(runId: string): void {
+	try {
+		clearReceipt(runDirFor(runId));
+	} catch {
+		// The run dir is already gone.
+	}
+}
+
+/** Each repo as git shows it now, against what the run recorded; never more than git said (#981 OBJ-011). */
+export function observeWorkspace(
+	repos: readonly { name: string; dir: string; head: string }[],
+	existed: ReadonlyMap<string, boolean>,
+	git: (dir: string, args: string[]) => string = gitIn,
+): WorkspaceState[] {
+	const many = repos.length > 1;
+	const out: WorkspaceState[] = [];
+	for (const r of repos) {
+		const repo = many ? r.name : null;
+		let head: string;
+		let changed: number;
+		try {
+			head = git(r.dir, ["rev-parse", "HEAD"]).trim();
+			changed = git(r.dir, ["status", "--porcelain"])
+				.split(/\r?\n/)
+				.filter((l) => l.trim()).length;
+		} catch {
+			continue;
+		}
+		if (!existed.get(r.dir)) out.push({ repo, state: "rebuilt", head });
+		else if (!r.head.startsWith(head.slice(0, 7)) && !head.startsWith(r.head))
+			out.push({ repo, state: "moved", head, recorded: r.head });
+		else if (changed > 0) out.push({ repo, state: "changed", head, changed });
+		else out.push({ repo, state: "as-was", head });
+	}
+	return out;
+}
+
+function gitIn(dir: string, args: string[]): string {
+	return execFileSync("git", ["-C", dir, ...args], {
+		encoding: "utf8",
+		windowsHide: true,
+		timeout: 15_000,
+	});
+}
+
+async function restartFacts(
+	resume: NonNullable<InvestigationJobData["resume"]>,
+	resumedAt: Date,
+	incidentId: string,
+	events: readonly CanonicalEvent[],
+	workspace: WorkspaceState[],
+	snapshot: RestartFacts["snapshot"],
+	ports: RunPorts,
+): Promise<RestartFacts> {
+	const restart = resume.restart as NonNullable<typeof resume.restart>;
+	const stoppedAt = new Date(restart.stoppedAt);
+	const since = new Date(
+		Math.min(Date.parse(restart.lastActivityAt), stoppedAt.getTime()),
+	);
+	const asks = new Map<string, string>();
+	const denied: string[] = [];
+	for (const e of events) {
+		if (e.kind === "permission_ask") asks.set(e.askId, e.title);
+		else if (e.kind === "permission_answer" && e.outcome === "restarted")
+			denied.push(
+				(asks.get(e.askId) ?? e.title ?? "run a tool").replace(/^./, (c) =>
+					c.toLowerCase(),
+				),
+			);
+	}
+	const alerts = (await ports
+		.restartAlerts?.(incidentId, since, resumedAt, stoppedAt)
+		.catch(() => null)) ?? {
+		catchUp: "unchecked" as const,
+		fired: [],
+		resolved: [],
+	};
+	return {
+		stoppedAt,
+		resumedAt,
+		turn: resume.kind === "continue" ? "report" : "answer",
+		...(resume.kind !== "continue" ? { question: resume.text } : {}),
+		alerts,
+		deniedAsks: [...new Set(denied)],
+		workspace,
+		snapshot,
 	};
 }
 

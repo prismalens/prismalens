@@ -1155,3 +1155,263 @@ describe("upgrade from a database before investigation_turns (T14, OBJ-021)", ()
 		expect(await investigations.liveKindRefusal(await read(legacy.ask), "chat")).toBeNull();
 	});
 });
+
+describe("boot takes up the runs a restart cut off (#981)", () => {
+	const ask = { text: "why the pool?", mode: "queue" as const, restore: restoreDone };
+
+	function recovering(opts: { enabled?: boolean; previous?: { startedAt: Date; lastAliveAt: Date; stoppedCleanly: boolean } | null } = {}) {
+		const attach = vi.fn();
+		const service = new DispatchService(
+			fakeBus() as never,
+			{ attach } as never,
+			investigations,
+			{ findById: vi.fn(async () => null) } as never,
+			timeline as never,
+			{
+				resolveSelection: async (asked: { harness?: string }) => ({ runnable: true, harness: asked.harness ?? "opencode", auto: false }),
+				checkedOutcome: () => null,
+				getSettings: vi.fn(async () => ({})),
+				effectiveChoice: vi.fn(async () => ({ accessLevel: "full" })),
+				resumeAfterRestart: vi.fn(async () => opts.enabled ?? true),
+			} as never,
+			{} as never,
+			prisma,
+			{} as never,
+			{} as never,
+			{} as never,
+			{ isEnabled: vi.fn(async () => true), capture: vi.fn(async () => {}), captureFinished: vi.fn(async () => {}) } as never,
+			{ deliver: vi.fn(async () => {}) } as never,
+			undefined,
+			undefined,
+			undefined,
+			{
+				lastRestart: () => ({
+					bootedAt: new Date(),
+					previous:
+						opts.previous === undefined
+							? { startedAt: new Date(Date.now() - 3_600_000), lastAliveAt: new Date(Date.now() - 22 * 60_000), stoppedCleanly: false }
+							: opts.previous,
+				}),
+			} as never,
+		);
+		vi.spyOn(service["dispatcher"], "tick").mockResolvedValue(undefined);
+		vi.spyOn(service["dispatcher"], "start").mockImplementation(() => {});
+		return { service, attach };
+	}
+
+	async function boot(opts?: Parameters<typeof recovering>[0]) {
+		const { service } = recovering(opts);
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+		return service;
+	}
+
+	const payloadOf = async (id: string) =>
+		JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: id } })).payload) as InvestigationJobData;
+
+	async function event(investigationId: string, seq: number, body: Record<string, unknown>, at = new Date()) {
+		await prisma.investigationEvent.create({
+			data: { investigationId, seq, branchId: "run", event: JSON.stringify(body), createdAt: at },
+		});
+	}
+
+	const auto = (attempt: number) => ({
+		attempt,
+		by: "auto" as const,
+		stoppedAt: new Date().toISOString(),
+		lastActivityAt: new Date().toISOString(),
+	});
+	const recoveryOf = (attempt: number) => ({
+		text: "PrismaLens restarted.",
+		mode: "queue" as const,
+		kind: "continue" as const,
+		restore: { status: "failed" as const, completedAt: null, error: RESTART_REASON },
+		restart: auto(attempt),
+	});
+
+	it("a first run cut off mid-work is re-armed as the same turn, row and job in one go, after the catch-up delay", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, { accessLevel: "supervised" }, "running");
+		const before = Date.now();
+
+		const service = await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted", liveTurn: "report", error: null });
+		const j = await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } });
+		expect(j.status).toBe("pending");
+		expect(j.runAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
+		const p = await payloadOf(row.id);
+		expect(p.accessLevel).toBe("supervised");
+		expect(p.resume).toMatchObject({
+			kind: "continue",
+			mode: "queue",
+			to: { harness: "opencode" },
+			restore: { status: "failed", error: RESTART_REASON },
+			restart: { attempt: 1, by: "auto" },
+		});
+		const summary = await service.restartSummary();
+		expect(summary?.resumed.find((r) => r.investigationId === row.id)).toMatchObject({ incidentNumber: inc.number, title: inc.title });
+	});
+
+	it("a run the operator stopped stays stopped", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "cancelled", error: "Investigation cancelled" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+	});
+
+	it("a run waiting on the operator's answer: the ask is closed as restarted, and the run resumes", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", awaitingApprovalAt: new Date() });
+		await job(row.id, inc.id, {}, "running");
+		const askId = "33333333-3333-4333-8333-333333333333";
+		const ts = new Date().toISOString();
+		await investigations.appendEvents(row.id, [
+			{ kind: "permission_ask", runId: row.id, branchId: "main", path: [], seq: 1, ts, askId, title: "Run kubectl rollout restart", detail: null, toolKind: "bash", expiresAt: ts } as never,
+		]);
+
+		await boot();
+
+		const events = await prisma.investigationEvent.findMany({ where: { investigationId: row.id } });
+		expect(events.map((e) => JSON.parse(e.event)).find((e) => e.kind === "permission_answer")).toMatchObject({ askId, outcome: "restarted" });
+		expect(await read(row.id)).toMatchObject({ status: "pending", awaitingApprovalAt: null });
+	});
+
+	it("an alert-started run keeps its unattended pin, its agent and its own level, never Settings' (#818)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", triggerType: "auto_critical", accessLevel: "auto" });
+		await job(row.id, inc.id, { unattended: true, accessLevel: "auto", harness: "opencode", model: "fake/scripted" }, "running");
+
+		await boot();
+
+		expect(await payloadOf(row.id)).toMatchObject({ unattended: true, accessLevel: "auto", harness: "opencode", model: "fake/scripted" });
+	});
+
+	it("an interrupted Ask on a finished run keeps the run's own standing to fall back to, and asks the question again (OBJ-012)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "answer", report: "{}" });
+		await job(row.id, inc.id, { resume: ask }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", liveTurn: "answer" });
+		expect((await payloadOf(row.id)).resume).toMatchObject({ kind: "chat", text: "why the pool?", restore: restoreDone, restart: { attempt: 1 } });
+	});
+
+	it("not resumed when the setting is off: interrupted, with the reason", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+
+		const service = await boot({ enabled: false });
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted", error: "Not resumed: Resume after a restart is off in Settings." });
+		expect((await service.restartSummary())?.skipped.map((s) => s.investigationId)).toContain(row.id);
+	});
+
+	it("not resumed when it stopped working more than a day ago", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await event(row.id, 1, { kind: "agent_step", text: "x", toolCalls: [] }, new Date(Date.now() - 50 * 3_600_000));
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for 2 days/);
+	});
+
+	it("a crash loop stops at the cap: a fourth recovery of the same turn is not made", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(3) }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens stopped again during each of the last 3 resumes/);
+	});
+
+	it("a crash loop: a start within two minutes of one that resumed runs resumes none", async () => {
+		const previousStart = new Date(Date.now() - 60_000);
+		const value = JSON.stringify({ at: previousStart.toISOString(), stoppedAt: null, resumed: [{ investigationId: "x", incidentId: "y", incidentNumber: 1, title: "t" }], skipped: [] });
+		await prisma.setting.upsert({
+			where: { key: "runtime.lastRecovery" },
+			update: { value },
+			create: { key: "runtime.lastRecovery", type: "json", category: "general", value },
+		});
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot({ previous: { startedAt: previousStart, lastAliveAt: new Date(Date.now() - 10_000), stoppedCleanly: false } });
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens stopped again within 2 minutes/);
+	});
+
+	it("a turn that recorded its report before the stop is not run again (OBJ-004)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		const j = await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { id: j.id }, data: { claimedAt: new Date(Date.now() - 60_000) } });
+		await event(row.id, 9, { kind: "report", report: {} });
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: RESTART_REASON, endReason: "interrupted" });
+	});
+
+	it("a recovery an earlier boot re-armed but never started is checked again (OBJ-013)", async () => {
+		const inc = await incident();
+		const kept = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(kept.id, inc.id, { resume: recoveryOf(1) }, "pending");
+
+		await boot({ enabled: false });
+
+		expect(await read(kept.id)).toMatchObject({ status: "failed", endReason: "interrupted", error: "Not resumed: Resume after a restart is off in Settings." });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: kept.id } })).status).toBe("cancelled");
+
+		const inc2 = await incident();
+		const again = await thread(inc2.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(again.id, inc2.id, { resume: recoveryOf(1) }, "pending");
+		const before = Date.now();
+		await boot();
+		expect(await read(again.id)).toMatchObject({ status: "pending" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: again.id } })).runAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
+	});
+
+	it("many runs at once are all re-armed; the dispatcher's cap paces them", async () => {
+		const ids: string[] = [];
+		for (let i = 0; i < 6; i++) {
+			const inc = await incident();
+			const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+			await job(row.id, inc.id, {}, "running");
+			ids.push(row.id);
+		}
+
+		await boot();
+
+		for (const id of ids) expect(await read(id)).toMatchObject({ status: "pending" });
+	});
+
+	it("Resume on a run left interrupted re-arms it as the operator's, now; any other run is refused", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+
+		await service.resumeInterrupted(row.id);
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted" });
+		expect((await payloadOf(row.id)).resume).toMatchObject({ restart: { attempt: 1, by: "operator" } });
+
+		const inc2 = await incident();
+		const done = await thread(inc2.id, { status: "completed" });
+		await job(done.id, inc2.id, {}, "succeeded");
+		await expect(service.resumeInterrupted(done.id)).rejects.toBeInstanceOf(FollowUpRefused);
+	});
+});

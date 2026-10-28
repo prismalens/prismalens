@@ -212,6 +212,30 @@ export class InvestigationsController {
 			//     directly and write the terminal "cancelled" record HERE. If the row was
 			//     already claimed (a dispatcher won the race), fall through to the publish
 			//     path; the grace retries cover the claim→subscribe window.
+			resume: implement(investigationsContract.resume).handler(
+				async ({ input }) => {
+					try {
+						await this.dispatchService.resumeInterrupted(input.id);
+					} catch (error) {
+						if (error instanceof FollowUpRefused)
+							throw new ORPCError("CONFLICT", { message: error.message });
+						throw error;
+					}
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					return this.serializeInvestigation(investigation);
+				},
+			),
+
+			restartSummary: implement(investigationsContract.restartSummary).handler(
+				() => this.dispatchService.restartSummary(),
+			),
+
 			cancel: implement(investigationsContract.cancel).handler(
 				async ({ input }) => {
 					const investigation = await this.investigationsService.findById(
