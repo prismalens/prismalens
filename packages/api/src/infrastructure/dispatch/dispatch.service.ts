@@ -212,6 +212,7 @@ export function recoveryPayload(
 	plan: { route: FollowUpRoute; harness: HarnessId },
 	turn: "report" | "answer",
 	restart: RestartRecovery,
+	sawEvidence = false,
 ): InvestigationJobData {
 	const { resume: prev, ...rest } = original;
 	// An answer is asked again in the agent's own words; a report turn just carries on.
@@ -223,6 +224,8 @@ export function recoveryPayload(
 			text: question ?? "PrismaLens restarted.",
 			mode: "queue",
 			kind: turn === "report" ? "continue" : "chat",
+			// Evidence from before the stop counts, or a report-only resume fails as "no tool ran" (#981).
+			...(turn === "report" ? { sawEvidence } : {}),
 			restore: prev?.restore ?? {
 				status: "failed",
 				completedAt: null,
@@ -268,6 +271,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private readonly logger = new Logger(DispatchService.name);
 	private readonly store: JobStore;
 	private readonly dispatcher: Dispatcher;
+	private recoveryWake: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
 		@Inject(EVENT_BUS) private readonly bus: EventBus,
@@ -745,12 +749,19 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				),
 			);
 		this.dispatcher.start();
+		// The loop has no poll timer: a recovery waiting out its delay is claimed only by a tick (#981).
+		if (boot?.resumed.length)
+			this.recoveryWake = setTimeout(
+				() => void this.dispatcher.tick(),
+				RECOVERY_DELAY_MS + 1_000,
+			).unref();
 		this.logger.log(
 			`Dispatch loop started, concurrency cap ${getConfig().PRISMALENS_DISPATCH_CONCURRENCY}, owner ${this.dispatcher.ownerToken}`,
 		);
 	}
 
 	async onApplicationShutdown(): Promise<void> {
+		clearTimeout(this.recoveryWake);
 		await this.dispatcher.stop();
 		// Aborting a run only asks the harness to stop; its own process group
 		// never saw the terminal's signal, so kill it before the API exits.
@@ -1141,14 +1152,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				);
 		}
 		const accessLevel = await this.followUpLevel(row);
-		const sawEvidence =
-			kind === "continue" &&
-			(await this.prisma.investigationEvent.count({
-				where: {
-					investigationId: id,
-					event: { contains: '"kind":"tool_result"' },
-				},
-			})) > 0;
+		const sawEvidence = kind === "continue" && (await this.hasToolResult(id));
 		const restore = {
 			status: row.status as WorkflowStatus,
 			completedAt: row.completedAt?.toISOString() ?? null,
@@ -1389,6 +1393,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		};
 	}
 
+	private async hasToolResult(id: string): Promise<boolean> {
+		return (
+			(await this.prisma.investigationEvent.count({
+				where: {
+					investigationId: id,
+					event: { contains: '"kind":"tool_result"' },
+				},
+			})) > 0
+		);
+	}
+
 	/** The run's newest event the boot did not write itself. */
 	private async lastActivity(id: string, fallback: Date): Promise<Date> {
 		const rows = await this.prisma.investigationEvent.findMany({
@@ -1431,12 +1446,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					: null,
 		});
 		if (reason || !plan) return reason ?? "it names no agent to resume in.";
-		const data = recoveryPayload(original, plan, turn, {
-			attempt: (prior?.attempt ?? 0) + 1,
-			stoppedAt: boot.stoppedAt.toISOString(),
-			lastActivityAt: lastActivityAt.toISOString(),
-			by: "auto",
-		});
+		const data = recoveryPayload(
+			original,
+			plan,
+			turn,
+			{
+				attempt: (prior?.attempt ?? 0) + 1,
+				stoppedAt: boot.stoppedAt.toISOString(),
+				lastActivityAt: lastActivityAt.toISOString(),
+				by: "auto",
+			},
+			await this.hasToolResult(id),
+		);
 		const admitted = await this.rearm(
 			id,
 			inv.incidentId,
@@ -1739,12 +1760,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			);
 		const now = new Date();
 		const last = await this.lastActivity(id, now);
-		const data = recoveryPayload(original, plan, turn, {
-			attempt: 1,
-			stoppedAt: last.toISOString(),
-			lastActivityAt: last.toISOString(),
-			by: "operator",
-		});
+		const data = recoveryPayload(
+			original,
+			plan,
+			turn,
+			{
+				attempt: 1,
+				stoppedAt: last.toISOString(),
+				lastActivityAt: last.toISOString(),
+				by: "operator",
+			},
+			await this.hasToolResult(id),
+		);
 		if (!(await this.rearm(id, inv.incidentId, turn, data, now, "interrupted")))
 			throw new FollowUpRefused("The run changed; reload it.");
 		this.streamRelay.attach(id);
