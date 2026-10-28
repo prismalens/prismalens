@@ -4,8 +4,10 @@
 /**
  * The rules for taking up a run PrismaLens's own stop cut off (#981): which runs
  * resume, and the message that tells the agent what happened while it was away.
- * The boot step that applies them is `DispatchService.recoverAtBoot`.
+ * The boot step that applies them is `DispatchService.tryRecover`.
  */
+
+import { fenceUntrusted, sanitizeUntrustedLine } from "@prismalens/engine";
 
 /** A run resumes on its own only within this long of its last activity: older state has moved on. */
 export const RESUME_WITHIN_MS = 24 * 60 * 60_000;
@@ -122,14 +124,14 @@ export function composeRestartMessage(f: RestartFacts): string {
 	const happened: string[] = [];
 	if (f.alerts.fired.length)
 		happened.push(
-			`${count(f.alerts.fired.length, "alert")} fired on this incident: ${listed(f.alerts.fired, clock)}`,
+			`${count(f.alerts.fired.length, "alert")} fired on this incident`,
 		);
 	if (f.alerts.resolved.length)
-		happened.push(
-			`${count(f.alerts.resolved.length, "alert")} resolved: ${listed(f.alerts.resolved, clock)}`,
-		);
+		happened.push(`${count(f.alerts.resolved.length, "alert")} resolved`);
 	if (happened.length)
-		parts.push(`While PrismaLens was stopped, ${happened.join("; and ")}.`);
+		parts.push(
+			`While PrismaLens was stopped, ${happened.join(" and ")}; the ${ALERTS_BLOCK} block below names them.`,
+		);
 	if (f.alerts.catchUp === "unchecked")
 		parts.push(
 			"PrismaLens couldn't check its alert sources for the time it was stopped, so alerts that fired then may be missing here.",
@@ -146,8 +148,22 @@ export function composeRestartMessage(f: RestartFacts): string {
 			? `You were answering: "${f.question}". Answer it.`
 			: "Continue the investigation from your last step.",
 	);
-	return parts.join(" ");
+	const text = parts.join(" ");
+	if (!happened.length) return text;
+	// Alert names are whoever wrote the rule's words: data, never instructions (#981 OBJ-018).
+	const lines = [
+		...listed("fired", f.alerts.fired, clock),
+		...listed("resolved", f.alerts.resolved, clock),
+	];
+	const block = fenceUntrusted(
+		ALERTS_BLOCK,
+		"Alert names copied from the alerting system while PrismaLens was stopped.",
+		lines.join("\n"),
+	);
+	return `${text}\n\n${block}`;
 }
+
+const ALERTS_BLOCK = "ALERTS_WHILE_STOPPED";
 
 function workspaceLine(w: WorkspaceState): string {
 	const where = w.repo ? `Your workspace for ${w.repo}` : "Your workspace";
@@ -165,14 +181,15 @@ function workspaceLine(w: WorkspaceState): string {
 }
 
 function listed(
+	verb: string,
 	items: { title: string; at: Date }[],
 	clock: (d: Date) => string,
-): string {
+): string[] {
 	const shown = items
 		.slice(0, LIST_MAX)
-		.map((a) => `${a.title} at ${clock(a.at)}`);
+		.map((a) => `${verb} at ${clock(a.at)}: ${sanitizeUntrustedLine(a.title)}`);
 	const more = items.length - shown.length;
-	return more > 0 ? `${shown.join(", ")} and ${more} more` : shown.join(", ");
+	return more > 0 ? [...shown, `${more} more ${verb}`] : shown;
 }
 
 function count(n: number, noun: string): string {
