@@ -126,6 +126,14 @@ describe("harness receipt (#981 OBJ-010)", () => {
 		}
 	});
 
+	it("a receipt written late, after PrismaLens was paused, still knows its root and kills it (OBJ-010)", async () => {
+		// The agent was born at T; PrismaLens wrote the receipt 20 s later.
+		const table: OsProcess[] = [{ pid: 4120, parent: 1, created: T }];
+		const host = winHost(table);
+		expect(await containPrevious({ pid: 4120, startedAt: T + 20_000 }, host)).toBe(true);
+		expect(host.killed).toEqual([4120]);
+	});
+
 	it("a root pid now held by a younger process claims only the children born before it", () => {
 		const all: OsProcess[] = [
 			{ pid: 4120, parent: 1, created: T + 600_000 },

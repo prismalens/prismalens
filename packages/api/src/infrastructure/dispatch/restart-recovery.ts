@@ -59,35 +59,6 @@ export function span(ms: number): string {
 	return `${Math.round(h / 24)} days`;
 }
 
-/** An event the boot itself wrote: it says nothing about when the run last worked. */
-export function bootWritten(event: {
-	kind: string;
-	outcome?: string;
-	delivered?: boolean;
-}): boolean {
-	return (
-		(event.kind === "permission_answer" && event.outcome === "restarted") ||
-		(event.kind === "operator_message" && event.delivered === false)
-	);
-}
-
-/** When the run last worked: its newest event the boot did not write. */
-export function lastActivityOf(
-	rows: readonly { createdAt: Date; event: string }[],
-	fallback: Date,
-): Date {
-	let last = 0;
-	for (const row of rows) {
-		try {
-			if (bootWritten(JSON.parse(row.event))) continue;
-		} catch {
-			continue;
-		}
-		last = Math.max(last, row.createdAt.getTime());
-	}
-	return last ? new Date(last) : fallback;
-}
-
 export type WorkspaceState =
 	| { repo: string | null; state: "as-was"; head: string }
 	| { repo: string | null; state: "changed"; head: string; changed: number }

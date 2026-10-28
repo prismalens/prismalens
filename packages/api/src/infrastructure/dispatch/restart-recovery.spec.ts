@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	composeRestartMessage,
-	lastActivityOf,
 	notResumedReason,
 	type RecoveryInput,
 	type RestartFacts,
@@ -57,19 +56,6 @@ describe("notResumedReason (#981)", () => {
 		expect(
 			notResumedReason(input({ contained: false, attempt: 9, preflight: "x" })),
 		).toMatch(/may still be running/);
-	});
-});
-
-describe("lastActivityOf (#981 OBJ-006)", () => {
-	it("ignores what a boot wrote, so an earlier failed boot never moves the run's last activity", () => {
-		const at = (m: number) => new Date(NOW.getTime() - m * min);
-		const rows = [
-			{ createdAt: at(30), event: JSON.stringify({ kind: "agent_step", text: "x" }) },
-			{ createdAt: at(5), event: JSON.stringify({ kind: "permission_answer", outcome: "restarted" }) },
-			{ createdAt: at(4), event: JSON.stringify({ kind: "operator_message", delivered: false }) },
-		];
-		expect(lastActivityOf(rows, NOW)).toEqual(at(30));
-		expect(lastActivityOf([], NOW)).toEqual(NOW);
 	});
 });
 

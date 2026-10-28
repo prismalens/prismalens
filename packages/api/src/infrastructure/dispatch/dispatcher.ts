@@ -97,6 +97,8 @@ export class Dispatcher {
 	/** A tick asked for while one ran; it runs once that one ends, so no wake is lost (#981 OBJ-016). */
 	private again = false;
 	private stopped = false;
+	/** Held: nothing is claimed, though the loop keeps its runs (#981 OBJ-013). */
+	private held = false;
 
 	constructor(
 		private readonly store: JobStore,
@@ -122,6 +124,15 @@ export class Dispatcher {
 		void this.tick();
 	}
 
+	hold(): void {
+		this.held = true;
+	}
+
+	unhold(): void {
+		this.held = false;
+		void this.tick();
+	}
+
 	async stop(settleMs = STOP_SETTLE_MS): Promise<void> {
 		this.stopped = true;
 		const runs = [...this.inFlight.values()];
@@ -143,7 +154,7 @@ export class Dispatcher {
 	 * single pass after it, so a slow tick cannot stack up and a wake is never dropped.
 	 */
 	async tick(): Promise<void> {
-		if (this.stopped) return;
+		if (this.stopped || this.held) return;
 		if (this.ticking) {
 			this.again = true;
 			return;

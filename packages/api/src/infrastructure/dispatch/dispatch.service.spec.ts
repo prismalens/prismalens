@@ -1580,6 +1580,18 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for 2 days/);
 	});
 
+	it("a recovery that left no agent event keeps the age it carried, not its new claim's (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		const carried = { ...auto(1), lastActivityAt: new Date(Date.now() - 46 * 3_600_000).toISOString() };
+		await job(row.id, inc.id, { resume: { ...recoveryOf(1), restart: carried } }, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 23 * 3_600_000) } });
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for/);
+	});
+
 	it("a refused recovery writes no line as the user's, and a pending one whose run ended is cancelled (OBJ-009, OBJ-013)", async () => {
 		const inc = await incident();
 		const kept = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
@@ -1633,7 +1645,7 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 	it("PrismaLens's own restart message is not activity: a recovery chain keeps the age of the agent's last step (OBJ-006)", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
-		await job(row.id, inc.id, { resume: recoveryOf(1) }, "running");
+		await job(row.id, inc.id, { resume: { ...recoveryOf(1), restart: { ...auto(1), lastActivityAt: new Date(Date.now() - 46 * 3_600_000).toISOString() } } }, "running");
 		await event(row.id, 0, { kind: "agent_step", text: "x", toolCalls: [] }, new Date(Date.now() - 46 * 3_600_000));
 		await event(row.id, 1, { kind: "operator_message", text: "PrismaLens stopped at…", mode: "queue", via: { restart: { stoppedAt: "x", resumedAt: "y", by: "auto" } } }, new Date(Date.now() - 23 * 3_600_000));
 
@@ -1666,6 +1678,31 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		const j = await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } });
 		expect(j.status).toBe("pending");
 		expect(j.runAt.getUTCFullYear()).toBe(9999);
+	});
+
+	it("when recoveries can be neither checked nor parked, dispatch is held until a check succeeds (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		const findMany = prisma.job.findMany.bind(prisma.job);
+		const listing = vi.spyOn(prisma.job, "findMany").mockImplementation(((args: { select?: { payload?: boolean } }) =>
+			args?.select?.payload ? Promise.reject(new Error("database is locked")) : findMany(args as never)) as never);
+		const updateMany = prisma.job.updateMany.bind(prisma.job);
+		const parking = vi.spyOn(prisma.job, "updateMany").mockImplementation(((args: { data?: { runAt?: Date } }) =>
+			args?.data?.runAt ? Promise.reject(new Error("database is locked")) : updateMany(args as never)) as never);
+		const timers = vi.spyOn(globalThis, "setInterval");
+
+		await service.onModuleInit();
+
+		expect(service["dispatcher"]["held"]).toBe(true);
+		listing.mockRestore();
+		parking.mockRestore();
+		const retry = timers.mock.calls.find(([, ms]) => ms === 10_000)?.[0] as () => void;
+		timers.mockRestore();
+		retry();
+		await vi.waitFor(() => expect(service["dispatcher"]["held"]).toBe(false));
+		await service.onApplicationShutdown();
 	});
 
 	it("an agent that had a session but left no pid receipt is not proven gone (OBJ-010)", async () => {
