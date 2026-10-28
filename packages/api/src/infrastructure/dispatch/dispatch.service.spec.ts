@@ -1254,6 +1254,25 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		expect(summary?.resumed.find((r) => r.investigationId === row.id)).toMatchObject({ incidentNumber: inc.number, title: inc.title });
 	});
 
+	it("wakes the dispatch loop once the catch-up delay is over, since the loop has no poll timer", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		const timers = vi.spyOn(globalThis, "setTimeout");
+		const { service } = recovering();
+
+		await service.onModuleInit();
+		const wake = timers.mock.calls.find(([, ms]) => (ms ?? 0) > 30_000 && (ms ?? 0) <= 35_000);
+		timers.mockRestore();
+		await service.onApplicationShutdown();
+
+		expect(wake).toBeDefined();
+		const tick = vi.mocked(service["dispatcher"].tick);
+		tick.mockClear();
+		(wake?.[0] as () => void)();
+		expect(tick).toHaveBeenCalledTimes(1);
+	});
+
 	it("a run the operator stopped stays stopped", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
