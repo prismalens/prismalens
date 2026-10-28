@@ -429,6 +429,35 @@ describe("Dispatcher", () => {
 			await dispatcher.stop();
 		});
 
+		it("a claim that rejects after a wake came in still runs the wake's pass (OBJ-016)", async () => {
+			const { runner, started } = controllableRunner();
+			let fail!: () => void;
+			const gate = new Promise<void>((r) => {
+				fail = r;
+			});
+			const claim = store.claim.bind(store);
+			let calls = 0;
+			store.claim = async (owner, limit) => {
+				calls++;
+				if (calls === 1) {
+					await gate;
+					throw new Error("database is locked");
+				}
+				return claim(owner, limit);
+			};
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+
+			const first = dispatcher.tick();
+			store.pending = [job(1)];
+			await dispatcher.tick();
+			fail();
+			await first;
+
+			expect(calls).toBe(2);
+			expect(started.map((j) => j.id)).toEqual(["job-1"]);
+			await dispatcher.stop();
+		});
+
 		it("a claim that lands after stop() is handed back and never started (OBJ-017)", async () => {
 			const { runner, started } = controllableRunner();
 			let land!: () => void;

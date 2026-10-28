@@ -155,9 +155,10 @@ export class Dispatcher {
 	}
 
 	private async pass(): Promise<void> {
-		try {
-			do {
-				this.again = false;
+		do {
+			this.again = false;
+			// A failed claim still honours a wake that came in meanwhile (#981 OBJ-016).
+			try {
 				// THE CAP. Claim only what there is room to run.
 				const slots = this.options.concurrency - this.inFlight.size;
 				if (slots <= 0) break;
@@ -170,10 +171,10 @@ export class Dispatcher {
 					break;
 				}
 				for (const job of claimed) this.startJob(job);
-			} while (this.again && !this.stopped);
-		} catch (error) {
-			this.log.error("Dispatch tick failed", error);
-		}
+			} catch (error) {
+				this.log.error("Dispatch tick failed", error);
+			}
+		} while (this.again && !this.stopped);
 	}
 
 	private startJob(job: ClaimedJob): void {
