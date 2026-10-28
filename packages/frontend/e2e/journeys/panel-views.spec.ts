@@ -304,3 +304,85 @@ test.describe("Panel views (#973)", () => {
 		await expect(page.getByTestId("changes-none")).toBeVisible();
 	});
 });
+
+test.describe("Panel browser (#973)", () => {
+	test("in a browser, the run's links open in a new tab", async ({ page }) => {
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await expect(page.getByText("Pages open in your browser")).toBeVisible();
+		const links = page.getByTestId("browser-links").getByRole("link");
+		const count = await links.count();
+		for (let i = 0; i < count; i++) {
+			await expect(links.nth(i)).toHaveAttribute("target", "_blank");
+			await expect(links.nth(i)).toHaveAttribute("rel", /noopener/);
+			expect(await links.nth(i).getAttribute("href")).toMatch(/^https?:\/\//);
+		}
+	});
+
+	test("in the desktop app, the view sits over its slot and steps aside for a dialog", async ({
+		page,
+	}) => {
+		await page.addInitScript(() => {
+			const calls: unknown[] = [];
+			let listener: ((s: unknown) => void) | null = null;
+			(window as unknown as { __calls: unknown[] }).__calls = calls;
+			(window as unknown as { prismalensDesktop: unknown }).prismalensDesktop =
+				{
+					platform: "win32",
+					setTheme: () => {},
+					browser: {
+						open: (url: string) => {
+							calls.push({ open: url });
+							listener?.({
+								url,
+								title: "",
+								canGoBack: false,
+								canGoForward: false,
+								loading: false,
+								refused: null,
+							});
+						},
+						setBounds: (rect: unknown) => calls.push({ bounds: rect }),
+						go: (to: string) => calls.push({ go: to }),
+						onState: (l: (s: unknown) => void) => {
+							listener = l;
+							return () => {
+								listener = null;
+							};
+						},
+					},
+				};
+		});
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await page.getByTestId("browser-address").fill("grafana.internal/d/x");
+		await page.getByTestId("browser-address").press("Enter");
+		const slot = page.getByTestId("browser-slot");
+		await expect(slot).toBeVisible();
+		const calls = () =>
+			page.evaluate(
+				() => (window as unknown as { __calls: unknown[] }).__calls,
+			);
+		await expect
+			.poll(async () => (await calls()).at(-1))
+			.toMatchObject({
+				bounds: { width: expect.any(Number) },
+			});
+		expect(await calls()).toContainEqual({ open: "grafana.internal/d/x" });
+		const box = await slot.boundingBox();
+		const last = (await calls()).at(-1) as {
+			bounds: { x: number; width: number };
+		};
+		expect(Math.abs(last.bounds.x - (box?.x ?? 0))).toBeLessThan(1);
+		await page.evaluate(() =>
+			(document.activeElement as HTMLElement | null)?.blur(),
+		);
+		await page.keyboard.press("?");
+		await expect(page.getByRole("dialog").last()).toBeVisible();
+		await expect
+			.poll(async () => (await calls()).at(-1))
+			.toEqual({ bounds: null });
+	});
+});

@@ -43,6 +43,8 @@ import {
 	stopBackend,
 	waitForHealth,
 } from "./backend.js";
+import { trustedSender } from "./browser.js";
+import { attachBrowser, guardAppWindow } from "./browser-pane.js";
 import {
 	backgroundColor,
 	frameOptions,
@@ -801,6 +803,8 @@ function openWindow(path = "/"): void {
 		if (external) void shell.openExternal(target.href);
 		return { action: "deny" };
 	});
+	guardAppWindow(window, () => baseUrl);
+	attachBrowser(window, () => baseUrl, app.isPackaged);
 	window.loadURL(`${baseUrl}${path}`);
 }
 
@@ -1093,7 +1097,12 @@ if (!app.requestSingleInstanceLock()) {
 } else {
 	app.on("second-instance", () => openWindow());
 	ipcMain.on(THEME_CHANNEL, (event, value: unknown) => {
-		if (event.sender !== window?.webContents || !isTheme(value)) return;
+		if (
+			!window ||
+			!trustedSender(event, window.webContents, baseUrl) ||
+			!isTheme(value)
+		)
+			return;
 		applyTheme(value);
 	});
 	app
