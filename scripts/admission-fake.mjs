@@ -3,7 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 // Qualifies one agent against the scripted model (aimock, scripts/fakes/scripted-model.mjs):
-// the admission (R1-R9) and the behaviour matrix, so a PR's verdict never depends on a live model (#884, #914).
+// the admission (R1-R10) and the behaviour matrix, so a PR's verdict never depends on a live model (#884, #914).
 //   node scripts/admission-fake.mjs <agent> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--journal]
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -173,6 +173,7 @@ export function verdictOf(stdout) {
 		r7: word("R7 resume after a failed report"),
 		r8: word("R8 tool call, first turn"),
 		r9: word("R9 tool call, follow-up"),
+		r10: word("R10 resume streams no history"),
 	};
 }
 
@@ -184,8 +185,8 @@ export function verdictOf(stdout) {
 export const KNOWN_ADMISSION_FAILURES = {
 	gemini: {
 		failedChecks: ["cwdProved", "readAllowed"],
-		r5: "fail",
-		why: "shell output never reaches ACP clients (google-gemini/gemini-cli#29930); history replays after the session/load answer (google-gemini/gemini-cli#29707)",
+		r5: "pass",
+		why: "shell output never reaches ACP clients (google-gemini/gemini-cli#29930)",
 	},
 };
 
@@ -202,16 +203,16 @@ export function admissionProblem(harness, v, code) {
 		!v.pass &&
 		v.failedChecks.join(",") === known.failedChecks.join(",") &&
 		v.r5 === known.r5 &&
-		[v.r8, v.r9].every((r) => r === "pass" || r === "n/a");
+		[v.r8, v.r9, v.r10].every((r) => r === "pass" || r === "n/a");
 	if (same) return null;
-	return code === 0 || v.pass || v.r5 === "pass"
+	return code === 0 || v.pass
 		? `the known failure is fixed (${known.why}); remove it from KNOWN_ADMISSION_FAILURES`
 		: "the admission failed differently from its known failure";
 }
 
 /** One verdict as one comparable line. */
 export const signature = (/** @type {ReturnType<typeof verdictOf>} */ v) =>
-	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7} R8=${v.r8} R9=${v.r9}`;
+	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7} R8=${v.r8} R9=${v.r9} R10=${v.r10}`;
 
 /**
  * Each matrix row's first word, as one comparable line.

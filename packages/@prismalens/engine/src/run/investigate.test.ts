@@ -619,6 +619,32 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(sessions).toEqual([{ sessionId: "ses_old", loadSession: true }]);
 	});
 
+	it("a follow-up on gemini-cli starts a fresh session seeded with the stored conversation, never its load (#942)", async () => {
+		const reopens: { path: string; replayed: number }[] = [];
+		const { events, runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", FAKE_AGENT_NAME: "gemini-cli" },
+			resume: {
+				sessionId: "ses_old",
+				fresh: async () => ({ text: "STORED: the pool", from: "gemini", carried: "alert, 1 message", omitted: null }),
+				via: { harness: "gemini", model: null, accessLevel: null },
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [],
+			},
+			onReopen: (r) => reopens.push(r),
+		});
+		expect(reopens).toMatchObject([{ path: "fresh", replayed: 0 }]);
+		expect(events[0]).toMatchObject({
+			kind: "operator_message",
+			via: { harness: "gemini", handoff: { from: "gemini", carried: "alert, 1 message" } },
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).not.toContain("session/load");
+		const prompt = wire.split("\n").find((l) => l.includes("session/prompt"));
+		expect(prompt).toContain("STORED: the pool");
+		expect(prompt).toContain("Why the pool?");
+	});
+
 	it("a handoff opens a fresh session seeded with the handoff, and records the agent, model and level on the first message", async () => {
 		const { events, runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume" },
@@ -768,7 +794,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 			resume: { sessionId: "ses_old", text: "hi", mode: "queue", heads: [] },
 		});
 		const last = events.at(-1);
-		expect(last).toMatchObject({ kind: "error", message: "fake 0 does not support session/load" });
+		expect(last).toMatchObject({ kind: "error", message: "fake 0 does not support session/load or session/resume" });
 	});
 
 	it("hands the host the session/new id on a normal run (#747)", async () => {

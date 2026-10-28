@@ -45,7 +45,7 @@ yes (#920, the operator's ruling of 2026-10-24).
 | `packed-service` | none | every PR | yes |
 | `packed-upgrade-smoke` | scripted fake ACP agent, on the packed tarball; then every release npm lists upgraded to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | every PR | yes |
 | `gate-side-checks` (Linux, macOS, Windows) | scripted fake ACP agent, on the packed tarball; `--no-skip` | every PR | yes |
-| `harness-admission` (opencode, claude-code, codex) | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned), the real pinned agent; the admission (R1-R9) and the behaviour matrix, 3 runs that must agree | every PR | yes |
+| `harness-admission` (opencode, claude-code, codex) | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned), the real pinned agent; the admission (R1-R10; R5 reopens the session by the agent's own path and R10 holds `session/resume` to no history) and the behaviour matrix, 3 runs that must agree | every PR | yes |
 | `harness-admission` (gemini, deepagents) | the same, for the tier-2 agents | every PR | no: `continue-on-error`, so a red leg leaves the job green |
 | `e2e` (calls `e2e.yml`) | none | every PR, push and merge-queue build | yes |
 

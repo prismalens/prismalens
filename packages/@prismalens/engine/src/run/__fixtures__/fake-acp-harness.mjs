@@ -32,6 +32,11 @@
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 // FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
+// Reopen paths (#942): FAKE_SESSION_RESUME=1 advertises sessionCapabilities.resume and answers
+// session/resume with no replay (=replay sends one replayed message anyway, =state one state update,
+// =straggler one id-less message after the answer); FAKE_REPLAY_COMPLETE=1 advertises replayComplete
+// and ends the load replay with the marker, then one state update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
+// with ids; FAKE_AGENT_NAME names the agent in initialize.
 import { existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -240,6 +245,7 @@ async function turn(sessionId, promptText) {
 		}
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
+			messageId: "m_live",
 			content: {
 				type: "text",
 				text: `Heard: ${promptText}${mode === "continue" ? `\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`\n` : ""}`,
@@ -485,9 +491,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			id: msg.id,
 			result: {
 				protocolVersion: 1,
-				agentInfo: { name: "fake", version: "0" },
+				agentInfo: {
+					name: process.env.FAKE_AGENT_NAME ?? "fake",
+					version: "0",
+				},
 				agentCapabilities: {
 					...(process.env.FAKE_LOAD_SESSION ? { loadSession: true } : {}),
+					...(process.env.FAKE_SESSION_RESUME ||
+					process.env.FAKE_REPLAY_COMPLETE
+						? {
+								sessionCapabilities: {
+									...(process.env.FAKE_SESSION_RESUME ? { resume: {} } : {}),
+									...(process.env.FAKE_REPLAY_COMPLETE
+										? { replayComplete: {} }
+										: {}),
+								},
+							}
+						: {}),
 					...(process.env.FAKE_IMAGES
 						? { promptCapabilities: { image: true } }
 						: {}),
@@ -540,16 +560,49 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
-	} else if (msg.method === "session/load") {
+	} else if (msg.method === "session/load" || msg.method === "session/resume") {
 		const sessionId = msg.params?.sessionId;
-		notify(sessionId, {
-			sessionUpdate: "user_message_chunk",
-			content: { type: "text", text: "the first prompt" },
-		});
-		notify(sessionId, {
-			sessionUpdate: "agent_message_chunk",
-			content: { type: "text", text: "REPLAYED" },
-		});
+		const history = [
+			{
+				sessionUpdate: "user_message_chunk",
+				messageId: "m_user",
+				content: { type: "text", text: "the first prompt" },
+			},
+			{
+				sessionUpdate: "agent_message_chunk",
+				messageId: "m_agent",
+				content: { type: "text", text: "REPLAYED" },
+			},
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: "t_old",
+				title: "REPLAYED tool",
+				kind: "read",
+				status: "completed",
+			},
+		];
+		const resuming = msg.method === "session/resume";
+		const late = !resuming && process.env.FAKE_LATE_REPLAY;
+		if (resuming) {
+			if (process.env.FAKE_SESSION_RESUME === "replay")
+				notify(sessionId, history[1]);
+			if (process.env.FAKE_SESSION_RESUME === "state")
+				notify(sessionId, {
+					sessionUpdate: "available_commands_update",
+					availableCommands: [{ name: "LIVE", description: "state" }],
+				});
+		} else {
+			for (const u of history.slice(0, 2)) notify(sessionId, u);
+			if (process.env.FAKE_REPLAY_COMPLETE) {
+				notify(sessionId, { sessionUpdate: "replay_complete" });
+				notify(sessionId, {
+					sessionUpdate: "available_commands_update",
+					availableCommands: [
+						{ name: "LIVE", description: "after the marker" },
+					],
+				});
+			}
+		}
 		const options = configOptions();
 		const modes = sessionModes();
 		send({
@@ -560,6 +613,13 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
+		// gemini-cli's shape (google-gemini/gemini-cli#29707): the history after the answer.
+		if (late) for (const u of history) notify(sessionId, u);
+		if (process.env.FAKE_SESSION_RESUME === "straggler")
+			notify(sessionId, {
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "REPLAYED with no id" },
+			});
 	} else if (msg.method === "session/set_config_option") {
 		const { configId, value } = msg.params ?? {};
 		// FAKE_REJECT_SET: the agent answers with an RPC error instead of a silent non-switch.
