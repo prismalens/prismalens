@@ -158,6 +158,25 @@ describe("RuntimeLifecycleService", () => {
 		expect(prisma.stored().gaps).toHaveLength(1);
 	});
 
+	it("observe() sees a sleep before the next heartbeat, synchronously, and only once (#979)", async () => {
+		const prisma = fakePrisma();
+		const c = clocks();
+		const svc = boot(prisma, c);
+		const woke = vi.fn();
+		svc.onWake(woke);
+		await svc.onModuleInit();
+		c.sleep(40 * min);
+		c.run(1_000);
+		const at = new Date(T0 + 40 * min + 1_000);
+		expect(svc.observe(at)).toEqual({ at, sleptFrom: new Date(T0) });
+		expect(svc.gapCovering(new Date(T0 + 20 * min))?.kind).toBe("asleep");
+		expect(svc.observe(at)).toBeNull();
+		await vi.waitFor(() => expect(woke).toHaveBeenCalledTimes(1));
+		await svc.beat();
+		expect(woke).toHaveBeenCalledTimes(1);
+		expect(prisma.stored().gaps).toHaveLength(1);
+	});
+
 	it("a late timer with both clocks moving is a gap only past three intervals", async () => {
 		const prisma = fakePrisma();
 		const c = clocks();

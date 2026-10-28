@@ -142,21 +142,36 @@ export class RuntimeLifecycleService
 
 	/** One heartbeat; public so tests drive it without timers. */
 	async beat(): Promise<void> {
-		const wall = this.now().getTime();
+		const woke = this.detect(this.now());
+		await this.write(null);
+		if (woke) await this.publish(this.wakeHandlers, woke, "wake");
+	}
+
+	/**
+	 * The heartbeat's sleep check, now and synchronously: a caller that notices lateness
+	 * before the next beat sees the sleep in `gapCovering` (#979). Idempotent.
+	 */
+	observe(now: Date = this.now()): Woke | null {
+		const woke = this.detect(now);
+		if (woke)
+			void this.write(null).then(() =>
+				this.publish(this.wakeHandlers, woke, "wake"),
+			);
+		return woke;
+	}
+
+	private detect(now: Date): Woke | null {
+		const wall = now.getTime();
 		const mono = this.monotonic();
 		const dWall = wall - this.last.wall;
 		const dMono = mono - this.last.mono;
 		const from = new Date(this.last.wall);
 		this.last = { wall, mono };
 		// A clock set backwards is a clock change, not a gap.
-		if (dWall > 3 * HEARTBEAT_MS || dWall - dMono > SLEEP_MS) {
-			const woke = { at: new Date(wall), sleptFrom: from };
-			this.addGap({ kind: "asleep", from, to: woke.at });
-			await this.write(null);
-			await this.publish(this.wakeHandlers, woke, "wake");
-			return;
-		}
-		await this.write(null);
+		if (dWall <= 3 * HEARTBEAT_MS && dWall - dMono <= SLEEP_MS) return null;
+		const woke = { at: now, sleptFrom: from };
+		this.addGap({ kind: "asleep", from, to: now });
+		return woke;
 	}
 
 	private addGap(gap: Gap): void {
