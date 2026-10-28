@@ -183,7 +183,7 @@ export function ScheduleDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
 				size="lg"
-				className="h-[min(680px,80dvh)] max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:rounded-none"
+				className="flex h-[min(680px,80dvh)] flex-col overflow-hidden max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:rounded-none"
 				data-testid="schedule-dialog"
 			>
 				<DialogHeader>
@@ -192,7 +192,7 @@ export function ScheduleDialog({
 					</DialogTitle>
 				</DialogHeader>
 
-				<div className="grid gap-5">
+				<div className="-mx-5 grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-5 pb-2">
 					<div>
 						<Label htmlFor="sch-name" className="mb-1.5 block">
 							Name
@@ -487,7 +487,11 @@ export function ScheduleDialog({
 								htmlFor="sch-skip"
 								className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-control px-2 py-2 hover:bg-surface-1"
 							>
-								<RadioGroupItem id="sch-skip" value="skip" className="mt-0.5" />
+								<RadioGroupItem
+									id="sch-skip"
+									value="skip"
+									className="mt-0.5 size-4 shrink-0 self-start"
+								/>
 								<span>
 									<span className="block text-body">Skip it</span>
 									<span className="block text-meta text-text-3">
@@ -514,7 +518,7 @@ export function ScheduleDialog({
 					)}
 				</div>
 
-				<DialogFooter className="sticky bottom-0 bg-surface-2 pt-3">
+				<DialogFooter className="shrink-0 pt-3">
 					<Button variant="ghost" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>
