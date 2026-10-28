@@ -470,7 +470,11 @@ export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
-	incidentId: z.string().uuid(),
+	/** Null for a scheduled service check until a finding links it to an incident (#979). */
+	incidentId: z.string().uuid().nullable(),
+	/** A scheduled service check's subject (#979); null on an incident's run. */
+	serviceId: z.string().nullable().optional(),
+	scheduleId: z.string().nullable().optional(),
 	status: WorkflowStatusSchema,
 	/** A run is a thread (#673): the alert workflow, or a chat a message started. */
 	kind: InvestigationKindSchema.optional().default("investigation"),
@@ -1259,8 +1263,32 @@ export const JobAttachmentSchema = AttachmentRefSchema.extend({
 });
 export type JobAttachment = z.infer<typeof JobAttachmentSchema>;
 
+/** The schedule values a scheduled run was admitted with; it never reads them live (#979, adversary OBJ-003). */
+export const ScheduledRunSchema = z.object({
+	scheduleId: z.string(),
+	revision: z.number().int(),
+	serviceId: z.string(),
+	serviceName: z.string(),
+	serviceNotes: z.string().nullable(),
+	runbook: z.string().nullable(),
+	repos: z.array(
+		z.object({
+			sourceKind: z.enum(["folder", "url"]),
+			url: z.string(),
+			defaultBranch: z.string().nullable(),
+			subPath: z.string().nullable(),
+			connectionId: z.string().nullable(),
+			serviceName: z.string(),
+		}),
+	),
+});
+export type ScheduledRun = z.infer<typeof ScheduledRunSchema>;
+
 export const InvestigationJobDataSchema = z.object({
-	incidentId: z.string(),
+	/** Null for a scheduled service check (#979). */
+	incidentId: z.string().nullable(),
+	/** Set on a scheduled service check: its frozen subject and values (#979). */
+	scheduled: ScheduledRunSchema.optional(),
 	investigationId: z.string(),
 	priority: z.enum(["low", "normal", "high", "critical"]).optional(),
 	context: z.record(z.string(), z.unknown()).optional(),

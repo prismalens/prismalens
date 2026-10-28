@@ -9,7 +9,12 @@
 import { eventIterator, oc } from "@orpc/contract";
 import { z } from "zod";
 
-export const LIVE_TOPICS = ["incidents", "alerts", "investigations"] as const;
+export const LIVE_TOPICS = [
+	"incidents",
+	"alerts",
+	"investigations",
+	"schedules",
+] as const;
 export const LiveTopicSchema = z.enum(LIVE_TOPICS);
 export type LiveTopic = z.infer<typeof LiveTopicSchema>;
 

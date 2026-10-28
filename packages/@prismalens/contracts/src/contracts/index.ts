@@ -28,6 +28,7 @@ export {
 export { type PairedDevice, pairingContract } from "./pairing.js";
 export { recommendationsContract } from "./recommendations.js";
 export { repositoriesContract } from "./repositories.js";
+export { schedulesContract } from "./schedules.js";
 export { servicesContract } from "./services.js";
 export { settingsContract } from "./settings.js";
 export {
@@ -56,6 +57,7 @@ import { operatorContract } from "./operator.js";
 import { pairingContract } from "./pairing.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
+import { schedulesContract } from "./schedules.js";
 import { servicesContract } from "./services.js";
 import { settingsContract } from "./settings.js";
 import { setupContract } from "./setup.js";
@@ -77,6 +79,7 @@ export const contract = {
 	live: liveContract,
 	recommendations: recommendationsContract,
 	repositories: repositoriesContract,
+	schedules: schedulesContract,
 	services: servicesContract,
 	webhooks: webhooksContract,
 	events: eventsContract,
