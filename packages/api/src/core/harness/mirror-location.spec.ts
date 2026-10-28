@@ -69,7 +69,8 @@ beforeEach(() => {
 afterEach(() => {
 	setRunWorkspaceSource(null);
 	setMirrorLocations(null);
-	process.env.PRISMALENS_WORKSPACE_DIR = saved;
+	if (saved === undefined) delete process.env.PRISMALENS_WORKSPACE_DIR;
+	else process.env.PRISMALENS_WORKSPACE_DIR = saved;
 	rmSync(tmp, { recursive: true, force: true, maxRetries: 3 });
 });
 
@@ -104,6 +105,18 @@ describe("the cloned copies folder", () => {
 		await releaseWorktreesIn(kept);
 		expect(await sweepOldMirrors()).toEqual([]);
 		expect(existsSync(mirrorPathFor(url, old))).toBe(false);
+	});
+
+	it("keeps the current copies when the new folder sits inside an old one", async () => {
+		const url = remote();
+		const old = join(tmp, "copies");
+		const now = join(old, "nested");
+		setMirrorLocations(now, [old]);
+		const ws = join(tmp, "ws", "pl-r1");
+		await snap(url, ws, "r1");
+		await releaseWorktreesIn(ws);
+		await sweepOldMirrors();
+		expect(existsSync(join(mirrorPathFor(url, now), "HEAD"))).toBe(true);
 	});
 
 	it("never deletes a folder in an old location that is not a copy it made", async () => {

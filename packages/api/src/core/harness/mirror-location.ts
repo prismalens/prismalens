@@ -8,7 +8,7 @@
  */
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { Logger } from "@nestjs/common";
 import { getAppDataDir } from "@prismalens/config";
 import { gitEnv } from "./git-env.js";
@@ -84,7 +84,9 @@ export async function sweepOldMirrors(): Promise<string[]> {
 	for (const root of past) {
 		if (root === now) continue;
 		let left = false;
-		for (const mirror of mirrorsUnder(root)) {
+		// The current folder may sit inside an old one; its copies are live, never swept.
+		const live = (m: string) => m === now || m.startsWith(now + sep);
+		for (const mirror of mirrorsUnder(root).filter((m) => !live(m))) {
 			try {
 				// Drops entries whose worktree folder is gone; a live run's is locked and stays.
 				await spawnGit(["worktree", "prune"], {
