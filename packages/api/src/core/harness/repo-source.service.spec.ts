@@ -96,9 +96,18 @@ describe("repo-source.service", () => {
 	beforeEach(() => {
 		workspace = tmp("pl-workspace-");
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", workspace);
+		// Remove unless changed, so a released or swept clean worktree goes (the default keeps it).
+		setRunWorkspaceSource({
+			global: () => ({ ...DEFAULT_RUN_WORKSPACE_SETTINGS, retention: { kind: "remove-unless-changed" } }),
+			override: () => undefined,
+			locations: () => [],
+			serviceIdOf: async () => null,
+			record: () => {},
+		});
 	});
 
 	afterEach(() => {
+		setRunWorkspaceSource(null);
 		vi.unstubAllEnvs();
 		for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 	});
