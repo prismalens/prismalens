@@ -44,6 +44,7 @@ import {
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
 	RunWorkspaceSchema,
+	ScheduledRunSchema,
 } from "@prismalens/contracts";
 import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
@@ -69,6 +70,10 @@ import {
 	handoffPreflight,
 } from "../../modules/investigations/follow-up-route.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
+import {
+	runScope,
+	runScopeKey,
+} from "../../modules/investigations/run-scope.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
@@ -120,6 +125,23 @@ function jobResume(payload: string): InvestigationJobData["resume"] {
 		return InvestigationJobDataSchema.parse(JSON.parse(payload)).resume;
 	} catch {
 		return undefined;
+	}
+}
+
+/** An unlinked check's frozen subject and brief from its stored snapshot, for its follow-up job (#979). */
+function serviceCheckOf(
+	snapshot: string | null,
+): Pick<InvestigationJobData, "scheduled" | "brief"> {
+	try {
+		const raw = JSON.parse(snapshot ?? "null") as { brief?: unknown } | null;
+		const scheduled = ScheduledRunSchema.safeParse(raw);
+		if (!scheduled.success) return {};
+		return {
+			scheduled: scheduled.data,
+			...(typeof raw?.brief === "string" ? { brief: raw.brief } : {}),
+		};
+	} catch {
+		return {};
 	}
 }
 
@@ -286,12 +308,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			newerRun: async (id) => {
 				const self = await this.prisma.investigation.findUnique({
 					where: { id },
-					select: { incidentId: true, createdAt: true },
+					select: { incidentId: true, scheduleId: true, createdAt: true },
 				});
 				if (!self) return null;
 				const newer = await this.prisma.investigation.findFirst({
 					where: {
-						incidentId: self.incidentId,
+						...runScope(self),
 						createdAt: { gt: self.createdAt },
 						workspace: { not: null },
 					},
@@ -304,7 +326,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				if (!newer || !ws?.success || ws.data.repos.length === 0) return null;
 				const number = await this.prisma.investigation.count({
 					where: {
-						incidentId: self.incidentId,
+						...runScope(self),
 						createdAt: { lte: newer.createdAt },
 					},
 				});
@@ -648,6 +670,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			select: {
 				id: true,
 				incidentId: true,
+				scheduleId: true,
 				kind: true,
 				stopRequestedAt: true,
 				createdAt: true,
@@ -673,17 +696,16 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				),
 			);
 		}
-		// Old data can hold two live rows on one incident: the newest keeps its claim.
-		const byIncident = new Map<string, typeof rows>();
-		for (const row of waiting)
-			byIncident.set(row.incidentId, [
-				...(byIncident.get(row.incidentId) ?? []),
-				row,
-			]);
-		for (const [incidentId, live] of byIncident) {
+		// Old data can hold two live rows on one incident (or schedule): the newest keeps its claim.
+		const byScope = new Map<string, typeof rows>();
+		for (const row of waiting) {
+			const key = runScopeKey(row);
+			byScope.set(key, [...(byScope.get(key) ?? []), row]);
+		}
+		for (const [scope, live] of byScope) {
 			if (live.length < 2) continue;
 			this.logger.warn(
-				`Incident ${incidentId} had ${live.length} live runs; keeping the newest`,
+				`${scope} had ${live.length} live runs; keeping the newest`,
 			);
 			for (const row of live.slice(0, -1)) {
 				await this.cancelPendingJob(row.id);
@@ -908,6 +930,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			where: { id },
 			select: {
 				incidentId: true,
+				scheduleId: true,
+				configSnapshot: true,
 				status: true,
 				completedAt: true,
 				error: true,
@@ -959,6 +983,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const data: InvestigationJobData = {
 			incidentId: row.incidentId,
 			investigationId: id,
+			...(row.incidentId ? {} : serviceCheckOf(row.configSnapshot)),
 			...(accessLevel ? { accessLevel } : {}),
 			resume: {
 				text,
@@ -978,7 +1003,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const admitted = await this.prisma.$transaction(async (tx) => {
 			const other = await tx.investigation.findFirst({
 				where: {
-					incidentId: row.incidentId,
+					...runScope(row),
 					id: { not: id },
 					status: { in: [...LIVE_WORKFLOW_STATUSES] },
 				},
@@ -988,7 +1013,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			if (other) {
 				const n = await tx.investigation.count({
 					where: {
-						incidentId: row.incidentId,
+						...runScope(row),
 						createdAt: { lte: other.createdAt },
 					},
 				});

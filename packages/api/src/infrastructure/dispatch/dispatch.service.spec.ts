@@ -167,6 +167,7 @@ beforeEach(async () => {
 	const keep = Object.values(legacy);
 	await prisma.job.deleteMany({ where: { investigationId: { notIn: keep } } });
 	await prisma.incident.deleteMany({ where: { NOT: { title: { startsWith: "legacy " } } } });
+	await prisma.investigation.deleteMany({ where: { incidentId: null } });
 	timeline.create.mockClear();
 });
 
@@ -1152,5 +1153,137 @@ describe("upgrade from a database before investigation_turns (T14, OBJ-021)", ()
 			/^Run #\d+ is working toward a report; wait or stop it$/,
 		);
 		expect(await investigations.liveKindRefusal(await read(legacy.ask), "chat")).toBeNull();
+	});
+});
+
+describe("service checks with no incident never see each other (#979)", () => {
+	const SINGLE = JSON.stringify({
+		layout: "single",
+		cwd: "/x/repo",
+		repos: [
+			{
+				name: "repo",
+				dir: "/x/repo",
+				sourceKind: "url",
+				url: "https://github.com/acme/repo",
+				subPath: null,
+				connectionId: null,
+				head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+				branch: "main",
+				services: ["api"],
+			},
+		],
+	});
+
+	async function check(scheduleId: string, data: Row = {}, at = Date.now()) {
+		return prisma.investigation.create({
+			data: {
+				incidentId: null,
+				scheduleId,
+				status: "completed",
+				triggerType: "scheduled",
+				harness: "opencode",
+				acpSessionId: "ses_1",
+				workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }),
+				createdAt: new Date(at),
+				...data,
+			},
+		});
+	}
+
+	it("startOrGet returns only the same schedule's live run, and starts one for another schedule", async () => {
+		const a = await check("sch-a", { status: "running" });
+
+		const same = await investigations.startOrGet({ incidentId: null, scheduleId: "sch-a" } as never);
+		const other = await investigations.startOrGet({ incidentId: null, scheduleId: "sch-b" } as never);
+
+		expect(same).toMatchObject({ created: false, investigation: { id: a.id } });
+		expect(other.created).toBe(true);
+		expect(other.investigation).toMatchObject({ scheduleId: "sch-b", incidentId: null });
+	});
+
+	it("startOrGet on an incident ignores a live check", async () => {
+		await check("sch-a", { status: "running" });
+		const inc = await incident();
+
+		const got = await investigations.startOrGet({ incidentId: inc.id });
+
+		expect(got.created).toBe(true);
+	});
+
+	it("Run #N counts only the schedule's own runs", async () => {
+		const a1 = await check("sch-a", {}, Date.now() - 30_000);
+		await check("sch-b", {}, Date.now() - 20_000);
+		const a2 = await check("sch-a", {}, Date.now() - 10_000);
+
+		expect(await investigations.runNumber(a1)).toBe(1);
+		expect(await investigations.runNumber(a2)).toBe(2);
+		expect(await investigations.liveKindRefusal({ ...a2, liveTurn: null }, "chat")).toBe("Run #2 is starting; wait");
+	});
+
+	it("newerRun looks at the schedule's own newer run, not another schedule's", async () => {
+		const { ports } = realDispatch();
+		const a1 = await check("sch-a", {}, Date.now() - 30_000);
+		await check("sch-b", { workspace: SINGLE }, Date.now() - 10_000);
+
+		expect(await ports.newerRun(a1.id)).toBeNull();
+
+		const a2 = await check("sch-a", { workspace: SINGLE }, Date.now() - 5_000);
+		expect(await ports.newerRun(a1.id)).toMatchObject({ number: 2 });
+		expect(await ports.newerRun(a2.id)).toBeNull();
+	});
+
+	it("a resume is blocked only by a live run of the same schedule", async () => {
+		const { service } = realDispatch();
+		const older = await check("sch-a", {}, Date.now() - 60_000);
+		await check("sch-b", { status: "running", liveTurn: "report" });
+
+		expect(await service.resumeInvestigation(older.id, "why?", "queue")).toBe(true);
+		await prisma.investigation.update({ where: { id: older.id }, data: { status: "completed", liveTurn: null } });
+		await check("sch-a", { status: "running", liveTurn: "report" });
+
+		await expect(service.resumeInvestigation(older.id, "why?", "queue")).rejects.toThrow(
+			"Run #2 is working; message it or stop it.",
+		);
+	});
+
+	it("a resume of a check carries its frozen subject, so the follow-up is still a service check", async () => {
+		const { service } = realDispatch();
+		const scheduled = {
+			scheduleId: "sch-a",
+			revision: 2,
+			serviceId: "svc-1",
+			serviceName: "checkout",
+			serviceNotes: "Restart is safe.",
+			runbook: "runbooks/latency.md",
+			repos: [],
+		};
+		const run = await check("sch-a", {
+			configSnapshot: JSON.stringify({ ...scheduled, brief: "Look at p99.", harness: "opencode", model: null, effort: null }),
+		});
+		await prisma.job.create({
+			data: { investigationId: run.id, incidentId: null, payload: "{}", status: "succeeded" },
+		});
+
+		expect(await service.resumeInvestigation(run.id, "and now?", "queue")).toBe(true);
+
+		const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: run.id } })).payload);
+		expect(payload).toMatchObject({ incidentId: null, scheduled, brief: "Look at p99." });
+	});
+
+	it("boot keeps one live run per schedule, not per null incident", async () => {
+		const { service } = realDispatch();
+		const aOld = await check("sch-a", { status: "pending", liveTurn: "report" }, Date.now() - 60_000);
+		const aNew = await check("sch-a", { status: "pending", liveTurn: "report" });
+		const b = await check("sch-b", { status: "pending", liveTurn: "report" }, Date.now() - 30_000);
+		for (const r of [aOld, aNew, b])
+			await prisma.job.create({ data: { investigationId: r.id, incidentId: null, payload: "{}", status: "pending" } });
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		expect((await read(aNew.id)).status).toBe("pending");
+		expect((await read(b.id)).status).toBe("pending");
+		expect((await read(aOld.id)).status).not.toBe("pending");
 	});
 });
