@@ -732,6 +732,7 @@ export async function* runInvestigation(
 		unCalled?.();
 		unFound?.();
 		unPublished?.();
+		opts.gateway?.closeRecording?.();
 		if (offer && opts.gateway && !summarized) {
 			summarized = true;
 			yield adapter.harnessTools(

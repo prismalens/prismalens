@@ -4,13 +4,15 @@
 /**
  * The API's gateway for the scripted-model runs (#848, #914): the API's own tool
  * declarations, views and MCP server over fixed data, behind the run's bearer, with a
- * real findings ledger. `PL_TOOL_SEARCH=on` gives the run a core plus `tools_search`.
+ * real findings ledger. Tool search follows the agent's registry row, as a real run does;
+ * `PL_TOOL_SEARCH=on|off` overrides it to measure the other mode.
  */
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { createMcpHandler } from "@modelcontextprotocol/server";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type { Artifact, RecordedFinding } from "@prismalens/contracts/schemas";
 import {
 	autoAllowed,
@@ -67,15 +69,25 @@ export interface StubGateway {
 	close: () => Promise<void>;
 }
 
+/** Whether a run of `harness` gets search: the override, else its registry row (#848). */
+export function stubSearch(harness: string): boolean {
+	const forced = process.env.PL_TOOL_SEARCH;
+	if (forced === "on" || forced === "off") return forced === "on";
+	return (
+		HARNESS_REGISTRY[harness as keyof typeof HARNESS_REGISTRY]
+			?.harnessToolSearch === true
+	);
+}
+
 export async function startStubGateway(
-	opts: { incidentTitle?: string; search?: boolean } = {},
+	opts: { incidentTitle?: string; search?: boolean; harness?: string } = {},
 ): Promise<StubGateway> {
 	const { gatewayTools } = (await import(API_TOOLS)) as {
 		gatewayTools: GatewayTools;
 	};
 	const token = randomBytes(24).toString("hex");
 	const serverName = newGatewayServerName();
-	const search = opts.search ?? process.env.PL_TOOL_SEARCH === "on";
+	const search = opts.search ?? stubSearch(opts.harness ?? "");
 	const title = opts.incidentTitle ?? STUB_FACTS.incident;
 	let connected = false;
 	let open = true;
@@ -414,6 +426,9 @@ export async function startStubGateway(
 				return () => found.delete(listener);
 			},
 			findings: () => ledger.snapshot(),
+			closeRecording: () => {
+				open = false;
+			},
 			onArtifact: (listener) => {
 				published.add(listener);
 				return () => published.delete(listener);

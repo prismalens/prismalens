@@ -543,14 +543,14 @@ jobs:
           set -o pipefail
           node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3 | tee admission.log
 
-      # Tool search (#848): the matrix again with PrismaLens's tools as a core plus
-      # `tools_search`, so a PR labelled `tool-search` shows both costs and pass rates.
-      - name: The behaviour matrix with tool search on
+      # Tool search (#848): the run above uses each agent's shipped setting; a PR labelled
+      # `tool-search` also runs the other mode, so both costs and pass rates show.
+      - name: The behaviour matrix with tool search in the other mode
         if: contains(github.event.pull_request.labels.*.name, 'tool-search')
         continue-on-error: true
-        env:
-          PL_TOOL_SEARCH: "on"
         run: |
+          shipped=$(grep -E "^SEARCH (on|off)$" admission.log | head -1 | cut -d' ' -f2)
+          export PL_TOOL_SEARCH=$([ "$shipped" = on ] && echo off || echo on)
           set -o pipefail
           node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix | tee search-on.log
 

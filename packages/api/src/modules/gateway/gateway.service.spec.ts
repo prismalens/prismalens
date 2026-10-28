@@ -303,8 +303,8 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(callsFired).toHaveLength(0);
 		expect(entry?.calls()).toEqual([]);
 
-		await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token));
-		await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token));
+		await body(await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token)));
+		await body(await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token)));
 
 		expect(callsFired).toHaveLength(2);
 		expect(callsFired[0]?.name).toBe("incident_get");
@@ -2043,5 +2043,35 @@ describe("read tools for the coding agent (#848)", () => {
 			);
 			expect(via.status).toBe("running");
 		});
+	});
+});
+
+describe("recording closes before the report reads it (#848)", () => {
+	it("refuses evidence and pages once the engine stopped hearing the lease", async () => {
+		const g = gateway();
+		const a = await g.lease(RUN_A, NAME);
+		if (!a) throw new Error("no lease");
+		const pages: unknown[] = [];
+		a.onArtifact?.((p) => pages.push(p));
+		a.closeRecording?.();
+		const send = async (name: string, args: Record<string, unknown>) =>
+			body(
+				await g.serve(
+					RUN_A,
+					rpc(RUN_A, "tools/call", { name, arguments: args }, a.token),
+				),
+			);
+		const ev = await send("evidence_record", {
+			observation: "o",
+			source: "s",
+			quote: "q quote",
+		});
+		const page = await send("artifact_publish", { title: "t", html: "<p>x</p>" });
+		for (const out of [ev, page]) {
+			const text = (out.result as { content: { text: string }[] }).content[0]?.text ?? "";
+			expect(JSON.parse(text).error).toBe("run_ended");
+		}
+		expect(a.findings?.().evidence).toEqual([]);
+		expect(pages).toEqual([]);
 	});
 });

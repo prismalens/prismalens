@@ -243,7 +243,9 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 		const events: CanonicalEvent[] = [];
 		// Every row runs with PrismaLens's tools, as a real run does (#848); off only to compare.
 		const stub =
-			process.env.PL_MATRIX_GATEWAY === "off" ? null : await startStubGateway();
+			process.env.PL_MATRIX_GATEWAY === "off"
+				? null
+				: await startStubGateway({ harness: base.harness });
 		try {
 			for await (const ev of runInvestigation({
 				harness: base.harness,
@@ -430,6 +432,8 @@ export function gatewayProblem(
 				c.name === w.name &&
 				c.input !== undefined &&
 				typeof c.callId === "string" &&
+				c.callId.length > 0 &&
+				subset(w.input, c.input) &&
 				(c.isError === true) === !w.ok &&
 				(!w.outputHas || (c.output ?? "").includes(w.outputHas)),
 		);
@@ -454,6 +458,20 @@ export function gatewayProblem(
 		for (const id of wanted ?? [])
 			if (!ids(type).includes(id))
 				return `no recorded ${type} "${id}" (saw ${ids(type).join(",") || "none"})`;
+	for (const [id, words] of Object.entries(want.evidenceHas ?? {})) {
+		const found = events.find(
+			(e) =>
+				e.kind === "finding_recorded" &&
+				e.finding.type === "evidence" &&
+				e.finding.id === id,
+		);
+		if (
+			found?.kind !== "finding_recorded" ||
+			found.finding.type !== "evidence" ||
+			!found.finding.observation.includes(words)
+		)
+			return `evidence "${id}" does not hold "${words}"`;
+	}
 	const titles = events.flatMap((e) =>
 		e.kind === "artifact_published" ? [e.artifact.title] : [],
 	);
@@ -461,4 +479,17 @@ export function gatewayProblem(
 		if (!titles.includes(title))
 			return `no published page "${title}" (saw ${titles.join(",") || "none"})`;
 	return null;
+}
+
+/** Every key of `want` is in `got` with an equal value (deep); no `want` is a match. */
+function subset(
+	want: Record<string, unknown> | undefined,
+	got: unknown,
+): boolean {
+	if (!want) return true;
+	if (!got || typeof got !== "object") return false;
+	const have = got as Record<string, unknown>;
+	return Object.entries(want).every(
+		([k, v]) => JSON.stringify(have[k]) === JSON.stringify(v),
+	);
 }
