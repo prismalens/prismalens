@@ -1,0 +1,81 @@
+{
+	"row": "gateway-service-get",
+	"kind": "happy",
+	"title": "Looks up a service through PrismaLens's service tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "service_get",
+				"ok": true,
+				"outputHas": "ScenarioTeamPlatform"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-service-get]",
+				"toolName": "$gw:service_get",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:service_get",
+						"arguments": {
+							"name": "scenario"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-service-get]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "get service"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-service-get]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "service_get"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "service_get",
+							"arguments": {
+								"name": "scenario"
+							}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-service-get]",
+				"resultContains": "ScenarioTeamPlatform"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

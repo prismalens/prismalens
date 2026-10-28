@@ -494,7 +494,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the packages the engine imports
-        run: pnpm --filter "@prismalens/contracts..." build
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
 
       - name: Setup uv
         if: matrix.harness == 'deepagents'
@@ -520,7 +520,30 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Run the admission (R1-R9) and the behaviour matrix against aimock, 3 times
-        run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3
+        run: |
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3 | tee admission.log
+
+      # Tool search (#848): the run above uses each agent's shipped setting; a PR labelled
+      # `tool-search` also runs the other mode, so both costs and pass rates show.
+      - name: The behaviour matrix with tool search in the other mode
+        if: contains(github.event.pull_request.labels.*.name, 'tool-search')
+        continue-on-error: true
+        run: |
+          shipped=$(grep -E "^SEARCH (on|off)$" admission.log | head -1 | cut -d' ' -f2)
+          export PL_TOOL_SEARCH=$([ "$shipped" = on ] && echo off || echo on)
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix --repeat 3 | tee search-on.log
+
+      - name: PrismaLens tool cost and pass rate
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.harness }}: PrismaLens tools"
+            echo '```'
+            grep -hE "^(TOOLCOST|PASSRATE)" admission.log search-on.log 2>/dev/null || echo "no matrix run"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The negative run (#848): with no gateway the model calls no PrismaLens tool, so R8 must fail the gate.
       - name: Without the gateway, the admission must fail
@@ -756,7 +779,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the packages the engine imports
-        run: pnpm --filter "@prismalens/contracts..." build
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
 
       - name: Install the pinned OpenCode
         run: npm install -g "opencode-ai@$(node -p "require('./scripts/agent-pins.json').pins['opencode-ai']")" && opencode --version

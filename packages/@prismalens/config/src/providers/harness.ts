@@ -135,6 +135,11 @@ export interface HarnessDescriptor {
 	configFiles?: (env: HarnessRunEnv) => Record<string, string>;
 	/** The agent ignores ACP `mcpServers`; the gateway goes in a run file instead (#848). */
 	gatewayDelivery?: "mcp-config-file";
+	/**
+	 * PrismaLens's tools come as a core plus `tools_search`, not all listed; on only where the
+	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
+	 */
+	harnessToolSearch?: true;
 	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
 	sessionMeta?: () => Record<string, unknown>;
 	/** PrismaLens's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */
@@ -295,6 +300,8 @@ const LOCAL_NO_MODE = noMode("Local agent");
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
 		id: "opencode",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "OpenCode",
 		acpRegistryIds: ["opencode", "opencode-v2"],
 		binary: "opencode",
@@ -376,6 +383,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	"claude-code": {
 		id: "claude-code",
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		label: "Claude Code",
 		acpRegistryIds: ["claude-acp"],
 		binary: "claude-agent-acp",
@@ -469,6 +477,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	codex: {
 		id: "codex",
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		label: "Codex",
 		acpRegistryIds: ["codex-acp"],
 		binary: "codex-acp",
@@ -535,6 +544,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	gemini: {
 		id: "gemini",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "Gemini CLI",
 		acpRegistryIds: ["gemini"],
 		binary: "gemini",
@@ -580,6 +591,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	},
 	deepagents: {
 		id: "deepagents",
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		label: "deepagents",
 		acpRegistryIds: ["deepagents"],
 		// deepagents-acp ships no console script; deepagents-code's `dcode --acp` is

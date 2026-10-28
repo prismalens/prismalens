@@ -19,6 +19,7 @@ import {
 	ConversationScrollButton,
 } from "@/components/ai/conversation";
 import { MessageResponse } from "@/components/ai/message";
+import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
@@ -184,7 +185,11 @@ export const Transcript = memo(function Transcript({
 						const lit = steps?.highlight ?? null;
 						return (
 							<Fragment key={item.key}>
-								{(!folds || worked?.open || i <= brief || i >= end) && (
+								{(!folds ||
+									worked?.open ||
+									i <= brief ||
+									i >= end ||
+									item.kind === "artifact") && (
 									<TranscriptRow
 										item={item}
 										incidentId={incidentId}
@@ -365,6 +370,8 @@ const TranscriptRow = memo(function TranscriptRow({
 				</li>
 			);
 		}
+		case "artifact":
+			return <ArtifactCard artifact={item.artifact} />;
 		case "thought":
 			return (
 				<li className="text-meta text-text-3" data-testid="transcript-thought">

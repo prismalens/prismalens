@@ -1,0 +1,81 @@
+{
+	"row": "gateway-thread-read",
+	"kind": "happy",
+	"title": "Reads one earlier thread through PrismaLens's thread tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "thread_read",
+				"ok": true,
+				"outputHas": "ScenarioThreadCause"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-read]",
+				"toolName": "$gw:thread_read",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:thread_read",
+						"arguments": {
+							"threadId": "00000000-0000-4000-8000-0000000000c1"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-read]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "read thread"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-read]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "thread_read"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "thread_read",
+							"arguments": {
+								"threadId": "00000000-0000-4000-8000-0000000000c1"
+							}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-read]",
+				"resultContains": "ScenarioThreadCause"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

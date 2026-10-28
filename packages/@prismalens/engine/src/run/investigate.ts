@@ -43,6 +43,7 @@ import {
 	type InvestigationKind,
 	type JobAttachment,
 	type OperatorMessageMode,
+	type RecordedFinding,
 	type RunFidelity,
 	type RunRuntimeNote,
 	type RunUsage,
@@ -680,15 +681,20 @@ export async function* runInvestigation(
 			} else if (item.kind === "nudge") {
 				yield* recordQueued();
 			} else if (item.kind === "harness_tool_call") {
-				if (opts.gateway)
+				if (opts.gateway && shown(`call:${item.call.callId ?? item.call.at}`))
 					yield adapter.harnessToolCall(
 						opts.gateway.serverName,
-						item.name,
-						item.at,
+						item.call,
 						toolsTurn,
 					);
 			} else if (item.kind === "harness_finding") {
-				yield adapter.findingRecorded(item.finding);
+				if (shown(findingKey(item.finding)))
+					yield adapter.findingRecorded(item.finding);
+			} else if (item.kind === "harness_artifact") {
+				if (!shownPages.has(item.artifact.id)) {
+					shownPages.add(item.artifact.id);
+					yield adapter.artifactPublished(item.artifact);
+				}
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -717,9 +723,39 @@ export async function* runInvestigation(
 	 * What the run leaves behind on any end (#820): an ask it never heard back on
 	 * reads stopped, and a message it never read, not delivered.
 	 */
+	const shownPages = new Set<string>();
+	const seen = new Set<string>();
+	/** True the first time `key` is seen this run. */
+	const shown = (key: string): boolean => !seen.has(key) && !!seen.add(key);
+	const findingKey = (f: RecordedFinding) =>
+		`finding:${f.type}:${f.id}:${f.at}`;
 	const toolsSummary = function* (): Generator<CanonicalEvent> {
 		unCalled?.();
 		unFound?.();
+		unPublished?.();
+		opts.gateway?.closeRecording?.();
+		// What was acknowledged after the turn's last item was read is still recorded, once.
+		const gw = opts.gateway;
+		for (const call of gw?.callLog?.() ?? [])
+			if (gw && call.callId && shown(`call:${call.callId}`))
+				yield adapter.harnessToolCall(gw.serverName, call, toolsTurn);
+		const found = gw?.findings?.();
+		for (const f of [
+			...(found?.evidence ?? []).map((e) => ({
+				type: "evidence" as const,
+				...e,
+			})),
+			...(found?.hypotheses ?? []).map((h) => ({
+				type: "hypothesis" as const,
+				...h,
+			})),
+		])
+			if (shown(findingKey(f))) yield adapter.findingRecorded(f);
+		for (const page of gw?.artifacts?.() ?? [])
+			if (!shownPages.has(page.id)) {
+				shownPages.add(page.id);
+				yield adapter.artifactPublished(page);
+			}
 		if (offer && opts.gateway && !summarized) {
 			summarized = true;
 			yield adapter.harnessTools(
@@ -756,10 +792,13 @@ export async function* runInvestigation(
 	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
 	let summarized = false;
 	const unCalled = opts.gateway?.onCall((c) =>
-		session.inject({ kind: "harness_tool_call", ...c }),
+		session.inject({ kind: "harness_tool_call", call: c }),
 	);
 	const unFound = opts.gateway?.onFinding?.((finding) =>
 		session.inject({ kind: "harness_finding", finding }),
+	);
+	const unPublished = opts.gateway?.onArtifact?.((artifact) =>
+		session.inject({ kind: "harness_artifact", artifact }),
 	);
 	const onAbort = (): void => session.cancel();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });

@@ -365,7 +365,7 @@ async function runJobInternal(
 		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
 		const gateway = await ports.gateway
-			?.lease(runId, workspace.toolsServer)
+			?.lease(runId, workspace.toolsServer, harness)
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the run has no PrismaLens tools",
@@ -904,7 +904,7 @@ async function runFollowUp(
 			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
 		const gateway = await ports.gateway
-			?.lease(id, workspace.toolsServer)
+			?.lease(id, workspace.toolsServer, harness)
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",

@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { SourceRegistry } from "@prismalens/integrations";
+import {
+	HarnessRegistry,
+	type HarnessTool,
+} from "@prismalens/integrations/harness";
 import type { RunbooksData } from "../runbooks.js";
+import { type ArtifactsData, artifactTools } from "./artifacts.js";
+import { type AttachmentsData, attachmentTools } from "./attachments.js";
+import { type HistoryData, historyTools } from "./history.js";
+import { type IncidentRecordData, incidentTools } from "./incident.js";
 import {
 	type IncidentLookup,
 	type InvestigationsQuery,
@@ -10,8 +17,20 @@ import {
 	type PastInvestigation,
 } from "./knowledge.js";
 import { type FindingsData, recordTools } from "./record.js";
+import { reportTools } from "./report.js";
+import { type RunStatusLookup, runTools } from "./run.js";
 import { runbookTools } from "./runbooks.js";
+import { type ServiceLookup, serviceTools } from "./services.js";
+import { type ThreadsData, threadTools } from "./threads.js";
 
+export type { ArtifactsData } from "./artifacts.js";
+export type { AttachmentItem, AttachmentsData } from "./attachments.js";
+export type { HistoryData, PastFix, SimilarIncident } from "./history.js";
+export type {
+	ChangeItem,
+	IncidentRecordData,
+	TimelineItem,
+} from "./incident.js";
 export type {
 	IncidentLookup,
 	IncidentView,
@@ -19,6 +38,14 @@ export type {
 	PastInvestigation,
 } from "./knowledge.js";
 export type { FindingsData } from "./record.js";
+export type { RunStatusLookup, RunStatusView } from "./run.js";
+export type { ServiceLookup, ServiceView } from "./services.js";
+export type {
+	ThreadReport,
+	ThreadSummary,
+	ThreadsData,
+	ThreadView,
+} from "./threads.js";
 
 /** What the tools read; the api answers from its own database. */
 export interface GatewayToolData {
@@ -26,19 +53,34 @@ export interface GatewayToolData {
 	incident: IncidentLookup;
 	runbooks: RunbooksData;
 	findings: FindingsData;
+	artifacts: ArtifactsData;
+	threads: ThreadsData;
+	incidentRecord: IncidentRecordData;
+	service: ServiceLookup;
+	runStatus: RunStatusLookup;
+	attachments: AttachmentsData;
+	history: HistoryData;
 }
 
 /**
- * PrismaLens's harness tools, registered through the read-only gate. Data-access tools
- * come from the user's own agent setup, never from here (#848 ruling 2026-10-24).
+ * PrismaLens's harness tools, through the registry's checks. Data-access tools come from
+ * the user's own agent setup, never from here (#848 ruling 2026-10-24).
  */
-export function gatewayRegistry(data: GatewayToolData): SourceRegistry {
-	const registry = new SourceRegistry(() => "the tool failed");
+export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
+	const registry = new HarnessRegistry();
 	for (const tool of [
 		...knowledgeTools((q) => data.searchInvestigations(q), data.incident),
 		...runbookTools(data.runbooks),
 		...recordTools(data.findings),
+		...artifactTools(data.artifacts),
+		...threadTools(data.threads),
+		...incidentTools(data.incidentRecord),
+		...serviceTools(data.service),
+		...runTools(data.runStatus),
+		...reportTools(),
+		...attachmentTools(data.attachments),
+		...historyTools(data.history),
 	])
 		registry.register(tool);
-	return registry;
+	return registry.list();
 }
