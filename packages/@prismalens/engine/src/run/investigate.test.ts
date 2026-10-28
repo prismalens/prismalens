@@ -1766,7 +1766,7 @@ describe("harness tool call live events and summary (#848)", () => {
 		});
 	});
 
-	it("a page acknowledged but never streamed is shown once, after recording closes (#871)", async () => {
+	it("calls, findings and pages acknowledged but never streamed are recorded once, after recording closes (#848)", async () => {
 		const page = { id: "a1", title: "Timeline", html: "<p>x</p>", at: "2026-10-24T10:00:00.000Z" };
 		let closed = false;
 		const gateway = {
@@ -1784,6 +1784,23 @@ describe("harness tool call live events and summary (#848)", () => {
 				closed = true;
 			},
 			artifacts: () => [page],
+			callLog: () => [
+				{ name: "evidence_record", at: page.at, callId: "c9", input: {}, output: "x" },
+			],
+			findings: () => ({
+				evidence: [
+					{
+						id: "e1",
+						observation: "o",
+						source: "s",
+						quote: "q quote",
+						direction: "supports" as const,
+						anchor: null,
+						at: page.at,
+					},
+				],
+				hypotheses: [],
+			}),
 		};
 		const { events } = await collect("ok", {
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
@@ -1793,6 +1810,8 @@ describe("harness tool call live events and summary (#848)", () => {
 		expect(pages).toHaveLength(1);
 		expect(pages[0]).toMatchObject({ artifact: { id: "a1", title: "Timeline" } });
 		expect(closed).toBe(true);
+		expect(events.filter((e) => e.kind === "harness_tool_call")).toHaveLength(1);
+		expect(events.filter((e) => e.kind === "finding_recorded")).toHaveLength(1);
 	});
 
 	it("a two-turn resume yields turn: 'first' and then turn: 'follow-up'", async () => {
