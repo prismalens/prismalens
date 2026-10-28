@@ -79,7 +79,7 @@ function nested(path: string): boolean {
 export function shownRepoUrl(sourceKind: string, url: string): string {
 	if (sourceKind === "folder") return url;
 	if (SCP_REMOTE.test(url)) {
-		const shown = url.split("?")[0] as string;
+		const shown = url.split(/[?#]/)[0] as string;
 		return nested(shown.slice(shown.indexOf(":") + 1)) ? UNSHOWN_REPO : shown;
 	}
 	if (!SCHEME_URL.test(url)) return UNSHOWN_REPO;
@@ -101,7 +101,7 @@ const fold = (s: string) => s.replace(/[^A-Za-z0-9]/g, "_");
 /** Whether `text`, such as a run's folder name, holds a part `shownRepoUrl` removes from `raw`, kept as is or folded to `_` (#938). */
 export function holdsRemoved(raw: string, text: string): boolean {
 	const pieces: string[] = [];
-	if (SCP_REMOTE.test(raw)) pieces.push(raw.split("?").slice(1).join("?"));
+	if (SCP_REMOTE.test(raw)) pieces.push(...raw.split(/[?#]/).slice(1));
 	else {
 		try {
 			const u = new URL(raw);

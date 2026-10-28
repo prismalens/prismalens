@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { shownRepoName, shownRepoUrl, shownText, UNSHOWN_REPO } from "./git-credential.js";
+import { holdsRemoved, shownRepoName, shownRepoUrl, shownText, UNSHOWN_REPO } from "./git-credential.js";
 import { displayNameFor } from "./repo-source.service.js";
 
 const SENTINEL = "ghp_SENTINEL938";
@@ -10,6 +10,7 @@ const SENTINEL = "ghp_SENTINEL938";
 describe("shownRepoUrl (#938)", () => {
 	it.each([
 		["scp with ?token=", `git@github.com:acme/api.git?token=${SENTINEL}`, "git@github.com:acme/api.git"],
+		["scp with #token=", `git@github.com:acme/api.git#token=${SENTINEL}`, "git@github.com:acme/api.git"],
 		["https with user:password", `https://x:${SENTINEL}@github.com/acme/api.git`, "https://github.com/acme/api.git"],
 		["https with a token as username", `https://${SENTINEL}@github.com/acme/api.git`, "https://github.com/acme/api.git"],
 		["https with a query", `https://github.com/acme/api.git?access_token=${SENTINEL}`, "https://github.com/acme/api.git"],
@@ -115,5 +116,13 @@ describe("round 3 (#938)", () => {
 	it("a credential-free path with @ keeps its name", () => {
 		expect(shownRepoUrl("url", "https://git.example/acme/api@2.git")).toBe("https://git.example/acme/api@2.git");
 		expect(displayNameFor("url", "https://git.example/acme/api@2.git")).toBe("acme/api@2");
+	});
+});
+
+describe("holdsRemoved scp fragment (#938)", () => {
+	it("flags a folder name holding the part after # of an scp address", () => {
+		const raw = `git@github.com:acme/api.git#token=${SENTINEL}`;
+		expect(holdsRemoved(raw, `run-token_${SENTINEL}`)).toBe(true);
+		expect(holdsRemoved(raw, "run-acme-api")).toBe(false);
 	});
 });
