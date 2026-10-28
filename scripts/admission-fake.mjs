@@ -443,11 +443,12 @@ async function main() {
 				run.seen.push(seen());
 				run.parts.push(matrixSignature(out.stdout));
 				const { requests } = run.seen[run.seen.length - 1];
+				console.log(/^SEARCH (on|off)$/m.exec(out.stdout)?.[0] ?? "SEARCH off");
 				console.log(
 					toolCost(
 						requests,
 						agentTools()[args.harness]?.shell ?? "",
-						process.env.PL_TOOL_SEARCH === "on",
+						/^SEARCH on$/m.test(out.stdout),
 					),
 				);
 				console.log(passRate(out.stdout));

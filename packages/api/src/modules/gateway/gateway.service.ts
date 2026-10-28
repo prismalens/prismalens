@@ -135,6 +135,8 @@ interface RunState {
 	/** HTML pages the agent published, and who hears the next one (#871). */
 	artifacts: number;
 	published: Set<(a: Artifact) => void>;
+	/** False once the engine stopped hearing the run: a record would reach neither the stream nor the report. */
+	recording: boolean;
 	/** What this run lists and may execute (#848). */
 	view: RunView;
 }
@@ -206,6 +208,7 @@ export class GatewayService {
 			found: new Set(),
 			artifacts: 0,
 			published: new Set(),
+			recording: true,
 			view: runView(this.tools, { search: this.toolSearch(harness) }),
 		};
 		this.runs.set(runId, state);
@@ -238,6 +241,9 @@ export class GatewayService {
 				return () => state.found.delete(listener);
 			},
 			findings: () => state.ledger.snapshot(),
+			closeRecording: () => {
+				state.recording = false;
+			},
 			onArtifact: (listener) => {
 				state.published.add(listener);
 				return () => state.published.delete(listener);
@@ -412,7 +418,7 @@ export class GatewayService {
 		artifacts: {
 			publish: async (runId, page) => {
 				const state = this.runs.get(runId);
-				if (!state) return { error: NOT_LIVE, ended: true };
+				if (!state?.recording) return { error: NOT_LIVE, ended: true };
 				if (state.artifacts >= ARTIFACTS_PER_RUN)
 					return {
 						error: `This run already holds ${ARTIFACTS_PER_RUN} pages`,
@@ -430,13 +436,14 @@ export class GatewayService {
 		findings: {
 			recordEvidence: async (runId, input) => {
 				const state = this.runs.get(runId);
-				if (!state) return { error: NOT_LIVE };
+				if (!state?.recording) return { error: NOT_LIVE };
 				if (!(await this.loadHistory(state))) return { error: NO_HISTORY };
 				const file = input.path
 					? await this.fileAnchor(runId, input.path, input.quote)
 					: null;
 				// The run can end while the file is read; nothing is kept for an ended run.
-				if (this.runs.get(runId) !== state) return { error: NOT_LIVE };
+				if (this.runs.get(runId) !== state || !state.recording)
+					return { error: NOT_LIVE };
 				const r = state.ledger.addEvidence(
 					input,
 					file,
@@ -447,8 +454,10 @@ export class GatewayService {
 			},
 			recordHypothesis: async (runId, input) => {
 				const state = this.runs.get(runId);
-				if (!state) return { error: NOT_LIVE };
+				if (!state?.recording) return { error: NOT_LIVE };
 				if (!(await this.loadHistory(state))) return { error: NO_HISTORY };
+				if (this.runs.get(runId) !== state || !state.recording)
+					return { error: NOT_LIVE };
 				const r = state.ledger.addHypothesis(input, new Date().toISOString());
 				if (!("error" in r)) this.recorded(state, { type: "hypothesis", ...r });
 				return r;

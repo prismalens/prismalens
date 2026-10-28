@@ -119,7 +119,7 @@ const context: InvestigationContext = {
 const stub =
 	process.env.ADMISSION_NO_GATEWAY === "1"
 		? null
-		: await startStubGateway({ incidentTitle: "AdmissionProbe" });
+		: await startStubGateway({ incidentTitle: "AdmissionProbe", harness });
 const gatewayOpt = stub ? { gateway: stub.entry } : {};
 const turns = {
 	first: { ran: false, calls: 0 },

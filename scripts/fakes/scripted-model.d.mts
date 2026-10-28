@@ -50,8 +50,16 @@ export type Expectation =
 
 /** What a `gateway` row expects PrismaLens's tools to have recorded, in order. */
 export interface GatewayExpectation {
-	calls: { name: string; ok: boolean; outputHas?: string }[];
+	/** `input` is matched as a subset of what the call carried. */
+	calls: {
+		name: string;
+		ok: boolean;
+		outputHas?: string;
+		input?: Record<string, unknown>;
+	}[];
 	records?: { evidence?: string[]; hypotheses?: string[] };
+	/** Words each recorded evidence item's observation must hold, by id. */
+	evidenceHas?: Record<string, string>;
 	/** Titles of the HTML pages the run must have published (#871). */
 	artifacts?: string[];
 }

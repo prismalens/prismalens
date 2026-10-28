@@ -9,7 +9,10 @@
 			{
 				"name": "investigations_search",
 				"ok": true,
-				"outputHas": "ScenarioPastCause"
+				"outputHas": "ScenarioPastCause",
+				"input": {
+					"query": "checkout timeouts"
+				}
 			}
 		]
 	},

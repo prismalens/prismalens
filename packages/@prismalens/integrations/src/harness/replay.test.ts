@@ -264,6 +264,7 @@ describe("fixturesFrom", () => {
 		expect(fixtures[0]).toEqual({
 			match: {
 				inConversation: "test-marker",
+				toolResults: 0,
 				hasToolResult: false,
 			},
 			response: {
@@ -274,6 +275,7 @@ describe("fixturesFrom", () => {
 		expect(fixtures[1]).toEqual({
 			match: {
 				inConversation: "test-marker",
+				toolResults: 1,
 				afterTool: "$gw:incident_get",
 			},
 			response: {
@@ -284,6 +286,7 @@ describe("fixturesFrom", () => {
 		expect(fixtures[2]).toEqual({
 			match: {
 				inConversation: "test-marker",
+				toolResults: 2,
 				afterTool: "$gw:runbooks_list",
 			},
 			response: {
@@ -313,5 +316,20 @@ describe("fixturesFrom through tools_call (#848)", () => {
 			arguments: { name: "investigations_search", arguments: { query: "x" } },
 		});
 		expect(entries[2]?.match.afterTool).toBe("$gw:tools_call");
+	});
+});
+
+describe("fixturesFrom with repeated wrapper calls (#848)", () => {
+	it("tells repeated tools_call steps apart by how many results came before", () => {
+		const entries = fixturesFrom(
+			[
+				{ name: "investigations_search", input: { query: "a" }, via: "tools_call" },
+				{ name: "investigations_search", input: { query: "b" }, via: "tools_call" },
+				{ name: "investigations_search", input: { query: "c" }, via: "tools_call" },
+			],
+			"[row:r]",
+		);
+		expect(entries.map((e) => e.match.toolResults)).toEqual([0, 1, 2]);
+		expect(new Set(entries.map((e) => JSON.stringify(e.match))).size).toBe(3);
 	});
 });

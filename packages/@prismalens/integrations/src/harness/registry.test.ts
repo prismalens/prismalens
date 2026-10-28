@@ -361,3 +361,39 @@ describe("round-3 guarantees (#848)", () => {
 		expect(aborted).toBe(true);
 	});
 });
+
+describe("round-4 guarantees (#848)", () => {
+	const ctx = { runId: "r1", signal: new AbortController().signal };
+
+	it("scrubs the recorded input with the secrets the tool itself returned", async () => {
+		const tool = defineHarnessTool({
+			name: "own_secret",
+			title: "t",
+			description: "d",
+			group: "core",
+			effect: "read",
+			input: z.object({ q: z.string() }),
+			run: async ({ q }) => ({ value: { q }, secrets: ["secret-1234"] }),
+		});
+		const call = await executeTool(tool, { q: "secret-1234" }, ctx);
+		expect(JSON.stringify(call.input)).not.toContain("secret-1234");
+		expect(call.output).not.toContain("secret-1234");
+	});
+
+	it("keeps a handler that throws before returning a promise inside the failure contract", async () => {
+		const tool = defineHarnessTool({
+			name: "sync_throw",
+			title: "t",
+			description: "d",
+			group: "core",
+			effect: "read",
+			input: z.object({}),
+			run: () => {
+				throw new Error("boom");
+			},
+		});
+		const call = await executeTool(tool, {}, ctx);
+		expect(call.isError).toBe(true);
+		expect(JSON.parse(call.output).error).toBe("internal");
+	});
+});

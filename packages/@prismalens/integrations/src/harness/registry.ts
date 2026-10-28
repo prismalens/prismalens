@@ -157,7 +157,9 @@ export async function executeTool(
 				stop.abort();
 			}, timeoutMs);
 		});
-		const running = tool.run(parsed.data, { runId: ctx.runId, signal });
+		const running = Promise.resolve().then(() =>
+			tool.run(parsed.data, { runId: ctx.runId, signal }),
+		);
 		try {
 			// A record tool is never cut short: a late write after a timeout answer would invite a duplicate.
 			outcome = await (tool.effect === "record"
@@ -173,10 +175,11 @@ export async function executeTool(
 			clearTimeout(timer);
 		}
 	}
-	const { text, isError } = resultText(outcome, [
+	const inventory = [
 		...secrets,
 		...(isFailure(outcome) ? [] : (outcome.secrets ?? [])),
-	]);
+	];
+	const { text, isError } = resultText(outcome, inventory);
 	const inputText = JSON.stringify(args ?? {});
 	return {
 		callId: randomUUID(),
@@ -184,7 +187,7 @@ export async function executeTool(
 		at,
 		...(inputText.length > INPUT_CHARS
 			? { inputDropped: true as const }
-			: { input: JSON.parse(scrubSecrets(inputText, secrets)) }),
+			: { input: JSON.parse(scrubSecrets(inputText, inventory)) }),
 		output: text,
 		isError,
 		ms: Date.now() - started,

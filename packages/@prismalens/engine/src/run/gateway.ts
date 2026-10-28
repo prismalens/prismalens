@@ -44,6 +44,8 @@ export interface GatewayEntry {
 	 * is refused and retries it. Settles after the first attempt.
 	 */
 	restore?(load: () => Promise<Findings>): Promise<void>;
+	/** The engine stopped hearing this lease: nothing more is recorded or published on it (#848). */
+	closeRecording?(): void;
 	/** Hears each HTML artifact the agent publishes (#871); returns the unsubscribe. */
 	onArtifact?(listener: (a: Artifact) => void): () => void;
 }

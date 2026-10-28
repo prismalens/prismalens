@@ -18,17 +18,28 @@
 			{
 				"name": "evidence_record",
 				"ok": true,
-				"outputHas": "e1"
+				"outputHas": "e1",
+				"input": {
+					"source": "cat package.json",
+					"quote": "\"main\": \"index.js\""
+				}
 			},
 			{
 				"name": "hypothesis_record",
 				"ok": true,
-				"outputHas": "rh1"
+				"outputHas": "rh1",
+				"input": {
+					"status": "supported",
+					"evidence": ["e1"]
+				}
 			}
 		],
 		"records": {
 			"evidence": ["e1"],
 			"hypotheses": ["rh1"]
+		},
+		"evidenceHas": {
+			"e1": "index.js as the entry point"
 		}
 	},
 	"fixtures": [

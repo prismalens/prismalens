@@ -86,6 +86,7 @@ export function fixturesFrom(
 		.map((c, i, kept) => ({
 			match: {
 				inConversation: marker,
+				toolResults: i,
 				...(i === 0
 					? { hasToolResult: false }
 					: {
