@@ -696,7 +696,7 @@ export function RunToolsSection({
 			{status.state === "not-reached" && hint && (
 				<div className="flex flex-col gap-1.5" data-testid="run-tools-hint">
 					<p className="text-meta text-text-2">{hint.text}</p>
-					{hint.folder && <CommandChip command={hint.folder} />}
+					{hint.folder && <CommandChip command={hint.folder} path />}
 				</div>
 			)}
 			{turns.map((t) => (
