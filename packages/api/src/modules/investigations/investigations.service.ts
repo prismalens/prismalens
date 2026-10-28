@@ -44,6 +44,7 @@ import {
 	CreateInvestigationDto,
 	type InternalInvestigationResultDto,
 } from "./dto/index.js";
+import { runScope } from "./run-scope.js";
 
 export type { Investigation };
 
@@ -139,7 +140,11 @@ export class InvestigationsService {
 	 * one transaction, so two clicks or a click and a trigger cannot both start a run (#637).
 	 */
 	async startOrGet(
-		dto: CreateInvestigationDto & {
+		dto: Omit<CreateInvestigationDto, "incidentId"> & {
+			/** Null for a scheduled service check, which is scoped by `scheduleId` instead (#979). */
+			incidentId: string | null;
+			scheduleId?: string;
+			serviceId?: string;
 			triggerType?: string;
 			triggerReason?: string;
 			/** The incident was already resolved or closed; it stays so (#743). */
@@ -165,7 +170,7 @@ export class InvestigationsService {
 			result = await this.prisma.$transaction(async (tx) => {
 				const running = await tx.investigation.findFirst({
 					where: {
-						incidentId: dto.incidentId,
+						...runScope(dto),
 						status: { in: [...LIVE_WORKFLOW_STATUSES] },
 					},
 					orderBy: { createdAt: "desc" },
@@ -174,6 +179,8 @@ export class InvestigationsService {
 				const investigation = await tx.investigation.create({
 					data: {
 						incidentId: dto.incidentId,
+						...(dto.scheduleId ? { scheduleId: dto.scheduleId } : {}),
+						...(dto.serviceId ? { serviceId: dto.serviceId } : {}),
 						status: "pending",
 						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
@@ -469,10 +476,10 @@ export class InvestigationsService {
 
 	/** `Run #N` as the sidebar counts it: every thread on the incident, oldest first. */
 	async runNumber(
-		inv: Pick<Investigation, "incidentId" | "createdAt">,
+		inv: Pick<Investigation, "incidentId" | "scheduleId" | "createdAt">,
 	): Promise<number> {
 		return this.prisma.investigation.count({
-			where: { incidentId: inv.incidentId, createdAt: { lte: inv.createdAt } },
+			where: { ...runScope(inv), createdAt: { lte: inv.createdAt } },
 		});
 	}
 
@@ -481,7 +488,10 @@ export class InvestigationsService {
 	 * (#673 w59, OBJ-004, OBJ-021): a stale page must be refused, never reread.
 	 */
 	async liveKindRefusal(
-		inv: Pick<Investigation, "incidentId" | "createdAt" | "kind" | "liveTurn">,
+		inv: Pick<
+			Investigation,
+			"incidentId" | "scheduleId" | "createdAt" | "kind" | "liveTurn"
+		>,
 		kind: FollowUpKind,
 	): Promise<string | null> {
 		const wants: LiveTurn = kind === "continue" ? "report" : "answer";
@@ -554,7 +564,7 @@ export class InvestigationsService {
 	 */
 	async cancelPending(
 		id: string,
-		incidentId: string,
+		incidentId: string | null,
 		description = "The investigation was cancelled before it started.",
 	): Promise<Investigation | null> {
 		const updated = await this.updateStatus(id, "cancelled");
