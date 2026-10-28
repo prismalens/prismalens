@@ -18,7 +18,8 @@
 		"start": "electron .",
 		"stage:backend": "node scripts/pack-desktop.mjs",
 		"dist": "pnpm run build && pnpm run stage:backend && electron-builder --dir",
-		"smoke": "node scripts/smoke-desktop.mjs"
+		"smoke": "node scripts/smoke-desktop.mjs",
+		"test:browser": "pnpm run build && electron scripts/browser-isolation.mjs"
 	},
 	"dependencies": {
 		"@prismalens/auth": "workspace:*",

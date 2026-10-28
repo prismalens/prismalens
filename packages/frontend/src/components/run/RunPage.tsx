@@ -44,6 +44,7 @@ import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
+import { desktopBridge } from "@/lib/desktop";
 import {
 	citedFile,
 	codeHostUrl,
@@ -63,6 +64,7 @@ import {
 } from "@/lib/investigation-events";
 import { useRenderProbe } from "@/lib/render-probe";
 import { askTitle } from "@/lib/run-asks";
+import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
 import {
@@ -298,6 +300,15 @@ export function RunPage() {
 				),
 			),
 		[steps, workspace, inv?.report?.hypotheses],
+	);
+	// Leaving the run, or opening another, closes its page in the desktop browser (#977 OBJ-012).
+	useEffect(() => {
+		const browser = desktopBridge()?.browser;
+		return () => browser?.go("clear");
+	}, [inv?.id]);
+	const links = useMemo(
+		() => runLinks(incident.alerts ?? [], inv?.report ?? null),
+		[incident.alerts, inv?.report],
 	);
 	const fileOfStep = useCallback(
 		(s: RunStep) => stepFile(s, workspace),
@@ -679,6 +690,7 @@ export function RunPage() {
 							runId: inv.id,
 							workspace,
 							touched,
+							links,
 							viewing,
 							onOpen: openFile,
 							onClose: closeFile,

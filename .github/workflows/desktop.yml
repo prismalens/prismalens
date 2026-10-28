@@ -85,6 +85,17 @@ jobs:
             pnpm --filter @prismalens/desktop smoke "$GITHUB_WORKSPACE/desktop-smoke-${RUNNER_OS}.png"
           fi
 
+      # The run panel's browser shares nothing with the app (#973): cookie, Node, bridge, file: and the window's origin.
+      - name: The panel's browser is isolated from the app (xvfb on Linux)
+        run: |
+          cd packages/desktop
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum npx electron scripts/browser-isolation.mjs || { cat dist/browser-isolation.txt; exit 1; }
+          else
+            npx electron scripts/browser-isolation.mjs || { cat dist/browser-isolation.txt; exit 1; }
+          fi
+          cat dist/browser-isolation.txt
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
