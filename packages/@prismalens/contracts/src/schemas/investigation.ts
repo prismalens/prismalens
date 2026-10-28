@@ -35,6 +35,21 @@ import {
 // ordered hypotheses + discrete evidence status carry certainty. Defined first so
 // the persisted-result schemas below can reference it (eager z.object evaluation).
 
+/** A line of a tool's output, or of a file in the run's workspace, that holds a recorded quote. */
+export const QuoteAnchorSchema = z.discriminatedUnion("in", [
+	z.object({
+		in: z.literal("tool-output"),
+		toolCallId: z.string(),
+		line: z.number().int().min(1),
+	}),
+	z.object({
+		in: z.literal("file"),
+		path: z.string(),
+		line: z.number().int().min(1),
+	}),
+]);
+export type QuoteAnchor = z.infer<typeof QuoteAnchorSchema>;
+
 export const EvidenceSchema = z.object({
 	/** What was observed. */
 	observation: z.string().min(1),
@@ -64,6 +79,10 @@ export const EvidenceSchema = z.object({
 	 * absent ⇒ treat as "tool".
 	 */
 	origin: z.enum(["tool", "context-pack"]).optional(),
+	/** The agent's verbatim quote, when it recorded this through PrismaLens's tool (#930). */
+	quote: z.string().optional(),
+	/** Where code found `quote` (#740); null when it did not, and then it is never verified. */
+	anchor: QuoteAnchorSchema.nullable().optional(),
 });
 
 export const HypothesisSchema = z.object({
@@ -77,6 +96,39 @@ export const HypothesisSchema = z.object({
 	/** The `id` of the hypothesis this one refines; absent on a top-level idea. */
 	parentId: z.string().min(1).max(64).optional(),
 });
+
+/**
+ * What the agent recorded through PrismaLens's own tool while it worked (#930):
+ * evidence with the quote code resolved, and hypotheses naming evidence by id.
+ */
+export const RecordedEvidenceSchema = z.object({
+	id: z.string(),
+	observation: z.string(),
+	source: z.string(),
+	quote: z.string(),
+	direction: EvidenceDirectionSchema,
+	/** The file the agent said the quote is in, as it wrote it. */
+	path: z.string().optional(),
+	anchor: QuoteAnchorSchema.nullable(),
+	at: z.string(),
+});
+export type RecordedEvidence = z.infer<typeof RecordedEvidenceSchema>;
+
+export const RecordedHypothesisSchema = z.object({
+	id: z.string(),
+	statement: z.string(),
+	status: HypothesisStatusSchema,
+	evidenceIds: z.array(z.string()),
+	parentId: z.string().optional(),
+	at: z.string(),
+});
+export type RecordedHypothesis = z.infer<typeof RecordedHypothesisSchema>;
+
+export const RecordedFindingSchema = z.discriminatedUnion("type", [
+	RecordedEvidenceSchema.extend({ type: z.literal("evidence") }),
+	RecordedHypothesisSchema.extend({ type: z.literal("hypothesis") }),
+]);
+export type RecordedFinding = z.infer<typeof RecordedFindingSchema>;
 
 export const RuledOutSchema = z.object({
 	// A candidate cause never promoted to a ranked hypothesis. (A hypothesis that WAS
@@ -278,9 +330,20 @@ const ModelNextStepSchema = NextStepSchema.omit({ id: true }).extend({
  * The report as the model writes it: what the engine accepts and the transcript
  * hides, one schema for both (#673 w7-5). Host-stamped `fidelity` is omitted.
  */
+/** `quote` and `anchor` come only from the recording tool, so a report the model writes drops them. */
+const ModelEvidenceSchema = EvidenceSchema.omit({ quote: true, anchor: true });
+
 export const ModelReportSchema = InvestigationReportSchema.omit({
 	fidelity: true,
-}).extend({ nextSteps: z.array(ModelNextStepSchema) });
+}).extend({
+	hypotheses: z.array(
+		HypothesisSchema.extend({ evidence: z.array(ModelEvidenceSchema) }),
+	),
+	ruledOut: z.array(
+		RuledOutSchema.extend({ evidence: z.array(ModelEvidenceSchema) }),
+	),
+	nextSteps: z.array(ModelNextStepSchema),
+});
 export type ModelReport = z.infer<typeof ModelReportSchema>;
 
 // =============================================================================
@@ -947,6 +1010,12 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		),
 	}),
 	z.object({
+		/** The agent recorded evidence or a hypothesis through PrismaLens's tool (#930). */
+		kind: z.literal("finding_recorded"),
+		...StreamBaseShape,
+		finding: RecordedFindingSchema,
+	}),
+	z.object({
 		/** The agent asked before a tool call; the run waits on the operator (#673 w21). */
 		kind: z.literal("permission_ask"),
 		...StreamBaseShape,
@@ -996,6 +1065,34 @@ export type Culprit = z.infer<typeof CulpritSchema>;
 export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
 export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
+
+export interface RecordedFindings {
+	evidence: RecordedEvidence[];
+	hypotheses: RecordedHypothesis[];
+}
+
+/** What a run's events say the agent recorded, each id at its latest (#930). */
+export function recordedFindings(
+	events: readonly CanonicalEvent[],
+): RecordedFindings {
+	const evidence = new Map<string, RecordedEvidence>();
+	const hypotheses = new Map<string, RecordedHypothesis>();
+	for (const e of events) {
+		if (e.kind !== "finding_recorded") continue;
+		const f = e.finding;
+		if (f.type === "evidence") {
+			const { type: _type, ...item } = f;
+			evidence.set(item.id, item);
+		} else {
+			const { type: _type, ...item } = f;
+			hypotheses.set(item.id, item);
+		}
+	}
+	return {
+		evidence: Array.from(evidence.values()),
+		hypotheses: Array.from(hypotheses.values()),
+	};
+}
 
 // =============================================================================
 // DURABLE EVENT RECORD (ADR-0018 store.append) — bulk-append + replay/history

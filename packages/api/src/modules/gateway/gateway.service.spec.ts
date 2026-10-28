@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { RecordedFinding } from "@prismalens/contracts/schemas";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import runInvestigationJob from "../../infrastructure/dispatch/investigation-run.js";
 import type { RunPorts } from "../../infrastructure/dispatch/run-ports.js";
 import { GatewayService } from "./gateway.service.js";
@@ -237,6 +241,8 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			}
 		).tools;
 		expect(tools.map((t) => t.name).sort()).toEqual([
+			"evidence_record",
+			"hypothesis_record",
 			"incident_get",
 			"investigations_search",
 			"runbooks_list",
@@ -248,12 +254,15 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 	it("the lease names the same tools, and the prompt line sends data access to the agent's own tools", async () => {
 		const entry = await gateway().lease(RUN_A, NAME);
 		expect([...(entry?.tools ?? [])].sort()).toEqual([
+			"evidence_record",
+			"hypothesis_record",
 			"incident_get",
 			"investigations_search",
 			"runbooks_list",
 			"runbooks_read",
 		]);
 		expect(entry?.promptLine).toContain("use the tools your own setup gives you");
+		expect(entry?.promptLine).toContain("`evidence_record`, quoting the output exactly");
 		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
 	});
 
@@ -430,5 +439,188 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		]);
 		expect(callArg.where.serviceId.in).toEqual(expect.arrayContaining(["svc-1", "svc-2"]));
 		expect(callArg.where.serviceId.in).toHaveLength(2);
+	});
+});
+
+describe("recording evidence and hypotheses (#930)", () => {
+	const dirs: string[] = [];
+	afterEach(() => {
+		for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	});
+
+	/** A live run whose workspace is a temp dir holding `repo/db.yaml`, with a file outside it. */
+	async function live() {
+		const root = mkdtempSync(join(tmpdir(), "pl-930-"));
+		dirs.push(root);
+		const cwd = join(root, "ws");
+		mkdirSync(join(cwd, "repo"), { recursive: true });
+		writeFileSync(join(cwd, "repo", "db.yaml"), "pool:\n  max: 50\n  idle: 5\n");
+		writeFileSync(join(root, "secret.txt"), "max: 50\n");
+		const workspace = JSON.stringify({ layout: "single", cwd, repos: [] });
+		const g = gateway({
+			...EMPTY,
+			investigation: { findUnique: async () => ({ workspace }) },
+		});
+		const entry = await g.lease(RUN_A, NAME);
+		if (!entry) throw new Error("no lease");
+		const found: RecordedFinding[] = [];
+		entry.onFinding?.((f) => found.push(f));
+		const call = async (name: string, args: Record<string, unknown>) => {
+			const res = await g.serve(
+				RUN_A,
+				rpc(RUN_A, "tools/call", { name, arguments: args }, entry.token),
+			);
+			if (res.status !== 200) throw new Error(`status ${res.status}`);
+			const r = (await body(res)).result as {
+				content: { text: string }[];
+				isError?: boolean;
+			};
+			const text = r.content[0]?.text ?? "{}";
+			return { isError: !!r.isError, text, value: JSON.parse(text) };
+		};
+		return { g, entry, found, call, root, cwd };
+	}
+
+	it("records evidence against a tool output the run saw, names the line, and never echoes the quote", async () => {
+		const { entry, found, call } = await live();
+		entry.sawOutput?.("toolu_1", "starting\nERROR pool exhausted: 50/50\n");
+		const out = await call("evidence_record", {
+			observation: "the pool is full",
+			source: "kubectl logs api",
+			quote: "ERROR pool exhausted",
+		});
+		expect(out.isError).toBe(false);
+		expect(out.value).toEqual({
+			id: "e1",
+			anchor: { in: "tool-output", toolCallId: "toolu_1", line: 2 },
+		});
+		expect(out.text).not.toContain("ERROR pool exhausted");
+		expect(found).toEqual([
+			expect.objectContaining({
+				type: "evidence",
+				id: "e1",
+				direction: "supports",
+				quote: "ERROR pool exhausted",
+			}),
+		]);
+	});
+
+	it("a quote no output holds is recorded unanchored, with a note", async () => {
+		const { call } = await live();
+		const out = await call("evidence_record", {
+			observation: "o",
+			source: "s",
+			quote: "never printed",
+		});
+		expect(out.value).toMatchObject({
+			id: "e1",
+			anchor: null,
+			note: expect.stringContaining("unanchored"),
+		});
+	});
+
+	it("an output landing after the record anchors it, and the run view hears the update", async () => {
+		const { entry, found, call } = await live();
+		await call("evidence_record", { observation: "o", source: "s", quote: "late line" });
+		entry.sawOutput?.("toolu_9", "a\nlate line\n");
+		expect(found.map((f) => f.type === "evidence" && f.anchor)).toEqual([
+			null,
+			{ in: "tool-output", toolCallId: "toolu_9", line: 2 },
+		]);
+	});
+
+	it("a follow-up's lease restores what earlier turns recorded", async () => {
+		const g = gateway();
+		const first = await g.lease(RUN_A, NAME);
+		const earlier = {
+			evidence: [],
+			hypotheses: [
+				{ id: "rh1", statement: "pool", status: "speculative" as const, evidenceIds: [], at: "2026-10-28T10:00:00.000Z" },
+			],
+		};
+		first?.restore?.(earlier);
+		g.revoke(RUN_A);
+		const next = await g.lease(RUN_A, NAME);
+		expect(next?.findings?.()).toEqual({ evidence: [], hypotheses: [] });
+		next?.restore?.(earlier);
+		expect(next?.findings?.().hypotheses.map((h) => h.id)).toEqual(["rh1"]);
+	});
+
+	it("resolves a quote in a workspace file to its line, relative or absolute", async () => {
+		const { call, cwd } = await live();
+		const rel = await call("evidence_record", {
+			observation: "max 50",
+			source: "config",
+			quote: "max: 50",
+			path: "repo/db.yaml",
+		});
+		expect(rel.value.anchor).toEqual({
+			in: "file",
+			path: join(cwd, "repo", "db.yaml"),
+			line: 2,
+		});
+		const abs = await call("evidence_record", {
+			observation: "idle",
+			source: "config",
+			quote: "idle: 5",
+			path: join(cwd, "repo", "db.yaml"),
+		});
+		expect(abs.value.anchor).toMatchObject({ in: "file", line: 3 });
+	});
+
+	it("never reads a file outside the run's workspace", async () => {
+		const { call, root } = await live();
+		for (const path of ["../secret.txt", join(root, "secret.txt")]) {
+			const out = await call("evidence_record", {
+				observation: "o",
+				source: "s",
+				quote: "max: 50",
+				path,
+			});
+			expect(out.value).toMatchObject({
+				anchor: null,
+				note: expect.stringContaining("not in that file"),
+			});
+		}
+	});
+
+	it("a hypothesis links recorded evidence by id and is updated by its id; unknown ids are refused", async () => {
+		const { entry, found, call } = await live();
+		await call("evidence_record", { observation: "o", source: "s", quote: "q quote" });
+		const bad = await call("hypothesis_record", {
+			statement: "pool",
+			status: "supported",
+			evidence: ["e2"],
+		});
+		expect(bad.isError).toBe(true);
+		const h = await call("hypothesis_record", {
+			statement: "pool",
+			status: "speculative",
+			evidence: ["e1"],
+		});
+		expect(h.value).toEqual({ id: "rh1", evidence: ["e1"] });
+		await call("hypothesis_record", {
+			id: "rh1",
+			statement: "pool exhausted",
+			status: "confirmed",
+		});
+		expect(
+			found.flatMap((f) => (f.type === "hypothesis" ? [f.status] : [])),
+		).toEqual(["speculative", "confirmed"]);
+		expect(entry.findings?.().hypotheses).toEqual([
+			expect.objectContaining({
+				id: "rh1",
+				statement: "pool exhausted",
+				evidenceIds: ["e1"],
+			}),
+		]);
+	});
+
+	it("nothing is recorded on a run that ended", async () => {
+		const { g, call } = await live();
+		g.revoke(RUN_A);
+		await expect(
+			call("evidence_record", { observation: "o", source: "s", quote: "q quote" }),
+		).rejects.toThrow("status 401");
 	});
 });

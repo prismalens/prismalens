@@ -13,10 +13,17 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
-import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
+import type {
+	CanonicalEvent,
+	InvestigationContext,
+	RecordedEvidence,
+	RecordedFinding,
+	RecordedHypothesis,
+} from "@prismalens/contracts/schemas";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import { conductRun } from "./conductor.js";
+import { FindingsLedger } from "./findings.js";
 import {
 	buildRunFidelity,
 	createSteerChannel,
@@ -1560,6 +1567,73 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(prompt).toContain("Why the pool?");
 		expect(prompt).toContain("FIRING ALERT");
 		expect(prompt).not.toContain("METHOD (work iteratively");
+	});
+});
+
+describe("recorded evidence and hypotheses (#930)", () => {
+	it("streams each record as it lands, and the report joins them to the final answer with quotes resolved by code", async () => {
+		const at = "2026-10-28T10:00:00.000Z";
+		const ledger = new FindingsLedger();
+		let found: ((f: RecordedFinding) => void) | undefined;
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["evidence_record", "hypothesis_record"],
+			connected: () => true,
+			waitConnected: async () => {
+				// Recorded before `pwd` ran: unanchored now, resolved when the report is written.
+				const e = ledger.addEvidence(
+					{ observation: "the tree is the clone", source: "pwd", quote: "pl-clone-", direction: "supports" },
+					null,
+					at,
+				) as RecordedEvidence;
+				const h = ledger.addHypothesis(
+					{ statement: "Connection pool exhausted", status: "confirmed", evidence: ["e1"] },
+					at,
+				) as RecordedHypothesis;
+				found?.({ type: "evidence", ...e });
+				found?.({ type: "hypothesis", ...h });
+				return true;
+			},
+			onCall: () => () => {},
+			calls: () => [],
+			sawOutput: (id: string, text: string) => ledger.sawOutput(id, text),
+			onFinding: (cb: (f: RecordedFinding) => void) => {
+				found = cb;
+				return () => {
+					found = undefined;
+				};
+			},
+			findings: () => ledger.snapshot(),
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+			permission: autoApprovePolicy,
+		});
+		const recorded = events.filter((e) => e.kind === "finding_recorded");
+		expect(recorded.map((e) => e.kind === "finding_recorded" && e.finding.type)).toEqual(["evidence", "hypothesis"]);
+		const first = recorded[0];
+		expect(first?.kind === "finding_recorded" && first.finding.type === "evidence" && first.finding.anchor).toBeNull();
+		const reportIdx = events.findIndex((e) => e.kind === "report");
+		expect(events.indexOf(recorded[1] as CanonicalEvent)).toBeLessThan(reportIdx);
+		const report = events[reportIdx];
+		expect(report?.kind).toBe("report");
+		if (report?.kind !== "report") return;
+		const [pool] = report.report.hypotheses;
+		// The final answer's status stands; the recorded evidence joins it, verified by where code found the quote.
+		expect(pool?.status).toBe("supported");
+		expect(pool?.evidence).toContainEqual(
+			expect.objectContaining({
+				observation: "the tree is the clone",
+				status: "verified",
+				toolCallId: "t1",
+				quote: "pl-clone-",
+				anchor: { in: "tool-output", toolCallId: "t1", line: 1 },
+			}),
+		);
 	});
 });
 
