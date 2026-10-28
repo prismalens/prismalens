@@ -3,7 +3,7 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import type { Schedule, ScheduleInput } from "@prismalens/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelChip, useAgentChoice } from "@/components/agent/AgentPicker";
 import { Button } from "@/components/ui/button";
 import {
@@ -116,8 +116,15 @@ export function ScheduleDialog({
 	);
 	const [error, setError] = useState<string | null>(null);
 
+	// Seeded once per opening: a live refresh of the schedule must not wipe a draft (adversary OBJ-017).
+	const seeded = useRef(false);
 	useEffect(() => {
-		if (!open) return;
+		if (!open) {
+			seeded.current = false;
+			return;
+		}
+		if (seeded.current) return;
+		seeded.current = true;
 		const seed = editing ?? copyOf;
 		setError(null);
 		setName(editing?.name ?? (copyOf ? `${copyOf.name} (copy)` : ""));

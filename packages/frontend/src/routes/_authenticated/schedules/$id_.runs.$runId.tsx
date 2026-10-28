@@ -4,7 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft, TriangleAlert } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Transcript } from "@/components/investigation/Transcript";
 import { HypothesesCard } from "@/components/run/HypothesesCard";
 import { TickDot } from "@/components/schedules/TickDot";
@@ -44,6 +44,16 @@ function ScheduledRunPage() {
 	const history = useInvestigationEventsHistory(runId, {
 		pollMs: live ? 3000 : false,
 	});
+	// The poll stops at the terminal status; one last read takes the events written after it (adversary OBJ-016).
+	const wasLive = useRef(false);
+	const { catchUp } = history;
+	useEffect(() => {
+		if (live) wasLive.current = true;
+		else if (wasLive.current) {
+			wasLive.current = false;
+			void catchUp();
+		}
+	}, [live, catchUp]);
 	const items = useMemo(
 		() => deriveTranscript(history.data ?? []),
 		[history.data],

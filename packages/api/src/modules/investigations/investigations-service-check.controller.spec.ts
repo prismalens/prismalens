@@ -76,6 +76,20 @@ describe("InvestigationsController on a service check with no incident (#979)", 
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
 		(controller.investigations() as Record<string, any>)[name]["~orpc"].handler;
 
+	it("refuses a paired device that messages, re-statuses or writes a scheduled run, and lets the host (adversary OBJ-014)", async () => {
+		service.findById.mockResolvedValue(check({ status: "running" }));
+		const phone = { request: { operator: { device: { id: "p", scopes: ["investigate:read", "investigate:operate"] } } } };
+		const calls: Array<[string, Record<string, unknown>]> = [
+			["message", { id: "inv-check", text: "hello", mode: "queue" }],
+			["updateStatus", { id: "inv-check", status: "failed" }],
+			["writeResult", { id: "inv-check", summary: "x" }],
+		];
+		for (const [name, input] of calls) {
+			const route = (controller.investigations() as Record<string, any>)[name]["~orpc"].handler;
+			await expect(route({ input, context: phone })).rejects.toMatchObject({ code: "FORBIDDEN" });
+		}
+	});
+
 	it("get serialises it with a null incident, its service and its schedule", async () => {
 		service.findById.mockResolvedValue(check());
 
@@ -118,7 +132,10 @@ describe("InvestigationsController on a service check with no incident (#979)", 
 		service.findById.mockResolvedValue(check());
 
 		await expect(
-			handler("message")({ input: { id: "inv-check", text: "look", mode: "queue", attachments: ["a1"] } }),
+			(handler("message") as (a: unknown) => Promise<unknown>)({
+				input: { id: "inv-check", text: "look", mode: "queue", attachments: ["a1"] },
+				context: { request: { operator: { device: { id: "h", scopes: ["admin:access"] } } } },
+			}),
 		).rejects.toMatchObject({ code: "BAD_REQUEST" });
 		expect(attachments.forJob).not.toHaveBeenCalled();
 	});

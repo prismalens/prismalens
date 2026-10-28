@@ -104,6 +104,14 @@ export interface JobStore {
 	 */
 	failRunning(reason: string): Promise<string[]>;
 
+	/** Pending scheduled jobs whose deadline passed. */
+	scheduledPastDeadline(
+		now?: Date,
+	): Promise<Array<{ id: string; investigationId: string }>>;
+
+	/** Cancel one such job; false when it was claimed, re-armed or is no longer past its deadline. */
+	expireScheduledJob(jobId: string, now?: Date): Promise<boolean>;
+
 	/** Cancel pending scheduled jobs whose deadline passed; returns their investigation ids. */
 	expireScheduled(now?: Date): Promise<string[]>;
 }
@@ -322,21 +330,41 @@ export class PrismaJobStore implements JobStore {
 		return running.map((row) => String(row.investigationId));
 	}
 
-	async expireScheduled(now: Date = new Date()): Promise<string[]> {
-		const pending = await this.jobs.findMany({
-			where: { status: "pending", kind: SCHEDULED_KIND },
-			select: { id: true, investigationId: true, startBy: true },
+	async scheduledPastDeadline(
+		now: Date = new Date(),
+	): Promise<Array<{ id: string; investigationId: string }>> {
+		const rows = await this.jobs.findMany({
+			where: { status: "pending", kind: SCHEDULED_KIND, startBy: { lt: now } },
+			select: { id: true, investigationId: true },
 		});
+		return rows.map((r) => ({
+			id: String(r.id),
+			investigationId: String(r.investigationId),
+		}));
+	}
+
+	async expireScheduledJob(
+		jobId: string,
+		now: Date = new Date(),
+	): Promise<boolean> {
+		// The guard repeats the read's filter, so a row re-armed since is left alone (adversary OBJ-012).
+		const { count } = await this.jobs.updateMany({
+			where: {
+				id: jobId,
+				status: "pending",
+				kind: SCHEDULED_KIND,
+				startBy: { lt: now },
+			},
+			data: { status: "cancelled", finishedAt: now, lastError: "host_busy" },
+		});
+		return count === 1;
+	}
+
+	async expireScheduled(now: Date = new Date()): Promise<string[]> {
 		const expired: string[] = [];
-		for (const row of pending) {
-			const startBy = row.startBy as Date | null;
-			if (!startBy || startBy.getTime() >= now.getTime()) continue;
-			const { count } = await this.jobs.updateMany({
-				where: { id: row.id, status: "pending" },
-				data: { status: "cancelled", finishedAt: now, lastError: "host_busy" },
-			});
-			if (count === 1) expired.push(String(row.investigationId));
-		}
+		for (const row of await this.scheduledPastDeadline(now))
+			if (await this.expireScheduledJob(row.id, now))
+				expired.push(row.investigationId);
 		return expired;
 	}
 }

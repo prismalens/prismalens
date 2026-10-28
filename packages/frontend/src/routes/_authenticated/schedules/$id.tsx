@@ -40,6 +40,7 @@ import {
 	useRunScheduleNow,
 	useSchedule,
 } from "@/lib/api/hooks";
+import { client } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,7 @@ function ScheduleHistoryPage() {
 	const [editing, setEditing] = useState(false);
 	const [duplicating, setDuplicating] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const older = useOlderTicks(id);
 	usePageTitle(data?.schedule.name ?? "Schedule");
 
 	if (isLoading) return <Loading />;
@@ -174,10 +176,20 @@ function ScheduleHistoryPage() {
 								className="grid gap-px overflow-hidden rounded-pool bg-surface-1"
 								data-testid="schedule-ticks"
 							>
-								{ticks.map((t) => (
+								{[...ticks, ...older.ticks].map((t) => (
 									<TickRow key={t.id} tick={t} />
 								))}
 							</div>
+						)}
+						{!older.done && (older.cursor ?? data.nextCursor) && (
+							<Button
+								variant="ghost"
+								className="mt-2"
+								disabled={older.loading}
+								onClick={() => older.more(older.cursor ?? data.nextCursor)}
+							>
+								Show older runs
+							</Button>
 						)}
 					</section>
 				</div>
@@ -367,4 +379,29 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 			</span>
 		</div>
 	);
+}
+
+/** Pages past the first 30 runs on demand; the first page stays the live query (adversary OBJ-018). */
+function useOlderTicks(id: string) {
+	const [ticks, setTicks] = useState<ScheduleTick[]>([]);
+	const [cursor, setCursor] = useState<string | null>(null);
+	const [loading, setLoading] = useState(false);
+	const more = async (from: string | null) => {
+		if (!from) return;
+		setLoading(true);
+		try {
+			const page = await client.schedules.get({ id, cursor: from, limit: 30 });
+			setTicks((t) => [...t, ...page.ticks]);
+			setCursor(page.nextCursor ?? "");
+		} finally {
+			setLoading(false);
+		}
+	};
+	return {
+		ticks,
+		cursor: cursor === "" ? null : cursor,
+		loading,
+		more,
+		done: cursor === "",
+	};
 }

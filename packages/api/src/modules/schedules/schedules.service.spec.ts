@@ -36,12 +36,10 @@ describe("SchedulesService (#979)", () => {
 	const started: string[] = [];
 
 	function scheduler() {
-		const store = new PrismaJobStore(prisma.job as never);
 		return new SchedulesService(
 			prisma,
 			{
 				startAdmitted: (id: string) => started.push(id),
-				expireScheduled: (now: Date) => store.expireScheduled(now),
 			} as never,
 			{ ensureReady: ready } as never,
 			lifecycle as never,
@@ -233,6 +231,31 @@ describe("SchedulesService (#979)", () => {
 		expect(tick?.outcome).toBe("expired_host_busy");
 		const run = await prisma.investigation.findUniqueOrThrow({ where: { id: tick?.investigationId as string } });
 		expect(run.status).toBe("cancelled");
+	});
+
+	it("pauses on three failures before admitting the next due slot (adversary OBJ-015)", async () => {
+		const s = scheduler();
+		const created = await s.create(input(), "host", new Date("2026-06-20T08:00:00Z"));
+		for (const day of ["20", "21", "22"]) {
+			await s.evaluate(new Date(`2026-06-${day}T09:00:05Z`));
+			await prisma.investigation.updateMany({ where: { scheduleId: created.id }, data: { status: "failed" } });
+		}
+		await s.evaluate(new Date("2026-06-23T09:00:05Z"));
+		expect(await prisma.investigation.count({ where: { scheduleId: created.id } })).toBe(3);
+		const row = await prisma.schedule.findUniqueOrThrow({ where: { id: created.id } });
+		expect(row.enabled).toBe(false);
+	});
+
+	it("freezes the revision it was admitted at (adversary OBJ-019)", async () => {
+		const s = scheduler();
+		const created = await s.create(input(), "host", new Date("2026-06-24T08:00:00Z"));
+		const edited = await s.update(created.id, created.revision, input({ name: "Renamed" }), "host", new Date("2026-06-24T08:10:00Z"));
+		await s.evaluate(new Date("2026-06-24T09:00:05Z"));
+		const run = await prisma.investigation.findFirstOrThrow({ where: { scheduleId: created.id } });
+		const job = await prisma.job.findUniqueOrThrow({ where: { investigationId: run.id } });
+		expect(run.scheduleRevision).toBe(edited.revision);
+		expect(JSON.parse(run.configSnapshot as string).revision).toBe(edited.revision);
+		expect(JSON.parse(job.payload).scheduled.revision).toBe(edited.revision);
 	});
 
 	it("pauses after three failed runs in a row at the current revision", async () => {
