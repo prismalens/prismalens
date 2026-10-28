@@ -680,19 +680,21 @@ export class SchedulesService
 			const ready = await this.harness.ensureReady(s.harness as HarnessId);
 			if (!ready.ready)
 				throw new ScheduleError("PRECONDITION_FAILED", ready.reason);
-			const slot = new Date(Math.floor(now.getTime() / 1000) * 1000);
-			const tick = await this.admit(
-				s,
-				now,
-				{
-					slot,
-					outcome: "run_now",
-					reason: null,
-					missedCount: 0,
-					missedOverflow: false,
-					startBy: null,
-				},
-				"run_now",
+			const slot = now;
+			const tick = await this.oneRunPerInstant(() =>
+				this.admit(
+					s,
+					now,
+					{
+						slot,
+						outcome: "run_now",
+						reason: null,
+						missedCount: 0,
+						missedOverflow: false,
+						startBy: null,
+					},
+					"run_now",
+				),
 			);
 			await this.prisma.scheduleEvent.create({
 				data: { scheduleId: id, action: "run_now", deviceId },
@@ -726,6 +728,20 @@ export class SchedulesService
 	}
 
 	// --- helpers -------------------------------------------------------------
+
+	/** A second Run now at the same instant hits the tick's unique slot; it is a conflict, not a fault. */
+	private async oneRunPerInstant<T>(work: () => Promise<T>): Promise<T> {
+		try {
+			return await work();
+		} catch (error) {
+			if ((error as { code?: string }).code === "P2002")
+				throw new ScheduleError(
+					"CONFLICT",
+					"This schedule just ran. Try again in a moment.",
+				);
+			throw error;
+		}
+	}
 
 	private validRecurrence(input: ScheduleInput): Recurrence {
 		const r = toRecurrence(input.recurrence);
