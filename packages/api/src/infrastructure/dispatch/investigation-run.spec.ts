@@ -1469,7 +1469,7 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.resume.text).toContain("Continue the investigation from your last step.");
 		expect(opts.resume.afterRestart).toBeUndefined();
 		expect(opts.resume.via.restart).toMatchObject({ by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z" });
-		expect(restartAlerts).toHaveBeenCalledWith("inc-1", new Date("2026-10-28T08:51:00.000Z"), expect.any(Date), new Date("2026-10-28T08:52:00.000Z"));
+		expect(restartAlerts).toHaveBeenCalledWith("inc-1", new Date("2026-10-28T08:52:00.000Z"), expect.any(Date), new Date("2026-10-28T08:52:00.000Z"));
 	});
 
 	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {
