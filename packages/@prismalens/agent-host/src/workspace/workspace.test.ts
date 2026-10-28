@@ -368,3 +368,81 @@ describe("policy precedence", () => {
 		expect(byId.pp2).toMatchObject({ removed: true, reason: "always-remove" });
 	}, 60_000);
 });
+
+describe("attempts and late releases (#918)", () => {
+	const always: WorkspacePolicy = { ...POLICY, retention: { kind: "always-remove" } };
+	const list = () => sh(repo, "worktree", "list", "--porcelain");
+
+	it("names the lock after the product's run and the attempt", async () => {
+		const ws = await createWorkspace({ ...owner, id: "a1", lockLabel: "run-1", policy: always, source: { kind: "local", repo, commit } });
+		expect(ws.lock).toMatch(/^prismalens run run-1 [0-9a-f]{8}$/);
+		expect(list()).toContain(`locked ${ws.lock}`);
+	}, 60_000);
+
+	it("a late release of an earlier attempt leaves the workspace a later attempt re-added", async () => {
+		const first = await create("a2", always);
+		await releaseWorkspace({ ...owner, id: "a2", policy: always });
+		const again = await create("a2", always);
+		expect(again.lock).not.toBe(first.lock);
+
+		const [late] = await releaseWorkspace({ ...owner, id: "a2", policy: always, onlyLock: first.lock });
+		expect(late).toMatchObject({ removed: false, reason: "superseded" });
+		expect(existsSync(again.dir)).toBe(true);
+		expect(list()).toContain(`locked ${again.lock}`);
+
+		const [own] = await releaseWorkspace({ ...owner, id: "a2", policy: always, onlyLock: again.lock });
+		expect(own).toMatchObject({ removed: true });
+		expect(list()).not.toContain("prismalens run");
+	}, 60_000);
+
+	it("re-adds a worktree a crash left registered and locked, at the same path", async () => {
+		const first = await create("a3", always);
+		rmSync(first.dir, { recursive: true, force: true });
+		rmSync(`${first.dir}.workspace.json`, { force: true });
+		const again = await create("a3", always);
+		expect(readFileSync(join(again.dir, "a.txt"), "utf8")).toBe("a\n");
+		expect(list().match(/prismalens run a3/g)).toHaveLength(1);
+	}, 60_000);
+
+	it("names a commit git confirms missing, and keeps git's own error otherwise", async () => {
+		const missing = "0123456789abcdef0123456789abcdef01234567";
+		await expect(
+			createWorkspace({ ...owner, id: "a4", policy: always, source: { kind: "local", repo, commit: missing } }),
+		).rejects.toMatchObject({ code: "commit-missing", message: `Commit ${missing} could not be checked out from this source` });
+		expect(existsSync(join(owner.parentDir, "pl-a4"))).toBe(false);
+		const notRepo = join(root, "not-a-repo");
+		mkdirSync(notRepo);
+		await expect(
+			createWorkspace({ ...owner, id: "a5", policy: always, source: { kind: "local", repo: notRepo, commit: missing } }),
+		).rejects.toMatchObject({ code: "git-failed" });
+	}, 60_000);
+
+	it("a checkout cut off at any point leaves no directory and no registration behind", async () => {
+		for (const [i, delay] of [0, 5, 15, 40, 80, 160].entries()) {
+			const ac = new AbortController();
+			setTimeout(() => ac.abort(), delay);
+			const id = `k${i}`;
+			const ws = await createWorkspace({ ...owner, id, policy: always, source: { kind: "local", repo, commit }, signal: ac.signal }).catch(() => null);
+			if (ws) await releaseWorkspace({ ...owner, id, policy: always });
+			sh(repo, "worktree", "prune");
+			expect(existsSync(join(owner.parentDir, `pl-${id}`))).toBe(false);
+			expect(list()).not.toMatch(/prismalens run|initializing/);
+		}
+	}, 120_000);
+
+	it("one entry that cannot be removed is recorded and the sweep goes on", async () => {
+		await create("s1", always);
+		await create("s2", always);
+		const recs = await sweepWorkspaces({
+			...owner,
+			policy: always,
+			isLive: (id) => {
+				if (id === "s1") throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+				return false;
+			},
+		});
+		const byId = Object.fromEntries(recs.map((r) => [r.id, r]));
+		expect(byId.s1).toMatchObject({ removed: false, reason: "remove-failed" });
+		expect(byId.s2).toMatchObject({ removed: true });
+	}, 60_000);
+});

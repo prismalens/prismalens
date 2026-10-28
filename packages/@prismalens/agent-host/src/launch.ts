@@ -15,6 +15,7 @@ import {
 	type AgentDescriptor,
 	type AgentId,
 	type AgentRunEnv,
+	isJsonObject,
 	isSafeGatewayUrl,
 	type JsonObject,
 	mergeConfigPatch,
@@ -82,6 +83,8 @@ export interface LaunchPolicy {
 	floor?: EnvFloor;
 	/** Names with these prefixes never reach the child, from any layer. */
 	refuseEnvPrefixes?: readonly string[];
+	/** These exact names never reach the child, from any layer, whatever the floor. */
+	refuseEnvNames?: readonly string[];
 }
 
 /** What starts the agent: its binary on PATH, a shipped adapter, or a user-set command. */
@@ -95,7 +98,8 @@ export interface LaunchCommand {
 
 export interface PlanLaunchInput {
 	agent: AgentId;
-	level: AccessLevel;
+	/** Absent: no level's overlay, as for a probe or a follow-up that keeps its session's mode. */
+	level?: AccessLevel;
 	policy: LaunchPolicy;
 	launch: LaunchCommand;
 	cwd: string;
@@ -124,7 +128,7 @@ export interface LaunchPlan {
 	env: Record<string, string>;
 	/** Each variable the row reads or the user stored: Not set, Key set, or From environment. */
 	envState: Record<string, EnvVarState>;
-	level: ResolvedLevel;
+	level: ResolvedLevel | null;
 	sessionMeta?: Record<string, unknown>;
 	runEnv: AgentRunEnv;
 	/** Absolute path → content; `writeLaunchFiles` writes them. */
@@ -133,21 +137,89 @@ export interface LaunchPlan {
 	dirs: string[];
 }
 
+/** Case-insensitive: Windows env names are, so `prismalens_x` reaches a child as `PRISMALENS_X`. */
+function refusal(
+	names: readonly string[] = [],
+	prefixes: readonly string[] = [],
+): (key: string) => boolean {
+	const upNames = new Set(names.map((n) => n.toUpperCase()));
+	const upPrefixes = prefixes.map((p) => p.toUpperCase());
+	return (key) => {
+		const up = key.toUpperCase();
+		return upNames.has(up) || upPrefixes.some((p) => up.startsWith(p));
+	};
+}
+
+function userConfigEnv(key: string, value: string | undefined): JsonObject {
+	if (!value?.trim()) return {};
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+			return parsed as JsonObject;
+	} catch {}
+	throw new AgentHostError(
+		"bad-config-env",
+		`${key} must hold a JSON object for the run's config to merge into it`,
+	);
+}
+
+/**
+ * `user` without the permission tool maps `run` rewrites: the run re-lists their patterns after its
+ * catch-all, and a key already in `user` would keep its earlier place under the merge (#916).
+ */
+function withoutRewrittenPermissions(
+	user: JsonObject,
+	run: JsonObject,
+): JsonObject {
+	const strip = (own: unknown, rewritten: unknown): unknown => {
+		if (!isJsonObject(own) || !isJsonObject(rewritten)) return own;
+		return Object.fromEntries(
+			Object.entries(own).filter(([tool]) => !(tool in rewritten)),
+		);
+	};
+	const out: JsonObject = { ...user };
+	const runPermission = isJsonObject(run.permission) ? run.permission : {};
+	if ("permission" in out)
+		out.permission = strip(out.permission, runPermission);
+	const runAgents = isJsonObject(run.agent) ? run.agent : {};
+	if (isJsonObject(out.agent))
+		out.agent = Object.fromEntries(
+			Object.entries(out.agent).map(([name, own]) => {
+				const rewritten = runAgents[name];
+				if (!isJsonObject(own) || !isJsonObject(rewritten)) return [name, own];
+				return [
+					name,
+					{ ...own, permission: strip(own.permission, rewritten.permission) },
+				];
+			}),
+		);
+	return out;
+}
+
+/** A later layer wins. On Windows a name differing only in case is the same variable, and a child gets just one of them. */
+function overlay(
+	env: Record<string, string>,
+	layer: Readonly<Record<string, string>>,
+): void {
+	for (const [key, value] of Object.entries(layer)) {
+		if (process.platform === "win32") {
+			const up = key.toUpperCase();
+			for (const k of Object.keys(env))
+				if (k !== key && k.toUpperCase() === up) delete env[k];
+		}
+		env[key] = value;
+	}
+}
+
 function floorEnv(
 	floor: EnvFloor,
 	host: PlanLaunchInput["hostEnv"],
 ): Record<string, string> {
 	const env: Record<string, string> = {};
 	if (floor.mode === "inherit-minus-own-secrets") {
-		const names = new Set(floor.ownSecrets.names ?? []);
-		const prefixes = floor.ownSecrets.prefixes ?? [];
+		const own = refusal(floor.ownSecrets.names, floor.ownSecrets.prefixes);
 		for (const [key, value] of Object.entries(host))
-			if (
-				value !== undefined &&
-				!names.has(key) &&
-				!prefixes.some((p) => key.startsWith(p))
-			)
-				env[key] = value;
+			if (value !== undefined && !own(key)) env[key] = value;
 		return env;
 	}
 	const allow = [...SAFE_ENV_ALLOWLIST, ...(floor.extraAllow ?? [])];
@@ -199,22 +271,23 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		const value = host[key];
 		if (value !== undefined) env[key] = value;
 	}
-	Object.assign(env, stored, input.launch.env ?? {}, row.acpEnv(runEnv));
-	Object.assign(env, input.overrides ?? {});
+	for (const layer of [
+		stored,
+		input.launch.env ?? {},
+		row.acpEnv(runEnv),
+		input.overrides ?? {},
+	])
+		overlay(env, layer);
 
-	const refused = policy.refuseEnvPrefixes ?? [];
 	const own =
 		policy.floor?.mode === "inherit-minus-own-secrets"
 			? policy.floor.ownSecrets
 			: {};
-	const ownNames = new Set(own.names ?? []);
-	const ownPrefixes = own.prefixes ?? [];
-	for (const key of Object.keys(env))
-		if (
-			ownNames.has(key) ||
-			[...refused, ...ownPrefixes].some((p) => key.startsWith(p))
-		)
-			delete env[key];
+	const refused = refusal(
+		[...(policy.refuseEnvNames ?? []), ...(own.names ?? [])],
+		[...(policy.refuseEnvPrefixes ?? []), ...(own.prefixes ?? [])],
+	);
+	for (const key of Object.keys(env)) if (refused(key)) delete env[key];
 
 	const dirs = [runEnv.configDir, runEnv.dataDir];
 	if (policy.github === "exclude") {
@@ -231,8 +304,12 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		env.GIT_CONFIG_VALUE_0 = "";
 	}
 
+	// Only a row that reads the variable, or a user who stored it, is held to it; the host's value is inherited by every row.
 	const gateway = env.ANTHROPIC_BASE_URL;
-	if (gateway && !isSafeGatewayUrl(gateway))
+	const readsGateway =
+		row.providerKeys.includes("ANTHROPIC_BASE_URL") ||
+		stored.ANTHROPIC_BASE_URL !== undefined;
+	if (gateway && readsGateway && !isSafeGatewayUrl(gateway))
 		throw new AgentHostError(
 			"unsafe-gateway-url",
 			`ANTHROPIC_BASE_URL must be https unless it points at this machine: ${gateway}`,
@@ -252,12 +329,27 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 					? "from-environment"
 					: "not-set";
 
-	const level = resolveLevel(input.agent, input.level);
-	const patch = level.configPatch?.(input.userConfig ?? {});
+	const level = input.level ? resolveLevel(input.agent, input.level) : null;
+	const inline = row.configEnv
+		? userConfigEnv(row.configEnv.key, env[row.configEnv.key])
+		: {};
+	const patch = level?.configPatch?.(
+		mergeConfigPatch(input.userConfig ?? {}, inline),
+	);
+	const planned = levelFiles(row.configFiles?.(runEnv) ?? {}, patch);
+	if (row.configEnv && planned[row.configEnv.file] !== undefined) {
+		const { file, key } = row.configEnv;
+		const run = JSON.parse(planned[file] as string) as JsonObject;
+		env[key] = JSON.stringify(
+			mergeConfigPatch(withoutRewrittenPermissions(inline, run), run),
+		);
+		delete planned[file];
+	}
 	const files = Object.fromEntries(
-		Object.entries(levelFiles(row.configFiles?.(runEnv) ?? {}, patch)).map(
-			([rel, content]) => [join(runEnv.configDir, rel), content],
-		),
+		Object.entries(planned).map(([rel, content]) => [
+			join(runEnv.configDir, rel),
+			content,
+		]),
 	);
 	const sessionMeta = row.sessionMeta?.();
 	return {

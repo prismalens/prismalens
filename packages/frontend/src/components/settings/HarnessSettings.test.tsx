@@ -209,6 +209,45 @@ afterEach(async () => {
 	}
 });
 
+describe("HarnessSettings strict mode (#817)", () => {
+	it("is off by default and turning it on saves strictEnv", async () => {
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+		const row = container.querySelector(
+			'[data-testid="harness-strict-env-row"]',
+		);
+		expect(row?.textContent).toContain("Only pass named variables");
+		expect(row?.textContent).toContain("minus PrismaLens's own secrets");
+		const toggle = container.querySelector<HTMLButtonElement>(
+			'[data-testid="harness-strict-env"]',
+		);
+		expect(toggle?.getAttribute("aria-checked")).toBe("false");
+		await act(async () => {
+			toggle?.click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({ strictEnv: true });
+	});
+
+	it("is read-only on a paired device", async () => {
+		mockSettings.canEditRuntime = false;
+		mockSettings.strictEnv = true;
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			const toggle = container.querySelector<HTMLButtonElement>(
+				'[data-testid="harness-strict-env"]',
+			);
+			expect(toggle?.getAttribute("aria-checked")).toBe("true");
+			expect(toggle?.disabled).toBe(true);
+		} finally {
+			delete mockSettings.canEditRuntime;
+			delete mockSettings.strictEnv;
+		}
+	});
+});
+
 describe("HarnessSettings agents list (#907)", () => {
 	it("lists only agents that can run, each with a chevron to its page", async () => {
 		await act(async () => {

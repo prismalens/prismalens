@@ -127,6 +127,12 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 
+			<SettingGroup title="Environment">
+				<Pool>
+					<StrictEnvRow />
+				</Pool>
+			</SettingGroup>
+
 			<SettingGroup
 				title="Agents"
 				count={listed.length || undefined}
@@ -289,6 +295,34 @@ function AutoRow() {
 					})
 				}
 				data-testid="harness-auto"
+			/>
+		</SettingRow>
+	);
+}
+
+/** Strict mode (#817): agents get named variables only, not the user's environment. */
+function StrictEnvRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const on = settings?.strictEnv === true;
+	return (
+		<SettingRow
+			label={
+				<label htmlFor="harness-strict-env">Only pass named variables</label>
+			}
+			description={
+				on
+					? "Agents get the basics (PATH, home, locale, proxy and certificates), their provider keys and the variables set on each agent"
+					: "Agents get your environment, as your terminal has it, minus PrismaLens's own secrets"
+			}
+			testId="harness-strict-env-row"
+		>
+			<Switch
+				id="harness-strict-env"
+				checked={on}
+				disabled={update.isPending || settings?.canEditRuntime === false}
+				onCheckedChange={(strictEnv) => update.mutate({ strictEnv })}
+				data-testid="harness-strict-env"
 			/>
 		</SettingRow>
 	);

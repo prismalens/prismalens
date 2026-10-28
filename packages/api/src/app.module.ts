@@ -64,6 +64,7 @@ declare module "@orpc/nest" {
 }
 
 import { AuthGuard, AuthModule } from "./core/auth/index.js";
+import { RuntimeLifecycleModule } from "./core/lifecycle/runtime-lifecycle.module.js";
 import { WorkspaceLockShutdownService } from "./core/lifecycle/workspace-lock-shutdown.service.js";
 import { LiveModule } from "./core/live/live.module.js";
 // Core modules
@@ -163,6 +164,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		SetupModule, // on-ramp status (oRPC)
 		SettingsModule,
 		TelemetryModule,
+		RuntimeLifecycleModule, // When PrismaLens last ran and the gaps since (#981, #979)
 
 		// Infrastructure
 		HealthModule,

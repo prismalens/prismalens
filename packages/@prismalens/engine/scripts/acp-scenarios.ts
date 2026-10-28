@@ -126,6 +126,7 @@ async function openSession(
 		cwd,
 		runDir,
 		env,
+		hostEnv: env,
 	});
 	const acp = new AcpSession({
 		command: launch.command,
@@ -215,6 +216,8 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				cwd: workspace,
 				runDir,
 				env,
+				// The floor inherits the host env (#817), so a signed-out row needs a signed-out host too.
+				hostEnv: env,
 				permission: answerPolicy(row.run.answer ?? "deny"),
 				promptSuffix: `[row:${row.row}] Follow the scripted steps, then report.`,
 				sandboxCheck: async () => ({}),

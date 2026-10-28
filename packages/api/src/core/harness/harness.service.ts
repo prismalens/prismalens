@@ -15,6 +15,7 @@ import {
 	type OnApplicationBootstrap,
 	Optional,
 } from "@nestjs/common";
+import type { LaunchPolicy } from "@prismalens/agent-host";
 import {
 	type HarnessSelection,
 	isWindowsMountPath,
@@ -25,7 +26,6 @@ import {
 import {
 	ACCESS_LEVELS,
 	type AccessLevel,
-	getHarnessProviderKeys,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
@@ -54,7 +54,7 @@ import {
 	type RunChoice,
 	type RunRuntimeNote,
 } from "@prismalens/contracts/schemas";
-import { localDefault } from "@prismalens/engine";
+import { localDefault, prismalensLaunchPolicy } from "@prismalens/engine";
 import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
@@ -87,9 +87,12 @@ export class HarnessSettingsError extends Error {
 	}
 }
 
-/** What a spawn of one agent uses from Settings (#907): host keys < config dir < Environment rows. */
+/** What a spawn of one agent uses from Settings (#907): the floor's host env < config dir < Environment rows. */
 export interface AgentRuntime {
+	/** The stored layer: the config dir and the Environment rows; the launch plan adds the host's. */
 	env: Record<string, string>;
+	/** Which host variables reach the agent: Settings' strict mode or not (#817); the default floor when absent. */
+	policy?: LaunchPolicy;
 	binaryPath?: string;
 	/** `local` only. */
 	launchArgs?: string[];
@@ -119,6 +122,8 @@ export interface HarnessSettings {
 	/** The folder its config-dir env var points at, absolute. */
 	configDirs?: Partial<Record<HarnessId, string>>;
 	localAgent?: LocalAgent;
+	/** Only pass named variables to the agent (#817); off by default. */
+	strictEnv?: boolean;
 	/** Read from HARNESS_ENV: names only. */
 	envNames?: Partial<Record<HarnessId, string[]>>;
 }
@@ -148,6 +153,7 @@ export interface HarnessSettingsPatch {
 	configDirs?: Partial<Record<HarnessId, string | null>>;
 	env?: Partial<Record<HarnessId, Record<string, string | null>>>;
 	localAgent?: LocalAgent | null;
+	strictEnv?: boolean;
 }
 
 const RUNTIME_FIELDS = [
@@ -155,6 +161,7 @@ const RUNTIME_FIELDS = [
 	"configDirs",
 	"env",
 	"localAgent",
+	"strictEnv",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
 
 /** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped (models, efforts and modes alike). */
@@ -415,18 +422,28 @@ export class HarnessService implements OnApplicationBootstrap {
 		const configDir = row.configDir ? s.configDirs?.[id] : undefined;
 		const rows = this.decryptRows(stored[id]);
 		const env = {
-			// Checked after the rows overlay the host: a saved https gateway fixes an unsafe host one (#911).
-			...getHarnessProviderKeys(id, { ...process.env, ...rows }),
 			...(configDir && row.configDir
 				? { [row.configDir.envKey]: configDir }
 				: {}),
 			...rows,
 		};
+		const strict = s.strictEnv === true;
+		// Checked after the rows overlay the host: a saved https gateway fixes an unsafe host one (#911).
+		const gateway =
+			rows.ANTHROPIC_BASE_URL ??
+			(row.providerKeys.includes("ANTHROPIC_BASE_URL")
+				? process.env.ANTHROPIC_BASE_URL
+				: undefined);
+		if (gateway && !isSafeGatewayUrl(gateway))
+			throw new Error(
+				`ANTHROPIC_BASE_URL must be https unless it points at this machine: ${gateway}`,
+			);
 		const envNames = Object.keys(rows).sort();
 		const args = local?.args ?? [];
 		const set = !!binaryPath || !!configDir || envNames.length > 0;
 		return {
 			env,
+			policy: prismalensLaunchPolicy({ strict }),
 			...(binaryPath ? { binaryPath } : {}),
 			...(local ? { launchArgs: args } : {}),
 			note: set
@@ -623,6 +640,7 @@ export class HarnessService implements OnApplicationBootstrap {
 				...nonEmpty("binaryPaths", cleanModels(parsed.binaryPaths)),
 				...nonEmpty("configDirs", cleanModels(parsed.configDirs)),
 				...(localAgent ? { localAgent } : {}),
+				...(parsed.strictEnv === true ? { strictEnv: true } : {}),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -700,6 +718,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...nonEmpty("binaryPaths", binaryPaths),
 			...nonEmpty("configDirs", configDirs),
 			...(localAgent ? { localAgent } : {}),
+			...((patch.strictEnv ?? current.strictEnv) ? { strictEnv: true } : {}),
 		};
 		// The variables and the rest of the PATCH land together or not at all (#911).
 		await this.prisma.$transaction(async (tx) => {
@@ -726,6 +745,13 @@ export class HarnessService implements OnApplicationBootstrap {
 			});
 		});
 		const changed = new Set<HarnessId>([
+			// The floor reaches every installed agent's env.
+			...(patch.strictEnv !== undefined &&
+			patch.strictEnv !== (current.strictEnv === true)
+				? listHarnessStatus(this.selectionInput(next))
+						.filter((h) => h.installed)
+						.map((h) => h.id as HarnessId)
+				: []),
 			...(Object.keys(patch.binaryPaths ?? {}) as HarnessId[]),
 			...(Object.keys(patch.configDirs ?? {}) as HarnessId[]),
 			...(Object.keys(patch.env ?? {}) as HarnessId[]),

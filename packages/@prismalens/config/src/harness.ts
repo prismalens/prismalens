@@ -7,7 +7,6 @@ export {
 	type CheckedModes,
 	DEFAULT_ACCESS_LEVEL,
 	GATEWAY_RUN_FILE,
-	getHarnessProviderKeys,
 	HARNESS_AUTO_ORDER,
 	HARNESS_BINARY,
 	HARNESS_IDS,

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	GATEWAY_RUN_FILE,
 	refuseModel,
-	getHarnessProviderKeys,
+	isSafeGatewayUrl,
 	HARNESS_REGISTRY,
 	modeFidelity,
 	runsInSandbox,
@@ -24,59 +24,7 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
-	it("returns only the registry row's provider keys present in the source env", () => {
-		const env = {
-			ANTHROPIC_API_KEY: "sk-ant-test",
-			OPENAI_API_KEY: "sk-oai-test",
-			UNRELATED_VAR: "noise",
-		};
-		expect(getHarnessProviderKeys("claude-code", env)).toEqual({
-			ANTHROPIC_API_KEY: "sk-ant-test",
-		});
-	});
-
-	it("never returns a PRISMALENS_* key, even if a row were misconfigured to list one", () => {
-		const original = HARNESS_REGISTRY["claude-code"].providerKeys;
-		HARNESS_REGISTRY["claude-code"].providerKeys = [
-			"PRISMALENS_AUTH_SECRET",
-			"ANTHROPIC_API_KEY",
-		];
-		try {
-			const result = getHarnessProviderKeys("claude-code", {
-				PRISMALENS_AUTH_SECRET: "leak-me",
-				ANTHROPIC_API_KEY: "sk-ant-test",
-			});
-			expect(result.PRISMALENS_AUTH_SECRET).toBeUndefined();
-			expect(result.ANTHROPIC_API_KEY).toBe("sk-ant-test");
-		} finally {
-			HARNESS_REGISTRY["claude-code"].providerKeys = original;
-		}
-	});
-
-	it("passes a gateway's model keys to Claude Code (walk f18)", () => {
-		expect(
-			getHarnessProviderKeys("claude-code", {
-				ANTHROPIC_BASE_URL: "http://localhost:11434",
-				ANTHROPIC_MODEL: "gemma4:31b-cloud",
-			}),
-		).toEqual({
-			ANTHROPIC_BASE_URL: "http://localhost:11434",
-			ANTHROPIC_MODEL: "gemma4:31b-cloud",
-		});
-	});
-
-	it("omits a provider key the source env does not set", () => {
-		expect(getHarnessProviderKeys("gemini", {})).toEqual({});
-	});
-
-	it("defaults to process.env when no source env is given", () => {
-		vi.stubEnv("GEMINI_API_KEY", "test-gemini-key");
-		expect(getHarnessProviderKeys("gemini")).toEqual({
-			GEMINI_API_KEY: "test-gemini-key",
-		});
-	});
-
+describe("provider keys (ADR 0004 §5)", () => {
 	it("lists real provider keys for every multi-provider harness row, never a bare wildcard", () => {
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			for (const key of descriptor.providerKeys ?? []) {
@@ -97,21 +45,20 @@ describe("harness config (#817: the repo's own agent config loads)", () => {
 
 	it("opencode loads the snapshot's own config and keeps looping after a refusal", () => {
 		const row = HARNESS_REGISTRY.opencode;
-		expect(Object.keys(row.acpEnv(runEnv))).toEqual(["OPENCODE_CONFIG_DIR"]);
+		expect(row.acpEnv(runEnv)).toEqual({});
+		expect(row.configEnv).toEqual({ file: "opencode.json", key: "OPENCODE_CONFIG_CONTENT" });
 		const config = JSON.parse(row.configFiles?.(runEnv)["opencode.json"] ?? "{}");
 		expect(config.permission).toBeUndefined();
 		expect(config.share).toBe("disabled");
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
-	it("opencode keeps the user's own config home, so their model, providers and agents apply (#791)", () => {
-		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({
-			OPENCODE_CONFIG_DIR: "/c",
-		});
+	it("opencode keeps the user's own config home and OPENCODE_CONFIG_DIR, so their model, providers and agents apply (#791, #817)", () => {
+		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({});
 	});
 
 	it("claude-code takes the operator's model over ACP, never from an env it writes (R4.2)", () => {
-		const env = HARNESS_REGISTRY["claude-code"].acpEnv({ ...runEnv, model: "gemma4:31b-cloud" });
+		const env = HARNESS_REGISTRY["claude-code"].acpEnv(runEnv);
 		for (const key of ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"]) {
 			expect(env[key]).toBeUndefined();
 		}
@@ -196,14 +143,10 @@ describe("row data every reader needs (#634)", () => {
 describe("gateway URL (claude-code)", () => {
 	it("passes https and loopback http, refuses http to another host", () => {
 		for (const ok of ["https://gw.example.com", "http://127.0.0.1:11434", "http://localhost:4000"]) {
-			expect(getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: ok }).ANTHROPIC_BASE_URL).toBe(ok);
+			expect(isSafeGatewayUrl(ok), ok).toBe(true);
 		}
-		expect(() =>
-			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://gw.lan:4000", ANTHROPIC_AUTH_TOKEN: "t" }),
-		).toThrow(/must be https/);
-		expect(() =>
-			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://127.0.0.1.evil.example/v1" }),
-		).toThrow(/must be https/);
+		expect(isSafeGatewayUrl("http://gw.lan:4000")).toBe(false);
+		expect(isSafeGatewayUrl("http://127.0.0.1.evil.example/v1")).toBe(false);
 	});
 });
 

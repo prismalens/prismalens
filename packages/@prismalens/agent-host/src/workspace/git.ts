@@ -106,6 +106,39 @@ export async function git(args: string[], opts: GitOptions): Promise<string> {
 	}
 }
 
+/** False only when git confirms `commit` names no commit in `repo` (exit 1); any other failure throws. */
+export async function hasCommit(
+	repo: string,
+	commit: string,
+	opts: Omit<GitOptions, "cwd">,
+): Promise<boolean> {
+	try {
+		await run(
+			"git",
+			[
+				"rev-parse",
+				"--verify",
+				"--quiet",
+				"--end-of-options",
+				`${commit}^{commit}`,
+			],
+			{
+				cwd: repo,
+				env: opts.env,
+				timeout: opts.timeoutMs ?? GIT_TIMEOUT_MS,
+				windowsHide: true,
+				...(opts.signal ? { signal: opts.signal } : {}),
+			},
+		);
+		return true;
+	} catch (err) {
+		const e = err as Error & { code?: unknown; stderr?: string };
+		if (e.code === 1) return false;
+		const detail = (e.stderr ?? "").trim() || e.message;
+		throw new AgentHostError("git-failed", `git rev-parse: ${detail}`);
+	}
+}
+
 /** True when `git` exits 0; for probes such as `cat-file -e`. */
 export async function gitOk(
 	args: string[],

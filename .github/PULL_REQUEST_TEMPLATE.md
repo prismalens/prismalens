@@ -29,7 +29,7 @@ Keep PRs focused and small where you can.
 
 ## Docs
 
-- [ ] Docs updated for every changed operator-facing surface (READMEs, docs/, help strings, mage notes), or none affected (explain below)
+- [ ] Docs updated for every changed operator-facing surface (READMEs, docs/, help strings), or none affected (explain below)
 
 <!-- If none affected, explain: -->
 

@@ -132,7 +132,7 @@ importers:
         specifier: 1.9.0
         version: 1.9.0(zod@4.6.7)
       cross-spawn:
-        specifier: 7.0.6
+        specifier: ^7.0.6
         version: 7.0.6
       which:
         specifier: 6.0.1
@@ -181,6 +181,9 @@ importers:
       '@prismalens/agent-adapters':
         specifier: workspace:*
         version: link:../agent-adapters
+      '@prismalens/agent-host':
+        specifier: workspace:*
+        version: link:../agent-host
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -262,6 +265,9 @@ importers:
       '@agentclientprotocol/sdk':
         specifier: 1.9.0
         version: 1.9.0(zod@4.6.7)
+      '@prismalens/agent-host':
+        specifier: workspace:*
+        version: link:../agent-host
       '@prismalens/config':
         specifier: workspace:*
         version: link:../config
@@ -287,9 +293,6 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
-      cross-spawn:
-        specifier: ^7.0.6
-        version: 7.0.6
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -409,6 +412,9 @@ importers:
       '@orpc/zod':
         specifier: ^1.15.7
         version: 1.16.0(@orpc/contract@1.16.0)(@orpc/server@1.16.0(ws@8.22.0))(ws@8.22.0)(zod@4.6.7)
+      '@prismalens/agent-host':
+        specifier: workspace:*
+        version: link:../@prismalens/agent-host
       '@prismalens/auth':
         specifier: workspace:*
         version: link:../@prismalens/auth
@@ -534,6 +540,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^5.0.5
         version: 5.0.5(vitest@5.0.5)
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.16.18(@swc/helpers@0.5.23))(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.15)(typescript@5.9.3)(yaml@2.9.1)

@@ -6,7 +6,9 @@ export const AGENT_HOST_ERROR_CODES = [
 	"user-setup-unsupported",
 	"workspace-exists",
 	"git-failed",
+	"commit-missing",
 	"unsafe-copy-path",
+	"bad-config-env",
 ] as const;
 export type AgentHostErrorCode = (typeof AGENT_HOST_ERROR_CODES)[number];
 

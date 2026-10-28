@@ -21,11 +21,11 @@ import {
 	secretFileName,
 	serviceOwnsWorkspace,
 } from "@prismalens/config";
-import { windowsSpawnPlan } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
 import { assertKnownFlags } from "./flags.js";
+import { windowsSpawnPlan } from "./windows-spawn.js";
 
 // The packed tarball declares engines.node >=24 (scripts/pack-cli.mjs).
 const MIN_NODE_MAJOR = 24;

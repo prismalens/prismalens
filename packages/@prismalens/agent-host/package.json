@@ -1,6 +1,6 @@
 {
 	"name": "@prismalens/agent-host",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"license": "Apache-2.0",
 	"description": "Launches coding agents over ACP: the agent registry, permission levels, launch env, run workspaces and a readiness probe",
 	"homepage": "https://prismalens.io",
@@ -31,7 +31,7 @@
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "1.9.0",
-		"cross-spawn": "7.0.6",
+		"cross-spawn": "^7.0.6",
 		"which": "6.0.1",
 		"zod": "catalog:"
 	},

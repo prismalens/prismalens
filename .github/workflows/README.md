@@ -126,7 +126,7 @@ Two jobs, neither required, neither spending a model call (#914):
 | `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, its pin moves on one rolling pull request, `pin-bump/agents`, which lists each pin's probe result | nightly, and dispatch |
 
 The bump PR runs ordinary CI, so the new version runs the admission and the behaviour matrix on aimock.
-A pin whose probe fails stays where it was and is listed as held back. After the pins move,
+A pin whose probe fails stays where it was and is listed as held back. After the pins move, `scripts/agent-adapter-sdk.mjs` moves the shipped claude-agent-sdk to the one the claude adapter declares (the bundle refuses any other),
 `pnpm install --lockfile-only` refreshes the lockfile and `scripts/agent-tested.mjs` moves each row's
 `tested` (so `harness-pins.test.ts` holds) with a note that no real-model run backs it yet; the PR's
 recording checkbox is that run. Each night rebuilds the branch from `main` until someone pushes to it,
@@ -180,11 +180,19 @@ any workflow that can post a status named `CI gate` satisfies that gate, and Git
 will not distinguish it from the real one. The one workflow that ever held
 `statuses: write` is gone.
 
-`claude-code-review.yml` runs a model over attacker-influencable diff text on a
-**read-only** token. It posts through the action's own app installation, not the
-workflow token. It must never acquire a write: a prompt injected into a reviewed
-diff would then reach a job that can act on it, and under the current arrangement
-the most valuable thing to inject is "resolve these threads".
+`claude-code-review.yml` is a caller stub; the lane lives in
+`prismalens/gh-workflows`. The caller's `permissions:` block is a ceiling: `contents: write`,
+`pull-requests: write`, `issues: read`, `id-token: write`, `checks: read`, `actions: read`.
+Each callee job declares its own subset. Two jobs run a model over attacker-influencable
+diff text: `review`, pinned to `contents: read`, `issues: read`, `id-token: write`,
+`checks: read` and `actions: read`, which posts through the action's own app installation,
+not the workflow token; and `verify`, which reads `gh pr diff` and holds no write and no
+`id-token`. Three jobs hold a write and run no model: `mutate` (`contents: write`,
+`pull-requests: write`) resolves review threads, which GitHub refuses at `contents: read`,
+`announce` (`pull-requests: write`) upserts the liveness comment, and `fork-notice`
+(`pull-requests: write`) answers a fork PR.
+`review` and `verify` must never acquire a write: a prompt injected into a reviewed diff
+would then reach a job that can act on it, and the most valuable thing to inject is "resolve these threads".
 
 ## Rule for new enforcement
 
