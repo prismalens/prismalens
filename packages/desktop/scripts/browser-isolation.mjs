@@ -41,6 +41,11 @@ async function main() {
 	const seen = [];
 	const server = createServer((req, res) => {
 		seen.push({ url: req.url, cookie: req.headers.cookie ?? null });
+		if (req.url === "/to-tel") {
+			res.writeHead(302, { location: "tel:123" });
+			res.end();
+			return;
+		}
 		res.setHeader("content-type", "text/html");
 		res.end(`<!doctype html><title>${req.url}</title><p>${req.url}</p>`);
 	});
@@ -184,14 +189,36 @@ async function main() {
 		`window.open(${JSON.stringify(`${base}/popup`)})`,
 	);
 	await wait(800);
+	const blocked = await win.webContents.executeJavaScript("window.__s.at(-1)");
 	check(
-		"a popup loads in the view, not in a new window or the system browser",
+		"a popup opens nowhere and is named for the user (#977 OBJ-019)",
 		BrowserWindow.getAllWindows().length === 1 &&
-			view.webContents.getURL() === `${base}/popup`,
-		{
-			windows: BrowserWindow.getAllWindows().length,
-			url: view.webContents.getURL(),
-		},
+			view.webContents.getURL() === `${base}/page` &&
+			blocked?.popup === `${base}/popup`,
+		{ windows: BrowserWindow.getAllWindows().length, blocked },
+	);
+
+	// tel: and someapp: are not hosts: a page's link or its server's redirect to one is refused (#977 OBJ-017).
+	for (const target of ["tel:123", "someapp:/path"]) {
+		await view.webContents
+			.executeJavaScript(`location.href = ${JSON.stringify(target)}`)
+			.catch(() => {});
+		await wait(500);
+		const s = await win.webContents.executeJavaScript("window.__s.at(-1)");
+		check(
+			`the view's guard refuses a page's ${target}`,
+			s?.refused === target && view.webContents.getURL() === `${base}/page`,
+			s,
+		);
+	}
+	await view.webContents
+		.executeJavaScript(`location.href = ${JSON.stringify(`${base}/to-tel`)}`)
+		.catch(() => {});
+	await wait(800);
+	check(
+		"the view's guard refuses a redirect to tel:",
+		!view.webContents.getURL().startsWith("tel:"),
+		view.webContents.getURL(),
 	);
 
 	const started = Date.now();
@@ -209,7 +236,7 @@ async function main() {
 	const asked = await win.webContents.executeJavaScript("window.__s.at(-1)");
 	check(
 		"a panel that mounts again can ask where the view is",
-		asked?.url === `${base}/popup`,
+		asked?.url?.startsWith(base) === true,
 		asked,
 	);
 

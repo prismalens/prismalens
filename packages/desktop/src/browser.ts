@@ -38,16 +38,30 @@ export function browserWebPreferences(packaged: boolean): WebPreferences {
 	};
 }
 
-/** The URL to load, or null: http(s) only, no credentials in it, a bare host read as https. */
+/**
+ * A navigation's target as it is, or null: what the guards check. Strict: no
+ * scheme is added, so `tel:123` is never read as a host (#977 OBJ-017).
+ */
+export function webUrl(raw: string): URL | null {
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		return null;
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+	if (url.username || url.password || !url.hostname) return null;
+	return url;
+}
+
+/** What the user typed, as a URL to load, or null: http(s) only, a bare host read as https. */
 export function browserUrl(raw: string): URL | null {
 	const text = raw.trim();
 	if (!text) return null;
 	// `localhost:3000` is a host and port, not a scheme; a typed loopback address is http, as in T3 Code (#977 OBJ-014).
 	const scheme =
-		/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ||
-		/^(javascript|data|about|blob|view-source|mailto|file|chrome|devtools):/i.test(
-			text,
-		);
+		/^[a-z][a-z0-9+.-]*:/i.test(text) &&
+		!/^[a-z0-9.-]+:\d{1,5}(\/|$)/i.test(text);
 	const loopback =
 		/^(localhost|127(\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(
 			text,

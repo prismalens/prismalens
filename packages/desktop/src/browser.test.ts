@@ -10,6 +10,7 @@ import {
 	isAppOrigin,
 	isGo,
 	trustedSender,
+	webUrl,
 } from "./browser.js";
 
 describe("browserUrl", () => {
@@ -70,6 +71,23 @@ describe("browserWebPreferences", () => {
 		expect(BROWSER_PARTITION.startsWith("persist:")).toBe(false);
 		expect(prefs.devTools).toBe(false);
 		expect(prefs.disableDialogs).toBe(true);
+	});
+});
+
+describe("webUrl", () => {
+	it.each([
+		"tel:123",
+		"ms-settings:",
+		"someapp:/path",
+		"mailto:ops@example.com",
+		"localhost:3000",
+	])("a navigation to %j is not a web page (#977 OBJ-017)", (url) => {
+		expect(webUrl(url)).toBeNull();
+	});
+	it("takes a full http(s) URL as it is", () => {
+		expect(webUrl("http://127.0.0.1:9090/x")?.href).toBe(
+			"http://127.0.0.1:9090/x",
+		);
 	});
 });
 

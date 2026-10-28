@@ -105,11 +105,14 @@ function DesktopBrowserView({
 	const slot = useRef<HTMLDivElement>(null);
 	const page = state?.url && state.url !== "about:blank" ? state.url : null;
 
-	// Ask where the view is on mount: switching tabs remounts this (#977 OBJ-006).
+	// Ask where the view is on mount: switching tabs remounts this (#977 OBJ-006). What the
+	// user is typing is left alone (#977 OBJ-013).
+	const field = useRef<HTMLInputElement>(null);
 	useEffect(() => {
 		const off = browser.onState((s) => {
 			setState(s);
-			if (s) setAddress(s.url);
+			if (document.activeElement === field.current) return;
+			setAddress(s && s.url !== "about:blank" ? s.url : "");
 		});
 		browser.go("state");
 		return off;
@@ -200,6 +203,7 @@ function DesktopBrowserView({
 					<RotateCw className="size-4" />
 				</Button>
 				<input
+					ref={field}
 					value={address}
 					onChange={(e) => setAddress(e.target.value)}
 					aria-label="Address"
@@ -222,8 +226,28 @@ function DesktopBrowserView({
 			<p className="shrink-0 px-3 pb-1.5 text-meta text-text-3">
 				{state?.refused
 					? `Not opened: ${state.refused}. PrismaLens opens only http and https pages here.`
-					: "Separate session: not signed in to PrismaLens, and nothing is kept after you close the app."}
+					: state?.login
+						? "This page asks for a browser login, which this panel does not answer. Open it in your browser."
+						: "Separate session: not signed in to PrismaLens, and nothing is kept after you close the app."}
 			</p>
+			{state?.popup && (
+				<p
+					className="flex shrink-0 items-center gap-2 px-3 pb-1.5 text-meta text-text-2"
+					data-testid="browser-popup"
+				>
+					<span className="min-w-0 flex-1 truncate">
+						Blocked a new window: {state.popup}
+					</span>
+					<Button
+						type="button"
+						variant="secondary"
+						size="sm"
+						onClick={() => state.popup && browser.open(state.popup)}
+					>
+						Open here
+					</Button>
+				</p>
+			)}
 			{page ? (
 				<div
 					ref={slot}
