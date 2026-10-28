@@ -22,6 +22,7 @@ import {
 	InvestigationSchema,
 	fidelityAccess,
 	RunFidelitySchema,
+	serviceCheckContext,
 	SendInvestigationMessageResultSchema,
 	toFiringAlert,
 } from "./investigation.js";
@@ -638,3 +639,28 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 	});
 });
 
+
+describe("InvestigationContextSchema service-check mode (#979)", () => {
+	it("still rejects an empty alerts list on an alert run", () => {
+		expect(() => InvestigationContextSchema.parse({ alerts: [] })).toThrow();
+	});
+
+	it("accepts no alerts in service-check mode", () => {
+		const parsed = InvestigationContextSchema.parse({
+			mode: "service-check",
+			alerts: [],
+			service: { name: "checkout" },
+			check: { brief: "Look.", runbook: null },
+		});
+		expect(parsed.mode).toBe("service-check");
+	});
+
+	it("builds a service-check context without an alert", () => {
+		const built = serviceCheckContext(
+			{ name: "checkout" },
+			{ brief: "Look.", runbook: "rb.md" },
+		);
+		expect(InvestigationContextSchema.parse(built)).toEqual(built);
+		expect(built.alerts).toEqual([]);
+	});
+});

@@ -47,6 +47,7 @@ function serviceWith(kind = "investigation", stopRequestedAt: Date | null = null
 		{ create: vi.fn() } as unknown as TimelineService,
 		overlay as unknown as OverlayService,
 		{} as SettingsService,
+		{} as never,
 	);
 	vi.spyOn(service, "findById").mockResolvedValue(null);
 	return { service, tx, prisma, overlay };

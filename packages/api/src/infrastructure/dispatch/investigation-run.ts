@@ -46,6 +46,7 @@ import {
 	type RunWorkspaceRepo,
 	RunWorkspaceSchema,
 	ServiceInvestigationMetadataSchema,
+	serviceCheckContext,
 	type TurnOutcome,
 	toFiringAlert,
 	type WorkflowStatus,
@@ -97,7 +98,7 @@ import {
 	writeReadCopies,
 } from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
-import type { IncidentRepo, RunPorts } from "./run-ports.js";
+import type { IncidentRepo, RunPorts, RunSubject } from "./run-ports.js";
 
 const logger = new Logger({ context: "InvestigationProcessor" });
 
@@ -148,18 +149,27 @@ async function assembled<T>(
 	return fallback;
 }
 
+/** A service check names its service in the values it was admitted with; an incident run in its incident (#979). */
 function serviceIdOf(
 	incident: Record<string, unknown> | null,
+	data?: InvestigationJobData,
 ): string | undefined {
+	if (data?.scheduled && !data.incidentId) return data.scheduled.serviceId;
 	return typeof incident?.serviceId === "string"
 		? incident.serviceId
 		: undefined;
 }
 
+/** What the pre-run reads are keyed by: the incident, else the service a check is about (#979). */
+function subjectOf(data: InvestigationJobData): RunSubject | null {
+	if (data.incidentId) return data.incidentId;
+	return data.scheduled ? { serviceId: data.scheduled.serviceId } : null;
+}
+
 export interface InvestigationResult {
 	success: boolean;
 	investigationId: string;
-	incidentId: string;
+	incidentId: string | null;
 	findings: { rootCause?: string; summary?: string };
 	recommendations: Array<{
 		title: string;
@@ -274,21 +284,26 @@ async function runJobInternal(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
 
-		const incident = await assembled(
-			"the incident",
-			() => ports.getIncident(data.incidentId),
-			null,
-		);
+		const subject = subjectOf(data);
+		const incident = data.incidentId
+			? await assembled(
+					"the incident",
+					() => ports.getIncident(data.incidentId as string),
+					null,
+				)
+			: null;
 		const connectors = await assembled(
 			"the connectors",
-			() => ports.resolveConnectors(serviceIdOf(incident)),
+			() => ports.resolveConnectors(serviceIdOf(incident, data)),
 			[],
 		);
-		const contextPack = await assembled(
-			"the context pack",
-			() => ports.contextPack(data.incidentId),
-			null,
-		);
+		const contextPack = subject
+			? await assembled(
+					"the context pack",
+					() => ports.contextPack(subject),
+					null,
+				)
+			: null;
 		const context = await assembleInvestigationContext(
 			incident,
 			data,
@@ -301,19 +316,20 @@ async function runJobInternal(
 			new Date(),
 			context.service?.name,
 		);
-		const telemetry = ports.preRun
-			? assembled(
-					"telemetry",
-					() =>
-						(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
-							data.incidentId,
-							window,
-							AbortSignal.any([io.signal, AbortSignal.timeout(TELEMETRY_MS)]),
-						),
-					null,
-					TELEMETRY_MS,
-				)
-			: null;
+		const telemetry =
+			ports.preRun && subject
+				? assembled(
+						"telemetry",
+						() =>
+							(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
+								subject,
+								window,
+								AbortSignal.any([io.signal, AbortSignal.timeout(TELEMETRY_MS)]),
+							),
+						null,
+						TELEMETRY_MS,
+					)
+				: null;
 		const workspace = {
 			...(await resolveWorkspace(data, ports, io.signal)),
 			toolsServer: newGatewayServerName(),
@@ -836,14 +852,16 @@ async function runFollowUp(
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 		};
 
-		const incident = await assembled(
-			"the incident",
-			() => ports.getIncident(data.incidentId),
-			null,
-		);
+		const incident = data.incidentId
+			? await assembled(
+					"the incident",
+					() => ports.getIncident(data.incidentId as string),
+					null,
+				)
+			: null;
 		const connectors = await assembled(
 			"the connectors",
-			() => ports.resolveConnectors(serviceIdOf(incident)),
+			() => ports.resolveConnectors(serviceIdOf(incident, data)),
 			[],
 		);
 		const context = await assembleInvestigationContext(
@@ -1519,14 +1537,22 @@ export async function resolveWorkspace(
 	const runDir = runDirFor(data.investigationId);
 	let listed: IncidentRepo[] = [];
 	let unlisted: string | null = null;
-	try {
-		const got = await within(ASSEMBLY_MS, ports.incidentRepos(data.incidentId));
-		if (got === LATE) {
-			unlisted = `the repository list did not load in ${ASSEMBLY_MS / 1000} s`;
-			logger.warn(`Ran without code: ${unlisted}`);
-		} else listed = got;
-	} catch (e) {
-		logger.warn("Could not list the incident's repos", e);
+	if (data.scheduled) {
+		// The repositories the schedule was admitted with, never the service's live bindings (#979, OBJ-003).
+		listed = data.scheduled.repos;
+	} else if (data.incidentId) {
+		try {
+			const got = await within(
+				ASSEMBLY_MS,
+				ports.incidentRepos(data.incidentId),
+			);
+			if (got === LATE) {
+				unlisted = `the repository list did not load in ${ASSEMBLY_MS / 1000} s`;
+				logger.warn(`Ran without code: ${unlisted}`);
+			} else listed = got;
+		} catch (e) {
+			logger.warn("Could not list the incident's repos", e);
+		}
 	}
 	const runId = data.investigationId;
 	const all = dedupeRepos(listed);
@@ -1541,7 +1567,9 @@ export async function resolveWorkspace(
 			runDir,
 			unlisted
 				? `Ran without code: ${unlisted}.`
-				: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+				: data.scheduled
+					? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
+					: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
@@ -1988,6 +2016,24 @@ async function assembleInvestigationContext(
 	connectors: ResolvedConnector[] = [],
 	contextPack: ContextPack | null = null,
 ): Promise<InvestigationContext> {
+	if (data.scheduled && !data.incidentId) {
+		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
+		const notes = data.scheduled.serviceNotes?.trim();
+		return serviceCheckContext(
+			{
+				name: data.scheduled.serviceName,
+				...(notes ? { notes } : {}),
+			},
+			{
+				...(data.brief ? { brief: data.brief } : {}),
+				runbook: data.scheduled.runbook,
+			},
+			{
+				...(telemetry ? { telemetry } : {}),
+				...(contextPack ? { contextPack } : {}),
+			},
+		);
+	}
 	const rawAlerts = (
 		data.alerts && data.alerts.length > 0
 			? data.alerts
@@ -2020,7 +2066,7 @@ async function assembleInvestigationContext(
 }
 
 /** The service's `metadata.investigation.notes`, stored as JSON text or an object; null when absent or empty. */
-function serviceNotes(metadata: unknown): string | null {
+export function serviceNotes(metadata: unknown): string | null {
 	let value: unknown = metadata;
 	if (typeof value === "string") {
 		try {

@@ -1833,3 +1833,24 @@ describe("Settings → Agent runtime at spawn (#907)", () => {
 		expect(buildRunFidelity("codex", {}, "read-only", "acp-config", runtime).runtime).toEqual(runtime);
 	});
 });
+
+describe("a service-check run (#979)", () => {
+	const check = {
+		mode: "service-check" as const,
+		alerts: [],
+		service: { name: "checkout" },
+		check: { brief: "Compare today's p99 with yesterday's.", runbook: null },
+	};
+
+	it("puts the brief in the first prompt once: the check's prompt holds it already", async () => {
+		const { events, runDir } = await collect("ok", { context: check, brief: "Compare today's p99 with yesterday's." });
+
+		expect(events.at(-1)?.kind).toBe("report");
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const prompts = wire.split("\n").filter((l) => l.includes('"d":"out"') && l.includes("session/prompt"));
+		expect(prompts).toHaveLength(1);
+		expect(prompts[0]?.split("Compare today's p99 with yesterday's.").length).toBe(2);
+		expect(prompts[0]).toContain("SCHEDULED CHECK");
+		expect(prompts[0]).not.toContain("FIRING ALERT");
+	});
+});

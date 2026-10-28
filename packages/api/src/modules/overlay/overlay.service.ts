@@ -82,6 +82,7 @@ export class OverlayService {
 			return null;
 		}
 
+		// A service check with no incident reads its service and learns from no past incident (#979).
 		const incident = investigation.incident;
 		const hypotheses: OverlayHypothesisInput[] = report.hypotheses.map((h) => ({
 			statement: h.statement,
@@ -92,12 +93,21 @@ export class OverlayService {
 		}));
 
 		// --- affected services + service-name universe --------------------------
-		const alerts = await this.prisma.alert.findMany({
-			where: { incidentId: incident.id },
-			select: { serviceId: true, title: true, labels: true, triggeredAt: true },
-		});
+		const alerts = incident
+			? await this.prisma.alert.findMany({
+					where: { incidentId: incident.id },
+					select: {
+						serviceId: true,
+						title: true,
+						labels: true,
+						triggeredAt: true,
+					},
+				})
+			: [];
 		const affectedServiceIds = new Set<string>();
-		if (incident.serviceId) affectedServiceIds.add(incident.serviceId);
+		if (incident?.serviceId) affectedServiceIds.add(incident.serviceId);
+		if (investigation.serviceId)
+			affectedServiceIds.add(investigation.serviceId);
 		for (const a of alerts)
 			if (a.serviceId) affectedServiceIds.add(a.serviceId);
 		const affectedIdArr = [...affectedServiceIds];
@@ -184,7 +194,7 @@ export class OverlayService {
 			labels: buildLabelSet(
 				alerts.map((a) => ({ title: a.title, labels: parseLabels(a.labels) })),
 			),
-			serviceId: incident.serviceId ?? null,
+			serviceId: incident?.serviceId ?? investigation.serviceId ?? null,
 			rootCauseCategory: investigation.rootCauseCategory ?? null,
 		};
 
@@ -193,25 +203,27 @@ export class OverlayService {
 		// service/label pre-filter is a later design call (review note 2026-07-05);
 		// recency is the safe cap since similar incidents age out of relevance.
 		// Ended incidents only: an open one has no outcome to learn from (#673 w40).
-		const pastIncidents = await this.prisma.incident.findMany({
-			where: {
-				id: { not: incident.id },
-				status: { in: [...ENDED_INCIDENT_STATUSES] },
-				// A merged incident's alerts live on its target (#673 w37).
-				mergedIntoId: null,
-			},
-			orderBy: { createdAt: "desc" },
-			take: 200,
-			include: {
-				alerts: { select: { title: true, labels: true } },
-				investigations: {
-					where: { rootCauseCategory: { not: null } },
-					orderBy: { completedAt: "desc" },
-					take: 1,
-					select: { rootCauseCategory: true },
-				},
-			},
-		});
+		const pastIncidents = incident
+			? await this.prisma.incident.findMany({
+					where: {
+						id: { not: incident.id },
+						status: { in: [...ENDED_INCIDENT_STATUSES] },
+						// A merged incident's alerts live on its target (#673 w37).
+						mergedIntoId: null,
+					},
+					orderBy: { createdAt: "desc" },
+					take: 200,
+					include: {
+						alerts: { select: { title: true, labels: true } },
+						investigations: {
+							where: { rootCauseCategory: { not: null } },
+							orderBy: { completedAt: "desc" },
+							take: 1,
+							select: { rootCauseCategory: true },
+						},
+					},
+				})
+			: [];
 		const past: PastIncidentInput[] = pastIncidents.map((pi) => ({
 			incidentId: pi.id,
 			incidentNumber: pi.number,
@@ -235,7 +247,7 @@ export class OverlayService {
 		const similarIncidents = selectSimilarIncidents(current, past);
 
 		// Write memory back — top-K IncidentSimilarity rows (upsert, idempotent).
-		await this.writeSimilarities(incident.id, similarIncidents);
+		if (incident) await this.writeSimilarities(incident.id, similarIncidents);
 
 		// --- persist the overlay BESIDE the canonical report --------------------
 		const overlay: Overlay = {

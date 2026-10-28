@@ -41,9 +41,10 @@ export class InternalInvestigationResultDto {
 	@IsEnum(ResultStatusEnum)
 	status!: ResultStatus;
 
+	/** Null for a service check no finding has linked to an incident (#979). */
+	@IsOptional()
 	@IsString()
-	@IsNotEmpty()
-	incidentId!: string;
+	incidentId!: string | null;
 
 	/** Executive summary of findings */
 	@IsOptional()
