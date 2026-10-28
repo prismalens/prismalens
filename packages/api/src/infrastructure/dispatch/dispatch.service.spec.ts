@@ -1388,6 +1388,22 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		expect(summary?.resumed.find((r) => r.investigationId === row.id)).toMatchObject({ incidentNumber: inc.number, title: inc.title });
 	});
 
+	it("a crash's stop is no earlier than the run's last event, so the last minute is not called the gap", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		const heartbeat = new Date(Date.now() - 22 * 60_000);
+		const lastEvent = new Date(heartbeat.getTime() + 40_000);
+		await event(row.id, 0, { kind: "agent_step", text: "reading", toolCalls: [] }, lastEvent);
+
+		await boot({ previous: { startedAt: new Date(Date.now() - 3_600_000), lastAliveAt: heartbeat, stoppedCleanly: false } });
+
+		expect((await payloadOf(row.id)).resume?.restart).toMatchObject({
+			stoppedAt: lastEvent.toISOString(),
+			lastActivityAt: lastEvent.toISOString(),
+		});
+	});
+
 	it("wakes the dispatch loop once the catch-up delay is over, since the loop has no poll timer", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
