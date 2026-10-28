@@ -248,6 +248,62 @@ describe("HarnessSettings strict mode (#817)", () => {
 	});
 });
 
+describe("HarnessSettings resume after a restart (#981)", () => {
+	const row = () =>
+		container.querySelector('[data-testid="harness-resume-after-restart-row"]');
+	const toggle = () =>
+		container.querySelector<HTMLButtonElement>(
+			'[data-testid="harness-resume-after-restart"]',
+		);
+
+	it("is on when the setting is absent, says what it does, and turning it off saves false", async () => {
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+		expect(row()?.textContent).toContain("Resume after a restart");
+		expect(row()?.textContent).toContain(
+			"When PrismaLens starts again, the investigations it stopped in the middle carry on if it was off for less than a day.",
+		);
+		expect(toggle()?.getAttribute("aria-checked")).toBe("true");
+		expect(toggle()?.disabled).toBe(false);
+		await act(async () => {
+			toggle()?.click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({ resumeAfterRestart: false });
+	});
+
+	it("the label toggles it", async () => {
+		mockSettings.resumeAfterRestart = false;
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(toggle()?.getAttribute("aria-checked")).toBe("false");
+			const label = row()?.querySelector("label");
+			expect(label?.getAttribute("for")).toBe("harness-resume-after-restart");
+			expect(toggle()?.id).toBe("harness-resume-after-restart");
+		} finally {
+			delete mockSettings.resumeAfterRestart;
+		}
+	});
+
+	it("is read-only on a paired device, and says who can change it", async () => {
+		mockSettings.canEditRuntime = false;
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(toggle()?.disabled).toBe(true);
+			expect(row()?.textContent).toContain(
+				"Only the computer running PrismaLens can change this.",
+			);
+			expect(row()?.textContent).not.toContain("carry on if it was off");
+		} finally {
+			delete mockSettings.canEditRuntime;
+		}
+	});
+});
+
 describe("HarnessSettings agents list (#907)", () => {
 	it("lists only agents that can run, each with a chevron to its page", async () => {
 		await act(async () => {
