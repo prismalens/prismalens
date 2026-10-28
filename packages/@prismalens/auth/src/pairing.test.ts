@@ -8,6 +8,7 @@ import {
 	authenticateDevice,
 	authenticateDeviceToken,
 	buildPairingUrl,
+	claimOperatorLink,
 	createPairingLink,
 	DEVICE_SCOPES,
 	type DeviceRecord,
@@ -81,6 +82,12 @@ function createInMemoryPairingStore() {
 				}
 			}
 			return null;
+		},
+		claimLink: async (linkId) => {
+			const link = links.get(linkId);
+			if (!link || link.usedAt !== null) return false;
+			link.usedAt = new Date();
+			return true;
 		},
 		redeemLink: async (input) => {
 			const link = links.get(input.linkId);
@@ -362,6 +369,31 @@ describe("redeemPairingLink", () => {
 		const failure = rejected[0] as PromiseRejectedResult;
 		expect(failure.reason).toBeInstanceOf(PairingError);
 		expect((failure.reason as PairingError).reason).toBe("used");
+	});
+});
+
+describe("claimOperatorLink", () => {
+	it("uses up an unused operator link once, pairing no device", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link = await createPairingLink(store, { scopes: OPERATOR_SCOPES });
+		await claimOperatorLink(store, link.token);
+		await expect(claimOperatorLink(store, link.token)).rejects.toMatchObject({ reason: "used" });
+		await expect(
+			redeemPairingLink(store, { token: link.token, name: "x" }),
+		).rejects.toMatchObject({ reason: "used" });
+		expect(await store.listDevices()).toHaveLength(0);
+	});
+
+	it("refuses a device link, an unknown one and an expired one", async () => {
+		const { store } = createInMemoryPairingStore();
+		const device = await createPairingLink(store);
+		await expect(claimOperatorLink(store, device.token)).rejects.toMatchObject({ reason: "invalid" });
+		await expect(claimOperatorLink(store, "nope")).rejects.toMatchObject({ reason: "invalid" });
+		const old = await createPairingLink(store, {
+			scopes: OPERATOR_SCOPES,
+			now: new Date(Date.now() - PAIRING_LINK_TTL_MS - 1000),
+		});
+		await expect(claimOperatorLink(store, old.token)).rejects.toMatchObject({ reason: "expired" });
 	});
 });
 
