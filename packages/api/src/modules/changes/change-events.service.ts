@@ -308,13 +308,14 @@ export class ChangeEventsService {
 		if (
 			link.subPath ||
 			repo.sourceKind === "folder" ||
-			!repo.connectionId ||
 			urlHost(repo.url) !== "github.com"
 		)
 			return;
+		const connectionId = await this.apiConnection(repo);
+		if (!connectionId) return;
 		try {
 			const events = await new GitHubDeploymentsSegment().listDeploymentEvents(
-				this.integrations.createRequestFn(repo.connectionId),
+				this.integrations.createRequestFn(connectionId),
 				repo.fullName,
 				{ since: window.start, until: window.end },
 			);
@@ -337,6 +338,20 @@ export class ChangeEventsService {
 		} catch (err) {
 			this.logger.warn(`Deployments: ${repo.fullName}: ${message(err)}`);
 		}
+	}
+
+	/** The discovery link, else the pinned token when it is a GitHub API token: a git-host-token sends to github.com, not api.github.com. */
+	private async apiConnection(
+		repo: Link["repository"],
+	): Promise<string | null> {
+		if (repo.connectionId) return repo.connectionId;
+		const pick = pickOf(repo.metadata);
+		if (!pick) return null;
+		const conn = await this.prisma.connection.findUnique({
+			where: { id: pick },
+			select: { integration: { select: { templateId: true } } },
+		});
+		return conn?.integration.templateId === "github-token" ? pick : null;
 	}
 
 	/** Upsert by host, repository, commit and service: a re-read or an overlapping window never doubles a row. */

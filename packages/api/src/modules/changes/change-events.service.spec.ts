@@ -47,6 +47,8 @@ const { startGitHttpServer } = await import(
 );
 import type { GitHttpServer } from "../../core/harness/__fixtures__/git-http-server.js";
 
+const { GitHubDeploymentsSegment } = await import("@prismalens/integrations");
+
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
 
@@ -371,6 +373,59 @@ describe("ChangeEventsService", () => {
 			problemOf(new GitFailure("ambiguous", "2 saved tokens", "pick-credential")),
 		).toMatchObject({ code: "pick-credential", action: "pick-credential" });
 		expect(problemOf("boom")).toMatchObject({ code: "error", message: "boom" });
+	});
+
+	it("pulls deployments with the pinned token only when it is a GitHub API token (#854)", async () => {
+		const list = vi
+			.spyOn(GitHubDeploymentsSegment.prototype, "listDeploymentEvents")
+			.mockResolvedValue([]);
+		const requestFn = vi
+			.spyOn(IntegrationsService.prototype, "createRequestFn")
+			.mockReturnValue(vi.fn());
+		const templateId = vi.spyOn(prisma.connection, "findUnique");
+		const pull = (metadata: string | null, connectionId: string | null = null) =>
+			service["pullDeploys"](
+				{
+					key: "k",
+					serviceId: "s",
+					serviceName: "svc",
+					subPath: null,
+					repository: {
+						id: "r",
+						sourceKind: "url",
+						fullName: "acme/api",
+						url: "https://github.com/acme/api.git",
+						defaultBranch: "main",
+						connectionId,
+						metadata,
+					},
+				},
+				{ start: new Date(Date.now() - HOUR), end: new Date() },
+			);
+		try {
+			const pinned = JSON.stringify({ credentialConnectionId: "pin" });
+			templateId.mockResolvedValue({
+				integration: { templateId: "github-token" },
+			} as never);
+			await pull(pinned);
+			expect(requestFn).toHaveBeenLastCalledWith("pin");
+
+			requestFn.mockClear();
+			templateId.mockResolvedValue({
+				integration: { templateId: "git-host-token" },
+			} as never);
+			await pull(pinned);
+			await pull(null);
+			expect(requestFn).not.toHaveBeenCalled();
+
+			await pull(pinned, "link");
+			expect(requestFn).toHaveBeenLastCalledWith("link");
+			expect(list).toHaveBeenCalledTimes(2);
+		} finally {
+			list.mockRestore();
+			requestFn.mockRestore();
+			templateId.mockRestore();
+		}
 	});
 
 	it("returns null for an unknown incident", async () => {
