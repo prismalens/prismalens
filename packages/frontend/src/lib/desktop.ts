@@ -9,6 +9,8 @@ export interface DesktopBrowserState {
 	canGoForward: boolean;
 	loading: boolean;
 	refused: string | null;
+	popup: string | null;
+	login: boolean;
 }
 
 export interface DesktopBrowser {

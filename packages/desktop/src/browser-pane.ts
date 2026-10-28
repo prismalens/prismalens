@@ -18,6 +18,7 @@ import {
 	isAppOrigin,
 	isGo,
 	trustedSender,
+	webUrl,
 } from "./browser.js";
 
 export interface BrowserState {
@@ -28,6 +29,10 @@ export interface BrowserState {
 	loading: boolean;
 	/** Set when a navigation was refused, with the address that was. */
 	refused: string | null;
+	/** A window the page tried to open, blocked; the panel offers it (#977 OBJ-019). */
+	popup: string | null;
+	/** The page asked for the browser's login box, which the panel never answers (#977 OBJ-020). */
+	login: boolean;
 }
 
 /** The app window never leaves the backend's origin: the preload's bridge is only for it (#973). */
@@ -35,7 +40,7 @@ export function guardAppWindow(window: BrowserWindow, app: () => string) {
 	window.webContents.on("will-navigate", (event, url) => {
 		if (isAppOrigin(url, app())) return;
 		event.preventDefault();
-		if (browserUrl(url)) void shell.openExternal(url);
+		if (webUrl(url)) void shell.openExternal(url);
 	});
 }
 
@@ -66,6 +71,8 @@ export function attachBrowser(
 ): () => void {
 	let view: WebContentsView | null = null;
 	let refused: string | null = null;
+	let popup: string | null = null;
+	let login = false;
 
 	const send = () => {
 		if (!view || window.isDestroyed()) return;
@@ -77,13 +84,15 @@ export function attachBrowser(
 			canGoForward: wc.navigationHistory.canGoForward(),
 			loading: wc.isLoading(),
 			refused,
+			popup,
+			login,
 		};
 		window.webContents.send(BROWSER_CHANNEL.state, state);
 	};
 
 	// A refused main-frame navigation is said once; a subframe's is dropped quietly (#977 OBJ-007).
 	const guard = (event: Event, url: string, mainFrame = true) => {
-		if (browserUrl(url)) return;
+		if (webUrl(url)) return;
 		event.preventDefault();
 		if (!mainFrame) return;
 		refused = url;
@@ -97,10 +106,11 @@ export function attachBrowser(
 		});
 		v.setVisible(false);
 		const wc = v.webContents;
-		// A page never opens a window: a popup loads in this view, so a page cannot push
-		// tabs into the user's signed-in browser (#977 OBJ-009).
+		// A page never opens a window, here or in the user's own browser: the popup is named
+		// and the user decides (#977 OBJ-009, OBJ-019).
 		wc.setWindowOpenHandler(({ url }) => {
-			if (browserUrl(url)) void wc.loadURL(url).catch(() => send());
+			popup = webUrl(url) ? url : null;
+			send();
 			return { action: "deny" };
 		});
 		wc.on("will-navigate", (event, url) => guard(event, url));
@@ -120,6 +130,13 @@ export function attachBrowser(
 		wc.on("login", (event, _details, _auth, callback) => {
 			event.preventDefault();
 			callback();
+			login = true;
+			send();
+		});
+		wc.on("did-start-navigation", (details) => {
+			if (!details.isMainFrame || details.isSameDocument) return;
+			popup = null;
+			login = false;
 		});
 		wc.on("did-navigate", () => {
 			refused = null;
@@ -169,11 +186,17 @@ export function attachBrowser(
 		else if (go === "clear") {
 			// Another run, or the panel closed: the page stops and its history goes (#977 OBJ-012).
 			view.setVisible(false);
-			void wc.loadURL("about:blank").then(() => {
-				wc.navigationHistory.clear();
-				send();
-			});
-		} else if (browserUrl(wc.getURL())) void shell.openExternal(wc.getURL());
+			popup = null;
+			login = false;
+			// An open from the next run can supersede this load; history goes either way (#977 OBJ-018).
+			void wc
+				.loadURL("about:blank")
+				.catch(() => {})
+				.finally(() => {
+					if (wc.getURL() === "about:blank") wc.navigationHistory.clear();
+					send();
+				});
+		} else if (webUrl(wc.getURL())) void shell.openExternal(wc.getURL());
 	};
 
 	ipcMain.on(BROWSER_CHANNEL.open, onOpen);
