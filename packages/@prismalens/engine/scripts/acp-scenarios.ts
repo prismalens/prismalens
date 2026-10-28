@@ -485,11 +485,17 @@ export function gatewayProblem(
 		if (f?.type !== "evidence" || f.quote !== quote)
 			return `evidence "${id}" quote is not ${JSON.stringify(quote)}`;
 	}
+	for (const [id, source] of Object.entries(want.evidenceSource ?? {})) {
+		const f = finding("evidence", id);
+		if (f?.type !== "evidence" || f.source !== source)
+			return `evidence "${id}" source is not ${JSON.stringify(source)}`;
+	}
 	for (const [id, is] of Object.entries(want.hypothesisIs ?? {})) {
 		const f = finding("hypothesis", id);
 		if (
 			f?.type !== "hypothesis" ||
 			f.status !== is.status ||
+			(is.statement !== undefined && f.statement !== is.statement) ||
 			JSON.stringify(f.evidenceIds) !== JSON.stringify(is.evidenceIds)
 		)
 			return `hypothesis "${id}" is not ${JSON.stringify(is)}`;

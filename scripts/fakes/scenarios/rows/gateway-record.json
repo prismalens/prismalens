@@ -47,8 +47,12 @@
 		"hypothesisIs": {
 			"rh1": {
 				"status": "supported",
-				"evidenceIds": ["e1"]
+				"evidenceIds": ["e1"],
+				"statement": "The entry point is index.js."
 			}
+		},
+		"evidenceSource": {
+			"e1": "cat package.json"
 		}
 	},
 	"fixtures": [
