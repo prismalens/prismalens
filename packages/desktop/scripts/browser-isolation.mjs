@@ -158,10 +158,59 @@ async function main() {
 	const perm = await view.webContents.executeJavaScript(
 		`navigator.permissions.query({name:"geolocation"}).then(p=>p.state).catch(e=>String(e))`,
 	);
+	check("the view is refused permissions", perm === "denied", perm);
+
+	// The guard itself, not Chromium's own rules: a mailto: link is refused and said (#977 OBJ-011).
+	await view.webContents
+		.executeJavaScript(`location.href = "mailto:ops@example.com"`)
+		.catch(() => {});
+	await wait(500);
+	const said = await win.webContents.executeJavaScript("window.__s.at(-1)");
 	check(
-		"the view is refused permissions",
-		perm === "denied" || perm === "prompt",
-		perm,
+		"the view's guard refuses a page's mailto: and reports it",
+		said?.refused === "mailto:ops@example.com" &&
+			view.webContents.getURL() === before,
+		said,
+	);
+
+	await win.webContents.executeJavaScript(
+		`window.prismalensDesktop.browser.open(${JSON.stringify(`${base}/page`)})`,
+	);
+	await wait(800);
+	const after = await win.webContents.executeJavaScript("window.__s.at(-1)");
+	check("a good navigation clears the refusal", after?.refused === null, after);
+
+	await view.webContents.executeJavaScript(
+		`window.open(${JSON.stringify(`${base}/popup`)})`,
+	);
+	await wait(800);
+	check(
+		"a popup loads in the view, not in a new window or the system browser",
+		BrowserWindow.getAllWindows().length === 1 &&
+			view.webContents.getURL() === `${base}/popup`,
+		{
+			windows: BrowserWindow.getAllWindows().length,
+			url: view.webContents.getURL(),
+		},
+	);
+
+	const started = Date.now();
+	await view.webContents.executeJavaScript(`alert("x"); confirm("y"); 1`);
+	check(
+		"a page cannot raise native dialogs",
+		Date.now() - started < 1000,
+		Date.now() - started,
+	);
+
+	await win.webContents.executeJavaScript(
+		`window.__s=[]; window.prismalensDesktop.browser.go("state")`,
+	);
+	await wait(300);
+	const asked = await win.webContents.executeJavaScript("window.__s.at(-1)");
+	check(
+		"a panel that mounts again can ask where the view is",
+		asked?.url === `${base}/popup`,
+		asked,
 	);
 
 	const failed = Object.entries(results).filter(([, v]) => v !== "pass");

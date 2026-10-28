@@ -16,8 +16,11 @@ export interface DesktopBrowser {
 	setBounds: (
 		rect: { x: number; y: number; width: number; height: number } | null,
 	) => void;
-	go: (to: "back" | "forward" | "reload" | "external") => void;
-	onState: (listener: (state: DesktopBrowserState) => void) => () => void;
+	go: (to: "back" | "forward" | "reload" | "external" | "state") => void;
+	/** `null` when the view has not been made yet. */
+	onState: (
+		listener: (state: DesktopBrowserState | null) => void,
+	) => () => void;
 }
 
 /** What the Electron preload exposes (`packages/desktop/src/preload.cts`); absent in a browser. */

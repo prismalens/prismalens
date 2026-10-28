@@ -8,6 +8,7 @@ import {
 	browserUrl,
 	clampBounds,
 	isAppOrigin,
+	isGo,
 	trustedSender,
 } from "./browser.js";
 
@@ -59,6 +60,7 @@ describe("browserWebPreferences", () => {
 		expect(prefs.partition).toBe(BROWSER_PARTITION);
 		expect(BROWSER_PARTITION.startsWith("persist:")).toBe(false);
 		expect(prefs.devTools).toBe(false);
+		expect(prefs.disableDialogs).toBe(true);
 	});
 });
 
@@ -108,6 +110,14 @@ describe("trustedSender", () => {
 		["no frame", { sender: main, senderFrame: null }],
 	])("refuses %s", (_name, event) => {
 		expect(trustedSender(event, main, app)).toBe(false);
+	});
+});
+
+describe("isGo", () => {
+	it("takes the four moves and a state request, nothing else", () => {
+		for (const g of ["back", "forward", "reload", "external", "state"])
+			expect(isGo(g)).toBe(true);
+		expect(isGo("close")).toBe(false);
 	});
 });
 
