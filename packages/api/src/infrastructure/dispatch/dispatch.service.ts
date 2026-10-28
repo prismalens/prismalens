@@ -454,13 +454,22 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			resolveConnectors: (serviceId) =>
 				this.connectorResolver.resolve({ serviceId }),
-			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
+			contextPack: (subject) =>
+				typeof subject === "string"
+					? this.contextPackService.assemble(subject)
+					: this.contextPackService.assembleForService(subject.serviceId),
 			...(this.gateway ? { gateway: this.gateway } : {}),
 			...(telemetrySnapshot
 				? {
 						preRun: {
-							telemetry: (incidentId, window, signal) =>
-								telemetrySnapshot.fetch(incidentId, window, signal),
+							telemetry: (subject, window, signal) =>
+								typeof subject === "string"
+									? telemetrySnapshot.fetch(subject, window, signal)
+									: telemetrySnapshot.fetchForService(
+											subject.serviceId,
+											window,
+											signal,
+										),
 							runbooks: (runId, signal) =>
 								this.gateway?.runbookIndex(runId, signal) ??
 								Promise.resolve({ entries: [] }),

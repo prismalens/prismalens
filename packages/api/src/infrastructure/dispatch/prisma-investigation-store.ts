@@ -43,7 +43,7 @@ const logger = new Logger({ context: "PrismaInvestigationStore" });
 
 export interface PrismaInvestigationStoreParams {
 	investigationId: string;
-	incidentId: string;
+	incidentId: string | null;
 	runId: string;
 	harness?: string;
 	model?: string;
