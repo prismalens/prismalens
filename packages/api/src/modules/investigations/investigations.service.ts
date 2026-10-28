@@ -38,6 +38,7 @@ import {
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
+import { owePush, pushOwedBy } from "../push/push-outbox.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import {
 	CreateInvestigationDto,
@@ -328,7 +329,7 @@ export class InvestigationsService {
 		updateData: Record<string, unknown>,
 	): Promise<Investigation | null> {
 		const ending = isWorkflowTerminal(status);
-		const { count } = await this.prisma.investigation.updateMany({
+		const write = {
 			where: {
 				id,
 				// A Stop only ends a live row: a stale one never relabels a finished run (#804 OBJ-025).
@@ -340,7 +341,20 @@ export class InvestigationsService {
 			data: ending
 				? { ...updateData, liveTurn: null, stopRequestedAt: null }
 				: updateData,
-		});
+		};
+		// A failure owes one push, written with the failure or not at all; a repeated write owes none (#859).
+		const { count } =
+			status === "failed"
+				? await this.prisma.$transaction(async (tx) => {
+						const alreadyFailed = await tx.investigation.count({
+							where: { id, status: "failed" },
+						});
+						const written = await tx.investigation.updateMany(write);
+						if (written.count > 0 && alreadyFailed === 0)
+							await owePush(tx, { kind: "run_failed", investigationId: id });
+						return written;
+					})
+				: await this.prisma.investigation.updateMany(write);
 		if (count === 0) {
 			this.logger.warn(
 				`Status write "${status}" for investigation ${id} skipped (missing, cancelled, or stop asked for)`,
@@ -603,6 +617,11 @@ export class InvestigationsService {
 					},
 				});
 				if (count === 0) return false;
+				if (dto.status === "failed" || !chat)
+					await owePush(tx, {
+						kind: dto.status === "failed" ? "run_failed" : "finding_ready",
+						investigationId: id,
+					});
 
 				// 2. Create recommendations
 				if (dto.recommendations && dto.recommendations.length > 0) {
@@ -718,17 +737,22 @@ export class InvestigationsService {
 		for (const event of events) {
 			const branchId =
 				"branchId" in event ? event.branchId : INVESTIGATION_REPORT_BRANCH;
+			const data = {
+				investigationId,
+				seq: event.seq,
+				branchId,
+				// Stored as JSON text (sqlite String / pg JSONB) and re-parsed on
+				// read — mirrors the report/overlay dialect split.
+				event: JSON.stringify(event),
+			};
+			const owed = pushOwedBy(investigationId, event);
 			try {
-				await this.prisma.investigationEvent.create({
-					data: {
-						investigationId,
-						seq: event.seq,
-						branchId,
-						// Stored as JSON text (sqlite String / pg JSONB) and re-parsed on
-						// read — mirrors the report/overlay dialect split.
-						event: JSON.stringify(event),
-					},
-				});
+				if (owed)
+					await this.prisma.$transaction(async (tx) => {
+						await owePush(tx, owed);
+						await tx.investigationEvent.create({ data });
+					});
+				else await this.prisma.investigationEvent.create({ data });
 				inserted++;
 			} catch (error) {
 				if (

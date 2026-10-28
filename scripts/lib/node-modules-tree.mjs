@@ -46,11 +46,17 @@ export function countFiles(dir) {
 }
 
 /** Upstream licence texts for installed packages that ship none (`<licencesDir>/sources.json`, #829). */
-export function addLicences(nodeModules, licencesDir) {
+export function addLicences(
+	nodeModules,
+	licencesDir,
+	{ skipAbsent = false } = {},
+) {
 	for (const name of sources(licencesDir)) {
 		const target = join(nodeModules, name);
-		if (!existsSync(join(target, "package.json")))
+		if (!existsSync(join(target, "package.json"))) {
+			if (skipAbsent) continue;
 			throw new Error(`${name} is not installed; drop it from licences/`);
+		}
 		if (hasLicence(target)) continue;
 		copyFileSync(join(licencesDir, name, "LICENSE"), join(target, "LICENSE"));
 	}

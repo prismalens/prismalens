@@ -13,6 +13,7 @@ import { IncidentCorrelationService } from "../alerts/incident-correlation.servi
 import type { Event } from "../events/events.service.js";
 import { EventsService } from "../events/events.service.js";
 import type { StatusNote } from "../incidents/incidents.service.js";
+import type { MappedAlert } from "./alert-sources/types.js";
 import { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 
 export interface WebhookResult {
@@ -288,6 +289,82 @@ export class WebhooksService {
 				await this.incidentCorrelation.resolveIncidentIfNoFiringAlerts(
 					resolved.incidentId,
 					inferred?.note,
+				);
+			}
+		}
+		return resolved;
+	}
+
+	/**
+	 * Take the alerts a vendor mapper produced (#79). A firing alert goes through
+	 * the same path as a generic webhook, keyed by the vendor's own id so a repeat
+	 * folds into one alert and one incident; a resolved one closes that alert.
+	 */
+	async processMappedAlerts(
+		source: string,
+		alerts: MappedAlert[],
+		idempotencyKey?: string,
+	): Promise<{ alertIds: string[]; incidentIds: string[] }> {
+		const alertIds: string[] = [];
+		const incidentIds: string[] = [];
+		for (const [index, mapped] of alerts.entries()) {
+			const key = `${source}:${mapped.dedupKey}`;
+			const derivedKey =
+				idempotencyKey === undefined ? undefined : `${idempotencyKey}:${index}`;
+			if (mapped.kind === "resolved") {
+				const resolved = await this.resolveSourceKey(source, key, derivedKey);
+				if (resolved) alertIds.push(resolved.id);
+				if (resolved?.incidentId) incidentIds.push(resolved.incidentId);
+				continue;
+			}
+			const result = await this.processGenericWebhook(
+				{
+					title: mapped.title,
+					description: mapped.description,
+					severity: mapped.severity,
+					source,
+					sourceUrl: mapped.sourceUrl,
+					labels: mapped.labels,
+					tags: mapped.tags,
+					sourceEventId: key,
+					rawPayload: mapped.raw,
+				},
+				derivedKey,
+				{ autoInvestigate: true },
+			);
+			alertIds.push(result.alert.id);
+			if (result.incidentId) incidentIds.push(result.incidentId);
+		}
+		return { alertIds, incidentIds };
+	}
+
+	/** Close the alert a vendor id names, and its incident once nothing in it still fires. An unknown id resolves nothing. */
+	private async resolveSourceKey(
+		source: string,
+		key: string,
+		idempotencyKey?: string,
+	): Promise<Alert | null> {
+		if (!(await this.alertsService.findAlertBySourceAlert(key))) {
+			this.logger.log(`${source} resolved delivery for unknown alert ${key}`);
+			return null;
+		}
+		const ingested = await this.ingestEvent(idempotencyKey, () =>
+			this.eventsService.create({
+				source,
+				sourceEventId: key,
+				idempotencyKey,
+				eventType: "alert",
+				payload: { status: "resolved", key },
+			}),
+		);
+		if ("replay" in ingested) return ingested.replay.alert;
+
+		const resolved = await this.alertsService.resolveSourceAlert(key);
+		if (resolved) {
+			await this.eventsService.markProcessed(ingested.event.id, resolved.id);
+			if (resolved.incidentId) {
+				await this.incidentCorrelation.resolveIncidentIfNoFiringAlerts(
+					resolved.incidentId,
 				);
 			}
 		}

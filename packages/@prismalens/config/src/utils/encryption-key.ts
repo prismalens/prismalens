@@ -39,9 +39,12 @@ export function generateEncryptionKey(): string {
  * 3. Auto-generated file in ~/.prismalens/ (created on first run)
  *
  * @param envName - Environment variable name (e.g. "PRISMALENS_AUTH_SECRET")
- * @param length - Byte length for generated secret (default: 32 = 64 hex chars)
+ * @param generate - Makes the value when none exists (default: 32 random bytes as hex)
  */
-function getOrCreateSecret(envName: SecretEnvVar, length = 32): string {
+function getOrCreateSecret(
+	envName: SecretEnvVar,
+	generate: () => string = () => randomBytes(KEY_LENGTH).toString("hex"),
+): string {
 	// 1. Direct env var
 	const direct = process.env[envName];
 	if (direct) return direct;
@@ -71,7 +74,7 @@ function getOrCreateSecret(envName: SecretEnvVar, length = 32): string {
 	// Atomic creation: O_CREAT | O_EXCL fails if file already exists,
 	// preventing TOCTOU race between concurrent processes.
 	ensureAppDataDir();
-	const secret = randomBytes(length).toString("hex");
+	const secret = generate();
 	try {
 		const fd = openSync(
 			defaultPath,
@@ -125,4 +128,24 @@ export function getOrCreateAuthSecret(): string {
  */
 export function getOrCreateWebhookSecret(): string {
 	return getOrCreateSecret(SecretEnvVars.WEBHOOK_SECRET);
+}
+
+/**
+ * Get or create the Web Push VAPID pair (#859), stored like the other secrets.
+ * The caller supplies the generator so key making stays in the push library.
+ */
+export function getOrCreateVapidKeys(
+	generate: () => { publicKey: string; privateKey: string },
+): { publicKey: string; privateKey: string } {
+	const raw = getOrCreateSecret(SecretEnvVars.VAPID_KEYS, () => {
+		const { publicKey, privateKey } = generate();
+		return `${publicKey}.${privateKey}`;
+	});
+	const [publicKey, privateKey] = raw.split(".");
+	if (!publicKey || !privateKey) {
+		throw new Error(
+			`${SecretEnvVars.VAPID_KEYS} must read "<publicKey>.<privateKey>"`,
+		);
+	}
+	return { publicKey, privateKey };
 }

@@ -10,13 +10,16 @@ import { getTemplate } from "../templates/index.js";
 import {
 	adapterSegments,
 	createAdapter,
+	findDeploymentAdapterForHost,
 	getAdapterSegments,
 	getTemplatesForSegment,
 	GitHubAdapter,
 	isAdapterSupported,
 	RenderAdapter,
+	registerAdapter,
 	templatesForSegment,
 } from "./index.js";
+import type { ProviderAdapter } from "./types.js";
 
 describe("Exact-templateId Adapter Registry (#446)", () => {
 	it("resolves github-token to GitHubAdapter and the removed GitHub App to nothing", () => {
@@ -60,9 +63,9 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 
 		// Segment derivation
 		expect(github.vcs).toBeDefined();
-		expect(github.deployment).toBeUndefined();
-		expect(getAdapterSegments(github)).toEqual(["vcs"]);
-		expect(adapterSegments(github)).toEqual(["vcs"]);
+		expect(github.deployment?.listDeploymentEvents).toBeDefined();
+		expect(getAdapterSegments(github)).toEqual(["vcs", "deployment"]);
+		expect(adapterSegments(github)).toEqual(["vcs", "deployment"]);
 
 		expect(render.deployment).toBeDefined();
 		expect(render.vcs).toBeUndefined();
@@ -72,8 +75,14 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 
 	it("answers reverse-direction queries for segments and capabilities", () => {
 		// templatesForSegment
-		expect(getTemplatesForSegment("deployment")).toEqual(["render"]);
-		expect(templatesForSegment("deployment")).toEqual(["render"]);
+		expect(getTemplatesForSegment("deployment")).toEqual([
+			"github-token",
+			"render",
+		]);
+		expect(templatesForSegment("deployment")).toEqual([
+			"github-token",
+			"render",
+		]);
 		expect(getTemplatesForSegment("vcs")).toEqual(["github-token"]);
 		expect(templatesForSegment("vcs")).toEqual(["github-token"]);
 		expect(getTemplatesForSegment("metrics")).toEqual(["prometheus"]);
@@ -109,5 +118,42 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(getCapabilities(renderTemplate!)).toContain("deployment:get_service");
 		expect(getCapabilities(renderTemplate!)).toContain("deployment:list_deploys");
 		expect(getCapabilities(renderTemplate!)).not.toContain("vcs:list_repos");
+	});
+
+	it("registers and unregisters a connector by templateId, and refuses a taken id (#855)", () => {
+		class FakeAdapter implements ProviderAdapter {
+			readonly name = "fake-ci";
+		}
+		const unregister = registerAdapter("fake-ci", FakeAdapter);
+		expect(createAdapter("fake-ci")).toBeInstanceOf(FakeAdapter);
+		expect(isAdapterSupported("fake-ci")).toBe(true);
+		expect(() => registerAdapter("fake-ci", FakeAdapter)).toThrow(
+			/already registered/,
+		);
+		expect(() => registerAdapter("github-token", FakeAdapter)).toThrow(
+			/already registered/,
+		);
+		expect(createAdapter("github-token")).toBeInstanceOf(GitHubAdapter);
+		unregister();
+		expect(createAdapter("fake-ci")).toBeNull();
+	});
+
+	it("finds the adapter whose deployment serves a host (#855)", () => {
+		class HostCi implements ProviderAdapter {
+			readonly name = "host-ci";
+			readonly deployment = {
+				name: "host-ci",
+				servesHost: (host: string) => host === "ci.example.test",
+			};
+		}
+		const unregister = registerAdapter("host-ci", HostCi);
+		expect(findDeploymentAdapterForHost("github.com")).toBeInstanceOf(
+			GitHubAdapter,
+		);
+		expect(findDeploymentAdapterForHost("ci.example.test")).toBeInstanceOf(
+			HostCi,
+		);
+		expect(findDeploymentAdapterForHost("ghe.example.test")).toBeNull();
+		unregister();
 	});
 });

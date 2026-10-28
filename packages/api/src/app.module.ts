@@ -85,6 +85,7 @@ import { IncidentsModule } from "./modules/incidents/incidents.module.js";
 import { IntegrationsModule } from "./modules/integrations/integrations.module.js";
 import { InvestigationsModule } from "./modules/investigations/investigations.module.js";
 import { OpenAPIModule } from "./modules/openapi/openapi.module.js";
+import { PushModule } from "./modules/push/push.module.js";
 import { RecommendationsModule } from "./modules/recommendations/recommendations.module.js";
 import { RepositoriesModule } from "./modules/repositories/repositories.module.js";
 import { ServicesModule } from "./modules/services/services.module.js";
@@ -189,6 +190,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		ImpactModule, // The Impact chart, live from the alert's own expression (#811)
 		FixesModule, // Stop-the-impact options: applied, undo, check (#811)
 		WebhooksModule, // Webhook ingestion
+		PushModule, // phone push (#859)
 		RecommendationsModule,
 		IntegrationsModule, // External tool integrations (GitHub, Prometheus, Slack)
 		OpenAPIModule, // OpenAPI spec and documentation

@@ -16,12 +16,14 @@ function serviceWith(kind = "investigation", stopRequestedAt: Date | null = null
 		"stopRequestedAt" in where && stopRequestedAt !== null;
 	const tx = {
 		investigation: {
+			count: vi.fn(async () => 0),
 			updateMany: vi.fn(async ({ where }: { where: { stopRequestedAt?: null } }) => ({
 				count: refuses(where) ? 0 : 1,
 			})),
 		},
 		recommendation: { createMany: vi.fn() },
 		timelineEntry: { create: vi.fn() },
+		pushOutbox: { create: vi.fn() },
 		incident: { update: vi.fn(), updateMany: vi.fn() },
 	};
 	const prisma = {
@@ -73,14 +75,16 @@ describe("writeResultWithRelations", () => {
 
 describe("a stop asked for wins every terminal write (#673 w59, OBJ-010 a)", () => {
 	it("the status write skips once stopRequestedAt is set and says so", async () => {
-		const { service, prisma } = serviceWith("investigation", new Date());
+		const { service, prisma, tx } = serviceWith("investigation", new Date());
 		const findUnique = vi.mocked(prisma.investigation.findUnique);
 		findUnique.mockClear();
 
 		expect(
 			await service.updateStatusInternal("inv-1", "failed", undefined, "boom"),
 		).toBeNull();
-		expect(prisma.investigation.updateMany).toHaveBeenCalledWith(
+		// A failure owes a push, so it writes in a transaction (#859); a refused one owes none.
+		expect(tx.pushOutbox.create).not.toHaveBeenCalled();
+		expect(tx.investigation.updateMany).toHaveBeenCalledWith(
 			expect.objectContaining({
 				where: expect.objectContaining({
 					stopRequestedAt: null,
