@@ -313,11 +313,11 @@ export default defineCommand({
 
 /**
  * A redirect file keeps the startup token out of the opener's arguments. WSL
- * opens a Windows browser that cannot read the distro's files, so it gets
- * the URL, as Jupyter's redirect file falls back there too.
+ * opens a Windows browser that cannot read the distro's files, and its opener
+ * would carry the token, so there the printed link is the way in (#931).
  */
-function openTarget(url: string, workspaceDir: string): string {
-	if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return url;
+function openTarget(url: string, workspaceDir: string): string | null {
+	if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return null;
 	const file = writeRedirectFile(url, join(workspaceDir, "run"));
 	const drop = () => rmSync(file, { force: true });
 	setTimeout(drop, 120_000).unref();
@@ -346,12 +346,10 @@ async function printStartupLink(
 	watchPairings(link, onDevicePaired, (line, kind) =>
 		kind === "paired" ? consola.success(line) : consola.info(line),
 	);
-	const command = open
-		? browserCommand(
-				process.platform,
-				process.env,
-				openTarget(startupUrl, workspaceDir),
-			)
+	const target = open ? openTarget(startupUrl, workspaceDir) : null;
+	if (open && !target) consola.info("Open the link above in your browser.");
+	const command = target
+		? browserCommand(process.platform, process.env, target)
 		: null;
 	if (!command) return;
 	const child = spawn(command.file, command.args, {

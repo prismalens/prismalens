@@ -80,15 +80,7 @@ beforeEach(async () => {
 		listeningPort: () => port,
 		peerAddress: () => peer,
 	});
-	sockets = new TerminalSocketServer({
-		gate,
-		authenticate: async () => cookieDevice,
-		loadPty: async () => factory,
-		shell: () => ({ file: "sh", args: [], cwd: "/" }),
-		env: () => ({}),
-		highWater: 64,
-		lowWater: 16,
-	});
+	rebuild();
 	server.on("upgrade", (req, socket, head) => {
 		if (!sockets.handleUpgrade(req, socket, head)) socket.destroy();
 	});
@@ -98,6 +90,20 @@ afterEach(async () => {
 	sockets.closeAll();
 	await new Promise<void>((r) => server.close(() => r()));
 });
+
+function rebuild(over: Partial<ConstructorParameters<typeof TerminalSocketServer>[0]> = {}) {
+	sockets?.closeAll();
+	sockets = new TerminalSocketServer({
+		gate,
+		authenticate: async () => cookieDevice,
+		loadPty: async () => factory,
+		shell: () => ({ file: "sh", args: [], cwd: "/" }),
+		env: () => ({}),
+		highWater: 64,
+		lowWater: 16,
+		...over,
+	});
+}
 
 const origin = () => `http://127.0.0.1:${port}`;
 function request(headers: Record<string, string> = {}): IncomingMessage {
@@ -263,6 +269,48 @@ describe("TerminalSocketServer", () => {
 		ptys[0].end(3);
 		expect(JSON.parse(await got)).toEqual({ t: "exit", code: 3 });
 		expect(ptys[0].killed).toBe(true);
+	});
+
+	it("does not throw on a malformed upgrade target", () => {
+		const req = { url: "//[" } as IncomingMessage;
+		expect(() => sockets.handleUpgrade(req, {} as never, Buffer.alloc(0))).not.toThrow();
+		expect(sockets.handleUpgrade(req, {} as never, Buffer.alloc(0))).toBe(false);
+	});
+
+	it("keeps a PTY that throws after exit inside its session", async () => {
+		const { ws } = await open(await ticketFor());
+		ptys[0].resize = () => {
+			throw new Error("Cannot resize a pty that has already exited");
+		};
+		const closed = new Promise((r) => ws.once("close", r));
+		ws.send(JSON.stringify({ t: "resize", cols: 100, rows: 30 }));
+		await closed;
+		expect(ptys[0].killed).toBe(true);
+	});
+
+	it("kills the shell of a revoked device at once, even if the client ignores the close", async () => {
+		rebuild({ recheckMs: 20 });
+		const { ws } = await open(await ticketFor());
+		cookieDevice = null;
+		await vi.waitFor(() => expect(ptys[0].killed).toBe(true));
+		ws.send(JSON.stringify({ t: "in", d: "echo revoked" }));
+		await new Promise((r) => setTimeout(r, 30));
+		expect(ptys[0].written).toEqual([]);
+	});
+
+	it("holds the session cap while PTYs are still loading", async () => {
+		let release!: () => void;
+		const barrier = new Promise<void>((r) => {
+			release = r;
+		});
+		rebuild({ maxSessions: 1, loadPty: async () => (await barrier, factory) });
+		const first = open(await ticketFor());
+		const second = open(await ticketFor());
+		await new Promise((r) => setTimeout(r, 50));
+		release();
+		const statuses = [(await first).status, (await second).status].sort();
+		expect(statuses).toEqual([429, "open"].sort());
+		expect(ptys).toHaveLength(1);
 	});
 
 	it("ignores upgrades on other paths", () => {

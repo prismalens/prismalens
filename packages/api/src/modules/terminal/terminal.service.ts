@@ -42,8 +42,9 @@ export class TerminalService implements OnApplicationShutdown {
 			shell: () => defaultShell(),
 			env: () => shellEnv(),
 		});
+		// Nothing else upgrades; an unknown or malformed target is dropped, never left hanging.
 		server.on("upgrade", (req, socket, head) => {
-			this.sockets?.handleUpgrade(req, socket, head);
+			if (!this.sockets?.handleUpgrade(req, socket, head)) socket.destroy();
 		});
 	}
 
