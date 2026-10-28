@@ -8,8 +8,44 @@ import type {
 	TimelineEntry,
 	TimelineEntryWithRelations,
 } from "@prismalens/contracts/schemas";
+import {
+	holdsRemoved,
+	shownAddress,
+	shownText,
+	UNSHOWN_REPO,
+} from "../../core/harness/git-credential.js";
 import type { CreateTimelineEntryDto } from "./dto/index.js";
 import { TimelineService } from "./timeline.service.js";
+
+function shownRepoEntry(r: { url: string; name?: unknown }, i: number) {
+	const url = shownAddress(r.url);
+	return url === UNSHOWN_REPO ||
+		(typeof r.name === "string" && holdsRemoved(r.url, r.name))
+		? { ...r, url, name: `repo-${i + 1}` }
+		: { ...r, url };
+}
+
+/** A run's start entry names its repositories; rows written before #938 kept the stored address. */
+export function shownMetadata(type: string, meta: unknown): unknown {
+	if (type !== "investigation_started" || !meta || typeof meta !== "object")
+		return meta;
+	const m = meta as Record<string, unknown>;
+	return {
+		...m,
+		...(typeof m.repo === "string" ? { repo: shownAddress(m.repo) } : {}),
+		...(Array.isArray(m.repos)
+			? {
+					repos: m.repos.map((r: unknown, i: number) =>
+						r &&
+						typeof r === "object" &&
+						typeof (r as { url?: unknown }).url === "string"
+							? shownRepoEntry(r as { url: string }, i)
+							: r,
+					),
+				}
+			: {}),
+	};
+}
 
 @Controller()
 export class TimelineController {
@@ -65,7 +101,13 @@ export class TimelineController {
 	private serializeTimelineEntry(entry: Record<string, any>): TimelineEntry {
 		return {
 			...entry,
-			metadata: entry.metadata ? JSON.parse(entry.metadata) : null,
+			...(entry.type === "investigation_started" &&
+			typeof entry.description === "string"
+				? { description: shownText(entry.description) }
+				: {}),
+			metadata: entry.metadata
+				? shownMetadata(entry.type, JSON.parse(entry.metadata))
+				: null,
 			occurredAt: entry.occurredAt?.toISOString(),
 		} as TimelineEntry;
 	}

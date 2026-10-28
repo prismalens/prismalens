@@ -21,10 +21,16 @@ import {
 	OverlaySchema,
 	RunEndReasonSchema,
 	RunUsageSchema,
+	type RunWorkspace,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
+import {
+	holdsRemoved,
+	shownRepoUrl,
+	UNSHOWN_REPO,
+} from "../../core/harness/git-credential.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -41,6 +47,24 @@ import type {
 	RecommendationDto,
 } from "./dto/index.js";
 import { EvidenceRequestRefused, readEvidenceBlob } from "./evidence-blob.js";
+
+/** The row keeps the address a rebuild clones; an answer never carries a legacy credential (#938). */
+export function shownWorkspace(ws: RunWorkspace | null): RunWorkspace | null {
+	return ws
+		? {
+				...ws,
+				repos: ws.repos.map((r, i) => {
+					const url = shownRepoUrl(r.sourceKind, r.url);
+					// A run before #938 named a folder from its raw address, nested path or query included.
+					return url === UNSHOWN_REPO ||
+						holdsRemoved(r.url, `${r.name}\0${r.dir}`)
+						? { ...r, url, name: `repo-${i + 1}`, dir: UNSHOWN_REPO }
+						: { ...r, url };
+				}),
+			}
+		: null;
+}
+
 import { inheritedLevel } from "./follow-up-route.js";
 import {
 	followUpBlockedReason,
@@ -730,7 +754,7 @@ export class InvestigationsController {
 					? (RunEndReasonSchema.safeParse(investigation.endReason).data ?? null)
 					: null,
 			acpSessionId: investigation.acpSessionId ?? null,
-			workspace: this.parseWorkspace(investigation.workspace),
+			workspace: shownWorkspace(this.parseWorkspace(investigation.workspace)),
 			...this.resumeState(investigation),
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),

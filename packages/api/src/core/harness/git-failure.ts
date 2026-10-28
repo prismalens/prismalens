@@ -34,13 +34,65 @@ export class GitFailure extends Error {
 	}
 }
 
-/** Only the first 64 KB of remote output is scanned: the patterns below are not all linear (#848). */
+/** At most 64 KB of remote output is scanned, since the patterns below are not all linear (#848). */
 const MAX_SCANNED_STDERR = 64 * 1024;
+const HALF = MAX_SCANNED_STDERR / 2 - 1;
+
+const BREAK = /[\r\n]/;
+
+/** `text` up to its last whitespace, so no token is split where it is cut. */
+function toWhitespace(text: string): string {
+	let end = text.length;
+	while (end > 0 && !/\s/.test(text[end - 1] as string)) end--;
+	return text.slice(0, end);
+}
+
+/** A run of non-space characters over 2 KB keeps only its end characters, so `'…'` still holds the quotes a pattern reads; one cut by the window loses the end the window lacks. */
+function collapseLongTokens(piece: string, cut: "end" | "start"): string {
+	return piece.replace(/\S{2048,}/g, (run, at: number) => {
+		const first = cut === "start" && at === 0 ? "" : (run[0] as string);
+		const last =
+			cut === "end" && at + run.length === piece.length ? "" : run.at(-1);
+		return `${first}…${last}`;
+	});
+}
+
+/** The start and the end of a line over the window, each cut at whitespace unless it ends in a collapsed token. */
+function edgesOf(line: string): string {
+	const quarter = Math.floor(HALF / 2);
+	const head = collapseLongTokens(line.slice(0, quarter), "end");
+	const tail = collapseLongTokens(line.slice(-quarter), "start");
+	const word = tail.search(/\s/);
+	return `${head.endsWith("…") ? head : toWhitespace(head)} ${tail.startsWith("…") ? tail : word < 0 ? "" : tail.slice(word + 1)}`;
+}
+
+/** From the first line start in the last 32 KB; a last line longer than that keeps its start and its end, where git names the failure and gives its reason (#938). */
+function tailOf(stderr: string): string {
+	let end = stderr.length;
+	while (end > 0 && BREAK.test(stderr[end - 1] as string)) end--;
+	const lastLine =
+		Math.max(
+			stderr.lastIndexOf("\n", end - 1),
+			stderr.lastIndexOf("\r", end - 1),
+		) + 1;
+	if (end - lastLine > HALF) return edgesOf(stderr.slice(lastLine, end));
+	const from = end - HALF;
+	if (from <= 0) return stderr.slice(0, end);
+	if (BREAK.test(stderr[from - 1] as string)) return stderr.slice(from, end);
+	return stderr.slice(from + stderr.slice(from, end).search(BREAK) + 1, end);
+}
+
+/** The first and last 32 KB, each cut at a line break: git's `fatal:` line comes last (#938). */
+function scanned(stderr: string): string {
+	if (stderr.length <= MAX_SCANNED_STDERR) return stderr;
+	const head = stderr.slice(0, HALF);
+	const headEnd = Math.max(head.lastIndexOf("\n"), head.lastIndexOf("\r")) + 1;
+	return `${head.slice(0, headEnd)}\n${tailOf(stderr)}`;
+}
 
 /** Strips anything that looks like a credential from git's stderr. */
 export function scrubGitStderr(stderr: string): string {
-	return stderr
-		.slice(0, MAX_SCANNED_STDERR)
+	return scanned(stderr)
 		.replace(/Authorization:\s*\S+\s+\S+/gi, "Authorization: ***")
 		.replace(/:\/\/[^/@\s]+@/g, "://***@");
 }
@@ -61,7 +113,7 @@ const COULD_NOT_READ_USER = /could not read Username/i;
 const AUTH_FAILED = /Authentication failed for/i;
 const HTTP_403 = /returned error: 403/i;
 const HTTP_404 = /returned error: 404/i;
-const REPO_NOT_FOUND = /repository '.*' not found/i;
+const REPO_NOT_FOUND = /repository '[^'\r\n]*' not found/i;
 const UNREACHABLE =
 	/Could not resolve host|Failed to connect|Connection (refused|timed out)|Operation timed out|ssh: connect to host/i;
 
@@ -115,7 +167,7 @@ export function gitErrorSentence(
 	const label = token.label.replace(/\s+/g, " ");
 	switch (kind) {
 		case "token-expired":
-			return `Token "${label}" has expired. Replace it in Settings → Integrations.`;
+			return `Token "${label}" has expired. Replace it in Settings → Sources.`;
 		case "token-rejected":
 			return `${host} rejected token "${label}". It was revoked or mistyped; replace it.`;
 		case "no-access":

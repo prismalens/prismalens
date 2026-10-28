@@ -13,7 +13,7 @@ import type {
 	GitCredentialDisplay,
 } from "@prismalens/contracts";
 import type { Repository, ServiceRepository } from "@prismalens/database";
-import { repoLabel } from "../../core/harness/git-credential.js";
+import { repoLabel, shownRepoName } from "../../core/harness/git-credential.js";
 import {
 	classifySource,
 	displayNameFor,
@@ -345,6 +345,8 @@ export class RepositoriesService {
 			);
 		}
 		await this.prisma.repository.delete({ where: { id } });
-		this.logger.log(`Deleted repository ${repo.fullName} (${id})`);
+		this.logger.log(
+			`Deleted repository ${shownRepoName(repo.sourceKind, repo.fullName)} (${id})`,
+		);
 	}
 }

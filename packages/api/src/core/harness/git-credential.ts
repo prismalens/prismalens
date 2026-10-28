@@ -57,6 +57,98 @@ export function repoPath(url: string): string {
 	}
 }
 
+const SCHEME_URL = /^[a-z][a-z0-9+.-]*:\/\//i;
+const SCP_REMOTE = /^[\w.-]+@[\w.-]+:(?!\/\/)/;
+const SSH_SCHEME = /^(?:ssh|git\+ssh|ssh\+git):$/i;
+/** A path holding another address, such as `host/https://u:pw@other/x`, is never echoed; `api@2.git` is a path. */
+function nested(path: string): boolean {
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(path);
+	} catch {
+		return true;
+	}
+	return (
+		decoded.includes("://") ||
+		/%40/i.test(path) ||
+		decoded.split("/").some((s) => s.includes("@") && s.includes(":"))
+	);
+}
+
+/** A stored address as it may be shown: rows saved before #934 can hold userinfo or a query, so a URL keeps only an ssh username and an scp remote loses its query (#938). */
+export function shownRepoUrl(sourceKind: string, url: string): string {
+	if (sourceKind === "folder") return url;
+	if (SCP_REMOTE.test(url)) {
+		const shown = url.split("?")[0] as string;
+		return nested(shown.slice(shown.indexOf(":") + 1)) ? UNSHOWN_REPO : shown;
+	}
+	if (!SCHEME_URL.test(url)) return UNSHOWN_REPO;
+	try {
+		const u = new URL(url);
+		if (!u.host || nested(u.pathname)) return UNSHOWN_REPO;
+		const user = SSH_SCHEME.test(u.protocol) ? u.username : "";
+		if (!u.password && !u.search && !u.hash && u.username === user) return url;
+		u.password = u.search = u.hash = "";
+		u.username = user;
+		return u.href;
+	} catch {
+		return UNSHOWN_REPO;
+	}
+}
+
+const fold = (s: string) => s.replace(/[^A-Za-z0-9]/g, "_");
+
+/** Whether `text`, such as a run's folder name, holds a part `shownRepoUrl` removes from `raw`, kept as is or folded to `_` (#938). */
+export function holdsRemoved(raw: string, text: string): boolean {
+	const pieces: string[] = [];
+	if (SCP_REMOTE.test(raw)) pieces.push(raw.split("?").slice(1).join("?"));
+	else {
+		try {
+			const u = new URL(raw);
+			if (!SSH_SCHEME.test(u.protocol)) pieces.push(u.username);
+			pieces.push(u.password, u.search.slice(1), u.hash.slice(1));
+			for (const v of u.searchParams.values()) pieces.push(v);
+		} catch {
+			return false;
+		}
+	}
+	const folded = fold(text);
+	return pieces.some((p) => p.length >= 4 && folded.includes(fold(p)));
+}
+
+/** A stored repository name: one a legacy address was named by may be that address (#938). */
+export function shownRepoName(sourceKind: string, name: string): string {
+	if (sourceKind === "folder") return name;
+	if (SCHEME_URL.test(name) || SCP_REMOTE.test(name))
+		return shownRepoUrl("url", name);
+	return nested(name) || name.includes("?") ? UNSHOWN_REPO : name;
+}
+
+/** One whitespace-separated word of a note, its address shown; `(` and `).,;` around it are kept. */
+function shownWord(word: string): string {
+	let start = 0;
+	let end = word.length;
+	if (word[0] === "(") start = 1;
+	while (end > start && ").,;".includes(word[end - 1] as string)) end--;
+	const core = word.slice(start, end);
+	if (!core.includes("://") && !SCP_REMOTE.test(core)) return word;
+	const shown = shownRepoUrl("url", core);
+	return shown === core
+		? word
+		: `${word.slice(0, start)}${shown}${word.slice(end)}`;
+}
+
+/** Free text written before #938 from a stored address, each address in it shown as shownRepoUrl shows it; a folder path is left as written. */
+export function shownText(text: string): string {
+	const unspaced = text.replace(/:\/\/[^/@\s]*(?:\s[^/@\s]*)+@/g, "://");
+	return unspaced.split(/(\s+)/).map(shownWord).join("");
+}
+
+/** shownRepoUrl for a recorded address whose kind was not kept: an absolute path is a folder. */
+export function shownAddress(address: string): string {
+	return shownRepoUrl(isAbsolute(address) ? "folder" : "url", address);
+}
+
 /** A repository for a log line: `host/owner/repo` for a URL, the path for a folder; never userinfo, query or fragment (#848). */
 export function repoLabel(source: string): string {
 	const host = urlHost(source);

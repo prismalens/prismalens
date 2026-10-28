@@ -20,6 +20,7 @@ import {
 	isSshUrl,
 	normalizeGitHost,
 	repoLabel,
+	shownRepoUrl,
 	urlHost,
 } from "../../core/harness/git-credential.js";
 import { gitEnv } from "../../core/harness/git-env.js";
@@ -113,7 +114,18 @@ const SSH: GitCredentialDisplay = {
 
 /** Codes on which an unpinned token falls through to the next credential (ADR 0007 §6). */
 const FALL_THROUGH_ON: GitFailureCode[] = ["no-access", "token-rejected"];
+/** An expired token cannot explain these, so they surface as themselves (#950). */
+const UNRELATED_TO_TOKEN: GitFailureCode[] = ["unreachable", "other"];
 const PREVIEW_TTL_MS = 60_000;
+
+function blamed(
+	passedOver: GitFailure | undefined,
+	err: GitFailure,
+): GitFailure {
+	return passedOver && !UNRELATED_TO_TOKEN.includes(err.code)
+		? passedOver
+		: err;
+}
 
 type Tier = "pin" | "stored" | "env" | "machine" | "public";
 
@@ -123,6 +135,8 @@ interface Resolution {
 	tier: Tier;
 	token?: HostToken;
 	env?: EnvGitToken & { host: string };
+	/** An expired unpinned token passed over: its failure names the fix when the next credential fails too (#950). */
+	passedOver?: GitFailure;
 }
 
 type ProbeResult =
@@ -192,7 +206,7 @@ export class GitCredentialService {
 				(r.tier !== "stored" && r.tier !== "env") ||
 				!FALL_THROUGH_ON.includes(err.code)
 			)
-				throw err;
+				throw blamed(r.passedOver, err);
 			const host = urlHost(r.effectiveUrl);
 			signal?.throwIfAborted();
 			const next = await this.after(r.tier, r.effectiveUrl, host, signal);
@@ -202,7 +216,8 @@ export class GitCredentialService {
 				...next,
 				display: {
 					...display,
-					fallbackFrom: {
+					// A passed-over expired token stays the reason the run left the saved token (#950).
+					fallbackFrom: cred.display.fallbackFrom ?? {
 						source: cred.display.source,
 						label: cred.display.label,
 						code: err.code,
@@ -218,7 +233,7 @@ export class GitCredentialService {
 				if (!(retryErr instanceof GitFailure)) throw retryErr;
 				await this.recordFailure(fallback, retryErr);
 				// The token's own refusal names what to fix; the retry's error would not (#848).
-				throw err;
+				throw blamed(r.passedOver, err);
 			}
 		}
 	}
@@ -272,7 +287,7 @@ export class GitCredentialService {
 				const onHost = repos.filter((r) => r.host === host);
 				const ref = ({ repositoryId, url }: (typeof repos)[number]) => ({
 					repositoryId,
-					url,
+					url: shownRepoUrl("url", url),
 				});
 				const unpinnedRepos = onHost
 					.filter((r) => !r.pick || !ids.has(r.pick))
@@ -440,13 +455,30 @@ export class GitCredentialService {
 			};
 		}
 		const [only] = stored;
-		if (only?.status === "ACTIVE") {
-			if (mode === "use" && expired(only))
-				throw new GitFailure(
+		// Unpinned, so an expired token is skipped like a refused one; a pin fails closed above (#950).
+		if (
+			only &&
+			(only.status === "TOKEN_EXPIRED" ||
+				(only.status === "ACTIVE" && expired(only)))
+		) {
+			const next = await this.after("stored", effectiveUrl, host, signal);
+			const { label, source } = tokenDisplay(only);
+			return withLegacy({
+				...next,
+				passedOver: new GitFailure(
 					"token-expired",
-					`Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt as Date)}. Replace it in Settings → Sources.`,
+					only.tokenExpiresAt
+						? `Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt)}. Replace it in Settings → Sources.`
+						: `Token "${only.label}" has expired. Replace it in Settings → Sources.`,
 					"replace-token",
-				);
+				),
+				display: {
+					...next.display,
+					fallbackFrom: { source, label, code: "token-expired" },
+				},
+			});
+		}
+		if (only?.status === "ACTIVE") {
 			return withLegacy({
 				display: tokenDisplay(only),
 				effectiveUrl,

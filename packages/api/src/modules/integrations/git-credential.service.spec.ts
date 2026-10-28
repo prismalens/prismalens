@@ -255,6 +255,161 @@ describe("GitCredentialService & host-token (#810)", () => {
 		});
 	});
 
+	it("hosts() lists legacy repositories without their userinfo or query (#938)", async () => {
+		mockPrisma.connection.findMany.mockResolvedValue([
+			{
+				id: "conn-a",
+				label: "Token A",
+				status: "ACTIVE",
+				tokenExpiresAt: null,
+				lastErrorMessage: null,
+				credentialsEnc: credentialsService.encrypt({ token: "ghp_a" }),
+				connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
+				integration: { templateId: "git-host-token", label: "Git host token" },
+			},
+		]);
+		mockPrisma.repository.findMany.mockResolvedValue([
+			{ id: "r1", url: "https://u:ghp_SENTINEL938@github.com/acme/api.git?token=QUERY_SENTINEL", metadata: null },
+			{ id: "r2", url: "https://u:ghp_SENTINEL938@github.com/acme/web.git", metadata: JSON.stringify({ credentialConnectionId: "conn-a" }) },
+		]);
+		const hosts = await service.hosts({});
+		const shown = JSON.stringify(hosts);
+		expect(shown).toContain("https://github.com/acme/api.git");
+		expect(shown).toContain("https://github.com/acme/web.git");
+		expect(shown).not.toMatch(/SENTINEL/);
+	});
+
+	describe("an expired unpinned token falls through (#950)", () => {
+		const expiredOnly = () => ({
+			id: "conn-exp",
+			label: "Expired Token",
+			status: "ACTIVE",
+			tokenExpiresAt: new Date(Date.now() - 3600_000),
+			lastErrorMessage: null,
+			credentialsEnc: credentialsService.encrypt({ token: "ghp_exp" }),
+			connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
+			integration: { templateId: "git-host-token", label: "Git host token" },
+		});
+		const unpinned: GitRepoRef = {
+			sourceKind: "url",
+			url: "https://github.com/org/repo.git",
+			connectionId: null,
+			pick: null,
+		};
+		const expiredFrom = {
+			source: "connection",
+			label: "token Expired Token",
+			code: "token-expired",
+		};
+
+		it("to a working env token, recording fallbackFrom", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_ok");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				const seen: string[] = [];
+				const res = await service.withCredential(unpinned, async (cred) => {
+					seen.push(cred.display.source);
+					return "ok";
+				});
+				expect(seen).toEqual(["env"]);
+				expect(res.credential.fallbackFrom).toEqual(expiredFrom);
+				const preview = await service.preview(unpinned);
+				expect(preview.source).toBe("env");
+				expect(preview.fallbackFrom).toEqual(expiredFrom);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("past env to public when nothing else holds a credential", async () => {
+			vi.stubEnv("GH_TOKEN", "");
+			vi.stubEnv("GITHUB_TOKEN", "");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				const cred = await service.resolveForUse(unpinned);
+				expect(cred.display.source).toBe("none");
+				expect(cred.display.fallbackFrom).toEqual(expiredFrom);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("and when the next credential fails too, the expired token's own failure is what surfaces", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_refused");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				await expect(
+					service.withCredential(unpinned, async () => {
+						throw new GitFailure("no-credential", "No credential for github.com.");
+					}),
+				).rejects.toMatchObject({
+					code: "token-expired",
+					message: expect.stringMatching(/Token "Expired Token" expired on/),
+				});
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("a failure the token cannot explain surfaces as itself, with the expiry kept as fallbackFrom", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_ok");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				await expect(
+					service.withCredential(unpinned, async () => {
+						throw new GitFailure("unreachable", "Could not reach github.com.");
+					}),
+				).rejects.toMatchObject({ code: "unreachable" });
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("a row already marked TOKEN_EXPIRED is passed over with the same reason", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_ok");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([
+					{ ...expiredOnly(), status: "TOKEN_EXPIRED", tokenExpiresAt: null },
+				]);
+				const cred = await service.resolveForUse(unpinned);
+				expect(cred.display.source).toBe("env");
+				expect(cred.display.fallbackFrom).toEqual(expiredFrom);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("the expiry stays the recorded reason when env is refused and the next credential works", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_refused");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				const res = await service.withCredential(unpinned, async (cred) => {
+					if (cred.display.source === "env")
+						throw new GitFailure("token-rejected", "refused");
+					return "ok";
+				});
+				expect(res.credential.source).not.toBe("env");
+				expect(res.credential.fallbackFrom).toEqual(expiredFrom);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("but a pinned expired token still fails closed with its pin intact", async () => {
+			vi.stubEnv("GH_TOKEN", "ghp_env_ok");
+			try {
+				mockPrisma.connection.findMany.mockResolvedValue([expiredOnly()]);
+				const pinned = { ...unpinned, pick: "conn-exp" };
+				await expect(service.resolveForUse(pinned)).rejects.toMatchObject({
+					code: "token-expired",
+				});
+				expect(mockPrisma.repository.update).not.toHaveBeenCalled();
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+	});
+
 	it("T3d: pick on a connection for wrong host or deleted connection clears pick in use mode", async () => {
 		mockPrisma.connection.findMany.mockResolvedValue([]);
 		mockPrisma.connection.findUnique.mockResolvedValue({ id: "conn-other-host" });
