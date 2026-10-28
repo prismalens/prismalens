@@ -32,6 +32,8 @@ import type {
 	InvestigationJobData,
 	JobAttachment,
 	OperatorMessageMode,
+	RestartRecovery,
+	RestartSummary,
 	RunChoice,
 	TurnOutcome,
 	WorkflowStatus,
@@ -49,6 +51,7 @@ import {
 import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
+import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	TelemetryService,
@@ -93,9 +96,11 @@ import {
 	runCancelTopic,
 	runMessageTopic,
 } from "./event-bus.js";
+import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
 	followUpNotDelivered,
+	runDirFor,
 	sweepRunWorkspaces,
 } from "./investigation-run.js";
 import {
@@ -103,9 +108,34 @@ import {
 	type JobStore,
 	PrismaJobStore,
 } from "./job-store.js";
+import {
+	BOOT_LOOP_MS,
+	lastActivityOf,
+	NOT_RESUMED,
+	notResumedReason,
+	RECOVERY_DELAY_MS,
+} from "./restart-recovery.js";
 import type { RunPorts } from "./run-ports.js";
 
 export type { InvestigationJobData };
+
+/** What boot reads before it writes anything, to decide which cut-off runs resume (#981). */
+interface BootContext {
+	now: Date;
+	/** When PrismaLens was last alive before this start. */
+	stoppedAt: Date;
+	bootLoop: boolean;
+	enabled: boolean;
+	activity: Map<string, Date>;
+	/** The run's agent from before the stop is proven gone. */
+	contained: Map<string, boolean>;
+	/** Workspaces the boot sweep must leave: resumed runs, and runs whose agent may live. */
+	keep: Set<string>;
+	resumed: string[];
+	skipped: { id: string; reason: string }[];
+}
+
+const RESTART_SUMMARY_KEY = "runtime.lastRecovery";
 
 /** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
 export class FollowUpRefused extends Error {}
@@ -160,6 +190,51 @@ function startedByAlert(triggerType: string | null): boolean {
 	return !!triggerType && triggerType !== "manual";
 }
 
+function agentLabel(harness: string | null): string {
+	const id = HARNESS_IDS.find((h) => h === harness);
+	return id ? HARNESS_REGISTRY[id].label : "The agent";
+}
+
+function safeJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The interrupted job again, as a follow-up of the same turn: its pins (agent,
+ * model, level, `unattended`) are the job's own, never a person's (#981, #818).
+ */
+export function recoveryPayload(
+	original: InvestigationJobData,
+	plan: { route: FollowUpRoute; harness: HarnessId },
+	turn: "report" | "answer",
+	restart: RestartRecovery,
+): InvestigationJobData {
+	const { resume: prev, ...rest } = original;
+	// An answer is asked again in the agent's own words; a report turn just carries on.
+	const question =
+		turn === "answer" ? (prev ? prev.text : original.chat?.text) : undefined;
+	return {
+		...rest,
+		resume: {
+			text: question ?? "PrismaLens restarted.",
+			mode: "queue",
+			kind: turn === "report" ? "continue" : "chat",
+			restore: prev?.restore ?? {
+				status: "failed",
+				completedAt: null,
+				error: RESTART_REASON,
+			},
+			to: { ...(prev?.to ?? {}), harness: plan.harness },
+			...(plan.route === "handoff" ? { handoff: true } : {}),
+			restart,
+		},
+	};
+}
+
 export function resolveHarnessRunModel(
 	harnessId: HarnessId,
 	operatorModel: string | undefined,
@@ -211,6 +286,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		@Optional() private readonly gateway?: GatewayService,
 		@Optional() telemetrySnapshot?: TelemetrySnapshotService,
 		@Optional() private readonly runWorkspaces?: RunWorkspacesService,
+		@Optional() private readonly lifecycle?: RuntimeLifecycleService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -459,6 +535,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;
 			},
+			restartAlerts: (incidentId, since, until, stoppedAt) =>
+				this.restartAlerts(incidentId, since, until, stoppedAt),
 			resolveConnectors: (serviceId) =>
 				this.connectorResolver.resolve({ serviceId }),
 			contextPack: (subject) =>
@@ -605,9 +683,15 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	}
 
 	async onModuleInit(): Promise<void> {
-		// An API restart abandons whatever was `running` — there is no reclaim any
-		// more (0005 §2: one process). Fail those jobs, then settle every live row
-		// against its job before the loop starts, so nothing sits live forever.
+		// Read before any boot write: what each cut-off run last did, and whether its agent is gone (#981).
+		const boot = await this.bootContext().catch((e) => {
+			this.logger.warn(
+				`Could not read the runs a stop cut off: ${(e as Error).message}`,
+			);
+			return null;
+		});
+		// An API restart abandons whatever was `running`. Each cut-off run is taken
+		// up again or settled against its job before the loop starts (#981).
 		await this.denyAsksLeftWaiting().catch((e) =>
 			this.logger.warn(
 				`Could not settle asks left waiting at boot: ${(e as Error).message}`,
@@ -624,11 +708,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`Failed ${ids.length} investigation(s) left running by a previous process: ${ids.join(", ")}`,
 			);
 		}
-		await this.reconcileLiveRows(new Set(ids)).catch((e) =>
+		await this.reconcileLiveRows(new Set(ids), boot).catch((e) =>
 			this.logger.warn(
 				`Could not reconcile live runs at boot: ${(e as Error).message}`,
 			),
 		);
+		if (boot)
+			await this.revalidateRecoveries(boot).catch((e) =>
+				this.logger.warn(
+					`Could not re-check recoveries left pending: ${(e as Error).message}`,
+				),
+			);
 		// The boot sweep applies each workspace's own retention rule, so the settings load first.
 		await this.runWorkspaces?.ready();
 		try {
@@ -640,7 +730,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			});
 			const liveIds = new Set(live.map((r) => r.id));
 			const swept = await sweepRunWorkspaces({
-				isLive: (id) => liveIds.has(id),
+				isLive: (id) => liveIds.has(id) || !!boot?.keep.has(id),
 				isInterrupted: (id) => interrupted.has(id),
 			});
 			if (swept > 0)
@@ -648,6 +738,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		} catch (e) {
 			this.logger.warn("Could not sweep leftover run workspaces", e);
 		}
+		if (boot)
+			await this.writeRestartSummary(boot).catch((e) =>
+				this.logger.warn(
+					`Could not record what this start resumed: ${(e as Error).message}`,
+				),
+			);
 		this.dispatcher.start();
 		this.logger.log(
 			`Dispatch loop started, concurrency cap ${getConfig().PRISMALENS_DISPATCH_CONCURRENCY}, owner ${this.dispatcher.ownerToken}`,
@@ -705,7 +801,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * settled against its job. A pending job stays to be claimed; anything
 	 * else ends the row, and a recorded Stop always ends it as a stop.
 	 */
-	private async reconcileLiveRows(wasRunning: Set<string>): Promise<void> {
+	private async reconcileLiveRows(
+		wasRunning: Set<string>,
+		boot: BootContext | null = null,
+	): Promise<void> {
 		await this.settleJobsOfEndedRows(wasRunning);
 		const rows = await this.prisma.investigation.findMany({
 			where: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
@@ -732,6 +831,24 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const stopped =
 				!!row.stopRequestedAt ||
 				(!wasRunning.has(row.id) && job?.status === "cancelled");
+			if (!stopped && job && boot) {
+				const verdict = await this.tryRecover(row.id, boot).catch(
+					(e: Error) => `it could not be prepared: ${e.message}`,
+				);
+				if (verdict === true) {
+					waiting.push(row);
+					continue;
+				}
+				if (verdict !== null) {
+					boot.skipped.push({ id: row.id, reason: verdict });
+					await this.endAtBoot(row, job, false, undefined, verdict).catch((e) =>
+						this.logger.warn(
+							`Could not settle run ${row.id} at boot: ${(e as Error).message}`,
+						),
+					);
+					continue;
+				}
+			}
 			await this.endAtBoot(row, job, stopped).catch((e) =>
 				this.logger.warn(
 					`Could not settle run ${row.id} at boot: ${(e as Error).message}`,
@@ -923,20 +1040,35 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		job: { status: string; payload: string } | null,
 		stopped: boolean,
 		reason = job ? RESTART_REASON : UNQUEUED_REASON,
+		notResumed?: string,
 	): Promise<void> {
 		if (job && jobResume(job.payload)) {
 			await this.restoreFollowUp(
 				row.id,
-				FOLLOW_UP_RESTART_REASON,
+				notResumed
+					? `${FOLLOW_UP_RESTART_REASON} ${NOT_RESUMED}${notResumed}`
+					: FOLLOW_UP_RESTART_REASON,
 				stopped ? "stopped" : "error",
 			);
+			// A recovery that fell back to the interrupted standing says why it went no further.
+			if (notResumed)
+				await this.prisma.investigation.updateMany({
+					where: { id: row.id, status: "failed", endReason: "interrupted" },
+					data: { error: `${NOT_RESUMED}${notResumed}` },
+				});
 		} else {
 			const chat = row.kind === "chat";
 			await this.investigationsService.updateStatusInternal(
 				row.id,
 				stopped ? "cancelled" : "failed",
 				undefined,
-				stopped ? (chat ? "Chat stopped" : "Investigation cancelled") : reason,
+				stopped
+					? chat
+						? "Chat stopped"
+						: "Investigation cancelled"
+					: notResumed
+						? `${NOT_RESUMED}${notResumed}`
+						: reason,
 				undefined,
 				stopped || !job ? undefined : { endReason: "interrupted" },
 			);
@@ -1214,6 +1346,411 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * restart) puts back the finished investigation it reopened (#752), and says so in
 	 * the conversation. False when the investigation's job was not a follow-up.
 	 */
+	/** The boot's view of the cut-off runs, read before any boot write (#981 OBJ-006, OBJ-010). */
+	private async bootContext(): Promise<BootContext> {
+		const now = new Date();
+		const live = await this.prisma.investigation.findMany({
+			where: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
+			select: { id: true },
+		});
+		const activity = new Map<string, Date>();
+		const contained = new Map<string, boolean>();
+		const keep = new Set<string>();
+		for (const { id } of live) {
+			activity.set(id, await this.lastActivity(id, now));
+			const gone = await containPrevious(readReceipt(runDirFor(id))).catch(
+				() => false,
+			);
+			contained.set(id, gone);
+			if (!gone) keep.add(id);
+		}
+		const prev = this.lifecycle?.lastRestart()?.previous ?? null;
+		const last = await this.restartSummary().catch(() => null);
+		const bootLoop =
+			!!prev &&
+			prev.lastAliveAt.getTime() - prev.startedAt.getTime() < BOOT_LOOP_MS &&
+			!!last &&
+			last.resumed.length > 0 &&
+			Date.parse(last.at) >= prev.startedAt.getTime() - 5_000;
+		const latest = Math.max(
+			0,
+			...[...activity.values()].map((d) => d.getTime()),
+		);
+		return {
+			now,
+			stoppedAt: prev?.lastAliveAt ?? (latest ? new Date(latest) : now),
+			bootLoop,
+			enabled: await this.harnessService.resumeAfterRestart().catch(() => true),
+			activity,
+			contained,
+			keep,
+			resumed: [],
+			skipped: [],
+		};
+	}
+
+	/** The run's newest event the boot did not write itself. */
+	private async lastActivity(id: string, fallback: Date): Promise<Date> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: { investigationId: id },
+			orderBy: { createdAt: "desc" },
+			take: 200,
+			select: { createdAt: true, event: true },
+		});
+		return lastActivityOf(rows, fallback);
+	}
+
+	/**
+	 * Takes up a cut-off run in one transaction with ending its turn (#981 OBJ-001):
+	 * true when re-armed, the reason when it is left for the operator, null when its
+	 * turn had already finished and it is settled as before.
+	 */
+	private async tryRecover(
+		id: string,
+		boot: BootContext,
+	): Promise<true | string | null> {
+		const found = await this.recoverable(id);
+		if (!found) return null;
+		const { inv, job, original, turn } = found;
+		if (await this.finishedTurn(id, job.claimedAt, turn)) return null;
+		const lastActivityAt = boot.activity.get(id) ?? boot.now;
+		const prior = original.resume?.restart;
+		const plan = await this.planFollowUp(inv, {});
+		const reason = notResumedReason({
+			enabled: boot.enabled,
+			now: boot.now,
+			lastActivityAt,
+			attempt: (prior?.attempt ?? 0) + 1,
+			bootLoop: boot.bootLoop,
+			contained: boot.contained.get(id) ?? true,
+			agent: agentLabel(plan?.harness ?? inv.harness),
+			preflight: !plan
+				? "it names no agent to resume in."
+				: plan.preflight
+					? `${plan.preflight.problem} ${plan.preflight.fix}`
+					: null,
+		});
+		if (reason || !plan) return reason ?? "it names no agent to resume in.";
+		const data = recoveryPayload(original, plan, turn, {
+			attempt: (prior?.attempt ?? 0) + 1,
+			stoppedAt: boot.stoppedAt.toISOString(),
+			lastActivityAt: lastActivityAt.toISOString(),
+			by: "auto",
+		});
+		const admitted = await this.rearm(
+			id,
+			inv.incidentId,
+			turn,
+			data,
+			new Date(boot.now.getTime() + RECOVERY_DELAY_MS),
+			"live",
+		);
+		if (!admitted) return "it changed while PrismaLens was starting.";
+		boot.keep.add(id);
+		boot.resumed.push(id);
+		this.streamRelay.attach(id);
+		return true;
+	}
+
+	/** The run, its job and the turn the job was running; null when there is nothing to take up. */
+	private async recoverable(id: string) {
+		const inv = await this.prisma.investigation.findUnique({
+			where: { id },
+			select: {
+				incidentId: true,
+				kind: true,
+				harness: true,
+				model: true,
+				acpSessionId: true,
+				status: true,
+				endReason: true,
+			},
+		});
+		const job = await this.prisma.job.findUnique({
+			where: { investigationId: id },
+			select: { payload: true, claimedAt: true, priority: true },
+		});
+		if (!inv || !job) return null;
+		const parsed = InvestigationJobDataSchema.safeParse(safeJson(job.payload));
+		if (!parsed.success) return null;
+		const original = parsed.data;
+		const turn: "report" | "answer" = original.resume
+			? original.resume.kind === "continue"
+				? "report"
+				: "answer"
+			: inv.kind === "chat"
+				? "answer"
+				: "report";
+		return { inv, job, original, turn };
+	}
+
+	/** A turn whose end the run had already recorded before the stop is not re-run (#981 OBJ-004). */
+	private async finishedTurn(
+		id: string,
+		since: Date | null,
+		turn: "report" | "answer",
+	): Promise<boolean> {
+		if (!since) return false;
+		const ends = await this.prisma.investigationEvent.count({
+			where: {
+				investigationId: id,
+				createdAt: { gte: since },
+				OR: [
+					{ event: { contains: '"kind":"report"' } },
+					...(turn === "answer"
+						? [{ event: { contains: '"kind":"branch_done"' } }]
+						: []),
+				],
+			},
+		});
+		return ends > 0;
+	}
+
+	/**
+	 * The row goes pending and its job is re-armed in one transaction, so a crash
+	 * between them leaves either the cut-off run or a pending recovery, never neither.
+	 */
+	private async rearm(
+		id: string,
+		incidentId: string,
+		turn: "report" | "answer",
+		data: InvestigationJobData,
+		runAt: Date,
+		from: "live" | "interrupted",
+	): Promise<boolean> {
+		return this.prisma.$transaction(async (tx) => {
+			const { count } = await tx.investigation.updateMany({
+				where:
+					from === "live"
+						? { id, status: { in: [...LIVE_WORKFLOW_STATUSES] } }
+						: { id, status: "failed", endReason: "interrupted" },
+				data: {
+					status: "pending",
+					completedAt: null,
+					error: null,
+					stopRequestedAt: null,
+					endReason: "interrupted",
+					liveTurn: turn,
+				},
+			});
+			if (count === 0) return false;
+			await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
+				investigationId: id,
+				incidentId,
+				payload: JSON.stringify(data),
+				priority: PRIORITY_ORDER[data.priority ?? "normal"] ?? 3,
+				runAt,
+			});
+			return true;
+		});
+	}
+
+	/**
+	 * A recovery an earlier boot re-armed but never started is checked again against
+	 * this boot's rules before it may run (#981 OBJ-013).
+	 */
+	private async revalidateRecoveries(boot: BootContext): Promise<void> {
+		const pending = await this.prisma.job.findMany({
+			where: { status: "pending" },
+			select: { investigationId: true, payload: true },
+		});
+		for (const job of pending) {
+			const id = job.investigationId;
+			const restart = jobResume(job.payload)?.restart;
+			if (!restart || boot.resumed.includes(id)) continue;
+			const inv = await this.prisma.investigation.findUnique({
+				where: { id },
+				select: { harness: true, model: true, acpSessionId: true },
+			});
+			const plan = inv ? await this.planFollowUp(inv, {}) : null;
+			const reason = notResumedReason({
+				enabled: boot.enabled,
+				now: boot.now,
+				lastActivityAt:
+					boot.activity.get(id) ?? new Date(restart.lastActivityAt),
+				attempt: restart.attempt,
+				bootLoop: boot.bootLoop,
+				contained: boot.contained.get(id) ?? true,
+				agent: agentLabel(plan?.harness ?? inv?.harness ?? null),
+				preflight: plan?.preflight
+					? `${plan.preflight.problem} ${plan.preflight.fix}`
+					: null,
+			});
+			if (!reason) {
+				await this.prisma.job.updateMany({
+					where: { investigationId: id, status: "pending" },
+					data: { runAt: new Date(boot.now.getTime() + RECOVERY_DELAY_MS) },
+				});
+				boot.keep.add(id);
+				boot.resumed.push(id);
+				this.streamRelay.attach(id);
+				continue;
+			}
+			boot.skipped.push({ id, reason });
+			await this.restoreFollowUp(
+				id,
+				`${FOLLOW_UP_RESTART_REASON} ${NOT_RESUMED}${reason}`,
+				"error",
+			);
+			await this.cancelPendingJob(id);
+			await this.prisma.investigation.updateMany({
+				where: { id, status: "failed", endReason: "interrupted" },
+				data: { error: `${NOT_RESUMED}${reason}` },
+			});
+		}
+	}
+
+	private async writeRestartSummary(boot: BootContext): Promise<void> {
+		const ids = [...boot.resumed, ...boot.skipped.map((s) => s.id)];
+		const rows = await this.prisma.investigation.findMany({
+			where: { id: { in: ids } },
+			select: {
+				id: true,
+				incidentId: true,
+				incident: { select: { number: true, title: true } },
+			},
+		});
+		const ref = (id: string) => {
+			const r = rows.find((x) => x.id === id);
+			return {
+				investigationId: id,
+				incidentId: r?.incidentId ?? "",
+				incidentNumber: r?.incident?.number ?? null,
+				title: r?.incident?.title ?? "",
+			};
+		};
+		const summary: NonNullable<RestartSummary> = {
+			at: boot.now.toISOString(),
+			stoppedAt: this.lifecycle?.lastRestart()?.previous
+				? boot.stoppedAt.toISOString()
+				: null,
+			resumed: boot.resumed.map(ref),
+			skipped: boot.skipped.map((s) => ({ ...ref(s.id), reason: s.reason })),
+		};
+		await this.prisma.setting.upsert({
+			where: { key: RESTART_SUMMARY_KEY },
+			update: { value: JSON.stringify(summary), type: "json" },
+			create: {
+				key: RESTART_SUMMARY_KEY,
+				value: JSON.stringify(summary),
+				type: "json",
+				category: "general",
+			},
+		});
+	}
+
+	/**
+	 * Alerts on the incident that fired, arrived or resolved in the gap, and whether the
+	 * boot's alert catch-up has run since the stop; "none" when there is no source to pull (#981 OBJ-008).
+	 */
+	private async restartAlerts(
+		incidentId: string,
+		since: Date,
+		until: Date,
+		stoppedAt: Date,
+	) {
+		const inGap = { gte: since, lte: until };
+		const rows = await this.prisma.alert.findMany({
+			where: {
+				incidentId,
+				OR: [
+					{ triggeredAt: inGap },
+					{ createdAt: inGap },
+					{ resolvedAt: inGap },
+				],
+			},
+			select: {
+				title: true,
+				triggeredAt: true,
+				createdAt: true,
+				resolvedAt: true,
+			},
+			orderBy: { triggeredAt: "asc" },
+		});
+		const within = (d: Date | null) =>
+			!!d && d.getTime() >= since.getTime() && d.getTime() <= until.getTime();
+		const fired = rows
+			.filter((a) => within(a.triggeredAt) || within(a.createdAt))
+			.map((a) => ({
+				title: a.title,
+				at: within(a.triggeredAt) ? a.triggeredAt : a.createdAt,
+			}));
+		const resolved = rows
+			.filter((a) => within(a.resolvedAt))
+			.map((a) => ({ title: a.title, at: a.resolvedAt as Date }));
+		const sources = await this.prisma.connection.count({
+			where: {
+				status: "ACTIVE",
+				integration: { templateId: { in: ["prometheus", "alertmanager"] } },
+			},
+		});
+		const pulled = await this.prisma.setting
+			.findUnique({ where: { key: "ALERT_PULL" } })
+			.then((r) => {
+				const at = r
+					? (JSON.parse(r.value) as { lastPulledAt?: string }).lastPulledAt
+					: undefined;
+				return at ? Date.parse(at) : 0;
+			})
+			.catch(() => 0);
+		const catchUp: "done" | "unchecked" | "none" =
+			sources === 0
+				? "none"
+				: pulled > stoppedAt.getTime()
+					? "done"
+					: "unchecked";
+		return { catchUp, fired, resolved };
+	}
+
+	/** What the last start did with the runs a stop cut off (#981). */
+	async restartSummary(): Promise<RestartSummary> {
+		const row = await this.prisma.setting.findUnique({
+			where: { key: RESTART_SUMMARY_KEY },
+		});
+		if (!row) return null;
+		try {
+			return JSON.parse(row.value) as RestartSummary;
+		} catch {
+			return null;
+		}
+	}
+
+	/** Resume, pressed on a run a restart cut off that PrismaLens left for the operator (#981). */
+	async resumeInterrupted(id: string): Promise<void> {
+		const found = await this.recoverable(id);
+		if (
+			!found ||
+			found.inv.status !== "failed" ||
+			found.inv.endReason !== "interrupted"
+		)
+			throw new FollowUpRefused(
+				"Only a run a restart interrupted can be resumed this way.",
+			);
+		const { inv, original, turn } = found;
+		const plan = await this.planFollowUp(inv, {});
+		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");
+		if (!(await containPrevious(readReceipt(runDirFor(id))).catch(() => false)))
+			throw new FollowUpRefused(
+				`${agentLabel(plan.harness)} from before the restart may still be running. Resume once it has stopped.`,
+			);
+		if (plan.preflight)
+			throw new FollowUpRefused(
+				`${plan.preflight.problem} ${plan.preflight.fix}`,
+			);
+		const now = new Date();
+		const last = await this.lastActivity(id, now);
+		const data = recoveryPayload(original, plan, turn, {
+			attempt: 1,
+			stoppedAt: last.toISOString(),
+			lastActivityAt: last.toISOString(),
+			by: "operator",
+		});
+		if (!(await this.rearm(id, inv.incidentId, turn, data, now, "interrupted")))
+			throw new FollowUpRefused("The run changed; reload it.");
+		this.streamRelay.attach(id);
+		void this.dispatcher.tick();
+	}
+
 	async restoreFollowUp(
 		investigationId: string,
 		reason: string,

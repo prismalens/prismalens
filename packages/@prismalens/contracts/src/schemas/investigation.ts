@@ -1401,8 +1401,6 @@ export const InvestigationJobDataSchema = z.object({
 			handoff: z.boolean().optional(),
 			/** A restart cut the run off: the agent is told its last command may not have completed. */
 			afterRestart: z.boolean().optional(),
-			/** The event seq this turn began at; a terminal event at or after it ended this turn (#981). */
-			turnStartSeq: z.number().int().min(0).optional(),
 			/** PrismaLens composes the message when the job is claimed, from what it finds then (#981). */
 			restart: RestartRecoverySchema.optional(),
 			/** What the row said before the follow-up; a follow-up never changes it. */

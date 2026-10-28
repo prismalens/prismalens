@@ -1479,6 +1479,47 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.context).toMatchObject({ mode: "service-check", alerts: [] });
 	});
 
+	it("a recovery after a restart stays unattended, and sends PrismaLens's own message about the gap (#981)", async () => {
+		const restartAlerts = vi.fn(async () => ({
+			catchUp: "done" as const,
+			fired: [{ title: "CheckoutLatencyHigh", at: new Date("2026-10-28T09:03:00Z") }],
+			resolved: [],
+		}));
+		const ports = followUpPorts({ restartAlerts });
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+		const recovery: InvestigationJobData = {
+			...data,
+			unattended: true,
+			accessLevel: "auto",
+			resume: {
+				text: "PrismaLens restarted.",
+				mode: "queue",
+				kind: "continue",
+				restore: { status: "failed", completedAt: null, error: "API restarted while the run was in flight" },
+				afterRestart: true,
+				restart: { attempt: 1, by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z", lastActivityAt: "2026-10-28T08:51:00.000Z" },
+			},
+		};
+
+		await runInvestigationJob({ id: "job-r", investigationId: "inv-1", attempts: 1 }, recovery, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ unattended?: boolean; accessLevel?: string; onSpawn?: unknown; resume: { text: string; afterRestart?: boolean; via: { restart?: { by: string; stoppedAt: string } } } },
+		];
+		expect(opts.unattended).toBe(true);
+		expect(opts.accessLevel).toBe("auto");
+		expect(typeof opts.onSpawn).toBe("function");
+		expect(opts.resume.text).toMatch(/^PrismaLens stopped at .* and started again at /);
+		expect(opts.resume.text).toContain("1 alert fired on this incident: CheckoutLatencyHigh");
+		expect(opts.resume.text).toContain("Continue the investigation from your last step.");
+		expect(opts.resume.afterRestart).toBeUndefined();
+		expect(opts.resume.via.restart).toMatchObject({ by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z" });
+		expect(restartAlerts).toHaveBeenCalledWith("inc-1", new Date("2026-10-28T08:51:00.000Z"), expect.any(Date), new Date("2026-10-28T08:52:00.000Z"));
+	});
+
 	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {
 		const ports = followUpPorts();
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
