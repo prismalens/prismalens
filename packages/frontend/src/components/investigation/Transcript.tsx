@@ -144,7 +144,8 @@ export const Transcript = memo(function Transcript({
 	afterReport,
 }: {
 	items: TranscriptItem[];
-	incidentId: string;
+	/** Null on a scheduled check no finding has linked yet (#979). */
+	incidentId: string | null;
 	/** The run's workspace, shown as `repo/` (walk f16). */
 	cwd?: string | null;
 	agent: string;
@@ -289,7 +290,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	...steps
 }: RowSteps & {
 	item: TranscriptItem;
-	incidentId: string;
+	incidentId: string | null;
 	cwd?: string | null;
 	agent: string;
 	runName?: string;
@@ -406,7 +407,7 @@ const TranscriptRow = memo(function TranscriptRow({
 							{item.text}
 						</p>
 					)}
-					{item.attachments.length > 0 && (
+					{item.attachments.length > 0 && incidentId && (
 						<Attachments incidentId={incidentId} files={item.attachments} />
 					)}
 				</li>
@@ -428,14 +429,16 @@ const TranscriptRow = memo(function TranscriptRow({
 						<span dir="auto" className="text-text-2">
 							{reportSummary}
 						</span>
-						<Link
-							to="/incidents/$id"
-							params={{ id: incidentId }}
-							className="self-start text-accent underline-offset-[3px] hover:underline"
-							data-testid="transcript-report-overview"
-						>
-							See it on the overview
-						</Link>
+						{incidentId && (
+							<Link
+								to="/incidents/$id"
+								params={{ id: incidentId }}
+								className="self-start text-accent underline-offset-[3px] hover:underline"
+								data-testid="transcript-report-overview"
+							>
+								See it on the overview
+							</Link>
+						)}
 						{item.hint && (
 							<span
 								className="text-meta text-text-3"
