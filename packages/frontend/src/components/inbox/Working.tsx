@@ -51,7 +51,11 @@ export function Working({
 								{service}
 							</span>
 						)}
-						<span className="shrink-0">No finding yet</span>
+						<span className="shrink-0">
+							{run.endReason === "interrupted"
+								? "Resumed after a restart"
+								: "No finding yet"}
+						</span>
 						<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
 							{ago(run.startedAt ?? run.createdAt, now)}
 						</span>
