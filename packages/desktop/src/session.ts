@@ -76,6 +76,8 @@ export interface SessionDeps {
 	/** Runs `pl pair --operator` on the workspace and returns its stdout. */
 	pairOperator: () => Promise<string>;
 	fetchImpl?: typeof fetch;
+	/** The terminal key a fresh local redeem answers with (#931). */
+	onTerminalKey?: (key: string) => void;
 }
 
 /** A device token that holds the operator's scopes: a stored one, or a fresh one. */
@@ -95,7 +97,44 @@ export async function operatorToken(deps: SessionDeps): Promise<string> {
 	if (!res.ok || !token) {
 		throw new Error(`Pairing the window failed: ${res.status}`);
 	}
+	const body = (await res.json().catch(() => ({}))) as {
+		terminalKey?: unknown;
+	};
+	if (typeof body.terminalKey === "string")
+		deps.onTerminalKey?.(body.terminalKey);
 	return token;
+}
+
+/**
+ * A window whose stored session predates the terminal, or lost its key, spends
+ * a fresh operator link on the key instead of pairing a second device (#931).
+ * Null when refused; the terminal panel then says why.
+ */
+export async function claimTerminalKey(deps: {
+	baseUrl: string;
+	token: string;
+	pairOperator: () => Promise<string>;
+	fetchImpl?: typeof fetch;
+}): Promise<string | null> {
+	const fetchImpl = deps.fetchImpl ?? fetch;
+	try {
+		const link = parsePairingToken(await deps.pairOperator());
+		if (!link) return null;
+		const res = await fetchImpl(`${deps.baseUrl}/api/terminal/key`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: deps.baseUrl,
+				authorization: `Bearer ${deps.token}`,
+			},
+			body: JSON.stringify({ token: link }),
+		});
+		if (!res.ok) return null;
+		const body = (await res.json()) as { key?: unknown };
+		return typeof body.key === "string" ? body.key : null;
+	} catch {
+		return null;
+	}
 }
 
 async function managesPairing(

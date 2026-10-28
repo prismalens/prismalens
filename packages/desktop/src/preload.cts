@@ -9,4 +9,6 @@ contextBridge.exposeInMainWorld("prismalensDesktop", {
 	platform: process.platform,
 	setTheme: (theme: "light" | "dark") =>
 		ipcRenderer.send("prismalens:theme", theme),
+	terminalKey: (): string | undefined =>
+		ipcRenderer.sendSync("prismalens:terminal-key") ?? undefined,
 });

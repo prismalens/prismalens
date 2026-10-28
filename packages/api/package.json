@@ -25,6 +25,7 @@
 	"dependencies": {
 		"@lezer/highlight": "^1.2.5",
 		"@lezer/lr": "^1.4.11",
+		"@lydell/node-pty": "1.2.0-beta.18",
 		"@modelcontextprotocol/client": "~2.3.1",
 		"@modelcontextprotocol/server": "~2.3.1",
 		"@nestjs/common": "catalog:",
@@ -55,6 +56,7 @@
 		"reflect-metadata": "^0.2.2",
 		"rxjs": "catalog:",
 		"svix": "^2.8.0",
+		"ws": "8.22.0",
 		"yaml": "^2.9.1",
 		"zod": "catalog:"
 	},
@@ -66,6 +68,7 @@
 		"@swc/core": "^1.16.18",
 		"@types/express": "^5.0.6",
 		"@types/node": "catalog:",
+		"@types/ws": "8.18.2",
 		"@vitest/coverage-v8": "^5.0.5",
 		"tsx": "catalog:",
 		"typescript": "catalog:",

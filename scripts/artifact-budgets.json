@@ -1,5 +1,5 @@
 {
-	"//": "ceil(1.10 x the size measured in CI on PR #913). Bytes and files per artifact, held by scripts/check-artifact.mjs; desktop entries are the unpacked app in MB, held by packages/desktop/scripts/check-release-paths.mjs (#906). prismalens re-based after #872: @pierre/diffs adds ~300 theme and language chunks to the web assets (5589849 bytes, 834 files in CI). @prismalens/agent-adapters re-based after codex-acp 2.2.2 (#914) added six licence texts (2027825 bytes, 49 files in CI).",
+	"//": "ceil(1.10 x the size measured in CI on PR #913). Bytes and files per artifact, held by scripts/check-artifact.mjs; desktop entries are the unpacked app in MB, held by packages/desktop/scripts/check-release-paths.mjs (#906). prismalens re-based after #872: @pierre/diffs adds ~300 theme and language chunks to the web assets (5589849 bytes, 834 files in CI). @prismalens/agent-adapters re-based after codex-acp 2.2.2 (#914) added six licence texts (2027825 bytes, 49 files in CI). desktop-Linux and desktop-Windows files re-based after #931 unpacked node-pty's platform package beside the asar (84 and 92 files in CI).",
 	"prismalens": { "bytes": 6148834, "files": 918 },
 	"@prismalens/agent-adapters": { "bytes": 2230608, "files": 54 },
 	"linux-x64": { "bytes": 93450240, "files": 10259 },
@@ -7,7 +7,7 @@
 	"darwin-arm64": { "bytes": 85961090, "files": 10258 },
 	"darwin-x64": { "bytes": 87517157, "files": 10258 },
 	"win32-x64": { "bytes": 84355077, "files": 10269 },
-	"desktop-Linux": { "mb": 484, "files": 82 },
-	"desktop-Windows": { "mb": 579, "files": 82 },
+	"desktop-Linux": { "mb": 484, "files": 93 },
+	"desktop-Windows": { "mb": 579, "files": 102 },
 	"desktop-macOS": { "mb": 487, "files": 301 }
 }

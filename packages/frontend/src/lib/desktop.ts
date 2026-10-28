@@ -5,6 +5,8 @@
 interface DesktopBridge {
 	platform: string;
 	setTheme: (theme: "light" | "dark") => void;
+	/** The terminal key the launcher got when it paired (#931); absent in older builds. */
+	terminalKey?: () => string | undefined;
 }
 
 declare global {
