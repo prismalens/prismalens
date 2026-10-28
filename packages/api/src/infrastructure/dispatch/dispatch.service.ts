@@ -72,6 +72,7 @@ import { InvestigationsService } from "../../modules/investigations/investigatio
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { Dispatcher } from "./dispatcher.js";
 import {
 	EVENT_BUS,
@@ -433,6 +434,25 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			resolveConnectors: (serviceId) =>
 				this.connectorResolver.resolve({ serviceId }),
 			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
+			deployments: async (services) => {
+				const rows = await this.prisma.changeEvent.findMany({
+					where: {
+						type: { in: ["deploy", "deployment"] },
+						service: { name: { in: services } },
+					},
+					orderBy: { timestamp: "desc" },
+					take: 50,
+					select: { metadata: true },
+				});
+				return rows.flatMap((r) => {
+					const meta = safeParseJsonObject(r.metadata ?? null) ?? {};
+					const sha = meta.sha ?? meta.commit;
+					const name = meta.version ?? meta.tag;
+					return typeof sha === "string"
+						? [{ sha, name: typeof name === "string" ? name : null }]
+						: [];
+				});
+			},
 			...(this.gateway ? { gateway: this.gateway } : {}),
 			...(telemetrySnapshot
 				? {

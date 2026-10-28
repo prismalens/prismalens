@@ -202,6 +202,13 @@ export interface RunPorts {
 		/** The stored snapshot, or null when the run has none. */
 		load(runId: string): Promise<string | null>;
 	};
+	/**
+	 * Stored deployment events' commits for these services, newest first (#973):
+	 * the panel's diff pairs the newest in the run's history with the one before it.
+	 */
+	deployments?(
+		services: string[],
+	): Promise<{ sha: string; name: string | null }[]>;
 	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
 	gateway?: {
 		lease(runId: string, serverName: string): Promise<GatewayEntry | null>;
