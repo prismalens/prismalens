@@ -294,6 +294,8 @@ export const HarnessSettingsSchema = z.object({
 	localAgent: LocalAgentSchema.optional(),
 	/** Only pass named variables: the agent gets an allowlist, not the user's environment (#817). */
 	strictEnv: z.boolean().optional(),
+	/** Runs a restart cut off carry on when PrismaLens starts again (#981); absent is on. */
+	resumeAfterRestart: z.boolean().optional(),
 	/** Names of the variables set per agent; values are never read back. */
 	envNames: z
 		.partialRecord(z.enum(HARNESS_IDS), z.array(EnvNameSchema))
@@ -349,6 +351,8 @@ export const UpdateHarnessSettingsSchema = z
 		localAgent: LocalAgentSchema.nullable().optional(),
 		/** Only pass named variables (#817). Host only. */
 		strictEnv: z.boolean().optional(),
+		/** Resume runs a restart cut off (#981). Host only. */
+		resumeAfterRestart: z.boolean().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;

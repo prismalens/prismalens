@@ -907,6 +907,14 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 						omitted: z.string().nullable(),
 					})
 					.optional(),
+				/** PrismaLens wrote this message, not the operator: a restart cut the run off (#981). */
+				restart: z
+					.object({
+						stoppedAt: z.string(),
+						resumedAt: z.string(),
+						by: z.enum(["auto", "operator"]),
+					})
+					.optional(),
 			})
 			.optional(),
 	}),
@@ -1318,6 +1326,37 @@ export const ScheduledRunSchema = z.object({
 	),
 });
 export type ScheduledRun = z.infer<typeof ScheduledRunSchema>;
+/** A run PrismaLens's restart cut off, taken up again (#981). Carried across boots, never recomputed. */
+export const RestartRecoverySchema = z.object({
+	/** Consecutive recoveries of this run; a finished turn starts the count again. */
+	attempt: z.number().int().min(1),
+	/** When PrismaLens was last alive before the stop. */
+	stoppedAt: z.string(),
+	/** The run's own last activity before the stop, boot-written events excluded. */
+	lastActivityAt: z.string(),
+	/** `operator`: Resume was pressed on a run PrismaLens did not resume itself. */
+	by: z.enum(["auto", "operator"]),
+});
+export type RestartRecovery = z.infer<typeof RestartRecoverySchema>;
+
+const RestartRunRefSchema = z.object({
+	investigationId: z.string(),
+	incidentId: z.string(),
+	incidentNumber: z.number().int().nullable(),
+	title: z.string(),
+});
+
+/** What the last start did with the runs a stop cut off, for the once-per-device notice (#981). */
+export const RestartSummarySchema = z
+	.object({
+		at: z.string(),
+		/** When PrismaLens was last alive before this start; null on a first start. */
+		stoppedAt: z.string().nullable(),
+		resumed: z.array(RestartRunRefSchema),
+		skipped: z.array(RestartRunRefSchema.extend({ reason: z.string() })),
+	})
+	.nullable();
+export type RestartSummary = z.infer<typeof RestartSummarySchema>;
 
 export const InvestigationJobDataSchema = z.object({
 	/** Null for a scheduled service check (#979). */
@@ -1362,6 +1401,10 @@ export const InvestigationJobDataSchema = z.object({
 			handoff: z.boolean().optional(),
 			/** A restart cut the run off: the agent is told its last command may not have completed. */
 			afterRestart: z.boolean().optional(),
+			/** The event seq this turn began at; a terminal event at or after it ended this turn (#981). */
+			turnStartSeq: z.number().int().min(0).optional(),
+			/** PrismaLens composes the message when the job is claimed, from what it finds then (#981). */
+			restart: RestartRecoverySchema.optional(),
 			/** What the row said before the follow-up; a follow-up never changes it. */
 			restore: z.object({
 				status: WorkflowStatusSchema,

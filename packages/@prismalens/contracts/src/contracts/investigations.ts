@@ -5,6 +5,7 @@
  * Investigation route contracts
  */
 import { oc } from "@orpc/contract";
+import { z } from "zod";
 import {
 	AnswerAskResultSchema,
 	AnswerAskSchema,
@@ -26,6 +27,7 @@ import {
 	RunDiffSchema,
 	RunTreeQuerySchema,
 	RunTreeSchema,
+	RestartSummarySchema,
 	SendInvestigationMessageResultSchema,
 	SendInvestigationMessageSchema,
 	UpdateInvestigationStatusSchema,
@@ -263,4 +265,37 @@ export const investigationsContract = {
 		})
 		.input(RunDiffQuerySchema)
 		.output(RunDiffSchema),
+
+	/**
+	 * Take up a run a restart cut off and PrismaLens did not resume itself (#981)
+	 * POST /investigations/:id/resume
+	 */
+	resume: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/resume",
+			summary: "Resume a run a restart interrupted",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(InvestigationSchema)
+		.errors({
+			CONFLICT: {
+				message: "The run was not interrupted by a restart, or is live",
+			},
+		}),
+
+	/**
+	 * What the last start did with the runs a stop cut off (#981)
+	 * GET /restart
+	 */
+	restartSummary: oc
+		.route({
+			method: "GET",
+			path: "/restart",
+			summary: "The runs the last start resumed and the ones it could not",
+			tags: ["investigations"],
+		})
+		.input(z.object({}))
+		.output(RestartSummarySchema),
 };
