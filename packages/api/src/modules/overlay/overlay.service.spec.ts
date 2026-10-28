@@ -211,6 +211,38 @@ describe("OverlayService", () => {
 		});
 	});
 
+	describe("a service check with no incident (#979)", () => {
+		beforeEach(() => {
+			mockPrisma.investigation.findUnique.mockResolvedValue({
+				id: "invA",
+				report: JSON.stringify(REPORT),
+				rootCauseCategory: "code",
+				completedAt: new Date("2026-07-05T12:00:00Z"),
+				serviceId: "svc-pay",
+				incidentId: null,
+				incident: null,
+			});
+		});
+
+		it("seeds the affected service from the run and reads no alerts", async () => {
+			const overlay = await service.computeOverlay("invA");
+
+			expect(overlay?.matchedChanges).toHaveLength(1);
+			expect(overlay?.serviceProximity[0]).toMatchObject({ serviceName: "payments-api", relation: "self" });
+			expect(mockPrisma.alert.findMany).not.toHaveBeenCalled();
+			expect(mockPrisma.changeEvent.findMany).toHaveBeenCalledWith({ where: { serviceId: { in: ["svc-pay"] } } });
+		});
+
+		it("does no similar-incident work and writes no similarity rows", async () => {
+			const overlay = await service.computeOverlay("invA");
+
+			expect(overlay?.similarIncidents).toEqual([]);
+			expect(mockPrisma.incident.findMany).not.toHaveBeenCalled();
+			expect(mockPrisma.incidentSimilarity.upsert).not.toHaveBeenCalled();
+			expect(mockPrisma.incidentSimilarity.deleteMany).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("writeSimilarities (upsert idempotency)", () => {
 		const similar: SimilarIncidentResult[] = [
 			{

@@ -67,6 +67,10 @@ class StubStore implements JobStore {
 		return false;
 	}
 
+	async expireScheduled(): Promise<string[]> {
+		return [];
+	}
+
 	async failRunning(): Promise<string[]> {
 		return [];
 	}

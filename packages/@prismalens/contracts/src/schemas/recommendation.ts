@@ -47,7 +47,8 @@ export const UpdateRecommendationSchema = z.object({
 // Investigation reference (minimal)
 const InvestigationRefSchema = z.object({
 	id: z.string().uuid(),
-	incidentId: z.string().uuid(),
+	/** Null for a service check no finding has linked to an incident (#979). */
+	incidentId: z.string().uuid().nullable(),
 	status: z.string(),
 });
 

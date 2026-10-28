@@ -15,6 +15,7 @@ import type {
 import { INVESTIGATION_REPORT_BRANCH } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { IncidentsService } from "../incidents/incidents.service.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { InvestigationsService } from "./investigations.service.js";
@@ -80,6 +81,7 @@ async function buildService(mockPrisma: ReturnType<typeof makeMockPrisma>) {
 			{ provide: TimelineService, useValue: {} },
 			{ provide: OverlayService, useValue: {} },
 			{ provide: SettingsService, useValue: { isResetting: () => false } },
+			{ provide: IncidentsService, useValue: {} },
 		],
 	}).compile();
 	return module.get<InvestigationsService>(InvestigationsService);
