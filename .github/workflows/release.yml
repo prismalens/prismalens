@@ -26,6 +26,7 @@ jobs:
     # in release-please-config.json). Tags are `v<version>` from 0.5.0 on; the
     # releases before it are tagged `prismalens@<version>`.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -50,6 +51,7 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.pr != ''
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -80,6 +82,7 @@ jobs:
       vars.RELEASE_ENABLED == 'true' &&
       (needs.release-please.outputs.created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     outputs:
@@ -104,7 +107,7 @@ jobs:
 
   standalone:
     needs: draft
-    uses: ./.github/workflows/standalone.yml
+    uses: ./.github/workflows/build-standalone-cli.yml
     with:
       release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
@@ -112,7 +115,7 @@ jobs:
 
   desktop:
     needs: draft
-    uses: ./.github/workflows/desktop.yml
+    uses: ./.github/workflows/build-desktop-app.yml
     with:
       release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
@@ -124,6 +127,7 @@ jobs:
     name: Checksums and provenance
     needs: [draft, standalone, desktop]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
@@ -152,6 +156,7 @@ jobs:
     name: Publish to npm
     needs: [draft, sums]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write
@@ -195,6 +200,7 @@ jobs:
     name: Publish the release
     needs: [draft, npm]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
@@ -210,6 +216,7 @@ jobs:
     needs: [draft, publish-release]
     if: needs.draft.outputs.latest == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:

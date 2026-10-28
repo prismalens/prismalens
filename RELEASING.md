@@ -1,6 +1,6 @@
 # Releasing
 
-This file says what the release gate is and what a patch and a minor release do and do not do. Each 0.x release's Phase gate issue, filed by `.github/workflows/phase-gate.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks its own run of the gate. The workflow skips any milestone that is not `0.Y.Z`, so a major release gets no automatic issue.
+This file says what the release gate is and what a patch and a minor release do and do not do. Each 0.x release's Phase gate issue, filed by `.github/workflows/milestone-release-checklist.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks its own run of the gate. The workflow skips any milestone that is not `0.Y.Z`, so a major release gets no automatic issue.
 
 ## The gate
 - A release publishes nothing to npm until one packed-tarball walk has passed on the release PR's base SHA. The pass is keyed to that SHA.
@@ -45,7 +45,7 @@ flowchart TD
 | `E2E` | the browser suite |
 
 Also on the base SHA, outside the gate:
-- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run standalone.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow standalone.yml --json headSha`).
+- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run build-standalone-cli.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow build-standalone-cli.yml --json headSha`).
 - [ ] `Desktop` on the base. The desktop part of the walk uses its artifact.
 - [ ] Docs for this release's screens merged in `prismalens/prismalens.io`.
 

@@ -143,6 +143,8 @@ export function agentEnv(harness, model, home, key = SCRIPTED_KEY) {
 	return {
 		XDG_CONFIG_HOME: config,
 		XDG_DATA_HOME: join(home, "data"),
+		XDG_CACHE_HOME: join(home, "cache"),
+		XDG_STATE_HOME: join(home, "state"),
 		PRISMALENS_HARNESS_MODEL: FAKE_MODEL,
 	};
 }
@@ -226,9 +228,10 @@ export const matrixSignature = (stdout) =>
  * @param {string} script
  * @param {string[]} args
  * @param {Record<string, string>} env
+ * @param {boolean} [live] echo stdout as it arrives
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
-function engineScript(script, args, env) {
+function engineScript(script, args, env, live = false) {
 	return new Promise((resolveRun) => {
 		const all = [
 			"--filter",
@@ -250,7 +253,7 @@ function engineScript(script, args, env) {
 		let stderr = "";
 		child.stdout.on("data", (d) => {
 			stdout += d;
-			if (script === "acp-matrix.ts") process.stdout.write(d);
+			if (live) process.stdout.write(d);
 		});
 		child.stderr.on("data", (d) => {
 			stderr += d;
@@ -296,6 +299,8 @@ export function parseArgs(argv) {
 	};
 }
 
+const MATRIX_AT_ONCE = 3;
+
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
 	if (!args) {
@@ -304,70 +309,120 @@ async function main() {
 		);
 		process.exit(2);
 	}
-	const model = await startScriptedModel(args.harness);
 	const home = mkdtempSync(join(tmpdir(), "pl-admission-fake-"));
 	const workdir = mkdtempSync(join(homedir(), ".pl-matrix-"));
+	/** @type {Awaited<ReturnType<typeof startScriptedModel>>[]} */
+	const models = [];
+	const startModel = async () => {
+		const model = await startScriptedModel(args.harness);
+		models.push(model);
+		return model;
+	};
+	/** @typedef {Awaited<ReturnType<typeof startScriptedModel>>} Model */
+	/** The entries one run added to a model's journal and requests: the admission shares its model. */
+	const windowOf = (/** @type {Model} */ model) => {
+		const j = model.journal().length;
+		const r = model.requests().length;
+		return () => ({
+			journal: model.journal().slice(j),
+			requests: model.requests().slice(r),
+		});
+	};
+	const runs = Array.from({ length: args.repeat }, () => ({
+		/** @type {string[]} */ parts: [],
+		failed: false,
+		/** @type {{ journal: ReturnType<Model["journal"]>, requests: ReturnType<Model["requests"]> }[]} */ seen: [],
+	}));
 	const lines = [];
 	let worst = 0;
 	try {
-		const env = agentEnv(args.harness, model, home);
-		const signedOut = agentEnv(
-			args.harness,
-			model,
-			mkdtempSync(join(home, "signed-out-")),
-			null,
-		);
-		/** @type {Record<string, string | null>} */
-		const overrides = Object.fromEntries(KEYS.map((k) => [k, null]));
-		Object.assign(overrides, signedOut);
-		for (let run = 1; run <= args.repeat; run++) {
-			model.resetMatchCounts();
-			const parts = [];
-			let failed = false;
-			if (args.admission) {
+		if (args.admission) {
+			const model = await startModel();
+			const env = agentEnv(args.harness, model, home);
+			// The admission writes its cwd probe into the one clone, so its runs take turns.
+			for (const run of runs) {
+				model.resetMatchCounts();
+				const seen = windowOf(model);
 				const out = await engineScript(
 					"acp-admission.ts",
 					[args.harness, args.cloneDir],
 					env,
 				);
+				run.seen.push(seen());
 				const verdict = verdictOf(out.stdout);
-				parts.push(signature(verdict));
+				run.parts.push(signature(verdict));
 				const problem = admissionProblem(args.harness, verdict, out.code);
 				if (out.code !== 0 && !problem)
 					console.log(
 						`known failure: ${KNOWN_ADMISSION_FAILURES[args.harness]?.why}`,
 					);
 				if (problem) {
-					failed = true;
+					run.failed = true;
 					console.log(problem);
 					console.log(out.stdout);
 					console.error(out.stderr.slice(-2000));
 				}
 			}
-			if (args.matrix) {
+		}
+		if (args.matrix) {
+			// Each matrix run has its own scripted model, home and workspace, so the runs can go at
+			// once: most of a run is waiting on the agent's own retries and timeouts (#885).
+			/** @param {(typeof runs)[number]} run @param {number} i */
+			const matrixRun = async (run, i) => {
+				const model = await startModel();
+				const seen = windowOf(model);
+				const runHome = mkdtempSync(join(home, `matrix-${i + 1}-`));
+				const signedOut = agentEnv(
+					args.harness,
+					model,
+					mkdtempSync(join(runHome, "signed-out-")),
+					null,
+				);
+				/** @type {Record<string, string | null>} */
+				const overrides = Object.fromEntries(KEYS.map((k) => [k, null]));
+				Object.assign(overrides, signedOut);
 				const out = await engineScript(
 					"acp-matrix.ts",
 					[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
 					{
-						...env,
+						...agentEnv(args.harness, model, runHome),
 						PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),
-						PL_MATRIX_WORKDIR: workdir,
+						PL_MATRIX_WORKDIR: mkdtempSync(join(workdir, `run-${i + 1}-`)),
 					},
+					args.repeat === 1,
 				);
-				parts.push(matrixSignature(out.stdout));
+				if (args.repeat > 1)
+					process.stdout.write(
+						`matrix run ${i + 1}/${args.repeat}:\n${out.stdout}`,
+					);
+				run.seen.push(seen());
+				run.parts.push(matrixSignature(out.stdout));
 				if (out.code !== 0) {
-					failed = true;
+					run.failed = true;
 					console.error(out.stderr.slice(-2000));
 				}
-			}
-			const line = parts.join(" | ");
+			};
+			// Only Linux: the cancel row tells its own tool process from another run's by cwd,
+			// which only /proc gives (acp-scenarios.ts), so elsewhere the runs take turns.
+			// At most MATRIX_AT_ONCE: each run holds a scripted model and an agent tree.
+			const atOnce = process.platform === "linux" ? MATRIX_AT_ONCE : 1;
+			let next = 0;
+			const lane = async () => {
+				for (let i = next++; i < runs.length; i = next++)
+					await matrixRun(runs[i], i);
+			};
+			await Promise.all(Array.from({ length: atOnce }, lane));
+		}
+		for (const [i, run] of runs.entries()) {
+			const line = run.parts.join(" | ");
 			lines.push(line);
 			console.log(
-				`run ${run}/${args.repeat}: ${failed ? "FAIL" : "ok"} ${line}`,
+				`run ${i + 1}/${args.repeat}: ${run.failed ? "FAIL" : "ok"} ${line}`,
 			);
-			if (failed) worst = 1;
-			if (failed || args.journal) {
-				const statuses = model.journal().map((e) => {
+			if (run.failed) worst = 1;
+			if (!run.failed && !args.journal) continue;
+			for (const { journal, requests } of run.seen) {
+				const statuses = journal.map((e) => {
 					const m = /** @type {any} */ (e.response.fixture)?.match;
 					const tag = m
 						? Object.entries(m)
@@ -380,14 +435,14 @@ async function main() {
 					return `${e.response.status}[${tag}]`;
 				});
 				console.log("scripted model requests (last 80):");
-				for (const r of model.requests().slice(-80))
-					console.log(JSON.stringify(r));
+				for (const r of requests.slice(-80)) console.log(JSON.stringify(r));
 				console.log(`served: ${statuses.slice(-80).join(" ")}`);
 			}
 		}
 	} finally {
-		console.log(`scripted model served ${model.journal().length} requests`);
-		await model.close();
+		const served = models.reduce((n, m) => n + m.journal().length, 0);
+		console.log(`scripted model served ${served} requests`);
+		await Promise.all(models.map((m) => m.close()));
 		rmSync(home, { recursive: true, force: true });
 		rmSync(workdir, { recursive: true, force: true, maxRetries: 5 });
 	}

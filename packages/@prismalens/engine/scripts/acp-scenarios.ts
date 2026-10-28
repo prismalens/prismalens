@@ -11,6 +11,8 @@ import {
 	existsSync,
 	mkdtempSync,
 	readFileSync,
+	readlinkSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -91,8 +93,8 @@ export interface RowEnv {
 	signedOutEnv: NodeJS.ProcessEnv;
 }
 
-/** Command lines of every process on this machine. */
-function commandLines(): string[] {
+/** Pid and command line of every process on this machine. */
+function processes(): { pid: number; args: string }[] {
 	const out =
 		process.platform === "win32"
 			? execFileSync(
@@ -100,15 +102,45 @@ function commandLines(): string[] {
 					[
 						"-NoProfile",
 						"-Command",
-						"Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }",
+						'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }',
 					],
 					{ encoding: "utf8" },
 				)
-			: execFileSync("ps", ["-eo", "args="], { encoding: "utf8" });
-	return out.split(/\r?\n/);
+			: execFileSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" });
+	return out.split(/\r?\n/).flatMap((line) => {
+		const m = /^\s*(\d+) (.*)$/.exec(line);
+		return m ? [{ pid: Number(m[1]), args: m[2] ?? "" }] : [];
+	});
 }
-const running = (needle: string): boolean =>
-	commandLines().some((line) => line.includes(needle));
+/** The program a command line runs: `node` for `"C:\…\node.exe" -e …` or `node -e …`. */
+const program = (args: string): string =>
+	(/^"([^"]+)"|^(\S+)/.exec(args.trim())?.slice(1).find(Boolean) ?? "")
+		.split(/[\\/]/)
+		.pop()
+		?.replace(/\.exe$/i, "")
+		.toLowerCase() ?? "";
+
+/**
+ * This row's `node` processes running `needle`: the tool itself, never the agent's shell wrapper
+ * around it, which shows the needle before the tool starts (#885). On Linux only those whose cwd is
+ * the row's workspace, so matrix runs going at once (admission-fake.mjs) never see each other's.
+ */
+function running(needle: string, workspace: string): number[] {
+	// /proc reports the physical path; the workspace may sit under a symlink.
+	const root =
+		process.platform === "linux" ? realpathSync(workspace) : workspace;
+	return processes()
+		.filter(({ pid, args }) => {
+			if (!args.includes(needle) || program(args) !== "node") return false;
+			if (process.platform !== "linux") return true;
+			try {
+				return readlinkSync(`/proc/${pid}/cwd`).startsWith(root);
+			} catch {
+				return false;
+			}
+		})
+		.map(({ pid }) => pid);
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function openSession(
@@ -200,7 +232,7 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 		let sawTool = false;
 		const poll = needle
 			? setInterval(() => {
-					if (!sawTool && running(needle)) {
+					if (!sawTool && running(needle, workspace).length > 0) {
 						sawTool = true;
 						controller.abort();
 					}
@@ -233,13 +265,31 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 		let orphan: boolean | undefined;
 		if (needle && sawTool) {
 			orphan = true;
+			let pids: number[] = [];
 			for (let i = 0; i < 20 && orphan; i++) {
-				orphan = running(needle);
+				pids = running(needle, workspace);
+				orphan = pids.length > 0;
 				if (orphan) await sleep(500);
 			}
-			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
+			// Who outlived the cancel, on stderr, which admission-fake.mjs prints only for a failed run.
 			if (orphan && process.platform !== "win32")
-				spawnSync("pkill", ["-f", needle], { stdio: "ignore" });
+				console.error(
+					spawnSync(
+						"ps",
+						["-o", "pid,ppid,pgid,stat,etime,args", "-p", pids.join(",")],
+						{
+							encoding: "utf8",
+						},
+					).stdout,
+				);
+			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
+			for (const pid of orphan ? running(needle, workspace) : []) {
+				try {
+					process.kill(pid);
+				} catch {
+					// already gone
+				}
+			}
 		}
 		return {
 			events,

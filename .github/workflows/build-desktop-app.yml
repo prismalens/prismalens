@@ -3,7 +3,7 @@
 # workspace, and assert the window rendered the app. When release.yml calls it
 # with a draft release's tag, the three unpacked apps are zipped and attached to
 # that draft, unsigned (signing is #697).
-name: Desktop
+name: Desktop app build
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ on:
       - "scripts/pack-cli.mjs"
       - "scripts/lib/**"
       - "scripts/artifact-budgets.json"
-      - ".github/workflows/desktop.yml"
+      - ".github/workflows/build-desktop-app.yml"
   push:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ on:
       - "scripts/pack-cli.mjs"
       - "scripts/lib/**"
       - "scripts/artifact-budgets.json"
-      - ".github/workflows/desktop.yml"
+      - ".github/workflows/build-desktop-app.yml"
   workflow_call:
     inputs:
       release-tag:
@@ -120,6 +120,7 @@ jobs:
     needs: build
     if: inputs.release-tag
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:

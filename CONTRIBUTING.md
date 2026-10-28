@@ -66,7 +66,7 @@ To work on the Electron app, run `pnpm dev:desktop`. It starts the API, the fron
 
 ### Browser e2e tier
 
-The Playwright suite runs in CI as its own workflow (`.github/workflows/e2e.yml`, chromium-only) on
+The Playwright suite runs in CI as its own workflow (`.github/workflows/e2e-browser.yml`, chromium-only) on
 every pull request and on pushes to `main`. It is **not a required check yet** — it is promoted to
 required when the last 20 `main`-branch runs are green *and* none of them consumed a Playwright
 retry, and once the storm-intake spec has landed. The rationale, the promotion trigger, and the
@@ -127,8 +127,8 @@ A PR never waits on a live model, and nothing here spends money on one (#884, #9
 | --- | --- | --- | --- |
 | `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
 | `harness-admission`, one leg per agent: the admission (R1-R9) and the behaviour matrix | the real pinned agent, its model calls served by aimock (`@copilotkit/aimock`, pinned) from `scripts/fakes/scenarios/` | every PR; tier-1 legs gate, tier-2 legs do not | `ci.yml` |
-| protocol probe | none: `initialize` and `session/new` against each row's latest release | nightly | `agent-releases.yml` |
-| pin bump | none: a pull request once a release has soaked 3 days | daily | `agent-releases.yml` |
+| protocol probe | none: `initialize` and `session/new` against each row's latest release | nightly | `agent-release-watch.yml` |
+| pin bump | none: a pull request once a release has soaked 3 days | daily | `agent-release-watch.yml` |
 | `harness-admission-live`, `packed-intake-live` | the real pinned OpenCode on its own free model | on dispatch, and before a release | `ci.yml` (dispatch only: that model stalls, so a nightly would be red most nights) |
 
 Tier 1 is opencode, claude-code and codex; gemini and deepagents (`dcode`) are tier 2. A row's `tested` comes from CI only: it equals the pin CI installs (`scripts/agent-pins.json` for the agent, `@prismalens/agent-adapters` for the adapter, checked by `harness-pins.test.ts`) and moves only in a merged bump PR, whose CI runs the matrix on the new version.
@@ -492,7 +492,7 @@ Versioning and publishing run through
    1. release-please creates the tag and a **draft** release (`draft` and
       `force-tag-creation` in `release-please-config.json`; without the forced
       tag a draft has none, and release-please could not find it next time).
-   2. `standalone.yml` and `desktop.yml`, called with the tag, build from it
+   2. `build-standalone-cli.yml` and `build-desktop-app.yml`, called with the tag, build from it
       and attach the archives, the CycloneDX SBOM, `install.sh`, `install.ps1`
       and the desktop zips to the draft.
    3. The `sums` job writes one `SHA256SUMS` over every asset on the draft and
@@ -553,7 +553,7 @@ Each artifact is held to a standard by a gate that fails the PR or the release (
 | `install.ps1` / `install.sh` | `.ps1` is ASCII only (no BOM: `irm \| iex` reads the body as text); `.sh` is UTF-8 without a BOM | `scripts/install/encoding.test.mjs`, `install.ps1 -Help` under `powershell -File` |
 | Desktop zips | asar, unsigned (#697) | `check-release-paths.mjs --paths --max-mb --max-files`, `missingLicences` in `pack-desktop.mjs` |
 | Every release asset | one `SHA256SUMS` and one build-provenance attestation (SLSA v1 Build L2) | `release.yml` `sums` job |
-| SBOM | CycloneDX from `npm sbom` over the linux-x64 `app/` tree, `prismalens-<v>.cdx.json` | `standalone.yml` asserts `bomFormat` and an `@prismalens/api` component |
+| SBOM | CycloneDX from `npm sbom` over the linux-x64 `app/` tree, `prismalens-<v>.cdx.json` | `build-standalone-cli.yml` asserts `bomFormat` and an `@prismalens/api` component |
 
 Budgets live in `scripts/artifact-budgets.json`: bytes and file count per artifact,
 and the unpacked size for each desktop OS. A change that grows an artifact past its
@@ -647,7 +647,7 @@ Product documentation lives on the documentation website at
 only the root `README.md`, package `README.md` files, and contributor process
 documentation.
 
-Each 0.x release is gated by its own Phase gate issue, which `phase-gate.yml` files
+Each 0.x release is gated by its own Phase gate issue, which `milestone-release-checklist.yml` files
 when the release's milestone is created, from the patch or minor template in
 `.github/release-checklists/`. A packed walk passes on the release PR's base SHA
 (see [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
@@ -662,9 +662,9 @@ Milestones are versions, and exactly two are open: the current release and the
 next. With `0.5.3` and `0.5.4` open, once the `0.5.3` release PR merges:
 
 1. Finish and close the `0.5.3` Phase gate issue. A milestone closed before its
-   gate issue makes `phase-gate.yml` warn on that issue.
+   gate issue makes `milestone-release-checklist.yml` warn on that issue.
 2. Move `0.5.3`'s open issues to `0.5.4`, then close `0.5.3`.
-3. Create `0.5.5`; `phase-gate.yml` files its Phase gate issue from `patch.md`
+3. Create `0.5.5`; `milestone-release-checklist.yml` files its Phase gate issue from `patch.md`
    (`minor.md` for a `0.N.0`).
 
 `0.5.4` and `0.5.5` are then the two open milestones. Direction by theme lives in the pinned

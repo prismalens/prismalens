@@ -2,7 +2,7 @@
 # package installs and runs correctly on Linux, macOS, AND Windows.
 #
 # This is phase-gate testing PART 2 (the milestone gate's "smoke-test the
-# RELEASED artifact" requirement — see .github/workflows/phase-gate.yml) —
+# RELEASED artifact" requirement — see .github/workflows/milestone-release-checklist.yml) —
 # NOT sreforge. sreforge is the separate clean-env engine/eval capabilities
 # testing ground; this workflow only proves the packaged CLI artifact.
 #
@@ -39,7 +39,7 @@ on:
   pull_request:
     paths:
       - "packages/**"
-      - ".github/workflows/cross-os-smoke.yml"
+      - ".github/workflows/cli-smoke-cross-os.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
       - "scripts/lib/app-boot-retry.mjs"
@@ -47,7 +47,7 @@ on:
     branches: [main]
     paths:
       - "packages/**"
-      - ".github/workflows/cross-os-smoke.yml"
+      - ".github/workflows/cli-smoke-cross-os.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
       - "scripts/lib/app-boot-retry.mjs"
@@ -71,6 +71,7 @@ jobs:
   mode:
     name: Resolve mode
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       mode: ${{ steps.resolve.outputs.mode }}
       version: ${{ steps.resolve.outputs.version }}
@@ -213,6 +214,7 @@ jobs:
       needs.pack.result != 'failure' &&
       needs.pack.result != 'cancelled'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

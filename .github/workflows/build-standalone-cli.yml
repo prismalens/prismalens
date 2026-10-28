@@ -1,6 +1,6 @@
 # Standalone CLI archives and installers (#717): build per-OS archives with
 # bundled Node runtime and smoke test without Node on PATH.
-name: Standalone CLI
+name: Standalone CLI build
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ on:
       - "scripts/artifact-budgets.json"
       - "scripts/lib/**"
       - "packages/@prismalens/agent-adapters/scripts/**"
-      - ".github/workflows/standalone.yml"
+      - ".github/workflows/build-standalone-cli.yml"
   # release.yml calls this with the draft release's tag to attach the archives (#717).
   workflow_call:
     inputs:
@@ -349,6 +349,7 @@ jobs:
     needs: build
     if: inputs.release-tag
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:

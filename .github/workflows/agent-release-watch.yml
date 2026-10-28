@@ -1,7 +1,7 @@
 # What the agents we support have released (#914): a zero-token protocol probe of each row's
 # latest version, and a pull request that moves a pin once its release has soaked 3 days.
 # Neither spends a model call, and neither is required by `CI gate`.
-name: Agent releases
+name: Agent releases (probe and pin bumps)
 
 on:
   schedule:
@@ -10,7 +10,7 @@ on:
   # A change to the probe or to this file runs the probe, so it is seen working before it merges.
   pull_request:
     paths:
-      - ".github/workflows/agent-releases.yml"
+      - ".github/workflows/agent-release-watch.yml"
       - "scripts/agent-probe.mjs"
       - "scripts/agent-pins.json"
 

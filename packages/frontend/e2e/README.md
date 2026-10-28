@@ -93,7 +93,7 @@ sits in one of those base directories, the run stops and names it. `PRISMALENS_E
 runs with your own PATH instead.
 
 **Tags.** `@responsive` on a feature also runs it on the `Pixel 7` and `iPad (gen 7)` projects
-(Chromium at those sizes), nightly in `e2e-responsive.yml`. Tag a feature whose layout matters
+(Chromium at those sizes), nightly in `e2e-browser-mobile.yml`. Tag a feature whose layout matters
 on a phone.
 
 ## Coverage matrix
@@ -560,7 +560,7 @@ need live third parties), and anything under J14 or J16 until those surfaces are
 
 ### 2. CI tier — stay non-required, with a stated promotion trigger
 
-**Decision: `e2e.yml` stays non-required today, and is promoted to a required check when a
+**Decision: `e2e-browser.yml` stays non-required today, and is promoted to a required check when a
 specific, checkable condition is met.**
 
 The tension is real and both horns hurt. A non-required check that nobody reads is indistinguishable
@@ -570,10 +570,10 @@ than nothing.
 
 The resolution is to promote on evidence rather than on preference or on a date:
 
-> **Promotion trigger.** `e2e.yml` becomes a required check when the **last 20 `main`-branch runs
+> **Promotion trigger.** `e2e-browser.yml` becomes a required check when the **last 20 `main`-branch runs
 > are green and none of them consumed a Playwright retry**, *and* `storm-intake.spec.ts` (§3) has
 > landed. Check the first half with
-> `gh run list --workflow=e2e.yml --branch=main --limit=20`; the retry half is visible in the run
+> `gh run list --workflow=e2e-browser.yml --branch=main --limit=20`; the retry half is visible in the run
 > summary (Playwright reports `N flaky` separately from `N passed`).
 
 The retry clause matters more than the green clause. `playwright.config.ts` sets `retries: 2` in
@@ -645,7 +645,7 @@ Everything else in §1 accretes through the per-PR growth rule and needs no sequ
 issue is right that parity is an e2e claim by definition — you cannot demonstrate that two paths
 behave the same by unit-testing either one.
 
-**What satisfies the gate:** three artifacts, all living in `e2e.yml` so they keep holding.
+**What satisfies the gate:** three artifacts, all living in `e2e-browser.yml` so they keep holding.
 
 1. **Same-fixture intake parity.** One Alertmanager payload fixture, checked in once and consumed
    by both `pl listen`'s tests and `storm-intake.spec.ts`. Parity means *same input, same
