@@ -41,15 +41,10 @@ describe("deploy events (#854)", () => {
 		prisma = new PrismaService();
 		await prisma.$connect();
 		deploys = new DeployEventsService(prisma);
-		changes = new ChangeEventsService(prisma, {} as never, {} as never, {
-			createRequestFn: () => request,
+		vi.stubGlobal("fetch", request);
+		changes = new ChangeEventsService(prisma, {} as never, {
+			resolveForUse: async () => ({ authorization: () => "Basic x" }),
 		} as never);
-		const integration = await prisma.integration.create({
-			data: { templateId: "github-token", label: "GitHub" },
-		});
-		await prisma.connection.create({
-			data: { id: "c1", integrationId: integration.id, credentialsEnc: Buffer.from("x") },
-		});
 		const service = await prisma.service.create({ data: { name: "checkout" } });
 		serviceId = service.id;
 		const incident = await prisma.incident.create({
@@ -64,6 +59,7 @@ describe("deploy events (#854)", () => {
 	});
 
 	afterAll(async () => {
+		vi.unstubAllGlobals();
 		await prisma.$disconnect();
 	});
 
@@ -102,8 +98,8 @@ describe("deploy events (#854)", () => {
 	const WINDOW = { start: new Date(Date.now() - 86_400_000), end: new Date(Date.now() + 60_000) };
 
 	it("keeps a GitHub deployment in the same row shape as a push", async () => {
-		request.mockImplementation(async (_m: string, path: string) =>
-			path.includes("/statuses")
+		request.mockImplementation(async (url: string) =>
+			url.includes("/statuses")
 				? Response.json([{ state: "success", created_at: new Date().toISOString() }])
 				: Response.json([
 						{
@@ -125,7 +121,7 @@ describe("deploy events (#854)", () => {
 			serviceName: "checkout",
 			repository: {
 				sourceKind: "url",
-				connectionId: "c1",
+				connectionId: null,
 				url: "https://github.com/acme/checkout",
 				fullName: "acme/checkout",
 			},
@@ -154,7 +150,7 @@ describe("deploy events (#854)", () => {
 			subPath: "services/checkout",
 			repository: {
 				sourceKind: "url",
-				connectionId: "c1",
+				connectionId: null,
 				url: "https://github.com/acme/monorepo",
 				fullName: "acme/monorepo",
 			},

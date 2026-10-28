@@ -14,11 +14,7 @@ import type {
 	IncidentChanges,
 	RunCredential,
 } from "@prismalens/contracts/schemas";
-import {
-	createAdapter,
-	type DeploymentEvent,
-	type DeploymentWindow,
-} from "@prismalens/integrations";
+import { findDeploymentAdapterForHost } from "@prismalens/integrations";
 import { repoLabel, urlHost } from "../../core/harness/git-credential.js";
 import {
 	GitFailure,
@@ -31,7 +27,6 @@ import {
 	GitCredentialService,
 	pickOf,
 } from "../integrations/git-credential.service.js";
-import { IntegrationsService } from "../integrations/integrations.service.js";
 import { type DeployRecord, deployRow } from "./deploy-events.service.js";
 import {
 	commitUrl,
@@ -112,7 +107,6 @@ export class ChangeEventsService {
 		private readonly prisma: PrismaService,
 		private readonly repoSource: RepoSourceService,
 		private readonly gitCredentials: GitCredentialService,
-		private readonly integrations: IntegrationsService,
 	) {}
 
 	/** Null when the incident does not exist. Never throws for a git failure: it lands in `sources`. */
@@ -303,25 +297,36 @@ export class ChangeEventsService {
 		}
 	}
 
-	/** Deploys of a repository, pulled through the registered provider that owns its credential and kept in the push endpoint's row shape (#854, #855). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
+	/** Deploys of a repository, pulled by the registered provider that serves its host with the credential git uses there, kept in the push endpoint's row shape (#854, #855). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
 	private async pullDeploys(
 		link: Link,
 		window: { start: Date; end: Date },
 	): Promise<void> {
 		const repo = link.repository;
 		if (link.subPath || repo.sourceKind === "folder") return;
+		const host = urlHost(repo.url);
+		const adapter = host ? findDeploymentAdapterForHost(host) : null;
+		const provider = adapter?.deployment;
+		if (!host || !adapter || !provider?.listDeploymentEvents) return;
 		try {
-			const puller = await this.deployPuller(repo);
-			if (!puller) return;
-			const events = await puller.pull(repo.fullName, {
-				since: window.start,
-				until: window.end,
+			const credential = await this.gitCredentials.resolveForUse({
+				sourceKind: "url",
+				url: repo.url,
+				connectionId: repo.connectionId,
+				pick: pickOf(repo.metadata),
 			});
+			const authorization = credential.authorization(`https://${host}/`);
+			if (!authorization || !provider.requestFor) return;
+			const events = await provider.listDeploymentEvents(
+				provider.requestFor(host, authorization),
+				repo.fullName,
+				{ since: window.start, until: window.end },
+			);
 			const writes = events.map((e) => {
 				const record: DeployRecord = {
 					service: { id: link.serviceId, name: link.serviceName },
 					...e,
-					source: puller.source,
+					source: adapter.name,
 					repo: repo.fullName,
 					at: new Date(e.at),
 				};
@@ -336,36 +341,6 @@ export class ChangeEventsService {
 		} catch (err) {
 			this.logger.warn(`Deployments: ${repo.fullName}: ${message(err)}`);
 		}
-	}
-
-	/** The first of the discovery link and the pinned token whose template has an adapter with a deploy pull; one with none (a legacy github-app row, a git-host-token) is passed over. */
-	private async deployPuller(repo: Link["repository"]): Promise<{
-		source: string;
-		pull: (
-			repository: string,
-			window: DeploymentWindow,
-		) => Promise<DeploymentEvent[]>;
-	} | null> {
-		for (const connectionId of [repo.connectionId, pickOf(repo.metadata)]) {
-			if (!connectionId) continue;
-			const connection = await this.prisma.connection.findUnique({
-				where: { id: connectionId },
-				select: { integration: { select: { templateId: true } } },
-			});
-			const adapter = connection
-				? createAdapter(connection.integration.templateId)
-				: null;
-			const list = adapter?.deployment?.listDeploymentEvents?.bind(
-				adapter.deployment,
-			);
-			if (!adapter || !list) continue;
-			const request = this.integrations.createRequestFn(connectionId);
-			return {
-				source: adapter.name,
-				pull: (repository, window) => list(request, repository, window),
-			};
-		}
-		return null;
 	}
 
 	/** Upsert by host, repository, commit and service: a re-read or an overlapping window never doubles a row. */

@@ -10,6 +10,7 @@ import { getTemplate } from "../templates/index.js";
 import {
 	adapterSegments,
 	createAdapter,
+	findDeploymentAdapterForHost,
 	getAdapterSegments,
 	getTemplatesForSegment,
 	GitHubAdapter,
@@ -119,14 +120,40 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(getCapabilities(renderTemplate!)).not.toContain("vcs:list_repos");
 	});
 
-	it("registers and unregisters a connector by templateId (#855)", () => {
+	it("registers and unregisters a connector by templateId, and refuses a taken id (#855)", () => {
 		class FakeAdapter implements ProviderAdapter {
 			readonly name = "fake-ci";
 		}
 		const unregister = registerAdapter("fake-ci", FakeAdapter);
 		expect(createAdapter("fake-ci")).toBeInstanceOf(FakeAdapter);
 		expect(isAdapterSupported("fake-ci")).toBe(true);
+		expect(() => registerAdapter("fake-ci", FakeAdapter)).toThrow(
+			/already registered/,
+		);
+		expect(() => registerAdapter("github-token", FakeAdapter)).toThrow(
+			/already registered/,
+		);
+		expect(createAdapter("github-token")).toBeInstanceOf(GitHubAdapter);
 		unregister();
 		expect(createAdapter("fake-ci")).toBeNull();
+	});
+
+	it("finds the adapter whose deployment serves a host (#855)", () => {
+		class HostCi implements ProviderAdapter {
+			readonly name = "host-ci";
+			readonly deployment = {
+				name: "host-ci",
+				servesHost: (host: string) => host === "ci.example.test",
+			};
+		}
+		const unregister = registerAdapter("host-ci", HostCi);
+		expect(findDeploymentAdapterForHost("github.com")).toBeInstanceOf(
+			GitHubAdapter,
+		);
+		expect(findDeploymentAdapterForHost("ci.example.test")).toBeInstanceOf(
+			HostCi,
+		);
+		expect(findDeploymentAdapterForHost("ghe.example.test")).toBeNull();
+		unregister();
 	});
 });

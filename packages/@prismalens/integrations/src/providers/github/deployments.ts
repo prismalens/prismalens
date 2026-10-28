@@ -76,6 +76,25 @@ const LEAD_MS = 60 * 60 * 1000;
 export class GitHubDeploymentsSegment implements DeploymentProvider {
 	readonly name = "github";
 
+	servesHost(host: string): boolean {
+		return host === "github.com";
+	}
+
+	requestFor(_host: string, authorization: string): AuthenticatedRequestFn {
+		return (method, path, options) =>
+			fetch(`https://api.github.com${path}`, {
+				method,
+				headers: {
+					Accept: "application/vnd.github+json",
+					"X-GitHub-Api-Version": "2022-11-28",
+					...options?.headers,
+					Authorization: authorization,
+				},
+				body: options?.body,
+				signal: options?.signal ?? AbortSignal.timeout(30_000),
+			});
+	}
+
 	async listDeploymentEvents(
 		request: AuthenticatedRequestFn,
 		repository: string,

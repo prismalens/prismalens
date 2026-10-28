@@ -186,14 +186,20 @@ export class GitCredential {
 		this.#host = opts.host;
 	}
 
-	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */
-	authHeader(effectiveUrl: string): string | undefined {
+	/** `Basic …`, the Authorization value for an https URL on the token's own host, else undefined. */
+	authorization(effectiveUrl: string): string | undefined {
 		if (!isTokenSource(this.display.source) || !this.#token) return undefined;
 		if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
 		const url = new URL(effectiveUrl);
 		if (this.#host && url.host.toLowerCase() !== this.#host) return undefined;
 		const user = tokenUsernameFor(url.hostname);
-		return `Authorization: Basic ${Buffer.from(`${user}:${this.#token}`).toString("base64")}`;
+		return `Basic ${Buffer.from(`${user}:${this.#token}`).toString("base64")}`;
+	}
+
+	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */
+	authHeader(effectiveUrl: string): string | undefined {
+		const value = this.authorization(effectiveUrl);
+		return value && `Authorization: ${value}`;
 	}
 
 	/** What `gitEnv` needs for a call to `url`. */

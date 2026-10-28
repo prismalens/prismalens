@@ -61,15 +61,28 @@ export function createAdapter(templateId: string): ProviderAdapter | null {
 
 export const getAdapter = createAdapter;
 
-/** Register a connector under its templateId; the returned function removes it (#855). */
+/** Register a connector under its templateId; throws when the id is taken. The returned function removes it (#855). */
 export function registerAdapter(
 	templateId: string,
 	AdapterClass: new () => ProviderAdapter,
 ): () => void {
+	if (templateId in ADAPTER_REGISTRY)
+		throw new Error(`An adapter is already registered for '${templateId}'`);
 	ADAPTER_REGISTRY[templateId] = AdapterClass;
 	return () => {
 		delete ADAPTER_REGISTRY[templateId];
 	};
+}
+
+/** The first registered adapter whose deployment pulls the deploys of repositories on `host` (#855). */
+export function findDeploymentAdapterForHost(
+	host: string,
+): ProviderAdapter | null {
+	for (const AdapterClass of Object.values(ADAPTER_REGISTRY)) {
+		const adapter = new AdapterClass();
+		if (adapter.deployment?.servesHost?.(host)) return adapter;
+	}
+	return null;
 }
 
 /** Check if an exact templateId has a registered adapter (#446). */

@@ -83,6 +83,7 @@ function commit(dir: string, file: string, subject: string, at: Date): string {
 describe("ChangeEventsService", () => {
 	let prisma: InstanceType<typeof PrismaService>;
 	let service: InstanceType<typeof ChangeEventsService>;
+	let integrations: InstanceType<typeof IntegrationsService>;
 	let server: GitHttpServer;
 	const start = new Date(Date.now() - HOUR);
 	let shas: Record<string, string>;
@@ -133,7 +134,7 @@ describe("ChangeEventsService", () => {
 		const credentials = new CredentialsService(
 			config as unknown as ConstructorParameters<typeof CredentialsService>[0],
 		);
-		const integrations = new IntegrationsService(prisma, credentials, {
+		integrations = new IntegrationsService(prisma, credentials, {
 			capture: vi.fn(async () => {}),
 		} as unknown as ConstructorParameters<typeof IntegrationsService>[2]);
 		integrations.onModuleInit();
@@ -141,7 +142,6 @@ describe("ChangeEventsService", () => {
 			prisma,
 			new RepoSourceService(),
 			new GitCredentialService(prisma, credentials, integrations),
-			integrations,
 		);
 		server = await startGitHttpServer({ tls: false });
 
@@ -377,104 +377,22 @@ describe("ChangeEventsService", () => {
 		expect(problemOf("boom")).toMatchObject({ code: "error", message: "boom" });
 	});
 
-	it("pulls deployments with the pinned token only when it is a GitHub API token (#854)", async () => {
-		const list = vi
-			.spyOn(GitHubDeploymentsSegment.prototype, "listDeploymentEvents")
-			.mockResolvedValue([]);
-		const requestFn = vi
-			.spyOn(IntegrationsService.prototype, "createRequestFn")
-			.mockReturnValue(vi.fn());
-		const templateId = vi.spyOn(prisma.connection, "findUnique");
-		const pull = (metadata: string | null, connectionId: string | null = null) =>
-			service["pullDeploys"](
-				{
-					key: "k",
-					serviceId: "s",
-					serviceName: "svc",
-					subPath: null,
-					repository: {
-						id: "r",
-						sourceKind: "url",
-						fullName: "acme/api",
-						url: "https://github.com/acme/api.git",
-						defaultBranch: "main",
-						connectionId,
-						metadata,
-					},
-				},
-				{ start: new Date(Date.now() - HOUR), end: new Date() },
-			);
-		try {
-			const pinned = JSON.stringify({ credentialConnectionId: "pin" });
-			templateId.mockResolvedValue({
-				integration: { templateId: "github-token" },
-			} as never);
-			await pull(pinned);
-			expect(requestFn).toHaveBeenLastCalledWith("pin");
-
-			requestFn.mockClear();
-			templateId.mockResolvedValue({
-				integration: { templateId: "git-host-token" },
-			} as never);
-			await pull(pinned);
-			await pull(null);
-			expect(requestFn).not.toHaveBeenCalled();
-
-			templateId.mockImplementation((async ({ where }: { where: { id: string } }) => ({
-				integration: {
-					templateId: where.id === "link" ? "github-app" : "github-token",
-				},
-			})) as never);
-			requestFn.mockClear();
-			await pull(pinned, "link");
-			expect(requestFn).toHaveBeenLastCalledWith("pin");
-
-			templateId.mockResolvedValue({
-				integration: { templateId: "github-token" },
-			} as never);
-			await pull(pinned, "link");
-			expect(requestFn).toHaveBeenLastCalledWith("link");
-			expect(list).toHaveBeenCalledTimes(3);
-		} finally {
-			list.mockRestore();
-			requestFn.mockRestore();
-			templateId.mockRestore();
-		}
-	});
-
-	it("pulls deploys through any registered adapter with a deploy pull and skips one without (#855)", async () => {
-		class FakeCi {
-			readonly name = "fake-ci";
-			readonly deployment = {
-				name: "fake-ci",
-				listDeploymentEvents: async () => [
-					{
-						version: "7.1.0",
-						environment: "production",
-						status: "succeeded" as const,
-						sha: "b".repeat(40),
-						actor: "ci-bot",
-						url: null,
-						at: new Date().toISOString(),
-					},
-				],
-			};
-		}
-		class PlainCi {
-			readonly name = "plain-ci";
-		}
-		const unregister = [
-			registerAdapter("fake-ci", FakeCi),
-			registerAdapter("plain-ci", PlainCi),
-		];
-		const requestFn = vi
-			.spyOn(IntegrationsService.prototype, "createRequestFn")
-			.mockReturnValue(vi.fn());
-		const lookup = vi.spyOn(prisma.connection, "findUnique");
-		const svc = await prisma.service.create({
-			data: { name: `svc-${Math.random().toString(36).slice(2, 8)}` },
-		});
-		const pull = (connectionId: string) =>
+	describe("deploy pull (#854, #855)", () => {
+		let svc: { id: string; name: string };
+		let tokenIntegrationId: string;
+		const tokenFor = async (host: string, token: string) =>
+			(
+				await integrations.createConnection({
+					integrationId: tokenIntegrationId,
+					label: `t-${host}`,
+					credentials: { token },
+					connectionConfig: { host },
+				})
+			).id;
+		const pull = (
+			url: string,
+			opts: { metadata?: string | null; connectionId?: string | null } = {},
+		) =>
 			service["pullDeploys"](
 				{
 					key: "k",
@@ -485,36 +403,108 @@ describe("ChangeEventsService", () => {
 						id: "r",
 						sourceKind: "url",
 						fullName: "acme/api",
-						url: "https://ci.example/acme/api.git",
+						url,
 						defaultBranch: "main",
-						connectionId,
-						metadata: null,
+						connectionId: opts.connectionId ?? null,
+						metadata: opts.metadata ?? null,
 					},
 				},
 				{ start: new Date(Date.now() - HOUR), end: new Date() },
 			);
-		try {
-			lookup.mockResolvedValue({ integration: { templateId: "plain-ci" } } as never);
-			await pull("c1");
-			expect(requestFn).not.toHaveBeenCalled();
-			expect(await prisma.changeEvent.count({ where: { serviceId: svc.id } })).toBe(0);
 
-			lookup.mockResolvedValue({ integration: { templateId: "fake-ci" } } as never);
-			await pull("c2");
-			expect(requestFn).toHaveBeenCalledWith("c2");
-			const rows = await prisma.changeEvent.findMany({ where: { serviceId: svc.id } });
-			expect(rows).toHaveLength(1);
-			expect(rows[0]).toMatchObject({ type: "deployment", source: "fake-ci" });
-			expect(JSON.parse(rows[0]?.metadata ?? "{}")).toMatchObject({
-				source: "fake-ci",
-				version: "7.1.0",
-				repo: "acme/api",
+		beforeAll(async () => {
+			svc = await prisma.service.create({
+				data: { name: `svc-${Math.random().toString(36).slice(2, 8)}` },
 			});
-		} finally {
-			for (const off of unregister) off();
-			requestFn.mockRestore();
-			lookup.mockRestore();
-		}
+			tokenIntegrationId = (
+				await prisma.integration.create({
+					data: { templateId: "git-host-token", label: "Git host token" },
+				})
+			).id;
+		});
+
+		it("pulls a github.com repository's deploys with its unpinned stored git-host-token, no connectionId (#855)", async () => {
+			const connectionId = await tokenFor("github.com", "ghp_stored");
+			const list = vi
+				.spyOn(GitHubDeploymentsSegment.prototype, "listDeploymentEvents")
+				.mockImplementation(async (request) => {
+					await request("GET", "/repos/acme/api/deployments");
+					return [];
+				});
+			const fetched = vi
+				.spyOn(globalThis, "fetch")
+				.mockResolvedValue(Response.json([]));
+			try {
+				await pull("https://github.com/acme/api.git");
+				expect(list).toHaveBeenCalledTimes(1);
+				expect(list.mock.calls[0]?.[1]).toBe("acme/api");
+				expect(fetched).toHaveBeenCalledTimes(1);
+				const [url, init] = fetched.mock.calls[0] ?? [];
+				expect(url).toBe("https://api.github.com/repos/acme/api/deployments");
+				expect((init?.headers as Record<string, string>).Authorization).toBe(
+					`Basic ${Buffer.from("x-access-token:ghp_stored").toString("base64")}`,
+				);
+
+				await pull("https://github.com/acme/api.git", {
+					metadata: JSON.stringify({ credentialConnectionId: connectionId }),
+				});
+				expect(list).toHaveBeenCalledTimes(2);
+
+				await pull("https://gitlab.com/acme/api.git");
+				expect(list).toHaveBeenCalledTimes(2);
+			} finally {
+				list.mockRestore();
+				fetched.mockRestore();
+				await prisma.connection.delete({ where: { id: connectionId } });
+			}
+		});
+
+		it("pulls a newly registered connector's deploys for a repository on its host with no change to pullDeploys (#855)", async () => {
+			const connectionId = await tokenFor("ci.example.test", "ci-secret");
+			const requestFor = vi.fn((_host: string, _authorization: string) => async () =>
+				Response.json([]),
+			);
+			class FakeCi {
+				readonly name = "fake-ci";
+				readonly deployment = {
+					name: "fake-ci",
+					servesHost: (host: string) => host === "ci.example.test",
+					requestFor,
+					listDeploymentEvents: async () => [
+						{
+							version: "7.1.0",
+							environment: "production",
+							status: "succeeded" as const,
+							sha: "b".repeat(40),
+							actor: "ci-bot",
+							url: null,
+							at: new Date().toISOString(),
+						},
+					],
+				};
+			}
+			const unregister = registerAdapter("fake-ci", FakeCi);
+			try {
+				await pull("https://ci.example.test/acme/api.git");
+				expect(requestFor).toHaveBeenCalledWith(
+					"ci.example.test",
+					`Basic ${Buffer.from("x-access-token:ci-secret").toString("base64")}`,
+				);
+				const rows = await prisma.changeEvent.findMany({
+					where: { serviceId: svc.id },
+				});
+				expect(rows).toHaveLength(1);
+				expect(rows[0]).toMatchObject({ type: "deployment", source: "fake-ci" });
+				expect(JSON.parse(rows[0]?.metadata ?? "{}")).toMatchObject({
+					source: "fake-ci",
+					version: "7.1.0",
+					repo: "acme/api",
+				});
+			} finally {
+				unregister();
+				await prisma.connection.delete({ where: { id: connectionId } });
+			}
+		});
 	});
 
 	it("keeps the sync awaiting commits when the pinned-connection lookup rejects (#854)", async () => {

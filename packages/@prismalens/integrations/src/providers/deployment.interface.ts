@@ -31,7 +31,13 @@ export interface DeploymentProvider {
 	/** Test the connection */
 	testConnection?(request: AuthenticatedRequestFn): Promise<boolean>;
 
-	/** Read-only: the deploys of one repository in a window. Present means the platform's deploys are pulled for a linked repository (#855). */
+	/** Whether this provider pulls the deploys of repositories on `host`; with `requestFor` and `listDeploymentEvents`, all a connector registers to be pulled (#855). */
+	servesHost?(host: string): boolean;
+
+	/** A request fn to this provider's API for `host`, sending `authorization` as the Authorization header. */
+	requestFor?(host: string, authorization: string): AuthenticatedRequestFn;
+
+	/** Read-only: the deploys of one repository in a window (#855). */
 	listDeploymentEvents?(
 		request: AuthenticatedRequestFn,
 		repository: string,
