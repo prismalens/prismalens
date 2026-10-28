@@ -47,6 +47,7 @@ import {
 	backgroundColor,
 	frameOptions,
 	isTheme,
+	TERMINAL_KEY_CHANNEL,
 	THEME_CHANNEL,
 	THEME_COOKIE,
 	type Theme,
@@ -69,6 +70,7 @@ import {
 	snapshot,
 } from "./notifications.js";
 import {
+	claimTerminalKey,
 	fetchInstanceId,
 	OlderBackendError,
 	operatorToken,
@@ -140,6 +142,7 @@ let tray: Tray | null = null;
 let baseUrl = "";
 /** The window's device token, also the Bearer the notification poll sends. */
 let deviceToken = "";
+let terminalKey: string | undefined;
 let ready = false;
 let quitting = false;
 let stopping = false;
@@ -535,6 +538,31 @@ async function pairWindow(dir: string): Promise<void> {
 	const instanceId = await fetchInstanceId(baseUrl);
 	const cookieName = deviceCookieName(instanceId);
 	const [stored] = await jar.get({ url: baseUrl, name: cookieName });
+	const pairOperator = (): Promise<string> =>
+		inWsl
+			? runWsl(wslPairOperator(wsl.distro))
+			: DEV_URL
+				? runForStdout({
+						command: "pnpm",
+						args: [
+							"--silent",
+							"--filter",
+							"prismalens",
+							"dev",
+							"pair",
+							"--operator",
+						],
+						env: process.env,
+					})
+				: runForStdout(
+						pairOperatorSpawn({
+							execPath: process.execPath,
+							backendMain: backendMainPath,
+							workspaceDir: dir,
+							env: process.env,
+						}),
+					);
+	let freshKey: string | undefined;
 	deviceToken = await operatorToken({
 		baseUrl,
 		cookieName,
@@ -543,30 +571,10 @@ async function pairWindow(dir: string): Promise<void> {
 			expectedId: readIdentities()[baseUrl] ?? null,
 			stored: stored?.value ?? null,
 		}),
-		pairOperator: () =>
-			inWsl
-				? runWsl(wslPairOperator(wsl.distro))
-				: DEV_URL
-					? runForStdout({
-							command: "pnpm",
-							args: [
-								"--silent",
-								"--filter",
-								"prismalens",
-								"dev",
-								"pair",
-								"--operator",
-							],
-							env: process.env,
-						})
-					: runForStdout(
-							pairOperatorSpawn({
-								execPath: process.execPath,
-								backendMain: backendMainPath,
-								workspaceDir: dir,
-								env: process.env,
-							}),
-						),
+		pairOperator,
+		onTerminalKey: (key) => {
+			freshKey = key;
+		},
 	});
 	if (deviceToken !== stored?.value) {
 		await jar.set({
@@ -581,6 +589,37 @@ async function pairWindow(dir: string): Promise<void> {
 		});
 	}
 	writeIdentity(baseUrl, instanceId);
+	terminalKey =
+		freshKey ??
+		readTerminalKeys()[instanceId] ??
+		(await claimTerminalKey({ baseUrl, token: deviceToken, pairOperator })) ??
+		undefined;
+	if (terminalKey) writeTerminalKey(instanceId, terminalKey);
+}
+
+/** The terminal's second credential (#931), per instance, beside the identities. */
+function terminalKeysPath(): string {
+	return join(app.getPath("userData"), "terminal-keys.json");
+}
+
+function readTerminalKeys(): Record<string, string> {
+	try {
+		return JSON.parse(readFileSync(terminalKeysPath(), "utf8")) as Record<
+			string,
+			string
+		>;
+	} catch {
+		return {};
+	}
+}
+
+function writeTerminalKey(instanceId: string, key: string): void {
+	mkdirSync(app.getPath("userData"), { recursive: true });
+	writeFileSync(
+		terminalKeysPath(),
+		JSON.stringify({ ...readTerminalKeys(), [instanceId]: key }),
+		{ mode: 0o600 },
+	);
 }
 
 /** No silent quits: say why the backend stopped and offer the way on. */
@@ -1092,6 +1131,13 @@ if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
 	app.on("second-instance", () => openWindow());
+	// Only the app's own page gets the key: never a frame from another origin (#931).
+	ipcMain.on(TERMINAL_KEY_CHANNEL, (event) => {
+		const own =
+			event.sender === window?.webContents &&
+			event.senderFrame?.origin === new URL(baseUrl).origin;
+		event.returnValue = own ? (terminalKey ?? null) : null;
+	});
 	ipcMain.on(THEME_CHANNEL, (event, value: unknown) => {
 		if (event.sender !== window?.webContents || !isTheme(value)) return;
 		applyTheme(value);
