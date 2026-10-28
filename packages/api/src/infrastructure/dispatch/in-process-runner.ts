@@ -18,6 +18,7 @@ import runInvestigationJob, {
 } from "./investigation-run.js";
 import type { ClaimedJob } from "./job-store.js";
 import { payloadTurn } from "./prisma-investigation-store.js";
+import { SHUTDOWN_REASON } from "./run-abort.js";
 import type { RunPorts } from "./run-ports.js";
 
 const logger = new Logger({ context: "InProcessRunner" });
@@ -111,7 +112,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 		return {
 			done,
 			cancel: () => controller.abort(),
-			kill: () => controller.abort(),
+			kill: () => controller.abort(SHUTDOWN_REASON),
 			// The turn this job runs answers only what it owes (#804 OBJ-032).
 			message: (text, mode, attachments, kind, id) =>
 				kind && kind !== owes

@@ -198,6 +198,8 @@ export class Dispatcher {
 
 		void running.done
 			.then(async (outcome) => {
+				// Closing: the job stays claimed for boot, which tells a cut from a Stop (#981).
+				if (this.stopped) return;
 				const settled = await this.store.complete(
 					job.id,
 					outcome.outcome,
