@@ -44,10 +44,12 @@ import {
 } from "./repo-source.service.js";
 import {
 	releaseWorktreesIn,
+	setRunWorkspaceSource,
 	runWorktreeDir,
 	sweepRunWorktrees,
 	worktreeRoot,
 } from "./run-worktree.js";
+import { DEFAULT_RUN_WORKSPACE_SETTINGS } from "@prismalens/contracts";
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
 
@@ -666,33 +668,64 @@ describe("repo-source.service", () => {
 			).rejects.toThrow(/Commit 0123456789abcdef0123456789abcdef01234567 could not be checked out/);
 		});
 
-		it("a URL source is still a clone of the bare mirror, not a worktree of it (#918)", async () => {
+		it("a URL is cloned once, into its mirror; each run gets a detached worktree of it (#925)", async () => {
 			const { bareDir, work } = makeBareRemote();
 			commitAndPush(work, "a.txt", "v1");
 			const url = `file://${bareDir}`;
+			const service = new RepoSourceService();
 
-			const dest = join(tmp("pl-dest-"), "repo");
-			await new RepoSourceService().snapshot({ kind: "url", source: url }, dest, undefined, undefined, "run5");
+			const one = join(tmp("pl-dest-"), "pl-run5");
+			const two = join(tmp("pl-dest-"), "pl-run6");
+			const snap = await service.snapshot({ kind: "url", source: url, defaultBranch: "main" }, one, undefined, undefined, "run5");
+			await service.snapshot({ kind: "url", source: url, defaultBranch: "main" }, two, undefined, undefined, "run6");
 
-			expect(lstatSync(join(dest, ".git")).isDirectory()).toBe(true);
+			expect(lstatSync(join(one, ".git")).isFile()).toBe(true);
+			expect(git(["worktree", "list"], mirrorPathFor(url)).split("\n")).toHaveLength(3);
+			expect(gitFails(["symbolic-ref", "HEAD"], one)).toContain("not a symbolic ref");
+			expect(snap.branch).toBe("main");
+			await releaseWorktreesIn(one);
+			await releaseWorktreesIn(two);
 			expect(git(["worktree", "list"], mirrorPathFor(url)).split("\n")).toHaveLength(1);
 		});
 
-		it("the snapshot can't push to the mirror it was cloned from (#676)", async () => {
+		it("a run's worktree of the mirror can't push through origin, and the remote gets nothing (#676)", async () => {
 			const { bareDir, work } = makeBareRemote();
 			commitAndPush(work, "a.txt", "v1");
 			const url = `file://${bareDir}`;
 
-			const dest = join(tmp("pl-dest-"), "repo");
-			await new RepoSourceService().snapshot(
-				{ kind: "url", source: url, defaultBranch: "main" },
-				dest,
-			);
+			const dest = join(tmp("pl-dest-"), "pl-run7");
+			await new RepoSourceService().snapshot({ kind: "url", source: url, defaultBranch: "main" }, dest, undefined, undefined, "run7");
 
-			expect(gitFails(["push", "origin", "HEAD:refs/heads/x"], dest)).toContain(
-				"transport 'file' not allowed",
-			);
+			// The mirror's remote takes no refspec push, and a plain push goes to the dead push URL.
+			expect(gitFails(["push", "origin", "HEAD:refs/heads/x"], dest)).toContain("fatal");
+			expect(gitFails(["push"], dest)).toContain("never-push");
+			expect(git(["branch", "--list", "x"], bareDir)).toBe("");
 			expect(git(["branch", "--list", "x"], mirrorPathFor(url))).toBe("");
+			await releaseWorktreesIn(dest);
+		});
+
+		it("with Clone set, a run's clone of the mirror can't push to it (#676)", async () => {
+			const { bareDir, work } = makeBareRemote();
+			commitAndPush(work, "a.txt", "v1");
+			const url = `file://${bareDir}`;
+			setRunWorkspaceSource({
+				global: () => ({ ...DEFAULT_RUN_WORKSPACE_SETTINGS, method: "clone" }),
+				override: () => undefined,
+				locations: () => [],
+				serviceIdOf: async () => null,
+				record: () => {},
+			});
+			try {
+				const dest = join(tmp("pl-dest-"), "pl-run8");
+				await new RepoSourceService().snapshot({ kind: "url", source: url, defaultBranch: "main" }, dest, undefined, undefined, "run8");
+
+				expect(lstatSync(join(dest, ".git")).isDirectory()).toBe(true);
+				expect(gitFails(["push", "origin", "HEAD:refs/heads/x"], dest)).toContain("transport 'file' not allowed");
+				expect(git(["branch", "--list", "x"], mirrorPathFor(url))).toBe("");
+				await releaseWorktreesIn(dest);
+			} finally {
+				setRunWorkspaceSource(null);
+			}
 		});
 
 		it("a second commit pushed to the remote is picked up by the next snapshot()", async () => {

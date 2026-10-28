@@ -58,6 +58,7 @@ function cloneAs(
 }
 
 const {
+	logWorkspaceSetup,
 	resolveWorkspace,
 	rebuildWorkspace,
 	runDirFor,
@@ -127,7 +128,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		}
 	});
 
-	it("a linked repo: snapshotWith gets sourceKind/url/connectionId/defaultBranch and a dest under the run dir, cwd is the snapshot path plus subPath, and the note names the commit", async () => {
+	it("a linked repo: snapshotWith gets sourceKind/url/connectionId/defaultBranch and a dest in the run workspace location (#925), cwd is the snapshot path plus subPath, and the note names the commit", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
@@ -158,13 +159,14 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					connectionId: "conn-1",
 					defaultBranch: "main",
 				},
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 			expect(ws.layout).toBe("single");
-			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo", "services", "api"));
+			expect(ws.cwd).toBe(join(tmp, "worktrees", "pl-inv-1", "services", "api"));
 			expect(ws.note).toContain("https://github.com/acme/api-gateway");
 			expect(ws.note).toContain("abc123def456");
 		} finally {
@@ -186,7 +188,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 			const ws = await resolveWorkspace(minimalData(), ports);
 
-			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo"));
+			expect(ws.cwd).toBe(join(tmp, "worktrees", "pl-inv-1"));
 		} finally {
 			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });
@@ -216,7 +218,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-junction-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const repoDir = join(tmp, "worktrees", "pl-inv-1");
 			const outsideDir = join(tmp, "outside");
 			mkdirSync(repoDir, { recursive: true });
 			mkdirSync(outsideDir, { recursive: true });
@@ -484,7 +486,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-res-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const repoDir = join(tmp, "worktrees", "pl-inv-1");
 			const linked = join(repoDir, "linked");
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
@@ -543,10 +545,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 			expect(snapshot).toHaveBeenCalledWith(
 				{ sourceKind: "url", url: "https://github.com/acme/x", connectionId: null, defaultBranch: null },
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 		} finally {
 			vi.unstubAllEnvs();
@@ -893,6 +896,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			expect.any(AbortSignal),
 			undefined,
 			"inv-1",
+			expect.any(Function),
 		);
 		expect(ws.note).toContain("folder");
 	});
@@ -1392,7 +1396,7 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	}
 	function followUpPorts(overrides: Partial<RunPorts> = {}) {
-		const dir = join(tmp, "runs", "inv-1", "repo");
+		const dir = join(tmp, "worktrees", "pl-inv-1");
 		return fakePorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
@@ -1439,7 +1443,7 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(result.success).toBe(true);
 		expect(ports.snapshotWith).toHaveBeenCalledWith(
 			{ sourceKind: "url", url: "https://github.com/acme/api", connectionId: null },
-			join(tmp, "runs", "inv-1", "repo"),
+			join(tmp, "worktrees", "pl-inv-1"),
 			expect.any(AbortSignal),
 			HEAD,
 			"inv-1",
@@ -1467,11 +1471,11 @@ describe("follow-up on a finished run (#747)", () => {
 				{ stopped: false },
 			],
 		]);
-		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
 	it("runFollowUp passes kind: 'chat' to conductRun when investigation is a chat run (#817)", async () => {
-		const dir = join(tmp, "runs", "inv-1", "repo");
+		const dir = join(tmp, "worktrees", "pl-inv-1");
 		const ports = followUpPorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
@@ -1765,7 +1769,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
@@ -1777,7 +1781,7 @@ describe("follow-up on a finished run (#747)", () => {
 				return { path: dest, head: HEAD, branch: null };
 			}),
 		});
-		const repo = join(tmp, "runs", "inv-1", "repo");
+		const repo = join(tmp, "worktrees", "pl-inv-1");
 		const outside = join(tmp, "outside");
 		mkdirSync(outside, { recursive: true });
 		let written: { linked: boolean; text: string } | undefined;
@@ -1872,7 +1876,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => []),
@@ -2041,7 +2045,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "deepagents",
 				model: "deepagents/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 			})),
 		});
 
@@ -2064,7 +2068,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(result.error).toBe(`fatal: reference is not a tree: ${HEAD}`);
-		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
 	it("the new session's usage is written after the handoff is recorded (handoff-L8)", async () => {
@@ -2095,7 +2099,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
@@ -2832,6 +2836,46 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 				},
 			]);
 			expect(abortedSignal?.aborted).toBe(true);
+			rmSync(tmpDir, { recursive: true, force: true });
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("a setup the checkout budget aborts leaves what it printed in the run log (#925)", async () => {
+		vi.useFakeTimers();
+		try {
+			const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-budget-log-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [makeRepo("https://github.com/acme/repo-0", "svc-0")]),
+				snapshotWith: vi.fn(
+					async (
+						_ref: any,
+						_dest: string,
+						_signal?: AbortSignal,
+						_at?: string,
+						_runId?: string,
+						onOutput?: (chunk: string) => void,
+					) => {
+						onOutput?.("installing deps\n");
+						onOutput?.("still installing\n");
+						return new Promise<never>(() => {});
+					},
+				),
+			});
+
+			const wsPromise = resolveWorkspace(minimalData(), ports);
+			await vi.advanceTimersByTimeAsync(600_000);
+			await wsPromise;
+			const io = { emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal };
+			await logWorkspaceSetup("inv-1", io, ports);
+
+			const [, events] = vi.mocked(ports.appendEvents).mock.calls[0] as [string, CanonicalEvent[]];
+			const result = (events[0] as { result: { preview: string; ok: boolean } }).result;
+			expect(result.preview).toBe("installing deps\nstill installing\n");
+			expect(result.ok).toBe(false);
 			rmSync(tmpDir, { recursive: true, force: true });
 		} finally {
 			vi.useRealTimers();
