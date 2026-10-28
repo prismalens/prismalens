@@ -10,15 +10,26 @@ export const MAX_RUNNABLE_COMMAND_BYTES = 4096;
  * can act on a shell's line editor before Enter (Ctrl-O accepts the line, ESC
  * ends a bracketed paste) or hide what the line really says (#931).
  */
-const CONTROL =
-	/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/u;
+function isControl(cp: number): boolean {
+	return (
+		cp <= 0x1f ||
+		(cp >= 0x7f && cp <= 0x9f) ||
+		cp === 0x200e ||
+		cp === 0x200f ||
+		cp === 0x2028 ||
+		cp === 0x2029 ||
+		(cp >= 0x202a && cp <= 0x202e) ||
+		(cp >= 0x2066 && cp <= 0x2069)
+	);
+}
 
 /** Text "Run in terminal" may stage; anything else gets Copy only. */
 export function runnableCommand(text: string): boolean {
 	if (!text.trim()) return false;
 	if (new TextEncoder().encode(text).length > MAX_RUNNABLE_COMMAND_BYTES)
 		return false;
-	return !CONTROL.test(text);
+	for (const ch of text) if (isControl(ch.codePointAt(0) ?? 0)) return false;
+	return true;
 }
 
 /** Why this client cannot open a terminal; the panel says it in words. */

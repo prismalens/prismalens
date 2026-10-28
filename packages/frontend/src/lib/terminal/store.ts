@@ -38,7 +38,9 @@ export function createTerminalStore() {
 
 	const set = (next: Partial<State>) => {
 		state = { ...state, ...next };
-		listeners.forEach((l) => l());
+		listeners.forEach((l) => {
+			l();
+		});
 	};
 	const patch = (id: number, change: Partial<TerminalTab>) =>
 		set({
@@ -97,7 +99,9 @@ export function createTerminalStore() {
 				current && current.exitCode === undefined ? current.id : store.newTab();
 			set({ active: id });
 			patch(id, { draft: command });
-			openListeners.forEach((l) => l());
+			openListeners.forEach((l) => {
+				l();
+			});
 		},
 		attachSender(id: number, send: Sender) {
 			senders.set(id, send);

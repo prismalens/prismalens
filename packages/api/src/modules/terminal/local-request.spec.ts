@@ -102,3 +102,4 @@ describe("localRequestRefusal", () => {
 		expect(localRequestRefusal({ ...dev, devOrigin: "http://localhost:3000" })).toBeNull();
 	});
 });
+

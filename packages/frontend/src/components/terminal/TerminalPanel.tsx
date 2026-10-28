@@ -11,7 +11,7 @@ import { useTerminalAvailability } from "@/lib/terminal/use-terminal-availabilit
 import { cn } from "@/lib/utils";
 import { TerminalView } from "./TerminalView";
 
-export const TERMINAL_DOCS_URL = "https://docs.prismalens.io/terminal";
+export const TERMINAL_DOCS_URL = "https://docs.prismalens.io/guides/terminal/";
 
 /**
  * The terminal panel the layout's bottom slot mounts (#931, #973). The layout
