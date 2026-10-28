@@ -4,13 +4,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft, TriangleAlert } from "lucide-react";
+import { useMemo } from "react";
+import { Transcript } from "@/components/investigation/Transcript";
 import { HypothesesCard } from "@/components/run/HypothesesCard";
 import { TickDot } from "@/components/schedules/TickDot";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { deriveTranscript } from "@/lib/investigation-events";
 
 export const Route = createFileRoute(
 	"/_authenticated/schedules/$id_/runs/$runId",
@@ -36,6 +40,14 @@ function ScheduledRunPage() {
 		refetch,
 	} = useQuery(orpc.investigations.get.queryOptions({ input: { id: runId } }));
 	usePageTitle(run?.title ?? "Scheduled run");
+	const live = run?.status === "pending" || run?.status === "running";
+	const history = useInvestigationEventsHistory(runId, {
+		pollMs: live ? 3000 : false,
+	});
+	const items = useMemo(
+		() => deriveTranscript(history.data ?? []),
+		[history.data],
+	);
 	const back = (
 		<Button variant="text" size="sm" asChild>
 			<Link to="/schedules/$id" params={{ id }}>
@@ -109,11 +121,25 @@ function ScheduledRunPage() {
 							onPreview={() => {}}
 						/>
 					)}
-					{!run.summary && !run.report && run.status !== "failed" && (
-						<p className="px-1 text-body text-text-3">
-							The report shows here when the run finishes.
-						</p>
-					)}
+					<section aria-label="Transcript">
+						<h2 className="mb-1.5 ml-1 text-heading text-text-2">
+							What the agent did
+						</h2>
+						{items.length ? (
+							<Transcript
+								items={items}
+								incidentId={run.incidentId}
+								cwd={run.workspace?.cwd}
+								agent={[run.harness, run.model].filter(Boolean).join(", ")}
+								runName={run.title ?? "Scheduled run"}
+								briefBy="PrismaLens"
+							/>
+						) : (
+							<p className="px-1 text-body text-text-3">
+								{live ? "Starting the agent." : "This run recorded no steps."}
+							</p>
+						)}
+					</section>
 				</div>
 			</div>
 		</div>
