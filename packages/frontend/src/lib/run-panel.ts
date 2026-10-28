@@ -107,3 +107,13 @@ export function splitPatch(patch: string): PatchFile[] {
 		return { path, oldPath: from ?? null, text };
 	});
 }
+
+/** A sentence for a file change with no lines to draw (a mode change, a binary file); null when it has hunks. */
+export function changeNote(text: string): string | null {
+	if (/^@@ /m.test(text)) return null;
+	const from = /^old mode (\d+)$/m.exec(text)?.[1];
+	const to = /^new mode (\d+)$/m.exec(text)?.[1];
+	if (from && to) return `Mode changed from ${from} to ${to}.`;
+	if (/^Binary files /m.test(text)) return "Binary file changed.";
+	return "No line changes.";
+}

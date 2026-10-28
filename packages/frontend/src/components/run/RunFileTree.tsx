@@ -3,7 +3,7 @@
 
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { RunWorkspace } from "@prismalens/contracts";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { type CSSProperties, useEffect, useMemo, useRef } from "react";
 import { orpc } from "@/lib/api/orpc-client";
 import type { FileAt } from "@/lib/evidence-files";
@@ -17,12 +17,10 @@ const TREE_STYLE = {
 	"--trees-font-family-override": "var(--font-sans)",
 } as CSSProperties;
 
-type Repo = RunWorkspace["repos"][number];
-
 /**
  * The Files tab's tree (#973), drawn by `@pierre/trees`: the files the run
- * touched, or every file at the recorded commit, one directory fetched at a
- * time as it opens. Picking a file opens it in the file view.
+ * touched, kept current while it works, or every file at the recorded
+ * commit, listed at once so a folder opened by keyboard has its contents.
  */
 export function RunFileTree({
 	mode,
@@ -40,103 +38,86 @@ export function RunFileTree({
 	onPick: (f: FileAt) => void;
 }) {
 	const many = workspace.repos.length > 1;
-	const marks = useMemo(
-		() => new Map(touched.map((t) => [t.path, t])),
-		[touched],
+	const all = useQueries({
+		queries: workspace.repos.map((r) => ({
+			...orpc.investigations.getTree.queryOptions({
+				input: { id: runId, sha: r.head, recursive: "true" as const },
+			}),
+			enabled: mode === "all",
+			staleTime: Number.POSITIVE_INFINITY,
+			retry: false,
+		})),
+	});
+	const allPaths = useMemo(
+		() =>
+			all.flatMap((q, i) => {
+				const repo = workspace.repos[i];
+				if (q.data?.state !== "ok" || !repo) return [];
+				const base = many ? `${repo.name}/` : "";
+				return q.data.entries.map((e) => `${base}${e.path}`);
+			}),
+		[all, many, workspace.repos],
 	);
-	const loaded = useRef(new Set<string>());
-	const dirs = useRef(new Set<string>());
-	const client = useQueryClient();
+	const truncated = all.some((q) => q.data?.state === "ok" && q.data.truncated);
+	const paths = mode === "touched" ? touched.map((t) => t.path) : allPaths;
+
+	// The model is built once; the callbacks read the latest marks and pick through refs.
+	const marks = useRef(new Map<string, TouchedFile>());
+	marks.current = new Map(touched.map((t) => [t.path, t]));
 	const pick = useRef(onPick);
 	pick.current = onPick;
-
-	// Tree path -> repo and path inside it.
-	const resolve = (p: string): { repo: Repo; path: string } | null => {
-		const clean = p.replace(/\/$/, "");
+	const fileAt = (p: string): FileAt | null => {
 		if (!many) {
 			const repo = workspace.repos[0];
-			return repo ? { repo, path: clean } : null;
+			return repo
+				? { repo: repo.name, sha: repo.head, path: p, line: null, end: null }
+				: null;
 		}
-		const [name, ...rest] = clean.split("/");
+		const [name, ...rest] = p.split("/");
 		const repo = workspace.repos.find((r) => r.name === name);
-		return repo ? { repo, path: rest.join("/") } : null;
+		return repo
+			? {
+					repo: repo.name,
+					sha: repo.head,
+					path: rest.join("/"),
+					line: null,
+					end: null,
+				}
+			: null;
 	};
-
-	const label =
-		mode === "touched"
-			? "Files this run touched"
-			: `All files at ${workspace.repos[0]?.head.slice(0, 7) ?? ""}`;
+	const resolve = useRef(fileAt);
+	resolve.current = fileAt;
 
 	const { model } = useFileTree({
-		paths:
-			mode === "touched"
-				? touched.map((t) => t.path)
-				: many
-					? workspace.repos.map((r) => `${r.name}/`)
-					: [],
+		paths,
 		initialExpansion: mode === "touched" ? "open" : "closed",
 		flattenEmptyDirectories: true,
 		search: mode === "all",
 		density: "compact",
 		renderRowDecoration: ({ item }) => {
-			const mark = marks.get(item.path)?.mark;
+			const mark = marks.current.get(item.path)?.mark;
 			return mark ? { text: mark, title: `${mark} by this run` } : null;
 		},
-		onSelectionChange: (paths) => {
-			const p = paths[0];
-			if (!p) return;
-			if (mode === "touched") {
-				const hit = marks.get(p);
-				if (hit) pick.current(hit.file);
-				return;
-			}
-			const at = resolve(p);
-			if (!at) return;
-			if (dirs.current.has(p) || p.endsWith("/")) void expand(p);
-			else
-				pick.current({
-					repo: at.repo.name,
-					sha: at.repo.head,
-					path: at.path,
-					line: null,
-					end: null,
-				});
+		onSelectionChange: (selection) => {
+			const p = selection[0];
+			if (!p || p.endsWith("/")) return;
+			const hit = marks.current.get(p);
+			const f = mode === "touched" ? hit?.file : resolve.current(p);
+			if (f) pick.current(f);
 		},
 	});
 
-	// "All files": one directory per request, each added under its parent as it opens.
-	async function expand(treePath: string) {
-		const key = treePath.replace(/\/$/, "");
-		if (loaded.current.has(key)) return;
-		loaded.current.add(key);
-		const at = resolve(key);
-		if (!at) return;
-		const tree = await client.fetchQuery({
-			...orpc.investigations.getTree.queryOptions({
-				input: {
-					id: runId,
-					sha: at.repo.head,
-					...(at.path ? { prefix: at.path } : {}),
-				},
-			}),
-			staleTime: Number.POSITIVE_INFINITY,
-		});
-		if (tree.state !== "ok") return;
-		const base = many ? `${at.repo.name}/` : "";
-		for (const e of tree.entries) {
-			const p = `${base}${e.path}${e.type === "dir" ? "/" : ""}`;
-			if (e.type === "dir") dirs.current.add(p.replace(/\/$/, ""));
-			model.add(p);
-		}
-	}
-
+	// A live run touches more files; the tree follows (#975 OBJ-011).
+	const key = paths.join("\0");
 	useEffect(() => {
-		if (mode !== "all" || many) return;
-		void expand("");
-		// biome-ignore lint/correctness/useExhaustiveDependencies: the top level loads once per tree.
-	}, [mode, many]);
+		model.resetPaths(key ? key.split("\0") : []);
+	}, [model, key]);
 
 	// Name the tree: it renders `role=tree` inside an open shadow root with no label (#973 OBJ-010).
+	const label =
+		mode === "touched"
+			? "Files this run touched"
+			: `All files at ${workspace.repos[0]?.head.slice(0, 7) ?? ""}`;
 	const host = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		const name = () => {
@@ -147,36 +128,36 @@ export function RunFileTree({
 			return !!tree;
 		};
 		if (name()) return;
-		const root = host.current;
-		if (!root) return;
-		const watch = new MutationObserver(() => {
-			if (name()) watch.disconnect();
-		});
-		watch.observe(root, { subtree: true, childList: true });
 		const t = window.setInterval(() => {
 			if (name()) window.clearInterval(t);
 		}, 50);
-		return () => {
-			watch.disconnect();
-			window.clearInterval(t);
-		};
+		return () => window.clearInterval(t);
 	}, [label]);
 
 	const selectedPath = selected
 		? `${many ? `${selected.repo}/` : ""}${selected.path}`
 		: null;
 	useEffect(() => {
-		if (selectedPath) model.scrollToPath(selectedPath, { focus: false });
-	}, [model, selectedPath]);
+		if (!selectedPath || !paths.includes(selectedPath)) return;
+		model.scrollToPath(selectedPath, { focus: false });
+	}, [model, selectedPath, paths]);
 
 	return (
 		<div
-			ref={host}
-			className="min-h-0 flex-1"
-			style={TREE_STYLE}
+			className="flex min-h-0 flex-1 flex-col"
 			data-testid={`run-files-tree-${mode}`}
 		>
-			<FileTree model={model} style={{ height: "100%" }} />
+			{mode === "all" && all.some((q) => q.isLoading) && (
+				<p className="px-3 text-meta text-text-3">Listing files</p>
+			)}
+			{truncated && (
+				<p className="px-3 text-meta text-text-3">
+					Showing the first 20,000 files.
+				</p>
+			)}
+			<div ref={host} className="min-h-0 flex-1" style={TREE_STYLE}>
+				<FileTree model={model} style={{ height: "100%" }} />
+			</div>
 		</div>
 	);
 }

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loading, Problem } from "@/components/shared/State";
 import { orpc } from "@/lib/api/orpc-client";
 import { useTheme } from "@/lib/providers/theme-provider";
-import { splitPatch } from "@/lib/run-panel";
+import { changeNote, splitPatch } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
 import { CODE_STYLE, POOL } from "./EvidenceFileView";
 
@@ -65,7 +65,14 @@ export function ChangesTab({
 	);
 	const files = diff?.state === "ok" ? diff.files : [];
 	const shown = file ?? files[0]?.path ?? null;
-	const patch = patches.find((p) => p.path === shown);
+	// Git writes the patch in --numstat's order, so pair by position: a quoted or
+	// unusual header still finds its file (#975 OBJ-013).
+	const at = files.findIndex((f) => f.path === shown);
+	const patch =
+		patches.length === files.length
+			? patches[at]
+			: patches.find((p) => p.path === shown);
+	const note = patch ? changeNote(patch.text) : null;
 	const narrow = width > 0 && width < SPLIT_MIN_PX;
 	const effective = narrow ? "unified" : style;
 
@@ -187,6 +194,10 @@ export function ChangesTab({
 						<p className="px-3 text-text-2" data-testid="changes-too-large">
 							This change is too large to show here. The files it touched are
 							listed above.
+						</p>
+					) : patch && note ? (
+						<p className="px-3 text-text-2" data-testid="changes-note">
+							{note}
 						</p>
 					) : patch ? (
 						<WorkerPoolContextProvider {...POOL}>

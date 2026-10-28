@@ -102,6 +102,16 @@ describe("readRunTree", () => {
 		]);
 	});
 
+	it("lists every file of the commit at once when asked, so a folder opened by keyboard has its contents", async () => {
+		const tree = await readRunTree(ws(c3), c3, undefined, { recursive: true });
+		expect(tree.state === "ok" && tree.entries.map((e) => e.path)).toEqual([
+			"CHANGELOG.md",
+			"README.md",
+			"escape",
+			"src/payments/client.ts",
+		]);
+	});
+
 	it("refuses a commit the run did not record", async () => {
 		await expect(readRunTree(ws(c3), c1, undefined)).rejects.toBeInstanceOf(
 			EvidenceRequestRefused,
@@ -304,6 +314,22 @@ describe("readRunDiff", () => {
 		expect(diff.patch).not.toContain("SUBMODULE-BYTES");
 		expect(diff.patch).not.toContain("TEXTCONV-RAN");
 		expect(diff.patch).not.toContain("EXTERNAL-RAN");
+	});
+
+	it("keeps a/ and b/ headers and unquoted names whatever the repo configures", async () => {
+		git(["config", "diff.noprefix", "true"], src);
+		git(["config", "core.quotePath", "true"], src);
+		const c4 = commit(src, { "src/café.ts": "x\n" }, "four");
+		const pair: RunComparison = { ...pairOf(), head: c4, base: c3, between: 1 };
+		const diff = await readRunDiff(ws(c4, [pair]), 0, undefined);
+		expect(diff.state === "ok" && diff.patch).toContain(
+			"diff --git a/src/café.ts b/src/café.ts",
+		);
+	});
+
+	it("gives up on a pair it cannot work out in time, and never fails the run", async () => {
+		const pair = await compareFor(src, "repo", c3, [], AbortSignal.abort());
+		expect(pair).toBeNull();
 	});
 
 	it("says when a commit of the pair is gone", async () => {

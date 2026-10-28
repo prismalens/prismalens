@@ -5,6 +5,7 @@ import type { RunWorkspace } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import type { RunStep } from "@/components/run/run-steps";
 import {
+	changeNote,
 	fileFromParam,
 	fileParam,
 	panelTab,
@@ -159,5 +160,37 @@ describe("splitPatch", () => {
 		expect(files[0]?.text.startsWith("diff --git a/a.ts b/a.ts")).toBe(true);
 		expect(files[0]?.text).toContain("+y");
 		expect(files[1]?.text).not.toContain("+y");
+	});
+});
+
+describe("changeNote", () => {
+	const patch = (...lines: string[]) => `${lines.join("\n")}\n`;
+	it("names a change that has no lines to draw", () => {
+		expect(
+			changeNote(
+				patch("diff --git a/run.sh b/run.sh", "old mode 100755", "new mode 100644"),
+			),
+		).toBe("Mode changed from 100755 to 100644.");
+		expect(
+			changeNote(
+				patch(
+					"diff --git a/logo.png b/logo.png",
+					"index 1..2 100644",
+					"Binary files a/logo.png and b/logo.png differ",
+				),
+			),
+		).toBe("Binary file changed.");
+		expect(
+			changeNote(
+				patch(
+					"diff --git a/vendor/x b/vendor/x",
+					"--- a/vendor/x",
+					"+++ b/vendor/x",
+					"@@ -1 +1 @@",
+					"-Subproject commit a",
+					"+Subproject commit b",
+				),
+			),
+		).toBeNull();
 	});
 });

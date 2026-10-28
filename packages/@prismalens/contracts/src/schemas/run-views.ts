@@ -40,11 +40,15 @@ export const RunTreeQuerySchema = z.object({
 	sha: CommitShaSchema,
 	/** A directory from the repository's top; absent for the top itself. */
 	prefix: RepoPathSchema.optional(),
+	/** "true": every file under it at once, not one level. */
+	recursive: z.enum(["true"]).optional(),
 });
 export type RunTreeQuery = z.infer<typeof RunTreeQuerySchema>;
 
 /** Above this many entries a directory is cut and says so. */
 export const RUN_TREE_MAX_ENTRIES = 2000;
+/** A recursive listing stops here and says so. */
+export const RUN_TREE_MAX_FILES = 20_000;
 
 export const RunTreeEntrySchema = z.object({
 	name: z.string(),

@@ -23795,6 +23795,19 @@
             },
             "allowEmptyValue": true,
             "allowReserved": true
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "true"
+              ],
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
           }
         ],
         "responses": {

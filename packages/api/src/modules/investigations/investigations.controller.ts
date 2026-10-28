@@ -599,7 +599,9 @@ export class InvestigationsController {
 			getTree: implement(investigationsContract.getTree).handler(
 				async ({ input }) =>
 					this.runView(input.id, (ws) =>
-						readRunTree(ws, input.sha, input.prefix),
+						readRunTree(ws, input.sha, input.prefix, {
+							recursive: input.recursive === "true",
+						}),
 					),
 			),
 

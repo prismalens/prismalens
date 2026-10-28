@@ -275,16 +275,23 @@ export function RunPage() {
 		[focusLater, setPanel, setSearch],
 	);
 	const closeFile = useCallback(() => {
-		const from = origin.current;
 		if (pushed.current && pushed.current === search.file) {
 			pushed.current = null;
 			router.history.back();
-		} else setSearch({ file: undefined, panel: from?.tab }, true);
-		if (!from) return;
+		} else setSearch({ file: undefined, panel: origin.current?.tab }, true);
+	}, [router, search.file, setSearch]);
+	// However the file closed (its Back, or the browser's), focus returns to what opened it (#975 OBJ-008).
+	const wasViewing = useRef(!!viewing);
+	useEffect(() => {
+		const closed = wasViewing.current && !viewing;
+		wasViewing.current = !!viewing;
+		const from = origin.current;
+		if (!closed || !from) return;
+		origin.current = null;
 		// On a phone the details are a sheet over the page: Back to a control under it lifts the sheet.
 		if (phone && !from.inPanel) setPanel(false);
 		focusLater(from.id);
-	}, [focusLater, phone, setPanel, router, search.file, setSearch]);
+	}, [viewing, phone, setPanel, focusLater]);
 	const touched = useMemo(
 		() =>
 			touchedFiles(
