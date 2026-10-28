@@ -11,6 +11,7 @@ import {
 	type OsProcess,
 	type ProcessHost,
 	readReceipt,
+	snapshotReceipt,
 	treeOf,
 	writeReceipt,
 } from "./harness-receipt.js";
@@ -99,5 +100,38 @@ describe("harness receipt (#981 OBJ-010)", () => {
 		};
 		expect(await containPrevious({ pid: 4120, startedAt: T }, host)).toBe(true);
 		expect(kills).toEqual([[4120, true]]);
+	});
+	it("finds a tool whose parent exited, from the tree the last snapshot recorded", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-receipt-"));
+		try {
+			writeReceipt(dir, 4120, T);
+			// While running: harness 4120 -> shell 5000 -> tool 6000.
+			await snapshotReceipt(dir, async () => [
+				{ pid: 4120, parent: 1, created: T + 50 },
+				{ pid: 5000, parent: 4120, created: T + 1_000 },
+				{ pid: 6000, parent: 5000, created: T + 2_000 },
+			]);
+			expect(readReceipt(dir)?.tree).toEqual([
+				{ pid: 5000, created: T + 1_000 },
+				{ pid: 6000, created: T + 2_000 },
+			]);
+			// After the crash the harness and the shell are gone; the tool survives.
+			const left = treeOf(readReceipt(dir) as never, [
+				{ pid: 6000, parent: 5000, created: T + 2_000 },
+				{ pid: 6100, parent: 6000, created: T + 9_000 },
+			]);
+			expect(left.map((p) => p.pid).sort()).toEqual([6000, 6100]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("a root pid now held by a younger process claims only the children born before it", () => {
+		const all: OsProcess[] = [
+			{ pid: 4120, parent: 1, created: T + 600_000 },
+			{ pid: 7000, parent: 4120, created: T + 3_000 },
+			{ pid: 9000, parent: 4120, created: T + 700_000 },
+		];
+		expect(treeOf({ pid: 4120, startedAt: T }, all).map((p) => p.pid)).toEqual([7000]);
 	});
 });

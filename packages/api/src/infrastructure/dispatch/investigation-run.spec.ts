@@ -1513,11 +1513,40 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.accessLevel).toBe("auto");
 		expect(typeof opts.onSpawn).toBe("function");
 		expect(opts.resume.text).toMatch(/^PrismaLens stopped at .* and started again at /);
-		expect(opts.resume.text).toContain("1 alert fired on this incident: CheckoutLatencyHigh");
+		expect(opts.resume.text).toContain("1 alert fired on this incident; the ALERTS_WHILE_STOPPED block below names them.");
+		expect(opts.resume.text).toContain(": CheckoutLatencyHigh\n<<<END ALERTS_WHILE_STOPPED>>>");
 		expect(opts.resume.text).toContain("Continue the investigation from your last step.");
 		expect(opts.resume.afterRestart).toBeUndefined();
 		expect(opts.resume.via.restart).toMatchObject({ by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z" });
 		expect(restartAlerts).toHaveBeenCalledWith("inc-1", new Date("2026-10-28T08:52:00.000Z"), expect.any(Date), new Date("2026-10-28T08:52:00.000Z"));
+	});
+
+	it("a recovery that fails before reaching its agent ends saying why it didn't resume (#981 OBJ-020)", async () => {
+		const ports = followUpPorts({
+			agentRuntime: vi.fn(async () => {
+				throw new Error("the repository could not be cloned");
+			}),
+		});
+		const recovery: InvestigationJobData = {
+			...data,
+			resume: {
+				text: "PrismaLens restarted.",
+				mode: "queue",
+				kind: "continue",
+				restore: { status: "failed", completedAt: null, error: "API restarted while the run was in flight" },
+				restart: { attempt: 1, by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z", lastActivityAt: "2026-10-28T08:51:00.000Z" },
+			},
+		};
+
+		await runInvestigationJob({ id: "job-r2", investigationId: "inv-1", attempts: 1 }, recovery, io(), ports);
+
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.settleFollowUp).mock.calls[0]?.[1]).toMatchObject({
+			status: "failed",
+			error: "Not resumed: the repository could not be cloned",
+		});
+		const said = vi.mocked(ports.appendEvents).mock.calls.flatMap(([, events]) => events as { kind: string }[]);
+		expect(said.map((e) => e.kind)).not.toContain("operator_message");
 	});
 
 	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {

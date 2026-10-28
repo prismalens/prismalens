@@ -852,6 +852,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				}
 				if (verdict !== null) {
 					boot.skipped.push({ id: row.id, reason: verdict });
+					boot.keep.add(row.id);
 					await this.endAtBoot(row, job, false, undefined, verdict).catch((e) =>
 						this.logger.warn(
 							`Could not settle run ${row.id} at boot: ${(e as Error).message}`,
@@ -1355,19 +1356,23 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const now = new Date();
 		const live = await this.prisma.investigation.findMany({
 			where: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
-			select: { id: true },
+			select: { id: true, acpSessionId: true },
 		});
 		const activity = new Map<string, Date>();
 		const contained = new Map<string, boolean>();
 		const keep = new Set<string>();
-		for (const { id } of live) {
-			activity.set(id, await this.lastActivity(id, now));
-			const gone = await containPrevious(readReceipt(runDirFor(id))).catch(
-				() => false,
-			);
+		for (const { id, acpSessionId } of live) {
+			activity.set(id, await this.lastActivity(id));
+			const gone = await this.previousGone(id, acpSessionId);
 			contained.set(id, gone);
 			if (!gone) keep.add(id);
 		}
+		// A run a restart left for the operator keeps its files for Resume, whatever its retention (#981 OBJ-019).
+		const interrupted = await this.prisma.investigation.findMany({
+			where: { status: "failed", endReason: "interrupted" },
+			select: { id: true },
+		});
+		for (const { id } of interrupted) keep.add(id);
 		const prev = this.lifecycle?.lastRestart()?.previous ?? null;
 		const last = await this.restartSummary().catch(() => null);
 		const bootLoop =
@@ -1393,6 +1398,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		};
 	}
 
+	/** Whether the agent a stop left behind is provably gone, killing what is left of it first. */
+	async previousGone(
+		id: string,
+		acpSessionId: string | null,
+	): Promise<boolean> {
+		const receipt = readReceipt(runDirFor(id));
+		// A session means an agent was spawned; with no receipt for it nothing proves it gone (#981 OBJ-010).
+		if (!receipt) return !acpSessionId;
+		return containPrevious(receipt).catch(() => false);
+	}
+
 	private async hasToolResult(id: string): Promise<boolean> {
 		return (
 			(await this.prisma.investigationEvent.count({
@@ -1404,15 +1420,37 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		);
 	}
 
-	/** The run's newest event the boot did not write itself. */
-	private async lastActivity(id: string, fallback: Date): Promise<Date> {
+	/**
+	 * The run's newest event a boot did not write; with none, when its job was claimed or
+	 * the run was made, never the boot's own clock (#981 OBJ-006).
+	 */
+	private async lastActivity(id: string): Promise<Date> {
 		const rows = await this.prisma.investigationEvent.findMany({
-			where: { investigationId: id },
+			where: {
+				investigationId: id,
+				NOT: [
+					{ event: { contains: '"outcome":"restarted"' } },
+					{ event: { contains: '"delivered":false' } },
+				],
+			},
 			orderBy: { createdAt: "desc" },
-			take: 200,
+			take: 20,
 			select: { createdAt: true, event: true },
 		});
-		return lastActivityOf(rows, fallback);
+		const [job, inv] = await Promise.all([
+			this.prisma.job.findUnique({
+				where: { investigationId: id },
+				select: { claimedAt: true },
+			}),
+			this.prisma.investigation.findUnique({
+				where: { id },
+				select: { createdAt: true },
+			}),
+		]);
+		return lastActivityOf(
+			rows,
+			job?.claimedAt ?? inv?.createdAt ?? new Date(0),
+		);
 	}
 
 	/**
@@ -1427,7 +1465,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const found = await this.recoverable(id);
 		if (!found) return null;
 		const { inv, job, original, turn } = found;
-		if (await this.finishedTurn(id, job.claimedAt, turn)) return null;
+		if (await this.finishedTurn(id, job.claimedAt)) return null;
 		const lastActivityAt = boot.activity.get(id) ?? boot.now;
 		const prior = original.resume?.restart;
 		const plan = await this.planFollowUp(inv, {});
@@ -1509,11 +1547,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	}
 
 	/** A turn whose end the run had already recorded before the stop is not re-run (#981 OBJ-004). */
-	private async finishedTurn(
-		id: string,
-		since: Date | null,
-		turn: "report" | "answer",
-	): Promise<boolean> {
+	private async finishedTurn(id: string, since: Date | null): Promise<boolean> {
 		if (!since) return false;
 		const ends = await this.prisma.investigationEvent.count({
 			where: {
@@ -1521,9 +1555,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				createdAt: { gte: since },
 				OR: [
 					{ event: { contains: '"kind":"report"' } },
-					...(turn === "answer"
-						? [{ event: { contains: '"kind":"branch_done"' } }]
-						: []),
+					{ event: { contains: '"kind":"branch_done"' } },
 				],
 			},
 		});
@@ -1580,27 +1612,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		});
 		for (const job of pending) {
 			const id = job.investigationId;
-			const restart = jobResume(job.payload)?.restart;
-			if (!restart || boot.resumed.includes(id)) continue;
-			const inv = await this.prisma.investigation.findUnique({
-				where: { id },
-				select: { harness: true, model: true, acpSessionId: true },
-			});
-			const plan = inv ? await this.planFollowUp(inv, {}) : null;
-			const reason = notResumedReason({
-				enabled: boot.enabled,
-				now: boot.now,
-				lastActivityAt:
-					boot.activity.get(id) ?? new Date(restart.lastActivityAt),
-				attempt: restart.attempt,
-				bootLoop: boot.bootLoop,
-				contained: boot.contained.get(id) ?? true,
-				agent: agentLabel(plan?.harness ?? inv?.harness ?? null),
-				preflight: plan?.preflight
-					? `${plan.preflight.problem} ${plan.preflight.fix}`
-					: null,
-			});
-			if (!reason) {
+			const resume = jobResume(job.payload);
+			const restart = resume?.restart;
+			if (!resume || !restart || boot.resumed.includes(id)) continue;
+			// Fail closed: a check that cannot run refuses the recovery (#981 OBJ-013).
+			const reason = await this.recheck(id, restart, boot).catch(
+				(e: Error) => `the check before resuming could not run: ${e.message}`,
+			);
+			if (reason === null) {
 				await this.prisma.job.updateMany({
 					where: { investigationId: id, status: "pending" },
 					data: { runAt: new Date(boot.now.getTime() + RECOVERY_DELAY_MS) },
@@ -1611,16 +1630,82 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				continue;
 			}
 			boot.skipped.push({ id, reason });
-			await this.restoreFollowUp(
-				id,
-				`${FOLLOW_UP_RESTART_REASON} ${NOT_RESUMED}${reason}`,
-				"error",
-			);
-			await this.cancelPendingJob(id);
-			await this.prisma.investigation.updateMany({
-				where: { id, status: "failed", endReason: "interrupted" },
-				data: { error: `${NOT_RESUMED}${reason}` },
+			boot.keep.add(id);
+			await this.refuseRecovery(id, resume, reason);
+		}
+	}
+
+	/** Null when a recovery re-armed by an earlier boot may still run; else why not. */
+	private async recheck(
+		id: string,
+		restart: RestartRecovery,
+		boot: BootContext,
+	): Promise<string | null> {
+		const inv = await this.prisma.investigation.findUnique({
+			where: { id },
+			select: { harness: true, model: true, acpSessionId: true, status: true },
+		});
+		if (!inv || !LIVE_WORKFLOW_STATUSES.includes(inv.status as never))
+			return "the run had already ended.";
+		const plan = await this.planFollowUp(inv, {});
+		return notResumedReason({
+			enabled: boot.enabled,
+			now: boot.now,
+			// The activity carried from the boot that re-armed it; a refusal's own writes never refresh it.
+			lastActivityAt: new Date(restart.lastActivityAt),
+			attempt: restart.attempt,
+			bootLoop: boot.bootLoop,
+			contained: boot.contained.get(id) ?? true,
+			agent: agentLabel(plan?.harness ?? inv.harness),
+			preflight: !plan
+				? "it names no agent to resume in."
+				: plan.preflight
+					? `${plan.preflight.problem} ${plan.preflight.fix}`
+					: null,
+		});
+	}
+
+	/** The row's standing and its job end together, so a crash between them cannot run it (#981 OBJ-013). */
+	private async refuseRecovery(
+		id: string,
+		resume: NonNullable<InvestigationJobData["resume"]>,
+		reason: string,
+	): Promise<void> {
+		const failed = resume.restore.status === "failed";
+		await this.prisma.$transaction(async (tx) => {
+			await tx.investigation.updateMany({
+				where: { id, status: { in: [...LIVE_WORKFLOW_STATUSES] } },
+				data: {
+					status: resume.restore.status,
+					completedAt: resume.restore.completedAt
+						? new Date(resume.restore.completedAt)
+						: null,
+					error: failed ? `${NOT_RESUMED}${reason}` : resume.restore.error,
+					lastTurnOutcome: "error",
+					liveTurn: null,
+					stopRequestedAt: null,
+					...(failed ? { endReason: "interrupted" } : {}),
+				},
 			});
+			await new PrismaJobStore(
+				tx.job as unknown as JobDelegate,
+			).cancelIfPending(id);
+		});
+		try {
+			const seq = (await this.investigationsService.lastEventSeq(id)) + 1;
+			await this.investigationsService.appendEvents(
+				id,
+				followUpNotDelivered(
+					id,
+					seq,
+					resume,
+					`${FOLLOW_UP_RESTART_REASON} ${NOT_RESUMED}${reason}`,
+				),
+			);
+		} catch (e) {
+			this.logger.warn(
+				`Could not record the refused recovery in the conversation: ${(e as Error).message}`,
+			);
 		}
 	}
 
@@ -1717,10 +1802,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				return at ? Date.parse(at) : 0;
 			})
 			.catch(() => 0);
+		// Only a pull this boot made covers the gap; one between the last heartbeat and the crash does not (#981 OBJ-008).
+		const booted = this.lifecycle?.lastRestart()?.bootedAt ?? stoppedAt;
 		const catchUp: "done" | "unchecked" | "none" =
 			sources === 0
 				? "none"
-				: pulled > stoppedAt.getTime()
+				: pulled >= booted.getTime()
 					? "done"
 					: "unchecked";
 		return { catchUp, fired, resolved };
@@ -1758,7 +1845,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`${plan.preflight.problem} ${plan.preflight.fix}`,
 			);
 		const now = new Date();
-		const last = await this.lastActivity(id, now);
+		const last = await this.lastActivity(id);
 		const data = recoveryPayload(
 			original,
 			plan,
