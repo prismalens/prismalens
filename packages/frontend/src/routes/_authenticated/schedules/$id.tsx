@@ -108,11 +108,6 @@ function ScheduleHistoryPage() {
 							variant="secondary"
 							onClick={start}
 							disabled={runNow.isPending || !!s.liveRunId}
-							title={
-								s.liveRunId
-									? "A run of this schedule is still going"
-									: undefined
-							}
 						>
 							<Play />
 							<span className="max-sm:sr-only">Run now</span>
@@ -143,10 +138,7 @@ function ScheduleHistoryPage() {
 						</DropdownMenu>
 					</>
 				) : (
-					<span
-						className="inline-flex items-center gap-1.5 text-meta text-text-3"
-						title={`Schedules are changed on ${hostName}`}
-					>
+					<span className="inline-flex items-center gap-1.5 text-meta text-text-3">
 						<Lock className="size-3.5" />
 						<span className="max-sm:sr-only">View only</span>
 					</span>
@@ -179,7 +171,7 @@ function ScheduleHistoryPage() {
 							</p>
 						) : (
 							<div
-								className="overflow-hidden rounded-pool bg-surface-2"
+								className="grid gap-px overflow-hidden rounded-pool bg-surface-1"
 								data-testid="schedule-ticks"
 							>
 								{ticks.map((t) => (
@@ -330,7 +322,7 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 	const line = tickLine(tick, clock);
 	return (
 		<div
-			className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 border-t border-hairline px-3.5 py-3 first:border-t-0 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_110px]"
+			className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 bg-surface-2 px-3.5 py-3 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_110px]"
 			data-testid="schedule-tick"
 		>
 			<span className="text-meta text-text-2">

@@ -47,10 +47,7 @@ function SchedulesPage() {
 							<span className="max-sm:sr-only">New schedule</span>
 						</Button>
 					) : data ? (
-						<span
-							className="inline-flex items-center gap-1.5 text-meta text-text-3"
-							title={`Schedules are changed on ${data.hostName}`}
-						>
+						<span className="inline-flex items-center gap-1.5 text-meta text-text-3">
 							<Lock className="size-3.5" />
 							<span className="max-sm:sr-only">View only</span>
 						</span>
@@ -85,13 +82,13 @@ function SchedulesPage() {
 					) : (
 						data && (
 							<div
-								className="overflow-hidden rounded-pool bg-surface-2"
+								className="grid gap-px overflow-hidden rounded-pool bg-surface-1"
 								data-testid="schedule-list"
 							>
 								<div
 									className={cn(
 										ROW,
-										"hidden min-h-0 py-2 text-meta text-text-3 @3xl:grid",
+										"hidden min-h-0 bg-surface-2 py-2 text-meta text-text-3 @3xl:grid",
 									)}
 								>
 									<span>Schedule</span>
@@ -111,7 +108,7 @@ function SchedulesPage() {
 							<h2 className="mb-1.5 ml-1 text-heading text-text-2">
 								Built into PrismaLens
 							</h2>
-							<div className="overflow-hidden rounded-pool bg-surface-2">
+							<div className="grid gap-px overflow-hidden rounded-pool bg-surface-1">
 								{data.builtIns.map((b) => (
 									<BuiltInRow key={b.id} job={b} />
 								))}
@@ -142,10 +139,7 @@ function ScheduleRow({
 	const last = s.lastTick ? tickLine(s.lastTick, clock) : null;
 	return (
 		<div
-			className={cn(
-				ROW,
-				"relative border-t border-hairline first:border-t-0 hover:bg-surface-3",
-			)}
+			className={cn(ROW, "relative bg-surface-2 hover:bg-surface-3")}
 			data-testid="schedule-row"
 		>
 			<Link
@@ -198,7 +192,7 @@ function ScheduleRow({
 
 function BuiltInRow({ job }: { job: BuiltInJob }) {
 	return (
-		<div className={cn(ROW, "border-t border-hairline first:border-t-0")}>
+		<div className={cn(ROW, "bg-surface-2")}>
 			<div className="min-w-0">
 				<div className="truncate text-heading">{job.name}</div>
 				<div className="truncate text-meta text-text-3">{job.description}</div>
