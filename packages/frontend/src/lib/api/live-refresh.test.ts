@@ -20,7 +20,18 @@ describe("invalidateTopics (walk f27)", () => {
 			JSON.stringify(orpc.setup.key()),
 			JSON.stringify(orpc.webhooks.lastDelivery.key()),
 			JSON.stringify(orpc.investigations.key()),
+			JSON.stringify(orpc.schedules.key()),
 		]);
+	});
+
+	it("re-reads schedules when one changes or a run it started moves (#979)", () => {
+		const queryClient = new QueryClient();
+		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+		invalidateTopics(queryClient, ["schedules"]);
+
+		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
+		expect(keys).toEqual([JSON.stringify(orpc.schedules.key())]);
 	});
 
 	it("invalidates incidents, setup, recommendations and timeline keys in order (#673 walk 4)", () => {
