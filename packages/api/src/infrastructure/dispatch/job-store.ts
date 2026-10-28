@@ -53,6 +53,8 @@ export interface EnqueueJobInput {
 	kind?: string;
 	/** A scheduled attempt not claimed by then is expired; every other admission clears it (#979). */
 	startBy?: Date | null;
+	/** Not claimed before this; a restart recovery waits for alert catch-up (#981). */
+	runAt?: Date;
 }
 
 /** Scheduled runs take one slot at a time, so they never crowd out runs a person or an alert started (#979). */
@@ -180,7 +182,7 @@ export class PrismaJobStore implements JobStore {
 				startBy: input.startBy ?? null,
 				status: "pending",
 				attempts: 0,
-				runAt: new Date(),
+				runAt: input.runAt ?? new Date(),
 				claimedBy: null,
 				claimedAt: null,
 				heartbeatAt: null,
@@ -204,7 +206,7 @@ export class PrismaJobStore implements JobStore {
 				priority: input.priority,
 				startBy: input.startBy ?? null,
 				status: "pending",
-				runAt: new Date(),
+				runAt: input.runAt ?? new Date(),
 			},
 			select: { id: true },
 		});
