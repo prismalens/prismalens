@@ -41,6 +41,8 @@ model Service {
   integrations ServiceIntegration[]
   changeEvents ChangeEvent[]
   repositories ServiceRepository[]
+  schedules      Schedule[]
+  investigations Investigation[] @relation("ServiceRuns")
 
   @@map("services")
 }
@@ -258,7 +260,11 @@ model Attachment {
 model Investigation {
   id                String    @id @default(uuid())
   tenantId          String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
-  incidentId        String
+  incidentId        String? // null for a scheduled service check until a finding links it (#979)
+  serviceId         String? // a scheduled service check's subject (#979)
+  scheduleId        String?
+  scheduleRevision  Int?
+  configSnapshot    String? // JSON: the schedule values the run was admitted with (#979)
   status            String    @default("pending") // pending, running, completed, failed, cancelled
   startedAt         DateTime?
   completedAt       DateTime?
@@ -298,11 +304,14 @@ model Investigation {
   preRun          String? // JSON PreRunSnapshot: what PrismaLens read before the run; its follow-ups read it again (#848)
   awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
 
-  incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: Cascade)
   recommendations Recommendation[]
   events          InvestigationEvent[]
 
   @@index([incidentId])
+  @@index([scheduleId, createdAt])
+  @@index([serviceId])
   @@index([incidentId, createdAt])
   @@index([status])
   @@map("investigations")
@@ -487,7 +496,7 @@ model Job {
   kind            String @default("investigation")
   /// One live job per investigation — the dedupe key that replaced the queue's job id.
   investigationId String @unique
-  incidentId      String
+  incidentId      String?
   payload         String // JSON: InvestigationJobData
   /// 1 critical … 4 low. Ordering only — NOT a fairness key.
   priority        Int    @default(3)
@@ -504,6 +513,8 @@ model Job {
   claimedAt   DateTime?
   /// Last proof-of-life from the claim holder; staleness here triggers reclaim.
   heartbeatAt DateTime?
+  /// A scheduled attempt not claimed by then is cancelled as host-busy (#979); null for every other job.
+  startBy     DateTime?
   finishedAt  DateTime?
   lastError   String?
 
@@ -539,4 +550,71 @@ model AlertSourceAlert {
   @@index([sourceAlertId])
   @@index([alertId, resolvedAt])
   @@map("alert_source_alerts")
+}
+
+/// Work the host runs on a schedule (#979). Only the host writes these.
+model Schedule {
+  id             String  @id @default(uuid())
+  name           String
+  kind           String  @default("service_check")
+  serviceId      String
+  runbook        String? // a runbook path in the service's repo
+  brief          String
+  recurrence     String // JSON Recurrence: cron in a time zone, or an elapsed interval
+  harness        String
+  model          String?
+  effort         String?
+  missedPolicy   String  @default("run_once") // run_once | skip
+  catchUpMinutes Int     @default(360)
+  enabled        Boolean @default(true)
+  pausedReason   String?
+  /// sha256 of the service's repository bindings and notes at the last host save (adversary OBJ-003).
+  bindingsHash   String
+  nextRunAt      DateTime?
+  lastEvaluatedAt DateTime?
+  revision       Int     @default(1)
+  consecutiveFailures Int @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  service Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  ticks   ScheduleTick[]
+
+  @@index([enabled, nextRunAt])
+  @@map("schedules")
+}
+
+/// One decided slot. The unique key keeps a slot from firing twice across restarts.
+model ScheduleTick {
+  id              String   @id @default(uuid())
+  scheduleId      String
+  scheduledFor    DateTime
+  decidedAt       DateTime @default(now())
+  /// started | late_started | run_now | skipped_overlap | skipped_agent_not_ready | skipped_bindings_changed | missed_asleep | missed_off | missed_late | expired_host_busy
+  outcome         String
+  reason          String?
+  missedCount     Int      @default(0)
+  missedOverflow  Boolean  @default(false)
+  investigationId String?
+  revision        Int
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, scheduledFor])
+  @@index([scheduleId, decidedAt])
+  @@map("schedule_ticks")
+}
+
+/// Who changed a schedule and how; kept after the schedule is deleted.
+model ScheduleEvent {
+  id         String   @id @default(uuid())
+  scheduleId String
+  action     String // created | edited | paused | resumed | deleted | run_now | paused_by_prismalens
+  deviceId   String?
+  before     String? // JSON
+  after      String? // JSON
+  createdAt  DateTime @default(now())
+
+  @@index([scheduleId, createdAt])
+  @@map("schedule_events")
 }
