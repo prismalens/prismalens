@@ -100,6 +100,7 @@ import {
 	writeReadCopies,
 } from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
+import { isShutdown } from "./run-abort.js";
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
 
 const logger = new Logger({ context: "InvestigationProcessor" });
@@ -419,6 +420,7 @@ async function runJobInternal(
 		await io.streamDone();
 
 		if (outcome.failureKind === "cancelled") {
+			if (isShutdown(io.signal)) return interruptedResult(data);
 			logger.info(`Job ${job.id} cancelled`);
 			try {
 				await persistCancelled(data, ports, kind);
@@ -449,6 +451,8 @@ async function runJobInternal(
 	} catch (error: unknown) {
 		// A cancel that lands before the harness starts (during the clone) is still a cancel (#605 edge 23).
 		const parsed = InvestigationJobDataSchema.safeParse(rawPayload);
+		if (isShutdown(io.signal) && parsed.success)
+			return interruptedResult(parsed.data);
 		if (io.signal.aborted && parsed.success) {
 			logger.info(`Job ${job.id} cancelled before the harness started`);
 			try {
@@ -506,7 +510,9 @@ async function runJobInternal(
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
-			await clearRunWorkspace(unvalidated.investigationId);
+			// A run PrismaLens's own exit cut off keeps its workspace for auto-resume (#981).
+			if (!isShutdown(io.signal))
+				await clearRunWorkspace(unvalidated.investigationId);
 		}
 	}
 }
@@ -1085,8 +1091,10 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		await clearRunWorkspace(id);
+		if (!isShutdown(io.signal)) await clearRunWorkspace(id);
 	}
+	// PrismaLens is closing: no end is written, so boot reads this turn as interrupted (#981).
+	if (isShutdown(io.signal)) return interruptedResult(data);
 
 	// A `continue` that reached its agent ends as a run (I6-I8); everything else is settled here.
 	const ran = delivered();
@@ -2228,6 +2236,21 @@ function failureResult(
 		findings: {},
 		recommendations: [],
 		error,
+	};
+}
+
+/** PrismaLens's own exit cut the run off; nothing was written, boot settles it. */
+function interruptedResult(
+	data: Pick<InvestigationJobData, "investigationId" | "incidentId">,
+): InvestigationResult {
+	return {
+		success: false,
+		investigationId: data.investigationId,
+		incidentId: data.incidentId,
+		findings: {},
+		recommendations: [],
+		error: "PrismaLens stopped while the run was working",
+		errorType: "interrupted",
 	};
 }
 

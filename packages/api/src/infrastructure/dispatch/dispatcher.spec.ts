@@ -339,6 +339,19 @@ describe("Dispatcher", () => {
 			await dispatcher.stop();
 		});
 
+		it("a run that ends after stop() leaves its job for boot, never settled as cancelled (#981 OBJ-002)", async () => {
+			const { runner, finish } = controllableRunner();
+			store.pending = [job(1)];
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+
+			await dispatcher.tick();
+			await dispatcher.stop();
+			finish.get("job-1")?.({ outcome: "cancelled" });
+			await new Promise((r) => setTimeout(r, 10));
+
+			expect(store.completed).toEqual([]);
+		});
+
 		it("stop() kills in-flight runs", async () => {
 			const { runner, killed } = controllableRunner();
 			store.pending = [job(1), job(2)];
