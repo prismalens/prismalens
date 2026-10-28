@@ -810,9 +810,14 @@ async function captureSmoke(win: BrowserWindow, path: string): Promise<void> {
 		try {
 			// Viz drops a copy request whose surface is replaced before it draws
 			// (UnknownVizError); ask for it after a frame the shown window drew (#960).
-			await win.webContents.executeJavaScript(
-				"new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))",
-			);
+			await Promise.race([
+				win.webContents.executeJavaScript(
+					"new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))",
+				),
+				new Promise((_, reject) =>
+					setTimeout(() => reject(new Error("no frame in 5s")), 5_000),
+				),
+			]);
 			const image = await win.webContents.capturePage();
 			writeFileSync(path, image.toPNG());
 			break;
