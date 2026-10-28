@@ -116,7 +116,7 @@ describe("git-failure", () => {
 		["repository-not-found lines", "repository '".repeat(1_400_000)],
 	])("16 MiB of %s scrubs and classifies in under 500 ms: the cap holds (#938)", (_name, stderr) => {
 		const started = performance.now();
-		scrubGitStderr(stderr);
+		const scrubbed = scrubGitStderr(stderr);
 		diagnoseGitFailure({
 			stderr,
 			credential: { source: "machine", label: "machine git", via: "machine" },
@@ -125,6 +125,7 @@ describe("git-failure", () => {
 			sshAuthSockSet: false,
 		});
 		expect(performance.now() - started).toBeLessThan(500);
+		expect(scrubbed.length).toBeLessThanOrEqual(64 * 1024);
 	});
 
 	it("formatDay formats Date to YYYY-MM-DD", () => {

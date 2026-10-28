@@ -113,7 +113,7 @@ const COULD_NOT_READ_USER = /could not read Username/i;
 const AUTH_FAILED = /Authentication failed for/i;
 const HTTP_403 = /returned error: 403/i;
 const HTTP_404 = /returned error: 404/i;
-const REPO_NOT_FOUND = /repository '.*' not found/i;
+const REPO_NOT_FOUND = /repository '[^'\r\n]*' not found/i;
 const UNREACHABLE =
 	/Could not resolve host|Failed to connect|Connection (refused|timed out)|Operation timed out|ssh: connect to host/i;
 
