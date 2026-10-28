@@ -19,7 +19,7 @@ import type { RunLink } from "@/lib/run-links";
 
 // The native view paints above the page; it steps aside while any of these is open over it.
 const OVER =
-	"[role=dialog][data-state=open], [role=alertdialog], [role=menu], [role=listbox], [data-radix-popper-content-wrapper]";
+	"[role=dialog][data-state=open], [role=alertdialog], [role=menu], [role=listbox], [data-radix-popper-content-wrapper], [data-float=toast]";
 
 /**
  * The Browser tab (#973). In the desktop app, a real page in a view of its
@@ -100,18 +100,20 @@ function DesktopBrowserView({
 	links: RunLink[];
 }) {
 	const [state, setState] = useState<DesktopBrowserState | null>(null);
+	// The address shows where the view is; a refused address is named in the note instead (#977 OBJ-007).
 	const [address, setAddress] = useState("");
 	const slot = useRef<HTMLDivElement>(null);
 	const page = state?.url && state.url !== "about:blank" ? state.url : null;
 
-	useEffect(
-		() =>
-			browser.onState((s) => {
-				setState(s);
-				if (!s.refused) setAddress(s.url);
-			}),
-		[browser],
-	);
+	// Ask where the view is on mount: switching tabs remounts this (#977 OBJ-006).
+	useEffect(() => {
+		const off = browser.onState((s) => {
+			setState(s);
+			if (s) setAddress(s.url);
+		});
+		browser.go("state");
+		return off;
+	}, [browser]);
 
 	// Lay the native view over the slot; hide it when the slot is gone, empty, or covered.
 	useEffect(() => {
@@ -219,7 +221,7 @@ function DesktopBrowserView({
 			</form>
 			<p className="shrink-0 px-3 pb-1.5 text-meta text-text-3">
 				{state?.refused
-					? "PrismaLens opens only http and https pages here."
+					? `Not opened: ${state.refused}. PrismaLens opens only http and https pages here.`
 					: "Separate session: not signed in to PrismaLens, and nothing is kept after you close the app."}
 			</p>
 			{page ? (

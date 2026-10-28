@@ -33,6 +33,8 @@ export function browserWebPreferences(packaged: boolean): WebPreferences {
 		allowRunningInsecureContent: false,
 		devTools: !packaged,
 		spellcheck: false,
+		// A page cannot raise alert, confirm or prompt in the app's name (#977 OBJ-010).
+		disableDialogs: true,
 	};
 }
 
@@ -112,8 +114,14 @@ export function trustedSender(
 	);
 }
 
-export type BrowserGo = "back" | "forward" | "reload" | "external";
+export type BrowserGo = "back" | "forward" | "reload" | "external" | "state";
 
 export function isGo(v: unknown): v is BrowserGo {
-	return v === "back" || v === "forward" || v === "reload" || v === "external";
+	return (
+		v === "back" ||
+		v === "forward" ||
+		v === "reload" ||
+		v === "external" ||
+		v === "state"
+	);
 }

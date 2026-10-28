@@ -81,9 +81,11 @@ export function attachBrowser(
 		window.webContents.send(BROWSER_CHANNEL.state, state);
 	};
 
-	const guard = (event: Event, url: string) => {
+	// A refused main-frame navigation is said once; a subframe's is dropped quietly (#977 OBJ-007).
+	const guard = (event: Event, url: string, mainFrame = true) => {
 		if (browserUrl(url)) return;
 		event.preventDefault();
+		if (!mainFrame) return;
 		refused = url;
 		send();
 	};
@@ -95,15 +97,33 @@ export function attachBrowser(
 		});
 		v.setVisible(false);
 		const wc = v.webContents;
-		// A page never opens a window or leaves http(s): popups go to the system browser.
+		// A page never opens a window: a popup loads in this view, so a page cannot push
+		// tabs into the user's signed-in browser (#977 OBJ-009).
 		wc.setWindowOpenHandler(({ url }) => {
-			if (browserUrl(url)) void shell.openExternal(url);
+			if (browserUrl(url)) void wc.loadURL(url).catch(() => send());
 			return { action: "deny" };
 		});
-		wc.on("will-navigate", guard);
-		wc.on("will-redirect", guard);
-		wc.on("will-frame-navigate", (event) => guard(event, event.url));
+		wc.on("will-navigate", (event, url) => guard(event, url));
+		wc.on("will-redirect", (event, url, _inPlace, isMainFrame) =>
+			guard(event, url, isMainFrame),
+		);
+		wc.on("will-frame-navigate", (event) =>
+			guard(event, event.url, event.isMainFrame),
+		);
 		wc.on("will-attach-webview", (event) => event.preventDefault());
+		// No identity leaves with a page: no client certificate, no saved login (#977 OBJ-008).
+		wc.on("select-client-certificate", (event, _url, _list, callback) => {
+			event.preventDefault();
+			// No argument declines; Electron's typing omits it (electronjs.org app docs).
+			(callback as (certificate?: Electron.Certificate) => void)();
+		});
+		wc.on("login", (event, _details, _auth, callback) => {
+			event.preventDefault();
+			callback();
+		});
+		wc.on("did-navigate", () => {
+			refused = null;
+		});
 		for (const e of [
 			"did-start-loading",
 			"did-stop-loading",
@@ -135,11 +155,17 @@ export function attachBrowser(
 		view.setVisible(!!bounds);
 	};
 	const onGo = (event: Electron.IpcMainEvent, go: unknown) => {
-		if (!trusted(event) || !view || !isGo(go)) return;
+		if (!trusted(event) || !isGo(go)) return;
+		// A panel that mounts again asks where the view is (#977 OBJ-006).
+		if (!view) {
+			if (go === "state") window.webContents.send(BROWSER_CHANNEL.state, null);
+			return;
+		}
 		const wc = view.webContents;
 		if (go === "back") wc.navigationHistory.goBack();
 		else if (go === "forward") wc.navigationHistory.goForward();
 		else if (go === "reload") wc.reload();
+		else if (go === "state") send();
 		else if (browserUrl(wc.getURL())) void shell.openExternal(wc.getURL());
 	};
 

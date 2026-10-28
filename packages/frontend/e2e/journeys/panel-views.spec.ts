@@ -364,6 +364,7 @@ test.describe("Panel browser (#973)", () => {
 		await page.addInitScript(() => {
 			const calls: unknown[] = [];
 			let listener: ((s: unknown) => void) | null = null;
+			let last: unknown = null;
 			(window as unknown as { __calls: unknown[] }).__calls = calls;
 			(window as unknown as { prismalensDesktop: unknown }).prismalensDesktop =
 				{
@@ -372,17 +373,21 @@ test.describe("Panel browser (#973)", () => {
 					browser: {
 						open: (url: string) => {
 							calls.push({ open: url });
-							listener?.({
+							last = {
 								url,
 								title: "",
 								canGoBack: false,
 								canGoForward: false,
 								loading: false,
 								refused: null,
-							});
+							};
+							listener?.(last);
 						},
 						setBounds: (rect: unknown) => calls.push({ bounds: rect }),
-						go: (to: string) => calls.push({ go: to }),
+						go: (to: string) => {
+							calls.push({ go: to });
+							if (to === "state") listener?.(last);
+						},
 						onState: (l: (s: unknown) => void) => {
 							listener = l;
 							return () => {
@@ -414,6 +419,10 @@ test.describe("Panel browser (#973)", () => {
 			bounds: { x: number; width: number };
 		};
 		expect(Math.abs(last.bounds.x - (box?.x ?? 0))).toBeLessThan(1);
+		// Leaving the tab and coming back finds the page again (#977 OBJ-006).
+		await page.getByTestId("run-details-tab-files").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await expect(slot).toBeVisible();
 		await page.evaluate(() =>
 			(document.activeElement as HTMLElement | null)?.blur(),
 		);
