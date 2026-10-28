@@ -229,6 +229,7 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		r8: "pass",
 		r9: "pass",
 		r10: "pass",
+		r11: "pass",
 		resumable: true,
 	};
 
@@ -240,6 +241,8 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		["R9 passing on an agent that cannot resume", { ...passing, resumable: false }],
 		["R5 failing on an agent that cannot resume", { ...passing, r5: "fail", resumable: false }],
 		["R10 n/a on an agent that offers no session/resume", { ...passing, r10: "n/a" }],
+		["R11 n/a on an agent that cannot reopen a session", { ...passing, r11: "n/a" }],
+		["R11 failing on an agent that cannot resume", { ...passing, r11: "fail", resumable: false }],
 	])("returns 0 with %s", (_, v) => {
 		expect(admissionExit(v)).toBe(0);
 	});
@@ -250,6 +253,8 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		["r5 = missing", { r5: "missing" }],
 		["r10 = fail (session/resume streamed history)", { r10: "fail" }],
 		["r10 = missing", { r10: "missing" }],
+		["r11 = fail (a killed turn did not survive the reopen, #981)", { r11: "fail" }],
+		["r11 = missing", { r11: "missing" }],
 		["r6 = fail", { r6: "fail" }],
 		["r6 = missing", { r6: "missing" }],
 		["r7 = fail", { r7: "fail" }],
