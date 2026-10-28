@@ -33,6 +33,7 @@ class StubStore implements JobStore {
 	/** jobId → owner that currently holds the row. */
 	claimed = new Map<string, string>();
 	completed: Array<{ id: string; status: string; error?: string }> = [];
+	released: string[] = [];
 
 	async enqueue(): Promise<string> {
 		throw new Error("not used");
@@ -59,6 +60,10 @@ class StubStore implements JobStore {
 		return null;
 	}
 
+	async release(jobId: string): Promise<boolean> {
+		this.released.push(jobId);
+		return true;
+	}
 	async cancelIfPending(): Promise<boolean> {
 		return false;
 	}
@@ -380,6 +385,59 @@ describe("Dispatcher", () => {
 
 			await vi.waitFor(() => expect(started).toHaveLength(2));
 			await dispatcher.stop();
+		});
+	});
+	describe("waking and stopping while a claim is out (#981)", () => {
+		it("a tick asked for while a claim is out runs after it, so the recovery wake is not lost (OBJ-016)", async () => {
+			const { runner, started } = controllableRunner();
+			let release!: () => void;
+			const gate = new Promise<void>((r) => {
+				release = r;
+			});
+			const claim = store.claim.bind(store);
+			let calls = 0;
+			store.claim = async (owner, limit) => {
+				calls++;
+				if (calls === 1) {
+					await gate;
+					return [];
+				}
+				return claim(owner, limit);
+			};
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+
+			const first = dispatcher.tick();
+			store.pending = [job(1)];
+			await dispatcher.tick();
+			release();
+			await first;
+
+			expect(calls).toBe(2);
+			expect(started.map((j) => j.id)).toEqual(["job-1"]);
+			await dispatcher.stop();
+		});
+
+		it("a claim that lands after stop() is handed back and never started (OBJ-017)", async () => {
+			const { runner, started } = controllableRunner();
+			let land!: () => void;
+			const gate = new Promise<void>((r) => {
+				land = r;
+			});
+			const claim = store.claim.bind(store);
+			store.claim = async (owner, limit) => {
+				await gate;
+				return claim(owner, limit);
+			};
+			store.pending = [job(1)];
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+
+			const ticking = dispatcher.tick();
+			const stopping = dispatcher.stop(1_000);
+			land();
+			await Promise.all([ticking, stopping]);
+
+			expect(started).toEqual([]);
+			expect(store.released).toEqual(["job-1"]);
 		});
 	});
 });

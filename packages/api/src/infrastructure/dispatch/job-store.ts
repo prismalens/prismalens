@@ -75,6 +75,9 @@ export interface JobStore {
 		error?: string,
 	): Promise<boolean>;
 
+	/** Hand a claim back unstarted, as it was before `claim`; false when it moved on (#981 OBJ-017). */
+	release(jobId: string, owner: string): Promise<boolean>;
+
 	/** Look a job up by the investigation it belongs to. */
 	findByInvestigation(investigationId: string): Promise<JobRecord | null>;
 
@@ -225,6 +228,19 @@ export class PrismaJobStore implements JobStore {
 			if (count === 1) claimed.push({ ...job, attempts: job.attempts + 1 });
 		}
 		return claimed;
+	}
+
+	async release(jobId: string, owner: string): Promise<boolean> {
+		const { count } = await this.jobs.updateMany({
+			where: { id: jobId, status: "running", claimedBy: owner },
+			data: {
+				status: "pending",
+				claimedBy: null,
+				claimedAt: null,
+				attempts: { decrement: 1 },
+			},
+		});
+		return count === 1;
 	}
 
 	async complete(

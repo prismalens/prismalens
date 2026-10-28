@@ -1159,7 +1159,7 @@ describe("upgrade from a database before investigation_turns (T14, OBJ-021)", ()
 describe("boot takes up the runs a restart cut off (#981)", () => {
 	const ask = { text: "why the pool?", mode: "queue" as const, restore: restoreDone };
 
-	function recovering(opts: { enabled?: boolean; previous?: { startedAt: Date; lastAliveAt: Date; stoppedCleanly: boolean } | null } = {}) {
+	function recovering(opts: { enabled?: boolean; contained?: boolean; previous?: { startedAt: Date; lastAliveAt: Date; stoppedCleanly: boolean } | null } = {}) {
 		const attach = vi.fn();
 		const service = new DispatchService(
 			fakeBus() as never,
@@ -1196,6 +1196,8 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		);
 		vi.spyOn(service["dispatcher"], "tick").mockResolvedValue(undefined);
 		vi.spyOn(service["dispatcher"], "start").mockImplementation(() => {});
+		// The receipt rule has its own tests; here the old agent is gone unless a test says otherwise.
+		vi.spyOn(service, "previousGone").mockResolvedValue(opts.contained ?? true);
 		return { service, attach };
 	}
 
@@ -1417,6 +1419,87 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		await boot();
 		expect(await read(again.id)).toMatchObject({ status: "pending" });
 		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: again.id } })).runAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
+	});
+
+	it("a report turn that recorded branch_done before the stop is not run again (OBJ-004)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 60_000) } });
+		await event(row.id, 0, { kind: "branch_done" });
+
+		await boot();
+
+		expect((await read(row.id)).status).not.toBe("pending");
+		expect((await payloadOf(row.id)).resume?.restart).toBeUndefined();
+	});
+
+	it("a run with no event is as old as its claim, not as new as the boot (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 2 * 24 * 3_600_000) } });
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for 2 days/);
+	});
+
+	it("a refused recovery writes no line as the user's, and a pending one whose run ended is cancelled (OBJ-009, OBJ-013)", async () => {
+		const inc = await incident();
+		const kept = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(kept.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const inc2 = await incident();
+		const ended = await thread(inc2.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(ended.id, inc2.id, { resume: recoveryOf(1) }, "pending");
+
+		await boot({ enabled: false });
+
+		const kinds = (await prisma.investigationEvent.findMany({ where: { investigationId: kept.id } })).map((e) => JSON.parse(e.event).kind);
+		expect(kinds).toEqual(["error"]);
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: ended.id } })).status).toBe("cancelled");
+		expect((await read(ended.id)).error).toBe("Not resumed: x");
+	});
+
+	it("a pending recovery whose check throws is refused, never run unchecked (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		vi.spyOn(service as never as { planFollowUp: () => Promise<never> }, "planFollowUp").mockRejectedValue(new Error("db busy"));
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: "Not resumed: the check before resuming could not run: db busy" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+	});
+
+	it("only a pull this boot made counts as the catch-up, not one between the last heartbeat and the crash (OBJ-008)", async () => {
+		const inc = await incident();
+		const { service } = recovering();
+		const bootedAt = new Date();
+		const stoppedAt = new Date(bootedAt.getTime() - 10 * 60_000);
+		Object.assign(service, { lifecycle: { lastRestart: () => ({ bootedAt, previous: null }) } });
+		vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
+		await prisma.setting.upsert({
+			where: { key: "ALERT_PULL" },
+			update: { value: JSON.stringify({ lastPulledAt: new Date(stoppedAt.getTime() + 10_000).toISOString() }) },
+			create: { key: "ALERT_PULL", value: JSON.stringify({ lastPulledAt: new Date(stoppedAt.getTime() + 10_000).toISOString() }), type: "json", category: "general" },
+		});
+		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<{ catchUp: string }> }).restartAlerts.bind(service);
+
+		expect((await restartAlerts(inc.id, stoppedAt, bootedAt, stoppedAt)).catchUp).toBe("unchecked");
+		await prisma.setting.update({ where: { key: "ALERT_PULL" }, data: { value: JSON.stringify({ lastPulledAt: new Date(bootedAt.getTime() + 1_000).toISOString() }) } });
+		expect((await restartAlerts(inc.id, stoppedAt, bootedAt, stoppedAt)).catchUp).toBe("done");
+		vi.mocked(prisma.connection.count).mockRestore();
+	});
+
+	it("an agent that had a session but left no pid receipt is not proven gone (OBJ-010)", async () => {
+		const service = new DispatchService(fakeBus() as never, {} as never, investigations, {} as never, timeline as never, {} as never, {} as never, prisma, {} as never, {} as never, {} as never, {} as never, {} as never);
+		expect(await service.previousGone("no-receipt-run", "ses_1")).toBe(false);
+		expect(await service.previousGone("no-receipt-run", null)).toBe(true);
 	});
 
 	it("many runs at once are all re-armed; the dispatcher's cap paces them", async () => {

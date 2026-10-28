@@ -88,7 +88,7 @@ import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
-import { clearReceipt, writeReceipt } from "./harness-receipt.js";
+import { clearReceipt, watchReceipt, writeReceipt } from "./harness-receipt.js";
 import {
 	buildPreRunSnapshot,
 	type CopyTarget,
@@ -104,6 +104,7 @@ import {
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
 import {
 	composeRestartMessage,
+	NOT_RESUMED,
 	type RestartFacts,
 	type WorkspaceState,
 } from "./restart-recovery.js";
@@ -519,10 +520,9 @@ async function runJobInternal(
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
 			// A run PrismaLens's own exit cut off keeps its workspace and pid for auto-resume (#981).
-			if (!isShutdown(io.signal)) {
+			if (!isShutdown(io.signal))
 				await clearRunWorkspace(unvalidated.investigationId);
-				dropReceipt(unvalidated.investigationId);
-			}
+			dropReceipt(unvalidated.investigationId, isShutdown(io.signal));
 		}
 	}
 }
@@ -1137,10 +1137,8 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		if (!isShutdown(io.signal)) {
-			await clearRunWorkspace(id);
-			dropReceipt(id);
-		}
+		if (!isShutdown(io.signal)) await clearRunWorkspace(id);
+		dropReceipt(id, isShutdown(io.signal));
 	}
 	// PrismaLens is closing: no end is written, so boot reads this turn as interrupted (#981).
 	if (isShutdown(io.signal)) return interruptedResult(data);
@@ -1152,9 +1150,20 @@ async function runFollowUp(
 		outcome: TurnOutcome,
 		sentence: string | null,
 	): Promise<boolean> => {
+		// A recovery that never reached its agent ends saying why it didn't resume (#981 OBJ-020).
+		const unprepared =
+			!!resume.restart &&
+			!ran &&
+			outcome === "error" &&
+			resume.restore.status === "failed";
 		const to = followUpEnd(
 			ran ? kind : null,
-			resume.restore,
+			unprepared
+				? {
+						...resume.restore,
+						error: `${NOT_RESUMED}${sentence ?? "it could not be prepared."}`,
+					}
+				: resume.restore,
 			outcome,
 			sentence,
 		);
@@ -1375,6 +1384,8 @@ export function followUpNotDelivered(
 		path: [],
 		ts: new Date().toISOString(),
 	};
+	// A recovery's text is PrismaLens's, or a question already in the conversation: never a new user line (#981 OBJ-009).
+	if (resume.restart) return [{ kind: "error", ...base, seq, message }];
 	return [
 		{
 			kind: "operator_message",
@@ -2290,19 +2301,29 @@ function failureResult(
 	};
 }
 
+/** Each run dir's tree watch, stopped when its receipt is dropped. */
+const receiptWatches = new Map<string, () => void>();
+
 function keepReceipt(runDir: string, pid: number | undefined): void {
 	if (!pid) return;
 	try {
 		mkdirSync(runDir, { recursive: true });
 		writeReceipt(runDir, pid);
+		receiptWatches.get(runDir)?.();
+		receiptWatches.set(runDir, watchReceipt(runDir));
 	} catch (e) {
 		logger.warn("Could not record the harness pid", e);
 	}
 }
 
-function dropReceipt(runId: string): void {
+/** Stops the tree watch; `keepFile` leaves the receipt for the next boot's containment check. */
+function dropReceipt(runId: string, keepFile = false): void {
+	const runDir = runDirFor(runId);
+	receiptWatches.get(runDir)?.();
+	receiptWatches.delete(runDir);
+	if (keepFile) return;
 	try {
-		clearReceipt(runDirFor(runId));
+		clearReceipt(runDir);
 	} catch {
 		// The run dir is already gone.
 	}

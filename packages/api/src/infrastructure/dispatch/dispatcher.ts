@@ -93,7 +93,9 @@ export class Dispatcher {
 	private readonly owner: string;
 	private readonly inFlight = new Map<string, RunningJob>();
 	private readonly log: NonNullable<DispatcherOptions["log"]>;
-	private ticking = false;
+	private ticking: Promise<void> | null = null;
+	/** A tick asked for while one ran; it runs once that one ends, so no wake is lost (#981 OBJ-016). */
+	private again = false;
 	private stopped = false;
 
 	constructor(
@@ -128,7 +130,7 @@ export class Dispatcher {
 		// A killed run still writes its last events; exiting first leaves them for the next boot to trip on (#981).
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		await Promise.race([
-			Promise.allSettled(runs.map((r) => r.done)),
+			Promise.allSettled([...runs.map((r) => r.done), this.ticking]),
 			new Promise((r) => {
 				timer = setTimeout(r, settleMs);
 			}),
@@ -137,23 +139,40 @@ export class Dispatcher {
 	}
 
 	/**
-	 * One pass of the loop. Safe to call directly; re-entrant calls are dropped so a slow
-	 * tick cannot stack up behind another one already running.
+	 * One pass of the loop. Safe to call directly; a call while one runs is folded into a
+	 * single pass after it, so a slow tick cannot stack up and a wake is never dropped.
 	 */
 	async tick(): Promise<void> {
-		if (this.ticking || this.stopped) return;
-		this.ticking = true;
-		try {
-			// THE CAP. Claim only what there is room to run.
-			const slots = this.options.concurrency - this.inFlight.size;
-			if (slots <= 0) return;
+		if (this.stopped) return;
+		if (this.ticking) {
+			this.again = true;
+			return;
+		}
+		this.ticking = this.pass().finally(() => {
+			this.ticking = null;
+		});
+		await this.ticking;
+	}
 
-			const claimed = await this.store.claim(this.owner, slots);
-			for (const job of claimed) this.startJob(job);
+	private async pass(): Promise<void> {
+		try {
+			do {
+				this.again = false;
+				// THE CAP. Claim only what there is room to run.
+				const slots = this.options.concurrency - this.inFlight.size;
+				if (slots <= 0) break;
+
+				const claimed = await this.store.claim(this.owner, slots);
+				// A claim that lands after stop() is handed back, never started (#981 OBJ-017).
+				if (this.stopped) {
+					for (const job of claimed)
+						await this.store.release(job.id, this.owner).catch(() => false);
+					break;
+				}
+				for (const job of claimed) this.startJob(job);
+			} while (this.again && !this.stopped);
 		} catch (error) {
 			this.log.error("Dispatch tick failed", error);
-		} finally {
-			this.ticking = false;
 		}
 	}
 

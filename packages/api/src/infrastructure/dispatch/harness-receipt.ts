@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
 /**
  * A run's harness pid on disk, so the next boot can prove the agent from before
@@ -12,6 +13,8 @@ import { join } from "node:path";
 export interface Receipt {
 	pid: number;
 	startedAt: number;
+	/** The tree as last seen while the run worked (Windows), so an orphaned grandchild is still known. */
+	tree?: { pid: number; created: number }[];
 }
 
 export interface OsProcess {
@@ -32,11 +35,22 @@ export interface ProcessHost {
 }
 
 const FILE = "harness.pid";
-/** A pid whose creation time is this far from the receipt's is a reused pid, not ours. */
+/** A root whose creation time is this far from the receipt's is a reused pid, not ours. */
 const SAME_PROCESS_MS = 10_000;
+/** A recorded member's creation time read twice through CIM differs by rounding only. */
+const SAME_MEMBER_MS = 2_000;
+export const SNAPSHOT_MS = 30_000;
 
-export function writeReceipt(runDir: string, pid: number, now = Date.now()) {
-	writeFileSync(join(runDir, FILE), JSON.stringify({ pid, startedAt: now }));
+export function writeReceipt(
+	runDir: string,
+	pid: number,
+	now = Date.now(),
+	tree?: Receipt["tree"],
+) {
+	writeFileSync(
+		join(runDir, FILE),
+		JSON.stringify({ pid, startedAt: now, ...(tree ? { tree } : {}) }),
+	);
 }
 
 export function clearReceipt(runDir: string): void {
@@ -48,45 +62,60 @@ export function readReceipt(runDir: string): Receipt | null {
 	if (!existsSync(path)) return null;
 	try {
 		const r = JSON.parse(readFileSync(path, "utf8")) as Partial<Receipt>;
-		return typeof r.pid === "number" && typeof r.startedAt === "number"
-			? { pid: r.pid, startedAt: r.startedAt }
-			: null;
+		if (typeof r.pid !== "number" || typeof r.startedAt !== "number")
+			return null;
+		const tree = Array.isArray(r.tree)
+			? r.tree.filter(
+					(m) => typeof m?.pid === "number" && typeof m?.created === "number",
+				)
+			: undefined;
+		return { pid: r.pid, startedAt: r.startedAt, ...(tree ? { tree } : {}) };
 	} catch {
 		return null;
 	}
 }
 
 /**
- * The processes of the tree the receipt started: on Windows a child keeps its
- * parent's pid even after the parent exits, so the tree is walked from the root by
- * parent pid, each step created no earlier than its parent (a reused pid is younger).
+ * The processes of the tree the receipt started. A child keeps its parent's pid after
+ * the parent exits, so the walk starts from the root and from every member the last
+ * snapshot saw. A pid now held by a younger process only claims children born before it.
  */
 export function treeOf(
 	receipt: Receipt,
 	all: readonly OsProcess[],
 ): OsProcess[] {
-	const out: OsProcess[] = [];
-	const root = all.find(
-		(p) =>
-			p.pid === receipt.pid &&
-			Math.abs(p.created - receipt.startedAt) <= SAME_PROCESS_MS,
-	);
-	if (root) out.push(root);
-	const frontier: { pid: number; created: number }[] = [
-		{ pid: receipt.pid, created: receipt.startedAt - SAME_PROCESS_MS },
-	];
-	const seen = new Set<number>();
+	const out = new Map<number, OsProcess>();
+	const frontier: { pid: number; from: number; until: number }[] = [];
+	const seed = (pid: number, created: number, slack: number) => {
+		const holder = all.find((p) => p.pid === pid);
+		const ours = !!holder && Math.abs(holder.created - created) <= slack;
+		if (ours && holder) out.set(pid, holder);
+		frontier.push({
+			pid,
+			from: created - slack,
+			until: holder && !ours ? holder.created : Number.POSITIVE_INFINITY,
+		});
+	};
+	seed(receipt.pid, receipt.startedAt, SAME_PROCESS_MS);
+	for (const m of receipt.tree ?? []) seed(m.pid, m.created, SAME_MEMBER_MS);
+	const walked = new Set<number>();
 	while (frontier.length) {
-		const parent = frontier.pop() as { pid: number; created: number };
+		const parent = frontier.pop() as (typeof frontier)[number];
+		if (walked.has(parent.pid)) continue;
+		walked.add(parent.pid);
 		for (const p of all) {
-			if (p.parent !== parent.pid || p.created < parent.created) continue;
-			if (seen.has(p.pid) || p.pid === receipt.pid) continue;
-			seen.add(p.pid);
-			out.push(p);
-			frontier.push({ pid: p.pid, created: p.created });
+			if (p.parent !== parent.pid) continue;
+			if (p.created < parent.from || p.created >= parent.until) continue;
+			if (out.has(p.pid)) continue;
+			out.set(p.pid, p);
+			frontier.push({
+				pid: p.pid,
+				from: p.created,
+				until: Number.POSITIVE_INFINITY,
+			});
 		}
 	}
-	return out;
+	return [...out.values()];
 }
 
 /** True when nothing of the receipt's tree is left running; kills what is, then checks again. */
@@ -108,6 +137,48 @@ export async function containPrevious(
 		await host.sleep(500);
 	}
 	return alive().length === 0;
+}
+
+/**
+ * Re-records the run's tree into its receipt while the run works, so a boot after a
+ * crash still knows a tool whose parent had already exited. Windows only: POSIX
+ * reaps by process group. Returns the stop function.
+ */
+export function watchReceipt(
+	runDir: string,
+	list: () => Promise<OsProcess[]> = listWindowsProcessesAsync,
+	everyMs = SNAPSHOT_MS,
+): () => void {
+	if (process.platform !== "win32" && list === listWindowsProcessesAsync)
+		return () => {};
+	let busy = false;
+	const timer = setInterval(() => {
+		if (busy) return;
+		busy = true;
+		void snapshotReceipt(runDir, list).finally(() => {
+			busy = false;
+		});
+	}, everyMs);
+	timer.unref();
+	return () => clearInterval(timer);
+}
+
+export async function snapshotReceipt(
+	runDir: string,
+	list: () => Promise<OsProcess[]>,
+): Promise<void> {
+	try {
+		const receipt = readReceipt(runDir);
+		if (!receipt) return;
+		const tree = treeOf(receipt, await list())
+			.filter((p) => p.pid !== receipt.pid)
+			.map(({ pid, created }) => ({ pid, created }));
+		// The run may have ended and cleared it while the listing ran.
+		if (!readReceipt(runDir)) return;
+		writeReceipt(runDir, receipt.pid, receipt.startedAt, tree);
+	} catch {
+		// A missed snapshot leaves the last one; the next tick tries again.
+	}
 }
 
 export function osHost(): ProcessHost {
@@ -137,20 +208,15 @@ export function osHost(): ProcessHost {
 	};
 }
 
-function listWindowsProcesses(): OsProcess[] {
-	const out = spawnSync(
-		"powershell.exe",
-		[
-			"-NoProfile",
-			"-NonInteractive",
-			"-Command",
-			"Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() }",
-		],
-		{ encoding: "utf8", windowsHide: true, timeout: 20_000 },
-	);
-	if (out.status !== 0)
-		throw new Error(`could not list processes: ${out.stderr}`);
-	return out.stdout
+const LIST_ARGS = [
+	"-NoProfile",
+	"-NonInteractive",
+	"-Command",
+	"Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() }",
+];
+
+function parseList(stdout: string): OsProcess[] {
+	return stdout
 		.split(/\r?\n/)
 		.map((line) => line.trim().split(/\s+/).map(Number))
 		.filter((n) => n.length === 3 && n.every(Number.isFinite))
@@ -159,4 +225,25 @@ function listWindowsProcesses(): OsProcess[] {
 			parent: parent as number,
 			created: created as number,
 		}));
+}
+
+function listWindowsProcesses(): OsProcess[] {
+	const out = spawnSync("powershell.exe", LIST_ARGS, {
+		encoding: "utf8",
+		windowsHide: true,
+		timeout: 20_000,
+	});
+	if (out.status !== 0)
+		throw new Error(`could not list processes: ${out.stderr}`);
+	return parseList(out.stdout);
+}
+
+async function listWindowsProcessesAsync(): Promise<OsProcess[]> {
+	const { stdout } = await promisify(execFile)("powershell.exe", LIST_ARGS, {
+		encoding: "utf8",
+		windowsHide: true,
+		timeout: 20_000,
+		maxBuffer: 8 * 1024 * 1024,
+	});
+	return parseList(stdout);
 }
