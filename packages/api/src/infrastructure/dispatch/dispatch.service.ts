@@ -1452,7 +1452,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			turn,
 			{
 				attempt: (prior?.attempt ?? 0) + 1,
-				stoppedAt: boot.stoppedAt.toISOString(),
+				// A crash's last heartbeat can be a minute early; the run's own last event bounds the stop (#981).
+				stoppedAt: new Date(
+					Math.max(boot.stoppedAt.getTime(), lastActivityAt.getTime()),
+				).toISOString(),
 				lastActivityAt: lastActivityAt.toISOString(),
 				by: "auto",
 			},

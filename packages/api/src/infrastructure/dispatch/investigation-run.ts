@@ -2461,10 +2461,8 @@ async function restartFacts(
 	ports: RunPorts,
 ): Promise<RestartFacts> {
 	const restart = resume.restart as NonNullable<typeof resume.restart>;
+	// The message says "while PrismaLens was stopped", so the window opens at the stop.
 	const stoppedAt = new Date(restart.stoppedAt);
-	const since = new Date(
-		Math.min(Date.parse(restart.lastActivityAt), stoppedAt.getTime()),
-	);
 	const asks = new Map<string, string>();
 	const denied: string[] = [];
 	for (const e of events) {
@@ -2477,7 +2475,7 @@ async function restartFacts(
 			);
 	}
 	const alerts = (await ports
-		.restartAlerts?.(incidentId, since, resumedAt, stoppedAt)
+		.restartAlerts?.(incidentId, stoppedAt, resumedAt, stoppedAt)
 		.catch(() => null)) ?? {
 		catchUp: "unchecked" as const,
 		fired: [],
