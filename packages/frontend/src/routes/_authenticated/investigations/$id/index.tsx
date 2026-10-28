@@ -27,6 +27,14 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 				if (isNotFound(error, params.id)) throw notFound();
 				throw error;
 			});
+		// A scheduled check with no incident yet has its page under its schedule (#979).
+		if (!run.incidentId && run.scheduleId)
+			throw redirect({
+				to: "/schedules/$id/runs/$runId",
+				params: { id: run.scheduleId, runId: params.id },
+				replace: true,
+			});
+		if (!run.incidentId) throw notFound();
 		throw redirect({
 			to: "/incidents/$id/conversation",
 			params: { id: run.incidentId },
