@@ -9,6 +9,7 @@ import {
 	isGatewayToolCall,
 	levelPolicy,
 	type PermissionRequest,
+	SHUTDOWN_REASON,
 } from "./permission.js";
 
 describe("askWindow", () => {
@@ -191,6 +192,23 @@ describe("createAskChannel", () => {
 			optionId: "reject",
 			why: "the turn was stopped",
 			outcome: "stopped",
+		});
+	});
+
+	it("an abort because PrismaLens is closing resolves restarted, not stopped (#981)", async () => {
+		vi.useFakeTimers();
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const ac = new AbortController();
+		const p = channel.policy(
+			{ options: [{ optionId: "reject", kind: "reject_once" }] },
+			{ askId: "ask1", signal: ac.signal },
+		);
+		ac.abort(SHUTDOWN_REASON);
+		expect(await p).toEqual({
+			allow: false,
+			optionId: "reject",
+			why: "PrismaLens restarted",
+			outcome: "restarted",
 		});
 	});
 

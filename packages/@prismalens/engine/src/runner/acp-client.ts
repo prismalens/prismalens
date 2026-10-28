@@ -896,10 +896,10 @@ export class AcpSession {
 	}
 
 	/** Cancel the in-flight turn; the harness answers with a done carrying stopReason "cancelled". */
-	cancel(): void {
+	cancel(reason?: unknown): void {
 		if (!this.currentSessionId) return;
-		// ACP: a cancelled turn's waiting asks are answered `cancelled`.
-		for (const ask of this.asks) ask.abort();
+		// ACP: a cancelled turn's waiting asks are answered `cancelled`; the reason says why (#981).
+		for (const ask of this.asks) ask.abort(reason);
 		this.send({
 			jsonrpc: "2.0",
 			method: "session/cancel",

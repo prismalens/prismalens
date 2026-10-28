@@ -80,6 +80,9 @@ export interface DispatcherOptions {
 	};
 }
 
+/** How long a stop waits for the runs it killed to finish writing. */
+export const STOP_SETTLE_MS = 5_000;
+
 const NOOP_LOG = {
 	info: () => {},
 	warn: () => {},
@@ -117,10 +120,20 @@ export class Dispatcher {
 		void this.tick();
 	}
 
-	async stop(): Promise<void> {
+	async stop(settleMs = STOP_SETTLE_MS): Promise<void> {
 		this.stopped = true;
-		for (const run of this.inFlight.values()) run.kill();
+		const runs = [...this.inFlight.values()];
+		for (const run of runs) run.kill();
 		this.inFlight.clear();
+		// A killed run still writes its last events; exiting first leaves them for the next boot to trip on (#981).
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		await Promise.race([
+			Promise.allSettled(runs.map((r) => r.done)),
+			new Promise((r) => {
+				timer = setTimeout(r, settleMs);
+			}),
+		]);
+		clearTimeout(timer);
 	}
 
 	/**
