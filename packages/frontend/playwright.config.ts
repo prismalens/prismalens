@@ -177,7 +177,7 @@ export default defineConfig({
 	reporter: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME
 		? [["html"], ["json"]]
 		: "html",
-	use: { baseURL, trace: "retain-on-failure" },
+	use: { baseURL },
 	webServer: PL_UP
 		? [
 				{
