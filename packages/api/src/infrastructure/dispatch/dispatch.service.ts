@@ -634,11 +634,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		void this.dispatcher.tick();
 	}
 
-	/** Cancel scheduled jobs no slot took before their deadline; returns their investigation ids (#979). */
-	expireScheduled(now: Date = new Date()): Promise<string[]> {
-		return this.store.expireScheduled(now);
-	}
-
 	async addInvestigationJob(
 		data: InvestigationJobData,
 	): Promise<string | null> {

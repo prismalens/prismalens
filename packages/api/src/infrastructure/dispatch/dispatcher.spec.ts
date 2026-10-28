@@ -67,6 +67,14 @@ class StubStore implements JobStore {
 		return false;
 	}
 
+	async scheduledPastDeadline(): Promise<Array<{ id: string; investigationId: string }>> {
+		return [];
+	}
+
+	async expireScheduledJob(): Promise<boolean> {
+		return false;
+	}
+
 	async expireScheduled(): Promise<string[]> {
 		return [];
 	}

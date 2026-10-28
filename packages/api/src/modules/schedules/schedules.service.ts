@@ -131,6 +131,7 @@ export class SchedulesService
 
 	async evaluate(now: Date): Promise<void> {
 		await this.expire(now);
+		await this.pauseFailing();
 		const due = await this.prisma.schedule.findMany({
 			where: { enabled: true, nextRunAt: { lte: now } },
 		});
@@ -142,7 +143,6 @@ export class SchedulesService
 				this.logger.error(`Schedule ${s.id} was not evaluated`, error as Error);
 			}
 		}
-		await this.pauseFailing();
 	}
 
 	private async evaluateOne(s: Row, now: Date): Promise<void> {
@@ -347,7 +347,7 @@ export class SchedulesService
 	/** The service's bindings and notes as values the run uses, and their hash (adversary OBJ-003). */
 	private async freeze(
 		db: Tx | PrismaService,
-		s: Pick<Row, "id" | "serviceId" | "runbook">,
+		s: Pick<Row, "id" | "serviceId" | "runbook" | "revision">,
 	) {
 		const service = await db.service.findUnique({
 			where: { id: s.serviceId },
@@ -397,7 +397,7 @@ export class SchedulesService
 			.digest("hex");
 		const run: ScheduledRun = {
 			scheduleId: s.id,
-			revision: 0,
+			revision: s.revision,
 			serviceId: service.id,
 			serviceName: service.name,
 			serviceNotes: notes,
@@ -409,11 +409,16 @@ export class SchedulesService
 
 	/** Scheduled jobs no slot took in time end as host-busy, and their tick says so (adversary OBJ-009). */
 	private async expire(now: Date): Promise<void> {
-		const ids = await this.dispatch.expireScheduled(now);
-		for (const id of ids) {
+		const due = await new PrismaJobStore(
+			this.prisma.job as unknown as JobDelegate,
+		).scheduledPastDeadline(now);
+		for (const job of due) {
+			// Job, run and tick settle together, so no pass leaves one without the others (adversary OBJ-013).
 			await this.prisma.$transaction(async (tx) => {
-				const { count } = await tx.investigation.updateMany({
-					where: { id, status: "pending" },
+				const store = new PrismaJobStore(tx.job as unknown as JobDelegate);
+				if (!(await store.expireScheduledJob(job.id, now))) return;
+				await tx.investigation.updateMany({
+					where: { id: job.investigationId, status: "pending" },
 					data: {
 						status: "cancelled",
 						completedAt: now,
@@ -421,11 +426,10 @@ export class SchedulesService
 							"Not started: PrismaLens was busy with other runs until this run's deadline.",
 					},
 				});
-				if (count === 1)
-					await tx.scheduleTick.updateMany({
-						where: { investigationId: id },
-						data: { outcome: "expired_host_busy" },
-					});
+				await tx.scheduleTick.updateMany({
+					where: { investigationId: job.investigationId },
+					data: { outcome: "expired_host_busy" },
+				});
 			});
 		}
 	}
@@ -443,7 +447,7 @@ export class SchedulesService
 					investigationId: { not: null },
 				},
 				orderBy: { scheduledFor: "desc" },
-				take: FAILURES_BEFORE_PAUSE,
+				take: FAILURES_BEFORE_PAUSE + 1,
 				select: { investigationId: true },
 			});
 			const runs = await this.prisma.investigation.findMany({
@@ -453,7 +457,10 @@ export class SchedulesService
 			const status = new Map(runs.map((r) => [r.id, r.status]));
 			let trailing = 0;
 			for (const t of ticks) {
-				if (status.get(t.investigationId as string) !== "failed") break;
+				const st = status.get(t.investigationId as string);
+				// A run still going says nothing yet; it neither breaks nor extends the streak (adversary OBJ-015).
+				if (st === "pending" || st === "running") continue;
+				if (st !== "failed") break;
 				trailing++;
 			}
 			if (
@@ -548,6 +555,7 @@ export class SchedulesService
 				id: "",
 				serviceId: input.serviceId,
 				runbook: input.runbook,
+				revision: 1,
 			});
 			const row = await this.prisma.$transaction(async (tx) => {
 				const created = await tx.schedule.create({
@@ -586,6 +594,7 @@ export class SchedulesService
 				id,
 				serviceId: input.serviceId,
 				runbook: input.runbook,
+				revision: before.revision + 1,
 			});
 			const row = await this.prisma.$transaction(async (tx) => {
 				const { count } = await tx.schedule.updateMany({

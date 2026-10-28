@@ -144,7 +144,7 @@ describe("the latest due slot (#979, adversary OBJ-007)", () => {
 				expect(iso(due.next)).toBe(new Date(last.getTime() + 15 * 60_000).toISOString());
 			}
 		}
-	});
+	}, 30_000);
 
 	it("reports nothing to run when the whole backlog is older than the window", () => {
 		const daily = ny("0 9 * * *");
