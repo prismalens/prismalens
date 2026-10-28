@@ -24,6 +24,7 @@ import {
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { serviceNotes } from "../../infrastructure/dispatch/investigation-run.js";
@@ -32,7 +33,7 @@ import {
 	PrismaJobStore,
 	SCHEDULED_KIND,
 } from "../../infrastructure/dispatch/job-store.js";
-import { type Decision, decide, type Gap } from "./decide.js";
+import { type Decision, decide } from "./decide.js";
 import {
 	cronShape,
 	nextSlots,
@@ -41,13 +42,11 @@ import {
 } from "./recurrence.js";
 import { describeRecurrence, dstNote } from "./schedule-text.js";
 
-/** The auto-resume lane's lifecycle record, when present: when the host slept or PrismaLens was off (#981). */
-export interface RuntimeGaps {
-	/** Record a sleep the wall clock shows now, before anything asks about it (adversary OBJ-011). */
-	observe?(now: Date): void;
-	gapCovering(at: Date): Gap | null;
-}
-export const RUNTIME_GAPS = Symbol("RUNTIME_GAPS");
+/** The slice of the lifecycle record a schedule needs (#983): when the host slept or PrismaLens was off. */
+export type RuntimeGaps = Pick<
+	RuntimeLifecycleService,
+	"observe" | "gapCovering"
+>;
 
 export const LOOP_MS = 30_000;
 export const SCHEDULED_PRIORITY = 5;
@@ -100,7 +99,9 @@ export class SchedulesService
 		private readonly prisma: PrismaService,
 		private readonly dispatch: DispatchService,
 		private readonly harness: HarnessService,
-		@Optional() @Inject(RUNTIME_GAPS) private readonly gaps?: RuntimeGaps,
+		@Optional()
+		@Inject(RuntimeLifecycleService)
+		private readonly gaps?: RuntimeGaps,
 	) {}
 
 	onApplicationBootstrap(): void {
@@ -133,7 +134,14 @@ export class SchedulesService
 		const due = await this.prisma.schedule.findMany({
 			where: { enabled: true, nextRunAt: { lte: now } },
 		});
-		for (const s of due) await this.evaluateOne(s, now);
+		for (const s of due) {
+			try {
+				await this.evaluateOne(s, now);
+			} catch (error) {
+				// Its transaction rolled back, so the slot stays due and the next pass retries it.
+				this.logger.error(`Schedule ${s.id} was not evaluated`, error as Error);
+			}
+		}
 		await this.pauseFailing();
 	}
 
@@ -149,7 +157,7 @@ export class SchedulesService
 			},
 			now,
 			(at) => {
-				if (!observed) this.gaps?.observe?.(now);
+				if (!observed) this.gaps?.observe(now);
 				observed = true;
 				return this.gaps?.gapCovering(at) ?? null;
 			},
@@ -403,8 +411,8 @@ export class SchedulesService
 	private async expire(now: Date): Promise<void> {
 		const ids = await this.dispatch.expireScheduled(now);
 		for (const id of ids) {
-			await this.prisma.$transaction([
-				this.prisma.investigation.updateMany({
+			await this.prisma.$transaction(async (tx) => {
+				const { count } = await tx.investigation.updateMany({
 					where: { id, status: "pending" },
 					data: {
 						status: "cancelled",
@@ -412,12 +420,13 @@ export class SchedulesService
 						error:
 							"Not started: PrismaLens was busy with other runs until this run's deadline.",
 					},
-				}),
-				this.prisma.scheduleTick.updateMany({
-					where: { investigationId: id },
-					data: { outcome: "expired_host_busy" },
-				}),
-			]);
+				});
+				if (count === 1)
+					await tx.scheduleTick.updateMany({
+						where: { investigationId: id },
+						data: { outcome: "expired_host_busy" },
+					});
+			});
 		}
 	}
 
