@@ -10,6 +10,7 @@ import {
 	RunWorkspaceSettingsSchema,
 	RunWorkspacesSchema,
 	RunWorkspaceTargetSchema,
+	ServiceKeptWorkspacesSchema,
 	ServiceWorkspaceSchema,
 	UpdateRunWorkspaceCopiesSchema,
 	UpdateServiceWorkspaceSchema,
@@ -78,6 +79,15 @@ export const runWorkspacesContract = {
 			tags,
 		})
 		.output(WorkspaceRemovalsSchema),
+
+	kept: oc
+		.route({
+			method: "GET",
+			path: "/settings/run-workspace/kept",
+			summary: "Every finished run's kept workspace, with its service",
+			tags,
+		})
+		.output(ServiceKeptWorkspacesSchema),
 
 	listForRun: oc
 		.route({

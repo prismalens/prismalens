@@ -92,6 +92,12 @@ export class RunWorkspacesController {
 			removals: implement(runWorkspacesContract.removals).handler(async () => ({
 				removals: await this.service.removals(),
 			})),
+			kept: implement(runWorkspacesContract.kept).handler(
+				async ({ context }) => ({
+					workspaces: await this.service.listKept(),
+					canEdit: isHost(context.request as Request),
+				}),
+			),
 			listForRun: implement(runWorkspacesContract.listForRun).handler(
 				async ({ input, context }) => ({
 					workspaces: await this.service.listForRun(input.runId),

@@ -51,7 +51,6 @@ export const RunWorkspaceSettingsSchema = z.object({
 	/** Null: `<app data>/worktrees`. */
 	location: LocationSchema.nullable(),
 	retention: RetentionSchema,
-	keptPerProject: z.number().int().min(1).max(100),
 	setup: OsCommandsSchema,
 	teardown: OsCommandsSchema,
 	copyIn: z.array(CopyInPathSchema).max(50),
@@ -63,8 +62,7 @@ export type RunWorkspaceSettings = z.infer<typeof RunWorkspaceSettingsSchema>;
 export const DEFAULT_RUN_WORKSPACE_SETTINGS: RunWorkspaceSettings = {
 	method: "worktree",
 	location: null,
-	retention: { kind: "remove-unless-changed" },
-	keptPerProject: 10,
+	retention: { kind: "keep-until-resolved" },
 	setup: {},
 	teardown: {},
 	copyIn: [],
@@ -148,6 +146,21 @@ export const KeptWorkspaceSchema = z.object({
 	reason: z.string(),
 });
 export type KeptWorkspace = z.infer<typeof KeptWorkspaceSchema>;
+
+/** Settings warns about a service holding more kept workspaces than this; nothing removes them for count alone. */
+export const KEPT_WORKSPACES_WARN_OVER = 10;
+
+export const ServiceKeptWorkspaceSchema = KeptWorkspaceSchema.extend({
+	runId: z.string(),
+	serviceId: z.string(),
+	serviceName: z.string().nullable(),
+});
+export type ServiceKeptWorkspace = z.infer<typeof ServiceKeptWorkspaceSchema>;
+
+export const ServiceKeptWorkspacesSchema = z.object({
+	workspaces: z.array(ServiceKeptWorkspaceSchema),
+	canEdit: z.boolean(),
+});
 
 export const RunWorkspacesSchema = z.object({
 	workspaces: z.array(KeptWorkspaceSchema),

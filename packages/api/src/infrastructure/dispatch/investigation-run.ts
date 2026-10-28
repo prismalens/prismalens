@@ -80,6 +80,7 @@ import {
 	bindRun,
 	releaseWorktreesIn,
 	runWorktreeDir,
+	type SweepOptions,
 	sweepRunWorktrees,
 	unbindRun,
 } from "../../core/harness/run-worktree.js";
@@ -1418,13 +1419,16 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 /**
  * Called at boot, when nothing is running: a process that died mid-run never
  * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
+ * A run named by `isInterrupted` keeps all of it until it is resumed (#981).
  */
-export async function sweepRunWorkspaces(): Promise<number> {
-	const swept = new Set(await sweepRunWorktrees());
+export async function sweepRunWorkspaces(
+	opts: Pick<SweepOptions, "isInterrupted"> = {},
+): Promise<number> {
+	const swept = new Set(await sweepRunWorktrees(opts));
 	const runs = resolve(getAppDataDir(), "runs");
 	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
+		if (!entry.isDirectory() || opts.isInterrupted?.(entry.name)) continue;
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
 			try {

@@ -27,6 +27,7 @@ vi.mock("../../core/harness/run-worktree.js", () => {
 			sourceCallback = source;
 		}),
 		sweepRunWorktrees: vi.fn(async () => []),
+		runIdOf: vi.fn((dir: string) => dir.match(/pl-([^/]+)/)?.[1] ?? null),
 		__getSourceCallback: () => sourceCallback,
 	};
 });
@@ -64,18 +65,17 @@ describe("RunWorkspacesService", () => {
 		const customSettings: RunWorkspaceSettings = {
 			...DEFAULT_RUN_WORKSPACE_SETTINGS,
 			method: "clone",
-			keptPerProject: 5,
 		};
 		mockPrisma.setting.findMany.mockResolvedValueOnce([
 			{
 				key: "runWorkspace.global",
-				value: JSON.stringify(customSettings),
+				// A row saved while the per-service cap existed still loads, without it.
+				value: JSON.stringify({ ...customSettings, keptPerProject: 5 }),
 			},
 		]);
 
 		const res = await service.getGlobal();
-		expect(res.settings.method).toBe("clone");
-		expect(res.settings.keptPerProject).toBe(5);
+		expect(res.settings).toEqual(customSettings);
 
 		// Now test bad row falls back to defaults
 		const badService = new RunWorkspacesService(
@@ -230,6 +230,48 @@ describe("RunWorkspacesService", () => {
 		expect(sweepOpts.isResolved("run-resolved")).toBe(true);
 		expect(sweepOpts.isResolved("run-closed")).toBe(true);
 		expect(sweepOpts.isResolved("run-pending")).toBe(false);
+	});
+
+	it("sweep() spares a run a restart interrupted until a follow-up resumed it (#981)", async () => {
+		const { sweepRunWorktrees } = await import(
+			"../../core/harness/run-worktree.js" as any
+		);
+		vi.mocked(sweepRunWorktrees).mockClear();
+		mockPrisma.investigation.findMany.mockImplementation(async ({ where }: any) =>
+			where?.endReason === "interrupted" &&
+			where?.events?.none?.event?.contains === '"resumed":['
+				? [{ id: "run-cut" }]
+				: [],
+		);
+
+		await service.sweep();
+
+		const sweepOpts = vi.mocked(sweepRunWorktrees).mock.calls[0][0];
+		expect(sweepOpts.isInterrupted("run-cut")).toBe(true);
+		expect(sweepOpts.isInterrupted("run-other")).toBe(false);
+	});
+
+	it("listKept() names each kept workspace's run and service, for the over-10 warning", async () => {
+		const { keptWorkspaces } = await import(
+			"../../core/harness/run-worktree.js" as any
+		);
+		keptWorkspaces.mockReturnValueOnce([
+			{ id: "pl-r1", dir: "/w/pl-r1", project: "svc-1", method: "worktree", createdAt: "t0", keptAt: "t1" },
+			{ id: "x", dir: "/w/elsewhere", project: "svc-1", method: "worktree", createdAt: "t0", keptAt: "t1" },
+		]);
+		mockPrisma.service.findMany = vi.fn(async () => [{ id: "svc-1", name: "auth-service" }]);
+
+		expect(await service.listKept()).toEqual([
+			{
+				dir: "/w/pl-r1",
+				serviceId: "svc-1",
+				serviceName: "auth-service",
+				runId: "r1",
+				method: "worktree",
+				keptAt: "t1",
+				reason: "keep-until-resolved",
+			},
+		]);
 	});
 });
 

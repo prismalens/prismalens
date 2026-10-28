@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	RunWorkspaceGlobal,
-	RunWorkspaceSettings as Settings,
-	WorkspaceRemoval,
+import {
+	KEPT_WORKSPACES_WARN_OVER,
+	type RunWorkspaceGlobal,
+	type ServiceKeptWorkspace,
+	type RunWorkspaceSettings as Settings,
+	type WorkspaceRemoval,
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
+import { KeptWorkspaceRows } from "@/components/run/KeptWorkspaces";
 import {
 	FIELDS,
 	FieldEditor,
@@ -100,6 +104,7 @@ export function RunWorkspaceSettings() {
 					</div>
 				)}
 			</SettingGroup>
+			<KeptOverLimit />
 			{query.data.copies && (
 				<CopiesGroup copies={query.data.copies} canEdit={canEdit} />
 			)}
@@ -120,6 +125,45 @@ export function RunWorkspaceSettings() {
 			</SettingGroup>
 		</>
 	);
+}
+
+/** No cap removes kept work (#925): a service holding too many is named, with Remove on each. */
+function KeptOverLimit() {
+	const options = orpc.runWorkspaces.kept.queryOptions();
+	const query = useQuery(options);
+	const byService = new Map<string, ServiceKeptWorkspace[]>();
+	for (const w of query.data?.workspaces ?? [])
+		byService.set(w.serviceId, [...(byService.get(w.serviceId) ?? []), w]);
+	const over = Array.from(byService.values()).filter(
+		(kept) => kept.length > KEPT_WORKSPACES_WARN_OVER,
+	);
+	return over.map((kept) => {
+		const name = kept[0]?.serviceName ?? kept[0]?.serviceId;
+		return (
+			<SettingGroup
+				key={kept[0]?.serviceId}
+				title={`Kept workspaces of ${name}`}
+				count={kept.length}
+				testId="kept-over-limit"
+				description={
+					<span className="flex items-start gap-1.5 text-warn">
+						<TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
+						{name} holds more than {KEPT_WORKSPACES_WARN_OVER} kept workspaces.
+						Nothing removes them for their number; remove the ones you no longer
+						need.
+					</span>
+				}
+			>
+				<Pool className="px-3 py-1">
+					<KeptWorkspaceRows
+						workspaces={kept}
+						canEdit={query.data?.canEdit ?? false}
+						refresh={options.queryKey}
+					/>
+				</Pool>
+			</SettingGroup>
+		);
+	});
 }
 
 function RemovalRow({ removal: r }: { removal: WorkspaceRemoval }) {

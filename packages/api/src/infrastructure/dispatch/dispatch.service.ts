@@ -70,7 +70,10 @@ import {
 } from "../../modules/investigations/follow-up-route.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
-import { RunWorkspacesService } from "../../modules/run-workspaces/run-workspaces.service.js";
+import {
+	interruptedRunIds,
+	RunWorkspacesService,
+} from "../../modules/run-workspaces/run-workspaces.service.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { Dispatcher } from "./dispatcher.js";
@@ -578,7 +581,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		// The boot sweep applies each workspace's own retention rule, so the settings load first.
 		await this.runWorkspaces?.ready();
 		try {
-			const swept = await sweepRunWorkspaces();
+			const interrupted = await interruptedRunIds(this.prisma);
+			const swept = await sweepRunWorkspaces({
+				isInterrupted: (id) => interrupted.has(id),
+			});
 			if (swept > 0)
 				this.logger.warn(`Removed the leftover workspaces of ${swept} run(s)`);
 		} catch (e) {

@@ -3,6 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	ServiceKeptWorkspace,
 	RunWorkspaceSettings as Settings,
 	WorkspaceRemoval,
 } from "@prismalens/contracts";
@@ -19,7 +20,6 @@ const defaultSettings: Settings = {
 	method: "worktree",
 	location: null,
 	retention: { kind: "remove-unless-changed" },
-	keptPerProject: 3,
 	setup: { posix: "pnpm install", windows: "pnpm install" },
 	teardown: {},
 	copyIn: [".env"],
@@ -32,6 +32,7 @@ const state = {
 	defaultLocation: "/default/worktrees",
 	settings: { ...defaultSettings },
 	removals: [] as WorkspaceRemoval[],
+	kept: [] as ServiceKeptWorkspace[],
 	updateMutate: vi.fn(),
 	copies: undefined as
 		| { location: string | null; defaultLocation: string; previous: string[] }
@@ -47,6 +48,9 @@ vi.mock("@tanstack/react-query", () => ({
 		const key = options.queryKey ? options.queryKey() : [];
 		if (Array.isArray(key) && key.includes("removals")) {
 			return { data: { removals: state.removals } };
+		}
+		if (Array.isArray(key) && key.includes("kept")) {
+			return { data: { workspaces: state.kept, canEdit: state.canEdit } };
 		}
 		return {
 			data: {
@@ -80,6 +84,11 @@ vi.mock("@/lib/api/orpc-client", () => ({
 			removals: {
 				queryOptions: () => ({ queryKey: () => ["runWorkspaces", "removals"] }),
 			},
+			kept: {
+				queryOptions: () => ({ queryKey: () => ["runWorkspaces", "kept"] }),
+			},
+			open: { mutationOptions: () => ({}) },
+			remove: { mutationOptions: () => ({}) },
 			key: () => ["runWorkspaces"],
 		},
 	},
@@ -93,6 +102,7 @@ beforeEach(() => {
 	state.defaultLocation = "/default/worktrees";
 	state.settings = { ...defaultSettings };
 	state.removals = [];
+	state.kept = [];
 	state.updateMutate = vi.fn();
 	state.copies = undefined;
 	container = document.createElement("div");
@@ -114,7 +124,6 @@ describe("RunWorkspaceSettings", () => {
 			"Method",
 			"Location",
 			"After a run",
-			"Kept per service",
 			"Setup command",
 			"Teardown command",
 			"Files to copy in",
@@ -125,6 +134,55 @@ describe("RunWorkspaceSettings", () => {
 		for (const label of expectedLabels) {
 			expect(container.textContent).toContain(label);
 		}
+		expect(container.textContent).not.toContain("Kept per service");
+	});
+
+	describe("the over-10 kept workspaces warning (#925)", () => {
+		const keptOf = (serviceId: string, serviceName: string, n: number) =>
+			Array.from(
+				{ length: n },
+				(_, i): ServiceKeptWorkspace => ({
+					dir: `/ws/pl-${serviceId}-${i}`,
+					runId: `${serviceId}-${i}`,
+					serviceId,
+					serviceName,
+					method: "worktree",
+					keptAt: new Date(2026, 9, 28).toISOString(),
+					reason: "keep-until-resolved",
+				}),
+			);
+
+		it("warns about a service holding 11, and lists each with Remove", async () => {
+			state.kept = [
+				...keptOf("s1", "checkout", 11),
+				...keptOf("s2", "billing", 3),
+			];
+			await act(async () => root.render(createElement(RunWorkspaceSettings)));
+
+			const warnings = container.querySelectorAll(
+				'[data-testid="kept-over-limit"]',
+			);
+			expect(warnings).toHaveLength(1);
+			const warning = warnings[0] as HTMLElement;
+			expect(warning.textContent).toContain(
+				"checkout holds more than 10 kept workspaces",
+			);
+			expect(warning.textContent).not.toContain("billing");
+			const removes = Array.from(warning.querySelectorAll("button")).filter(
+				(b) => b.textContent === "Remove",
+			);
+			expect(removes).toHaveLength(11);
+			expect(warning.textContent).toContain("/ws/pl-s1-10");
+		});
+
+		it("says nothing for a service holding exactly 10", async () => {
+			state.kept = keptOf("s1", "checkout", 10);
+			await act(async () => root.render(createElement(RunWorkspaceSettings)));
+
+			expect(
+				container.querySelector('[data-testid="kept-over-limit"]'),
+			).toBeNull();
+		});
 	});
 
 	it("Save is disabled until a field changes and sends the whole settings", async () => {

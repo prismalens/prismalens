@@ -16,7 +16,6 @@ const EMPTY: RunWorkspaceSettings = {
 	method: "worktree",
 	location: null,
 	retention: { kind: "remove-unless-changed" },
-	keptPerProject: 10,
 	setup: {},
 	teardown: {},
 	copyIn: [],

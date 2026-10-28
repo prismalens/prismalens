@@ -65,7 +65,20 @@ const {
 	writeHandoffTranscript,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
-const { releaseWorktreesIn, runWorktreeDir } = await import("../../core/harness/run-worktree.js");
+const { releaseWorktreesIn, runWorktreeDir, setRunWorkspaceSource } = await import("../../core/harness/run-worktree.js");
+const { DEFAULT_RUN_WORKSPACE_SETTINGS } = await import("@prismalens/contracts");
+
+// These cases read Remove unless changed, the default before #925's ruling made it keep-until-resolved.
+beforeEach(() =>
+	setRunWorkspaceSource({
+		global: () => ({ ...DEFAULT_RUN_WORKSPACE_SETTINGS, retention: { kind: "remove-unless-changed" } }),
+		override: () => undefined,
+		locations: () => [],
+		serviceIdOf: async () => null,
+		record: () => {},
+	}),
+);
+afterEach(() => setRunWorkspaceSource(null));
 
 /** A `RunPorts` double covering exactly what the job makes. */
 function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {

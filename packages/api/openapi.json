@@ -25986,11 +25986,6 @@
                             }
                           ]
                         },
-                        "keptPerProject": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 100
-                        },
                         "setup": {
                           "type": "object",
                           "properties": {
@@ -26046,7 +26041,6 @@
                         "method",
                         "location",
                         "retention",
-                        "keptPerProject",
                         "setup",
                         "teardown",
                         "copyIn",
@@ -26188,11 +26182,6 @@
                       }
                     ]
                   },
-                  "keptPerProject": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 100
-                  },
                   "setup": {
                     "type": "object",
                     "properties": {
@@ -26248,7 +26237,6 @@
                   "method",
                   "location",
                   "retention",
-                  "keptPerProject",
                   "setup",
                   "teardown",
                   "copyIn",
@@ -26342,11 +26330,6 @@
                             }
                           ]
                         },
-                        "keptPerProject": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 100
-                        },
                         "setup": {
                           "type": "object",
                           "properties": {
@@ -26402,7 +26385,6 @@
                         "method",
                         "location",
                         "retention",
-                        "keptPerProject",
                         "setup",
                         "teardown",
                         "copyIn",
@@ -26576,11 +26558,6 @@
                             }
                           ]
                         },
-                        "keptPerProject": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 100
-                        },
                         "setup": {
                           "type": "object",
                           "properties": {
@@ -26636,7 +26613,6 @@
                         "method",
                         "location",
                         "retention",
-                        "keptPerProject",
                         "setup",
                         "teardown",
                         "copyIn",
@@ -26797,11 +26773,6 @@
                             }
                           ]
                         },
-                        "keptPerProject": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 100
-                        },
                         "setup": {
                           "type": "object",
                           "properties": {
@@ -26929,11 +26900,6 @@
                             }
                           ]
                         },
-                        "keptPerProject": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 100
-                        },
                         "setup": {
                           "type": "object",
                           "properties": {
@@ -26989,7 +26955,6 @@
                         "method",
                         "location",
                         "retention",
-                        "keptPerProject",
                         "setup",
                         "teardown",
                         "copyIn",
@@ -27117,11 +27082,6 @@
                             ]
                           }
                         ]
-                      },
-                      "keptPerProject": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 100
                       },
                       "setup": {
                         "type": "object",
@@ -27269,11 +27229,6 @@
                             }
                           ]
                         },
-                        "keptPerProject": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 100
-                        },
                         "setup": {
                           "type": "object",
                           "properties": {
@@ -27401,11 +27356,6 @@
                             }
                           ]
                         },
-                        "keptPerProject": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 100
-                        },
                         "setup": {
                           "type": "object",
                           "properties": {
@@ -27461,7 +27411,6 @@
                         "method",
                         "location",
                         "retention",
-                        "keptPerProject",
                         "setup",
                         "teardown",
                         "copyIn",
@@ -27600,6 +27549,85 @@
                   },
                   "required": [
                     "removals"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/run-workspace/kept": {
+      "get": {
+        "operationId": "runWorkspaces.kept",
+        "summary": "Every finished run's kept workspace, with its service",
+        "tags": [
+          "run-workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dir": {
+                            "type": "string"
+                          },
+                          "serviceId": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "enum": [
+                              "worktree",
+                              "clone"
+                            ],
+                            "type": "string"
+                          },
+                          "keptAt": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "serviceName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "dir",
+                          "serviceId",
+                          "method",
+                          "keptAt",
+                          "reason",
+                          "runId",
+                          "serviceName"
+                        ]
+                      }
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "workspaces",
+                    "canEdit"
                   ]
                 }
               }

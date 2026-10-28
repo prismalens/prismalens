@@ -96,6 +96,20 @@ describe("sweepRunWorkspaces (#743)", () => {
 		expect(existsSync(join(config, GATEWAY_RUN_FILE))).toBe(false);
 	});
 
+	it("leaves everything a run a restart interrupted left, until it is resumed (#981)", async () => {
+		const cut = join(dir, "runs", "run-cut");
+		mkdirSync(join(cut, "repo", "src"), { recursive: true });
+		mkdirSync(join(cut, "home"), { recursive: true });
+		mkdirSync(join(dir, "worktrees", "pl-run-cut", "api"), { recursive: true });
+		mkdirSync(join(dir, "runs", "run-done", "home"), { recursive: true });
+
+		expect(await sweepRunWorkspaces({ isInterrupted: (id) => id === "run-cut" })).toBe(1);
+		expect(existsSync(join(cut, "repo", "src"))).toBe(true);
+		expect(existsSync(join(cut, "home"))).toBe(true);
+		expect(existsSync(join(dir, "worktrees", "pl-run-cut", "api"))).toBe(true);
+		expect(existsSync(join(dir, "runs", "run-done", "home"))).toBe(false);
+	});
+
 	it("does nothing before any run exists", async () => {
 		expect(await sweepRunWorkspaces()).toBe(0);
 	});

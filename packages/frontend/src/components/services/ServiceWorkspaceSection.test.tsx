@@ -22,7 +22,6 @@ const globalSettings: RunWorkspaceSettings = {
 	method: "worktree",
 	location: null,
 	retention: { kind: "remove-unless-changed" },
-	keptPerProject: 3,
 	setup: { posix: "pnpm install", windows: "pnpm install" },
 	teardown: {},
 	copyIn: [".env"],

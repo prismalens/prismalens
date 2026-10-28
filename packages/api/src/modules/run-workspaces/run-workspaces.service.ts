@@ -17,6 +17,7 @@ import {
 	type RunWorkspaceSettings,
 	RunWorkspaceSettingsSchema,
 	resolveRunWorkspaceSettings,
+	type ServiceKeptWorkspace,
 	type ServiceWorkspace,
 	type WorkspaceRemoval,
 	WorkspaceRemovalSchema,
@@ -31,6 +32,7 @@ import {
 	defaultWorktreeRoot,
 	keptWorkspaces,
 	removeKeptWorkspace,
+	runIdOf,
 	setRunWorkspaceSource,
 	sweepRunWorktrees,
 } from "../../core/harness/run-worktree.js";
@@ -161,9 +163,11 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 				]);
 				const liveIds = new Set(live.map((r) => r.id));
 				const resolvedIds = new Set(resolved.map((r) => r.id));
+				const interrupted = await interruptedRunIds(this.prisma);
 				await sweepRunWorktrees({
 					isLive: (id) => liveIds.has(id),
 					isResolved: (id) => resolvedIds.has(id),
+					isInterrupted: (id) => interrupted.has(id),
 				});
 				await this.sweepCopies();
 			} catch (e) {
@@ -357,7 +361,34 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 		});
 		if (run?.status === "pending" || run?.status === "running") return [];
 		const history = await this.removals();
-		return keptWorkspaces(runId, true).map((w) => ({
+		return keptWorkspaces(runId, true).map((w) => this.toKept(w, history));
+	}
+
+	/** Every service's kept workspaces, for Settings' warning about a service holding too many. */
+	async listKept(): Promise<ServiceKeptWorkspace[]> {
+		const history = await this.removals();
+		const kept = keptWorkspaces().flatMap((w) => {
+			const runId = runIdOf(w.dir);
+			return runId && w.project ? [{ w, runId, serviceId: w.project }] : [];
+		});
+		const services = await this.prisma.service.findMany({
+			where: { id: { in: [...new Set(kept.map((k) => k.serviceId))] } },
+			select: { id: true, name: true },
+		});
+		const names = new Map(services.map((s) => [s.id, s.name]));
+		return kept.map(({ w, runId, serviceId }) => ({
+			...this.toKept(w, history),
+			runId,
+			serviceId,
+			serviceName: names.get(serviceId) ?? null,
+		}));
+	}
+
+	private toKept(
+		w: ReturnType<typeof keptWorkspaces>[number],
+		history: WorkspaceRemoval[],
+	): KeptWorkspace {
+		return {
 			dir: w.dir,
 			serviceId: w.project ?? null,
 			method: w.method,
@@ -370,7 +401,7 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 						w.project ? this.overrides.get(w.project) : undefined,
 					).effective,
 				),
-		}));
+		};
 	}
 
 	/** Only a directory the listing names for this run; never a path the caller made up. */
@@ -403,6 +434,23 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 			return { opened: false };
 		}
 	}
+}
+
+/**
+ * Runs a restart cut off (main's `endReason: "interrupted"`) that no follow-up has resumed
+ * since, as `DispatchService.afterRestart` reads it. Neither sweep removes their workspaces (#981).
+ */
+export async function interruptedRunIds(
+	prisma: Pick<PrismaService, "investigation">,
+): Promise<Set<string>> {
+	const rows = await prisma.investigation.findMany({
+		where: {
+			endReason: "interrupted",
+			events: { none: { event: { contains: '"resumed":[' } } },
+		},
+		select: { id: true },
+	});
+	return new Set(rows.map((r) => r.id));
 }
 
 function keptReason(s: RunWorkspaceSettings): string {

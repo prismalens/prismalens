@@ -83,7 +83,8 @@ beforeEach(() => {
 	tmp = mkdtempSync(join(tmpdir(), "pl-ws-"));
 	saved = process.env.PRISMALENS_WORKSPACE_DIR;
 	process.env.PRISMALENS_WORKSPACE_DIR = join(tmp, "app");
-	global = { ...DEFAULT_RUN_WORKSPACE_SETTINGS };
+	// Most cases read Remove unless changed; the default has its own case.
+	global = { ...DEFAULT_RUN_WORKSPACE_SETTINGS, retention: { kind: "remove-unless-changed" } };
 	overrides = new Map();
 	recorded = [];
 	setRunWorkspaceSource({
@@ -104,12 +105,12 @@ afterEach(() => {
 
 describe("precedence", () => {
 	it("takes a service's own field over the global one, field by field", () => {
-		global = { ...global, keptPerProject: 4, submodules: "recursive" };
-		overrides.set("id-svc", { keptPerProject: 2 });
+		global = { ...global, method: "worktree", submodules: "recursive" };
+		overrides.set("id-svc", { method: "clone" });
 		const s = settingsFor("id-svc");
-		expect(s.keptPerProject).toBe(2);
+		expect(s.method).toBe("clone");
 		expect(s.submodules).toBe("recursive");
-		expect(settingsFor("id-other").keptPerProject).toBe(4);
+		expect(settingsFor("id-other").method).toBe("worktree");
 	});
 
 	it("puts a run's workspace in its service's location, and finds it there after the run", async () => {
@@ -124,6 +125,15 @@ describe("precedence", () => {
 });
 
 describe("retention at run end", () => {
+	it("by default keeps even a clean workspace until its incident is resolved", async () => {
+		global = { ...DEFAULT_RUN_WORKSPACE_SETTINGS };
+		const { dest } = await run("r1", initRepo());
+		await end("r1");
+		await sweepRunWorktrees({ isResolved: () => false });
+		expect(existsSync(dest)).toBe(true);
+		expect(recorded.at(-1)).toMatchObject({ removed: false, reason: "keep-until-resolved" });
+	});
+
 	it("remove-unless-changed removes a clean workspace; ignored files never count", async () => {
 		const { dest } = await run("r1", initRepo());
 		writeFileSync(join(dest, "debug.log"), "noise");
@@ -198,24 +208,52 @@ describe("guards", () => {
 	});
 });
 
-describe("the per-service cap", () => {
-	it("removes the oldest kept beyond it, across single and multi-repo runs", async () => {
-		global = { ...global, retention: { kind: "keep-days", days: 30 }, keptPerProject: 2 };
-		const a = initRepo("a");
-		const b = initRepo("b");
-		const first = await run("r1", a);
-		await end("r1");
-		// A multi-repo run keeps one folder per repo under its own.
+describe("no automatic cap (#925)", () => {
+	it("never removes a kept workspace for count alone, past 10 for one service", async () => {
+		global = { ...global, retention: { kind: "keep-days", days: 30 } };
+		const repo = initRepo();
+		const dests: string[] = [];
+		for (let i = 0; i < 11; i++) {
+			dests.push((await run(`r${i}`, repo)).dest);
+			await end(`r${i}`);
+		}
+		await sweepRunWorktrees({ isLive: () => false });
+		expect(dests.filter((d) => existsSync(d))).toHaveLength(11);
+		expect(keptWorkspaces()).toHaveLength(11);
+		expect(recorded.filter((r) => r.removed)).toEqual([]);
+	});
+});
+
+describe("a run a restart interrupted (#981)", () => {
+	/** The process died mid-run: the run's own end never released its workspace. */
+	async function cutOff(id: string) {
+		const { dest } = await run(id, initRepo());
+		writeFileSync(join(dest, "a.txt"), "agent's edit");
+		unbindRun(id);
+		return dest;
+	}
+
+	it("its workspace survives the boot sweep and the hourly one until it is resumed", async () => {
+		global = { ...global, retention: { kind: "always-remove" } };
+		const dest = await cutOff("r1");
+		await sweepRunWorktrees({ isInterrupted: (id) => id === "r1" });
+		expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("agent's edit");
+		await sweepRunWorktrees({ isLive: () => false, isInterrupted: (id) => id === "r1" });
+		expect(existsSync(dest)).toBe(true);
+		// Resumed (or, with #987, skipped): its own rule applies again.
+		await sweepRunWorktrees({ isInterrupted: () => false });
+		expect(existsSync(dest)).toBe(false);
+	});
+
+	it("a multi-repo run's folder survives the boot sweep too", async () => {
+		global = { ...global, retention: { kind: "always-remove" } };
+		const repo = initRepo();
 		await bindRun("r2", { incidentId: "inc", serviceName: "svc" });
-		const multi = join(runWorktreeDir("r2"), "b");
-		await addRunWorktree(b.dir, multi, b.head, "r2");
-		await end("r2");
-		const third = await run("r3", a);
-		await end("r3");
-		expect(existsSync(first.dest)).toBe(false);
-		expect(existsSync(multi)).toBe(true);
-		expect(existsSync(third.dest)).toBe(true);
-		expect(recorded.some((r) => r.runId === "r1" && r.reason === "over-cap")).toBe(true);
+		const child = join(runWorktreeDir("r2"), "api");
+		await addRunWorktree(repo.dir, child, repo.head, "r2");
+		unbindRun("r2");
+		await sweepRunWorktrees({ isInterrupted: (id) => id === "r2" });
+		expect(existsSync(join(child, "a.txt"))).toBe(true);
 	});
 });
 
@@ -269,20 +307,6 @@ describe("a follow-up and the user's own Remove", () => {
 });
 
 describe("review round 1 (#925)", () => {
-	it("the cap never removes a kept workspace whose run is live again", async () => {
-		global = { ...global, retention: { kind: "keep-days", days: 30 }, keptPerProject: 1 };
-		const repo = initRepo();
-		const first = await run("r1", repo);
-		await end("r1");
-		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
-		const second = await run("r2", repo);
-		await end("r2");
-		await sweepRunWorktrees({ isLive: (id) => id === "r1" });
-		expect(existsSync(first.dest)).toBe(true);
-		expect(existsSync(second.dest)).toBe(true);
-		unbindRun("r1");
-	});
-
 	it("a multi-repo run's folder stays while a clone in it has other worktrees hanging off it", async () => {
 		const parent = join(tmp, "app", "worktrees", "pl-r9");
 		const clone = join(parent, "api");
@@ -319,41 +343,6 @@ describe("review round 1 (#925)", () => {
 });
 
 describe("Codex pass (#925)", () => {
-	it("a multi-repo child named pl-* is its parent run's: the cap spares it while that run is live", async () => {
-		global = { ...global, retention: { kind: "keep-days", days: 30 }, keptPerProject: 1 };
-		const a = initRepo("a");
-		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
-		const child = join(runWorktreeDir("r1"), "pl-library");
-		await addRunWorktree(a.dir, child, a.head, "r1");
-		await end("r1");
-		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
-		const newer = await run("r2", a);
-		await end("r2");
-		await sweepRunWorktrees();
-		expect(existsSync(child)).toBe(true);
-		expect(existsSync(newer.dest)).toBe(true);
-		unbindRun("r1");
-	});
-
-	it("a location named pl-* still reads its workspaces' own runs: the cap spares a live one", async () => {
-		global = {
-			...global,
-			location: join(tmp, "pl-workspaces"),
-			retention: { kind: "keep-days", days: 30 },
-			keptPerProject: 1,
-		};
-		const a = initRepo("a");
-		const older = await run("r1", a);
-		await end("r1");
-		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
-		const newer = await run("r2", a);
-		await end("r2");
-		await sweepRunWorktrees();
-		expect(existsSync(older.dest)).toBe(true);
-		expect(existsSync(newer.dest)).toBe(true);
-		unbindRun("r1");
-	});
-
 	it("never follows a linked multi-repo run folder into its target", async () => {
 		const target = join(tmp, "moved");
 		const repo = initRepo();
@@ -430,21 +419,5 @@ describe("review round 2 (#925)", () => {
 		symlinkSync(dest, link, "junction");
 		writeFileSync(`${link}.workspace.json`, readFileSync(`${dest}.workspace.json`));
 		expect(keptWorkspaces("r7", true).map((w) => w.dir)).toEqual([link]);
-	});
-
-	it("a rebuild's leftover discard never caps the run's kept siblings", async () => {
-		global = { ...global, retention: { kind: "keep-days", days: 30 }, keptPerProject: 1 };
-		const a = initRepo("a");
-		const older = await run("r0", a);
-		await end("r0");
-		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
-		const sibling = join(runWorktreeDir("r1"), "b");
-		await addRunWorktree(a.dir, sibling, a.head, "r1");
-		await end("r1");
-		expect(existsSync(older.dest)).toBe(false);
-		await bindRun("r1", { incidentId: "inc", serviceName: "svc" });
-		await addRunWorktree(a.dir, join(runWorktreeDir("r1"), "c"), a.head, "r1");
-		expect(existsSync(sibling)).toBe(true);
-		unbindRun("r1");
 	});
 });

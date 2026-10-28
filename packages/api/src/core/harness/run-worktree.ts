@@ -181,7 +181,7 @@ export function toPolicy(
 	return {
 		method: s.method,
 		retention: s.retention,
-		// The engine's own cap knows no live runs; enforceCap applies the setting across locations.
+		// No automatic cap (#925): the engine's own would evict kept work by count alone.
 		keptPerProject: Number.MAX_SAFE_INTEGER,
 		setup: s.setup,
 		teardown: s.teardown,
@@ -227,7 +227,7 @@ function mustStay(dir: string): boolean {
 }
 
 /** `pl-<run>` directly in a location, else the `pl-<run>` a multi-repo folder sits in: a location or a repo may be named `pl-*` too. */
-function runIdOf(dir: string): string | null {
+export function runIdOf(dir: string): string | null {
 	const roots = worktreeRoots();
 	if (roots.includes(resolve(dir))) return null;
 	const name = basename(
@@ -294,7 +294,7 @@ export async function addRunWorktree(
 		mirror?: boolean;
 	} = {},
 ): Promise<AddedWorktree> {
-	// A cap, Remove or sweep already deciding on this folder finishes first; a follow-up never resumes mid-removal.
+	// A Remove or sweep already deciding on this folder finishes first; a follow-up never resumes mid-removal.
 	await removing.get(dest);
 	await sweeping;
 	const resumed = await resumeWorkspace({
@@ -344,8 +344,6 @@ export async function releaseWorktree(
 		...(onlyLock !== undefined ? { onlyLock } : {}),
 	});
 	report(records, discard);
-	// A rebuild's leftover discard is not the run's end: its kept siblings stay out of the cap.
-	if (!discard) await enforceCap(undefined, runIdOf(dir));
 	return records[0]?.removed === true;
 }
 
@@ -399,7 +397,12 @@ async function keptClone(dir: string): Promise<boolean> {
 export interface SweepOptions {
 	isLive?: (runId: string) => boolean;
 	isResolved?: (runId: string) => boolean;
+	/** A restart cut the run off and it has not been resumed: its workspace waits for #981's resume. */
+	isInterrupted?: (runId: string) => boolean;
 }
+
+const untouchable = (opts: SweepOptions, runId: string) =>
+	runs.has(runId) || !!opts.isLive?.(runId) || !!opts.isInterrupted?.(runId);
 
 async function sweepIn(
 	parentDir: string,
@@ -413,7 +416,7 @@ async function sweepIn(
 		lockPrefix: LOCK_PREFIX,
 		policy: (project) => toPolicy(settingsFor(project)),
 		// A run bound in this process is live even if it started after the caller looked.
-		isLive: (id) => runs.has(runOf(id)) || (opts.isLive?.(runOf(id)) ?? false),
+		isLive: (id) => untouchable(opts, runOf(id)),
 		isResolved: (id) => opts.isResolved?.(runOf(id)) ?? false,
 	});
 	return records;
@@ -444,8 +447,7 @@ async function sweepAll(opts: SweepOptions): Promise<string[]> {
 				!entry.isDirectory() ||
 				!entry.name.startsWith(WORKTREE_PREFIX) ||
 				isWorkspace(dir) ||
-				runs.has(runId) ||
-				opts.isLive?.(runId)
+				untouchable(opts, runId)
 			)
 				continue;
 			report(await sweepIn(dir, "", opts), true);
@@ -464,7 +466,6 @@ async function sweepAll(opts: SweepOptions): Promise<string[]> {
 		);
 		gone.push(...records.filter((r) => r.removed).map((r) => r.id));
 	}
-	await enforceCap(opts.isLive);
 	return gone;
 }
 
@@ -496,41 +497,6 @@ export function keptWorkspaces(runId?: string, any = false): WorkspaceInfo[] {
 		}
 	}
 	return out;
-}
-
-/** The per-service cap across every location and layout: the oldest kept beyond it go. */
-async function enforceCap(
-	isLive?: (runId: string) => boolean,
-	ending?: string | null,
-): Promise<void> {
-	const live = (dir: string) => {
-		const run = runIdOf(dir);
-		return !!run && run !== ending && (runs.has(run) || !!isLive?.(run));
-	};
-	const byProject = new Map<string, WorkspaceInfo[]>();
-	for (const w of keptWorkspaces())
-		if (w.project && !live(w.dir))
-			byProject.set(w.project, [...(byProject.get(w.project) ?? []), w]);
-	for (const [project, kept] of byProject) {
-		const cap = settingsFor(project).keptPerProject;
-		if (kept.length <= cap) continue;
-		kept.sort((a, b) => (b.keptAt ?? "").localeCompare(a.keptAt ?? ""));
-		for (const w of kept.slice(cap)) {
-			// Checked again right before: a follow-up may have resumed it since the selection.
-			if (live(w.dir) || !workspaceInfo(w.dir)?.keptAt) continue;
-			const [r] = await whileRemoving(
-				w.dir,
-				releaseWorkspace({
-					...asWorkspace(w.dir),
-					policy: {
-						...toPolicy(settingsFor(project)),
-						retention: { kind: "always-remove" },
-					},
-				}),
-			);
-			if (r) source.record([toRemoval(r, r.removed ? "over-cap" : r.reason)]);
-		}
-	}
 }
 
 const removing = new Map<string, Promise<unknown>>();

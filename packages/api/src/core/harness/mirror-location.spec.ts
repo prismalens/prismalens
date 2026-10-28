@@ -20,7 +20,8 @@ import {
 	sweepOldMirrors,
 } from "./mirror-location.js";
 import { mirrorPathFor, RepoSourceService } from "./repo-source.service.js";
-import { releaseWorktreesIn } from "./run-worktree.js";
+import { DEFAULT_RUN_WORKSPACE_SETTINGS } from "@prismalens/contracts";
+import { releaseWorktreesIn, setRunWorkspaceSource } from "./run-worktree.js";
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
 const git = (args: string[], cwd: string) =>
@@ -55,9 +56,18 @@ beforeEach(() => {
 	saved = process.env.PRISMALENS_WORKSPACE_DIR;
 	process.env.PRISMALENS_WORKSPACE_DIR = join(tmp, "app");
 	setMirrorLocations(null);
+	// Remove unless changed, so a released worktree lets go of its copy (the default keeps it).
+	setRunWorkspaceSource({
+		global: () => ({ ...DEFAULT_RUN_WORKSPACE_SETTINGS, retention: { kind: "remove-unless-changed" } }),
+		override: () => undefined,
+		locations: () => [],
+		serviceIdOf: async () => null,
+		record: () => {},
+	});
 });
 
 afterEach(() => {
+	setRunWorkspaceSource(null);
 	setMirrorLocations(null);
 	process.env.PRISMALENS_WORKSPACE_DIR = saved;
 	rmSync(tmp, { recursive: true, force: true, maxRetries: 3 });

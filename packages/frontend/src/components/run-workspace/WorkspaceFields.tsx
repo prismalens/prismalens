@@ -20,7 +20,6 @@ export const FIELDS: { key: WorkspaceField; label: string }[] = [
 	{ key: "method", label: "Method" },
 	{ key: "location", label: "Location" },
 	{ key: "retention", label: "After a run" },
-	{ key: "keptPerProject", label: "Kept per service" },
 	{ key: "setup", label: "Setup command" },
 	{ key: "teardown", label: "Teardown command" },
 	{ key: "copyIn", label: "Files to copy in" },
@@ -33,10 +32,10 @@ const METHOD = {
 	clone: "Clone of your repo",
 } as const;
 const RETENTION: Record<Retention["kind"], string> = {
+	"keep-until-resolved": "Keep until the incident is resolved",
 	"remove-unless-changed": "Remove unless changed",
 	"always-remove": "Always remove",
 	"keep-days": "Keep for some days",
-	"keep-until-resolved": "Keep until the incident is resolved",
 };
 const SUBMODULES = {
 	skip: "Skip",
@@ -71,8 +70,6 @@ export function describeField(
 			return s.retention.kind === "keep-days"
 				? `Keep for ${s.retention.days} days`
 				: RETENTION[s.retention.kind];
-		case "keptPerProject":
-			return String(s.keptPerProject);
 		case "setup":
 		case "teardown":
 			return commands(s[key]);
@@ -273,21 +270,6 @@ export function FieldEditor({
 				</div>
 			);
 		}
-		case "keptPerProject":
-			return (
-				<Input
-					aria-label="Kept per service"
-					type="number"
-					min={1}
-					max={100}
-					value={value.keptPerProject}
-					onChange={(e) =>
-						onChange("keptPerProject", Number(e.target.value) || 1)
-					}
-					disabled={disabled}
-					className="w-24"
-				/>
-			);
 		case "setup":
 		case "teardown":
 			return (
@@ -336,7 +318,6 @@ export const HELP: Record<WorkspaceField, string> = {
 	location: "The folder run workspaces are made in.",
 	retention:
 		"Changed means uncommitted edits or new files that are not ignored. Ignored files never count.",
-	keptPerProject: "The oldest kept workspaces beyond this many go first.",
 	setup:
 		"Runs in the new workspace before the agent starts. Cancelled after 5 minutes with no output.",
 	teardown:
@@ -354,7 +335,6 @@ export const REASONS: Record<string, string> = {
 	"always-remove": "the setting is Always remove",
 	expired: "its days were up",
 	resolved: "its incident was resolved",
-	"over-cap": "more were kept than the setting allows",
 	"removed-by-user": "you removed it",
 	gone: "it was already gone",
 	changed: "it holds changes",
