@@ -30,9 +30,17 @@ export interface Incident {
 
 export interface Investigation {
 	id: string;
-	incidentId: string;
+	/** Null for a scheduled check no finding linked yet (#979). */
+	incidentId: string | null;
 	status: string;
-	report?: { rootCause: string | null } | null;
+	triggerType?: string | null;
+	report?: {
+		rootCause: string | null;
+		hypotheses?: Array<{
+			status: string;
+			evidence: Array<{ status: string; direction: string }>;
+		}>;
+	} | null;
 	error?: string | null;
 }
 

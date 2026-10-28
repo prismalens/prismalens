@@ -130,6 +130,8 @@ export const ScheduleDetailSchema = ScheduleAccessSchema.extend({
 	nextCursor: z.string().nullable(),
 });
 
+export type ScheduleDetail = z.infer<typeof ScheduleDetailSchema>;
+
 export const ScheduleDetailQuerySchema = z.object({
 	id: z.string(),
 	cursor: z.string().optional(),
