@@ -582,7 +582,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		await this.runWorkspaces?.ready();
 		try {
 			const interrupted = await interruptedRunIds(this.prisma);
+			// A follow-up resumeInvestigation left pending reuses its run's workspace.
+			const live = await this.prisma.investigation.findMany({
+				where: { status: { in: ["pending", "running"] } },
+				select: { id: true },
+			});
+			const liveIds = new Set(live.map((r) => r.id));
 			const swept = await sweepRunWorkspaces({
+				isLive: (id) => liveIds.has(id),
 				isInterrupted: (id) => interrupted.has(id),
 			});
 			if (swept > 0)

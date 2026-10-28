@@ -197,6 +197,18 @@ describe("guards", () => {
 		expect(existsSync(dest)).toBe(false);
 	});
 
+	it("the hourly sweep keeps a pending follow-up's kept workspace past its keep-days", async () => {
+		global = { ...global, retention: { kind: "keep-days", days: 2 } };
+		const { dest } = await run("r1", initRepo());
+		await end("r1");
+		const old = new Date(Date.now() - 3 * 86_400_000).toISOString();
+		writeFileSync(`${dest}.workspace.json`, JSON.stringify({ ...sidecar(dest), keptAt: old }));
+		await sweepRunWorktrees({ isLive: (id) => id === "r1" });
+		expect(existsSync(dest)).toBe(true);
+		await sweepRunWorktrees({ isLive: () => false });
+		expect(existsSync(dest)).toBe(false);
+	});
+
 	it("never removes a worktree PrismaLens did not make", async () => {
 		const repo = initRepo();
 		const root = join(tmp, "app", "worktrees");

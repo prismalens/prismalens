@@ -63,8 +63,19 @@ export function KeptWorkspaceRows({
 		...orpc.runWorkspaces.remove.mutationOptions(),
 		onSettled: () => {
 			void queryClient.invalidateQueries({ queryKey: refresh });
+			void queryClient.invalidateQueries({
+				queryKey: orpc.runWorkspaces.removals.key(),
+			});
 		},
 	});
+	// A refused removal resolves; throwing keeps the dialog open with the reason in it.
+	const removeOrExplain = async (target: { runId: string; dir: string }) => {
+		const result = await remove.mutateAsync(target);
+		if (!result.removed)
+			throw new Error(
+				`Not removed: ${REASONS[result.reason] ?? result.reason}.`,
+			);
+	};
 	return (
 		<>
 			{workspaces.map((w) => (
@@ -110,7 +121,7 @@ export function KeptWorkspaceRows({
 				}
 				confirmLabel="Remove"
 				isPending={remove.isPending}
-				onConfirm={() => (confirm ? remove.mutateAsync(confirm) : undefined)}
+				onConfirm={() => (confirm ? removeOrExplain(confirm) : undefined)}
 			/>
 		</>
 	);

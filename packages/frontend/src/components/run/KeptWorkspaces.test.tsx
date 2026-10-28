@@ -16,12 +16,21 @@ const state = {
 	canEdit: true,
 	workspaces: [] as KeptWorkspace[],
 	openMutate: vi.fn(),
-	removeMutateAsync: vi.fn(async () => ({ removed: true })),
+	removeMutateAsync: vi.fn(
+		async (_input: {
+			runId: string;
+			dir: string;
+		}): Promise<{ removed: boolean; reason: string }> => ({
+			removed: true,
+			reason: "removed-by-user",
+		}),
+	),
+	invalidateQueries: vi.fn(),
 };
 
 vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({
-		invalidateQueries: vi.fn(),
+		invalidateQueries: state.invalidateQueries,
 	}),
 	useQuery: () => ({
 		data: {
@@ -33,7 +42,13 @@ vi.mock("@tanstack/react-query", () => ({
 		if (options?.onSettled) {
 			// This is the remove mutation
 			return {
-				mutateAsync: state.removeMutateAsync,
+				mutateAsync: async (input: { runId: string; dir: string }) => {
+					try {
+						return await state.removeMutateAsync(input);
+					} finally {
+						options.onSettled();
+					}
+				},
 				isPending: false,
 				error: null,
 			};
@@ -59,6 +74,9 @@ vi.mock("@/lib/api/orpc-client", () => ({
 			remove: {
 				mutationOptions: () => ({ onSettled: vi.fn() }),
 			},
+			removals: {
+				key: () => ["runWorkspaces", "removals"],
+			},
 		},
 	},
 }));
@@ -70,7 +88,11 @@ beforeEach(() => {
 	state.canEdit = true;
 	state.workspaces = [];
 	state.openMutate = vi.fn();
-	state.removeMutateAsync = vi.fn(async () => ({ removed: true }));
+	state.removeMutateAsync = vi.fn(async () => ({
+		removed: true,
+		reason: "removed-by-user",
+	}));
+	state.invalidateQueries = vi.fn();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -153,6 +175,50 @@ describe("KeptWorkspaces", () => {
 			runId: "run-1",
 			dir: "/worktrees/pl-run-1",
 		});
+		expect(state.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["runWorkspaces", "listForRun"],
+		});
+		expect(state.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["runWorkspaces", "removals"],
+		});
+	});
+
+	it("a refused removal keeps the confirmation open and says why", async () => {
+		state.removeMutateAsync = vi.fn(async () => ({
+			removed: false,
+			reason: "live",
+		}));
+		state.workspaces = [
+			{
+				dir: "/worktrees/pl-run-1",
+				serviceId: "svc-1",
+				method: "worktree",
+				keptAt: "2026-10-27T10:00:00.000Z",
+				reason: "changed",
+			},
+		];
+		await act(async () =>
+			root.render(createElement(KeptWorkspaces, { runId: "run-1" })),
+		);
+		const removeBtn = Array.from(container.querySelectorAll("button")).find(
+			(b) => b.textContent?.trim() === "Remove",
+		);
+		await act(async () => {
+			removeBtn?.click();
+		});
+		const confirmButtons = Array.from(
+			document.body.querySelectorAll("button"),
+		).filter((b) => b.textContent?.trim() === "Remove");
+		await act(async () => {
+			confirmButtons[confirmButtons.length - 1].click();
+		});
+
+		expect(state.removeMutateAsync).toHaveBeenCalled();
+		const dialog = document.body.querySelector('[role="alertdialog"]');
+		expect(dialog).not.toBeNull();
+		expect(dialog?.textContent).toContain(
+			"Not removed: its run is still going.",
+		);
 	});
 
 	it("no buttons when canEdit=false", async () => {
