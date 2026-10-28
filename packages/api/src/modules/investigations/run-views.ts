@@ -11,6 +11,7 @@ import {
 	isSafeRepoPath,
 	RUN_DIFF_MAX_BYTES,
 	RUN_TREE_MAX_ENTRIES,
+	RUN_TREE_MAX_FILES,
 	type RunComparison,
 	type RunDiff,
 	type RunDiffFile,
@@ -41,13 +42,21 @@ const LOCKED = [
 	"diff.submodule=short",
 	"-c",
 	`core.attributesFile=${NULL_FILE}`,
+	"-c",
+	"core.quotePath=false",
 	"--no-replace-objects",
 ];
 
-function git(args: string[], cwd: string, timeoutMs = READ_TIMEOUT_MS) {
+function gitIn(
+	args: string[],
+	cwd: string,
+	timeoutMs = READ_TIMEOUT_MS,
+	signal?: AbortSignal,
+) {
 	return spawnGit([...LOCKED, ...args], {
 		cwd,
 		timeoutMs,
+		...(signal ? { signal } : {}),
 		env: {
 			...gitEnv({ source: "none" }),
 			GIT_CONFIG_NOSYSTEM: "1",
@@ -56,6 +65,9 @@ function git(args: string[], cwd: string, timeoutMs = READ_TIMEOUT_MS) {
 		},
 	});
 }
+
+const git = (args: string[], cwd: string, timeoutMs = READ_TIMEOUT_MS) =>
+	gitIn(args, cwd, timeoutMs);
 
 async function usable(dir: string | null): Promise<string | null> {
 	if (!dir) return null;
@@ -81,12 +93,15 @@ const TYPE: Record<string, RunTreeEntry["type"]> = {
 	commit: "submodule",
 };
 
-/** One directory of a recorded commit; directories first, then git's order. */
+/**
+ * One directory of a recorded commit, directories first, then git's order;
+ * or with `recursive`, every file under it at once (#975 OBJ-012).
+ */
 export async function readRunTree(
 	workspace: RunWorkspace | null,
 	sha: string,
 	prefix: string | undefined,
-	opts: { mirrorRoot?: string } = {},
+	opts: { mirrorRoot?: string; recursive?: boolean } = {},
 ): Promise<RunTree> {
 	if (
 		!CommitShaSchema.safeParse(sha).success ||
@@ -119,6 +134,7 @@ export async function readRunTree(
 			"ls-tree",
 			"-z",
 			"--full-tree",
+			...(opts.recursive ? ["-r"] : []),
 			sha,
 			"--",
 			...(prefix ? [`${prefix}/`] : []),
@@ -141,6 +157,7 @@ export async function readRunTree(
 			type: TYPE[type] ?? (mode === "120000" ? "symlink" : "file"),
 		});
 	}
+	const max = opts.recursive ? RUN_TREE_MAX_FILES : RUN_TREE_MAX_ENTRIES;
 	const sorted = [
 		...entries.filter((e) => e.type === "dir"),
 		...entries.filter((e) => e.type !== "dir"),
@@ -148,30 +165,34 @@ export async function readRunTree(
 	return {
 		state: "ok",
 		...at,
-		entries: sorted.slice(0, RUN_TREE_MAX_ENTRIES),
-		truncated: sorted.length > RUN_TREE_MAX_ENTRIES,
+		entries: sorted.slice(0, max),
+		truncated: sorted.length > max,
 	};
 }
 
-async function isAncestor(dir: string, a: string, b: string) {
+type Run = (args: string[]) => ReturnType<typeof gitIn>;
+
+async function isAncestor(git: Run, a: string, b: string) {
 	try {
-		await git(["merge-base", "--is-ancestor", a, b], dir);
+		await git(["merge-base", "--is-ancestor", a, b]);
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-async function tagAt(dir: string, sha: string): Promise<string | null> {
-	const { stdout } = await git(
-		["tag", "--points-at", sha, "--sort=-creatordate"],
-		dir,
-	);
+async function tagAt(git: Run, sha: string): Promise<string | null> {
+	const { stdout } = await git([
+		"tag",
+		"--points-at",
+		sha,
+		"--sort=-creatordate",
+	]);
 	return stdout.split("\n").find(Boolean) ?? null;
 }
 
-async function kindOf(dir: string, sha: string) {
-	const { stdout } = await git(["rev-list", "--parents", "-n", "1", sha], dir);
+async function kindOf(git: Run, sha: string) {
+	const { stdout } = await git(["rev-list", "--parents", "-n", "1", sha]);
 	return stdout.trim().split(" ").length > 2 ? "merge" : "commit";
 }
 
@@ -186,18 +207,35 @@ export async function compareFor(
 	repo: string,
 	head: string,
 	deployments: { sha: string; name: string | null }[],
+	signal?: AbortSignal,
 ): Promise<RunComparison | null> {
+	try {
+		return await pairFor(dir, repo, head, deployments, signal);
+	} catch (error) {
+		// Out of time or cancelled: the run goes on without a comparison (#975 OBJ-014).
+		if (signal?.aborted) return null;
+		throw error;
+	}
+}
+
+async function pairFor(
+	dir: string,
+	repo: string,
+	head: string,
+	deployments: { sha: string; name: string | null }[],
+	signal?: AbortSignal,
+): Promise<RunComparison | null> {
+	signal?.throwIfAborted();
+	const git = (args: string[]) => gitIn(args, dir, READ_TIMEOUT_MS, signal);
 	const between = async (base: string, tip: string) =>
 		Number(
-			(
-				await git(["rev-list", "--count", `${base}..${tip}`], dir)
-			).stdout.trim(),
+			(await git(["rev-list", "--count", `${base}..${tip}`])).stdout.trim(),
 		);
 	const known: { sha: string; name: string | null }[] = [];
 	for (const d of deployments) {
 		if (!CommitShaSchema.safeParse(d.sha).success) continue;
 		if (known.some((k) => k.sha === d.sha)) continue;
-		if (await isAncestor(dir, d.sha, known[0]?.sha ?? head)) known.push(d);
+		if (await isAncestor(git, d.sha, known[0]?.sha ?? head)) known.push(d);
 		if (known.length === 2) break;
 	}
 	const [tip, prev] = known;
@@ -213,16 +251,18 @@ export async function compareFor(
 			between: await between(prev.sha, tip.sha),
 		};
 
-	const tag = await tagAt(dir, head);
+	const tag = await tagAt(git, head);
 	if (tag) {
 		try {
-			const { stdout } = await git(
-				["describe", "--tags", "--abbrev=0", `${head}^`],
-				dir,
-			);
+			const { stdout } = await git([
+				"describe",
+				"--tags",
+				"--abbrev=0",
+				`${head}^`,
+			]);
 			const prevTag = stdout.trim();
 			const base = (
-				await git(["rev-list", "-n", "1", `refs/tags/${prevTag}`], dir)
+				await git(["rev-list", "-n", "1", `refs/tags/${prevTag}`])
 			).stdout.trim();
 			if (CommitShaSchema.safeParse(base).success)
 				return {
@@ -242,19 +282,17 @@ export async function compareFor(
 
 	let parent: string;
 	try {
-		parent = (
-			await git(["rev-parse", "--verify", `${head}^1`], dir)
-		).stdout.trim();
+		parent = (await git(["rev-parse", "--verify", `${head}^1`])).stdout.trim();
 	} catch {
 		return null;
 	}
 	return {
 		repo,
 		head,
-		headKind: tag ? "tag" : await kindOf(dir, head),
+		headKind: tag ? "tag" : await kindOf(git, head),
 		headName: tag,
 		base: parent,
-		baseKind: await kindOf(dir, parent),
+		baseKind: await kindOf(git, parent),
 		baseName: null,
 		between: 1,
 	};
@@ -305,6 +343,8 @@ export async function readRunDiff(
 	)
 		return { state: "unavailable", comparison, reason: "commit-gone" };
 	const range = [
+		"--src-prefix=a/",
+		"--dst-prefix=b/",
 		"--no-ext-diff",
 		"--no-textconv",
 		"--submodule=short",

@@ -321,7 +321,7 @@ async function runJobInternal(
 		const workspace = {
 			...checkout,
 			toolsServer: newGatewayServerName(),
-			compare: await comparisonsFor(checkout.repos, ports),
+			compare: await comparisonsFor(checkout.repos, ports, io.signal),
 		};
 		await recordWorkspace(data, workspace, ports, context);
 		const multi = workspaceContext(workspace);
@@ -1383,6 +1383,9 @@ export interface Workspace extends RunWorkspace {
 	checkoutsSkipped: CheckoutSkipped[];
 }
 
+const COMPARE_MS = 15_000;
+const COMPARE_DEPLOYMENTS = 10;
+
 /**
  * The panel's diff pairs, one per repo, recorded before the agent starts so
  * the diff endpoint never takes a commit from the caller (#973). A repo that
@@ -1391,14 +1394,26 @@ export interface Workspace extends RunWorkspace {
 async function comparisonsFor(
 	repos: RunWorkspace["repos"],
 	ports: RunPorts,
+	cancel: AbortSignal,
 ): Promise<RunComparison[]> {
+	// One deadline for every repo, and Stop still stops: this runs before the agent starts (#975 OBJ-014).
+	const signal = AbortSignal.any([cancel, AbortSignal.timeout(COMPARE_MS)]);
 	const pairs: RunComparison[] = [];
 	for (const repo of repos) {
+		if (signal.aborted) break;
 		const dir = objectDirFor(repo);
 		if (!dir) continue;
 		try {
-			const deployments = (await ports.deployments?.(repo.services)) ?? [];
-			const pair = await compareFor(dir, repo.name, repo.head, deployments);
+			const deployments = (
+				(await ports.deployments?.(repo.services)) ?? []
+			).slice(0, COMPARE_DEPLOYMENTS);
+			const pair = await compareFor(
+				dir,
+				repo.name,
+				repo.head,
+				deployments,
+				signal,
+			);
 			if (pair) pairs.push(pair);
 		} catch (error) {
 			logger.warn(

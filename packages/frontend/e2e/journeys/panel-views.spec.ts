@@ -148,6 +148,29 @@ async function setup(page: Page, width = 1440) {
 				}),
 			}),
 	);
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/tree`,
+		(route) =>
+			route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					state: "ok",
+					repo: "repo",
+					sha: HEAD,
+					prefix: null,
+					entries: [
+						{ name: "README.md", path: "README.md", type: "file" },
+						{
+							name: "client.ts",
+							path: "src/payments/client.ts",
+							type: "file",
+						},
+					],
+					truncated: false,
+				}),
+			}),
+	);
 	await page.goto(RUN_URL);
 	await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
 }
@@ -183,6 +206,15 @@ test.describe("Panel views (#973)", () => {
 		});
 		await page.goBack();
 		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
+
+		// The browser's Back returns focus to the step too (#975 OBJ-008).
+		if (!(await step1.getByTestId("step-body").isVisible()))
+			await step1.getByTestId("step-toggle").click();
+		await page.locator("#open-step-1").click();
+		await expect(page.getByTestId("evidence-file")).toBeVisible();
+		await page.goBack();
+		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
+		await expect(page.locator("#open-step-1")).toBeFocused();
 	});
 
 	test("Files lists what the run touched in a named tree", async ({ page }) => {
@@ -197,6 +229,23 @@ test.describe("Panel views (#973)", () => {
 		await expect(item).toBeVisible();
 		await item.click();
 		await expect(page.getByTestId("evidence-file")).toBeVisible();
+	});
+
+	test("All files opens a folder by keyboard with its files already listed", async ({
+		page,
+	}) => {
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-files").click();
+		await page.getByTestId("files-mode-all").click();
+		const tree = page.getByRole("tree", { name: /All files at/ });
+		const folder = tree.getByRole("treeitem", { name: /src/ }).first();
+		await expect(folder).toBeVisible();
+		await folder.focus();
+		await page.keyboard.press("ArrowRight");
+		await expect(
+			tree.getByRole("treeitem", { name: /client\.\s?ts/ }),
+		).toBeVisible();
 	});
 
 	test("Changes names the recorded pair and draws its diff split, or unified when narrow", async ({
