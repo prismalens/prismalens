@@ -42,12 +42,19 @@ export class TerminalSocketServer {
 		maxPayload: INPUT_LIMIT,
 	});
 	private readonly live = new Set<WebSocket>();
+	/** Admitted upgrades still loading the PTY; they hold a slot under the cap. */
+	private pending = 0;
 
 	constructor(private readonly options: TerminalSocketOptions) {}
 
 	/** False when the upgrade is not for the terminal, so the caller can route it elsewhere. */
 	handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
-		const url = new URL(req.url ?? "/", "http://localhost");
+		let url: URL;
+		try {
+			url = new URL(req.url ?? "/", "http://localhost");
+		} catch {
+			return false;
+		}
 		if (url.pathname !== TERMINAL_SOCKET_PATH) return false;
 		void this.admit(req, socket, head, url).catch(() => refuse(socket, 500));
 		return true;
@@ -70,13 +77,18 @@ export class TerminalSocketServer {
 		const device = await this.options.authenticate(req);
 		if (!device || device.id !== deviceId || !gate.isHostRequest(req, device))
 			return refuse(socket, 403);
-		if (this.live.size >= (this.options.maxSessions ?? 6))
+		if (this.live.size + this.pending >= (this.options.maxSessions ?? 6))
 			return refuse(socket, 429);
-		const factory = await this.options.loadPty();
-		if (!factory) return refuse(socket, 503);
-		this.wss.handleUpgrade(req, socket, head, (ws) =>
-			this.start(ws, factory, req, deviceId, url),
-		);
+		this.pending++;
+		try {
+			const factory = await this.options.loadPty();
+			if (!factory) return refuse(socket, 503);
+			this.wss.handleUpgrade(req, socket, head, (ws) =>
+				this.start(ws, factory, req, deviceId, url),
+			);
+		} finally {
+			this.pending--;
+		}
 	}
 
 	private start(
@@ -111,9 +123,23 @@ export class TerminalSocketServer {
 				pty.kill();
 			} catch {}
 		};
+		/** Kill first, then drop the socket: a client that ignores the close frame must not keep a shell. */
+		const cutOff = () => {
+			end();
+			ws.terminate();
+		};
+		/** A PTY that already exited throws on resize or write; that ends this session, not the API. */
+		const guarded = (fn: () => void) => {
+			if (ended) return;
+			try {
+				fn();
+			} catch {
+				cutOff();
+			}
+		};
 		const recheck = setInterval(async () => {
 			const device = await this.options.authenticate(req).catch(() => null);
-			if (!device || device.id !== deviceId) ws.close(1008, "revoked");
+			if (!device || device.id !== deviceId) cutOff();
 		}, this.options.recheckMs ?? 15_000);
 
 		pty.onData((data) => {
@@ -123,11 +149,8 @@ export class TerminalSocketServer {
 			ws.send(chunk);
 			if (!paused && unacked > high) {
 				paused = true;
-				pty.pause();
-				stall = setTimeout(
-					() => ws.close(1008, "stalled"),
-					this.options.stallMs ?? 30_000,
-				);
+				guarded(() => pty.pause());
+				stall = setTimeout(cutOff, this.options.stallMs ?? 30_000);
 			}
 		});
 		pty.onExit(({ exitCode }) => {
@@ -137,7 +160,7 @@ export class TerminalSocketServer {
 			ws.close(1000);
 		});
 		ws.on("message", (raw, isBinary) => {
-			if (isBinary) return;
+			if (isBinary || ended) return;
 			let frame: ReturnType<typeof TerminalClientFrameSchema.safeParse>;
 			try {
 				frame = TerminalClientFrameSchema.safeParse(JSON.parse(String(raw)));
@@ -146,16 +169,16 @@ export class TerminalSocketServer {
 			}
 			if (!frame.success) return;
 			const f = frame.data;
-			if (f.t === "in") pty.write(f.d);
+			if (f.t === "in") guarded(() => pty.write(f.d));
 			else if (f.t === "run") {
-				if (runnableCommand(f.d)) pty.write(`${f.d}\r`);
-			} else if (f.t === "resize") pty.resize(f.cols, f.rows);
+				if (runnableCommand(f.d)) guarded(() => pty.write(`${f.d}\r`));
+			} else if (f.t === "resize") guarded(() => pty.resize(f.cols, f.rows));
 			else {
 				unacked = Math.max(0, unacked - f.n);
 				if (paused && unacked < low) {
 					paused = false;
 					clearTimeout(stall);
-					pty.resume();
+					guarded(() => pty.resume());
 				}
 			}
 		});

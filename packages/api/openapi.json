@@ -41175,6 +41175,9 @@
                         "id",
                         "name"
                       ]
+                    },
+                    "terminalKey": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -41546,6 +41549,172 @@
                     "title",
                     "outcome",
                     "incidentId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminal/availability": {
+      "post": {
+        "operationId": "terminal.availability",
+        "summary": "Whether this client can open a terminal on the host",
+        "tags": [
+          "terminal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "available": {
+                          "const": true
+                        }
+                      },
+                      "required": [
+                        "available"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "available": {
+                          "const": false
+                        },
+                        "reason": {
+                          "enum": [
+                            "not-host",
+                            "no-key",
+                            "unsupported"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "available",
+                        "reason"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminal/ticket": {
+      "post": {
+        "operationId": "terminal.ticket",
+        "summary": "A single-use ticket to open one terminal",
+        "tags": [
+          "terminal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ticket",
+                    "expiresAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/terminal/key": {
+      "post": {
+        "operationId": "terminal.claimKey",
+        "summary": "Exchange an unused operator link for this device's terminal key",
+        "tags": [
+          "terminal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key"
                   ]
                 }
               }
