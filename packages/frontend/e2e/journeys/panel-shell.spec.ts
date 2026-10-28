@@ -20,6 +20,15 @@ async function openRun(page: Page, width: number, height = 800) {
 	await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
 }
 
+// The panel's own scroller reaches its last line at every width (OBJ-009).
+async function lastLineReachable(page: Page) {
+	const summary = page.getByTestId("run-details-summary");
+	await summary.evaluate((el) => {
+		el.scrollTop = el.scrollHeight;
+	});
+	await expect(summary.locator(":scope > *").last()).toBeInViewport();
+}
+
 async function frameDoesNotScroll(page: Page) {
 	const { scroll, inner } = await page.evaluate(() => ({
 		scroll: document.documentElement.scrollHeight,
@@ -37,6 +46,7 @@ test.describe("Shared panel layout (#973)", () => {
 		const panel = page.getByTestId("panel-right");
 		await expect(panel.getByTestId("run-details")).toBeVisible();
 		await frameDoesNotScroll(page);
+		await lastLineReachable(page);
 
 		const route = await page.getByTestId("shell-route").boundingBox();
 		const box = await panel.boundingBox();
@@ -78,6 +88,7 @@ test.describe("Shared panel layout (#973)", () => {
 		await expect(panel).toHaveAttribute("aria-modal", "false");
 		await expect(page.locator("[role=separator]")).toHaveCount(0);
 		await frameDoesNotScroll(page);
+		await lastLineReachable(page);
 		await page.keyboard.press("Escape");
 		await expect(panel).toHaveCount(0);
 		await expect(page.getByTestId("details-toggle")).toBeFocused();
@@ -94,6 +105,7 @@ test.describe("Shared panel layout (#973)", () => {
 		expect(box?.width).toBe(390);
 		expect(box?.height).toBe(844);
 		await expect(page.getByTestId("shell-route")).toHaveAttribute("inert", "");
+		await lastLineReachable(page);
 		await page.getByTestId("run-details-close").click();
 		await expect(sheet).toHaveCount(0);
 		await expect(page.getByTestId("shell-route")).not.toHaveAttribute(
