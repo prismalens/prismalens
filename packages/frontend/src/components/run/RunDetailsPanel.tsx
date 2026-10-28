@@ -15,7 +15,6 @@ import {
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { citationText, type FileAt } from "@/lib/evidence-files";
 import { cn } from "@/lib/utils";
 import { EvidenceFileView } from "./EvidenceFileView";
@@ -46,7 +45,6 @@ export interface EvidenceFiles {
 	onOpen: OpenFile;
 	onClose: () => void;
 	backLabel: string;
-	phone: boolean;
 	reads: number[];
 	codeHost: string | null;
 	/** The file a Steps row opens; null when the step names none in the clone. */
@@ -147,17 +145,11 @@ export function RunDetailsPanel({
 			),
 		},
 	];
-	const aside = (
-		<aside
+	return (
+		<div
 			id="run-details"
-			aria-label={title}
 			onKeyDown={onKeyDown}
-			className={cn(
-				"relative flex flex-col bg-surface-1",
-				files.phone
-					? "min-h-0 flex-1"
-					: "h-full w-[380px] shrink-0 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
-			)}
+			className="flex h-full min-h-0 flex-col"
 			data-testid="run-details"
 		>
 			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
@@ -209,7 +201,6 @@ export function RunDetailsPanel({
 							file={files.viewing}
 							onBack={files.onClose}
 							backLabel={files.backLabel}
-							phone={files.phone}
 							reads={files.reads}
 							onJump={onJump}
 							codeHost={files.codeHost}
@@ -321,25 +312,7 @@ export function RunDetailsPanel({
 					</ol>
 				</TabsPrimitive.Content>
 			</TabsPrimitive.Root>
-		</aside>
-	);
-	if (!files.phone) return aside;
-	// A phone has no room beside the page: the details cover it as a modal sheet.
-	// Its Esc closes once: the page's own Esc listener skips [role=dialog].
-	return (
-		<Sheet open onOpenChange={(open) => !open && onClose()}>
-			<SheetContent
-				side="bottom"
-				closeButton={false}
-				aria-describedby={undefined}
-				onCloseAutoFocus={(e) => e.preventDefault()}
-				className="top-0 flex flex-col gap-0 bg-surface-1 p-0"
-				data-testid="phone-sheet"
-			>
-				<SheetTitle className="sr-only">{title}</SheetTitle>
-				{aside}
-			</SheetContent>
-		</Sheet>
+		</div>
 	);
 }
 
