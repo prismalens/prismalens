@@ -37,6 +37,7 @@ import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
+import { useResumeInvestigation } from "@/lib/api/hooks";
 import {
 	citedFile,
 	codeHostUrl,
@@ -55,6 +56,12 @@ import {
 	type TranscriptItem,
 } from "@/lib/investigation-events";
 import { useRenderProbe } from "@/lib/render-probe";
+import {
+	latestRestart,
+	notResumedReason,
+	type RestartVia,
+	resumedDetail,
+} from "@/lib/restart";
 import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import {
@@ -109,6 +116,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export function RunPage() {
 	const record = useIncidentRecord();
 	const { toast } = useToast();
+	const resumeRun = useResumeInvestigation();
 	const { incident, run, runs, draft } = record;
 	const search = useSearch({
 		from: "/_authenticated/incidents/$id/conversation",
@@ -147,6 +155,7 @@ export function RunPage() {
 							continuable: run.continuable,
 							lastTurnOutcome: inv.lastTurnOutcome,
 							accessLevel: inv.report?.fidelity?.access ?? inv.accessLevel,
+							endReason: inv.endReason,
 						}
 					: undefined,
 			}),
@@ -373,6 +382,19 @@ export function RunPage() {
 		[report, inv, targetOf, openFile, jump, preview],
 	);
 	const recheck = useRecheck();
+	const { mutate: resumeMutate, isPending: resuming } = resumeRun;
+	const invId = inv?.id;
+	const interrupted =
+		!live && run.state === "failed" && inv?.endReason === "interrupted";
+	const resumeNow = useCallback(() => {
+		if (!invId) return;
+		resumeMutate({ id: invId }, { onError: resumeFailed(toast) });
+	}, [invId, resumeMutate, toast]);
+	const transcriptResume = useMemo(
+		() =>
+			interrupted ? { onResume: resumeNow, pending: resuming } : undefined,
+		[interrupted, resumeNow, resuming],
+	);
 	const header = (
 		<IncidentHeader
 			incident={incident}
@@ -423,6 +445,7 @@ export function RunPage() {
 		run.awaiting
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: null,
+		live ? latestRestart(run.events) : null,
 	);
 	const fidelity =
 		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
@@ -502,6 +525,8 @@ export function RunPage() {
 						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
 					}
 					stopping={run.stopRequested}
+					onResume={interrupted ? resumeNow : undefined}
+					resuming={resuming}
 					incidentId={incident.id}
 					runs={runs}
 					current={inv?.id ?? null}
@@ -529,6 +554,7 @@ export function RunPage() {
 							worked={worked}
 							afterReport={afterReport}
 							steps={transcriptSteps}
+							resume={transcriptResume}
 						/>
 					)}
 				</div>
@@ -657,8 +683,17 @@ function DetailsToggle({
 	);
 }
 
+/** A refused Resume (409: the run was not interrupted, or is live) says why in the app's error toast (#981). */
+export const resumeFailed =
+	(toast: ReturnType<typeof useToast>["toast"]) => (error: unknown) =>
+		toast({
+			title: "Run not resumed",
+			description: getErrorMessage(error),
+			variant: "destructive",
+		});
+
 /** The strip's two words: which run and its state, then what it is doing or came to. */
-function stripWords(
+export function stripWords(
 	inv: InvestigationWithRelations | null,
 	state: RunState | null,
 	activity: string | null,
@@ -667,6 +702,8 @@ function stripWords(
 	agent: string,
 	/** What the agent waits on you for, while it does (#673 w5-14). */
 	asking: string | null,
+	/** The restart its newest message carries, while the run is live (#981). */
+	restart: RestartVia | null = null,
 ): { label: string; detail: string } {
 	if (!inv || !state) return { label: name, detail: "" };
 	const chat = inv.kind === "chat";
@@ -691,7 +728,7 @@ function stripWords(
 				label: chat
 					? `Ask, ${state === "stopping" ? "stopping" : "answering"}`
 					: `${who} ${state === "stopping" ? "stopping" : "investigating"}`,
-				detail: activity ?? "Working",
+				detail: restart ? resumedDetail(restart) : (activity ?? "Working"),
 			};
 		case "failed": {
 			const ago = when(inv.completedAt ?? inv.updatedAt);
@@ -705,7 +742,9 @@ function stripWords(
 			if (inv.endReason === "interrupted")
 				return {
 					label: chat ? "Ask, interrupted" : `${who} interrupted`,
-					detail: ["PrismaLens restarted", ago].filter(Boolean).join(", "),
+					detail: notResumedReason(inv.error)
+						? "PrismaLens restarted, not resumed"
+						: ["PrismaLens restarted", ago].filter(Boolean).join(", "),
 				};
 			return {
 				label: chat ? "Ask, failed" : `${who} failed`,
@@ -839,7 +878,7 @@ function summaryFacts(
 }
 
 /** A failed run's status when its agent's usage limit or a restart ended it, in place of "Failed". */
-function endReasonStatus(
+export function endReasonStatus(
 	inv: InvestigationWithRelations,
 	agent: string,
 ): { text: string; sub: string } | null {
@@ -852,7 +891,9 @@ function endReasonStatus(
 	if (inv.endReason === "interrupted")
 		return {
 			text: "Interrupted (PrismaLens restarted)",
-			sub: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,
+			sub: notResumedReason(inv.error)
+				? (inv.error ?? "")
+				: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,
 		};
 	return null;
 }

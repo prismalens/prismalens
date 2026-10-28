@@ -12,6 +12,7 @@ import {
 import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { firstClause } from "@/lib/incident-board";
+import { notResumedReason } from "@/lib/restart";
 
 /** What an incident needs from you, the inbox's groups in their order (spec §1). */
 export type NeedKey = "approval" | "ready" | "failed" | "nocause" | "cleared";
@@ -228,6 +229,13 @@ export function reasonOf(
 						: "",
 				};
 			}
+			const unresumed = notResumedReason(ended?.error);
+			if (unresumed)
+				return {
+					tag: "Interrupted, not resumed:",
+					tagTone: "warn",
+					text: unresumed,
+				};
 			return {
 				tag: "Failed:",
 				tagTone: "danger",

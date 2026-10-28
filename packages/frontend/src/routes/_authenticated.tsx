@@ -16,6 +16,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
 import { useNewIncident } from "@/components/shell/NewIncident";
+import { RestartNotice } from "@/components/shell/RestartNotice";
 import { useVisitTrail } from "@/hooks/use-back";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { readOperator } from "@/hooks/use-operator";
@@ -42,6 +43,7 @@ function AuthenticatedLayout() {
 	useVisitTrail();
 	return (
 		<>
+			<RestartNotice />
 			<Outlet />
 			<ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} />
 		</>

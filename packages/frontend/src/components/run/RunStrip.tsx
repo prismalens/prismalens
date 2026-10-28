@@ -32,6 +32,8 @@ export function RunStrip({
 	tools,
 	onStop,
 	stopping,
+	onResume,
+	resuming,
 	incidentId,
 	runs,
 	current,
@@ -49,6 +51,9 @@ export function RunStrip({
 	/** Live only. */
 	onStop?: () => void;
 	stopping?: boolean;
+	/** An interrupted run PrismaLens did not resume (#981). */
+	onResume?: () => void;
+	resuming?: boolean;
 	incidentId: string;
 	runs: RunRef[];
 	current: string | null;
@@ -91,6 +96,17 @@ export function RunStrip({
 				>
 					<Square className="size-3 fill-current" aria-hidden />
 					{stopping ? "Stopping" : "Stop run"}
+				</Button>
+			)}
+			{onResume && (
+				<Button
+					variant="primary"
+					className="h-[26px] shrink-0"
+					disabled={resuming}
+					onClick={onResume}
+					data-testid="run-strip-resume"
+				>
+					Resume
 				</Button>
 			)}
 			<RunsMenu incidentId={incidentId} runs={runs} current={current} />
