@@ -34,6 +34,7 @@ import {
 	isLoopbackBindAddress,
 	resolveAllowedHostnames,
 } from "./middlewares/host-allowlist.middleware.js";
+import { TerminalService } from "./modules/terminal/terminal.service.js";
 import {
 	API_GLOBAL_PREFIX,
 	API_GLOBAL_PREFIX_EXCLUDE,
@@ -326,6 +327,9 @@ async function bootstrap() {
 		}
 		throw error;
 	}
+
+	// The terminal's socket is an HTTP upgrade, which Express never sees (#931).
+	app.get(TerminalService).attach(app.getHttpServer());
 
 	const protocolDisplay = httpsOptions ? "https" : "http";
 	logger.info(`PrismaLens API running on ${protocolDisplay}://${host}:${port}`);

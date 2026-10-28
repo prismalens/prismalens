@@ -23,6 +23,7 @@ import {
 } from "@prismalens/auth";
 import { pairingContract, webhooksContract } from "@prismalens/contracts";
 import type { Request } from "express";
+import { issueTerminalKey } from "../../modules/terminal/terminal-key-issue.js";
 import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
@@ -181,8 +182,10 @@ export class PairingRedeemController {
 						"Set-Cookie",
 						deviceCookieHeader(own, redeemed.token, secure),
 					);
+					const terminalKey = issueTerminalKey(request, redeemed.device);
 					return {
 						device: { id: redeemed.device.id, name: redeemed.device.name },
+						...(terminalKey ? { terminalKey } : {}),
 					};
 				} catch (error) {
 					if (error instanceof PairingError) {
