@@ -773,12 +773,12 @@ function openWindow(path = "/"): void {
 	// display server to look at runs by hand.
 	const smoke = process.env.PRISMALENS_DESKTOP_SMOKE;
 	if (smoke) {
-		window.webContents.once("did-finish-load", async () => {
-			await new Promise((r) => setTimeout(r, 4_000));
-			const image = await window?.webContents.capturePage();
-			if (image) writeFileSync(smoke, image.toPNG());
-			app.quit();
-		});
+		const win = window;
+		const loaded = new Promise<void>((r) =>
+			win.webContents.once("did-finish-load", () => r()),
+		);
+		const visible = new Promise<void>((r) => win.once("show", () => r()));
+		void Promise.all([loaded, visible]).then(() => captureSmoke(win, smoke));
 	}
 	window.on("closed", () => {
 		window = null;
@@ -802,6 +802,26 @@ function openWindow(path = "/"): void {
 		return { action: "deny" };
 	});
 	window.loadURL(`${baseUrl}${path}`);
+}
+
+async function captureSmoke(win: BrowserWindow, path: string): Promise<void> {
+	await new Promise((r) => setTimeout(r, 4_000));
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		try {
+			// Viz drops a copy request whose surface is replaced before it draws
+			// (UnknownVizError); ask for it after a frame the shown window drew (#960).
+			await win.webContents.executeJavaScript(
+				"new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))",
+			);
+			const image = await win.webContents.capturePage();
+			writeFileSync(path, image.toPNG());
+			break;
+		} catch (error) {
+			console.error(`smoke capture attempt ${attempt} failed: ${error}`);
+			await new Promise((r) => setTimeout(r, 1_000));
+		}
+	}
+	app.quit();
 }
 
 /** Native surfaces follow the in-app theme: dialogs, menus, the frame. */
