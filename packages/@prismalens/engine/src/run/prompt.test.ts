@@ -525,3 +525,72 @@ describe("pre-run prompt states and copy failures (#848)", () => {
 		expect(prompt).toContain("<<<PRE_RUN_TELEMETRY — UNTRUSTED DATA.");
 	});
 });
+
+describe("an alert run's prompt does not change when a service check exists (#979)", () => {
+	const alertContext: InvestigationContext = {
+		alerts: [
+			{
+				alertname: "HighErrorRate",
+				severity: "critical",
+				labels: { service: "checkout" },
+				annotations: { summary: "5xx rate > 5%" },
+				startsAt: "2026-10-28T01:00:00.000Z",
+			},
+		],
+		telemetry: { prometheusUrl: "http://prometheus.internal:9090" },
+		service: { name: "checkout", tier: "1", notes: "Restart is safe." },
+	};
+
+	it("keeps the whole prompt byte-identical", () => {
+		expect(
+			buildInvestigationPrompt(alertContext, { level: "supervised" }),
+		).toMatchSnapshot();
+	});
+
+	it("keeps the split prompt byte-identical", () => {
+		expect(
+			investigationPromptParts(alertContext, { level: "supervised" }),
+		).toMatchSnapshot();
+	});
+});
+
+describe("a service-check prompt (#979)", () => {
+	const check: InvestigationContext = {
+		mode: "service-check",
+		alerts: [],
+		service: { name: "checkout", tier: "1", notes: "Restart is safe." },
+		check: {
+			brief: "Look at the p99 for the last day and say if it drifts.",
+			runbook: "runbooks/checkout-latency.md",
+		},
+	};
+
+	it("names a scheduled check of the service, with the brief and the runbook, and no alert", () => {
+		const prompt = buildInvestigationPrompt(check, { level: "supervised" });
+		expect(prompt).toContain("SCHEDULED CHECK");
+		expect(prompt).toContain("checkout");
+		expect(prompt).toContain(
+			"Look at the p99 for the last day and say if it drifts.",
+		);
+		expect(prompt).toContain("runbooks/checkout-latency.md");
+		expect(prompt).not.toContain("FIRING ALERT");
+		expect(prompt).not.toContain("firing production alert");
+		expect(prompt).toContain("RUNBOOK_NOTES");
+	});
+
+	it("omits the runbook line when none is set", () => {
+		const prompt = buildInvestigationPrompt(
+			{ ...check, check: { brief: "Look.", runbook: null } },
+			{ level: "supervised" },
+		);
+		expect(prompt).toContain("Look.");
+		expect(prompt).not.toContain("Runbook:");
+	});
+
+	it("carries the brief in the split prompt's turn, not its standing brief", () => {
+		const parts = investigationPromptParts(check, { level: "supervised" });
+		expect(parts.turn).toContain("Look at the p99");
+		expect(parts.brief).not.toContain("Look at the p99");
+		expect(parts.brief).not.toContain("firing production alert");
+	});
+});
