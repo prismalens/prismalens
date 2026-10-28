@@ -42,6 +42,7 @@ import {
 	type InvestigationKind,
 	type JobAttachment,
 	type OperatorMessageMode,
+	type PreRunSource,
 	type RunFidelity,
 	type RunRuntimeNote,
 	type RunUsage,
@@ -1067,6 +1068,18 @@ const FROM_WORDS = {
 	env: "from the environment",
 } as const;
 
+/** Where a pre-run source's address and credential came from, for the report and the run log (#848). */
+export function sourceOrigin(
+	s: Pick<PreRunSource, "from" | "credentialFrom" | "envVar" | "overridesEnv">,
+): string {
+	const parts: string[] = [FROM_WORDS[s.from]];
+	if (s.from === "set" && s.credentialFrom === "env")
+		parts.push(`token from ${s.envVar ?? "the environment"}`);
+	if (s.credentialFrom === "none") parts.push("no credential");
+	if (s.overridesEnv) parts.push(`overrides ${s.overridesEnv}`);
+	return parts.join(", ");
+}
+
 /**
  * What PrismaLens read before the run, in the report's coverage whatever the agent wrote (#848):
  * found and empty sources under queried; skipped and not-read sources, skipped runbooks and
@@ -1081,7 +1094,7 @@ export function withPreRunCoverage<
 	const notQueried: string[] = [];
 	if (pre.state !== "unavailable") {
 		for (const s of pre.sources) {
-			const who = `${s.label} (${s.kind}, ${FROM_WORDS[s.from]}${s.overridesEnv ? `, overrides ${s.overridesEnv}` : ""})`;
+			const who = `${s.label} (${s.kind}, ${sourceOrigin(s)})`;
 			if (s.status === "found") queried.push(`${who}: ${s.detail}`);
 			else if (s.status === "empty")
 				queried.push(`${who}: queried, nothing for the window`);

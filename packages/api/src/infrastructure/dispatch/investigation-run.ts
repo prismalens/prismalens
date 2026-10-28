@@ -1597,6 +1597,7 @@ export async function resolveWorkspace(
 			services,
 			credential,
 		});
+		logger.info(`Checked out ${whereFrom(repo)} with ${credential.label}`);
 	}
 	skipped.push(...guarded);
 	for (const k of skipped)

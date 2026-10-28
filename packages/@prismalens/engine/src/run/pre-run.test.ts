@@ -117,6 +117,23 @@ describe("withPreRunCoverage report coverage (#848 C6)", () => {
 						detail: "1 series",
 					},
 					{
+						kind: "prometheus",
+						label: "prom-3",
+						from: "set",
+						credentialFrom: "env",
+						envVar: "PROMETHEUS_TOKEN",
+						status: "found",
+						detail: "3 series",
+					},
+					{
+						kind: "alertmanager",
+						label: "am-open",
+						from: "set",
+						credentialFrom: "none",
+						status: "found",
+						detail: "0 alerts",
+					},
+					{
 						kind: "loki",
 						label: "loki-env",
 						from: "env",
@@ -147,6 +164,8 @@ describe("withPreRunCoverage report coverage (#848 C6)", () => {
 		expect(out.coverage.queried).toEqual([
 			"prom-1 (prometheus, saved in PrismaLens): 2 alerts firing",
 			"prom-2 (prometheus, saved in PrismaLens, overrides PROMETHEUS_TOKEN): 1 series",
+			"prom-3 (prometheus, saved in PrismaLens, token from PROMETHEUS_TOKEN): 3 series",
+			"am-open (alertmanager, saved in PrismaLens, no credential): 0 alerts",
 			"loki-env (loki, from the environment): queried, nothing for the window",
 		]);
 

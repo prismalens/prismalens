@@ -32,7 +32,10 @@
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 // FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
-import { existsSync, writeFileSync } from "node:fs";
+// FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
+// tool call whose output is the file's text, as an agent reading the pre-run copies would.
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
@@ -238,6 +241,30 @@ async function turn(sessionId, promptText) {
 				],
 			});
 		}
+		const readDir = process.env.FAKE_READ_DIR;
+		const files = readDir
+			? readdirSync(join(cwd, readDir), {
+					recursive: true,
+					withFileTypes: true,
+				})
+					.filter((e) => e.isFile())
+					.map((e) => join(e.parentPath, e.name))
+			: [];
+		for (const [i, file] of files.entries())
+			notify(sessionId, {
+				sessionUpdate: "tool_call",
+				toolCallId: `t_read${i}`,
+				title: `Read ${file}`,
+				kind: "read",
+				status: "completed",
+				rawInput: { path: file },
+				content: [
+					{
+						type: "content",
+						content: { type: "text", text: readFileSync(file, "utf8") },
+					},
+				],
+			});
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
 			content: {

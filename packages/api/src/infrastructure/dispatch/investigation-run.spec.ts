@@ -167,6 +167,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo", "services", "api"));
 			expect(ws.note).toContain("https://github.com/acme/api-gateway");
 			expect(ws.note).toContain("abc123def456");
+			expect(mocks.logged).toContainEqual(["Checked out URL https://github.com/acme/api-gateway/services/api with public"]);
 		} finally {
 			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });

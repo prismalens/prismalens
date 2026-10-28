@@ -381,6 +381,31 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 		expect(snap.head).toBe(server.headOf("ambig-repo"));
 	});
 
+	it("S7b: two repos on one host, each accepting only its own token, each clone with the token picked for it (#848)", async () => {
+		const [connA, connB] = await Promise.all(
+			["Token A", "Token B"].map((label) => prisma.connection.findFirstOrThrow({ where: { label } })),
+		);
+		const urlA = server.addRepo("team-a", { kind: "basic", user: "x-access-token", pass: "secret-token-a" });
+		const urlB = server.addRepo("team-b", { kind: "basic", user: "x-access-token", pass: "secret-token-b" });
+		const repoA = await repositoriesService.setCredential(
+			(await repositoriesService.addSource({ serviceId: testServiceId, source: urlA })).id,
+			connA.id,
+		);
+		const repoB = await repositoriesService.setCredential(
+			(await repositoriesService.addSource({ serviceId: testServiceId, source: urlB })).id,
+			connB.id,
+		);
+		gitCredentialService.invalidate();
+
+		const a = await snapshotWith({ sourceKind: "url", url: urlA, connectionId: repoA.connectionId }, join(mktemp("s7b-a-"), "work"));
+		const b = await snapshotWith({ sourceKind: "url", url: urlB, connectionId: repoB.connectionId }, join(mktemp("s7b-b-"), "work"));
+
+		expect([a.credential.label, a.credential.connectionId]).toEqual(["token Token A", connA.id]);
+		expect([b.credential.label, b.credential.connectionId]).toEqual(["token Token B", connB.id]);
+		expect(a.result.head).toBe(server.headOf("team-a"));
+		expect(b.result.head).toBe(server.headOf("team-b"));
+	});
+
 	it("S8: Fake credential helper in .gitconfig -> the saved tokens still come first, so two of them read ambiguous (#848)", async () => {
 		const isWin = process.platform === "win32";
 		const helperScript = isWin
