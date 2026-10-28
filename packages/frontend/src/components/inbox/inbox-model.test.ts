@@ -114,6 +114,22 @@ describe("needOf", () => {
 		});
 	});
 
+	it("says an interrupted run was not resumed, and why (#981)", () => {
+		const i = incident({
+			investigations: [
+				run({
+					status: "failed",
+					error: "Not resumed: Codex isn't signed in on studio-mac. Sign in there, then resume.",
+				}),
+			],
+		});
+		expect(needOf(i)).toBe("failed");
+		const reason = reasonOf(i, "failed", NOW);
+		expect(`${reason.tag} ${reason.text}`).toBe(
+			"Interrupted, not resumed: Codex isn't signed in on studio-mac. Sign in there, then resume.",
+		);
+	});
+
 	it("calls a never-run incident No cause found with Investigate", () => {
 		const i = incident({});
 		expect(needOf(i)).toBe("nocause");

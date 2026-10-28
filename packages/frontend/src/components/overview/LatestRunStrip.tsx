@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
 import { formatElapsed } from "@/lib/format-time";
+import { latestRestart, notResumedReason } from "@/lib/restart";
 import { askTitle } from "@/lib/run-asks";
 import { stripInlineMarkdown } from "@/lib/strip-inline-markdown";
 import { cn } from "@/lib/utils";
@@ -44,14 +45,20 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 	const took =
 		inv && runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
 	const outcome = latest ? runOutcome(latest) : "";
+	const unresumed =
+		inv?.endReason === "interrupted" ? notResumedReason(inv.error) : null;
 	const detail = !latest
 		? "No run yet"
 		: waiting
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: live
-				? stripInlineMarkdown(run.latestText ?? "Working")
+				? latestRestart(run.events)
+					? "Resumed after a restart"
+					: stripInlineMarkdown(run.latestText ?? "Working")
 				: state === "failed"
-					? failureWords(inv?.error ?? latest.error, who.agent).what
+					? unresumed
+						? `Interrupted, not resumed: ${unresumed}`
+						: failureWords(inv?.error ?? latest.error, who.agent).what
 					: latest.hasReport
 						? latest.rootCause
 							? "Likely cause found"
