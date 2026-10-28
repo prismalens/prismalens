@@ -1,5 +1,5 @@
 {
-	"//": "ceil(1.10 x the size measured in CI on PR #913). Bytes and files per artifact, held by scripts/check-artifact.mjs; desktop entries are the unpacked app in MB, held by packages/desktop/scripts/check-release-paths.mjs (#906). prismalens re-based after #872: @pierre/diffs adds ~300 theme and language chunks to the web assets (5589849 bytes, 834 files in CI). prismalens files re-based after #855 (922 files in CI against 899 on main): the deploy-event, push and vendor alert-source modules add 18 api dist files, 1 contracts, 1 integrations and 3 database files. standalone archive files re-based after #855 (10385 files in CI against 10181 on main): web-push and qrcode with their transitive packages, plus the new api dist modules. @prismalens/agent-adapters re-based after codex-acp 2.2.2 (#914) added six licence texts (2027825 bytes, 49 files in CI). Files re-based after claude-agent-acp 0.98.0 and codex-acp 2.3.0 (#966; 2173664 bytes, 55 files in CI), ceil(1.10 x 55).",
+	"//": "ceil(1.10 x the size measured in CI on PR #913). Bytes and files per artifact, held by scripts/check-artifact.mjs; desktop entries are the unpacked app in MB, held by packages/desktop/scripts/check-release-paths.mjs (#906). prismalens re-based after #872: @pierre/diffs adds ~300 theme and language chunks to the web assets (5589849 bytes, 834 files in CI). prismalens files re-based after #855 (922 files in CI against 899 on main): the deploy-event, push and vendor alert-source modules add 18 api dist files, 1 contracts, 1 integrations and 3 database files. standalone archive files re-based after #855 (10385 files in CI against 10181 on main): web-push and qrcode with their transitive packages, plus the new api dist modules. @prismalens/agent-adapters re-based after codex-acp 2.2.2 (#914) added six licence texts (2027825 bytes, 49 files in CI). Files re-based after claude-agent-acp 0.98.0 and codex-acp 2.3.0 (#966; 2173664 bytes, 55 files in CI), ceil(1.10 x 55). desktop-Linux and desktop-Windows files re-based after #931 unpacked node-pty's platform package beside the asar (84 and 92 files in CI).",
 	"prismalens": { "bytes": 6148834, "files": 1015 },
 	"@prismalens/agent-adapters": { "bytes": 2230608, "files": 61 },
 	"linux-x64": { "bytes": 93450240, "files": 11424 },
@@ -7,7 +7,7 @@
 	"darwin-arm64": { "bytes": 85961090, "files": 11423 },
 	"darwin-x64": { "bytes": 87517157, "files": 11423 },
 	"win32-x64": { "bytes": 84355077, "files": 11445 },
-	"desktop-Linux": { "mb": 484, "files": 82 },
-	"desktop-Windows": { "mb": 579, "files": 82 },
+	"desktop-Linux": { "mb": 484, "files": 93 },
+	"desktop-Windows": { "mb": 579, "files": 102 },
 	"desktop-macOS": { "mb": 487, "files": 301 }
 }
