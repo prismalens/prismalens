@@ -134,4 +134,21 @@ describe("harness receipt (#981 OBJ-010)", () => {
 		];
 		expect(treeOf({ pid: 4120, startedAt: T }, all).map((p) => p.pid)).toEqual([7000]);
 	});
+	it("a snapshot that finishes after the next turn wrote its receipt leaves that receipt alone (OBJ-021)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-receipt-"));
+		try {
+			writeReceipt(dir, 100, T);
+			await snapshotReceipt(dir, async () => {
+				clearReceipt(dir);
+				writeReceipt(dir, 900, T + 60_000);
+				return [{ pid: 100, parent: 1, created: T }];
+			});
+			expect(readReceipt(dir)).toEqual({ pid: 900, startedAt: T + 60_000 });
+			writeReceipt(dir, 900, T + 60_000);
+			await snapshotReceipt(dir, async () => [], () => false);
+			expect(readReceipt(dir)?.tree).toBeUndefined();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });

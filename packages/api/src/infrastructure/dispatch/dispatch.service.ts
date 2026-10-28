@@ -41,6 +41,7 @@ import type {
 import {
 	AccessLevelSchema,
 	CanonicalEventSchema,
+	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
@@ -127,6 +128,16 @@ interface BootContext {
 }
 
 const RESTART_SUMMARY_KEY = "runtime.lastRecovery";
+/** A held recovery's runAt: no dispatch reaches it; a later boot's check re-arms it. */
+const HELD_UNTIL = new Date("9999-01-01T00:00:00Z");
+/** Events only the agent produces: the evidence a run was still working (#981 OBJ-006). */
+const AGENT_KINDS = [
+	"agent_step",
+	"tool_result",
+	"permission_ask",
+	"report",
+	"branch_done",
+] as const;
 
 /** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
 export class FollowUpRefused extends Error {}
@@ -664,11 +675,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			),
 		);
 		if (boot)
-			await this.revalidateRecoveries(boot).catch((e) =>
+			await this.revalidateRecoveries(boot).catch(async (e) => {
 				this.logger.warn(
-					`Could not re-check recoveries left pending: ${(e as Error).message}`,
-				),
-			);
+					`Could not re-check recoveries left pending; holding them for the next start: ${(e as Error).message}`,
+				);
+				await this.holdRecoveries({ except: boot.resumed }).catch(
+					() => undefined,
+				);
+			});
 		// The boot sweep applies each workspace's own retention rule, so the settings load first.
 		await this.runWorkspaces?.ready();
 		try {
@@ -1294,9 +1308,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			contained.set(id, gone);
 			if (!gone) keep.add(id);
 		}
-		// A run a restart left for the operator keeps its files for Resume, whatever its retention (#981 OBJ-019).
+		// A run a restart left for the operator keeps its files until its incident ends, whatever its retention (#981 OBJ-019).
 		const interrupted = await this.prisma.investigation.findMany({
-			where: { status: "failed", endReason: "interrupted" },
+			where: {
+				endReason: "interrupted",
+				status: { notIn: [...LIVE_WORKFLOW_STATUSES] },
+				incident: { status: { notIn: [...ENDED_INCIDENT_STATUSES] } },
+			},
 			select: { id: true },
 		});
 		for (const { id } of interrupted) keep.add(id);
@@ -1348,20 +1366,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	}
 
 	/**
-	 * The run's newest event a boot did not write; with none, when its job was claimed or
-	 * the run was made, never the boot's own clock (#981 OBJ-006).
+	 * When the run's agent last did something: its newest step, tool result, ask or
+	 * report. PrismaLens's own lines (a restart message, a refusal) never count; with
+	 * none, when its job was claimed or the run was made, never the boot clock (#981 OBJ-006).
 	 */
 	private async lastActivity(id: string): Promise<Date> {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
 				investigationId: id,
-				NOT: [
-					{ event: { contains: '"outcome":"restarted"' } },
-					{ event: { contains: '"delivered":false' } },
-				],
+				OR: AGENT_KINDS.map((k) => ({ event: { contains: `"kind":"${k}"` } })),
 			},
 			orderBy: { createdAt: "desc" },
-			take: 20,
+			take: 1,
 			select: { createdAt: true, event: true },
 		});
 		const [job, inv] = await Promise.all([
@@ -1558,8 +1574,30 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			}
 			boot.skipped.push({ id, reason });
 			boot.keep.add(id);
-			await this.refuseRecovery(id, resume, reason);
+			await this.refuseRecovery(id, resume, reason).catch(async (e) => {
+				this.logger.warn(
+					`Could not refuse recovery ${id}; holding it for the next start: ${(e as Error).message}`,
+				);
+				await this.holdRecoveries({ id }).catch(() => undefined);
+			});
 		}
+	}
+
+	/**
+	 * A recovery this boot could not check is parked, never run: its job waits past any
+	 * real time, and the next start checks it again (#981 OBJ-013).
+	 */
+	private async holdRecoveries(
+		only: { id: string } | { except: string[] },
+	): Promise<void> {
+		await this.prisma.job.updateMany({
+			where: {
+				status: "pending",
+				payload: { contains: '"restart":{' },
+				investigationId: "id" in only ? only.id : { notIn: only.except },
+			},
+			data: { runAt: HELD_UNTIL },
+		});
 	}
 
 	/** Null when a recovery re-armed by an earlier boot may still run; else why not. */
@@ -1723,8 +1761,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const pulled = await this.prisma.setting
 			.findUnique({ where: { key: "ALERT_PULL" } })
 			.then((r) => {
+				// Only a pull every source answered covers the gap (#981 OBJ-008).
 				const at = r
-					? (JSON.parse(r.value) as { lastPulledAt?: string }).lastPulledAt
+					? (JSON.parse(r.value) as { lastCompleteAt?: string }).lastCompleteAt
 					: undefined;
 				return at ? Date.parse(at) : 0;
 			})

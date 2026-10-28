@@ -152,20 +152,25 @@ export function watchReceipt(
 	if (process.platform !== "win32" && list === listWindowsProcessesAsync)
 		return () => {};
 	let busy = false;
+	let stopped = false;
 	const timer = setInterval(() => {
 		if (busy) return;
 		busy = true;
-		void snapshotReceipt(runDir, list).finally(() => {
+		void snapshotReceipt(runDir, list, () => !stopped).finally(() => {
 			busy = false;
 		});
 	}, everyMs);
 	timer.unref();
-	return () => clearInterval(timer);
+	return () => {
+		stopped = true;
+		clearInterval(timer);
+	};
 }
 
 export async function snapshotReceipt(
 	runDir: string,
 	list: () => Promise<OsProcess[]>,
+	live: () => boolean = () => true,
 ): Promise<void> {
 	try {
 		const receipt = readReceipt(runDir);
@@ -173,8 +178,14 @@ export async function snapshotReceipt(
 		const tree = treeOf(receipt, await list())
 			.filter((p) => p.pid !== receipt.pid)
 			.map(({ pid, created }) => ({ pid, created }));
-		// The run may have ended and cleared it while the listing ran.
-		if (!readReceipt(runDir)) return;
+		// Only the receipt it read, still watched: a later turn's receipt is never overwritten (#981 OBJ-021).
+		const now = readReceipt(runDir);
+		if (
+			!live() ||
+			now?.pid !== receipt.pid ||
+			now.startedAt !== receipt.startedAt
+		)
+			return;
 		writeReceipt(runDir, receipt.pid, receipt.startedAt, tree);
 	} catch {
 		// A missed snapshot leaves the last one; the next tick tries again.
