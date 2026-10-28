@@ -1,6 +1,33 @@
 {
-	"description": "The admission (R1-R10, acp-admission.ts): incident_get first when the gateway offers it, then the shell step the prompt names, then the report; the follow-up names the alert (#848, #914).",
+	"description": "The admission (R1-R11, acp-admission.ts): incident_get first when the gateway offers it, then the shell step the prompt names, then the report; the follow-up names the alert (#848, #914).",
 	"fixtures": [
+		{
+			"match": {
+				"inConversation": "R11-PROMPT-1",
+				"userMessage": "R11-PROMPT-2"
+			},
+			"response": { "content": "R11-CONTEXT-KEPT" }
+		},
+		{
+			"match": { "userMessage": "R11-PROMPT-2" },
+			"response": { "content": "R11-CONTEXT-LOST" }
+		},
+		{
+			"match": {
+				"userMessage": "R11-PROMPT-1 investigate",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "node -e \"setTimeout(() => {}, 44011000)\""
+						}
+					}
+				]
+			}
+		},
 		{
 			"match": {
 				"userMessage": "ADMISSION STEP, required: run exactly `cat ./PRISMALENS_CWD_PROBE.txt`",
