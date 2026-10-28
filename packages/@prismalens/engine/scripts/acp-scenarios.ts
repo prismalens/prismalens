@@ -280,7 +280,7 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 					).stdout,
 				);
 			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
-			for (const pid of orphan ? pids : []) {
+			for (const pid of orphan ? running(needle, workspace) : []) {
 				try {
 					process.kill(pid);
 				} catch {
