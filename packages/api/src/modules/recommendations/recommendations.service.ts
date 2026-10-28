@@ -13,11 +13,12 @@ export type RecommendationWithRelations = Recommendation & {
 	investigation?: {
 		id: string;
 		status: string;
+		/** Null for a service check no finding has linked to an incident (#979). */
 		incident: {
 			id: string;
 			number: number;
 			title: string;
-		};
+		} | null;
 	} | null;
 };
 

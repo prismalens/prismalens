@@ -104,6 +104,7 @@ export function followUpBlockedReason(
 }
 
 export type InvestigationWithRelations = Investigation & {
+	/** Null for a service check no finding has linked to an incident (#979). */
 	incident: {
 		id: string;
 		number: number;
@@ -117,7 +118,7 @@ export type InvestigationWithRelations = Investigation & {
 		mergedIntoId?: string | null;
 		/** The incident a merge moved this one's alerts to (#673 w37). */
 		mergedInto?: { number: number } | null;
-	};
+	} | null;
 	recommendations: Recommendation[];
 };
 
@@ -273,7 +274,10 @@ export class InvestigationsService {
 		});
 		return {
 			...investigation,
-			incident: { ...investigation.incident, mergedInto },
+			incident: investigation.incident && {
+				...investigation.incident,
+				mergedInto,
+			},
 		};
 	}
 

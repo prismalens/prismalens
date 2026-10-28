@@ -6,7 +6,8 @@ import { z } from "zod";
 
 export interface PastInvestigation {
 	investigationId: string;
-	incident: { number: number; title: string; service: string | null };
+	/** Null for a service check no finding has linked to an incident (#979). */
+	incident: { number: number; title: string; service: string | null } | null;
 	completedAt: string | null;
 	/** What the agent concluded. */
 	agentFinding: {

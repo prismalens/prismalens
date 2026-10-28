@@ -531,7 +531,7 @@ export const InvestigationSchema = z.object({
 	/** Set while the agent waits on the operator's Approve or Deny (#673 w21). */
 	awaitingApprovalAt: DateStringSchema.nullable().optional(),
 	/** The incident's number, on list rows: a notification names `INC-n`. */
-	incidentNumber: z.number().int().optional(),
+	incidentNumber: z.number().int().nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */

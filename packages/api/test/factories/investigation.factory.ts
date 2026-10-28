@@ -13,6 +13,10 @@ export class InvestigationFactory {
 			id: faker.string.uuid(),
 			tenantId: null,
 			incidentId: faker.string.uuid(),
+			serviceId: null,
+			scheduleId: null,
+			scheduleRevision: null,
+			configSnapshot: null,
 			status: faker.helpers.arrayElement([
 				"pending",
 				"running",
