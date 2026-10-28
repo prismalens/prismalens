@@ -73,6 +73,7 @@ import {
 	preRunDetailOf,
 } from "./investigations.service.js";
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
+import { readRunDiff, readRunTree } from "./run-views.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -594,6 +595,22 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/tree - One directory at a recorded commit (#973)
+			getTree: implement(investigationsContract.getTree).handler(
+				async ({ input }) =>
+					this.runView(input.id, (ws) =>
+						readRunTree(ws, input.sha, input.prefix),
+					),
+			),
+
+			// GET /investigations/:id/diff - A commit pair recorded at run start (#973)
+			getDiff: implement(investigationsContract.getDiff).handler(
+				async ({ input }) =>
+					this.runView(input.id, (ws) =>
+						readRunDiff(ws, input.pair, input.path),
+					),
+			),
+
 			// POST /investigations/:id/result - Write result (Worker)
 			writeResult: implement(investigationsContract.writeResult).handler(
 				async ({ input }) => {
@@ -666,6 +683,25 @@ export class InvestigationsController {
 	private parseUsage(raw: Investigation["usage"]) {
 		const parsed = RunUsageSchema.safeParse(safeParseJsonObject(raw));
 		return parsed.success ? parsed.data : null;
+	}
+
+	/** A read of the run's recorded commits; a request outside them is a 400. */
+	private async runView<T>(
+		id: string,
+		read: (ws: RunWorkspace | null) => Promise<T>,
+	): Promise<T> {
+		const investigation = await this.investigationsService.findById(id);
+		if (!investigation)
+			throw new ORPCError("NOT_FOUND", {
+				message: `Investigation ${id} not found`,
+			});
+		try {
+			return await read(this.parseWorkspace(investigation.workspace));
+		} catch (error) {
+			if (error instanceof EvidenceRequestRefused)
+				throw new ORPCError("BAD_REQUEST", { message: error.message });
+			throw error;
+		}
 	}
 
 	private parseWorkspace(raw: Investigation["workspace"]) {
