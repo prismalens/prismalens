@@ -107,11 +107,12 @@ function DesktopBrowserView({
 
 	// Ask where the view is on mount: switching tabs remounts this (#977 OBJ-006). What the
 	// user is typing is left alone (#977 OBJ-013).
-	const field = useRef<HTMLInputElement>(null);
+	// Unsent typing; Enter or leaving the field hands the bar back to the page (#977 OBJ-013).
+	const editing = useRef(false);
 	useEffect(() => {
 		const off = browser.onState((s) => {
 			setState(s);
-			if (document.activeElement === field.current) return;
+			if (editing.current) return;
 			setAddress(s && s.url !== "about:blank" ? s.url : "");
 		});
 		browser.go("state");
@@ -162,6 +163,7 @@ function DesktopBrowserView({
 
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
+		editing.current = false;
 		if (address.trim()) browser.open(address.trim());
 	};
 
@@ -203,9 +205,14 @@ function DesktopBrowserView({
 					<RotateCw className="size-4" />
 				</Button>
 				<input
-					ref={field}
 					value={address}
-					onChange={(e) => setAddress(e.target.value)}
+					onChange={(e) => {
+						editing.current = true;
+						setAddress(e.target.value);
+					}}
+					onBlur={() => {
+						editing.current = false;
+					}}
 					aria-label="Address"
 					placeholder="Address"
 					spellCheck={false}

@@ -184,18 +184,15 @@ export function attachBrowser(
 		else if (go === "reload") wc.reload();
 		else if (go === "state") send();
 		else if (go === "clear") {
-			// Another run, or the panel closed: the page stops and its history goes (#977 OBJ-012).
-			view.setVisible(false);
+			// Another run: the view and its page go, whatever the page wants. Closing ignores
+			// beforeunload and leaves no history to race (#977 OBJ-012, OBJ-018, OBJ-021).
+			window.contentView.removeChildView(view);
+			wc.close();
+			view = null;
+			refused = null;
 			popup = null;
 			login = false;
-			// An open from the next run can supersede this load; history goes either way (#977 OBJ-018).
-			void wc
-				.loadURL("about:blank")
-				.catch(() => {})
-				.finally(() => {
-					if (wc.getURL() === "about:blank") wc.navigationHistory.clear();
-					send();
-				});
+			window.webContents.send(BROWSER_CHANNEL.state, null);
 		} else if (webUrl(wc.getURL())) void shell.openExternal(wc.getURL());
 	};
 

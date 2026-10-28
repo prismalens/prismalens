@@ -211,14 +211,22 @@ async function main() {
 			s,
 		);
 	}
+	// A good page first, so the refusal below can only come from the redirect guard.
+	await win.webContents.executeJavaScript(
+		`window.prismalensDesktop.browser.open(${JSON.stringify(`${base}/page`)})`,
+	);
+	await wait(800);
 	await view.webContents
 		.executeJavaScript(`location.href = ${JSON.stringify(`${base}/to-tel`)}`)
 		.catch(() => {});
 	await wait(800);
+	const redirected =
+		await win.webContents.executeJavaScript("window.__s.at(-1)");
 	check(
-		"the view's guard refuses a redirect to tel:",
-		!view.webContents.getURL().startsWith("tel:"),
-		view.webContents.getURL(),
+		"the view's redirect guard refuses a redirect to tel: and reports it",
+		redirected?.refused === "tel:123" &&
+			!view.webContents.getURL().startsWith("tel:"),
+		redirected,
 	);
 
 	const started = Date.now();
@@ -240,19 +248,27 @@ async function main() {
 		asked,
 	);
 
+	// A page that guards against leaving, with the user's activation: clear still ends it (#977 OBJ-021).
 	await win.webContents.executeJavaScript(
-		`window.prismalensDesktop.browser.go("clear")`,
+		`window.prismalensDesktop.browser.open(${JSON.stringify(`${base}/unsaved`)})`,
 	);
 	await wait(800);
+	await view.webContents.executeJavaScript(
+		`window.addEventListener("beforeunload", (e) => { e.preventDefault(); e.returnValue = ""; }); 1`,
+		true,
+	);
+	const old = view.webContents;
+	await win.webContents.executeJavaScript(
+		`window.__s=[]; window.prismalensDesktop.browser.go("clear")`,
+	);
+	await wait(800);
+	const cleared = await win.webContents.executeJavaScript("window.__s.at(-1)");
 	check(
-		"leaving a run stops its page and forgets its history (#977 OBJ-012)",
-		view.webContents.getURL() === "about:blank" &&
-			!view.webContents.navigationHistory.canGoBack() &&
-			!view.getVisible(),
-		{
-			url: view.webContents.getURL(),
-			back: view.webContents.navigationHistory.canGoBack(),
-		},
+		"leaving a run ends its page, even one that asks to stay (#977 OBJ-012, OBJ-021)",
+		old.isDestroyed() &&
+			!win.contentView.children.some((c) => c.webContents) &&
+			cleared === null,
+		{ destroyed: old.isDestroyed(), cleared },
 	);
 
 	const failed = Object.entries(results).filter(([, v]) => v !== "pass");
