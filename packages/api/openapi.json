@@ -9679,8 +9679,35 @@
                       "format": "uuid"
                     },
                     "incidentId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduleId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "status": {
                       "enum": [
@@ -10832,9 +10859,16 @@
                       ]
                     },
                     "incidentNumber": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "origin": {
                       "type": "string",
@@ -10950,8 +10984,35 @@
                             "format": "uuid"
                           },
                           "incidentId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scheduleId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "status": {
                             "enum": [
@@ -12103,9 +12164,16 @@
                             ]
                           },
                           "incidentNumber": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "origin": {
                             "type": "string",
@@ -12849,8 +12917,35 @@
                       "format": "uuid"
                     },
                     "incidentId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduleId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "status": {
                       "enum": [
@@ -14002,9 +14097,16 @@
                       ]
                     },
                     "incidentNumber": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "origin": {
                       "type": "string",
@@ -14715,8 +14817,35 @@
                           "format": "uuid"
                         },
                         "incidentId": {
-                          "type": "string",
-                          "format": "uuid"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "serviceId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "scheduleId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "status": {
                           "enum": [
@@ -15868,9 +15997,16 @@
                           ]
                         },
                         "incidentNumber": {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "origin": {
                           "type": "string",
@@ -16038,8 +16174,35 @@
                       "format": "uuid"
                     },
                     "incidentId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduleId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "status": {
                       "enum": [
@@ -17191,9 +17354,16 @@
                       ]
                     },
                     "incidentNumber": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "origin": {
                       "type": "string",
@@ -18889,8 +19059,35 @@
                       "format": "uuid"
                     },
                     "incidentId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduleId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "status": {
                       "enum": [
@@ -20042,9 +20239,16 @@
                       ]
                     },
                     "incidentNumber": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "origin": {
                       "type": "string",
@@ -21214,8 +21418,35 @@
                       "format": "uuid"
                     },
                     "incidentId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduleId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "status": {
                       "enum": [
@@ -22367,9 +22598,16 @@
                       ]
                     },
                     "incidentNumber": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "origin": {
                       "type": "string",
@@ -23278,7 +23516,8 @@
                                 "enum": [
                                   "incidents",
                                   "alerts",
-                                  "investigations"
+                                  "investigations",
+                                  "schedules"
                                 ],
                                 "type": "string"
                               }
@@ -23566,8 +23805,15 @@
                             "format": "uuid"
                           },
                           "incidentId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "status": {
                             "type": "string"
@@ -23826,8 +24072,15 @@
                           "format": "uuid"
                         },
                         "incidentId": {
-                          "type": "string",
-                          "format": "uuid"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "status": {
                           "type": "string"
@@ -25888,6 +26141,3018 @@
                     {
                       "not": {}
                     }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules": {
+      "get": {
+        "operationId": "schedules.list",
+        "summary": "List schedules and built-in jobs",
+        "tags": [
+          "schedules"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "canEdit": {
+                      "type": "boolean"
+                    },
+                    "hostName": {
+                      "type": "string"
+                    },
+                    "schedules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          },
+                          "serviceId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "runbook": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 500
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "brief": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "recurrence": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "const": "cron"
+                                  },
+                                  "expr": {
+                                    "type": "string",
+                                    "minLength": 9,
+                                    "maxLength": 120
+                                  },
+                                  "timezone": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "expr",
+                                  "timezone"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "const": "interval"
+                                  },
+                                  "everyMinutes": {
+                                    "type": "integer",
+                                    "minimum": 15,
+                                    "maximum": 10080
+                                  },
+                                  "anchorAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "everyMinutes",
+                                  "anchorAt"
+                                ]
+                              }
+                            ]
+                          },
+                          "harness": {
+                            "enum": [
+                              "opencode",
+                              "claude-code",
+                              "codex",
+                              "gemini",
+                              "deepagents",
+                              "local"
+                            ],
+                            "type": "string"
+                          },
+                          "model": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effort": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "missedPolicy": {
+                            "enum": [
+                              "run_once",
+                              "skip"
+                            ],
+                            "type": "string"
+                          },
+                          "catchUpMinutes": {
+                            "type": "integer",
+                            "minimum": 15,
+                            "maximum": 1440
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "serviceName": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "shape": {
+                            "enum": [
+                              "fixed",
+                              "repeating",
+                              "interval"
+                            ],
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "pausedReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextRunAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastTick": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "scheduledFor": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "decidedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "outcome": {
+                                    "enum": [
+                                      "started",
+                                      "late_started",
+                                      "run_now",
+                                      "skipped_overlap",
+                                      "skipped_agent_not_ready",
+                                      "skipped_bindings_changed",
+                                      "missed_asleep",
+                                      "missed_off",
+                                      "missed_late",
+                                      "expired_host_busy"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "missedCount": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "missedOverflow": {
+                                    "type": "boolean"
+                                  },
+                                  "run": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string"
+                                          },
+                                          "status": {
+                                            "enum": [
+                                              "pending",
+                                              "running",
+                                              "completed",
+                                              "failed",
+                                              "cancelled"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "summary": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "error": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "startedAt": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "format": "date-time"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "completedAt": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "format": "date-time"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "incidentId": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "incidentNumber": {
+                                            "anyOf": [
+                                              {
+                                                "type": "integer",
+                                                "minimum": -9007199254740991,
+                                                "maximum": 9007199254740991
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "status",
+                                          "summary",
+                                          "error",
+                                          "startedAt",
+                                          "completedAt",
+                                          "incidentId",
+                                          "incidentNumber"
+                                        ]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "scheduledFor",
+                                  "decidedAt",
+                                  "outcome",
+                                  "reason",
+                                  "missedCount",
+                                  "missedOverflow",
+                                  "run"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "liveRunId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revision": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "serviceId",
+                          "runbook",
+                          "brief",
+                          "recurrence",
+                          "harness",
+                          "model",
+                          "effort",
+                          "missedPolicy",
+                          "catchUpMinutes",
+                          "id",
+                          "serviceName",
+                          "description",
+                          "shape",
+                          "enabled",
+                          "pausedReason",
+                          "nextRunAt",
+                          "lastTick",
+                          "liveRunId",
+                          "revision",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "builtIns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "cadence": {
+                            "type": "string"
+                          },
+                          "lastRunAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastResult": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ok": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextRunAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "description",
+                          "cadence",
+                          "lastRunAt",
+                          "lastResult",
+                          "ok",
+                          "nextRunAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "canEdit",
+                    "hostName",
+                    "schedules",
+                    "builtIns"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "schedules.create",
+        "summary": "Create a schedule (host only)",
+        "tags": [
+          "schedules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "runbook": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "brief": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "recurrence": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "const": "cron"
+                          },
+                          "expr": {
+                            "type": "string",
+                            "minLength": 9,
+                            "maxLength": 120
+                          },
+                          "timezone": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "expr",
+                          "timezone"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "const": "interval"
+                          },
+                          "everyMinutes": {
+                            "type": "integer",
+                            "minimum": 15,
+                            "maximum": 10080
+                          },
+                          "anchorAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "everyMinutes",
+                          "anchorAt"
+                        ]
+                      }
+                    ]
+                  },
+                  "harness": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents",
+                      "local"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effort": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "missedPolicy": {
+                    "enum": [
+                      "run_once",
+                      "skip"
+                    ],
+                    "type": "string"
+                  },
+                  "catchUpMinutes": {
+                    "type": "integer",
+                    "minimum": 15,
+                    "maximum": 1440
+                  }
+                },
+                "required": [
+                  "name",
+                  "serviceId",
+                  "runbook",
+                  "brief",
+                  "recurrence",
+                  "harness",
+                  "model",
+                  "effort",
+                  "missedPolicy",
+                  "catchUpMinutes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "serviceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "runbook": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "brief": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    },
+                    "recurrence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "cron"
+                            },
+                            "expr": {
+                              "type": "string",
+                              "minLength": 9,
+                              "maxLength": 120
+                            },
+                            "timezone": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "expr",
+                            "timezone"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "interval"
+                            },
+                            "everyMinutes": {
+                              "type": "integer",
+                              "minimum": 15,
+                              "maximum": 10080
+                            },
+                            "anchorAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "everyMinutes",
+                            "anchorAt"
+                          ]
+                        }
+                      ]
+                    },
+                    "harness": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "model": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "missedPolicy": {
+                      "enum": [
+                        "run_once",
+                        "skip"
+                      ],
+                      "type": "string"
+                    },
+                    "catchUpMinutes": {
+                      "type": "integer",
+                      "minimum": 15,
+                      "maximum": 1440
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "serviceName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "shape": {
+                      "enum": [
+                        "fixed",
+                        "repeating",
+                        "interval"
+                      ],
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "pausedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextRunAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTick": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "scheduledFor": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "decidedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "outcome": {
+                              "enum": [
+                                "started",
+                                "late_started",
+                                "run_now",
+                                "skipped_overlap",
+                                "skipped_agent_not_ready",
+                                "skipped_bindings_changed",
+                                "missed_asleep",
+                                "missed_off",
+                                "missed_late",
+                                "expired_host_busy"
+                              ],
+                              "type": "string"
+                            },
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "missedCount": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "missedOverflow": {
+                              "type": "boolean"
+                            },
+                            "run": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "enum": [
+                                        "pending",
+                                        "running",
+                                        "completed",
+                                        "failed",
+                                        "cancelled"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "summary": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "error": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "startedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "completedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "incidentId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "incidentNumber": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "status",
+                                    "summary",
+                                    "error",
+                                    "startedAt",
+                                    "completedAt",
+                                    "incidentId",
+                                    "incidentNumber"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "scheduledFor",
+                            "decidedAt",
+                            "outcome",
+                            "reason",
+                            "missedCount",
+                            "missedOverflow",
+                            "run"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveRunId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "serviceId",
+                    "runbook",
+                    "brief",
+                    "recurrence",
+                    "harness",
+                    "model",
+                    "effort",
+                    "missedPolicy",
+                    "catchUpMinutes",
+                    "id",
+                    "serviceName",
+                    "description",
+                    "shape",
+                    "enabled",
+                    "pausedReason",
+                    "nextRunAt",
+                    "lastTick",
+                    "liveRunId",
+                    "revision",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules/{id}": {
+      "get": {
+        "operationId": "schedules.get",
+        "summary": "A schedule and its runs",
+        "tags": [
+          "schedules"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "canEdit": {
+                      "type": "boolean"
+                    },
+                    "hostName": {
+                      "type": "string"
+                    },
+                    "schedule": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "serviceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "runbook": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "brief": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000
+                        },
+                        "recurrence": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "const": "cron"
+                                },
+                                "expr": {
+                                  "type": "string",
+                                  "minLength": 9,
+                                  "maxLength": 120
+                                },
+                                "timezone": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "expr",
+                                "timezone"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "const": "interval"
+                                },
+                                "everyMinutes": {
+                                  "type": "integer",
+                                  "minimum": 15,
+                                  "maximum": 10080
+                                },
+                                "anchorAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "everyMinutes",
+                                "anchorAt"
+                              ]
+                            }
+                          ]
+                        },
+                        "harness": {
+                          "enum": [
+                            "opencode",
+                            "claude-code",
+                            "codex",
+                            "gemini",
+                            "deepagents",
+                            "local"
+                          ],
+                          "type": "string"
+                        },
+                        "model": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "effort": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "missedPolicy": {
+                          "enum": [
+                            "run_once",
+                            "skip"
+                          ],
+                          "type": "string"
+                        },
+                        "catchUpMinutes": {
+                          "type": "integer",
+                          "minimum": 15,
+                          "maximum": 1440
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "serviceName": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "shape": {
+                          "enum": [
+                            "fixed",
+                            "repeating",
+                            "interval"
+                          ],
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "pausedReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "nextRunAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastTick": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "scheduledFor": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "decidedAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "outcome": {
+                                  "enum": [
+                                    "started",
+                                    "late_started",
+                                    "run_now",
+                                    "skipped_overlap",
+                                    "skipped_agent_not_ready",
+                                    "skipped_bindings_changed",
+                                    "missed_asleep",
+                                    "missed_off",
+                                    "missed_late",
+                                    "expired_host_busy"
+                                  ],
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "missedCount": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "missedOverflow": {
+                                  "type": "boolean"
+                                },
+                                "run": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "enum": [
+                                            "pending",
+                                            "running",
+                                            "completed",
+                                            "failed",
+                                            "cancelled"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "error": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "startedAt": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "format": "date-time"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "completedAt": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "format": "date-time"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "incidentId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "incidentNumber": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": -9007199254740991,
+                                              "maximum": 9007199254740991
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "id",
+                                        "status",
+                                        "summary",
+                                        "error",
+                                        "startedAt",
+                                        "completedAt",
+                                        "incidentId",
+                                        "incidentNumber"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "scheduledFor",
+                                "decidedAt",
+                                "outcome",
+                                "reason",
+                                "missedCount",
+                                "missedOverflow",
+                                "run"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "liveRunId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "serviceId",
+                        "runbook",
+                        "brief",
+                        "recurrence",
+                        "harness",
+                        "model",
+                        "effort",
+                        "missedPolicy",
+                        "catchUpMinutes",
+                        "id",
+                        "serviceName",
+                        "description",
+                        "shape",
+                        "enabled",
+                        "pausedReason",
+                        "nextRunAt",
+                        "lastTick",
+                        "liveRunId",
+                        "revision",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "ticks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "scheduledFor": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "decidedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "outcome": {
+                            "enum": [
+                              "started",
+                              "late_started",
+                              "run_now",
+                              "skipped_overlap",
+                              "skipped_agent_not_ready",
+                              "skipped_bindings_changed",
+                              "missed_asleep",
+                              "missed_off",
+                              "missed_late",
+                              "expired_host_busy"
+                            ],
+                            "type": "string"
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "missedCount": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "missedOverflow": {
+                            "type": "boolean"
+                          },
+                          "run": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "enum": [
+                                      "pending",
+                                      "running",
+                                      "completed",
+                                      "failed",
+                                      "cancelled"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "summary": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "error": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "startedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "date-time"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "completedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "date-time"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "incidentId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "incidentNumber": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "status",
+                                  "summary",
+                                  "error",
+                                  "startedAt",
+                                  "completedAt",
+                                  "incidentId",
+                                  "incidentNumber"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "scheduledFor",
+                          "decidedAt",
+                          "outcome",
+                          "reason",
+                          "missedCount",
+                          "missedOverflow",
+                          "run"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "canEdit",
+                    "hostName",
+                    "schedule",
+                    "ticks",
+                    "nextCursor"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "schedules.update",
+        "summary": "Change a schedule (host only)",
+        "tags": [
+          "schedules"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "schedule": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "serviceId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "runbook": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "brief": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4000
+                      },
+                      "recurrence": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "cron"
+                              },
+                              "expr": {
+                                "type": "string",
+                                "minLength": 9,
+                                "maxLength": 120
+                              },
+                              "timezone": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "expr",
+                              "timezone"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "interval"
+                              },
+                              "everyMinutes": {
+                                "type": "integer",
+                                "minimum": 15,
+                                "maximum": 10080
+                              },
+                              "anchorAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "everyMinutes",
+                              "anchorAt"
+                            ]
+                          }
+                        ]
+                      },
+                      "harness": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "model": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "effort": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "missedPolicy": {
+                        "enum": [
+                          "run_once",
+                          "skip"
+                        ],
+                        "type": "string"
+                      },
+                      "catchUpMinutes": {
+                        "type": "integer",
+                        "minimum": 15,
+                        "maximum": 1440
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "serviceId",
+                      "runbook",
+                      "brief",
+                      "recurrence",
+                      "harness",
+                      "model",
+                      "effort",
+                      "missedPolicy",
+                      "catchUpMinutes"
+                    ]
+                  }
+                },
+                "required": [
+                  "revision",
+                  "schedule"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "serviceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "runbook": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "brief": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    },
+                    "recurrence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "cron"
+                            },
+                            "expr": {
+                              "type": "string",
+                              "minLength": 9,
+                              "maxLength": 120
+                            },
+                            "timezone": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "expr",
+                            "timezone"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "interval"
+                            },
+                            "everyMinutes": {
+                              "type": "integer",
+                              "minimum": 15,
+                              "maximum": 10080
+                            },
+                            "anchorAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "everyMinutes",
+                            "anchorAt"
+                          ]
+                        }
+                      ]
+                    },
+                    "harness": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "model": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "missedPolicy": {
+                      "enum": [
+                        "run_once",
+                        "skip"
+                      ],
+                      "type": "string"
+                    },
+                    "catchUpMinutes": {
+                      "type": "integer",
+                      "minimum": 15,
+                      "maximum": 1440
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "serviceName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "shape": {
+                      "enum": [
+                        "fixed",
+                        "repeating",
+                        "interval"
+                      ],
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "pausedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextRunAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTick": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "scheduledFor": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "decidedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "outcome": {
+                              "enum": [
+                                "started",
+                                "late_started",
+                                "run_now",
+                                "skipped_overlap",
+                                "skipped_agent_not_ready",
+                                "skipped_bindings_changed",
+                                "missed_asleep",
+                                "missed_off",
+                                "missed_late",
+                                "expired_host_busy"
+                              ],
+                              "type": "string"
+                            },
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "missedCount": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "missedOverflow": {
+                              "type": "boolean"
+                            },
+                            "run": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "enum": [
+                                        "pending",
+                                        "running",
+                                        "completed",
+                                        "failed",
+                                        "cancelled"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "summary": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "error": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "startedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "completedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "incidentId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "incidentNumber": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "status",
+                                    "summary",
+                                    "error",
+                                    "startedAt",
+                                    "completedAt",
+                                    "incidentId",
+                                    "incidentNumber"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "scheduledFor",
+                            "decidedAt",
+                            "outcome",
+                            "reason",
+                            "missedCount",
+                            "missedOverflow",
+                            "run"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveRunId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "serviceId",
+                    "runbook",
+                    "brief",
+                    "recurrence",
+                    "harness",
+                    "model",
+                    "effort",
+                    "missedPolicy",
+                    "catchUpMinutes",
+                    "id",
+                    "serviceName",
+                    "description",
+                    "shape",
+                    "enabled",
+                    "pausedReason",
+                    "nextRunAt",
+                    "lastTick",
+                    "liveRunId",
+                    "revision",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "schedules.remove",
+        "summary": "Delete a schedule (host only)",
+        "tags": [
+          "schedules"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules/preview": {
+      "post": {
+        "operationId": "schedules.preview",
+        "summary": "Describe a recurrence and its next runs",
+        "tags": [
+          "schedules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "recurrence": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "const": "cron"
+                          },
+                          "expr": {
+                            "type": "string",
+                            "minLength": 9,
+                            "maxLength": 120
+                          },
+                          "timezone": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "expr",
+                          "timezone"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "const": "interval"
+                          },
+                          "everyMinutes": {
+                            "type": "integer",
+                            "minimum": 15,
+                            "maximum": 10080
+                          },
+                          "anchorAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "everyMinutes",
+                          "anchorAt"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "recurrence"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "shape": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "fixed",
+                            "repeating",
+                            "interval"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "next": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "dstNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "description",
+                    "shape",
+                    "next",
+                    "dstNote",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules/{id}/enabled": {
+      "post": {
+        "operationId": "schedules.setEnabled",
+        "summary": "Pause or resume a schedule (host only)",
+        "tags": [
+          "schedules"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "serviceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "runbook": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "brief": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    },
+                    "recurrence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "cron"
+                            },
+                            "expr": {
+                              "type": "string",
+                              "minLength": 9,
+                              "maxLength": 120
+                            },
+                            "timezone": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "expr",
+                            "timezone"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "interval"
+                            },
+                            "everyMinutes": {
+                              "type": "integer",
+                              "minimum": 15,
+                              "maximum": 10080
+                            },
+                            "anchorAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "everyMinutes",
+                            "anchorAt"
+                          ]
+                        }
+                      ]
+                    },
+                    "harness": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "model": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "missedPolicy": {
+                      "enum": [
+                        "run_once",
+                        "skip"
+                      ],
+                      "type": "string"
+                    },
+                    "catchUpMinutes": {
+                      "type": "integer",
+                      "minimum": 15,
+                      "maximum": 1440
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "serviceName": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "shape": {
+                      "enum": [
+                        "fixed",
+                        "repeating",
+                        "interval"
+                      ],
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "pausedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextRunAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTick": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "scheduledFor": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "decidedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "outcome": {
+                              "enum": [
+                                "started",
+                                "late_started",
+                                "run_now",
+                                "skipped_overlap",
+                                "skipped_agent_not_ready",
+                                "skipped_bindings_changed",
+                                "missed_asleep",
+                                "missed_off",
+                                "missed_late",
+                                "expired_host_busy"
+                              ],
+                              "type": "string"
+                            },
+                            "reason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "missedCount": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "missedOverflow": {
+                              "type": "boolean"
+                            },
+                            "run": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "enum": [
+                                        "pending",
+                                        "running",
+                                        "completed",
+                                        "failed",
+                                        "cancelled"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "summary": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "error": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "startedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "completedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "incidentId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "incidentNumber": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "status",
+                                    "summary",
+                                    "error",
+                                    "startedAt",
+                                    "completedAt",
+                                    "incidentId",
+                                    "incidentNumber"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "scheduledFor",
+                            "decidedAt",
+                            "outcome",
+                            "reason",
+                            "missedCount",
+                            "missedOverflow",
+                            "run"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveRunId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "serviceId",
+                    "runbook",
+                    "brief",
+                    "recurrence",
+                    "harness",
+                    "model",
+                    "effort",
+                    "missedPolicy",
+                    "catchUpMinutes",
+                    "id",
+                    "serviceName",
+                    "description",
+                    "shape",
+                    "enabled",
+                    "pausedReason",
+                    "nextRunAt",
+                    "lastTick",
+                    "liveRunId",
+                    "revision",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules/{id}/run": {
+      "post": {
+        "operationId": "schedules.runNow",
+        "summary": "Run a schedule now (host only)",
+        "tags": [
+          "schedules"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "decidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "outcome": {
+                      "enum": [
+                        "started",
+                        "late_started",
+                        "run_now",
+                        "skipped_overlap",
+                        "skipped_agent_not_ready",
+                        "skipped_bindings_changed",
+                        "missed_asleep",
+                        "missed_off",
+                        "missed_late",
+                        "expired_host_busy"
+                      ],
+                      "type": "string"
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "missedCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "missedOverflow": {
+                      "type": "boolean"
+                    },
+                    "run": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "enum": [
+                                "pending",
+                                "running",
+                                "completed",
+                                "failed",
+                                "cancelled"
+                              ],
+                              "type": "string"
+                            },
+                            "summary": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "error": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "startedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "completedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "incidentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "incidentNumber": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "status",
+                            "summary",
+                            "error",
+                            "startedAt",
+                            "completedAt",
+                            "incidentId",
+                            "incidentNumber"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "scheduledFor",
+                    "decidedAt",
+                    "outcome",
+                    "reason",
+                    "missedCount",
+                    "missedOverflow",
+                    "run"
                   ]
                 }
               }
