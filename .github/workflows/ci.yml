@@ -439,7 +439,7 @@ jobs:
   harness-admission:
     # Qualification (ADR 0003 §10, #914): the pinned agent is real, its model is aimock
     # serving scripts/fakes/scenarios/, so a red run means the code is wrong and the same
-    # commit gives the same verdict (#884). Each leg runs the admission (R1-R10) and the
+    # commit gives the same verdict (#884). Each leg runs the admission (R1-R11) and the
     # behaviour matrix 3 times; the runs must agree. The live-model run is
     # `harness-admission-live` below.
     #
@@ -519,7 +519,7 @@ jobs:
         if: matrix.harness == 'codex'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      - name: Run the admission (R1-R10) and the behaviour matrix against aimock, 3 times
+      - name: Run the admission (R1-R11) and the behaviour matrix against aimock, 3 times
         run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3
 
       # The negative run (#848): with no gateway the model calls no PrismaLens tool, so R8 must fail the gate.
