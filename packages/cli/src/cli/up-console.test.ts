@@ -2,10 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { createServer } from "node:net";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
 	browserCommand,
+	writeRedirectFile,
 	displayUrl,
 	healthUrl,
 	networkBindWarning,
@@ -197,6 +200,20 @@ describe("networkBindWarning (#673)", () => {
 		expect(networkBindWarning({ host: "::", protocol: "https" })).toMatch(
 			/over HTTPS/,
 		);
+	});
+});
+
+describe("writeRedirectFile", () => {
+	it("holds the link in a private file the browser opens instead of the URL", () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-open-"));
+		const url = "http://localhost:3001/pair#t0ken</script>";
+		const file = writeRedirectFile(url, join(dir, "run"));
+		const html = readFileSync(file, "utf8");
+		expect(html).toContain("location.replace(");
+		expect(html).not.toContain("</script>\"");
+		expect(html).toContain("t0ken");
+		if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
+		expect(writeRedirectFile(url, join(dir, "run"))).not.toBe(file);
 	});
 });
 

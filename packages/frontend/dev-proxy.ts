@@ -12,6 +12,8 @@ export function apiProxy(target: string): ProxyOptions {
 	return {
 		target,
 		changeOrigin: true,
+		// The terminal's socket (#931) is an upgrade under /api.
+		ws: true,
 		configure: (proxy) => {
 			proxy.on("proxyRes", (proxyRes, _req, res) => {
 				proxyRes.on("close", () => {
