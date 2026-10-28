@@ -107,3 +107,6 @@ packages/@prismalens/agent-adapters/.pack-staging/
 packages/desktop/resources/
 packages/desktop/release/
 .turbo-cache/
+
+# Per-machine agent instructions (maintainer workflow, local paths)
+AGENTS.local.md

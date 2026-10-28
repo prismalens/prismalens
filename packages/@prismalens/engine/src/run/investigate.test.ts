@@ -1105,10 +1105,9 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(asked).toEqual([["read-only"], ["read-only"], ["read-only"]]);
 	});
 
-	it("writes OpenCode's config with no permission block of PrismaLens's own", () => {
-		const runDir = tmp("run");
-		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir });
-		const config = JSON.parse(readFileSync(join(runDir, "config", "opencode.json"), "utf8"));
+	it("gives OpenCode its config inline with no permission block of PrismaLens's own", () => {
+		const { env } = prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir: tmp("run") });
+		const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT as string);
 		expect(config.permission).toBeUndefined();
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
@@ -1271,7 +1270,8 @@ describe("the agent's own mode (#673 w21)", () => {
 				},
 			});
 			const config = JSON.parse(
-				readFileSync(join(runDir, "config", "opencode.json"), "utf8"),
+				prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir, accessLevel: level }).env
+					.OPENCODE_CONFIG_CONTENT as string,
 			);
 			expect(config.permission.edit["*"]).toBe(edit);
 			expect(config.permission.bash["*"]).toBe(bash);

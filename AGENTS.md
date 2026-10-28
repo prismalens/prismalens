@@ -1,75 +1,39 @@
 # AGENTS.md
 
-Instructions for AI coding agents working in this repository.
+PrismaLens is a local-first incident investigator: alerts come in by webhook, a coding agent the user already runs (Claude Code, Codex, OpenCode, Gemini CLI) investigates through ACP, and the user gets a report with a cause and a next command. It is a pnpm + Turborepo monorepo: NestJS API, TanStack Start UI, Prisma on SQLite or Postgres, and the `prismalens` CLI that bundles them.
 
-<!-- BEGIN mage -->
-## mage knowledge base (external hub)
+## Commands
+Node 24 or later (`.nvmrc`), pnpm via `corepack enable`.
 
-This repository's durable knowledge lives in an external **mage hub** at
-`/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb`, where this repo is the **prismalens-platform** project. mage is a portable,
-file-based knowledge base of notes — insight, procedure, and pointers (not
-copies of sources) — navigable as an Obsidian graph.
+```bash
+pnpm install
+pnpm typecheck && pnpm test      # run both before calling a change done
+pnpm format-and-lint             # Biome, then the frontend look gates
+pnpm --filter @prismalens/frontend test:e2e   # Playwright; use --workers=1 on a small machine
+pnpm db:init && pnpm dev         # local API + UI
+```
 
-**Before non-trivial work in this repo:**
+`CONTRIBUTING.md` has the full setup, the e2e tiers and the release flow.
 
-1. Read the hub index first: `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb/INDEX.md` — find the **prismalens-platform** wing (its
-   notes are grouped there; in a large hub the wing links out to its own
-   `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb/_index.prismalens-platform.md`). One line per note: type · title · keywords · → link. Open
-   only the notes the task touches; don't read everything.
-2. Skim `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb/projects/prismalens-platform/decisions/`
-   for the project's governing ADRs. Note the path: the hub-root `decisions/` directory
-   holds only a `.gitkeep` — every accepted ADR lives under the project wing.
-3. Treat notes as point-in-time. If a note is `status: stale-suspect`, or its
-   `last_reviewed` / `provenance.commit` looks old, verify it against the
-   current code before relying on it.
+## Invariants
+These are easy for an agent to break and expensive to undo.
 
-**After you learn something durable** — an interface detail, a gotcha, how two
-services couple, a faster path to a source — capture it with `mage:learn` into
-the hub. Capture the reusable *insight + procedure + pointers*, never a copy.
+- **Migrations are append-only.** A release has shipped, so installed databases exist. Never delete, edit, rename or squash a migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`. A schema change is a new migration (`pnpm db:migrate`). The runner refuses an edited history by design. `CONTRIBUTING.md` → *Database migrations*.
+- **No non-free capability lands here**, not even disabled behind a flag. Paid capabilities load as separate modules through the capability-flag seam (#264); the flags and UI shells in this repo stay inert without one.
+- **One report shape.** What an agent returns and what the UI renders is `ModelReportSchema` in `packages/@prismalens/contracts/src/schemas/investigation.ts`. Change it there, not in a local copy.
+- **Tests ship with code.** New modules get tests at their public seams and a coverage threshold entry (see `packages/cli/vitest.config.ts`). Fix the implementation, not the test, unless the test is wrong.
+- **Keep indentation as found.** Never convert tabs to spaces or back.
 
-**Cross-link, don't just file.** A standalone note is write-only — it won't be
-recalled at the point of need unless the doc you read there links to it. So when
-you capture a research/option `note`, wire its `[[wikilink]]` **inline into the
-specific ADR section(s) it bears on** (and those ADRs' `## Relations`),
-**bidirectionally** (note→ADR and ADR→note), then `mage index`. See the hub note
-`cross-link-research-into-decisions` for the procedure + the failure it prevents.
+## Writing
+- Comments, test names, commit messages and PR text explain current behaviour to a reader who was not in the conversation. Cite a public issue (`#264`) when the story is long; never a review round, a chat, a board card or an iteration ID.
+- A comment carries one non-obvious constraint in three lines or fewer. Don't narrate what the code does.
+- Don't name other products without need. The supported agents (Claude Code, Codex, OpenCode, Gemini CLI) may be named where a doc identifies an integration or its mode.
+- Commits and PR titles follow Conventional Commits; a required check enforces the PR title.
 
-**Commit hygiene:** mage never commits for you. It suggests `git` commands; you
-run them.
-<!-- END mage -->
+## Docs
+A change to anything a user sees updates its doc in the same PR, or the PR says why none is affected. Where the doc lives in `prismalens/prismalens.io`, the PR links the website PR or a tracked docs issue.
 
-## Implementation specs must declare docs impact
-
-Every implementation spec handed to a coding agent must name a **Docs surfaces** deliverable: the specific files (README.md section, docs.prismalens.io page, CLI --help text, mage note) the change is expected to update, or state explicitly "none affected because …". A spec without either is incomplete; do not start implementation until it's added.
-
-Where a named surface explains three or more interacting parts (a resolution order, a topology, a state machine, a pipeline, a precedence rule), the spec must also say which concrete artifact will carry it — a worked example, a terminal transcript, a diagram, or (only if genuinely graphical) a screenshot with a stated invalidation trigger. Prose-only for that kind of surface is an incomplete spec.
-
-README files in this repository follow a three-tier model. The root `README.md` is the project's front page for orientation, quick start instructions, and the monorepo layout. As the npm landing page for the published `prismalens` package, `packages/cli/README.md` stands alone with installation steps, a short quick start, a list of commands with a one-line description each, and a link to the website; flags, configuration keys, environment variables, and per-command reference material live on docs.prismalens.io. Every other package README under `packages/` carries only a short description of what the package is and a link to the website. An implementation spec that covers feature detail, configuration keys, or reference material names the corresponding page on docs.prismalens.io instead of a package README.
-
-## How reviews start
-
-Marking a PR ready starts no review. CodeRabbit is summoned by the hourly `CodeRabbit summoner` routine, one PR per hour across every repo (Sumit1993/rig#150); never post `@coderabbitai review` yourself. After a review: fix, push once, reply in every thread, and stop; the routine re-reviews. The Claude lane runs only on PRs labelled `claude_review`, and only the operator adds that label or `coderabbit_review`.
-
-## Implementation specs must declare a capability tier
-
-Every implementation spec also states its **capability tier**: `free` (the default — everything
-in this repo), or a non-free tier per ADR-0023's boundary. Non-free capabilities never land in
-this repository — not even disabled behind a boolean. They integrate only through the
-capability-flag + dynamically-loaded-module seam (#264); the flags and UI shells here stay inert
-without a verified module. A spec that adds gated-but-present behavior to this repo is
-misdesigned — send it back.
-
-## Agents never operate in the main checkout
-
-All agent work on this repository's files and git state — coding, running commands,
-checking out branches, anything that touches this repo's working tree — happens in a
-worktree at `.claude/worktrees/<branch-slug>` inside this repo, never in the main checkout
-at the repo root. `.worktreeinclude` copies `packages/api/.env` into each new worktree so a
-lane can build and run. The main checkout, and the dev stack it serves (the one running `pnpm dev` for
-manual verification), is orchestrator territory: only the orchestrator switches its
-branch or restarts its stack, and only deliberately. An agent that finds itself pointed
-at the main checkout stops and reports rather than proceeding — a prior incident had an
-agent "restore" the main repo to a stale branch, which cascaded into compile failures and
-an invalid-data DB reseed. This does not affect the external mage hub: `mage:learn` and
-`mage index` write to `~/.mage/hubs/...`, outside this repo's git state, and remain
-required regardless of which checkout an agent is reasoning from.
+- `README.md` is the front page: what it is, quick start, repo layout.
+- `packages/cli/README.md` is the npm page: install, quick start, one line per command, a link to the website.
+- Other package READMEs hold one short description and the website link.
+- Flags, config keys, environment variables and per-command reference live on docs.prismalens.io (repo `prismalens/prismalens.io`), not in package READMEs.

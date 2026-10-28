@@ -15,6 +15,7 @@ import {
 	type AgentDescriptor,
 	type AgentId,
 	type AgentRunEnv,
+	isJsonObject,
 	isSafeGatewayUrl,
 	type JsonObject,
 	mergeConfigPatch,
@@ -149,6 +150,52 @@ function refusal(
 	};
 }
 
+function userConfigEnv(key: string, value: string | undefined): JsonObject {
+	if (!value?.trim()) return {};
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+			return parsed as JsonObject;
+	} catch {}
+	throw new AgentHostError(
+		"bad-config-env",
+		`${key} must hold a JSON object for the run's config to merge into it`,
+	);
+}
+
+/**
+ * `user` without the permission tool maps `run` rewrites: the run re-lists their patterns after its
+ * catch-all, and a key already in `user` would keep its earlier place under the merge (#916).
+ */
+function withoutRewrittenPermissions(
+	user: JsonObject,
+	run: JsonObject,
+): JsonObject {
+	const strip = (own: unknown, rewritten: unknown): unknown => {
+		if (!isJsonObject(own) || !isJsonObject(rewritten)) return own;
+		return Object.fromEntries(
+			Object.entries(own).filter(([tool]) => !(tool in rewritten)),
+		);
+	};
+	const out: JsonObject = { ...user };
+	const runPermission = isJsonObject(run.permission) ? run.permission : {};
+	if ("permission" in out)
+		out.permission = strip(out.permission, runPermission);
+	const runAgents = isJsonObject(run.agent) ? run.agent : {};
+	if (isJsonObject(out.agent))
+		out.agent = Object.fromEntries(
+			Object.entries(out.agent).map(([name, own]) => {
+				const rewritten = runAgents[name];
+				if (!isJsonObject(own) || !isJsonObject(rewritten)) return [name, own];
+				return [
+					name,
+					{ ...own, permission: strip(own.permission, rewritten.permission) },
+				];
+			}),
+		);
+	return out;
+}
+
 /** A later layer wins. On Windows a name differing only in case is the same variable, and a child gets just one of them. */
 function overlay(
 	env: Record<string, string>,
@@ -257,8 +304,12 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		env.GIT_CONFIG_VALUE_0 = "";
 	}
 
+	// Only a row that reads the variable, or a user who stored it, is held to it; the host's value is inherited by every row.
 	const gateway = env.ANTHROPIC_BASE_URL;
-	if (gateway && !isSafeGatewayUrl(gateway))
+	const readsGateway =
+		row.providerKeys.includes("ANTHROPIC_BASE_URL") ||
+		stored.ANTHROPIC_BASE_URL !== undefined;
+	if (gateway && readsGateway && !isSafeGatewayUrl(gateway))
 		throw new AgentHostError(
 			"unsafe-gateway-url",
 			`ANTHROPIC_BASE_URL must be https unless it points at this machine: ${gateway}`,
@@ -279,11 +330,26 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 					: "not-set";
 
 	const level = input.level ? resolveLevel(input.agent, input.level) : null;
-	const patch = level?.configPatch?.(input.userConfig ?? {});
+	const inline = row.configEnv
+		? userConfigEnv(row.configEnv.key, env[row.configEnv.key])
+		: {};
+	const patch = level?.configPatch?.(
+		mergeConfigPatch(input.userConfig ?? {}, inline),
+	);
+	const planned = levelFiles(row.configFiles?.(runEnv) ?? {}, patch);
+	if (row.configEnv && planned[row.configEnv.file] !== undefined) {
+		const { file, key } = row.configEnv;
+		const run = JSON.parse(planned[file] as string) as JsonObject;
+		env[key] = JSON.stringify(
+			mergeConfigPatch(withoutRewrittenPermissions(inline, run), run),
+		);
+		delete planned[file];
+	}
 	const files = Object.fromEntries(
-		Object.entries(levelFiles(row.configFiles?.(runEnv) ?? {}, patch)).map(
-			([rel, content]) => [join(runEnv.configDir, rel), content],
-		),
+		Object.entries(planned).map(([rel, content]) => [
+			join(runEnv.configDir, rel),
+			content,
+		]),
 	);
 	const sessionMeta = row.sessionMeta?.();
 	return {

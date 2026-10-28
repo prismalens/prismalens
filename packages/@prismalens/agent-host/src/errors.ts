@@ -8,6 +8,7 @@ export const AGENT_HOST_ERROR_CODES = [
 	"git-failed",
 	"commit-missing",
 	"unsafe-copy-path",
+	"bad-config-env",
 ] as const;
 export type AgentHostErrorCode = (typeof AGENT_HOST_ERROR_CODES)[number];
 

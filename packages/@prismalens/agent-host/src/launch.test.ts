@@ -97,6 +97,23 @@ describe("planLaunch env", () => {
 		);
 	});
 
+	it("holds a row to a host gateway URL only when it reads ANTHROPIC_BASE_URL or the user stored one", () => {
+		const hostEnv = { ...HOST, ANTHROPIC_BASE_URL: "http://gw.lan:4000" };
+		const floor = { mode: "inherit-minus-own-secrets", ownSecrets: {} } as const;
+		const policy = { ...POLICY, floor };
+		expect(() => plan({ agent: "codex", launch: { command: "codex-acp" }, policy, hostEnv })).not.toThrow();
+		expect(() => plan({ policy, hostEnv })).toThrow(/ANTHROPIC_BASE_URL/);
+		expect(() =>
+			plan({
+				agent: "codex",
+				launch: { command: "codex-acp" },
+				policy,
+				hostEnv,
+				stored: { ANTHROPIC_BASE_URL: "http://gw.lan:4000" },
+			}),
+		).toThrow(/ANTHROPIC_BASE_URL/);
+	});
+
 	it("layers floor, row keys, stored values, then overrides, last wins", () => {
 		const p = plan({
 			hostEnv: { ...HOST, HOME: "/host-home" },
@@ -219,27 +236,62 @@ describe('github: "exclude"', () => {
 });
 
 describe("launch files", () => {
-	it("writes the row's config with the level's overlay merged in", () => {
+	it("puts OpenCode's config inline with the level's overlay, and leaves the user's OPENCODE_CONFIG_DIR alone", () => {
 		const runDir = mkdtempSync(join(tmpdir(), "ah-launch-"));
 		dirs.push(runDir);
 		const p = planLaunch({
 			agent: "opencode",
 			level: "auto-edits",
-			policy: POLICY,
+			policy: { ...POLICY, floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} } },
 			launch: { command: "opencode" },
 			cwd: "/w",
 			runDir,
-			hostEnv: HOST,
+			hostEnv: { ...HOST, OPENCODE_CONFIG_DIR: "/home/u/my-opencode" },
 		});
 		writeLaunchFiles(p);
-		const file = join(runDir, "config", "opencode.json");
-		expect(existsSync(file)).toBe(true);
-		const json = JSON.parse(readFileSync(file, "utf8"));
+		expect(existsSync(join(runDir, "config", "opencode.json"))).toBe(false);
+		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
 		expect(json.share).toBe("disabled");
 		expect(json.permission.edit).toEqual({ "*": "allow" });
-		expect(p.env.OPENCODE_CONFIG_DIR).toBe(join(runDir, "config"));
+		expect(p.env.OPENCODE_CONFIG_DIR).toBe("/home/u/my-opencode");
 		expect(p.args).toEqual(["acp", "--cwd", "/w"]);
 		expect(p.level?.mode).toEqual({ id: "build", name: "Build" });
+	});
+
+	it("merges the run's OpenCode config over an OPENCODE_CONFIG_CONTENT the user set, and refuses one that isn't a JSON object", () => {
+		const user = { model: "mine/m", permission: { bash: { "rm *": "deny" } } };
+		const p = plan({
+			agent: "opencode",
+			level: "supervised",
+			launch: { command: "opencode" },
+			stored: { OPENCODE_CONFIG_CONTENT: JSON.stringify(user) },
+		});
+		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
+		expect(json.model).toBe("mine/m");
+		expect(json.agent.build.permission.bash["rm *"]).toBe("deny");
+		expect(json.share).toBe("disabled");
+		expect(() =>
+			plan({ agent: "opencode", launch: { command: "opencode" }, stored: { OPENCODE_CONFIG_CONTENT: "{ model: x" } }),
+		).toThrow(/OPENCODE_CONFIG_CONTENT/);
+	});
+
+	it("lists the user's inline deny rules after the level's catch-all at full-access", () => {
+		const user = { permission: { bash: { "rm *": "deny" } }, agent: { build: { permission: { bash: { "git push *": "deny" } } } } };
+		const p = plan({
+			agent: "opencode",
+			level: "full-access",
+			launch: { command: "opencode" },
+			stored: { OPENCODE_CONFIG_CONTENT: JSON.stringify(user) },
+		});
+		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
+		expect(Object.entries(json.agent.explore.permission.bash)).toEqual([
+			["*", "allow"],
+			["rm *", "deny"],
+		]);
+		expect(Object.entries(json.agent.build.permission.bash)).toEqual([
+			["rm *", "deny"],
+			["git push *", "deny"],
+		]);
 	});
 
 	it("writes the gateway run file owner-only and points deepagents at it (#848)", () => {
