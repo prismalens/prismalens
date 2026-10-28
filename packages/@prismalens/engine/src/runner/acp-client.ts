@@ -159,6 +159,8 @@ export interface AcpSessionConfig {
 	env?: NodeJS.ProcessEnv;
 	launcher?: HarnessLauncher;
 	limits?: RunLimits;
+	/** The harness's pid once spawned, so a later boot can prove it is gone (#981). */
+	onSpawn?: (pid: number | undefined) => void;
 	permission: PermissionPolicy;
 	/** Sent as `_meta` on `session/new`. */
 	sessionMeta?: Record<string, unknown>;
@@ -591,6 +593,7 @@ export class AcpSession {
 			...(config.limits ? { limits: config.limits } : {}),
 		});
 		this.child = child;
+		config.onSpawn?.(child.pid);
 		// setEncoding keeps a multibyte character split across two chunks intact.
 		child.stderr.setEncoding("utf8");
 		child.stderr.on("data", (chunk: string) => {

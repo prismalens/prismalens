@@ -207,6 +207,8 @@ export interface RunInvestigationOptions {
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
 	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
+	/** The harness's pid once spawned (#981). */
+	onSpawn?: (pid: number | undefined) => void;
 	/** After a follow-up's turn: how it reopened its session, what it dropped as replay, and how long the reopen took (#942). */
 	onReopen?: (r: { path: ReopenPath; replayed: number; ms: number }) => void;
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
@@ -533,6 +535,7 @@ export async function* runInvestigation(
 		...(opts.roots ? { roots: opts.roots } : {}),
 		env,
 		limits: opts.limits,
+		...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
 		permission: levelPolicy(
 			keepMode ? "supervised" : level,
 			{ policy: opts.permission ?? denyAllPolicy },
