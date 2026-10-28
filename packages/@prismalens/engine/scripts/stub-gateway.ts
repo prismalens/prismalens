@@ -95,7 +95,7 @@ export async function startStubGateway(
 	const listeners = new Set<(c: GatewayCall) => void>();
 	const found = new Set<(f: RecordedFinding) => void>();
 	const published = new Set<(a: Artifact) => void>();
-	let pages = 0;
+	const pages: Artifact[] = [];
 	const counts = new Map<string, GatewayCallCount>();
 	const seen: HarnessCall[] = [];
 	const ledger = new FindingsLedger();
@@ -309,10 +309,11 @@ export async function startStubGateway(
 			publish: async (_run: string, page: { title: string; html: string }) => {
 				if (!open) return { ...NOT_LIVE, ended: true as const };
 				const artifact: Artifact = {
-					id: `a${++pages}`,
+					id: `a${pages.length + 1}`,
 					...page,
 					at: new Date().toISOString(),
 				};
+				pages.push(artifact);
 				for (const l of [...published]) l(artifact);
 				return { id: artifact.id };
 			},
@@ -429,6 +430,7 @@ export async function startStubGateway(
 			closeRecording: () => {
 				open = false;
 			},
+			artifacts: () => [...pages],
 			onArtifact: (listener) => {
 				published.add(listener);
 				return () => published.delete(listener);

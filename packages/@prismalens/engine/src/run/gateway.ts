@@ -46,6 +46,8 @@ export interface GatewayEntry {
 	restore?(load: () => Promise<Findings>): Promise<void>;
 	/** The engine stopped hearing this lease: nothing more is recorded or published on it (#848). */
 	closeRecording?(): void;
+	/** Every page published on this lease, so one acknowledged late still reaches the stream (#871). */
+	artifacts?(): Artifact[];
 	/** Hears each HTML artifact the agent publishes (#871); returns the unsubscribe. */
 	onArtifact?(listener: (a: Artifact) => void): () => void;
 }

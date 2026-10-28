@@ -40,6 +40,15 @@
 		},
 		"evidenceHas": {
 			"e1": "index.js as the entry point"
+		},
+		"evidenceQuote": {
+			"e1": "\"main\": \"index.js\""
+		},
+		"hypothesisIs": {
+			"rh1": {
+				"status": "supported",
+				"evidenceIds": ["e1"]
+			}
 		}
 	},
 	"fixtures": [

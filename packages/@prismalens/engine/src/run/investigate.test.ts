@@ -1766,6 +1766,35 @@ describe("harness tool call live events and summary (#848)", () => {
 		});
 	});
 
+	it("a page acknowledged but never streamed is shown once, after recording closes (#871)", async () => {
+		const page = { id: "a1", title: "Timeline", html: "<p>x</p>", at: "2026-10-24T10:00:00.000Z" };
+		let closed = false;
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-testserver123",
+			promptLine: "",
+			tools: ["artifact_publish"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+			onArtifact: () => () => {},
+			closeRecording: () => {
+				closed = true;
+			},
+			artifacts: () => [page],
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+		});
+		const pages = events.filter((e) => e.kind === "artifact_published");
+		expect(pages).toHaveLength(1);
+		expect(pages[0]).toMatchObject({ artifact: { id: "a1", title: "Timeline" } });
+		expect(closed).toBe(true);
+	});
+
 	it("a two-turn resume yields turn: 'first' and then turn: 'follow-up'", async () => {
 		const gateway1 = {
 			url: "http://127.0.0.1:1/mcp",

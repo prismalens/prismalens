@@ -2069,7 +2069,7 @@ describe("recording closes before the report reads it (#848)", () => {
 		const page = await send("artifact_publish", { title: "t", html: "<p>x</p>" });
 		for (const out of [ev, page]) {
 			const text = (out.result as { content: { text: string }[] }).content[0]?.text ?? "";
-			expect(JSON.parse(text).error).toBe("run_ended");
+			expect(resultValue(text).error).toBe("run_ended");
 		}
 		expect(a.findings?.().evidence).toEqual([]);
 		expect(pages).toEqual([]);
