@@ -14,6 +14,7 @@ import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
 import {
 	Bell,
 	Boxes,
+	CalendarClock,
 	ChevronLeft,
 	Inbox,
 	PanelLeft,
@@ -42,7 +43,12 @@ import { useOperator } from "@/hooks/use-operator";
 import { useServices } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
-type DoorTo = "/incidents" | "/alerts" | "/services" | "/settings";
+type DoorTo =
+	| "/incidents"
+	| "/alerts"
+	| "/services"
+	| "/schedules"
+	| "/settings";
 
 interface Door {
 	to: DoorTo;
@@ -70,6 +76,11 @@ function useDoors(signedIn: boolean): Door[] {
 		},
 		{ to: "/alerts", label: "Alerts", icon: <Bell className={ICON} /> },
 		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
+		{
+			to: "/schedules",
+			label: "Schedules",
+			icon: <CalendarClock className={ICON} />,
+		},
 		{
 			to: "/settings",
 			label: "Settings",
