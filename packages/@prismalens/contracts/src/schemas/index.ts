@@ -25,6 +25,7 @@ export * from "./repository.js";
 export * from "./run-views.js";
 export * from "./run-workspace.js";
 export * from "./safe-url.js";
+export * from "./schedule.js";
 // Entity schemas
 export * from "./service.js";
 export * from "./settings.js";

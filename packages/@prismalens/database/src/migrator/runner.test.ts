@@ -269,6 +269,63 @@ describe("investigation_turns (#673 w59)", () => {
 	});
 });
 
+describe("scheduled_tasks (#979)", () => {
+	const SCHEDULED = "20261028083515_scheduled_tasks";
+
+	it("keeps every run and its children when incidentId becomes optional", async () => {
+		const shipped = resolveMigrationsDir();
+		const before = mkdtempSync(join(scratch, "before-"));
+		for (const name of readdirSync(shipped)) {
+			if (name >= SCHEDULED || !existsSync(join(shipped, name, "migration.sql")))
+				continue;
+			cpSync(join(shipped, name), join(before, name), { recursive: true });
+		}
+		const file = dbFile();
+		await runMigrations({ databaseFile: file, migrationsDir: before });
+
+		const seed = new Database(file);
+		const now = Date.now();
+		seed
+			.prepare(`INSERT INTO "incidents" ("id", "number", "title", "updatedAt") VALUES (?, ?, ?, ?)`)
+			.run("inc-1", 1, "checkout down", now);
+		seed
+			.prepare(`INSERT INTO "investigations" ("id", "incidentId", "status", "updatedAt") VALUES (?, ?, ?, ?)`)
+			.run("inv-1", "inc-1", "completed", now);
+		seed
+			.prepare(`INSERT INTO "investigation_events" ("id", "investigationId", "seq", "branchId", "event") VALUES (?, ?, ?, ?, ?)`)
+			.run("ev-1", "inv-1", 1, "main", "{}");
+		seed
+			.prepare(`INSERT INTO "jobs" ("id", "investigationId", "incidentId", "payload", "updatedAt") VALUES (?, ?, ?, ?, ?)`)
+			.run("job-1", "inv-1", "inc-1", "{}", now);
+		seed.close();
+
+		const result = await runMigrations({ databaseFile: file, migrationsDir: shipped });
+		expect(result.applied).toContain(SCHEDULED);
+
+		const db = new Database(file);
+		db.pragma("foreign_keys = ON");
+		expect(db.prepare(`SELECT "incidentId", "serviceId" FROM "investigations"`).get()).toEqual({
+			incidentId: "inc-1",
+			serviceId: null,
+		});
+		expect(db.prepare(`SELECT count(*) AS n FROM "investigation_events"`).get()).toEqual({ n: 1 });
+		expect(db.prepare(`SELECT "incidentId", "startBy" FROM "jobs"`).get()).toEqual({
+			incidentId: "inc-1",
+			startBy: null,
+		});
+		expect(db.prepare(`PRAGMA foreign_key_check`).all()).toEqual([]);
+		db.prepare(`INSERT INTO "investigations" ("id", "status", "updatedAt") VALUES (?, ?, ?)`).run(
+			"inv-check",
+			"pending",
+			now,
+		);
+		db.prepare(`DELETE FROM "incidents" WHERE "id" = ?`).run("inc-1");
+		expect(db.prepare(`SELECT "id" FROM "investigations"`).all()).toEqual([{ id: "inv-check" }]);
+		expect(db.prepare(`SELECT count(*) AS n FROM "investigation_events"`).get()).toEqual({ n: 0 });
+		db.close();
+	});
+});
+
 describe("investigation_asks (#673 w21)", () => {
 	const ASKS = "20261009120000_investigation_asks";
 
