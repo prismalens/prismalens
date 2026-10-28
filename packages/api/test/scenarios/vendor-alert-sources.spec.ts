@@ -38,8 +38,8 @@ interface Detail {
 	alerts?: Array<{ externalId: string | null; occurrenceCount?: number }>;
 }
 
-// The webhook controller allows 20 deliveries per second (503 over it); the cases above
-// use most of that, so each later test starts in a fresh window.
+// The webhook controller allows 20 deliveries per second (503 over it); the vendor cases
+// make 21 between them, so each vendor and each later test starts in a fresh window.
 const freshThrottleWindow = () =>
 	new Promise((resolve) => setTimeout(resolve, 1100));
 
@@ -88,6 +88,8 @@ const cases: Case[] = [
 ];
 
 describe.each(cases)("$source intake (#79)", (c) => {
+	beforeAll(freshThrottleWindow);
+
 	it("Given a firing payload, Then one incident opens with the vendor's title, severity and service", async () => {
 		const res = await deliver(c.route, c.firing, bearer(), c.contentType);
 		expect(res.status).toBeLessThan(300);
