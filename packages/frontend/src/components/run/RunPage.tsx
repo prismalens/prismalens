@@ -610,7 +610,6 @@ export function RunPage() {
 								: origin.current?.id.startsWith("steps-row-")
 									? "Back to steps"
 									: "Back to citation",
-							phone,
 							reads: viewing ? readsOf(viewing, steps, workspace) : [],
 							codeHost:
 								viewing && viewingRepo

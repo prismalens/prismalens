@@ -45,7 +45,6 @@ export interface EvidenceFiles {
 	onOpen: OpenFile;
 	onClose: () => void;
 	backLabel: string;
-	phone: boolean;
 	reads: number[];
 	codeHost: string | null;
 	/** The file a Steps row opens; null when the step names none in the clone. */
@@ -149,8 +148,6 @@ export function RunDetailsPanel({
 	return (
 		<div
 			id="run-details"
-			role="group"
-			aria-label={title}
 			onKeyDown={onKeyDown}
 			className="flex h-full min-h-0 flex-col"
 			data-testid="run-details"
@@ -204,7 +201,6 @@ export function RunDetailsPanel({
 							file={files.viewing}
 							onBack={files.onClose}
 							backLabel={files.backLabel}
-							phone={files.phone}
 							reads={files.reads}
 							onJump={onJump}
 							codeHost={files.codeHost}
