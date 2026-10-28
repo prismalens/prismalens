@@ -10,13 +10,13 @@ import {
 	expect,
 	it,
 } from "vitest";
-import * as azure from "../../src/modules/webhooks/alert-sources/fixtures/azure-monitor.js";
-import * as cloudwatch from "../../src/modules/webhooks/alert-sources/fixtures/cloudwatch.js";
-import * as datadog from "../../src/modules/webhooks/alert-sources/fixtures/datadog.js";
-import * as grafana from "../../src/modules/webhooks/alert-sources/fixtures/grafana.js";
-import * as newrelic from "../../src/modules/webhooks/alert-sources/fixtures/newrelic.js";
-import * as pagerduty from "../../src/modules/webhooks/alert-sources/fixtures/pagerduty.js";
-import * as sentry from "../../src/modules/webhooks/alert-sources/fixtures/sentry.js";
+import * as azure from "../../src/modules/webhooks/alert-sources/__fixtures__/azure-monitor.js";
+import * as cloudwatch from "../../src/modules/webhooks/alert-sources/__fixtures__/cloudwatch.js";
+import * as datadog from "../../src/modules/webhooks/alert-sources/__fixtures__/datadog.js";
+import * as grafana from "../../src/modules/webhooks/alert-sources/__fixtures__/grafana.js";
+import * as newrelic from "../../src/modules/webhooks/alert-sources/__fixtures__/newrelic.js";
+import * as pagerduty from "../../src/modules/webhooks/alert-sources/__fixtures__/pagerduty.js";
+import * as sentry from "../../src/modules/webhooks/alert-sources/__fixtures__/sentry.js";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
 const pl = new ScenarioApp();
