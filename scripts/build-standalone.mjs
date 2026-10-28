@@ -497,14 +497,17 @@ async function main() {
 			throw new Error(`npm left packages empty: ${hollow.join(", ")}`);
 		}
 		const appModules = join(appDir, "node_modules");
-		addLicences(appModules, join(REPO_ROOT, "packages", "desktop", "licences"));
+		// --allow-missing-licences: only for an already-published version rebuilt as an upgrade fixture,
+		// whose tree predates licences/ entries added for newer dependencies.
+		const oldRelease = process.argv.includes("--allow-missing-licences");
+		addLicences(
+			appModules,
+			join(REPO_ROOT, "packages", "desktop", "licences"),
+			{ skipAbsent: oldRelease },
+		);
 		const pruned = prune(appModules);
 		const missing = missingLicences(appDir);
-		// --allow-missing-licences: only for an already-published version rebuilt as an upgrade fixture.
-		if (
-			missing.length > 0 &&
-			!process.argv.includes("--allow-missing-licences")
-		) {
+		if (missing.length > 0 && !oldRelease) {
 			throw new Error(
 				`the archive carries no licence text for: ${missing.join(", ")}`,
 			);
