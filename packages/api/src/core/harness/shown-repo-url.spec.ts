@@ -10,7 +10,6 @@ const SENTINEL = "ghp_SENTINEL938";
 describe("shownRepoUrl (#938)", () => {
 	it.each([
 		["scp with ?token=", `git@github.com:acme/api.git?token=${SENTINEL}`, "git@github.com:acme/api.git"],
-		["scp with #token=", `git@github.com:acme/api.git#token=${SENTINEL}`, "git@github.com:acme/api.git"],
 		["https with user:password", `https://x:${SENTINEL}@github.com/acme/api.git`, "https://github.com/acme/api.git"],
 		["https with a token as username", `https://${SENTINEL}@github.com/acme/api.git`, "https://github.com/acme/api.git"],
 		["https with a query", `https://github.com/acme/api.git?access_token=${SENTINEL}`, "https://github.com/acme/api.git"],
@@ -119,10 +118,9 @@ describe("round 3 (#938)", () => {
 	});
 });
 
-describe("holdsRemoved scp fragment (#938)", () => {
-	it("flags a folder name holding the part after # of an scp address", () => {
-		const raw = `git@github.com:acme/api.git#token=${SENTINEL}`;
-		expect(holdsRemoved(raw, `run-token_${SENTINEL}`)).toBe(true);
-		expect(holdsRemoved(raw, "run-acme-api")).toBe(false);
+describe("scp # is a path character (#938)", () => {
+	it("keeps a # in an scp address, which has no fragment", () => {
+		expect(shownRepoUrl("url", "git@host:acme/repo#archive.git")).toBe("git@host:acme/repo#archive.git");
+		expect(holdsRemoved("git@host:acme/repo#archive.git", "run-repo_archive_git")).toBe(false);
 	});
 });
