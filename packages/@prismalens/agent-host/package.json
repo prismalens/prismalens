@@ -32,7 +32,7 @@
 	"dependencies": {
 		"@agentclientprotocol/sdk": "1.9.0",
 		"cross-spawn": "^7.0.6",
-		"which": "6.0.1",
+		"which": "7.0.0",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
