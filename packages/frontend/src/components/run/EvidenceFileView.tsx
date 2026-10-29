@@ -11,7 +11,6 @@ import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
 import { Loading, Problem } from "@/components/shared/State";
 import { orpc } from "@/lib/api/orpc-client";
 import {
@@ -51,7 +50,6 @@ export function EvidenceFileView({
 	file,
 	onBack,
 	backLabel,
-	phone,
 	reads,
 	onJump,
 	codeHost,
@@ -61,7 +59,6 @@ export function EvidenceFileView({
 	file: FileAt;
 	onBack: () => void;
 	backLabel: string;
-	phone: boolean;
 	/** The read steps that saw this file. */
 	reads: number[];
 	onJump: (n: number) => void;
@@ -83,13 +80,10 @@ export function EvidenceFileView({
 		ok && blob.content !== null && blob.kind === "file"
 			? blob.size > PLAIN_TEXT_OVER
 			: false;
-	const view = (
+	return (
 		<section
 			aria-label={`${file.path} at ${sha7}`}
-			className={cn(
-				"flex min-h-0 flex-1 flex-col bg-surface-1",
-				phone && "fixed inset-0 z-50",
-			)}
+			className="flex min-h-0 flex-1 flex-col bg-surface-1"
 			data-testid="evidence-file"
 		>
 			<div className="flex shrink-0 flex-col gap-0.5 px-3 pt-2.5 pb-2 shadow-[0_1px_0_var(--hairline)]">
@@ -194,9 +188,6 @@ export function EvidenceFileView({
 			)}
 		</section>
 	);
-	// The page frame is position:fixed, a stacking context its z-50 cannot leave, so on
-	// a phone the sheet sat under the z-40 topbar; the body is the only way out (#874).
-	return phone ? createPortal(view, document.body) : view;
 }
 
 function Say({

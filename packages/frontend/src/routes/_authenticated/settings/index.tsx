@@ -115,7 +115,7 @@ function SettingsPage() {
 function SectionList() {
 	return (
 		<div
-			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas"
+			className="flex h-full flex-col bg-canvas"
 			data-testid="settings-frame"
 		>
 			<PageHeader title="Settings" />

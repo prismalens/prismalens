@@ -354,7 +354,6 @@ describe("RunRunbooks (#848)", () => {
 						onOpen: vi.fn(),
 						onClose: vi.fn(),
 						backLabel: "Back",
-						phone: false,
 						reads: [],
 						codeHost: null,
 						stepFile: () => null,
