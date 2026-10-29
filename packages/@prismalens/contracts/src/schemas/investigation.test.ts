@@ -297,7 +297,9 @@ function pack(overrides: Record<string, unknown> = {}) {
 			{
 				reference: "INC-142",
 				title: "Checkout latency spike",
-				rootCause: "connection pool exhausted",
+				recordedCause: "connection pool exhausted",
+				agentRootCause: "pool size dropped in deploy 41",
+				agentSummary: null,
 				matchedOn: ["service=checkout-api", "alertname=HighLatency"],
 			},
 		],
