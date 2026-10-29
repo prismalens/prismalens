@@ -30,7 +30,7 @@
 		"@electron/asar": "4.3.1",
 		"@types/node": "catalog:",
 		"concurrently": "^10.0.6",
-		"electron": "44.9.1",
+		"electron": "45.0.0",
 		"electron-builder": "^26.15.3",
 		"electronmon": "^2.0.4",
 		"typescript": "catalog:",
