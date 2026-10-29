@@ -47,7 +47,7 @@
 		"clean": "rm -rf dist"
 	},
 	"dependencies": {
-		"@agentclientprotocol/sdk": "1.9.0",
+		"@agentclientprotocol/sdk": "2.0.2",
 		"@prismalens/agent-host": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
