@@ -293,7 +293,8 @@ export async function sidewaysFaults(page: Page): Promise<string[]> {
 				);
 			}
 			let { left, right } = el.getBoundingClientRect();
-			if (right - left === 0 || style.visibility === "hidden") continue;
+			// A 1 px box is a screen-reader-only label, placed off the edge on purpose.
+			if (right - left <= 1 || style.visibility === "hidden") continue;
 			for (let p = el.parentElement; p; p = p.parentElement) {
 				if (getComputedStyle(p).overflowX === "visible") continue;
 				const r = p.getBoundingClientRect();
