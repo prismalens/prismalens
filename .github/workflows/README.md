@@ -18,7 +18,7 @@ live ruleset, are what to trust.
 
 | Required check | Published by | Kind |
 | --- | --- | --- |
-| `CI gate` | `ci.yml` → job `ci-gate` | check run |
+| `CI gate` | `ci.yml` → job `ci-gate`; when red it lists each failed job, its failed step and a link to the log | check run |
 | `Validate PR title (conventional commits)` | `pr-title.yml` → job `validate` (single check run; step-level event split) | check run |
 
 Both required contexts also report on `merge_group` events (#403): the merge
