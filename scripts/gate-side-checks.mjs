@@ -592,15 +592,17 @@ async function checkUpdate() {
 	const stub = ctx.stub.state;
 	stub.latest = "9.9.9";
 	stub.sumsReady = false;
+	const firstHit = stub.githubHits.length;
 	try {
 		const notReady = up(sb, { tty: true, env });
 		await notReady.ready();
 		await sleep(2000);
+		for (let i = 0; i < 40 && !existsSync(cache); i++) await sleep(250);
 		await notReady.stop();
 		const held = JSON.parse(readFileSync(cache, "utf8"));
 		assert(
 			held.latest === null && held.recheckAt,
-			`SHA256SUMS missing, yet cache learned ${JSON.stringify(held)}`,
+			`SHA256SUMS missing, yet cache learned ${JSON.stringify(held)}; stub hits ${JSON.stringify(stub.githubHits.slice(firstHit))}; pl up output: ${notReady.out().slice(-1500)}`,
 		);
 
 		stub.sumsReady = true;

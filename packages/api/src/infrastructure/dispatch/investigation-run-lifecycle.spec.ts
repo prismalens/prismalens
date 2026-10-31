@@ -289,10 +289,11 @@ describe("#331 workspace record (in-process run)", () => {
 
 			expect(snapshot).toHaveBeenCalledWith(
 				expect.objectContaining({ sourceKind: "url", url: "https://github.com/acme/api-gateway" }),
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 
 			const entry = createTimelineEntry.mock.calls
@@ -302,7 +303,7 @@ describe("#331 workspace record (in-process run)", () => {
 			expect(entry.incidentId).toBe("inc-1");
 			expect(entry.metadata).toMatchObject({
 				investigationId: "inv-1",
-				cwd: join(tmp, "runs", "inv-1", "repo"),
+				cwd: join(tmp, "worktrees", "pl-inv-1"),
 				mapped: true,
 			});
 		} finally {

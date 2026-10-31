@@ -16,6 +16,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	DEFAULT_ACCESS_LEVEL,
@@ -76,9 +77,12 @@ import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import {
+	bindRun,
 	releaseWorktreesIn,
 	runWorktreeDir,
+	type SweepOptions,
 	sweepRunWorktrees,
+	unbindRun,
 } from "../../core/harness/run-worktree.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
@@ -319,6 +323,7 @@ async function runJobInternal(
 			toolsServer: newGatewayServerName(),
 		};
 		await recordWorkspace(data, workspace, ports, context);
+		const afterSetup = await logWorkspaceSetup(data.investigationId, io, ports);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
 
@@ -393,6 +398,7 @@ async function runJobInternal(
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
 				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
+				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
 				onHarnessStderr: (chunk) => {
@@ -817,6 +823,11 @@ async function runFollowUp(
 		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
+		await bindRun(id, {
+			incidentId: data.incidentId,
+			serviceName: recorded.repos[0]?.services[0] ?? null,
+			recorded: recorded.cwd,
+		});
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
 		const newer = await ports.newerRun(id).catch(() => null);
 		const moved = newer?.heads.some(
@@ -835,6 +846,7 @@ async function runFollowUp(
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 		};
+		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
 		const incident = await assembled(
 			"the incident",
@@ -1316,6 +1328,68 @@ const RUN_WORKSPACE = [
 	join("config", GATEWAY_RUN_FILE),
 ];
 
+const SETUP_OUTPUT_TAIL = 64 * 1024;
+
+const setups = new Map<string, { name: string; result: HookResult }[]>();
+
+function noteSetup(runId: string, name: string, result: HookResult): void {
+	setups.set(runId, [...(setups.get(runId) ?? []), { name, result }]);
+}
+
+const SETUP_WORDS: Record<HookResult["status"], string> = {
+	ok: "finished",
+	failed: "failed",
+	silent: "was cancelled after 5 minutes without output",
+	capped: "was cut off",
+	aborted: "was stopped",
+};
+
+/**
+ * The workspace setup commands' output, in the run's log (#925). Answers the seq the agent's
+ * events start at after them, so a poller's cursor never passes over one; null when none ran.
+ */
+export async function logWorkspaceSetup(
+	runId: string,
+	io: JobIo,
+	ports: RunPorts,
+): Promise<number | null> {
+	const ran = setups.get(runId);
+	setups.delete(runId);
+	if (!ran?.length) return null;
+	// Past every setup seq even when storing them fails part way: the agent's events never reuse one.
+	let seq: number | null = null;
+	try {
+		seq = (await ports.lastEventSeq(runId)) + 1;
+		const first = seq;
+		const events: CanonicalEvent[] = ran.map(({ name, result }, i) => {
+			const ok = result.status === "ok";
+			const words = `Workspace setup in ${name} ${SETUP_WORDS[result.status]}${result.exitCode !== null && !ok ? ` (exit ${result.exitCode})` : ""}`;
+			return {
+				kind: "tool_result",
+				runId,
+				branchId: "workspace",
+				path: [],
+				seq: first + i,
+				ts: new Date().toISOString(),
+				result: {
+					name: "workspace_setup",
+					toolCallId: `workspace-setup-${name}`,
+					source: words,
+					ok,
+					error: ok ? null : words,
+					preview: result.output.slice(-8000),
+				},
+			};
+		});
+		seq = first + events.length;
+		for (const event of events) await io.emit(event);
+		await ports.appendEvents(runId, events);
+	} catch (e) {
+		logger.warn("Could not record the workspace setup in the run's log", e);
+	}
+	return seq;
+}
+
 async function clearRunWorkspace(runId: string): Promise<void> {
 	const runDir = runDirFor(runId);
 	for (const dir of [
@@ -1330,24 +1404,37 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 		}
 	}
 	for (const rel of RUN_WORKSPACE) {
+		// repo and repos were released above, which removes what no rule or guard kept.
+		if (rel === "repo" || rel === "repos") continue;
 		try {
 			rmSync(join(runDir, rel), { recursive: true, force: true });
 		} catch (e) {
 			logger.warn(`Failed to remove the run's ${rel}`, e);
 		}
 	}
+	setups.delete(runId);
+	unbindRun(runId);
 }
 
 /**
  * Called at boot, when nothing is running: a process that died mid-run never
  * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
+ * A run named by `isInterrupted` keeps all of it until it is resumed (#981); one named by
+ * `isLive` (a follow-up left pending) keeps it whatever its retention says.
  */
-export async function sweepRunWorkspaces(): Promise<number> {
-	const swept = new Set(await sweepRunWorktrees());
+export async function sweepRunWorkspaces(
+	opts: Pick<SweepOptions, "isLive" | "isInterrupted"> = {},
+): Promise<number> {
+	const swept = new Set(await sweepRunWorktrees(opts));
 	const runs = resolve(getAppDataDir(), "runs");
 	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
+		if (
+			!entry.isDirectory() ||
+			opts.isLive?.(entry.name) ||
+			opts.isInterrupted?.(entry.name)
+		)
+			continue;
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
 			try {
@@ -1506,9 +1593,9 @@ function whereFrom(repo: {
 }
 
 /**
- * Fresh snapshots of the incident's repos (ADR 0004 §2): one local repo is the worktree
- * `worktrees/pl-<run>` (#918), one URL keeps the run's `repo/`, several go under
- * `worktrees/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
+ * Fresh snapshots of the incident's repos (ADR 0004 §2): one repo is the workspace
+ * `<location>/pl-<run>` (#918), of its folder or of a URL's mirror (#925); several go under
+ * `<location>/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
  * and named; with none, the run goes on (#848).
  */
 export async function resolveWorkspace(
@@ -1543,8 +1630,14 @@ export async function resolveWorkspace(
 				? `Ran without code: ${unlisted}.`
 				: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
+	await bindRun(runId, {
+		incidentId: data.incidentId,
+		serviceName: repos[0]?.services[0] ?? null,
+	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
+	// A budget abort throws the hook's result away; what it printed so far is kept for the run log (#925).
+	const printed: string[] = repos.map(() => "");
 	const outcomes = await checkoutAll(
 		repos.length,
 		(i, repoSignal) => {
@@ -1557,14 +1650,13 @@ export async function resolveWorkspace(
 					connectionId: repo.connectionId,
 					defaultBranch: repo.defaultBranch,
 				},
-				multi
-					? join(runWorktreeDir(runId), name)
-					: repo.sourceKind === "folder"
-						? runWorktreeDir(runId)
-						: join(runDir, "repo"),
+				multi ? join(runWorktreeDir(runId), name) : runWorktreeDir(runId),
 				repoSignal,
 				undefined,
 				runId,
+				(chunk) => {
+					printed[i] = (printed[i] + chunk).slice(-SETUP_OUTPUT_TAIL);
+				},
 			);
 		},
 		signal,
@@ -1575,10 +1667,17 @@ export async function resolveWorkspace(
 	for (const [i, outcome] of outcomes.entries()) {
 		const { repo, services } = repos[i] as (typeof repos)[number];
 		if (!outcome.ok) {
+			if (printed[i])
+				noteSetup(runId, names[i] as string, {
+					status: "aborted",
+					exitCode: null,
+					output: printed[i] as string,
+				});
 			skipped.push({ repo, reason: outcome.reason, code: outcome.code });
 			continue;
 		}
 		const { snap, credential } = outcome.value;
+		if (snap.setup) noteSetup(runId, names[i] as string, snap.setup);
 		try {
 			inCheckout(runId, snap.path, repo.subPath);
 		} catch (e) {
@@ -1779,7 +1878,7 @@ function untilAborted<T>(
 
 /**
  * A worktree that finished after the run stopped waiting is unlocked and removed now, unless a
- * later attempt re-added that path. A late URL clone has no lock, so the run's end removes it.
+ * later attempt re-added that path.
  */
 function releaseLate({
 	snap,
@@ -1826,7 +1925,7 @@ export async function rebuildWorkspace(
 		owned(repo.dir);
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
-		const { credential } = await untilAborted(
+		const { snap, credential } = await untilAborted(
 			ports.snapshotWith(
 				{
 					sourceKind: repo.sourceKind,
@@ -1841,6 +1940,7 @@ export async function rebuildWorkspace(
 			bounded,
 			releaseLate,
 		);
+		if (snap.setup) noteSetup(investigationId, repo.name, snap.setup);
 		inCheckout(investigationId, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
 	}

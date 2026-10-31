@@ -9,6 +9,7 @@ import { GatewayModule } from "../../modules/gateway/gateway.module.js";
 import { IncidentsModule } from "../../modules/incidents/incidents.module.js";
 import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
 import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
+import { RunWorkspacesModule } from "../../modules/run-workspaces/run-workspaces.module.js";
 import { TimelineModule } from "../../modules/timeline/timeline.module.js";
 import { DispatchService } from "./dispatch.service.js";
 import { EventBusModule } from "./event-bus.module.js";
@@ -36,6 +37,7 @@ import { EventBusModule } from "./event-bus.module.js";
 		GatewayModule,
 		HarnessModule,
 		PrismaModule,
+		RunWorkspacesModule,
 	],
 	providers: [DispatchService],
 	exports: [DispatchService],
