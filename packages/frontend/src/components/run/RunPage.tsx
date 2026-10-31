@@ -186,12 +186,20 @@ export function RunPage() {
 	const workspace = inv?.workspace;
 	// The file open in Evidence, and the control (and tab) that opened it, which Back returns to.
 	const [viewing, setViewing] = useState<FileAt | null>(null);
-	const origin = useRef<{ id: string; tab: DetailsTab } | null>(null);
+	const origin = useRef<{
+		id: string;
+		tab: DetailsTab;
+		inPanel: boolean;
+	} | null>(null);
 	const tabRef = useRef<DetailsTab>(tab);
 	tabRef.current = tab;
 	const openFile = useCallback(
 		(f: FileAt, from: string) => {
-			origin.current = { id: from, tab: tabRef.current };
+			// Read now: by Back, the control that opened the file may be unmounted.
+			const inPanel = !!document
+				.getElementById("run-details")
+				?.contains(document.getElementById(from));
+			origin.current = { id: from, tab: tabRef.current, inPanel };
 			setViewing(f);
 			setTab("evidence");
 			setPanel(true);
@@ -205,9 +213,7 @@ export function RunPage() {
 		if (!from) return;
 		setTab(from.tab);
 		// On a phone the details are a sheet over the page: Back to a control under it lifts the sheet.
-		const panelEl = document.getElementById("run-details");
-		if (phone && !panelEl?.contains(document.getElementById(from.id)))
-			setPanel(false);
+		if (phone && !from.inPanel) setPanel(false);
 		focusLater(from.id);
 	}, [focusLater, phone]);
 	const fileOfStep = useCallback(
@@ -233,8 +239,8 @@ export function RunPage() {
 		window.setTimeout(() => {
 			const el = document.getElementById(`step-${n}`);
 			el?.scrollIntoView({ block: "center", behavior: "smooth" });
-			// Focus follows to the step only if the reader has not moved it since.
-			if (document.activeElement === from)
+			// Focus follows to the step only if the reader has not moved it since, or it left with a closed sheet.
+			if (document.activeElement === from || !from?.isConnected)
 				el?.querySelector<HTMLElement>("[data-testid=step-toggle]")?.focus({
 					preventScroll: true,
 				});
@@ -376,58 +382,6 @@ export function RunPage() {
 			) : null,
 		[report, inv, targetOf, openFile, jump, preview],
 	);
-	const recheck = useRecheck();
-	const header = (
-		<IncidentHeader
-			incident={incident}
-			view={draft ? "New conversation" : inv ? name : "Run"}
-			reportRunId={report ? inv?.id : null}
-			onResolve={record.openClose}
-			onReopen={record.openReopen}
-			onEditCause={record.openEditCause}
-			onInvestigateAgain={
-				recheck
-					? () =>
-							recheck().catch((error: unknown) =>
-								toast({
-									title: "Run not started",
-									description: getErrorMessage(error),
-									variant: "destructive",
-								}),
-							)
-					: null
-			}
-			trailing={
-				inv && !draft ? (
-					<DetailsToggle
-						ref={toggleRef}
-						open={panel}
-						onToggle={() => (panel ? closePanel() : setPanel(true))}
-						title={chat ? "Question details" : "Run details"}
-						flagged={flaggedCount}
-					/>
-				) : null
-			}
-		/>
-	);
-
-	if (draft) return <DraftPage record={record} header={header} />;
-
-	const step = runStepText(run.events, now ?? Date.now(), {
-		streamLost: run.streamFailed,
-	});
-	const ask = run.asks.find((a) => a.state === "waiting");
-	const stateWord = stripWords(
-		inv,
-		run.state,
-		run.latestText ?? (step ? cap(step.text) : null),
-		name,
-		now,
-		who.agent,
-		run.awaiting
-			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
-			: null,
-	);
 	const fidelity =
 		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
 	const substituted = !!fidelity && modelSubstituted(fidelity);
@@ -485,6 +439,63 @@ export function RunPage() {
 					warn: true,
 				}
 			: null;
+	// A phone hides the strip's chips; a warning among them rides on the details toggle.
+	const hiddenWarns = phone
+		? [modelChip, code, toolsChip].flatMap((c) => (c?.warn ? [c.text] : []))
+		: [];
+	const recheck = useRecheck();
+	const header = (
+		<IncidentHeader
+			incident={incident}
+			view={draft ? "New conversation" : inv ? name : "Run"}
+			reportRunId={report ? inv?.id : null}
+			onResolve={record.openClose}
+			onReopen={record.openReopen}
+			onEditCause={record.openEditCause}
+			onInvestigateAgain={
+				recheck
+					? () =>
+							recheck().catch((error: unknown) =>
+								toast({
+									title: "Run not started",
+									description: getErrorMessage(error),
+									variant: "destructive",
+								}),
+							)
+					: null
+			}
+			trailing={
+				inv && !draft ? (
+					<DetailsToggle
+						ref={toggleRef}
+						open={panel}
+						onToggle={() => (panel ? closePanel() : setPanel(true))}
+						title={chat ? "Question details" : "Run details"}
+						flagged={flaggedCount}
+						warns={hiddenWarns}
+					/>
+				) : null
+			}
+		/>
+	);
+
+	if (draft) return <DraftPage record={record} header={header} />;
+
+	const step = runStepText(run.events, now ?? Date.now(), {
+		streamLost: run.streamFailed,
+	});
+	const ask = run.asks.find((a) => a.state === "waiting");
+	const stateWord = stripWords(
+		inv,
+		run.state,
+		run.latestText ?? (step ? cap(step.text) : null),
+		name,
+		now,
+		who.agent,
+		run.awaiting
+			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
+			: null,
+	);
 
 	const viewingRepo = viewing
 		? workspace?.repos.find((r) => r.name === viewing.repo)
@@ -590,7 +601,15 @@ export function RunPage() {
 					})}
 					flaggedCount={flaggedCount}
 					steps={steps}
-					onJump={jump}
+					onJump={
+						// The step is under the sheet on a phone: lift it to show the step.
+						phone
+							? (n) => {
+									setPanel(false);
+									jump(n);
+								}
+							: jump
+					}
 					files={{
 						runId: inv.id,
 						viewing,
@@ -621,17 +640,23 @@ function DetailsToggle({
 	onToggle,
 	title,
 	flagged,
+	warns,
 }: {
 	ref: React.Ref<HTMLButtonElement>;
 	open: boolean;
 	onToggle: () => void;
 	title: string;
 	flagged: number;
+	/** Warnings the strip cannot show on a phone. */
+	warns: string[];
 }) {
-	const label =
-		flagged > 0
-			? `${title}, ${flagged} flagged ${flagged === 1 ? "item" : "items"}`
-			: title;
+	const label = [
+		title,
+		...(flagged > 0
+			? [`${flagged} flagged ${flagged === 1 ? "item" : "items"}`]
+			: []),
+		...warns,
+	].join(", ");
 	return (
 		<Hint label={label}>
 			<button
@@ -654,6 +679,13 @@ function DetailsToggle({
 						aria-hidden
 						className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-danger"
 						data-testid="details-flag"
+					/>
+				)}
+				{flagged === 0 && warns.length > 0 && !open && (
+					<span
+						aria-hidden
+						className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-warn"
+						data-testid="details-warn"
 					/>
 				)}
 			</button>

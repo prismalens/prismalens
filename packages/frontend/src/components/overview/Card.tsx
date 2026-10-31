@@ -45,15 +45,14 @@ export function Card({
 			)}
 			data-testid={testId}
 		>
-			{/* Wraps, never overflows: a row wider than the card scrolled the whole grid sideways on a phone (0.5.3 walk W11). */}
-			<div className="flex min-w-0 shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1.5 whitespace-nowrap">
+			{/* A phone wraps the row: wider than the card, it scrolled the whole grid sideways (0.5.3 walk W11). */}
+			<div className="flex min-w-0 shrink-0 items-baseline gap-3 whitespace-nowrap max-md:flex-wrap max-md:gap-y-1.5">
 				<h2 id={h} className="shrink-0 text-heading">
 					{title}
 				</h2>
 				{sub}
-				{actions && (
-					<div className="ml-auto flex items-baseline gap-3">{actions}</div>
-				)}
+				<span className="flex-1" />
+				{actions}
 			</div>
 			<ScrollBody>{children}</ScrollBody>
 		</section>

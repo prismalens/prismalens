@@ -13,9 +13,9 @@ import {
 	X,
 } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
-import { PhoneSheet } from "@/components/shared/PhoneSheet";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { citationText, type FileAt } from "@/lib/evidence-files";
 import { cn } from "@/lib/utils";
 import { EvidenceFileView } from "./EvidenceFileView";
@@ -153,8 +153,10 @@ export function RunDetailsPanel({
 			aria-label={title}
 			onKeyDown={onKeyDown}
 			className={cn(
-				"relative flex flex-col bg-surface-1 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
-				files.phone ? "min-h-0 w-full flex-1" : "h-full w-[380px] shrink-0",
+				"relative flex flex-col bg-surface-1",
+				files.phone
+					? "min-h-0 flex-1"
+					: "h-full w-[380px] shrink-0 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
 			)}
 			data-testid="run-details"
 		>
@@ -321,7 +323,24 @@ export function RunDetailsPanel({
 			</TabsPrimitive.Root>
 		</aside>
 	);
-	return <PhoneSheet phone={files.phone}>{aside}</PhoneSheet>;
+	if (!files.phone) return aside;
+	// A phone has no room beside the page: the details cover it as a modal sheet.
+	// Its Esc closes once: the page's own Esc listener skips [role=dialog].
+	return (
+		<Sheet open onOpenChange={(open) => !open && onClose()}>
+			<SheetContent
+				side="bottom"
+				closeButton={false}
+				aria-describedby={undefined}
+				onCloseAutoFocus={(e) => e.preventDefault()}
+				className="top-0 flex flex-col gap-0 bg-surface-1 p-0"
+				data-testid="phone-sheet"
+			>
+				<SheetTitle className="sr-only">{title}</SheetTitle>
+				{aside}
+			</SheetContent>
+		</Sheet>
+	);
 }
 
 const clockFmt = new Intl.DateTimeFormat(undefined, {
