@@ -2,41 +2,196 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * A local-folder run works in a `git worktree` of the user's repo under
- * `<app-data>/worktrees/pl-<run>`, so the trust the user gave that repo in their
- * agent covers the run (#918, ADR 0004 §2). The worktree is agent-host's workspace
- * (#916): locked while the run is live, released when it ends, and swept at boot.
+ * A local-folder run works in a `git worktree` (or a clone) of the user's repo under
+ * `<location>/pl-<run>`, so the trust the user gave that repo in their agent covers
+ * the run (#918, ADR 0004 §2). The checkout is agent-host's workspace (#916), made and
+ * released under the user's run workspace settings (#925): global, overridden per service.
  */
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	lstatSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { Logger } from "@nestjs/common";
 import {
 	createWorkspace,
+	gitEnv,
+	type HookResult,
+	isChanged,
+	madeHere,
+	protectedBy,
 	type RemovalRecord,
 	releaseWorkspace,
-	resolveWorkspacePolicy,
+	resumeWorkspace,
 	sweepWorkspaces,
+	type WorkspaceInfo,
 	type WorkspaceOwner,
+	type WorkspacePolicy,
+	workspaceInfo,
 } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
+import {
+	DEFAULT_RUN_WORKSPACE_SETTINGS,
+	type RunWorkspaceOverride,
+	type RunWorkspaceSettings,
+	resolveRunWorkspaceSettings,
+	type WorkspaceRemoval,
+} from "@prismalens/contracts";
 
 const logger = new Logger("RunWorktree");
 
 export const WORKTREE_PREFIX = "pl-";
 const LOCK_PREFIX = "prismalens run ";
-/** No workspace settings yet (#925): a run's worktree goes when the run ends. */
-const RUN_POLICY = resolveWorkspacePolicy({
-	method: "worktree",
-	retention: { kind: "always-remove" },
-}).policy;
 
-export function worktreeRoot(): string {
+/** Where the settings come from and where decisions go; the Nest service sets it at boot. */
+export interface RunWorkspaceSource {
+	global(): RunWorkspaceSettings;
+	override(serviceId: string): RunWorkspaceOverride | undefined;
+	/** Every location a service names or any setting ever named, so a sweep still finds their workspaces. */
+	locations(): string[];
+	serviceIdOf(serviceName: string): Promise<string | null>;
+	record(removals: WorkspaceRemoval[]): void;
+}
+
+const NO_SOURCE: RunWorkspaceSource = {
+	global: () => DEFAULT_RUN_WORKSPACE_SETTINGS,
+	override: () => undefined,
+	locations: () => [],
+	serviceIdOf: async () => null,
+	record: () => {},
+};
+let source: RunWorkspaceSource = NO_SOURCE;
+
+export function setRunWorkspaceSource(next: RunWorkspaceSource | null): void {
+	source = next ?? NO_SOURCE;
+}
+
+export function settingsFor(serviceId?: string | null): RunWorkspaceSettings {
+	return resolveRunWorkspaceSettings(
+		source.global(),
+		serviceId ? source.override(serviceId) : undefined,
+	).effective;
+}
+
+export function defaultWorktreeRoot(): string {
 	return resolve(getAppDataDir(), "worktrees");
+}
+
+function rootOf(location: string | null): string {
+	if (!location) return defaultWorktreeRoot();
+	return resolve(location.replace(/^~(?=$|[\\/])/, homedir()));
+}
+
+/** Every folder a run's workspace can be under: the default, the global location, each override's. */
+export function worktreeRoots(): string[] {
+	const roots = [
+		defaultWorktreeRoot(),
+		rootOf(source.global().location),
+		...source.locations().map(rootOf),
+	];
+	return [...new Set(roots)];
+}
+
+interface RunBinding {
+	serviceId: string | null;
+	settings: RunWorkspaceSettings;
+	root: string;
+	branch: string;
+}
+const runs = new Map<string, RunBinding>();
+
+/**
+ * Fixes a run's settings before its checkouts: those of its incident's service, or the
+ * global ones. A follow-up whose workspace is still on disk keeps that workspace's folder.
+ */
+export async function bindRun(
+	runId: string,
+	opts: {
+		serviceName?: string | null;
+		incidentId: string;
+		/** A follow-up's recorded workspace path: its folder stays the run's even after the location changed. */
+		recorded?: string;
+	},
+): Promise<RunBinding> {
+	const serviceId = opts.serviceName
+		? await source.serviceIdOf(opts.serviceName).catch(() => null)
+		: null;
+	const settings = settingsFor(serviceId);
+	const binding: RunBinding = {
+		serviceId,
+		settings,
+		root:
+			existingRootOf(runId) ??
+			recordedRootOf(runId, opts.recorded) ??
+			rootOf(settings.location),
+		branch: `prismalens/${opts.incidentId}-${runId}`,
+	};
+	runs.set(runId, binding);
+	return binding;
+}
+
+export function unbindRun(runId: string): void {
+	runs.delete(runId);
+}
+
+/** The known location a recorded path sits in as `<root>/pl-<run>/...`; never one no setting named. */
+function recordedRootOf(runId: string, recorded?: string): string | null {
+	if (!recorded) return null;
+	const roots = worktreeRoots();
+	for (let dir = resolve(recorded); dirname(dir) !== dir; dir = dirname(dir))
+		if (basename(dir) === `${WORKTREE_PREFIX}${runId}`)
+			return roots.find((r) => samePath(r, dirname(dir))) ?? null;
+	return null;
+}
+
+const samePath = (a: string, b: string) =>
+	process.platform === "win32"
+		? resolve(a).toLowerCase() === resolve(b).toLowerCase()
+		: resolve(a) === resolve(b);
+
+function existingRootOf(runId: string): string | null {
+	return (
+		worktreeRoots().find((root) =>
+			existsSync(join(root, `${WORKTREE_PREFIX}${runId}`)),
+		) ?? null
+	);
+}
+
+/** The run's location: the bound one, the one already holding its workspace, else the global one. */
+export function worktreeRoot(runId?: string): string {
+	return (
+		(runId && (runs.get(runId)?.root ?? existingRootOf(runId))) ||
+		rootOf(source.global().location)
+	);
 }
 
 /** A run's repos: the worktree itself for one local repo, the parent of each repo's folder for several. */
 export function runWorktreeDir(runId: string): string {
-	return join(worktreeRoot(), `${WORKTREE_PREFIX}${runId}`);
+	return join(worktreeRoot(runId), `${WORKTREE_PREFIX}${runId}`);
+}
+
+export function toPolicy(
+	s: RunWorkspaceSettings,
+	branch?: string,
+): WorkspacePolicy {
+	return {
+		method: s.method,
+		retention: s.retention,
+		// No automatic cap (#925): the engine's own would evict kept work by count alone.
+		keptPerProject: Number.MAX_SAFE_INTEGER,
+		setup: s.setup,
+		teardown: s.teardown,
+		copyIn: s.copyIn,
+		submodules: s.submodules,
+		branch:
+			s.branch === "named" && branch
+				? { kind: "named", name: branch }
+				: { kind: "detached" },
+	};
 }
 
 /** A path as a workspace: owned by its parent folder with no prefix, so a multi-repo run's folders fit too. */
@@ -57,54 +212,144 @@ function isLinkedWorktree(dir: string): boolean {
 	}
 }
 
-function warnKept(records: RemovalRecord[]): void {
-	for (const r of records)
-		if (!r.removed && r.reason !== "superseded")
-			logger.warn(`Kept the run worktree ${r.dir}: ${r.reason}`);
+/** A worktree, or a clone this product made: either way its sidecar or `.git` file says so. */
+function isWorkspace(dir: string): boolean {
+	return isLinkedWorktree(dir) || existsSync(`${dir}.workspace.json`);
+}
+
+/** A folder in a multi-repo run's folder that deleting the folder must not take: a workspace, a link, or a clone others hang off. */
+function mustStay(dir: string): boolean {
+	try {
+		return isWorkspace(dir) || protectedBy(dir, LOCK_PREFIX) !== null;
+	} catch {
+		return true;
+	}
+}
+
+/** `pl-<run>` directly in a location, else the `pl-<run>` a multi-repo folder sits in: a location or a repo may be named `pl-*` too. */
+export function runIdOf(dir: string): string | null {
+	const roots = worktreeRoots();
+	if (roots.includes(resolve(dir))) return null;
+	const name = basename(
+		roots.includes(resolve(dirname(dir))) ? dir : dirname(dir),
+	);
+	return name.startsWith(WORKTREE_PREFIX)
+		? name.slice(WORKTREE_PREFIX.length)
+		: null;
+}
+
+function policyForDir(dir: string): WorkspacePolicy {
+	return toPolicy(settingsFor(workspaceInfo(dir)?.project));
+}
+
+function toRemoval(r: RemovalRecord, reason?: string): WorkspaceRemoval {
+	return {
+		runId: runIdOf(r.dir),
+		dir: r.dir,
+		serviceId: r.project ?? null,
+		removed: r.removed,
+		reason: reason ?? r.reason,
+		at: r.at,
+		teardown: r.teardown ?? null,
+	};
+}
+
+function report(records: RemovalRecord[], sweep: boolean): void {
+	const kept = records.filter((r) => !r.removed && r.reason !== "superseded");
+	for (const r of kept)
+		if (
+			r.reason !== "live" &&
+			r.reason !== "keep-days" &&
+			r.reason !== "keep-until-resolved"
+		)
+			logger.warn(`Kept the run workspace ${r.dir}: ${r.reason}`);
+	// A sweep repeats every kept workspace's standing hourly; only what changed is worth a line.
+	const worth = records.filter(
+		(r) =>
+			r.reason !== "superseded" &&
+			(r.removed || !sweep || r.reason === "remove-failed") &&
+			!(r.removed && r.reason === "gone"),
+	);
+	if (worth.length) source.record(worth.map((r) => toRemoval(r)));
+}
+
+export interface AddedWorktree {
+	lock: string;
+	setup?: HookResult;
 }
 
 /**
- * Checks `commit` out at `dest` as a detached, locked worktree of `source`, after releasing
- * whatever an earlier attempt left there; answers the lock reason, which names this attempt.
+ * Checks `commit` out at `dest` under the run's settings, after releasing whatever an earlier
+ * attempt left there; a workspace kept from an earlier turn of the run is taken up again as is.
  */
 export async function addRunWorktree(
-	source: string,
+	repo: string,
 	dest: string,
 	commit: string,
 	runId: string,
 	signal?: AbortSignal,
-): Promise<string> {
-	await releaseWorktree(dest);
+	opts: {
+		onOutput?: (chunk: string) => void;
+		/** `repo` is a URL's shared mirror: a branch in it would be pruned by its next fetch. */
+		mirror?: boolean;
+	} = {},
+): Promise<AddedWorktree> {
+	// A Remove or sweep already deciding on this folder finishes first; a follow-up never resumes mid-removal.
+	await removing.get(dest);
+	await sweeping;
+	const resumed = await resumeWorkspace({
+		...asWorkspace(dest),
+		lockLabel: runId,
+	});
+	if (resumed) return resumed;
+	await releaseWorktree(dest, undefined, true);
+	const binding = runs.get(runId);
+	const settings = binding?.settings ?? settingsFor(null);
 	const workspace = await createWorkspace({
 		...asWorkspace(dest),
 		lockLabel: runId,
-		source: { kind: "local", repo: source, commit },
-		policy: RUN_POLICY,
+		...(binding?.serviceId ? { project: binding.serviceId } : {}),
+		source: { kind: "local", repo, commit },
+		policy: toPolicy(
+			settings,
+			opts.mirror && settings.method === "worktree"
+				? undefined
+				: binding?.branch,
+		),
 		...(signal ? { signal } : {}),
+		...(opts.onOutput ? { onOutput: opts.onOutput } : {}),
 	});
-	return workspace.lock;
+	return {
+		lock: workspace.lock,
+		...(workspace.setup ? { setup: workspace.setup } : {}),
+	};
 }
 
 /**
- * Unlocks, removes and prunes the worktree at `dir` unless someone else's lock holds it,
- * or, with `onlyLock`, a later attempt re-added it. True when it is gone.
+ * Applies the workspace's retention rule at `dir`: removed unless a guard or the rule keeps it,
+ * or, with `onlyLock`, a later attempt re-added it. `discard` removes an unfinished attempt's
+ * leftover whatever the rule. True when it is gone.
  */
 export async function releaseWorktree(
 	dir: string,
 	onlyLock?: string,
+	discard = false,
 ): Promise<boolean> {
+	const policy = policyForDir(dir);
 	const records = await releaseWorkspace({
 		...asWorkspace(dir),
-		policy: RUN_POLICY,
+		policy: discard
+			? { ...policy, retention: { kind: "always-remove" } }
+			: policy,
 		...(onlyLock !== undefined ? { onlyLock } : {}),
 	});
-	warnKept(records);
+	report(records, discard);
 	return records[0]?.removed === true;
 }
 
 /**
- * Releases `dir` if it is a worktree, else every worktree directly inside it,
- * then deletes what is left. A worktree locked by someone else keeps `dir`.
+ * Releases `dir` if it is a workspace, else every workspace directly inside it,
+ * then deletes what is left. A kept or someone else's workspace keeps `dir`.
  */
 export async function releaseWorktreesIn(
 	dir: string,
@@ -112,48 +357,181 @@ export async function releaseWorktreesIn(
 ): Promise<void> {
 	if (!existsSync(dir)) return;
 	let kept = false;
-	if (isLinkedWorktree(dir)) kept = !(await releaseWorktree(dir, onlyLock));
-	else
-		for (const entry of readdirSync(dir, { withFileTypes: true }))
-			if (entry.isDirectory() && isLinkedWorktree(join(dir, entry.name)))
-				kept =
-					!(await releaseWorktree(join(dir, entry.name), onlyLock)) || kept;
+	if (isWorkspace(dir)) kept = !(await releaseWorktree(dir, onlyLock));
+	// Never followed: deleting through a link would take the target's checkouts.
+	else if (lstatSync(dir).isSymbolicLink()) kept = true;
+	else if (isPlainClone(dir)) kept = await keptClone(dir);
+	else {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const child = join(dir, entry.name);
+			if (!entry.isDirectory()) continue;
+			if (isWorkspace(child)) {
+				// Not ours: it keeps its place and so keeps the run folder.
+				if (madeHere(child, LOCK_PREFIX))
+					kept = !(await releaseWorktree(child, onlyLock)) || kept;
+				else logger.warn(`Kept ${child}: a worktree PrismaLens did not create`);
+			} else if (isPlainClone(child)) kept = (await keptClone(child)) || kept;
+		}
+		kept ||= readdirSync(dir).some((name) => mustStay(join(dir, name)));
+	}
 	if (!kept) rmSync(dir, { recursive: true, force: true });
 }
+
+/** A clone an earlier version made without a sidecar (`runs/<id>/repo`). */
+function isPlainClone(dir: string): boolean {
+	try {
+		return lstatSync(join(dir, ".git")).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+/** Such a clone holding changes stays, as the default rule would keep it; a clean one goes. */
+async function keptClone(dir: string): Promise<boolean> {
+	if (!(await isChanged(dir, gitEnv(process.env)).catch(() => true)))
+		return false;
+	logger.warn(`Kept the earlier run's clone ${dir}: it holds changes`);
+	return true;
+}
+
+export interface SweepOptions {
+	isLive?: (runId: string) => boolean;
+	isResolved?: (runId: string) => boolean;
+	/** A restart cut the run off and it has not been resumed: its workspace waits for #981's resume. */
+	isInterrupted?: (runId: string) => boolean;
+}
+
+const untouchable = (opts: SweepOptions, runId: string) =>
+	runs.has(runId) || !!opts.isLive?.(runId) || !!opts.isInterrupted?.(runId);
 
 async function sweepIn(
 	parentDir: string,
 	prefix: string,
+	opts: SweepOptions,
 ): Promise<RemovalRecord[]> {
+	const runOf = (id: string) => (prefix ? id : (runIdOf(parentDir) ?? id));
 	const records = await sweepWorkspaces({
 		parentDir,
 		prefix,
 		lockPrefix: LOCK_PREFIX,
-		policy: RUN_POLICY,
-		isLive: () => false,
+		policy: (project) => toPolicy(settingsFor(project)),
+		// A run bound in this process is live even if it started after the caller looked.
+		isLive: (id) => untouchable(opts, runOf(id)),
+		isResolved: (id) => opts.isResolved?.(runOf(id)) ?? false,
 	});
-	warnKept(records);
 	return records;
 }
 
 /**
- * At boot nothing is running, so a `pl-*` entry under our root is a dead run's,
- * even when its lock outlived the process. Answers the run ids it swept.
+ * At boot nothing is running, so a `pl-*` entry is a dead run's, even when its lock
+ * outlived the process; hourly, `isLive` names the runs still going. Each workspace gets
+ * its own retention rule. Answers the run ids whose workspaces are gone.
  */
-export async function sweepRunWorktrees(): Promise<string[]> {
-	const root = worktreeRoot();
-	if (!existsSync(root)) return [];
-	// A multi-repo run's entry holds a worktree per repo; those go first.
-	for (const entry of readdirSync(root, { withFileTypes: true })) {
-		const dir = join(root, entry.name);
-		if (
-			entry.isDirectory() &&
-			entry.name.startsWith(WORKTREE_PREFIX) &&
-			!isLinkedWorktree(dir)
-		)
-			await sweepIn(dir, "");
+export function sweepRunWorktrees(opts: SweepOptions = {}): Promise<string[]> {
+	const work = sweepAll(opts);
+	sweeping = work.catch(() => {});
+	return work;
+}
+
+let sweeping: Promise<unknown> = Promise.resolve();
+
+async function sweepAll(opts: SweepOptions): Promise<string[]> {
+	const gone: string[] = [];
+	for (const root of worktreeRoots()) {
+		if (!existsSync(root)) continue;
+		// A multi-repo run's folder holds a workspace per repo; it goes once none is left in it.
+		for (const entry of readdirSync(root, { withFileTypes: true })) {
+			const dir = join(root, entry.name);
+			const runId = entry.name.slice(WORKTREE_PREFIX.length);
+			if (
+				!entry.isDirectory() ||
+				!entry.name.startsWith(WORKTREE_PREFIX) ||
+				isWorkspace(dir) ||
+				untouchable(opts, runId)
+			)
+				continue;
+			report(await sweepIn(dir, "", opts), true);
+			if (readdirSync(dir).some((name) => mustStay(join(dir, name)))) continue;
+			try {
+				rmSync(dir, { recursive: true, force: true });
+				gone.push(runId);
+			} catch (e) {
+				logger.warn(`Could not sweep the run folder ${dir}`, e);
+			}
+		}
+		const records = await sweepIn(root, WORKTREE_PREFIX, opts);
+		report(
+			records.filter((r) => isWorkspace(r.dir) || r.removed),
+			true,
+		);
+		gone.push(...records.filter((r) => r.removed).map((r) => r.id));
 	}
-	return (await sweepIn(root, WORKTREE_PREFIX))
-		.filter((r) => r.removed)
-		.map((r) => r.id);
+	return gone;
+}
+
+/**
+ * Every kept workspace under every location, single or inside a multi-repo run's folder;
+ * with `any`, also those a guard kept without starting their kept clock.
+ */
+export function keptWorkspaces(runId?: string, any = false): WorkspaceInfo[] {
+	const out: WorkspaceInfo[] = [];
+	const take = (dir: string) => {
+		const info = workspaceInfo(dir);
+		if (info && (any || info.keptAt)) out.push(info);
+	};
+	for (const root of worktreeRoots()) {
+		if (!existsSync(root)) continue;
+		for (const entry of readdirSync(root, { withFileTypes: true })) {
+			if (
+				!(entry.isDirectory() || entry.isSymbolicLink()) ||
+				!entry.name.startsWith(WORKTREE_PREFIX)
+			)
+				continue;
+			if (runId && entry.name !== `${WORKTREE_PREFIX}${runId}`) continue;
+			const dir = join(root, entry.name);
+			if (isWorkspace(dir)) take(dir);
+			else
+				for (const inner of readdirSync(dir, { withFileTypes: true }))
+					if (inner.isDirectory() || inner.isSymbolicLink())
+						take(join(dir, inner.name));
+		}
+	}
+	return out;
+}
+
+const removing = new Map<string, Promise<unknown>>();
+
+/** Marks `dir` as being removed until `work` settles, so a follow-up waits instead of resuming it. */
+function whileRemoving<T>(dir: string, work: Promise<T>): Promise<T> {
+	const done = work.finally(() => removing.delete(dir));
+	removing.set(
+		dir,
+		done.catch(() => {}),
+	);
+	return done;
+}
+
+/** The user's own Remove on the run page: changes and all; the other guards still hold. */
+export async function removeKeptWorkspace(
+	dir: string,
+): Promise<{ removed: boolean; reason: string }> {
+	const run = runIdOf(dir);
+	if (run && runs.has(run)) return { removed: false, reason: "live" };
+	const [r] = await whileRemoving(
+		dir,
+		releaseWorkspace({
+			...asWorkspace(dir),
+			policy: {
+				...policyForDir(dir),
+				retention: { kind: "always-remove" },
+			},
+		}),
+	);
+	if (!r) return { removed: false, reason: "gone" };
+	const reason = r.removed ? "removed-by-user" : r.reason;
+	source.record([toRemoval(r, reason)]);
+	const parent = dirname(dir);
+	if (r.removed && runIdOf(parent) && readdirSync(parent).length === 0)
+		rmSync(parent, { recursive: true, force: true });
+	return { removed: r.removed, reason };
 }
