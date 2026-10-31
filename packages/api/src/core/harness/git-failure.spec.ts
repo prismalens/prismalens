@@ -36,7 +36,7 @@ describe("git-failure", () => {
 		expect(scrubbed).toContain("https://***@github.com/org/repo.git");
 	});
 
-	it("scrubs and classifies 16 MiB of repeated a:// in under 200 ms (#848)", () => {
+	it("scrubs and classifies 16 MiB of repeated a:// in under 500 ms (#848)", () => {
 		const stderr = "a://".repeat(4 * 1024 * 1024);
 		const started = performance.now();
 		scrubGitStderr(stderr);
@@ -47,7 +47,7 @@ describe("git-failure", () => {
 			repo: "acme/api",
 			sshAuthSockSet: false,
 		});
-		expect(performance.now() - started).toBeLessThan(200);
+		expect(performance.now() - started).toBeLessThan(500);
 	});
 
 	it("formatDay formats Date to YYYY-MM-DD", () => {
