@@ -8,6 +8,10 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # Pinned by agent-release-watch (#914) to the SDK the claude adapter declares;
+      # a lone bump fails the bundle check (#913).
+      - dependency-name: "@anthropic-ai/claude-agent-sdk"
     groups:
       # One Nest major moves every @nestjs/* package at once; split bumps can
       # never pass (@nestjs/common 12 against @nestjs/core 11). Listed first
