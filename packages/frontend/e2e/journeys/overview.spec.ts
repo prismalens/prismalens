@@ -1261,6 +1261,34 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			}
 		});
 
+		test("a warning the phone strip hides marks the details toggle (0.5.3 walk W11)", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(90_000);
+			// The fake agent never calls PrismaLens's tools, so its run warns "Tools: not connected".
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("ToolsWarn"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+			await visit(page, `/incidents/${inc.id}/conversation`);
+			const toggle = page.getByTestId("details-toggle");
+			await expect(page.getByTestId("run-strip-tools")).toBeHidden();
+			await expect(page.getByTestId("details-warn")).toBeVisible();
+			await expect(toggle).toHaveAttribute(
+				"aria-label",
+				/Tools: not connected/,
+			);
+			await page.setViewportSize({ width: 1280, height: 800 });
+			await expect(page.getByTestId("run-strip-tools")).toBeVisible();
+			await expect(page.getByTestId("details-warn")).toHaveCount(0);
+		});
+
 		test("the run details sheet's tabs sit above the run strip at 320, 360 and 390 px (0.5.3 walk W11)", async ({
 			page,
 			alertmanager,
