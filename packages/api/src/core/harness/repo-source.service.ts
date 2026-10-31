@@ -9,10 +9,11 @@
  * rides as a per-command header, never in the URL or the mirror's config.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { Injectable, Logger } from "@nestjs/common";
+import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	type GitCredential,
@@ -31,6 +32,7 @@ import {
 	remoteGitEnv,
 	spawnGit,
 } from "./git-spawn.js";
+import { mirrorRoot } from "./mirror-location.js";
 import { addRunWorktree } from "./run-worktree.js";
 
 export { tokenUsernameFor } from "./git-credential.js";
@@ -64,6 +66,8 @@ export interface Snapshot {
 	branch: string | null;
 	/** A folder's worktree: the lock reason naming this attempt (#918). */
 	lock?: string;
+	/** The setup command the run workspace settings name, when one ran (#925). */
+	setup?: HookResult;
 }
 
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
@@ -110,10 +114,7 @@ export function displayNameFor(kind: RepoSourceKind, source: string): string {
 	return urlSegments(shown).slice(-2).join("/") || shown;
 }
 
-export function mirrorPathFor(
-	url: string,
-	root = join(getAppDataDir(), "repos"),
-): string {
+export function mirrorPathFor(url: string, root = mirrorRoot()): string {
 	const u = new URL(url.replace(/^([\w.-]+)@([^:]+):/, "ssh://$1@$2/"));
 	const segments = urlSegments(url).map((s) =>
 		s.replace(/[^A-Za-z0-9._-]/g, "_"),
@@ -204,75 +205,47 @@ export class RepoSourceService {
 		signal?: AbortSignal,
 		at?: string,
 		runId?: string,
+		onOutput?: (chunk: string) => void,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
-		let lock: string | undefined;
-		if (src.kind === "folder") {
-			const commit = at ?? (await this.headOf(src.source)).head;
-			if (at && !(await this.hasCommit(src.source, at, signal)))
-				throw new Error(
-					`Commit ${at} could not be checked out from this source`,
-				);
-			try {
-				lock = await addRunWorktree(
-					src.source,
-					dest,
-					commit,
-					runId ?? dest,
-					signal,
-				);
-			} catch (err) {
-				if (signal?.aborted) throw signal.reason;
-				throw err instanceof Error ? new Error(err.message) : err;
-			}
-		} else await this.cloneMirror(src, dest, signal, at);
+		// A URL is cloned once, into its mirror; each run gets a workspace of that (#925).
+		const mirror = src.kind === "url";
+		const repo = mirror
+			? await abortable(this.ensureMirror(src), signal)
+			: src.source;
+		const tip = at
+			? null
+			: await this.headOf(repo, mirror ? src.defaultBranch : undefined);
+		const commit = at ?? (tip as SourceCheck).head;
+		if (at && !(await this.hasCommit(repo, at, signal)))
+			throw new Error(`Commit ${at} could not be checked out from this source`);
+		let added: { lock: string; setup?: HookResult };
+		try {
+			added = await addRunWorktree(repo, dest, commit, runId ?? dest, signal, {
+				mirror,
+				...(onOutput ? { onOutput } : {}),
+			});
+		} catch (err) {
+			if (signal?.aborted) throw signal.reason;
+			throw err instanceof Error ? new Error(err.message) : err;
+		}
+		// A clone's origin is the mirror: refuse local-path push and fetch from the run (#676).
+		if (mirror && statSync(join(dest, ".git")).isDirectory())
+			await this.git(
+				["-C", dest, "config", "protocol.file.allow", "never"],
+				undefined,
+				signal,
+			);
 		const check = await this.headOf(dest);
 		this.logger.log(
 			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}`,
 		);
-		return { path: dest, ...check, ...(lock ? { lock } : {}) };
-	}
-
-	private async cloneMirror(
-		src: RepoSource,
-		dest: string,
-		signal?: AbortSignal,
-		at?: string,
-	): Promise<void> {
-		const from = await abortable(this.ensureMirror(src), signal);
-		rmSync(dest, { recursive: true, force: true });
-		mkdirSync(join(dest, ".."), { recursive: true });
-		const branch = !at ? src.defaultBranch?.trim() || null : null;
-		await this.git(
-			[
-				"clone",
-				"--quiet",
-				...(at ? ["--no-checkout"] : []),
-				...(branch ? ["--branch", branch] : []),
-				"--",
-				from,
-				dest,
-			],
-			undefined,
-			signal,
-		);
-		if (at)
-			await this.git(
-				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
-				undefined,
-				signal,
-			).catch((err: unknown) => {
-				if (signal?.aborted) throw err;
-				throw new Error(
-					`Commit ${at} could not be checked out from this source`,
-				);
-			});
-		// origin is our mirror: refuse local-path push and fetch from the run (#676).
-		await this.git(
-			["-C", dest, "config", "protocol.file.allow", "never"],
-			undefined,
-			signal,
-		);
+		return {
+			path: dest,
+			...check,
+			branch: check.branch ?? (mirror ? (tip?.branch ?? null) : null),
+			...added,
+		};
 	}
 
 	/**
@@ -316,6 +289,12 @@ export class RepoSourceService {
 					{ env, timeoutMs: GIT_TIMEOUT_MS },
 				);
 			}
+			// Run worktrees share this repo and its remote: a push from one, which on a mirror pushes
+			// every ref, fails here instead (#676, #925). The mirror itself only ever fetches.
+			await spawnGit(
+				["config", "remote.origin.pushurl", "never-push://prismalens"],
+				{ cwd: path, env, timeoutMs: GIT_TIMEOUT_MS },
+			);
 		} catch (err) {
 			const failure = remoteFailure(err, src);
 			if (failure instanceof GitFailure && failure.stderr)

@@ -25896,6 +25896,1948 @@
         }
       }
     },
+    "/settings/run-workspace": {
+      "get": {
+        "operationId": "runWorkspaces.get",
+        "summary": "Get the global run workspace settings",
+        "tags": [
+          "run-workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "settings": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "location",
+                        "retention",
+                        "setup",
+                        "teardown",
+                        "copyIn",
+                        "submodules",
+                        "branch"
+                      ]
+                    },
+                    "defaultLocation": {
+                      "type": "string"
+                    },
+                    "copies": {
+                      "type": "object",
+                      "properties": {
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "defaultLocation": {
+                          "type": "string"
+                        },
+                        "previous": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "location",
+                        "defaultLocation",
+                        "previous"
+                      ]
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "settings",
+                    "defaultLocation",
+                    "copies",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "runWorkspaces.update",
+        "summary": "Set the global run workspace settings. Host only",
+        "tags": [
+          "run-workspaces"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "enum": [
+                      "worktree",
+                      "clone"
+                    ],
+                    "type": "string"
+                  },
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "retention": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "remove-unless-changed"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "always-remove"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "keep-days"
+                          },
+                          "days": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 365
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "days"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "keep-until-resolved"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    ]
+                  },
+                  "setup": {
+                    "type": "object",
+                    "properties": {
+                      "posix": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "windows": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    }
+                  },
+                  "teardown": {
+                    "type": "object",
+                    "properties": {
+                      "posix": {
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "windows": {
+                        "type": "string",
+                        "maxLength": 4000
+                      }
+                    }
+                  },
+                  "copyIn": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "submodules": {
+                    "enum": [
+                      "skip",
+                      "top-level",
+                      "recursive"
+                    ],
+                    "type": "string"
+                  },
+                  "branch": {
+                    "enum": [
+                      "detached",
+                      "named"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "method",
+                  "location",
+                  "retention",
+                  "setup",
+                  "teardown",
+                  "copyIn",
+                  "submodules",
+                  "branch"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "settings": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "location",
+                        "retention",
+                        "setup",
+                        "teardown",
+                        "copyIn",
+                        "submodules",
+                        "branch"
+                      ]
+                    },
+                    "defaultLocation": {
+                      "type": "string"
+                    },
+                    "copies": {
+                      "type": "object",
+                      "properties": {
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "defaultLocation": {
+                          "type": "string"
+                        },
+                        "previous": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "location",
+                        "defaultLocation",
+                        "previous"
+                      ]
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "settings",
+                    "defaultLocation",
+                    "copies",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/run-workspace/copies": {
+      "put": {
+        "operationId": "runWorkspaces.updateCopies",
+        "summary": "Set where a git URL is cloned once; new copies go there. Host only",
+        "tags": [
+          "run-workspaces"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "location"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "settings": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "location",
+                        "retention",
+                        "setup",
+                        "teardown",
+                        "copyIn",
+                        "submodules",
+                        "branch"
+                      ]
+                    },
+                    "defaultLocation": {
+                      "type": "string"
+                    },
+                    "copies": {
+                      "type": "object",
+                      "properties": {
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "defaultLocation": {
+                          "type": "string"
+                        },
+                        "previous": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "location",
+                        "defaultLocation",
+                        "previous"
+                      ]
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "settings",
+                    "defaultLocation",
+                    "copies",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/services/{serviceId}/run-workspace": {
+      "get": {
+        "operationId": "runWorkspaces.getService",
+        "summary": "Get a service's run workspace override and what it resolves to",
+        "tags": [
+          "run-workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "serviceId": {
+                      "type": "string"
+                    },
+                    "override": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "effective": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "location",
+                        "retention",
+                        "setup",
+                        "teardown",
+                        "copyIn",
+                        "submodules",
+                        "branch"
+                      ]
+                    },
+                    "inherited": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "serviceId",
+                    "override",
+                    "effective",
+                    "inherited",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "runWorkspaces.updateService",
+        "summary": "Set a service's run workspace override. Host only",
+        "tags": [
+          "run-workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "override": {
+                    "type": "object",
+                    "properties": {
+                      "method": {
+                        "enum": [
+                          "worktree",
+                          "clone"
+                        ],
+                        "type": "string"
+                      },
+                      "location": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 1000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "retention": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "remove-unless-changed"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "always-remove"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "keep-days"
+                              },
+                              "days": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 365
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "days"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "keep-until-resolved"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          }
+                        ]
+                      },
+                      "setup": {
+                        "type": "object",
+                        "properties": {
+                          "posix": {
+                            "type": "string",
+                            "maxLength": 4000
+                          },
+                          "windows": {
+                            "type": "string",
+                            "maxLength": 4000
+                          }
+                        }
+                      },
+                      "teardown": {
+                        "type": "object",
+                        "properties": {
+                          "posix": {
+                            "type": "string",
+                            "maxLength": 4000
+                          },
+                          "windows": {
+                            "type": "string",
+                            "maxLength": 4000
+                          }
+                        }
+                      },
+                      "copyIn": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        }
+                      },
+                      "submodules": {
+                        "enum": [
+                          "skip",
+                          "top-level",
+                          "recursive"
+                        ],
+                        "type": "string"
+                      },
+                      "branch": {
+                        "enum": [
+                          "detached",
+                          "named"
+                        ],
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "override"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "serviceId": {
+                      "type": "string"
+                    },
+                    "override": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "effective": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "enum": [
+                            "worktree",
+                            "clone"
+                          ],
+                          "type": "string"
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "retention": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "remove-unless-changed"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "always-remove"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-days"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "days"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "const": "keep-until-resolved"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          ]
+                        },
+                        "setup": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "teardown": {
+                          "type": "object",
+                          "properties": {
+                            "posix": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "windows": {
+                              "type": "string",
+                              "maxLength": 4000
+                            }
+                          }
+                        },
+                        "copyIn": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "submodules": {
+                          "enum": [
+                            "skip",
+                            "top-level",
+                            "recursive"
+                          ],
+                          "type": "string"
+                        },
+                        "branch": {
+                          "enum": [
+                            "detached",
+                            "named"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "location",
+                        "retention",
+                        "setup",
+                        "teardown",
+                        "copyIn",
+                        "submodules",
+                        "branch"
+                      ]
+                    },
+                    "inherited": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "serviceId",
+                    "override",
+                    "effective",
+                    "inherited",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/run-workspace/removals": {
+      "get": {
+        "operationId": "runWorkspaces.removals",
+        "summary": "Recent workspace removals, and kept ones, with the reason for each",
+        "tags": [
+          "run-workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "removals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "runId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dir": {
+                            "type": "string"
+                          },
+                          "serviceId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "removed": {
+                            "type": "boolean"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string"
+                          },
+                          "teardown": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "status": {
+                                    "enum": [
+                                      "ok",
+                                      "failed",
+                                      "silent",
+                                      "capped",
+                                      "aborted"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "exitCode": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "output": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "status",
+                                  "exitCode",
+                                  "output"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "runId",
+                          "dir",
+                          "serviceId",
+                          "removed",
+                          "reason",
+                          "at",
+                          "teardown"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "removals"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/run-workspace/kept": {
+      "get": {
+        "operationId": "runWorkspaces.kept",
+        "summary": "Every finished run's kept workspace, with its service",
+        "tags": [
+          "run-workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dir": {
+                            "type": "string"
+                          },
+                          "serviceId": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "enum": [
+                              "worktree",
+                              "clone"
+                            ],
+                            "type": "string"
+                          },
+                          "keptAt": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "serviceName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "dir",
+                          "serviceId",
+                          "method",
+                          "keptAt",
+                          "reason",
+                          "runId",
+                          "serviceName"
+                        ]
+                      }
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "workspaces",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{runId}/workspaces": {
+      "get": {
+        "operationId": "runWorkspaces.listForRun",
+        "summary": "The run's kept workspaces",
+        "tags": [
+          "run-workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dir": {
+                            "type": "string"
+                          },
+                          "serviceId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "method": {
+                            "enum": [
+                              "worktree",
+                              "clone"
+                            ],
+                            "type": "string"
+                          },
+                          "keptAt": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "dir",
+                          "serviceId",
+                          "method",
+                          "keptAt",
+                          "reason"
+                        ]
+                      }
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "workspaces",
+                    "canEdit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{runId}/workspaces/remove": {
+      "post": {
+        "operationId": "runWorkspaces.remove",
+        "summary": "Remove a kept workspace, changes and all. Host only",
+        "tags": [
+          "run-workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dir": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "dir"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "removed": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "removed",
+                    "reason"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{runId}/workspaces/open": {
+      "post": {
+        "operationId": "runWorkspaces.open",
+        "summary": "Open a kept workspace in this computer's file manager. Host only",
+        "tags": [
+          "run-workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dir": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "dir"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "opened": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "opened"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/services": {
       "post": {
         "operationId": "services.create",
