@@ -557,7 +557,8 @@ Each artifact is held to a standard by a gate that fails the PR or the release (
 
 Budgets live in `scripts/artifact-budgets.json`: bytes and file count per artifact,
 and the unpacked size for each desktop OS. A change that grows an artifact past its
-budget raises the number in the same PR, with the reason.
+budget raises the number in the same PR, with the reason. A breach prints the five
+largest unpacked files, which names what grew.
 
 The path limit is 260 - 40 = **220** characters for a 20-character username, on every
 Windows prefix an artifact lands under: the npm global prefix, the installer's
