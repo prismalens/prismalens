@@ -34,8 +34,8 @@
 		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.15",
-		"@copilotkit/aimock": "1.46.0",
+		"@biomejs/biome": "2.6.3",
+		"@copilotkit/aimock": "1.47.0",
 		"@lydell/node-pty": "1.1.0",
 		"@types/node": "catalog:",
 		"cross-spawn": "^7.0.6",
