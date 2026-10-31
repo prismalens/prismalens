@@ -56,7 +56,7 @@
 		"zod": "catalog:"
 	},
 	"devDependencies": {
-		"@modelcontextprotocol/server": "~2.3.1",
+		"@modelcontextprotocol/server": "~2.4.0",
 		"@types/node": "catalog:",
 		"ajv": "^8.20.0",
 		"tsx": "catalog:",
