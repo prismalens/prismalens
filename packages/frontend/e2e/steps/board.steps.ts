@@ -22,7 +22,7 @@ import {
 	openBoard,
 	QUIET,
 	resolveIncident,
-	sidewaysOverflow,
+	sidewaysFaults,
 	visit,
 	waitFor,
 	waitForRun,
@@ -179,7 +179,7 @@ Then(
 
 Then("nothing scrolls sideways", async ({ page }) => {
 	await expect(page.getByTestId("inbox")).toBeVisible();
-	expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(0);
+	expect(await sidewaysFaults(page)).toEqual([]);
 });
 
 Given(
@@ -405,7 +405,7 @@ Then(
 			expect(tops[0]).toBe(tops[1]);
 			expect(tops[2]).toBeGreaterThan(tops[1] ?? 0);
 		}
-		expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(0);
+		expect(await sidewaysFaults(page)).toEqual([]);
 	},
 );
 

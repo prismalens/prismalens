@@ -9,6 +9,7 @@ import {
 	fireIncident,
 	LIVE,
 	QUIET,
+	sidewaysFaults,
 	visit,
 	waitForRun,
 } from "../steps/product";
@@ -1215,6 +1216,101 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 						`${path} at ${width}`,
 					).toEqual([]);
 				}
+			}
+		});
+
+		test("no incident page is wider than the screen at 320, 360 and 390 px (0.5.3 walk W11)", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(120_000);
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("PaymentsCheckoutLatencyBudgetBurnHighEuWest1"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			const run = await waitForRun(
+				page,
+				inc.id,
+				(r) => r.status === "completed",
+				"ready",
+			);
+			await rewrite(page, run.id, { impact: "chart", extraRows: true });
+			for (const width of [320, 360, 390]) {
+				await page.setViewportSize({ width, height: 844 });
+				await visit(page, `/incidents/${inc.id}`);
+				await expect(page.getByTestId("latest-run-strip")).toBeVisible();
+				expect(await sidewaysFaults(page), `overview at ${width}`).toEqual([]);
+				await visit(page, `/incidents/${inc.id}/conversation`);
+				await expect(page.getByTestId("run-strip")).toBeVisible();
+				expect(await sidewaysFaults(page), `conversation at ${width}`).toEqual(
+					[],
+				);
+				await page.getByTestId("details-toggle").click();
+				for (const tab of ["summary", "evidence", "context", "steps"]) {
+					await page.getByTestId(`run-details-tab-${tab}`).click();
+					await expect(page.getByTestId(`run-details-${tab}`)).toBeVisible();
+					expect(
+						await sidewaysFaults(page),
+						`details ${tab} at ${width}`,
+					).toEqual([]);
+				}
+			}
+		});
+
+		test("the run details sheet's tabs sit above the run strip at 320, 360 and 390 px (0.5.3 walk W11)", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(90_000);
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("EvidenceSheet"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+			for (const width of [320, 360, 390]) {
+				await page.setViewportSize({ width, height: 844 });
+				await visit(page, `/incidents/${inc.id}/conversation`);
+				await page.getByTestId("details-toggle").click();
+				await page.getByTestId("run-details-tab-evidence").click();
+				await expect(page.getByTestId("run-details-evidence")).toBeVisible();
+				const covered = await page.evaluate(() => {
+					const strip = Array.from(
+						document.querySelectorAll('[data-testid="run-strip"] *'),
+					)
+						.filter((el) => el.checkVisibility({ visibilityProperty: true }))
+						.map((el) => el.getBoundingClientRect());
+					return Array.from(
+						document.querySelectorAll<HTMLElement>(
+							'[data-testid^="run-details-tab-"]',
+						),
+					).flatMap((tab) => {
+						const t = tab.getBoundingClientRect();
+						const hit = document.elementFromPoint(
+							t.left + t.width / 2,
+							t.top + t.height / 2,
+						);
+						const under = strip.some(
+							(s) =>
+								s.width > 0 &&
+								s.left < t.right &&
+								s.right > t.left &&
+								s.top < t.bottom &&
+								s.bottom > t.top,
+						);
+						return !hit || !tab.contains(hit) || under
+							? [tab.dataset.testid]
+							: [];
+					});
+				});
+				expect(covered, `tabs under the strip at ${width}`).toEqual([]);
 			}
 		});
 	});
