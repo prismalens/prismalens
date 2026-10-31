@@ -616,10 +616,14 @@ jobs:
       - harness-admission
       - e2e
     if: always() && github.event_name != 'workflow_dispatch'
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Assert every required job succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo "Needed job results:"
           echo "$NEEDS_JSON"
@@ -629,6 +633,10 @@ jobs:
             | join(", ")')
           if [ -n "$bad" ]; then
             echo "::error::CI gate is red — these jobs did not succeed: $bad"
+            # Name each failed job, its failed step and its log, so nobody digs for them (#885).
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+              --jq '.jobs[] | select(.conclusion == "failure") | "  failed: \(.name) / \(first(.steps[]? | select(.conclusion == "failure") | .name) // "-") -> \(.html_url)"' \
+              || echo "(could not list the failed jobs)"
             exit 1
           fi
           echo "All required jobs succeeded."
