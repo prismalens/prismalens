@@ -278,6 +278,7 @@ function DoorLink({
 				</span>
 				<span className={FULL_ONLY}>{door.label}</span>
 				{door.dot && <span className="sr-only">, update available</span>}
+				{door.count !== undefined && " "}
 				{door.count !== undefined && (
 					<span
 						className={cn(
