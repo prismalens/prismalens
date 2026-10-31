@@ -1243,20 +1243,21 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 				await page.setViewportSize({ width, height: 844 });
 				await visit(page, `/incidents/${inc.id}`);
 				await expect(page.getByTestId("latest-run-strip")).toBeVisible();
-				expect(await sidewaysFaults(page), `overview at ${width}`).toEqual([]);
+				expect
+					.soft(await sidewaysFaults(page), `overview at ${width}`)
+					.toEqual([]);
 				await visit(page, `/incidents/${inc.id}/conversation`);
 				await expect(page.getByTestId("run-strip")).toBeVisible();
-				expect(await sidewaysFaults(page), `conversation at ${width}`).toEqual(
-					[],
-				);
+				expect
+					.soft(await sidewaysFaults(page), `conversation at ${width}`)
+					.toEqual([]);
 				await page.getByTestId("details-toggle").click();
 				for (const tab of ["summary", "evidence", "context", "steps"]) {
 					await page.getByTestId(`run-details-tab-${tab}`).click();
 					await expect(page.getByTestId(`run-details-${tab}`)).toBeVisible();
-					expect(
-						await sidewaysFaults(page),
-						`details ${tab} at ${width}`,
-					).toEqual([]);
+					expect
+						.soft(await sidewaysFaults(page), `details ${tab} at ${width}`)
+						.toEqual([]);
 				}
 			}
 		});
@@ -1338,7 +1339,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 							: [];
 					});
 				});
-				expect(covered, `tabs under the strip at ${width}`).toEqual([]);
+				expect.soft(covered, `tabs under the strip at ${width}`).toEqual([]);
 			}
 		});
 	});

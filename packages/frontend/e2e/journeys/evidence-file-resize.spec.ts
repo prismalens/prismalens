@@ -126,6 +126,13 @@ const CITING = {
 					status: "verified",
 					toolCallId: "read-1",
 				},
+				{
+					observation: "Line 1500 is never reached",
+					source: "read_file output",
+					direction: "supports",
+					status: "verified",
+					toolCallId: "read-2",
+				},
 			],
 		},
 	],
@@ -143,7 +150,20 @@ async function setupPage(page: Page, report: object | null = null) {
 		workspace,
 	});
 
-	await serveEventsHistory(page, INVESTIGATION_ID, makeTwoReadEvents());
+	// A report event ends the transcript with the report and its hypotheses card.
+	const ended = report
+		? ({
+				kind: "report",
+				runId: RUN_ID,
+				seq: 5,
+				ts: new Date(1700000005000).toISOString(),
+				report,
+			} as CanonicalEvent)
+		: null;
+	await serveEventsHistory(page, INVESTIGATION_ID, [
+		...makeTwoReadEvents(),
+		...(ended ? [ended] : []),
+	]);
 
 	const content = buildContent(2000);
 	await page.route(
@@ -323,6 +343,49 @@ test.describe("Evidence file view resize (#874)", () => {
 			).toBeFocused();
 		});
 
+		test("the drawing opened from the sheet: a step lifts the sheet, a file comes Back to Evidence", async ({
+			page,
+		}) => {
+			const preview = page.getByTestId("hypotheses-preview");
+			const open = async () => {
+				await page.getByTestId("run-details-tab-evidence").click();
+				await page.getByTestId("detail-hypotheses").click();
+				await expect(preview).toBeVisible();
+			};
+			await open();
+			await preview
+				.getByTestId("hypotheses-cite")
+				.filter({ hasNotText: "long.ts" })
+				.click();
+			await expect(page.getByTestId("run-details")).toBeHidden();
+			await expect(
+				page.locator('[data-testid="step"][data-step="2"]'),
+			).toBeInViewport();
+
+			await page.getByTestId("details-toggle").click();
+			await open();
+			await preview
+				.getByTestId("hypotheses-cite")
+				.filter({ hasText: "long.ts" })
+				.click();
+			await expect(page.getByTestId("evidence-file")).toBeVisible();
+			await page.getByTestId("evidence-file-back").click();
+			await expect(page.getByTestId("run-details-evidence")).toBeVisible();
+			await expect(page.getByTestId("detail-hypotheses")).toBeFocused();
+		});
+
+		test("the sideways guard sees a spill inside the open sheet", async ({
+			page,
+		}) => {
+			expect(await sidewaysFaults(page)).toEqual([]);
+			await page
+				.locator("#run-details h2")
+				.evaluate((h) => h.style.setProperty("min-width", "600px"));
+			expect((await sidewaysFaults(page)).join(" | ")).toMatch(
+				/spans \d+ to \d+ of 390/,
+			);
+		});
+
 		test("the sheet is a dialog that holds focus, and Esc closes it once", async ({
 			page,
 		}) => {
@@ -352,9 +415,8 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("evidence-file-code")).toBeVisible();
 			for (const width of [320, 360, 390]) {
 				await page.setViewportSize({ width, height: 844 });
-				await expect
-					.poll(() => sidewaysFaults(page), { message: `at ${width}` })
-					.toEqual([]);
+				await page.waitForTimeout(300);
+				expect.soft(await sidewaysFaults(page), `at ${width}`).toEqual([]);
 			}
 		});
 	});
