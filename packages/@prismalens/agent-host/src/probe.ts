@@ -9,9 +9,10 @@
 import { Readable, Writable } from "node:stream";
 import {
 	type AuthMethod,
-	ClientSideConnection,
+	client,
 	type InitializeResponse,
 	type McpServerStdio,
+	methods,
 	type NewSessionResponse,
 	ndJsonStream,
 	PROTOCOL_VERSION,
@@ -193,28 +194,26 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 	});
 
 	let pushed: (() => void) | null = null;
-	const connection = new ClientSideConnection(
-		() => ({
-			// No prompt turn is sent, so no ask can arrive; refuse any that does.
-			requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
-			sessionUpdate: async () => {},
-			extNotification: async (method, params) => {
-				const kind = (params?.authStatus as { kind?: unknown } | undefined)
-					?.kind;
-				if (
-					/^_?auth\/status_update$/.test(method) &&
-					typeof kind === "string"
-				) {
-					result.authStatus = kind;
-					pushed?.();
-				}
-			},
-		}),
-		ndJsonStream(
-			Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
-			Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
-		),
-	);
+	const connection = client({ name: "prismalens-probe" })
+		// No prompt turn is sent, so no ask can arrive; refuse any that does.
+		.onRequest(methods.client.session.requestPermission, () => ({
+			outcome: { outcome: "cancelled" },
+		}))
+		.onNotification(methods.client.session.update, () => {})
+		.onNotification("*", ({ method, params }) => {
+			const kind = (params as { authStatus?: { kind?: unknown } } | undefined)
+				?.authStatus?.kind;
+			if (/^_?auth\/status_update$/.test(method) && typeof kind === "string") {
+				result.authStatus = kind;
+				pushed?.();
+			}
+		})
+		.connect(
+			ndJsonStream(
+				Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
+				Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
+			),
+		);
 
 	const race = async <T>(call: Promise<T>): Promise<T | "died" | "timeout"> => {
 		call.catch(() => {});
@@ -235,7 +234,7 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 
 	try {
 		const init = await race(
-			connection.initialize({
+			connection.agent.request(methods.agent.initialize, {
 				protocolVersion: PROTOCOL_VERSION,
 				clientCapabilities: {
 					fs: { readTextFile: false, writeTextFile: false },
@@ -259,7 +258,7 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		const meta =
 			input.sessionMeta ?? AGENT_REGISTRY[input.agent].sessionMeta?.();
 		const session = await race(
-			connection.newSession({
+			connection.agent.request(methods.agent.session.new, {
 				cwd: input.cwd,
 				mcpServers: input.mcpServers ?? [],
 				...(meta ? { _meta: meta } : {}),

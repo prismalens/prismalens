@@ -19,8 +19,8 @@ import type {
 	StopReason,
 	ToolCallStatus,
 	ToolKind,
-} from "@agentclientprotocol/sdk";
-import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
+} from "@agentclientprotocol/sdk/unstable";
+import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import type { PermissionAskOutcome } from "@prismalens/contracts/schemas";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessLauncher } from "../launch/process.js";
@@ -177,9 +177,9 @@ export interface AcpSessionConfig {
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
 		capabilities:
-			| import("@agentclientprotocol/sdk").McpCapabilities
+			| import("@agentclientprotocol/sdk/unstable").McpCapabilities
 			| undefined,
-	) => import("@agentclientprotocol/sdk").McpServer[];
+	) => import("@agentclientprotocol/sdk/unstable").McpServer[];
 }
 
 /** Outcomes the run's level gives without the operator; they never show an ask. */
