@@ -42,7 +42,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # The deepagents row installs with uv, which fetches the Python 3.14 it needs.
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Build the registry the table reads `tested` from
         run: pnpm --filter @prismalens/config... build
