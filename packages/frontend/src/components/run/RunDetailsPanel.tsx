@@ -51,7 +51,7 @@ export interface EvidenceFiles {
 	codeHost: string | null;
 	/** The file a Steps row opens; null when the step names none in the clone. */
 	stepFile: (s: RunStep) => FileAt | null;
-	onOpenHypotheses: () => void;
+	onOpenHypotheses: (origin: string) => void;
 }
 
 const TONE = {
@@ -362,7 +362,7 @@ function Sections({
 	incidentId: string;
 	onJump: (n: number) => void;
 	onOpenFile: OpenFile;
-	onOpenHypotheses: () => void;
+	onOpenHypotheses: (origin: string) => void;
 }) {
 	return (
 		<div className="flex flex-col gap-4">
@@ -399,7 +399,7 @@ function Row({
 	incidentId: string;
 	onJump: (n: number) => void;
 	onOpenFile: OpenFile;
-	onOpenHypotheses: () => void;
+	onOpenHypotheses: (origin: string) => void;
 	origin: string;
 }) {
 	return (
@@ -464,7 +464,7 @@ function Row({
 					<button
 						type="button"
 						id={origin}
-						onClick={onOpenHypotheses}
+						onClick={() => onOpenHypotheses(origin)}
 						className="self-start rounded-control text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current"
 						data-testid="detail-hypotheses"
 					>

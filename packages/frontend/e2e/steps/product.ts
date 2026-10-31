@@ -295,7 +295,12 @@ export async function sidewaysFaults(page: Page): Promise<string[]> {
 			let { left, right } = el.getBoundingClientRect();
 			// A 1 px box is a screen-reader-only label, placed off the edge on purpose.
 			if (right - left <= 1 || style.visibility === "hidden") continue;
-			for (let p = el.parentElement; p; p = p.parentElement) {
+			// Not body or html: an open modal's scroll lock hides their overflow, which would clamp every box.
+			for (
+				let p = el.parentElement;
+				p && p !== document.body && p !== document.documentElement;
+				p = p.parentElement
+			) {
 				if (getComputedStyle(p).overflowX === "visible") continue;
 				const r = p.getBoundingClientRect();
 				left = Math.max(left, r.left);

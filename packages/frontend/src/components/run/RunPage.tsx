@@ -59,6 +59,7 @@ import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import {
 	type CiteTarget,
+	HYPOTHESES_OPEN_ID,
 	HypothesesCard,
 	useFocusLater,
 } from "./HypothesesCard";
@@ -193,8 +194,14 @@ export function RunPage() {
 	} | null>(null);
 	const tabRef = useRef<DetailsTab>(tab);
 	tabRef.current = tab;
+	// The sheet's "Open the drawing" link, while the drawing it opened is up; Back returns there.
+	const previewFrom = useRef<string | null>(null);
 	const openFile = useCallback(
-		(f: FileAt, from: string) => {
+		(f: FileAt, opener: string) => {
+			const from =
+				opener === HYPOTHESES_OPEN_ID && previewFrom.current
+					? previewFrom.current
+					: opener;
 			// Read now: by Back, the control that opened the file may be unmounted.
 			const inPanel = !!document
 				.getElementById("run-details")
@@ -247,6 +254,18 @@ export function RunPage() {
 		}, 60);
 	}, []);
 	useEffect(() => () => window.clearTimeout(timer.current), []);
+	// The step is under the sheet on a phone: lift the sheet to show it.
+	const jumpOut = useCallback(
+		(n: number) => {
+			if (phone) setPanel(false);
+			jump(n);
+		},
+		[phone, jump],
+	);
+	const onPreview = useCallback((open: boolean) => {
+		if (open) previewFrom.current = null;
+		setPreview(open);
+	}, []);
 
 	// `#step-N` and a report's `?call=` open and ring their step once it has arrived.
 	const wanted =
@@ -375,12 +394,12 @@ export function RunPage() {
 					at={inv.completedAt ?? null}
 					targetOf={targetOf}
 					onOpenFile={openFile}
-					onJump={jump}
+					onJump={jumpOut}
 					preview={preview}
-					onPreview={setPreview}
+					onPreview={onPreview}
 				/>
 			) : null,
-		[report, inv, targetOf, openFile, jump, preview],
+		[report, inv, targetOf, openFile, jumpOut, preview, onPreview],
 	);
 	const fidelity =
 		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
@@ -601,15 +620,7 @@ export function RunPage() {
 					})}
 					flaggedCount={flaggedCount}
 					steps={steps}
-					onJump={
-						// The step is under the sheet on a phone: lift it to show the step.
-						phone
-							? (n) => {
-									setPanel(false);
-									jump(n);
-								}
-							: jump
-					}
+					onJump={jumpOut}
 					files={{
 						runId: inv.id,
 						viewing,
@@ -625,7 +636,10 @@ export function RunPage() {
 						codeHost:
 							viewing && viewingRepo ? codeHostUrl(viewingRepo, viewing) : null,
 						stepFile: fileOfStep,
-						onOpenHypotheses: () => setPreview(true),
+						onOpenHypotheses: (from) => {
+							previewFrom.current = from;
+							setPreview(true);
+						},
 					}}
 				/>
 			)}
