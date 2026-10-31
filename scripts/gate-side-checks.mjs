@@ -597,6 +597,7 @@ async function checkUpdate() {
 		const notReady = up(sb, { tty: true, env });
 		await notReady.ready();
 		await sleep(2000);
+		for (let i = 0; i < 40 && !existsSync(cache); i++) await sleep(250);
 		await notReady.stop();
 		const held = JSON.parse(readFileSync(cache, "utf8"));
 		assert(
