@@ -7,7 +7,10 @@
  * Only HTTP is offered, since every agent that honours the field takes it.
  */
 import { randomBytes } from "node:crypto";
-import type { McpCapabilities, McpServer } from "@agentclientprotocol/sdk";
+import type {
+	McpCapabilities,
+	McpServer,
+} from "@agentclientprotocol/sdk/unstable";
 
 /** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
 export interface GatewayEntry {
