@@ -13,6 +13,7 @@ import {
 	X,
 } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { PhoneSheet } from "@/components/shared/PhoneSheet";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
@@ -146,12 +147,15 @@ export function RunDetailsPanel({
 			),
 		},
 	];
-	return (
+	const aside = (
 		<aside
 			id="run-details"
 			aria-label={title}
 			onKeyDown={onKeyDown}
-			className="flex h-full w-[380px] shrink-0 flex-col bg-surface-1 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
+			className={cn(
+				"relative flex flex-col bg-surface-1 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
+				files.phone ? "min-h-0 w-full flex-1" : "h-full w-[380px] shrink-0",
+			)}
 			data-testid="run-details"
 		>
 			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
@@ -317,6 +321,7 @@ export function RunDetailsPanel({
 			</TabsPrimitive.Root>
 		</aside>
 	);
+	return <PhoneSheet phone={files.phone}>{aside}</PhoneSheet>;
 }
 
 const clockFmt = new Intl.DateTimeFormat(undefined, {

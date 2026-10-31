@@ -204,8 +204,12 @@ export function RunPage() {
 		const from = origin.current;
 		if (!from) return;
 		setTab(from.tab);
+		// On a phone the details are a sheet over the page: Back to a control under it lifts the sheet.
+		const panelEl = document.getElementById("run-details");
+		if (phone && !panelEl?.contains(document.getElementById(from.id)))
+			setPanel(false);
 		focusLater(from.id);
-	}, [focusLater]);
+	}, [focusLater, phone]);
 	const fileOfStep = useCallback(
 		(s: RunStep) => stepFile(s, workspace),
 		[workspace],

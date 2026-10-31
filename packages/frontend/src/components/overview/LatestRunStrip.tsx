@@ -69,10 +69,10 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 		: "";
 	return (
 		<div
-			className="relative flex h-9 min-w-0 shrink-0 items-center gap-3 px-4 whitespace-nowrap after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline"
+			className="relative flex h-9 min-w-0 shrink-0 items-center gap-2 px-4 whitespace-nowrap md:gap-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline"
 			data-testid="latest-run-strip"
 		>
-			<span className="shrink-0 text-text-3">Latest run</span>
+			<span className="shrink-0 text-text-3 max-md:hidden">Latest run</span>
 			{state ? (
 				<RunDot state={state} waiting={waiting} className="size-[7px]" />
 			) : (
@@ -86,7 +86,7 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 					to="/incidents/$id/conversation"
 					params={{ id: incident.id }}
 					search={{ investigation: latest.id }}
-					className="shrink-0 font-medium hover:underline"
+					className="min-w-0 truncate font-medium hover:underline md:shrink-0"
 					data-testid="latest-run-link"
 				>
 					{name}{" "}
@@ -103,7 +103,7 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 			) : null}
 			<span
 				className={cn(
-					"min-w-[100px] shrink truncate",
+					"min-w-0 shrink truncate md:min-w-[100px]",
 					waiting
 						? "text-warn"
 						: live
