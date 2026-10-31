@@ -48,7 +48,8 @@ function git(args: string[], cwd: string): string {
 	return execFileSync("git", args, { cwd, env: FIXTURE_GIT_ENV }).toString().trim();
 }
 
-describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
+// Each scenario runs real git clones against a local server; a loaded macOS runner passes 5 s (#959).
+describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", { timeout: 30_000 }, () => {
 	let server: GitHttpServer;
 	let prisma: InstanceType<typeof PrismaService>;
 	let credentialsService: InstanceType<typeof CredentialsService>;
