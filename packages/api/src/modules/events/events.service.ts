@@ -136,6 +136,31 @@ export class EventsService {
 	}
 
 	/**
+	 * The newest event of `eventType` for `sourceEventId` that no alert has
+	 * claimed yet, received since `receivedSince`, whose `eventTime` is at or
+	 * after `eventTimeFrom`.
+	 */
+	async findUnclaimed(where: {
+		source: string;
+		sourceEventId: string;
+		eventType: string;
+		eventTimeFrom: Date;
+		receivedSince: Date;
+	}): Promise<Event | null> {
+		return this.prisma.event.findFirst({
+			where: {
+				source: where.source,
+				sourceEventId: where.sourceEventId,
+				eventType: where.eventType,
+				alertId: null,
+				eventTime: { gte: where.eventTimeFrom },
+				receivedAt: { gte: where.receivedSince },
+			},
+			orderBy: { receivedAt: "desc" },
+		});
+	}
+
+	/**
 	 * Find unprocessed events
 	 */
 	async findUnprocessed(limit: number = 100): Promise<Event[]> {

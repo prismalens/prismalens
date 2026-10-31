@@ -5,7 +5,7 @@ import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import { httpUrlOrNull, type PrometheusAlert } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
-import { Severity } from "../../shared/enums/index.js";
+import { AlertStatus, Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import type { Alert } from "../alerts/alerts.service.js";
 import { AlertsService } from "../alerts/alerts.service.js";
@@ -115,6 +115,15 @@ function capLabels(
  */
 export const EARLY_RESOLUTION_TTL_MS = 15 * 60_000;
 
+/** The Event row that remembers such a resolution until its firing claims it. */
+export const EARLY_RESOLUTION_EVENT = "alert-resolved-early";
+
+/** The Alertmanager episode a resolved delivery closes. */
+export interface ResolvedEpisode {
+	startsAt: string;
+	endsAt?: string;
+}
+
 /** What a lookup by idempotency key says the caller should do next. */
 type IdempotentDelivery =
 	/** Already fully processed — return the cached result verbatim. */
@@ -127,8 +136,6 @@ type IdempotentDelivery =
 @Injectable()
 export class WebhooksService {
 	private readonly logger = new Logger(WebhooksService.name);
-	/** `fingerprint|startsAt` of resolutions that arrived before their firing, with expiry. */
-	private readonly earlyResolutions = new Map<string, number>();
 
 	constructor(
 		@Inject(forwardRef(() => AlertsService))
@@ -225,13 +232,13 @@ export class WebhooksService {
 	 * resolution to the dedup layer as if it were a firing, and #231's flap
 	 * window would reopen the very alert being resolved (#593).
 	 *
-	 * An unknown fingerprint resolves nothing: we never saw it fire, so there is
-	 * no episode to close.
+	 * A resolution for an episode we never saw fire resolves nothing yet: it is
+	 * remembered for that episode's late firing to claim (#633 edge 10).
 	 */
 	async resolvePrometheusAlert(
 		fingerprint: string | undefined,
 		idempotencyKey?: string,
-		startsAt?: string,
+		episode?: ResolvedEpisode,
 		/** Set when no resolved delivery exists and prismalens inferred it (#605). */
 		inferred?: { source: string; note: StatusNote },
 	): Promise<Alert | null> {
@@ -253,10 +260,10 @@ export class WebhooksService {
 		// leaving the group stuck triggered (#595).
 		const existing =
 			await this.alertsService.findAlertBySourceAlert(fingerprint);
-		if (!existing) {
-			if (startsAt) this.rememberEarlyResolution(fingerprint, startsAt);
+		if (!existing || startedAfterResolved(existing, episode)) {
+			if (episode) await this.rememberEarlyResolution(fingerprint, episode);
 			this.logger.log(
-				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; remembered in case its firing arrives late`,
+				`Prometheus resolved delivery for an episode of ${fingerprint} not yet seen firing; remembered in case its firing arrives late`,
 			);
 			return null;
 		}
@@ -371,38 +378,41 @@ export class WebhooksService {
 		return resolved;
 	}
 
-	private rememberEarlyResolution(fingerprint: string, startsAt: string): void {
-		const now = Date.now();
-		for (const [key, expires] of this.earlyResolutions) {
-			if (expires <= now) this.earlyResolutions.delete(key);
-		}
-		this.earlyResolutions.set(
-			`${fingerprint}|${startsAt}`,
-			now + EARLY_RESOLUTION_TTL_MS,
-		);
+	private async rememberEarlyResolution(
+		fingerprint: string,
+		episode: ResolvedEpisode,
+	): Promise<void> {
+		if (await this.findEarlyResolution(fingerprint, episode.startsAt)) return;
+		const endsAt = Date.parse(episode.endsAt ?? "");
+		await this.eventsService.create({
+			source: "prometheus",
+			sourceEventId: fingerprint,
+			eventType: EARLY_RESOLUTION_EVENT,
+			payload: { status: "resolved", fingerprint, ...episode },
+			eventTime: new Date(
+				Number.isNaN(endsAt) ? Date.now() : endsAt,
+			).toISOString(),
+		});
 	}
 
 	/**
-	 * True while a firing's own episode (same fingerprint and `startsAt`) has
-	 * already been resolved. A new episode has a later `startsAt` and is
-	 * untouched. This only READS: the record is dropped by
-	 * {@link clearEarlyResolution} once the resolution actually happened, so a
-	 * failed or retried delivery can still be resolved (#664 review).
+	 * The unclaimed early resolution that ended at or after `startsAt`: matched on
+	 * the end, not an equal `startsAt`, so any firing begun before it ended is
+	 * covered, and one begun after is a new episode left alone.
 	 */
-	hasEarlyResolution(fingerprint: string, startsAt: string): boolean {
-		const key = `${fingerprint}|${startsAt}`;
-		const expires = this.earlyResolutions.get(key);
-		if (expires === undefined) return false;
-		if (expires <= Date.now()) {
-			this.earlyResolutions.delete(key);
-			return false;
-		}
-		return true;
-	}
-
-	/** Forget an early resolution that has been applied. */
-	clearEarlyResolution(fingerprint: string, startsAt: string): void {
-		this.earlyResolutions.delete(`${fingerprint}|${startsAt}`);
+	findEarlyResolution(
+		fingerprint: string,
+		startsAt: string,
+	): Promise<Event | null> {
+		const started = new Date(startsAt);
+		if (Number.isNaN(started.getTime())) return Promise.resolve(null);
+		return this.eventsService.findUnclaimed({
+			source: "prometheus",
+			sourceEventId: fingerprint,
+			eventType: EARLY_RESOLUTION_EVENT,
+			eventTimeFrom: started,
+			receivedSince: new Date(Date.now() - EARLY_RESOLUTION_TTL_MS),
+		});
 	}
 
 	/**
@@ -424,7 +434,7 @@ export class WebhooksService {
 			const resolved = await this.resolvePrometheusAlert(
 				alert.fingerprint,
 				opts.idempotencyKey,
-				alert.startsAt,
+				{ startsAt: alert.startsAt, endsAt: alert.endsAt },
 			);
 			return { alertId: resolved?.id ?? null, isNew: false };
 		}
@@ -444,12 +454,10 @@ export class WebhooksService {
 		};
 		// Decided BEFORE the alert is created, because it decides
 		// whether creating it may dispatch a run (#664 review).
-		// `hasEarlyResolution` only reads, so asking early is safe.
-		const resolutionAlreadyArrived = Boolean(
-			alert.fingerprint &&
-				this.hasEarlyResolution(alert.fingerprint, alert.startsAt),
-		);
-		const autoInvestigate = opts.autoInvestigate && !resolutionAlreadyArrived;
+		const earlyResolution = alert.fingerprint
+			? await this.findEarlyResolution(alert.fingerprint, alert.startsAt)
+			: null;
+		const autoInvestigate = opts.autoInvestigate && !earlyResolution;
 		const result = await this.processGenericWebhook(
 			genericDto,
 			opts.idempotencyKey,
@@ -459,10 +467,10 @@ export class WebhooksService {
 			{ autoInvestigate, eventSource: opts.source },
 		);
 
-		// Its resolution already came, out of order (#633 edge 10).
-		// The record is cleared only once the alert is really
-		// resolved, so a failure here leaves it for the retry.
-		if (alert.fingerprint && resolutionAlreadyArrived) {
+		// Its resolution already came, out of order (#633 edge 10). The record
+		// is claimed only once the alert is really resolved, so a failure here
+		// leaves it for the retry.
+		if (alert.fingerprint && earlyResolution) {
 			const resolved = await this.resolvePrometheusAlert(
 				alert.fingerprint,
 				opts.idempotencyKey === undefined
@@ -470,7 +478,7 @@ export class WebhooksService {
 					: `${opts.idempotencyKey}:resolved`,
 			);
 			if (resolved) {
-				this.clearEarlyResolution(alert.fingerprint, alert.startsAt);
+				await this.eventsService.markProcessed(earlyResolution.id, resolved.id);
 			}
 		}
 
@@ -650,4 +658,20 @@ export class WebhooksService {
 				: `render-${dto.service?.id ?? "unknown"}`,
 		};
 	}
+}
+
+/**
+ * The resolved delivery is for an episode that began after the stored alert
+ * resolved: a later episode whose firing has not arrived, not a retry.
+ */
+function startedAfterResolved(
+	alert: Alert,
+	episode: ResolvedEpisode | undefined,
+): boolean {
+	return (
+		alert.status === AlertStatus.resolved &&
+		!!alert.resolvedAt &&
+		!!episode &&
+		Date.parse(episode.startsAt) > alert.resolvedAt.getTime()
+	);
 }
