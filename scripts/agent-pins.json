@@ -1,8 +1,8 @@
 {
 	"pins": {
-		"opencode-ai": "1.18.30",
-		"@anthropic-ai/claude-code": "2.1.303",
-		"@openai/codex": "0.156.1",
+		"opencode-ai": "1.19.5",
+		"@anthropic-ai/claude-code": "2.1.312",
+		"@openai/codex": "0.165.0",
 		"@google/gemini-cli": "0.65.0",
 		"deepagents-code": "0.2.1"
 	}
