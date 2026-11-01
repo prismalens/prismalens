@@ -3,6 +3,7 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import type { Schedule, ScheduleInput } from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelChip, useAgentChoice } from "@/components/agent/AgentPicker";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ import {
 	formOf,
 	type Preset,
 	recurrenceOf,
+	serviceChoice,
 	type WhenForm,
 } from "./schedule-form";
 import { nextRunsText } from "./schedule-time";
@@ -101,7 +103,9 @@ export function ScheduleDialog({
 	canSetHostZone: boolean;
 }) {
 	const agents = useAgentChoice();
-	const services = useServices({ limit: 100 }).data?.data ?? [];
+	const listed = useServices({ limit: 100 }).data?.data;
+	const services = listed ?? [];
+	const choice = editing ? "pick" : serviceChoice(listed);
 	const create = useCreateSchedule();
 	const update = useUpdateSchedule();
 	const [name, setName] = useState("");
@@ -219,18 +223,31 @@ export function ScheduleDialog({
 								<Label className={label} htmlFor="sch-service">
 									Check this service
 								</Label>
-								<Select value={serviceId} onValueChange={setServiceId}>
-									<SelectTrigger id="sch-service">
-										<SelectValue placeholder="Pick a service" />
-									</SelectTrigger>
-									<SelectContent>
-										{services.map((s) => (
-											<SelectItem key={s.id} value={s.id}>
-												{s.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								{choice === "none" ? (
+									<p className="flex min-h-9 flex-wrap items-center gap-x-2.5 text-body text-text-2 [&_a]:text-accent [&_a]:hover:underline">
+										<span>No services yet.</span>
+										<Link
+											to="/services"
+											search={{ add: "1" }}
+											onClick={() => onOpenChange(false)}
+										>
+											Add a service
+										</Link>
+									</p>
+								) : (
+									<Select value={serviceId} onValueChange={setServiceId}>
+										<SelectTrigger id="sch-service">
+											<SelectValue placeholder="Pick a service" />
+										</SelectTrigger>
+										<SelectContent>
+											{services.map((s) => (
+												<SelectItem key={s.id} value={s.id}>
+													{s.name}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								)}
 							</div>
 							<div>
 								<Label className={label} htmlFor="sch-runbook">

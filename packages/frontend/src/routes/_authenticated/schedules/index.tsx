@@ -69,17 +69,11 @@ function SchedulesPage() {
 						/>
 					) : data && data.schedules.length === 0 ? (
 						<Empty
+							testId="schedules-empty"
 							text={
 								canEdit
 									? "No schedules yet. A schedule checks a service on its own, at the times you pick."
 									: "No schedules yet."
-							}
-							action={
-								canEdit ? (
-									<Button variant="secondary" onClick={() => setCreating(true)}>
-										New schedule
-									</Button>
-								) : undefined
 							}
 						/>
 					) : (
