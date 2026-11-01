@@ -6,7 +6,8 @@
 // picked by FAKE_ACP_MODE: "ok" (valid report first try), "retry" (invalid then
 // valid), "never" (never valid), "crash" (exit mid-turn), "nowrite" (no tool
 // runs), "hang" (never answers the handshake — a doctor-probe timeout),
-// "unauthenticated" (exits immediately with a stderr line), "print-env" (exits
+// "unauthenticated" (exits immediately with a stderr line), "exit-stderr" (exits 1 printing
+// FAKE_STDERR), "print-env" (exits
 // naming which of FAKE_ENV_PROBE's comma-separated vars it received), "tolerant"
 // (emits unknown update kinds, unknown tool kinds, extra fields, and unknown stopReason),
 // "steerable" (like "ok"; with FAKE_WAIT_CANCEL its first turn waits for session/cancel;
@@ -19,6 +20,7 @@
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
 // FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_SESSION_DELAY_MS delays the session/new answer in any mode.
 // FAKE_ADDITIONAL_DIRS=1 advertises sessionCapabilities.additionalDirectories.
 // FAKE_MCP_HTTP=1 advertises mcpCapabilities.http, so a run offers it the gateway.
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
@@ -57,6 +59,10 @@ const profile = process.env.FAKE_PROFILE ?? "";
 
 if (mode === "unauthenticated") {
 	process.stderr.write("Error: not logged in\n");
+	process.exit(1);
+}
+if (mode === "exit-stderr") {
+	process.stderr.write(`${process.env.FAKE_STDERR ?? ""}\n`);
 	process.exit(1);
 }
 if (mode === "print-env") {
@@ -553,6 +559,10 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 	} else if (msg.method === "session/new" && mode === "slow-init") {
 		// never answered
 	} else if (msg.method === "session/new") {
+		if (process.env.FAKE_SESSION_DELAY_MS)
+			await new Promise((r) =>
+				setTimeout(r, Number(process.env.FAKE_SESSION_DELAY_MS)),
+			);
 		if (msg.params?.cwd !== cwd)
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);
 		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.

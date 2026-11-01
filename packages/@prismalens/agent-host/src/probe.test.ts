@@ -4,7 +4,8 @@
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { setTimeout as realSleep } from "node:timers/promises";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { type ProbeInput, probeAgent } from "./probe.js";
 
 // The engine's fake ACP agent, used read-only; FAKE_ACP_MODE picks its behaviour.
@@ -22,7 +23,6 @@ function probe(env: Record<string, string>, over: Partial<ProbeInput> = {}) {
 		args: [FAKE],
 		cwd,
 		env: { PATH: process.env.PATH ?? "", ...env },
-		timeoutMs: 5_000,
 		...over,
 	});
 }
@@ -70,9 +70,9 @@ describe("probeAgent", () => {
 	});
 
 	it("no-answer: a handshake that never comes", async () => {
-		const r = await probe({ FAKE_ACP_MODE: "hang" }, { timeoutMs: 800 });
+		const r = await probe({ FAKE_ACP_MODE: "hang" }, { budgets: { initialize: 800 } });
 		expect(r.outcome).toBe("no-answer");
-		expect(r.detail).toBe("no answer in 1s");
+		expect(r.detail).toBe("initialize: no answer in 1s");
 	});
 
 	it("failed-to-start: an agent that exits, and a binary that is not there", async () => {
@@ -91,5 +91,63 @@ describe("probeAgent", () => {
 		expect(out.raw.session?.sessionId).toBeTruthy();
 		const silent = await probe({ FAKE_ACP_MODE: "ok", FAKE_AUTH_STATUS: "silent" }, { authStatusWaitMs: 200 });
 		expect(silent.authStatus).toBeNull();
+	});
+});
+
+// The default budgets on a fake clock; the agent's own replies still take real time (#1013).
+describe("probeAgent budgets: 10 s to initialize, then 60 s for session/new", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+	const fakeClock = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+	// Long enough for the fake agent to start and answer initialize on a loaded runner.
+	const initialized = () => realSleep(4_000);
+
+	it("ready: session/new answered after 15 s", async () => {
+		fakeClock();
+		const running = probe({ FAKE_ACP_MODE: "ok", FAKE_SESSION_DELAY_MS: "6000" });
+		await initialized();
+		await vi.advanceTimersByTimeAsync(15_000);
+		const r = await running;
+		expect(r.outcome).toBe("answers-acp");
+	});
+
+	it("silent initialize: no answer in 10 s", async () => {
+		fakeClock();
+		const running = probe({ FAKE_ACP_MODE: "hang" });
+		await vi.advanceTimersByTimeAsync(10_000);
+		const r = await running;
+		expect(r).toMatchObject({ outcome: "no-answer", detail: "initialize: no answer in 10s" });
+	});
+
+	it("silent session/new: no answer in 60 s, after initialize answered", async () => {
+		fakeClock();
+		const running = probe({ FAKE_ACP_MODE: "slow-init" });
+		await initialized();
+		await vi.advanceTimersByTimeAsync(60_000);
+		const r = await running;
+		expect(r).toMatchObject({ outcome: "no-answer", detail: "session/new: no answer in 60s" });
+		expect(r.agentInfo?.name).toBe("fake");
+	});
+});
+
+describe("probeAgent: sign-in-needed only on an auth signal (#1013)", () => {
+	const exits = (stderr: string) => probe({ FAKE_ACP_MODE: "exit-stderr", FAKE_STDERR: stderr });
+
+	it("an agent that exits with ACP's auth error", async () => {
+		const r = await exits('Error: {"code":-32000,"message":"Authentication required"}');
+		expect(r).toMatchObject({ outcome: "sign-in-needed", authRequired: true });
+	});
+
+	it("an agent that exits naming a missing provider key", async () => {
+		const r = await exits("Internal error: CODEX_API_KEY or OPENAI_API_KEY is not set");
+		expect(r).toMatchObject({ outcome: "sign-in-needed", authRequired: true });
+		expect(r.detail).toContain("CODEX_API_KEY");
+	});
+
+	it("an agent that exits on an unrecognized flag failed to start", async () => {
+		const r = await exits("ERROR Unrecognized flag: --dir in command opencode acp");
+		expect(r.outcome).toBe("failed-to-start");
+		expect(r.detail).toContain("Unrecognized flag");
 	});
 });

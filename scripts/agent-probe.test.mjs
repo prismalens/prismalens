@@ -2,56 +2,79 @@
 // Copyright 2026 Sumit Patel
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { after, test } from "node:test";
-import { ROWS, speak, summarize } from "./agent-probe.mjs";
-import { FAKE_AGENT_PATH } from "./fakes/fake-acp-agent.mjs";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+import { channelPackage, plan, verdict } from "./agent-probe.mjs";
 
-const cwd = mkdtempSync(join(tmpdir(), "agent-probe-"));
-after(() => rmSync(cwd, { recursive: true, force: true }));
+const REGISTRY = {
+	opencode: { id: "opencode", channel: { npm: "opencode-ai" } },
+	"claude-code": {
+		id: "claude-code",
+		adapterPackage: "@agentclientprotocol/claude-agent-acp",
+		channel: { npm: "@anthropic-ai/claude-code" },
+	},
+	deepagents: {
+		id: "deepagents",
+		channel: { uv: ["deepagents-code", "deepagents-acp"] },
+	},
+	local: { id: "local" },
+};
 
-test("every agent row the registry lists has a probe entry", () => {
-	assert.deepEqual(
-		ROWS.map((r) => r.id),
-		["opencode", "claude-code", "codex", "gemini", "deepagents"],
+test("the probe declares no binary, argv or install command of its own (#1013)", () => {
+	const source = readFileSync(
+		new URL("./agent-probe.mjs", import.meta.url),
+		"utf8",
 	);
+	assert.doesNotMatch(source, /\b(bin|args|npm|pip):\s*[["]/);
+	assert.match(source, /host\.detectAgent\(/);
+	assert.match(source, /host\.planLaunch\(/);
+	assert.match(source, /host\.probeAgent\(/);
 });
 
-test("an agent that answers initialize and session/new reads as ok, without any model", async () => {
-	const answer = await speak(
-		{ command: process.execPath, env: {} },
-		[FAKE_AGENT_PATH, "--session", "success"],
-		cwd,
-	);
-	const summary = summarize(answer);
-	assert.equal(summary.ok, true, summary.text);
-	assert.match(
-		summary.text,
-		/protocol 1, fake-acp-agent|protocol 1, claude-agent-acp/,
-	);
-	assert.match(summary.text, /session\/new ok, 6 modes/);
-});
-
-test("an agent that cannot start session/new is reported with its own reason", () => {
-	const summary = summarize({
-		initialize: {
-			result: { protocolVersion: 1, agentInfo: { name: "x", version: "9" } },
+test("each row runs at its channel's latest, and again at its pin when that is older", () => {
+	const latest = {
+		"opencode-ai": "2.0.0",
+		"@agentclientprotocol/claude-agent-acp": "0.99.0",
+		"@anthropic-ai/claude-code": "2.2.0",
+		"deepagents-code": "0.2.1",
+	};
+	const pins = { "opencode-ai": "1.19.5", "deepagents-code": "0.2.1" };
+	assert.deepEqual(plan(REGISTRY, pins, latest), [
+		{ id: "opencode", version: "2.0.0", label: "latest" },
+		{ id: "opencode", version: "1.19.5", label: "pin" },
+		{
+			id: "claude-code",
+			version: "0.99.0",
+			companion: "2.2.0",
+			label: "latest",
 		},
-		session: { error: { message: "Gemini API key is missing" } },
-	});
-	assert.equal(summary.ok, false);
-	assert.match(summary.text, /session\/new failed: Gemini API key is missing/);
+		{ id: "deepagents", version: "0.2.1", label: "latest, pin" },
+	]);
+	assert.equal(channelPackage(REGISTRY.deepagents.channel), "deepagents-code");
 });
 
-test("an agent that never answers initialize is reported, not thrown", () => {
-	assert.equal(summarize({ initialize: null, session: null }).ok, false);
+test("an agent that answered, or asked for a sign-in, started; anything else fails", () => {
+	const base = {
+		agentInfo: { name: "opencode", version: "1.19.5" },
+		protocolVersion: 1,
+		modes: null,
+		detail: null,
+	};
+	assert.equal(verdict({ ...base, outcome: "answers-acp" }).ok, true);
+	assert.equal(verdict({ ...base, outcome: "sign-in-needed" }).ok, true);
+	const flag = verdict({
+		...base,
+		outcome: "failed-to-start",
+		detail: "ERROR Unrecognized flag: --cwd",
+	});
+	assert.equal(flag.ok, false);
+	assert.match(flag.text, /failed-to-start: ERROR Unrecognized flag/);
 	assert.match(
-		summarize({
-			initialize: { error: { message: "exited early" } },
-			session: null,
+		verdict({
+			...base,
+			outcome: "no-answer",
+			detail: "session/new: no answer in 60s",
 		}).text,
-		/initialize failed: exited early/,
+		/session\/new/,
 	);
 });

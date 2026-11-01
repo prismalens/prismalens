@@ -254,7 +254,8 @@ describe("launch files", () => {
 		expect(json.share).toBe("disabled");
 		expect(json.permission.edit).toEqual({ "*": "allow" });
 		expect(p.env.OPENCODE_CONFIG_DIR).toBe("/home/u/my-opencode");
-		expect(p.args).toEqual(["acp", "--cwd", "/w"]);
+		expect(p.args).toEqual(["acp"]);
+		expect(p.cwd).toBe("/w");
 		expect(p.level?.mode).toEqual({ id: "build", name: "Build" });
 	});
 

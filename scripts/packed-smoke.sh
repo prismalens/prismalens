@@ -167,7 +167,7 @@ echo "$VERDICT_OUT" | grep -q "opencode|not-installed|" || fail "opencode status
 $VERDICT_OUT"
 echo "$VERDICT_OUT" | grep -q "claude-code|not-installed|" || fail "claude-code status on a no-agent machine is not 'not-installed':
 $VERDICT_OUT"
-echo "$VERDICT_OUT" | grep -qi "opencode.ai/install" || fail "status does not carry the install hint:
+echo "$VERDICT_OUT" | grep -q "npm i -g opencode-ai" || fail "status does not carry the install hint:
 $VERDICT_OUT"
 echo "    $(echo "$VERDICT_OUT" | head -1)"
 

@@ -1,21 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	rmSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import {
 	answeredDetail,
 	classify,
 	probeHarness,
+	sweepStaleRunDirs,
 	versionOf,
 } from "./harness-doctor.js";
 
+// This file's own os.tmpdir(), so another file's check in flight can't show up in it.
+const TMP_VARS = ["TMPDIR", "TEMP", "TMP"] as const;
+const savedTmp = TMP_VARS.map((k) => process.env[k]);
+const ownTmp = mkdtempSync(join(tmpdir(), "engine-doctor-tmp-"));
+for (const k of TMP_VARS) process.env[k] = ownTmp;
+const doctorDirs = () => readdirSync(ownTmp).filter((n) => n.startsWith("pl-doctor-"));
+
 afterEach(() => {
 	vi.unstubAllEnvs();
+	expect(doctorDirs()).toEqual([]);
+});
+
+afterAll(() => {
+	TMP_VARS.forEach((k, i) => {
+		const v = savedTmp[i];
+		if (v === undefined) delete process.env[k];
+		else process.env[k] = v;
+	});
+	rmSync(ownTmp, { recursive: true, force: true });
 });
 
 const FAKE = join(
@@ -140,10 +166,14 @@ describe("probeHarness", () => {
 	it("reads the companion CLI's version when the agent needs a sign-in (w8-8)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "pl-companion-"));
 		try {
-			const cli = join(dir, "fake-cli");
-			writeFileSync(cli, '#!/bin/sh\necho "fake-cli 0.162.1"\n');
-			chmodSync(cli, 0o755);
-			vi.stubEnv("PATH", `${dir}:${process.env.PATH ?? ""}`);
+			if (process.platform === "win32")
+				writeFileSync(join(dir, "fake-cli.cmd"), "@echo fake-cli 0.162.1\r\n");
+			else {
+				const cli = join(dir, "fake-cli");
+				writeFileSync(cli, '#!/bin/sh\necho "fake-cli 0.162.1"\n');
+				chmodSync(cli, 0o755);
+			}
+			vi.stubEnv("PATH", `${dir}${delimiter}${process.env.PATH ?? ""}`);
 			const result = await probeHarness("codex", {
 				descriptor: {
 					...descriptor("auth-required"),
@@ -179,12 +209,12 @@ describe("probeHarness", () => {
 	it('says "no answer in Ns" when the harness never answers the handshake', async () => {
 		const result = await probeHarness("opencode", {
 			descriptor: descriptor("hang"),
-			timeoutMs: 300,
+			budgets: { initialize: 300 },
 		});
 		expect(result).toEqual({
 			id: "opencode",
 			outcome: "no-answer",
-			detail: "no answer in 1s",
+			detail: "initialize: no answer in 1s",
 			hard: false,
 		});
 	});
@@ -233,18 +263,43 @@ describe("probeHarness", () => {
 		expect(strict.detail).toMatch(/PRISMALENS_ENCRYPTION_KEY=unset/);
 	});
 
-	it("holds one deadline across initialize and session/new", async () => {
-		const started = Date.now();
+	it("gives session/new its own budget after initialize, and names the step that went silent (#1013)", async () => {
 		const result = await probeHarness("opencode", {
 			descriptor: {
 				...descriptor("slow-init"),
 				acpEnv: () => ({ FAKE_ACP_MODE: "slow-init", FAKE_INIT_DELAY_MS: "300" }),
 			},
-			timeoutMs: 400,
+			budgets: { initialize: 2_000, session: 400 },
 		});
-		expect(result.outcome).toBe("no-answer");
-		// Per-request timeouts would take about 300 + 400 ms.
-		expect(Date.now() - started).toBeLessThan(600);
+		expect(result).toMatchObject({ outcome: "no-answer", detail: "session/new: no answer in 1s" });
+	});
+
+	it("maps a missing provider key to sign-in needed, and an unknown flag to failed to start (#1013)", async () => {
+		const exits = (stderr: string) =>
+			probeHarness("opencode", {
+				descriptor: {
+					...descriptor("exit-stderr"),
+					acpEnv: () => ({ FAKE_ACP_MODE: "exit-stderr", FAKE_STDERR: stderr }),
+				},
+			});
+		expect((await exits("Error: OPENAI_API_KEY is not set")).outcome).toBe("sign-in-needed");
+		expect(await exits("ERROR Unrecognized flag: --cwd in command opencode acp")).toMatchObject({
+			outcome: "failed-to-start",
+			detail: expect.stringContaining("Unrecognized flag"),
+		});
+	});
+
+	it("leaves no run folder behind, and sweeps ones over a day old (#1013)", () => {
+		expect(doctorDirs()).toEqual([]);
+		const stale = join(ownTmp, "pl-doctor-stale");
+		const fresh = join(ownTmp, "pl-doctor-fresh");
+		mkdirSync(stale);
+		mkdirSync(fresh);
+		const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+		utimesSync(stale, twoDaysAgo, twoDaysAgo);
+		sweepStaleRunDirs(ownTmp);
+		expect(doctorDirs()).toEqual(["pl-doctor-fresh"]);
+		rmSync(fresh, { recursive: true });
 	});
 });
 
