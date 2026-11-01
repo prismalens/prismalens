@@ -112,7 +112,8 @@ export async function bindRun(
 	runId: string,
 	opts: {
 		serviceName?: string | null;
-		incidentId: string;
+		/** Null for a scheduled check with no incident (#979). */
+		incidentId: string | null;
 		/** A follow-up's recorded workspace path: its folder stays the run's even after the location changed. */
 		recorded?: string;
 	},
@@ -128,7 +129,9 @@ export async function bindRun(
 			existingRootOf(runId) ??
 			recordedRootOf(runId, opts.recorded) ??
 			rootOf(settings.location),
-		branch: `prismalens/${opts.incidentId}-${runId}`,
+		branch: opts.incidentId
+			? `prismalens/${opts.incidentId}-${runId}`
+			: `prismalens/${runId}`,
 	};
 	runs.set(runId, binding);
 	return binding;

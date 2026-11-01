@@ -28,12 +28,12 @@ import {
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
+import type { Request } from "express";
 import {
 	holdsRemoved,
 	shownRepoUrl,
 	UNSHOWN_REPO,
 } from "../../core/harness/git-credential.js";
-import type { Request } from "express";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";

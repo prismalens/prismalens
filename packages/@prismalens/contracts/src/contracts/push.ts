@@ -52,7 +52,7 @@ const AskStateSchema = z.object({
 	title: z.string().nullable(),
 	/** `approved` or `denied` when answered. */
 	outcome: z.string().nullable(),
-	incidentId: z.string(),
+	incidentId: z.string().nullable(),
 });
 export type AskState = z.infer<typeof AskStateSchema>;
 
