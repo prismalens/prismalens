@@ -263,6 +263,7 @@ export function RunPage() {
 		},
 		[phone, jump],
 	);
+	const previewOpener = useCallback(() => previewFrom.current, []);
 	const onPreview = useCallback((open: boolean) => {
 		if (open) previewFrom.current = null;
 		setPreview(open);
@@ -398,9 +399,19 @@ export function RunPage() {
 					onJump={jumpOut}
 					preview={preview}
 					onPreview={onPreview}
+					returnTo={previewOpener}
 				/>
 			) : null,
-		[report, inv, targetOf, openFile, jumpOut, preview, onPreview],
+		[
+			report,
+			inv,
+			targetOf,
+			openFile,
+			jumpOut,
+			preview,
+			onPreview,
+			previewOpener,
+		],
 	);
 	const fidelity =
 		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
@@ -704,10 +715,13 @@ function DetailsToggle({
 						data-testid="details-flag"
 					/>
 				)}
-				{flagged === 0 && warns.length > 0 && !open && (
+				{warns.length > 0 && !open && (
 					<span
 						aria-hidden
-						className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-warn"
+						className={cn(
+							"absolute top-[3px] size-[7px] rounded-full bg-warn",
+							flagged > 0 ? "right-[12px]" : "right-[3px]",
+						)}
 						data-testid="details-warn"
 					/>
 				)}
