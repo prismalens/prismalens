@@ -25,7 +25,10 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { useInvestigationReadiness } from "@/lib/api/hooks";
+import {
+	useInvestigationReadiness,
+	useResumeInvestigation,
+} from "@/lib/api/hooks";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
@@ -88,6 +91,7 @@ export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
 
 	const run = (incident: IncidentWithRelations, action: RowAction) => {
 		if (action.kind === "investigate") act.investigate(incident);
+		else if (action.kind === "resume") act.resume(incident, action.runId);
 		else if (action.kind === "resolve")
 			setPrompt({ kind: "resolve", incident });
 		else if (action.kind === "merge")
@@ -473,6 +477,7 @@ function useRowActions(
 	const close = useMutation(orpc.incidents.close.mutationOptions());
 	const merge = useMutation(orpc.incidents.merge.mutationOptions());
 	const cancel = useMutation(orpc.investigations.cancel.mutationOptions());
+	const resume = useResumeInvestigation();
 	const done = (id: string) => async () => {
 		await queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 		await queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
@@ -507,6 +512,17 @@ function useRowActions(
 				{
 					onSuccess: done(incident.id),
 					onError: fail(incident.id, "Investigation refused"),
+				},
+			);
+		},
+		/** Takes up the run a restart cut off, by its own id; never a new investigation (#1010). */
+		resume: (incident: IncidentWithRelations, runId: string) => {
+			setBusy((b) => ({ ...b, [incident.id]: "Resuming" }));
+			resume.mutate(
+				{ id: runId },
+				{
+					onSuccess: done(incident.id),
+					onError: fail(incident.id, "Run not resumed"),
 				},
 			);
 		},

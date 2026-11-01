@@ -1289,3 +1289,523 @@ describe("service checks with no incident never see each other (#979)", () => {
 		expect((await read(aOld.id)).status).not.toBe("pending");
 	});
 });
+
+describe("boot takes up the runs a restart cut off (#981)", () => {
+	const ask = { text: "why the pool?", mode: "queue" as const, restore: restoreDone };
+
+	function recovering(opts: { enabled?: boolean; contained?: boolean; previous?: { startedAt: Date; lastAliveAt: Date; stoppedCleanly: boolean } | null } = {}) {
+		const attach = vi.fn();
+		const service = new DispatchService(
+			fakeBus() as never,
+			{ attach } as never,
+			investigations,
+			{ findById: vi.fn(async () => null) } as never,
+			timeline as never,
+			{
+				resolveSelection: async (asked: { harness?: string }) => ({ runnable: true, harness: asked.harness ?? "opencode", auto: false }),
+				checkedOutcome: () => null,
+				getSettings: vi.fn(async () => ({})),
+				effectiveChoice: vi.fn(async () => ({ accessLevel: "full" })),
+				resumeAfterRestart: vi.fn(async () => opts.enabled ?? true),
+			} as never,
+			{} as never,
+			prisma,
+			{} as never,
+			{} as never,
+			{} as never,
+			{ isEnabled: vi.fn(async () => true), capture: vi.fn(async () => {}), captureFinished: vi.fn(async () => {}) } as never,
+			{ deliver: vi.fn(async () => {}) } as never,
+			undefined,
+			undefined,
+			undefined,
+			{
+				lastRestart: () => ({
+					bootedAt: new Date(),
+					previous:
+						opts.previous === undefined
+							? { startedAt: new Date(Date.now() - 3_600_000), lastAliveAt: new Date(Date.now() - 22 * 60_000), stoppedCleanly: false }
+							: opts.previous,
+				}),
+			} as never,
+		);
+		vi.spyOn(service["dispatcher"], "tick").mockResolvedValue(undefined);
+		vi.spyOn(service["dispatcher"], "start").mockImplementation(() => {});
+		// The receipt rule has its own tests; here the old agent is gone unless a test says otherwise.
+		vi.spyOn(service, "previousGone").mockResolvedValue(opts.contained ?? true);
+		return { service, attach };
+	}
+
+	async function boot(opts?: Parameters<typeof recovering>[0]) {
+		const { service } = recovering(opts);
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+		return service;
+	}
+
+	const payloadOf = async (id: string) =>
+		JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: id } })).payload) as InvestigationJobData;
+
+	async function event(investigationId: string, seq: number, body: Record<string, unknown>, at = new Date()) {
+		await prisma.investigationEvent.create({
+			data: { investigationId, seq, branchId: "run", event: JSON.stringify(body), createdAt: at },
+		});
+	}
+
+	const auto = (attempt: number) => ({
+		attempt,
+		by: "auto" as const,
+		stoppedAt: new Date().toISOString(),
+		lastActivityAt: new Date().toISOString(),
+	});
+	const recoveryOf = (attempt: number) => ({
+		text: "PrismaLens restarted.",
+		mode: "queue" as const,
+		kind: "continue" as const,
+		restore: { status: "failed" as const, completedAt: null, error: RESTART_REASON },
+		restart: auto(attempt),
+	});
+
+	it("a first run cut off mid-work is re-armed as the same turn, row and job in one go, after the catch-up delay", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, { accessLevel: "supervised" }, "running");
+		const before = Date.now();
+
+		const service = await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted", liveTurn: "report", error: null });
+		const j = await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } });
+		expect(j.status).toBe("pending");
+		expect(j.runAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
+		const p = await payloadOf(row.id);
+		expect(p.accessLevel).toBe("supervised");
+		expect(p.resume).toMatchObject({
+			kind: "continue",
+			mode: "queue",
+			to: { harness: "opencode" },
+			restore: { status: "failed", error: RESTART_REASON },
+			restart: { attempt: 1, by: "auto" },
+		});
+		const summary = await service.restartSummary();
+		expect(summary?.resumed.find((r) => r.investigationId === row.id)).toMatchObject({ incidentNumber: inc.number, title: inc.title });
+	});
+
+	it("a crash's stop is no earlier than the run's last event, so the last minute is not called the gap", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		const heartbeat = new Date(Date.now() - 22 * 60_000);
+		const lastEvent = new Date(heartbeat.getTime() + 40_000);
+		await event(row.id, 0, { kind: "agent_step", text: "reading", toolCalls: [] }, lastEvent);
+
+		await boot({ previous: { startedAt: new Date(Date.now() - 3_600_000), lastAliveAt: heartbeat, stoppedCleanly: false } });
+
+		expect((await payloadOf(row.id)).resume?.restart).toMatchObject({
+			stoppedAt: lastEvent.toISOString(),
+			lastActivityAt: lastEvent.toISOString(),
+		});
+	});
+
+	it("wakes the dispatch loop once the catch-up delay is over, since the loop has no poll timer", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		const timers = vi.spyOn(globalThis, "setTimeout");
+		const { service } = recovering();
+
+		await service.onModuleInit();
+		const wake = timers.mock.calls.find(([, ms]) => (ms ?? 0) > 30_000 && (ms ?? 0) <= 35_000);
+		timers.mockRestore();
+		await service.onApplicationShutdown();
+
+		expect(wake).toBeDefined();
+		const tick = vi.mocked(service["dispatcher"].tick);
+		tick.mockClear();
+		(wake?.[0] as () => void)();
+		expect(tick).toHaveBeenCalledTimes(1);
+	});
+
+	it("a scheduled check with no incident is named in the summary with a null incident, not an empty id", async () => {
+		const row = await prisma.investigation.create({
+			data: { incidentId: null, scheduleId: "sch-a", triggerType: "scheduled", status: "running", liveTurn: "report", harness: "opencode", acpSessionId: "ses_1", workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }) },
+		});
+		await prisma.job.create({ data: { investigationId: row.id, incidentId: null, payload: JSON.stringify({ incidentId: null, investigationId: row.id }), status: "running" } });
+
+		const service = await boot();
+
+		const summary = await service.restartSummary();
+		const ref = [...(summary?.resumed ?? []), ...(summary?.skipped ?? [])].find((r) => r.investigationId === row.id);
+		expect(ref).toMatchObject({ incidentId: null, incidentNumber: null });
+	});
+
+	it("a run the operator stopped stays stopped", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "cancelled", error: "Investigation cancelled" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+	});
+
+	it("a run waiting on the operator's answer: the ask is closed as restarted, and the run resumes", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", awaitingApprovalAt: new Date() });
+		await job(row.id, inc.id, {}, "running");
+		const askId = "33333333-3333-4333-8333-333333333333";
+		const ts = new Date().toISOString();
+		await investigations.appendEvents(row.id, [
+			{ kind: "permission_ask", runId: row.id, branchId: "main", path: [], seq: 1, ts, askId, title: "Run kubectl rollout restart", detail: null, toolKind: "bash", expiresAt: ts } as never,
+		]);
+
+		await boot();
+
+		const events = await prisma.investigationEvent.findMany({ where: { investigationId: row.id } });
+		expect(events.map((e) => JSON.parse(e.event)).find((e) => e.kind === "permission_answer")).toMatchObject({ askId, outcome: "restarted" });
+		expect(await read(row.id)).toMatchObject({ status: "pending", awaitingApprovalAt: null });
+	});
+
+	it("an alert-started run keeps its unattended pin, its agent and its own level, never Settings' (#818)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", triggerType: "auto_critical", accessLevel: "auto" });
+		await job(row.id, inc.id, { unattended: true, accessLevel: "auto", harness: "opencode", model: "fake/scripted" }, "running");
+
+		await boot();
+
+		expect(await payloadOf(row.id)).toMatchObject({ unattended: true, accessLevel: "auto", harness: "opencode", model: "fake/scripted" });
+	});
+
+	it("an interrupted Ask on a finished run keeps the run's own standing to fall back to, and asks the question again (OBJ-012)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "answer", report: "{}" });
+		await job(row.id, inc.id, { resume: ask }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", liveTurn: "answer" });
+		expect((await payloadOf(row.id)).resume).toMatchObject({ kind: "chat", text: "why the pool?", restore: restoreDone, restart: { attempt: 1 } });
+	});
+
+	it("not resumed when the setting is off: interrupted, with the reason", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+
+		const service = await boot({ enabled: false });
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted", error: "Not resumed: Resume after a restart is off in Settings." });
+		expect((await service.restartSummary())?.skipped.map((s) => s.investigationId)).toContain(row.id);
+	});
+
+	it("not resumed when it stopped working more than a day ago", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await event(row.id, 1, { kind: "agent_step", text: "x", toolCalls: [] }, new Date(Date.now() - 50 * 3_600_000));
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for 2 days/);
+	});
+
+	it("a crash loop stops at the cap: a fourth recovery of the same turn is not made", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(3) }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens stopped again during each of the last 3 resumes/);
+	});
+
+	it("a crash loop: a start within two minutes of one that resumed runs resumes none", async () => {
+		const previousStart = new Date(Date.now() - 60_000);
+		const value = JSON.stringify({ at: previousStart.toISOString(), stoppedAt: null, resumed: [{ investigationId: "x", incidentId: "y", incidentNumber: 1, title: "t" }], skipped: [] });
+		await prisma.setting.upsert({
+			where: { key: "runtime.lastRecovery" },
+			update: { value },
+			create: { key: "runtime.lastRecovery", type: "json", category: "general", value },
+		});
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot({ previous: { startedAt: previousStart, lastAliveAt: new Date(Date.now() - 10_000), stoppedCleanly: false } });
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens stopped again within 2 minutes/);
+	});
+
+	it("a turn that recorded its report before the stop is not run again (OBJ-004)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		const j = await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { id: j.id }, data: { claimedAt: new Date(Date.now() - 60_000) } });
+		await event(row.id, 9, { kind: "report", report: {} });
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: RESTART_REASON, endReason: "interrupted" });
+	});
+
+	it("a recovery an earlier boot re-armed but never started is checked again (OBJ-013)", async () => {
+		const inc = await incident();
+		const kept = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(kept.id, inc.id, { resume: recoveryOf(1) }, "pending");
+
+		await boot({ enabled: false });
+
+		expect(await read(kept.id)).toMatchObject({ status: "failed", endReason: "interrupted", error: "Not resumed: Resume after a restart is off in Settings." });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: kept.id } })).status).toBe("cancelled");
+
+		const inc2 = await incident();
+		const again = await thread(inc2.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(again.id, inc2.id, { resume: recoveryOf(1) }, "pending");
+		const before = Date.now();
+		await boot();
+		expect(await read(again.id)).toMatchObject({ status: "pending" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: again.id } })).runAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
+	});
+
+	it("a report turn that recorded branch_done before the stop is not run again (OBJ-004)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 60_000) } });
+		await event(row.id, 0, { kind: "branch_done" });
+
+		await boot();
+
+		expect((await read(row.id)).status).not.toBe("pending");
+		expect((await payloadOf(row.id)).resume?.restart).toBeUndefined();
+	});
+
+	it("a run with no event is as old as its claim, not as new as the boot (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 2 * 24 * 3_600_000) } });
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for 2 days/);
+	});
+
+	it("a recovery that left no agent event keeps the age it carried, not its new claim's (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		const carried = { ...auto(1), lastActivityAt: new Date(Date.now() - 46 * 3_600_000).toISOString() };
+		await job(row.id, inc.id, { resume: { ...recoveryOf(1), restart: carried } }, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 23 * 3_600_000) } });
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for/);
+	});
+
+	it("a refused recovery writes no line as the user's, and a pending one whose run ended is cancelled (OBJ-009, OBJ-013)", async () => {
+		const inc = await incident();
+		const kept = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(kept.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const inc2 = await incident();
+		const ended = await thread(inc2.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(ended.id, inc2.id, { resume: recoveryOf(1) }, "pending");
+
+		await boot({ enabled: false });
+
+		const kinds = (await prisma.investigationEvent.findMany({ where: { investigationId: kept.id } })).map((e) => JSON.parse(e.event).kind);
+		expect(kinds).toEqual(["error"]);
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: ended.id } })).status).toBe("cancelled");
+		expect((await read(ended.id)).error).toBe("Not resumed: x");
+	});
+
+	it("a pending recovery whose check throws is refused, never run unchecked (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		vi.spyOn(service as never as { planFollowUp: () => Promise<never> }, "planFollowUp").mockRejectedValue(new Error("db busy"));
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: "Not resumed: the check before resuming could not run: db busy" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+	});
+
+	it("only a pull this boot made counts as the catch-up, not one between the last heartbeat and the crash (OBJ-008)", async () => {
+		const inc = await incident();
+		const { service } = recovering();
+		const bootedAt = new Date();
+		const stoppedAt = new Date(bootedAt.getTime() - 10 * 60_000);
+		Object.assign(service, { lifecycle: { lastRestart: () => ({ bootedAt, previous: null }) } });
+		vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
+		await prisma.setting.upsert({
+			where: { key: "ALERT_PULL" },
+			update: { value: JSON.stringify({ lastCompleteAt: new Date(stoppedAt.getTime() + 10_000).toISOString() }) },
+			create: { key: "ALERT_PULL", value: JSON.stringify({ lastCompleteAt: new Date(stoppedAt.getTime() + 10_000).toISOString() }), type: "json", category: "general" },
+		});
+		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<{ catchUp: string }> }).restartAlerts.bind(service);
+
+		expect((await restartAlerts(inc.id, stoppedAt, bootedAt, stoppedAt)).catchUp).toBe("unchecked");
+		await prisma.setting.update({ where: { key: "ALERT_PULL" }, data: { value: JSON.stringify({ lastCompleteAt: new Date(bootedAt.getTime() + 1_000).toISOString() }) } });
+		expect((await restartAlerts(inc.id, stoppedAt, bootedAt, stoppedAt)).catchUp).toBe("done");
+		vi.mocked(prisma.connection.count).mockRestore();
+	});
+
+	it("PrismaLens's own restart message is not activity: a recovery chain keeps the age of the agent's last step (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: { ...recoveryOf(1), restart: { ...auto(1), lastActivityAt: new Date(Date.now() - 46 * 3_600_000).toISOString() } } }, "running");
+		await event(row.id, 0, { kind: "agent_step", text: "x", toolCalls: [] }, new Date(Date.now() - 46 * 3_600_000));
+		await event(row.id, 1, { kind: "operator_message", text: "PrismaLens stopped at…", mode: "queue", via: { restart: { stoppedAt: "x", resumedAt: "y", by: "auto" } } }, new Date(Date.now() - 23 * 3_600_000));
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for/);
+	});
+
+	it("an interrupted Ask put back to its finished run keeps its files until the incident ends (OBJ-019)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "completed", endReason: "interrupted" });
+		const { service } = recovering();
+		const ctx = await (service as never as { bootContext: () => Promise<{ keep: Set<string> }> }).bootContext();
+		expect(ctx.keep.has(row.id)).toBe(true);
+	});
+
+	it("when the pending recoveries cannot even be listed, they are held for the next start, never run unchecked (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		const findMany = prisma.job.findMany.bind(prisma.job);
+		const spy = vi.spyOn(prisma.job, "findMany").mockImplementation(((args: { select?: { payload?: boolean } }) =>
+			args?.select?.payload ? Promise.reject(new Error("database is locked")) : findMany(args as never)) as never);
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+		spy.mockRestore();
+
+		const j = await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } });
+		expect(j.status).toBe("pending");
+		expect(j.runAt.getUTCFullYear()).toBe(9999);
+	});
+
+	it("when recoveries can be neither checked nor parked, dispatch is held until a check succeeds (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		const findMany = prisma.job.findMany.bind(prisma.job);
+		const listing = vi.spyOn(prisma.job, "findMany").mockImplementation(((args: { select?: { payload?: boolean } }) =>
+			args?.select?.payload ? Promise.reject(new Error("database is locked")) : findMany(args as never)) as never);
+		const updateMany = prisma.job.updateMany.bind(prisma.job);
+		const parking = vi.spyOn(prisma.job, "updateMany").mockImplementation(((args: { data?: { runAt?: Date } }) =>
+			args?.data?.runAt ? Promise.reject(new Error("database is locked")) : updateMany(args as never)) as never);
+		const timers = vi.spyOn(globalThis, "setInterval");
+
+		await service.onModuleInit();
+
+		expect(service["dispatcher"]["held"]).toBe(true);
+		listing.mockRestore();
+		parking.mockRestore();
+		const retry = timers.mock.calls.find(([, ms]) => ms === 10_000)?.[0] as () => void;
+		timers.mockRestore();
+		retry();
+		await vi.waitFor(() => expect(service["dispatcher"]["held"]).toBe(false));
+		await service.onApplicationShutdown();
+	});
+
+	it("a refusal that could be neither written nor parked is tried again before dispatch is let go (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering({ enabled: false });
+		const transaction = vi.spyOn(prisma, "$transaction").mockRejectedValue(new Error("database is locked"));
+		const updateMany = prisma.job.updateMany.bind(prisma.job);
+		const parking = vi.spyOn(prisma.job, "updateMany").mockImplementation(((args: { data?: { runAt?: Date } }) =>
+			args?.data?.runAt ? Promise.reject(new Error("database is locked")) : updateMany(args as never)) as never);
+		const timers = vi.spyOn(globalThis, "setInterval");
+
+		await service.onModuleInit();
+		expect(service["dispatcher"]["held"]).toBe(true);
+		transaction.mockRestore();
+		parking.mockRestore();
+		const retry = timers.mock.calls.find(([, ms]) => ms === 10_000)?.[0] as () => void;
+		timers.mockRestore();
+		retry();
+
+		await vi.waitFor(() => expect(service["dispatcher"]["held"]).toBe(false));
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+		expect((await read(row.id)).error).toBe("Not resumed: Resume after a restart is off in Settings.");
+		await service.onApplicationShutdown();
+	});
+
+	it("an agent that had a session but left no pid receipt is not proven gone (OBJ-010)", async () => {
+		const service = new DispatchService(fakeBus() as never, {} as never, investigations, {} as never, timeline as never, {} as never, {} as never, prisma, {} as never, {} as never, {} as never, {} as never, {} as never);
+		expect(await service.previousGone("no-receipt-run", "ses_1")).toBe(false);
+		expect(await service.previousGone("no-receipt-run", null)).toBe(true);
+	});
+
+	it("many runs at once are all re-armed; the dispatcher's cap paces them", async () => {
+		const ids: string[] = [];
+		for (let i = 0; i < 6; i++) {
+			const inc = await incident();
+			const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+			await job(row.id, inc.id, {}, "running");
+			ids.push(row.id);
+		}
+
+		await boot();
+
+		for (const id of ids) expect(await read(id)).toMatchObject({ status: "pending" });
+	});
+
+	it("Resume on a run left interrupted re-arms it as the operator's, now; any other run is refused", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+
+		await service.resumeInterrupted(row.id);
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted" });
+		expect((await payloadOf(row.id)).resume).toMatchObject({ restart: { attempt: 1, by: "operator" } });
+
+		const inc2 = await incident();
+		const done = await thread(inc2.id, { status: "completed" });
+		await job(done.id, inc2.id, {}, "succeeded");
+		await expect(service.resumeInterrupted(done.id)).rejects.toBeInstanceOf(FollowUpRefused);
+	});
+
+	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap reads unchecked", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+		// This schema still requires an incident, so the row is read the way #984's reads it.
+		const findUnique = prisma.investigation.findUnique.bind(prisma.investigation);
+		const read1 = vi.spyOn(prisma.investigation, "findUnique").mockImplementation((async (args: { where: { id?: string } }) => {
+			const r = await findUnique(args as never);
+			return r && args.where.id === row.id ? { ...r, incidentId: null } : r;
+		}) as never);
+		const enqueue = vi.spyOn(PrismaJobStore.prototype, "enqueue").mockResolvedValue("job-1");
+
+		await service.resumeInterrupted(row.id);
+
+		expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ investigationId: row.id, incidentId: null }));
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted" });
+		enqueue.mockRestore();
+		read1.mockRestore();
+
+		const bootedAt = new Date();
+		const stoppedAt = new Date(bootedAt.getTime() - 10 * 60_000);
+		await prisma.alert.create({ data: { dedupKey: "unlinked", title: "Someone else's alert", triggeredAt: new Date(stoppedAt.getTime() + 60_000) } });
+		const count = vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
+		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<unknown> }).restartAlerts.bind(service);
+		expect(await restartAlerts(null, stoppedAt, bootedAt, stoppedAt)).toEqual({ catchUp: "unchecked", fired: [], resolved: [] });
+		count.mockRestore();
+	});
+});

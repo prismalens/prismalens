@@ -21,8 +21,9 @@ import {
 	ModelReportSchema,
 } from "@prismalens/contracts/schemas";
 import { replaceEqualDeep } from "@tanstack/react-query";
-import { formatClock, formatElapsed } from "./format-time";
+import { formatClock, formatDayClock, formatElapsed } from "./format-time";
 import { handoffRecord } from "./handoff-line";
+import { notResumedReason, type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 
 export type EventIcon =
@@ -417,6 +418,8 @@ export interface TranscriptRun {
 	id?: string;
 	/** The level the run's asks were answered at (#673 w21). */
 	accessLevel?: AccessLevel | null;
+	/** `interrupted`: a restart cut the run off (#981). */
+	endReason?: string | null;
 }
 
 export type { AskState } from "./run-asks";
@@ -454,7 +457,13 @@ export type TranscriptItem =
 			callIds: string[];
 	  }
 	| { kind: "thought"; key: string; seconds: number }
-	| { kind: "divider"; key: string; text: string }
+	| {
+			kind: "divider";
+			key: string;
+			text: string;
+			/** PrismaLens's restart gap, announced as a separator (#981). */
+			separator?: boolean;
+	  }
 	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
 	| { kind: "thinking"; key: string; since: string }
 	| {
@@ -465,6 +474,8 @@ export type TranscriptItem =
 			state: OperatorState;
 			mode: "queue" | "now";
 			attachments: AttachmentView[];
+			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
+			restart?: RestartVia;
 	  }
 	| {
 			kind: "end";
@@ -481,6 +492,8 @@ export type TranscriptItem =
 			hint?: string | null;
 			/** A finished report offers `Investigate again` (#673 w59). */
 			recheck?: boolean;
+			/** A restart cut the run off and nothing took it up: the card offers Resume (#981). */
+			interrupted?: boolean;
 	  }
 	| { kind: "empty"; key: string; text: string };
 
@@ -864,7 +877,14 @@ export function deriveTranscript(
 				}
 				if (event.messageId) queued.delete(event.messageId);
 				const via = event.via;
-				if (event.resumed && via?.handoff)
+				if (via?.restart)
+					items.push({
+						kind: "divider",
+						key: `restart-${key}`,
+						text: restartDivider(via.restart, Date.now()),
+						separator: true,
+					});
+				else if (event.resumed && via?.handoff)
 					items.push({
 						kind: "line",
 						key: `handoff-${key}`,
@@ -888,6 +908,7 @@ export function deriveTranscript(
 					at: event.ts,
 					mode: event.mode,
 					attachments: event.attachments ?? [],
+					restart: via?.restart,
 					state: !event.delivered
 						? "not_delivered"
 						: event.resumed
@@ -1057,6 +1078,36 @@ export function deriveTranscript(
 			path: transcriptPath(run.id),
 		});
 	}
+	const standing = standingAt >= 0 ? items[standingAt] : undefined;
+	if (run?.endReason === "interrupted" && standing?.kind === "end") {
+		const stoppedAt = standing.at ?? run.completedAt ?? lastTs;
+		const card: TranscriptItem = {
+			kind: "end",
+			key: standing.key,
+			tone: "stale",
+			text: "Interrupted (PrismaLens restarted)",
+			detail: notResumedReason(run.error)
+				? (run.error ?? "")
+				: "Its last command may or may not have completed.",
+			// The strip holds the one Resume (#1010).
+			interrupted: true,
+		};
+		items.splice(
+			standingAt,
+			1,
+			...(stoppedAt
+				? [
+						{
+							kind: "divider" as const,
+							key: "interrupted-at",
+							text: `PrismaLens stopped at ${formatDayClock(stoppedAt, Date.now())}`,
+							separator: true,
+						},
+					]
+				: []),
+			card,
+		);
+	}
 	// A follow-up whose own end was dropped still says how it ended (#804 OBJ-028).
 	const lastEnd = items.findLastIndex((i) => i.kind === "end");
 	if (
@@ -1076,7 +1127,7 @@ export function deriveTranscript(
 	// What the box can do next sits under the last line, whichever it is.
 	const hint = run && endHint(run);
 	const tail = items.findLast((i) => i.kind === "end");
-	if (hint && tail?.kind === "end") tail.hint = hint;
+	if (hint && tail?.kind === "end" && !tail.interrupted) tail.hint = hint;
 
 	if (items.length === 0) {
 		return [

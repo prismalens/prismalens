@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	causeCategory,
 	commandOf,
+	endedRun,
 	failedStrip,
 	type FixOption,
 	fixStage,
@@ -519,5 +520,31 @@ describe("nextStrip", () => {
 		);
 		expect(nextStrip(none).text).toMatch(/nothing to undo/);
 		expect(nextStrip({ ...none, cleared: true }).primary?.id).toBe("resolve");
+	});
+});
+
+describe("the latest run's end on the Next strip (#1010)", () => {
+	const none = { ...base, option: null, stage: null, reported: false };
+
+	it("an interrupted run reads interrupted and offers Resume, never Retry run", () => {
+		const ended = endedRun({ endReason: "interrupted", error: "API restarted while the run was in flight" }, "failed", "Run 2", "Codex");
+		expect(ended.failed).toBeNull();
+		const s = nextStrip({ ...none, ...ended });
+		expect(s.primary).toEqual({ id: "resume", label: "Resume" });
+		expect(s.text).toBe("Run 2 was interrupted when PrismaLens restarted. Resume picks it up where it stopped.");
+		const unresumed = endedRun({ endReason: "interrupted", error: "Not resumed: Codex isn't signed in." }, "failed", "Run 2", "Codex");
+		expect(nextStrip({ ...none, ...unresumed }).text).toBe("Run 2 was interrupted when PrismaLens restarted and not resumed: Codex isn't signed in.");
+	});
+
+	it("a failed run keeps Retry run", () => {
+		const ended = endedRun({ endReason: null, error: "Rate limited (429)" }, "failed", "Run 2", "Codex");
+		expect(ended.interrupted).toBeNull();
+		expect(nextStrip({ ...none, ...ended }).primary).toEqual({ id: "retry", label: "Retry run" });
+	});
+
+	it("a run you stopped is unchanged", () => {
+		const ended = endedRun({ endReason: "operator", error: null }, "stopped", "Run 2", "Codex");
+		expect(ended).toEqual({ failed: null, interrupted: null });
+		expect(nextStrip({ ...none, ...ended }).primary).toEqual({ id: "investigate", label: "Investigate again" });
 	});
 });

@@ -732,6 +732,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 	const refusals: [string, Record<string, unknown>, string, string, boolean][] = [
 		["a paired device", { binaryPaths: { codex: "/usr/bin/codex" } }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
 		["strict mode from a paired device", { strictEnv: false }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
+		["resume after a restart from a paired device", { resumeAfterRestart: false }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
 		["a relative path", { binaryPaths: { codex: "bin/codex" } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a bare name not on PATH", { localAgent: { command: "nowhere-on-path", args: [] } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a config dir on an agent with none", { configDirs: { opencode: "/tmp" } }, "BAD_REQUEST", "OpenCode has no config directory setting.", true],
@@ -790,6 +791,19 @@ describe("HarnessService agent runtime settings (#907)", () => {
 
 	it("counts every telemetry source token PrismaLens reads by name among its own secrets (#817)", () => {
 		for (const kind of QUERY_KINDS) expect(PRISMALENS_OWN_SECRETS.names).toContain(envVars(kind).token);
+	});
+
+	it("resume after a restart is on by default, stored only when turned off (#981)", async () => {
+		const { svc } = runtimeService();
+		expect(await svc.resumeAfterRestart()).toBe(true);
+		await svc.updateSettings({ resumeAfterRestart: false });
+		expect(JSON.parse(store.HARNESS?.value ?? "{}").resumeAfterRestart).toBe(false);
+		expect(await svc.resumeAfterRestart()).toBe(false);
+		await svc.updateSettings({ strictEnv: true });
+		expect(await svc.resumeAfterRestart()).toBe(false);
+		await svc.updateSettings({ resumeAfterRestart: true });
+		expect(JSON.parse(store.HARNESS?.value ?? "{}").resumeAfterRestart).toBeUndefined();
+		expect(await svc.resumeAfterRestart()).toBe(true);
 	});
 
 	it("strict mode is off by default, saved with the other settings, and gives every agent the allowlist floor (#817)", async () => {

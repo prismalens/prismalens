@@ -9,6 +9,7 @@ import {
 	firingOf,
 	firingSeries,
 	groupNeeds,
+	NEED_GROUPS,
 	needOf,
 	reasonOf,
 	sparkPoints,
@@ -111,6 +112,50 @@ describe("needOf", () => {
 		expect(actionsOf(stopped, "failed", "clear")).toMatchObject({
 			primary: { label: "Retry run" },
 			secondary: { label: "Resolve" },
+		});
+	});
+
+	it("says an interrupted run was not resumed, and why (#981)", () => {
+		const i = incident({
+			investigations: [
+				run({
+					status: "failed",
+					endReason: "interrupted",
+					error: "Not resumed: Codex isn't signed in on studio-mac. Sign in there, then resume.",
+				}),
+			],
+		});
+		expect(needOf(i)).toBe("interrupted");
+		const reason = reasonOf(i, "interrupted", NOW);
+		expect(`${reason.tag} ${reason.text}`).toBe(
+			"Interrupted, not resumed: Codex isn't signed in on studio-mac. Sign in there, then resume.",
+		);
+	});
+
+	describe("one name and one action for an interrupted run (#1010)", () => {
+		it("an interrupted run reads interrupted and resumes that same run by its id", () => {
+			const cut = run({ status: "failed", endReason: "interrupted", error: "PrismaLens restarted" });
+			const i = incident({ investigations: [cut] });
+			expect(needOf(i)).toBe("interrupted");
+			expect(groupNeeds([i])[0]?.key).toBe("interrupted");
+			expect(NEED_GROUPS.find((g) => g.key === "interrupted")?.label).toBe("Run interrupted");
+			expect(reasonOf(i, "interrupted", NOW).tag).toBe("Interrupted:");
+			expect(actionsOf(i, "interrupted", "steady")).toEqual({
+				primary: { kind: "resume", label: "Resume", runId: cut.id },
+			});
+		});
+
+		it("a failed run keeps Retry run", () => {
+			const i = incident({ investigations: [run({ status: "failed", error: "boom" })] });
+			expect(needOf(i)).toBe("failed");
+			expect(actionsOf(i, "failed", "steady").primary).toEqual({ kind: "investigate", label: "Retry run" });
+		});
+
+		it("a run you stopped keeps Stopped by you and Retry run", () => {
+			const i = incident({ investigations: [run({ status: "cancelled", endReason: "operator" })] });
+			expect(needOf(i)).toBe("failed");
+			expect(reasonOf(i, "failed", NOW).tag).toBe("Stopped by you");
+			expect(actionsOf(i, "failed", "steady").primary).toEqual({ kind: "investigate", label: "Retry run" });
 		});
 	});
 
@@ -256,5 +301,13 @@ describe("sidebar labels", () => {
 			"Run 2, likely cause",
 			"Run 1, no cause named",
 		]);
+	});
+
+	it("names an interrupted run interrupted, not failed (#1010)", () => {
+		const runs = [
+			run({ id: "r2", status: "failed", endReason: "interrupted", createdAt: at(1) }),
+			run({ id: "r1", status: "failed", createdAt: at(2) }),
+		];
+		expect(runs.map((r) => runLabel(runs, r))).toEqual(["Run 2, interrupted", "Run 1, failed"]);
 	});
 });

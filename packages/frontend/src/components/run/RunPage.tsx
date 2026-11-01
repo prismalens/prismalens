@@ -4,6 +4,7 @@
 import {
 	ACCESS_LEVEL_LABEL,
 	ACCESS_LEVEL_LINE,
+	type CanonicalEvent,
 	fidelityAccess,
 	type InvestigationWithRelations,
 	isRunStateLive,
@@ -44,6 +45,7 @@ import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
+import { useResumeInvestigation } from "@/lib/api/hooks";
 import { desktopBridge } from "@/lib/desktop";
 import {
 	citedFile,
@@ -63,6 +65,13 @@ import {
 	type TranscriptItem,
 } from "@/lib/investigation-events";
 import { useRenderProbe } from "@/lib/render-probe";
+import {
+	latestRestart,
+	notResumedReason,
+	type RestartVia,
+	resumedDetail,
+	resumeFailed,
+} from "@/lib/restart";
 import { askTitle } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
@@ -121,6 +130,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export function RunPage() {
 	const record = useIncidentRecord();
 	const { toast } = useToast();
+	const resumeRun = useResumeInvestigation();
 	const { incident, run, runs, draft } = record;
 	const search = useSearch({
 		from: "/_authenticated/incidents/$id/conversation",
@@ -159,6 +169,7 @@ export function RunPage() {
 							continuable: run.continuable,
 							lastTurnOutcome: inv.lastTurnOutcome,
 							accessLevel: inv.report?.fidelity?.access ?? inv.accessLevel,
+							endReason: inv.endReason,
 						}
 					: undefined,
 			}),
@@ -477,7 +488,7 @@ export function RunPage() {
 	const toggleWork = useCallback(() => setWorkOpen((o) => !o), []);
 	const workedSeconds =
 		transcriptReport && !live && steps.length > 0 && inv && runTimed(inv)
-			? runElapsed(inv, now)
+			? runElapsed(inv, now, run.events)
 			: null;
 	const worked = useMemo(
 		() =>
@@ -525,6 +536,14 @@ export function RunPage() {
 			previewOpener,
 		],
 	);
+	const { mutate: resumeMutate, isPending: resuming } = resumeRun;
+	const invId = inv?.id;
+	const interrupted =
+		!live && run.state === "failed" && inv?.endReason === "interrupted";
+	const resumeNow = useCallback(() => {
+		if (!invId) return;
+		resumeMutate({ id: invId }, { onError: resumeFailed(toast) });
+	}, [invId, resumeMutate, toast]);
 	const fidelity =
 		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
 	const substituted = !!fidelity && modelSubstituted(fidelity);
@@ -646,6 +665,8 @@ export function RunPage() {
 		run.awaiting
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: null,
+		live ? latestRestart(run.events) : null,
+		run.events,
 	);
 
 	const viewingRepo = viewing
@@ -661,6 +682,9 @@ export function RunPage() {
 					waiting={run.awaiting}
 					label={stateWord.label}
 					detail={stateWord.detail}
+					reason={
+						interrupted && inv ? endReasonStatus(inv, who.agent)?.sub : null
+					}
 					model={modelChip}
 					code={panel ? null : code}
 					tools={panel ? null : toolsChip}
@@ -668,6 +692,8 @@ export function RunPage() {
 						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
 					}
 					stopping={run.stopRequested}
+					onResume={interrupted ? resumeNow : undefined}
+					resuming={resuming}
 					incidentId={incident.id}
 					runs={runs}
 					current={inv?.id ?? null}
@@ -853,7 +879,7 @@ function DetailsToggle({
 }
 
 /** The strip's two words: which run and its state, then what it is doing or came to. */
-function stripWords(
+export function stripWords(
 	inv: InvestigationWithRelations | null,
 	state: RunState | null,
 	activity: string | null,
@@ -862,6 +888,9 @@ function stripWords(
 	agent: string,
 	/** What the agent waits on you for, while it does (#673 w5-14). */
 	asking: string | null,
+	/** The restart its newest message carries, while the run is live (#981). */
+	restart: RestartVia | null = null,
+	events: readonly CanonicalEvent[] = [],
 ): { label: string; detail: string } {
 	if (!inv || !state) return { label: name, detail: "" };
 	const chat = inv.kind === "chat";
@@ -871,7 +900,9 @@ function stripWords(
 			label: chat ? "Ask, waiting for you" : `${who} waiting for you`,
 			detail: asking,
 		};
-	const took = runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
+	const took = runTimed(inv)
+		? formatElapsed(runElapsed(inv, now, events))
+		: null;
 	const when = (at: string | null) =>
 		at && now !== null ? relative(at, now) : "";
 	switch (state) {
@@ -886,7 +917,7 @@ function stripWords(
 				label: chat
 					? `Ask, ${state === "stopping" ? "stopping" : "answering"}`
 					: `${who} ${state === "stopping" ? "stopping" : "investigating"}`,
-				detail: activity ?? "Working",
+				detail: restart ? resumedDetail(restart) : (activity ?? "Working"),
 			};
 		case "failed": {
 			const ago = when(inv.completedAt ?? inv.updatedAt);
@@ -900,7 +931,9 @@ function stripWords(
 			if (inv.endReason === "interrupted")
 				return {
 					label: chat ? "Ask, interrupted" : `${who} interrupted`,
-					detail: ["PrismaLens restarted", ago].filter(Boolean).join(", "),
+					detail: notResumedReason(inv.error)
+						? "PrismaLens restarted, not resumed"
+						: ["PrismaLens restarted", ago].filter(Boolean).join(", "),
 				};
 			return {
 				label: chat ? "Ask, failed" : `${who} failed`,
@@ -994,7 +1027,10 @@ function summaryFacts(
 						label: "Running for",
 						text: formatElapsed(turnElapsed(inv, run.events, ctx.now)),
 					}
-				: { label: "Took", text: formatElapsed(runElapsed(inv, ctx.now)) }
+				: {
+						label: "Took",
+						text: formatElapsed(runElapsed(inv, ctx.now, run.events)),
+					}
 			: null,
 		agent: ctx.agent,
 		model: ctx.model
@@ -1034,7 +1070,7 @@ function summaryFacts(
 }
 
 /** A failed run's status when its agent's usage limit or a restart ended it, in place of "Failed". */
-function endReasonStatus(
+export function endReasonStatus(
 	inv: InvestigationWithRelations,
 	agent: string,
 ): { text: string; sub: string } | null {
@@ -1047,7 +1083,9 @@ function endReasonStatus(
 	if (inv.endReason === "interrupted")
 		return {
 			text: "Interrupted (PrismaLens restarted)",
-			sub: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,
+			sub: notResumedReason(inv.error)
+				? (inv.error ?? "")
+				: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,
 		};
 	return null;
 }

@@ -159,6 +159,8 @@ export interface AcpSessionConfig {
 	env?: NodeJS.ProcessEnv;
 	launcher?: HarnessLauncher;
 	limits?: RunLimits;
+	/** The harness's pid once spawned, so a later boot can prove it is gone (#981). */
+	onSpawn?: (pid: number | undefined) => void;
 	permission: PermissionPolicy;
 	/** Sent as `_meta` on `session/new`. */
 	sessionMeta?: Record<string, unknown>;
@@ -591,6 +593,7 @@ export class AcpSession {
 			...(config.limits ? { limits: config.limits } : {}),
 		});
 		this.child = child;
+		config.onSpawn?.(child.pid);
 		// setEncoding keeps a multibyte character split across two chunks intact.
 		child.stderr.setEncoding("utf8");
 		child.stderr.on("data", (chunk: string) => {
@@ -893,10 +896,10 @@ export class AcpSession {
 	}
 
 	/** Cancel the in-flight turn; the harness answers with a done carrying stopReason "cancelled". */
-	cancel(): void {
+	cancel(reason?: unknown): void {
 		if (!this.currentSessionId) return;
-		// ACP: a cancelled turn's waiting asks are answered `cancelled`.
-		for (const ask of this.asks) ask.abort();
+		// ACP: a cancelled turn's waiting asks are answered `cancelled`; the reason says why (#981).
+		for (const ask of this.asks) ask.abort(reason);
 		this.send({
 			jsonrpc: "2.0",
 			method: "session/cancel",

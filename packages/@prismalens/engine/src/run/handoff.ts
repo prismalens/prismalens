@@ -120,10 +120,13 @@ function renderReport(r: InvestigationReport): string {
  */
 export function buildHandoff(input: HandoffInput): Handoff {
 	const { events, report } = input;
-	const messages = events.filter(
+	const said = events.filter(
 		(e): e is Extract<CanonicalEvent, { kind: "operator_message" }> =>
 			e.kind === "operator_message",
 	);
+	// PrismaLens's own restart notes are not the user's words (#981).
+	const messages = said.filter((m) => !m.via?.restart);
+	const restarts = said.filter((m) => m.via?.restart);
 	const asks = new Map<string, string>();
 	const denials: string[] = [];
 	for (const e of events) {
@@ -168,6 +171,10 @@ export function buildHandoff(input: HandoffInput): Handoff {
 				: "(none)"
 		}`,
 	);
+	if (restarts.length)
+		kept.push(
+			`## PrismaLens's messages after it restarted\n${restarts.map((m) => `- ${m.text}`).join("\n")}`,
+		);
 	kept.push(
 		`## The current report\n${report ? renderReport(report) : "(no report yet)"}`,
 	);
@@ -253,7 +260,8 @@ export function renderTranscript(events: readonly CanonicalEvent[]): string {
 	const out: string[] = ["# Previous session transcript"];
 	const shown = new Set<string>();
 	for (const e of events) {
-		if (e.kind === "operator_message") out.push(`## User\n${e.text}`);
+		if (e.kind === "operator_message")
+			out.push(`## ${e.via?.restart ? "PrismaLens" : "User"}\n${e.text}`);
 		else if (e.kind === "agent_step") {
 			if (e.text.trim()) out.push(`## Agent\n${e.text}`);
 			for (const c of e.toolCalls) {

@@ -131,18 +131,30 @@ export class AlertPullService implements OnApplicationBootstrap {
 	}
 
 	/**
-	 * Update the ALERT_PULL setting with the latest pull timestamp.
+	 * Update the ALERT_PULL setting with the latest pull timestamp. `complete` also
+	 * stamps `lastCompleteAt`: every source answered, which a restart's catch-up needs (#981).
 	 */
-	async updateLastPulledAt(now: Date): Promise<void> {
+	async updateLastPulledAt(now: Date, complete = false): Promise<void> {
+		const prior = await this.prisma.setting
+			.findUnique({ where: { key: ALERT_PULL_SETTING_KEY } })
+			.then((r) =>
+				r ? (JSON.parse(r.value) as { lastCompleteAt?: string }) : {},
+			)
+			.catch(() => ({}) as { lastCompleteAt?: string });
+		const value = JSON.stringify({
+			lastPulledAt: now.toISOString(),
+			...(complete
+				? { lastCompleteAt: now.toISOString() }
+				: prior.lastCompleteAt
+					? { lastCompleteAt: prior.lastCompleteAt }
+					: {}),
+		});
 		await this.prisma.setting.upsert({
 			where: { key: ALERT_PULL_SETTING_KEY },
-			update: {
-				value: JSON.stringify({ lastPulledAt: now.toISOString() }),
-				type: "json",
-			},
+			update: { value, type: "json" },
 			create: {
 				key: ALERT_PULL_SETTING_KEY,
-				value: JSON.stringify({ lastPulledAt: now.toISOString() }),
+				value,
 				type: "json",
 				category: "general",
 			},
@@ -583,7 +595,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 		// 6. Update ALERT_PULL setting only after catch-up completed without errors or undecided episodes
 		if (catchupErrors.length === 0 && !undecided) {
 			try {
-				await this.updateLastPulledAt(now);
+				await this.updateLastPulledAt(now, result.errors.length === 0);
 			} catch (err) {
 				this.logger.warn(
 					`Failed to update ${ALERT_PULL_SETTING_KEY} setting: ${err}`,

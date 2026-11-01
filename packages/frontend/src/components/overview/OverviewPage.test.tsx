@@ -50,6 +50,12 @@ const agent = (
 const opencode = agent("opencode", "OpenCode", "answers-acp");
 let claude = agent("claude-code", "Claude Code", "answers-acp");
 const investigate = vi.fn(async () => {});
+const resumeRun = vi.fn();
+
+vi.mock("@/lib/api/hooks", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@/lib/api/hooks")>()),
+	useResumeInvestigation: () => ({ mutate: resumeRun }),
+}));
 
 vi.mock("@/components/agent/AgentPicker", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@/components/agent/AgentPicker")>()),
@@ -70,16 +76,24 @@ vi.mock("./use-overview", () => ({
 			draftChoice: { harness: "claude-code" },
 			investigate,
 		},
+		latest: { id: "run-7" },
 	}),
 }));
 
 vi.mock("./SituationCard", () => ({
 	SituationCard: ({ onAction }: { onAction: (id: NextActionId) => void }) => (
-		<button
-			type="button"
-			data-testid="next-investigate"
-			onClick={() => onAction("investigate")}
-		/>
+		<>
+			<button
+				type="button"
+				data-testid="next-investigate"
+				onClick={() => onAction("investigate")}
+			/>
+			<button
+				type="button"
+				data-testid="next-resume"
+				onClick={() => onAction("resume")}
+			/>
+		</>
 	),
 }));
 
@@ -109,6 +123,7 @@ beforeEach(() => {
 	document.body.appendChild(container);
 	root = createRoot(container);
 	investigate.mockClear();
+	resumeRun.mockClear();
 	claude = agent("claude-code", "Claude Code", "answers-acp");
 });
 
@@ -139,6 +154,19 @@ describe("Next strip Investigate (w8-7)", () => {
 	it("starts nothing when the box's agent cannot run", async () => {
 		claude = agent("claude-code", "Claude Code", "sign-in-needed");
 		await pressInvestigate();
+		expect(investigate).not.toHaveBeenCalled();
+	});
+});
+
+describe("Next strip Resume (#1010)", () => {
+	it("resumes the latest run by its own id and starts no new investigation", async () => {
+		await act(async () => root.render(<OverviewPage />));
+		await act(async () =>
+			container
+				.querySelector<HTMLButtonElement>('[data-testid="next-resume"]')
+				?.click(),
+		);
+		expect(resumeRun).toHaveBeenCalledWith({ id: "run-7" }, expect.anything());
 		expect(investigate).not.toHaveBeenCalled();
 	});
 });

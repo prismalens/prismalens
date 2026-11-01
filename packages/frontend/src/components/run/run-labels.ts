@@ -33,6 +33,7 @@ export function waitsOnYou(run: {
 export function runOutcome(
 	run: Pick<RunRef, "status" | "kind" | "hasReport" | "rootCause"> & {
 		awaitingApprovalAt?: string | Date | null;
+		endReason?: string | null;
 	},
 ): string {
 	const state = runState(run.status, { hasEvents: true });
@@ -42,7 +43,8 @@ export function runOutcome(
 	if (state === "working") return chat ? "answering" : "investigating";
 	if (state === "stopping") return "stopping";
 	if (state === "stopped") return "stopped";
-	if (state === "failed") return "failed";
+	if (state === "failed")
+		return run.endReason === "interrupted" ? "interrupted" : "failed";
 	if (chat) return "answered";
 	if (!run.hasReport) return "ended without a report";
 	return reportOutcome(run.rootCause);
