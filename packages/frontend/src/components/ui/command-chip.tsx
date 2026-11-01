@@ -14,6 +14,7 @@ export function CommandChip({
 	command,
 	run,
 	path = false,
+	wrap = false,
 	className,
 	testId = "command-chip",
 }: {
@@ -21,6 +22,8 @@ export function CommandChip({
 	run?: ReactNode;
 	/** A path to copy, not a command: no Run in terminal. */
 	path?: boolean;
+	/** Show the whole command over several lines instead of truncating it. */
+	wrap?: boolean;
 	className?: string;
 	testId?: string;
 }) {
@@ -32,7 +35,12 @@ export function CommandChip({
 			)}
 			data-testid={testId}
 		>
-			<code className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
+			<code
+				className={cn(
+					"min-w-0 flex-1 font-mono text-mono text-text-1",
+					wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate",
+				)}
+			>
 				{command}
 			</code>
 			{run ?? (path ? null : <RunInTerminal command={command} />)}
