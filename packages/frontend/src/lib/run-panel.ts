@@ -12,6 +12,7 @@ export const PANEL_TABS = [
 	"changes",
 	"steps",
 	"context",
+	"browser",
 ] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 

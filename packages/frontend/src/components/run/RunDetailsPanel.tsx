@@ -17,8 +17,10 @@ import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
+import type { RunLink } from "@/lib/run-links";
 import type { PanelTab, TouchedFile } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
+import { BrowserTab } from "./BrowserTab";
 import { ChangesTab } from "./ChangesTab";
 import { EvidenceFileView } from "./EvidenceFileView";
 import { RunFileTree } from "./RunFileTree";
@@ -48,6 +50,8 @@ export interface EvidenceFiles {
 	workspace: RunWorkspace | null | undefined;
 	/** Files the run's steps named or the report cited, for the tree. */
 	touched: TouchedFile[];
+	/** Pages the run's alerts and report link, for the Browser tab. */
+	links: RunLink[];
 	viewing: FileAt | null;
 	onOpen: OpenFile;
 	onClose: () => void;
@@ -66,7 +70,14 @@ const TONE = {
 	danger: "text-danger",
 } as const;
 
-const ORDER: DetailsTab[] = ["summary", "files", "changes", "steps", "context"];
+const ORDER: DetailsTab[] = [
+	"summary",
+	"files",
+	"changes",
+	"steps",
+	"context",
+	"browser",
+];
 
 const FILTERS: { id: StepFilter; label: string }[] = [
 	{ id: "all", label: "All" },
@@ -132,12 +143,16 @@ export function RunDetailsPanel({
 			label: "Files",
 			aria: `Files, ${files.touched.length}`,
 			aside: (
-				<span aria-hidden className="ml-1 text-text-3 tabular-nums">
+				<span
+					aria-hidden
+					className="ml-1 text-text-3 tabular-nums max-[359px]:ml-0.5"
+				>
 					{files.touched.length}
 				</span>
 			),
 		},
 		{ id: "changes", label: "Changes", aria: "Changes" },
+		{ id: "browser", label: "Browser", aria: "Browser" },
 		{
 			id: "context",
 			label: "Context",
@@ -149,7 +164,7 @@ export function RunDetailsPanel({
 				flaggedCount > 0 ? (
 					<span
 						aria-hidden
-						className="ml-1 inline-block size-1.5 rounded-full bg-danger"
+						className="ml-1 inline-block size-1.5 rounded-full bg-danger max-[359px]:ml-0.5"
 					/>
 				) : null,
 		},
@@ -158,7 +173,10 @@ export function RunDetailsPanel({
 			label: "Steps",
 			aria: `Steps, ${steps.length}`,
 			aside: (
-				<span aria-hidden className="ml-1 text-text-3 tabular-nums">
+				<span
+					aria-hidden
+					className="ml-1 text-text-3 tabular-nums max-[359px]:ml-0.5"
+				>
 					{steps.length}
 				</span>
 			),
@@ -190,17 +208,17 @@ export function RunDetailsPanel({
 				onValueChange={(v) => onTab(v as DetailsTab)}
 				className="flex min-h-0 flex-1 flex-col"
 			>
-				<div className="relative flex h-9 shrink-0 items-center px-2 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
+				<div className="relative flex h-9 shrink-0 items-center px-2 max-[359px]:px-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
 					<TabsPrimitive.List
 						aria-label={title}
-						className="flex min-w-0 gap-0.5 self-end overflow-x-auto [scrollbar-width:none]"
+						className="flex min-w-0 gap-0.5 max-[359px]:gap-0 self-end overflow-x-auto [scrollbar-width:none]"
 					>
 						{tabs.map((t) => (
 							<TabsPrimitive.Trigger
 								key={t.id}
 								value={t.id}
 								aria-label={t.aria}
-								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
 								data-testid={`run-details-tab-${t.id}`}
 							>
 								{t.label}
@@ -215,6 +233,13 @@ export function RunDetailsPanel({
 					data-testid="run-details-files"
 				>
 					<FilesPane files={files} onJump={onJump} />
+				</TabsPrimitive.Content>
+				<TabsPrimitive.Content
+					value="browser"
+					className="flex min-h-0 flex-1 flex-col"
+					data-testid="run-details-browser"
+				>
+					<BrowserTab links={files.links} />
 				</TabsPrimitive.Content>
 				<TabsPrimitive.Content
 					value="changes"
