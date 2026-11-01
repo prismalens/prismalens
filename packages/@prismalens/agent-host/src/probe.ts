@@ -55,8 +55,16 @@ const UNSET_KEY = [
 	),
 ];
 
-/** An auth signal: ACP's auth_required in words, or a clause naming an unset provider key. */
-export function namesSignIn(text: string): boolean {
+/** A launch the agent refused: a bad flag or a usage line, whatever else it printed. */
+const FATAL_LAUNCH =
+	/unrecognized|unknown (?:flag|option|argument|command)|usage:|invalid option/i;
+
+/**
+ * An auth signal: ACP's auth_required in words, or a clause naming an unset provider key,
+ * in text with no fatal launch error anywhere in `texts`; that error always means failed to start.
+ */
+export function namesSignIn(text: string, ...texts: string[]): boolean {
+	if ([text, ...texts].some((t) => FATAL_LAUNCH.test(t))) return false;
 	if (/auth_required|authentication required/i.test(text)) return true;
 	return UNSET_KEY.some((re) => re.test(text));
 }
@@ -343,7 +351,7 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		const message = err instanceof Error ? err.message : String(err);
 		// A closed connection is the child exiting; its stderr may still be in flight.
 		if (!(err instanceof RequestError)) await exited(1_000);
-		const said = [message, stderr].find(namesSignIn);
+		const said = [message, stderr].find((t) => namesSignIn(t, message, stderr));
 		if (said)
 			return {
 				...result,

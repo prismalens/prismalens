@@ -157,6 +157,8 @@ describe("probeAgent: sign-in-needed only on an auth signal (#1013)", () => {
 			"OPENAI_API_KEY is set; required config property model is missing",
 			"Error: required config property model is missing (OPENAI_API_KEY present)",
 			"env AWS_SECRET_ACCESS_KEY=set ANTHROPIC_API_KEY=set",
+			"ERROR Unrecognized flag: --dir in command opencode acp. Set OPENAI_API_KEY",
+			"ANTHROPIC_API_KEY required\nerror: unknown option '--foo'",
 		])
 			expect((await exits(stderr)).outcome, stderr).toBe("failed-to-start");
 	});
