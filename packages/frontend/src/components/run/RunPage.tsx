@@ -69,6 +69,7 @@ import {
 	notResumedReason,
 	type RestartVia,
 	resumedDetail,
+	resumeFailed,
 } from "@/lib/restart";
 import { askTitle } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
@@ -542,11 +543,6 @@ export function RunPage() {
 		if (!invId) return;
 		resumeMutate({ id: invId }, { onError: resumeFailed(toast) });
 	}, [invId, resumeMutate, toast]);
-	const transcriptResume = useMemo(
-		() =>
-			interrupted ? { onResume: resumeNow, pending: resuming } : undefined,
-		[interrupted, resumeNow, resuming],
-	);
 	const fidelity =
 		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
 	const substituted = !!fidelity && modelSubstituted(fidelity);
@@ -720,7 +716,6 @@ export function RunPage() {
 							worked={worked}
 							afterReport={afterReport}
 							steps={transcriptSteps}
-							resume={transcriptResume}
 						/>
 					)}
 				</div>
@@ -877,15 +872,6 @@ function DetailsToggle({
 		</Hint>
 	);
 }
-
-/** A refused Resume (409: the run was not interrupted, or is live) says why in the app's error toast (#981). */
-export const resumeFailed =
-	(toast: ReturnType<typeof useToast>["toast"]) => (error: unknown) =>
-		toast({
-			title: "Run not resumed",
-			description: getErrorMessage(error),
-			variant: "destructive",
-		});
 
 /** The strip's two words: which run and its state, then what it is doing or came to. */
 export function stripWords(

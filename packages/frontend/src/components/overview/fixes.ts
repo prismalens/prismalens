@@ -9,11 +9,13 @@ import type {
 	FixVerdict,
 	MetricUnit,
 	RootCauseCategory,
+	RunState,
 	Threshold,
 } from "@prismalens/contracts";
 import { isAlertFiring, REFIRE_LABEL } from "@prismalens/contracts";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
+import { notResumedReason } from "@/lib/restart";
 import { formatValue } from "./impact";
 
 export type { FixOption };
@@ -145,6 +147,7 @@ export type NextActionId =
 	| "next-option"
 	| "resolve"
 	| "retry"
+	| "resume"
 	| "investigate"
 	| "watch";
 
@@ -206,6 +209,25 @@ export function failedStrip(
 		: { name, reason: words.what };
 }
 
+/** The latest run's end: a restart's cut-off run resumes, any other failure retries (#1010). */
+export function endedRun(
+	latest: { endReason?: string | null; error?: string | null } | null,
+	state: RunState | null,
+	name: string,
+	agent: string | undefined,
+): {
+	failed: { name: string; reason: string; next?: string } | null;
+	interrupted: { name: string; reason: string | null } | null;
+} {
+	if (!latest || state !== "failed") return { failed: null, interrupted: null };
+	if (latest.endReason === "interrupted")
+		return {
+			failed: null,
+			interrupted: { name, reason: notResumedReason(latest.error) },
+		};
+	return { failed: failedStrip(name, latest.error, agent), interrupted: null };
+}
+
 /**
  * The Next strip (spec screen 2): the single next action for the incident,
  * from the top fix option's stage, else the run's state.
@@ -228,6 +250,8 @@ export function nextStrip(input: {
 	live: { name: string; waiting?: boolean } | null;
 	/** `next`: what to do first, when the failure has a known fix (#831 v5-39). */
 	failed: { name: string; reason: string; next?: string } | null;
+	/** A run a restart cut off; `reason` when PrismaLens did not resume it. */
+	interrupted?: { name: string; reason: string | null } | null;
 	reported: boolean;
 	option: FixOption | null;
 	stage: FixStage | null;
@@ -393,6 +417,14 @@ export function nextStrip(input: {
 			tone: "live",
 			text: `${input.live.name} is investigating. Its finding and any way to stop the impact land on this page.`,
 			primary: { id: "watch", label: "Watch" },
+		};
+	if (input.interrupted && !input.reported)
+		return {
+			tone: "warn",
+			text: input.interrupted.reason
+				? `${input.interrupted.name} was interrupted when PrismaLens restarted and not resumed: ${input.interrupted.reason}`
+				: `${input.interrupted.name} was interrupted when PrismaLens restarted. Resume picks it up where it stopped.`,
+			primary: { id: "resume", label: "Resume" },
 		};
 	if (input.failed && !input.reported)
 		return {

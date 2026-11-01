@@ -15,7 +15,13 @@ import { firstClause } from "@/lib/incident-board";
 import { notResumedReason } from "@/lib/restart";
 
 /** What an incident needs from you, the inbox's groups in their order (spec §1). */
-export type NeedKey = "approval" | "ready" | "failed" | "nocause" | "cleared";
+export type NeedKey =
+	| "approval"
+	| "ready"
+	| "interrupted"
+	| "failed"
+	| "nocause"
+	| "cleared";
 
 export type Tone = "accent" | "danger" | "warn" | "ok" | "live" | "plain";
 
@@ -36,6 +42,12 @@ export const NEED_GROUPS: {
 		label: "Finding ready",
 		hint: "A run found a cause worth reading.",
 		tone: "accent",
+	},
+	{
+		key: "interrupted",
+		label: "Run interrupted",
+		hint: "PrismaLens restarted mid-run. Resume picks it up where it stopped.",
+		tone: "warn",
 	},
 	{
 		key: "failed",
@@ -83,6 +95,11 @@ function concluded(incident: IncidentWithRelations): {
 	};
 }
 
+/** A run a restart cut off; Resume takes up this same run (#981, #1010). */
+function interrupted(run: Run | null): run is Run {
+	return run?.status === "failed" && run.endReason === "interrupted";
+}
+
 /** The live investigation or chat, if one is working. */
 export function liveOf(incident: IncidentWithRelations): Run | null {
 	return liveRun(incident);
@@ -109,7 +126,7 @@ export function needOf(incident: IncidentWithRelations): NeedKey | null {
 	if (finding) return "ready";
 	if (liveInvestigation(incident)) return null;
 	if (!ended || ended.status === "completed") return "nocause";
-	return "failed";
+	return interrupted(ended) ? "interrupted" : "failed";
 }
 
 export type Firing = "worse" | "steady" | "clear" | "none";
@@ -229,18 +246,23 @@ export function reasonOf(
 						: "",
 				};
 			}
-			const unresumed = notResumedReason(ended?.error);
-			if (unresumed)
-				return {
-					tag: "Interrupted, not resumed:",
-					tagTone: "warn",
-					text: unresumed,
-				};
 			return {
 				tag: "Failed:",
 				tagTone: "danger",
 				text: lowerFirst(sentence(failureWords(ended?.error).what)),
 			};
+		}
+		case "interrupted": {
+			const unresumed = notResumedReason(ended?.error);
+			return unresumed
+				? { tag: "Interrupted, not resumed:", tagTone: "warn", text: unresumed }
+				: {
+						tag: "Interrupted:",
+						tagTone: "warn",
+						text: ended?.completedAt
+							? `PrismaLens restarted at ${formatClock(ended.completedAt)}`
+							: "PrismaLens restarted",
+					};
 		}
 		case "nocause":
 			return {
@@ -300,6 +322,7 @@ export function ago(at: string | Date, now: number): string {
 export type RowAction =
 	| { kind: "open"; label: string; runId?: string }
 	| { kind: "investigate"; label: string }
+	| { kind: "resume"; label: string; runId: string }
 	| { kind: "resolve"; label: string }
 	| { kind: "merge"; label: string; targetId: string };
 
@@ -321,6 +344,18 @@ export function actionsOf(
 			};
 		case "ready":
 			return { primary: { kind: "open", label: "Open" } };
+		case "interrupted": {
+			const { ended } = concluded(incident);
+			return {
+				primary: ended
+					? { kind: "resume", label: "Resume", runId: ended.id }
+					: { kind: "investigate", label: "Retry run" },
+				secondary:
+					firing === "clear" || firing === "none"
+						? { kind: "resolve", label: "Resolve" }
+						: undefined,
+			};
+		}
 		case "failed":
 			return {
 				primary: { kind: "investigate", label: "Retry run" },
