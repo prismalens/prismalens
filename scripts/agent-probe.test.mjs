@@ -34,6 +34,25 @@ test("an agent that answers initialize and session/new reads as ok, without any 
 	assert.match(summary.text, /session\/new ok, 6 modes/);
 });
 
+test("the caps name session/resume and replayComplete when the agent offers them (#942)", () => {
+	const caps = (agentCapabilities) =>
+		summarize({
+			initialize: { result: { protocolVersion: 1, agentCapabilities } },
+			session: { result: {} },
+		}).text;
+	assert.match(
+		caps({
+			loadSession: true,
+			sessionCapabilities: { resume: {}, replayComplete: {} },
+		}),
+		/caps loadSession\+resume\+replayComplete;/,
+	);
+	assert.match(
+		caps({ loadSession: true, sessionCapabilities: { resume: null } }),
+		/caps loadSession;/,
+	);
+});
+
 test("an agent that cannot start session/new is reported with its own reason", () => {
 	const summary = summarize({
 		initialize: {
