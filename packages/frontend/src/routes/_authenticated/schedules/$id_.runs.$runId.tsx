@@ -127,8 +127,6 @@ function ScheduledRunPage() {
 							targetOf={() => null}
 							onOpenFile={() => {}}
 							onJump={() => {}}
-							preview={false}
-							onPreview={() => {}}
 						/>
 					)}
 					<section aria-label="Transcript">
