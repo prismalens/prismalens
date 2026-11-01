@@ -40,7 +40,7 @@ import {
 	useDeleteSchedule,
 	useRunScheduleNow,
 	useSchedule,
-} from "@/lib/api/hooks";
+} from "@/lib/api/hooks/use-schedules-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
