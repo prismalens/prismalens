@@ -58,6 +58,16 @@ export interface HypothesisInput {
 
 export type Findings = RecordedFindings;
 
+/** One past the highest `<prefix>N` held: history can have gaps (a dropped event batch), so never the count. */
+function nextId(prefix: string, ids: Iterable<string>): string {
+	let max = 0;
+	for (const id of ids) {
+		const n = Number(id.slice(prefix.length));
+		if (id.startsWith(prefix) && Number.isInteger(n) && n > max) max = n;
+	}
+	return `${prefix}${max + 1}`;
+}
+
 /** One run's record: the tool outputs it saw, and what the agent recorded against them. */
 export class FindingsLedger {
 	private readonly outputs = new Map<string, string>();
@@ -118,7 +128,7 @@ export class FindingsLedger {
 			return {
 				error: `This run already holds ${FINDINGS_LIMITS.evidence} evidence items`,
 			};
-		const id = `e${this.evidence.size + 1}`;
+		const id = nextId("e", this.evidence.keys());
 		const item: RecordedEvidence = {
 			id,
 			observation: input.observation,
@@ -156,7 +166,7 @@ export class FindingsLedger {
 				error: `This run already holds ${FINDINGS_LIMITS.hypotheses} hypotheses`,
 			};
 		// `rh`, not `h`: a final answer numbering its own hypotheses h1, h2 must not join these by accident.
-		const id = had?.id ?? `rh${this.hypotheses.size + 1}`;
+		const id = had?.id ?? nextId("rh", this.hypotheses.keys());
 		const parentId = input.parentId ?? had?.parentId;
 		const item: RecordedHypothesis = {
 			id,
