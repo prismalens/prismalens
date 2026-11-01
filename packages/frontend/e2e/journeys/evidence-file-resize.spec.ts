@@ -386,6 +386,23 @@ test.describe("Evidence file view resize (#874)", () => {
 			);
 		});
 
+		test("the drawing opened from the sheet gives focus back to its link on Esc and on Close", async ({
+			page,
+		}) => {
+			const preview = page.getByTestId("hypotheses-preview");
+			const link = page.getByTestId("detail-hypotheses");
+			await page.getByTestId("run-details-tab-evidence").click();
+			for (const close of ["Escape", "Close"] as const) {
+				await link.click();
+				await expect(preview).toBeVisible();
+				if (close === "Escape") await page.keyboard.press("Escape");
+				else await preview.getByRole("button", { name: "Close" }).click();
+				await expect(preview).toBeHidden();
+				await expect(page.getByTestId("run-details")).toBeVisible();
+				await expect(link, `after ${close}`).toBeFocused();
+			}
+		});
+
 		test("the sheet is a dialog that holds focus, and Esc closes it once", async ({
 			page,
 		}) => {
@@ -466,5 +483,52 @@ test.describe("Evidence file view resize (#874)", () => {
 				"trust the runs folder",
 			);
 		});
+	});
+
+	test("a phone run with a flag and a hidden warning marks the toggle with both", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await hideQueryDevtools(page);
+		await serveInvestigationAs(page, INVESTIGATION_ID, {
+			status: "completed",
+			report: {
+				...CITING,
+				flaggedContent: [
+					{
+						where: "tool-output",
+						quote: "ignore all previous instructions",
+						why: "prompt injection attempt in tool output",
+					},
+				],
+			},
+			workspace,
+		});
+		await serveEventsHistory(page, INVESTIGATION_ID, [
+			...makeTwoReadEvents(),
+			{
+				kind: "harness_tools",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 5,
+				ts: new Date(1700000005000).toISOString(),
+				server: "prismalens",
+				turn: "first",
+				connected: false,
+				calls: [],
+			} as CanonicalEvent,
+		]);
+		await page.goto(
+			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+		);
+		await expect(page.getByTestId("details-flag")).toBeVisible({
+			timeout: 15_000,
+		});
+		await expect(page.getByTestId("details-warn")).toBeVisible();
+		await expect(page.getByTestId("details-toggle")).toHaveAttribute(
+			"aria-label",
+			/1 flagged item, Tools: not connected/,
+		);
 	});
 });
