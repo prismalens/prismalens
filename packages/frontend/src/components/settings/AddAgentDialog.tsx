@@ -12,10 +12,11 @@ import type { HarnessStatus } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SquareTerminal } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
+import { RunInTerminalSent } from "@/components/terminal/RunInTerminal";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import {
@@ -125,6 +126,12 @@ export function AddAgentDialog({
 		onOpenChange(false);
 		reset();
 	};
+	// Run in terminal closes the dialog and leaves focus on the staged line, not the trigger.
+	const sentToTerminal = useRef(false);
+	const closeForTerminal = () => {
+		sentToTerminal.current = true;
+		close();
+	};
 	const openPage = (id: HarnessId) => {
 		close();
 		void navigate({ to: "/settings", search: { tab: "agent", agent: id } });
@@ -194,192 +201,205 @@ export function AddAgentDialog({
 				if (!o) reset();
 			}}
 		>
-			<DialogContent data-testid="add-agent-dialog">
-				<DialogHeader>
-					<DialogTitle>Add agent</DialogTitle>
-					<DialogDescription>
-						PrismaLens never installs an agent or signs it in for you.
-					</DialogDescription>
-					<StepList steps={STEPS} current={step} />
-				</DialogHeader>
+			<DialogContent
+				data-testid="add-agent-dialog"
+				onCloseAutoFocus={(e) => {
+					if (sentToTerminal.current) e.preventDefault();
+					sentToTerminal.current = false;
+				}}
+			>
+				<RunInTerminalSent.Provider value={closeForTerminal}>
+					<DialogHeader>
+						<DialogTitle>Add agent</DialogTitle>
+						<DialogDescription>
+							PrismaLens never installs an agent or signs it in for you.
+						</DialogDescription>
+						<StepList steps={STEPS} current={step} />
+					</DialogHeader>
 
-				{step === 0 && (
-					<div className="grid min-w-0 gap-3">
-						<div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
-							{agents.map((h) => (
+					{step === 0 && (
+						<div className="grid min-w-0 gap-3">
+							<div className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
+								{agents.map((h) => (
+									<Tile
+										key={h.id}
+										on={picked === h.id}
+										onClick={() => pick(h.id as HarnessId, h)}
+										mark={<AgentMark id={h.id} className="size-5" />}
+										label={h.label}
+										state={tileState(h)}
+										testId={`add-agent-tile-${h.id}`}
+									/>
+								))}
 								<Tile
-									key={h.id}
-									on={picked === h.id}
-									onClick={() => pick(h.id as HarnessId, h)}
-									mark={<AgentMark id={h.id} className="size-5" />}
-									label={h.label}
-									state={tileState(h)}
-									testId={`add-agent-tile-${h.id}`}
+									on={local}
+									onClick={() => pick("local")}
+									mark={<SquareTerminal className="size-5 text-text-1" />}
+									label="Local ACP command"
+									state={settings?.localAgent ? "Set up" : ""}
+									testId="add-agent-tile-local"
 								/>
-							))}
-							<Tile
-								on={local}
-								onClick={() => pick("local")}
-								mark={<SquareTerminal className="size-5 text-text-1" />}
-								label="Local ACP command"
-								state={settings?.localAgent ? "Set up" : ""}
-								testId="add-agent-tile-local"
-							/>
-						</div>
-						{local && (
-							<div className="grid gap-2">
-								<Input
-									value={command}
-									onChange={(e) => setCommand(e.target.value)}
-									placeholder="/usr/local/bin/my-agent"
-									aria-label="Command"
-									readOnly={!canEdit}
-									className="font-mono"
-									data-testid="add-agent-command"
-								/>
-								<Input
-									value={args}
-									onChange={(e) => setArgs(e.target.value)}
-									placeholder="Arguments, e.g. --acp"
-									aria-label="Arguments"
-									readOnly={!canEdit}
-									className="font-mono"
-									data-testid="add-agent-args"
-								/>
-								<p className="text-meta text-text-3">
-									Any agent that speaks ACP on stdio, installed by you.
-									Arguments are passed as written; no shell runs them.
-								</p>
 							</div>
-						)}
-						<AcpRegistrySearch />
-					</div>
-				)}
-
-				{step === 1 && agent && (
-					<div
-						className="grid min-w-0 gap-3 text-body"
-						data-testid="add-agent-signin"
-					>
-						{local ? (
-							<p data-testid="add-agent-verdict">
-								{agent.checked?.detail ?? "Not checked yet."}
-							</p>
-						) : !agent.installed ? (
-							<>
-								<p data-testid="add-agent-verdict">
-									Not installed. Install it on this machine, or set its binary
-									path in the next step.
-								</p>
-								<CommandChip command={agent.install} testId="add-agent-copy" />
-							</>
-						) : (
-							<>
-								<p data-testid="add-agent-verdict">
-									{tileState(agent)}
-									{agent.checked ? `: ${agent.checked.detail}` : "."}
-								</p>
-								{loginCommand(agent.loginHint) ? (
-									<p className="text-text-2">
-										Sign in on this machine, then check again.
+							{local && (
+								<div className="grid gap-2">
+									<Input
+										value={command}
+										onChange={(e) => setCommand(e.target.value)}
+										placeholder="/usr/local/bin/my-agent"
+										aria-label="Command"
+										readOnly={!canEdit}
+										className="font-mono"
+										data-testid="add-agent-command"
+									/>
+									<Input
+										value={args}
+										onChange={(e) => setArgs(e.target.value)}
+										placeholder="Arguments, e.g. --acp"
+										aria-label="Arguments"
+										readOnly={!canEdit}
+										className="font-mono"
+										data-testid="add-agent-args"
+									/>
+									<p className="text-meta text-text-3">
+										Any agent that speaks ACP on stdio, installed by you.
+										Arguments are passed as written; no shell runs them.
 									</p>
-								) : (
-									<p className="text-text-2 [&_code]:bg-transparent! [&_code]:p-0!">
-										<InlineCode text={agent.loginHint} />
-									</p>
-								)}
-								<div className="flex items-center gap-2">
-									{loginCommand(agent.loginHint) && (
-										<CommandChip
-											command={loginCommand(agent.loginHint) ?? ""}
-											className="flex-1"
-											testId="add-agent-copy"
-										/>
-									)}
-									<Button
-										variant="secondary"
-										size="sm"
-										disabled={check.isPending}
-										onClick={() => check.mutate({ id: agent.id as HarnessId })}
-										data-testid="add-agent-check-again"
-									>
-										{check.isPending ? "Checking" : "Check again"}
-									</Button>
 								</div>
-							</>
-						)}
-						{!local && canEdit && (
-							<ApiKeyField
-								agent={agent}
-								value={apiKey}
-								onChange={setApiKey}
-								keyName={keyName}
-								onKeyName={setKeyName}
-							/>
-						)}
-					</div>
-				)}
+							)}
+							<AcpRegistrySearch />
+						</div>
+					)}
 
-				{step === 2 && picked && (
-					<div className="grid min-w-0 gap-4" data-testid="add-agent-config">
-						<RuntimeFields id={picked} />
-						<EnvironmentRows id={picked} />
-						{result && (
-							<p
-								className="text-body text-text-2"
-								data-testid="add-agent-result"
+					{step === 1 && agent && (
+						<div
+							className="grid min-w-0 gap-3 text-body"
+							data-testid="add-agent-signin"
+						>
+							{local ? (
+								<p data-testid="add-agent-verdict">
+									{agent.checked?.detail ?? "Not checked yet."}
+								</p>
+							) : !agent.installed ? (
+								<>
+									<p data-testid="add-agent-verdict">
+										Not installed. Install it on this machine, or set its binary
+										path in the next step.
+									</p>
+									<CommandChip
+										command={agent.install}
+										testId="add-agent-copy"
+									/>
+								</>
+							) : (
+								<>
+									<p data-testid="add-agent-verdict">
+										{tileState(agent)}
+										{agent.checked ? `: ${agent.checked.detail}` : "."}
+									</p>
+									{loginCommand(agent.loginHint) ? (
+										<p className="text-text-2">
+											Sign in on this machine, then check again.
+										</p>
+									) : (
+										<p className="text-text-2 [&_code]:bg-transparent! [&_code]:p-0!">
+											<InlineCode text={agent.loginHint} />
+										</p>
+									)}
+									<div className="flex items-center gap-2">
+										{loginCommand(agent.loginHint) && (
+											<CommandChip
+												command={loginCommand(agent.loginHint) ?? ""}
+												className="flex-1"
+												testId="add-agent-copy"
+											/>
+										)}
+										<Button
+											variant="secondary"
+											size="sm"
+											disabled={check.isPending}
+											onClick={() =>
+												check.mutate({ id: agent.id as HarnessId })
+											}
+											data-testid="add-agent-check-again"
+										>
+											{check.isPending ? "Checking" : "Check again"}
+										</Button>
+									</div>
+								</>
+							)}
+							{!local && canEdit && (
+								<ApiKeyField
+									agent={agent}
+									value={apiKey}
+									onChange={setApiKey}
+									keyName={keyName}
+									onKeyName={setKeyName}
+								/>
+							)}
+						</div>
+					)}
+
+					{step === 2 && picked && (
+						<div className="grid min-w-0 gap-4" data-testid="add-agent-config">
+							<RuntimeFields id={picked} />
+							<EnvironmentRows id={picked} />
+							{result && (
+								<p
+									className="text-body text-text-2"
+									data-testid="add-agent-result"
+								>
+									{result} Its settings are saved; it joins the list once it can
+									run.
+								</p>
+							)}
+						</div>
+					)}
+
+					{error && (
+						<p className="text-meta text-danger" data-testid="add-agent-error">
+							{error}
+						</p>
+					)}
+
+					<DialogFooter>
+						{step === 0 ? (
+							<Button variant="secondary" onClick={close}>
+								Cancel
+							</Button>
+						) : (
+							<Button
+								variant="secondary"
+								onClick={() => {
+									setResult(null);
+									setStep(step - 1);
+								}}
 							>
-								{result} Its settings are saved; it joins the list once it can
-								run.
-							</p>
+								Back
+							</Button>
 						)}
-					</div>
-				)}
-
-				{error && (
-					<p className="text-meta text-danger" data-testid="add-agent-error">
-						{error}
-					</p>
-				)}
-
-				<DialogFooter>
-					{step === 0 ? (
-						<Button variant="secondary" onClick={close}>
-							Cancel
-						</Button>
-					) : (
-						<Button
-							variant="secondary"
-							onClick={() => {
-								setResult(null);
-								setStep(step - 1);
-							}}
-						>
-							Back
-						</Button>
-					)}
-					{step < 2 ? (
-						<Button
-							onClick={next}
-							disabled={!picked || update.isPending}
-							data-testid="add-agent-next"
-						>
-							Next
-						</Button>
-					) : result ? (
-						<Button onClick={close} data-testid="add-agent-close">
-							Close
-						</Button>
-					) : (
-						<Button
-							onClick={checkAndAdd}
-							disabled={busy}
-							data-testid="add-agent-check-and-add"
-						>
-							{busy ? "Checking" : "Check and add"}
-						</Button>
-					)}
-				</DialogFooter>
+						{step < 2 ? (
+							<Button
+								onClick={next}
+								disabled={!picked || update.isPending}
+								data-testid="add-agent-next"
+							>
+								Next
+							</Button>
+						) : result ? (
+							<Button onClick={close} data-testid="add-agent-close">
+								Close
+							</Button>
+						) : (
+							<Button
+								onClick={checkAndAdd}
+								disabled={busy}
+								data-testid="add-agent-check-and-add"
+							>
+								{busy ? "Checking" : "Check and add"}
+							</Button>
+						)}
+					</DialogFooter>
+				</RunInTerminalSent.Provider>
 			</DialogContent>
 		</Dialog>
 	);

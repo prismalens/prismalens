@@ -6,6 +6,7 @@ import {
 	deviceTokenFrom,
 	fetchInstanceId,
 	OlderBackendError,
+	claimTerminalKey,
 	operatorToken,
 	parsePairingToken,
 	storedCandidates,
@@ -110,6 +111,57 @@ describe("operatorToken", () => {
 				fetchImpl: vi.fn(async () => response(400)),
 			}),
 		).rejects.toThrow("400");
+	});
+});
+
+describe("the terminal key (#931)", () => {
+	it("keeps the key a fresh redeem returns", async () => {
+		const onTerminalKey = vi.fn();
+		const fetchImpl = vi.fn(async () =>
+			response(200, { terminalKey: "tk" }, [`${cookieName}=fresh; Path=/; HttpOnly`]),
+		);
+		await operatorToken({
+			baseUrl,
+			cookieName,
+			candidates: [],
+			pairOperator: async () => "/pair#link",
+			fetchImpl,
+			onTerminalKey,
+		});
+		expect(onTerminalKey).toHaveBeenCalledWith("tk");
+	});
+
+	it("claims a key for a stored session with a fresh operator link, pairing no second device", async () => {
+		const fetchImpl = vi.fn(async () => response(200, { key: "tk" }));
+		await expect(
+			claimTerminalKey({
+				baseUrl,
+				token: "old",
+				pairOperator: async () => "/pair#link",
+				fetchImpl,
+			}),
+		).resolves.toBe("tk");
+		expect(fetchImpl).toHaveBeenCalledWith(`${baseUrl}/api/terminal/key`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseUrl,
+				authorization: "Bearer old",
+			},
+			body: JSON.stringify({ token: "link" }),
+		});
+		expect(fetchImpl).not.toHaveBeenCalledWith(`${baseUrl}/api/pairing/redeem`, expect.anything());
+	});
+
+	it("gives up quietly when the claim is refused: the panel then says why", async () => {
+		await expect(
+			claimTerminalKey({
+				baseUrl,
+				token: "old",
+				pairOperator: async () => "/pair#link",
+				fetchImpl: vi.fn(async () => response(403)),
+			}),
+		).resolves.toBeNull();
 	});
 });
 

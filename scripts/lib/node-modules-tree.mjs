@@ -177,8 +177,8 @@ export function hollowPackages(root) {
 }
 
 /**
- * Drop what no running server reads: source maps, type declarations and
- * TypeScript sources, Markdown, each package's own tests, docs and examples,
+ * Drop what no running server reads: source maps, debug symbols (.pdb), type
+ * declarations and TypeScript sources, Markdown, each package's own tests, docs and examples,
  * and native prebuilds for other platforms. Licence files stay, with
  * THIRD_PARTY_LICENSES/ and the file a `SEE LICENSE IN` field names.
  */
@@ -188,7 +188,7 @@ export function prune(nodeModules) {
 	if (process.platform === "linux") own.push(`linuxmusl-${process.arch}`);
 	const foreign = (name) =>
 		!own.some((t) => name === t || name.startsWith(`${t}.`));
-	const FILES = /\.(map|ts|mts|cts|md|markdown)$/i;
+	const FILES = /\.(map|ts|mts|cts|md|markdown|pdb)$/i;
 	const DIRS = new Set([
 		"test",
 		"tests",
@@ -222,6 +222,7 @@ export function prune(nodeModules) {
 						count += statSync(p).isDirectory() ? countFiles(p) : 1;
 						rmSync(p, { recursive: true, force: true });
 					}
+					prunePackage(path, false);
 				}
 				// Only a package's own top-level dirs: a nested `docs` can be code.
 				else if (root && DIRS.has(entry.name)) {

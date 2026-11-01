@@ -3,9 +3,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { HarnessStatus } from "@prismalens/contracts";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TerminalPanel } from "@/components/terminal/TerminalPanel";
+import { terminalStore } from "@/lib/terminal/store";
 import { AddAgentDialog, tileState } from "./AddAgentDialog";
 
 const mutateAsync = vi.fn();
@@ -117,6 +119,12 @@ vi.mock("@/lib/api/hooks", () => ({
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => navigate,
 	Link: () => null,
+}));
+vi.mock("@/lib/terminal/use-terminal-availability", () => ({
+	useTerminalAvailability: () => ({ available: true }),
+}));
+vi.mock("@/components/terminal/TerminalView", () => ({
+	TerminalView: () => null,
 }));
 vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({ isMutating: () => 0 }),
@@ -311,5 +319,30 @@ describe("Add agent steps (#907)", () => {
 		expect(document.body.textContent).toContain(
 			"Only this machine's own session can change what an agent runs.",
 		);
+	});
+});
+
+describe("Run in terminal inside Add agent (#931)", () => {
+	function WithTerminal() {
+		const [open, setOpen] = useState(true);
+		return (
+			<>
+				<TerminalPanel />
+				<AddAgentDialog open={open} onOpenChange={setOpen} />
+			</>
+		);
+	}
+
+	it("closes the dialog so the staged line under it can be used, and focuses that line", async () => {
+		for (const tab of terminalStore.get().tabs) terminalStore.closeTab(tab.id);
+		await act(async () => root.render(<WithTerminal />));
+		await click("add-agent-tile-opencode");
+		await click("add-agent-next");
+		await click("run-in-terminal");
+		await act(() => new Promise((r) => setTimeout(r, 50)));
+		expect(q("add-agent-dialog")).toBeNull();
+		const line = q("terminal-draft")?.querySelector("input");
+		expect(line?.value).toBe("npm i -g @openai/codex");
+		expect(document.activeElement).toBe(line);
 	});
 });
