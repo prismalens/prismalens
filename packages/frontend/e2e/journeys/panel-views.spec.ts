@@ -98,7 +98,7 @@ function readEvent(): CanonicalEvent[] {
 	] as CanonicalEvent[];
 }
 
-async function setup(page: Page, width = 1440) {
+async function setup(page: Page, width = 1440, url = RUN_URL) {
 	await page.setViewportSize({ width, height: 900 });
 	await hideQueryDevtools(page);
 	await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -171,7 +171,7 @@ async function setup(page: Page, width = 1440) {
 				}),
 			}),
 	);
-	await page.goto(RUN_URL);
+	await page.goto(url);
 	await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
 }
 
@@ -300,7 +300,45 @@ test.describe("Panel views (#973)", () => {
 		});
 		await page.goto(`${RUN_URL}&panel=changes`);
 		await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
-		await page.getByTestId("details-toggle").click();
 		await expect(page.getByTestId("changes-none")).toBeVisible();
+	});
+
+	test("a link naming a tab opens the panel on it; closing the panel drops the tab and file from the URL", async ({
+		page,
+	}) => {
+		await setup(page, 1440, `${RUN_URL}&panel=changes`);
+		await expect(page.getByTestId("run-details-tab-changes")).toHaveAttribute(
+			"data-state",
+			"active",
+		);
+		await expect(page.getByTestId("changes-diff")).toBeVisible();
+		await page.getByTestId("details-toggle").click();
+		await expect(page.getByTestId("run-details-tab-changes")).toHaveCount(0);
+		await expect(page).not.toHaveURL(/panel=/);
+
+		await page.goto(
+			`${RUN_URL}&panel=files&file=${encodeURIComponent("repo:src/payments/client.ts")}`,
+		);
+		await expect(page.getByTestId("evidence-file")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.keyboard.press("Escape");
+		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
+		await expect(page).not.toHaveURL(/panel=|file=/);
+	});
+
+	test("an old run address keeps its tab and file through the redirect", async ({
+		page,
+	}) => {
+		const file = encodeURIComponent("repo:src/payments/client.ts");
+		await setup(
+			page,
+			1440,
+			`/investigations/${INVESTIGATION_ID}?panel=files&file=${file}`,
+		);
+		await expect(page).toHaveURL(/\/incidents\/[^/]+\/conversation\?/);
+		await expect(page).toHaveURL(/panel=files/);
+		await expect(page).toHaveURL(/file=repo%3Asrc%2Fpayments%2Fclient\.ts/);
+		await expect(page.getByTestId("evidence-file")).toBeVisible();
 	});
 });

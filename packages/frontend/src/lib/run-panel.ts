@@ -19,6 +19,18 @@ export function panelTab(v: unknown): PanelTab | undefined {
 	return PANEL_TABS.find((t) => t === v);
 }
 
+/** The panel's part of a run address, `?panel=` and `?file=`, kept wherever the address is rewritten. */
+export function panelSearch(search: Record<string, unknown>): {
+	panel?: PanelTab;
+	file?: string;
+} {
+	const panel = panelTab(search.panel);
+	return {
+		...(panel ? { panel } : {}),
+		...(typeof search.file === "string" ? { file: search.file } : {}),
+	};
+}
+
 /** `repo:path#L41-L44`: the file in the URL; the commit always comes from the run. */
 export function fileParam(f: FileAt): string {
 	const range = f.line ? `#L${f.line}-L${f.end ?? f.line}` : "";

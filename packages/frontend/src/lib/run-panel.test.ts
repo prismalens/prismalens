@@ -8,6 +8,7 @@ import {
 	changeNote,
 	fileFromParam,
 	fileParam,
+	panelSearch,
 	panelTab,
 	splitPatch,
 	touchedFiles,
@@ -214,5 +215,21 @@ describe("changeNote", () => {
 				),
 			),
 		).toBeNull();
+	});
+});
+
+describe("panelSearch", () => {
+	it("keeps a known tab and a file, and nothing else", () => {
+		expect(
+			panelSearch({
+				panel: "changes",
+				file: "repo:src/a.ts#L2-L3",
+				investigation: "x",
+			}),
+		).toEqual({ panel: "changes", file: "repo:src/a.ts#L2-L3" });
+	});
+
+	it("drops an unknown tab and a file that is not a string", () => {
+		expect(panelSearch({ panel: "nope", file: 3 })).toEqual({});
 	});
 });

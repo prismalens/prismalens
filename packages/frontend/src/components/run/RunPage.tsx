@@ -272,21 +272,39 @@ export function RunPage() {
 			const param = fileParam(f);
 			origin.current = { id: from, tab: tabRef.current, inPanel };
 			origins.current.set(param, origin.current);
-			// The entry it leaves keeps its tab, so Back lands where the reader was.
-			setSearch({ panel: tabRef.current }, true);
+			// The entry it leaves keeps its tab, so Back lands where the reader was; none for a phone sheet that closes on Back.
+			setSearch(
+				{ panel: phone && !inPanel ? undefined : tabRef.current },
+				true,
+			);
 			pushed.current = param;
 			setSearch({ file: param, panel: "files" }, false);
 			setPanel(true);
 			focusLater("evidence-file-back");
 		},
-		[focusLater, setPanel, setSearch],
+		[focusLater, setPanel, setSearch, phone],
 	);
 	const closeFile = useCallback(() => {
 		if (pushed.current && pushed.current === search.file) {
 			pushed.current = null;
 			router.history.back();
-		} else setSearch({ file: undefined, panel: origin.current?.tab }, true);
-	}, [router, search.file, setSearch]);
+		} else {
+			const from = origin.current;
+			const lifts = phone && from && !from.inPanel;
+			setSearch(
+				{ file: undefined, panel: lifts ? undefined : from?.tab },
+				true,
+			);
+		}
+	}, [router, search.file, setSearch, phone]);
+	// A closed panel names no tab or file, so a reload or a shared link opens it as the reader left it.
+	const hidePanel = useCallback(() => {
+		// Its focus goes to the panel's toggle, not to what opened the file.
+		if (search.file) origins.current.delete(search.file);
+		setPanel(false);
+		if (search.panel || search.file)
+			setSearch({ panel: undefined, file: undefined }, true);
+	}, [setPanel, setSearch, search.panel, search.file]);
 	// However the file closed (its Back, or the browser's), focus returns to what opened it (#975 OBJ-008).
 	const lastFile = useRef(search.file);
 	useEffect(() => {
@@ -346,10 +364,10 @@ export function RunPage() {
 	// The step is under the sheet on a phone: lift the sheet to show it.
 	const jumpOut = useCallback(
 		(n: number) => {
-			if (phone) setPanel(false);
+			if (phone) hidePanel();
 			jump(n);
 		},
-		[phone, jump, setPanel],
+		[phone, jump, hidePanel],
 	);
 	const previewOpener = useCallback(() => previewFrom.current, []);
 	const onPreview = useCallback((open: boolean) => {
@@ -370,16 +388,16 @@ export function RunPage() {
 		jump(wanted);
 	}, [wanted, steps, inv?.id, jump]);
 
-	// A deep link to a file opens the panel it shows in.
+	// A deep link to a file or a tab opens the panel it shows in.
 	useEffect(() => {
-		if (viewing && !panel) setPanel(true);
-		// biome-ignore lint/correctness/useExhaustiveDependencies: only a newly named file opens the panel.
-	}, [viewing?.repo, viewing?.path]);
+		if ((viewing || search.panel) && !panel) setPanel(true);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: only a newly named file or tab opens the panel.
+	}, [viewing?.repo, viewing?.path, search.panel]);
 
 	const closePanel = useCallback(() => {
-		setPanel(false);
+		hidePanel();
 		window.setTimeout(() => toggleRef.current?.focus(), 0);
-	}, [setPanel]);
+	}, [hidePanel]);
 	useEffect(() => {
 		if (!panel) return;
 		// Capture: Esc closes the panel before anything bound to Esc on the page goes Back.

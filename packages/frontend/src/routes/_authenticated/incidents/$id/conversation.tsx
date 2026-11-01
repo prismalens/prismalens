@@ -6,7 +6,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { RunPage } from "@/components/run/RunPage";
-import { type PanelTab, panelTab } from "@/lib/run-panel";
+import { type PanelTab, panelSearch } from "@/lib/run-panel";
 
 export const Route = createFileRoute(
 	"/_authenticated/incidents/$id/conversation",
@@ -15,8 +15,7 @@ export const Route = createFileRoute(
 		search: Record<string, unknown>,
 	): { call?: string; file?: string; panel?: PanelTab } => ({
 		...(typeof search.call === "string" ? { call: search.call } : {}),
-		...(typeof search.file === "string" ? { file: search.file } : {}),
-		...(panelTab(search.panel) ? { panel: panelTab(search.panel) } : {}),
+		...panelSearch(search),
 	}),
 	component: RunPage,
 });
