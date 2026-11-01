@@ -4,14 +4,18 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 /**
- * Per-viewer layout choices: the sidebar folded to its rail (`[`), the
- * alerts pane grouped by service or not, and per view which service groups are
- * folded (#743).
+ * Per-viewer layout choices: the sidebar full, folded to its rail, or hidden
+ * (`[`, #848), the alerts pane grouped by service or not, and per view which
+ * service groups are folded (#743).
  * Kept in localStorage, which can be absent or throw, so every access is
- * guarded and the defaults win without it. The fold is an attribute on the
+ * guarded and the defaults win without it. The state is an attribute on the
  * root, so the bar and every frame read one width from tokens.css.
  */
 const KEY = "pl.layout";
+
+export type SidebarState = "full" | "folded" | "hidden";
+/** The width `[` brings the bar back to. */
+export type SidebarRest = Exclude<SidebarState, "hidden">;
 
 /** The incident sidebar is always grouped; the alerts pane can be. */
 export type GroupView = "list" | "alerts";
@@ -19,14 +23,16 @@ export type GroupBy = "none" | "service";
 const VIEWS: GroupView[] = ["list", "alerts"];
 
 interface LayoutPrefs {
-	sidebarFolded: boolean;
+	sidebar: SidebarState;
+	sidebarRest: SidebarRest;
 	alertsGroupBy: GroupBy;
 	/** Folded group ids, per view. */
 	folded: Record<GroupView, string[]>;
 }
 
 const DEFAULTS: LayoutPrefs = {
-	sidebarFolded: false,
+	sidebar: "full",
+	sidebarRest: "full",
 	alertsGroupBy: "none",
 	folded: { list: [], alerts: [] },
 };
@@ -37,14 +43,26 @@ function read(): LayoutPrefs {
 	try {
 		const raw = window.localStorage.getItem(KEY);
 		if (!raw) return DEFAULTS;
-		const parsed = JSON.parse(raw) as Partial<LayoutPrefs>;
+		const parsed = JSON.parse(raw) as Partial<LayoutPrefs> & {
+			/** Before #848 the bar could only fold. */
+			sidebarFolded?: boolean;
+		};
 		const folded = { ...DEFAULTS.folded };
 		for (const v of VIEWS) {
 			const f = parsed.folded?.[v];
 			if (Array.isArray(f)) folded[v] = f.filter((x) => typeof x === "string");
 		}
+		const rest: SidebarRest =
+			parsed.sidebarRest === "folded" ||
+			(parsed.sidebar === undefined && parsed.sidebarFolded)
+				? "folded"
+				: "full";
 		return {
-			sidebarFolded: !!parsed.sidebarFolded,
+			sidebar:
+				parsed.sidebar === "hidden" || parsed.sidebar === "folded"
+					? parsed.sidebar
+					: rest,
+			sidebarRest: rest,
 			alertsGroupBy: parsed.alertsGroupBy === "service" ? "service" : "none",
 			folded,
 		};
@@ -60,10 +78,9 @@ function publish(next: LayoutPrefs) {
 	} catch {
 		// A private window or blocked storage: the choice lasts for this page only.
 	}
-	document.documentElement.toggleAttribute(
-		"data-sidebar-folded",
-		next.sidebarFolded,
-	);
+	const root = document.documentElement;
+	root.toggleAttribute("data-sidebar-folded", next.sidebar === "folded");
+	root.toggleAttribute("data-sidebar-hidden", next.sidebar === "hidden");
 	listeners.forEach((l) => {
 		l();
 	});
@@ -89,8 +106,18 @@ export function useLayoutPrefs() {
 		}
 	}, []);
 
+	/** `[` and the fold button hide the bar; again brings back the width it had. */
 	const toggleSidebar = useCallback(
-		() => publish({ ...current, sidebarFolded: !current.sidebarFolded }),
+		() =>
+			publish({
+				...current,
+				sidebar: current.sidebar === "hidden" ? current.sidebarRest : "hidden",
+			}),
+		[],
+	);
+	const setSidebarRest = useCallback(
+		(rest: SidebarRest) =>
+			publish({ ...current, sidebar: rest, sidebarRest: rest }),
 		[],
 	);
 	const setAlertsGroupBy = useCallback(
@@ -110,5 +137,13 @@ export function useLayoutPrefs() {
 		});
 	}, []);
 
-	return { ...prefs, toggleSidebar, setAlertsGroupBy, toggleLane };
+	return {
+		...prefs,
+		sidebarFolded: prefs.sidebar === "folded",
+		sidebarHidden: prefs.sidebar === "hidden",
+		toggleSidebar,
+		setSidebarRest,
+		setAlertsGroupBy,
+		toggleLane,
+	};
 }

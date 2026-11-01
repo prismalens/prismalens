@@ -26,12 +26,14 @@ jobs:
     # in release-please-config.json). Tags are `v<version>` from 0.5.0 on; the
     # releases before it are tagged `prismalens@<version>`.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
     outputs:
       created: ${{ steps.rp.outputs.release_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
+      pr: ${{ steps.rp.outputs.pr }}
     steps:
       # A step-level gate: a skipped job would skip every job after it, dispatch included.
       - if: github.event_name == 'push' && vars.RELEASE_ENABLED == 'true'
@@ -41,6 +43,34 @@ jobs:
           token: ${{ secrets.RELEASE_PAT || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # The release PR carries this release's snapshot of the public ACP registry; the app
+  # never fetches it (#848, ADR 0003 §4). A failed fetch keeps the last bundled list.
+  acp-registry:
+    name: Refresh the bundled ACP registry list
+    needs: release-please
+    if: needs.release-please.outputs.pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+          token: ${{ secrets.RELEASE_PAT || github.token }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/acp-registry-snapshot.mjs
+      - run: npx --yes @biomejs/biome@2.5.15 format --write packages/@prismalens/config/src/acp-registry.json
+      - name: Commit when it changed
+        run: |
+          git diff --quiet -- packages/@prismalens/config/src/acp-registry.json && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(#848): refresh the bundled ACP registry list" -- packages/@prismalens/config/src/acp-registry.json
+          git push
 
   # Merging the release PR makes a DRAFT release (`draft` + `force-tag-creation` in
   # release-please-config.json). Everything below fills it, then publishes it:
@@ -52,6 +82,7 @@ jobs:
       vars.RELEASE_ENABLED == 'true' &&
       (needs.release-please.outputs.created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     outputs:
@@ -76,26 +107,56 @@ jobs:
 
   standalone:
     needs: draft
-    uses: ./.github/workflows/standalone.yml
+    uses: ./.github/workflows/build-standalone-cli.yml
     with:
       release-tag: ${{ needs.draft.outputs.tag }}
+    permissions:
+      contents: write
+
+  desktop:
+    needs: draft
+    uses: ./.github/workflows/build-desktop-app.yml
+    with:
+      release-tag: ${{ needs.draft.outputs.tag }}
+    permissions:
+      contents: write
+
+  # One SHA256SUMS over every asset on the draft, and one build-provenance attestation
+  # over it: `gh attestation verify <asset> --repo prismalens/prismalens` (#906).
+  sums:
+    name: Checksums and provenance
+    needs: [draft, standalone, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
       attestations: write
-
-  desktop:
-    needs: draft
-    uses: ./.github/workflows/desktop.yml
-    with:
-      release-tag: ${{ needs.draft.outputs.tag }}
-    permissions:
-      contents: write
+    steps:
+      - name: Download every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: gh release download "$TAG" -p 'prismalens-*' -p 'PrismaLens-*' -p install.sh -p install.ps1 -D assets --repo "$GITHUB_REPOSITORY"
+      - name: Write SHA256SUMS
+        run: cd assets && sha256sum $(ls | LC_ALL=C sort) > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: assets/SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: assets/SHA256SUMS
+      - name: Upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: gh release upload "$TAG" assets/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
 
   npm:
     name: Publish to npm
-    needs: [draft, standalone, desktop]
+    needs: [draft, sums]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write
@@ -126,9 +187,11 @@ jobs:
       - if: steps.npm.outputs.published != 'true'
         run: pnpm publint
       # An older version finished after a newer one must not take npm's `latest`.
+      # Provenance is required, so a publish that cannot make it fails closed (#906).
       - if: steps.npm.outputs.published != 'true'
         env:
           DIST_TAG: ${{ needs.draft.outputs.latest == 'true' && 'latest' || 'previous' }}
+          NPM_CONFIG_PROVENANCE: "true"
         run: node scripts/pack-cli.mjs --publish --tag "$DIST_TAG"
 
   # npm goes first: publishing the release is what the in-app update notice reads
@@ -137,6 +200,7 @@ jobs:
     name: Publish the release
     needs: [draft, npm]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
@@ -152,6 +216,7 @@ jobs:
     needs: [draft, publish-release]
     if: needs.draft.outputs.latest == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -164,8 +229,8 @@ jobs:
           TAG: ${{ needs.draft.outputs.tag }}
         run: |
           if [ -z "$PM_TOKEN" ]; then
-            echo "::notice::PACKAGE_MANAGERS_TOKEN not set; skipping the Homebrew tap and Scoop bucket"
-            exit 0
+            echo "::error::PACKAGE_MANAGERS_TOKEN is not set, so the Homebrew tap and Scoop bucket stay on the old version. Set it and re-run this job (RELEASING.md)."
+            exit 1
           fi
           version="${TAG#v}"
           gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
@@ -184,3 +249,51 @@ jobs:
           }
           publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
           publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json
+
+  # The real tap and bucket, as a user meets them (#920). The standalone workflow smokes a
+  # formula and manifest built beside the archives; only this installs what was pushed.
+  verify-install:
+    name: Install from the real ${{ matrix.manager }}
+    needs: [draft, package-managers]
+    if: needs.draft.outputs.latest == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            manager: Homebrew tap
+          - os: windows-latest
+            manager: Scoop bucket
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.draft.outputs.version }}
+    steps:
+      - name: brew install prismalens/tap/prismalens
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          set -eu
+          brew install prismalens/tap/prismalens
+          out=$("$(brew --prefix)/bin/pl" --version)
+          [ "$out" = "$VERSION" ] || { echo "::error::pl --version printed $out, expected $VERSION"; exit 1; }
+          brew test prismalens/tap/prismalens
+          brew uninstall prismalens
+
+      - name: scoop install prismalens
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-RestMethod get.scoop.sh -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
+          & "$env:RUNNER_TEMP\install-scoop.ps1" -RunAsAdmin
+          $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
+          scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
+          scoop install prismalens
+          if ($LASTEXITCODE -ne 0) { Write-Error "scoop install failed"; exit 1 }
+          $out = (pl --version).Trim()
+          if ($out -ne $env:VERSION) { Write-Error "pl --version printed $out, expected $env:VERSION"; exit 1 }
+          scoop uninstall prismalens

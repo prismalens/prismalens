@@ -9,6 +9,7 @@ import {
 	fireIncident,
 	LIVE,
 	QUIET,
+	sidewaysFaults,
 	visit,
 	waitForRun,
 } from "../steps/product";
@@ -707,7 +708,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await visit(page, `/incidents/${inc.id}`);
 		await expect(page.getByTestId("impact-no-source")).toBeVisible();
 		await expect(page.getByTestId("impact-connect")).toBeVisible();
-		// Prometheus is added under Alert sources; Integrations filters it out.
+		// Prometheus is added under Sources (#848).
 		await expect(page.getByTestId("impact-connect")).toHaveAttribute(
 			"href",
 			"/settings?tab=sources",
@@ -1149,8 +1150,11 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 
 		await visit(page, `/services/${svcId}`);
 
-		// Edit impact metric
-		const editBtn = page.getByTestId("service-metric-edit");
+		// Map the connection, then edit its impact metric in place (#848)
+		await page.getByTestId("mapping-add").click();
+		const editBtn = page.getByRole("button", {
+			name: "Edit the mapping of Prometheus Main",
+		});
 		await expect(editBtn).toBeVisible();
 		await editBtn.click();
 
@@ -1163,4 +1167,227 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			.poll(() => savedConfig)
 			.toEqual({ metric: "http_requests_total" });
 	});
+
+	test.describe("on a phone (#848, OBJ-011, OBJ-012)", () => {
+		test.use({
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			isMobile: true,
+		});
+
+		test("the incident header and the area strip keep every 48 px target on screen at 320, 360 and 390 px", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(90_000);
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("PaymentsCheckoutLatencyBudgetBurnHighEuWest1"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+			const header = [
+				"incident-back",
+				"crumb-incident",
+				"header-resolve",
+				"header-more",
+			];
+			for (const width of [320, 360, 390]) {
+				await page.setViewportSize({ width, height: 844 });
+				for (const [path, required] of [
+					[`/incidents/${inc.id}`, header],
+					[`/incidents/${inc.id}/conversation`, [...header, "details-toggle"]],
+				] as const) {
+					await visit(page, path);
+					for (const id of required)
+						await expect(
+							page.getByTestId(id),
+							`${id} at ${width}`,
+						).toBeVisible();
+					expect(
+						await toolbarFaults(page, "incident-header", required),
+						`${path} at ${width}`,
+					).toEqual([]);
+					expect(
+						await toolbarFaults(page, "topbar"),
+						`${path} at ${width}`,
+					).toEqual([]);
+				}
+			}
+		});
+
+		test("no incident page is wider than the screen at 320, 360 and 390 px (0.5.3 walk W11)", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(120_000);
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("PaymentsCheckoutLatencyBudgetBurnHighEuWest1"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			const run = await waitForRun(
+				page,
+				inc.id,
+				(r) => r.status === "completed",
+				"ready",
+			);
+			await rewrite(page, run.id, { impact: "chart", extraRows: true });
+			for (const width of [320, 360, 390]) {
+				await page.setViewportSize({ width, height: 844 });
+				await visit(page, `/incidents/${inc.id}`);
+				await expect(page.getByTestId("latest-run-strip")).toBeVisible();
+				expect
+					.soft(await sidewaysFaults(page), `overview at ${width}`)
+					.toEqual([]);
+				await visit(page, `/incidents/${inc.id}/conversation`);
+				await expect(page.getByTestId("run-strip")).toBeVisible();
+				expect
+					.soft(await sidewaysFaults(page), `conversation at ${width}`)
+					.toEqual([]);
+				await page.getByTestId("details-toggle").click();
+				for (const tab of ["summary", "evidence", "context", "steps"]) {
+					await page.getByTestId(`run-details-tab-${tab}`).click();
+					await expect(page.getByTestId(`run-details-${tab}`)).toBeVisible();
+					expect
+						.soft(await sidewaysFaults(page), `details ${tab} at ${width}`)
+						.toEqual([]);
+				}
+			}
+		});
+
+		test("a warning the phone strip hides marks the details toggle (0.5.3 walk W11)", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(90_000);
+			// The fake agent never calls PrismaLens's tools, so its run warns "Tools: not connected".
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("ToolsWarn"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+			await visit(page, `/incidents/${inc.id}/conversation`);
+			const toggle = page.getByTestId("details-toggle");
+			await expect(page.getByTestId("run-strip-tools")).toBeHidden();
+			await expect(page.getByTestId("details-warn")).toBeVisible();
+			await expect(toggle).toHaveAttribute(
+				"aria-label",
+				/Tools: not connected/,
+			);
+			await page.setViewportSize({ width: 1280, height: 800 });
+			await expect(page.getByTestId("run-strip-tools")).toBeVisible();
+			await expect(page.getByTestId("details-warn")).toHaveCount(0);
+		});
+
+		test("the run details sheet's tabs sit above the run strip at 320, 360 and 390 px (0.5.3 walk W11)", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(90_000);
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("EvidenceSheet"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+			for (const width of [320, 360, 390]) {
+				await page.setViewportSize({ width, height: 844 });
+				await visit(page, `/incidents/${inc.id}/conversation`);
+				await page.getByTestId("details-toggle").click();
+				await page.getByTestId("run-details-tab-evidence").click();
+				await expect(page.getByTestId("run-details-evidence")).toBeVisible();
+				const covered = await page.evaluate(() => {
+					const strip = Array.from(
+						document.querySelectorAll('[data-testid="run-strip"] *'),
+					)
+						.filter((el) => el.checkVisibility({ visibilityProperty: true }))
+						.map((el) => el.getBoundingClientRect());
+					return Array.from(
+						document.querySelectorAll<HTMLElement>(
+							'[data-testid^="run-details-tab-"]',
+						),
+					).flatMap((tab) => {
+						const t = tab.getBoundingClientRect();
+						const hit = document.elementFromPoint(
+							t.left + t.width / 2,
+							t.top + t.height / 2,
+						);
+						const under = strip.some(
+							(s) =>
+								s.width > 0 &&
+								s.left < t.right &&
+								s.right > t.left &&
+								s.top < t.bottom &&
+								s.bottom > t.top,
+						);
+						return !hit || !tab.contains(hit) || under
+							? [tab.dataset.testid]
+							: [];
+					});
+				});
+				expect.soft(covered, `tabs under the strip at ${width}`).toEqual([]);
+			}
+		});
+	});
 });
+
+/** Overflow, a required control missing or hidden, and every link or button under 48x48
+ *  once its clipping ancestors cut it, or off screen. */
+async function toolbarFaults(
+	page: Page,
+	testId: string,
+	required: readonly string[] = [],
+): Promise<string[]> {
+	return page.getByTestId(testId).evaluate((bar, required) => {
+		const faults: string[] = [];
+		if (bar.scrollWidth > bar.clientWidth)
+			faults.push(`overflow ${bar.scrollWidth} > ${bar.clientWidth}`);
+		for (const id of required) {
+			const el = bar.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+			if (!el) faults.push(`${id} missing`);
+			else if (!el.checkVisibility({ visibilityProperty: true }))
+				faults.push(`${id} hidden`);
+		}
+		for (const el of Array.from(
+			bar.querySelectorAll<HTMLElement>("a, button"),
+		)) {
+			let { left, right, top, bottom } = el.getBoundingClientRect();
+			const id =
+				el.dataset.testid ?? el.getAttribute("aria-label") ?? el.tagName;
+			if (right - left === 0 && !required.includes(id)) continue;
+			for (
+				let p = el.parentElement;
+				p && p !== bar.parentElement;
+				p = p.parentElement
+			) {
+				if (getComputedStyle(p).overflowX === "visible") continue;
+				const r = p.getBoundingClientRect();
+				left = Math.max(left, r.left);
+				right = Math.min(right, r.right);
+				top = Math.max(top, r.top);
+				bottom = Math.min(bottom, r.bottom);
+			}
+			if (right - left < 47.5 || bottom - top < 47.5)
+				faults.push(
+					`${id} ${Math.round(right - left)}x${Math.round(bottom - top)}`,
+				);
+			if (left < 0 || right > document.documentElement.clientWidth)
+				faults.push(`${id} off screen`);
+		}
+		return faults;
+	}, required);
+}

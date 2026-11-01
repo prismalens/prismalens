@@ -7,8 +7,11 @@
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Logger } from "@nestjs/common";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const env = await vi.hoisted(async () => {
@@ -44,6 +47,10 @@ const { startGitHttpServer } = await import(
 );
 import type { GitHttpServer } from "../../core/harness/__fixtures__/git-http-server.js";
 
+const { GitHubDeploymentsSegment, registerAdapter } = await import(
+	"@prismalens/integrations"
+);
+
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
 
@@ -76,6 +83,7 @@ function commit(dir: string, file: string, subject: string, at: Date): string {
 describe("ChangeEventsService", () => {
 	let prisma: InstanceType<typeof PrismaService>;
 	let service: InstanceType<typeof ChangeEventsService>;
+	let integrations: InstanceType<typeof IntegrationsService>;
 	let server: GitHttpServer;
 	const start = new Date(Date.now() - HOUR);
 	let shas: Record<string, string>;
@@ -126,7 +134,7 @@ describe("ChangeEventsService", () => {
 		const credentials = new CredentialsService(
 			config as unknown as ConstructorParameters<typeof CredentialsService>[0],
 		);
-		const integrations = new IntegrationsService(prisma, credentials, {
+		integrations = new IntegrationsService(prisma, credentials, {
 			capture: vi.fn(async () => {}),
 		} as unknown as ConstructorParameters<typeof IntegrationsService>[2]);
 		integrations.onModuleInit();
@@ -262,6 +270,38 @@ describe("ChangeEventsService", () => {
 		});
 	});
 
+	it("logs a failed read without the saved URL's userinfo or query (#848)", async () => {
+		const bare = new URL(server.addRepo("leaky-api", { kind: "reject-401" }));
+		const url = `${bare.protocol}//user:sentinel@${bare.host}${bare.pathname}?api_key=sentinel`;
+		const id = await incidentFor([{ url, sourceKind: "url" }]);
+		const warn = vi.spyOn(
+			(service as unknown as { logger: { warn: (m: string) => void } }).logger,
+			"warn",
+		);
+		await service.forIncident(id);
+		const logged = warn.mock.calls.map(([m]) => String(m)).join(" | ");
+		expect(logged).toContain(`What changed: ${bare.host}/leaky-api`);
+		expect(logged).not.toContain("sentinel");
+		warn.mockRestore();
+	});
+
+	it("keeps a failed read's stderr and query out of the logs and the source problem (#848)", async () => {
+		const down = createServer((_req, res) => res.writeHead(500).end());
+		await new Promise<void>((ok) => down.listen(0, "127.0.0.1", ok));
+		const { port } = down.address() as AddressInfo;
+		const url = `http://127.0.0.1:${port}/org/repo.git?api_key=sentinel`;
+		const id = await incidentFor([{ url, sourceKind: "url" }]);
+		const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+		const res = await service.forIncident(id);
+		const logged = warn.mock.calls.map(([m]) => String(m)).join(" | ");
+		warn.mockRestore();
+		down.close();
+		expect(res?.sources[0]?.status).toBe("failed");
+		expect(logged).toContain(`What changed: 127.0.0.1:${port}/org/repo`);
+		expect(logged).not.toContain("sentinel");
+		expect(JSON.stringify(res?.sources[0]?.problem)).not.toContain("sentinel");
+	});
+
 	it("reports partial when one of two repositories fails", async () => {
 		const url = server.addRepo("private-web", { kind: "reject-401" });
 		const id = await incidentFor([
@@ -335,6 +375,166 @@ describe("ChangeEventsService", () => {
 			problemOf(new GitFailure("ambiguous", "2 saved tokens", "pick-credential")),
 		).toMatchObject({ code: "pick-credential", action: "pick-credential" });
 		expect(problemOf("boom")).toMatchObject({ code: "error", message: "boom" });
+	});
+
+	describe("deploy pull (#854, #855)", () => {
+		let svc: { id: string; name: string };
+		let tokenIntegrationId: string;
+		const tokenFor = async (host: string, token: string) =>
+			(
+				await integrations.createConnection({
+					integrationId: tokenIntegrationId,
+					label: `t-${host}`,
+					credentials: { token },
+					connectionConfig: { host },
+				})
+			).id;
+		const pull = (
+			url: string,
+			opts: { metadata?: string | null; connectionId?: string | null } = {},
+		) =>
+			service["pullDeploys"](
+				{
+					key: "k",
+					serviceId: svc.id,
+					serviceName: svc.name,
+					subPath: null,
+					repository: {
+						id: "r",
+						sourceKind: "url",
+						fullName: "acme/api",
+						url,
+						defaultBranch: "main",
+						connectionId: opts.connectionId ?? null,
+						metadata: opts.metadata ?? null,
+					},
+				},
+				{ start: new Date(Date.now() - HOUR), end: new Date() },
+			);
+
+		beforeAll(async () => {
+			svc = await prisma.service.create({
+				data: { name: `svc-${Math.random().toString(36).slice(2, 8)}` },
+			});
+			tokenIntegrationId = (
+				await prisma.integration.create({
+					data: { templateId: "git-host-token", label: "Git host token" },
+				})
+			).id;
+		});
+
+		it("pulls a github.com repository's deploys with its unpinned stored git-host-token, no connectionId (#855)", async () => {
+			const connectionId = await tokenFor("github.com", "ghp_stored");
+			const list = vi
+				.spyOn(GitHubDeploymentsSegment.prototype, "listDeploymentEvents")
+				.mockImplementation(async (request) => {
+					await request("GET", "/repos/acme/api/deployments");
+					return [];
+				});
+			const fetched = vi
+				.spyOn(globalThis, "fetch")
+				.mockResolvedValue(Response.json([]));
+			try {
+				await pull("https://github.com/acme/api.git");
+				expect(list).toHaveBeenCalledTimes(1);
+				expect(list.mock.calls[0]?.[1]).toBe("acme/api");
+				expect(fetched).toHaveBeenCalledTimes(1);
+				const [url, init] = fetched.mock.calls[0] ?? [];
+				expect(url).toBe("https://api.github.com/repos/acme/api/deployments");
+				expect((init?.headers as Record<string, string>).Authorization).toBe(
+					"Bearer ghp_stored",
+				);
+
+				await pull("https://github.com/acme/api.git", {
+					metadata: JSON.stringify({ credentialConnectionId: connectionId }),
+				});
+				expect(list).toHaveBeenCalledTimes(2);
+
+				await pull("https://gitlab.com/acme/api.git");
+				expect(list).toHaveBeenCalledTimes(2);
+			} finally {
+				list.mockRestore();
+				fetched.mockRestore();
+				await prisma.connection.delete({ where: { id: connectionId } });
+			}
+		});
+
+		it("pulls a newly registered connector's deploys for a repository on its host with no change to pullDeploys (#855)", async () => {
+			const connectionId = await tokenFor("ci.example.test", "ci-secret");
+			const requestFor = vi.fn((_host: string, _authorization: string) => async () =>
+				Response.json([]),
+			);
+			class FakeCi {
+				readonly name = "fake-ci";
+				readonly deployment = {
+					name: "fake-ci",
+					servesHost: (host: string) => host === "ci.example.test",
+					requestFor,
+					listDeploymentEvents: async () => [
+						{
+							version: "7.1.0",
+							environment: "production",
+							status: "succeeded" as const,
+							sha: "b".repeat(40),
+							actor: "ci-bot",
+							url: null,
+							at: new Date().toISOString(),
+						},
+					],
+				};
+			}
+			const unregister = registerAdapter("fake-ci", FakeCi);
+			try {
+				await pull("https://ci.example.test/acme/api.git");
+				expect(requestFor).toHaveBeenCalledWith(
+					"ci.example.test",
+					"Bearer ci-secret",
+				);
+				const rows = await prisma.changeEvent.findMany({
+					where: { serviceId: svc.id },
+				});
+				expect(rows).toHaveLength(1);
+				expect(rows[0]).toMatchObject({ type: "deployment", source: "fake-ci" });
+				expect(JSON.parse(rows[0]?.metadata ?? "{}")).toMatchObject({
+					source: "fake-ci",
+					version: "7.1.0",
+					repo: "acme/api",
+				});
+			} finally {
+				unregister();
+				await prisma.connection.delete({ where: { id: connectionId } });
+			}
+		});
+	});
+
+	it("keeps the sync awaiting commits when the pinned-connection lookup rejects (#854)", async () => {
+		const lookup = vi
+			.spyOn(prisma.connection, "findUnique")
+			.mockRejectedValue(new Error("db down"));
+		try {
+			await expect(
+				service["pullDeploys"](
+					{
+						key: "k",
+						serviceId: "s",
+						serviceName: "svc",
+						subPath: null,
+						repository: {
+							id: "r",
+							sourceKind: "url",
+							fullName: "acme/api",
+							url: "https://github.com/acme/api.git",
+							defaultBranch: "main",
+							connectionId: null,
+							metadata: JSON.stringify({ credentialConnectionId: "pin" }),
+						},
+					},
+					{ start: new Date(Date.now() - HOUR), end: new Date() },
+				),
+			).resolves.toBeUndefined();
+		} finally {
+			lookup.mockRestore();
+		}
 	});
 
 	it("returns null for an unknown incident", async () => {

@@ -82,12 +82,15 @@ const components: Components = {
 		</blockquote>
 	),
 	pre: ({ children }) => (
-		<pre className="my-2 overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 px-3 py-2 text-mono text-text-2">
+		<pre
+			data-scroll-x
+			className="my-2 overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 px-3 py-2 text-mono text-text-2"
+		>
 			{children}
 		</pre>
 	),
 	table: ({ children }) => (
-		<div className="my-2 overflow-x-auto">
+		<div data-scroll-x className="my-2 overflow-x-auto">
 			<table className="w-full text-meta [&_tbody]:divide-y [&_tbody]:divide-hairline">
 				{children}
 			</table>

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { providerHttpError } from "../../engine/provider-http-error.js";
+import {
+	providerHttpError,
+	providerJsonParseError,
+} from "../../engine/provider-http-error.js";
 import {
 	type AlertRule,
 	type InstantSample,
@@ -39,7 +42,19 @@ async function json<T>(response: Response, maxBytes?: number): Promise<T> {
 			response,
 		});
 	}
-	if (!maxBytes || !response.body) return response.json() as Promise<T>;
+	// A parse error quotes the body, which may echo a credential (#848).
+	const notJson = (): SyntaxError =>
+		new SyntaxError(
+			providerJsonParseError({
+				operation: "Prometheus API request",
+				provider: "prometheus",
+				response,
+			}).message,
+		);
+	if (!maxBytes || !response.body)
+		return (await response.json().catch(() => {
+			throw notJson();
+		})) as T;
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let size = 0;
@@ -55,7 +70,11 @@ async function json<T>(response: Response, maxBytes?: number): Promise<T> {
 		}
 		chunks.push(value);
 	}
-	return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+	try {
+		return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+	} catch {
+		throw notJson();
+	}
 }
 
 function query(params: Record<string, string | number | undefined>): string {

@@ -4,12 +4,15 @@
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts";
+import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HarnessSettings, testedHint, versionText } from "./HarnessSettings";
 
 const mutateSpy = vi.fn();
+const mockSelection: { harness: string | null } = { harness: "claude-code" };
+const mockSettings: Record<string, unknown> = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
 
 const mockHarnesses: HarnessStatus[] = [
@@ -18,6 +21,7 @@ const mockHarnesses: HarnessStatus[] = [
 		label: "Claude Code",
 		binary: "claude",
 		installed: true,
+		runnable: true,
 		tested: null,
 		install: "",
 		defaultModel: null,
@@ -26,6 +30,10 @@ const mockHarnesses: HarnessStatus[] = [
 		loginHint: "",
 		envModel: null,
 		windowsOnlyPath: null,
+		cliBinary: "",
+		configDir: null,
+		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -34,6 +42,7 @@ const mockHarnesses: HarnessStatus[] = [
 		label: "Codex",
 		binary: "codex",
 		installed: false,
+		runnable: false,
 		tested: null,
 		install: "npm i -g @openai/codex",
 		defaultModel: null,
@@ -42,6 +51,10 @@ const mockHarnesses: HarnessStatus[] = [
 		loginHint: "",
 		envModel: null,
 		windowsOnlyPath: null,
+		cliBinary: "",
+		configDir: null,
+		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -49,7 +62,8 @@ const mockHarnesses: HarnessStatus[] = [
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
-		installed: false,
+		installed: true,
+		runnable: true,
 		tested: null,
 		install: "npm i -g opencode",
 		defaultModel: null,
@@ -58,6 +72,10 @@ const mockHarnesses: HarnessStatus[] = [
 		loginHint: "",
 		envModel: null,
 		windowsOnlyPath: null,
+		cliBinary: "",
+		configDir: null,
+		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -67,16 +85,14 @@ vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: {
 			harnesses: mockHarnesses,
-			selection: { harness: "claude-code" },
+			selection: mockSelection,
 		},
 		isLoading: false,
 		isError: false,
 		refetch: vi.fn(),
 	}),
 	useHarnessSettings: () => ({
-		data: {
-			harness: "claude-code",
-		},
+		data: mockSettings,
 		isLoading: false,
 	}),
 	useUpdateHarnessSettings: () => ({
@@ -90,6 +106,23 @@ vi.mock("@/lib/api/hooks", () => ({
 		mutateAsync: vi.fn(),
 		isPending: false,
 	}),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+	Link: ({
+		children,
+		to,
+		search,
+		...rest
+	}: {
+		children: React.ReactNode;
+		to: string;
+		search?: Record<string, string>;
+	}) => (
+		<a href={`${to}?${new URLSearchParams(search).toString()}`} {...rest}>
+			{children}
+		</a>
+	),
 }));
 
 let mockChoice = {
@@ -176,176 +209,133 @@ afterEach(async () => {
 	}
 });
 
-describe("HarnessSettings custom models (#673 w57)", () => {
-	it("shows gw-a for installed claude-code and excludes uninstalled agents", async () => {
+describe("HarnessSettings strict mode (#817)", () => {
+	it("is off by default and turning it on saves strictEnv", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
 		});
-
-		const claudeRow = container.querySelector(
-			'[data-testid="custom-models-claude-code"]',
+		const row = container.querySelector(
+			'[data-testid="harness-strict-env-row"]',
 		);
-		expect(claudeRow).not.toBeNull();
-		expect(claudeRow?.textContent).toContain("gw-a");
-
-		const codexRow = container.querySelector(
-			'[data-testid="custom-models-codex"]',
+		expect(row?.textContent).toContain("Only pass named variables");
+		expect(row?.textContent).toContain("minus PrismaLens's own secrets");
+		const toggle = container.querySelector<HTMLButtonElement>(
+			'[data-testid="harness-strict-env"]',
 		);
-		expect(codexRow).toBeNull();
+		expect(toggle?.getAttribute("aria-checked")).toBe("false");
+		await act(async () => {
+			toggle?.click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({ strictEnv: true });
 	});
 
-	it("types ' gw-b ' and submits, calling mutate with trimmed list", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const input = container.querySelector(
-			'[data-testid="custom-model-input"]',
-		) as HTMLInputElement | null;
-		expect(input).not.toBeNull();
-
-		await act(async () => {
-			const setter = Object.getOwnPropertyDescriptor(
-				HTMLInputElement.prototype,
-				"value",
-			)?.set;
-			setter?.call(input, " gw-b ");
-			input?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		const form = input?.closest("form");
-		expect(form).not.toBeNull();
-
-		await act(async () => {
-			form?.dispatchEvent(
-				new Event("submit", { bubbles: true, cancelable: true }),
+	it("is read-only on a paired device", async () => {
+		mockSettings.canEditRuntime = false;
+		mockSettings.strictEnv = true;
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			const toggle = container.querySelector<HTMLButtonElement>(
+				'[data-testid="harness-strict-env"]',
 			);
-		});
-
-		expect(mutateSpy).toHaveBeenCalledTimes(1);
-		expect(mutateSpy).toHaveBeenCalledWith(
-			{ customModels: { "claude-code": ["gw-a", "gw-b"] } },
-			expect.anything(),
-		);
-	});
-
-	it("submitting duplicate 'gw-a' sends nothing", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const input = container.querySelector(
-			'[data-testid="custom-model-input"]',
-		) as HTMLInputElement | null;
-		expect(input).not.toBeNull();
-
-		await act(async () => {
-			const setter = Object.getOwnPropertyDescriptor(
-				HTMLInputElement.prototype,
-				"value",
-			)?.set;
-			setter?.call(input, "gw-a");
-			input?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		const form = input?.closest("form");
-		expect(form).not.toBeNull();
-
-		await act(async () => {
-			form?.dispatchEvent(
-				new Event("submit", { bubbles: true, cancelable: true }),
-			);
-		});
-
-		expect(mutateSpy).not.toHaveBeenCalled();
-	});
-
-	it("clicking remove opens dialog and cancel sends nothing", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const removeButton = container.querySelector(
-			'[data-testid="custom-model-remove"]',
-		) as HTMLButtonElement | null;
-		expect(removeButton).not.toBeNull();
-
-		await act(async () => {
-			removeButton?.click();
-		});
-
-		const dialog = document.body.querySelector('[data-float="dialog"]');
-		expect(dialog).not.toBeNull();
-		expect(dialog?.textContent).toContain("Remove this custom model?");
-
-		const cancelButton = Array.from(
-			document.body.querySelectorAll("button"),
-		).find((b) => b.textContent?.trim() === "Cancel");
-		expect(cancelButton).toBeDefined();
-
-		await act(async () => {
-			cancelButton?.click();
-		});
-
-		expect(mutateAsyncSpy).not.toHaveBeenCalled();
-		expect(mutateSpy).not.toHaveBeenCalled();
-	});
-
-	it("clicking remove and confirming calls mutateAsync with model removed", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const removeButton = container.querySelector(
-			'[data-testid="custom-model-remove"]',
-		) as HTMLButtonElement | null;
-		expect(removeButton).not.toBeNull();
-
-		await act(async () => {
-			removeButton?.click();
-		});
-
-		const confirmButton = Array.from(
-			document.body.querySelectorAll("button"),
-		).find((b) => b.textContent?.trim() === "Remove");
-		expect(confirmButton).toBeDefined();
-
-		await act(async () => {
-			confirmButton?.click();
-		});
-
-		expect(mutateAsyncSpy).toHaveBeenCalledTimes(1);
-		expect(mutateAsyncSpy).toHaveBeenCalledWith({
-			customModels: { "claude-code": [] },
-		});
+			expect(toggle?.getAttribute("aria-checked")).toBe("true");
+			expect(toggle?.disabled).toBe(true);
+		} finally {
+			delete mockSettings.canEditRuntime;
+			delete mockSettings.strictEnv;
+		}
 	});
 });
 
-describe("HarnessSettings agent rows (#673 w21)", () => {
-	it("the OpenCode row shows harness-opencode-asks with its rule, claude-code row does not", async () => {
+describe("HarnessSettings agents list (#907)", () => {
+	it("lists only agents that can run, each with a chevron to its page", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
 		});
-
-		const opencodeRow = container.querySelector(
-			'[data-testid="harness-row-opencode"]',
-		);
-		expect(opencodeRow).not.toBeNull();
-		const opencodeAsks = opencodeRow?.querySelector(
-			'[data-testid="harness-opencode-asks"]',
-		);
-		expect(opencodeAsks).not.toBeNull();
-		expect(opencodeAsks?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
-		);
-
-		const claudeRow = container.querySelector(
-			'[data-testid="harness-row-claude-code"]',
-		);
-		expect(claudeRow).not.toBeNull();
 		expect(
-			claudeRow?.querySelector('[data-testid="harness-opencode-asks"]'),
+			container.querySelector('[data-testid="harness-row-claude-code"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="harness-row-codex"]'),
 		).toBeNull();
+		expect(container.textContent).not.toContain("not installed");
+		const link = container.querySelector(
+			'[data-testid="harness-open-claude-code"]',
+		);
+		expect(link?.getAttribute("href")).toBe(
+			"/settings?tab=agent&agent=claude-code",
+		);
+		expect(
+			container.querySelector('[data-testid="harness-custom-models"]'),
+		).toBeNull();
+	});
+
+	it("shows the one warning when no agent can run", async () => {
+		const saved = mockHarnesses.map((h) => h.runnable);
+		for (const h of mockHarnesses) h.runnable = false;
+		mockSelection.harness = null;
+		mockSettings.harness = "auto";
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(
+				container.querySelector('[data-testid="harness-none-available"]')
+					?.textContent,
+			).toBe("No agent can run. Add one to start investigations.");
+			expect(
+				container.querySelector('[data-testid^="harness-row-"]'),
+			).toBeNull();
+		} finally {
+			mockHarnesses.forEach((h, i) => {
+				h.runnable = saved[i] ?? false;
+			});
+			mockSelection.harness = "claude-code";
+			mockSettings.harness = "claude-code";
+		}
+	});
+
+	it("keeps the saved agent listed when it can't run", async () => {
+		const saved = mockHarnesses[0].runnable;
+		mockHarnesses[0].runnable = false;
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(
+				container.querySelector('[data-testid="harness-row-claude-code"]'),
+			).not.toBeNull();
+		} finally {
+			mockHarnesses[0].runnable = saved;
+		}
+	});
+});
+
+describe("HarnessSettings agent rows (#911)", () => {
+	it("gives each row one state word and at most one note; the detail lives on the agent page", async () => {
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+		const row = (id: string) =>
+			container.querySelector(`[data-testid="harness-row-${id}"]`);
+		expect(
+			row("claude-code")?.querySelector(
+				'[data-testid="harness-check-result-claude-code"]',
+			)?.textContent,
+		).toBe("Not checked yet");
+		expect(
+			row("claude-code")?.querySelector(
+				'[data-testid="harness-note-claude-code"]',
+			)?.textContent,
+		).toBe("Used by the next run");
+		expect(
+			row("opencode")?.querySelector('[data-testid^="harness-note-"]'),
+		).toBeNull();
+		expect(
+			row("opencode")?.querySelector('[data-testid="harness-opencode-asks"]'),
+		).toBeNull();
+		expect(row("opencode")?.textContent).not.toContain("Images");
 	});
 });
 
@@ -373,6 +363,10 @@ describe("HarnessSettings signed-out row (w8-9)", () => {
 				container.querySelector(
 					'[data-testid="harness-check-result-claude-code"]',
 				)?.textContent,
+			).toBe("Sign-in needed");
+			expect(
+				container.querySelector('[data-testid="harness-note-claude-code"]')
+					?.textContent,
 			).toBe(
 				"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
 			);
@@ -395,7 +389,7 @@ describe("HarnessSettings Permission rows (#673 w21)", () => {
 		const accessRow = container.querySelector('[data-testid="harness-access"]');
 		expect(accessRow).not.toBeNull();
 		expect(accessRow?.textContent).toContain("Permission");
-		expect(accessRow?.textContent).toContain("Ask always, PrismaLens default.");
+		expect(accessRow?.textContent).toContain("Ask always, PrismaLens's pick.");
 
 		// Verify Claude Code agent note is displayed
 		const note = container.querySelector('[data-testid="harness-agent-note"]');

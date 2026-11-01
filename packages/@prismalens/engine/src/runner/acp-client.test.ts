@@ -14,6 +14,7 @@
  * through a spawned process.
  */
 import { EventEmitter } from "node:events";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -295,6 +296,26 @@ describe("offeredModels (#639)", () => {
 		expect(offeredModels(undefined)).toEqual([]);
 		expect(offeredModels({ not: "an array" })).toEqual([]);
 	});
+
+	it("keeps a `default` entry's description, which names the model it runs (#907)", () => {
+		expect(
+			offeredModels([
+				{
+					id: "model",
+					type: "select",
+					category: "model",
+					currentValue: "default",
+					options: [
+						{ value: "default", name: "Default (recommended)", description: "Opus 5.5" },
+						{ value: "claude-opus-5-5", name: "Opus 5.5", description: "" },
+					],
+				},
+			]),
+		).toEqual([
+			{ id: "default", name: "Default (recommended)", description: "Opus 5.5" },
+			{ id: "claude-opus-5-5", name: "Opus 5.5" },
+		]);
+	});
 });
 
 describe("offeredEffort (R4.2)", () => {
@@ -472,6 +493,50 @@ describe("AcpSession session/load (#747)", () => {
 		await session.close();
 		expect(session.sessionId).toBe("s1");
 		expect(session.loadSession).toBe(true);
+	});
+});
+
+describe("AcpSession additionalDirectories (#918)", () => {
+	const parent = tmpdir();
+	const roots = { cwd: join(parent, "api"), additional: [join(parent, "worker")] };
+	const sessionNew = async (advertises: boolean) => {
+		const wire: string[] = [];
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: parent,
+			roots,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "resume",
+				...(advertises ? { FAKE_ADDITIONAL_DIRS: "1" } : {}),
+			},
+			permission: () => ({ allow: true, optionId: "once" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+			onWire: (d, line) => {
+				if (d === "out") wire.push(line);
+			},
+		});
+		await session.open();
+		await session.close();
+		const sent = wire
+			.map((l) => JSON.parse(l) as { method?: string; params?: Record<string, unknown> })
+			.find((m) => m.method === "session/new");
+		return sent?.params;
+	};
+
+	it("starts in the primary repo with the others beside it when the agent advertises them", async () => {
+		expect(await sessionNew(true)).toMatchObject({
+			cwd: roots.cwd,
+			additionalDirectories: roots.additional,
+		});
+	});
+
+	it("keeps the parent folder that holds every repo when the agent does not", async () => {
+		const params = await sessionNew(false);
+		expect(params?.cwd).toBe(parent);
+		expect(params).not.toHaveProperty("additionalDirectories");
 	});
 });
 

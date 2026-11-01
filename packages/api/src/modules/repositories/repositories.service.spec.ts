@@ -12,10 +12,16 @@
  */
 import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { RepoSourceService } from "../../core/harness/repo-source.service.js";
+import { GitSpawnError } from "../../core/harness/git-spawn.js";
+import {
+	RepoSourceService,
+	remoteFailure,
+} from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "../integrations/git-credential.service.js";
+import type { Repository as PrismaRepository } from "@prismalens/database";
 import { RepositoriesService } from "./repositories.service.js";
+import { serializeRepository } from "./serialize-repository.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 
@@ -109,6 +115,28 @@ describe("RepositoriesService.addSource", () => {
 				}),
 			}),
 		);
+	});
+
+	it("stores fixed text as syncError when a URL's git call fails with its query in stderr (#848)", async () => {
+		const source = "https://127.0.0.1:1/org/repo.git?api_key=sentinel";
+		mockGitCredentials.withCredential.mockRejectedValue(
+			remoteFailure(
+				new GitSpawnError(
+					`fatal: unable to access '${source}/': Failed to connect to 127.0.0.1 port 1`,
+					128,
+					`fatal: unable to access '${source}/': Failed to connect to 127.0.0.1 port 1`,
+					false,
+				),
+				{ kind: "url", source },
+			),
+		);
+
+		await service.addSource({ serviceId: "svc-1", source: "https://127.0.0.1:1/org/repo.git" });
+
+		const { data } = mockTx.repository.create.mock.calls[0]?.[0] as {
+			data: { syncError: string };
+		};
+		expect(data.syncError).toBe("Could not reach 127.0.0.1:1.");
 	});
 
 	it("links the new repository as the service's primary", async () => {
@@ -322,3 +350,31 @@ describe("RepositoriesService.addSource", () => {
 	});
 });
 
+
+describe("serializeRepository url (#848)", () => {
+	const row = (url: string, sourceKind = "url") =>
+		({
+			id: "repo-1",
+			sourceKind,
+			fullName: "acme/api",
+			url,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+			syncedAt: null,
+			metadata: null,
+		}) as unknown as PrismaRepository;
+	const shown = async (url: string, sourceKind?: string) =>
+		(await serializeRepository(row(url, sourceKind), async () => ({}) as never))
+			.url;
+
+	it("returns a legacy https url without its query, fragment or userinfo", async () => {
+		const out = await shown("https://u:pw@host/acme/api.git?token=sentinel#frag");
+		expect(out).toBe("https://host/acme/api.git");
+	});
+
+	it("leaves a clean ssh url, an scp remote and a folder as saved", async () => {
+		expect(await shown("ssh://git@host/acme/api.git")).toBe("ssh://git@host/acme/api.git");
+		expect(await shown("git@host:acme/repo#archive.git")).toBe("git@host:acme/repo#archive.git");
+		expect(await shown("/srv/repo?x", "folder")).toBe("/srv/repo?x");
+	});
+});

@@ -4,7 +4,7 @@
 #
 # Cross-OS from-scratch CLI smoke: drives an ALREADY-INSTALLED `prismalens`
 # package (tarball or registry install, doesn't matter which — see
-# .github/workflows/cross-os-smoke.yml) as a real subprocess on Linux,
+# .github/workflows/cli-smoke-cross-os.yml) as a real subprocess on Linux,
 # macOS, and Windows (git-bash). This is phase-gate testing part 2 (the
 # released-artifact verification), not sreforge — sreforge is the separate
 # clean-env engine/eval capabilities ground.
@@ -72,13 +72,14 @@ GOT=$("$BIN/prismalens" --version)
 [ "$GOT" = "$EXPECTED" ] || fail "--version printed '$GOT', package.json says '$EXPECTED'"
 echo "    $GOT"
 
-echo "==> doctor fails LOUDLY on a machine with no harness"
+echo "==> doctor passes on a clean machine with no agent and points at Settings → Agent (#907)"
 set +e
 DOCTOR_OUT=$("$BIN/pl" doctor 2>&1)
 DOCTOR_EXIT=$?
 set -e
-[ "$DOCTOR_EXIT" -ne 0 ] || fail "doctor exited 0 in a clean env with no harness"
-echo "$DOCTOR_OUT" | grep -qi "harness" || fail "doctor output does not mention the missing harness:
+[ "$DOCTOR_EXIT" -eq 0 ] || fail "doctor exited $DOCTOR_EXIT in a clean env with no agent:
+$DOCTOR_OUT"
+echo "$DOCTOR_OUT" | grep -q "Settings → Agent" || fail "doctor output does not point at Settings → Agent (#907):
 $DOCTOR_OUT"
 
 echo "==> unknown flag is rejected with exit 1"

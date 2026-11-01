@@ -1,0 +1,33 @@
+{
+	"row": "report",
+	"kind": "happy",
+	"title": "Report",
+	"run": {},
+	"expect": "report",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:report]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "cat package.json"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:report]"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

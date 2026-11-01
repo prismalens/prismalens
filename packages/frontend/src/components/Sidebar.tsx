@@ -5,9 +5,10 @@
  * The shell's left bar, one for every page (#811): three doors, the incidents
  * under their services (the Alerts and Services areas keep their own lists),
  * and Settings beside the theme toggle at the foot. Below 1280 it folds to an
- * icon rail; on the phone the doors are a strip of icons across the top.
- * Settings swaps the bar for its sections with Back above them. Hidden on
- * pairing, where nothing leads away.
+ * icon rail; `[` or its fold button hides it completely, and a button in the
+ * page bar brings it back (#848). On the phone the doors are a strip of icons
+ * across the top. Settings swaps the bar for its pages with Back at the foot.
+ * Hidden on pairing, where nothing leads away.
  */
 import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
 import {
@@ -15,6 +16,7 @@ import {
 	Boxes,
 	ChevronLeft,
 	Inbox,
+	PanelLeft,
 	SlidersHorizontal,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
@@ -24,8 +26,9 @@ import { useNeedsYouCount } from "@/components/inbox/use-inbox-data";
 import { tierWord } from "@/components/services/service-detail.utils";
 import { useAbout } from "@/components/settings";
 import {
+	FIRST_SETTINGS_TAB,
+	SETTINGS_SECTIONS,
 	type SettingsTab,
-	useSettingsSections,
 } from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
 import { IncidentTree } from "@/components/shell/IncidentTree";
@@ -91,22 +94,35 @@ function Shell({ pathname }: { pathname: string }) {
 	const doors = useDoors(signedIn);
 	const settings = inSettings(pathname);
 	const back = useBack(inSettings, "/incidents");
+	const { sidebarHidden, toggleSidebar } = useLayoutPrefs();
+	// Settings' bar is its navigation, so it never hides.
+	const hidden = sidebarHidden && !settings;
 	useBreathePhase();
+	useFoldKey(toggleSidebar, !settings);
 	useEffect(() => {
 		document.documentElement.toggleAttribute("data-settings", settings);
 	}, [settings]);
 	return (
 		<>
-			<aside
-				className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
-				data-testid="sidebar"
-			>
-				{settings ? (
-					<SettingsBar onBack={back} />
-				) : (
-					<MainBar pathname={pathname} doors={doors} signedIn={signedIn} />
-				)}
-			</aside>
+			{hidden ? (
+				<ShowSidebar onShow={toggleSidebar} />
+			) : (
+				<aside
+					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
+					data-testid="sidebar"
+				>
+					{settings ? (
+						<SettingsBar onBack={back} />
+					) : (
+						<MainBar
+							pathname={pathname}
+							doors={doors}
+							signedIn={signedIn}
+							onHide={toggleSidebar}
+						/>
+					)}
+				</aside>
+			)}
 			<PhoneStrip pathname={pathname} doors={doors} />
 		</>
 	);
@@ -122,18 +138,19 @@ function MainBar({
 	pathname,
 	doors,
 	signedIn,
+	onHide,
 }: {
 	pathname: string;
 	doors: Door[];
 	signedIn: boolean;
+	onHide: () => void;
 }) {
-	const { sidebarFolded, toggleSidebar } = useLayoutPrefs();
+	const { sidebarFolded } = useLayoutPrefs();
 	const full = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
 	const settingsDoor = doors.find((d) => d.to === "/settings");
-	useFoldKey(toggleSidebar);
 	return (
 		<>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 px-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0">
+			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0">
 				<Link
 					to="/incidents"
 					className="flex items-center gap-2.5 rounded-control text-body font-semibold"
@@ -142,6 +159,19 @@ function MainBar({
 					<PrismaLensMark className="size-[18px] shrink-0" />
 					<span className={FULL_ONLY}>PrismaLens</span>
 				</Link>
+				<span className={cn("ml-auto", FULL_ONLY)}>
+					<Hint label="Hide the sidebar" keys={["["]} side="right">
+						<button
+							type="button"
+							onClick={onHide}
+							aria-label="Hide the sidebar"
+							className="flex size-8 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+							data-testid="sidebar-hide"
+						>
+							<PanelLeft className={ICON} />
+						</button>
+					</Hint>
+				</span>
 			</div>
 			<nav className="grid gap-0.5 px-2" aria-label="Areas">
 				{doors
@@ -166,9 +196,10 @@ function MainBar({
 	);
 }
 
-/** `[` folds the bar to its rail, unless the operator is typing. */
-function useFoldKey(toggle: () => void) {
+/** `[` hides the bar or brings it back, unless the operator is typing. */
+function useFoldKey(toggle: () => void, enabled: boolean) {
 	useEffect(() => {
+		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
 			const t = e.target as HTMLElement | null;
 			if (e.key !== "[" || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -183,7 +214,27 @@ function useFoldKey(toggle: () => void) {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [toggle]);
+	}, [toggle, enabled]);
+}
+
+/**
+ * The page bar's button while the bar is hidden: it sits at the left of
+ * every page bar, which tokens.css pads for it.
+ */
+function ShowSidebar({ onShow }: { onShow: () => void }) {
+	return (
+		<Hint label="Show the sidebar" keys={["["]} side="right">
+			<button
+				type="button"
+				onClick={onShow}
+				aria-label="Show the sidebar"
+				className="fixed top-(--frame-top) left-1 z-40 hidden size-(--header-h) items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 md:flex"
+				data-testid="sidebar-show"
+			>
+				<PanelLeft className={ICON} />
+			</button>
+		</Hint>
+	);
 }
 
 function DoorLink({
@@ -227,6 +278,7 @@ function DoorLink({
 				</span>
 				<span className={FULL_ONLY}>{door.label}</span>
 				{door.dot && <span className="sr-only">, update available</span>}
+				{door.count !== undefined && " "}
 				{door.count !== undefined && (
 					<span
 						className={cn(
@@ -351,31 +403,24 @@ export function SideLane({
 	);
 }
 
-/** Settings' bar: Back above the sections; Esc is Back too. */
+/** Settings' bar: its pages, flat, with Back at the foot (#848); Esc is Back too. */
 function SettingsBar({ onBack }: { onBack: () => void }) {
-	const sections = useSettingsSections();
 	// The bar renders before the settings route matches, so read the search loosely.
 	const { tab } = useSearch({ strict: false }) as { tab?: SettingsTab };
 	const phone = useMediaQuery(PHONE);
-	const current: SettingsTab | undefined = tab ?? "harness";
+	const current: SettingsTab = tab ?? FIRST_SETTINGS_TAB;
 	useEscape(onBack, !phone);
 	return (
 		<>
-			<button
-				type="button"
-				onClick={onBack}
-				className="flex h-(--header-h) shrink-0 items-center gap-2 px-4 text-body font-medium text-text-1"
-				data-testid="settings-back"
-			>
-				<ChevronLeft className="size-4 text-text-2" />
-				Back
-			</button>
+			<div className="flex h-(--header-h) shrink-0 items-center px-4 text-heading text-text-1">
+				Settings
+			</div>
 			<nav
-				className="grid gap-0.5 px-2"
+				className="grid min-h-0 flex-1 content-start gap-0.5 overflow-y-auto px-2 pt-1"
 				aria-label="Settings sections"
 				data-testid="settings-sections"
 			>
-				{sections.map((s) => {
+				{SETTINGS_SECTIONS.map((s) => {
 					const on = s.tab === current;
 					return (
 						<Link
@@ -385,24 +430,26 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 							aria-current={on ? "page" : undefined}
 							data-testid={`settings-nav-${s.tab}`}
 							className={cn(
-								"relative flex min-h-11 min-w-0 flex-col justify-center rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+								"relative flex min-h-9 min-w-0 items-center rounded-control px-3 text-body text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3",
 								on &&
-									"bg-surface-2 font-medium text-text-1 before:absolute before:top-3 before:bottom-3 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
+									"raised font-medium hover:bg-surface-2 before:absolute before:top-2.5 before:bottom-2.5 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
 							)}
 						>
-							<span className="truncate font-medium text-text-1">
-								{s.label}
-							</span>
-							{s.line && (
-								<small className="truncate text-meta font-normal text-text-3">
-									{s.line}
-								</small>
-							)}
+							<span className="truncate">{s.label}</span>
 						</Link>
 					);
 				})}
 			</nav>
-			<div className="mt-auto flex shrink-0 items-center px-2 py-2">
+			<div className="flex shrink-0 items-center gap-1 px-2 py-2">
+				<button
+					type="button"
+					onClick={onBack}
+					className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-control px-3 text-body font-medium text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3"
+					data-testid="settings-back"
+				>
+					<ChevronLeft className="size-4 text-text-2" />
+					Back
+				</button>
 				<ThemeToggle />
 			</div>
 		</>
@@ -456,7 +503,7 @@ function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
 						}
 						data-testid={`strip-${door.label.toLowerCase()}`}
 						className={cn(
-							"relative flex h-8 items-center gap-1 rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+							"relative flex h-8 min-w-12 items-center justify-center gap-1 rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
 							on &&
 								"bg-surface-2 text-text-1 before:absolute before:top-2 before:bottom-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
 						)}

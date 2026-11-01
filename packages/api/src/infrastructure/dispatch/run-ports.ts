@@ -6,10 +6,15 @@ import type { HarnessSelection } from "@prismalens/config";
  * What one investigation run needs from the API, as functions, so the run is
  * testable without NestJS. Wired in dispatch.service.ts.
  */
-import type { AccessLevel, ModelSource } from "@prismalens/config/harness";
+import type {
+	AccessLevel,
+	HarnessId,
+	ModelSource,
+} from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	LiveTurn,
+	RunEndReason,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -17,12 +22,17 @@ import type {
 	ContextPack,
 	RunChoice,
 	RunCredential,
+	RunUsage,
 } from "@prismalens/contracts/schemas";
-import type { ResolvedConnector } from "@prismalens/engine";
+import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
+import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import type {
 	RepoSource,
 	Snapshot,
 } from "../../core/harness/repo-source.service.js";
+import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
+import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
+import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 
@@ -52,7 +62,24 @@ export interface RunPorts {
 		kind?: string | null;
 		/** Set once Stop was asked for; the run re-reads it to own its end (#673 w59). */
 		stopRequestedAt?: Date | string | null;
+		/** JSON InvestigationReport; a handoff carries it. */
+		report?: string | null;
 	} | null>;
+	/** Every stored event of the run, in order; a handoff is built from them. */
+	events(id: string): Promise<CanonicalEvent[]>;
+	/**
+	 * A handoff moved the thread to another session: the next follow-up loads
+	 * that one, and the old session's usage is cleared (ruling 13).
+	 */
+	recordHandoff(
+		id: string,
+		to: {
+			harness: HarnessId;
+			model: string | null;
+			effort: string | null;
+			acpSessionId: string | null;
+		},
+	): Promise<void>;
 	/**
 	 * A status write. False when the row refused it (cancelled, Stop asked for,
 	 * or gone): the caller then writes no timeline entry and delivers nothing.
@@ -76,6 +103,8 @@ export interface RunPorts {
 			accessLevel?: AccessLevel;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
+			/** On `failed`: the agent hit a usage limit. */
+			endReason?: RunEndReason;
 		},
 	): Promise<boolean>;
 	/** A row claimed with no `liveTurn` (queued before the column) gets one (#673 w59). */
@@ -110,6 +139,8 @@ export interface RunPorts {
 	 * write, not `updateStatus`, which would count a second run start.
 	 */
 	recordSession(id: string, acpSessionId: string): Promise<void>;
+	/** Keep the harness's latest `usage_update`. Its own write, like `recordSession`. */
+	recordUsage(id: string, usage: RunUsage): Promise<void>;
 	/** The oldest ask the agent waits on, or null once none waits (#673 w21). Its own write, like `recordSession`. */
 	markAwaitingApproval(id: string, since: Date | null): Promise<void>;
 	/**
@@ -142,6 +173,8 @@ export interface RunPorts {
 		/** The model is one the operator added in Settings, Agent (#673 w57). */
 		customModel?: boolean;
 	}>;
+	/** The agent's env, binary path and arguments from Settings → Agent (#907). */
+	agentRuntime(id: HarnessId): Promise<AgentRuntime>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/**
 	 * The repos of the incident's service, then of each service its alerts name,
@@ -154,15 +187,37 @@ export interface RunPorts {
 	): Promise<ResolvedConnector[]>;
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
+	/** The pre-run fetch (#848 ruling 2026-10-24); each part is best effort and never fails the run. */
+	preRun?: {
+		/** Picked by the incident's services; the selection reads the database inside the run's telemetry budget. */
+		telemetry(
+			incidentId: string,
+			window: SnapshotWindow,
+			signal?: AbortSignal,
+		): Promise<TelemetrySnapshot>;
+		/** Read from the workspace the run recorded, so after `recordWorkspace`; titles and paths only. */
+		runbooks(runId: string, signal?: AbortSignal): Promise<RunbookIndex>;
+		/** Stores the run's snapshot, the source of truth its follow-ups read. */
+		save(runId: string, snapshot: string): Promise<void>;
+		/** The stored snapshot, or null when the run has none. */
+		load(runId: string): Promise<string | null>;
+	};
+	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
+	gateway?: {
+		lease(runId: string, serverName: string): Promise<GatewayEntry | null>;
+		revoke(runId: string): void;
+	};
 	/**
-	 * A fresh clone of the repo's committed HEAD, or of commit `at`, into `dest`, under the
-	 * credential the resolver picks (#673); `credential` is the one that cloned it.
+	 * The repo's committed HEAD, or commit `at`, at `dest` (a folder's worktree locked for
+	 * `runId`, #918), under the credential the resolver picks (#673); `credential` is the one used.
 	 */
 	snapshotWith(
 		ref: RepoRef,
 		dest: string,
 		signal?: AbortSignal,
 		at?: string,
+		runId?: string,
+		onOutput?: (chunk: string) => void,
 	): Promise<{ snap: Snapshot; credential: RunCredential }>;
 }
 

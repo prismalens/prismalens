@@ -1,0 +1,33 @@
+name: Publish agent host
+
+# By hand only: PrismaLens and Assayer pick up a new version when they bump it (#916).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1+, which an older Node 24 does not bundle.
+      - run: npm install --global npm@11.21.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @prismalens/agent-host build
+      - run: pnpm --filter @prismalens/agent-host test
+      # pnpm pack rewrites `catalog:` ranges to real versions; npm publishes the tarball with provenance.
+      - name: Publish
+        working-directory: packages/@prismalens/agent-host
+        run: |
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          npm publish "$RUNNER_TEMP"/prismalens-agent-host-*.tgz --access public --provenance

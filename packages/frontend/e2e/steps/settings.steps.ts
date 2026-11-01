@@ -164,13 +164,15 @@ Then(
 );
 
 const SECTIONS = [
-	"harness",
+	"general",
+	"appearance",
+	"agent",
+	"alert-intake",
 	"sources",
-	"integrations",
+	"notifications",
 	"devices",
 	"usage",
 	"about",
-	"danger",
 ];
 
 When("I open each Settings section in turn", async () => {
@@ -236,8 +238,8 @@ const webhookToken = () =>
 		"utf8",
 	).trim();
 
-When("I open Settings, Alert sources", async ({ page }) => {
-	await page.goto("/settings?tab=sources");
+When("I open Settings, Alert intake", async ({ page }) => {
+	await page.goto("/settings?tab=alert-intake");
 	await expect(page.getByTestId("sources-webhook")).toBeVisible();
 });
 
@@ -280,33 +282,39 @@ Then('"Last delivery" reads "1 alert, accepted"', async ({ page }) => {
 });
 
 Then(
-	'the kinds offered are "Alertmanager" and "Prometheus"',
+	'the kinds offered include "Alertmanager" and "Prometheus"',
 	async ({ page }) => {
-		const kinds = page
-			.getByTestId("add-source-dialog")
-			.getByTestId("source-kind");
-		await expect(kinds.getByRole("button")).toHaveText([
-			"Alertmanager",
-			"Prometheus",
-		]);
+		const dialog = page.getByTestId("add-source-dialog");
+		await expect(dialog.getByTestId("source-kind-alertmanager")).toBeVisible();
+		await expect(dialog.getByTestId("source-kind-prometheus")).toBeVisible();
 	},
 );
 
 When(
-	'I choose Alertmanager, enter {string} and {string} and press "Add"',
+	"I choose Alertmanager, enter {string} and {string}, test it and save",
 	async ({ page }, url: string, name: string) => {
 		const dialog = page.getByTestId("add-source-dialog");
 		await dialog.getByTestId("source-kind-alertmanager").click();
-		await dialog.getByTestId("source-url-input").fill(url);
-		await dialog.getByTestId("source-name-input").fill(name);
-		await dialog.getByTestId("add-source-submit").click();
+		await dialog.getByRole("button", { name: "Next" }).click();
+		await dialog.getByTestId("source-url").fill(url);
+		await dialog.getByTestId("source-name").fill(name);
+		await dialog.getByTestId("source-credential-kind").click();
+		await page.getByRole("option", { name: "No credential" }).click();
+		await dialog.getByTestId("source-test").click();
+		await expect(dialog.getByTestId("source-test-word")).toBeVisible({
+			timeout: 20_000,
+		});
+		// Nothing answers there in the suite, so it saves untested (#848).
+		const untested = dialog.getByTestId("source-save-untested");
+		if (await untested.count()) await untested.click();
+		else await dialog.getByTestId("source-save").click();
 		await expect(dialog).toBeHidden({ timeout: 20_000 });
 		w(page).source = name;
 	},
 );
 
 Then(
-	'a row {string} appears under "Pulled from" with its URL and "reachable" or the last error',
+	'a row {string} appears under "Pulled by URL" with its address and a state word',
 	async ({ page }, name: string) => {
 		const row = page
 			.getByTestId("sources-pulled")
@@ -316,13 +324,11 @@ Then(
 			})
 			.first();
 		await expect(row).toBeVisible();
-		await expect(row.getByTestId("source-url")).toHaveText(
-			"http://127.0.0.1:9093",
+		await expect(row.getByTestId("source-url")).toHaveText("127.0.0.1:9093");
+		await expect(row.getByTestId("source-state")).toHaveText(
+			/Connected|Not tested yet/,
 		);
-		const state = await row.getByTestId("source-state").innerText();
-		if (state === "Unreachable")
-			await expect(row).toContainText("pulls skip it until Test reaches it");
-		else expect(state).toBe("Reachable");
+		await expect(row).toContainText("Also in Sources; editing it changes both");
 	},
 );
 
@@ -392,12 +398,12 @@ When('I open "booklogr-api"', async ({ page }) => {
 });
 
 Then(
-	'I see "Code the run reads", "Telemetry", "Dependencies", "Runs" and "Incidents" on one page with no tabs',
+	'I see "Code the run reads", "Connections", "Dependencies", "Runs" and "Incidents" on one page with no tabs',
 	async ({ page }) => {
 		const service = page.getByTestId("service-page");
 		for (const title of [
 			"Code the run reads",
-			"Telemetry",
+			"Connections",
 			"Dependencies",
 			"Runs",
 			"Incidents",
@@ -454,7 +460,7 @@ async function check(page: Page, id: string) {
 }
 
 async function openPicker(page: Page) {
-	await page.goto("/settings?tab=harness");
+	await page.goto("/settings?tab=agent");
 	await page.getByTestId("harness-run-row").getByTestId("agent-picker").click();
 	await expect(page.getByTestId("agent-picker-list")).toBeVisible();
 }
@@ -513,13 +519,16 @@ Then(
 );
 
 Then(
-	"the list shows the agent's own model first, then the models with their provider under each, no headings, each named once",
+	"the list shows the models by their own names with their provider under each, no Default row, no headings, each named once",
 	async ({ page }) => {
 		const list = picker(page).getByRole("listbox", { name: "Models" });
+		// Every model by its real name; the word Default names none (#907).
+		await expect(list.getByTestId("model-default")).toHaveCount(0);
 		await expect(list.getByRole("option").first()).toHaveAttribute(
 			"data-testid",
-			"model-default",
+			"model-option",
 		);
+		await expect(list.getByRole("option", { name: /^Default/ })).toHaveCount(0);
 		await expect(list.locator("[cmdk-group-heading], legend")).toHaveCount(0);
 		const rows = list.getByTestId("model-option");
 		await expect(rows.filter({ hasText: "Claude Sonnet 5.5" })).toContainText(
@@ -621,13 +630,14 @@ When(
 );
 
 Then(
-	/^the effort chip reads Codex's default "(.+)", and its menu tags it "Default"$/,
-	async ({ page }, level: string) => {
+	/^the effort chip reads Codex's default "(.+)", and its menu tags it "(.+)"$/,
+	async ({ page }, level: string, tag: string) => {
 		const effort = page.getByTestId("effort-chip");
 		await expect(effort).toContainText(level);
 		await effort.click();
 		const row = page.getByTestId("effort-option").filter({ hasText: level });
-		await expect(row).toContainText("Default");
+		await expect(row).toContainText(tag);
+		await expect(page.getByTestId("effort-menu")).not.toContainText("Default");
 		await page.keyboard.press("Escape");
 	},
 );
@@ -667,7 +677,7 @@ Then(
 );
 
 Then(
-	'every agent offers the same four permission levels, "Ask always" first, the default row tagged "Your default", "PrismaLens default" or "From Settings", and a lock only where a sandbox was proven',
+	'every agent offers the same four permission levels, "Ask always" first, the level a run takes tagged "From your settings file", "PrismaLens\'s pick" or "Set in Settings", and a lock only where a sandbox was proven',
 	async ({ page }) => {
 		for (const id of ["claude-code", "codex", "opencode"]) {
 			await pickAgent(page, id);
@@ -689,7 +699,7 @@ Then(
 			const tag = menu.getByTestId("access-default-tag");
 			await expect(tag).toBeVisible();
 			await expect(tag).toHaveText(
-				/^(Your default|PrismaLens default|From Settings)$/,
+				/^(From your settings file|PrismaLens's pick|Set in Settings)$/,
 			);
 
 			await page.keyboard.press("Escape");
@@ -876,7 +886,7 @@ Then(
 );
 
 Then(
-	/^"DeepSeek V4\.1 Flash \(free\)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice$/,
+	/^"DeepSeek V4\.1 Flash \(free\)" carries the line "trains on your prompts" and the picker ticks one model by its name, with no Default row$/,
 	async ({ page }) => {
 		await openPicker(page);
 		await picker(page).getByTestId("rail-opencode").click();
@@ -886,13 +896,12 @@ Then(
 			)
 			.first();
 		await expect(muse).toContainText("trains on your prompts");
-		// The agent's own model row's sub-line is the model OpenCode reports it serves, nothing more.
-		await expect(picker(page).getByTestId("model-default")).toContainText(
-			"Agent's own model",
-		);
-		await expect(picker(page).getByTestId("model-default")).not.toContainText(
-			"PrismaLens",
-		);
+		// One row ticked, by its name; no Default row (#907).
+		await expect(picker(page).getByTestId("model-default")).toHaveCount(0);
+		await expect(
+			picker(page).locator("[data-testid=model-option][data-checked]"),
+		).toHaveCount(1);
+		await expect(picker(page)).not.toContainText("Default");
 	},
 );
 
@@ -951,12 +960,13 @@ When('I open the "Starred" tile', async ({ page, agents }) => {
 	// Starring is the picker's own write; two agents' stars set the scene here.
 	agents.install(["opencode"], "picker");
 	await check(page, "opencode");
+	// One star per agent: its model when a run picks none (#907).
 	const res = await page.request.patch("/api/settings/harness", {
 		data: {
-			favourites: [
-				{ harness: "opencode", model: "anthropic/claude-sonnet-5-5" },
-				{ harness: "claude-code", model: "claude-opus-5-5" },
-			],
+			models: {
+				opencode: "anthropic/claude-sonnet-5-5",
+				"claude-code": "claude-opus-5-5",
+			},
 		},
 	});
 	expect(res.ok()).toBe(true);

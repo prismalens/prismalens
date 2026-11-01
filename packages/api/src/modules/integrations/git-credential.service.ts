@@ -3,16 +3,24 @@
 
 /**
  * Which credential git uses for one repository, decided before git runs (ADR 0007 §6,
- * #673): an explicit pick, else the machine's own git, else the one saved token for the host.
+ * #848): the pin, else the one saved token for the host, else an env token, else the
+ * machine's own git, else public. An unpinned token that is refused falls through once.
  */
 import { tmpdir } from "node:os";
 import { Injectable, Logger } from "@nestjs/common";
+import type { GitHostView } from "@prismalens/contracts/schemas";
 import { isLegacyTemplateId } from "@prismalens/integrations";
 import {
+	type EnvGitToken,
+	envTokenFor,
 	GitCredential,
 	type GitCredentialDisplay,
+	helperLabel,
 	helperName,
 	isSshUrl,
+	normalizeGitHost,
+	repoLabel,
+	shownRepoUrl,
 	urlHost,
 } from "../../core/harness/git-credential.js";
 import { gitEnv } from "../../core/harness/git-env.js";
@@ -32,6 +40,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
 import { IntegrationsService } from "./integrations.service.js";
+import { shownError } from "./source-query.js";
 
 export {
 	GitCredential,
@@ -68,6 +77,9 @@ export class GitCredentialAmbiguousError extends GitFailure {
 const expired = (t: HostToken, now = new Date()) =>
 	!!t.tokenExpiresAt && t.tokenExpiresAt < now;
 const usable = (t: HostToken) => t.status === "ACTIVE" && !expired(t);
+/** Every saved token for the host but a revoked one: two make an unpinned repository ambiguous (#848). */
+const hostTokens = (tokens: HostToken[], host: string | null) =>
+	host ? tokens.filter((t) => t.host === host && t.status !== "REVOKED") : [];
 const candidateOf = (t: HostToken): Candidate => ({
 	connectionId: t.connectionId,
 	label: t.label,
@@ -100,18 +112,31 @@ const SSH: GitCredentialDisplay = {
 	via: "ssh keys",
 };
 
-/** Codes on which the machine's credential is retried with the one matching token (ADR 0007 §6). */
-const FALLBACK_ON: GitFailureCode[] = [
-	"machine-rejected",
-	"no-credential",
-	"not-found",
-];
+/** Codes on which an unpinned token falls through to the next credential (ADR 0007 §6). */
+const FALL_THROUGH_ON: GitFailureCode[] = ["no-access", "token-rejected"];
+/** An expired token cannot explain these, so they surface as themselves (#950). */
+const UNRELATED_TO_TOKEN: GitFailureCode[] = ["unreachable", "other"];
 const PREVIEW_TTL_MS = 60_000;
+
+function blamed(
+	passedOver: GitFailure | undefined,
+	err: GitFailure,
+): GitFailure {
+	return passedOver && !UNRELATED_TO_TOKEN.includes(err.code)
+		? passedOver
+		: err;
+}
+
+type Tier = "pin" | "stored" | "env" | "machine" | "public";
 
 interface Resolution {
 	display: GitCredentialDisplay;
 	effectiveUrl: string;
+	tier: Tier;
 	token?: HostToken;
+	env?: EnvGitToken & { host: string };
+	/** An expired unpinned token passed over: its failure names the fix when the next credential fails too (#950). */
+	passedOver?: GitFailure;
 }
 
 type ProbeResult =
@@ -143,7 +168,7 @@ export class GitCredentialService {
 			.then((r) => r.display)
 			.catch((err: unknown) => {
 				this.logger.warn(
-					`Could not work out the credential for ${ref.url}: ${err instanceof Error ? err.message : String(err)}`,
+					`Could not work out the credential for ${repoLabel(ref.url)}: ${err instanceof Error ? err.message : String(err)}`,
 				);
 				return PUBLIC;
 			});
@@ -157,61 +182,154 @@ export class GitCredentialService {
 	}
 
 	/** For a git call. Writes Connection.lastUsedAt for a token; throws GitCredentialAmbiguousError or a GitFailure for an unusable pinned token. */
-	async resolveForUse(ref: GitRepoRef): Promise<GitCredential> {
-		if (ref.sourceKind === "folder") return new GitCredential(FOLDER);
-		const r = await this.resolve(ref, "use");
-		if (r.token) await this.markUsed(r.token.connectionId);
-		return this.credentialFor(r);
+	async resolveForUse(
+		ref: GitRepoRef,
+		signal?: AbortSignal,
+	): Promise<GitCredential> {
+		return this.credentialFor(await this.resolveUse(ref, signal));
 	}
 
-	/** resolveForUse, run `fn`, and on a machine-source refusal with exactly one matching saved token, run `fn` once more with it. */
+	/** resolveForUse, run `fn`, and when an unpinned token is refused (`FALL_THROUGH_ON`), run `fn` once more with the next credential. */
 	async withCredential<T>(
 		ref: GitRepoRef,
 		fn: (cred: GitCredential) => Promise<T>,
+		signal?: AbortSignal,
 	): Promise<{ result: T; credential: GitCredentialDisplay }> {
-		const cred = await this.resolveForUse(ref);
+		const r = await this.resolveUse(ref, signal);
+		const cred = this.credentialFor(r);
 		try {
 			return { result: await fn(cred), credential: cred.display };
 		} catch (err) {
 			if (!(err instanceof GitFailure)) throw err;
 			await this.recordFailure(cred, err);
 			if (
-				cred.display.source !== "machine" ||
-				cred.display.via === "ssh keys" ||
-				!FALLBACK_ON.includes(err.code)
+				(r.tier !== "stored" && r.tier !== "env") ||
+				!FALL_THROUGH_ON.includes(err.code)
 			)
-				throw err;
-			const effectiveUrl = cred.effectiveUrl ?? ref.url;
-			const host = urlHost(effectiveUrl);
-			const matches = host
-				? (await this.tokens()).filter((t) => t.host === host && usable(t))
-				: [];
-			if (matches.length > 1)
-				throw new GitFailure(
-					err.code,
-					`${err.message} Saved tokens for ${host}: ${matches.map((t) => t.label).join(", ")}; pick one on the repository.`,
-					"pick-credential",
-					err.stderr,
-				);
-			const [only] = matches;
-			if (!only || !/^https:\/\//i.test(effectiveUrl)) throw err;
-			this.logger.log(
-				`${host} refused the machine's git; retrying ${ref.url} with token ${only.label}`,
-			);
-			await this.markUsed(only.connectionId);
+				throw blamed(r.passedOver, err);
+			const host = urlHost(r.effectiveUrl);
+			signal?.throwIfAborted();
+			const next = await this.after(r.tier, r.effectiveUrl, host, signal);
+			signal?.throwIfAborted();
+			const { problem: _problem, ...display } = next.display;
 			const fallback = this.credentialFor({
-				display: { ...tokenDisplay(only), fallback: true },
-				effectiveUrl,
-				token: only,
+				...next,
+				display: {
+					...display,
+					// A passed-over expired token stays the reason the run left the saved token (#950).
+					fallbackFrom: cred.display.fallbackFrom ?? {
+						source: cred.display.source,
+						label: cred.display.label,
+						code: err.code,
+					},
+				},
 			});
+			this.logger.log(
+				`${host ?? repoLabel(ref.url)} answered ${err.code} to ${cred.display.label}; retrying ${repoLabel(ref.url)} with ${fallback.display.label}`,
+			);
 			try {
 				return { result: await fn(fallback), credential: fallback.display };
 			} catch (retryErr) {
-				if (retryErr instanceof GitFailure)
-					await this.recordFailure(fallback, retryErr);
-				throw retryErr;
+				if (!(retryErr instanceof GitFailure)) throw retryErr;
+				await this.recordFailure(fallback, retryErr);
+				// The token's own refusal names what to fix; the retry's error would not (#848).
+				throw blamed(r.passedOver, err);
 			}
 		}
+	}
+
+	/** Every git host a token, a repository or an env token names, with what each step holds (#848). */
+	async hosts(env: NodeJS.ProcessEnv = process.env): Promise<GitHostView[]> {
+		const [tokens, rows] = await Promise.all([
+			this.tokens(),
+			this.prisma.repository.findMany({
+				where: { sourceKind: "url" },
+				select: { id: true, url: true, metadata: true },
+				orderBy: { createdAt: "asc" },
+			}),
+		]);
+		const repos: {
+			host: string;
+			repositoryId: string;
+			url: string;
+			pick: string | null;
+		}[] = [];
+		for (const row of rows) {
+			const effective = await this.effectiveUrl(row.url);
+			const host = urlHost(effective);
+			if (host && /^https:\/\//i.test(effective))
+				repos.push({
+					host,
+					repositoryId: row.id,
+					url: row.url,
+					pick: pickOf(row.metadata),
+				});
+		}
+		const envHosts = [
+			"github.com",
+			"gitlab.com",
+			...[env.GH_HOST, env.GITLAB_HOST].map((h) =>
+				h ? normalizeGitHost(h) : null,
+			),
+		].filter((h): h is string => !!h && !!envTokenFor(h, env));
+		const hosts = [
+			...new Set([
+				...tokens.map((t) => t.host),
+				...repos.map((r) => r.host),
+				...envHosts,
+			]),
+		].sort();
+		const now = new Date();
+		return Promise.all(
+			hosts.map(async (host): Promise<GitHostView> => {
+				const stored = hostTokens(tokens, host);
+				const ids = new Set(stored.map((t) => t.connectionId));
+				const onHost = repos.filter((r) => r.host === host);
+				const ref = ({ repositoryId, url }: (typeof repos)[number]) => ({
+					repositoryId,
+					url: shownRepoUrl("url", url),
+				});
+				const unpinnedRepos = onHost
+					.filter((r) => !r.pick || !ids.has(r.pick))
+					.map(ref);
+				const envToken = envTokenFor(host, env);
+				const helper = await this.urlConfig(
+					"credential.helper",
+					`https://${host}/`,
+				);
+				const order: GitHostView["order"] = [];
+				if (onHost.some((r) => r.pick && ids.has(r.pick))) order.push("pin");
+				if (stored.length) order.push("stored");
+				if (envToken) order.push("env");
+				if (helper) order.push("machine");
+				return {
+					host,
+					order,
+					stored: stored.map((t) => ({
+						connectionId: t.connectionId,
+						label: t.label,
+						fingerprint: t.fingerprint,
+						status:
+							t.status === "ACTIVE" && expired(t, now)
+								? "TOKEN_EXPIRED"
+								: t.status,
+						testedAt: t.testedAt?.toISOString() ?? null,
+						pinnedRepos: onHost
+							.filter((r) => r.pick === t.connectionId)
+							.map(ref),
+					})),
+					env: envToken
+						? {
+								variable: envToken.variable,
+								fingerprint: this.fingerprint(host, envToken.token),
+							}
+						: null,
+					machine: helper ? { helper: helperLabel(helper) } : null,
+					ambiguous: stored.length > 1 && unpinnedRepos.length > 0,
+					unpinnedRepos,
+				};
+			}),
+		);
 	}
 
 	/** Saved tokens whose host matches, for the picker. */
@@ -232,21 +350,41 @@ export class GitCredentialService {
 		return token && token.host === host ? token : null;
 	}
 
+	private async resolveUse(
+		ref: GitRepoRef,
+		signal?: AbortSignal,
+	): Promise<Resolution> {
+		signal?.throwIfAborted();
+		if (ref.sourceKind === "folder")
+			return { display: FOLDER, effectiveUrl: ref.url, tier: "public" };
+		const r = await this.resolve(ref, "use", signal);
+		signal?.throwIfAborted();
+		if (r.token) {
+			await this.markUsed(r.token.connectionId);
+			signal?.throwIfAborted();
+		}
+		return r;
+	}
+
 	private credentialFor(r: Resolution): GitCredential {
-		return new GitCredential(r.display, r.token?.token, {
+		if (r.display === FOLDER) return new GitCredential(FOLDER);
+		return new GitCredential(r.display, r.token?.token ?? r.env?.token, {
 			effectiveUrl: r.effectiveUrl,
-			host: r.token?.host,
+			host: r.token?.host ?? r.env?.host,
 		});
 	}
 
 	private async resolve(
 		ref: GitRepoRef,
 		mode: "preview" | "use",
+		signal?: AbortSignal,
 	): Promise<Resolution> {
 		const effectiveUrl = await this.effectiveUrl(ref.url);
-		if (isSshUrl(effectiveUrl)) return { display: SSH, effectiveUrl };
+		if (isSshUrl(effectiveUrl))
+			return { display: SSH, effectiveUrl, tier: "machine" };
 		const host = urlHost(effectiveUrl);
 		const https = /^https:\/\//i.test(effectiveUrl);
+		signal?.throwIfAborted();
 		const tokens = await this.tokens();
 		const legacy =
 			mode === "preview" && ref.connectionId
@@ -261,10 +399,15 @@ export class GitCredentialService {
 			const picked = tokens.find((t) => t.connectionId === ref.pick);
 			if (picked && https && picked.host === host) {
 				if (usable(picked))
-					return { display: tokenDisplay(picked), effectiveUrl, token: picked };
+					return {
+						display: tokenDisplay(picked),
+						effectiveUrl,
+						tier: "pin",
+						token: picked,
+					};
 				const why = expired(picked)
 					? `expired on ${formatDay(picked.tokenExpiresAt as Date)}`
-					: `in error: ${picked.lastErrorMessage ?? picked.status}`;
+					: `in error: ${shownError(picked.lastErrorMessage, { git: picked }) ?? picked.status}`;
 				const message = `Pinned token ${picked.label} is ${why}; replace it or set Auto.`;
 				if (mode === "use")
 					throw new GitFailure(
@@ -278,8 +421,10 @@ export class GitCredentialService {
 						problem: { code: "pinned-unusable", message },
 					},
 					effectiveUrl,
+					tier: "pin",
 				};
 			}
+			signal?.throwIfAborted();
 			const exists = await this.prisma.connection.findUnique({
 				where: { id: ref.pick },
 				select: { id: true },
@@ -287,33 +432,12 @@ export class GitCredentialService {
 			if (exists && mode === "use") await this.clearPick(ref.pick, ref.url);
 		}
 
-		let probeTimedOut = false;
-		if (host) {
-			const probe = await this.probe(effectiveUrl, host);
-			if (probe.kind === "machine")
-				return withLegacy({ display: probe.display, effectiveUrl });
-			if (probe.kind === "timeout") {
-				probeTimedOut = true;
-				this.logger.warn(
-					`The machine's git helper did not answer for ${host} in 5 s`,
-				);
-			}
-		}
-
-		const matches = https
-			? tokens.filter((t) => t.host === host && t.status === "ACTIVE")
-			: [];
-		const timeoutProblem = probeTimedOut
-			? {
-					code: "probe-timeout" as const,
-					message: "Your machine's git helper did not answer in 5 s.",
-				}
-			: undefined;
-		if (matches.length > 1) {
+		const stored = https ? hostTokens(tokens, host) : [];
+		if (stored.length > 1) {
 			if (mode === "use")
 				throw new GitCredentialAmbiguousError(
 					host ?? effectiveUrl,
-					matches.map(candidateOf),
+					stored.map(candidateOf),
 				);
 			return {
 				display: {
@@ -322,34 +446,104 @@ export class GitCredentialService {
 					via: "none",
 					problem: {
 						code: "ambiguous",
-						message: `${matches.length} saved tokens match ${host}. Pick the one this repository uses.`,
-						candidates: matches.map(candidateOf),
+						message: `${stored.length} saved tokens match ${host}. Pick the one this repository uses.`,
+						candidates: stored.map(candidateOf),
 					},
 				},
 				effectiveUrl,
+				tier: "stored",
 			};
 		}
-		const [only] = matches;
-		if (only) {
-			if (mode === "use" && expired(only))
-				throw new GitFailure(
-					"token-expired",
-					`Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt as Date)}. Replace it in Settings → Integrations.`,
-					"replace-token",
-				);
-			const display = tokenDisplay(only);
+		const [only] = stored;
+		// Unpinned, so an expired token is skipped like a refused one; a pin fails closed above (#950).
+		if (
+			only &&
+			(only.status === "TOKEN_EXPIRED" ||
+				(only.status === "ACTIVE" && expired(only)))
+		) {
+			const next = await this.after("stored", effectiveUrl, host, signal);
+			const { label, source } = tokenDisplay(only);
 			return withLegacy({
-				display: timeoutProblem
-					? { ...display, problem: timeoutProblem }
-					: display,
+				...next,
+				passedOver: new GitFailure(
+					"token-expired",
+					only.tokenExpiresAt
+						? `Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt)}. Replace it in Settings → Sources.`
+						: `Token "${only.label}" has expired. Replace it in Settings → Sources.`,
+					"replace-token",
+				),
+				display: {
+					...next.display,
+					fallbackFrom: { source, label, code: "token-expired" },
+				},
+			});
+		}
+		if (only?.status === "ACTIVE") {
+			return withLegacy({
+				display: tokenDisplay(only),
 				effectiveUrl,
+				tier: "stored",
 				token: only,
 			});
 		}
-		return withLegacy({
-			display: timeoutProblem ? { ...PUBLIC, problem: timeoutProblem } : PUBLIC,
+		return withLegacy(await this.after("stored", effectiveUrl, host, signal));
+	}
+
+	/** The first credential after `tier` in the order: env, the machine's git, public. */
+	private async after(
+		tier: Tier,
+		effectiveUrl: string,
+		host: string | null,
+		signal?: AbortSignal,
+	): Promise<Resolution> {
+		const https = /^https:\/\//i.test(effectiveUrl);
+		if (tier === "stored" && https && host) {
+			const env = envTokenFor(host);
+			if (env)
+				return {
+					display: {
+						source: "env",
+						label: `env ${env.variable}`,
+						via: env.variable,
+						envVar: env.variable,
+						fingerprint: this.fingerprint(host, env.token),
+					},
+					effectiveUrl,
+					tier: "env",
+					env: { ...env, host },
+				};
+		}
+		let probeTimedOut = false;
+		if (host) {
+			signal?.throwIfAborted();
+			const probe = await this.probe(effectiveUrl, host, signal);
+			if (probe.kind === "machine")
+				return { display: probe.display, effectiveUrl, tier: "machine" };
+			if (probe.kind === "timeout") {
+				probeTimedOut = true;
+				this.logger.warn(
+					`The machine's git helper did not answer for ${host} in 5 s`,
+				);
+			}
+		}
+		return {
+			display: probeTimedOut
+				? {
+						...PUBLIC,
+						problem: {
+							code: "probe-timeout",
+							message: "Your machine's git helper did not answer in 5 s.",
+						},
+					}
+				: PUBLIC,
 			effectiveUrl,
-		});
+			tier: "public",
+		};
+	}
+
+	/** The same 8-hex fingerprint a saved token for `host` would show. */
+	fingerprint(host: string, token: string): string {
+		return this.credentials.getVault().hmacHex(`${host}:${token}`).slice(0, 8);
 	}
 
 	private effectiveUrl(url: string): Promise<string> {
@@ -360,6 +554,7 @@ export class GitCredentialService {
 	private async probe(
 		effectiveUrl: string,
 		host: string,
+		signal?: AbortSignal,
 	): Promise<ProbeResult> {
 		const helper = await this.urlConfig("credential.helper", effectiveUrl);
 		if (!helper) return { kind: "none" };
@@ -375,6 +570,7 @@ export class GitCredentialService {
 				cwd: tmpdir(),
 				env: gitEnv({ source: "machine", coreSshCommand: null }),
 				timeoutMs: GIT_PROBE_TIMEOUT_MS,
+				...(signal ? { signal } : {}),
 				input,
 				onStdoutLine: (line) => {
 					if (line.startsWith("username=")) username = line.slice(9);
@@ -382,6 +578,7 @@ export class GitCredentialService {
 				},
 			});
 		} catch (err) {
+			signal?.throwIfAborted();
 			if (err instanceof GitSpawnError && err.timedOut)
 				return { kind: "timeout" };
 			return { kind: "none" };
@@ -393,7 +590,7 @@ export class GitCredentialService {
 			display: {
 				source: "machine",
 				label: detail ? `machine git (${detail})` : "machine git",
-				via: helper,
+				via: helperLabel(helper),
 			},
 		};
 	}

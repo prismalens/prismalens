@@ -6,6 +6,7 @@ import { alertmanager } from "./alertmanager.js";
 import { gitHostToken } from "./git-host-token.js";
 import { githubToken } from "./github.js";
 import { isLegacyTemplateId } from "./legacy.js";
+import { loki } from "./loki.js";
 import { prometheus } from "./prometheus.js";
 import { render } from "./render.js";
 
@@ -13,6 +14,7 @@ export { alertmanager } from "./alertmanager.js";
 export { gitHostToken } from "./git-host-token.js";
 export { githubToken } from "./github.js";
 export { isLegacyTemplateId, LEGACY_TEMPLATE_IDS } from "./legacy.js";
+export { loki } from "./loki.js";
 export { prometheus } from "./prometheus.js";
 export { render } from "./render.js";
 
@@ -20,6 +22,7 @@ const TEMPLATES = new Map<string, AuthTemplate>([
 	[alertmanager.id, alertmanager],
 	[gitHostToken.id, gitHostToken],
 	[githubToken.id, githubToken],
+	[loki.id, loki],
 	[prometheus.id, prometheus],
 	[render.id, render],
 ]);

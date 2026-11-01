@@ -14,7 +14,8 @@ import type {
 	IncidentChanges,
 	RunCredential,
 } from "@prismalens/contracts/schemas";
-import { urlHost } from "../../core/harness/git-credential.js";
+import { findDeploymentAdapterForHost } from "@prismalens/integrations";
+import { repoLabel, urlHost } from "../../core/harness/git-credential.js";
 import {
 	GitFailure,
 	type GitFailureCode,
@@ -26,6 +27,7 @@ import {
 	GitCredentialService,
 	pickOf,
 } from "../integrations/git-credential.service.js";
+import { type DeployRecord, deployRow } from "./deploy-events.service.js";
 import {
 	commitUrl,
 	describeChange,
@@ -162,7 +164,12 @@ export class ChangeEventsService {
 			return current;
 		const sync: Sync = { at: now, done: false, run: Promise.resolve() };
 		sync.run = Promise.all(
-			scope.links.map((l) => this.syncLink(l, scope.window)),
+			scope.links.map((l) =>
+				Promise.all([
+					this.syncLink(l, scope.window),
+					this.pullDeploys(l, scope.window),
+				]),
+			),
 		).then(
 			() => {
 				sync.done = true;
@@ -278,13 +285,64 @@ export class ChangeEventsService {
 				checkedAt: new Date().toISOString(),
 			});
 		} catch (err) {
-			this.logger.warn(`What changed: ${repo.url}: ${message(err)}`);
+			this.logger.warn(
+				`What changed: ${repoLabel(repo.url)}: ${err instanceof GitFailure ? err.code : "error"}`,
+			);
 			this.sources.set(link.key, {
 				...base,
 				status: "failed",
 				problem: problemOf(err),
 				checkedAt: new Date().toISOString(),
 			});
+		}
+	}
+
+	/** Deploys of a repository, pulled by the registered provider that serves its host with the credential git uses there, kept in the push endpoint's row shape (#854, #855). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
+	private async pullDeploys(
+		link: Link,
+		window: { start: Date; end: Date },
+	): Promise<void> {
+		const repo = link.repository;
+		if (link.subPath || repo.sourceKind === "folder") return;
+		const host = urlHost(repo.url);
+		const adapter = host ? findDeploymentAdapterForHost(host) : null;
+		const provider = adapter?.deployment;
+		if (!host || !adapter || !provider?.listDeploymentEvents) return;
+		try {
+			const credential = await this.gitCredentials.resolveForUse({
+				sourceKind: "url",
+				url: repo.url,
+				connectionId: repo.connectionId,
+				pick: pickOf(repo.metadata),
+			});
+			const authorization = credential.authorization(
+				`https://${host}/`,
+				"bearer",
+			);
+			if (!authorization || !provider.requestFor) return;
+			const events = await provider.listDeploymentEvents(
+				provider.requestFor(host, authorization),
+				repo.fullName,
+				{ since: window.start, until: window.end },
+			);
+			const writes = events.map((e) => {
+				const record: DeployRecord = {
+					service: { id: link.serviceId, name: link.serviceName },
+					...e,
+					source: adapter.name,
+					repo: repo.fullName,
+					at: new Date(e.at),
+				};
+				const row = deployRow(record);
+				return this.prisma.changeEvent.upsert({
+					where: { dedupeKey: row.dedupeKey },
+					create: row,
+					update: {},
+				});
+			});
+			if (writes.length) await this.prisma.$transaction(writes);
+		} catch (err) {
+			this.logger.warn(`Deployments: ${repo.fullName}: ${message(err)}`);
 		}
 	}
 
@@ -452,7 +510,7 @@ function toChange(
 		sha: str(meta.sha) ?? str(meta.commit),
 		tag: str(meta.tag) ?? str(meta.version),
 		pr: typeof meta.pr === "number" ? meta.pr : null,
-		author: str(meta.author),
+		author: str(meta.author) ?? str(meta.actor),
 		files:
 			files && typeof meta.fileCount === "number"
 				? { count: meta.fileCount, paths: files }

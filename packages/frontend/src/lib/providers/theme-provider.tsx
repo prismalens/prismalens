@@ -12,11 +12,22 @@
 
 import { createContext, type ReactNode, use, useEffect, useState } from "react";
 import { desktopBridge } from "@/lib/desktop";
-import { getTheme, setTheme as persistTheme, type Theme } from "@/lib/theme";
+import {
+	applyTheme,
+	getThemeChoice,
+	setTheme as persistTheme,
+	resolveTheme,
+	SYSTEM_DARK,
+	type Theme,
+	type ThemeChoice,
+} from "@/lib/theme";
 
 interface ThemeContextValue {
+	/** What shows now. */
 	theme: Theme;
-	setTheme: (theme: Theme) => void;
+	/** What Appearance stores: a theme, or the OS's (#848). */
+	choice: ThemeChoice;
+	setTheme: (choice: ThemeChoice) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
@@ -26,15 +37,15 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-	const [theme, setThemeState] = useState<Theme>(() => getTheme());
+	const [choice, setChoice] = useState<ThemeChoice>(() => getThemeChoice());
+	const [theme, setThemeState] = useState<Theme>(() => resolveTheme(choice));
 
 	// Re-assert the class after hydration: the prerendered shell carries the
 	// default, and React does not patch a mismatched attribute it was told to
 	// ignore. The pre-paint script already got this right for first paint; this
 	// keeps the two in step if React ever re-renders <html>.
 	useEffect(() => {
-		document.documentElement.classList.toggle("dark", theme === "dark");
-		document.documentElement.classList.toggle("light", theme === "light");
+		applyTheme(theme);
 		const desktop = desktopBridge();
 		if (desktop) {
 			document.documentElement.dataset.desktop = desktop.platform;
@@ -42,12 +53,24 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 		}
 	}, [theme]);
 
-	function setTheme(val: Theme) {
+	// System follows the OS while the page is open.
+	useEffect(() => {
+		if (choice !== "system") return;
+		const mql = window.matchMedia(SYSTEM_DARK);
+		const onChange = () => setThemeState(resolveTheme("system"));
+		mql.addEventListener("change", onChange);
+		return () => mql.removeEventListener("change", onChange);
+	}, [choice]);
+
+	function setTheme(val: ThemeChoice) {
 		persistTheme(val);
-		setThemeState(val);
+		setChoice(val);
+		setThemeState(resolveTheme(val));
 	}
 
-	return <ThemeContext value={{ theme, setTheme }}>{children}</ThemeContext>;
+	return (
+		<ThemeContext value={{ theme, choice, setTheme }}>{children}</ThemeContext>
+	);
 }
 
 export function useTheme() {

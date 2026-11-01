@@ -21,7 +21,7 @@ export type GitFailureAction =
 	| "pick-credential"
 	| "replace-token";
 
-/** A git call that failed, in words the user can act on. `stderr` is scrubbed and for the server log only. */
+/** A git call that failed, in words the user can act on. `message` is fixed text; `stderr` is scrubbed, for classification only, never logged or returned (#848). */
 export class GitFailure extends Error {
 	constructor(
 		readonly code: GitFailureCode,
@@ -34,9 +34,65 @@ export class GitFailure extends Error {
 	}
 }
 
+/** At most 64 KB of remote output is scanned, since the patterns below are not all linear (#848). */
+const MAX_SCANNED_STDERR = 64 * 1024;
+const HALF = MAX_SCANNED_STDERR / 2 - 1;
+
+const BREAK = /[\r\n]/;
+
+/** `text` up to its last whitespace, so no token is split where it is cut. */
+function toWhitespace(text: string): string {
+	let end = text.length;
+	while (end > 0 && !/\s/.test(text[end - 1] as string)) end--;
+	return text.slice(0, end);
+}
+
+/** A run of non-space characters over 2 KB keeps only its end characters, so `'…'` still holds the quotes a pattern reads; one cut by the window loses the end the window lacks. */
+function collapseLongTokens(piece: string, cut: "end" | "start"): string {
+	return piece.replace(/\S{2048,}/g, (run, at: number) => {
+		const first = cut === "start" && at === 0 ? "" : (run[0] as string);
+		const last =
+			cut === "end" && at + run.length === piece.length ? "" : run.at(-1);
+		return `${first}…${last}`;
+	});
+}
+
+/** The start and the end of a line over the window, each cut at whitespace unless it ends in a collapsed token. */
+function edgesOf(line: string): string {
+	const quarter = Math.floor(HALF / 2);
+	const head = collapseLongTokens(line.slice(0, quarter), "end");
+	const tail = collapseLongTokens(line.slice(-quarter), "start");
+	const word = tail.search(/\s/);
+	return `${head.endsWith("…") ? head : toWhitespace(head)} ${tail.startsWith("…") ? tail : word < 0 ? "" : tail.slice(word + 1)}`;
+}
+
+/** From the first line start in the last 32 KB; a last line longer than that keeps its start and its end, where git names the failure and gives its reason (#938). */
+function tailOf(stderr: string): string {
+	let end = stderr.length;
+	while (end > 0 && BREAK.test(stderr[end - 1] as string)) end--;
+	const lastLine =
+		Math.max(
+			stderr.lastIndexOf("\n", end - 1),
+			stderr.lastIndexOf("\r", end - 1),
+		) + 1;
+	if (end - lastLine > HALF) return edgesOf(stderr.slice(lastLine, end));
+	const from = end - HALF;
+	if (from <= 0) return stderr.slice(0, end);
+	if (BREAK.test(stderr[from - 1] as string)) return stderr.slice(from, end);
+	return stderr.slice(from + stderr.slice(from, end).search(BREAK) + 1, end);
+}
+
+/** The first and last 32 KB, each cut at a line break: git's `fatal:` line comes last (#938). */
+function scanned(stderr: string): string {
+	if (stderr.length <= MAX_SCANNED_STDERR) return stderr;
+	const head = stderr.slice(0, HALF);
+	const headEnd = Math.max(head.lastIndexOf("\n"), head.lastIndexOf("\r")) + 1;
+	return `${head.slice(0, headEnd)}\n${tailOf(stderr)}`;
+}
+
 /** Strips anything that looks like a credential from git's stderr. */
 export function scrubGitStderr(stderr: string): string {
-	return stderr
+	return scanned(stderr)
 		.replace(/Authorization:\s*\S+\s+\S+/gi, "Authorization: ***")
 		.replace(/:\/\/[^/@\s]+@/g, "://***@");
 }
@@ -57,12 +113,12 @@ const COULD_NOT_READ_USER = /could not read Username/i;
 const AUTH_FAILED = /Authentication failed for/i;
 const HTTP_403 = /returned error: 403/i;
 const HTTP_404 = /returned error: 404/i;
-const REPO_NOT_FOUND = /repository '.*' not found/i;
+const REPO_NOT_FOUND = /repository '[^'\r\n]*' not found/i;
 const UNREACHABLE =
 	/Could not resolve host|Failed to connect|Connection (refused|timed out)|Operation timed out|ssh: connect to host/i;
 
 function tokenName(label: string): string {
-	return label.replace(/^token /, "");
+	return label.replace(/^(token|env) /, "");
 }
 
 /** `(gh, sumit)` from `machine git (gh, sumit)`, or "" when the label has none. */
@@ -75,15 +131,64 @@ export function formatDay(d: Date): string {
 	return d.toISOString().slice(0, 10);
 }
 
+/** What a git token connection stores: a code, never text; its sentence is built when shown (#848). */
+export type GitErrorKind =
+	| "token-expired"
+	| "token-rejected"
+	| "no-access"
+	| "unreachable"
+	| "other"
+	| "no-token"
+	| "failed";
+
+const GIT_ERROR_KINDS: readonly string[] = [
+	"token-expired",
+	"token-rejected",
+	"no-access",
+	"unreachable",
+	"other",
+	"no-token",
+	"failed",
+];
+
+export function gitErrorKind(code: string): GitErrorKind {
+	return GIT_ERROR_KINDS.includes(code) ? (code as GitErrorKind) : "failed";
+}
+
+const GIT_HOST = /^[a-z0-9.-]+(?::\d{1,5})?$/i;
+
+/** The sentence for a stored code, from the token's own host and label only; no repository is named. Null for an unknown code. */
+export function gitErrorSentence(
+	kind: string | undefined,
+	token: { host: string | null; label: string },
+): string | null {
+	const host =
+		token.host && GIT_HOST.test(token.host) ? token.host : "the git host";
+	const label = token.label.replace(/\s+/g, " ");
+	switch (kind) {
+		case "token-expired":
+			return `Token "${label}" has expired. Replace it in Settings → Sources.`;
+		case "token-rejected":
+			return `${host} rejected token "${label}". It was revoked or mistyped; replace it.`;
+		case "no-access":
+			return `Token "${label}" can't see a repository on ${host}: it doesn't exist or the token has no access to it. Check the URL or grant the repository on the token.`;
+		case "unreachable":
+			return `Could not reach ${host}.`;
+		case "other":
+			return `git could not read a repository on ${host}.`;
+		case "no-token":
+			return "This connection has no host or token.";
+		case "failed":
+			return "the check failed";
+		default:
+			return null;
+	}
+}
+
 /** git's own message prefixes under `LC_ALL=C`, matched in table order (plan §1.4, #673). */
 export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	const { credential, host, repo } = input;
 	const stderr = scrubGitStderr(input.stderr);
-	const first =
-		stderr
-			.split("\n")
-			.find((l) => l.trim())
-			?.trim() ?? "git failed";
 	const token = tokenName(credential.label);
 	const fp = credential.fingerprint ? ` (fp ${credential.fingerprint})` : "";
 	const fail = (
@@ -91,7 +196,8 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 		message: string,
 		action?: GitFailureAction,
 	) => new GitFailure(code, message, action, stderr);
-	const source = credential.source;
+	// An env token is diagnosed like a saved one (#848).
+	const source = credential.source === "env" ? "connection" : credential.source;
 	const now = input.now ?? new Date();
 
 	if (
@@ -101,7 +207,7 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	)
 		return fail(
 			"token-expired",
-			`Token "${token}" expired on ${formatDay(input.tokenExpiresAt)}. Replace it in Settings → Integrations.`,
+			`Token "${token}" expired on ${formatDay(input.tokenExpiresAt)}. Replace it in Settings → Sources.`,
 			"replace-token",
 		);
 	if (
@@ -134,7 +240,7 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	if (source !== "connection" && has(stderr, COULD_NOT_READ_USER))
 		return fail(
 			"no-credential",
-			`No credential for ${host}. Add a Git host token in Settings → Integrations, or sign your machine's git in to ${host}.`,
+			`No credential for ${host}. Add a Git host token in Settings → Sources, or sign your machine's git in to ${host}.`,
 			"add-credential",
 		);
 	if (source === "machine" && has(stderr, /Host key verification failed/i))
@@ -157,6 +263,6 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 			"add-credential",
 		);
 	if (has(stderr, UNREACHABLE))
-		return fail("unreachable", `Could not reach ${host}: ${first}.`);
-	return fail("other", first);
+		return fail("unreachable", `Could not reach ${host}.`);
+	return fail("other", `git could not read ${repo} on ${host}.`);
 }

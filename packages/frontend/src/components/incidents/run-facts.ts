@@ -27,12 +27,16 @@ export function useRunAgentModel(
 ): { agent: string; model: string; id: string | null } {
 	const { harnesses, effective, model } = useAgentChoice();
 	const fidelity = investigation?.report?.fidelity;
-	if (fidelity) {
+	// After a handoff the report may be the earlier agent's; the row names who has the run now.
+	if (
+		fidelity &&
+		(!investigation?.harness || fidelity.harness === investigation.harness)
+	) {
 		const harness = harnesses.find((h) => h.id === fidelity.harness);
 		const id = fidelity.servedModel ?? fidelity.model;
 		return {
 			agent: harness?.label ?? fidelity.harness,
-			model: modelName(harness, id) ?? "agent default",
+			model: modelName(harness, id) ?? "its own model",
 			id: fidelity.harness,
 		};
 	}
@@ -40,11 +44,7 @@ export function useRunAgentModel(
 		const harness = harnesses.find((h) => h.id === investigation.harness);
 		return {
 			agent: harness?.label ?? investigation.harness,
-			model:
-				modelName(harness, investigation.model) ??
-				(harness?.modelVia === "unsupported"
-					? "its own model"
-					: "agent default"),
+			model: modelName(harness, investigation.model) ?? "its own model",
 			id: investigation.harness,
 		};
 	}

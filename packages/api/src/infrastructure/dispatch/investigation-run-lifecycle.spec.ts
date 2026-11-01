@@ -87,11 +87,15 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		initLiveTurn: vi.fn(async () => {}),
 		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
+		events: vi.fn(async () => []),
+		recordHandoff: vi.fn(async () => {}),
 		recordSession: vi.fn(async () => {}),
+		recordUsage: vi.fn(async () => {}),
 		markAwaitingApproval: vi.fn(async () => {}),
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
+		agentRuntime: vi.fn(async () => ({ env: {}, note: null })),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
 		})),
@@ -264,7 +268,10 @@ describe("#331 workspace record (in-process run)", () => {
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
 			const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
-			const snapshot = cloneAs(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const }));
+			const snapshot = cloneAs(async (_src, dest) => {
+				mkdirSync(dest, { recursive: true });
+				return { path: dest, head: "abc123def456", branch: "main" as const };
+			});
 			const ports = makePorts({
 				createTimelineEntry,
 				incidentRepos: vi.fn(async () => [
@@ -282,8 +289,11 @@ describe("#331 workspace record (in-process run)", () => {
 
 			expect(snapshot).toHaveBeenCalledWith(
 				expect.objectContaining({ sourceKind: "url", url: "https://github.com/acme/api-gateway" }),
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
+				undefined,
+				"inv-1",
+				expect.any(Function),
 			);
 
 			const entry = createTimelineEntry.mock.calls
@@ -293,7 +303,7 @@ describe("#331 workspace record (in-process run)", () => {
 			expect(entry.incidentId).toBe("inc-1");
 			expect(entry.metadata).toMatchObject({
 				investigationId: "inv-1",
-				cwd: MAPPED,
+				cwd: join(tmp, "worktrees", "pl-inv-1"),
 				mapped: true,
 			});
 		} finally {

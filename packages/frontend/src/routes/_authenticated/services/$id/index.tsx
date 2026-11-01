@@ -14,6 +14,7 @@ import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { ServiceIncidentsSection } from "@/components/services/ServiceIncidentsSection";
 import { ServiceInvestigationsSection } from "@/components/services/ServiceInvestigationsSection";
 import { ServiceTelemetrySection } from "@/components/services/ServiceTelemetrySection";
+import { ServiceWorkspaceSection } from "@/components/services/ServiceWorkspaceSection";
 import {
 	kindWord,
 	tierMeaning,
@@ -219,6 +220,7 @@ function ServicePage() {
 							serviceId={id}
 							metadata={service.metadata}
 						/>
+						<ServiceWorkspaceSection serviceId={id} />
 						<ServiceIncidentsSection
 							incidents={rows}
 							total={incidents?.pagination.total ?? rows.length}

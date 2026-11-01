@@ -3,12 +3,14 @@
 
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { PreRunCoverage } from "@/components/run/PreRunCoverage";
 import { viewName } from "@/components/run/run-labels";
 import { deriveSteps } from "@/components/run/run-steps";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { answerWord } from "@/lib/answer-word";
+import { citedFile } from "@/lib/evidence-files";
 import { failureSentence } from "@/lib/failure-sentence";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
@@ -30,7 +32,8 @@ const TAG_TONE = {
  * Why (#811): the likely cause from the newest run that named one, its
  * evidence (each row opens the step that found it), what was ruled out or
  * not checked, and the lasting fix in place. A live run banners above it;
- * the finding stands until that run reports.
+ * the finding stands until that run reports. Under it, what PrismaLens read
+ * before that run (#848).
  */
 export function WhyCard({
 	o,
@@ -51,6 +54,11 @@ export function WhyCard({
 			: null;
 	const tag = report ? answerWord(report).word : null;
 	const transcriptRun = reported ?? failedLatest;
+	// Coverage is the shown report's run's, or none: never another run's (#848).
+	const preRun =
+		(reported
+			? o.reportInvestigation?.preRun
+			: o.latestRun.investigation?.preRun) ?? null;
 	const run = (id: string) => ({
 		to: "/incidents/$id/conversation" as const,
 		params: { id: incident.id },
@@ -149,6 +157,15 @@ export function WhyCard({
 							: "No run has reached a finding yet."}
 					</p>
 				) : null}
+				{preRun && (
+					<section
+						aria-label="Read before the run"
+						className="mt-1 rounded-surface bg-surface-2 px-3 py-3"
+						data-testid="why-coverage"
+					>
+						<PreRunCoverage preRun={preRun} />
+					</section>
+				)}
 			</div>
 		</Card>
 	);
@@ -257,6 +274,9 @@ function Finding({
 										search={{
 											investigation: runId,
 											...(e.toolCallId ? { call: e.toolCallId } : {}),
+											...(citedFile(e.source, o.reportInvestigation?.workspace)
+												? { file: e.source }
+												: {}),
 										}}
 										className="flex min-w-0 items-baseline gap-2.5 rounded-control bg-surface-2 px-2.5 py-1.5 transition-colors duration-(--dur-instant) hover:bg-surface-3"
 										data-testid="why-evidence-row"

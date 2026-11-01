@@ -14,9 +14,11 @@ import {
 	Logger,
 	OnApplicationShutdown,
 	OnModuleInit,
+	Optional,
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
 import {
+	type AccessLevel,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
@@ -26,6 +28,7 @@ import {
 import type {
 	CanonicalEvent,
 	FollowUpKind,
+	FollowUpRoute,
 	InvestigationJobData,
 	JobAttachment,
 	OperatorMessageMode,
@@ -51,16 +54,26 @@ import {
 	triggerFor,
 } from "../../core/telemetry/telemetry.service.js";
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
+import { GatewayService } from "../../modules/gateway/gateway.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
 import {
 	GitCredentialService,
 	pickOf,
 } from "../../modules/integrations/git-credential.service.js";
+import { TelemetrySnapshotService } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
+import {
+	followUpRoute,
+	handoffPreflight,
+} from "../../modules/investigations/follow-up-route.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import {
+	interruptedRunIds,
+	RunWorkspacesService,
+} from "../../modules/run-workspaces/run-workspaces.service.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { Dispatcher } from "./dispatcher.js";
@@ -127,9 +140,13 @@ function startedByAlert(triggerType: string | null): boolean {
 export function resolveHarnessRunModel(
 	harnessId: HarnessId,
 	operatorModel: string | undefined,
+	agentEnv: Record<string, string> = {},
 ): { model?: string; modelSource?: ModelSource } {
 	if (HARNESS_REGISTRY[harnessId].modelVia === "unsupported") return {};
-	const resolved = resolveHarnessModel(harnessId, operatorModel, process.env);
+	const resolved = resolveHarnessModel(harnessId, operatorModel, {
+		...process.env,
+		...agentEnv,
+	});
 	return {
 		...(resolved.model ? { model: resolved.model } : {}),
 		modelSource: resolved.source,
@@ -168,6 +185,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly contextPackService: ContextPackService,
 		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
+		@Optional() private readonly gateway?: GatewayService,
+		@Optional() telemetrySnapshot?: TelemetrySnapshotService,
+		@Optional() private readonly runWorkspaces?: RunWorkspacesService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -189,8 +209,22 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							workspace: investigation.workspace ?? null,
 							kind: investigation.kind,
 							stopRequestedAt: investigation.stopRequestedAt ?? null,
+							report: investigation.report ?? null,
 						}
 					: null;
+			},
+			events: (id) => this.investigationsService.allEvents(id),
+			recordHandoff: async (id, to) => {
+				await this.prisma.investigation.update({
+					where: { id },
+					data: {
+						harness: to.harness,
+						model: to.model,
+						effort: to.effort,
+						acpSessionId: to.acpSessionId,
+						usage: null,
+					},
+				});
 			},
 			updateStatus: async (id, dto) => {
 				const written = await this.investigationsService.updateStatusInternal(
@@ -208,6 +242,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						agentMode: dto.agentMode,
 						accessLevel: dto.accessLevel,
 						lastTurnOutcome: dto.lastTurnOutcome,
+						endReason: dto.endReason,
 					},
 				);
 				// A refused write delivers nothing and counts nothing (#673 w59).
@@ -239,6 +274,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				await this.prisma.investigation.update({
 					where: { id },
 					data: { acpSessionId },
+				});
+			},
+			recordUsage: async (id, usage) => {
+				await this.prisma.investigation.updateMany({
+					where: { id },
+					data: { usage: JSON.stringify(usage) },
 				});
 			},
 			markAwaitingApproval: async (id, since) => {
@@ -297,6 +338,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				await this.timelineService.create(dto);
 			},
 			resolveHarness: (requested) => this.resolveHarness(requested),
+			agentRuntime: (id) => this.harnessService.runtimeFor(id),
 			incidentRepos: async (incidentId) => {
 				const service = {
 					select: {
@@ -354,7 +396,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					})),
 				);
 			},
-			snapshotWith: async (ref, dest, signal, at) => {
+			snapshotWith: async (ref, dest, signal, at, runId, onOutput) => {
+				signal?.throwIfAborted();
 				const row =
 					ref.sourceKind === "url"
 						? await this.prisma.repository.findFirst({
@@ -381,7 +424,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 								dest,
 								signal,
 								at,
+								runId,
+								onOutput,
 							),
+						signal,
 					);
 				const { problem: _problem, ...run } = credential;
 				return { snap, credential: run };
@@ -393,6 +439,31 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			resolveConnectors: (serviceId) =>
 				this.connectorResolver.resolve({ serviceId }),
 			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
+			...(this.gateway ? { gateway: this.gateway } : {}),
+			...(telemetrySnapshot
+				? {
+						preRun: {
+							telemetry: (incidentId, window, signal) =>
+								telemetrySnapshot.fetch(incidentId, window, signal),
+							runbooks: (runId, signal) =>
+								this.gateway?.runbookIndex(runId, signal) ??
+								Promise.resolve({ entries: [] }),
+							save: async (runId, snapshot) => {
+								await this.prisma.investigation.update({
+									where: { id: runId },
+									data: { preRun: snapshot },
+								});
+							},
+							load: async (runId) =>
+								(
+									await this.prisma.investigation.findUnique({
+										where: { id: runId },
+										select: { preRun: true },
+									})
+								)?.preRun ?? null,
+						},
+					}
+				: {}),
 		};
 
 		this.dispatcher = new Dispatcher(
@@ -432,10 +503,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const pick = (asked: string | null | undefined, stored?: string) =>
 			asked === undefined ? stored : (asked ?? undefined);
 		const effort = pick(requested.effort, settings.efforts?.[h]);
-		const local = this.harnessService.localDefaultOf(h);
+		const runtime = await this.harnessService.runtimeFor(h);
+		const local = this.harnessService.localDefaultOf(h, runtime.env);
 		const model = resolveHarnessRunModel(
 			h,
 			pick(requested.model, settings.models?.[h]),
+			runtime.env,
 		);
 		return {
 			selection,
@@ -505,8 +578,20 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`Could not reconcile live runs at boot: ${(e as Error).message}`,
 			),
 		);
+		// The boot sweep applies each workspace's own retention rule, so the settings load first.
+		await this.runWorkspaces?.ready();
 		try {
-			const swept = sweepRunWorkspaces();
+			const interrupted = await interruptedRunIds(this.prisma);
+			// A follow-up resumeInvestigation left pending reuses its run's workspace.
+			const live = await this.prisma.investigation.findMany({
+				where: { status: { in: ["pending", "running"] } },
+				select: { id: true },
+			});
+			const liveIds = new Set(live.map((r) => r.id));
+			const swept = await sweepRunWorkspaces({
+				isLive: (id) => liveIds.has(id),
+				isInterrupted: (id) => interrupted.has(id),
+			});
 			if (swept > 0)
 				this.logger.warn(`Removed the leftover workspaces of ${swept} run(s)`);
 		} catch (e) {
@@ -795,6 +880,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				stopped ? "cancelled" : "failed",
 				undefined,
 				stopped ? (chat ? "Chat stopped" : "Investigation cancelled") : reason,
+				undefined,
+				stopped || !job ? undefined : { endReason: "interrupted" },
 			);
 		}
 		// The job follows the row: a stop is a cancelled job, not the restart's failure (#804 OBJ-027).
@@ -822,6 +909,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		mode: OperatorMessageMode,
 		kind: FollowUpKind = "chat",
 		attachments: JobAttachment[] = [],
+		to: RunChoice = {},
 	): Promise<boolean> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -835,9 +923,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				report: true,
 				triggerType: true,
 				harness: true,
+				model: true,
+				acpSessionId: true,
+				endReason: true,
 			},
 		});
 		if (!row || !isWorkflowTerminal(row.status)) return false;
+		const plan = await this.planFollowUp(row, to);
+		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");
+		if (plan.preflight)
+			throw new FollowUpRefused(
+				`${plan.preflight.problem} ${plan.preflight.fix}`,
+			);
 		if (kind === "continue") {
 			if (row.kind === "chat")
 				throw new FollowUpRefused(
@@ -852,14 +949,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					"Only a stopped or failed run can be continued.",
 				);
 		}
-		// The run keeps the level it asked for; a row from before levels keeps the session's mode (#673 w21).
-		// A person's follow-up on an alert-started run takes the person's level, not its Auto (#818).
-		const alertHarness =
-			startedByAlert(row.triggerType) &&
-			HARNESS_IDS.find((h) => h === row.harness);
-		const accessLevel = alertHarness
-			? (await this.harnessService.effectiveChoice(alertHarness)).accessLevel
-			: AccessLevelSchema.safeParse(row.accessLevel).data;
+		const accessLevel = await this.followUpLevel(row);
 		const sawEvidence =
 			kind === "continue" &&
 			(await this.prisma.investigationEvent.count({
@@ -885,6 +975,11 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				kind,
 				...(kind === "continue" ? { sawEvidence } : {}),
 				...(attachments.length ? { attachments } : {}),
+				to: { ...to, harness: plan.harness },
+				...(plan.route === "handoff" ? { handoff: true } : {}),
+				...((await this.afterRestart(id, row.endReason))
+					? { afterRestart: true }
+					: {}),
 			},
 		};
 		const admitted = await this.prisma.$transaction(async (tx) => {
@@ -931,6 +1026,70 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();
 		return true;
+	}
+
+	/**
+	 * The run keeps the level it asked for; a row from before levels keeps the session's mode (#673 w21).
+	 * A person's follow-up on an alert-started run takes the person's level, not its Auto (#818).
+	 */
+	async followUpLevel(row: {
+		triggerType: string | null;
+		harness: string | null;
+		accessLevel: string | null;
+	}): Promise<AccessLevel | undefined> {
+		const alertHarness =
+			startedByAlert(row.triggerType) &&
+			HARNESS_IDS.find((h) => h === row.harness);
+		return alertHarness
+			? (await this.harnessService.effectiveChoice(alertHarness)).accessLevel
+			: AccessLevelSchema.safeParse(row.accessLevel).data;
+	}
+
+	/** A restart cut the run off and no follow-up has run since, so the agent must be told. */
+	async afterRestart(id: string, endReason: string | null): Promise<boolean> {
+		if (endReason !== "interrupted") return false;
+		const followUps = await this.prisma.investigationEvent.count({
+			where: { investigationId: id, event: { contains: '"resumed":[' } },
+		});
+		return followUps === 0;
+	}
+
+	/**
+	 * Where a finished run's follow-up goes and whether the recipient can take
+	 * it: installed, signed in where the last check says, and the model accepted.
+	 */
+	async planFollowUp(
+		row: {
+			harness: string | null;
+			acpSessionId: string | null;
+			model: string | null;
+		},
+		to: RunChoice,
+	): Promise<{
+		route: FollowUpRoute;
+		harness: HarnessId;
+		preflight: { problem: string; fix: string } | null;
+	} | null> {
+		const plan = followUpRoute(row, to.harness);
+		if (!plan) return null;
+		const model =
+			to.model !== undefined
+				? to.model
+				: plan.harness === row.harness
+					? row.model
+					: undefined;
+		const selection = await this.harnessService.resolveSelection({
+			harness: plan.harness,
+			...(model !== undefined ? { model } : {}),
+		});
+		return {
+			...plan,
+			preflight: handoffPreflight(
+				plan.harness,
+				selection,
+				this.harnessService.checkedOutcome(plan.harness),
+			),
+		};
 	}
 
 	/**

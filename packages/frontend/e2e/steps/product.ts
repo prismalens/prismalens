@@ -257,13 +257,64 @@ export async function openBoard(page: Page) {
 	).toBeVisible();
 }
 
-/** The page's horizontal overflow in px; 0 when nothing scrolls sideways. */
-export async function sidewaysOverflow(page: Page): Promise<number> {
-	return page.evaluate(
-		() =>
-			document.documentElement.scrollWidth -
-			document.documentElement.clientWidth,
-	);
+/**
+ * Everything that makes a page wider than the screen: the document scrolling sideways,
+ * a box scrolling sideways (opt out with `data-scroll-x`, as code does), and a visible
+ * box past either edge. The pages sit in a fixed frame, so the document count alone misses most (0.5.3 walk W11).
+ */
+export async function sidewaysFaults(page: Page): Promise<string[]> {
+	return page.evaluate(() => {
+		const vw = document.documentElement.clientWidth;
+		const name = (el: Element) =>
+			(el as HTMLElement).dataset?.testid ??
+			el.getAttribute("aria-label") ??
+			`${el.tagName.toLowerCase()}.${String(el.getAttribute("class") ?? "")
+				.split(" ")
+				.slice(0, 3)
+				.join(".")}`;
+		const faults: string[] = [];
+		const out = new Set<Element>();
+		const doc = document.documentElement.scrollWidth - vw;
+		if (doc > 0) faults.push(`document scrolls ${doc} px sideways`);
+		for (const el of Array.from(document.body.querySelectorAll("*"))) {
+			const style = getComputedStyle(el);
+			if (
+				(style.overflowX === "auto" || style.overflowX === "scroll") &&
+				el.scrollWidth > el.clientWidth + 1 &&
+				!el.closest("[data-scroll-x]")
+			) {
+				const edge =
+					el.getBoundingClientRect().left + el.clientLeft + el.clientWidth;
+				const wide = Array.from(el.querySelectorAll("*")).find(
+					(c) => c.getBoundingClientRect().right > edge + 1,
+				);
+				faults.push(
+					`${name(el)} scrolls ${el.scrollWidth - el.clientWidth} px sideways${wide ? `, first past its edge: ${name(wide)}` : ""}`,
+				);
+			}
+			let { left, right } = el.getBoundingClientRect();
+			// A 1 px box is a screen-reader-only label, placed off the edge on purpose.
+			if (right - left <= 1 || style.visibility === "hidden") continue;
+			// Not body or html: an open modal's scroll lock hides their overflow, which would clamp every box.
+			for (
+				let p = el.parentElement;
+				p && p !== document.body && p !== document.documentElement;
+				p = p.parentElement
+			) {
+				if (getComputedStyle(p).overflowX === "visible") continue;
+				const r = p.getBoundingClientRect();
+				left = Math.max(left, r.left);
+				right = Math.min(right, r.right);
+			}
+			if (right - left <= 0 || (left >= -0.5 && right <= vw + 0.5)) continue;
+			out.add(el);
+			if (!el.parentElement || !out.has(el.parentElement))
+				faults.push(
+					`${name(el)} spans ${Math.round(left)} to ${Math.round(right)} of ${vw}`,
+				);
+		}
+		return faults;
+	});
 }
 
 /** A box that held still for 300 ms: the setup line can land after the board and push every card down. */
@@ -289,4 +340,21 @@ export async function drag(page: Page, from: Locator, to: Locator) {
 	await page.mouse.move(b.x + b.width / 2, b.y + 40, { steps: 12 });
 	await page.mouse.move(b.x + b.width / 2 + 2, b.y + 42, { steps: 2 });
 	await page.mouse.up();
+}
+
+/** A reported run folds its work behind "Worked for …"; open it to read what the agent did. */
+export async function openWork(page: Page): Promise<void> {
+	const fold = page.getByTestId("worked-toggle");
+	await expect(
+		page
+			.getByTestId("transcript-report")
+			.or(page.getByTestId("transcript-end"))
+			.or(page.getByTestId("transcript-thinking"))
+			.first(),
+	).toBeVisible({ timeout: 15_000 });
+	if (
+		(await fold.count()) &&
+		(await fold.getAttribute("aria-expanded")) === "false"
+	)
+		await fold.click();
 }

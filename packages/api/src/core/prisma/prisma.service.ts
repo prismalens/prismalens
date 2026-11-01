@@ -142,6 +142,15 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.verification;
 	}
 
+	// Phone push (#859)
+	get pushSubscription() {
+		return db.pushSubscription;
+	}
+
+	get pushOutbox() {
+		return db.pushOutbox;
+	}
+
 	async onModuleInit(): Promise<void> {
 		try {
 			await prisma.$connect();

@@ -24,6 +24,7 @@ import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
 	INVESTIGATION_KINDS,
 	LIVE_TURNS,
+	RUN_END_REASONS,
 	TURN_OUTCOMES,
 } from "./state-semantics.js";
 
@@ -71,6 +72,10 @@ export const HypothesisSchema = z.object({
 	statement: z.string().min(1),
 	status: HypothesisStatusSchema,
 	evidence: z.array(EvidenceSchema),
+	/** Short id ("h1") a later hypothesis names as its parent. Optional: older reports have none and render flat. */
+	id: z.string().min(1).max(64).optional(),
+	/** The `id` of the hypothesis this one refines; absent on a top-level idea. */
+	parentId: z.string().min(1).max(64).optional(),
 });
 
 export const RuledOutSchema = z.object({
@@ -111,6 +116,21 @@ export const NextStepSchema = z.object({
 });
 
 /**
+ * The harness's last ACP `usage_update`: context in use, the window, and the
+ * cumulative cost when it sends one. A run whose harness sends none has no
+ * usage at all, which is not zero.
+ */
+export const RunUsageSchema = z.object({
+	used: z.number().int().nonnegative(),
+	size: z.number().int().nonnegative(),
+	cost: z
+		.object({ amount: z.number().nonnegative(), currency: z.string().min(1) })
+		.optional(),
+	at: z.string(),
+});
+export type RunUsage = z.infer<typeof RunUsageSchema>;
+
+/**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
  * fidelity). Deterministic — computed from (harness, mode), never LLM-authored.
  */
@@ -137,8 +157,18 @@ export const RunFidelitySchema = z.object({
 	servedModel: z.string().optional(),
 	/** The effort the harness accepted over `session/set_config_option` (R4.2); absent when none was set. */
 	effort: z.string().optional(),
+	/** What Settings → Agent set for the run (ADR 0006 §6, #907): names only, never env values; absent when nothing was set. */
+	runtime: z
+		.object({
+			binaryPath: z.string().nullable(),
+			configDir: z.string().nullable(),
+			envNames: z.array(z.string()),
+			args: z.array(z.string()),
+		})
+		.optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
+export type RunRuntimeNote = NonNullable<RunFidelity["runtime"]>;
 
 /**
  * The level a run ran at: the recorded one, else the asked one, else a #778
@@ -259,9 +289,9 @@ export type ModelReport = z.infer<typeof ModelReportSchema>;
 
 /** One repository a run's workspace holds (#747). */
 export const RunWorkspaceRepoSchema = z.object({
-	/** Folder name under `repos/`, or "repo" for the single layout. */
+	/** Folder name of a multi-repo run, or "repo" for the single layout. */
 	name: z.string(),
-	/** Absolute clone path. */
+	/** Absolute path of its worktree or clone. */
 	dir: z.string(),
 	sourceKind: z.enum(["folder", "url"]),
 	url: z.string(),
@@ -282,10 +312,161 @@ export const RunWorkspaceSchema = z.object({
 	layout: z.enum(["unmapped", "single", "multi"]),
 	cwd: z.string(),
 	repos: z.array(RunWorkspaceRepoSchema),
+	/** The run's MCP server name, reused by its follow-ups; absent on a run from before (#848). */
+	toolsServer: z.string().optional(),
 });
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 
+export const TelemetrySourceSchema = z.object({
+	kind: z.enum(["prometheus", "alertmanager", "loki"]),
+	label: z.string(),
+	url: z.string(),
+	/** Needs a credential PrismaLens holds: PrismaLens reads it before the run, and the prompt gives no curl for it. */
+	authenticated: z.boolean().optional(),
+});
+export type TelemetrySource = z.infer<typeof TelemetrySourceSchema>;
+
+/** Why a telemetry unit was picked (#848); `selectionText` words it. */
+export const PreRunSelectionSchema = z.object({
+	rule: z.enum(["tag-match", "untagged", "other-tag", "only-unmapped", "env"]),
+	service: z.string(),
+	priority: z.number().optional(),
+	/** The deployment the incident names. */
+	deployment: z.string().optional(),
+	tagFrom: z.enum(["alert", "deploy-event"]).optional(),
+	/** Env was used because every mapped connection is turned off. */
+	mappedOff: z.boolean().optional(),
+});
+export type PreRunSelection = z.infer<typeof PreRunSelectionSchema>;
+
+/** One telemetry source PrismaLens read before the run, or skipped (#848 ruling 2026-10-24). */
+export const PreRunSourceSchema = z.object({
+	kind: TelemetrySourceSchema.shape.kind,
+	label: z.string(),
+	/** Where its address and credential came from: the user's env, or the entry saved in PrismaLens (#907). */
+	from: z.enum(["env", "set"]),
+	connectionId: z.string().optional(),
+	envVar: z.string().optional(),
+	credentialFrom: z.enum(["stored", "env", "none"]).optional(),
+	/** The env token this stored credential overrides on the same origin. */
+	overridesEnv: z.string().optional(),
+	services: z.array(z.string()).optional(),
+	/** The connection's deployment tag. */
+	deployment: z.string().optional(),
+	selector: z.string().optional(),
+	selection: PreRunSelectionSchema.optional(),
+	selectedBy: z.string().optional(),
+	/** `found`: it answered with data for the window; `empty`: with none; `not-read`: over the limit. */
+	status: z.enum(["found", "empty", "skipped", "not-read"]),
+	/** Read: what it held, one line. Skipped: why, in PrismaLens's own words. */
+	detail: z.string(),
+	/** The file under `dir` holding what was fetched. */
+	file: z.string().optional(),
+	/** The start of that file, for the prompt. */
+	excerpt: z.string().optional(),
+	/** What the byte bound dropped (#848). */
+	truncated: z.object({ dropped: z.number(), reason: z.string() }).optional(),
+});
+export type PreRunSource = z.infer<typeof PreRunSourceSchema>;
+
+/** A repository the run did not check out, and why (#848). */
+export const CheckoutSkippedSchema = z.object({
+	repo: z.string(),
+	reason: z.string(),
+	code: z.enum(["failed", "budget", "guard"]),
+});
+export type CheckoutSkipped = z.infer<typeof CheckoutSkippedSchema>;
+
+/** What PrismaLens read before the run (#848): stored with the run, the source of truth a follow-up reads again. */
+export const PreRunSnapshotSchema = z.object({
+	fetchedAt: z.string(),
+	window: z.object({
+		start: z.string(),
+		end: z.string(),
+		service: z.string().optional(),
+	}),
+	sources: z.array(PreRunSourceSchema),
+	/** Kinds no connection or env serves for the incident's services. */
+	notConfigured: z.array(
+		z.object({ kind: z.string(), services: z.array(z.string()) }),
+	),
+	runbooks: z.array(
+		z.object({
+			title: z.string(),
+			service: z.string(),
+			path: z.string(),
+			origin: z.enum(["repo"]),
+			link: z.string().optional(),
+		}),
+	),
+	/** Why the runbook scan did not run, when it did not. */
+	runbooksSkipped: z.string().optional(),
+	/** Why no telemetry was read, when the whole read did not finish. */
+	telemetrySkipped: z.string().optional(),
+	checkoutsSkipped: z.array(CheckoutSkippedSchema),
+	/** The read copies' contents, scrubbed. */
+	files: z.array(
+		z.object({ name: z.string(), about: z.string(), text: z.string() }),
+	),
+});
+export type PreRunSnapshot = z.infer<typeof PreRunSnapshotSchema>;
+
+/** The snapshot without the files' text. */
+export const PreRunSummarySchema = PreRunSnapshotSchema.omit({
+	files: true,
+}).extend({
+	files: z.array(z.object({ name: z.string(), about: z.string() })),
+});
+export type PreRunSummary = z.infer<typeof PreRunSummarySchema>;
+
+/** The read copies under the session cwd; `dir` is relative to it. */
+export const PreRunCopySchema = z.object({
+	state: z.enum(["written", "failed"]),
+	dir: z.string().optional(),
+	reason: z.string().optional(),
+});
+export type PreRunCopy = z.infer<typeof PreRunCopySchema>;
+
+/** The run's pre-run context: stored and copied, copied only, or not there on a follow-up (#848). */
+export const PreRunContextSchema = z.discriminatedUnion("state", [
+	PreRunSummarySchema.extend({
+		state: z.literal("ready"),
+		copy: PreRunCopySchema,
+	}),
+	PreRunSummarySchema.extend({
+		state: z.literal("not-saved"),
+		saveError: z.string(),
+		copy: PreRunCopySchema,
+	}),
+	z.object({
+		state: z.literal("unavailable"),
+		reason: z.string(),
+		checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
+	}),
+]);
+export type PreRunContext = z.infer<typeof PreRunContextSchema>;
+
+const PreRunDetailSummarySchema = PreRunSummarySchema.extend({
+	sources: z.array(PreRunSourceSchema.omit({ excerpt: true })),
+});
+
+/** A run detail's pre-run context: PreRunContext without the copy or the excerpts (#848 C16a). */
+export const PreRunDetailSchema = z.discriminatedUnion("state", [
+	PreRunDetailSummarySchema.extend({ state: z.literal("ready") }),
+	PreRunDetailSummarySchema.extend({
+		state: z.literal("not-saved"),
+		saveError: z.string(),
+	}),
+	z.object({
+		state: z.literal("unavailable"),
+		reason: z.string(),
+		checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
+	}),
+]);
+export type PreRunDetail = z.infer<typeof PreRunDetailSchema>;
+
 export const InvestigationKindSchema = z.enum(INVESTIGATION_KINDS);
+export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
@@ -320,6 +501,8 @@ export const InvestigationSchema = z.object({
 	model: z.string().nullable().optional(),
 	/** The effort the run asked for (#673 w52); null asked for the agent's own. */
 	effort: z.string().nullable().optional(),
+	/** The harness's last `usage_update`; null when it has sent none (shown "not reported", never zero). */
+	usage: RunUsageSchema.nullable().optional(),
 	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
 	stopRequestedAt: DateStringSchema.nullable().optional(),
 	/** Who started the thread: `manual`, an alert trigger, or `re_trigger` on a refire (#673 w59). */
@@ -328,6 +511,8 @@ export const InvestigationSchema = z.object({
 	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
 	/** How the last follow-up ended; null until one has (#673 w59). */
 	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
+	/** A failed run a restart cut off, or one its agent's usage limit ended; null otherwise. */
+	endReason: RunEndReasonSchema.nullable().optional(),
 	/** The harness's own session id, kept only when it can be loaded again (#747). */
 	acpSessionId: z.string().nullable().optional(),
 	workspace: RunWorkspaceSchema.nullable().optional(),
@@ -375,6 +560,8 @@ const RecommendationRefSchema = z.object({
 
 export const InvestigationWithRelationsSchema = InvestigationSchema.extend({
 	recommendations: z.array(RecommendationRefSchema).optional(),
+	/** What PrismaLens read before the run, without excerpts; null on a run from before #848. */
+	preRun: PreRunDetailSchema.nullable().optional(),
 });
 
 // =============================================================================
@@ -556,10 +743,38 @@ export const SendInvestigationMessageSchema = z.object({
 	kind: FollowUpKindSchema.optional(),
 	/** Uploaded with `POST /incidents/{id}/attachments` first. */
 	attachments: AttachmentIdsSchema.optional(),
+	/** A finished run's follow-up may go to another agent or model; absent fields keep the run's. */
+	...RunChoiceSchema.shape,
 });
 export type SendInvestigationMessageInput = z.infer<
 	typeof SendInvestigationMessageSchema
 >;
+
+/** How a finished run's follow-up reaches an agent: its own session, or a handoff to a fresh one. */
+export const FollowUpRouteSchema = z.enum(["load", "handoff"]);
+export type FollowUpRoute = z.infer<typeof FollowUpRouteSchema>;
+
+/** Query of `GET /investigations/{id}/handoff`: the composer's chips for the follow-up. */
+export const HandoffPreviewQuerySchema = z.object({
+	harness: z.enum(HARNESS_IDS).optional(),
+	model: z.string().min(1).max(256).optional(),
+});
+
+/** What a follow-up would carry, shown before it is sent. */
+export const HandoffPreviewSchema = z.object({
+	route: FollowUpRouteSchema,
+	harness: z.enum(HARNESS_IDS),
+	/** e.g. "alert, 3 messages, report, 2 refuted hypotheses, 9 cited calls". */
+	carried: z.string(),
+	/** e.g. "31 tool calls (in the transcript file)"; null when nothing is left out. */
+	omitted: z.string().nullable(),
+	accessLevel: AccessLevelSchema.nullable(),
+	/** Set when the recipient cannot take it: what is wrong, and the fix. */
+	preflight: z.object({ problem: z.string(), fix: z.string() }).nullable(),
+	/** Set after a restart: the last command may or may not have completed. */
+	note: z.string().nullable(),
+});
+export type HandoffPreview = z.infer<typeof HandoffPreviewSchema>;
 
 export const SendInvestigationMessageResultSchema = z.object({
 	/** `resumed`: the run had finished and a follow-up reopened its session (#747). */
@@ -671,6 +886,22 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		attachments: z.array(AttachmentRefSchema).optional(),
 		/** The `message_queued` this delivers or gives up on; absent before #820. */
 		messageId: z.string().uuid().optional(),
+		/** A follow-up's first message: the agent, model and level that took it, and what a handoff carried. */
+		via: z
+			.object({
+				harness: z.string(),
+				model: z.string().nullable(),
+				accessLevel: AccessLevelSchema.nullable(),
+				handoff: z
+					.object({
+						/** The agent the run was in before; null when it named none. */
+						from: z.string().nullable().optional(),
+						carried: z.string(),
+						omitted: z.string().nullable(),
+					})
+					.optional(),
+			})
+			.optional(),
 	}),
 	z.object({
 		/**
@@ -690,6 +921,30 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		option: z.enum(["model", "effort"]),
 		value: z.string(),
 		accepted: z.boolean(),
+	}),
+	z.object({
+		/** The agent called one of PrismaLens's own tools, recorded as it happened (#848). */
+		kind: z.literal("harness_tool_call"),
+		...StreamBaseShape,
+		server: z.string(),
+		name: z.string(),
+		at: z.string(),
+		turn: z.enum(["first", "follow-up"]),
+	}),
+	z.object({
+		/** Once at the turn's end: whether the agent connected to PrismaLens's tools, and what it called (#848). */
+		kind: z.literal("harness_tools"),
+		...StreamBaseShape,
+		server: z.string(),
+		turn: z.enum(["first", "follow-up"]),
+		connected: z.boolean(),
+		calls: z.array(
+			z.object({
+				name: z.string(),
+				firstCalledAt: z.string(),
+				count: z.number().int().min(1),
+			}),
+		),
 	}),
 	z.object({
 		/** The agent asked before a tool call; the run waits on the operator (#673 w21). */
@@ -815,11 +1070,26 @@ export type FiringAlert = z.infer<typeof FiringAlertSchema>;
 
 /** Read-only telemetry + app endpoints the harness may query. */
 export const TelemetryEndpointsSchema = z.object({
+	/** Every connected source (#848). The two single-URL fields below are the shim older callers read. */
+	sources: z.array(TelemetrySourceSchema).optional(),
 	prometheusUrl: z.string().optional(),
 	alertmanagerUrl: z.string().optional(),
 	apiUrl: z.string().optional(),
 });
 export type TelemetryEndpoints = z.infer<typeof TelemetryEndpointsSchema>;
+
+/** The sources list, with a context that only has the old `prometheusUrl` / `alertmanagerUrl` read into it. */
+export function telemetrySources(t?: TelemetryEndpoints): TelemetrySource[] {
+	const out = [...(t?.sources ?? [])];
+	const legacy = [
+		["prometheus", t?.prometheusUrl],
+		["alertmanager", t?.alertmanagerUrl],
+	] as const;
+	for (const [kind, url] of legacy)
+		if (url && !out.some((s) => s.kind === kind && s.url === url))
+			out.push({ kind, label: kind, url });
+	return out;
+}
 
 // =============================================================================
 // ENGINE INVESTIGATION CONTEXT (ADR-0015) — the host-assembled input contract
@@ -897,7 +1167,9 @@ export const InvestigationContextSchema = z.object({
 	 * one — the engine renders nothing and behaves exactly as before.
 	 */
 	contextPack: ContextPackSchema.optional(),
-	/** Several repos under the cwd; `path` is relative to it, e.g. `api/` (#747). */
+	/** The pre-run fetch; a follow-up reads its run's saved one again (#848 ruling 2026-10-24). */
+	preRun: PreRunContextSchema.optional(),
+	/** Several repos, each at its absolute `path` (#747, #918). */
 	workspace: z
 		.object({
 			repos: z.array(
@@ -1019,6 +1291,12 @@ export const InvestigationJobDataSchema = z.object({
 			attachments: z.array(JobAttachmentSchema).optional(),
 			/** A continued run already ran a tool before it was stopped. */
 			sawEvidence: z.boolean().optional(),
+			/** The composer's chips for this follow-up; absent fields keep the run's. */
+			to: RunChoiceSchema.optional(),
+			/** A fresh session of `to.harness`, seeded with the handoff, instead of loading the run's own. */
+			handoff: z.boolean().optional(),
+			/** A restart cut the run off: the agent is told its last command may not have completed. */
+			afterRestart: z.boolean().optional(),
 			/** What the row said before the follow-up; a follow-up never changes it. */
 			restore: z.object({
 				status: WorkflowStatusSchema,

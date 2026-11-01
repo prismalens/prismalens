@@ -29,7 +29,7 @@ import type {
 	InvestigationReport,
 	LiveTurn,
 } from "@prismalens/contracts";
-import type { InvestigationStore } from "@prismalens/engine";
+import { type InvestigationStore, isUsageLimitError } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
 import type { RunPorts } from "./run-ports.js";
 
@@ -281,6 +281,7 @@ export function createPrismaInvestigationStore(
 				status: "failed",
 				error,
 				...(resume?.continuing ? { lastTurnOutcome: "error" as const } : {}),
+				...(isUsageLimitError(error) ? { endReason: "limited" as const } : {}),
 			});
 			// A refused write (Stop asked for) leaves the end to the run (#673 w59).
 			refused = !applied;

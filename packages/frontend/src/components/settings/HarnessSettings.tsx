@@ -21,24 +21,25 @@ import {
 	type HarnessProbeResult,
 	type HarnessStatus,
 } from "@prismalens/contracts";
-import { X } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AgentModelPicker,
+	defaultAccessOf,
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
-import { Hint } from "@/components/shared/Hint";
-import { InlineCode } from "@/components/shared/InlineCode";
-import { Mono } from "@/components/shared/Mono";
+import { AddAgentDialog } from "./AddAgentDialog";
+import { agentState, testedHint, versionText } from "./AgentDetail";
+
+export { testedHint, versionText };
+
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
-import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -55,20 +56,29 @@ import {
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { failureLine, notSignedIn } from "@/lib/failure-words";
-
-/** One harness's last on-demand ACP handshake verdict, kept only in memory; it goes stale the moment the harness's login state changes. */
-interface ProbeState {
-	/** Only "answers ACP" is a pass; it still does not mean signed in. */
-	outcome: HarnessProbeResult["outcome"];
-	detail: string;
-}
+import { StatePill } from "./source-words";
 
 export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
-	const { isLoading: settingsLoading } = useHarnessSettings();
+	const { data: settings, isLoading: settingsLoading } = useHarnessSettings();
+	const setting = settings?.harness ?? "auto";
 
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
+	// Agents that can run, plus the saved or pinned one so the user's own choice never vanishes (#907).
+	const chosen = selection?.harness ?? (setting === "auto" ? null : setting);
+	const listed = harnesses.filter((h) => h.runnable || h.id === chosen);
+	const [adding, setAdding] = useState(false);
+	const addAgent = (
+		<Button
+			variant="secondary"
+			size="sm"
+			onClick={() => setAdding(true)}
+			data-testid="harness-add-agent"
+		>
+			Add agent
+		</Button>
+	);
 
 	if (isLoading || settingsLoading) {
 		return (
@@ -117,29 +127,40 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 
-			<CustomModels harnesses={harnesses} />
+			<SettingGroup title="Environment">
+				<Pool>
+					<StrictEnvRow />
+				</Pool>
+			</SettingGroup>
 
 			<SettingGroup
-				title="Agents on this machine"
-				count={harnesses.filter((h) => h.installed).length || undefined}
+				title="Agents"
+				count={listed.length || undefined}
 				testId="harness-registry"
-				description={
-					harnesses.length > 0 && harnesses.every((h) => !h.installed) ? (
-						<span data-testid="harness-none-available">
-							None found on PATH. Runs start once one of these is installed.
-						</span>
-					) : undefined
-				}
+				actions={addAgent}
 			>
-				<Pool>
-					{harnesses.map((harness) => (
-						<AgentRow
-							key={harness.id}
-							harness={harness}
-							inUse={selection?.harness === harness.id}
-						/>
-					))}
-				</Pool>
+				{adding && <AddAgentDialog open onOpenChange={setAdding} />}
+				{listed.length === 0 ? (
+					<div className="flex flex-wrap items-center gap-3">
+						<p
+							className="text-body text-text-2"
+							data-testid="harness-none-available"
+						>
+							No agent can run. Add one to start investigations.
+						</p>
+						{addAgent}
+					</div>
+				) : (
+					<Pool>
+						{listed.map((harness) => (
+							<AgentRow
+								key={harness.id}
+								harness={harness}
+								inUse={selection?.harness === harness.id}
+							/>
+						))}
+					</Pool>
+				)}
 			</SettingGroup>
 		</div>
 	);
@@ -169,29 +190,22 @@ function EffortRow() {
 	);
 }
 
-/** The value a Select stores for "no value here": the row's default. */
-const UNSET = "unset";
-
+/** Every option by its own name; the shown value is always a real level, never the word Default (#907). */
 function AxisSelect<V extends string>({
 	value,
 	options,
-	unsetLabel,
 	onChange,
 	label,
 	testId,
 }: {
-	value: V | undefined;
+	value: V;
 	options: readonly { value: V; label: string }[];
-	unsetLabel: string;
-	onChange: (value: V | null) => void;
+	onChange: (value: V) => void;
 	label: string;
 	testId: string;
 }) {
 	return (
-		<Select
-			value={value ?? UNSET}
-			onValueChange={(v) => onChange(v === UNSET ? null : (v as V))}
-		>
+		<Select value={value} onValueChange={(v) => onChange(v as V)}>
 			<SelectTrigger
 				className="w-44 bg-surface-2"
 				aria-label={label}
@@ -200,7 +214,6 @@ function AxisSelect<V extends string>({
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
-				<SelectItem value={UNSET}>{unsetLabel}</SelectItem>
 				{options.map((o) => (
 					<SelectItem key={o.value} value={o.value}>
 						{o.label}
@@ -216,7 +229,7 @@ const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
 	label: ACCESS_LEVEL_LABEL[l],
 }));
 
-/** The next run's permission level on this agent, saved per agent; unset follows the agent's own default (#673 w21). */
+/** The next run's permission level on this agent, saved per agent; until one is saved it shows the level a run takes (#673 w21). */
 function AccessRows() {
 	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
@@ -249,9 +262,10 @@ function AccessRows() {
 			testId="harness-access"
 		>
 			<AxisSelect
-				value={axes.accessLevels[id]}
+				value={
+					axes.accessLevels[id] ?? defaultAccessOf(effective, axes).level.level
+				}
 				options={LEVEL_OPTIONS}
-				unsetLabel="Default"
 				label={`Permission for ${effective.label}`}
 				testId="harness-access"
 				onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}
@@ -260,121 +274,7 @@ function AccessRows() {
 	);
 }
 
-/**
- * Model ids the operator adds per agent, for a gateway or an endpoint whose
- * models the agent does not list itself; the picker shows them (#673 w57).
- */
-function CustomModels({ harnesses }: { harnesses: HarnessStatus[] }) {
-	const agents = harnesses.filter((h) => h.installed && h.modelVia === "acp");
-	if (agents.length === 0) return null;
-	return (
-		<SettingGroup
-			title="Custom models"
-			description="Models your endpoint serves that the agent does not list itself. PrismaLens never checks them; a run on one that the endpoint does not serve fails."
-			testId="harness-custom-models"
-		>
-			<Pool>
-				{agents.map((h) => (
-					<CustomModelRow key={h.id} harness={h} />
-				))}
-			</Pool>
-		</SettingGroup>
-	);
-}
-
-function CustomModelRow({ harness }: { harness: HarnessStatus }) {
-	const id = harness.id as HarnessId;
-	const { customModels } = useAgentChoice();
-	const update = useUpdateHarnessSettings();
-	const list = customModels[id] ?? [];
-	const [draft, setDraft] = useState("");
-	const [removing, setRemoving] = useState<string | null>(null);
-	const add = (e: FormEvent) => {
-		e.preventDefault();
-		const model = draft.trim();
-		if (!model || list.includes(model)) return setDraft("");
-		update.mutate(
-			{ customModels: { [id]: [...list, model] } },
-			{ onSuccess: () => setDraft("") },
-		);
-	};
-	return (
-		<Row
-			testId={`custom-models-${harness.id}`}
-			lead={<AgentMark id={harness.id} className="size-5" />}
-			label={harness.label}
-			stackOnPhone
-			meta={
-				list.length === 0 ? (
-					"None added"
-				) : (
-					<span className="flex min-w-0 flex-wrap gap-1.5">
-						{list.map((model) => (
-							<span
-								key={model}
-								className="inline-flex h-6 max-w-56 items-center gap-1 rounded-control bg-surface-3 pr-0.5 pl-2 text-meta text-text-1"
-								data-testid="custom-model"
-							>
-								<Mono className="truncate">{model}</Mono>
-								<button
-									type="button"
-									aria-label={`Remove ${model}`}
-									onClick={() => setRemoving(model)}
-									className="inline-flex size-5 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4 hover:text-text-1"
-									data-testid="custom-model-remove"
-								>
-									<X className="size-3" />
-								</button>
-							</span>
-						))}
-					</span>
-				)
-			}
-			trailing={
-				<form onSubmit={add} className="flex items-center gap-2">
-					<Input
-						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
-						placeholder="Model id"
-						aria-label={`Model id for ${harness.label}`}
-						maxLength={200}
-						className="h-7 w-44"
-						data-testid="custom-model-input"
-					/>
-					<Button
-						type="submit"
-						variant="secondary"
-						size="sm"
-						disabled={!draft.trim() || update.isPending}
-						data-testid="custom-model-add"
-					>
-						Add custom model
-					</Button>
-				</form>
-			}
-			below={
-				<DestructiveConfirm
-					open={removing !== null}
-					onOpenChange={(open) => !open && setRemoving(null)}
-					title="Remove this custom model?"
-					description={`${removing ?? ""} leaves the ${harness.label} picker. A run already set to it keeps it until you pick another.`}
-					confirmLabel="Remove"
-					isPending={update.isPending}
-					error={update.error}
-					onConfirm={() =>
-						update.mutateAsync({
-							customModels: {
-								[id]: list.filter((m) => m !== removing),
-							},
-						})
-					}
-				/>
-			}
-		/>
-	);
-}
-
-/** Auto: the next run takes the first agent on PATH instead of the one named above. */
+/** Auto: the next run takes the first agent that can run instead of the one named above. */
 function AutoRow() {
 	const { setting, effective } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
@@ -382,7 +282,7 @@ function AutoRow() {
 	return (
 		<SettingRow
 			label={<label htmlFor="harness-auto">Auto</label>}
-			description="Auto picks the first agent on PATH"
+			description="Auto picks the first agent that can run"
 			testId="harness-auto-row"
 		>
 			<Switch
@@ -400,10 +300,38 @@ function AutoRow() {
 	);
 }
 
+/** Strict mode (#817): agents get named variables only, not the user's environment. */
+function StrictEnvRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const on = settings?.strictEnv === true;
+	return (
+		<SettingRow
+			label={
+				<label htmlFor="harness-strict-env">Only pass named variables</label>
+			}
+			description={
+				on
+					? "Agents get the basics (PATH, home, locale, proxy and certificates), their provider keys and the variables set on each agent"
+					: "Agents get your environment, as your terminal has it, minus PrismaLens's own secrets"
+			}
+			testId="harness-strict-env-row"
+		>
+			<Switch
+				id="harness-strict-env"
+				checked={on}
+				disabled={update.isPending || settings?.canEditRuntime === false}
+				onCheckedChange={(strictEnv) => update.mutate({ strictEnv })}
+				data-testid="harness-strict-env"
+			/>
+		</SettingRow>
+	);
+}
+
 /**
  * One agent on this machine, with its own check: a check on one row never
- * shows as pending on another (#673 w17). Shows the server's last check
- * (boot sweep or a run's readiness check) until this row runs its own.
+ * shows as pending on another (#673 w17). One state word and at most one
+ * note, like a source (#848); the whole row opens the agent's page.
  */
 function AgentRow({
 	harness,
@@ -414,160 +342,84 @@ function AgentRow({
 }) {
 	const harnessId = harness.id as HarnessId;
 	const checkHarness = useCheckHarness();
-	const [ownProbe, setOwnProbe] = useState<ProbeState | null>(null);
+	// This row's own verdict, kept in memory; it goes stale once the agent's login changes.
+	const [ownOutcome, setOwnOutcome] = useState<
+		HarnessProbeResult["outcome"] | null
+	>(null);
 	const checking = checkHarness.isPending;
-	const probe: ProbeState | null =
-		ownProbe ??
-		(harness.checked
-			? { outcome: harness.checked.outcome, detail: harness.checked.detail }
-			: null);
+	const outcome = ownOutcome ?? harness.checked?.outcome ?? null;
 
 	async function handleCheck() {
 		try {
-			const result = await checkHarness.mutateAsync({ id: harnessId });
-			setOwnProbe({ outcome: result.outcome, detail: result.detail });
+			setOwnOutcome(
+				(await checkHarness.mutateAsync({ id: harnessId })).outcome,
+			);
 		} catch {
-			setOwnProbe({
-				outcome: "failed-to-start",
-				detail: "The check did not run. Try it again.",
-			});
+			setOwnOutcome("failed-to-start");
 		}
 	}
+
+	const note = harness.windowsOnlyPath
+		? `Windows install at ${harness.windowsOnlyPath}; can't run in WSL`
+		: outcome === "sign-in-needed"
+			? failureLine(notSignedIn(harness.label))
+			: inUse
+				? "Used by the next run"
+				: null;
 
 	return (
 		<Row
 			key={harness.id}
+			className="relative"
 			testId={`harness-row-${harness.id}`}
 			lead={<AgentMark id={harness.id} className="size-5" />}
 			label={
-				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-					{harness.label}
-					{inUse && (
-						<span className="text-meta font-medium text-ok">in use</span>
-					)}
-					{harness.installed && versionText(harness) ? (
-						<Hint label={testedHint(harness)} meta={harness.tested?.date}>
-							<span
-								className="font-mono text-meta font-normal text-text-3"
-								data-testid={`harness-tested-${harness.id}`}
-							>
-								{versionText(harness)}
-							</span>
-						</Hint>
-					) : (
-						!harness.installed &&
-						!harness.windowsOnlyPath && (
-							<span className="text-meta font-normal text-text-3">
-								not installed
-							</span>
-						)
-					)}
+				<span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+					<Link
+						to="/settings"
+						search={{ tab: "agent", agent: harnessId }}
+						className="after:absolute after:inset-0"
+						data-testid={`harness-open-${harness.id}`}
+					>
+						{harness.label}
+					</Link>
+					<StatePill
+						word={
+							checking
+								? { text: "Checking", tone: "neutral" }
+								: agentState(harness, outcome)
+						}
+						testId={`harness-check-result-${harness.id}`}
+					/>
 				</span>
 			}
 			meta={
-				harness.windowsOnlyPath ? (
-					<span data-testid={`harness-windows-only-${harness.id}`}>
-						Windows install at {harness.windowsOnlyPath}; can't run in WSL
-					</span>
-				) : probe && !checking ? (
-					<StateWord
-						tone={PROBE_TONE[probe.outcome]}
+				note && (
+					<span
 						className="whitespace-normal"
-						data-testid={`harness-check-result-${harness.id}`}
+						data-testid={`harness-note-${harness.id}`}
 					>
-						{probe.outcome === "sign-in-needed"
-							? failureLine(notSignedIn(harness.label))
-							: probe.detail}
-					</StateWord>
-				) : harness.installed ? (
-					// app.css's `code` chip is unlayered, so it outranks a plain utility.
-					<span className="[&_code]:bg-transparent! [&_code]:p-0!">
-						{capabilities(harness)} <InlineCode text={harness.loginHint} />
+						{note}
 					</span>
-				) : (
-					<Mono>{harness.install}</Mono>
 				)
-			}
-			below={
-				harness.id === "opencode" ? (
-					// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
-					<p
-						className="text-meta text-text-3"
-						data-testid="harness-opencode-asks"
-					>
-						A run sets each tool's default rule to match its permission level.
-						Your other rules in opencode.json stay as they are.
-					</p>
-				) : undefined
 			}
 			trailing={
-				harness.installed && (
-					<Button
-						variant="secondary"
-						size="sm"
-						onClick={handleCheck}
-						disabled={checking}
-						data-testid={`harness-check-${harness.id}`}
-					>
-						{checking ? "Checking" : "Check"}
-					</Button>
-				)
+				<span className="flex items-center gap-1">
+					{harness.installed && (
+						<Button
+							variant="secondary"
+							size="sm"
+							className="relative z-10"
+							onClick={handleCheck}
+							disabled={checking}
+							data-testid={`harness-check-${harness.id}`}
+						>
+							{checking ? "Checking" : "Check"}
+						</Button>
+					)}
+					<ChevronRight className="size-4 text-text-3" aria-hidden />
+				</span>
 			}
 		/>
 	);
-}
-
-/**
- * The version the last check read beside the tested one, so neither reads as the
- * other (#818 w5-31). Behind a shipped adapter, the agent CLI's own version.
- */
-export function versionText(h: HarnessStatus): string | null {
-	const cli = h.checked?.companionVersion ?? null;
-	const ran = cli ?? h.checked?.version ?? null;
-	const tested = cli
-		? (h.tested?.companion ?? null)
-		: (h.tested?.version ?? null);
-	if (ran && tested) return `${ran}, tested with ${tested}`;
-	// No CLI version on record for the test run, so name the adapter's (#831 w6-3).
-	if (cli && h.tested) return `${cli}, adapter tested with ${h.tested.version}`;
-	if (ran) return ran;
-	const t = h.tested;
-	return t ? `tested with ${t.companion ?? t.version}` : null;
-}
-
-/** The version note's hover line; behind a shipped adapter it names both the CLI and the adapter. */
-export function testedHint(h: HarnessStatus): string {
-	const t = h.tested;
-	if (!t) return "No compatibility run yet";
-	if (t.companion)
-		return `PrismaLens was tested with ${h.label} ${t.companion} through its adapter ${t.version}`;
-	if (h.checked?.companionVersion)
-		return `PrismaLens was tested with its adapter ${t.version}`;
-	return `PrismaLens was tested with ${t.version}`;
-}
-
-/** A check's verdict as a word (look ruling §1.3, agent row). */
-const PROBE_TONE: Record<HarnessProbeResult["outcome"], StateTone> = {
-	"answers-acp": "ok",
-	"sign-in-needed": "warn",
-	"no-answer": "danger",
-	"failed-to-start": "danger",
-};
-
-/** What the agent takes from PrismaLens, as the last check read it (r4 R4.1 rev, R4.2, R4.3). */
-function capabilities(h: HarnessStatus): string {
-	const model =
-		h.modelVia === "acp"
-			? "Takes a model over ACP."
-			: h.id === "deepagents"
-				? "Uses its own model."
-				: "Model: pending a check.";
-	const answered = h.checked?.outcome === "answers-acp" ? h.checked : null;
-	const effort = answered?.effort
-		? ` Effort over ACP: ${answered.effort.values.join(", ")}.`
-		: "";
-	const images = answered
-		? ` Images: ${answered.images ? "yes" : "no"}.`
-		: " Images: not checked yet.";
-	return `${model}${effort}${images}`;
 }

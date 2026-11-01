@@ -48,7 +48,10 @@ describe("AlertPullService (#605)", () => {
 		};
 		alert: { findFirst: ReturnType<typeof vi.fn> };
 	};
-	let integrationsService: { connectionBaseUrl: ReturnType<typeof vi.fn> };
+	let integrationsService: {
+		connectionBaseUrl: ReturnType<typeof vi.fn>;
+		sourceCredential: ReturnType<typeof vi.fn>;
+	};
 	let webhooksService: {
 		processPrometheusAlert: ReturnType<typeof vi.fn>;
 		resolvePrometheusAlert: ReturnType<typeof vi.fn>;
@@ -78,6 +81,9 @@ describe("AlertPullService (#605)", () => {
 		};
 		integrationsService = {
 			connectionBaseUrl: vi.fn(),
+			sourceCredential: vi
+				.fn()
+				.mockResolvedValue({ ok: true, credential: { kind: "none" } }),
 		};
 		webhooksService = {
 			processPrometheusAlert: vi.fn().mockResolvedValue({ alertId: "alt-1", isNew: true }),
@@ -686,6 +692,66 @@ describe("AlertPullService (#605)", () => {
 			const expectedFp = alertmanagerFingerprint({ alertname: "DiskFull" });
 			expect(result.errors).toEqual([`Prometheus Main: alert ${expectedFp}: db locked`]);
 			expect(prisma.setting.upsert).not.toHaveBeenCalled();
+		});
+
+		describe("a base URL that holds a credential (#848)", () => {
+			const prometheusOnly = () =>
+				prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) =>
+					args?.where?.integration?.templateId === "prometheus"
+						? [{ id: "prom-1", label: "Prometheus Main", status: "ACTIVE", integration: { templateId: "prometheus" } }]
+						: [],
+				);
+			const series = {
+				metric: { __name__: "ALERTS", alertstate: "firing", alertname: "DiskFull" },
+				values: [[Math.floor(now.getTime() / 1000), "1"]],
+			};
+
+			it("links the alert to the origin and path alone", async () => {
+				prometheusOnly();
+				integrationsService.connectionBaseUrl.mockResolvedValue(
+					"https://user:sentinel@prometheus:9090/p/?api_key=sentinel#sentinel",
+				);
+				fetchSpy.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series] } }),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					),
+				);
+
+				await service.pull(now);
+
+				const [alert] = webhooksService.processPrometheusAlert.mock.calls[0] ?? [];
+				expect(alert.generatorURL).toBe(
+					`https://prometheus:9090/p/graph?g0.expr=${encodeURIComponent('ALERTS{alertname="DiskFull"}')}`,
+				);
+				expect(JSON.stringify(webhooksService.processPrometheusAlert.mock.calls)).not.toContain("sentinel");
+			});
+
+			it("reports a 200 body that is not JSON as a category, never the parser's quote of it", async () => {
+				prometheusOnly();
+				integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
+				fetchSpy.mockResolvedValue(new Response("sentinel-credential", { status: 200 }));
+
+				const result = await service.pull(now);
+
+				expect(result.errors).toHaveLength(1);
+				expect(result.errors[0]).toMatch(/^Prometheus Main: /);
+				expect(JSON.stringify(result)).not.toContain("sentinel");
+			});
+
+			it("reports an Alertmanager list that is not JSON without quoting it", async () => {
+				prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) =>
+					args?.where?.integration?.templateId === "alertmanager"
+						? [{ id: "am-1", label: "am-1", status: "ACTIVE", integration: { templateId: "alertmanager" } }]
+						: [],
+				);
+				integrationsService.connectionBaseUrl.mockResolvedValue("http://alertmanager:9093");
+				fetchSpy.mockResolvedValue(new Response("sentinel-credential", { status: 200 }));
+
+				const result = await service.pull(now);
+
+				expect(result.errors).toEqual(["am-1: Invalid response: not valid JSON"]);
+			});
 		});
 
 		it("clamps since to [now - 24h, now]", async () => {

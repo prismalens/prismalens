@@ -1,0 +1,4 @@
+{
+	"description": "Any other turn of the agent's main loop, such as the engine's report retry, gets the report (#914).",
+	"fixtures": [{ "match": {}, "response": { "content": "$report" } }]
+}

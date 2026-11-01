@@ -48,7 +48,8 @@ function git(args: string[], cwd: string): string {
 	return execFileSync("git", args, { cwd, env: FIXTURE_GIT_ENV }).toString().trim();
 }
 
-describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
+// Each scenario runs real git clones against a local server; a loaded macOS runner passes 5 s (#959).
+describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", { timeout: 30_000 }, () => {
 	let server: GitHttpServer;
 	let prisma: InstanceType<typeof PrismaService>;
 	let credentialsService: InstanceType<typeof CredentialsService>;
@@ -148,7 +149,7 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 		if (server.caFile) {
 			writeFileSync(
 				join(env.home, ".gitconfig"),
-				`[http]\n\tsslCAInfo = ${server.caFile}\n`,
+				`[http]\n\tsslCAInfo = ${server.caFile.replaceAll("\\", "/")}\n`,
 			);
 		}
 
@@ -296,7 +297,7 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 			where: { label: "Token A" },
 		});
 		expect(conn?.status).toBe("CREDENTIALS_INVALID");
-		expect(conn?.lastErrorMessage).toMatch(/rejected token "Token A"/);
+		expect(conn?.lastErrorMessage).toBe('{"pl":1,"kind":"token-rejected"}');
 	});
 
 	it("S6: tokenExpiresAt in the past -> fails with token-expired before network call", async () => {
@@ -381,18 +382,48 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 		expect(snap.head).toBe(server.headOf("ambig-repo"));
 	});
 
-	it("S8: Fake credential helper in .gitconfig -> machine git resolves; token unused unless picked", async () => {
-		const helperScript = join(env.home, "fake-helper.sh");
+	it("S7b: two repos on one host, each accepting only its own token, each clone with the token picked for it (#848)", async () => {
+		const [connA, connB] = await Promise.all(
+			["Token A", "Token B"].map((label) => prisma.connection.findFirstOrThrow({ where: { label } })),
+		);
+		const urlA = server.addRepo("team-a", { kind: "basic", user: "x-access-token", pass: "secret-token-a" });
+		const urlB = server.addRepo("team-b", { kind: "basic", user: "x-access-token", pass: "secret-token-b" });
+		const repoA = await repositoriesService.setCredential(
+			(await repositoriesService.addSource({ serviceId: testServiceId, source: urlA })).id,
+			connA.id,
+		);
+		const repoB = await repositoriesService.setCredential(
+			(await repositoriesService.addSource({ serviceId: testServiceId, source: urlB })).id,
+			connB.id,
+		);
+		gitCredentialService.invalidate();
+
+		const a = await snapshotWith({ sourceKind: "url", url: urlA, connectionId: repoA.connectionId }, join(mktemp("s7b-a-"), "work"));
+		const b = await snapshotWith({ sourceKind: "url", url: urlB, connectionId: repoB.connectionId }, join(mktemp("s7b-b-"), "work"));
+
+		expect([a.credential.label, a.credential.connectionId]).toEqual(["token Token A", connA.id]);
+		expect([b.credential.label, b.credential.connectionId]).toEqual(["token Token B", connB.id]);
+		expect(a.result.head).toBe(server.headOf("team-a"));
+		expect(b.result.head).toBe(server.headOf("team-b"));
+	});
+
+	it("S8: Fake credential helper in .gitconfig -> the saved tokens still come first, so two of them read ambiguous (#848)", async () => {
+		const isWin = process.platform === "win32";
+		const helperScript = isWin
+			? join(env.home, "fake-helper.cmd")
+			: join(env.home, "fake-helper.sh");
 		writeFileSync(
 			helperScript,
-			`#!/bin/sh\necho "username=machineuser"\necho "password=machinepass"\n`,
+			isWin
+				? `@echo off\necho username=machineuser\necho password=machinepass\n`
+				: `#!/bin/sh\necho "username=machineuser"\necho "password=machinepass"\n`,
 			{ mode: 0o755 },
 		);
 
 		// Add helper to .gitconfig
 		writeFileSync(
 			join(env.home, ".gitconfig"),
-			`[http]\n\tsslCAInfo = ${server.caFile}\n[credential]\n\thelper = ${helperScript}\n`,
+			`[http]\n\tsslCAInfo = ${server.caFile?.replaceAll("\\", "/")}\n[credential]\n\thelper = ${helperScript.replaceAll("\\", "/")}\n`,
 		);
 
 		const repoUrl = server.addRepo("helper-repo", {
@@ -408,19 +439,11 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 
 		gitCredentialService.invalidate();
 		const preview = await repositoriesService.credentialFor(repo);
-		expect(preview.source).toBe("machine");
-		expect(preview.label).toMatch(/machine git \(.*machineuser\)/);
-
-		const dest = join(mktemp("s8-dest-"), "work");
-		const { credential } = await snapshotWith(
-			{ sourceKind: "url", url: repoUrl, connectionId: repo.connectionId },
-			dest,
-		);
-		expect(credential.source).toBe("machine");
-		expect(credential.label).toMatch(/machine git \(.*machineuser\)/);
+		expect(preview.source).toBe("none");
+		expect(preview.problem?.code).toBe("ambiguous");
 	});
 
-	it("S8b: Helper rejected by server, but exactly one matching token exists -> withCredential retries with token (fallback: true)", async () => {
+	it("S8b: Helper configured, exactly one matching token -> the token is used first, with no fall-through (#848)", async () => {
 		// Remove Token B so exactly one token (Token A) matches the host
 		const connB = await prisma.connection.findFirst({
 			where: { label: "Token B" },
@@ -442,11 +465,9 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 			source: repoUrl,
 		});
 
-		// Preview still expects machine git
 		const preview = await repositoriesService.credentialFor(repo);
-		expect(preview.source).toBe("machine");
+		expect(preview.source).toBe("connection");
 
-		// Running snapshotWith causes machine to be refused, falls back to Token A
 		const dest = join(mktemp("s8b-dest-"), "work");
 		const { credential, result: snap } = await snapshotWith(
 			{ sourceKind: "url", url: repoUrl, connectionId: repo.connectionId },
@@ -454,7 +475,7 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 		);
 		expect(credential.source).toBe("connection");
 		expect(credential.label).toBe("token Token A");
-		expect(credential.fallback).toBe(true);
+		expect(credential.fallbackFrom).toBeUndefined();
 		expect(snap.head).toBe(server.headOf("fallback-repo"));
 	});
 

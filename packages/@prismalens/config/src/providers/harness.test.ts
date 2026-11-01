@@ -6,8 +6,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	GATEWAY_RUN_FILE,
 	refuseModel,
-	getHarnessProviderKeys,
+	isSafeGatewayUrl,
 	HARNESS_REGISTRY,
 	modeFidelity,
 	runsInSandbox,
@@ -23,59 +24,7 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
-	it("returns only the registry row's provider keys present in the source env", () => {
-		const env = {
-			ANTHROPIC_API_KEY: "sk-ant-test",
-			OPENAI_API_KEY: "sk-oai-test",
-			UNRELATED_VAR: "noise",
-		};
-		expect(getHarnessProviderKeys("claude-code", env)).toEqual({
-			ANTHROPIC_API_KEY: "sk-ant-test",
-		});
-	});
-
-	it("never returns a PRISMALENS_* key, even if a row were misconfigured to list one", () => {
-		const original = HARNESS_REGISTRY["claude-code"].providerKeys;
-		HARNESS_REGISTRY["claude-code"].providerKeys = [
-			"PRISMALENS_AUTH_SECRET",
-			"ANTHROPIC_API_KEY",
-		];
-		try {
-			const result = getHarnessProviderKeys("claude-code", {
-				PRISMALENS_AUTH_SECRET: "leak-me",
-				ANTHROPIC_API_KEY: "sk-ant-test",
-			});
-			expect(result.PRISMALENS_AUTH_SECRET).toBeUndefined();
-			expect(result.ANTHROPIC_API_KEY).toBe("sk-ant-test");
-		} finally {
-			HARNESS_REGISTRY["claude-code"].providerKeys = original;
-		}
-	});
-
-	it("passes a gateway's model keys to Claude Code (walk f18)", () => {
-		expect(
-			getHarnessProviderKeys("claude-code", {
-				ANTHROPIC_BASE_URL: "http://localhost:11434",
-				ANTHROPIC_MODEL: "gemma4:31b-cloud",
-			}),
-		).toEqual({
-			ANTHROPIC_BASE_URL: "http://localhost:11434",
-			ANTHROPIC_MODEL: "gemma4:31b-cloud",
-		});
-	});
-
-	it("omits a provider key the source env does not set", () => {
-		expect(getHarnessProviderKeys("gemini", {})).toEqual({});
-	});
-
-	it("defaults to process.env when no source env is given", () => {
-		vi.stubEnv("GEMINI_API_KEY", "test-gemini-key");
-		expect(getHarnessProviderKeys("gemini")).toEqual({
-			GEMINI_API_KEY: "test-gemini-key",
-		});
-	});
-
+describe("provider keys (ADR 0004 §5)", () => {
 	it("lists real provider keys for every multi-provider harness row, never a bare wildcard", () => {
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			for (const key of descriptor.providerKeys ?? []) {
@@ -87,35 +36,29 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 	});
 });
 
-describe("harness isolation (ADR 0004 §1, #637)", () => {
+describe("harness config (#817: the repo's own agent config loads)", () => {
 	const runEnv = {
 		configDir: "/c",
 		dataDir: "/d",
 		cwd: "/w",
 	};
 
-	it("opencode ignores the snapshot's own config and keeps looping after a refusal", () => {
+	it("opencode loads the snapshot's own config and keeps looping after a refusal", () => {
 		const row = HARNESS_REGISTRY.opencode;
-		expect(row.acpEnv(runEnv)).toMatchObject({
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
-		});
+		expect(row.acpEnv(runEnv)).toEqual({});
+		expect(row.configEnv).toEqual({ file: "opencode.json", key: "OPENCODE_CONFIG_CONTENT" });
 		const config = JSON.parse(row.configFiles?.(runEnv)["opencode.json"] ?? "{}");
 		expect(config.permission).toBeUndefined();
 		expect(config.share).toBe("disabled");
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
-	it("opencode keeps the user's own config home, so their model, providers and agents apply (#791)", () => {
-		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({
-			OPENCODE_CONFIG_DIR: "/c",
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
-		});
+	it("opencode keeps the user's own config home and OPENCODE_CONFIG_DIR, so their model, providers and agents apply (#791, #817)", () => {
+		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({});
 	});
 
 	it("claude-code takes the operator's model over ACP, never from an env it writes (R4.2)", () => {
-		const env = HARNESS_REGISTRY["claude-code"].acpEnv({ ...runEnv, model: "gemma4:31b-cloud" });
+		const env = HARNESS_REGISTRY["claude-code"].acpEnv(runEnv);
 		for (const key of ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"]) {
 			expect(env[key]).toBeUndefined();
 		}
@@ -125,12 +68,22 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(HARNESS_REGISTRY.codex.acpEnv(runEnv).INITIAL_AGENT_MODE).toBeUndefined();
 	});
 
-	it("deepagents runs dcode's ACP server with no MCP servers (#634)", () => {
-		expect(HARNESS_REGISTRY.deepagents.binary).toBe("dcode");
-		expect(HARNESS_REGISTRY.deepagents.acpArgs(runEnv)).toEqual([
-			"--acp",
-			"--no-mcp",
-		]);
+	it("deepagents takes the gateway as an --mcp-config run file, and never --no-mcp (#848)", () => {
+		const d = HARNESS_REGISTRY.deepagents;
+		expect(d.binary).toBe("dcode");
+		expect(d.gatewayDelivery).toBe("mcp-config-file");
+		expect(d.acpArgs(runEnv)).toEqual(["--acp"]);
+		expect(d.configFiles?.(runEnv)).toEqual({});
+		const gateway = { url: "http://127.0.0.1:3001/api/mcp/runs/r1", token: "tok", name: "prismalens-abcdefgh23" };
+		const args = d.acpArgs({ ...runEnv, gateway });
+		expect(args.slice(0, 2)).toEqual(["--acp", "--mcp-config"]);
+		expect(args[2]).toContain(GATEWAY_RUN_FILE);
+		expect(args).not.toContain("--trust-project-mcp");
+		expect(JSON.parse(d.configFiles?.({ ...runEnv, gateway })[GATEWAY_RUN_FILE] ?? "{}")).toEqual({
+			mcpServers: {
+				"prismalens-abcdefgh23": { type: "http", url: gateway.url, headers: { Authorization: "Bearer tok" } },
+			},
+		});
 	});
 
 	it("claude-code, codex and gemini keep the user's own config and sign-in", () => {
@@ -154,21 +107,20 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		).toBeUndefined();
 	});
 
-	it("claude-code loads the user's settings, never the snapshot's, and has no plan-mode tools (#673 w7-4)", () => {
+	it("claude-code loads the user's, the repo's and the local settings, and has no plan-mode tools (#673 w7-4, #817)", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: {
 				options: {
-					settingSources: ["user"],
+					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
 				},
 			},
 		});
 	});
 
-	it("gemini marks workspace untrusted to keep repo config inert (#634)", () => {
-		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
-			GEMINI_CLI_TRUST_WORKSPACE: "false",
-		});
+	it("gemini forces no folder trust, and starts with --acp alone (#817, #848)", () => {
+		expect(Object.keys(HARNESS_REGISTRY.gemini.acpEnv(runEnv))).toEqual([]);
+		expect(HARNESS_REGISTRY.gemini.acpArgs(runEnv)).toEqual(["--acp"]);
 	});
 });
 
@@ -191,14 +143,10 @@ describe("row data every reader needs (#634)", () => {
 describe("gateway URL (claude-code)", () => {
 	it("passes https and loopback http, refuses http to another host", () => {
 		for (const ok of ["https://gw.example.com", "http://127.0.0.1:11434", "http://localhost:4000"]) {
-			expect(getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: ok }).ANTHROPIC_BASE_URL).toBe(ok);
+			expect(isSafeGatewayUrl(ok), ok).toBe(true);
 		}
-		expect(() =>
-			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://gw.lan:4000", ANTHROPIC_AUTH_TOKEN: "t" }),
-		).toThrow(/must be https/);
-		expect(() =>
-			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://127.0.0.1.evil.example/v1" }),
-		).toThrow(/must be https/);
+		expect(isSafeGatewayUrl("http://gw.lan:4000")).toBe(false);
+		expect(isSafeGatewayUrl("http://127.0.0.1.evil.example/v1")).toBe(false);
 	});
 });
 
@@ -239,7 +187,7 @@ describe("resolveHarnessModel (#337 run e, G11)", () => {
 describe("refuseModel (#639 rec 4)", () => {
 	it("refuses a model on a harness that cannot take one, and nothing else", () => {
 		expect(refuseModel("gemini", "synthetic/model-a")).toBe(
-			"Gemini CLI picks its own model. Clear synthetic/model-a in the picker above.",
+			"Gemini CLI picks its own model. Unstar synthetic/model-a in the picker above.",
 		);
 		expect(refuseModel("gemini", undefined)).toBeNull();
 		expect(refuseModel("gemini", "  ")).toBeNull();
@@ -306,9 +254,13 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].mode).toBe("workspace-write");
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].fallbackMode).toBe("read-only");
 		expect(HARNESS_REGISTRY.codex.modeMechanism).toBe("acp");
-		for (const level of ACCESS_LEVELS) {
-			expect(HARNESS_REGISTRY.gemini.access[level].mode, `gemini ${level}`).toBe("default");
-		}
+		// gemini-cli 0.64.0's own mode ids; Auto has no reviewer to hand to (#907).
+		expect(Object.fromEntries(ACCESS_LEVELS.map((l) => [l, HARNESS_REGISTRY.gemini.access[l].mode]))).toEqual({
+			supervised: "default",
+			"auto-edits": "autoEdit",
+			auto: "default",
+			"full-access": "yolo",
+		});
 	});
 
 	it("levelOfAgentMode round-trips every non-null mode and returns null for unknown ids", () => {
@@ -400,15 +352,18 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		}
 	});
 
-	it("Given agent-adapters package.json, When checking dependencies, Then each exact version equals the registry row's tested version", () => {
+	it("Given agent-adapters package.json, When checking the adapter pins, Then each exact version equals the registry row's tested version", () => {
 		const pkgPath = join(
 			dirname(fileURLToPath(import.meta.url)),
 			"../../../agent-adapters/package.json",
 		);
 		const manifest = JSON.parse(readFileSync(pkgPath, "utf8")) as {
-			dependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
 		};
-		const deps = Object.entries(manifest.dependencies ?? {});
+		// The adapters are bundled at build time, so their pins are devDependencies (#906).
+		const deps = Object.entries(manifest.devDependencies ?? {}).filter(([pkg]) =>
+			/^@agentclientprotocol\/.+-acp$/.test(pkg),
+		);
 		expect(deps.length).toBeGreaterThan(0);
 		for (const [pkg, version] of deps) {
 			const row = Object.values(HARNESS_REGISTRY).find(
@@ -418,6 +373,33 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 			expect(version).toBe(row?.tested?.version);
 		}
 	});
+
+	it("HARNESS_REGISTRY claude-code has systemPromptVia claude-meta and no other row has it (#817)", () => {
+		expect(HARNESS_REGISTRY["claude-code"].systemPromptVia).toBe("claude-meta");
+		for (const [id, row] of Object.entries(HARNESS_REGISTRY)) {
+			if (id !== "claude-code") {
+				expect(row.systemPromptVia).toBeUndefined();
+			}
+		}
+	});
 });
 
 
+
+describe("reservedEnvNames (#907)", () => {
+	it("names what PrismaLens sets on the child, the config-dir key and the custom-model key", async () => {
+		const { reservedEnvNames } = await import("./harness.js");
+		expect(reservedEnvNames("claude-code").sort()).toEqual(
+			[
+				"ANTHROPIC_CUSTOM_MODEL_OPTION",
+				"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+				"CLAUDE_CODE_EXECUTABLE",
+				"CLAUDE_CONFIG_DIR",
+			].sort(),
+		);
+		expect(reservedEnvNames("codex")).toEqual(
+			expect.arrayContaining(["DEFAULT_AUTH_REQUEST", "CODEX_PATH", "CODEX_HOME"]),
+		);
+		expect(reservedEnvNames("local")).toEqual([]);
+	});
+});

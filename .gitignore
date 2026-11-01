@@ -94,6 +94,7 @@ application.log
 packages/cli/dist-pack/
 packages/@prismalens/agent-adapters/dist-pack/
 packages/cli/.pack-staging/
+packages/@prismalens/agent-adapters/.pack-staging/
 *.tgz
 
 # Harness admission probes (scripts/acp-admission.ts) — planted in the checkout
@@ -106,3 +107,6 @@ packages/cli/.pack-staging/
 packages/desktop/resources/
 packages/desktop/release/
 .turbo-cache/
+
+# Per-machine agent instructions (maintainer workflow, local paths)
+AGENTS.local.md

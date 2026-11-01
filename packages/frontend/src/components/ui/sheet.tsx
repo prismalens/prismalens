@@ -54,27 +54,37 @@ const sheetVariants = cva(
 
 interface SheetContentProps
 	extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-		VariantProps<typeof sheetVariants> {}
+		VariantProps<typeof sheetVariants> {
+	/** Off when the content draws its own close control. */
+	closeButton?: boolean;
+}
 
 const SheetContent = React.forwardRef<
 	React.ElementRef<typeof SheetPrimitive.Content>,
 	SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-	<SheetPortal>
-		<SheetOverlay />
-		<SheetPrimitive.Content
-			ref={ref}
-			className={cn(sheetVariants({ side }), className)}
-			{...props}
-		>
-			<SheetPrimitive.Close className="absolute right-3 top-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none">
-				<X className="h-4 w-4" />
-				<span className="sr-only">Close</span>
-			</SheetPrimitive.Close>
-			{children}
-		</SheetPrimitive.Content>
-	</SheetPortal>
-));
+>(
+	(
+		{ side = "right", className, children, closeButton = true, ...props },
+		ref,
+	) => (
+		<SheetPortal>
+			<SheetOverlay />
+			<SheetPrimitive.Content
+				ref={ref}
+				className={cn(sheetVariants({ side }), className)}
+				{...props}
+			>
+				{closeButton && (
+					<SheetPrimitive.Close className="absolute right-3 top-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none">
+						<X className="h-4 w-4" />
+						<span className="sr-only">Close</span>
+					</SheetPrimitive.Close>
+				)}
+				{children}
+			</SheetPrimitive.Content>
+		</SheetPortal>
+	),
+);
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({

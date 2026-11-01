@@ -4,7 +4,7 @@
 /**
  * GitHub Adapter Implementation (#446)
  *
- * Exposes the VCS segment for GitHub.
+ * Exposes the VCS and deployment segments for GitHub.
  * Uses injected AuthenticatedRequestFn — providers never see raw tokens.
  */
 import type {
@@ -12,9 +12,14 @@ import type {
 	GitOrganization,
 	GitRepository,
 } from "@prismalens/config/integrations";
-import { providerHttpError } from "../../engine/provider-http-error.js";
+import {
+	providerHttpError,
+	providerJsonParseError,
+} from "../../engine/provider-http-error.js";
+import type { DeploymentProvider } from "../deployment.interface.js";
 import type { GitProvider } from "../git.interface.js";
 import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
+import { GitHubDeploymentsSegment } from "./deployments.js";
 
 // GitHub API response types (snake_case)
 interface GitHubOrg {
@@ -63,7 +68,14 @@ async function json<T>(response: Response): Promise<T> {
 			response,
 		});
 	}
-	return response.json() as Promise<T>;
+	// A parse error quotes the body, which may echo a credential (#848).
+	return (await response.json().catch(() => {
+		throw providerJsonParseError({
+			operation: "GitHub API request",
+			provider: "github",
+			response,
+		});
+	})) as T;
 }
 
 /**
@@ -211,4 +223,5 @@ export class GitHubVcsSegment implements GitProvider {
 export class GitHubAdapter implements ProviderAdapter {
 	readonly name = "github";
 	readonly vcs: GitProvider = new GitHubVcsSegment();
+	readonly deployment: DeploymentProvider = new GitHubDeploymentsSegment();
 }

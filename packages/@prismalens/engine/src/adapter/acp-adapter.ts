@@ -68,6 +68,10 @@ export interface AcpUpdate {
 	 * for `tool_call_update` an array of `{ type:"content", content:{ type:"text", text } }`.
 	 */
 	content?: unknown;
+	/** `usage_update`: tokens in context, the window, and the cumulative cost when sent. */
+	used?: number;
+	size?: number;
+	cost?: { amount?: unknown; currency?: unknown } | null;
 	/** Codex's output: `{ formatted_output, exit_code }` for a command, `{ result, error }` for MCP; it sends no `content`. */
 	rawOutput?: unknown;
 	/** Harness extras; Claude Code names a call its own settings refused here. */
@@ -100,6 +104,8 @@ interface ToolMeta {
 	/** Latest output an earlier update carried, cut to what a preview can show. */
 	output?: string;
 }
+
+export type HarnessToolsTurn = "first" | "follow-up";
 
 export class AcpAdapter {
 	private seqCounter = 0;
@@ -177,6 +183,7 @@ export class AcpAdapter {
 		attachments?: AttachmentRef[],
 		followUp?: FollowUpKind,
 		messageId?: string,
+		via?: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -188,6 +195,7 @@ export class AcpAdapter {
 			...(followUp ? { followUp } : {}),
 			...(attachments?.length ? { attachments } : {}),
 			...(messageId ? { messageId } : {}),
+			...(via ? { via } : {}),
 		};
 	}
 
@@ -213,6 +221,40 @@ export class AcpAdapter {
 		accepted: boolean,
 	): CanonicalEvent {
 		return { kind: "session_config", ...this.base(), option, value, accepted };
+	}
+
+	/** One call to PrismaLens's own tools, as the gateway saw it (#848). */
+	harnessToolCall(
+		server: string,
+		name: string,
+		at: string,
+		turn: HarnessToolsTurn,
+	): CanonicalEvent {
+		return {
+			kind: "harness_tool_call",
+			...this.base(),
+			server,
+			name,
+			at,
+			turn,
+		};
+	}
+
+	/** The turn's summary of PrismaLens's own tools: connected, and each tool called (#848). */
+	harnessTools(
+		server: string,
+		turn: HarnessToolsTurn,
+		connected: boolean,
+		calls: { name: string; firstCalledAt: string; count: number }[],
+	): CanonicalEvent {
+		return {
+			kind: "harness_tools",
+			...this.base(),
+			server,
+			turn,
+			connected,
+			calls,
+		};
 	}
 
 	/** The agent asked before a tool call (#673 w21); the call's own update fills in what the ask omits. */

@@ -1,0 +1,25 @@
+{
+	"description": "Requests outside the agent's main loop, which offer no shell tool (#914): Codex's auto-review model rules on each action and wants JSON, Codex titles the chat in JSON, Claude Code's auto-mode classifier reads only <severity>; anything else (titles, small-model calls) gets a short text.",
+	"fixtures": [
+		{
+			"match": { "model": "codex-auto-review" },
+			"response": {
+				"content": {
+					"outcome": "allow",
+					"risk_level": "low",
+					"user_authorization": "high",
+					"rationale": "scripted"
+				}
+			}
+		},
+		{
+			"match": { "userMessage": "generate a very short title" },
+			"response": { "content": { "title": "Scenario probe" } }
+		},
+		{
+			"match": { "userMessage": "<severity>N</severity>" },
+			"response": { "content": "<severity>0</severity>" }
+		},
+		{ "match": {}, "response": { "content": "Admission probe" } }
+	]
+}

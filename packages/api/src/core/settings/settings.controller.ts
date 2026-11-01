@@ -3,10 +3,14 @@
 
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import { ACCESS_SCOPE } from "@prismalens/auth";
 import type { HarnessId } from "@prismalens/config/harness";
 import { settingsContract } from "@prismalens/contracts";
-import { HarnessService } from "../harness/harness.service.js";
-import { HarnessProbeService } from "../harness/harness-probe.service.js";
+import type { Request } from "express";
+import {
+	HarnessService,
+	HarnessSettingsError,
+} from "../harness/harness.service.js";
 import { TelemetryService } from "../telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { AboutService } from "./about.service.js";
@@ -18,7 +22,6 @@ export class SettingsController {
 	constructor(
 		private readonly settingsService: SettingsService,
 		private readonly harnessService: HarnessService,
-		private readonly harnessProbeService: HarnessProbeService,
 		private readonly telemetryService: TelemetryService,
 		private readonly aboutService: AboutService,
 	) {}
@@ -116,15 +119,34 @@ export class SettingsController {
 				},
 			),
 			getSettings: implement(settingsContract.harnesses.getSettings).handler(
-				async () => this.harnessService.getSettings(),
+				async ({ context }) => ({
+					...(await this.harnessService.getSettings()),
+					canEditRuntime: isHost(context.request as Request),
+				}),
 			),
 			updateSettings: implement(
 				settingsContract.harnesses.updateSettings,
-			).handler(async ({ input }) => this.harnessService.updateSettings(input)),
+			).handler(async ({ input, context }) => {
+				const host = isHost(context.request as Request);
+				try {
+					const saved = await this.harnessService.updateSettings(input, {
+						host,
+					});
+					return { ...saved, canEditRuntime: host };
+				} catch (error) {
+					if (error instanceof HarnessSettingsError)
+						throw new ORPCError(error.code, { message: error.message });
+					throw error;
+				}
+			}),
 			checkHarness: implement(settingsContract.harnesses.checkHarness).handler(
-				async ({ input }) =>
-					this.harnessProbeService.check(input.id as HarnessId),
+				async ({ input }) => this.harnessService.check(input.id as HarnessId),
 			),
 		};
 	}
+}
+
+/** The host's own session holds `admin:access`; a paired device does not (#907 decision 11). */
+export function isHost(request: Request): boolean {
+	return !!request.operator?.device.scopes.includes(ACCESS_SCOPE);
 }

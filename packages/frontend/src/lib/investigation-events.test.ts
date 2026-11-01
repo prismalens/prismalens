@@ -12,6 +12,7 @@ import {
 	splitAgentText,
 	type TranscriptItem,
 } from "./investigation-events";
+import { formatClock } from "./format-time";
 import walk8 from "./__fixtures__/walk8-report-drafts.json";
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
@@ -174,7 +175,6 @@ describe("deriveStreamView", () => {
 		const fenced = `\`\`\`json\n${lookalike}\n\`\`\``;
 		const items = deriveTranscript(
 			[agentStep("main", 1, lookalike), agentStep("main", 2, fenced)],
-			0,
 		);
 		expect(items).toMatchObject([
 			{ kind: "prose", text: "", draft: lookalike },
@@ -310,7 +310,6 @@ describe("report drafts from walk 8 (#673 w8-14)", () => {
 				agentStep("main", 1, walk8.run2Answer),
 				agentStep("main", 2, walk8.run2Report),
 			],
-			0,
 		);
 		expect(items.map((i) => i.kind)).toEqual(["prose", "line"]);
 		const prose = items[0] as Extract<TranscriptItem, { kind: "prose" }>;
@@ -324,7 +323,6 @@ describe("report drafts from walk 8 (#673 w8-14)", () => {
 				agentStep("main", 1, walk8.run4Draft),
 				agentStep("main", 2, walk8.run4Report),
 			],
-			0,
 		);
 		expect(items[0]).toMatchObject({ kind: "prose", text: "" });
 		expect(items[1]).toMatchObject({ text: "Report drafted" });
@@ -394,7 +392,7 @@ describe("a report cut off mid-block (#673 walk 4)", () => {
 				delivered: true,
 			},
 		];
-		const items = deriveTranscript(events, Date.parse("2026-08-22T00:00:03Z"), {
+		const items = deriveTranscript(events, {
 			run: { status: "completed", live: false },
 		});
 		expect(items).toContainEqual(
@@ -442,4 +440,124 @@ describe("pinnedTo for newer-run line (#673 w27)", () => {
 		).toBe("api@1a2b3c4, worker@5d6e7f8");
 	});
 });
+
+describe("deriveTranscript: handoff record", () => {
+	it("handoff-L3: resumed with via.handoff pushes a line item with the handoff record and no divider", () => {
+		const ts = "2026-08-22T14:31:00Z";
+		const events: CanonicalEvent[] = [
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts,
+				text: "continue investigation",
+				mode: "now",
+				delivered: true,
+				resumed: [{ name: "repo", head: "1234567" }],
+				via: {
+					harness: "codex",
+					model: "gpt-6.1",
+					accessLevel: "auto",
+					handoff: {
+						from: "claude-code",
+						carried: "the alert and 2 messages",
+						omitted: null,
+					},
+				},
+			},
+		];
+
+		const items = deriveTranscript(events, {
+			agentName: (id: string) =>
+				({ codex: "Codex", "claude-code": "Claude Code" })[id] ?? id,
+			modelName: () => "GPT-6.1",
+		});
+
+		const lineItems = items.filter((item) => item.kind === "line");
+		const dividerItems = items.filter((item) => item.kind === "divider");
+
+		expect(lineItems).toHaveLength(1);
+		expect(lineItems[0]).toEqual({
+			kind: "line",
+			key: "handoff-main-1",
+			text: `Codex, GPT-6.1, took over from Claude Code at ${formatClock(ts)}, in a fresh session. It got the alert and 2 messages.`,
+		});
+		expect(dividerItems).toHaveLength(0);
+	});
+
+	it("handoff-L3: resumed without via pushes a divider starting with 'Resumed in the same session' and no handoff line", () => {
+		const ts = "2026-08-22T14:31:00Z";
+		const events: CanonicalEvent[] = [
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts,
+				text: "continue investigation",
+				mode: "now",
+				delivered: true,
+				resumed: [{ name: "repo", head: "1234567" }],
+			},
+		];
+
+		const items = deriveTranscript(events);
+
+		const lineItems = items.filter((item) => item.kind === "line");
+		const dividerItems = items.filter((item) => item.kind === "divider");
+
+		expect(lineItems).toHaveLength(0);
+		expect(dividerItems).toHaveLength(1);
+		expect(dividerItems[0]?.text.startsWith("Resumed in the same session")).toBe(
+			true,
+		);
+	});
+
+	it("handoff-L3: via.handoff with null from and model produces the expected handoff line text", () => {
+		const ts = "2026-08-22T14:31:00Z";
+		const events: CanonicalEvent[] = [
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts,
+				text: "continue investigation",
+				mode: "now",
+				delivered: true,
+				resumed: [{ name: "repo", head: "1234567" }],
+				via: {
+					harness: "codex",
+					model: null,
+					accessLevel: "auto",
+					handoff: {
+						from: null,
+						carried: "the alert",
+						omitted: null,
+					},
+				},
+			},
+		];
+
+		const items = deriveTranscript(events, {
+			agentName: (id: string) => ({ codex: "Codex" })[id] ?? id,
+		});
+
+		const lineItems = items.filter((item) => item.kind === "line");
+		expect(lineItems).toHaveLength(1);
+		expect(lineItems[0]).toEqual({
+			kind: "line",
+			key: "handoff-main-1",
+			text: `Codex, took over at ${formatClock(ts)}, in a fresh session. It got the alert.`,
+		});
+	});
+});
+
 

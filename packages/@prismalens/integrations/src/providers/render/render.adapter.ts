@@ -8,7 +8,10 @@
  * Uses Render API v1: https://docs.render.com/api
  */
 import type { DeploymentService } from "@prismalens/config/integrations";
-import { providerHttpError } from "../../engine/provider-http-error.js";
+import {
+	providerHttpError,
+	providerJsonParseError,
+} from "../../engine/provider-http-error.js";
 import type { DeploymentProvider } from "../deployment.interface.js";
 import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
 
@@ -66,7 +69,14 @@ async function json<T>(response: Response): Promise<T> {
 			response,
 		});
 	}
-	return response.json() as Promise<T>;
+	// A parse error quotes the body, which may echo a credential (#848).
+	return (await response.json().catch(() => {
+		throw providerJsonParseError({
+			operation: "Render API request",
+			provider: "render",
+			response,
+		});
+	})) as T;
 }
 
 /**
@@ -220,5 +230,5 @@ export class RenderDeploymentSegment implements DeploymentProvider {
 
 export class RenderAdapter implements ProviderAdapter {
 	readonly name = "render";
-	readonly deployment: DeploymentProvider = new RenderDeploymentSegment();
+	readonly deployment = new RenderDeploymentSegment();
 }

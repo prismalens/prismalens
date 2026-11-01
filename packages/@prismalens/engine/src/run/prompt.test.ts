@@ -6,6 +6,7 @@ import {
 	buildChatPrompt,
 	buildInvestigationPrompt,
 	FLAGGED_WHERE,
+	investigationPromptParts,
 	newerRunNote,
 } from "./prompt.js";
 import { UNTRUSTED_DATA_METHOD_GUARD } from "./fence.js";
@@ -45,10 +46,39 @@ describe("buildInvestigationPrompt (#633)", () => {
 		);
 	});
 
+	it("a sources list keeps the curl recipes for open sources and sends credentialed ones to the tools (#848)", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseContext,
+			telemetry: {
+				sources: [
+					{ kind: "prometheus", label: "prom", url: "http://prom:9090" },
+					{ kind: "prometheus", label: "mimir", url: "https://mimir.example", authenticated: true },
+					{ kind: "loki", label: "loki", url: "http://loki:3100" },
+				],
+				prometheusUrl: "http://prom:9090",
+			},
+		});
+		expect(prompt).toContain("curl -sG 'http://prom:9090/api/v1/query'");
+		expect(prompt).toContain("curl -sG 'http://loki:3100/loki/api/v1/query_range'");
+		expect(prompt).toContain(
+			"- Prometheus (mimir)  needs a credential PrismaLens holds: PrismaLens read it before the run (PRE-RUN CONTEXT); query it further only with your own tools",
+		);
+		expect(prompt).not.toContain("curl -sG 'https://mimir.example");
+		expect(prompt.match(/- Prometheus {4}http:\/\/prom:9090/g)).toHaveLength(1);
+	});
+
 	it("tells the agent not to name the report's fields in its prose (#673 w5-25)", () => {
 		expect(buildInvestigationPrompt(baseContext)).toContain(
 			"never name the block's fields there (nextSteps, rootCause, ruledOut)",
 		);
+	});
+
+	it("asks for hypothesis ids and parent links, and the schema carries them", () => {
+		const prompt = buildInvestigationPrompt(baseContext);
+		expect(prompt).toContain(
+			"When one hypothesis refines or explains another, set its parentId",
+		);
+		expect(prompt).toContain('"parentId"');
 	});
 
 	it("without telemetry neither appears and the source-code line still does", () => {
@@ -69,13 +99,13 @@ describe("buildInvestigationPrompt (#633)", () => {
 			workspace: {
 				repos: [
 					{
-						path: "api/",
+						path: "/w/pl-1/api",
 						services: ["checkout", "cart"],
 						subPath: null,
 						head: "1a2b3c4d5e6f7a8b9c0d",
 					},
 					{
-						path: "worker/",
+						path: "/w/pl-1/worker",
 						services: ["jobs"],
 						subPath: "svc/jobs",
 						head: "5d6e7f8a9b0c1d2e3f4a",
@@ -88,8 +118,13 @@ describe("buildInvestigationPrompt (#633)", () => {
 			"- Application SOURCE CODE is in your current working directory",
 		);
 		expect(prompt).toContain(
-			"  - Application SOURCE CODE: 2 repositories under your current working directory:\n      api/  services: checkout, cart  (at 1a2b3c4d5e6f)\n      worker/  services: jobs  (at 5d6e7f8a9b0c)  sub-path: svc/jobs",
+			"  - Application SOURCE CODE: 2 repositories, one folder each:\n      /w/pl-1/api  services: checkout, cart  (at 1a2b3c4d5e6f)\n      /w/pl-1/worker  services: jobs  (at 5d6e7f8a9b0c)  sub-path: svc/jobs",
 		);
+		// The listed folders are not all under the cwd, so the scope rule names them (#918).
+		expect(prompt).toContain(
+			"2. File reads, greps, and globs stay INSIDE the repository folders listed under Application SOURCE CODE — use their absolute paths.",
+		);
+		expect(prompt).not.toContain("stay INSIDE your current working directory");
 	});
 
 	it("tells the agent how to cite a context-pack fact only when a pack is present", () => {
@@ -397,5 +432,136 @@ describe("flaggedContent where values (#902)", () => {
 		expect(FLAGGED_WHERE).toContain('"tool-output"');
 		expect(FLAGGED_WHERE).toContain("ALERT_PAYLOAD");
 		expect(FLAGGED_WHERE).toContain("never which where value fits");
+	});
+});
+
+describe("investigationPromptParts (#817)", () => {
+	const baseContext: InvestigationContext = {
+		alerts: [
+			{
+				alertname: "HighErrorRate",
+				severity: "critical",
+				labels: { service: "checkout" },
+				annotations: { summary: "5xx rate > 5%" },
+				startsAt: new Date().toISOString(),
+			},
+		],
+		service: {
+			name: "checkout",
+		},
+	};
+
+	it("splits brief and turn cleanly; brief has method, schema, no alert; turn has alert, permission", () => {
+		const parts = investigationPromptParts(baseContext, {
+			level: "full-access",
+			noNetwork: true,
+		});
+
+		expect(parts.brief).toContain("You are an on-call Site Reliability Engineer");
+		expect(parts.brief).toContain("METHOD (work iteratively");
+		expect(parts.brief).toContain("WHAT COUNTS AS A ROOT CAUSE");
+		expect(parts.brief).toContain("OUTPUT");
+		expect(parts.brief).toContain("json-schema.org");
+		expect(parts.brief).not.toContain("FIRING ALERT");
+		expect(parts.brief).not.toContain("THIS RUN:");
+		expect(parts.brief).not.toContain("no network calls");
+		expect(parts.brief).not.toContain("Do not ask for user confirmation");
+
+		expect(parts.turn).toContain("FIRING ALERT");
+		expect(parts.turn).toContain("HighErrorRate");
+		expect(parts.turn).toContain("checkout");
+		expect(parts.turn).toContain("THIS RUN");
+		expect(parts.turn).toContain("Network: none");
+		expect(parts.turn).toContain("Permission: Full access");
+		expect(parts.turn).not.toContain("METHOD (work iteratively");
+	});
+
+	it("buildInvestigationPrompt produces byte-identical output to combined parts", () => {
+		const combined = buildInvestigationPrompt(baseContext, {
+			level: "full-access",
+			noNetwork: true,
+		});
+		expect(combined).toContain("You are an on-call Site Reliability Engineer");
+		expect(combined).toContain("FIRING ALERT");
+		expect(combined).toContain("HighErrorRate");
+		expect(combined).toContain("METHOD (work iteratively");
+	});
+});
+
+describe("pre-run prompt states and copy failures (#848)", () => {
+	const baseCtx: InvestigationContext = {
+		alerts: [{ alertname: "A", severity: "high", labels: {}, annotations: {}, startsAt: null }],
+	};
+
+	it("state not-saved adds the warning line while keeping excerpts", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseCtx,
+			preRun: {
+				state: "not-saved",
+				saveError: "disk full",
+				copy: { state: "written", dir: ".prismalens/runs/r1" },
+				fetchedAt: "2026-10-24T10:00:00.000Z",
+				window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+				notConfigured: [],
+				runbooks: [],
+				checkoutsSkipped: [],
+				files: [{ name: "telemetry-loki-1.json", about: "loki logs" }],
+				sources: [
+					{
+						kind: "loki",
+						label: "loki",
+						from: "set",
+						status: "found",
+						detail: "5 logs",
+						file: "telemetry-loki-1.json",
+						excerpt: "some logs",
+					},
+				],
+			},
+		});
+		expect(prompt).toContain("This snapshot was not saved, so a follow-up on this run will not have it.");
+		expect(prompt).toContain("<<<PRE_RUN_TELEMETRY — UNTRUSTED DATA.");
+	});
+
+	it("state unavailable renders Not available: <reason>", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseCtx,
+			preRun: {
+				state: "unavailable",
+				reason: "no stored snapshot for this run",
+			},
+		});
+		expect(prompt).toContain("PRE-RUN CONTEXT\n  Not available: no stored snapshot for this run.");
+		expect(prompt).not.toContain("PRE_RUN_TELEMETRY");
+	});
+
+	it("copy failed drops the folder line while sources remain", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseCtx,
+			preRun: {
+				state: "ready",
+				copy: { state: "failed", reason: ".prismalens is not a folder" },
+				fetchedAt: "2026-10-24T10:00:00.000Z",
+				window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+				notConfigured: [],
+				runbooks: [],
+				checkoutsSkipped: [],
+				files: [{ name: "telemetry-loki-1.json", about: "loki logs" }],
+				sources: [
+					{
+						kind: "loki",
+						label: "loki",
+						from: "set",
+						status: "found",
+						detail: "5 logs",
+						file: "telemetry-loki-1.json",
+						excerpt: "some logs",
+					},
+				],
+			},
+		});
+		expect(prompt).not.toContain("Read copies are in");
+		expect(prompt).toContain("Read: loki (loki): 5 logs.");
+		expect(prompt).toContain("<<<PRE_RUN_TELEMETRY — UNTRUSTED DATA.");
 	});
 });

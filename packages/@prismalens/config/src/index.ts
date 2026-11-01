@@ -33,6 +33,7 @@ import {
 } from "./utils/encryption-key.js";
 
 export {
+	getOrCreateVapidKeys,
 	type SecretNotice,
 	setSecretNotice,
 } from "./utils/encryption-key.js";

@@ -251,14 +251,10 @@ export default defineCommand({
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}
 
-		// Read from a cache written by an earlier run, so nothing here waits on
-		// the network; `refresh` updates that cache for the NEXT run and is
-		// deliberately never awaited.
-		const notice = updateNotice({
-			current: cliVersion(),
-			workspaceDir,
-		});
+		// The line comes from an earlier run's cache; the unawaited refresh starts only after boot,
+		// whose synchronous import outlasts the check's 3 s timeout on a slow machine (#990).
 		const printUpdateNotice = () => {
+			const notice = updateNotice({ current: cliVersion(), workspaceDir });
 			if (notice.line) consola.info(notice.line);
 		};
 

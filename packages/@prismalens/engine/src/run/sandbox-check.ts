@@ -20,13 +20,13 @@ import {
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { killProcessTree } from "@prismalens/agent-host";
 import {
 	type HarnessId,
 	runsInSandbox,
 	type SandboxCheck,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
-import { buildChildEnv, killProcessTree } from "../launch/process.js";
 
 export type SandboxChecks = Record<string, SandboxCheck>;
 
@@ -55,7 +55,7 @@ export interface CodexCommand {
 }
 
 export interface SandboxCheckOptions {
-	/** The env the run hands the agent; the probe sees the same HOME and CODEX_HOME. */
+	/** The env a run hands the agent (its launch plan's); the probe sees the same HOME and CODEX_HOME. */
 	env?: NodeJS.ProcessEnv;
 	timeoutMs?: number;
 	run?: ProbeRunner;
@@ -201,7 +201,15 @@ export async function probeCodexSandbox(
 				"sh",
 				outside,
 			],
-			{ cwd: workspace, env: buildChildEnv(opts.env), timeoutMs },
+			{
+				cwd: workspace,
+				env: Object.fromEntries(
+					Object.entries(opts.env ?? process.env).filter(
+						(e): e is [string, string] => e[1] !== undefined,
+					),
+				),
+				timeoutMs,
+			},
 		);
 		return readCodexProbe(
 			{ ...run, wrote: existsSync(outside) },
@@ -290,7 +298,7 @@ function claudeCodeSandbox(opts: SandboxCheckOptions): SandboxCheck {
 		opts.claudeUserSettings !== undefined
 			? opts.claudeUserSettings
 			: claudeUserSettingsPath(opts.env);
-	// The run loads settingSources ["user"]; managed settings win over it (Agent SDK docs, settingSources).
+	// The run loads settingSources ["user", "project", "local"]; this reads the user file, and managed settings win over all (Agent SDK docs).
 	const managed = managedSandboxSetting(dir);
 	const user = userFile ? sandboxSetting([userFile]) : undefined;
 	const on = managed ?? user ?? false;
@@ -317,6 +325,10 @@ const NO_SANDBOX: Partial<Record<HarnessId, SandboxCheck>> = {
 	gemini: {
 		state: "unknown",
 		reason: "PrismaLens does not check Gemini CLI's sandbox yet",
+	},
+	local: {
+		state: "unknown",
+		reason: "PrismaLens does not know whether a local agent has a sandbox",
 	},
 };
 

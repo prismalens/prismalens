@@ -2,8 +2,17 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
-import { FileText } from "lucide-react";
-import { Fragment, useState } from "react";
+import { ChevronRight, FileText } from "lucide-react";
+import {
+	Fragment,
+	memo,
+	type ReactNode,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import {
 	Conversation,
 	ConversationContent,
@@ -13,14 +22,18 @@ import { MessageResponse } from "@/components/ai/message";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
+import { useSecondClock } from "@/hooks/use-clock";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import {
 	type AttachmentView,
 	OPERATOR_STATE_LABEL,
 	type OperatorState,
+	STALE_AFTER_S,
+	seconds,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
+import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
 import { type AskRecord, askEnd, askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
@@ -59,6 +72,57 @@ export interface TranscriptSteps {
 	onSeeFlag?: () => void;
 	/** The run's asks, each on its step (#820). */
 	asks?: readonly AskRecord[];
+	/** A read step's file at the run's commit, and opening it. */
+	fileOf?: (s: RunStep) => { sha: string } | null;
+	onOpenFile?: (s: RunStep) => void;
+}
+
+/** Once a report exists, the work between the brief and the report folds behind one row. */
+export interface WorkedFold {
+	seconds: number;
+	steps: number;
+	open: boolean;
+	onToggle: () => void;
+}
+
+const NONE: ReadonlySet<number> = new Set();
+
+/** A tool group's own steps, and the ask on each; kept by identity while unchanged. */
+interface GroupSteps {
+	own: RunStep[];
+	asks: (AskRecord | undefined)[];
+}
+
+function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
+	return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+/** Each tool group's lookups, so a memoized row sees new props only when its own steps change (#874). */
+function useGroupSteps(
+	items: TranscriptItem[],
+	steps: TranscriptSteps | undefined,
+): Map<string, GroupSteps> {
+	const cache = useRef(new Map<string, GroupSteps>());
+	const all = steps?.all;
+	const allAsks = steps?.asks;
+	return useMemo(() => {
+		const byCall = new Map(all?.map((s) => [s.callId, s]));
+		const next = new Map<string, GroupSteps>();
+		for (const item of items) {
+			if (item.kind !== "tools") continue;
+			const own = item.callIds.flatMap((id) => byCall.get(id) ?? []);
+			const asks = own.map((s) => allAsks?.findLast((a) => a.step === s.n));
+			const prev = cache.current.get(item.key);
+			next.set(
+				item.key,
+				prev && sameList(prev.own, own) && sameList(prev.asks, asks)
+					? prev
+					: { own, asks },
+			);
+		}
+		cache.current = next;
+		return next;
+	}, [items, all, allAsks]);
 }
 
 /**
@@ -66,7 +130,7 @@ export interface TranscriptSteps {
  * the agent's prose, each tool call a numbered step, and how the run ended.
  * A pane: it scrolls itself and follows the tail while live.
  */
-export function Transcript({
+export const Transcript = memo(function Transcript({
 	items,
 	incidentId,
 	cwd,
@@ -76,6 +140,8 @@ export function Transcript({
 	briefBy = "You",
 	report,
 	empty,
+	worked,
+	afterReport,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
@@ -91,7 +157,17 @@ export function Transcript({
 	report?: { title: string; summary: string } | null;
 	/** What shows before anything is sent: the new conversation's box. */
 	empty?: boolean;
+	worked?: WorkedFold | null;
+	/** Drawn right under the report card, outside the fold: the hypotheses card. */
+	afterReport?: ReactNode;
 }) {
+	useRenderProbe("Transcript", { items, steps, worked, report });
+	const groups = useGroupSteps(items, steps);
+	const brief = items.findIndex(
+		(i) => i.kind === "operator" && i.state === "started",
+	);
+	const end = items.findIndex((i) => i.kind === "end" && i.report);
+	const folds = !!worked && end > brief + 1;
 	return (
 		<Conversation className="h-full" data-testid="transcript-scroller">
 			<ConversationContent className="px-4 pt-5 pb-2">
@@ -100,45 +176,129 @@ export function Transcript({
 					data-testid="transcript"
 					data-empty={empty ? "" : undefined}
 				>
-					{items.map((item) => (
-						<TranscriptRow
-							key={item.key}
-							item={item}
-							incidentId={incidentId}
-							cwd={cwd}
-							agent={agent}
-							steps={steps}
-							runName={runName}
-							briefBy={briefBy}
-							report={report}
-						/>
-					))}
+					{folds && worked && brief === -1 && <WorkedToggle worked={worked} />}
+					{items.map((item, i) => {
+						const group = groups.get(item.key);
+						const has = (set: ReadonlySet<number> | undefined) =>
+							set && group?.own.some((s) => set.has(s.n)) ? set : NONE;
+						const lit = steps?.highlight ?? null;
+						return (
+							<Fragment key={item.key}>
+								{(!folds || worked?.open || i <= brief || i >= end) && (
+									<TranscriptRow
+										item={item}
+										incidentId={incidentId}
+										cwd={cwd}
+										agent={agent}
+										runName={runName}
+										briefBy={briefBy}
+										reportTitle={report?.title}
+										reportSummary={report?.summary}
+										hasSteps={!!steps}
+										group={group}
+										open={has(steps?.open)}
+										flagged={has(steps?.flagged)}
+										highlight={
+											lit !== null && group?.own.some((s) => s.n === lit)
+												? lit
+												: null
+										}
+										ask={
+											item.kind === "ask"
+												? steps?.asks?.find((a) => a.askId === item.askId)
+												: undefined
+										}
+										onToggle={steps?.onToggle}
+										onSeeFlag={steps?.onSeeFlag}
+										fileOf={steps?.fileOf}
+										onOpenFile={steps?.onOpenFile}
+									/>
+								)}
+								{folds && worked && i === brief && (
+									<WorkedToggle worked={worked} />
+								)}
+								{i === end && report && afterReport}
+							</Fragment>
+						);
+					})}
 				</ol>
 			</ConversationContent>
 			<ConversationScrollButton />
+			<ReleaseOnUnfold open={!!worked?.open} />
 		</Conversation>
+	);
+});
+
+/** Unfolding grows the log; without this the follow-the-tail lock pulls a jump back to the bottom. */
+function ReleaseOnUnfold({ open }: { open: boolean }) {
+	const { stopScroll } = useStickToBottomContext();
+	useEffect(() => {
+		if (open) stopScroll();
+	}, [open, stopScroll]);
+	return null;
+}
+
+/** `Worked for 4m 12s, 23 steps`: the steps-unfold row with the sidebar tree's disclosure chevron. */
+function WorkedToggle({ worked }: { worked: WorkedFold }) {
+	return (
+		<li>
+			<button
+				type="button"
+				onClick={worked.onToggle}
+				aria-expanded={worked.open}
+				className="flex w-full items-center gap-1.5 rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				data-testid="worked-toggle"
+			>
+				<ChevronRight
+					aria-hidden
+					className={cn(
+						"size-3 shrink-0 text-text-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none",
+						worked.open && "rotate-90",
+					)}
+				/>
+				Worked for {formatElapsed(worked.seconds)}, {worked.steps}{" "}
+				{worked.steps === 1 ? "step" : "steps"}
+			</button>
+		</li>
 	);
 }
 
-function TranscriptRow({
+/** What a tool group's row knows of the run's steps; every field is stable while its own steps are. */
+interface RowSteps {
+	hasSteps: boolean;
+	group?: GroupSteps;
+	open: ReadonlySet<number>;
+	flagged: ReadonlySet<number>;
+	highlight: number | null;
+	onToggle?: (n: number) => void;
+	onSeeFlag?: () => void;
+	fileOf?: (s: RunStep) => { sha: string } | null;
+	onOpenFile?: (s: RunStep) => void;
+}
+
+const TranscriptRow = memo(function TranscriptRow({
 	item,
 	incidentId,
 	cwd,
 	agent,
-	steps,
 	runName,
 	briefBy,
-	report,
-}: {
+	reportTitle,
+	reportSummary,
+	ask,
+	...steps
+}: RowSteps & {
 	item: TranscriptItem;
 	incidentId: string;
 	cwd?: string | null;
 	agent: string;
-	steps?: TranscriptSteps;
 	runName?: string;
 	briefBy: string;
-	report?: { title: string; summary: string } | null;
+	reportTitle?: string;
+	reportSummary?: string;
+	ask?: AskRecord;
 }) {
+	useRenderProbe("TranscriptRow", { item, ask, ...steps });
 	switch (item.kind) {
 		case "prose":
 			return (
@@ -188,7 +348,6 @@ function TranscriptRow({
 			return <StepGroup item={item} steps={steps} cwd={cwd} />;
 		case "ask": {
 			// An ask no step carries keeps its own line where it was (#820).
-			const ask = steps?.asks?.find((a) => a.askId === item.askId);
 			if (!ask || ask.step !== undefined) return null;
 			const end = askEnd(ask);
 			return (
@@ -213,28 +372,7 @@ function TranscriptRow({
 				</li>
 			);
 		case "thinking":
-			return (
-				<li
-					className={cn(
-						"flex items-center gap-2 tabular-nums",
-						item.stale ? "text-warn" : "text-text-2",
-					)}
-					data-testid="transcript-thinking"
-				>
-					<span
-						aria-hidden
-						className={cn(
-							"size-[7px] rounded-full",
-							item.stale ? "bg-warn" : "breathe bg-live",
-						)}
-						data-testid="transcript-thinking-bar"
-					/>
-					{item.stale ? "Quiet" : "Thinking"}
-					<span className="text-meta text-text-3">
-						for {formatElapsed(item.seconds)}
-					</span>
-				</li>
-			);
+			return <ThinkingLine since={item.since} />;
 		case "operator": {
 			const brief = item.state === "started";
 			const who = brief ? briefBy : "You";
@@ -275,7 +413,7 @@ function TranscriptRow({
 			);
 		}
 		case "end": {
-			if (item.report && report)
+			if (item.report && reportTitle !== undefined)
 				return (
 					<li
 						className={cn(
@@ -285,10 +423,10 @@ function TranscriptRow({
 						data-testid="transcript-report"
 					>
 						<span id="report" className="font-semibold">
-							{report.title}
+							{reportTitle}
 						</span>
 						<span dir="auto" className="text-text-2">
-							{report.summary}
+							{reportSummary}
 						</span>
 						<Link
 							to="/incidents/$id"
@@ -354,7 +492,7 @@ function TranscriptRow({
 				</li>
 			);
 	}
-}
+});
 
 /**
  * A run of tool calls, one card per step. Past {@link FOLD_OVER} the middle
@@ -366,16 +504,13 @@ function StepGroup({
 	cwd,
 }: {
 	item: Extract<TranscriptItem, { kind: "tools" }>;
-	steps?: TranscriptSteps;
+	steps: RowSteps;
 	cwd?: string | null;
 }) {
+	useRenderProbe("StepGroup", { item, group: steps.group });
 	const [unfolded, setUnfolded] = useState(false);
-	const byCall = new Map(steps?.all.map((s) => [s.callId, s]));
-	const own = item.callIds.flatMap((id) => {
-		const s = byCall.get(id);
-		return s ? [s] : [];
-	});
-	if (!steps || own.length === 0)
+	const own = steps.group?.own ?? [];
+	if (!steps.hasSteps || own.length === 0)
 		return (
 			<li className="text-meta text-text-3" data-testid="transcript-tools">
 				{item.summary || `Ran ${item.count} tools`}
@@ -413,15 +548,47 @@ function StepGroup({
 							command: shortPath(s.command, cwd),
 						}}
 						open={steps.open.has(s.n)}
-						onToggle={() => steps.onToggle(s.n)}
+						onToggle={() => steps.onToggle?.(s.n)}
 						highlight={steps.highlight === s.n}
 						flagged={steps.flagged.has(s.n)}
 						onSeeFlag={steps.onSeeFlag}
-						ask={steps.asks?.findLast((a) => a.step === s.n)}
+						ask={steps.group?.asks[own.indexOf(s)]}
+						fileSha={steps.fileOf?.(s)?.sha}
+						onOpenFile={
+							steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined
+						}
 					/>
 				</Fragment>
 			))}
 		</>
+	);
+}
+
+/** The live `Thinking for Ns` line: the one part of the transcript that reads the clock (#874). */
+function ThinkingLine({ since }: { since: string }) {
+	useRenderProbe("ThinkingLine");
+	const now = useSecondClock();
+	const s = now === null ? 0 : seconds(since, now);
+	const stale = s > STALE_AFTER_S;
+	return (
+		<li
+			className={cn(
+				"flex items-center gap-2 tabular-nums",
+				stale ? "text-warn" : "text-text-2",
+			)}
+			data-testid="transcript-thinking"
+		>
+			<span
+				aria-hidden
+				className={cn(
+					"size-[7px] rounded-full",
+					stale ? "bg-warn" : "breathe bg-live",
+				)}
+				data-testid="transcript-thinking-bar"
+			/>
+			{stale ? "Quiet" : "Thinking"}
+			<span className="text-meta text-text-3">for {formatElapsed(s)}</span>
+		</li>
 	);
 }
 

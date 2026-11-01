@@ -3,10 +3,28 @@
 
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
+import {
+	Bot,
+	Camera,
+	CircleCheck,
+	GitBranch,
+	Plug,
+	TriangleAlert,
+	X,
+} from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { CommandChip } from "@/components/ui/command-chip";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { citationText, type FileAt } from "@/lib/evidence-files";
 import { cn } from "@/lib/utils";
+import { EvidenceFileView } from "./EvidenceFileView";
+import {
+	type ToolsStatus,
+	type TurnTools,
+	toolsWord,
+	turnLine,
+} from "./RunTools";
 import {
 	type DetailLink,
 	type DetailRow,
@@ -17,6 +35,24 @@ import {
 import type { RunStep } from "./run-steps";
 
 export type DetailsTab = "summary" | "evidence" | "context" | "steps";
+
+/** Opens a cited file; `origin` is the id of the control that opened it, which gets focus back. */
+export type OpenFile = (f: FileAt, origin: string) => void;
+
+/** What the Evidence tab needs to open a file the run read, and the one open now. */
+export interface EvidenceFiles {
+	runId: string;
+	viewing: FileAt | null;
+	onOpen: OpenFile;
+	onClose: () => void;
+	backLabel: string;
+	phone: boolean;
+	reads: number[];
+	codeHost: string | null;
+	/** The file a Steps row opens; null when the step names none in the clone. */
+	stepFile: (s: RunStep) => FileAt | null;
+	onOpenHypotheses: (origin: string) => void;
+}
 
 const TONE = {
 	ok: "text-ok",
@@ -49,7 +85,14 @@ export function RunDetailsPanel({
 	flaggedCount,
 	steps,
 	onJump,
+	files,
+	summaryTop,
+	contextTop,
 }: {
+	/** Above the Context sections: the runbooks the run found (#848). */
+	contextTop?: ReactNode;
+	/** Above the Summary sections: the run's five steps and its tools (#848). */
+	summaryTop?: ReactNode;
 	title: string;
 	tab: DetailsTab;
 	onTab: (tab: DetailsTab) => void;
@@ -61,6 +104,7 @@ export function RunDetailsPanel({
 	flaggedCount: number;
 	steps: RunStep[];
 	onJump: (n: number) => void;
+	files: EvidenceFiles;
 }) {
 	const [filter, setFilter] = useState<StepFilter>("all");
 	const onKeyDown = (e: KeyboardEvent) => {
@@ -103,12 +147,17 @@ export function RunDetailsPanel({
 			),
 		},
 	];
-	return (
+	const aside = (
 		<aside
 			id="run-details"
 			aria-label={title}
 			onKeyDown={onKeyDown}
-			className="flex h-full w-[380px] shrink-0 flex-col bg-surface-1 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
+			className={cn(
+				"relative flex flex-col bg-surface-1",
+				files.phone
+					? "min-h-0 flex-1"
+					: "h-full w-[380px] shrink-0 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
+			)}
 			data-testid="run-details"
 		>
 			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
@@ -148,26 +197,51 @@ export function RunDetailsPanel({
 						))}
 					</TabsPrimitive.List>
 				</div>
-				{(["summary", "evidence", "context"] as const).map((id) => (
+				{files.viewing && (
 					<TabsPrimitive.Content
-						key={id}
-						value={id}
-						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
-						data-testid={`run-details-${id}`}
+						value="evidence"
+						className="flex min-h-0 flex-1 flex-col"
+						data-testid="run-details-evidence"
 					>
-						<Sections
-							sections={
-								id === "summary"
-									? summary
-									: id === "evidence"
-										? evidence
-										: context
-							}
-							incidentId={incidentId}
+						<EvidenceFileView
+							key={`${files.viewing.sha}:${files.viewing.path}`}
+							runId={files.runId}
+							file={files.viewing}
+							onBack={files.onClose}
+							backLabel={files.backLabel}
+							phone={files.phone}
+							reads={files.reads}
 							onJump={onJump}
+							codeHost={files.codeHost}
 						/>
 					</TabsPrimitive.Content>
-				))}
+				)}
+				{(["summary", "evidence", "context"] as const)
+					.filter((id) => id !== "evidence" || !files.viewing)
+					.map((id) => (
+						<TabsPrimitive.Content
+							key={id}
+							value={id}
+							className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
+							data-testid={`run-details-${id}`}
+						>
+							{id === "summary" && summaryTop}
+							{id === "context" && contextTop}
+							<Sections
+								sections={
+									id === "summary"
+										? summary
+										: id === "evidence"
+											? evidence
+											: context
+								}
+								incidentId={incidentId}
+								onJump={onJump}
+								onOpenFile={files.onOpen}
+								onOpenHypotheses={files.onOpenHypotheses}
+							/>
+						</TabsPrimitive.Content>
+					))}
 				<TabsPrimitive.Content
 					value="steps"
 					className="flex min-h-0 flex-1 flex-col"
@@ -203,43 +277,69 @@ export function RunDetailsPanel({
 									: "No steps match."}
 							</li>
 						)}
-						{shown.map((s) => (
-							<li key={s.callId}>
-								<button
-									type="button"
-									onClick={() => onJump(s.n)}
-									className="flex w-full items-baseline gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
-									data-testid="steps-row"
-									data-step={s.n}
-								>
-									<span className="w-11 shrink-0 text-meta text-text-3">
-										Step {s.n}
-									</span>
-									<span className="flex min-w-0 flex-1 flex-col">
-										<span
-											className={cn(
-												"truncate",
-												s.ok === false ? "text-danger" : "text-text-1",
-											)}
-										>
-											{s.title}
+						{shown.map((s) => {
+							const file = files.stepFile(s);
+							const id = `steps-row-${s.n}`;
+							return (
+								<li key={s.callId}>
+									<button
+										type="button"
+										id={id}
+										// A step that read a file in the clone opens it; any other jumps to the step.
+										onClick={() =>
+											file ? files.onOpen(file, id) : onJump(s.n)
+										}
+										className="flex w-full items-baseline gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
+										data-testid="steps-row"
+										data-step={s.n}
+									>
+										<span className="w-11 shrink-0 text-meta text-text-3">
+											Step {s.n}
 										</span>
-										{s.title !== s.command && (
-											<span className="truncate font-mono text-mono text-text-3">
-												{s.command}
+										<span className="flex min-w-0 flex-1 flex-col">
+											<span
+												className={cn(
+													"truncate",
+													s.ok === false ? "text-danger" : "text-text-1",
+												)}
+											>
+												{s.title}
 											</span>
-										)}
-									</span>
-									<span className="shrink-0 text-meta text-text-3 tabular-nums">
-										{clock(s.at)}
-									</span>
-								</button>
-							</li>
-						))}
+											{s.title !== s.command && (
+												<span className="truncate font-mono text-mono text-text-3">
+													{s.command}
+												</span>
+											)}
+										</span>
+										<span className="shrink-0 text-meta text-text-3 tabular-nums">
+											{clock(s.at)}
+										</span>
+									</button>
+								</li>
+							);
+						})}
 					</ol>
 				</TabsPrimitive.Content>
 			</TabsPrimitive.Root>
 		</aside>
+	);
+	if (!files.phone) return aside;
+	// A phone has no room beside the page: the details cover it as a modal sheet.
+	// Its Esc closes once: the page's own Esc listener skips [role=dialog].
+	return (
+		<Sheet open onOpenChange={(open) => !open && onClose()}>
+			<SheetContent
+				side="bottom"
+				closeButton={false}
+				aria-describedby={undefined}
+				onCloseAutoFocus={(e) => e.preventDefault()}
+				className="top-0 flex flex-col gap-0 bg-surface-1 p-0"
+				data-testid="phone-sheet"
+			>
+				<SheetTitle className="sr-only">{title}</SheetTitle>
+				{aside}
+			</SheetContent>
+		</Sheet>
 	);
 }
 
@@ -255,10 +355,14 @@ function Sections({
 	sections,
 	incidentId,
 	onJump,
+	onOpenFile,
+	onOpenHypotheses,
 }: {
 	sections: DetailSection[];
 	incidentId: string;
 	onJump: (n: number) => void;
+	onOpenFile: OpenFile;
+	onOpenHypotheses: (origin: string) => void;
 }) {
 	return (
 		<div className="flex flex-col gap-4">
@@ -272,6 +376,9 @@ function Sections({
 							row={row}
 							incidentId={incidentId}
 							onJump={onJump}
+							onOpenFile={onOpenFile}
+							onOpenHypotheses={onOpenHypotheses}
+							origin={`cite-${sec.title}-${i}`.replace(/\W+/g, "-")}
 						/>
 					))}
 				</section>
@@ -284,10 +391,16 @@ function Row({
 	row,
 	incidentId,
 	onJump,
+	onOpenFile,
+	onOpenHypotheses,
+	origin,
 }: {
 	row: DetailRow;
 	incidentId: string;
 	onJump: (n: number) => void;
+	onOpenFile: OpenFile;
+	onOpenHypotheses: (origin: string) => void;
+	origin: string;
 }) {
 	return (
 		<div
@@ -316,6 +429,15 @@ function Row({
 				>
 					{row.text}
 				</span>
+				{row.flag && (
+					<span
+						className="inline-flex items-center gap-1 self-start rounded-full bg-warn/12 px-1.5 text-meta font-medium text-warn"
+						data-testid="detail-flag"
+					>
+						<TriangleAlert className="size-3" aria-hidden />
+						{row.flag}
+					</span>
+				)}
 				{row.sub && (
 					<span
 						dir="auto"
@@ -327,10 +449,33 @@ function Row({
 						{row.sub}
 					</span>
 				)}
-				{row.link && (
-					<LeaveLink link={row.link} incidentId={incidentId}>
+				{row.file && (
+					<button
+						type="button"
+						id={origin}
+						onClick={() => row.file && onOpenFile(row.file, origin)}
+						className="self-start rounded-control text-left font-mono text-mono text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current [overflow-wrap:anywhere]"
+						data-testid="detail-file"
+					>
+						{citationText(row.file)}
+					</button>
+				)}
+				{row.link?.kind === "hypotheses" ? (
+					<button
+						type="button"
+						id={origin}
+						onClick={() => onOpenHypotheses(origin)}
+						className="self-start rounded-control text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current"
+						data-testid="detail-hypotheses"
+					>
 						{row.action ?? "Open"}
-					</LeaveLink>
+					</button>
+				) : (
+					row.link && (
+						<LeaveLink link={row.link} incidentId={incidentId}>
+							{row.action ?? "Open"}
+						</LeaveLink>
+					)
 				)}
 			</span>
 			{row.step !== undefined && (
@@ -365,7 +510,7 @@ function LeaveLink({
 	incidentId,
 	children,
 }: {
-	link: DetailLink;
+	link: Exclude<DetailLink, { kind: "hypotheses" }>;
 	incidentId: string;
 	children: ReactNode;
 }) {
@@ -398,11 +543,185 @@ function LeaveLink({
 	return (
 		<Link
 			to="/settings"
-			search={{ tab: link.section === "agent" ? "harness" : "integrations" }}
+			search={{ tab: link.section }}
 			className={cls}
 			data-testid="detail-link"
 		>
 			{children}
 		</Link>
+	);
+}
+
+const STEP_TONE = {
+	ok: "bg-ok/15 text-ok",
+	warn: "bg-warn/15 text-warn",
+	neutral: "bg-surface-3 text-text-2",
+} as const;
+
+export interface RunOverviewStep {
+	name: "Snapshot" | "Code" | "Agent" | "Tools" | "Model";
+	text: string;
+	tone: keyof typeof STEP_TONE;
+}
+
+const STEP_ICON = {
+	Snapshot: Camera,
+	Code: GitBranch,
+	Agent: Bot,
+	Tools: Plug,
+	Model: CircleCheck,
+} as const;
+
+/** The five steps' short states, from the run's tools status (#848). */
+export function overviewSteps(o: {
+	snapshot: string;
+	code: string;
+	agent: string;
+	status: ToolsStatus;
+}): RunOverviewStep[] {
+	const s = o.status.state;
+	const tools: Pick<RunOverviewStep, "text" | "tone"> =
+		s === "reached" || s === "connected"
+			? { text: "Connected", tone: "ok" }
+			: s === "not-reached"
+				? { text: "Not connected", tone: "warn" }
+				: {
+						text:
+							s === "loading"
+								? "Loading"
+								: s === "error"
+									? "Did not load"
+									: s === "waiting"
+										? "Waiting"
+										: "Not recorded",
+						tone: "neutral",
+					};
+	const model: Pick<RunOverviewStep, "text" | "tone"> =
+		s === "reached"
+			? { text: "Used a tool", tone: "ok" }
+			: s === "connected"
+				? { text: "Not called yet", tone: "neutral" }
+				: s === "not-reached"
+					? { text: "Did not get them", tone: "warn" }
+					: tools;
+	return [
+		{ name: "Snapshot", text: o.snapshot, tone: "neutral" },
+		{ name: "Code", text: o.code, tone: "neutral" },
+		{ name: "Agent", text: o.agent, tone: "neutral" },
+		{ name: "Tools", ...tools },
+		{ name: "Model", ...model },
+	];
+}
+
+/**
+ * The Summary's head (#848): the five-step strip, then whether PrismaLens's
+ * tools reached the model, per turn a count per tool and the first time.
+ * Every later call time stays in the logs.
+ */
+export function RunOverview({
+	steps,
+	status,
+	turns,
+	hint,
+}: {
+	steps: RunOverviewStep[];
+	status: ToolsStatus;
+	turns: TurnTools[];
+	/** The agent's own line when the tools did not reach it, and the folder to trust. */
+	hint?: { text: string; folder: string | null } | null;
+}) {
+	return (
+		<div className="mb-4 flex flex-col gap-4" data-testid="run-overview">
+			<ol className="grid grid-cols-5 gap-1" aria-label="Run steps">
+				{steps.map((st) => {
+					const Icon = STEP_ICON[st.name];
+					return (
+						<li
+							key={st.name}
+							className="flex min-w-0 flex-col items-start gap-1"
+							data-testid={`run-step-${st.name.toLowerCase()}`}
+						>
+							<span
+								className={cn(
+									"grid size-6 place-items-center rounded-full",
+									STEP_TONE[st.tone],
+								)}
+								aria-hidden
+							>
+								<Icon className="size-3.5" />
+							</span>
+							<span className="text-meta font-semibold">{st.name}</span>
+							<span className="line-clamp-2 text-meta text-text-2 [overflow-wrap:anywhere]">
+								{st.text}
+							</span>
+						</li>
+					);
+				})}
+			</ol>
+			<RunToolsSection status={status} turns={turns} hint={hint} />
+		</div>
+	);
+}
+
+/** Whether PrismaLens's tools reached the agent, per turn, and what to do when they did not. */
+export function RunToolsSection({
+	status,
+	turns,
+	hint,
+}: {
+	status: ToolsStatus;
+	turns: TurnTools[];
+	/** The agent's own line when the tools did not reach it, and the folder to trust. */
+	hint?: { text: string; folder: string | null } | null;
+}) {
+	return (
+		<section className="flex flex-col gap-1.5" aria-label="PrismaLens tools">
+			<h3 className="text-meta font-semibold text-text-2">PrismaLens tools</h3>
+			<p
+				className={cn(
+					status.state === "not-reached" ? "text-warn" : "text-text-1",
+					status.state === "loading" && "text-text-3",
+				)}
+				role="status"
+				data-testid="run-tools-status"
+			>
+				{toolsWord(status)}
+			</p>
+			{status.state === "not-reached" && hint && (
+				<div className="flex flex-col gap-1.5" data-testid="run-tools-hint">
+					<p className="text-meta text-text-2">{hint.text}</p>
+					{hint.folder && <CommandChip command={hint.folder} />}
+				</div>
+			)}
+			{turns.map((t) => (
+				<div
+					key={t.turn}
+					className="flex flex-col gap-1"
+					data-testid={`run-tools-turn-${t.turn}`}
+				>
+					<span className="text-meta font-medium">
+						{t.turn === "first" ? "First turn" : "Follow-up"}
+					</span>
+					<span className="text-meta text-text-2 tabular-nums">
+						{turnLine(t)}
+					</span>
+					{t.calls.length > 0 && (
+						<span className="flex flex-wrap gap-1">
+							{t.calls.map((c) => (
+								<span
+									key={c.name}
+									className="inline-flex h-[22px] items-center gap-1 rounded-control bg-surface-3 px-2 font-mono text-mono"
+								>
+									{c.name}
+									{c.count > 1 && (
+										<span className="text-text-2">×{c.count}</span>
+									)}
+								</span>
+							))}
+						</span>
+					)}
+				</div>
+			))}
+		</section>
 	);
 }

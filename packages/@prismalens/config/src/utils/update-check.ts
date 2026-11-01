@@ -138,7 +138,7 @@ export async function fetchLatestVersion(
 }
 
 /**
- * True once `v<version>`'s `SHA256SUMS` is attached, which standalone.yml does
+ * True once `v<version>`'s `SHA256SUMS` is attached, which build-standalone-cli.yml does
  * about 20 minutes after the release publishes. A 302 means the asset exists.
  */
 export async function releaseReady(

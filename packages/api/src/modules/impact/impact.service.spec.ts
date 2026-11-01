@@ -26,7 +26,7 @@ const { ImpactService, SERIES_LIMIT } = await import("./impact.service.js");
 type Json = Record<string, unknown>;
 interface Fake {
 	rules: (name: string) => Json[];
-	range: (query: string) => Json[] | "slow" | "huge";
+	range: (query: string) => Json[] | "slow" | "huge" | "garbled";
 	instant: (query: string, params: URLSearchParams) => Json[];
 }
 
@@ -64,6 +64,7 @@ describe("ImpactService", () => {
 			if (url.pathname.endsWith("/api/v1/query_range")) {
 				const out = fake.range(q);
 				if (out === "slow") return void (await new Promise((r) => setTimeout(r, 2000)));
+				if (out === "garbled") return void res.writeHead(200).end("sentinel-credential {");
 				if (out === "huge")
 					return send(res, { result: [{ metric: { pad: "x".repeat(3 * 1024 * 1024) }, values: [] }] });
 				return send(res, { resultType: "matrix", result: out });
@@ -137,7 +138,10 @@ describe("ImpactService", () => {
 					? [{ templateId: "prometheus", connectionId, label: "prom", baseUrl, segments: ["metrics"] }]
 					: [],
 		};
-		const integrations = { baseUrlOf: () => baseUrl };
+		const integrations = {
+		baseUrlOf: () => baseUrl,
+		sourceCredential: async () => ({ ok: true, credential: { kind: "none" } }),
+	};
 		impact = new ImpactService(
 			prisma,
 			connectors as never,
@@ -308,6 +312,15 @@ describe("ImpactService", () => {
 			expect(await impact.chart(incidentId)).toMatchObject({ state: "too_broad", series: [] });
 		});
 
+		it("names a 200 body that is not JSON by category, never by the parser's quote of it (#848)", async () => {
+			fake.range = () => "garbled";
+			const { incidentId } = await incidentWith({});
+			const chart = await impact.chart(incidentId);
+			expect(chart).toMatchObject({ state: "error", series: [] });
+			expect(chart?.error).toBeTruthy();
+			expect(JSON.stringify(chart)).not.toContain("sentinel");
+		});
+
 		it("times out at the one deadline", async () => {
 			impact.deadlineMs = 300;
 			fake.range = () => "slow";
@@ -403,7 +416,7 @@ describe("ImpactService", () => {
 			const broken = new ImpactService(
 				prisma,
 				{ resolve: async () => [{ templateId: "prometheus", connectionId, label: "p", baseUrl: "http://127.0.0.1:1", segments: [] }] } as never,
-				{ baseUrlOf: () => null } as never,
+				{ baseUrlOf: () => null, sourceCredential: async () => ({ ok: true, credential: { kind: "none" } }) } as never,
 				new ChangeEventsService(prisma, {} as never, {} as never),
 			);
 			expect(await broken.check(incidentId)).toMatchObject({

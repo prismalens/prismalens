@@ -33,8 +33,14 @@ export {
 	TokenVault,
 	urlOnlyRequestFn,
 } from "./engine/index.js";
+// Ports: tool and credential (#848)
+export * from "./port/index.js";
 // Providers — deployment
-export type { DeploymentProvider } from "./providers/deployment.interface.js";
+export type {
+	DeploymentEvent,
+	DeploymentProvider,
+	DeploymentWindow,
+} from "./providers/deployment.interface.js";
 // Providers — git
 export type {
 	GitProvider,
@@ -44,7 +50,9 @@ export type {
 export {
 	adapterSegments,
 	createAdapter,
+	findDeploymentAdapterForHost,
 	GitHubAdapter,
+	GitHubDeploymentsSegment,
 	GitHubVcsSegment,
 	getAdapter,
 	getAdapterSegments,
@@ -55,6 +63,7 @@ export {
 	PrometheusMetricsSegment,
 	RenderAdapter,
 	RenderDeploymentSegment,
+	registerAdapter,
 	templatesForSegment,
 } from "./providers/index.js";
 // Providers — metrics (#633)
@@ -84,6 +93,7 @@ export {
 	githubToken,
 	isLegacyTemplateId,
 	LEGACY_TEMPLATE_IDS,
+	loki,
 	prometheus,
 	render,
 } from "./templates/index.js";

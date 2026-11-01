@@ -4,7 +4,7 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInvestigationStream } from "./use-investigation-stream";
 
 class MockNode {
@@ -169,8 +169,10 @@ class MockEventSource {
 		this.readyState = 2;
 	}
 
+	/** One SSE message, then the frame that applies it (#874). */
 	emitMessage(data: unknown) {
 		this.onmessage?.({ data: JSON.stringify(data) });
+		vi.advanceTimersToNextFrame();
 	}
 
 	emitError() {
@@ -206,6 +208,14 @@ describe("useInvestigationStream", () => {
 	let container: MockElement;
 
 	beforeEach(() => {
+		vi.useFakeTimers({
+			toFake: [
+				"requestAnimationFrame",
+				"cancelAnimationFrame",
+				"setTimeout",
+				"clearTimeout",
+			],
+		});
 		MockEventSource.instances = [];
 		doc = setupDOM();
 		container = doc.createElement("div");
@@ -213,6 +223,7 @@ describe("useInvestigationStream", () => {
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		doc.body.removeChild(container);
 	});
 
@@ -422,7 +433,7 @@ describe("useInvestigationStream", () => {
 		});
 	});
 
-	it("transitions status to failed even if the canonical error event was evicted past MAX_EVENTS", async () => {
+	it("transitions status to failed when the canonical error event came long before done", async () => {
 		let latestHookState: ReturnType<typeof useInvestigationStream> | undefined;
 
 		function TestComponent({
@@ -463,7 +474,7 @@ describe("useInvestigationStream", () => {
 		});
 		expect(latestHookState?.status).toBe("streaming");
 
-		// 2. Deliver 205 subsequent steps to exceed MAX_EVENTS (200) and evict the error event
+		// 2. Deliver 205 subsequent steps: the stream keeps every one, since history is not re-read (#874)
 		for (let i = 1; i <= 205; i++) {
 			await act(async () => {
 				source.emitMessage({
@@ -480,11 +491,7 @@ describe("useInvestigationStream", () => {
 			});
 		}
 
-		// Verify that events array is capped at 200 and error event has been evicted from state
-		expect(latestHookState?.events).toHaveLength(200);
-		expect(
-			latestHookState?.events.some((e) => e.kind === "error"),
-		).toBe(false);
+		expect(latestHookState?.events).toHaveLength(206);
 
 		// 3. Deliver done marker
 		await act(async () => {

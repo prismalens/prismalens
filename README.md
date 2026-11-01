@@ -30,8 +30,8 @@ PrismaLens never calls a model itself. Before you run it on your machine, read
 
 ## Quick start
 
-You need git and a coding agent on PATH; `pl doctor` lists the agents
-PrismaLens knows and how to install each.
+You need git and a coding agent; Settings → Agent in the app lists the ones
+that can run, and Add agent sets one up.
 
 ```bash
 npm install -g prismalens   # needs Node.js 24+
@@ -55,8 +55,8 @@ Windows, Homebrew, Scoop and the desktop app (all preview) are on
 - It opens your browser on a one-time link that pairs it, and prints the link.
   The link works once, for 15 minutes. There is no account: every browser
   pairs, this machine's included.
-- With no coding agent on PATH it says so. The app runs, but Investigate stays
-  off until one is installed.
+- With no coding agent that can run, it says so. The app runs, but Investigate
+  stays off until one can; add or fix one in Settings → Agent.
 - It prints a usage-data notice. PrismaLens counts feature use under a random
   install id, never an alert, code, a repo or a report. Nothing is sent before
   the next start; turn it off in Settings, or with `PRISMALENS_TELEMETRY=off`
@@ -64,19 +64,17 @@ Windows, Homebrew, Scoop and the desktop app (all preview) are on
 - Once a day it checks GitHub Releases for a newer version and prints one line
   (`PRISMALENS_UPDATE_CHECK=off` turns that off).
 
-`pl doctor` opens an ACP handshake with each agent on PATH and reports whether
-it answers, or why not. An answer is not proof of sign-in: Claude Code checks
-its sign-in only when a run starts, so the doctor warns rather than passing it.
-For OpenCode it names the model OpenCode serves when Settings → Agent sets
-none; with no provider signed in, that is an OpenCode Zen model.
+`pl doctor` checks PrismaLens's own setup (Node, the workspace, Git, the
+webhook URL and port), never a coding agent; Settings → Agent does that.
 
 ### Your first investigation
 
 - **On your own service.** In the dashboard, Services, then New service, with
   **Repository** set to a folder or a git URL. Then Incidents, New incident,
   pick the service and click **Investigate**. The agent works in a throwaway
-  clone of the repository's last commit: your checkout is never its working
-  directory, and uncommitted changes are not read. A run you start uses **Ask
+  git worktree of a folder, or a clone of a URL, at the repository's last
+  commit: your checkout is never its working directory, and uncommitted
+  changes are not read. A run you start uses **Ask
   always** unless Settings or the agent's own config sets another level. Reads
   and searches run, and a request to switch the agent's mode is denied, so the
   run keeps its mode; every other action the agent asks about waits for your
@@ -115,17 +113,26 @@ what changed:
 ## How it works
 
 - **One run, no model call.** An investigation is one coding-agent session in a
-  clone of the service's repo, driven over the Agent Client Protocol (ACP).
+  snapshot of the service's repo, driven over the Agent Client Protocol (ACP).
   PrismaLens assembles the prompt, routes the agent's permission requests,
   records the stream and validates the report.
 - **Your agent, its own sign-in.** Any ACP agent PrismaLens knows can run;
-  with none pinned, the first one on PATH runs, and Settings → Agent picks
-  another. PrismaLens never reads or stores the agent's login or API key.
+  with none pinned, the first one in the automatic order that can run is used,
+  and Settings → Agent picks another. PrismaLens never takes over the agent's own sign-in;
+  it stores only an API key you enter in Add agent, encrypted and never shown again.
 - **Four permission levels.** Ask always, Auto-accept edits, Auto and Full
   access each pick the agent's own mode and decide which of its requests wait
   for you. A run an alert starts waits for nobody: it runs at Auto and refuses
   anything the agent asks. PrismaLens adds no sandbox: the agent runs as your
-  user, with an allowlisted environment.
+  user.
+- **Your environment, minus PrismaLens's secrets.** The agent gets the
+  environment your terminal has, GitHub tokens included, so its own `gh` and
+  `git` work. PrismaLens removes only its own secrets: every `PRISMALENS_*`
+  variable and the telemetry tokens it reads (`PROMETHEUS_TOKEN`,
+  `ALERTMANAGER_TOKEN`, `LOKI_TOKEN`); its saved git connections never reach
+  the agent. Settings → Agent → **Only pass named variables** switches to strict
+  mode: the basics (`PATH`, home, locale, proxy and certificates), the agent's
+  own provider keys and the variables you set on it.
 - **Every run is durable.** Events, session metadata and the report are written
   to `~/.prismalens/runs/<runId>/`, and the report exports as Markdown.
 
@@ -144,11 +151,15 @@ else, from configuration to commands, is on
 | `packages/desktop` | The desktop app (preview): an Electron window on the same server. |
 | `packages/@prismalens/engine` | The investigation run: ACP session, permission asks, report validation. |
 | `packages/@prismalens/agent-adapters` | The ACP adapters shipped for agents that don't speak ACP themselves. |
+| `packages/@prismalens/agent-host` | How PrismaLens and Assayer launch an agent: registry, levels, env, workspaces, readiness probe. |
 | `packages/@prismalens/*` | Shared contracts, config, auth, database, integrations and logger. |
 
-Only `packages/cli` is published to npm; the other packages travel inside its
-tarball, except the desktop app, which is released as its own zips. For
-development, see [CONTRIBUTING.md](CONTRIBUTING.md).
+`packages/cli` is published to npm as `prismalens`, and the other packages travel
+inside its tarball, except the desktop app, which is released as its own zips.
+`@prismalens/agent-adapters` and `@prismalens/agent-host` are published to npm on
+their own, by hand (the `Publish agent adapters` and `Publish agent host` workflows),
+so other tools can depend on the same pinned adapters and launch code. For development, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links
 

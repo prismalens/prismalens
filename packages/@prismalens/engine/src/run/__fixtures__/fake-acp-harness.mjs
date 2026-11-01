@@ -18,6 +18,9 @@
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
+// FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_ADDITIONAL_DIRS=1 advertises sessionCapabilities.additionalDirectories.
+// FAKE_MCP_HTTP=1 advertises mcpCapabilities.http, so a run offers it the gateway.
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 // Access levels (#673 w21): FAKE_PROFILE=claude offers default, acceptEdits, auto, bypassPermissions
@@ -29,7 +32,10 @@
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 // FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
-import { writeFileSync } from "node:fs";
+// FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
+// tool call whose output is the file's text, as an agent reading the pre-run copies would.
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
@@ -235,6 +241,30 @@ async function turn(sessionId, promptText) {
 				],
 			});
 		}
+		const readDir = process.env.FAKE_READ_DIR;
+		const files = readDir
+			? readdirSync(join(cwd, readDir), {
+					recursive: true,
+					withFileTypes: true,
+				})
+					.filter((e) => e.isFile())
+					.map((e) => join(e.parentPath, e.name))
+			: [];
+		for (const [i, file] of files.entries())
+			notify(sessionId, {
+				sessionUpdate: "tool_call",
+				toolCallId: `t_read${i}`,
+				title: `Read ${file}`,
+				kind: "read",
+				status: "completed",
+				rawInput: { path: file },
+				content: [
+					{
+						type: "content",
+						content: { type: "text", text: readFileSync(file, "utf8") },
+					},
+				],
+			});
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
 			content: {
@@ -403,6 +433,16 @@ async function turn(sessionId, promptText) {
 		await cancelled();
 		return { stopReason: "cancelled" };
 	}
+	// FAKE_RETRY_GATE: the repair turn signals live and waits for release.
+	if (
+		process.env.FAKE_RETRY_GATE &&
+		promptText.startsWith("Your final message did not")
+	) {
+		writeFileSync(`${process.env.FAKE_RETRY_GATE}.ready`, "ready");
+		while (!existsSync(`${process.env.FAKE_RETRY_GATE}.release`)) {
+			await new Promise((r) => setTimeout(r, 10));
+		}
+	}
 	// FAKE_REPORT_THEN_WAIT_CANCEL: a valid report is already in the turn when Stop lands,
 	// and the agent still ends the turn as end_turn (#673 w59).
 	// The value is a file written once the report is sent, so the test stops after it.
@@ -422,6 +462,13 @@ async function turn(sessionId, promptText) {
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
 			content: { type: "text", text: `Heard: ${promptText}\n` },
+		});
+	if (process.env.FAKE_USAGE)
+		notify(sessionId, {
+			sessionUpdate: "usage_update",
+			used: 182000,
+			size: 440000,
+			cost: { amount: 1.25, currency: "USD" },
 		});
 	const valid =
 		mode === "ok" ||
@@ -473,6 +520,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 						: {}),
 					...(process.env.FAKE_AUTH_STATUS
 						? { _meta: { authStatus: {} } }
+						: {}),
+					...(process.env.FAKE_ADDITIONAL_DIRS
+						? { sessionCapabilities: { additionalDirectories: {} } }
+						: {}),
+					...(process.env.FAKE_MCP_HTTP
+						? { mcpCapabilities: { http: true } }
 						: {}),
 				},
 				...(mode === "auth-required"

@@ -6,8 +6,10 @@ import type {
 	InvestigationReport,
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
+import type { FileAt } from "@/lib/evidence-files";
 import type { OperatorState, TranscriptItem } from "@/lib/investigation-events";
 import { commandText } from "@/lib/report-view";
+import { skippedWord } from "./RunTools";
 import { shortCredential } from "./run-labels";
 import type { RunStep } from "./run-steps";
 
@@ -16,8 +18,10 @@ export type DetailTone = "ok" | "live" | "warn" | "danger";
 /** Where a row's link leaves for; a step jump stays on the page. */
 export type DetailLink =
 	| { kind: "overview" }
+	/** In-page: opens the hypotheses card's larger preview. */
+	| { kind: "hypotheses" }
 	| { kind: "run"; id: string }
-	| { kind: "settings"; section: "agent" | "integrations" };
+	| { kind: "settings"; section: "agent" | "sources" };
 
 export interface DetailRow {
 	label?: string;
@@ -28,10 +32,14 @@ export interface DetailRow {
 	strong?: boolean;
 	/** A flagged item sits on the danger tint. */
 	box?: "danger";
+	/** A short warning word beside the text, as "Fell back" (#848). */
+	flag?: string;
 	/** In-page: opens and highlights step N in the transcript. */
 	step?: number;
 	/** Where an item with no step came from, shown in the step's place. */
 	from?: string;
+	/** A file the item cites, opened read-only at the run's commit. */
+	file?: FileAt;
 	/** Navigates away, named by `action` or by the row's own text. */
 	link?: DetailLink;
 	action?: string;
@@ -50,6 +58,10 @@ export interface SummaryFacts {
 	agent: string | null;
 	model: { text: string; sub?: string; warn: boolean } | null;
 	effort: string | null;
+	usage?: {
+		row: { text: string; sub: string };
+		cost: { text: string; sub: string } | null;
+	} | null;
 	access: { text: string; sub: string } | null;
 	chat: boolean;
 }
@@ -95,6 +107,10 @@ export function summarySections(
 			sub: facts.model.sub,
 		});
 	if (facts.effort) used.push({ label: "Effort", text: facts.effort });
+	if (facts.usage) {
+		used.push({ label: "Usage", ...facts.usage.row });
+		if (facts.usage.cost) used.push({ label: "Cost", ...facts.usage.cost });
+	}
 	if (facts.access)
 		used.push({
 			label: "Access",
@@ -117,21 +133,31 @@ export function summarySections(
 }
 
 function codeRows(inv: InvestigationWithRelations): DetailRow[] {
-	return (inv.workspace?.repos ?? []).map((r) => {
-		const c = r.credential;
-		const how = c
-			? c.source === "none"
-				? `Cloned without a credential (${shortCredential(c)}) from ${r.url}.`
-				: `Cloned with ${c.label} from ${r.url}.`
-			: `From ${r.url}.`;
-		const maps = r.services.length ? ` Maps to ${r.services.join(", ")}.` : "";
-		return {
-			label: r.name,
-			text: `${r.branch ?? "HEAD"} at ${r.head.slice(0, 7)}`,
-			mono: true,
-			sub: `${how}${maps}`,
-		};
-	});
+	const skipped = (inv.preRun?.checkoutsSkipped ?? []).map(
+		(s): DetailRow => ({ label: s.repo, text: skippedWord(s), tone: "warn" }),
+	);
+	return [
+		...(inv.workspace?.repos ?? []).map((r) => {
+			const c = r.credential;
+			const how = c
+				? c.source === "none"
+					? `Cloned without a credential (${shortCredential(c)}) from ${r.url}.`
+					: `Cloned with ${c.label} from ${r.url}.`
+				: `From ${r.url}.`;
+			const maps = r.services.length
+				? ` Maps to ${r.services.join(", ")}.`
+				: "";
+			return {
+				label: r.name,
+				text: `${r.branch ?? "HEAD"} at ${r.head.slice(0, 7)}`,
+				mono: true,
+				sub: `${how}${maps}`,
+				// The next credential in the order was used; which and why stay in pl doctor (#848).
+				...(c?.fallbackFrom ? { flag: "Fell back" } : {}),
+			};
+		}),
+		...skipped,
+	];
 }
 
 /** Which step an evidence item came from, if any. */
@@ -142,16 +168,31 @@ export type StepOf = (
 /** The prompt's ALERT_PAYLOAD block, cited by name; "alert" alone is not provenance (#834 review). */
 const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
 
-function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
+/** The file an evidence item cites, at the run's commit; null when it names none. */
+export type FileOf = (source: string) => FileAt | null;
+
+/** One evidence item as a row: its step, its file, or where it came from. */
+export function evidenceRow(
+	e: Evidence,
+	steps: StepOf,
+	fileOf?: FileOf,
+): DetailRow {
 	const step = steps(e);
+	const file = fileOf?.(e.source) ?? null;
 	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
 	return {
 		text: e.observation,
-		sub:
-			e.status === "inferred"
-				? `Inferred from ${e.source}`
-				: commandText(e.source),
+		// A bare path says no more than its link; a command (`git show …`) still does.
+		...(file && e.status !== "inferred" && !/\s/.test(e.source.trim())
+			? {}
+			: {
+					sub:
+						e.status === "inferred"
+							? `Inferred from ${e.source}`
+							: commandText(e.source),
+				}),
 		...(step ? { step } : {}),
+		...(file ? { file } : {}),
 		// No step ran for it; say where it came from in the step's place (#831 w6-18).
 		...(alert ? { from: "From the alert" } : {}),
 	};
@@ -165,7 +206,11 @@ function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 export function evidenceSections(
 	inv: InvestigationWithRelations,
 	steps: StepOf,
-	opts: { live: boolean; standing: { runId: string; name: string } | null },
+	opts: {
+		live: boolean;
+		standing: { runId: string; name: string } | null;
+		fileOf?: FileOf;
+	},
 ): DetailSection[] {
 	const report = inv.report;
 	if (!report) {
@@ -185,14 +230,31 @@ export function evidenceSections(
 			});
 		return [{ title: opts.live ? "So far" : "No report", rows }];
 	}
-	return reportSections(report, steps);
+	return reportSections(report, steps, opts.fileOf);
 }
+
+/** `6 hypotheses`, `1 hypothesis`. */
+export const hypothesesWord = (n: number) =>
+	n === 1 ? "1 hypothesis" : `${n} hypotheses`;
 
 function reportSections(
 	report: InvestigationReport,
 	steps: StepOf,
+	fileOf?: FileOf,
 ): DetailSection[] {
 	const out: DetailSection[] = [];
+	// The drawing's home is the conversation; Evidence keeps one line to it.
+	if (report.hypotheses.length)
+		out.push({
+			title: "Hypotheses",
+			rows: [
+				{
+					text: `${hypothesesWord(report.hypotheses.length)}, drawn under the report in the conversation.`,
+					link: { kind: "hypotheses" },
+					action: "Open the drawing",
+				},
+			],
+		});
 	const [top, ...others] = report.hypotheses.filter(
 		(h) => h.status !== "refuted",
 	);
@@ -205,7 +267,7 @@ function reportSections(
 				{ text: report.rootCause ?? top.statement, strong: true },
 				...top.evidence
 					.filter((e) => e.direction === "supports")
-					.map((e) => evidenceRow(e, steps)),
+					.map((e) => evidenceRow(e, steps, fileOf)),
 			],
 		});
 	else
@@ -254,7 +316,7 @@ function reportSections(
 				...report.coverage.notQueried.map((text) => ({ text })),
 				{
 					text: "A source the agent could not reach can be connected in Settings.",
-					link: { kind: "settings", section: "integrations" },
+					link: { kind: "settings", section: "sources" },
 					action: "Connect a source",
 				},
 			],

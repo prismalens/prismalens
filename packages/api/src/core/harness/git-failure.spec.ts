@@ -9,6 +9,10 @@ import {
 	scrubGitStderr,
 } from "./git-failure.js";
 
+// A quadratic scan on these inputs takes minutes, so a loose ceiling still catches it;
+// a tight one fails on a loaded shared runner (#885 - CI hygiene).
+const TIMING_CEILING_MS = 5_000;
+
 describe("git-failure", () => {
 	it("GitFailure is an instance of Error with typed properties", () => {
 		const failure = new GitFailure(
@@ -34,6 +38,98 @@ describe("git-failure", () => {
 		expect(scrubbed).not.toContain("user:password");
 		expect(scrubbed).toContain("Authorization: ***");
 		expect(scrubbed).toContain("https://***@github.com/org/repo.git");
+	});
+
+	it("scrubs and classifies 16 MiB of repeated a:// in under 5 s (#848)", () => {
+		const stderr = "a://".repeat(4 * 1024 * 1024);
+		const started = performance.now();
+		scrubGitStderr(stderr);
+		diagnoseGitFailure({
+			stderr,
+			credential: { source: "machine", label: "machine git", via: "machine" },
+			host: "git.example",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(performance.now() - started).toBeLessThan(TIMING_CEILING_MS);
+	});
+
+	it("a token rejection after 1 MiB of progress is still token-rejected: the tail is scanned (#938)", () => {
+		const progress = "remote: Counting objects: 42% (420/1000)\r".repeat(25_000);
+		const failure = diagnoseGitFailure({
+			stderr: `${progress}\nfatal: Authentication failed for 'https://github.com/acme/api.git/'\n`,
+			credential: { source: "connection", label: "token A", via: "git-host-token" },
+			host: "github.com",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(failure.code).toBe("token-rejected");
+	});
+
+	it("the head and the tail are scrubbed, and the cut never leaves part of a header (#938)", () => {
+		const header = "Authorization: Basic SECRETHEAD\n";
+		const tailHeader = "\nAuthorization: Basic SECRETTAIL\n";
+		const scrubbed = scrubGitStderr(`${header}${"x".repeat(1024 * 1024)}${tailHeader}`);
+		expect(scrubbed.length).toBeLessThanOrEqual(64 * 1024);
+		expect(scrubbed).not.toMatch(/SECRET/);
+	});
+
+	it("a last line longer than the tail window keeps its start, and no partial token (#938)", () => {
+		const failure = diagnoseGitFailure({
+			stderr: `${"remote: progress\r".repeat(10_000)}fatal: Authentication failed for 'https://github.com/${"a".repeat(40_000)}'\n`,
+			credential: { source: "connection", label: "token A", via: "git-host-token" },
+			host: "github.com",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(failure.code).toBe("token-rejected");
+		expect(failure.stderr?.length).toBeLessThanOrEqual(64 * 1024);
+		expect(failure.stderr).not.toMatch(/a{100}/);
+	});
+
+	it.each([
+		[
+			"a 403 reason after a 40 KB address",
+			`fatal: unable to access 'https://github.com/${"a".repeat(40_000)}': The requested URL returned error: 403\n`,
+			"no-access",
+		],
+		[
+			"a not-found suffix after a 40 KB address",
+			`fatal: repository 'https://github.com/${"a".repeat(40_000)}' not found\n`,
+			"no-access",
+		],
+		[
+			"a 403 reason after a long line of short words",
+			`fatal: unable to access ${"ab ".repeat(30_000)}: The requested URL returned error: 403\n`,
+			"no-access",
+		],
+	])("a last line over the window still classifies by its end: %s (#938)", (_n, last, code) => {
+		const failure = diagnoseGitFailure({
+			stderr: `${"remote: progress\r".repeat(10_000)}${last}`,
+			credential: { source: "connection", label: "token A", via: "git-host-token" },
+			host: "github.com",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(failure.code).toBe(code);
+		expect(failure.stderr?.length).toBeLessThanOrEqual(64 * 1024);
+	});
+
+	it.each([
+		["Authorization headers", "Authorization:".repeat(1_200_000)],
+		["repository-not-found lines", "repository '".repeat(1_400_000)],
+	])("16 MiB of %s scrubs and classifies in under 5 s: the cap holds (#938)", (_name, stderr) => {
+		const started = performance.now();
+		const scrubbed = scrubGitStderr(stderr);
+		diagnoseGitFailure({
+			stderr,
+			credential: { source: "machine", label: "machine git", via: "machine" },
+			host: "git.example",
+			repo: "acme/api",
+			sshAuthSockSet: false,
+		});
+		expect(performance.now() - started).toBeLessThan(TIMING_CEILING_MS);
+		expect(scrubbed.length).toBeLessThanOrEqual(64 * 1024);
 	});
 
 	it("formatDay formats Date to YYYY-MM-DD", () => {
@@ -62,7 +158,7 @@ describe("git-failure", () => {
 			expect(res.code).toBe("token-expired");
 			expect(res.action).toBe("replace-token");
 			expect(res.message).toBe(
-				'Token "A" expired on 2026-10-01. Replace it in Settings → Integrations.',
+				'Token "A" expired on 2026-10-01. Replace it in Settings → Sources.',
 			);
 		});
 
@@ -211,7 +307,7 @@ describe("git-failure", () => {
 			expect(resNone.code).toBe("no-credential");
 			expect(resNone.action).toBe("add-credential");
 			expect(resNone.message).toBe(
-				"No credential for github.com. Add a Git host token in Settings → Integrations, or sign your machine's git in to github.com.",
+				"No credential for github.com. Add a Git host token in Settings → Sources, or sign your machine's git in to github.com.",
 			);
 
 			const resMachine = diagnoseGitFailure({
@@ -385,8 +481,24 @@ describe("git-failure", () => {
 					now,
 				});
 				expect(res.code).toBe("unreachable");
-				expect(res.message).toMatch(/^Could not reach example\.com: /);
+				expect(res.message).toBe("Could not reach example.com.");
 			}
+		});
+
+		it("carries fixed text, never a URL or its query (#848)", () => {
+			const stderr =
+				"fatal: unable to access 'https://gitlab.com/org/repo.git?api_key=sentinel/': The requested URL returned error: 500";
+			const res = diagnoseGitFailure({
+				stderr,
+				credential: { source: "none", label: "public", via: "none" },
+				host: "gitlab.com",
+				repo: "org/repo",
+				sshAuthSockSet: true,
+				now,
+			});
+			expect(res.code).toBe("other");
+			expect(res.message).toBe("git could not read org/repo on gitlab.com.");
+			expect(res.message).not.toContain("sentinel");
 		});
 
 		it("classifies other on unexpected stderr", () => {
@@ -404,7 +516,7 @@ describe("git-failure", () => {
 				now,
 			});
 			expect(res.code).toBe("other");
-			expect(res.message).toBe("fatal: some internal git error occurred");
+			expect(res.message).toBe("git could not read acme/repo on example.com.");
 		});
 	});
 });

@@ -1,6 +1,6 @@
 {
 	"name": "@prismalens/desktop",
-	"version": "0.5.2",
+	"version": "0.5.3",
 	"private": true,
 	"author": {
 		"name": "PrismaLens",
@@ -30,8 +30,8 @@
 		"@electron/asar": "4.3.1",
 		"@types/node": "catalog:",
 		"concurrently": "^10.0.6",
-		"electron": "44.9.0",
-		"electron-builder": "^26.15.3",
+		"electron": "45.1.0",
+		"electron-builder": "^26.18.0",
 		"electronmon": "^2.0.4",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

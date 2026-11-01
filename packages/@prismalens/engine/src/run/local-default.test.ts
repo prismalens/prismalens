@@ -220,14 +220,20 @@ approval_policy = "on-request"
 				value: "default",
 			});
 
-			// auto_edit -> level null with reason
+			// auto_edit and yolo map to their levels; trust is the user's own (#817, #907)
 			write(settingsFile, JSON.stringify({ general: { defaultApprovalMode: "auto_edit" } }));
 			const resAutoEdit = localDefault("gemini", { HOME: home }, { geminiSystemFile: null });
 			expect(resAutoEdit.permission).toEqual({
-				level: null,
+				level: "auto-edits",
 				file: "~/.gemini/settings.json",
 				value: "auto_edit",
-				reason: "Gemini CLI runs the copy untrusted here",
+			});
+			write(settingsFile, JSON.stringify({ general: { defaultApprovalMode: "yolo" } }));
+			const resYolo = localDefault("gemini", { HOME: home }, { geminiSystemFile: null });
+			expect(resYolo.permission).toEqual({
+				level: "full-access",
+				file: "~/.gemini/settings.json",
+				value: "yolo",
 			});
 
 			// plan

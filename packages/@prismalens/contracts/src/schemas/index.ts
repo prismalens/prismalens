@@ -13,6 +13,7 @@ export * from "./common.js";
 // The PRE-dispatch context pack (ADR-0016 §5) — not ./overlay.js's post-report object.
 export * from "./context-pack.js";
 export * from "./event.js";
+export * from "./evidence-blob.js";
 export * from "./impact.js";
 export * from "./incident.js";
 export * from "./incident-similarity.js";
@@ -21,10 +22,13 @@ export * from "./investigation.js";
 export * from "./overlay.js";
 export * from "./recommendation.js";
 export * from "./repository.js";
+export * from "./run-workspace.js";
 export * from "./safe-url.js";
 // Entity schemas
 export * from "./service.js";
 export * from "./settings.js";
+export * from "./source-credential.js";
+export * from "./source-type.js";
 export * from "./state-labels.js";
 export * from "./state-semantics.js";
 export * from "./timeline.js";

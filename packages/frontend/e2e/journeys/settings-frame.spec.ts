@@ -19,32 +19,34 @@ test.describe("#523 — the settings frame", () => {
 			timeout: 15_000,
 		});
 
-		// 1. The sidebar is the section list now, with Back above it (study-v3 §2)
+		// 1. The sidebar is the page list now, flat, with Back at its foot (#848)
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar.getByTestId("settings-back")).toBeVisible();
 		await expect(sidebar.getByTestId("nav-incidents")).toHaveCount(0);
 		const sections = sidebar.getByTestId("settings-sections");
 		for (const [tab, label] of [
-			["harness", "Agent"],
-			["sources", "Alert sources"],
-			["integrations", "Integrations"],
+			["general", "General"],
+			["appearance", "Appearance"],
+			["agent", "Agent"],
+			["alert-intake", "Alert intake"],
+			["sources", "Sources"],
+			["notifications", "Notifications"],
 			["devices", "Devices"],
 			["usage", "Usage data"],
 			["about", "About"],
-			["danger", "Danger zone"],
 		]) {
 			await expect(sections.getByTestId(`settings-nav-${tab}`)).toContainText(
 				label,
 			);
 		}
-		await expect(sections.getByTestId("settings-nav-harness")).toHaveAttribute(
+		await expect(sections.getByTestId("settings-nav-general")).toHaveAttribute(
 			"aria-current",
 			"page",
 		);
 		await expect(sections.getByTestId("settings-nav-services")).toHaveCount(0);
 
 		// 2. Agent picker choose and model pill set
-		await page.goto("/settings?tab=harness");
+		await page.goto("/settings?tab=agent");
 		await expect(page.getByTestId("harness-settings")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -55,18 +57,13 @@ test.describe("#523 — the settings frame", () => {
 
 		const pickerList = page.getByTestId("agent-picker-list");
 		await expect(pickerList).toBeVisible();
-		// The rail opens on the agent the next run uses; Agent default saves at
-		// once and closes the picker.
-		const def = pickerList.getByTestId("model-default");
-		if ((await def.count()) > 0) {
-			await def.click();
-			await expect(pickerList).toHaveCount(0);
-			await expect(page.getByTestId("model-pill")).toHaveText(/ default$/);
-		} else {
-			await page.keyboard.press("Escape");
-			await expect(pickerList).toHaveCount(0);
-		}
+		// The rail opens on the agent the next run uses; every row is a model by
+		// its own name, none reads "Default" (#907).
+		await expect(pickerList.getByTestId("model-default")).toHaveCount(0);
+		await page.keyboard.press("Escape");
+		await expect(pickerList).toHaveCount(0);
 		await expect(page.getByTestId("model-pill")).toBeVisible();
+		await expect(page.getByTestId("model-pill")).not.toHaveText(/default$/i);
 
 		// 3. Back leaves Settings; Services is a door of its own (decision 1)
 		await sidebar.getByTestId("settings-back").click();

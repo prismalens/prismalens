@@ -1,0 +1,137 @@
+# The desktop app (#83): build the unpacked Electron app on each OS from the
+# same packed `prismalens` the npm channel ships, launch it on an empty
+# workspace, and assert the window rendered the app. When release.yml calls it
+# with a draft release's tag, the three unpacked apps are zipped and attached to
+# that draft, unsigned (signing is #697).
+name: Desktop app build
+
+on:
+  pull_request:
+    paths:
+      - "packages/desktop/**"
+      - "scripts/pack-cli.mjs"
+      - "scripts/lib/**"
+      - "scripts/artifact-budgets.json"
+      - ".github/workflows/build-desktop-app.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/desktop/**"
+      - "scripts/pack-cli.mjs"
+      - "scripts/lib/**"
+      - "scripts/artifact-budgets.json"
+      - ".github/workflows/build-desktop-app.yml"
+  workflow_call:
+    inputs:
+      release-tag:
+        type: string
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ inputs.release-tag || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the workspace
+        run: pnpm build
+
+      - name: Build the unpacked app
+        run: pnpm --filter @prismalens/desktop dist
+
+      # Extract All must survive it: a file budget everywhere, MAX_PATH under a 100-char folder on Windows (#673 w53);
+      # the size and file budgets are scripts/artifact-budgets.json's (#906).
+      - name: Check the app's size, file count and path lengths
+        run: |
+          read -r mb files < <(node -p "const b = require('./scripts/artifact-budgets.json')['desktop-' + process.env.RUNNER_OS]; b.mb + ' ' + b.files")
+          node packages/desktop/scripts/check-release-paths.mjs --max-mb "$mb" --max-files "$files" ${{ runner.os == 'Windows' && '--paths' || '' }}
+
+      - name: Launch it and assert the window rendered (xvfb on Linux)
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum pnpm --filter @prismalens/desktop smoke "$GITHUB_WORKSPACE/desktop-smoke-${RUNNER_OS}.png"
+          else
+            pnpm --filter @prismalens/desktop smoke "$GITHUB_WORKSPACE/desktop-smoke-${RUNNER_OS}.png"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: desktop-smoke-${{ runner.os }}
+          path: desktop-smoke-*.png
+          retention-days: 7
+
+      - name: Zip the unpacked app
+        id: zip
+        run: |
+          cd packages/desktop/release
+          # electron-builder also leaves its .icon-ico / .icon-icns cache here (#745).
+          dir=$(find . -mindepth 1 -maxdepth 1 -type d ! -name '.*' | head -1)
+          name="PrismaLens-${RUNNER_OS}-${RUNNER_ARCH}-unsigned.zip"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a -tzip "$GITHUB_WORKSPACE/$name" "$dir" >/dev/null
+          else
+            # ditto keeps the .app bundle's symlinks and modes on macOS.
+            if [ "$RUNNER_OS" = "macOS" ]; then ditto -c -k --keepParent "$dir" "$GITHUB_WORKSPACE/$name"; else zip -qry "$GITHUB_WORKSPACE/$name" "$dir"; fi
+          fi
+          size=$(wc -c < "$GITHUB_WORKSPACE/$name")
+          if [ "$size" -lt 50000000 ]; then echo "::error::$name is $size bytes; $dir is not the app"; exit 1; fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ runner.os }}
+          path: ${{ steps.zip.outputs.name }}
+          retention-days: 7
+
+  attach:
+    name: Attach to the draft release
+    needs: build
+    if: inputs.release-tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: apps
+          merge-multiple: true
+
+      - name: Upload the unsigned apps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release-tag }}
+        run: gh release upload "$TAG" apps/*.zip --repo "$GITHUB_REPOSITORY" --clobber

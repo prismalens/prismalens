@@ -3,10 +3,14 @@
 
 "use client";
 
-import type {
-	AuthTemplateResponse,
-	ConnectionWithIntegration,
-	Integration,
+import {
+	type AuthTemplateResponse,
+	type ConnectionWithIntegration,
+	CREDENTIAL_KIND_FIELDS,
+	CREDENTIAL_KIND_LABELS,
+	type Integration,
+	SOURCE_CREDENTIAL_KINDS,
+	type SourceCredentialKind,
 } from "@prismalens/contracts/schemas";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -69,6 +73,39 @@ export interface ConnectionFormDialogProps {
 	connection?: ConnectionWithIntegration | null;
 	preselectedIntegrationId?: string;
 	onSuccess?: () => void;
+	/** The origin the environment's token is for, from `GET /sources/pre-run` (#848). */
+	envOrigin?: string | null;
+}
+
+/** `new URL().origin`, or null for an address that is not one. */
+export function originOf(url: string | null | undefined): string | null {
+	if (!url?.trim()) return null;
+	try {
+		return new URL(url.trim()).origin;
+	} catch {
+		return null;
+	}
+}
+
+/** What an address edit does to the environment token: scheme, host and port must all match (#848, case 5). */
+export function envTokenChange(
+	before: string | null | undefined,
+	after: string | null | undefined,
+	envOrigin: string | null | undefined,
+): "stops" | "starts" | null {
+	if (!envOrigin) return null;
+	const was = originOf(before) === envOrigin;
+	const is = originOf(after) === envOrigin;
+	return was && !is ? "stops" : !was && is ? "starts" : null;
+}
+
+/** Edit starts from the saved address, so an untouched field saves nothing. */
+function savedFields(
+	connection: ConnectionWithIntegration,
+): Record<string, string> {
+	if (connection.baseUrl) return { baseUrl: connection.baseUrl };
+	if (connection.host) return { host: connection.host };
+	return {};
 }
 
 export function ConnectionFormDialog({
@@ -78,6 +115,7 @@ export function ConnectionFormDialog({
 	connection,
 	preselectedIntegrationId,
 	onSuccess,
+	envOrigin,
 }: ConnectionFormDialogProps) {
 	const { data: integrations } = useIntegrations();
 	const { data: templates } = useTemplates();
@@ -98,6 +136,10 @@ export function ConnectionFormDialog({
 	>({});
 	const [showErrors, setShowErrors] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
+	/** For a source with credential kinds (#848); "" on edit keeps the saved credential. */
+	const [credentialKind, setCredentialKind] = useState<
+		SourceCredentialKind | ""
+	>("");
 
 	// Sync state on open change or mode/connection change
 	useEffect(() => {
@@ -106,7 +148,8 @@ export function ConnectionFormDialog({
 				setSelectedValue(connection.integrationId);
 				setConnectionLabel(connection.label ?? "");
 				setCredentialValues({});
-				setConnectionFieldValues({});
+				setConnectionFieldValues(savedFields(connection));
+				setCredentialKind("");
 				setShowErrors(false);
 				setError(null);
 			} else {
@@ -114,6 +157,7 @@ export function ConnectionFormDialog({
 				setConnectionLabel("");
 				setCredentialValues({});
 				setConnectionFieldValues({});
+				setCredentialKind("");
 				setShowErrors(false);
 				setError(null);
 			}
@@ -148,6 +192,23 @@ export function ConnectionFormDialog({
 
 	// A field's default fills the form, so a git host token starts at github.com.
 	const templateId = selectedTemplate?.id;
+	const credentialKinds = selectedTemplate?.credentialKinds?.filter(
+		(k): k is SourceCredentialKind =>
+			(SOURCE_CREDENTIAL_KINDS as readonly string[]).includes(k),
+	);
+	const firstKind = credentialKinds?.[0];
+	useEffect(() => {
+		if (open && mode === "create" && firstKind) setCredentialKind(firstKind);
+	}, [open, mode, firstKind]);
+	const credentialFields = credentialKinds
+		? credentialKind
+			? CREDENTIAL_KIND_FIELDS[credentialKind]
+			: []
+		: (selectedTemplate?.connectionCredentialFields ?? []);
+	const credentialsToSave = (): Record<string, string> =>
+		credentialKinds
+			? { kind: credentialKind || "none", ...credentialValues }
+			: credentialValues;
 	useEffect(() => {
 		if (!open || mode !== "create" || !templateId) return;
 		const fields =
@@ -176,6 +237,7 @@ export function ConnectionFormDialog({
 		setSelectedValue(value);
 		setCredentialValues({});
 		setConnectionFieldValues({});
+		setCredentialKind("");
 		setShowErrors(false);
 		setError(null);
 	};
@@ -205,10 +267,10 @@ export function ConnectionFormDialog({
 			if (
 				selectedTemplate &&
 				selectedTemplate.connectionCreationMode !== "oauth_redirect" &&
-				selectedTemplate.connectionCredentialFields
+				credentialFields.length > 0
 			) {
 				const credErrors = validateFieldValues(
-					selectedTemplate.connectionCredentialFields,
+					credentialFields,
 					credentialValues,
 				);
 				if (Object.keys(credErrors).length > 0) {
@@ -237,7 +299,7 @@ export function ConnectionFormDialog({
 						integrationId,
 						label:
 							connectionLabel.trim() || selectedTemplate?.name || "Connection",
-						credentials: credentialValues,
+						credentials: credentialsToSave(),
 						connectionConfig: connectionFieldValues,
 					});
 					handleOpenChange(false);
@@ -259,16 +321,20 @@ export function ConnectionFormDialog({
 			}
 		} else if (mode === "edit" && connection) {
 			try {
-				const hasNewCredentials = Object.values(credentialValues).some(
-					(v) => v.trim() !== "",
+				const hasNewCredentials = credentialKinds
+					? credentialKind !== ""
+					: Object.values(credentialValues).some((v) => v.trim() !== "");
+				const saved = savedFields(connection);
+				const fieldsChanged = Object.entries(connectionFieldValues).some(
+					([k, v]) => v.trim() !== (saved[k] ?? ""),
 				);
+				const label = connectionLabel.trim();
+				// Any address or credential edit clears the last passing Test (#848).
 				await updateConnection.mutateAsync({
 					id: connection.id,
-					credentials: hasNewCredentials ? credentialValues : undefined,
-					connectionConfig:
-						Object.keys(connectionFieldValues).length > 0
-							? connectionFieldValues
-							: undefined,
+					...(label && label !== connection.label ? { label } : {}),
+					credentials: hasNewCredentials ? credentialsToSave() : undefined,
+					connectionConfig: fieldsChanged ? connectionFieldValues : undefined,
 				});
 				handleOpenChange(false);
 				onSuccess?.();
@@ -289,6 +355,14 @@ export function ConnectionFormDialog({
 		mode === "edit" ? "blank keeps the saved value" : undefined;
 	const oauth = selectedTemplate?.connectionCreationMode === "oauth_redirect";
 	const gitHost = selectedTemplate?.gitHost === true;
+	const envChange =
+		mode === "edit" && connection?.baseUrl
+			? envTokenChange(
+					connection.baseUrl,
+					connectionFieldValues.baseUrl,
+					envOrigin,
+				)
+			: null;
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
@@ -368,8 +442,12 @@ export function ConnectionFormDialog({
 
 					{selectedTemplate && (
 						<>
-							{mode === "create" && (
-								<Field label="Label" note="optional" htmlFor="connectionLabel">
+							{(mode === "create" || credentialKinds) && (
+								<Field
+									label={mode === "create" ? "Label" : "Name"}
+									note={mode === "create" ? "optional" : undefined}
+									htmlFor="connectionLabel"
+								>
 									<Input
 										id="connectionLabel"
 										value={connectionLabel}
@@ -389,17 +467,54 @@ export function ConnectionFormDialog({
 									/>
 								)}
 
-							{!oauth &&
-								selectedTemplate.connectionCredentialFields &&
-								selectedTemplate.connectionCredentialFields.length > 0 && (
-									<DynamicCredentialForm
-										fields={selectedTemplate.connectionCredentialFields}
-										values={credentialValues}
-										onChange={setCredentialValues}
-										showErrors={showErrors}
-										note={blankKeeps}
-									/>
-								)}
+							{envChange && (
+								<p
+									className="text-meta text-warn"
+									role="status"
+									data-testid="edit-env-change"
+								>
+									{envChange === "stops"
+										? "The environment's token is for the old address, so it stops applying here."
+										: "The environment has a token for this address; it applies while no credential is set here."}
+								</p>
+							)}
+
+							{credentialKinds && (
+								<Field label="Credential" htmlFor="credentialKind">
+									<Select
+										value={credentialKind}
+										onValueChange={(v) => {
+											setCredentialKind(v as SourceCredentialKind);
+											setCredentialValues({});
+										}}
+									>
+										<SelectTrigger
+											id="credentialKind"
+											className="w-full"
+											data-testid="credential-kind"
+										>
+											<SelectValue placeholder="Keep the saved credential" />
+										</SelectTrigger>
+										<SelectContent>
+											{credentialKinds.map((k) => (
+												<SelectItem key={k} value={k}>
+													{CREDENTIAL_KIND_LABELS[k]}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</Field>
+							)}
+
+							{!oauth && credentialFields.length > 0 && (
+								<DynamicCredentialForm
+									fields={credentialFields}
+									values={credentialValues}
+									onChange={setCredentialValues}
+									showErrors={showErrors}
+									note={credentialKinds ? undefined : blankKeeps}
+								/>
+							)}
 						</>
 					)}
 					<MutationError error={error} />

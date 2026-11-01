@@ -3,22 +3,25 @@
 
 /**
  * A service names its code as a local folder or a git URL. Every run gets a
- * fresh snapshot of the committed HEAD under the app-data dir, so the harness
- * cwd is never the user's checkout and never a worktree linked into it
- * (ADR 0004 §2, #629). A URL is kept as a bare mirror and refreshed before each
- * snapshot; a saved token rides as a per-command header, never in the URL or
- * the mirror's config.
+ * fresh snapshot of the committed HEAD under the app-data dir, never the user's
+ * checkout: a folder as a worktree of it (#918), a URL as a clone of its bare
+ * mirror, refreshed before each snapshot (ADR 0004 §2, #629). A saved token
+ * rides as a per-command header, never in the URL or the mirror's config.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { Injectable, Logger } from "@nestjs/common";
+import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	type GitCredential,
 	MACHINE_CREDENTIAL,
+	repoLabel,
 	repoPath,
+	shownRepoUrl,
+	UNSHOWN_REPO,
 	urlHost,
 } from "./git-credential.js";
 import { gitEnv } from "./git-env.js";
@@ -29,6 +32,8 @@ import {
 	remoteGitEnv,
 	spawnGit,
 } from "./git-spawn.js";
+import { mirrorRoot } from "./mirror-location.js";
+import { addRunWorktree } from "./run-worktree.js";
 
 export { tokenUsernameFor } from "./git-credential.js";
 
@@ -59,24 +64,11 @@ export interface Snapshot {
 	path: string;
 	head: string;
 	branch: string | null;
+	/** A folder's worktree: the lock reason naming this attempt (#918). */
+	lock?: string;
+	/** The setup command the run workspace settings name, when one ran (#925). */
+	setup?: HookResult;
 }
-
-/** Paths a supported harness loads as its own config, hooks, plugins or instructions when found in a repo. */
-const AGENT_CONFIG_NAMES = new Set([
-	".opencode",
-	"opencode.json",
-	"opencode.jsonc",
-	".claude",
-	".mcp.json",
-	".gemini",
-	".codex",
-	// A repository's instructions to an agent; the brief is the run's only instruction (#673 w21).
-	"AGENTS.md",
-	"AGENTS.override.md",
-	"CLAUDE.md",
-	"GEMINI.md",
-	".cursorrules",
-]);
 
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
 
@@ -99,6 +91,13 @@ export function classifySource(input: string): {
 			throw new Error(
 				"Repository URL must not carry credentials; add a Git host token in Settings instead",
 			);
+		// A URL's `#` is a fragment; in an scp path it is a path character, but `?` is refused either way (#848).
+		if (
+			/^[a-z]+:\/\//i.test(trimmed) ? /[?#]/.test(trimmed) : /\?/.test(trimmed)
+		)
+			throw new Error(
+				"Repository URL must not carry a query string or fragment; add a Git host token in Settings instead",
+			);
 		return { kind: "url", source: trimmed };
 	}
 	throw new Error(
@@ -109,14 +108,13 @@ export function classifySource(input: string): {
 /** "owner/repo" for a URL, the folder name for a path. */
 export function displayNameFor(kind: RepoSourceKind, source: string): string {
 	if (kind === "folder") return basename(source);
-	const segments = urlSegments(source);
-	return segments.slice(-2).join("/") || source;
+	// Named from the shown address, so a credential nested in a path never becomes a name (#938).
+	const shown = shownRepoUrl(kind, source);
+	if (shown === UNSHOWN_REPO) return UNSHOWN_REPO;
+	return urlSegments(shown).slice(-2).join("/") || shown;
 }
 
-export function mirrorPathFor(
-	url: string,
-	root = join(getAppDataDir(), "repos"),
-): string {
+export function mirrorPathFor(url: string, root = mirrorRoot()): string {
 	const u = new URL(url.replace(/^([\w.-]+)@([^:]+):/, "ssh://$1@$2/"));
 	const segments = urlSegments(url).map((s) =>
 		s.replace(/[^A-Za-z0-9._-]/g, "_"),
@@ -197,74 +195,57 @@ export class RepoSourceService {
 	}
 
 	/**
-	 * A fresh clone of the committed HEAD into `dest`. Local clones hardlink objects, so both kinds are fast.
+	 * The committed HEAD, or commit `at`, at `dest`: a locked worktree of a folder (#918), a clone of a URL's mirror.
 	 * `signal` kills this run's git; a mirror refresh shared with other callers keeps going, this caller just stops waiting.
-	 * `at` pins the clone to that commit instead (a follow-up rebuilds the first run's workspace, #747).
+	 * `at` pins it to that commit (a follow-up rebuilds the first run's workspace, #747); `runId` names the lock.
 	 */
 	async snapshot(
 		src: RepoSource,
 		dest: string,
 		signal?: AbortSignal,
 		at?: string,
+		runId?: string,
+		onOutput?: (chunk: string) => void,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
-		const from =
-			src.kind === "folder"
-				? src.source
-				: await abortable(this.ensureMirror(src), signal);
-		rmSync(dest, { recursive: true, force: true });
-		mkdirSync(join(dest, ".."), { recursive: true });
-		const branch =
-			src.kind === "url" && !at ? src.defaultBranch?.trim() || null : null;
-		await this.git(
-			[
-				"clone",
-				"--quiet",
-				...(at ? ["--no-checkout"] : []),
-				...(branch ? ["--branch", branch] : []),
-				"--",
-				from,
-				dest,
-			],
-			undefined,
-			signal,
-		);
-		if (at)
+		// A URL is cloned once, into its mirror; each run gets a workspace of that (#925).
+		const mirror = src.kind === "url";
+		const repo = mirror
+			? await abortable(this.ensureMirror(src), signal)
+			: src.source;
+		const tip = at
+			? null
+			: await this.headOf(repo, mirror ? src.defaultBranch : undefined);
+		const commit = at ?? (tip as SourceCheck).head;
+		if (at && !(await this.hasCommit(repo, at, signal)))
+			throw new Error(`Commit ${at} could not be checked out from this source`);
+		let added: { lock: string; setup?: HookResult };
+		try {
+			added = await addRunWorktree(repo, dest, commit, runId ?? dest, signal, {
+				mirror,
+				...(onOutput ? { onOutput } : {}),
+			});
+		} catch (err) {
+			if (signal?.aborted) throw signal.reason;
+			throw err instanceof Error ? new Error(err.message) : err;
+		}
+		// A clone's origin is the mirror: refuse local-path push and fetch from the run (#676).
+		if (mirror && statSync(join(dest, ".git")).isDirectory())
 			await this.git(
-				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
+				["-C", dest, "config", "protocol.file.allow", "never"],
 				undefined,
 				signal,
 			);
-		// origin is the user's checkout or our mirror: refuse local-path push and fetch from the run (#676).
-		await this.git(
-			["-C", dest, "config", "protocol.file.allow", "never"],
-			undefined,
-			signal,
-		);
 		const check = await this.headOf(dest);
-		const removed = await this.stripAgentConfig(dest);
 		this.logger.log(
-			`snapshot ${src.source} at ${check.head.slice(0, 12)} → ${dest}${removed.length ? ` (removed agent config: ${removed.join(", ")})` : ""}`,
+			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}`,
 		);
-		return { path: dest, ...check };
-	}
-
-	/**
-	 * Deletes repo-supplied agent config from the snapshot at any depth. opencode imports
-	 * `.opencode/plugin/*.js` whatever OPENCODE_DISABLE_PROJECT_CONFIG or --pure say
-	 * (verified on 1.18.30), so env flags alone let a repo run code on the host (#637).
-	 */
-	private async stripAgentConfig(dest: string): Promise<string[]> {
-		const { stdout } = await this.git(["ls-files", "-z"], dest);
-		const hits = new Set<string>();
-		for (const file of stdout.split("\0").filter(Boolean)) {
-			const parts = file.split("/");
-			const at = parts.findIndex((p) => AGENT_CONFIG_NAMES.has(p));
-			if (at >= 0) hits.add(parts.slice(0, at + 1).join("/"));
-		}
-		for (const path of hits)
-			rmSync(join(dest, path), { recursive: true, force: true });
-		return [...hits].sort();
+		return {
+			path: dest,
+			...check,
+			branch: check.branch ?? (mirror ? (tip?.branch ?? null) : null),
+			...added,
+		};
 	}
 
 	/**
@@ -308,10 +289,16 @@ export class RepoSourceService {
 					{ env, timeoutMs: GIT_TIMEOUT_MS },
 				);
 			}
+			// Run worktrees share this repo and its remote: a push from one, which on a mirror pushes
+			// every ref, fails here instead (#676, #925). The mirror itself only ever fetches.
+			await spawnGit(
+				["config", "remote.origin.pushurl", "never-push://prismalens"],
+				{ cwd: path, env, timeoutMs: GIT_TIMEOUT_MS },
+			);
 		} catch (err) {
 			const failure = remoteFailure(err, src);
 			if (failure instanceof GitFailure && failure.stderr)
-				this.logger.warn(`git ${src.source}: ${failure.stderr.trim()}`);
+				this.logger.warn(`git ${repoLabel(src.source)}: ${failure.code}`);
 			throw failure;
 		}
 		return path;
@@ -341,6 +328,35 @@ export class RepoSourceService {
 	}
 
 	/** A local git call: no remote, so no credential. */
+	/** False only when git confirms `at` names no commit in `repo` (exit 1); any other failure throws. */
+	private async hasCommit(
+		repo: string,
+		at: string,
+		signal?: AbortSignal,
+	): Promise<boolean> {
+		try {
+			await spawnGit(
+				[
+					"rev-parse",
+					"--verify",
+					"--quiet",
+					"--end-of-options",
+					`${at}^{commit}`,
+				],
+				{
+					cwd: repo,
+					signal,
+					env: gitEnv({ source: "machine" }),
+					timeoutMs: GIT_TIMEOUT_MS,
+				},
+			);
+			return true;
+		} catch (err) {
+			if (err instanceof GitSpawnError && err.exitCode === 1) return false;
+			throw err;
+		}
+	}
+
 	private async git(
 		args: string[],
 		cwd?: string,

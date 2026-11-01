@@ -477,6 +477,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 						)}
 						{payload && payloadOpen && (
 							<pre
+								data-scroll-x
 								className="raised overflow-auto rounded-surface p-3 font-mono text-mono text-text-2"
 								data-testid="alert-payload"
 							>

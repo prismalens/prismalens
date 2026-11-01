@@ -66,6 +66,7 @@ export function IncidentHeader({
 	onResolve,
 	onReopen,
 	onEditCause,
+	onInvestigateAgain,
 	trailing,
 }: {
 	incident: IncidentWithRelations;
@@ -75,6 +76,8 @@ export function IncidentHeader({
 	onResolve: () => void;
 	onReopen: () => void;
 	onEditCause: () => void;
+	/** A reported run: start a new run with its report quoted. */
+	onInvestigateAgain?: (() => void) | null;
 	/** The page's own control before Resolve, e.g. the details toggle. */
 	trailing?: ReactNode;
 }) {
@@ -276,6 +279,14 @@ export function IncidentHeader({
 								</DropdownMenuRadioGroup>
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
+					)}
+					{onInvestigateAgain && (
+						<DropdownMenuItem
+							onClick={onInvestigateAgain}
+							data-testid="header-investigate-again"
+						>
+							Investigate again
+						</DropdownMenuItem>
 					)}
 					{canMerge && (
 						<DropdownMenuItem

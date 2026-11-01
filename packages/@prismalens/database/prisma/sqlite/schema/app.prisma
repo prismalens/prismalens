@@ -272,6 +272,7 @@ model Investigation {
   harness           String? // the harness the run started with (#743)
   model             String? // the model id it was asked for, if any (#743)
   effort            String? // the effort it was asked for, if any (#673 w52)
+  usage             String? // JSON RunUsage: the harness's last ACP usage_update; null when it sent none
   stopRequestedAt   DateTime? // the operator asked it to stop (#743)
   acpSessionId      String? // the harness's own session id, set only when it can be loaded again (#747)
   workspace         String? // JSON RunWorkspace (#747)
@@ -293,6 +294,8 @@ model Investigation {
   // A thread's turns (#673 w59): what the live turn owes, how the last message ended
   liveTurn        String? // report | answer; null when nothing runs
   lastTurnOutcome String? // answered | stopped | error; null until a follow-up ends
+  endReason       String? // interrupted | limited, on a failed run only; null otherwise
+  preRun          String? // JSON PreRunSnapshot: what PrismaLens read before the run; its follow-ups read it again (#848)
   awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
 
   incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)

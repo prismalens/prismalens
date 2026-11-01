@@ -6,13 +6,21 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
-	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
-	getHarnessProviderKeys,
+	GATEWAY_RUN_FILE,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
@@ -20,7 +28,10 @@ import {
 	resolveAccess,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
-import { harnessLaunch } from "@prismalens/config/harness-selection";
+import {
+	harnessLaunch,
+	type LaunchProbe,
+} from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
 	type CanonicalEvent,
@@ -41,15 +52,21 @@ import {
 	type WorkflowStatus,
 } from "@prismalens/contracts";
 import type {
+	CheckoutSkipped,
 	ContextPack,
 	EffortEstimate,
+	PreRunContext,
 	RecommendationCategory,
 	RecommendationPriority,
+	RunUsage,
 	Urgency,
 } from "@prismalens/contracts/schemas";
 import {
+	buildHandoff,
 	conductRun,
+	HANDOFF_TRANSCRIPT_PATH,
 	type InvestigationSink,
+	newGatewayServerName,
 	type PermissionPolicy,
 	type ResolvedConnector,
 	type SteerPort,
@@ -57,11 +74,91 @@ import {
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
+import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
+import {
+	bindRun,
+	releaseWorktreesIn,
+	runWorktreeDir,
+	type SweepOptions,
+	sweepRunWorktrees,
+	unbindRun,
+} from "../../core/harness/run-worktree.js";
+import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
+import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
+import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
+import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
+import {
+	buildPreRunSnapshot,
+	type CopyTarget,
+	markerReason,
+	notSavedMarker,
+	parseStoredSnapshot,
+	preRunContext,
+	SNAPSHOT_IO_MS,
+	snapshotWindow,
+	unavailableMarker,
+	writeReadCopies,
+} from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
 
 const logger = new Logger({ context: "InvestigationProcessor" });
+
+/** Each pre-run database read races this; a late answer is dropped, the work itself is not cancelled (#848). */
+export const ASSEMBLY_MS = 10_000;
+/** Every checkout shares this budget; what is unfinished then is skipped and its git killed (#848). */
+export const CHECKOUT_BUDGET_MS = 600_000;
+const CHECKOUT_CONCURRENCY = 3;
+/** Stops only pathological data: every repo below it is attempted (#848). */
+export const WORKSPACE_REPOS_GUARD = 32;
+const TELEMETRY_MS = 15_000;
+const RUNBOOKS_MS = 10_000;
+
+const LATE = Symbol("late");
+
+/** `work`, or `LATE` once `ms` pass first. */
+async function within<T>(
+	ms: number,
+	work: Promise<T>,
+): Promise<T | typeof LATE> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<typeof LATE>((r) => {
+		timer = setTimeout(() => r(LATE), ms);
+	});
+	try {
+		return await Promise.race([work, late]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/** A pre-run read that never fails the run: `fallback` when it throws or is late. */
+async function assembled<T>(
+	what: string,
+	work: () => Promise<T>,
+	fallback: T,
+	ms = ASSEMBLY_MS,
+): Promise<T> {
+	try {
+		const got = await within(ms, Promise.resolve().then(work));
+		if (got !== LATE) return got;
+		logger.warn(
+			`${what} did not load in ${ms / 1000} s; the run goes on without it`,
+		);
+	} catch (e) {
+		logger.warn(`Could not load ${what}; the run goes on without it`, e);
+	}
+	return fallback;
+}
+
+function serviceIdOf(
+	incident: Record<string, unknown> | null,
+): string | undefined {
+	return typeof incident?.serviceId === "string"
+		? incident.serviceId
+		: undefined;
+}
 
 export interface InvestigationResult {
 	success: boolean;
@@ -137,8 +234,15 @@ async function runJobInternal(
 		});
 
 		try {
-			const current = await ports.findInvestigation(data.investigationId);
-			if (current?.status === "cancelled") {
+			const current = await within(
+				ASSEMBLY_MS,
+				ports.findInvestigation(data.investigationId),
+			);
+			if (current === LATE)
+				logger.warn(
+					`Investigation status did not load in ${ASSEMBLY_MS / 1000} s; cancellation will not be honoured`,
+				);
+			else if (current?.status === "cancelled") {
 				logger.info(
 					`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
 				);
@@ -174,44 +278,74 @@ async function runJobInternal(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
 
-		let incident: Record<string, unknown> | null = null;
-		try {
-			incident = await ports.getIncident(data.incidentId);
-		} catch {
-			incident = null;
-		}
-		let connectors: ResolvedConnector[] = [];
-		try {
-			const serviceId =
-				typeof incident?.serviceId === "string"
-					? incident.serviceId
-					: undefined;
-			connectors = await ports.resolveConnectors(serviceId);
-		} catch (e) {
-			logger.warn("Could not resolve connectors for investigation", e);
-			connectors = [];
-		}
-		let contextPack: ContextPack | null = null;
-		try {
-			contextPack = await ports.contextPack(data.incidentId);
-		} catch (e) {
-			logger.warn("Could not assemble the context pack for investigation", e);
-			contextPack = null;
-		}
+		const incident = await assembled(
+			"the incident",
+			() => ports.getIncident(data.incidentId),
+			null,
+		);
+		const connectors = await assembled(
+			"the connectors",
+			() => ports.resolveConnectors(serviceIdOf(incident)),
+			[],
+		);
+		const contextPack = await assembled(
+			"the context pack",
+			() => ports.contextPack(data.incidentId),
+			null,
+		);
 		const context = await assembleInvestigationContext(
 			incident,
 			data,
 			connectors,
 			contextPack,
 		);
-		const workspace = await resolveWorkspace(data, ports, io.signal);
+		// Telemetry is read while the repos clone (#848 ruling 2026-10-24).
+		const window = snapshotWindow(
+			context.alerts,
+			new Date(),
+			context.service?.name,
+		);
+		const telemetry = ports.preRun
+			? assembled(
+					"telemetry",
+					() =>
+						(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
+							data.incidentId,
+							window,
+							AbortSignal.any([io.signal, AbortSignal.timeout(TELEMETRY_MS)]),
+						),
+					null,
+					TELEMETRY_MS,
+				)
+			: null;
+		const workspace = {
+			...(await resolveWorkspace(data, ports, io.signal)),
+			toolsServer: newGatewayServerName(),
+		};
 		await recordWorkspace(data, workspace, ports, context);
+		const afterSetup = await logWorkspaceSetup(data.investigationId, io, ports);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
 
 		const runId = data.investigationId;
 		const runDir = runDirFor(runId);
 		mkdirSync(runDir, { recursive: true });
+		if (ports.preRun && telemetry) {
+			const preRun = await gatherPreRun(ports.preRun, runId, workspace, {
+				window,
+				telemetry,
+				pastIncidents: contextPack?.priorIncidents ?? [],
+				checkoutsSkipped: workspace.checkoutsSkipped,
+				signal: io.signal,
+			});
+			if (preRun) context.preRun = preRun;
+			// The prompt names the sources the selection picked, not every connector (#848).
+			const picked = await telemetry;
+			if (picked)
+				context.telemetry = telemetryEndpointsFrom(picked.endpoints, (m) =>
+					logger.warn(m),
+				);
+		}
 		const sink: InvestigationSink = async (event) => {
 			await io.emit(event);
 		};
@@ -232,12 +366,26 @@ async function runJobInternal(
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
+		const runtime = await ports.agentRuntime(selection.harness);
+		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
+		const gateway = await ports.gateway
+			?.lease(runId, workspace.toolsServer)
+			.catch((e) => {
+				logger.warn(
+					"Could not lease the MCP gateway; the run has no PrismaLens tools",
+					e,
+				);
+				return null;
+			});
+		const usage = usageWriter(ports, runId);
 		const outcome = await conductRun(
 			{
 				runId,
+				...(gateway ? { gateway } : {}),
 				context,
 				harness: selection.harness,
 				cwd: workspace.cwd,
+				roots: rootsOf(workspace),
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
@@ -247,9 +395,10 @@ async function runJobInternal(
 				...(data.unattended ? { unattended: true } : {}),
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
-				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
-				env: getHarnessProviderKeys(selection.harness, process.env),
+				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
+				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
+				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
 				onHarnessStderr: (chunk) => {
@@ -258,6 +407,7 @@ async function runJobInternal(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
@@ -266,6 +416,7 @@ async function runJobInternal(
 			},
 			{ sink, store },
 		);
+		await usage.flush();
 		await io.streamDone();
 
 		if (outcome.failureKind === "cancelled") {
@@ -355,8 +506,254 @@ async function runJobInternal(
 		// The harness's per-run home and the packages it installs under its config dir go too:
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
-			clearRunWorkspace(runDirFor(unvalidated.investigationId));
+			ports.gateway?.revoke(unvalidated.investigationId);
+			await clearRunWorkspace(unvalidated.investigationId);
 		}
+	}
+}
+
+/** The run's pre-run context: built, saved, then copied whatever the save did; never throws. */
+async function gatherPreRun(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	workspace: Workspace,
+	input: {
+		window: SnapshotWindow;
+		telemetry: Promise<TelemetrySnapshot | null>;
+		pastIncidents: ContextPack["priorIncidents"];
+		checkoutsSkipped: CheckoutSkipped[];
+		signal: AbortSignal;
+	},
+): Promise<PreRunContext | undefined> {
+	try {
+		const [telemetry, runbooks] = await Promise.all([
+			input.telemetry,
+			runbookScan(port, runId, input.signal),
+		]);
+		const snap = buildPreRunSnapshot({
+			window: input.window,
+			telemetry: telemetry?.sources ?? [],
+			notConfigured: telemetry?.notConfigured ?? [],
+			pastIncidents: input.pastIncidents,
+			runbooks: runbooks.entries,
+			...(runbooks.skipped ? { runbooksSkipped: runbooks.skipped } : {}),
+			...(telemetry
+				? {}
+				: {
+						telemetrySkipped: `it did not finish in ${TELEMETRY_MS / 1000} s, or failed`,
+					}),
+			checkoutsSkipped: input.checkoutsSkipped,
+			now: new Date(),
+		});
+		const saved = await saveSnapshot(port, runId, JSON.stringify(snap));
+		// The row keeps our own words, never the driver's message: it is served to the UI (#848).
+		if (!saved.ok)
+			void saveMarker(
+				port,
+				runId,
+				notSavedMarker(
+					snap,
+					saved.late ? saved.error : "the database write failed",
+				),
+			);
+		return preRunContext(snap, saved, await copiesOf(workspace, runId, snap));
+	} catch (e) {
+		logger.warn(
+			`Could not build the pre-run context; the run starts without it (${errorTag(e)})`,
+		);
+		return undefined;
+	}
+}
+
+async function saveSnapshot(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	text: string,
+): Promise<{ ok: true } | { ok: false; error: string; late: boolean }> {
+	try {
+		const got = await within(SNAPSHOT_IO_MS, port.save(runId, text));
+		return got === LATE
+			? {
+					ok: false,
+					error: `the save did not finish in ${SNAPSHOT_IO_MS / 1000} s`,
+					late: true,
+				}
+			: { ok: true };
+	} catch (e) {
+		return {
+			ok: false,
+			error: `the database write failed (${errorTag(e)})`,
+			late: false,
+		};
+	}
+}
+
+/** A state marker in the run's `preRun` column, so its detail can say why no snapshot is there; never throws, never awaited. */
+async function saveMarker(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	text: string,
+): Promise<void> {
+	try {
+		if ((await within(SNAPSHOT_IO_MS, port.save(runId, text))) === LATE)
+			logger.warn("pre-run: the state marker did not save in time");
+	} catch (e) {
+		logger.warn(`pre-run: could not save the state marker (${errorTag(e)})`);
+	}
+}
+
+async function copiesOf(
+	workspace: Workspace,
+	runId: string,
+	snap: Parameters<typeof writeReadCopies>[2],
+): Promise<Awaited<ReturnType<typeof writeReadCopies>>> {
+	try {
+		return await writeReadCopies(copyTargets(workspace), runId, snap);
+	} catch (e) {
+		return { state: "failed", reason: messageOf(e) };
+	}
+}
+
+/** A follow-up's context: the stored snapshot with fresh copies, or why there is none. */
+async function reloadPreRun(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	workspace: Workspace,
+): Promise<NonNullable<InvestigationContext["preRun"]>> {
+	let reason = "no stored snapshot for this run";
+	try {
+		const got = await within(SNAPSHOT_IO_MS, port.load(runId));
+		if (got === LATE)
+			reason = `the stored snapshot did not load in ${SNAPSHOT_IO_MS / 1000} s`;
+		else if (got === null)
+			// Only an empty column is marked: a value that did not load or parse is kept.
+			void saveMarker(port, runId, unavailableMarker(reason));
+		else {
+			const snap = parseStoredSnapshot(got);
+			if (snap)
+				return preRunContext(
+					snap,
+					{ ok: true },
+					await copiesOf(workspace, runId, snap),
+				);
+			reason = markerReason(got) ?? "the stored snapshot could not be read";
+		}
+	} catch (e) {
+		logger.warn(`Could not load the stored pre-run snapshot (${errorTag(e)})`);
+		reason = "the stored snapshot could not be read";
+	}
+	logger.warn(`pre-run: not available on this follow-up: ${reason}`);
+	return { state: "unavailable", reason };
+}
+
+/** The cwds an agent session sees: the run's cwd, and the primary checkout when several repos sit under it (#922). */
+export function sessionCwds(ws: RunWorkspace): string[] {
+	const first = ws.repos[0];
+	return ws.layout === "multi" && first
+		? [ws.cwd, inside(first.dir, first.subPath)]
+		: [ws.cwd];
+}
+
+/**
+ * The handoff transcript, in every cwd the agent may start in (#918), with a `.gitignore`
+ * so the snapshot's `git status` stays clean.
+ */
+export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
+	for (const cwd of sessionCwds(ws)) {
+		const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
+		const dir = dirname(file);
+		// The checkout is untrusted: a committed symlink here must not redirect the write.
+		rmSync(dir, { recursive: true, force: true });
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
+		writeFileSync(file, text, { flag: "wx" });
+	}
+}
+
+function copyTargets(ws: RunWorkspace): CopyTarget[] {
+	return sessionCwds(ws).map((dir) => {
+		const repo = ws.repos.find((r) => {
+			const rel = relative(r.dir, dir);
+			return !rel.startsWith("..") && !isAbsolute(rel);
+		});
+		return repo ? { dir, checkout: repo.dir } : { dir };
+	});
+}
+
+/** The runbook index, aborted at its deadline so its git children die; never throws. */
+async function runbookScan(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	signal: AbortSignal,
+): Promise<RunbookIndex> {
+	const deadline = new AbortController();
+	const timer = setTimeout(
+		() => deadline.abort(new Error("runbook scan deadline")),
+		RUNBOOKS_MS,
+	);
+	const both = AbortSignal.any([deadline.signal, signal]);
+	try {
+		const got = await within(RUNBOOKS_MS, port.runbooks(runId, both));
+		if (got !== LATE) return got;
+	} catch (e) {
+		if (!deadline.signal.aborted) {
+			logger.warn(`Could not read runbooks before the run (${errorTag(e)})`);
+			return { entries: [], skipped: "the runbook scan failed" };
+		}
+	} finally {
+		clearTimeout(timer);
+		deadline.abort();
+	}
+	return {
+		entries: [],
+		skipped: `the runbook scan did not finish in ${RUNBOOKS_MS / 1000} s`,
+	};
+}
+
+const USAGE_WRITE_EVERY_MS = 5_000;
+
+/**
+ * The harness sends a usage_update on most turns; the row takes the latest at
+ * most every few seconds, and `flush` writes what the throttle held back.
+ */
+function usageWriter(
+	ports: RunPorts,
+	id: string,
+	after: () => Promise<void> = () => Promise.resolve(),
+) {
+	let latest: RunUsage | null = null;
+	let written: RunUsage | null = null;
+	let at = 0;
+	const write = () => {
+		if (!latest || latest === written) return Promise.resolve();
+		written = latest;
+		at = Date.now();
+		const usage = latest;
+		return after()
+			.then(() => ports.recordUsage(id, usage))
+			.catch((e) => logger.warn("Failed to keep the run's usage", e));
+	};
+	return {
+		onUsage: (usage: RunUsage) => {
+			latest = usage;
+			if (Date.now() - at >= USAGE_WRITE_EVERY_MS) void write();
+		},
+		flush: write,
+	};
+}
+
+/** Read as stored, not re-validated: a report an older schema wrote still hands off its hypotheses. */
+function storedReport(
+	raw: string | null | undefined,
+): InvestigationReport | null {
+	if (!raw) return null;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		return parsed && typeof parsed === "object"
+			? (parsed as InvestigationReport)
+			: null;
+	} catch {
+		return null;
 	}
 }
 
@@ -402,24 +799,35 @@ async function runFollowUp(
 		seqStart = (await ports.lastEventSeq(id)) + 1;
 		const inv = await ports.findInvestigation(id);
 		if (inv?.kind === "chat") kind = "chat";
-		const harness = HARNESS_IDS.find((h) => h === inv?.harness);
+		const own = HARNESS_IDS.find((h) => h === inv?.harness);
+		const harness = resume.to?.harness ?? own;
+		const handoff = !!resume.handoff;
+		const sessionId = handoff ? undefined : inv?.acpSessionId;
 		const blocked = !inv
 			? "the investigation is gone"
-			: !harness || !inv.acpSessionId
-				? "its agent kept no session to reopen"
-				: !inv.workspace
-					? "it recorded no workspace"
-					: null;
-		if (blocked || !inv?.acpSessionId || !inv.workspace || !harness)
+			: !harness
+				? "it names no agent"
+				: !handoff && !sessionId
+					? "its agent kept no session to reopen"
+					: !inv.workspace
+						? "it recorded no workspace"
+						: null;
+		if (blocked || !inv?.workspace || !harness)
 			throw new Error(`This run cannot be continued: ${blocked}.`);
 		const row = HARNESS_REGISTRY[harness];
-		if (!row.resume)
+		if (!handoff && !row.resume)
 			throw new Error(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
-		if (!harnessLaunch(row))
+		const runtime = await ports.agentRuntime(harness);
+		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
+		await bindRun(id, {
+			incidentId: data.incidentId,
+			serviceName: recorded.repos[0]?.services[0] ?? null,
+			recorded: recorded.cwd,
+		});
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
 		const newer = await ports.newerRun(id).catch(() => null);
 		const moved = newer?.heads.some(
@@ -427,30 +835,29 @@ async function runFollowUp(
 		)
 			? newer
 			: null;
-		const workspace = await rebuildWorkspace(
-			recorded,
-			id,
-			row.label,
-			ports,
-			io.signal,
-		);
+		const workspace = {
+			...(await rebuildWorkspace(
+				recorded,
+				id,
+				row.label,
+				ports,
+				io.signal,
+				handoff,
+			)),
+			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
+		};
+		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
-		let incident: Record<string, unknown> | null = null;
-		try {
-			incident = await ports.getIncident(data.incidentId);
-		} catch {
-			incident = null;
-		}
-		let connectors: ResolvedConnector[] = [];
-		try {
-			const serviceId =
-				typeof incident?.serviceId === "string"
-					? incident.serviceId
-					: undefined;
-			connectors = await ports.resolveConnectors(serviceId);
-		} catch (e) {
-			logger.warn("Could not resolve connectors for the follow-up", e);
-		}
+		const incident = await assembled(
+			"the incident",
+			() => ports.getIncident(data.incidentId),
+			null,
+		);
+		const connectors = await assembled(
+			"the connectors",
+			() => ports.resolveConnectors(serviceIdOf(incident)),
+			[],
+		);
 		const context = await assembleInvestigationContext(
 			incident,
 			data,
@@ -458,6 +865,9 @@ async function runFollowUp(
 		);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
+		// The run's stored snapshot, never a new fetch (#848).
+		if (ports.preRun)
+			context.preRun = await reloadPreRun(ports.preRun, id, workspace);
 
 		mkdirSync(runDir, { recursive: true });
 		const base = createPrismaInvestigationStore(ports, {
@@ -471,27 +881,87 @@ async function runFollowUp(
 		storeRefused = base.refused;
 		delivered = base.delivered;
 		const store = base;
-		const modelSource = followUpModelSource(harness, inv.model);
+		const asked = resume.to?.model !== undefined ? resume.to.model : undefined;
+		const pick = handoff
+			? await ports.resolveHarness({
+					harness,
+					...(asked !== undefined
+						? { model: asked }
+						: harness === own
+							? { model: inv.model }
+							: {}),
+					...(resume.to?.effort !== undefined
+						? { effort: resume.to.effort }
+						: harness === own
+							? { effort: inv.effort ?? null }
+							: {}),
+				})
+			: null;
+		// The chips were checked at send; the agent or model may have gone since.
+		if (pick && !pick.selection.runnable)
+			throw new Error(`This run cannot be continued: ${pick.selection.reason}`);
+		const model = pick
+			? (pick.model ?? null)
+			: asked !== undefined
+				? asked
+				: inv.model;
+		const effort = pick
+			? (pick.effort ?? null)
+			: resume.to?.effort !== undefined
+				? resume.to.effort
+				: (inv.effort ?? null);
+		const modelSource = pick
+			? pick.modelSource
+			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
-		const customModel =
-			modelSource === "operator" &&
-			!!(await ports
-				.resolveHarness({ harness, model: inv.model })
-				.then((r) => r.customModel)
-				.catch(() => false));
+		const gateway = await ports.gateway
+			?.lease(id, workspace.toolsServer)
+			.catch((e) => {
+				logger.warn(
+					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",
+					e,
+				);
+				return null;
+			});
+		const customModel = pick
+			? !!pick.customModel
+			: modelSource === "operator" &&
+				!!(await ports
+					.resolveHarness({ harness, model })
+					.then((r) => r.customModel)
+					.catch(() => false));
+		// A handoff keeps the run's level, never more.
+		const accessLevel = handoff
+			? inheritedLevel(data.accessLevel)
+			: data.accessLevel;
+		const seed = handoff
+			? buildHandoff({
+					events: await ports.events(id),
+					report: storedReport(inv.report),
+					accessLevel: inheritedLevel(data.accessLevel),
+					from: own ? HARNESS_REGISTRY[own].label : null,
+					afterRestart: !!resume.afterRestart,
+				})
+			: null;
+		if (seed) writeHandoffTranscript(workspace, seed.transcript);
+		// The new session's first usage lands after the old one is cleared (ruling 13).
+		let handedOff: Promise<void> = Promise.resolve();
+		const usage = usageWriter(ports, id, () => handedOff);
 		const outcome = await conductRun(
 			{
 				runId: id,
+				...(gateway ? { gateway } : {}),
 				context,
 				harness,
 				cwd: workspace.cwd,
+				roots: rootsOf(workspace),
 				runDir,
-				...(inv.model ? { model: inv.model } : {}),
+				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
 				...(customModel ? { customModel } : {}),
-				...(inv.effort ? { effort: inv.effort } : {}),
-				...(data.accessLevel ? { accessLevel: data.accessLevel } : {}),
-				env: getHarnessProviderKeys(harness, process.env),
+				...(effort ? { effort } : {}),
+				...(accessLevel ? { accessLevel } : {}),
+				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -501,11 +971,46 @@ async function runFollowUp(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
+				...(seed
+					? {
+							onSession: (s: { sessionId: string; loadSession: boolean }) => {
+								handedOff = ports
+									.recordHandoff(id, {
+										harness,
+										model,
+										effort,
+										acpSessionId:
+											s.loadSession && row.resume ? s.sessionId : null,
+									})
+									.catch((e) =>
+										logger.warn("Failed to record the handoff's session", e),
+									);
+							},
+						}
+					: {}),
+				...(kind === "chat" ? { kind: "chat" as const } : {}),
 				resume: {
-					sessionId: inv.acpSessionId,
+					...(sessionId ? { sessionId } : {}),
+					...(seed ? { handoff: seed.text } : {}),
+					...(resume.afterRestart ? { afterRestart: true } : {}),
+					via: {
+						harness,
+						model,
+						accessLevel: accessLevel ?? null,
+						...(seed
+							? {
+									handoff: {
+										from: own ?? null,
+										carried: seed.carried,
+										omitted: seed.omitted,
+									},
+								}
+							: {}),
+					},
 					text: resume.text,
 					mode: resume.mode,
 					heads: workspace.repos.map((r) => ({ name: r.name, head: r.head })),
@@ -526,6 +1031,7 @@ async function runFollowUp(
 				store,
 			},
 		);
+		await usage.flush();
 		await io.streamDone();
 		report = outcome.report;
 		end =
@@ -548,7 +1054,8 @@ async function runFollowUp(
 			sentence: message,
 		};
 	} finally {
-		clearRunWorkspace(runDir);
+		ports.gateway?.revoke(id);
+		await clearRunWorkspace(id);
 	}
 
 	// A `continue` that reached its agent ends as a run (I6-I8); everything else is settled here.
@@ -740,10 +1247,32 @@ async function ownTheEnd(
 export function followUpModelSource(
 	harness: HarnessId,
 	model: string | null,
+	agentEnv: Record<string, string> = {},
 ): ModelSource | undefined {
 	if (!model) return undefined;
-	const now = resolveHarnessModel(harness, undefined, process.env);
+	const now = resolveHarnessModel(harness, undefined, {
+		...process.env,
+		...agentEnv,
+	});
 	return now.model === model ? now.source : "operator";
+}
+
+/** A run's spawn inputs from Settings → Agent (#907). */
+function runOptionsOf(runtime: AgentRuntime) {
+	return {
+		env: runtime.env,
+		...(runtime.policy ? { policy: runtime.policy } : {}),
+		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
+		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
+		...(runtime.note ? { runtimeNote: runtime.note } : {}),
+	};
+}
+
+function launchProbeOfRuntime(runtime: AgentRuntime): LaunchProbe {
+	return {
+		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
+		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
+	};
 }
 
 /** The follow-up's message, not delivered, and why: what the conversation shows when it never ran. */
@@ -796,35 +1325,127 @@ const RUN_WORKSPACE = [
 	"unmapped",
 	"home",
 	join("config", "node_modules"),
+	join("config", GATEWAY_RUN_FILE),
 ];
 
-function clearRunWorkspace(runDir: string): void {
+const SETUP_OUTPUT_TAIL = 64 * 1024;
+
+const setups = new Map<string, { name: string; result: HookResult }[]>();
+
+function noteSetup(runId: string, name: string, result: HookResult): void {
+	setups.set(runId, [...(setups.get(runId) ?? []), { name, result }]);
+}
+
+const SETUP_WORDS: Record<HookResult["status"], string> = {
+	ok: "finished",
+	failed: "failed",
+	silent: "was cancelled after 5 minutes without output",
+	capped: "was cut off",
+	aborted: "was stopped",
+};
+
+/**
+ * The workspace setup commands' output, in the run's log (#925). Answers the seq the agent's
+ * events start at after them, so a poller's cursor never passes over one; null when none ran.
+ */
+export async function logWorkspaceSetup(
+	runId: string,
+	io: JobIo,
+	ports: RunPorts,
+): Promise<number | null> {
+	const ran = setups.get(runId);
+	setups.delete(runId);
+	if (!ran?.length) return null;
+	// Past every setup seq even when storing them fails part way: the agent's events never reuse one.
+	let seq: number | null = null;
+	try {
+		seq = (await ports.lastEventSeq(runId)) + 1;
+		const first = seq;
+		const events: CanonicalEvent[] = ran.map(({ name, result }, i) => {
+			const ok = result.status === "ok";
+			const words = `Workspace setup in ${name} ${SETUP_WORDS[result.status]}${result.exitCode !== null && !ok ? ` (exit ${result.exitCode})` : ""}`;
+			return {
+				kind: "tool_result",
+				runId,
+				branchId: "workspace",
+				path: [],
+				seq: first + i,
+				ts: new Date().toISOString(),
+				result: {
+					name: "workspace_setup",
+					toolCallId: `workspace-setup-${name}`,
+					source: words,
+					ok,
+					error: ok ? null : words,
+					preview: result.output.slice(-8000),
+				},
+			};
+		});
+		seq = first + events.length;
+		for (const event of events) await io.emit(event);
+		await ports.appendEvents(runId, events);
+	} catch (e) {
+		logger.warn("Could not record the workspace setup in the run's log", e);
+	}
+	return seq;
+}
+
+async function clearRunWorkspace(runId: string): Promise<void> {
+	const runDir = runDirFor(runId);
+	for (const dir of [
+		runWorktreeDir(runId),
+		join(runDir, "repo"),
+		join(runDir, "repos"),
+	]) {
+		try {
+			await releaseWorktreesIn(dir);
+		} catch (e) {
+			logger.warn(`Failed to release the worktrees in ${dir}`, e);
+		}
+	}
 	for (const rel of RUN_WORKSPACE) {
+		// repo and repos were released above, which removes what no rule or guard kept.
+		if (rel === "repo" || rel === "repos") continue;
 		try {
 			rmSync(join(runDir, rel), { recursive: true, force: true });
 		} catch (e) {
 			logger.warn(`Failed to remove the run's ${rel}`, e);
 		}
 	}
+	setups.delete(runId);
+	unbindRun(runId);
 }
 
 /**
  * Called at boot, when nothing is running: a process that died mid-run never
- * reached the run's `finally`, so its clone and harness home are still on disk.
+ * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
+ * A run named by `isInterrupted` keeps all of it until it is resumed (#981); one named by
+ * `isLive` (a follow-up left pending) keeps it whatever its retention says.
  */
-export function sweepRunWorkspaces(): number {
+export async function sweepRunWorkspaces(
+	opts: Pick<SweepOptions, "isLive" | "isInterrupted"> = {},
+): Promise<number> {
+	const swept = new Set(await sweepRunWorktrees(opts));
 	const runs = resolve(getAppDataDir(), "runs");
-	if (!existsSync(runs)) return 0;
-	let swept = 0;
+	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
+		if (
+			!entry.isDirectory() ||
+			opts.isLive?.(entry.name) ||
+			opts.isInterrupted?.(entry.name)
+		)
+			continue;
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
-			clearRunWorkspace(dir);
-			swept++;
+			try {
+				await clearRunWorkspace(entry.name);
+				swept.add(entry.name);
+			} catch (e) {
+				logger.warn(`Could not sweep the run dir ${entry.name}`, e);
+			}
 		}
 	}
-	return swept;
+	return swept.size;
 }
 
 /** `runs/<id>` for a job id, refusing an id that would resolve anywhere else (it is joined, then deleted from). */
@@ -840,9 +1461,15 @@ export function runDirFor(investigationId: string): string {
 
 export interface Workspace extends RunWorkspace {
 	note: string;
+	/** What this run could not check out; empty on a follow-up. */
+	checkoutsSkipped: CheckoutSkipped[];
 }
 
-function toRunWorkspace({ note: _note, ...ws }: Workspace): RunWorkspace {
+function toRunWorkspace({
+	note: _note,
+	checkoutsSkipped: _skipped,
+	...ws
+}: Workspace): RunWorkspace {
 	return ws;
 }
 
@@ -853,11 +1480,26 @@ function workspaceContext(
 	if (ws.layout !== "multi") return undefined;
 	return {
 		repos: ws.repos.map((r) => ({
-			path: `${r.name}/`,
+			path: r.dir,
 			services: r.services,
 			subPath: r.subPath,
 			head: r.head,
 		})),
+	};
+}
+
+/**
+ * Several repos: an agent that takes `additionalDirectories` starts in the primary
+ * repo with the rest beside it, so each repo keeps its own trust root (#918).
+ */
+function rootsOf(
+	ws: RunWorkspace,
+): { cwd: string; additional: string[] } | undefined {
+	const [primary, ...rest] = ws.repos;
+	if (ws.layout !== "multi" || !primary) return undefined;
+	return {
+		cwd: inside(primary.dir, primary.subPath),
+		additional: rest.map((r) => r.dir),
 	};
 }
 
@@ -877,14 +1519,15 @@ function dedupeRepos(repos: IncidentRepo[]): {
 	return [...byKey.values()];
 }
 
-/** The folder a repo gets under `repos/`: the last segment of its display name, unique. */
+/** The folder a repo gets under `repos/`: the last segment of its display name, unique, never dot-led (`repos/.gemini` would be the cwd's own agent config). */
 function folderNames(repos: IncidentRepo[]): string[] {
 	const used = new Set<string>();
 	return repos.map((repo) => {
 		const base =
 			(displayNameFor(repo.sourceKind, repo.url).split("/").pop() ?? "")
 				.replace(/[^A-Za-z0-9._-]/g, "_")
-				.replace(/^\.+$/, "_") || "repo";
+				.replace(/^\.+$/, "_")
+				.replace(/^\./, "_") || "repo";
 		let name = base;
 		for (let n = 2; used.has(name); n++) name = `${base}-${n}`;
 		used.add(name);
@@ -902,6 +1545,44 @@ function inside(root: string, sub: string | null): string {
 	return dir;
 }
 
+/** `dir` as it is on disk, never created: an existing folder whose real path stays inside real `root` (#848). */
+function onDisk(root: string, dir: string, name: string): string {
+	let real = "";
+	try {
+		real = realpathSync(dir);
+	} catch {}
+	if (!real || !statSync(real).isDirectory())
+		throw new Error(`the sub-path ${name} is not in the repository`);
+	const rel = relative(realpathSync(root), real);
+	if (rel.startsWith("..") || isAbsolute(rel))
+		throw new Error(`Repository sub-path escapes the snapshot: ${name}`);
+	return dir;
+}
+
+function inCheckout(runId: string, snap: string, sub: string | null): string {
+	const dir = inside(snap, sub);
+	const root = ownerOf(runId, snap);
+	onDisk(root, snap, relative(root, snap));
+	return onDisk(snap, dir, sub ?? ".");
+}
+
+/** The run's own dir that lexically holds `path`: its worktree dir (#918) or its run dir. */
+function ownerOf(runId: string, path: string): string {
+	const roots = [runWorktreeDir(runId), runDirFor(runId)];
+	return (
+		roots.find((r) => {
+			const rel = relative(r, path);
+			return !rel.startsWith("..") && !isAbsolute(rel);
+		}) ?? runDirFor(runId)
+	);
+}
+
+function unmappedDir(runDir: string): string {
+	const dir = join(runDir, "unmapped");
+	mkdirSync(dir, { recursive: true });
+	return onDisk(runDir, dir, "unmapped");
+}
+
 function whereFrom(repo: {
 	sourceKind: string;
 	url: string;
@@ -912,84 +1593,150 @@ function whereFrom(repo: {
 }
 
 /**
- * The harness runs in fresh snapshots of every repo the incident touches, under
- * the run's own dir (ADR 0004 §2). One repo keeps `repo/`; several go under
- * `repos/<name>/` with the cwd at `repos/` (#747). No linked repo means an
- * UNMAPPED run in an empty scratch dir that says so; a run against the wrong
- * tree produces confident garbage.
+ * Fresh snapshots of the incident's repos (ADR 0004 §2): one repo is the workspace
+ * `<location>/pl-<run>` (#918), of its folder or of a URL's mirror (#925); several go under
+ * `<location>/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
+ * and named; with none, the run goes on (#848).
  */
 export async function resolveWorkspace(
 	data: InvestigationJobData,
 	ports: RunPorts,
 	signal?: AbortSignal,
 ): Promise<Workspace> {
+	const runDir = runDirFor(data.investigationId);
 	let listed: IncidentRepo[] = [];
+	let unlisted: string | null = null;
 	try {
-		listed = await ports.incidentRepos(data.incidentId);
+		const got = await within(ASSEMBLY_MS, ports.incidentRepos(data.incidentId));
+		if (got === LATE) {
+			unlisted = `the repository list did not load in ${ASSEMBLY_MS / 1000} s`;
+			logger.warn(`Ran without code: ${unlisted}`);
+		} else listed = got;
 	} catch (e) {
 		logger.warn("Could not list the incident's repos", e);
 	}
-	const runDir = runDirFor(data.investigationId);
-	const repos = dedupeRepos(listed);
-	if (repos.length === 0) {
-		const cwd = join(runDir, "unmapped");
-		mkdirSync(cwd, { recursive: true });
-		return {
-			layout: "unmapped",
-			cwd,
-			repos: [],
-			note: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
-		};
-	}
+	const runId = data.investigationId;
+	const all = dedupeRepos(listed);
+	const repos = all.slice(0, WORKSPACE_REPOS_GUARD);
+	const guarded: Skip[] = all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
+		repo,
+		reason: `over the ${WORKSPACE_REPOS_GUARD}-repository guard`,
+		code: "guard",
+	}));
+	if (repos.length === 0)
+		return unmappedWorkspace(
+			runDir,
+			unlisted
+				? `Ran without code: ${unlisted}.`
+				: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+		);
+	await bindRun(runId, {
+		incidentId: data.incidentId,
+		serviceName: repos[0]?.services[0] ?? null,
+	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
-	const taken: RunWorkspaceRepo[] = [];
-	const skipped: string[] = [];
-	// One at a time: every clone lands on the same disk.
-	for (const [i, { repo, services }] of repos.entries()) {
-		const name = names[i] as string;
-		try {
-			const { snap, credential } = await ports.snapshotWith(
+	// A budget abort throws the hook's result away; what it printed so far is kept for the run log (#925).
+	const printed: string[] = repos.map(() => "");
+	const outcomes = await checkoutAll(
+		repos.length,
+		(i, repoSignal) => {
+			const { repo } = repos[i] as (typeof repos)[number];
+			const name = names[i] as string;
+			return ports.snapshotWith(
 				{
 					sourceKind: repo.sourceKind,
 					url: repo.url,
 					connectionId: repo.connectionId,
 					defaultBranch: repo.defaultBranch,
 				},
-				multi ? join(runDir, "repos", name) : join(runDir, "repo"),
-				signal,
+				multi ? join(runWorktreeDir(runId), name) : runWorktreeDir(runId),
+				repoSignal,
+				undefined,
+				runId,
+				(chunk) => {
+					printed[i] = (printed[i] + chunk).slice(-SETUP_OUTPUT_TAIL);
+				},
 			);
-			inside(snap.path, repo.subPath);
-			taken.push({
-				name,
-				dir: snap.path,
-				sourceKind: repo.sourceKind,
-				url: repo.url,
-				subPath: repo.subPath,
-				connectionId: repo.connectionId,
-				head: snap.head,
-				branch: snap.branch,
-				services,
-				credential,
-			});
-		} catch (e) {
-			// The primary service's repo is the run; another alert's broken link is not.
-			if (i === 0 || signal?.aborted) throw e;
-			const why = e instanceof Error ? e.message : String(e);
-			logger.warn(`Skipped ${whereFrom(repo)}: ${why}`);
-			skipped.push(`${whereFrom(repo)} (${why})`);
+		},
+		signal,
+		releaseLate,
+	);
+	const taken: RunWorkspaceRepo[] = [];
+	const skipped: Skip[] = [];
+	for (const [i, outcome] of outcomes.entries()) {
+		const { repo, services } = repos[i] as (typeof repos)[number];
+		if (!outcome.ok) {
+			if (printed[i])
+				noteSetup(runId, names[i] as string, {
+					status: "aborted",
+					exitCode: null,
+					output: printed[i] as string,
+				});
+			skipped.push({ repo, reason: outcome.reason, code: outcome.code });
+			continue;
 		}
+		const { snap, credential } = outcome.value;
+		if (snap.setup) noteSetup(runId, names[i] as string, snap.setup);
+		try {
+			inCheckout(runId, snap.path, repo.subPath);
+		} catch (e) {
+			skipped.push({ repo, reason: messageOf(e), code: "failed" });
+			continue;
+		}
+		taken.push({
+			name: names[i] as string,
+			dir: snap.path,
+			sourceKind: repo.sourceKind,
+			url: repo.url,
+			subPath: repo.subPath,
+			connectionId: repo.connectionId,
+			head: snap.head,
+			branch: snap.branch,
+			services,
+			credential,
+		});
+		logger.info(`Checked out ${whereFrom(repo)} with ${credential.label}`);
 	}
+	skipped.push(...guarded);
+	for (const k of skipped)
+		logger.warn(`Skipped ${whereFrom(k.repo)}: ${k.reason}`);
+	const checkoutsSkipped = skipped.map((k) => ({
+		repo: k.repo.url,
+		reason: k.reason,
+		code: k.code,
+	}));
+	const listedSkips = skipped
+		.map((k) => `${whereFrom(k.repo)} (${k.reason})`)
+		.join("; ");
+	if (taken.length === 0)
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: no repository could be checked out: ${listedSkips}.`,
+			checkoutsSkipped,
+		);
 	const omitted = skipped.length
-		? ` Not included, because it could not be copied: ${skipped.join("; ")}.`
+		? `Not included, because it could not be copied: ${listedSkips}.`
 		: "";
+	// The primary's own failure leads, so the reader sees first that the run is not on its code.
+	const primaryFailed =
+		!outcomes[0]?.ok || taken[0]?.url !== repos[0]?.repo.url;
+	const noted = (body: string) =>
+		!omitted
+			? body
+			: primaryFailed
+				? `${omitted} ${body}`
+				: `${body} ${omitted}`;
 	if (taken.length === 1) {
 		const [only] = taken as [RunWorkspaceRepo];
 		return {
 			layout: "single",
 			cwd: inside(only.dir, only.subPath),
 			repos: taken,
-			note: `Investigating a snapshot of ${whereFrom(only)} at ${only.branch ? `${only.branch} ` : ""}${only.head.slice(0, 12)}. Uncommitted changes are not included.${omitted}`,
+			checkoutsSkipped,
+			note: noted(
+				`Investigating a snapshot of ${whereFrom(only)} at ${only.branch ? `${only.branch} ` : ""}${only.head.slice(0, 12)}. Uncommitted changes are not included.`,
+			),
 		};
 	}
 	const listing = taken
@@ -1000,10 +1747,159 @@ export async function resolveWorkspace(
 		.join(", ");
 	return {
 		layout: "multi",
-		cwd: join(runDir, "repos"),
+		cwd: runWorktreeDir(runId),
 		repos: taken,
-		note: `Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.${omitted}`,
+		checkoutsSkipped,
+		note: noted(
+			`Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.`,
+		),
 	};
+}
+
+/** Refuses a recorded path outside the run's dir and its worktree dir. */
+function ownedBy(runId: string): (path: string) => void {
+	const roots = [runDirFor(runId), runWorktreeDir(runId)];
+	return (path) => {
+		const ok = roots.some((r) => {
+			try {
+				inside(r, relative(r, path));
+				return true;
+			} catch {
+				return false;
+			}
+		});
+		if (!ok)
+			throw new Error(`Repository sub-path escapes the snapshot: ${path}`);
+	};
+}
+
+interface Skip {
+	repo: IncidentRepo;
+	reason: string;
+	code: CheckoutSkipped["code"];
+}
+
+function unmappedWorkspace(
+	runDir: string,
+	note: string,
+	checkoutsSkipped: CheckoutSkipped[] = [],
+): Workspace {
+	const cwd = unmappedDir(runDir);
+	return { layout: "unmapped", cwd, repos: [], checkoutsSkipped, note };
+}
+
+type CheckoutOutcome<T> =
+	| { ok: true; value: T }
+	| { ok: false; code: "failed" | "budget"; reason: string };
+
+const OUT_OF_TIME = "the time for checkouts ran out";
+
+/**
+ * Runs `count` checkouts, three at a time, under one budget. Each has its own
+ * controller, aborted when the budget ends; a cancel of the run throws.
+ */
+async function checkoutAll<T>(
+	count: number,
+	run: (i: number, signal: AbortSignal) => Promise<T>,
+	cancel?: AbortSignal,
+	onLate?: (late: NoInfer<T>) => void,
+): Promise<CheckoutOutcome<T>[]> {
+	const controllers = Array.from(
+		{ length: count },
+		() => new AbortController(),
+	);
+	const outcomes: CheckoutOutcome<T>[] = [];
+	let over = false;
+	const budget = setTimeout(() => {
+		over = true;
+		for (const c of controllers) c.abort(new Error(OUT_OF_TIME));
+	}, CHECKOUT_BUDGET_MS);
+	const onCancel = () => {
+		for (const c of controllers) c.abort(cancel?.reason);
+	};
+	if (cancel?.aborted) onCancel();
+	else cancel?.addEventListener("abort", onCancel, { once: true });
+	let next = 0;
+	const worker = async () => {
+		while (next < count) {
+			const i = next++;
+			const signal = (controllers[i] as AbortController).signal;
+			if (signal.aborted) {
+				outcomes[i] = { ok: false, code: "budget", reason: OUT_OF_TIME };
+				continue;
+			}
+			try {
+				outcomes[i] = {
+					ok: true,
+					value: await untilAborted(run(i, signal), signal, onLate),
+				};
+			} catch (e) {
+				outcomes[i] =
+					over && signal.aborted
+						? { ok: false, code: "budget", reason: OUT_OF_TIME }
+						: { ok: false, code: "failed", reason: messageOf(e) };
+			}
+		}
+	};
+	try {
+		await Promise.all(
+			Array.from({ length: Math.min(CHECKOUT_CONCURRENCY, count) }, worker),
+		);
+	} finally {
+		clearTimeout(budget);
+		cancel?.removeEventListener("abort", onCancel);
+	}
+	if (cancel?.aborted)
+		throw cancel.reason instanceof Error
+			? cancel.reason
+			: new Error("the run was stopped");
+	return outcomes;
+}
+
+/**
+ * `work`, rejected as soon as `signal` aborts: a port that never settles is dropped, not awaited.
+ * `onLate` gets what a dropped `work` still yields, so nothing it made outlives the run (#918).
+ */
+function untilAborted<T>(
+	work: Promise<T>,
+	signal: AbortSignal,
+	onLate?: (late: NoInfer<T>) => void,
+): Promise<T> {
+	let onAbort = () => {};
+	const aborted = new Promise<never>((_, reject) => {
+		onAbort = () => reject(signal.reason);
+		if (signal.aborted) onAbort();
+		else signal.addEventListener("abort", onAbort, { once: true });
+	});
+	const raced = Promise.race([work, aborted]);
+	if (onLate) raced.catch(() => work.then(onLate, () => {}));
+	return raced.finally(() => signal.removeEventListener("abort", onAbort));
+}
+
+/**
+ * A worktree that finished after the run stopped waiting is unlocked and removed now, unless a
+ * later attempt re-added that path.
+ */
+function releaseLate({
+	snap,
+}: {
+	snap: { path: string; lock?: string };
+}): void {
+	if (!snap.lock) return;
+	releaseWorktreesIn(snap.path, snap.lock).catch((e) =>
+		logger.warn(`Could not release the late checkout ${snap.path}`, e),
+	);
+}
+
+/** An error's class and code, never its message: a driver's can carry a secret (#848). */
+function errorTag(e: unknown): string {
+	if (!(e instanceof Error)) return "not an Error";
+	const code = (e as { code?: unknown }).code;
+	return typeof code === "string" ? `${e.name} ${code}` : e.name;
+}
+
+function messageOf(e: unknown): string {
+	return e instanceof Error ? e.message : String(e);
 }
 
 /**
@@ -1017,38 +1913,57 @@ export async function rebuildWorkspace(
 	harnessLabel: string,
 	ports: RunPorts,
 	signal?: AbortSignal,
+	handoff = false,
 ): Promise<Workspace> {
-	const runDir = runDirFor(investigationId);
-	// Paths come back from the row; nothing outside this run's dir is ever replaced.
-	inside(runDir, relative(runDir, ws.cwd));
+	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.
+	const owned = ownedBy(investigationId);
+	owned(ws.cwd);
 	const repos: RunWorkspaceRepo[] = [];
+	const budget = AbortSignal.timeout(CHECKOUT_BUDGET_MS);
+	const bounded = signal ? AbortSignal.any([signal, budget]) : budget;
 	for (const repo of ws.repos) {
-		inside(runDir, relative(runDir, repo.dir));
+		owned(repo.dir);
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
-		const { credential } = await ports.snapshotWith(
-			{
-				sourceKind: repo.sourceKind,
-				url: repo.url,
-				connectionId: repo.connectionId,
-			},
-			repo.dir,
-			signal,
-			repo.head,
+		const { snap, credential } = await untilAborted(
+			ports.snapshotWith(
+				{
+					sourceKind: repo.sourceKind,
+					url: repo.url,
+					connectionId: repo.connectionId,
+				},
+				repo.dir,
+				bounded,
+				repo.head,
+				investigationId,
+			),
+			bounded,
+			releaseLate,
 		);
+		if (snap.setup) noteSetup(investigationId, repo.name, snap.setup);
+		inCheckout(investigationId, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
 	}
-	mkdirSync(ws.cwd, { recursive: true });
+	const runDir = runDirFor(investigationId);
+	if (ws.layout === "unmapped") unmappedDir(runDir);
+	const root =
+		(ws.layout === "single" && ws.repos[0]?.dir) ||
+		ownerOf(investigationId, ws.cwd);
+	onDisk(root, ws.cwd, relative(root, ws.cwd));
 	const pinned =
 		ws.repos.length === 1
 			? (ws.repos[0] as RunWorkspaceRepo).head.slice(0, 7)
 			: ws.repos.map((r) => `${r.name}@${r.head.slice(0, 7)}`).join(", ");
+	const how = handoff
+		? `Handing off to a fresh ${harnessLabel} session`
+		: `Continuing the same ${harnessLabel} session`;
 	return {
 		...ws,
 		repos,
+		checkoutsSkipped: [],
 		note: ws.repos.length
-			? `Continuing the same ${harnessLabel} session in a fresh workspace pinned to ${pinned}.`
-			: `Continuing the same ${harnessLabel} session; this run had no repository.`,
+			? `${how} in a fresh workspace pinned to ${pinned}.`
+			: `${how}; this run had no repository.`,
 	};
 }
 

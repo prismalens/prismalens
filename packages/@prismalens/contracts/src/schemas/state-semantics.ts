@@ -365,6 +365,10 @@ export type InvestigationKind = (typeof INVESTIGATION_KINDS)[number];
 export const LIVE_TURNS = ["report", "answer"] as const;
 export type LiveTurn = (typeof LIVE_TURNS)[number];
 
+/** Why a failed run ended: a restart cut it off, or its agent hit a usage limit. */
+export const RUN_END_REASONS = ["interrupted", "limited"] as const;
+export type RunEndReason = (typeof RUN_END_REASONS)[number];
+
 /** How a thread's last message ended (#673 w59). */
 export const TURN_OUTCOMES = ["answered", "stopped", "error"] as const;
 export type TurnOutcome = (typeof TURN_OUTCOMES)[number];

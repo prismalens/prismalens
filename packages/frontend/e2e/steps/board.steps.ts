@@ -22,7 +22,7 @@ import {
 	openBoard,
 	QUIET,
 	resolveIncident,
-	sidewaysOverflow,
+	sidewaysFaults,
 	visit,
 	waitFor,
 	waitForRun,
@@ -179,7 +179,7 @@ Then(
 
 Then("nothing scrolls sideways", async ({ page }) => {
 	await expect(page.getByTestId("inbox")).toBeVisible();
-	expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(0);
+	expect(await sidewaysFaults(page)).toEqual([]);
 });
 
 Given(
@@ -405,7 +405,7 @@ Then(
 			expect(tops[0]).toBe(tops[1]);
 			expect(tops[2]).toBeGreaterThan(tops[1] ?? 0);
 		}
-		expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(0);
+		expect(await sidewaysFaults(page)).toEqual([]);
 	},
 );
 
@@ -601,15 +601,14 @@ Given("no coding agent is on PATH", async ({ page, agents, $test }) => {
 	await openBoard(page).catch(() => page.goto("/incidents"));
 });
 
-Then(
-	"step 3 reads which agents PrismaLens looks for and how to install one",
-	async ({ page }) => {
-		await visit(page, "/incidents");
-		const step = page.getByTestId("first-run-step-3");
-		await expect(step).toContainText("PrismaLens looks for OpenCode");
-		await expect(step.getByTestId("first-run-install").first()).toBeVisible();
-	},
-);
+Then("step 3 opens Add agent", async ({ page }) => {
+	await visit(page, "/incidents");
+	const step = page.getByTestId("first-run-step-3");
+	await expect(step).toContainText("No agent can run yet");
+	await step.getByTestId("first-run-add-agent").click();
+	await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
+	await expect(page.getByTestId("add-agent-tile-opencode")).toBeVisible();
+});
 
 When(
 	"I open an incident's Conversation",

@@ -174,11 +174,3 @@ export function reveal(win: Revealable): void {
 	win.show();
 	win.focus();
 }
-
-/** The tray's status line and tooltip. */
-export function runningLabel(count: number): string {
-	if (count === 0) return "Nothing running";
-	return count === 1
-		? "1 investigation running"
-		: `${count} investigations running`;
-}

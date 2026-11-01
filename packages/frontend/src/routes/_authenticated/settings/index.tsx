@@ -4,41 +4,56 @@ import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import {
 	AboutSettings,
-	DangerZoneSettings,
+	AlertIntakeSettings,
 	HarnessSettings,
-	IntegrationsSettings,
+	NotificationsSettings,
 	TelemetrySettings,
 } from "@/components/settings";
-import { AlertSources } from "@/components/settings/AlertSources";
+import { AgentDetail } from "@/components/settings/AgentDetail";
+import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { DevicesTab } from "@/components/settings/DevicesTab";
+import { GeneralSettings } from "@/components/settings/GeneralSettings";
+import { RunWorkspaceSettings } from "@/components/settings/RunWorkspaceSettings";
 import {
+	FIRST_SETTINGS_TAB,
+	SETTINGS_SECTIONS,
 	SettingsFrame,
-	useSettingsSections,
+	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
+import {
+	AddSourceButton,
+	MANY_SOURCES,
+	SourcesSettings,
+} from "@/components/settings/SourcesSettings";
 import { Pool, Row } from "@/components/shared/Row";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
+import { useSourcesOverview } from "@/lib/api/hooks/use-sources-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/settings/")({
 	component: SettingsPage,
 });
 
-const SECTIONS = {
-	harness: {
+const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
+	general: { title: "General" },
+	appearance: { title: "Appearance" },
+	agent: {
 		title: "Agent",
 		intro:
-			"The coding agent a run rents to read the code and the telemetry. It signs in on its own; PrismaLens never holds its login.",
+			"The coding agent a run uses to read the code and the telemetry. It signs in on its own. Variables you add under an agent are stored encrypted and passed only to that agent.",
 	},
-	sources: {
-		title: "Alert sources",
+	runs: {
+		title: "Runs",
 		intro:
-			"Where alerts come from. Alertmanager can push to the webhook, or PrismaLens pulls from a URL.",
+			"Where a run checks out the code, and what is left of it afterwards.",
 	},
-	integrations: {
-		title: "Integrations",
-		intro: "Where the report goes, and which git host holds the code.",
+	"alert-intake": {
+		title: "Alert intake",
+		intro: "What starts an investigation.",
 	},
+	sources: { title: "Sources", intro: "What a run reads before it starts." },
+	notifications: { title: "Notifications", intro: "Where findings go." },
 	devices: {
 		title: "Devices",
 		intro: "Phones and computers paired with this instance.",
@@ -48,22 +63,24 @@ const SECTIONS = {
 		intro:
 			"Counts that show which features get used. On unless you turn it off.",
 	},
-	about: {
-		title: "About",
-		intro:
-			"Which version this is, how it was installed, and whether a newer release is out.",
-	},
-	danger: {
-		title: "Danger zone",
-		intro: "Reset the records, or everything.",
-	},
-} as const;
+	about: { title: "About" },
+};
 
 function SettingsPage() {
-	const { tab: picked } = useSearch({ from: "/_authenticated/settings" });
-	const tab = picked ?? "harness";
+	const {
+		tab: picked,
+		agent,
+		source,
+	} = useSearch({
+		from: "/_authenticated/settings",
+	});
+	const tab = picked ?? FIRST_SETTINGS_TAB;
 	const phone = useMediaQuery(PHONE);
 	const queryClient = useQueryClient();
+	const sources = useSourcesOverview(tab === "sources");
+	const manySources =
+		(sources.data?.sources.length ?? 0) + (sources.data?.gitHosts.length ?? 0) >
+		MANY_SOURCES;
 
 	// Actions on other screens change what these sections show; refetch on entry.
 	useEffect(() => {
@@ -76,24 +93,33 @@ function SettingsPage() {
 
 	const section = SECTIONS[tab];
 	return (
-		<SettingsFrame section={tab} title={section.title} intro={section.intro}>
-			{tab === "harness" && <HarnessSettings />}
-			{tab === "integrations" && <IntegrationsSettings />}
-			{tab === "sources" && <AlertSources />}
+		<SettingsFrame
+			section={tab}
+			title={section.title}
+			intro={section.intro}
+			actions={tab === "sources" ? <AddSourceButton /> : undefined}
+			wide={tab === "sources" && manySources}
+		>
+			{tab === "general" && <GeneralSettings />}
+			{tab === "appearance" && <AppearanceSettings />}
+			{tab === "agent" &&
+				(agent ? <AgentDetail id={agent} /> : <HarnessSettings />)}
+			{tab === "runs" && <RunWorkspaceSettings />}
+			{tab === "alert-intake" && <AlertIntakeSettings />}
+			{tab === "sources" && <SourcesSettings source={source} />}
+			{tab === "notifications" && <NotificationsSettings />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
 			{tab === "about" && <AboutSettings />}
-			{tab === "danger" && <DangerZoneSettings />}
 		</SettingsFrame>
 	);
 }
 
 /**
- * The phone's landing: each section with its line, in one pool. The strip's
- * Settings door (Sidebar.tsx) returns a section here.
+ * The phone's landing: each page in one pool, flat (#848). The strip's
+ * Settings door (Sidebar.tsx) returns a page here.
  */
 function SectionList() {
-	const sections = useSettingsSections();
 	return (
 		<div
 			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas"
@@ -106,10 +132,10 @@ function SectionList() {
 				data-testid="settings-section-list"
 			>
 				<Pool>
-					{sections.map((s) => (
+					{SETTINGS_SECTIONS.map((s) => (
 						<Row
 							key={s.tab}
-							className="relative"
+							className="relative min-h-14"
 							label={
 								<Link
 									to="/settings"
@@ -120,7 +146,6 @@ function SectionList() {
 									{s.label}
 								</Link>
 							}
-							meta={s.line || "\u00a0"}
 							trailing={<ChevronRight className="size-4 text-text-3" />}
 						/>
 					))}

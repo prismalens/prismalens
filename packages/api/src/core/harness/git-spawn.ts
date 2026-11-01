@@ -22,14 +22,18 @@ export interface SpawnGitOptions {
 	input?: string;
 	/** Read stdout line by line instead of collecting it; the result's stdout is then "". */
 	onStdoutLine?: (line: string) => void;
+	/** Keep stdout as bytes in `bytes`, undecoded; `stdout` is then "". */
+	raw?: boolean;
 }
 
 export interface GitOutput {
 	stdout: string;
 	stderr: string;
+	/** Set only with `raw`. */
+	bytes?: Buffer;
 }
 
-/** A git child that exited non-zero, timed out or overflowed. `stderr` is raw: scrub it before showing it. */
+/** A git child that failed. `message` is fixed text; `stderr` is scrubbed and capped, for classification only, never shown (#848). */
 export class GitSpawnError extends Error {
 	constructor(
 		message: string,
@@ -71,6 +75,7 @@ export function spawnGit(
 		let stderr = "";
 		let size = 0;
 		let partial = "";
+		const chunks: Buffer[] = [];
 		let failure: Error | null = null;
 		const fail = (err: Error) => {
 			failure ??= err;
@@ -81,10 +86,14 @@ export function spawnGit(
 			if (size > MAX_OUTPUT)
 				fail(new GitSpawnError("git output exceeded 16 MiB", null, "", false));
 		};
-		child.stdout?.setEncoding("utf8");
+		if (!opts.raw) child.stdout?.setEncoding("utf8");
 		child.stderr?.setEncoding("utf8");
-		child.stdout?.on("data", (chunk: string) => {
+		child.stdout?.on("data", (chunk: string | Buffer) => {
 			grow(chunk.length);
+			if (typeof chunk !== "string") {
+				chunks.push(chunk);
+				return;
+			}
 			if (!opts.onStdoutLine) {
 				stdout += chunk;
 				return;
@@ -100,12 +109,7 @@ export function spawnGit(
 		const timer = setTimeout(
 			() =>
 				fail(
-					new GitSpawnError(
-						`git ${args[0] ?? ""} timed out after ${Math.round(opts.timeoutMs / 1000)} s`,
-						null,
-						"",
-						true,
-					),
+					new GitSpawnError(`git ${args[0] ?? ""} timed out`, null, "", true),
 				),
 			opts.timeoutMs,
 		);
@@ -123,13 +127,17 @@ export function spawnGit(
 			done();
 			if (partial && opts.onStdoutLine) opts.onStdoutLine(partial);
 			if (failure) return reject(failure);
-			if (code === 0) return resolve({ stdout, stderr });
+			if (code === 0)
+				return resolve(
+					opts.raw
+						? { stdout, stderr, bytes: Buffer.concat(chunks) }
+						: { stdout, stderr },
+				);
 			reject(
 				new GitSpawnError(
-					scrubGitStderr(stderr.trim()) ||
-						`git ${args[0] ?? ""} exited ${code}`,
+					`git ${args[0] ?? ""} failed (exit ${code})`,
 					code,
-					stderr,
+					scrubGitStderr(stderr),
 					false,
 				),
 			);

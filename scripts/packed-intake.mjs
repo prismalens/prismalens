@@ -51,6 +51,7 @@ import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
 import { reportCitedPaths } from "./lib/cited-paths.mjs";
 import { makeIntakeFixtureRepo } from "./lib/intake-fixture.mjs";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -97,9 +98,44 @@ if (AGENT === "fake" && process.env.PACKED_INTAKE_REPO !== "fixture") {
 
 let child;
 let cleaned = false;
+
+// The API leads each ACP agent in its own process group, so SIGKILL on `pl up`
+// alone orphans it; walk by parent pid instead (#904). pgrep: Linux runner only.
+function descendantPids(root) {
+	const found = [];
+	const queue = [root];
+	while (queue.length > 0) {
+		let out = "";
+		try {
+			out = execFileSync("pgrep", ["-P", String(queue.shift())], {
+				encoding: "utf8",
+			});
+		} catch {
+			continue;
+		}
+		for (const line of out.split("\n")) {
+			const pid = Number(line);
+			if (pid > 0) {
+				found.push(pid);
+				queue.push(pid);
+			}
+		}
+	}
+	return found;
+}
+
 function cleanup(exitCode) {
 	if (cleaned) return;
 	cleaned = true;
+	if (child?.pid) {
+		for (const pid of descendantPids(child.pid).reverse()) {
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {
+				// already gone
+			}
+		}
+	}
 	try {
 		child?.kill("SIGKILL");
 	} catch {
@@ -115,7 +151,7 @@ async function main() {
 	const tgz = findTarball();
 	console.log(`[packed-intake] tarball: ${tgz}`);
 	console.log(`[packed-intake] installing into ${prefix}`);
-	execFileSync(
+	installWithRetry(
 		"npm",
 		[
 			"install",

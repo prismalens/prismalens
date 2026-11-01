@@ -1,119 +1,51 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import {
-	agentModelLabel,
-	useAgentChoice,
-} from "@/components/agent/AgentPicker";
-import { useAbout } from "@/components/settings/AboutSettings";
-import { useDevices } from "@/components/settings/DevicesTab";
-import { useTelemetrySettings } from "@/components/settings/TelemetrySettings";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
-import { useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useConnections, useIntegrations } from "@/lib/api/hooks";
-import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
-import { orpc } from "@/lib/api/orpc-client";
+import { cn } from "@/lib/utils";
 
 export type SettingsTab =
-	| "harness"
+	| "general"
+	| "appearance"
+	| "agent"
+	| "runs"
+	| "alert-intake"
 	| "sources"
-	| "integrations"
+	| "notifications"
 	| "devices"
 	| "usage"
-	| "about"
-	| "danger";
+	| "about";
 
 export type SettingsSection = SettingsTab | "services";
 
 export interface SettingsSectionItem {
 	tab: SettingsTab;
 	label: string;
-	/** One line of the section's state, under its name. */
-	line: string;
 }
 
 /**
- * The settings sections with one line of state each: the sidebar's list once
- * Settings swaps it in, and the phone's landing page. Every row has its line
- * (look ruling §2); an empty one waits only while its query loads.
+ * The settings pages, flat and in this order (#848): the sidebar's list once
+ * Settings swaps it in, and the phone's landing page. No headings, no lines.
  */
-export function useSettingsSections(): SettingsSectionItem[] {
-	const { effective, model } = useAgentChoice();
-	const { data: integrations } = useIntegrations();
-	const { data: connections } = useConnections();
-	const { data: delivery } = useLastDelivery();
-	const { data: reports } = useQuery(orpc.settings.delivery.get.queryOptions());
-	const { managesPairing } = useOperator();
-	const { data: devices } = useDevices(managesPairing);
-	const { data: about } = useAbout();
-	const { query: telemetry } = useTelemetrySettings();
-	const pulled = (connections ?? []).filter((c) =>
-		PULL_TEMPLATES.has(c.templateId ?? ""),
-	).length;
-	const named = [
-		...(reports?.slackConfigured ? ["Slack"] : []),
-		...listedIntegrations(integrations ?? [], connections ?? []).map(
-			(i) => i.label,
-		),
-	];
-	const agent = agentModelLabel(effective, model);
-	const sources = [delivery ? "Webhook" : "", pulled ? `${pulled} pulled` : ""]
-		.filter(Boolean)
-		.join(", ");
-	return [
-		{
-			tab: "harness",
-			label: "Agent",
-			line: effective
-				? [agent.agent, agent.model]
-						.filter((w) => w && w !== "agent default")
-						.join(", ")
-				: "None found",
-		},
-		{
-			tab: "sources",
-			label: "Alert sources",
-			line: connections ? sources || "None yet" : "",
-		},
-		{
-			tab: "integrations",
-			label: "Integrations",
-			line:
-				integrations && connections ? named.join(", ") || "None connected" : "",
-		},
-		{
-			tab: "devices",
-			label: "Devices",
-			line: !managesPairing
-				? "Managed on the host"
-				: devices
-					? `${devices.devices.length} paired`
-					: "",
-		},
-		{
-			tab: "usage",
-			label: "Usage data",
-			line: telemetry.data ? (telemetry.data.enabled ? "On" : "Off") : "",
-		},
-		{
-			tab: "about",
-			label: "About",
-			line: about?.update.available
-				? `${about.update.latest} available`
-				: (about?.version ?? ""),
-		},
-		{
-			tab: "danger",
-			label: "Danger zone",
-			line: "Reset or delete this install",
-		},
-	];
-}
+export const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
+	{ tab: "general", label: "General" },
+	{ tab: "appearance", label: "Appearance" },
+	{ tab: "agent", label: "Agent" },
+	{ tab: "runs", label: "Runs" },
+	{ tab: "alert-intake", label: "Alert intake" },
+	{ tab: "sources", label: "Sources" },
+	{ tab: "notifications", label: "Notifications" },
+	{ tab: "devices", label: "Devices" },
+	{ tab: "usage", label: "Usage data" },
+	{ tab: "about", label: "About" },
+];
+
+/** The page Settings opens on. */
+export const FIRST_SETTINGS_TAB: SettingsTab = "general";
 
 /** Templates whose connections are alert sources PrismaLens pulls from. */
 export const PULL_TEMPLATES: ReadonlySet<string> = new Set([
@@ -138,20 +70,23 @@ export function listedIntegrations<
 /**
  * The content of a Settings section, or of Services, which keeps this frame
  * while it waits for its own page. The header reads "Settings  Agent"; Back
- * lives at the top of the section list, and on the phone, where the list is a
- * page of its own, at the head of each section (L65 ruling).
+ * lives at the foot of the section list (#848), and on the phone, where the
+ * list is a page of its own, at the head of each section (L65 ruling).
  */
 export function SettingsFrame({
 	section,
 	title,
 	intro,
 	actions,
+	wide,
 	children,
 }: {
 	section: SettingsSection;
 	title: string;
 	intro?: ReactNode;
 	actions?: ReactNode;
+	/** Master-detail pages take the room beside the list (#848). */
+	wide?: boolean;
 	children: ReactNode;
 }) {
 	const services = section === "services";
@@ -164,7 +99,9 @@ export function SettingsFrame({
 		>
 			<PageHeader title={services ? "Services" : "Settings"}>
 				{!services && (
-					<h2 className="text-body font-normal text-text-3">{title}</h2>
+					<span className="text-body text-text-3" aria-hidden>
+						{title}
+					</span>
 				)}
 				{!services && phone && (
 					<Link
@@ -177,17 +114,27 @@ export function SettingsFrame({
 				)}
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 pb-12">
-					{(intro || actions) && (
-						<div className="mb-8 flex flex-wrap items-start justify-between gap-3">
-							{intro && (
-								<p className="min-w-0 text-body text-text-2">{intro}</p>
+				<div
+					className={cn(
+						"mx-auto w-full px-4 pt-6 pb-12",
+						wide ? "max-w-[64rem]" : "max-w-[42rem]",
+					)}
+				>
+					<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+						<div className="min-w-0">
+							{!services && (
+								<h2 className="text-display" data-testid="settings-title">
+									{title}
+								</h2>
 							)}
-							{actions && (
-								<div className="flex items-center gap-2">{actions}</div>
+							{intro && (
+								<p className="mt-1 min-w-0 text-body text-text-2">{intro}</p>
 							)}
 						</div>
-					)}
+						{actions && (
+							<div className="flex items-center gap-2">{actions}</div>
+						)}
+					</div>
 					{children}
 				</div>
 			</div>

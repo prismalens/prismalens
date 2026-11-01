@@ -2,19 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import {
-	type AccessLevel,
-	HARNESS_IDS,
-	HARNESS_REGISTRY,
-	type HarnessId,
-	resumeBlockedReason,
-} from "@prismalens/config/harness";
-import { harnessLaunch } from "@prismalens/config/harness-selection";
+import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	FollowUpKind,
 	InvestigationKind,
 	LiveTurn,
+	RunEndReason,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -26,6 +20,11 @@ import {
 	LIVE_TURN_LABEL,
 	LIVE_WORKFLOW_STATUSES,
 } from "@prismalens/contracts";
+import {
+	type PreRunDetail,
+	PreRunDetailSchema,
+	PreRunSnapshotSchema,
+} from "@prismalens/contracts/schemas";
 import {
 	type Investigation,
 	Prisma,
@@ -39,6 +38,7 @@ import {
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
+import { owePush, pushOwedBy } from "../push/push-outbox.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import {
 	CreateInvestigationDto,
@@ -46,6 +46,36 @@ import {
 } from "./dto/index.js";
 
 export type { Investigation };
+
+/**
+ * The run's stored pre-run context without the files' text or the excerpts: a
+ * snapshot reads as `ready`, a state marker as itself; null on a run from before #848.
+ */
+export function preRunDetailOf(
+	raw: string | null | undefined,
+): PreRunDetail | null {
+	if (!raw) return null;
+	try {
+		const json: unknown = JSON.parse(raw);
+		if (typeof json === "object" && json !== null && "state" in json) {
+			const marker = PreRunDetailSchema.safeParse(json);
+			return marker.success && marker.data.state !== "ready"
+				? marker.data
+				: null;
+		}
+		const parsed = PreRunSnapshotSchema.safeParse(json);
+		if (!parsed.success) return null;
+		const snap = parsed.data;
+		return {
+			state: "ready",
+			...snap,
+			sources: snap.sources.map(({ excerpt: _excerpt, ...s }) => s),
+			files: snap.files.map(({ name, about }) => ({ name, about })),
+		};
+	} catch {
+		return null;
+	}
+}
 
 /**
  * Prisma P2003: a write referenced a row that does not exist. On this path it
@@ -60,25 +90,15 @@ function isForeignKeyViolation(error: unknown): boolean {
 }
 
 /**
- * Why a finished run cannot take a follow-up, or null when it can (#747).
- * Checked again by the run itself, since PATH can change in between.
+ * Why a finished run cannot take a follow-up, or null when it can (#747): only
+ * a run that kept no workspace. A session that cannot be loaded is handed off.
  */
 export function followUpBlockedReason(
-	inv: Pick<Investigation, "harness" | "acpSessionId" | "workspace">,
+	inv: Pick<Investigation, "workspace">,
 ): string | null {
-	const harness = (HARNESS_IDS as readonly string[]).includes(inv.harness ?? "")
-		? (inv.harness as HarnessId)
-		: null;
-	if (harness) {
-		const off = resumeBlockedReason(harness);
-		if (off) return off;
-	}
-	if (!harness || !inv.acpSessionId)
-		return "This run's agent kept no session to reopen.";
-	const row = HARNESS_REGISTRY[harness];
-	if (!harnessLaunch(row)) return `${row.label} is no longer installed.`;
-	if (!inv.workspace) return "This run recorded no workspace.";
-	return null;
+	return inv.workspace
+		? null
+		: "This run recorded no workspace, so there is nothing to continue from.";
 }
 
 export type InvestigationWithRelations = Investigation & {
@@ -309,7 +329,7 @@ export class InvestigationsService {
 		updateData: Record<string, unknown>,
 	): Promise<Investigation | null> {
 		const ending = isWorkflowTerminal(status);
-		const { count } = await this.prisma.investigation.updateMany({
+		const write = {
 			where: {
 				id,
 				// A Stop only ends a live row: a stale one never relabels a finished run (#804 OBJ-025).
@@ -321,7 +341,20 @@ export class InvestigationsService {
 			data: ending
 				? { ...updateData, liveTurn: null, stopRequestedAt: null }
 				: updateData,
-		});
+		};
+		// A failure owes one push, written with the failure or not at all; a repeated write owes none (#859).
+		const { count } =
+			status === "failed"
+				? await this.prisma.$transaction(async (tx) => {
+						const alreadyFailed = await tx.investigation.count({
+							where: { id, status: "failed" },
+						});
+						const written = await tx.investigation.updateMany(write);
+						if (written.count > 0 && alreadyFailed === 0)
+							await owePush(tx, { kind: "run_failed", investigationId: id });
+						return written;
+					})
+				: await this.prisma.investigation.updateMany(write);
 		if (count === 0) {
 			this.logger.warn(
 				`Status write "${status}" for investigation ${id} skipped (missing, cancelled, or stop asked for)`,
@@ -378,6 +411,7 @@ export class InvestigationsService {
 			accessLevel?: AccessLevel;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
+			endReason?: RunEndReason;
 		},
 	): Promise<Investigation | null> {
 		try {
@@ -412,6 +446,8 @@ export class InvestigationsService {
 			if (facts?.accessLevel) updateData.accessLevel = facts.accessLevel;
 			if (facts?.lastTurnOutcome)
 				updateData.lastTurnOutcome = facts.lastTurnOutcome;
+			updateData.endReason =
+				status === "failed" ? (facts?.endReason ?? null) : null;
 
 			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
@@ -581,6 +617,11 @@ export class InvestigationsService {
 					},
 				});
 				if (count === 0) return false;
+				if (dto.status === "failed" || !chat)
+					await owePush(tx, {
+						kind: dto.status === "failed" ? "run_failed" : "finding_ready",
+						investigationId: id,
+					});
 
 				// 2. Create recommendations
 				if (dto.recommendations && dto.recommendations.length > 0) {
@@ -696,17 +737,22 @@ export class InvestigationsService {
 		for (const event of events) {
 			const branchId =
 				"branchId" in event ? event.branchId : INVESTIGATION_REPORT_BRANCH;
+			const data = {
+				investigationId,
+				seq: event.seq,
+				branchId,
+				// Stored as JSON text (sqlite String / pg JSONB) and re-parsed on
+				// read — mirrors the report/overlay dialect split.
+				event: JSON.stringify(event),
+			};
+			const owed = pushOwedBy(investigationId, event);
 			try {
-				await this.prisma.investigationEvent.create({
-					data: {
-						investigationId,
-						seq: event.seq,
-						branchId,
-						// Stored as JSON text (sqlite String / pg JSONB) and re-parsed on
-						// read — mirrors the report/overlay dialect split.
-						event: JSON.stringify(event),
-					},
-				});
+				if (owed)
+					await this.prisma.$transaction(async (tx) => {
+						await owePush(tx, owed);
+						await tx.investigationEvent.create({ data });
+					});
+				else await this.prisma.investigationEvent.create({ data });
 				inserted++;
 			} catch (error) {
 				if (
@@ -754,6 +800,18 @@ export class InvestigationsService {
 			);
 		}
 		return count;
+	}
+
+	/** Every stored event of a run, in order. */
+	async allEvents(investigationId: string): Promise<CanonicalEvent[]> {
+		const all: CanonicalEvent[] = [];
+		let cursor: number | undefined;
+		do {
+			const page = await this.getEvents(investigationId, cursor, 1000);
+			all.push(...page.events);
+			cursor = page.nextCursor ?? undefined;
+		} while (cursor !== undefined);
+		return all;
 	}
 
 	/**

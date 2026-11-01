@@ -26,8 +26,21 @@ export {
 	type Whoami,
 } from "./operator.js";
 export { type PairedDevice, pairingContract } from "./pairing.js";
+export {
+	ASK_LINK_STATES,
+	type AskLinkState,
+	type AskState,
+	PUSH_KINDS,
+	type PushHealth,
+	PushHealthSchema,
+	type PushKind,
+	type PushPayload,
+	PushPayloadSchema,
+	pushContract,
+} from "./push.js";
 export { recommendationsContract } from "./recommendations.js";
 export { repositoriesContract } from "./repositories.js";
+export { runWorkspacesContract } from "./run-workspaces.js";
 export { servicesContract } from "./services.js";
 export { settingsContract } from "./settings.js";
 export {
@@ -37,6 +50,7 @@ export {
 	SetupStepEnum,
 	setupContract,
 } from "./setup.js";
+export { sourcesContract } from "./sources.js";
 export { timelineContract } from "./timeline.js";
 export { webhooksContract } from "./webhooks.js";
 
@@ -53,11 +67,14 @@ import { investigationsContract } from "./investigations.js";
 import { liveContract } from "./live.js";
 import { operatorContract } from "./operator.js";
 import { pairingContract } from "./pairing.js";
+import { pushContract } from "./push.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
+import { runWorkspacesContract } from "./run-workspaces.js";
 import { servicesContract } from "./services.js";
 import { settingsContract } from "./settings.js";
 import { setupContract } from "./setup.js";
+import { sourcesContract } from "./sources.js";
 import { timelineContract } from "./timeline.js";
 import { webhooksContract } from "./webhooks.js";
 
@@ -75,16 +92,19 @@ export const contract = {
 	live: liveContract,
 	recommendations: recommendationsContract,
 	repositories: repositoriesContract,
+	runWorkspaces: runWorkspacesContract,
 	services: servicesContract,
 	webhooks: webhooksContract,
 	events: eventsContract,
 	timeline: timelineContract,
 	integrations: integrationsContract,
 	settings: settingsContract,
+	sources: sourcesContract,
 	setup: setupContract,
 	operator: operatorContract,
 	instance: instanceContract,
 	pairing: pairingContract,
+	push: pushContract,
 };
 
 export type Contract = typeof contract;

@@ -1,4 +1,5 @@
 {
+	"description": "Stays hand-authored: the settings and picker e2e read its model, effort and mode lists. The real agent is proven by the behaviour matrix on aimock (scripts/fakes/scenarios/, #914), which drives no UI.",
 	"agent": {
 		"name": "codex-acp",
 		"version": "1.13.1-fake"
