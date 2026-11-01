@@ -25994,6 +25994,62 @@
                                             "context-pack"
                                           ],
                                           "type": "string"
+                                        },
+                                        "quote": {
+                                          "type": "string"
+                                        },
+                                        "anchor": {
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "in": {
+                                                      "const": "tool-output"
+                                                    },
+                                                    "toolCallId": {
+                                                      "type": "string"
+                                                    },
+                                                    "line": {
+                                                      "type": "integer",
+                                                      "minimum": 1,
+                                                      "maximum": 9007199254740991
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "in",
+                                                    "toolCallId",
+                                                    "line"
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "in": {
+                                                      "const": "file"
+                                                    },
+                                                    "path": {
+                                                      "type": "string"
+                                                    },
+                                                    "line": {
+                                                      "type": "integer",
+                                                      "minimum": 1,
+                                                      "maximum": 9007199254740991
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "in",
+                                                    "path",
+                                                    "line"
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
                                         }
                                       },
                                       "required": [
@@ -26078,6 +26134,62 @@
                                             "context-pack"
                                           ],
                                           "type": "string"
+                                        },
+                                        "quote": {
+                                          "type": "string"
+                                        },
+                                        "anchor": {
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "in": {
+                                                      "const": "tool-output"
+                                                    },
+                                                    "toolCallId": {
+                                                      "type": "string"
+                                                    },
+                                                    "line": {
+                                                      "type": "integer",
+                                                      "minimum": 1,
+                                                      "maximum": 9007199254740991
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "in",
+                                                    "toolCallId",
+                                                    "line"
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "in": {
+                                                      "const": "file"
+                                                    },
+                                                    "path": {
+                                                      "type": "string"
+                                                    },
+                                                    "line": {
+                                                      "type": "integer",
+                                                      "minimum": 1,
+                                                      "maximum": 9007199254740991
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "in",
+                                                    "path",
+                                                    "line"
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
                                         }
                                       },
                                       "required": [
