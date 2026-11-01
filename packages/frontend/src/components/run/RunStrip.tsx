@@ -7,6 +7,11 @@ import { RunDot } from "@/components/incidents/RunTree";
 import type { RunRef } from "@/components/incidents/record-context";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { RunsMenu } from "./RunsMenu";
 
@@ -28,6 +33,7 @@ export function RunStrip({
 	waiting,
 	label,
 	detail,
+	reason,
 	model,
 	code,
 	tools,
@@ -44,6 +50,8 @@ export function RunStrip({
 	waiting?: boolean;
 	label: string;
 	detail: string;
+	/** The full why behind a short state: a phone drops the detail and the label opens this (#1010 N6). */
+	reason?: string | null;
 	model?: StripChip | null;
 	/** Hidden while the details panel is open: its Summary carries it. */
 	code?: StripChip | null;
@@ -72,16 +80,38 @@ export function RunStrip({
 					className="size-[7px] shrink-0 rounded-full bg-text-3"
 				/>
 			)}
-			<span
-				className="min-w-0 truncate font-medium md:shrink-0"
-				data-testid="run-strip-label"
-			>
-				{label}
-			</span>
+			{reason ? (
+				<Popover>
+					<PopoverTrigger asChild>
+						<button
+							type="button"
+							className="min-w-0 truncate text-left font-medium max-md:flex-1 md:shrink-0"
+							data-testid="run-strip-label"
+						>
+							{label}
+						</button>
+					</PopoverTrigger>
+					<PopoverContent
+						align="start"
+						className="text-meta text-text-2"
+						data-testid="run-strip-reason"
+					>
+						{reason}
+					</PopoverContent>
+				</Popover>
+			) : (
+				<span
+					className="min-w-0 truncate font-medium md:shrink-0"
+					data-testid="run-strip-label"
+				>
+					{label}
+				</span>
+			)}
 			<span
 				className={cn(
 					"min-w-0 flex-1 truncate md:min-w-[100px]",
 					waiting ? "text-warn" : "text-text-2",
+					reason && "max-md:hidden",
 				)}
 				data-testid="run-strip-detail"
 			>

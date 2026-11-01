@@ -94,6 +94,21 @@ describe("LatestRunStrip after a restart (#981)", () => {
 			"Interrupted, not resumed: Codex isn&#x27;t signed in on studio-mac. Sign in there, then resume.",
 		);
 	});
+
+	it("drops the reason on a phone, which the Next card carries, so the run name reads whole (#1010 N6)", () => {
+		const o = overview("");
+		o.latestRun = {
+			...o.latestRun,
+			state: "failed",
+			investigation: {
+				endReason: "interrupted",
+				error: "Not resumed: PrismaLens stopped again.",
+			},
+		} as unknown as Overview["latestRun"];
+		expect(render(o)).toMatch(
+			/class="[^"]*max-md:hidden[^"]*" data-testid="latest-run-detail"/,
+		);
+	});
 });
 
 describe("WhyCard preRun coverage (#848 case 14)", () => {

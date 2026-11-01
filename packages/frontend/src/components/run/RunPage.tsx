@@ -4,6 +4,7 @@
 import {
 	ACCESS_LEVEL_LABEL,
 	ACCESS_LEVEL_LINE,
+	type CanonicalEvent,
 	fidelityAccess,
 	type InvestigationWithRelations,
 	isRunStateLive,
@@ -487,7 +488,7 @@ export function RunPage() {
 	const toggleWork = useCallback(() => setWorkOpen((o) => !o), []);
 	const workedSeconds =
 		transcriptReport && !live && steps.length > 0 && inv && runTimed(inv)
-			? runElapsed(inv, now)
+			? runElapsed(inv, now, run.events)
 			: null;
 	const worked = useMemo(
 		() =>
@@ -665,6 +666,7 @@ export function RunPage() {
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: null,
 		live ? latestRestart(run.events) : null,
+		run.events,
 	);
 
 	const viewingRepo = viewing
@@ -680,6 +682,9 @@ export function RunPage() {
 					waiting={run.awaiting}
 					label={stateWord.label}
 					detail={stateWord.detail}
+					reason={
+						interrupted && inv ? endReasonStatus(inv, who.agent)?.sub : null
+					}
 					model={modelChip}
 					code={panel ? null : code}
 					tools={panel ? null : toolsChip}
@@ -885,6 +890,7 @@ export function stripWords(
 	asking: string | null,
 	/** The restart its newest message carries, while the run is live (#981). */
 	restart: RestartVia | null = null,
+	events: readonly CanonicalEvent[] = [],
 ): { label: string; detail: string } {
 	if (!inv || !state) return { label: name, detail: "" };
 	const chat = inv.kind === "chat";
@@ -894,7 +900,9 @@ export function stripWords(
 			label: chat ? "Ask, waiting for you" : `${who} waiting for you`,
 			detail: asking,
 		};
-	const took = runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
+	const took = runTimed(inv)
+		? formatElapsed(runElapsed(inv, now, events))
+		: null;
 	const when = (at: string | null) =>
 		at && now !== null ? relative(at, now) : "";
 	switch (state) {
@@ -1019,7 +1027,10 @@ function summaryFacts(
 						label: "Running for",
 						text: formatElapsed(turnElapsed(inv, run.events, ctx.now)),
 					}
-				: { label: "Took", text: formatElapsed(runElapsed(inv, ctx.now)) }
+				: {
+						label: "Took",
+						text: formatElapsed(runElapsed(inv, ctx.now, run.events)),
+					}
 			: null,
 		agent: ctx.agent,
 		model: ctx.model
