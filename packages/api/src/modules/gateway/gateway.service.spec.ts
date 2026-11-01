@@ -1323,6 +1323,19 @@ describe("read tools for the coding agent (#848)", () => {
 			expect(m.investigationEvent.findMany).not.toHaveBeenCalled();
 		});
 
+		it("a thread with no incident, a scheduled check's (#984), is not_found", async () => {
+			const m = mocks();
+			m.investigation.findUnique.mockImplementation(
+				async ({ where }: { where: { id: string } }) =>
+					where.id === RUN_A
+						? runRow()
+						: thread("scheduled", { incident: null }),
+			);
+			const out = await use(m, "thread_read", { threadId: "scheduled" });
+			expect(out.value).toEqual(failure("not_found"));
+			expect(m.investigationEvent.findMany).not.toHaveBeenCalled();
+		});
+
 		it("an id nobody has is not_found", async () => {
 			const out = await use(mocks(), "thread_read", { threadId: "missing" });
 			expect(out.value).toEqual(failure("not_found"));
