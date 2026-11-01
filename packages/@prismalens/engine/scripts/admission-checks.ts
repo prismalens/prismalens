@@ -131,21 +131,80 @@ export function redactNonce(text: string, nonce: string): string {
 /** The R-lines the exit code reads, each as its first word (`verdictOf` in scripts/admission-fake.mjs). */
 export interface AdmissionVerdictWords {
 	pass: boolean;
+	r5: string;
 	r6: string;
 	r7: string;
 	r8: string;
 	r9: string;
-	/** The row passed the resume probe, so R9 must run (#848). */
+	r10: string;
+	/** The row passed the resume probe, so R5 and R9 must run (#848, #942). */
 	resumable: boolean;
 }
 
-/** The gate: R1-R4, R6 not failed, R7 passed or skipped, R8 passed, R9 passed or n/a for an agent that cannot resume (#848). */
+/**
+ * The gate: R1-R4, R6 not failed, R7 passed or skipped, R8 passed; R5 and R9 passed, or
+ * any word for an agent that cannot resume (#848, #942); R10 passed or n/a.
+ */
 export function admissionExit(v: AdmissionVerdictWords): 0 | 1 {
+	const r5Ok = v.r5 === "pass" || !v.resumable;
+	const r10Ok = v.r10 === "pass" || v.r10 === "n/a";
 	const r6Ok = !v.r6.startsWith("fail") && v.r6 !== "missing";
 	const r7Ok = v.r7.startsWith("pass") || v.r7.startsWith("skipped");
 	const r8Ok = v.r8 === "pass";
 	const r9Ok = v.r9 === "pass" || (!v.resumable && v.r9 === "n/a");
-	return v.pass && r6Ok && r7Ok && r8Ok && r9Ok ? 0 : 1;
+	return v.pass && r5Ok && r6Ok && r7Ok && r8Ok && r9Ok && r10Ok ? 0 : 1;
+}
+
+interface WireUpdate {
+	method?: string;
+	params?: {
+		update?: {
+			sessionUpdate?: string;
+			messageId?: string;
+			content?: { text?: string };
+		};
+	};
+}
+
+/**
+ * R5 (#942): history text the agent re-sent on reopening that came back in the
+ * reply; null when none did. History is what it said before the follow-up's first
+ * `session/prompt`, and any later chunk under one of those message ids. Only what
+ * the agent re-sent counts, never a scripted model repeating itself.
+ */
+export function replayedText(
+	followUp: WireLine[],
+	reply: string,
+): string | null {
+	const history = new Map<string, string>();
+	const ids = new Set<string>();
+	let prompted = false;
+	let run = 0;
+	for (const line of followUp) {
+		let msg: WireUpdate;
+		try {
+			msg = JSON.parse(line.m) as WireUpdate;
+		} catch {
+			continue;
+		}
+		if (line.d === "out" && msg.method === "session/prompt") prompted = true;
+		const u = msg.params?.update;
+		if (line.d !== "in" || msg.method !== "session/update" || !u) continue;
+		if (
+			u.sessionUpdate !== "agent_message_chunk" &&
+			u.sessionUpdate !== "agent_thought_chunk"
+		) {
+			run++;
+			continue;
+		}
+		if (prompted && !(u.messageId && ids.has(u.messageId))) continue;
+		if (u.messageId) ids.add(u.messageId);
+		const key = u.messageId ?? `run-${run}`;
+		history.set(key, (history.get(key) ?? "") + (u.content?.text ?? ""));
+	}
+	for (const text of history.values())
+		if (text.trim() && reply.includes(text.trim())) return text.trim();
+	return null;
 }
 
 /** An R-line's first word: `pass (…)` is `pass`. */

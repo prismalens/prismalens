@@ -219,6 +219,9 @@ export function summarize(answer) {
 	const caps = init.agentCapabilities ?? {};
 	const flags = [
 		caps.loadSession ? "loadSession" : null,
+		// A follow-up reopens by resume first, then a load that ends at replayComplete (#942).
+		caps.sessionCapabilities?.resume != null ? "resume" : null,
+		caps.sessionCapabilities?.replayComplete != null ? "replayComplete" : null,
 		caps.promptCapabilities?.image ? "image" : null,
 		caps.mcpCapabilities ? "mcp" : null,
 	].filter(Boolean);
