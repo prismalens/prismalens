@@ -49,6 +49,8 @@
 		"@prometheus-io/lezer-promql": "^0.315.1",
 		"class-transformer": "^0.5.1",
 		"class-validator": "^0.15.1",
+		"croner": "^11.0.0",
+		"cronstrue": "^3.38.0",
 		"express": "^5.3.0",
 		"file-type": "^22.2.0",
 		"helmet": "^8.3.0",
