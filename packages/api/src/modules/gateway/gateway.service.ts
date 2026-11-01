@@ -969,7 +969,7 @@ export class GatewayService {
 		const incident = await this.runIncident(runId);
 		if (!incident) return null;
 		const serviceIds = await this.serviceIdsOf(incident.id, incident.serviceId);
-		const recs = serviceIds.length
+		const rows = serviceIds.length
 			? await this.prisma.recommendation.findMany({
 					where: {
 						investigation: {
@@ -994,12 +994,16 @@ export class GatewayService {
 					},
 				})
 			: [];
+		// A scheduled check's run has no incident (#984), so its fixes have no incident to cite.
+		const recs = rows.flatMap(({ investigation: { incident }, ...r }) =>
+			incident ? [{ ...r, incident }] : [],
+		);
 		// A check is on the timeline of the incident whose run it was, in FixesService's own metadata.
 		const checks = recs.length
 			? await this.prisma.timelineEntry.findMany({
 					where: {
 						incidentId: {
-							in: [...new Set(recs.map((r) => r.investigation.incident.id))],
+							in: [...new Set(recs.map((r) => r.incident.id))],
 						},
 						type: "custom",
 						metadata: { contains: '"event":"fix_check"' },
@@ -1028,7 +1032,7 @@ export class GatewayService {
 					id: r.id,
 					title: r.title,
 					detail: r.description,
-					incident: r.investigation.incident.number,
+					incident: r.incident.number,
 					investigationId: r.investigationId,
 					status: r.status === "completed" ? "applied" : r.status,
 					priority: r.priority,
