@@ -553,8 +553,12 @@ describe("runInvestigation over a fake ACP harness", () => {
 		setTimeout(() => {
 			expect(channel.send("Also check the TTL revert.", "queue", [], id)).toBe("queued");
 		}, 150);
-		setTimeout(() => stop.abort(), 400);
-		for await (const ev of runInvestigation(opts("silent", { signal: stop.signal, steer: channel.port }))) events.push(ev);
+		const failsafe = setTimeout(() => stop.abort(), 5_000);
+		for await (const ev of runInvestigation(opts("silent", { signal: stop.signal, steer: channel.port }))) {
+			events.push(ev);
+			if (ev.kind === "message_queued") stop.abort();
+		}
+		clearTimeout(failsafe);
 		const queued = events.findIndex((e) => e.kind === "message_queued");
 		const ended = events.findIndex((e) => e.kind === "operator_message");
 		expect(events[queued]).toMatchObject({ messageId: id, text: "Also check the TTL revert." });

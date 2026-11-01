@@ -701,94 +701,104 @@ async function checkReset() {
 		PRISMALENS_PLACEMENT: "server",
 	};
 	const p = up(sb, { env });
-	await p.ready();
-	const call = api(p.base, await pairOperator(sb, p.base));
-	const reset = () =>
-		call("/api/settings/danger/reset-data", {
+	// A bare "fetch failed" says nothing: name the socket error and what the server printed (#885).
+	try {
+		await p.ready();
+		const call = api(p.base, await pairOperator(sb, p.base));
+		const reset = () =>
+			call("/api/settings/danger/reset-data", {
+				method: "POST",
+				body: JSON.stringify({ confirmation: "RESET" }),
+			});
+		const service = await call("/api/services", {
 			method: "POST",
-			body: JSON.stringify({ confirmation: "RESET" }),
+			body: JSON.stringify({ name: "gate-reset" }),
 		});
-	const service = await call("/api/services", {
-		method: "POST",
-		body: JSON.stringify({ name: "gate-reset" }),
-	});
-	assert(service.status < 300, `POST /api/services ${service.status}`);
-	const incident = async (title) => {
-		const r = await call("/api/incidents", {
-			method: "POST",
-			body: JSON.stringify({ title, serviceId: service.body.id }),
-		});
-		assert(r.status < 300, `POST /api/incidents ${r.status}`);
-		return r.body.id;
-	};
-	const investigate = (id) =>
-		call(`/api/incidents/${id}/investigate`, { method: "POST", body: "{}" });
-	const settle = async (investigationId) => {
-		await call(`/api/investigations/${investigationId}/cancel`, {
-			method: "POST",
-			body: "{}",
-		});
-		for (let i = 0; i < 120; i++) {
-			const s = await call(`/api/investigations/${investigationId}`);
-			if (
-				!["queued", "running", "pending"].includes(
-					String(s.body?.status).toLowerCase(),
+		assert(service.status < 300, `POST /api/services ${service.status}`);
+		const incident = async (title) => {
+			const r = await call("/api/incidents", {
+				method: "POST",
+				body: JSON.stringify({ title, serviceId: service.body.id }),
+			});
+			assert(r.status < 300, `POST /api/incidents ${r.status}`);
+			return r.body.id;
+		};
+		const investigate = (id) =>
+			call(`/api/incidents/${id}/investigate`, { method: "POST", body: "{}" });
+		const settle = async (investigationId) => {
+			await call(`/api/investigations/${investigationId}/cancel`, {
+				method: "POST",
+				body: "{}",
+			});
+			for (let i = 0; i < 120; i++) {
+				const s = await call(`/api/investigations/${investigationId}`);
+				if (
+					!["queued", "running", "pending"].includes(
+						String(s.body?.status).toLowerCase(),
+					)
 				)
-			)
-				return;
-			await sleep(500);
+					return;
+				await sleep(500);
+			}
+			throw new Error(`run ${investigationId} never left running`);
+		};
+
+		const held = await incident("gate reset: held run");
+		const started = await investigate(held);
+		assert(
+			started.status < 300,
+			`investigate ${started.status}: ${JSON.stringify(started.body).slice(0, 300)}`,
+		);
+		const refused = await reset();
+		assert(
+			refused.status === 409 &&
+				/queued or running/.test(JSON.stringify(refused.body)),
+			`reset during a run: ${refused.status} ${JSON.stringify(refused.body).slice(0, 300)}`,
+		);
+		const kept = await call(`/api/incidents/${held}`);
+		assert(kept.status === 200, "the refused reset still deleted the incident");
+		await settle(started.body.investigationId);
+
+		const outcomes = [];
+		// Staggered so both orders occur: a negative delay holds the reset back, a positive one the run.
+		const delays = [-40, -10, -2, 0, 2, 10];
+		for (const [round, delay] of delays.entries()) {
+			const id = await incident(`gate reset: race ${round}`);
+			const [rst, inv] = await Promise.all([
+				sleep(Math.max(0, -delay)).then(reset),
+				sleep(Math.max(0, delay)).then(() => investigate(id)),
+			]);
+			assert(
+				inv.status < 500 && rst.status < 500,
+				`5xx in race: ${inv.status}/${rst.status}`,
+			);
+			const ran = inv.status < 300;
+			const wiped = rst.status < 300;
+			assert(
+				ran !== wiped,
+				`race round ${round}: investigate ${inv.status}, reset ${rst.status}`,
+			);
+			outcomes.push(ran ? "run won" : `reset won (run ${inv.status})`);
+			if (ran) await settle(inv.body.investigationId);
 		}
-		throw new Error(`run ${investigationId} never left running`);
-	};
-
-	const held = await incident("gate reset: held run");
-	const started = await investigate(held);
-	assert(
-		started.status < 300,
-		`investigate ${started.status}: ${JSON.stringify(started.body).slice(0, 300)}`,
-	);
-	const refused = await reset();
-	assert(
-		refused.status === 409 &&
-			/queued or running/.test(JSON.stringify(refused.body)),
-		`reset during a run: ${refused.status} ${JSON.stringify(refused.body).slice(0, 300)}`,
-	);
-	const kept = await call(`/api/incidents/${held}`);
-	assert(kept.status === 200, "the refused reset still deleted the incident");
-	await settle(started.body.investigationId);
-
-	const outcomes = [];
-	// Staggered so both orders occur: a negative delay holds the reset back, a positive one the run.
-	const delays = [-40, -10, -2, 0, 2, 10];
-	for (const [round, delay] of delays.entries()) {
-		const id = await incident(`gate reset: race ${round}`);
-		const [rst, inv] = await Promise.all([
-			sleep(Math.max(0, -delay)).then(reset),
-			sleep(Math.max(0, delay)).then(() => investigate(id)),
-		]);
+		const final = await reset();
+		assert(final.status === 200, `final reset ${final.status}`);
+		const incidents = rows((await call("/api/incidents")).body);
+		const investigations = rows((await call("/api/investigations")).body);
 		assert(
-			inv.status < 500 && rst.status < 500,
-			`5xx in race: ${inv.status}/${rst.status}`,
+			incidents.length === 0 && investigations.length === 0,
+			`not clean: ${incidents.length} incidents, ${investigations.length} investigations`,
 		);
-		const ran = inv.status < 300;
-		const wiped = rst.status < 300;
-		assert(
-			ran !== wiped,
-			`race round ${round}: investigate ${inv.status}, reset ${rst.status}`,
+		await p.stop();
+		return `reset during a running run → 409 "queued or running", incident kept; ${delays.length} races (${outcomes.join(", ")}), no 5xx, never both; final reset leaves 0 incidents, 0 runs`;
+	} catch (err) {
+		const code = err?.cause?.code ? ` (${err.cause.code})` : "";
+		throw new Error(
+			`${err.message}${code}; server ${p.isDone() ? "had exited" : "still running"}; output tail:
+${p.out().slice(-1500)}`,
+			{ cause: err },
 		);
-		outcomes.push(ran ? "run won" : `reset won (run ${inv.status})`);
-		if (ran) await settle(inv.body.investigationId);
 	}
-	const final = await reset();
-	assert(final.status === 200, `final reset ${final.status}`);
-	const incidents = rows((await call("/api/incidents")).body);
-	const investigations = rows((await call("/api/investigations")).body);
-	assert(
-		incidents.length === 0 && investigations.length === 0,
-		`not clean: ${incidents.length} incidents, ${investigations.length} investigations`,
-	);
-	await p.stop();
-	return `reset during a running run → 409 "queued or running", incident kept; ${delays.length} races (${outcomes.join(", ")}), no 5xx, never both; final reset leaves 0 incidents, 0 runs`;
 }
 
 async function checkHosts() {

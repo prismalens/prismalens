@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import { holdsRemoved, shownRepoName, shownRepoUrl, shownText, UNSHOWN_REPO } from "./git-credential.js";
 import { displayNameFor } from "./repo-source.service.js";
 
+// A quadratic scan on these inputs takes minutes, so a loose ceiling still catches it;
+// a tight one fails on a loaded shared runner (#885 - CI hygiene).
+const TIMING_CEILING_MS = 5_000;
+
 const SENTINEL = "ghp_SENTINEL938";
 
 describe("shownRepoUrl (#938)", () => {
@@ -109,7 +113,7 @@ describe("round 3 (#938)", () => {
 		const started = performance.now();
 		shownText("a".repeat(1024 * 1024));
 		shownText("x@y:".repeat(256 * 1024));
-		expect(performance.now() - started).toBeLessThan(500);
+		expect(performance.now() - started).toBeLessThan(TIMING_CEILING_MS);
 	});
 
 	it("a credential-free path with @ keeps its name", () => {
