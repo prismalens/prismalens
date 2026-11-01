@@ -15,6 +15,7 @@ import {
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { citationText, type FileAt } from "@/lib/evidence-files";
 import { cn } from "@/lib/utils";
 import { EvidenceFileView } from "./EvidenceFileView";
@@ -50,7 +51,7 @@ export interface EvidenceFiles {
 	codeHost: string | null;
 	/** The file a Steps row opens; null when the step names none in the clone. */
 	stepFile: (s: RunStep) => FileAt | null;
-	onOpenHypotheses: () => void;
+	onOpenHypotheses: (origin: string) => void;
 }
 
 const TONE = {
@@ -146,12 +147,17 @@ export function RunDetailsPanel({
 			),
 		},
 	];
-	return (
+	const aside = (
 		<aside
 			id="run-details"
 			aria-label={title}
 			onKeyDown={onKeyDown}
-			className="flex h-full w-[380px] shrink-0 flex-col bg-surface-1 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
+			className={cn(
+				"relative flex flex-col bg-surface-1",
+				files.phone
+					? "min-h-0 flex-1"
+					: "h-full w-[380px] shrink-0 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200",
+			)}
 			data-testid="run-details"
 		>
 			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
@@ -317,6 +323,24 @@ export function RunDetailsPanel({
 			</TabsPrimitive.Root>
 		</aside>
 	);
+	if (!files.phone) return aside;
+	// A phone has no room beside the page: the details cover it as a modal sheet.
+	// Its Esc closes once: the page's own Esc listener skips [role=dialog].
+	return (
+		<Sheet open onOpenChange={(open) => !open && onClose()}>
+			<SheetContent
+				side="bottom"
+				closeButton={false}
+				aria-describedby={undefined}
+				onCloseAutoFocus={(e) => e.preventDefault()}
+				className="top-0 flex flex-col gap-0 bg-surface-1 p-0"
+				data-testid="phone-sheet"
+			>
+				<SheetTitle className="sr-only">{title}</SheetTitle>
+				{aside}
+			</SheetContent>
+		</Sheet>
+	);
 }
 
 const clockFmt = new Intl.DateTimeFormat(undefined, {
@@ -338,7 +362,7 @@ function Sections({
 	incidentId: string;
 	onJump: (n: number) => void;
 	onOpenFile: OpenFile;
-	onOpenHypotheses: () => void;
+	onOpenHypotheses: (origin: string) => void;
 }) {
 	return (
 		<div className="flex flex-col gap-4">
@@ -375,7 +399,7 @@ function Row({
 	incidentId: string;
 	onJump: (n: number) => void;
 	onOpenFile: OpenFile;
-	onOpenHypotheses: () => void;
+	onOpenHypotheses: (origin: string) => void;
 	origin: string;
 }) {
 	return (
@@ -440,7 +464,7 @@ function Row({
 					<button
 						type="button"
 						id={origin}
-						onClick={onOpenHypotheses}
+						onClick={() => onOpenHypotheses(origin)}
 						className="self-start rounded-control text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current"
 						data-testid="detail-hypotheses"
 					>
@@ -634,56 +658,70 @@ export function RunOverview({
 					);
 				})}
 			</ol>
-			<section className="flex flex-col gap-1.5" aria-label="PrismaLens tools">
-				<h3 className="text-meta font-semibold text-text-2">
-					PrismaLens tools
-				</h3>
-				<p
-					className={cn(
-						status.state === "not-reached" ? "text-warn" : "text-text-1",
-						status.state === "loading" && "text-text-3",
-					)}
-					role="status"
-					data-testid="run-tools-status"
-				>
-					{toolsWord(status)}
-				</p>
-				{status.state === "not-reached" && hint && (
-					<div className="flex flex-col gap-1.5" data-testid="run-tools-hint">
-						<p className="text-meta text-text-2">{hint.text}</p>
-						{hint.folder && <CommandChip command={hint.folder} />}
-					</div>
-				)}
-				{turns.map((t) => (
-					<div
-						key={t.turn}
-						className="flex flex-col gap-1"
-						data-testid={`run-tools-turn-${t.turn}`}
-					>
-						<span className="text-meta font-medium">
-							{t.turn === "first" ? "First turn" : "Follow-up"}
-						</span>
-						<span className="text-meta text-text-2 tabular-nums">
-							{turnLine(t)}
-						</span>
-						{t.calls.length > 0 && (
-							<span className="flex flex-wrap gap-1">
-								{t.calls.map((c) => (
-									<span
-										key={c.name}
-										className="inline-flex h-[22px] items-center gap-1 rounded-control bg-surface-3 px-2 font-mono text-mono"
-									>
-										{c.name}
-										{c.count > 1 && (
-											<span className="text-text-2">×{c.count}</span>
-										)}
-									</span>
-								))}
-							</span>
-						)}
-					</div>
-				))}
-			</section>
+			<RunToolsSection status={status} turns={turns} hint={hint} />
 		</div>
+	);
+}
+
+/** Whether PrismaLens's tools reached the agent, per turn, and what to do when they did not. */
+export function RunToolsSection({
+	status,
+	turns,
+	hint,
+}: {
+	status: ToolsStatus;
+	turns: TurnTools[];
+	/** The agent's own line when the tools did not reach it, and the folder to trust. */
+	hint?: { text: string; folder: string | null } | null;
+}) {
+	return (
+		<section className="flex flex-col gap-1.5" aria-label="PrismaLens tools">
+			<h3 className="text-meta font-semibold text-text-2">PrismaLens tools</h3>
+			<p
+				className={cn(
+					status.state === "not-reached" ? "text-warn" : "text-text-1",
+					status.state === "loading" && "text-text-3",
+				)}
+				role="status"
+				data-testid="run-tools-status"
+			>
+				{toolsWord(status)}
+			</p>
+			{status.state === "not-reached" && hint && (
+				<div className="flex flex-col gap-1.5" data-testid="run-tools-hint">
+					<p className="text-meta text-text-2">{hint.text}</p>
+					{hint.folder && <CommandChip command={hint.folder} />}
+				</div>
+			)}
+			{turns.map((t) => (
+				<div
+					key={t.turn}
+					className="flex flex-col gap-1"
+					data-testid={`run-tools-turn-${t.turn}`}
+				>
+					<span className="text-meta font-medium">
+						{t.turn === "first" ? "First turn" : "Follow-up"}
+					</span>
+					<span className="text-meta text-text-2 tabular-nums">
+						{turnLine(t)}
+					</span>
+					{t.calls.length > 0 && (
+						<span className="flex flex-wrap gap-1">
+							{t.calls.map((c) => (
+								<span
+									key={c.name}
+									className="inline-flex h-[22px] items-center gap-1 rounded-control bg-surface-3 px-2 font-mono text-mono"
+								>
+									{c.name}
+									{c.count > 1 && (
+										<span className="text-text-2">×{c.count}</span>
+									)}
+								</span>
+							))}
+						</span>
+					)}
+				</div>
+			))}
+		</section>
 	);
 }

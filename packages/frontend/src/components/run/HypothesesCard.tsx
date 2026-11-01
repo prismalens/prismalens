@@ -66,6 +66,8 @@ export interface HypothesesProps {
 	/** Opened from Evidence's "Open the drawing"; the page owns it so both doors share one preview. */
 	preview: boolean;
 	onPreview: (open: boolean) => void;
+	/** The control that opened the preview, when not this card's own: Esc and Close return to it. */
+	returnTo?: () => string | null;
 }
 
 export const HYPOTHESES_OPEN_ID = "hypotheses-open-larger";
@@ -95,9 +97,14 @@ export function HypothesesCard(props: HypothesesProps) {
 		ro.observe(content);
 		return () => ro.disconnect();
 	}, []);
+	// A citation leaving the preview hands focus to where it goes, not back to the opener.
+	const citing = useRef(false);
 	const act = (inPreview: boolean) => (cite: Cite, origin: string) => {
 		// One modal at a time: the preview closes first and focus returns to Open larger.
-		if (inPreview) props.onPreview(false);
+		if (inPreview) {
+			citing.current = true;
+			props.onPreview(false);
+		}
 		const from = inPreview ? HYPOTHESES_OPEN_ID : origin;
 		if ("file" in cite.target) props.onOpenFile(cite.target.file, from);
 		else props.onJump(cite.target.step);
@@ -144,6 +151,14 @@ export function HypothesesCard(props: HypothesesProps) {
 					size="xl"
 					className="max-h-[88dvh] max-md:top-0 max-md:left-0 max-md:h-dvh max-md:max-h-none max-md:w-full max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-none"
 					data-testid="hypotheses-preview"
+					// Controlled, with no trigger: Radix has nothing of its own to return focus to.
+					onCloseAutoFocus={(e) => {
+						const back = citing.current ? null : props.returnTo?.();
+						const el = back ? document.getElementById(back) : null;
+						if (citing.current || el) e.preventDefault();
+						citing.current = false;
+						el?.focus();
+					}}
 				>
 					<DialogHeader>
 						<DialogTitle>Hypotheses</DialogTitle>

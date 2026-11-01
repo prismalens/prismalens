@@ -45,7 +45,8 @@ export function Card({
 			)}
 			data-testid={testId}
 		>
-			<div className="flex min-w-0 shrink-0 items-baseline gap-3 whitespace-nowrap">
+			{/* A phone wraps the row: wider than the card, it scrolled the whole grid sideways (0.5.3 walk W11). */}
+			<div className="flex min-w-0 shrink-0 items-baseline gap-3 whitespace-nowrap max-md:flex-wrap max-md:gap-y-1.5">
 				<h2 id={h} className="shrink-0 text-heading">
 					{title}
 				</h2>

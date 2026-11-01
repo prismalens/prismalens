@@ -59,6 +59,7 @@ import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import {
 	type CiteTarget,
+	HYPOTHESES_OPEN_ID,
 	HypothesesCard,
 	useFocusLater,
 } from "./HypothesesCard";
@@ -70,6 +71,7 @@ import {
 	overviewSteps,
 	RunDetailsPanel,
 	RunOverview,
+	RunToolsSection,
 } from "./RunDetailsPanel";
 import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
@@ -186,12 +188,26 @@ export function RunPage() {
 	const workspace = inv?.workspace;
 	// The file open in Evidence, and the control (and tab) that opened it, which Back returns to.
 	const [viewing, setViewing] = useState<FileAt | null>(null);
-	const origin = useRef<{ id: string; tab: DetailsTab } | null>(null);
+	const origin = useRef<{
+		id: string;
+		tab: DetailsTab;
+		inPanel: boolean;
+	} | null>(null);
 	const tabRef = useRef<DetailsTab>(tab);
 	tabRef.current = tab;
+	// The sheet's "Open the drawing" link, while the drawing it opened is up; Back returns there.
+	const previewFrom = useRef<string | null>(null);
 	const openFile = useCallback(
-		(f: FileAt, from: string) => {
-			origin.current = { id: from, tab: tabRef.current };
+		(f: FileAt, opener: string) => {
+			const from =
+				opener === HYPOTHESES_OPEN_ID && previewFrom.current
+					? previewFrom.current
+					: opener;
+			// Read now: by Back, the control that opened the file may be unmounted.
+			const inPanel = !!document
+				.getElementById("run-details")
+				?.contains(document.getElementById(from));
+			origin.current = { id: from, tab: tabRef.current, inPanel };
 			setViewing(f);
 			setTab("evidence");
 			setPanel(true);
@@ -204,8 +220,10 @@ export function RunPage() {
 		const from = origin.current;
 		if (!from) return;
 		setTab(from.tab);
+		// On a phone the details are a sheet over the page: Back to a control under it lifts the sheet.
+		if (phone && !from.inPanel) setPanel(false);
 		focusLater(from.id);
-	}, [focusLater]);
+	}, [focusLater, phone]);
 	const fileOfStep = useCallback(
 		(s: RunStep) => stepFile(s, workspace),
 		[workspace],
@@ -229,14 +247,27 @@ export function RunPage() {
 		window.setTimeout(() => {
 			const el = document.getElementById(`step-${n}`);
 			el?.scrollIntoView({ block: "center", behavior: "smooth" });
-			// Focus follows to the step only if the reader has not moved it since.
-			if (document.activeElement === from)
+			// Focus follows to the step only if the reader has not moved it since, or it left with a closed sheet.
+			if (document.activeElement === from || !from?.isConnected)
 				el?.querySelector<HTMLElement>("[data-testid=step-toggle]")?.focus({
 					preventScroll: true,
 				});
 		}, 60);
 	}, []);
 	useEffect(() => () => window.clearTimeout(timer.current), []);
+	// The step is under the sheet on a phone: lift the sheet to show it.
+	const jumpOut = useCallback(
+		(n: number) => {
+			if (phone) setPanel(false);
+			jump(n);
+		},
+		[phone, jump],
+	);
+	const previewOpener = useCallback(() => previewFrom.current, []);
+	const onPreview = useCallback((open: boolean) => {
+		if (open) previewFrom.current = null;
+		setPreview(open);
+	}, []);
 
 	// `#step-N` and a report's `?call=` open and ring their step once it has arrived.
 	const wanted =
@@ -365,64 +396,22 @@ export function RunPage() {
 					at={inv.completedAt ?? null}
 					targetOf={targetOf}
 					onOpenFile={openFile}
-					onJump={jump}
+					onJump={jumpOut}
 					preview={preview}
-					onPreview={setPreview}
+					onPreview={onPreview}
+					returnTo={previewOpener}
 				/>
 			) : null,
-		[report, inv, targetOf, openFile, jump, preview],
-	);
-	const recheck = useRecheck();
-	const header = (
-		<IncidentHeader
-			incident={incident}
-			view={draft ? "New conversation" : inv ? name : "Run"}
-			reportRunId={report ? inv?.id : null}
-			onResolve={record.openClose}
-			onReopen={record.openReopen}
-			onEditCause={record.openEditCause}
-			onInvestigateAgain={
-				recheck
-					? () =>
-							recheck().catch((error: unknown) =>
-								toast({
-									title: "Run not started",
-									description: getErrorMessage(error),
-									variant: "destructive",
-								}),
-							)
-					: null
-			}
-			trailing={
-				inv && !draft ? (
-					<DetailsToggle
-						ref={toggleRef}
-						open={panel}
-						onToggle={() => (panel ? closePanel() : setPanel(true))}
-						title={chat ? "Question details" : "Run details"}
-						flagged={flaggedCount}
-					/>
-				) : null
-			}
-		/>
-	);
-
-	if (draft) return <DraftPage record={record} header={header} />;
-
-	const step = runStepText(run.events, now ?? Date.now(), {
-		streamLost: run.streamFailed,
-	});
-	const ask = run.asks.find((a) => a.state === "waiting");
-	const stateWord = stripWords(
-		inv,
-		run.state,
-		run.latestText ?? (step ? cap(step.text) : null),
-		name,
-		now,
-		who.agent,
-		run.awaiting
-			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
-			: null,
+		[
+			report,
+			inv,
+			targetOf,
+			openFile,
+			jumpOut,
+			preview,
+			onPreview,
+			previewOpener,
+		],
 	);
 	const fidelity =
 		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
@@ -452,26 +441,34 @@ export function RunPage() {
 		live,
 	});
 	const preRun = inv?.preRun ?? null;
-	const overview = inv && !chat && (
-		<RunOverview
-			steps={overviewSteps({
-				snapshot: snapshotLine(preRun),
-				code: codeLine(inv.workspace, preRun?.checkoutsSkipped ?? []),
-				agent: harness?.label ?? who.agent,
-				status: tools,
-			})}
-			status={tools}
-			turns={turns}
-			hint={
-				harness?.toolsHint
-					? {
-							text: harness.toolsHint.text,
-							folder: runsFolder(inv.workspace?.cwd),
-						}
-					: null
-			}
-		/>
-	);
+	const toolsHint =
+		inv && harness?.toolsHint
+			? {
+					text: harness.toolsHint.text,
+					folder: runsFolder(inv.workspace?.cwd),
+				}
+			: null;
+	// A chat has no five steps, but its tools warning needs the same explanation (0.5.3 walk W11).
+	const overview =
+		inv && chat ? (
+			<div className="mb-4">
+				<RunToolsSection status={tools} turns={turns} hint={toolsHint} />
+			</div>
+		) : (
+			inv && (
+				<RunOverview
+					steps={overviewSteps({
+						snapshot: snapshotLine(preRun),
+						code: codeLine(inv.workspace, preRun?.checkoutsSkipped ?? []),
+						agent: harness?.label ?? who.agent,
+						status: tools,
+					})}
+					status={tools}
+					turns={turns}
+					hint={toolsHint}
+				/>
+			)
+		);
 	const toolsChip: StripChip | null =
 		tools.state === "not-reached"
 			? {
@@ -481,6 +478,63 @@ export function RunPage() {
 					warn: true,
 				}
 			: null;
+	// A phone hides the strip's chips; a warning among them rides on the details toggle.
+	const hiddenWarns = phone
+		? [modelChip, code, toolsChip].flatMap((c) => (c?.warn ? [c.text] : []))
+		: [];
+	const recheck = useRecheck();
+	const header = (
+		<IncidentHeader
+			incident={incident}
+			view={draft ? "New conversation" : inv ? name : "Run"}
+			reportRunId={report ? inv?.id : null}
+			onResolve={record.openClose}
+			onReopen={record.openReopen}
+			onEditCause={record.openEditCause}
+			onInvestigateAgain={
+				recheck
+					? () =>
+							recheck().catch((error: unknown) =>
+								toast({
+									title: "Run not started",
+									description: getErrorMessage(error),
+									variant: "destructive",
+								}),
+							)
+					: null
+			}
+			trailing={
+				inv && !draft ? (
+					<DetailsToggle
+						ref={toggleRef}
+						open={panel}
+						onToggle={() => (panel ? closePanel() : setPanel(true))}
+						title={chat ? "Question details" : "Run details"}
+						flagged={flaggedCount}
+						warns={hiddenWarns}
+					/>
+				) : null
+			}
+		/>
+	);
+
+	if (draft) return <DraftPage record={record} header={header} />;
+
+	const step = runStepText(run.events, now ?? Date.now(), {
+		streamLost: run.streamFailed,
+	});
+	const ask = run.asks.find((a) => a.state === "waiting");
+	const stateWord = stripWords(
+		inv,
+		run.state,
+		run.latestText ?? (step ? cap(step.text) : null),
+		name,
+		now,
+		who.agent,
+		run.awaiting
+			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
+			: null,
+	);
 
 	const viewingRepo = viewing
 		? workspace?.repos.find((r) => r.name === viewing.repo)
@@ -586,7 +640,7 @@ export function RunPage() {
 					})}
 					flaggedCount={flaggedCount}
 					steps={steps}
-					onJump={jump}
+					onJump={jumpOut}
 					files={{
 						runId: inv.id,
 						viewing,
@@ -602,7 +656,10 @@ export function RunPage() {
 						codeHost:
 							viewing && viewingRepo ? codeHostUrl(viewingRepo, viewing) : null,
 						stepFile: fileOfStep,
-						onOpenHypotheses: () => setPreview(true),
+						onOpenHypotheses: (from) => {
+							previewFrom.current = from;
+							setPreview(true);
+						},
 					}}
 				/>
 			)}
@@ -617,17 +674,23 @@ function DetailsToggle({
 	onToggle,
 	title,
 	flagged,
+	warns,
 }: {
 	ref: React.Ref<HTMLButtonElement>;
 	open: boolean;
 	onToggle: () => void;
 	title: string;
 	flagged: number;
+	/** Warnings the strip cannot show on a phone. */
+	warns: string[];
 }) {
-	const label =
-		flagged > 0
-			? `${title}, ${flagged} flagged ${flagged === 1 ? "item" : "items"}`
-			: title;
+	const label = [
+		title,
+		...(flagged > 0
+			? [`${flagged} flagged ${flagged === 1 ? "item" : "items"}`]
+			: []),
+		...warns,
+	].join(", ");
 	return (
 		<Hint label={label}>
 			<button
@@ -650,6 +713,16 @@ function DetailsToggle({
 						aria-hidden
 						className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-danger"
 						data-testid="details-flag"
+					/>
+				)}
+				{warns.length > 0 && !open && (
+					<span
+						aria-hidden
+						className={cn(
+							"absolute top-[3px] size-[7px] rounded-full bg-warn",
+							flagged > 0 ? "right-[12px]" : "right-[3px]",
+						)}
+						data-testid="details-warn"
 					/>
 				)}
 			</button>
