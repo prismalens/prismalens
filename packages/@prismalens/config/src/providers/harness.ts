@@ -102,6 +102,8 @@ interface ProductFacts {
 	install: string;
 	/** Where `install` gets the agent's CLI from; the nightly probe installs from here (#1013). */
 	channel?: InstallChannel;
+	/** The vendor's next major, on its own package; the nightly probes its latest too (#1013). */
+	nextChannel?: InstallChannel;
 	/** One line the picker and the readiness check show: how to sign this harness in. */
 	loginHint: string;
 	/**
@@ -156,6 +158,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
 		install: "npm i -g opencode-ai",
 		channel: { npm: "opencode-ai" },
+		// OpenCode 2's docs install it as `npm install -g @opencode/cli`.
+		nextChannel: { npm: "@opencode/cli" },
 		lines: {
 			supervised: () =>
 				"OpenCode runs its build agent; each tool's catch-all asks.",

@@ -22,6 +22,10 @@ on:
       - "scripts/agent-pins.json"
       - "packages/@prismalens/agent-host/src/registry/agents.ts"
       - "packages/@prismalens/agent-host/src/probe.ts"
+      - "packages/@prismalens/agent-host/src/launch.ts"
+      - "packages/@prismalens/agent-host/src/process.ts"
+      - "packages/@prismalens/config/src/providers/harness.ts"
+      - "packages/@prismalens/agent-adapters/**"
 
 permissions:
   contents: read
@@ -40,9 +44,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # This job runs freshly published packages and their install scripts: read-only, no issue token.
     permissions:
       contents: read
-      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,36 +64,66 @@ jobs:
       # The deepagents row installs with uv, which fetches the Python 3.14 it needs.
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
-      - name: Build the registry and the agent host the probe launches through
-        run: pnpm --filter "@prismalens/config..." build
+      - name: Build the registry, the agent host and the adapters PrismaLens ships
+        run: pnpm --filter "@prismalens/config..." --filter @prismalens/agent-adapters build
 
       # initialize and session/new only: the agents run unauthenticated and see no model.
       - name: Probe every row at its channel's latest release, and at its pin
         shell: bash
-        run: node scripts/agent-probe.mjs --all --failures "$RUNNER_TEMP/probe-failures.tsv"
+        run: |
+          : > "$RUNNER_TEMP/probe-failures.tsv"
+          node scripts/agent-probe.mjs --all --failures "$RUNNER_TEMP/probe-failures.tsv"
 
-      # One issue per agent, version and OS, found by its exact title, so a red night adds a comment.
+      - name: Keep the failing rows for the report job
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe-failures-${{ runner.os }}
+          path: ${{ runner.temp }}/probe-failures.tsv
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Files the issues from the probe's results alone: it checks out and runs nothing it was given.
+  report:
+    name: Report failing agents
+    needs: probe
+    if: >-
+      always() && github.repository == 'prismalens/prismalens' &&
+      (github.event_name == 'schedule' || inputs.file-issues)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: probe-failures-*
+          path: failures
+
+      # One open issue per agent and OS, found by its exact title; a red night rewrites its body.
       - name: Open or update the issue for each failing agent
-        if: failure() && (github.event_name == 'schedule' || inputs.file-issues)
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          failures="$RUNNER_TEMP/probe-failures.tsv"
-          [ -s "$failures" ] || exit 0
-          while IFS=$'\t' read -r agent version text; do
-            title="Agent probe failing: $agent $version on $RUNNER_OS"
-            body=$(printf '%s\n\n%s\n\nPosted by the agent-release-watch workflow.' "$text" "$RUN_URL")
-            number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" \
-              --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
-            if [ -n "$number" ]; then
-              gh issue comment "$number" -R "$GITHUB_REPOSITORY" --body "$body"
-            else
-              gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body "$body"
-            fi
-          done < "$failures"
+          shopt -s nullglob
+          for file in failures/probe-failures-*/probe-failures.tsv; do
+            os=$(basename "$(dirname "$file")"); os=${os#probe-failures-}
+            [ -s "$file" ] || continue
+            for agent in $(cut -f1 "$file" | sort -u); do
+              title="Agent probe failing: $agent on $os"
+              rows=$(awk -F'\t' -v a="$agent" '$1 == a { print "- " $2 ": " $3 }' "$file")
+              body=$(printf 'Failing rows in the last red run:\n\n%s\n\n%s\n\nPosted by the agent-release-watch workflow.' "$rows" "$RUN_URL")
+              number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" \
+                --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+              if [ -n "$number" ]; then
+                gh issue edit "$number" -R "$GITHUB_REPOSITORY" --body "$body"
+              else
+                gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+              fi
+            done
+          done
 
   bump:
     name: Pin bump

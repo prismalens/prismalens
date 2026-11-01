@@ -44,11 +44,21 @@ export const PROBE_BUDGETS_MS = {
 } as const;
 export type ProbeStep = "initialize" | "session/new";
 
-/** An auth signal: ACP's auth_required in words, or a message naming an unset provider key. */
+const KEY = String.raw`[A-Z][A-Z0-9_]*_API_KEY\b`;
+/** `KEY is not set`, or `set one of: KEY`: the key and the gap side by side, never just in one message. */
+const UNSET_KEY = [
+	new RegExp(
+		String.raw`\b${KEY}\s+(?:is\s+|was\s+)?(?:not set|unset|missing|required|empty)\b`,
+	),
+	new RegExp(
+		String.raw`(?:^|[\s(:,])(?:[Ss]et|[Mm]issing|[Nn]o|[Pp]rovide|[Rr]equires?)\s+(?:(?:one|any) of\s*:?\s*)?${KEY}`,
+	),
+];
+
+/** An auth signal: ACP's auth_required in words, or a clause naming an unset provider key. */
 export function namesSignIn(text: string): boolean {
 	if (/auth_required|authentication required/i.test(text)) return true;
-	if (!/\b[A-Z][A-Z0-9_]*_API_KEY\b/.test(text)) return false;
-	return /\b(?:is not set|not set|missing|required|no)\b/i.test(text);
+	return UNSET_KEY.some((re) => re.test(text));
 }
 
 export interface ProbeInput {

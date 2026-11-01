@@ -131,11 +131,12 @@ cancel each other.
 
 ## `agent-release-watch.yml`: what the agents released
 
-Two jobs, neither required, neither spending a model call (#914):
+Three jobs, none required, none spending a model call (#914):
 
 | Job     | What it does                                                                                                                                                                                                                                                                  | Cadence                                                                                                   |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `probe` | on Ubuntu, Windows and macOS: installs each agent row from the channel its install hint names, at that channel's latest release and at its pin, starts it through `@prismalens/agent-host` as the product does, and sends `initialize` and `session/new` unauthenticated; the job summary tables the answer next to the row's `tested`. A red scheduled leg opens or comments on one issue per agent, version and OS, titled `Agent probe failing: <agent> <version> on <os>` | nightly, dispatch, and a PR touching the probe, `agent-pins.json`, the registry's `agents.ts` or `probe.ts` |
+| `probe` | on Ubuntu, Windows and macOS, with a read-only token: installs each agent row from the channel its install hint names, at that channel's latest release and at its pin, and OpenCode's next major (`@opencode/cli`) at its latest; an adapter row runs the adapter `@prismalens/agent-adapters` ships against its CLI's latest and its pin. Each starts through `@prismalens/agent-host` as the product does and gets `initialize` and `session/new` unauthenticated; the job summary tables the answer next to the row's `tested`, and the failing rows go up as an artifact | nightly, dispatch, and a PR touching the probe, `agent-pins.json`, `agent-host`'s `agents.ts`, `probe.ts`, `launch.ts` or `process.ts`, `config`'s `harness.ts`, or `agent-adapters` |
+| `report` | after a red scheduled leg (or a dispatch with `file-issues`), reads those artifacts and opens, or rewrites the body of, one issue per agent and OS titled `Agent probe failing: <agent> on <os>`; it holds `issues: write` and runs no probe code | nightly, and dispatch with `file-issues` |
 | `bump`  | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, its pin moves on one rolling pull request, `pin-bump/agents`, which lists each pin's probe result | nightly, and dispatch on `main`                                                                           |
 
 A probe row goes channel → install → launch → verdict, and every step reads the registry, not the
@@ -145,9 +146,11 @@ script (#1013). OpenCode's row on the night its npm latest is also its pin:
 | -------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | npm `opencode-ai`, latest 1.19.5 = pin | `npm install --prefix <tmp> opencode-ai@1.19.5`, the hint's `npm i -g opencode-ai` in a throwaway prefix | `detectAgent` finds `opencode` in that prefix, `planLaunch` gives `opencode acp` with the run's env, `probeAgent` sends `initialize` (30 s) then `session/new` (60 s) | `ok: answers ACP (protocol 1, OpenCode 1.19.5; 2 modes)`; a `failed-to-start` or `no-answer` row turns the leg red |
 
-An adapter row (claude-code, codex) installs the adapter PrismaLens ships in one prefix and the CLI its
-hint names in another, so `detectAgent` takes the shipped-adapter path with the CLI as companion.
-`sign-in-needed` counts as started: the agent answered, and no probe signs in.
+An adapter row (claude-code, codex) runs the adapter `@prismalens/agent-adapters` builds, the one PrismaLens
+ships, with the CLI its hint names installed in a throwaway prefix, so `detectAgent` takes the shipped-adapter
+path with the CLI as companion; a newer adapter is the pin bump's to probe. `sign-in-needed` counts as started
+only on a row the probe hands no key (opencode, claude-code); on a row given a probe key it fails the leg.
+
 The bump PR runs ordinary CI, so the new version runs the admission and the behaviour matrix on aimock.
 A pin whose probe fails stays where it was and is listed as held back. After the pins move, `scripts/agent-adapter-sdk.mjs` moves the shipped claude-agent-sdk to the one the claude adapter declares (the bundle refuses any other),
 `pnpm install --lockfile-only` refreshes the lockfile and `scripts/agent-tested.mjs` moves each row's

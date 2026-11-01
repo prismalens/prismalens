@@ -145,6 +145,22 @@ describe("probeAgent: sign-in-needed only on an auth signal (#1013)", () => {
 		expect(r.detail).toContain("CODEX_API_KEY");
 	});
 
+	it("deepagents' no-credentials exit is a sign-in", async () => {
+		const r = await exits(
+			"No credentials configured. Please set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY",
+		);
+		expect(r.outcome).toBe("sign-in-needed");
+	});
+
+	it("a key that is set, beside some other gap, failed to start", async () => {
+		for (const stderr of [
+			"OPENAI_API_KEY is set; required config property model is missing",
+			"Error: required config property model is missing (OPENAI_API_KEY present)",
+			"env AWS_SECRET_ACCESS_KEY=set ANTHROPIC_API_KEY=set",
+		])
+			expect((await exits(stderr)).outcome, stderr).toBe("failed-to-start");
+	});
+
 	it("an agent that exits on an unrecognized flag failed to start", async () => {
 		const r = await exits("ERROR Unrecognized flag: --dir in command opencode acp");
 		expect(r.outcome).toBe("failed-to-start");

@@ -7,8 +7,11 @@
  * and starts it as the product does (`detectAgent`, `planLaunch`, `probeAgent` from the built
  * `@prismalens/agent-host`), with no model behind it. It spends no tokens and warns no user.
  *
- *   agent-probe.mjs --all [--failures <file>] [--built <checkout>]   every row at its channel's latest, and at its pin
- *   agent-probe.mjs --agent <id> --version <v> [--companion <v>] [--built <checkout>]   one version; exit 1 when it fails
+ *   agent-probe.mjs --all [--failures <file>] [--built <checkout>]
+ *     each row at its channel's latest and at its pin; an adapter row runs the adapter
+ *     `@prismalens/agent-adapters` ships, against the CLI's latest and its pin
+ *   agent-probe.mjs --agent <id> --version <v> [--companion <v>] [--built <checkout>]
+ *     one version, an adapter row's adapter from npm (the pin bump); exit 1 when it fails
  *
  * `--built` names the checkout whose `dist` folders to load, when this one's are not built.
  */
@@ -42,6 +45,9 @@ const PROBE_ENV = {
 	}),
 };
 
+/** A row the probe hands no key, so asking for a sign-in is how it answers when it works. */
+export const keyless = (id) => !PROBE_ENV[id];
+
 const run = (file, args, options = {}) =>
 	execFileSync(file, args, {
 		encoding: "utf8",
@@ -50,19 +56,25 @@ const run = (file, args, options = {}) =>
 		...options,
 	});
 
-async function loadBuilt(checkout) {
+async function loadBuilt(checkout, withAdapters) {
 	const load = (rel) => import(pathToFileURL(join(checkout, rel)).href);
 	const host = await load("packages/@prismalens/agent-host/dist/index.js");
 	const { HARNESS_REGISTRY } = await load(
 		"packages/@prismalens/config/dist/providers/harness.js",
 	);
-	return { host, registry: HARNESS_REGISTRY };
+	const adapters = withAdapters
+		? await load("packages/@prismalens/agent-adapters/dist/index.js")
+		: null;
+	return { host, registry: HARNESS_REGISTRY, adapters };
 }
 
 /** The package a channel installs the CLI from: the npm name, or uv's first. */
 export function channelPackage(channel) {
 	return channel.npm ?? channel.uv[0];
 }
+
+const channelName = (channel) =>
+	channel.npm ? `npm ${channel.npm}` : `uv ${channel.uv[0]}`;
 
 /** The latest stable release on the channel. */
 export async function latestOf(channel) {
@@ -72,33 +84,47 @@ export async function latestOf(channel) {
 	return (await res.json()).info.version;
 }
 
+/** One entry per version: a latest that is also the pin runs once. */
+function atLatestAndPin(latest, pin, make) {
+	if (!pin || pin === latest) return [make(latest, "latest, pin")];
+	return [make(latest, "latest"), make(pin, "pin")];
+}
+
 /**
- * The probes `--all` runs: each row at its channel's latest, and at its pin when that differs.
- * An adapter row runs its latest adapter with the CLI at the channel's latest.
+ * The probes `--all` runs: each row at its channel's latest and its pin, and its next major's
+ * latest. An adapter row runs the shipped adapter, so the CLI's versions are what vary.
  */
 export function plan(registry, pins, latest) {
 	const out = [];
 	for (const row of Object.values(registry)) {
 		if (!row.channel) continue;
 		const pkg = channelPackage(row.channel);
-		const cli = latest[pkg];
-		if (row.adapterPackage) {
+		if (row.adapterPackage)
+			out.push(
+				...atLatestAndPin(latest[pkg], pins[pkg], (companion, label) => ({
+					id: row.id,
+					channel: row.channel,
+					adapter: "shipped",
+					companion,
+					label,
+				})),
+			);
+		else
+			out.push(
+				...atLatestAndPin(latest[pkg], pins[pkg], (version, label) => ({
+					id: row.id,
+					channel: row.channel,
+					version,
+					label,
+				})),
+			);
+		if (row.nextChannel)
 			out.push({
 				id: row.id,
-				version: latest[row.adapterPackage],
-				companion: cli,
-				label: "latest",
+				channel: row.nextChannel,
+				version: latest[channelPackage(row.nextChannel)],
+				label: "next major, latest",
 			});
-			continue;
-		}
-		const pin = pins[pkg];
-		out.push({
-			id: row.id,
-			version: cli,
-			label: pin === cli ? "latest, pin" : "latest",
-		});
-		if (pin && pin !== cli)
-			out.push({ id: row.id, version: pin, label: "pin" });
 	}
 	return out;
 }
@@ -114,7 +140,7 @@ const npmInstall = (dir, specs) =>
 		...specs,
 	]);
 
-/** The script an installed package's `bin` names for `binary`, as a product ships it. */
+/** The script an installed package's `bin` names for `binary`. */
 function binScript(prefix, pkg, binary) {
 	const root = join(prefix, "node_modules", pkg);
 	const { bin } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -123,21 +149,25 @@ function binScript(prefix, pkg, binary) {
 	return join(root, rel);
 }
 
-/** Installs from the row's channel under `dir`; returns the bin folder and any shipped adapter. */
-function install(row, version, companion, dir) {
-	const { channel } = row;
+/** Installs the probe's CLI from its channel under `dir`; returns the bin folder and any adapter. */
+function install(built, row, probe, dir) {
+	const { channel } = probe;
 	if (row.adapterPackage) {
-		const adapter = join(dir, "adapter");
-		npmInstall(adapter, [`${row.adapterPackage}@${version}`]);
+		let adapter;
+		if (probe.adapter === "shipped") {
+			adapter = built.adapters.shippedAdapter(row.adapterPackage);
+			if (!adapter) throw new Error(`no shipped ${row.adapterPackage} built`);
+		} else {
+			const prefix = join(dir, "adapter");
+			npmInstall(prefix, [`${row.adapterPackage}@${probe.adapter}`]);
+			adapter = binScript(prefix, row.adapterPackage, row.binary);
+		}
 		const cli = join(dir, "cli");
-		npmInstall(cli, [`${channel.npm}@${companion}`]);
-		return {
-			bin: join(cli, "node_modules", ".bin"),
-			adapter: binScript(adapter, row.adapterPackage, row.binary),
-		};
+		npmInstall(cli, [`${channel.npm}@${probe.companion}`]);
+		return { bin: join(cli, "node_modules", ".bin"), adapter };
 	}
 	if (channel.npm) {
-		npmInstall(dir, [`${channel.npm}@${version}`]);
+		npmInstall(dir, [`${channel.npm}@${probe.version}`]);
 		return { bin: join(dir, "node_modules", ".bin") };
 	}
 	// uv fetches the Python the package needs when the runner has none.
@@ -151,7 +181,7 @@ function install(row, version, companion, dir) {
 		"--quiet",
 		"--python",
 		join(bin, WINDOWS ? "python.exe" : "python"),
-		`${cli}==${version}`,
+		`${cli}==${probe.version}`,
 		...extras,
 	]);
 	return { bin };
@@ -168,10 +198,14 @@ function hostEnv(bin, extra) {
 	return { ...env, PATH: `${bin}${delimiter}${path}`, ...extra };
 }
 
-/** One line for a probe result; `ok` when the agent started and answered ACP. */
-export function verdict(result) {
+/**
+ * One line for a probe result. `ok` when it answered ACP, or asked for a sign-in on a row
+ * run with no key; a row handed a probe key that still asks has broken its start-up.
+ */
+export function verdict(result, { keyless: noKey }) {
 	const ok =
-		result.outcome === "answers-acp" || result.outcome === "sign-in-needed";
+		result.outcome === "answers-acp" ||
+		(noKey && result.outcome === "sign-in-needed");
 	const agent = result.agentInfo
 		? `${result.agentInfo.name} ${result.agentInfo.version}`
 		: "no agentInfo";
@@ -189,7 +223,7 @@ async function probeOne(built, probe) {
 	try {
 		let installed;
 		try {
-			installed = install(row, probe.version, probe.companion, dir);
+			installed = install(built, row, probe, dir);
 		} catch (e) {
 			return {
 				ok: false,
@@ -235,7 +269,7 @@ async function probeOne(built, probe) {
 			env: plan.env,
 			...(plan.sessionMeta ? { sessionMeta: plan.sessionMeta } : {}),
 		});
-		return verdict(result);
+		return verdict(result, { keyless: keyless(row.id) });
 	} finally {
 		try {
 			rmSync(dir, {
@@ -250,8 +284,15 @@ async function probeOne(built, probe) {
 	}
 }
 
-const shown = (p) =>
-	p.companion ? `${p.version} (cli ${p.companion})` : p.version;
+/** What a probe ran, in words: the adapter and CLI for an adapter row, else the version. */
+export function shown(probe, shippedVersion) {
+	if (!probe.adapter) return probe.version;
+	const adapter =
+		probe.adapter === "shipped"
+			? `shipped adapter ${shippedVersion ?? "?"}`
+			: `adapter ${probe.adapter}`;
+	return `${adapter}, cli ${probe.companion}`;
+}
 
 async function main() {
 	const { values } = parseArgs({
@@ -264,7 +305,7 @@ async function main() {
 			built: { type: "string" },
 		},
 	});
-	const built = await loadBuilt(values.built ?? ROOT);
+	const built = await loadBuilt(values.built ?? ROOT, Boolean(values.all));
 	if (values.agent) {
 		const row = built.registry[values.agent];
 		if (!row?.channel || !values.version) {
@@ -273,10 +314,14 @@ async function main() {
 			);
 			process.exit(2);
 		}
-		const companion = row.adapterPackage
-			? (values.companion ?? PINS[channelPackage(row.channel)])
-			: undefined;
-		const probe = { id: row.id, version: values.version, companion };
+		const probe = row.adapterPackage
+			? {
+					id: row.id,
+					channel: row.channel,
+					adapter: values.version,
+					companion: values.companion ?? PINS[channelPackage(row.channel)],
+				}
+			: { id: row.id, channel: row.channel, version: values.version };
 		const result = await probeOne(built, probe);
 		console.log(`${row.id} ${shown(probe)}: ${result.text}`);
 		process.exit(result.ok ? 0 : 1);
@@ -286,20 +331,14 @@ async function main() {
 		process.exit(2);
 	}
 	const latest = {};
-	for (const row of Object.values(built.registry)) {
-		for (const [pkg, channel] of [
-			...(row.channel ? [[channelPackage(row.channel), row.channel]] : []),
-			...(row.adapterPackage
-				? [[row.adapterPackage, { npm: row.adapterPackage }]]
-				: []),
-		]) {
+	for (const row of Object.values(built.registry))
+		for (const channel of [row.channel, row.nextChannel].filter(Boolean)) {
 			try {
-				latest[pkg] = await latestOf(channel);
+				latest[channelPackage(channel)] = await latestOf(channel);
 			} catch {
-				latest[pkg] = "unknown";
+				latest[channelPackage(channel)] = "unknown";
 			}
 		}
-	}
 	const lines = [
 		`| Agent | Channel | Version | Tested | Probe (${process.platform}; initialize, session/new; no model) |`,
 		"| :--- | :--- | :--- | :--- | :--- |",
@@ -308,15 +347,16 @@ async function main() {
 	for (const probe of plan(built.registry, PINS, latest)) {
 		const row = built.registry[probe.id];
 		const result = await probeOne(built, probe);
-		const channel = row.channel.npm
-			? `npm ${row.channel.npm}`
-			: `uv ${row.channel.uv[0]}`;
+		const what = shown(
+			probe,
+			row.adapterPackage && built.adapters.shippedVersion(row.adapterPackage),
+		);
 		lines.push(
-			`| ${row.id} | ${channel} | ${shown(probe)} (${probe.label}) | ${row.tested?.version ?? "none"} | ${result.ok ? "ok" : "FAILS"}: ${result.text} |`,
+			`| ${row.id} | ${channelName(probe.channel)} | ${what} (${probe.label}) | ${row.tested?.version ?? "none"} | ${result.ok ? "ok" : "FAILS"}: ${result.text} |`,
 		);
 		if (!result.ok)
 			failed.push(
-				`${row.id}\t${probe.version}\t${result.text.replace(/\s+/g, " ")}`,
+				`${row.id}\t${channelName(probe.channel)} ${what} (${probe.label})\t${result.text.replace(/\s+/g, " ")}`,
 			);
 	}
 	const table = lines.join("\n");

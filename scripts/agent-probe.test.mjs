@@ -4,10 +4,20 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { channelPackage, plan, verdict } from "./agent-probe.mjs";
+import {
+	channelPackage,
+	keyless,
+	plan,
+	shown,
+	verdict,
+} from "./agent-probe.mjs";
 
 const REGISTRY = {
-	opencode: { id: "opencode", channel: { npm: "opencode-ai" } },
+	opencode: {
+		id: "opencode",
+		channel: { npm: "opencode-ai" },
+		nextChannel: { npm: "@opencode/cli" },
+	},
 	"claude-code": {
 		id: "claude-code",
 		adapterPackage: "@agentclientprotocol/claude-agent-acp",
@@ -29,52 +39,102 @@ test("the probe declares no binary, argv or install command of its own (#1013)",
 	assert.match(source, /host\.detectAgent\(/);
 	assert.match(source, /host\.planLaunch\(/);
 	assert.match(source, /host\.probeAgent\(/);
+	assert.match(source, /adapters\.shippedAdapter\(/);
 });
 
-test("each row runs at its channel's latest, and again at its pin when that is older", () => {
+test("rows run at the channel's latest and pin, the next major's latest, and the shipped adapter", () => {
 	const latest = {
-		"opencode-ai": "2.0.0",
-		"@agentclientprotocol/claude-agent-acp": "0.99.0",
+		"opencode-ai": "1.19.5",
+		"@opencode/cli": "2.2.5",
 		"@anthropic-ai/claude-code": "2.2.0",
+		"deepagents-code": "0.2.2",
+	};
+	const pins = {
+		"opencode-ai": "1.19.5",
+		"@anthropic-ai/claude-code": "2.1.312",
 		"deepagents-code": "0.2.1",
 	};
-	const pins = { "opencode-ai": "1.19.5", "deepagents-code": "0.2.1" };
+	const npm = (p) => ({ npm: p });
 	assert.deepEqual(plan(REGISTRY, pins, latest), [
-		{ id: "opencode", version: "2.0.0", label: "latest" },
-		{ id: "opencode", version: "1.19.5", label: "pin" },
+		{
+			id: "opencode",
+			channel: npm("opencode-ai"),
+			version: "1.19.5",
+			label: "latest, pin",
+		},
+		{
+			id: "opencode",
+			channel: npm("@opencode/cli"),
+			version: "2.2.5",
+			label: "next major, latest",
+		},
 		{
 			id: "claude-code",
-			version: "0.99.0",
+			channel: npm("@anthropic-ai/claude-code"),
+			adapter: "shipped",
 			companion: "2.2.0",
 			label: "latest",
 		},
-		{ id: "deepagents", version: "0.2.1", label: "latest, pin" },
+		{
+			id: "claude-code",
+			channel: npm("@anthropic-ai/claude-code"),
+			adapter: "shipped",
+			companion: "2.1.312",
+			label: "pin",
+		},
+		{
+			id: "deepagents",
+			channel: REGISTRY.deepagents.channel,
+			version: "0.2.2",
+			label: "latest",
+		},
+		{
+			id: "deepagents",
+			channel: REGISTRY.deepagents.channel,
+			version: "0.2.1",
+			label: "pin",
+		},
 	]);
 	assert.equal(channelPackage(REGISTRY.deepagents.channel), "deepagents-code");
+	assert.equal(
+		shown({ adapter: "shipped", companion: "2.2.0" }, "0.98.0"),
+		"shipped adapter 0.98.0, cli 2.2.0",
+	);
 });
 
-test("an agent that answered, or asked for a sign-in, started; anything else fails", () => {
+test("sign-in-needed counts as started only on a row the probe hands no key", () => {
 	const base = {
 		agentInfo: { name: "opencode", version: "1.19.5" },
 		protocolVersion: 1,
 		modes: null,
 		detail: null,
 	};
-	assert.equal(verdict({ ...base, outcome: "answers-acp" }).ok, true);
-	assert.equal(verdict({ ...base, outcome: "sign-in-needed" }).ok, true);
-	const flag = verdict({
-		...base,
-		outcome: "failed-to-start",
-		detail: "ERROR Unrecognized flag: --cwd",
-	});
+	assert.deepEqual(
+		["opencode", "claude-code", "codex", "gemini", "deepagents"].filter(
+			keyless,
+		),
+		["opencode", "claude-code"],
+	);
+	assert.equal(
+		verdict({ ...base, outcome: "answers-acp" }, { keyless: false }).ok,
+		true,
+	);
+	assert.equal(
+		verdict({ ...base, outcome: "sign-in-needed" }, { keyless: true }).ok,
+		true,
+	);
+	assert.equal(
+		verdict({ ...base, outcome: "sign-in-needed" }, { keyless: false }).ok,
+		false,
+	);
+	const flag = verdict(
+		{
+			...base,
+			outcome: "failed-to-start",
+			detail: "ERROR Unrecognized flag: --cwd",
+		},
+		{ keyless: true },
+	);
 	assert.equal(flag.ok, false);
 	assert.match(flag.text, /failed-to-start: ERROR Unrecognized flag/);
-	assert.match(
-		verdict({
-			...base,
-			outcome: "no-answer",
-			detail: "session/new: no answer in 60s",
-		}).text,
-		/session\/new/,
-	);
 });
