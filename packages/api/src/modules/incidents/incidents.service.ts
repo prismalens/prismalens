@@ -67,6 +67,7 @@ export type IncidentWithRelations = Incident & {
 		stopRequestedAt?: Date | null;
 		awaitingApprovalAt?: Date | null;
 		liveTurn?: string | null;
+		endReason?: string | null;
 		lastTurnOutcome?: string | null;
 		lastEventAt?: Date | null;
 		latestText?: string | null;

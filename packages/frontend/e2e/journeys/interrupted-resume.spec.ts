@@ -80,6 +80,12 @@ test("Resume on an interrupted run keeps its id, from the inbox and the overview
 	await expect(page.getByTestId("latest-run-strip")).toContainText(
 		"interrupted",
 	);
+	await expect(page.getByTestId("situation-brief")).toContainText(
+		"was interrupted when PrismaLens restarted",
+	);
+	await expect(page.getByTestId("why-failed")).toContainText(
+		"was interrupted when PrismaLens restarted",
+	);
 	await page.getByTestId("next-resume").click();
 	await expect
 		.poll(() => resumed)
