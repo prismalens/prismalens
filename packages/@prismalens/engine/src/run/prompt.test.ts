@@ -185,6 +185,46 @@ describe("buildInvestigationPrompt (#633)", () => {
 		expect(prompt).toContain("<<<END CONTEXT_PACK>>>");
 	});
 
+	it("labels a prior incident's recorded cause, the agent's root cause and its summary by origin", () => {
+		const pack = {
+			window: { start: "2026-09-23T10:00:00Z", end: "2026-09-23T11:00:00Z" },
+			changes: [],
+			neighbors: [],
+			priorIncidents: [
+				{
+					reference: "INC-7",
+					title: "Old checkout outage",
+					recordedCause: "expired TLS cert",
+					agentRootCause: "payments-api regression",
+					agentSummary: "500s from payments",
+					matchedOn: [],
+				},
+				{
+					reference: "INC-9",
+					title: "orders 500s",
+					recordedCause: null,
+					agentRootCause: null,
+					agentSummary: "orders pool exhausted",
+					matchedOn: [],
+				},
+			],
+			unavailable: [],
+			assembledAt: "2026-09-23T11:00:00Z",
+		};
+		const prompt = buildInvestigationPrompt({
+			...baseContext,
+			contextPack: pack,
+		} as InvestigationContext);
+
+		expect(prompt).toContain(
+			'    1. INC-7 "Old checkout outage"\n       recorded cause (operator): expired TLS cert\n       agent\'s root cause (unconfirmed): payments-api regression\n       agent\'s summary (not a cause): 500s from payments',
+		);
+		expect(prompt).toContain(
+			'    2. INC-9 "orders 500s"\n       agent\'s summary (not a cause): orders pool exhausted',
+		);
+		expect(prompt).not.toContain("root cause: orders pool exhausted");
+	});
+
 	describe("the agent's own mode and the network (#673 w21)", () => {
 		const context: InvestigationContext = {
 			...baseContext,

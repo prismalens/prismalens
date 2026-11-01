@@ -326,11 +326,67 @@ describe("ContextPackService", () => {
 		expect(pack?.priorIncidents[0]).toMatchObject({
 			reference: "INC-7",
 			title: "Old checkout outage",
-			rootCause: "payments-api regression",
 		});
 		expect(pack?.priorIncidents[0].matchedOn).toEqual(
 			expect.arrayContaining(["service: payments-api"]),
 		);
+	});
+
+	it("carries an agent-only root cause as the agent's, with no recorded cause", async () => {
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.priorIncidents[0]).toMatchObject({
+			recordedCause: null,
+			agentRootCause: "payments-api regression",
+			agentSummary: null,
+		});
+	});
+
+	it("keeps the operator's recorded cause apart from the agent's root cause", async () => {
+		mockPrisma.incident.findMany.mockResolvedValueOnce([
+			{
+				id: "inc-0",
+				number: 7,
+				title: "Old checkout outage",
+				serviceId: "svc-pay",
+				actualCause: "expired TLS cert on the gateway",
+				createdAt: new Date("2026-09-10T00:00:00Z"),
+				alerts: [],
+				investigations: [
+					{ rootCause: "payments-api regression", summary: "500s from payments" },
+				],
+			},
+		]);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.priorIncidents[0]).toMatchObject({
+			recordedCause: "expired TLS cert on the gateway",
+			agentRootCause: "payments-api regression",
+			agentSummary: "500s from payments",
+		});
+	});
+
+	it("caps each cause field at 500 characters", async () => {
+		mockPrisma.incident.findMany.mockResolvedValueOnce([
+			{
+				id: "inc-0",
+				number: 7,
+				title: "Old checkout outage",
+				serviceId: "svc-pay",
+				actualCause: "a".repeat(600),
+				createdAt: new Date("2026-09-10T00:00:00Z"),
+				alerts: [],
+				investigations: [{ rootCause: "b".repeat(600), summary: "c".repeat(600) }],
+			},
+		]);
+
+		const pack = await service.assemble("inc-1");
+		const prior = pack?.priorIncidents[0];
+
+		expect(prior?.recordedCause).toHaveLength(500);
+		expect(prior?.agentRootCause).toHaveLength(500);
+		expect(prior?.agentSummary).toHaveLength(500);
 	});
 
 	it("draws prior incidents from ended incidents only (#673 w40)", async () => {
@@ -349,7 +405,7 @@ describe("ContextPackService", () => {
 		);
 	});
 
-	it("leads with an incident merged into this one, carrying its run's conclusion (#673 w37)", async () => {
+	it("leads with an incident merged into this one, carrying its run's summary as a summary, not a cause (#673 w37)", async () => {
 		mockPrisma.incident.findMany.mockResolvedValueOnce([
 			{
 				id: "inc-b",
@@ -370,7 +426,9 @@ describe("ContextPackService", () => {
 			{
 				reference: "INC-9",
 				title: "orders 500s",
-				rootCause: "orders pool exhausted",
+				recordedCause: null,
+				agentRootCause: null,
+				agentSummary: "orders pool exhausted",
 				matchedOn: ["merged into this incident"],
 			},
 		]);
