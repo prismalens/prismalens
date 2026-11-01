@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, type ReactNode, useState } from "react";
+import { act, type ReactNode, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFocusLater } from "@/components/run/HypothesesCard";
 import { BottomPanel, PanelShell, RightPanel } from "./PanelShell";
 
 (
@@ -146,7 +147,8 @@ describe("PanelShell", () => {
 				<p id="term">term</p>
 			</BottomPanel>,
 		);
-		expect(q("#term")).toBeNull();
+		expect(q("[data-testid=panel-bottom]")).toBeNull();
+		expect(q("#term")?.closest("[hidden][inert]")).toBeTruthy();
 	});
 });
 
@@ -232,6 +234,93 @@ describe("PanelShell under adversary review (#974)", () => {
 		);
 		expect(outside.hasAttribute("aria-hidden")).toBe(false);
 	});
+
+	it("keeps a bottom panel's content mounted and inert while closed (OBJ-004)", () => {
+		function Term() {
+			const [n, setN] = useState(0);
+			return (
+				<button type="button" id="term" onClick={() => setN(n + 1)}>
+					{n}
+				</button>
+			);
+		}
+		const page = (open: boolean) => (
+			<BottomPanel open={open} label="Terminal">
+				<Term />
+			</BottomPanel>
+		);
+		render(page(true));
+		act(() => q("#term")?.click());
+		render(page(false));
+		expect(q("[data-testid=panel-bottom]")).toBeNull();
+		expect(q("#term")?.closest("[inert]")).toBeTruthy();
+		expect(q("#term")?.closest("[hidden]")).toBeTruthy();
+		render(page(true));
+		expect(q("[data-testid=panel-bottom]")?.contains(q("#term"))).toBe(true);
+		expect(q("#term")?.closest("[inert]")).toBeNull();
+		expect(q("#term")?.textContent).toBe("1");
+	});
+
+	it.each([
+		["inside the sheet", true],
+		["under the sheet", false],
+	])(
+		"on a phone, Back from a file returns focus to an opener %s (#1005)",
+		(_, inside) => {
+			vi.useFakeTimers();
+			width = 390;
+			function Page() {
+				const [panel, setPanel] = useState(inside);
+				const [file, setFile] = useState(false);
+				const from = useRef<{ inPanel: boolean } | null>(null);
+				const focusLater = useFocusLater();
+				const open = () => {
+					from.current = {
+						inPanel: !!q("[data-testid=panel-right]")?.contains(q("#opener")),
+					};
+					setFile(true);
+					setPanel(true);
+					focusLater("back");
+				};
+				const back = () => {
+					setFile(false);
+					if (!from.current?.inPanel) setPanel(false);
+					focusLater("opener");
+				};
+				const opener = (
+					<button type="button" id="opener" onClick={open}>
+						open
+					</button>
+				);
+				return (
+					<>
+						{!inside && opener}
+						<RightPanel open={panel} label="Run details" onClose={noop}>
+							{file ? (
+								<button type="button" id="back" onClick={back}>
+									Back
+								</button>
+							) : (
+								inside && opener
+							)}
+						</RightPanel>
+					</>
+				);
+			}
+			try {
+				render(<Page />);
+				act(() => q("#opener")?.click());
+				act(() => vi.runAllTimers());
+				expect(document.activeElement?.id).toBe("back");
+				act(() => q("#back")?.click());
+				act(() => vi.runAllTimers());
+				expect(document.activeElement?.id).toBe("opener");
+				expect(q("[data-testid=panel-right]") !== null).toBe(inside);
+			} finally {
+				vi.useRealTimers();
+			}
+		},
+	);
 
 	it("keeps focus on the control it was on when the panel moves between regions", () => {
 		render(

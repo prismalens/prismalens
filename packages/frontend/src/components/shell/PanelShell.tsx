@@ -116,8 +116,10 @@ export function PanelShell({ children }: { children: ReactNode }) {
 	const [bottomEl] = useState(slotElement);
 	const [rightHost, setRightHost] = useState<HTMLElement | null>(null);
 	const [bottomHost, setBottomHost] = useState<HTMLElement | null>(null);
+	const [parked, setParked] = useState<HTMLElement | null>(null);
 	useMount(rightHost, rightEl);
-	useMount(bottomHost, bottomEl);
+	// A closed bottom panel parks its content, still mounted, so a terminal keeps its shell (#974 OBJ-004).
+	useMount(bottomHost ?? parked, bottomEl);
 	const phone = useMediaQuery(PHONE);
 	const split = useMediaQuery(SPLIT_PANES);
 	const beside = split && !!right;
@@ -248,6 +250,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 						</>
 					)}
 				</Group>
+				<div ref={setParked} hidden inert />
 			</div>
 			{/* A phone's sheet is the app's modal dialog: focus stays in it, the rest is hidden from
 			    assistive tech, and later dialogs and toasts layer over it (#974 OBJ-014, OBJ-015). */}
@@ -299,7 +302,7 @@ export function RightPanel({
 	return open && rightEl ? createPortal(children, rightEl) : null;
 }
 
-/** A page's bottom-panel content, under the page; a phone gets none (#931). */
+/** A page's bottom-panel content, under the page; a phone gets none (#931). Closed, it stays mounted, hidden. */
 export function BottomPanel({
 	open,
 	label,
@@ -316,5 +319,5 @@ export function BottomPanel({
 		setBottom(shown ? { label } : null);
 	}, [shown, label, setBottom]);
 	useLayoutEffect(() => () => setBottom(null), [setBottom]);
-	return shown && bottomEl ? createPortal(children, bottomEl) : null;
+	return bottomEl ? createPortal(children, bottomEl) : null;
 }
