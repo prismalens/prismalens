@@ -95,7 +95,7 @@ describe("probeAgent", () => {
 });
 
 // The default budgets on a fake clock; the agent's own replies still take real time (#1013).
-describe("probeAgent budgets: 10 s to initialize, then 60 s for session/new", () => {
+describe("probeAgent budgets: 30 s to initialize, then 60 s for session/new", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 	});
@@ -112,12 +112,12 @@ describe("probeAgent budgets: 10 s to initialize, then 60 s for session/new", ()
 		expect(r.outcome).toBe("answers-acp");
 	});
 
-	it("silent initialize: no answer in 10 s", async () => {
+	it("silent initialize: no answer in 30 s", async () => {
 		fakeClock();
 		const running = probe({ FAKE_ACP_MODE: "hang" });
-		await vi.advanceTimersByTimeAsync(10_000);
+		await vi.advanceTimersByTimeAsync(30_000);
 		const r = await running;
-		expect(r).toMatchObject({ outcome: "no-answer", detail: "initialize: no answer in 10s" });
+		expect(r).toMatchObject({ outcome: "no-answer", detail: "initialize: no answer in 30s" });
 	});
 
 	it("silent session/new: no answer in 60 s, after initialize answered", async () => {

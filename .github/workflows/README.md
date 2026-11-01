@@ -143,7 +143,7 @@ script (#1013). OpenCode's row on the night its npm latest is also its pin:
 
 | Channel (`harness.ts` `channel`) | Install                                                    | Launch                                                                                                        | Verdict                                                               |
 | -------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| npm `opencode-ai`, latest 1.19.5 = pin | `npm install --prefix <tmp> opencode-ai@1.19.5`, the hint's `npm i -g opencode-ai` in a throwaway prefix | `detectAgent` finds `opencode` in that prefix, `planLaunch` gives `opencode acp` with the run's env, `probeAgent` sends `initialize` (10 s) then `session/new` (60 s) | `ok: answers ACP (protocol 1, OpenCode 1.19.5; 2 modes)`; a `failed-to-start` or `no-answer` row turns the leg red |
+| npm `opencode-ai`, latest 1.19.5 = pin | `npm install --prefix <tmp> opencode-ai@1.19.5`, the hint's `npm i -g opencode-ai` in a throwaway prefix | `detectAgent` finds `opencode` in that prefix, `planLaunch` gives `opencode acp` with the run's env, `probeAgent` sends `initialize` (30 s) then `session/new` (60 s) | `ok: answers ACP (protocol 1, OpenCode 1.19.5; 2 modes)`; a `failed-to-start` or `no-answer` row turns the leg red |
 
 An adapter row (claude-code, codex) installs the adapter PrismaLens ships in one prefix and the CLI its
 hint names in another, so `detectAgent` takes the shipped-adapter path with the CLI as companion.

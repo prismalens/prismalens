@@ -37,9 +37,9 @@ export type ProbeOutcome = (typeof PROBE_OUTCOMES)[number];
 
 /** ACP's auth_required error code. */
 const AUTH_REQUIRED = -32000;
-/** Spawn plus `initialize`, then `session/new`: Codex's `session/new` took 22 s on a slow network (#1013). */
+/** Spawn plus `initialize` (a cold first start passed 10 s), then `session/new` (Codex took 22 s on a slow network) (#1013). */
 export const PROBE_BUDGETS_MS = {
-	initialize: 10_000,
+	initialize: 30_000,
 	session: 60_000,
 } as const;
 export type ProbeStep = "initialize" | "session/new";

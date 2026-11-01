@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentHostError } from "./errors.js";
 import { GATEWAY_RUN_FILE } from "./registry/index.js";
@@ -332,5 +342,39 @@ describe("launch files", () => {
 		const p = plan({ gateway });
 		expect(p.runEnv.gateway).toBeUndefined();
 		expect(Object.keys(p.files)).toEqual([]);
+	});
+});
+
+// Node refuses to spawn a .cmd without a shell only on Windows; elsewhere npm writes no .cmd shim.
+describe.skipIf(process.platform !== "win32")("a companion behind an npm .cmd shim (#1013)", () => {
+	it("hands the adapter the .exe the shim runs, which spawns without a shell", () => {
+		const dir = mkdtempSync(join(tmpdir(), "ah-shim-"));
+		try {
+			const exe = join(dir, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
+			mkdirSync(dirname(exe), { recursive: true });
+			copyFileSync(process.execPath, exe);
+			const shim = join(dir, "claude.cmd");
+			writeFileSync(
+				shim,
+				'@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n',
+			);
+			expect(spawnSync(shim, ["-e", ""]).error?.message).toMatch(/EINVAL/);
+			const p = planLaunch({
+				agent: "claude-code",
+				policy: POLICY,
+				launch: { command: "claude-agent-acp", shipped: true, companionPath: shim },
+				cwd: dir,
+				runDir: join(dir, "run"),
+				hostEnv: HOST,
+			});
+			expect(p.env.CLAUDE_CODE_EXECUTABLE).toBe(exe);
+			const ran = spawnSync(p.env.CLAUDE_CODE_EXECUTABLE as string, ["-e", "process.stdout.write('ok')"], {
+				encoding: "utf8",
+			});
+			expect(ran.error).toBeUndefined();
+			expect(ran.stdout).toBe("ok");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
