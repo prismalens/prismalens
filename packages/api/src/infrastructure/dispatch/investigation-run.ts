@@ -2475,7 +2475,7 @@ function gitIn(dir: string, args: string[]): string {
 async function restartFacts(
 	resume: NonNullable<InvestigationJobData["resume"]>,
 	resumedAt: Date,
-	incidentId: string,
+	incidentId: string | null,
 	events: readonly CanonicalEvent[],
 	workspace: WorkspaceState[],
 	snapshot: RestartFacts["snapshot"],

@@ -1766,4 +1766,33 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		await job(done.id, inc2.id, {}, "succeeded");
 		await expect(service.resumeInterrupted(done.id)).rejects.toBeInstanceOf(FollowUpRefused);
 	});
+
+	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap reads unchecked", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+		// This schema still requires an incident, so the row is read the way #984's reads it.
+		const findUnique = prisma.investigation.findUnique.bind(prisma.investigation);
+		const read1 = vi.spyOn(prisma.investigation, "findUnique").mockImplementation((async (args: { where: { id?: string } }) => {
+			const r = await findUnique(args as never);
+			return r && args.where.id === row.id ? { ...r, incidentId: null } : r;
+		}) as never);
+		const enqueue = vi.spyOn(PrismaJobStore.prototype, "enqueue").mockResolvedValue("job-1");
+
+		await service.resumeInterrupted(row.id);
+
+		expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ investigationId: row.id, incidentId: null }));
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted" });
+		enqueue.mockRestore();
+		read1.mockRestore();
+
+		const bootedAt = new Date();
+		const stoppedAt = new Date(bootedAt.getTime() - 10 * 60_000);
+		await prisma.alert.create({ data: { dedupKey: "unlinked", title: "Someone else's alert", triggeredAt: new Date(stoppedAt.getTime() + 60_000) } });
+		const count = vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
+		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<unknown> }).restartAlerts.bind(service);
+		expect(await restartAlerts(null, stoppedAt, bootedAt, stoppedAt)).toEqual({ catchUp: "unchecked", fired: [], resolved: [] });
+		count.mockRestore();
+	});
 });
