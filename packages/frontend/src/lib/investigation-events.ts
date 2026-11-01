@@ -12,6 +12,7 @@
  */
 import type { AccessLevel } from "@prismalens/config/harness";
 import type {
+	Artifact,
 	CanonicalEvent,
 	RunCredential,
 	StreamToolResult,
@@ -457,6 +458,8 @@ export type TranscriptItem =
 			callIds: string[];
 	  }
 	| { kind: "thought"; key: string; seconds: number }
+	/** A page the agent published, drawn where it was published (#871). */
+	| { kind: "artifact"; key: string; artifact: Artifact }
 	| {
 			kind: "divider";
 			key: string;
@@ -945,6 +948,10 @@ export function deriveTranscript(
 							: event,
 					),
 				});
+				break;
+			case "artifact_published":
+				closeGroup();
+				items.push({ kind: "artifact", key, artifact: event.artifact });
 				break;
 			case "message_queued":
 				queued.set(event.messageId, event);

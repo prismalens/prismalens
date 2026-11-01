@@ -56,7 +56,7 @@ export interface RunbooksData {
 export type RunbookResult =
 	| { ok: true; path: string; markdown: string }
 	| { ok: true; path: string; link: string }
-	| { ok: false; error: string };
+	| { ok: false; error: string; disabled?: true };
 
 const SHA = /^[0-9a-f]{40,64}$/;
 const MARKDOWN = /\.(md|markdown)$/i;

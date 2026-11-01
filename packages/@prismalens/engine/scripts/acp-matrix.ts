@@ -14,6 +14,7 @@ import {
 } from "@prismalens/config/harness";
 import { matrixRows } from "../../../../scripts/fakes/scripted-model.mjs";
 import { checkRow, expectationFor, runRow } from "./acp-scenarios.js";
+import { stubSearch } from "./stub-gateway.js";
 
 const harness = process.argv[2] as HarnessId;
 if (!HARNESS_IDS.includes(harness)) {
@@ -32,6 +33,7 @@ for (const [key, value] of Object.entries(overrides)) {
 	else signedOutEnv[key] = value;
 }
 
+console.log(`SEARCH ${stubSearch(harness) ? "on" : "off"}`);
 let failed = 0;
 for (const row of matrixRows()) {
 	if (only && !only.includes(row.row)) continue;
@@ -55,7 +57,7 @@ for (const row of matrixRows()) {
 	const problem =
 		"crash" in seen
 			? `the runner threw: ${seen.crash}`
-			: checkRow(harness, expect, seen);
+			: checkRow(harness, expect, seen, row.gateway);
 	if (problem) failed++;
 	const error = seen.events.find((e) => e.kind === "error");
 	const ended =

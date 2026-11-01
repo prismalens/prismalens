@@ -1,0 +1,70 @@
+{
+	"row": "gateway-read",
+	"kind": "happy",
+	"title": "Reads the incident and a runbook through PrismaLens's core tools",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "incident_get",
+				"ok": true,
+				"outputHas": "ScenarioIncident"
+			},
+			{
+				"name": "runbooks_read",
+				"ok": true,
+				"outputHas": "ScenarioRunbookStep",
+				"input": {
+					"path": "scenario/runbooks/restart.md",
+					"service": "scenario"
+				}
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-read]",
+				"toolName": "$gw:incident_get",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:incident_get",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-read]",
+				"afterTool": "$gw:incident_get",
+				"resultContains": "ScenarioIncident"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:runbooks_read",
+						"arguments": {
+							"path": "scenario/runbooks/restart.md",
+							"service": "scenario"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-read]",
+				"afterTool": "$gw:runbooks_read",
+				"resultContains": "ScenarioRunbookStep"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

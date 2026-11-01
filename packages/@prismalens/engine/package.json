@@ -57,6 +57,7 @@
 	},
 	"devDependencies": {
 		"@modelcontextprotocol/server": "~2.4.0",
+		"@prismalens/integrations": "workspace:*",
 		"@types/node": "catalog:",
 		"ajv": "^8.20.0",
 		"tsx": "catalog:",

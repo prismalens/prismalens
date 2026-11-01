@@ -225,7 +225,11 @@ export interface RunPorts {
 	): Promise<{ sha: string; name: string | null }[]>;
 	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
 	gateway?: {
-		lease(runId: string, serverName: string): Promise<GatewayEntry | null>;
+		lease(
+			runId: string,
+			serverName: string,
+			harness?: string,
+		): Promise<GatewayEntry | null>;
 		revoke(runId: string): void;
 	};
 	/**

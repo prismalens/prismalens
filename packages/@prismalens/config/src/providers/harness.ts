@@ -101,6 +101,11 @@ interface ProductFacts {
 	acpRegistryIds?: readonly string[];
 	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
 	toolsHint?: { text: string };
+	/**
+	 * PrismaLens's tools come as a core plus `tools_search`, not all listed; on only where the
+	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
+	 */
+	harnessToolSearch?: true;
 }
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
@@ -136,6 +141,8 @@ function noModeLines(label: string): Lines {
 
 const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	opencode: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
@@ -154,6 +161,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`opencode auth login`, or a provider key in env",
 	},
 	"claude-code": {
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
 		install:
 			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
@@ -179,6 +187,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
@@ -204,6 +213,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	},
 	gemini: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
 		install: "npm i -g @google/gemini-cli",
 		lines: {
@@ -223,6 +234,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		},
 	},
 	deepagents: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		lines: noModeLines("deepagents"),
