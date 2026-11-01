@@ -182,7 +182,7 @@ export interface RunPorts {
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/** What happened on the incident while PrismaLens was stopped, for a restart's message (#981). */
 	restartAlerts?(
-		incidentId: string,
+		incidentId: string | null,
 		since: Date,
 		until: Date,
 		stoppedAt: Date,

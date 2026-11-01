@@ -105,6 +105,7 @@ import {
 	sweepRunWorkspaces,
 } from "./investigation-run.js";
 import {
+	type EnqueueJobInput,
 	type JobDelegate,
 	type JobStore,
 	PrismaJobStore,
@@ -114,6 +115,7 @@ import {
 	NOT_RESUMED,
 	notResumedReason,
 	RECOVERY_DELAY_MS,
+	type RestartFacts,
 } from "./restart-recovery.js";
 import type { RunPorts } from "./run-ports.js";
 
@@ -1610,7 +1612,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 */
 	private async rearm(
 		id: string,
-		incidentId: string,
+		incidentId: EnqueueJobInput["incidentId"],
 		turn: "report" | "answer",
 		data: InvestigationJobData,
 		runAt: Date,
@@ -1843,11 +1845,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * boot's alert catch-up has run since the stop; "none" when there is no source to pull (#981 OBJ-008).
 	 */
 	private async restartAlerts(
-		incidentId: string,
+		incidentId: string | null,
 		since: Date,
 		until: Date,
 		stoppedAt: Date,
-	) {
+	): Promise<RestartFacts["alerts"]> {
+		// A check with no incident has no alerts of its own; a null filter would read every unlinked one.
+		if (!incidentId) return { catchUp: "unchecked", fired: [], resolved: [] };
 		const inGap = { gte: since, lte: until };
 		const rows = await this.prisma.alert.findMany({
 			where: {
