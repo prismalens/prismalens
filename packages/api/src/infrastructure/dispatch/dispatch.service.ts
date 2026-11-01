@@ -1815,7 +1815,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const r = rows.find((x) => x.id === id);
 			return {
 				investigationId: id,
-				incidentId: r?.incidentId ?? "",
+				incidentId: r?.incidentId ?? null,
 				incidentNumber: r?.incident?.number ?? null,
 				title: r?.incident?.title ?? "",
 			};

@@ -1425,6 +1425,19 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		expect(tick).toHaveBeenCalledTimes(1);
 	});
 
+	it("a scheduled check with no incident is named in the summary with a null incident, not an empty id", async () => {
+		const row = await prisma.investigation.create({
+			data: { incidentId: null, scheduleId: "sch-a", triggerType: "scheduled", status: "running", liveTurn: "report", harness: "opencode", acpSessionId: "ses_1", workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }) },
+		});
+		await prisma.job.create({ data: { investigationId: row.id, incidentId: null, payload: JSON.stringify({ incidentId: null, investigationId: row.id }), status: "running" } });
+
+		const service = await boot();
+
+		const summary = await service.restartSummary();
+		const ref = [...(summary?.resumed ?? []), ...(summary?.skipped ?? [])].find((r) => r.investigationId === row.id);
+		expect(ref).toMatchObject({ incidentId: null, incidentNumber: null });
+	});
+
 	it("a run the operator stopped stays stopped", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
