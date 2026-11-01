@@ -60,7 +60,7 @@ const PATCH = [
 	"",
 ].join("\n");
 
-function readEvent(): CanonicalEvent[] {
+function readEvent(n = 1): CanonicalEvent[] {
 	const base = (seq: number) => ({
 		runId: RUN_ID,
 		branchId: "main",
@@ -68,44 +68,44 @@ function readEvent(): CanonicalEvent[] {
 		seq,
 		ts: new Date(1700000000000 + seq * 1000).toISOString(),
 	});
-	return [
-		{
-			kind: "agent_step",
-			...base(1),
-			label: "agent",
-			text: "Reading the client",
-			toolCalls: [
-				{
-					toolCallId: "read-1",
-					name: "read_file",
-					args: { path: "repo/src/payments/client.ts", offset: 2 },
-				},
-			],
-		},
-		{
-			kind: "tool_result",
-			...base(2),
-			label: null,
-			result: {
-				toolCallId: "read-1",
-				name: "read_file",
-				toolCategory: "file",
-				ok: true,
-				source: "read_file(repo/src/payments/client.ts)",
-				preview: "read",
+	return Array.from({ length: n }, (_, i) => {
+		const path = `repo/src/payments/client${i % 12 || ""}.ts`;
+		const id = `read-${i + 1}`;
+		return [
+			{
+				kind: "agent_step",
+				...base(2 * i + 1),
+				label: "agent",
+				text: "Reading the client",
+				toolCalls: [
+					{ toolCallId: id, name: "read_file", args: { path, offset: 2 } },
+				],
 			},
-		},
-	] as CanonicalEvent[];
+			{
+				kind: "tool_result",
+				...base(2 * i + 2),
+				label: null,
+				result: {
+					toolCallId: id,
+					name: "read_file",
+					toolCategory: "file",
+					ok: true,
+					source: `read_file(${path})`,
+					preview: "read",
+				},
+			},
+		];
+	}).flat() as CanonicalEvent[];
 }
 
-async function setup(page: Page, width = 1440, url = RUN_URL) {
+async function setup(page: Page, width = 1440, url = RUN_URL, reads = 1) {
 	await page.setViewportSize({ width, height: 900 });
 	await hideQueryDevtools(page);
 	await serveInvestigationAs(page, INVESTIGATION_ID, {
 		status: "completed",
 		workspace,
 	});
-	await serveEventsHistory(page, INVESTIGATION_ID, readEvent());
+	await serveEventsHistory(page, INVESTIGATION_ID, readEvent(reads));
 	const content = "export const gateway = {\n  timeoutMs: 800,\n};\n";
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/blob`,
@@ -326,6 +326,36 @@ test.describe("Panel views (#973)", () => {
 		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
 		await expect(page).not.toHaveURL(/panel=|file=/);
 	});
+
+	// Six tabs, with a long run's counts, share the row; none may scroll out of reach (#1010 finding 7).
+	// 320 px cannot hold them at body type; which tabs a phone shows is parked on #1010.
+	for (const width of [1440, 390]) {
+		test(`every tab fits the row at ${width === 1440 ? "the panel's default width" : `${width} px`}`, async ({
+			page,
+		}) => {
+			await setup(page, width, `${RUN_URL}&panel=browser`, 120);
+			await expect(page.getByTestId("run-details-tab-steps")).toContainText(
+				"120",
+			);
+			await expect(page.getByTestId("run-details-tab-files")).toContainText(
+				"12",
+			);
+			const list = page.getByTestId("run-details").getByRole("tablist");
+			await expect(page.getByTestId("run-details-tab-browser")).toHaveAttribute(
+				"data-state",
+				"active",
+			);
+			if (width === 1440)
+				expect(
+					(await page.getByTestId("run-details").boundingBox())?.width,
+				).toBeCloseTo(420, -1);
+			const { scroll, client } = await list.evaluate((el) => ({
+				scroll: el.scrollWidth,
+				client: el.clientWidth,
+			}));
+			expect(scroll).toBeLessThanOrEqual(client);
+		});
+	}
 
 	test("an old run address keeps its tab and file through the redirect", async ({
 		page,

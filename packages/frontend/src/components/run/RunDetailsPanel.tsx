@@ -212,7 +212,7 @@ export function RunDetailsPanel({
 								key={t.id}
 								value={t.id}
 								aria-label={t.aria}
-								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 max-md:px-1 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
 								data-testid={`run-details-tab-${t.id}`}
 							>
 								{t.label}
