@@ -25,13 +25,13 @@ import { cn } from "@/lib/utils";
 /** Above this, the file is drawn uncoloured: highlighting, not transfer, is the cost. Not yet measured. */
 const PLAIN_TEXT_OVER = 256 * 1024;
 
-const POOL = {
+export const POOL = {
 	poolOptions: { workerFactory: () => new DiffsWorker(), poolSize: 2 },
 	// WebAssembly is blocked by the app's CSP (no 'wasm-unsafe-eval'), so the JS regex engine.
 	highlighterOptions: { preferredHighlighter: "shiki-js" as const },
 };
 
-const CODE_STYLE = {
+export const CODE_STYLE = {
 	"--diffs-font-family": "var(--font-mono)",
 	"--diffs-font-size": "12px",
 	"--diffs-line-height": "18px",
@@ -50,7 +50,6 @@ export function EvidenceFileView({
 	file,
 	onBack,
 	backLabel,
-	phone,
 	reads,
 	onJump,
 	codeHost,
@@ -60,7 +59,6 @@ export function EvidenceFileView({
 	file: FileAt;
 	onBack: () => void;
 	backLabel: string;
-	phone: boolean;
 	/** The read steps that saw this file. */
 	reads: number[];
 	onJump: (n: number) => void;
@@ -85,10 +83,7 @@ export function EvidenceFileView({
 	return (
 		<section
 			aria-label={`${file.path} at ${sha7}`}
-			className={cn(
-				"flex min-h-0 flex-1 flex-col bg-surface-1",
-				phone && "absolute inset-0 z-10",
-			)}
+			className="flex min-h-0 flex-1 flex-col bg-surface-1"
 			data-testid="evidence-file"
 		>
 			<div className="flex shrink-0 flex-col gap-0.5 px-3 pt-2.5 pb-2 shadow-[0_1px_0_var(--hairline)]">

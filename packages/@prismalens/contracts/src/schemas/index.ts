@@ -22,6 +22,7 @@ export * from "./investigation.js";
 export * from "./overlay.js";
 export * from "./recommendation.js";
 export * from "./repository.js";
+export * from "./run-views.js";
 export * from "./run-workspace.js";
 export * from "./safe-url.js";
 // Entity schemas
@@ -31,5 +32,6 @@ export * from "./source-credential.js";
 export * from "./source-type.js";
 export * from "./state-labels.js";
 export * from "./state-semantics.js";
+export * from "./terminal.js";
 export * from "./timeline.js";
 export * from "./webhook.js";

@@ -51,6 +51,7 @@ export {
 	setupContract,
 } from "./setup.js";
 export { sourcesContract } from "./sources.js";
+export { terminalContract } from "./terminal.js";
 export { timelineContract } from "./timeline.js";
 export { webhooksContract } from "./webhooks.js";
 
@@ -75,6 +76,7 @@ import { servicesContract } from "./services.js";
 import { settingsContract } from "./settings.js";
 import { setupContract } from "./setup.js";
 import { sourcesContract } from "./sources.js";
+import { terminalContract } from "./terminal.js";
 import { timelineContract } from "./timeline.js";
 import { webhooksContract } from "./webhooks.js";
 
@@ -105,6 +107,7 @@ export const contract = {
 	instance: instanceContract,
 	pairing: pairingContract,
 	push: pushContract,
+	terminal: terminalContract,
 };
 
 export type Contract = typeof contract;

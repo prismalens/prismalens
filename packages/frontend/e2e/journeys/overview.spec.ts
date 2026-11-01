@@ -1252,7 +1252,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 					.soft(await sidewaysFaults(page), `conversation at ${width}`)
 					.toEqual([]);
 				await page.getByTestId("details-toggle").click();
-				for (const tab of ["summary", "evidence", "context", "steps"]) {
+				for (const tab of ["summary", "files", "changes", "steps", "context"]) {
 					await page.getByTestId(`run-details-tab-${tab}`).click();
 					await expect(page.getByTestId(`run-details-${tab}`)).toBeVisible();
 					expect
@@ -1308,8 +1308,8 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 				await page.setViewportSize({ width, height: 844 });
 				await visit(page, `/incidents/${inc.id}/conversation`);
 				await page.getByTestId("details-toggle").click();
-				await page.getByTestId("run-details-tab-evidence").click();
-				await expect(page.getByTestId("run-details-evidence")).toBeVisible();
+				await page.getByTestId("run-details-tab-summary").click();
+				await expect(page.getByTestId("run-details-summary")).toBeVisible();
 				const covered = await page.evaluate(() => {
 					const strip = Array.from(
 						document.querySelectorAll('[data-testid="run-strip"] *'),

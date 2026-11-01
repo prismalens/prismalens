@@ -10,7 +10,7 @@
  *
  * One archive, not ~20k loose files: Explorer's Extract All failed on paths past
  * MAX_PATH and the app lost a migration (#673 w53). Electron-as-Node reads the
- * asar; the native `.node` files sit unpacked beside it.
+ * asar; the native `.node` files and node-pty's platform package sit unpacked beside it.
  */
 
 import { execFileSync } from "node:child_process";
@@ -103,7 +103,12 @@ const root = join(tmp, "asar-root");
 mkdirSync(root);
 renameSync(pkg, join(root, "prismalens"));
 rmSync(resources, { recursive: true, force: true });
-await createPackageWithOptions(root, asar, { unpack: "*.node" });
+// node-pty's platform package unpacks whole: its worker script, spawn-helper and
+// conpty.dll run from real paths, and the API loads it from there (#931).
+await createPackageWithOptions(root, asar, {
+	unpack: "*.node",
+	unpackDir: "**/node_modules/@lydell/node-pty-*",
+});
 rmSync(tmp, { recursive: true, force: true });
 console.log(
 	`staged ${asar} (${(statSync(asar).size / 1e6).toFixed(0)} MB; pruned ${pruned} files)`,

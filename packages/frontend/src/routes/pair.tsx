@@ -19,8 +19,9 @@ import { MutationError } from "@/components/shared/MutationError";
 import { Row } from "@/components/shared/Row";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { orpc } from "@/lib/api/orpc-client";
+import { client, orpc } from "@/lib/api/orpc-client";
 import { pairingName } from "@/lib/device-name";
+import { storeTerminalKey, terminalKey } from "@/lib/terminal/key";
 
 export const Route = createFileRoute("/pair")({
 	ssr: false,
@@ -52,7 +53,8 @@ function PairPage() {
 
 	const redeem = useMutation({
 		...orpc.pairing.redeem.mutationOptions(),
-		onSuccess: async () => {
+		onSuccess: async (data) => {
+			if (data.terminalKey) storeTerminalKey(data.terminalKey);
 			await queryClient.invalidateQueries({
 				queryKey: operatorQueryOptions().queryKey,
 			});
@@ -67,6 +69,16 @@ function PairPage() {
 		// `pl up` prints a fresh link on every start. A browser that already
 		// holds this machine's session leaves it unused rather than pairing twice.
 		if (operator.managesPairing) {
+			// A host browser paired before the terminal existed, or that lost its
+			// key, spends this link on the key instead of pairing again (#931).
+			if (!terminalKey()) {
+				void client.terminal
+					.claimKey({ token })
+					.then(({ key }) => storeTerminalKey(key))
+					.catch(() => {})
+					.finally(() => navigate({ to: "/" }));
+				return;
+			}
 			navigate({ to: "/" });
 			return;
 		}

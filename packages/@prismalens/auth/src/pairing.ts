@@ -95,6 +95,8 @@ export interface PairingStore {
 		scopes: string[];
 		userAgent: string | null;
 	}): Promise<DeviceRecord>;
+	/** Mark an unused link used without pairing a device; false when it was already used. */
+	claimLink(linkId: string): Promise<boolean>;
 	findDeviceByHash(tokenHash: string): Promise<DeviceRecord | null>;
 	touchDevice(id: string, at: Date): Promise<void>;
 	listDevices(): Promise<DeviceRecord[]>;
@@ -214,6 +216,43 @@ async function redeemLinkToken(
 	return { token: deviceToken, device, linkId: link.id };
 }
 
+/**
+ * An already-paired host browser trades a fresh operator link for its
+ * terminal key (#931) without pairing a second device. Only a link that
+ * grants `admin:access` counts; it is used up like a redeemed one.
+ */
+export async function claimOperatorLink(
+	store: PairingStore,
+	token: string,
+	now: Date = new Date(),
+): Promise<void> {
+	const link = await store.findLinkByHash(hashToken(token));
+	if (!link || !parseScopes(link.scopes).includes(ACCESS_SCOPE)) {
+		throw new PairingError(
+			"invalid",
+			"This link is not an operator link from the host.",
+		);
+	}
+	if (link.usedAt) {
+		throw new PairingError(
+			"used",
+			"This link was already used. Run `pl pair --operator` for another.",
+		);
+	}
+	if (link.expiresAt.getTime() <= now.getTime()) {
+		throw new PairingError(
+			"expired",
+			"This link has expired. Run `pl pair --operator` for another.",
+		);
+	}
+	if (!(await store.claimLink(link.id))) {
+		throw new PairingError(
+			"used",
+			"This link was already used. Run `pl pair --operator` for another.",
+		);
+	}
+}
+
 /** How often `lastSeenAt` is written; a request inside the window costs no write. */
 const TOUCH_INTERVAL_MS = 60 * 1000;
 
@@ -292,6 +331,13 @@ export function prismaPairingStore(prisma: unknown): PairingStore {
 					}),
 				);
 			}),
+		claimLink: async (linkId) =>
+			(
+				await db.pairingLink.updateMany({
+					where: { id: linkId, usedAt: null },
+					data: { usedAt: new Date() },
+				})
+			).count === 1,
 		findDeviceByHash: async (tokenHash) => {
 			const row = await db.deviceSession.findUnique({ where: { tokenHash } });
 			return row ? toDevice(row) : null;
@@ -367,6 +413,10 @@ interface PrismaPairingClient {
 		findUnique(args: {
 			where: { tokenHash: string };
 		}): Promise<PairingLinkRecord | null>;
+		updateMany(args: {
+			where: { id: string; usedAt: null };
+			data: { usedAt: Date };
+		}): Promise<{ count: number }>;
 	};
 	deviceSession: {
 		findUnique(args: {

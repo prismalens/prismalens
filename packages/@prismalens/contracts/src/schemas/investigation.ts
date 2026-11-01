@@ -19,6 +19,7 @@ import {
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
 import { RunCredentialSchema } from "./repository.js";
+import { RunComparisonSchema } from "./run-views.js";
 import { AccessLevelSchema } from "./settings.js";
 import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
@@ -314,6 +315,8 @@ export const RunWorkspaceSchema = z.object({
 	repos: z.array(RunWorkspaceRepoSchema),
 	/** The run's MCP server name, reused by its follow-ups; absent on a run from before (#848). */
 	toolsServer: z.string().optional(),
+	/** Commit pairs the panel may diff, recorded at run start; absent on a run from before (#973). */
+	compare: z.array(RunComparisonSchema).optional(),
 });
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 

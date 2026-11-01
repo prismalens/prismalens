@@ -7,6 +7,8 @@
  * URL once /health answers, and errors (#600).
  */
 
+import { randomBytes } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer, isIP } from "node:net";
 import { join } from "node:path";
 import {
@@ -171,6 +173,20 @@ export interface BrowserCommandOptions {
 /** WSL's default automount, for when `appendWindowsPath=false` keeps it off PATH (#673 w3). */
 export const WSL_POWERSHELL =
 	"/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+
+/**
+ * The browser opens a private file that redirects to the startup link, so the
+ * link's one-time token never sits in a process's arguments where another OS
+ * user could read it. Jupyter does the same (`use_redirect_file`); #931.
+ */
+export function writeRedirectFile(url: string, dir: string): string {
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	const file = join(dir, `open-${randomBytes(8).toString("hex")}.html`);
+	const target = JSON.stringify(url).replaceAll("<", "\\u003c");
+	const html = `<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Opening PrismaLens</title><script>location.replace(${target})</script>`;
+	writeFileSync(file, html, { mode: 0o600, flag: "wx" });
+	return file;
+}
 
 /** Printed when the opener could not start or failed; the printed link still works. */
 export const NO_BROWSER_LINE =

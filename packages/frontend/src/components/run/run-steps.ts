@@ -22,6 +22,8 @@ export interface RunStep {
 	/** The command or path, workspace paths read as `repo/`. */
 	command: string;
 	kind: StepKind;
+	/** The call named a shell command, so it can be copied or staged in the terminal. */
+	shell?: boolean;
 	verb: string;
 	ok: boolean | null;
 	/** The turn ended with the call unanswered. */
@@ -137,6 +139,7 @@ export function deriveSteps(
 				result?.toolCategory === "file" || result?.toolCategory === "search"
 					? "file"
 					: "command",
+			shell: typeof (call.args.command ?? call.args.cmd) === "string",
 			verb: verbOf(result, call.name, unfinished),
 			ok: result ? result.ok : null,
 			unfinished,

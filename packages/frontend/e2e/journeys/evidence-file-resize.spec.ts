@@ -220,10 +220,9 @@ test.describe("Evidence file view resize (#874)", () => {
 		const line20 = page.locator('[data-line="20"]');
 		await expect(line20).toBeInViewport({ timeout: 5000 });
 
-		await page.evaluate(() => {
-			const el = document.getElementById("run-details");
-			if (el) el.style.width = "760px";
-		});
+		// Widen the panel the way a reader does: its separator, by keyboard (#973).
+		await page.getByTestId("panel-right-separator").focus();
+		for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowLeft");
 		await page.waitForTimeout(500);
 
 		// Step 2 opens from the transcript beside the panel: the same code view, its heights cached at the old width.
@@ -303,15 +302,15 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("run-details")).toBeVisible();
 		});
 
-		test("Back from a file cited in Evidence returns to the citation, inside the sheet", async ({
+		test("Back from a file cited in Summary returns to the citation, inside the sheet", async ({
 			page,
 		}) => {
-			await page.getByTestId("run-details-tab-evidence").click();
+			await page.getByTestId("run-details-tab-summary").click();
 			await page.getByTestId("detail-file").first().click();
 			await expect(page.getByTestId("evidence-file")).toBeVisible();
 			await page.getByTestId("evidence-file-back").click();
 			await expect(page.getByTestId("evidence-file")).toBeHidden();
-			await expect(page.getByTestId("run-details-evidence")).toBeVisible();
+			await expect(page.getByTestId("run-details-summary")).toBeVisible();
 			await expect(page.getByTestId("detail-file").first()).toBeFocused();
 		});
 
@@ -330,7 +329,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		test("a step link in the sheet lifts it and shows the step", async ({
 			page,
 		}) => {
-			await page.getByTestId("run-details-tab-evidence").click();
+			await page.getByTestId("run-details-tab-summary").click();
 			await page.getByTestId("detail-step").first().click();
 			await expect(page.getByTestId("run-details")).toBeHidden();
 			await expect(
@@ -343,12 +342,12 @@ test.describe("Evidence file view resize (#874)", () => {
 			).toBeFocused();
 		});
 
-		test("the drawing opened from the sheet: a step lifts the sheet, a file comes Back to Evidence", async ({
+		test("the drawing opened from the sheet: a step lifts the sheet, a file comes Back to Summary", async ({
 			page,
 		}) => {
 			const preview = page.getByTestId("hypotheses-preview");
 			const open = async () => {
-				await page.getByTestId("run-details-tab-evidence").click();
+				await page.getByTestId("run-details-tab-summary").click();
 				await page.getByTestId("detail-hypotheses").click();
 				await expect(preview).toBeVisible();
 			};
@@ -370,7 +369,7 @@ test.describe("Evidence file view resize (#874)", () => {
 				.click();
 			await expect(page.getByTestId("evidence-file")).toBeVisible();
 			await page.getByTestId("evidence-file-back").click();
-			await expect(page.getByTestId("run-details-evidence")).toBeVisible();
+			await expect(page.getByTestId("run-details-summary")).toBeVisible();
 			await expect(page.getByTestId("detail-hypotheses")).toBeFocused();
 		});
 
@@ -391,7 +390,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		}) => {
 			const preview = page.getByTestId("hypotheses-preview");
 			const link = page.getByTestId("detail-hypotheses");
-			await page.getByTestId("run-details-tab-evidence").click();
+			await page.getByTestId("run-details-tab-summary").click();
 			for (const close of ["Escape", "Close"] as const) {
 				await link.click();
 				await expect(preview).toBeVisible();

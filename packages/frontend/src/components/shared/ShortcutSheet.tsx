@@ -22,6 +22,7 @@ const ROWS: { keys: string[]; label: string }[] = [
 	{ keys: ["Enter"], label: "Open the highlighted row" },
 	{ keys: ["1", "4"], label: "Jump to a column on the board" },
 	{ keys: ["["], label: "Fold the sidebar to its icons" },
+	{ keys: ["Ctrl", "`"], label: "Show or hide the terminal" },
 	{ keys: ["Esc"], label: "Go back" },
 	{ keys: ["Enter"], label: "Send, at the agent's next pause" },
 	{ keys: ["Ctrl", "Enter"], label: "Send now, ending the agent's step" },

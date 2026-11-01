@@ -33,10 +33,7 @@ export const Route = createFileRoute("/_authenticated/alerts")({
 
 function AlertsFrame() {
 	return (
-		<div
-			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas md:left-(--sidebar-w)"
-			data-testid="alerts-frame"
-		>
+		<div className="flex h-full flex-col bg-canvas" data-testid="alerts-frame">
 			<Outlet />
 		</div>
 	);
