@@ -328,8 +328,7 @@ test.describe("Panel views (#973)", () => {
 	});
 
 	// Six tabs, with a long run's counts, share the row; none may scroll out of reach (#1010 finding 7).
-	// 320 px cannot hold them at body type; which tabs a phone shows is parked on #1010.
-	for (const width of [1440, 390]) {
+	for (const width of [1440, 390, 320]) {
 		test(`every tab fits the row at ${width === 1440 ? "the panel's default width" : `${width} px`}`, async ({
 			page,
 		}) => {
