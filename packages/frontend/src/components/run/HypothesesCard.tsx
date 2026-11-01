@@ -53,7 +53,8 @@ export type CiteTarget = { file: FileAt } | { step: number };
 interface Cite {
 	n: number;
 	label: string;
-	target: CiteTarget;
+	/** Null: nowhere to go, so it reads as text. */
+	target: CiteTarget | null;
 }
 
 export interface HypothesesProps {
@@ -64,8 +65,9 @@ export interface HypothesesProps {
 	onOpenFile: (f: FileAt, origin: string) => void;
 	onJump: (n: number) => void;
 	/** Opened from Evidence's "Open the drawing"; the page owns it so both doors share one preview. */
-	preview: boolean;
-	onPreview: (open: boolean) => void;
+	preview?: boolean;
+	/** Without it there is no Open larger, so the card shows the whole drawing. */
+	onPreview?: (open: boolean) => void;
 	/** The control that opened the preview, when not this card's own: Esc and Close return to it. */
 	returnTo?: () => string | null;
 }
@@ -87,23 +89,25 @@ export function HypothesesCard(props: HypothesesProps) {
 	const clip = useRef<HTMLDivElement>(null);
 	const inner = useRef<HTMLDivElement>(null);
 	const [clipped, setClipped] = useState(false);
+	const enlarge = props.onPreview;
 	useLayoutEffect(() => {
 		const el = clip.current;
 		const content = inner.current;
-		if (!el || !content) return;
+		if (!el || !content || !enlarge) return;
 		const measure = () => setClipped(el.scrollHeight > CLIP_PX + 1);
 		measure();
 		const ro = new ResizeObserver(measure);
 		ro.observe(content);
 		return () => ro.disconnect();
-	}, []);
+	}, [enlarge]);
 	// A citation leaving the preview hands focus to where it goes, not back to the opener.
 	const citing = useRef(false);
 	const act = (inPreview: boolean) => (cite: Cite, origin: string) => {
 		// One modal at a time: the preview closes first and focus returns to Open larger.
+		if (!cite.target) return;
 		if (inPreview) {
 			citing.current = true;
-			props.onPreview(false);
+			props.onPreview?.(false);
 		}
 		const from = inPreview ? HYPOTHESES_OPEN_ID : origin;
 		if ("file" in cite.target) props.onOpenFile(cite.target.file, from);
@@ -119,34 +123,38 @@ export function HypothesesCard(props: HypothesesProps) {
 					<span className="truncate font-semibold">Hypotheses</span>
 					<span className="text-meta text-text-3">{sub}</span>
 				</span>
-				<Hint label="Open larger">
-					<button
-						type="button"
-						id={HYPOTHESES_OPEN_ID}
-						aria-label="Open Hypotheses larger"
-						onClick={() => props.onPreview(true)}
-						className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
-						data-testid="hypotheses-open"
-					>
-						<Maximize2 className="size-4" aria-hidden />
-					</button>
-				</Hint>
+				{enlarge && (
+					<Hint label="Open larger">
+						<button
+							type="button"
+							id={HYPOTHESES_OPEN_ID}
+							aria-label="Open Hypotheses larger"
+							onClick={() => enlarge(true)}
+							className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+							data-testid="hypotheses-open"
+						>
+							<Maximize2 className="size-4" aria-hidden />
+						</button>
+					</Hint>
+				)}
 			</div>
 			<div
 				ref={clip}
 				className={cn(
-					"relative overflow-hidden rounded-control",
+					"relative rounded-control",
+					enlarge && "overflow-hidden",
 					clipped &&
 						"after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-14 after:bg-[linear-gradient(transparent,var(--surface-2))]",
 				)}
-				style={{ maxHeight: CLIP_PX }}
+				style={enlarge ? { maxHeight: CLIP_PX } : undefined}
 				data-clipped={clipped ? "" : undefined}
+				data-testid="hypotheses-body"
 			>
 				<div ref={inner}>
 					<Drawn {...props} onCite={act(false)} scope="card" />
 				</div>
 			</div>
-			<Dialog open={props.preview} onOpenChange={props.onPreview}>
+			<Dialog open={!!enlarge && !!props.preview} onOpenChange={enlarge}>
 				<DialogContent
 					size="xl"
 					className="max-h-[88dvh] max-md:top-0 max-md:left-0 max-md:h-dvh max-md:max-h-none max-md:w-full max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-none"
@@ -211,10 +219,10 @@ function numberCites(
 	hs.forEach((h, i) => {
 		for (const e of h.evidence) {
 			const target = targetOf(e);
-			if (!target) continue;
 			n += 1;
-			const label =
-				"file" in target
+			const label = !target
+				? commandText(e.source)
+				: "file" in target
 					? citationText(target.file)
 					: `${commandText(e.source)}, step ${target.step}`;
 			out.set(i, [...(out.get(i) ?? []), { n, label, target }]);
@@ -249,15 +257,24 @@ function Drawing({ report, cites, onCite, scope }: Shared) {
 						{all.map((c) => (
 							<li key={c.n} className="flex min-w-0 gap-1.5">
 								<span className="text-text-3 tabular-nums">{c.n}</span>
-								<button
-									type="button"
-									id={`${citeId(scope, c)}-list`}
-									onClick={() => onCite(c, `${citeId(scope, c)}-list`)}
-									className="min-w-0 rounded-control text-left font-mono text-mono text-accent underline underline-offset-[3px] [overflow-wrap:anywhere]"
-									data-testid="hypotheses-cite"
-								>
-									{c.label}
-								</button>
+								{c.target ? (
+									<button
+										type="button"
+										id={`${citeId(scope, c)}-list`}
+										onClick={() => onCite(c, `${citeId(scope, c)}-list`)}
+										className="min-w-0 rounded-control text-left font-mono text-mono text-accent underline underline-offset-[3px] [overflow-wrap:anywhere]"
+										data-testid="hypotheses-cite"
+									>
+										{c.label}
+									</button>
+								) : (
+									<span
+										className="min-w-0 font-mono text-mono text-text-2 [overflow-wrap:anywhere]"
+										data-testid="hypotheses-cite-text"
+									>
+										{c.label}
+									</span>
+								)}
 							</li>
 						))}
 					</ol>
@@ -326,18 +343,27 @@ function Level({
 								>
 									{h.statement}
 								</span>
-								{(cites.get(node.index) ?? []).map((c) => (
-									<button
-										key={c.n}
-										type="button"
-										id={citeId(scope, c)}
-										aria-label={`Citation ${c.n}: ${c.label}`}
-										onClick={() => onCite(c, citeId(scope, c))}
-										className="ml-1 rounded-control px-0.5 text-meta text-accent underline"
-									>
-										{c.n}
-									</button>
-								))}
+								{(cites.get(node.index) ?? []).map((c) =>
+									!c.target ? (
+										<sup
+											key={c.n}
+											className="ml-1 px-0.5 text-meta text-text-3"
+										>
+											{c.n}
+										</sup>
+									) : (
+										<button
+											key={c.n}
+											type="button"
+											id={citeId(scope, c)}
+											aria-label={`Citation ${c.n}: ${c.label}`}
+											onClick={() => onCite(c, citeId(scope, c))}
+											className="ml-1 rounded-control px-0.5 text-meta text-accent underline"
+										>
+											{c.n}
+										</button>
+									),
+								)}
 							</span>
 							<span className={cn("shrink-0", tone)}>
 								{STATUS_WORD[h.status]}
@@ -376,17 +402,23 @@ function Fallback({ report, cites, onCite, scope }: Shared) {
 						<span className="text-meta text-text-2">
 							{STATUS_WORD[h.status]}
 						</span>
-						{(cites.get(node.index) ?? []).map((c) => (
-							<button
-								key={c.n}
-								type="button"
-								id={`${citeId(scope, c)}-text`}
-								onClick={() => onCite(c, `${citeId(scope, c)}-text`)}
-								className="ml-2 rounded-control text-meta text-accent underline"
-							>
-								{c.label}
-							</button>
-						))}
+						{(cites.get(node.index) ?? []).map((c) =>
+							!c.target ? (
+								<span key={c.n} className="ml-2 text-meta text-text-2">
+									{c.label}
+								</span>
+							) : (
+								<button
+									key={c.n}
+									type="button"
+									id={`${citeId(scope, c)}-text`}
+									onClick={() => onCite(c, `${citeId(scope, c)}-text`)}
+									className="ml-2 rounded-control text-meta text-accent underline"
+								>
+									{c.label}
+								</button>
+							),
+						)}
 						{node.children.length > 0 && items(node.children)}
 					</li>
 				);
