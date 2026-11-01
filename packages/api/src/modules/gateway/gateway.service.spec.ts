@@ -1962,6 +1962,25 @@ describe("read tools for the coding agent (#848)", () => {
 			expect(m.timelineEntry.findMany).not.toHaveBeenCalled();
 		});
 
+		it("leaves out a fix whose run has no incident, a scheduled check's (#984)", async () => {
+			const m = mocks();
+			m.recommendation.findMany.mockResolvedValueOnce([
+				recommendationRow("rec-1", {}),
+				recommendationRow("rec-3", { investigation: { incident: null } }),
+			]);
+			const out = await use(m, "fixes_list");
+			expect(out.isError).toBe(false);
+			expect(out.value).toMatchObject({
+				incident: 12,
+				fixes: [{ id: "rec-1", incident: 7 }],
+			});
+			expect(m.timelineEntry.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({ incidentId: { in: ["inc-7"] } }),
+				}),
+			);
+		});
+
 		it("a run with no incident is not_found", async () => {
 			const out = await use(mocks({ run: { incident: null } }), "fixes_list");
 			expect(out.value).toEqual(failure("not_found"));
