@@ -2,19 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
-import {
-	hideQueryDevtools,
-	INVESTIGATION_ID,
-	serveInvestigationAs,
-} from "./live-stream-fixtures";
+import { hideQueryDevtools } from "./live-stream-fixtures";
 
 /**
  * The terminal in the layout's bottom panel (#931). The suite's browser reaches
  * the API through Vite, which the host check refuses, so availability is served
  * as the host's answer; these assert up to the staged line, not a live shell.
+ * The inbox is the page: specs that reset the workspace share a worker's stack,
+ * and the demo incident a run page needs is gone by then.
  */
-const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
-const RUN_URL = `/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`;
 
 async function asHost(page: Page) {
 	await page.route(
@@ -28,13 +24,20 @@ async function asHost(page: Page) {
 	);
 }
 
-async function openRun(page: Page, width: number) {
+async function openInbox(page: Page, width: number) {
 	await page.setViewportSize({ width, height: 900 });
 	await hideQueryDevtools(page);
 	await asHost(page);
-	await serveInvestigationAs(page, INVESTIGATION_ID, { status: "completed" });
-	await page.goto(RUN_URL);
-	await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
+	await page.goto("/incidents");
+	await inboxLoaded(page);
+}
+
+// The sidebar draws before the layout's key listener is attached; the page's heading is after it.
+async function inboxLoaded(page: Page) {
+	await expect(
+		page.getByRole("heading", { name: "Incidents", level: 1 }),
+	).toBeVisible({ timeout: 15_000 });
+	await expect(page.getByTestId("nav-terminal")).toBeVisible();
 }
 
 async function openRegistryChip(page: Page) {
@@ -52,7 +55,7 @@ test.describe("Terminal panel (#931)", () => {
 	test("Ctrl+` and the sidebar's Terminal door show and hide it, and it stays open across a reload", async ({
 		page,
 	}) => {
-		await openRun(page, 1440);
+		await openInbox(page, 1440);
 		const panel = page.getByTestId("panel-bottom");
 		await expect(panel).toHaveCount(0);
 
@@ -67,7 +70,7 @@ test.describe("Terminal panel (#931)", () => {
 		await expect(door).toHaveAttribute("aria-expanded", "true");
 
 		await page.reload();
-		await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
+		await inboxLoaded(page);
 		await expect(panel.getByTestId("terminal-panel")).toBeVisible();
 		await page.getByRole("button", { name: "Hide the terminal" }).click();
 		await expect(panel).toHaveCount(0);
