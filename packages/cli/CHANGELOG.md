@@ -1,5 +1,18 @@
 # prismalens
 
+## [0.5.4](https://github.com/prismalens/prismalens/compare/v0.5.3...v0.5.4) (2026-11-01)
+
+
+### Bug Fixes
+
+* **agents:** a fatal launch error is never a sign-in, and the report treats artifact rows as data ([#1013](https://github.com/prismalens/prismalens/issues/1013)) ([a06db96](https://github.com/prismalens/prismalens/commit/a06db96de7137e156375fd730448767dfbdb65d0))
+* **agents:** catch a fatal launch error as stderr arrives, before the 2 KB tail drops it ([#1013](https://github.com/prismalens/prismalens/issues/1013)) ([a1eb26f](https://github.com/prismalens/prismalens/commit/a1eb26f4604bd0433a724267e068a29396c62b54))
+* **agents:** hand a Windows .cmd companion's .exe to the adapter, and give initialize 30 s ([#1013](https://github.com/prismalens/prismalens/issues/1013)) ([421d8cd](https://github.com/prismalens/prismalens/commit/421d8cd574de3fdc71244be3ce347f9ce7980f32))
+* **agents:** OpenCode 2.x and slow-network Codex start, and the nightly probe launches agents as the product does ([#1013](https://github.com/prismalens/prismalens/issues/1013)) ([e461541](https://github.com/prismalens/prismalens/commit/e461541b3cd343052353912b188fd29bad34aac8))
+* **agents:** OpenCode 2.x and slow-network Codex start, and the nightly probe launches agents as the product does ([#1013](https://github.com/prismalens/prismalens/issues/1013)) ([29b00b6](https://github.com/prismalens/prismalens/commit/29b00b64db417f564b6ed27e0fe73330db2fffca))
+* **agents:** probe the shipped adapters and OpenCode 2, keep sign-in to keyless rows, and file issues from a job that runs no probe code ([#1013](https://github.com/prismalens/prismalens/issues/1013)) ([64466a3](https://github.com/prismalens/prismalens/commit/64466a340e71792ee2ad8dc43b02b2b75f712e16))
+* **investigations:** keep the operator's recorded cause apart from the agent's in the context pack ([cab0751](https://github.com/prismalens/prismalens/commit/cab0751cd6a9bec4f292c2ec00eb3b5cf9b0917a))
+
 ## [0.5.3](https://github.com/prismalens/prismalens/compare/v0.5.2...v0.5.3) (2026-11-01)
 
 
