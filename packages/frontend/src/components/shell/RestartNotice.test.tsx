@@ -55,9 +55,11 @@ vi.mock("@tanstack/react-router", () => ({
 		onClick?: () => void;
 		params?: unknown;
 		search?: { investigation?: string };
+		to?: string;
 	}) => (
 		<a
 			href={`/run/${rest.search?.investigation}`}
+			data-to={rest.to}
 			onClick={onClick}
 			data-testid={(rest as Record<string, string>)["data-testid"]}
 		>
@@ -111,6 +113,24 @@ describe("the startup notice (#981)", () => {
 				?.textContent,
 		).toBe("Open INC-41");
 		expect(notice()?.getAttribute("data-layout")).toBe("toast");
+	});
+
+	it("opens a skipped run with no incident on its run page, not an incident", async () => {
+		data = summary({
+			skipped: [
+				{
+					investigationId: "run-7",
+					incidentId: null,
+					incidentNumber: null,
+					title: "Nightly checkout check",
+					reason: "Not resumed: Codex isn't signed in",
+				},
+			],
+		} as unknown as Partial<NonNullable<RestartSummary>>);
+		await mount();
+		const open = container.querySelector('[data-testid="restart-notice-open"]');
+		expect(open?.getAttribute("data-to")).toBe("/investigations/$id");
+		expect(open?.textContent).toBe("Open Nightly checkout check");
 	});
 
 	it("leaves out the gap when PrismaLens does not know when it stopped", async () => {
