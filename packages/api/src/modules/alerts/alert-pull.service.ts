@@ -542,7 +542,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 								await this.webhooksService.resolvePrometheusAlert(
 									fingerprint,
 									`${idempotencyKey}:resolved`,
-									startsAt,
+									{
+										startsAt,
+										endsAt: new Date(lastSampleTimeMs).toISOString(),
+									},
 									{
 										source: "prometheus",
 										note: {

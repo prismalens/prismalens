@@ -525,7 +525,7 @@ describe("AlertPullService (#605)", () => {
 			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
 				expectedFp1,
 				`prometheus-catchup:${expectedFp1}:${expectedStartsAt1}:resolved`,
-				expectedStartsAt1,
+				{ startsAt: expectedStartsAt1, endsAt: "2026-09-20T11:50:00.000Z" },
 				{
 					source: "prometheus",
 					note: {
@@ -1087,7 +1087,7 @@ describe("AlertPullService (#605)", () => {
 			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
 				fp,
 				`prometheus-catchup:${fp}:${ep2}:resolved`,
-				ep2,
+				expect.objectContaining({ startsAt: ep2 }),
 				expect.objectContaining({ note: expect.objectContaining({ reason: "catch-up" }) }),
 			);
 		});

@@ -9,6 +9,7 @@ import { AlertsService } from "../alerts/alerts.service.js";
 import { IncidentCorrelationService } from "../alerts/incident-correlation.service.js";
 import { EventsService } from "../events/events.service.js";
 import {
+	EARLY_RESOLUTION_EVENT,
 	EARLY_RESOLUTION_TTL_MS,
 	MAX_DESCRIPTION_CHARS,
 	MAX_LABEL_VALUE_CHARS,
@@ -79,6 +80,7 @@ describe("WebhooksService", () => {
 						create: vi.fn().mockResolvedValue(mockEvent),
 						markProcessed: vi.fn().mockResolvedValue(mockEvent),
 						findByIdempotencyKey: vi.fn(),
+						findUnclaimed: vi.fn().mockResolvedValue(null),
 					},
 				},
 				{
@@ -447,30 +449,87 @@ describe("WebhooksService", () => {
 
 	describe("resolution before firing (#633 edge 10)", () => {
 		const STARTS = "2026-09-19T10:00:00Z";
+		const ENDS = "2026-09-19T10:04:00Z";
+		const earlyEvent = {
+			...mockEvent,
+			id: "evt-early",
+			eventType: EARLY_RESOLUTION_EVENT,
+			processed: false,
+			alertId: null,
+		};
 
-		it("remembers an unknown fingerprint's resolution for its own episode only", async () => {
-			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
-			await service.resolvePrometheusAlert("fp-late", undefined, STARTS);
+		it("stores an unknown fingerprint's resolution as an unclaimed event, outside idempotency", async () => {
+			const result = await service.resolvePrometheusAlert("fp-late", "key-1", {
+				startsAt: STARTS,
+				endsAt: ENDS,
+			});
 
-			expect(service.hasEarlyResolution("fp-late", "2026-09-19T10:05:00Z")).toBe(false);
-			expect(service.hasEarlyResolution("fp-late", STARTS)).toBe(true);
-			// Reading does not consume it: a delivery that fails to resolve must be
-			// able to try again (#664 review).
-			expect(service.hasEarlyResolution("fp-late", STARTS)).toBe(true);
-			service.clearEarlyResolution("fp-late", STARTS);
-			expect(service.hasEarlyResolution("fp-late", STARTS)).toBe(false);
+			expect(result).toBeNull();
+			expect(eventsService.create).toHaveBeenCalledTimes(1);
+			const stored = vi.mocked(eventsService.create).mock.calls[0][0];
+			expect(stored).toMatchObject({
+				source: "prometheus",
+				sourceEventId: "fp-late",
+				eventType: EARLY_RESOLUTION_EVENT,
+				eventTime: new Date(ENDS).toISOString(),
+			});
+			// A key would make a retry of this delivery read as in flight (CONFLICT).
+			expect(stored.idempotencyKey).toBeUndefined();
+			expect(alertsService.resolveSourceAlert).not.toHaveBeenCalled();
 		});
 
-		it("forgets it after the window", async () => {
-			vi.useFakeTimers();
+		it("does not store a retried resolution twice", async () => {
+			vi.mocked(eventsService.findUnclaimed).mockResolvedValueOnce(earlyEvent);
+			await service.resolvePrometheusAlert("fp-late", undefined, { startsAt: STARTS });
+			expect(eventsService.create).not.toHaveBeenCalled();
+		});
+
+		it("covers firings that began by the resolution's end, inside the window", async () => {
+			const now = new Date("2026-09-19T10:10:00Z");
+			vi.useFakeTimers({ toFake: ["Date"], now });
 			try {
-				vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
-				await service.resolvePrometheusAlert("fp-old", undefined, STARTS);
-				vi.advanceTimersByTime(EARLY_RESOLUTION_TTL_MS + 1);
-				expect(service.hasEarlyResolution("fp-old", STARTS)).toBe(false);
+				await service.findEarlyResolution("fp-late", STARTS);
 			} finally {
 				vi.useRealTimers();
 			}
+			expect(eventsService.findUnclaimed).toHaveBeenCalledWith({
+				source: "prometheus",
+				sourceEventId: "fp-late",
+				eventType: EARLY_RESOLUTION_EVENT,
+				eventTimeFrom: new Date(STARTS),
+				receivedSince: new Date(now.getTime() - EARLY_RESOLUTION_TTL_MS),
+			});
+		});
+
+		it("remembers the resolution of a later episode whose firing has not arrived", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+				resolvedAt: new Date("2026-09-19T09:30:00Z"),
+			});
+
+			const result = await service.resolvePrometheusAlert("fp-1", undefined, {
+				startsAt: STARTS,
+				endsAt: ENDS,
+			});
+
+			expect(result).toBeNull();
+			expect(alertsService.resolveSourceAlert).not.toHaveBeenCalled();
+			expect(vi.mocked(eventsService.create).mock.calls[0][0].eventType).toBe(
+				EARLY_RESOLUTION_EVENT,
+			);
+		});
+
+		it("treats a retried resolution of the stored episode as an ordinary resolve", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+				resolvedAt: new Date("2026-09-19T10:04:01Z"),
+			});
+
+			await service.resolvePrometheusAlert("fp-1", undefined, { startsAt: STARTS });
+
+			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-1");
 		});
 	});
 
@@ -484,11 +543,16 @@ describe("WebhooksService", () => {
 			fingerprint: "fp-1",
 		};
 
-		it("resolves a late firing whose resolution already arrived", async () => {
-			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
-			await service.resolvePrometheusAlert("fp-1", undefined, firing.startsAt);
-			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
+		const earlyEvent = {
+			...mockEvent,
+			id: "evt-early",
+			eventType: EARLY_RESOLUTION_EVENT,
+			processed: false,
+			alertId: null,
+		};
 
+		it("resolves a late firing whose resolution already arrived, and claims the record", async () => {
+			vi.mocked(eventsService.findUnclaimed).mockResolvedValueOnce(earlyEvent);
 			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(mockAlert);
 			vi.mocked(alertsService.resolveSourceAlert).mockResolvedValueOnce({
 				...mockAlert,
@@ -501,8 +565,8 @@ describe("WebhooksService", () => {
 			});
 
 			expect(result.alertId).toBe("alt-123");
-			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(false);
 			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-1");
+			expect(eventsService.markProcessed).toHaveBeenCalledWith("evt-early", "alt-123");
 		});
 
 		it("gives a webhook alert and its catch-up the one identity, and keeps the path on the Event (walk f17)", async () => {
@@ -569,9 +633,7 @@ describe("WebhooksService", () => {
 		});
 
 		it("records an early-resolved firing without dispatching a run", async () => {
-			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
-			await service.resolvePrometheusAlert("fp-1", undefined, firing.startsAt);
-
+			vi.mocked(eventsService.findUnclaimed).mockResolvedValueOnce(earlyEvent);
 			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(mockAlert);
 			vi.mocked(alertsService.resolveSourceAlert).mockResolvedValueOnce({
 				...mockAlert,
@@ -618,29 +680,39 @@ describe("WebhooksService", () => {
 			);
 		});
 
-		it("keeps the early-resolution record when the resolution did not happen", async () => {
+		it("leaves the early-resolution record unclaimed when the resolution did not happen", async () => {
+			vi.mocked(eventsService.findUnclaimed).mockResolvedValueOnce(earlyEvent);
 			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValue(null);
-			await service.resolvePrometheusAlert("fp-1", undefined, firing.startsAt);
-			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
 
 			await service.processPrometheusAlert(firing, {
 				source: "prometheus",
 				autoInvestigate: true,
 			});
 
-			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
+			expect(eventsService.markProcessed).not.toHaveBeenCalledWith(
+				"evt-early",
+				expect.anything(),
+			);
 		});
 
-		it("passes a resolution's startsAt so an unknown fingerprint can be remembered", async () => {
+		it("passes a resolution's episode so an unknown fingerprint can be remembered", async () => {
 			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
-			const resolvedAlert = { ...firing, status: "resolved" as const };
+			const resolvedAlert = {
+				...firing,
+				status: "resolved" as const,
+				endsAt: "2026-09-19T10:04:00Z",
+			};
 			const result = await service.processPrometheusAlert(resolvedAlert, {
 				source: "prometheus",
 				autoInvestigate: true,
 			});
 
 			expect(result.alertId).toBeNull();
-			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
+			expect(vi.mocked(eventsService.create).mock.calls[0][0]).toMatchObject({
+				eventType: EARLY_RESOLUTION_EVENT,
+				payload: { startsAt: STARTS, endsAt: "2026-09-19T10:04:00Z" },
+				eventTime: "2026-09-19T10:04:00.000Z",
+			});
 		});
 	});
 });
