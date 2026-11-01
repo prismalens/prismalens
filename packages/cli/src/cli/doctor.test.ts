@@ -12,6 +12,7 @@ import {
 	checkInstalls,
 	checkWebhookToken,
 	checkWebhookUrl,
+	nodeVersionProblem,
 	summary,
 } from "./doctor.js";
 
@@ -197,3 +198,13 @@ describe("doctor — checkGit (#673, T19, T19b, T19c)", () => {
 	});
 });
 
+
+describe("doctor — Node patch floor per line (#998)", () => {
+	it.each(["24.22.1", "24.23.0", "26.12.1", "26.13.0", "27.0.0"])("accepts %s", (v) => {
+		expect(nodeVersionProblem(v)).toBeNull();
+	});
+
+	it.each(["24.22.0", "24.0.0", "26.12.0", "25.9.0", "22.23.4", "20.0.0"])("refuses %s", (v) => {
+		expect(nodeVersionProblem(v)).toEqual(expect.any(String));
+	});
+});
