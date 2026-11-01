@@ -103,7 +103,7 @@ describe("PushService", () => {
 		await runMigrations({ migrationsDir: resolveMigrationsDir(), log: () => {} });
 		prisma = new PrismaService();
 		await prisma.$connect();
-		investigations = new InvestigationsService(prisma, {} as never, {} as never, {} as never);
+		investigations = new InvestigationsService(prisma, {} as never, {} as never, {} as never, {} as never);
 		const store = prismaPairingStore(prisma);
 		const link = await createPairingLink(store, { label: "phone" });
 		deviceId = (await redeemPairingLink(store, { token: link.token, name: "phone" })).device.id;
@@ -248,6 +248,30 @@ describe("PushService", () => {
 			title: "An ask is waiting",
 			body: "A run that was deleted",
 		});
+	});
+
+	it("words a push for a scheduled run with no incident by the run and its schedule", async () => {
+		const push = new PushService(prisma);
+		const service = await prisma.service.create({ data: { name: `checkout-${randomUUID()}` } });
+		const schedule = await prisma.schedule.create({
+			data: {
+				name: "Nightly checkout check",
+				serviceId: service.id,
+				brief: "look for disk pressure",
+				recurrence: "{}",
+				harness: "claude",
+				bindingsHash: "h",
+			},
+		});
+		const inv = await prisma.investigation.create({
+			data: { serviceId: service.id, scheduleId: schedule.id, status: "running", title: "Disk pressure sweep" },
+		});
+		await investigations.updateStatusInternal(inv.id, "failed");
+		const row = await prisma.pushOutbox.findFirstOrThrow({ where: { investigationId: inv.id } });
+		const words = await push.notification(row.id);
+		expect(words.title).toBe("Run failed");
+		expect(words.body).toBe("Disk pressure sweep · Nightly checkout check");
+		expect((await push.askState(inv.id, randomUUID())).incidentId).toBeNull();
 	});
 
 	it("marks a subscription the push service dropped as expired, and stops sending to it", async () => {

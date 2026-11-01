@@ -589,18 +589,20 @@ describe("IncidentsService", () => {
 				},
 			});
 
-			expect(mockTimelineService.create).toHaveBeenCalledWith(
-				expect.objectContaining({
+			// The opening entry rides the incident's transaction (#979).
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({
 					incidentId: "inc-11",
 					type: TimelineEntryType.incident_created,
 					description:
 						"New incident: BooklogrLibraryListSlow fired again after INC-10 was resolved",
-					metadata: {
+					metadata: JSON.stringify({
 						priorIncidentId: "inc-10",
 						priorEndedAt: "2026-10-01T14:22:00.000Z",
-					},
+					}),
 				}),
-			);
+			});
+			expect(mockTimelineService.create).not.toHaveBeenCalled();
 			// R1a d5: the card reads the prior from a column, not the timeline.
 			expect(mockTx.incident.create).toHaveBeenCalledWith({
 				data: expect.objectContaining({ priorIncidentId: "inc-10" }),

@@ -162,6 +162,8 @@ export const FixOptionSchema = z.object({
 	facts: z.array(z.string()),
 	priority: RecommendationPrioritySchema.nullable(),
 	readOnly: z.boolean(),
+	/** The run has no incident, so apply, undo and check answer CONFLICT. */
+	unlinked: z.boolean(),
 	appliedAt: DateStringSchema.nullable(),
 	lastCheck: z
 		.object({

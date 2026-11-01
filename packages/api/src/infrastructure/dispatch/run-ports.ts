@@ -34,7 +34,10 @@ import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
-import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
+import type { TimelineWrite } from "../../modules/timeline/timeline.service.js";
+
+/** An incident id, or the service a check with no incident is about (#979). */
+export type RunSubject = string | { serviceId: string };
 
 export interface IncidentRepo {
 	/** "folder" or "url"; `url` holds the folder path for a folder. */
@@ -160,7 +163,7 @@ export interface RunPorts {
 		id: string,
 		dto: InternalInvestigationResultDto,
 	): Promise<boolean>;
-	createTimelineEntry(dto: CreateTimelineEntryDto): Promise<void>;
+	createTimelineEntry(dto: TimelineWrite): Promise<void>;
 	/** Detect-and-report verdict plus the model and effort: the run's own, else Settings', per field (#673 w52). */
 	resolveHarness(requested?: RunChoice): Promise<{
 		selection: HarnessSelection;
@@ -185,13 +188,16 @@ export interface RunPorts {
 	resolveConnectors(
 		serviceId: string | undefined,
 	): Promise<ResolvedConnector[]>;
-	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
-	contextPack(incidentId: string): Promise<ContextPack | null>;
+	/**
+	 * Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident
+	 * does not exist. A service check passes its service and gets no prior incidents (#979).
+	 */
+	contextPack(subject: RunSubject): Promise<ContextPack | null>;
 	/** The pre-run fetch (#848 ruling 2026-10-24); each part is best effort and never fails the run. */
 	preRun?: {
 		/** Picked by the incident's services; the selection reads the database inside the run's telemetry budget. */
 		telemetry(
-			incidentId: string,
+			subject: RunSubject,
 			window: SnapshotWindow,
 			signal?: AbortSignal,
 		): Promise<TelemetrySnapshot>;

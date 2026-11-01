@@ -30,6 +30,7 @@ const opt: FixOption = {
 	appliedAt: null,
 	lastCheck: null,
 	canUndo: false,
+	unlinked: false,
 };
 
 const base = {
@@ -295,6 +296,22 @@ describe("nextStrip", () => {
 			stage: { stage: "ready", copied: true, copyFailed: false },
 		});
 		expect(s.primary?.id).toBe("copy");
+	});
+
+	it("never offers I applied it on a check's option, which has no incident to record it on", () => {
+		for (const stage of [
+			{ stage: "ready", copied: true, copyFailed: false },
+			{ stage: "ready", copied: false, copyFailed: true },
+		] as const) {
+			const s = nextStrip({ ...base, option: { ...opt, unlinked: true }, stage });
+			expect(s.primary?.id).not.toBe("applied");
+		}
+		const s = nextStrip({
+			...base,
+			option: { ...opt, command: null, unlinked: true },
+			stage: { stage: "ready", copied: false, copyFailed: false },
+		});
+		expect(s.primary).toBeUndefined();
 	});
 
 	it("offers no check when nothing can check the alert", () => {

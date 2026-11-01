@@ -41,6 +41,7 @@ export {
 export { recommendationsContract } from "./recommendations.js";
 export { repositoriesContract } from "./repositories.js";
 export { runWorkspacesContract } from "./run-workspaces.js";
+export { schedulesContract } from "./schedules.js";
 export { servicesContract } from "./services.js";
 export { settingsContract } from "./settings.js";
 export {
@@ -72,6 +73,7 @@ import { pushContract } from "./push.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
 import { runWorkspacesContract } from "./run-workspaces.js";
+import { schedulesContract } from "./schedules.js";
 import { servicesContract } from "./services.js";
 import { settingsContract } from "./settings.js";
 import { setupContract } from "./setup.js";
@@ -95,6 +97,7 @@ export const contract = {
 	recommendations: recommendationsContract,
 	repositories: repositoriesContract,
 	runWorkspaces: runWorkspacesContract,
+	schedules: schedulesContract,
 	services: servicesContract,
 	webhooks: webhooksContract,
 	events: eventsContract,

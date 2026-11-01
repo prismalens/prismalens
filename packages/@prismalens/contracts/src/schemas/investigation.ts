@@ -473,7 +473,11 @@ export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
-	incidentId: z.string().uuid(),
+	/** Null for a scheduled service check until a finding links it to an incident (#979). */
+	incidentId: z.string().uuid().nullable(),
+	/** A scheduled service check's subject (#979); null on an incident's run. */
+	serviceId: z.string().nullable().optional(),
+	scheduleId: z.string().nullable().optional(),
 	status: WorkflowStatusSchema,
 	/** A run is a thread (#673): the alert workflow, or a chat a message started. */
 	kind: InvestigationKindSchema.optional().default("investigation"),
@@ -530,7 +534,7 @@ export const InvestigationSchema = z.object({
 	/** Set while the agent waits on the operator's Approve or Deny (#673 w21). */
 	awaitingApprovalAt: DateStringSchema.nullable().optional(),
 	/** The incident's number, on list rows: a notification names `INC-n`. */
-	incidentNumber: z.number().int().optional(),
+	incidentNumber: z.number().int().nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
@@ -1153,39 +1157,53 @@ export type PriorInvestigation = z.infer<typeof PriorInvestigationSchema>;
  * app/cloud) supplies, and the context-pack (ADR-0016 §5) rides on. A later
  * per-alert fan-out needs no change here — the context is already 1..N.
  */
-export const InvestigationContextSchema = z.object({
-	/** ≥1 firing alert. A single-alert run is the degenerate case, not empty. */
-	alerts: z.array(FiringAlertSchema).min(1),
-	/** Read-only telemetry surfaces, only when the host has them configured (ADR 0002 §2). */
-	telemetry: TelemetryEndpointsSchema.optional(),
-	incident: IncidentContextSchema.optional(),
-	service: ServiceContextSchema.optional(),
-	/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
-	repos: z.array(z.string()).optional(),
-	logs: LogSystemContextSchema.optional(),
-	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
-	/**
-	 * Host-assembled facts the harness cannot reach by iterating (ADR-0016 §5).
-	 * Absent on the CLI/degenerate path and on any host that could not assemble
-	 * one — the engine renders nothing and behaves exactly as before.
-	 */
-	contextPack: ContextPackSchema.optional(),
-	/** The pre-run fetch; a follow-up reads its run's saved one again (#848 ruling 2026-10-24). */
-	preRun: PreRunContextSchema.optional(),
-	/** Several repos, each at its absolute `path` (#747, #918). */
-	workspace: z
-		.object({
-			repos: z.array(
-				z.object({
-					path: z.string(),
-					services: z.array(z.string()),
-					subPath: z.string().nullable(),
-					head: z.string(),
-				}),
-			),
-		})
-		.optional(),
-});
+export const InvestigationContextSchema = z
+	.object({
+		/** ≥1 firing alert, unless `mode` is `service-check`. A single-alert run is the degenerate case, not empty. */
+		alerts: z.array(FiringAlertSchema),
+		/** A scheduled check of a service has no alert; the prompt frames it from `check` (#979). */
+		mode: z.literal("service-check").optional(),
+		check: z
+			.object({
+				brief: z.string().optional(),
+				/** The runbook path the schedule names, if any. */
+				runbook: z.string().nullable().optional(),
+			})
+			.optional(),
+		/** Read-only telemetry surfaces, only when the host has them configured (ADR 0002 §2). */
+		telemetry: TelemetryEndpointsSchema.optional(),
+		incident: IncidentContextSchema.optional(),
+		service: ServiceContextSchema.optional(),
+		/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
+		repos: z.array(z.string()).optional(),
+		logs: LogSystemContextSchema.optional(),
+		priorInvestigations: z.array(PriorInvestigationSchema).optional(),
+		/**
+		 * Host-assembled facts the harness cannot reach by iterating (ADR-0016 §5).
+		 * Absent on the CLI/degenerate path and on any host that could not assemble
+		 * one — the engine renders nothing and behaves exactly as before.
+		 */
+		contextPack: ContextPackSchema.optional(),
+		/** The pre-run fetch; a follow-up reads its run's saved one again (#848 ruling 2026-10-24). */
+		preRun: PreRunContextSchema.optional(),
+		/** Several repos, each at its absolute `path` (#747, #918). */
+		workspace: z
+			.object({
+				repos: z.array(
+					z.object({
+						path: z.string(),
+						services: z.array(z.string()),
+						subPath: z.string().nullable(),
+						head: z.string(),
+					}),
+				),
+			})
+			.optional(),
+	})
+	.refine((c) => c.mode === "service-check" || c.alerts.length > 0, {
+		message: "at least one firing alert is required",
+		path: ["alerts"],
+	});
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
 
 /** Optional enrichments applied when assembling an InvestigationContext. */
@@ -1238,6 +1256,26 @@ export function correlatedAlertsContext(
 	};
 }
 
+/** A scheduled check of one service: no alert, the schedule's brief and runbook instead (#979). */
+export function serviceCheckContext(
+	service: ServiceContext,
+	check: { brief?: string; runbook?: string | null },
+	extras: Omit<InvestigationContextExtras, "service"> & {
+		telemetry?: TelemetryEndpoints;
+	} = {},
+): InvestigationContext {
+	return {
+		mode: "service-check",
+		alerts: [],
+		check,
+		service,
+		...(extras.telemetry ? { telemetry: extras.telemetry } : {}),
+		...(extras.repos ? { repos: extras.repos } : {}),
+		...(extras.logs ? { logs: extras.logs } : {}),
+		...(extras.contextPack ? { contextPack: extras.contextPack } : {}),
+	};
+}
+
 /**
  * Build an InvestigationContext from ONE firing alert — the degenerate/CLI path
  * (ADR-0012: the CLI is single-alert; incidents are an app/cloud feature).
@@ -1260,8 +1298,32 @@ export const JobAttachmentSchema = AttachmentRefSchema.extend({
 });
 export type JobAttachment = z.infer<typeof JobAttachmentSchema>;
 
+/** The schedule values a scheduled run was admitted with; it never reads them live (#979, adversary OBJ-003). */
+export const ScheduledRunSchema = z.object({
+	scheduleId: z.string(),
+	revision: z.number().int(),
+	serviceId: z.string(),
+	serviceName: z.string(),
+	serviceNotes: z.string().nullable(),
+	runbook: z.string().nullable(),
+	repos: z.array(
+		z.object({
+			sourceKind: z.enum(["folder", "url"]),
+			url: z.string(),
+			defaultBranch: z.string().nullable(),
+			subPath: z.string().nullable(),
+			connectionId: z.string().nullable(),
+			serviceName: z.string(),
+		}),
+	),
+});
+export type ScheduledRun = z.infer<typeof ScheduledRunSchema>;
+
 export const InvestigationJobDataSchema = z.object({
-	incidentId: z.string(),
+	/** Null for a scheduled service check (#979). */
+	incidentId: z.string().nullable(),
+	/** Set on a scheduled service check: its frozen subject and values (#979). */
+	scheduled: ScheduledRunSchema.optional(),
 	investigationId: z.string(),
 	priority: z.enum(["low", "normal", "high", "critical"]).optional(),
 	context: z.record(z.string(), z.unknown()).optional(),

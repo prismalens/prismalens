@@ -242,6 +242,7 @@ export function nextStrip(input: {
 	flagged?: boolean;
 }): NextStrip {
 	const { option, stage } = input;
+	const appliable = !!option && !option.readOnly && !option.unlinked;
 	if (input.mergedInto)
 		return {
 			tone: "plain",
@@ -290,9 +291,9 @@ export function nextStrip(input: {
 					return {
 						tone: "accent",
 						text: `${prefix}This browser blocked the clipboard, so the command under Stop the impact is selected. Copy it with Ctrl+C, run it, then tell PrismaLens.`,
-						...(option.readOnly
-							? {}
-							: { primary: { id: "applied", label: "I applied it" } }),
+						...(appliable
+							? { primary: { id: "applied", label: "I applied it" } }
+							: {}),
 					};
 				if (nothingToRun(option))
 					return {
@@ -303,11 +304,11 @@ export function nextStrip(input: {
 					return {
 						tone: "accent",
 						text: `${prefix}${option.title}. The steps are under Stop the impact.`,
-						...(option.readOnly
-							? {}
-							: { primary: { id: "applied", label: "I applied it" } }),
+						...(appliable
+							? { primary: { id: "applied", label: "I applied it" } }
+							: {}),
 					};
-				if (stage.copied && !option.readOnly)
+				if (stage.copied && appliable)
 					return {
 						tone: "accent",
 						text: `${prefix}Command copied. Run it, then tell PrismaLens so it can check the result.`,

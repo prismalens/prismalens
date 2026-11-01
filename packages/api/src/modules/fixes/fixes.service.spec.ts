@@ -117,6 +117,7 @@ describe("FixesService", () => {
 			appliedAt: null,
 			lastCheck: null,
 			canUndo: false,
+			unlinked: false,
 		});
 	});
 
@@ -178,6 +179,41 @@ describe("FixesService", () => {
 		const option = (await fixes.forInvestigation(meta.investigationId)).options[0];
 		expect(option).toMatchObject({ lastCheck: { verdict: "not_yet", retryable: false }, canUndo: false });
 		await expect(fixes.undo(id)).rejects.toMatchObject({ code: "CONFLICT" });
+	});
+
+	describe("a service check with no incident (#979)", () => {
+		async function unlinked() {
+			const inv = await prisma.investigation.create({
+				data: {
+					incidentId: null,
+					scheduleId: "sch-1",
+					status: "completed",
+					report: JSON.stringify({ ...BASE, nextSteps: [{ id: randomUUID(), title: "Roll back", detail: "v1.42", kind: "stop-impact" }] }),
+				},
+			});
+			const stepId = (JSON.parse(inv.report as string).nextSteps[0] as { id: string }).id;
+			await prisma.recommendation.create({
+				data: { id: stepId, investigationId: inv.id, title: "Roll back", description: "v1.42", category: "investigation" },
+			});
+			return { investigationId: inv.id, stepId };
+		}
+
+		it("lists its options read-only of any timeline, and says no incident can take an apply", async () => {
+			const { investigationId } = await unlinked();
+			const out = await fixes.forInvestigation(investigationId);
+			expect(out.options).toHaveLength(1);
+			expect(out.options[0]).toMatchObject({ appliedAt: null, lastCheck: null, readOnly: false, unlinked: true });
+		});
+
+		it.each(["apply", "undo", "check"] as const)("%s answers CONFLICT: there is no incident to record it on", async (verb) => {
+			const { stepId } = await unlinked();
+			check.mockClear();
+			await expect(fixes[verb](stepId)).rejects.toMatchObject({
+				code: "CONFLICT",
+				message: "This run has no incident yet; apply and check come once a finding links it to one.",
+			});
+			expect(check).not.toHaveBeenCalled();
+		});
 	});
 
 	it("says not found for an unknown option or run", async () => {

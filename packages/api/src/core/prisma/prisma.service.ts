@@ -73,6 +73,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.job;
 	}
 
+	get schedule() {
+		return db.schedule;
+	}
+
+	get scheduleTick() {
+		return db.scheduleTick;
+	}
+
+	get scheduleEvent() {
+		return db.scheduleEvent;
+	}
+
 	get incident() {
 		return db.incident;
 	}
