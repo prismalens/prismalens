@@ -384,7 +384,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const out = await call("tools/call", { name: "investigations_search", arguments: { query: "p99", service: "checkout" } });
 
 		expect(out.error).toBeUndefined();
-		const found = JSON.parse(text(out)) as { investigationId: string; incident: unknown; operatorRecordedCause: unknown }[];
+		const found = resultValue(text(out)) as { investigationId: string; incident: unknown; operatorRecordedCause: unknown }[];
 		expect(found).toHaveLength(1);
 		expect(found[0]).toMatchObject({ investigationId: RUN_B, incident: null, operatorRecordedCause: null });
 		const where = JSON.stringify(investigation.findMany.mock.calls.at(-1));
