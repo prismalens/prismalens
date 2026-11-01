@@ -70,16 +70,19 @@ jobs:
       # initialize and session/new only: the agents run unauthenticated and see no model.
       - name: Probe every row at its channel's latest release, and at its pin
         shell: bash
+        env:
+          FAILURES: ${{ runner.temp }}/probe-failures-${{ matrix.os }}.tsv
         run: |
-          : > "$RUNNER_TEMP/probe-failures.tsv"
-          node scripts/agent-probe.mjs --all --failures "$RUNNER_TEMP/probe-failures.tsv"
+          : > "$FAILURES"
+          node scripts/agent-probe.mjs --all --failures "$FAILURES"
 
+      # The OS is in the file name: one artifact downloads flat, with no folder named after it.
       - name: Keep the failing rows for the report job
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: probe-failures-${{ runner.os }}
-          path: ${{ runner.temp }}/probe-failures.tsv
+          name: probe-failures-${{ matrix.os }}
+          path: ${{ runner.temp }}/probe-failures-${{ matrix.os }}.tsv
           if-no-files-found: ignore
           retention-days: 7
 
@@ -99,19 +102,24 @@ jobs:
         with:
           pattern: probe-failures-*
           path: failures
+          merge-multiple: true
 
       # One open issue per agent and OS, found by its exact title; a red night rewrites its body.
+      # A red leg with no row to file fails this job, so a lost artifact is never a green report.
       - name: Open or update the issue for each failing agent
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PROBE_RESULT: ${{ needs.probe.result }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          for file in failures/probe-failures-*/probe-failures.tsv; do
-            os=$(basename "$(dirname "$file")"); os=${os#probe-failures-}
+          filed=0
+          for file in failures/probe-failures-*.tsv; do
+            os=$(basename "$file" .tsv); os=${os#probe-failures-}
             [ -s "$file" ] || continue
             for agent in $(cut -f1 "$file" | sort -u); do
+              filed=$((filed + 1))
               title="Agent probe failing: $agent on $os"
               rows=$(awk -F'\t' -v a="$agent" '$1 == a { print "- " $2 ": " $3 }' "$file")
               body=$(printf 'Failing rows in the last red run:\n\n%s\n\n%s\n\nPosted by the agent-release-watch workflow.' "$rows" "$RUN_URL")
@@ -124,6 +132,11 @@ jobs:
               fi
             done
           done
+          echo "filed or updated $filed issue(s); probe result: $PROBE_RESULT"
+          if [ "$PROBE_RESULT" != success ] && [ "$filed" -eq 0 ]; then
+            echo "::error::a probe leg was $PROBE_RESULT but no failing row reached this job"
+            exit 1
+          fi
 
   bump:
     name: Pin bump
