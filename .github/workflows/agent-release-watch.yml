@@ -1,32 +1,52 @@
 # What the agents we support have released (#914): a zero-token protocol probe of each row's
-# latest version, and a pull request that moves a pin once its release has soaked 3 days.
-# Neither spends a model call, and neither is required by `CI gate`.
+# latest version on Linux, Windows and macOS, and a pull request that moves a pin once its release
+# has soaked 3 days. The probe installs from each row's install-hint channel and starts the agent
+# through @prismalens/agent-host, as the product does (#1013). Neither spends a model call, and
+# neither is required by `CI gate`.
 name: Agent releases (probe and pin bumps)
 
 on:
   schedule:
     - cron: "23 3 * * *" # 03:23 UTC daily, on the default branch
   workflow_dispatch:
-  # A change to the probe or to this file runs the probe, so it is seen working before it merges.
+    inputs:
+      file-issues:
+        description: "File or update the `Agent probe failing` issue for a red leg, as a scheduled run does"
+        type: boolean
+        default: false
+  # A change to the probe, or to how an agent starts, runs the probe before it merges.
   pull_request:
     paths:
       - ".github/workflows/agent-release-watch.yml"
       - "scripts/agent-probe.mjs"
       - "scripts/agent-pins.json"
+      - "packages/@prismalens/agent-host/src/registry/agents.ts"
+      - "packages/@prismalens/agent-host/src/probe.ts"
+      - "packages/@prismalens/agent-host/src/launch.ts"
+      - "packages/@prismalens/agent-host/src/process.ts"
+      - "packages/@prismalens/config/src/providers/harness.ts"
+      - "packages/@prismalens/agent-adapters/**"
 
 permissions:
   contents: read
 
 concurrency:
-  group: agent-releases
+  group: agent-releases-${{ github.event_name == 'pull_request' && github.ref || 'default' }}
   cancel-in-progress: false
 
 jobs:
   probe:
-    name: Protocol probe (latest release of every row)
+    name: Protocol probe (${{ matrix.os }})
     if: github.repository == 'prismalens/prismalens'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    # This job runs freshly published packages and their install scripts: read-only, no issue token.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,16 +64,96 @@ jobs:
       # The deepagents row installs with uv, which fetches the Python 3.14 it needs.
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
-      - name: Build the registry the table reads `tested` from
-        run: pnpm --filter @prismalens/config... build
+      - name: Build the registry, the agent host and the adapters PrismaLens ships
+        run: pnpm --filter "@prismalens/config..." --filter @prismalens/agent-adapters build
 
       # initialize and session/new only: the agents run unauthenticated and see no model.
-      - name: Probe every row at its latest release
-        run: node scripts/agent-probe.mjs --all --registry "$GITHUB_WORKSPACE/packages/@prismalens/config/dist/providers/harness.js"
+      - name: Probe every row at its channel's latest release, and at its pin
+        shell: bash
+        env:
+          FAILURES: ${{ runner.temp }}/probe-failures-${{ matrix.os }}.tsv
+        run: |
+          : > "$FAILURES"
+          node scripts/agent-probe.mjs --all --failures "$FAILURES"
+
+      # The OS is in the file name: one artifact downloads flat, with no folder named after it.
+      - name: Keep the failing rows for the report job
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe-failures-${{ matrix.os }}
+          path: ${{ runner.temp }}/probe-failures-${{ matrix.os }}.tsv
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Files the issues from the probe's results alone: it checks out and runs nothing it was given.
+  report:
+    name: Report failing agents
+    needs: probe
+    if: >-
+      always() && github.repository == 'prismalens/prismalens' &&
+      (github.event_name == 'schedule' || inputs.file-issues)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: probe-failures-*
+          path: failures
+          merge-multiple: true
+
+      # One open issue per agent and OS, found by its exact title; a red night rewrites its body.
+      # A red leg with no row to file fails this job, so a lost artifact is never a green report.
+      # Artifact fields are data: names are allowlisted, and none is ever spliced into code.
+      - name: Open or update the issue for each failing agent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PROBE_RESULT: ${{ needs.probe.result }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          name_ok='^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$'
+          row_ok='^[A-Za-z0-9@/._ (),-]{1,120}$'
+          bodies=$(mktemp -d)
+          for file in failures/probe-failures-*.tsv; do
+            os=$(basename "$file" .tsv); os=${os#probe-failures-}
+            [[ $os =~ $name_ok ]] || { echo "::error::refusing OS name from the artifact"; exit 1; }
+            while IFS=$'\t' read -r agent what text; do
+              [[ $agent =~ $name_ok && $what =~ $row_ok ]] || { echo "::error::refusing a row from the artifact"; exit 1; }
+              out="$bodies/$agent@$os"
+              [ -e "$out" ] || printf 'Failing rows in the last red run:\n\n' > "$out"
+              printf -- '- %s: %s\n' "$what" "$text" >> "$out"
+            done < "$file"
+          done
+          filed=0
+          for out in "$bodies"/*; do
+            key=$(basename "$out"); agent=${key%@*}; os=${key#*@}
+            title="Agent probe failing: $agent on $os"
+            printf '\n%s\n\nPosted by the agent-release-watch workflow.\n' "$RUN_URL" >> "$out"
+            number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title \
+              | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n1)
+            if [ -n "$number" ]; then
+              gh issue edit "$number" -R "$GITHUB_REPOSITORY" --body-file "$out"
+            else
+              gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body-file "$out"
+            fi
+            filed=$((filed + 1))
+          done
+          echo "filed or updated $filed issue(s); probe result: $PROBE_RESULT"
+          if [ "$PROBE_RESULT" != success ] && [ "$filed" -eq 0 ]; then
+            echo "::error::a probe leg was $PROBE_RESULT but no failing row reached this job"
+            exit 1
+          fi
 
   bump:
     name: Pin bump
-    if: github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request'
+    # From the default branch only: the rolling PR is rebuilt from the ref the run checked out.
+    if: >-
+      github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e
     permissions:
       contents: write
@@ -67,14 +167,24 @@ jobs:
         {"package": "@anthropic-ai/claude-code", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@anthropic-ai/claude-code\"]"},
         {"package": "@openai/codex", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@openai/codex\"]"}]
       soak-days: 3
+      # The probe loads the built agent host. It builds once, from a clean copy of the commit,
+      # because a moved adapter pin leaves this checkout's lockfile stale.
       probe: |
+        set -e
+        built="$RUNNER_TEMP/built"
+        if [ ! -d "$built" ]; then
+          pnpm=(npx --yes "$(node -p "require('./package.json').packageManager")")
+          git worktree add --detach "$built" HEAD
+          (cd "$built" && "${pnpm[@]}" install --frozen-lockfile --filter "@prismalens/config..." && "${pnpm[@]}" --filter "@prismalens/config..." build)
+        fi
+        probe() { node scripts/agent-probe.mjs --built "$built" "$@"; }
         adapter() { node -p "require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']"; }
         case "$PIN_PACKAGE" in
-          @agentclientprotocol/claude-agent-acp) node scripts/agent-probe.mjs --agent claude-code --version "$PIN_VERSION" ;;
-          @agentclientprotocol/codex-acp) node scripts/agent-probe.mjs --agent codex --version "$PIN_VERSION" ;;
-          opencode-ai) node scripts/agent-probe.mjs --agent opencode --version "$PIN_VERSION" ;;
-          @anthropic-ai/claude-code) node scripts/agent-probe.mjs --agent claude-code --version "$(adapter @agentclientprotocol/claude-agent-acp)" --companion "$PIN_VERSION" ;;
-          @openai/codex) node scripts/agent-probe.mjs --agent codex --version "$(adapter @agentclientprotocol/codex-acp)" --companion "$PIN_VERSION" ;;
+          @agentclientprotocol/claude-agent-acp) probe --agent claude-code --version "$PIN_VERSION" ;;
+          @agentclientprotocol/codex-acp) probe --agent codex --version "$PIN_VERSION" ;;
+          opencode-ai) probe --agent opencode --version "$PIN_VERSION" ;;
+          @anthropic-ai/claude-code) probe --agent claude-code --version "$(adapter @agentclientprotocol/claude-agent-acp)" --companion "$PIN_VERSION" ;;
+          @openai/codex) probe --agent codex --version "$(adapter @agentclientprotocol/codex-acp)" --companion "$PIN_VERSION" ;;
           *) echo "no probe for $PIN_PACKAGE"; exit 1 ;;
         esac
       # An adapter pin needs its SDK and lockfile entry, and every pin its row's `tested`, or CI stays red.

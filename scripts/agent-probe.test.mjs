@@ -2,56 +2,139 @@
 // Copyright 2026 Sumit Patel
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { after, test } from "node:test";
-import { ROWS, speak, summarize } from "./agent-probe.mjs";
-import { FAKE_AGENT_PATH } from "./fakes/fake-acp-agent.mjs";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+import {
+	channelPackage,
+	keyless,
+	plan,
+	shown,
+	verdict,
+} from "./agent-probe.mjs";
 
-const cwd = mkdtempSync(join(tmpdir(), "agent-probe-"));
-after(() => rmSync(cwd, { recursive: true, force: true }));
+const REGISTRY = {
+	opencode: {
+		id: "opencode",
+		channel: { npm: "opencode-ai" },
+		nextChannel: { npm: "@opencode/cli" },
+	},
+	"claude-code": {
+		id: "claude-code",
+		adapterPackage: "@agentclientprotocol/claude-agent-acp",
+		channel: { npm: "@anthropic-ai/claude-code" },
+	},
+	deepagents: {
+		id: "deepagents",
+		channel: { uv: ["deepagents-code", "deepagents-acp"] },
+	},
+	local: { id: "local" },
+};
 
-test("every agent row the registry lists has a probe entry", () => {
-	assert.deepEqual(
-		ROWS.map((r) => r.id),
-		["opencode", "claude-code", "codex", "gemini", "deepagents"],
+test("the probe declares no binary, argv or install command of its own (#1013)", () => {
+	const source = readFileSync(
+		new URL("./agent-probe.mjs", import.meta.url),
+		"utf8",
 	);
+	assert.doesNotMatch(source, /\b(bin|args|npm|pip):\s*[["]/);
+	assert.match(source, /host\.detectAgent\(/);
+	assert.match(source, /host\.planLaunch\(/);
+	assert.match(source, /host\.probeAgent\(/);
+	assert.match(source, /adapters\.shippedAdapter\(/);
 });
 
-test("an agent that answers initialize and session/new reads as ok, without any model", async () => {
-	const answer = await speak(
-		{ command: process.execPath, env: {} },
-		[FAKE_AGENT_PATH, "--session", "success"],
-		cwd,
-	);
-	const summary = summarize(answer);
-	assert.equal(summary.ok, true, summary.text);
-	assert.match(
-		summary.text,
-		/protocol 1, fake-acp-agent|protocol 1, claude-agent-acp/,
-	);
-	assert.match(summary.text, /session\/new ok, 6 modes/);
-});
-
-test("an agent that cannot start session/new is reported with its own reason", () => {
-	const summary = summarize({
-		initialize: {
-			result: { protocolVersion: 1, agentInfo: { name: "x", version: "9" } },
+test("rows run at the channel's latest and pin, the next major's latest, and the shipped adapter", () => {
+	const latest = {
+		"opencode-ai": "1.19.5",
+		"@opencode/cli": "2.2.5",
+		"@anthropic-ai/claude-code": "2.2.0",
+		"deepagents-code": "0.2.2",
+	};
+	const pins = {
+		"opencode-ai": "1.19.5",
+		"@anthropic-ai/claude-code": "2.1.312",
+		"deepagents-code": "0.2.1",
+	};
+	const npm = (p) => ({ npm: p });
+	assert.deepEqual(plan(REGISTRY, pins, latest), [
+		{
+			id: "opencode",
+			channel: npm("opencode-ai"),
+			version: "1.19.5",
+			label: "latest, pin",
 		},
-		session: { error: { message: "Gemini API key is missing" } },
-	});
-	assert.equal(summary.ok, false);
-	assert.match(summary.text, /session\/new failed: Gemini API key is missing/);
+		{
+			id: "opencode",
+			channel: npm("@opencode/cli"),
+			version: "2.2.5",
+			label: "next major, latest",
+		},
+		{
+			id: "claude-code",
+			channel: npm("@anthropic-ai/claude-code"),
+			adapter: "shipped",
+			companion: "2.2.0",
+			label: "latest",
+		},
+		{
+			id: "claude-code",
+			channel: npm("@anthropic-ai/claude-code"),
+			adapter: "shipped",
+			companion: "2.1.312",
+			label: "pin",
+		},
+		{
+			id: "deepagents",
+			channel: REGISTRY.deepagents.channel,
+			version: "0.2.2",
+			label: "latest",
+		},
+		{
+			id: "deepagents",
+			channel: REGISTRY.deepagents.channel,
+			version: "0.2.1",
+			label: "pin",
+		},
+	]);
+	assert.equal(channelPackage(REGISTRY.deepagents.channel), "deepagents-code");
+	assert.equal(
+		shown({ adapter: "shipped", companion: "2.2.0" }, "0.98.0"),
+		"shipped adapter 0.98.0, cli 2.2.0",
+	);
 });
 
-test("an agent that never answers initialize is reported, not thrown", () => {
-	assert.equal(summarize({ initialize: null, session: null }).ok, false);
-	assert.match(
-		summarize({
-			initialize: { error: { message: "exited early" } },
-			session: null,
-		}).text,
-		/initialize failed: exited early/,
+test("sign-in-needed counts as started only on a row the probe hands no key", () => {
+	const base = {
+		agentInfo: { name: "opencode", version: "1.19.5" },
+		protocolVersion: 1,
+		modes: null,
+		detail: null,
+	};
+	assert.deepEqual(
+		["opencode", "claude-code", "codex", "gemini", "deepagents"].filter(
+			keyless,
+		),
+		["opencode", "claude-code"],
 	);
+	assert.equal(
+		verdict({ ...base, outcome: "answers-acp" }, { keyless: false }).ok,
+		true,
+	);
+	assert.equal(
+		verdict({ ...base, outcome: "sign-in-needed" }, { keyless: true }).ok,
+		true,
+	);
+	assert.equal(
+		verdict({ ...base, outcome: "sign-in-needed" }, { keyless: false }).ok,
+		false,
+	);
+	const flag = verdict(
+		{
+			...base,
+			outcome: "failed-to-start",
+			detail: "ERROR Unrecognized flag: --cwd",
+		},
+		{ keyless: true },
+	);
+	assert.equal(flag.ok, false);
+	assert.match(flag.text, /failed-to-start: ERROR Unrecognized flag/);
 });

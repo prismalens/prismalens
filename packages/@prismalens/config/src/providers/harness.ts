@@ -82,10 +82,28 @@ export interface HarnessAccess extends LevelFacts {
 	line: (checked: CheckedModes) => string;
 }
 
+/** A package registry an install hint names: npm, or uv's PyPI with the first package the CLI. */
+export type InstallChannel =
+	| { npm: string }
+	| { uv: readonly [string, ...string[]] };
+
+/** The command an install hint gives for `channel`. */
+export function installCommand(channel: InstallChannel): string {
+	if ("npm" in channel) return `npm i -g ${channel.npm}`;
+	const [cli, ...extras] = channel.uv;
+	return ["uv tool install -U", cli, ...extras.map((p) => `--with ${p}`)].join(
+		" ",
+	);
+}
+
 /** What PrismaLens alone says and pins about an agent (#916). */
 interface ProductFacts {
-	/** One line the readiness check shows when the binary is missing. */
+	/** One line the readiness check shows when the binary is missing; it names `channel`'s command. */
 	install: string;
+	/** Where `install` gets the agent's CLI from; the nightly probe installs from here (#1013). */
+	channel?: InstallChannel;
+	/** The vendor's next major, on its own package; the nightly probes its latest too (#1013). */
+	nextChannel?: InstallChannel;
 	/** One line the picker and the readiness check show: how to sign this harness in. */
 	loginHint: string;
 	/**
@@ -137,8 +155,11 @@ function noModeLines(label: string): Lines {
 const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	opencode: {
 		acpRegistryIds: ["opencode", "opencode-v2"],
-		install:
-			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
+		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
+		install: "npm i -g opencode-ai",
+		channel: { npm: "opencode-ai" },
+		// OpenCode 2's docs install it as `npm install -g @opencode/cli`.
+		nextChannel: { npm: "@opencode/cli" },
 		lines: {
 			supervised: () =>
 				"OpenCode runs its build agent; each tool's catch-all asks.",
@@ -157,6 +178,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		acpRegistryIds: ["claude-acp"],
 		install:
 			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
+		channel: { npm: "@anthropic-ai/claude-code" },
 		// claude-agent-acp 0.81.1 reports `acceptEdits` when the model has no `auto`, and
 		// leaves `bypassPermissions` unoffered when the user's settings turn it off (#673 w21).
 		lines: {
@@ -182,6 +204,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		acpRegistryIds: ["codex-acp"],
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
+		channel: { npm: "@openai/codex" },
 		lines: {
 			supervised: (c) =>
 				`Codex runs in ${modeNamed(c, "read-only", "Ask for approval")}.`,
@@ -206,6 +229,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	gemini: {
 		acpRegistryIds: ["gemini"],
 		install: "npm i -g @google/gemini-cli",
+		channel: { npm: "@google/gemini-cli" },
 		lines: {
 			supervised: (c) =>
 				`Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,
@@ -225,6 +249,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	deepagents: {
 		acpRegistryIds: ["deepagents"],
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
+		channel: { uv: ["deepagents-code", "deepagents-acp"] },
 		lines: noModeLines("deepagents"),
 		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
 		tested: { version: "0.1.75", date: "2026-09-23" },

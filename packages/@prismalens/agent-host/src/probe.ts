@@ -37,7 +37,37 @@ export type ProbeOutcome = (typeof PROBE_OUTCOMES)[number];
 
 /** ACP's auth_required error code. */
 const AUTH_REQUIRED = -32000;
-const DEFAULT_TIMEOUT_MS = 10_000;
+/** Spawn plus `initialize` (a cold first start passed 10 s), then `session/new` (Codex took 22 s on a slow network) (#1013). */
+export const PROBE_BUDGETS_MS = {
+	initialize: 30_000,
+	session: 60_000,
+} as const;
+export type ProbeStep = "initialize" | "session/new";
+
+const KEY = String.raw`[A-Z][A-Z0-9_]*_API_KEY\b`;
+/** `KEY is not set`, or `set one of: KEY`: the key and the gap side by side, never just in one message. */
+const UNSET_KEY = [
+	new RegExp(
+		String.raw`\b${KEY}\s+(?:is\s+|was\s+)?(?:not set|unset|missing|required|empty)\b`,
+	),
+	new RegExp(
+		String.raw`(?:^|[\s(:,])(?:[Ss]et|[Mm]issing|[Nn]o|[Pp]rovide|[Rr]equires?)\s+(?:(?:one|any) of\s*:?\s*)?${KEY}`,
+	),
+];
+
+/** A launch the agent refused: a bad flag or a usage line, whatever else it printed. */
+const FATAL_LAUNCH =
+	/unrecognized|unknown (?:flag|option|argument|command)|usage:|invalid option/i;
+
+/**
+ * An auth signal: ACP's auth_required in words, or a clause naming an unset provider key,
+ * in text with no fatal launch error anywhere in `texts`; that error always means failed to start.
+ */
+export function namesSignIn(text: string, ...texts: string[]): boolean {
+	if ([text, ...texts].some((t) => FATAL_LAUNCH.test(t))) return false;
+	if (/auth_required|authentication required/i.test(text)) return true;
+	return UNSET_KEY.some((re) => re.test(text));
+}
 
 export interface ProbeInput {
 	agent: AgentId;
@@ -49,7 +79,8 @@ export interface ProbeInput {
 	mcpServers?: McpServerStdio[];
 	/** `_meta` on `session/new`; the row's own by default. */
 	sessionMeta?: Record<string, unknown>;
-	timeoutMs?: number;
+	/** Per-step budgets; `PROBE_BUDGETS_MS` by default. */
+	budgets?: { initialize?: number; session?: number };
 	/** How long to wait after `session/new` for a sign-in the agent pushes on `_auth/status_update`. */
 	authStatusWaitMs?: number;
 }
@@ -146,7 +177,7 @@ const methodsOf = (methods: AuthMethod[] | undefined) =>
 	(methods ?? []).map((m) => ({ id: m.id, name: m.name }));
 
 export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
-	const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const budgets = { ...PROBE_BUDGETS_MS, ...input.budgets };
 	const result: ProbeResult = {
 		outcome: "failed-to-start",
 		agentInfo: null,
@@ -175,10 +206,19 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		};
 	}
 	let stderr = "";
+	// The tail keeps 2 KB; a fatal launch error is caught as it arrives, before help text pushes it out.
+	let fatal: string | null = null;
 	child.stderr.setEncoding("utf8");
 	child.stderr.on("data", (chunk: string) => {
+		const seen = stderr.slice(-128) + chunk;
+		fatal ??= seen.split(/\r?\n/).find((l) => FATAL_LAUNCH.test(l)) ?? null;
 		stderr = (stderr + chunk).slice(-2048);
 	});
+	const startFailed = (): string => {
+		const tail = oneLine(stderr);
+		const head = fatal ? oneLine(fatal) : "";
+		return head && !tail.includes(head) ? `${head} … ${tail}` : tail;
+	};
 	child.stdin.on("error", () => {});
 
 	let timer: NodeJS.Timeout | undefined;
@@ -188,9 +228,6 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			resolve("died");
 		});
 		child.once("close", () => resolve("died"));
-	});
-	const deadline = new Promise<"timeout">((resolve) => {
-		timer = setTimeout(() => resolve("timeout"), timeoutMs);
 	});
 
 	let pushed: (() => void) | null = null;
@@ -215,22 +252,43 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			),
 		);
 
-	const race = async <T>(call: Promise<T>): Promise<T | "died" | "timeout"> => {
+	const exited = async (ms: number): Promise<void> => {
+		let grace: NodeJS.Timeout | undefined;
+		await Promise.race([
+			died,
+			new Promise<void>((resolve) => {
+				grace = setTimeout(resolve, ms);
+			}),
+		]);
+		clearTimeout(grace);
+	};
+	const race = async <T>(
+		call: Promise<T>,
+		ms: number,
+	): Promise<T | "died" | "timeout"> => {
 		call.catch(() => {});
+		clearTimeout(timer);
+		const deadline = new Promise<"timeout">((resolve) => {
+			timer = setTimeout(() => resolve("timeout"), ms);
+		});
 		return Promise.race([call, died, deadline]);
 	};
-	const ended = (why: "died" | "timeout"): ProbeResult =>
-		why === "timeout"
-			? {
-					...result,
-					outcome: "no-answer",
-					detail: `no answer in ${Math.max(1, Math.round(timeoutMs / 1000))}s`,
-				}
-			: {
-					...result,
-					outcome: "failed-to-start",
-					detail: oneLine(stderr) || null,
-				};
+	const ended = (
+		why: "died" | "timeout",
+		step: ProbeStep,
+		ms: number,
+	): ProbeResult => {
+		if (why === "timeout")
+			return {
+				...result,
+				outcome: "no-answer",
+				detail: `${step}: no answer in ${Math.max(1, Math.round(ms / 1000))}s`,
+			};
+		const detail = startFailed() || null;
+		return detail && !fatal && namesSignIn(detail)
+			? { ...result, outcome: "sign-in-needed", authRequired: true, detail }
+			: { ...result, outcome: "failed-to-start", detail };
+	};
 
 	try {
 		const init = await race(
@@ -240,8 +298,10 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 					fs: { readTextFile: false, writeTextFile: false },
 				},
 			}),
+			budgets.initialize,
 		);
-		if (init === "died" || init === "timeout") return ended(init);
+		if (init === "died" || init === "timeout")
+			return ended(init, "initialize", budgets.initialize);
 		result.raw.initialize = init;
 		result.agentInfo = init.agentInfo
 			? {
@@ -263,8 +323,10 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 				mcpServers: input.mcpServers ?? [],
 				...(meta ? { _meta: meta } : {}),
 			}),
+			budgets.session,
 		);
-		if (session === "died" || session === "timeout") return ended(session);
+		if (session === "died" || session === "timeout")
+			return ended(session, "session/new", budgets.session);
 		result.raw.session = session;
 		const wait = input.authStatusWaitMs ?? 0;
 		if (
@@ -296,21 +358,28 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 				detail: oneLine(err.message),
 			};
 		const message = err instanceof Error ? err.message : String(err);
-		if (/auth_required|authentication required/i.test(message))
+		// A closed connection is the child exiting; its stderr may still be in flight.
+		if (!(err instanceof RequestError)) await exited(1_000);
+		const said = fatal
+			? undefined
+			: [message, stderr].find((t) => namesSignIn(t, message, stderr));
+		if (said)
 			return {
 				...result,
 				outcome: "sign-in-needed",
 				authRequired: true,
-				detail: oneLine(message),
+				detail: oneLine(said),
 			};
 		return {
 			...result,
 			outcome: "failed-to-start",
-			detail: oneLine(stderr || message),
+			detail: startFailed() || oneLine(message),
 		};
 	} finally {
 		clearTimeout(timer);
 		if (child.exitCode === null && child.signalCode === null)
 			killProcessTree(child, "SIGKILL");
+		// Windows keeps a running child's cwd locked, so the caller can only remove it after this.
+		await exited(5_000);
 	}
 }

@@ -7,11 +7,12 @@
  * no prompt turn, no model call. A pass means "answers ACP", never "ready": opencode needs
  * no provider for `session/new`, and claude-agent-acp checks credentials at turn start.
  */
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type LaunchPolicy,
+	type ProbeInput,
 	type ProbeResult,
 	probeAgent,
 	versionOf,
@@ -36,7 +37,8 @@ import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
 export { versionOf };
 
-const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
+const RUN_DIR_PREFIX = "pl-doctor-";
+const STALE_RUN_DIR_MS = 24 * 60 * 60 * 1000;
 /** claude-agent-acp pushes its sign-in after `initialize` from a CLI probe it never waits on. */
 const AUTH_STATUS_WAIT_MS = 3_000;
 
@@ -125,6 +127,40 @@ export function classify(
 	};
 }
 
+function removeRunDir(dir: string): void {
+	try {
+		rmSync(dir, {
+			recursive: true,
+			force: true,
+			maxRetries: 5,
+			retryDelay: 200,
+		});
+	} catch {
+		// Still locked by a grandchild; the next start's sweep takes it.
+	}
+}
+
+/** Removes run folders a crashed or Windows-locked check left in `root` over a day ago (#1013). */
+export function sweepStaleRunDirs(root = tmpdir(), now = Date.now()): void {
+	let names: string[];
+	try {
+		names = readdirSync(root);
+	} catch {
+		return;
+	}
+	for (const name of names) {
+		if (!name.startsWith(RUN_DIR_PREFIX)) continue;
+		const dir = join(root, name);
+		try {
+			if (now - statSync(dir).mtimeMs > STALE_RUN_DIR_MS) removeRunDir(dir);
+		} catch {
+			// Gone already.
+		}
+	}
+}
+
+let swept = false;
+
 /**
  * `initialize` -> `session/new`, no prompt turn, closed immediately. Callers
  * loop harness ids and `await` each in turn — never `Promise.all` — so two
@@ -144,7 +180,7 @@ export async function probeHarness(
 			| "companionBinary"
 			| "adapterPackage"
 		>;
-		timeoutMs?: number;
+		budgets?: ProbeInput["budgets"];
 		sandbox?: typeof checkSandbox;
 		authWaitMs?: number;
 		/** The agent's stored values from Settings (#907). */
@@ -156,8 +192,11 @@ export async function probeHarness(
 	} = {},
 ): Promise<HarnessProbeResult> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[harness];
-	const timeoutMs = opts.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
-	const runDir = mkdtempSync(join(tmpdir(), "pl-doctor-"));
+	if (!swept) {
+		swept = true;
+		sweepStaleRunDirs();
+	}
+	const runDir = mkdtempSync(join(tmpdir(), RUN_DIR_PREFIX));
 	const cwd = join(runDir, "workspace");
 	mkdirSync(cwd, { recursive: true });
 
@@ -187,7 +226,7 @@ export async function probeHarness(
 			cwd,
 			env,
 			...(meta ? { sessionMeta: meta } : {}),
-			timeoutMs,
+			...(opts.budgets ? { budgets: opts.budgets } : {}),
 			authStatusWaitMs: opts.authWaitMs ?? AUTH_STATUS_WAIT_MS,
 		});
 		if (probed.outcome !== "answers-acp" || !probed.raw.session) {
@@ -238,6 +277,6 @@ export async function probeHarness(
 		});
 		return { ...answered, sandbox };
 	} finally {
-		rmSync(runDir, { recursive: true, force: true });
+		removeRunDir(runDir);
 	}
 }

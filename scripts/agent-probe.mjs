@@ -3,71 +3,50 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The protocol probe (#914): installs an agent and sends `initialize` and `session/new`
- * with no model behind it, then reports what the agent answered next to the version the
- * registry row was tested on. It spends no tokens and warns no user.
+ * The protocol probe (#914, #1013): installs an agent from the channel its install hint names
+ * and starts it as the product does (`detectAgent`, `planLaunch`, `probeAgent` from the built
+ * `@prismalens/agent-host`), with no model behind it. It spends no tokens and warns no user.
  *
- *   agent-probe.mjs --all [--registry <built harness.js>]   latest release of every row, as a table
- *   agent-probe.mjs --agent <id> --version <v> [--companion <v>]   one version; exit 1 when it fails
+ *   agent-probe.mjs --all [--failures <file>] [--built <checkout>]
+ *     each row at its channel's latest and at its pin; an adapter row runs the adapter
+ *     `@prismalens/agent-adapters` ships, against the CLI's latest and its pin
+ *   agent-probe.mjs --agent <id> --version <v> [--companion <v>] [--built <checkout>]
+ *     one version, an adapter row's adapter from npm (the pin bump); exit 1 when it fails
+ *
+ * `--built` names the checkout whose `dist` folders to load, when this one's are not built.
  */
-import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+	appendFileSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const WINDOWS = process.platform === "win32";
-const STEP_MS = 90_000;
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const PINS = JSON.parse(
+	readFileSync(join(ROOT, "scripts/agent-pins.json"), "utf8"),
+).pins;
 
-/** One entry per agent row: where its ACP server comes from and how to start it. */
-export const ROWS = [
-	{ id: "opencode", npm: "opencode-ai", bin: "opencode", args: ["acp"] },
-	{
-		id: "claude-code",
-		npm: "@agentclientprotocol/claude-agent-acp",
-		bin: "claude-agent-acp",
-		args: [],
-	},
-	{
-		id: "codex",
-		npm: "@agentclientprotocol/codex-acp",
-		bin: "codex-acp",
-		args: [],
-		// codex-acp signs in with this key only through DEFAULT_AUTH_REQUEST; it never reaches a model (#914).
-		env: {
-			CODEX_API_KEY: "probe-no-model",
-			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
-		},
-		home: "CODEX_HOME",
-	},
-	{
-		id: "gemini",
-		npm: "@google/gemini-cli",
-		bin: "gemini",
-		args: ["--experimental-acp"],
-		env: { GEMINI_API_KEY: "probe-no-model" },
-		home: "GEMINI_CLI_HOME",
-	},
-	{
-		id: "deepagents",
-		pip: ["deepagents-code", "deepagents-acp"],
-		bin: "dcode",
-		args: ["--acp", "--no-mcp"],
-		// dcode refuses `initialize` with no provider key; this one never reaches a model (#914).
-		env: { OPENAI_API_KEY: "probe-no-model" },
-	},
-];
-
-/** The CLI an adapter drives, and the env var that names it. */
-const COMPANIONS = {
-	"claude-code": {
-		npm: "@anthropic-ai/claude-code",
-		bin: "claude",
-		env: "CLAUDE_CODE_EXECUTABLE",
-	},
-	codex: { npm: "@openai/codex", bin: "codex", env: "CODEX_PATH" },
+/** Keys that get an agent past its own start-up key check; none ever reaches a model (#914). */
+const PROBE_ENV = {
+	codex: () => ({ CODEX_API_KEY: "probe-no-model" }),
+	gemini: () => ({ GEMINI_API_KEY: "probe-no-model" }),
+	// deepagents has no config-folder variable in the registry; its own empty profile instead.
+	deepagents: (home) => ({
+		OPENAI_API_KEY: "probe-no-model",
+		DEEPAGENTS_HOME: home,
+	}),
 };
+
+/** A row the probe hands no key, so asking for a sign-in is how it answers when it works. */
+export const keyless = (id) => !PROBE_ENV[id];
 
 const run = (file, args, options = {}) =>
 	execFileSync(file, args, {
@@ -77,185 +56,220 @@ const run = (file, args, options = {}) =>
 		...options,
 	});
 
-/** The latest stable release of an npm package. */
-export function latestOf(pkg) {
-	return run("npm", ["view", pkg, "version"]).trim();
+async function loadBuilt(checkout, withAdapters) {
+	const load = (rel) => import(pathToFileURL(join(checkout, rel)).href);
+	const host = await load("packages/@prismalens/agent-host/dist/index.js");
+	const { HARNESS_REGISTRY } = await load(
+		"packages/@prismalens/config/dist/providers/harness.js",
+	);
+	const adapters = withAdapters
+		? await load("packages/@prismalens/agent-adapters/dist/index.js")
+		: null;
+	return { host, registry: HARNESS_REGISTRY, adapters };
 }
 
-/** Installs the row at `version` under `dir`; returns the command and env to start it. */
-function install(row, version, dir, companion) {
-	if (row.npm) {
-		const specs = [`${row.npm}@${version}`];
-		if (companion && COMPANIONS[row.id])
-			specs.push(`${COMPANIONS[row.id].npm}@${companion}`);
-		run("npm", [
-			"install",
-			"--prefix",
-			dir,
-			"--no-audit",
-			"--no-fund",
-			"--loglevel=error",
-			...specs,
-		]);
-		const bin = join(dir, "node_modules", ".bin");
-		return {
-			command: join(bin, row.bin),
-			env: {
-				PATH: `${bin}${delimiter}${process.env.PATH}`,
-				...(companion && COMPANIONS[row.id]
-					? { [COMPANIONS[row.id].env]: join(bin, COMPANIONS[row.id].bin) }
-					: {}),
-				// Its own empty home, so no runner sign-in or config is read.
-				...(row.home ? { [row.home]: join(dir, "home") } : {}),
-				...row.env,
-			},
-		};
+/** The package a channel installs the CLI from: the npm name, or uv's first. */
+export function channelPackage(channel) {
+	return channel.npm ?? channel.uv[0];
+}
+
+const channelName = (channel) =>
+	channel.npm ? `npm ${channel.npm}` : `uv ${channel.uv[0]}`;
+
+/** The latest stable release on the channel. */
+export async function latestOf(channel) {
+	if (channel.npm) return run("npm", ["view", channel.npm, "version"]).trim();
+	const res = await fetch(`https://pypi.org/pypi/${channel.uv[0]}/json`);
+	if (!res.ok) throw new Error(`PyPI answered ${res.status}`);
+	return (await res.json()).info.version;
+}
+
+/** One entry per version: a latest that is also the pin runs once. */
+function atLatestAndPin(latest, pin, make) {
+	if (!pin || pin === latest) return [make(latest, "latest, pin")];
+	return [make(latest, "latest"), make(pin, "pin")];
+}
+
+/**
+ * The probes `--all` runs: each row at its channel's latest and its pin, and its next major's
+ * latest. An adapter row runs the shipped adapter, so the CLI's versions are what vary.
+ */
+export function plan(registry, pins, latest) {
+	const out = [];
+	for (const row of Object.values(registry)) {
+		if (!row.channel) continue;
+		const pkg = channelPackage(row.channel);
+		if (row.adapterPackage)
+			out.push(
+				...atLatestAndPin(latest[pkg], pins[pkg], (companion, label) => ({
+					id: row.id,
+					channel: row.channel,
+					adapter: "shipped",
+					companion,
+					label,
+				})),
+			);
+		else
+			out.push(
+				...atLatestAndPin(latest[pkg], pins[pkg], (version, label) => ({
+					id: row.id,
+					channel: row.channel,
+					version,
+					label,
+				})),
+			);
+		if (row.nextChannel)
+			out.push({
+				id: row.id,
+				channel: row.nextChannel,
+				version: latest[channelPackage(row.nextChannel)],
+				label: "next major, latest",
+			});
 	}
-	// deepagents-code needs Python 3.14, which uv fetches when the runner has none.
+	return out;
+}
+
+const npmInstall = (dir, specs) =>
+	run("npm", [
+		"install",
+		"--prefix",
+		dir,
+		"--no-audit",
+		"--no-fund",
+		"--loglevel=error",
+		...specs,
+	]);
+
+/** The script an installed package's `bin` names for `binary`. */
+function binScript(prefix, pkg, binary) {
+	const root = join(prefix, "node_modules", pkg);
+	const { bin } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+	const rel =
+		typeof bin === "string" ? bin : (bin[binary] ?? Object.values(bin)[0]);
+	return join(root, rel);
+}
+
+/** Installs the probe's CLI from its channel under `dir`; returns the bin folder and any adapter. */
+function install(built, row, probe, dir) {
+	const { channel } = probe;
+	if (row.adapterPackage) {
+		let adapter;
+		if (probe.adapter === "shipped") {
+			adapter = built.adapters.shippedAdapter(row.adapterPackage);
+			if (!adapter) throw new Error(`no shipped ${row.adapterPackage} built`);
+		} else {
+			const prefix = join(dir, "adapter");
+			npmInstall(prefix, [`${row.adapterPackage}@${probe.adapter}`]);
+			adapter = binScript(prefix, row.adapterPackage, row.binary);
+		}
+		const cli = join(dir, "cli");
+		npmInstall(cli, [`${channel.npm}@${probe.companion}`]);
+		return { bin: join(cli, "node_modules", ".bin"), adapter };
+	}
+	if (channel.npm) {
+		npmInstall(dir, [`${channel.npm}@${probe.version}`]);
+		return { bin: join(dir, "node_modules", ".bin") };
+	}
+	// uv fetches the Python the package needs when the runner has none.
 	const venv = join(dir, "venv");
 	run("uv", ["venv", "--quiet", "--python", "3.14", venv]);
 	const bin = join(venv, WINDOWS ? "Scripts" : "bin");
+	const [cli, ...extras] = channel.uv;
 	run("uv", [
 		"pip",
 		"install",
 		"--quiet",
 		"--python",
 		join(bin, WINDOWS ? "python.exe" : "python"),
-		...row.pip.map((p, i) => (i === 0 && version ? `${p}==${version}` : p)),
+		`${cli}==${probe.version}`,
+		...extras,
 	]);
-	return {
-		command: join(bin, row.bin),
-		env: {
-			PATH: `${bin}${delimiter}${process.env.PATH}`,
-			// Its own empty profile, so no user config or sign-in is read.
-			DEEPAGENTS_HOME: join(dir, "profile"),
-			...row.env,
-		},
-	};
+	return { bin };
 }
 
-/** `initialize` then `session/new` over stdio; every failure is an answer, not an exception. */
-export function speak({ command, env }, args, cwd) {
-	return new Promise((resolve) => {
-		const out = { initialize: null, session: null, stderr: "" };
-		// Windows runs a .cmd shim only through a shell; anything else spawns directly.
-		const shim = WINDOWS && /\.(cmd|bat)$/i.test(command);
-		const child = spawn(shim ? `"${command}"` : command, args, {
-			cwd,
-			env: { ...process.env, ...env },
-			stdio: ["pipe", "pipe", "pipe"],
-			shell: shim,
-		});
-		let buffer = "";
-		const waiting = new Map();
-		const done = () => {
-			child.kill();
-			resolve(out);
-		};
-		// An agent that closes stdin early is reported by the exit handler, not a crash.
-		child.stdin.on("error", () => {});
-		child.stderr.on("data", (d) => {
-			out.stderr = `${out.stderr}${d}`.slice(-600);
-		});
-		child.on("error", (e) => {
-			out.initialize ??= { error: { message: e.message } };
-			done();
-		});
-		child.on("exit", () => {
-			for (const [, finish] of waiting)
-				finish({ error: { message: `exited early: ${out.stderr.trim()}` } });
-		});
-		child.stdout.on("data", (d) => {
-			buffer += d;
-			for (let nl = buffer.indexOf("\n"); nl >= 0; nl = buffer.indexOf("\n")) {
-				const line = buffer.slice(0, nl).trim();
-				buffer = buffer.slice(nl + 1);
-				try {
-					const msg = JSON.parse(line);
-					if (msg.id !== undefined && !msg.method && waiting.has(msg.id))
-						waiting.get(msg.id)(msg);
-				} catch {
-					// a banner or log line
-				}
-			}
-		});
-		const ask = (id, method, params) =>
-			new Promise((answer) => {
-				const timer = setTimeout(
-					() => answer({ error: { message: `${method} timed out` } }),
-					STEP_MS,
-				);
-				waiting.set(id, (msg) => {
-					clearTimeout(timer);
-					answer(msg);
-				});
-				child.stdin.write(
-					`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-				);
-			});
-		(async () => {
-			out.initialize = await ask(1, "initialize", {
-				protocolVersion: 1,
-				clientCapabilities: {
-					fs: { readTextFile: false, writeTextFile: false },
-				},
-			});
-			if (out.initialize.result)
-				out.session = await ask(2, "session/new", { cwd, mcpServers: [] });
-			done();
-		})();
-	});
+/** The host env with one PATH, whatever its case on Windows. */
+function hostEnv(bin, extra) {
+	const env = {};
+	let path = "";
+	for (const [k, v] of Object.entries(process.env)) {
+		if (k.toUpperCase() === "PATH") path = v ?? "";
+		else env[k] = v;
+	}
+	return { ...env, PATH: `${bin}${delimiter}${path}`, ...extra };
 }
 
-/** One line of what an agent answered. */
-export function summarize(answer) {
-	const init = answer.initialize?.result;
-	const session = answer.session?.result;
-	if (!init)
-		return {
-			ok: false,
-			text: `initialize failed: ${answer.initialize?.error?.message ?? "no answer"}`,
-		};
-	const caps = init.agentCapabilities ?? {};
-	const flags = [
-		caps.loadSession ? "loadSession" : null,
-		caps.promptCapabilities?.image ? "image" : null,
-		caps.mcpCapabilities ? "mcp" : null,
-	].filter(Boolean);
-	const agent = init.agentInfo
-		? `${init.agentInfo.name} ${init.agentInfo.version}`
+/**
+ * One line for a probe result. `ok` when it answered ACP, or asked for a sign-in on a row
+ * run with no key; a row handed a probe key that still asks has broken its start-up.
+ */
+export function verdict(result, { keyless: noKey }) {
+	const ok =
+		result.outcome === "answers-acp" ||
+		(noKey && result.outcome === "sign-in-needed");
+	const agent = result.agentInfo
+		? `${result.agentInfo.name} ${result.agentInfo.version}`
 		: "no agentInfo";
-	const auth = (init.authMethods ?? []).map((m) => m.id).join(",") || "none";
-	if (!session)
-		return {
-			ok: false,
-			text: `initialize ok (protocol ${init.protocolVersion}, ${agent}); session/new failed: ${answer.session?.error?.message ?? "no answer"}`,
-		};
-	const modes = session.modes?.availableModes?.length ?? 0;
-	const options = (session.configOptions ?? [])
-		.map((o) => o.category)
-		.filter(Boolean)
-		.join(",");
-	return {
-		ok: true,
-		text: `protocol ${init.protocolVersion}, ${agent}; caps ${flags.join("+") || "none"}; auth ${auth}; session/new ok, ${modes} modes, options ${options || "none"}`,
-	};
+	const modes = result.modes?.available.length ?? 0;
+	const text =
+		result.outcome === "answers-acp"
+			? `answers ACP (protocol ${result.protocolVersion}, ${agent}; ${modes} modes)`
+			: `${result.outcome}${result.detail ? `: ${result.detail}` : ""}`;
+	return { ok, text };
 }
 
-async function probeOne(row, version, companion) {
+async function probeOne(built, probe) {
+	const row = built.registry[probe.id];
 	const dir = mkdtempSync(join(tmpdir(), `pl-probe-${row.id}-`));
-	if (row.home) mkdirSync(join(dir, "home"));
 	try {
-		const started = install(row, version, dir, companion);
-		const cwd = mkdtempSync(join(dir, "cwd-"));
-		return summarize(await speak(started, row.args, cwd));
-	} catch (e) {
-		return {
-			ok: false,
-			text: `install failed: ${String(e.stderr ?? e.message)
-				.trim()
-				.slice(-200)}`,
-		};
+		let installed;
+		try {
+			installed = install(built, row, probe, dir);
+		} catch (e) {
+			return {
+				ok: false,
+				text: `install failed: ${String(e.stderr || e.message)
+					.trim()
+					.slice(-200)}`,
+			};
+		}
+		const { host } = built;
+		const launch = host.detectAgent(row.id, {
+			pathEnv: installed.bin,
+			shippedAdapter: (pkg) =>
+				pkg === row.adapterPackage ? (installed.adapter ?? null) : null,
+		});
+		if (!launch)
+			return { ok: false, text: `not found after install in ${installed.bin}` };
+		const home = join(dir, "home");
+		mkdirSync(home);
+		const runDir = join(dir, "run");
+		const cwd = join(dir, "workspace");
+		mkdirSync(cwd);
+		const plan = host.planLaunch({
+			agent: row.id,
+			policy: {
+				userSetup: "inherit",
+				github: "exclude",
+				floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} },
+			},
+			launch,
+			cwd,
+			runDir,
+			hostEnv: hostEnv(installed.bin, {
+				...(row.configDir ? { [row.configDir.envKey]: home } : {}),
+				...PROBE_ENV[row.id]?.(home),
+			}),
+		});
+		host.writeLaunchFiles(plan);
+		const result = await host.probeAgent({
+			agent: row.id,
+			command: plan.command,
+			args: plan.args,
+			cwd,
+			env: plan.env,
+			...(plan.sessionMeta ? { sessionMeta: plan.sessionMeta } : {}),
+		});
+		return verdict(result, { keyless: keyless(row.id) });
 	} finally {
 		try {
 			rmSync(dir, {
@@ -265,9 +279,19 @@ async function probeOne(row, version, companion) {
 				retryDelay: 500,
 			});
 		} catch {
-			// Windows keeps a killed shim's files open; the runner's temp dir is thrown away.
+			// A grandchild can hold a file open on Windows; the runner's temp dir is thrown away.
 		}
 	}
+}
+
+/** What a probe ran, in words: the adapter and CLI for an adapter row, else the version. */
+export function shown(probe, shippedVersion) {
+	if (!probe.adapter) return probe.version;
+	const adapter =
+		probe.adapter === "shipped"
+			? `shipped adapter ${shippedVersion ?? "?"}`
+			: `adapter ${probe.adapter}`;
+	return `${adapter}, cli ${probe.companion}`;
 }
 
 async function main() {
@@ -277,51 +301,72 @@ async function main() {
 			agent: { type: "string" },
 			version: { type: "string" },
 			companion: { type: "string" },
-			registry: { type: "string" },
+			failures: { type: "string" },
+			built: { type: "string" },
 		},
 	});
+	const built = await loadBuilt(values.built ?? ROOT, Boolean(values.all));
 	if (values.agent) {
-		const row = ROWS.find((r) => r.id === values.agent);
-		if (!row || !values.version) {
+		const row = built.registry[values.agent];
+		if (!row?.channel || !values.version) {
 			console.error(
 				"usage: agent-probe.mjs --agent <id> --version <v> [--companion <v>]",
 			);
 			process.exit(2);
 		}
-		const result = await probeOne(row, values.version, values.companion);
-		console.log(`${row.id} ${values.version}: ${result.text}`);
+		const probe = row.adapterPackage
+			? {
+					id: row.id,
+					channel: row.channel,
+					adapter: values.version,
+					companion: values.companion ?? PINS[channelPackage(row.channel)],
+				}
+			: { id: row.id, channel: row.channel, version: values.version };
+		const result = await probeOne(built, probe);
+		console.log(`${row.id} ${shown(probe)}: ${result.text}`);
 		process.exit(result.ok ? 0 : 1);
 	}
 	if (!values.all) {
 		console.error("usage: agent-probe.mjs --all | --agent <id> --version <v>");
 		process.exit(2);
 	}
-	const registry = values.registry
-		? (await import(pathToFileURL(values.registry).href)).HARNESS_REGISTRY
-		: {};
-	const lines = [
-		"| Agent | Latest release | Tested | Probe (initialize, session/new; no model) |",
-		"| :--- | :--- | :--- | :--- |",
-	];
-	for (const row of ROWS) {
-		let latest = "";
-		try {
-			latest = row.npm ? latestOf(row.npm) : "";
-		} catch {
-			latest = "unknown";
+	const latest = {};
+	for (const row of Object.values(built.registry))
+		for (const channel of [row.channel, row.nextChannel].filter(Boolean)) {
+			try {
+				latest[channelPackage(channel)] = await latestOf(channel);
+			} catch {
+				latest[channelPackage(channel)] = "unknown";
+			}
 		}
-		const result = await probeOne(row, latest, undefined);
-		const tested = registry[row.id]?.tested?.version ?? "none";
-		lines.push(
-			`| ${row.id} | ${latest || "latest"} | ${tested} | ${result.ok ? "ok" : "FAILS"}: ${result.text} |`,
+	const lines = [
+		`| Agent | Channel | Version | Tested | Probe (${process.platform}; initialize, session/new; no model) |`,
+		"| :--- | :--- | :--- | :--- | :--- |",
+	];
+	const failed = [];
+	for (const probe of plan(built.registry, PINS, latest)) {
+		const row = built.registry[probe.id];
+		const result = await probeOne(built, probe);
+		const what = shown(
+			probe,
+			row.adapterPackage && built.adapters.shippedVersion(row.adapterPackage),
 		);
+		lines.push(
+			`| ${row.id} | ${channelName(probe.channel)} | ${what} (${probe.label}) | ${row.tested?.version ?? "none"} | ${result.ok ? "ok" : "FAILS"}: ${result.text} |`,
+		);
+		if (!result.ok)
+			failed.push(
+				`${row.id}\t${channelName(probe.channel)} ${what} (${probe.label})\t${result.text.replace(/\s+/g, " ")}`,
+			);
 	}
 	const table = lines.join("\n");
 	console.log(table);
 	if (process.env.GITHUB_STEP_SUMMARY)
 		appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${table}\n`);
+	if (values.failures)
+		appendFileSync(values.failures, failed.map((f) => `${f}\n`).join(""));
 	// An agent's grandchildren can outlive the kill and hold the event loop open.
-	process.exit(0);
+	process.exit(failed.length ? 1 : 0);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();
