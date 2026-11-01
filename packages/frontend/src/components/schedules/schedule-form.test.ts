@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { formOf, recurrenceOf, type WhenForm } from "./schedule-form";
+import { formOf, recurrenceOf, serviceChoice, type WhenForm } from "./schedule-form";
 
 const base: WhenForm = {
 	preset: "weekdays",
@@ -59,5 +59,13 @@ describe("recurrenceOf (#979)", () => {
 		const f = formOf(stored, "Asia/Kolkata");
 		expect(f).toMatchObject({ preset: "hours", startAt: "09:00", timezone: "Asia/Kolkata" });
 		expect(recurrenceOf(f, new Date("2026-10-30T12:40:00Z"))).toEqual(stored);
+	});
+});
+
+describe("serviceChoice (#984)", () => {
+	it("sends a new schedule to Services when there is no service, and waits while they load", () => {
+		expect(serviceChoice(undefined)).toBe("loading");
+		expect(serviceChoice([])).toBe("none");
+		expect(serviceChoice([{ id: "s1" }])).toBe("pick");
 	});
 });

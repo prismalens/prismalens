@@ -108,3 +108,11 @@ export function formOf(r: RecurrenceInput, hostZone = "UTC"): WhenForm {
 		};
 	return { ...base, preset: "cron" };
 }
+
+/** What the dialog's service field shows: a wait, a way to Services, or the picker (#984). */
+export function serviceChoice(
+	services: readonly { id: string }[] | undefined,
+): "loading" | "none" | "pick" {
+	if (!services) return "loading";
+	return services.length ? "pick" : "none";
+}
