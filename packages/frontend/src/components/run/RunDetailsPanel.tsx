@@ -658,56 +658,70 @@ export function RunOverview({
 					);
 				})}
 			</ol>
-			<section className="flex flex-col gap-1.5" aria-label="PrismaLens tools">
-				<h3 className="text-meta font-semibold text-text-2">
-					PrismaLens tools
-				</h3>
-				<p
-					className={cn(
-						status.state === "not-reached" ? "text-warn" : "text-text-1",
-						status.state === "loading" && "text-text-3",
-					)}
-					role="status"
-					data-testid="run-tools-status"
-				>
-					{toolsWord(status)}
-				</p>
-				{status.state === "not-reached" && hint && (
-					<div className="flex flex-col gap-1.5" data-testid="run-tools-hint">
-						<p className="text-meta text-text-2">{hint.text}</p>
-						{hint.folder && <CommandChip command={hint.folder} />}
-					</div>
-				)}
-				{turns.map((t) => (
-					<div
-						key={t.turn}
-						className="flex flex-col gap-1"
-						data-testid={`run-tools-turn-${t.turn}`}
-					>
-						<span className="text-meta font-medium">
-							{t.turn === "first" ? "First turn" : "Follow-up"}
-						</span>
-						<span className="text-meta text-text-2 tabular-nums">
-							{turnLine(t)}
-						</span>
-						{t.calls.length > 0 && (
-							<span className="flex flex-wrap gap-1">
-								{t.calls.map((c) => (
-									<span
-										key={c.name}
-										className="inline-flex h-[22px] items-center gap-1 rounded-control bg-surface-3 px-2 font-mono text-mono"
-									>
-										{c.name}
-										{c.count > 1 && (
-											<span className="text-text-2">×{c.count}</span>
-										)}
-									</span>
-								))}
-							</span>
-						)}
-					</div>
-				))}
-			</section>
+			<RunToolsSection status={status} turns={turns} hint={hint} />
 		</div>
+	);
+}
+
+/** Whether PrismaLens's tools reached the agent, per turn, and what to do when they did not. */
+export function RunToolsSection({
+	status,
+	turns,
+	hint,
+}: {
+	status: ToolsStatus;
+	turns: TurnTools[];
+	/** The agent's own line when the tools did not reach it, and the folder to trust. */
+	hint?: { text: string; folder: string | null } | null;
+}) {
+	return (
+		<section className="flex flex-col gap-1.5" aria-label="PrismaLens tools">
+			<h3 className="text-meta font-semibold text-text-2">PrismaLens tools</h3>
+			<p
+				className={cn(
+					status.state === "not-reached" ? "text-warn" : "text-text-1",
+					status.state === "loading" && "text-text-3",
+				)}
+				role="status"
+				data-testid="run-tools-status"
+			>
+				{toolsWord(status)}
+			</p>
+			{status.state === "not-reached" && hint && (
+				<div className="flex flex-col gap-1.5" data-testid="run-tools-hint">
+					<p className="text-meta text-text-2">{hint.text}</p>
+					{hint.folder && <CommandChip command={hint.folder} />}
+				</div>
+			)}
+			{turns.map((t) => (
+				<div
+					key={t.turn}
+					className="flex flex-col gap-1"
+					data-testid={`run-tools-turn-${t.turn}`}
+				>
+					<span className="text-meta font-medium">
+						{t.turn === "first" ? "First turn" : "Follow-up"}
+					</span>
+					<span className="text-meta text-text-2 tabular-nums">
+						{turnLine(t)}
+					</span>
+					{t.calls.length > 0 && (
+						<span className="flex flex-wrap gap-1">
+							{t.calls.map((c) => (
+								<span
+									key={c.name}
+									className="inline-flex h-[22px] items-center gap-1 rounded-control bg-surface-3 px-2 font-mono text-mono"
+								>
+									{c.name}
+									{c.count > 1 && (
+										<span className="text-text-2">×{c.count}</span>
+									)}
+								</span>
+							))}
+						</span>
+					)}
+				</div>
+			))}
+		</section>
 	);
 }

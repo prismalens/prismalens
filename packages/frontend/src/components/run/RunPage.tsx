@@ -71,6 +71,7 @@ import {
 	overviewSteps,
 	RunDetailsPanel,
 	RunOverview,
+	RunToolsSection,
 } from "./RunDetailsPanel";
 import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
@@ -429,26 +430,34 @@ export function RunPage() {
 		live,
 	});
 	const preRun = inv?.preRun ?? null;
-	const overview = inv && !chat && (
-		<RunOverview
-			steps={overviewSteps({
-				snapshot: snapshotLine(preRun),
-				code: codeLine(inv.workspace, preRun?.checkoutsSkipped ?? []),
-				agent: harness?.label ?? who.agent,
-				status: tools,
-			})}
-			status={tools}
-			turns={turns}
-			hint={
-				harness?.toolsHint
-					? {
-							text: harness.toolsHint.text,
-							folder: runsFolder(inv.workspace?.cwd),
-						}
-					: null
-			}
-		/>
-	);
+	const toolsHint =
+		inv && harness?.toolsHint
+			? {
+					text: harness.toolsHint.text,
+					folder: runsFolder(inv.workspace?.cwd),
+				}
+			: null;
+	// A chat has no five steps, but its tools warning needs the same explanation (0.5.3 walk W11).
+	const overview =
+		inv && chat ? (
+			<div className="mb-4">
+				<RunToolsSection status={tools} turns={turns} hint={toolsHint} />
+			</div>
+		) : (
+			inv && (
+				<RunOverview
+					steps={overviewSteps({
+						snapshot: snapshotLine(preRun),
+						code: codeLine(inv.workspace, preRun?.checkoutsSkipped ?? []),
+						agent: harness?.label ?? who.agent,
+						status: tools,
+					})}
+					status={tools}
+					turns={turns}
+					hint={toolsHint}
+				/>
+			)
+		);
 	const toolsChip: StripChip | null =
 		tools.state === "not-reached"
 			? {
