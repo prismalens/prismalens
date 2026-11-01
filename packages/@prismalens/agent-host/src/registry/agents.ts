@@ -102,7 +102,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		label: "OpenCode",
 		binary: "opencode",
 		// No directory flag: OpenCode 2.x exits on one; the spawn and session/new name the folder (#1013).
-		acpArgs: ({ cwd }) => ["acp", "--cwd", cwd],
+		acpArgs: () => ["acp"],
 		// The user's XDG_CONFIG_HOME and OPENCODE_CONFIG_DIR stay theirs; the run's config loads last, inline (#791, #817).
 		acpEnv: () => ({}),
 		configEnv: { file: "opencode.json", key: "OPENCODE_CONFIG_CONTENT" },
