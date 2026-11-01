@@ -420,4 +420,51 @@ test.describe("Evidence file view resize (#874)", () => {
 			}
 		});
 	});
+
+	test.describe("a phone chat whose tools did not connect (0.5.3 walk W11)", () => {
+		test.use({ hasTouch: true, isMobile: true });
+
+		test("Question details shows the tools status and the trust hint the strip hides", async ({
+			page,
+		}) => {
+			await page.setViewportSize({ width: 390, height: 844 });
+			await hideQueryDevtools(page);
+			await serveInvestigationAs(page, INVESTIGATION_ID, {
+				status: "completed",
+				kind: "chat",
+				harness: "gemini",
+				report: null,
+				workspace,
+			});
+			const disconnected = {
+				kind: "harness_tools",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 5,
+				ts: new Date(1700000005000).toISOString(),
+				server: "prismalens",
+				turn: "first",
+				connected: false,
+				calls: [],
+			} as CanonicalEvent;
+			await serveEventsHistory(page, INVESTIGATION_ID, [
+				...makeTwoReadEvents(),
+				disconnected,
+			]);
+			await page.goto(
+				`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+			);
+			await expect(page.getByTestId("details-warn")).toBeVisible({
+				timeout: 15_000,
+			});
+			await page.getByTestId("details-toggle").tap();
+			await expect(page.getByTestId("run-tools-status")).toHaveText(
+				"Did not reach the model",
+			);
+			await expect(page.getByTestId("run-tools-hint")).toContainText(
+				"trust the runs folder",
+			);
+		});
+	});
 });
