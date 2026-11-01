@@ -2,7 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "@prismalens/contracts";
+import type { useToast } from "@/hooks/use-toast";
 import { formatDayClock } from "./format-time";
+import { getErrorMessage } from "./get-error-message";
 
 type OperatorEvent = Extract<CanonicalEvent, { kind: "operator_message" }>;
 export type RestartVia = NonNullable<
@@ -47,3 +49,12 @@ export function resumedDetail(r: RestartVia): string {
 		? "Resumed by you"
 		: "Resumed after PrismaLens restarted";
 }
+
+/** A refused Resume (409: the run was not interrupted, or is live) says why in the app's error toast (#981). */
+export const resumeFailed =
+	(toast: ReturnType<typeof useToast>["toast"]) => (error: unknown) =>
+		toast({
+			title: "Run not resumed",
+			description: getErrorMessage(error),
+			variant: "destructive",
+		});

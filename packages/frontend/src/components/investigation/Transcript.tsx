@@ -22,7 +22,6 @@ import { MessageResponse } from "@/components/ai/message";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
-import { Button } from "@/components/ui/button";
 import { useSecondClock } from "@/hooks/use-clock";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
@@ -144,7 +143,6 @@ export const Transcript = memo(function Transcript({
 	empty,
 	worked,
 	afterReport,
-	resume,
 }: {
 	items: TranscriptItem[];
 	/** Null on a scheduled check no finding has linked yet (#979). */
@@ -164,8 +162,6 @@ export const Transcript = memo(function Transcript({
 	worked?: WorkedFold | null;
 	/** Drawn right under the report card, outside the fold: the hypotheses card. */
 	afterReport?: ReactNode;
-	/** Resume on an interrupted run's card (#981); absent, the card offers none. */
-	resume?: { onResume: () => void; pending: boolean };
 }) {
 	useRenderProbe("Transcript", { items, steps, worked, report });
 	const groups = useGroupSteps(items, steps);
@@ -218,7 +214,6 @@ export const Transcript = memo(function Transcript({
 										onSeeFlag={steps?.onSeeFlag}
 										fileOf={steps?.fileOf}
 										onOpenFile={steps?.onOpenFile}
-										resume={resume}
 									/>
 								)}
 								{folds && worked && i === brief && (
@@ -293,7 +288,6 @@ const TranscriptRow = memo(function TranscriptRow({
 	reportTitle,
 	reportSummary,
 	ask,
-	resume,
 	...steps
 }: RowSteps & {
 	item: TranscriptItem;
@@ -305,7 +299,6 @@ const TranscriptRow = memo(function TranscriptRow({
 	reportTitle?: string;
 	reportSummary?: string;
 	ask?: AskRecord;
-	resume?: { onResume: () => void; pending: boolean };
 }) {
 	useRenderProbe("TranscriptRow", { item, ask, ...steps });
 	switch (item.kind) {
@@ -486,28 +479,6 @@ const TranscriptRow = memo(function TranscriptRow({
 						>
 							{item.detail}
 						</span>
-						{(resume || item.hint) && (
-							<span className="flex flex-wrap items-center gap-2">
-								{resume && (
-									<Button
-										variant="primary"
-										disabled={resume.pending}
-										onClick={resume.onResume}
-										data-testid="transcript-resume"
-									>
-										Resume
-									</Button>
-								)}
-								{item.hint && (
-									<span
-										className="text-meta text-text-3"
-										data-testid="transcript-end-hint"
-									>
-										{item.hint}
-									</span>
-								)}
-							</span>
-						)}
 					</li>
 				);
 			const failure =

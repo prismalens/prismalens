@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Transcript } from "@/components/investigation/Transcript";
 import { formatClock, formatDayClock } from "@/lib/format-time";
 import { deriveTranscript } from "@/lib/investigation-events";
-import { endReasonStatus, resumeFailed, stripWords } from "./RunPage";
+import { resumeFailed } from "@/lib/restart";
+import { endReasonStatus, stripWords } from "./RunPage";
 import { RunStrip } from "./RunStrip";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -154,33 +155,23 @@ const interrupted = {
 };
 
 describe("an interrupted run's ended card (#981)", () => {
-	it("gives the reason, the stop time and a primary Resume that calls it", async () => {
-		const onResume = vi.fn();
-		await renderTranscript(
-			[],
-			{ resume: { onResume, pending: false } },
-			interrupted,
-		);
+	it("gives the reason and the stop time, and leaves Resume to the strip (#1010)", async () => {
+		await renderTranscript([], {}, interrupted);
 		const card = container.querySelector(
 			'[data-testid="transcript-interrupted"]',
 		);
 		expect(card?.textContent).toContain("Interrupted (PrismaLens restarted)");
 		expect(card?.textContent).toContain(NOT_RESUMED);
-		expect(card?.textContent).toContain(
-			"Resume, or send a message below with any agent.",
-		);
+		expect(card?.textContent).not.toContain("Resume, or send a message below");
 		expect(container.querySelector('[role="separator"]')?.textContent).toBe(
 			`PrismaLens stopped at ${formatDayClock(MONDAY, NOW)}`,
 		);
-		await act(async () => {
-			container
-				.querySelector<HTMLButtonElement>('[data-testid="transcript-resume"]')
-				?.click();
-		});
-		expect(onResume).toHaveBeenCalledTimes(1);
+		expect(
+			container.querySelector('[data-testid="transcript-resume"]'),
+		).toBeNull();
 	});
 
-	it("keeps today's sentence when the run carries no Not resumed reason, and offers no Resume without a handler", async () => {
+	it("keeps today's sentence when the run carries no Not resumed reason", async () => {
 		await renderTranscript(
 			[],
 			{},
@@ -192,9 +183,30 @@ describe("an interrupted run's ended card (#981)", () => {
 		expect(card?.textContent).toContain(
 			"Its last command may or may not have completed.",
 		);
-		expect(
-			container.querySelector('[data-testid="transcript-resume"]'),
-		).toBeNull();
+	});
+
+	it("an interrupted run's page has exactly one Resume (#1010)", async () => {
+		const items = deriveTranscript([], { run: interrupted });
+		await act(async () => {
+			root.render(
+				<>
+					<RunStrip
+						state="failed"
+						label="Codex interrupted"
+						detail="PrismaLens restarted, not resumed"
+						onResume={() => {}}
+						incidentId="inc-1"
+						runs={[]}
+						current={RUN_ID}
+					/>
+					<Transcript items={items} incidentId="inc-1" agent="Codex" />
+				</>,
+			);
+		});
+		const resumes = Array.from(container.querySelectorAll("button")).filter(
+			(b) => b.textContent === "Resume",
+		);
+		expect(resumes).toHaveLength(1);
 	});
 });
 

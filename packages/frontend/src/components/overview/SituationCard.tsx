@@ -24,7 +24,7 @@ import { incidentServices } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
 import {
 	causeCategory,
-	failedStrip,
+	endedRun,
 	type NextActionId,
 	nextStrip,
 	startsRun,
@@ -103,13 +103,12 @@ export function SituationCard({
 
 	const latest = o.latest;
 	const latestState = o.latestRun.state;
-	const failedRun = latest
-		? failedStrip(
-				viewName(runs, latest),
-				latest.error,
-				harnesses.data?.harnesses.find((h) => h.id === latest.harness)?.label,
-			)
-		: null;
+	const ended = endedRun(
+		latest,
+		latestState,
+		latest ? viewName(runs, latest) : "",
+		harnesses.data?.harnesses.find((h) => h.id === latest?.harness)?.label,
+	);
 	const strip = nextStrip({
 		ended: incident.status === "closed",
 		cause: incident.actualCause,
@@ -124,7 +123,8 @@ export function SituationCard({
 					waiting,
 				}
 			: null,
-		failed: latest && latestState === "failed" ? failedRun : null,
+		failed: ended.failed,
+		interrupted: ended.interrupted,
 		reported: !!report,
 		option: o.current,
 		stage: o.stage,

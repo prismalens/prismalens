@@ -6,7 +6,9 @@ import { useRef, useState } from "react";
 import { unreadyReason } from "@/components/agent/AgentPicker";
 import { IncidentHeader } from "@/components/run/IncidentHeader";
 import { useToast } from "@/hooks/use-toast";
+import { useResumeInvestigation } from "@/lib/api/hooks";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { resumeFailed } from "@/lib/restart";
 import { ChangesCard } from "./ChangesCard";
 import type { NextActionId } from "./fixes";
 import { ImpactCard } from "./ImpactCard";
@@ -47,6 +49,7 @@ export function OverviewPage() {
 		);
 	};
 	const box = useBoxChoice(o.record);
+	const resume = useResumeInvestigation();
 	const start = () =>
 		void o.record
 			.investigate({ ...box.sent, stay: true })
@@ -75,6 +78,11 @@ export function OverviewPage() {
 				return;
 			case "resolve":
 				o.record.openClose();
+				return;
+			case "resume":
+				// The run a restart cut off, by its own id; Retry would start a new one (#1010).
+				if (o.latest)
+					resume.mutate({ id: o.latest.id }, { onError: resumeFailed(toast) });
 				return;
 			case "retry":
 			case "investigate":

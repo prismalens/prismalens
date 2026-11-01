@@ -1089,10 +1089,8 @@ export function deriveTranscript(
 			detail: notResumedReason(run.error)
 				? (run.error ?? "")
 				: "Its last command may or may not have completed.",
+			// The strip holds the one Resume (#1010).
 			interrupted: true,
-			hint: run.continuable
-				? "Resume, or send a message below with any agent."
-				: null,
 		};
 		items.splice(
 			standingAt,

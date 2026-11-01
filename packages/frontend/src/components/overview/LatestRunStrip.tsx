@@ -45,8 +45,8 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 	const took =
 		inv && runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
 	const outcome = latest ? runOutcome(latest) : "";
-	const unresumed =
-		inv?.endReason === "interrupted" ? notResumedReason(inv.error) : null;
+	const cut = (inv?.endReason ?? latest?.endReason) === "interrupted";
+	const unresumed = cut ? notResumedReason(inv?.error) : null;
 	const detail = !latest
 		? "No run yet"
 		: waiting
@@ -58,7 +58,9 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 				: state === "failed"
 					? unresumed
 						? `Interrupted, not resumed: ${unresumed}`
-						: failureWords(inv?.error ?? latest.error, who.agent).what
+						: cut
+							? "PrismaLens restarted"
+							: failureWords(inv?.error ?? latest.error, who.agent).what
 					: latest.hasReport
 						? latest.rootCause
 							? "Likely cause found"
@@ -102,7 +104,9 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 						: live
 							? "investigating"
 							: state === "failed"
-								? "failed"
+								? cut
+									? "interrupted"
+									: "failed"
 								: state === "stopped"
 									? "stopped"
 									: "concluded"}
