@@ -99,4 +99,29 @@ describe("useLayoutPrefs (case 2)", () => {
 		expect(hookResult.sidebarRest).toBe("folded");
 		expect(hookResult.sidebarFolded).toBe(true);
 	});
+
+	it("keeps the bottom panel's open state across a reload (#931)", async () => {
+		const first = await import("./use-layout-prefs");
+		let hookResult!: ReturnType<typeof first.useLayoutPrefs>;
+		function TestComponent() {
+			hookResult = first.useLayoutPrefs();
+			return null;
+		}
+		await act(async () => root.render(createElement(TestComponent)));
+		expect(hookResult.bottomPanel).toBe(false);
+		await act(async () => hookResult.setBottomPanel(true));
+		expect(hookResult.bottomPanel).toBe(true);
+
+		await act(async () => root.unmount());
+		root = createRoot(container);
+		vi.resetModules();
+		const second = await import("./use-layout-prefs");
+		let reloaded!: ReturnType<typeof second.useLayoutPrefs>;
+		function Reloaded() {
+			reloaded = second.useLayoutPrefs();
+			return null;
+		}
+		await act(async () => root.render(createElement(Reloaded)));
+		expect(reloaded.bottomPanel).toBe(true);
+	});
 });

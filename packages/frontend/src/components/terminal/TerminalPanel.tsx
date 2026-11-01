@@ -3,7 +3,7 @@
 
 import type { TerminalUnavailableReason } from "@prismalens/contracts";
 import { ChevronDown, ChevronUp, Plus, SquareTerminal, X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { terminalStore, useTerminalState } from "@/lib/terminal/store";
@@ -16,13 +16,16 @@ export const TERMINAL_DOCS_URL = "https://docs.prismalens.io/guides/terminal/";
 /**
  * The terminal panel the layout's bottom slot mounts (#931, #973). The layout
  * owns opening, size and maximising; it passes the handlers, and the panel
- * shows their buttons only when it has them.
+ * shows their buttons only when it has them. Closed, it stays mounted and
+ * starts no shell.
  */
 export function TerminalPanel({
+	open = true,
 	maximised,
 	onToggleMaximise,
 	onHide,
 }: {
+	open?: boolean;
 	maximised?: boolean;
 	onToggleMaximise?: () => void;
 	onHide?: () => void;
@@ -32,13 +35,29 @@ export function TerminalPanel({
 	const active = useTerminalState((s) => s.active);
 	const ready = availability?.available === true;
 
+	const self = useRef<HTMLElement>(null);
+
 	useEffect(() => terminalStore.registerHost(), []);
 	useEffect(() => {
-		if (ready && terminalStore.get().tabs.length === 0) terminalStore.newTab();
-	}, [ready]);
+		if (open && ready && terminalStore.get().tabs.length === 0)
+			terminalStore.newTab();
+	}, [open, ready]);
+	// The layout moves the panel into view after this commit, so focus waits a frame.
+	useEffect(() => {
+		if (!open) return;
+		const frame = requestAnimationFrame(() =>
+			self.current
+				?.querySelector<HTMLElement>(
+					"[data-testid=terminal-draft] input, .xterm-helper-textarea",
+				)
+				?.focus(),
+		);
+		return () => cancelAnimationFrame(frame);
+	}, [open]);
 
 	return (
 		<section
+			ref={self}
 			aria-label="Terminal"
 			className="flex h-full min-h-0 flex-col bg-surface-1"
 			data-testid="terminal-panel"

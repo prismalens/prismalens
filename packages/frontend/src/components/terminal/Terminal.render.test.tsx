@@ -6,8 +6,10 @@ import type { TerminalAvailability } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PanelShell } from "@/components/shell/PanelShell";
 import { terminalStore } from "@/lib/terminal/store";
 import { RunInTerminal } from "./RunInTerminal";
+import { TerminalDock } from "./TerminalDock";
 import { TerminalPanel } from "./TerminalPanel";
 
 let availability: TerminalAvailability | undefined;
@@ -143,5 +145,57 @@ describe("Run in terminal", () => {
 		});
 		expect(send).not.toHaveBeenCalled();
 		expect(q("terminal-draft")).toBeNull();
+	});
+});
+
+describe("The terminal in the layout's bottom panel (#931)", () => {
+	const panel = () => document.querySelector("[data-testid=panel-bottom]");
+	const pressCtrlBacktick = () =>
+		act(() => {
+			window.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "`",
+					code: "Backquote",
+					ctrlKey: true,
+					bubbles: true,
+				}),
+			);
+		});
+	function renderDock() {
+		availability = { available: true };
+		act(() =>
+			root.render(
+				<PanelShell>
+					<RunInTerminal command="pl doctor" />
+					<TerminalDock />
+				</PanelShell>,
+			),
+		);
+		if (panel()) pressCtrlBacktick();
+		expect(panel()).toBeNull();
+	}
+
+	it("shows Run in terminal while the panel is closed; a click opens it and stages the command", () => {
+		renderDock();
+		const run = q("run-in-terminal") as HTMLButtonElement | null;
+		expect(run).not.toBeNull();
+		act(() => run?.click());
+		expect(panel()).not.toBeNull();
+		const input = panel()?.querySelector(
+			"[data-testid=terminal-draft] input",
+		) as HTMLInputElement | null;
+		expect(input?.value).toBe("pl doctor");
+	});
+
+	it("Ctrl+` toggles the panel, and a shell started before a hide is still there after reopening", () => {
+		renderDock();
+		pressCtrlBacktick();
+		const view = panel()?.querySelector("[data-testid^='view-']");
+		expect(view).not.toBeNull();
+		pressCtrlBacktick();
+		expect(panel()).toBeNull();
+		expect(view?.isConnected).toBe(true);
+		pressCtrlBacktick();
+		expect(panel()?.querySelector("[data-testid^='view-']")).toBe(view);
 	});
 });
