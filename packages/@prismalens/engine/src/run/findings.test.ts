@@ -68,6 +68,20 @@ describe("FindingsLedger (#930)", () => {
 		expect(l.addHypothesis({ id: "rh1", statement: "pool", status: "confirmed" }, AT)).toMatchObject({ evidenceIds: ["e1"] });
 	});
 
+	it("numbers on from the highest restored id, so a gap in the history never reissues one (OBJ-006)", () => {
+		const e2 = { id: "e2", observation: "o", source: "s", quote: "q quote", direction: "supports" as const, anchor: null, at: AT };
+		const rh2 = { id: "rh2", statement: "pool", status: "speculative" as const, evidenceIds: ["e2"], at: AT };
+		const l = new FindingsLedger();
+		l.restore({ evidence: [e2], hypotheses: [rh2] });
+		expect(l.addEvidence({ observation: "p", source: "s", quote: "never", direction: "supports" }, null, AT)).toMatchObject({ id: "e3" });
+		expect(l.addHypothesis({ statement: "dns", status: "speculative" }, AT)).toMatchObject({ id: "rh3" });
+		const now = l.snapshot();
+		expect(now.evidence.find((e) => e.id === "e2")).toEqual(e2);
+		expect(now.hypotheses.find((h) => h.id === "rh2")).toEqual(rh2);
+		expect(now.evidence).toHaveLength(2);
+		expect(now.hypotheses).toHaveLength(2);
+	});
+
 	it("with a path, only the caller's file lookup counts; the outputs are not searched", () => {
 		const r = ledger().addEvidence(
 			{ observation: "x", source: "src/db.ts", quote: "ERROR pool exhausted", direction: "supports", path: "src/db.ts" },

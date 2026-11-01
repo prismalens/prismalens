@@ -14,6 +14,7 @@ import {
 	RunWorkspaceSchema,
 } from "@prismalens/contracts/schemas";
 import {
+	type Findings,
 	FindingsLedger,
 	type GatewayCall,
 	type GatewayCallCount,
@@ -66,11 +67,16 @@ interface RunState {
 	listeners: Set<(c: GatewayCall) => void>;
 	ledger: FindingsLedger;
 	found: Set<(f: RecordedFinding) => void>;
+	/** The read of what earlier turns recorded, kept until it succeeds (#930 OBJ-006). */
+	history?: () => Promise<Findings>;
+	loading?: Promise<void>;
 }
 
 /** The largest file a recorded quote is looked up in. */
 const QUOTE_FILE_BYTES = 2_000_000;
 const NOT_LIVE = "This run is not live, so nothing can be recorded on it";
+const NO_HISTORY =
+	"PrismaLens could not read what this run recorded earlier, so nothing was recorded; retry this call";
 
 /**
  * PrismaLens's MCP doorway for the agents it launches (#848, ADR 0007 §5): its own
@@ -130,7 +136,10 @@ export class GatewayService {
 				for (const e of state.ledger.sawOutput(toolCallId, text))
 					this.recorded(state, { type: "evidence", ...e });
 			},
-			restore: (found) => state.ledger.restore(found),
+			restore: async (load) => {
+				state.history = load;
+				await this.loadHistory(state);
+			},
 			onFinding: (listener) => {
 				state.found.add(listener);
 				return () => state.found.delete(listener);
@@ -158,6 +167,29 @@ export class GatewayService {
 		for (const done of state?.waiters ?? []) done(false);
 		state?.listeners.clear();
 		state?.found.clear();
+	}
+
+	/** False while earlier records are unread: numbering on an empty ledger would reissue their ids. */
+	private async loadHistory(state: RunState): Promise<boolean> {
+		const load = state.history;
+		if (!load) return true;
+		state.loading ??= load()
+			.then((found) => {
+				state.ledger.restore(found);
+				state.history = undefined;
+			})
+			.finally(() => {
+				state.loading = undefined;
+			});
+		return state.loading.then(
+			() => true,
+			(e) => {
+				logger.warn(
+					`gateway: could not read the run's recorded findings: ${e}`,
+				);
+				return false;
+			},
+		);
 	}
 
 	private recorded(state: RunState, finding: RecordedFinding): void {
@@ -263,6 +295,7 @@ export class GatewayService {
 			recordEvidence: async (runId, input) => {
 				const state = this.runs.get(runId);
 				if (!state) return { error: NOT_LIVE };
+				if (!(await this.loadHistory(state))) return { error: NO_HISTORY };
 				const file = input.path
 					? await this.fileAnchor(runId, input.path, input.quote)
 					: null;
@@ -277,6 +310,7 @@ export class GatewayService {
 			recordHypothesis: async (runId, input) => {
 				const state = this.runs.get(runId);
 				if (!state) return { error: NOT_LIVE };
+				if (!(await this.loadHistory(state))) return { error: NO_HISTORY };
 				const r = state.ledger.addHypothesis(input, new Date().toISOString());
 				if (!("error" in r)) this.recorded(state, { type: "hypothesis", ...r });
 				return r;

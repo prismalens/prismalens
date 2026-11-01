@@ -970,7 +970,9 @@ async function runFollowUp(
 			});
 		// A new lease starts empty; what earlier turns recorded is in the run's events (#930).
 		if (gateway?.restore)
-			gateway.restore(recordedFindings(await ports.events(id).catch(() => [])));
+			await gateway.restore(async () =>
+				recordedFindings(await ports.events(id)),
+			);
 		const customModel = pick
 			? !!pick.customModel
 			: modelSource === "operator" &&

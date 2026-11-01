@@ -37,8 +37,11 @@ export interface GatewayEntry {
 	onFinding?(listener: (f: RecordedFinding) => void): () => void;
 	/** What the agent recorded during this lease, quotes resolved again. */
 	findings?(): Findings;
-	/** Seeds the lease with what earlier turns of the run recorded. */
-	restore?(found: Findings): void;
+	/**
+	 * Seeds the lease with what earlier turns recorded. Until `load` succeeds, recording
+	 * is refused and retries it. Settles after the first attempt.
+	 */
+	restore?(load: () => Promise<Findings>): Promise<void>;
 }
 
 export interface GatewayCall {

@@ -4,7 +4,11 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RecordedFinding } from "@prismalens/contracts/schemas";
+import {
+	type CanonicalEvent,
+	type RecordedFinding,
+	recordedFindings,
+} from "@prismalens/contracts/schemas";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import runInvestigationJob from "../../infrastructure/dispatch/investigation-run.js";
 import type { RunPorts } from "../../infrastructure/dispatch/run-ports.js";
@@ -560,12 +564,37 @@ describe("recording evidence and hypotheses (#930)", () => {
 				{ id: "rh1", statement: "pool", status: "speculative" as const, evidenceIds: [], at: "2026-10-28T10:00:00.000Z" },
 			],
 		};
-		first?.restore?.(earlier);
+		await first?.restore?.(async () => earlier);
 		g.revoke(RUN_A);
 		const next = await g.lease(RUN_A, NAME);
 		expect(next?.findings?.()).toEqual({ evidence: [], hypotheses: [] });
-		next?.restore?.(earlier);
+		await next?.restore?.(async () => earlier);
 		expect(next?.findings?.().hypotheses.map((h) => h.id)).toEqual(["rh1"]);
+	});
+
+	it("refuses to record while the run's history could not be read, and records once a retry reads it (OBJ-006)", async () => {
+		const { entry, found, call } = await live();
+		const e1: RecordedFinding = { type: "evidence", id: "e1", observation: "pool full", source: "logs", quote: "pool exhausted", direction: "supports", anchor: null, at: "2026-10-28T10:00:00.000Z" };
+		const stored: CanonicalEvent[] = [
+			{ kind: "finding_recorded", runId: RUN_A, branchId: "main", path: [], seq: 1, ts: "2026-10-28T10:00:00.000Z", finding: e1 },
+		];
+		let readable = false;
+		await entry.restore?.(async () => {
+			if (!readable) throw new Error("db busy");
+			return recordedFindings(stored);
+		});
+		const refused = await call("evidence_record", { observation: "dns", source: "dig", quote: "SERVFAIL here" });
+		expect(refused.isError).toBe(true);
+		expect(refused.text).toMatch(/retry/i);
+		const hyp = await call("hypothesis_record", { statement: "dns", status: "speculative" });
+		expect(hyp.isError).toBe(true);
+		expect(found).toEqual([]);
+		expect(entry.findings?.()).toEqual({ evidence: [], hypotheses: [] });
+		expect(recordedFindings(stored).evidence).toEqual([expect.objectContaining({ id: "e1", observation: "pool full" })]);
+		readable = true;
+		const ok = await call("evidence_record", { observation: "dns", source: "dig", quote: "SERVFAIL here" });
+		expect(ok.value).toMatchObject({ id: "e2" });
+		expect(entry.findings?.().evidence.map((e) => e.id)).toEqual(["e1", "e2"]);
 	});
 
 	it("resolves a quote in a workspace file to its line, relative or absolute", async () => {
