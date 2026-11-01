@@ -48,6 +48,7 @@ import {
 	type RunWorkspace,
 	type RunWorkspaceRepo,
 	RunWorkspaceSchema,
+	recordedFindings,
 	ServiceInvestigationMetadataSchema,
 	serviceCheckContext,
 	type TurnOutcome,
@@ -967,6 +968,11 @@ async function runFollowUp(
 				);
 				return null;
 			});
+		// A new lease starts empty; what earlier turns recorded is in the run's events (#930).
+		if (gateway?.restore)
+			await gateway.restore(async () =>
+				recordedFindings(await ports.events(id)),
+			);
 		const customModel = pick
 			? !!pick.customModel
 			: modelSource === "operator" &&

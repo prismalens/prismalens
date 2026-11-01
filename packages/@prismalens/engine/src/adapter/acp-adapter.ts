@@ -38,6 +38,7 @@ import type {
 	InvestigationReport,
 	OperatorMessageMode,
 	PermissionAskOutcome,
+	RecordedFinding,
 	ToolCategory,
 } from "@prismalens/contracts/schemas";
 
@@ -238,6 +239,11 @@ export class AcpAdapter {
 			at,
 			turn,
 		};
+	}
+
+	/** Evidence or a hypothesis the agent recorded through PrismaLens's tool (#930). */
+	findingRecorded(finding: RecordedFinding): CanonicalEvent {
+		return { kind: "finding_recorded", ...this.base(), finding };
 	}
 
 	/** The turn's summary of PrismaLens's own tools: connected, and each tool called (#848). */
