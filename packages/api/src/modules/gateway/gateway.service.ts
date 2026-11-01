@@ -626,7 +626,8 @@ export class GatewayService {
 				incident: { select: { id: true, serviceId: true } },
 			},
 		});
-		if (!row) return null;
+		// A scheduled check's run has no incident (#984), so no incident makes it readable.
+		if (!row?.incident) return null;
 		// Readable on this run's incident, or on another incident of one of its services.
 		if (row.incident.id !== own.id) {
 			const mine = await this.serviceIdsOf(own.id, own.serviceId);
