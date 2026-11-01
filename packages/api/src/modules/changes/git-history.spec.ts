@@ -117,14 +117,13 @@ describe("parseHistory", () => {
 });
 
 describe("readHistory", () => {
-	it("keeps a non-ASCII path, and one that starts with a newline, as written", async () => {
+	it("keeps a non-ASCII path as written", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "git-history-"));
 		try {
 			const git = (...a: string[]) =>
 				execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir });
 			git("init", "-q");
-			writeFileSync(join(dir, "caf\u00e9.py"), "x");
-			writeFileSync(join(dir, "\nlead"), "y");
+			writeFileSync(join(dir, "café.py"), "x");
 			git("add", ".");
 			git("commit", "-q", "-m", "add");
 			const out = await readHistory({
@@ -134,9 +133,35 @@ describe("readHistory", () => {
 				until: new Date(Date.now() + 60_000),
 				max: 5,
 			});
-			expect(out.map((c) => c.files.sort())).toEqual([["\nlead", "caf\u00e9.py"].sort()]);
+			expect(out.map((c) => c.files.sort())).toEqual([["café.py"]]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	// #937: NTFS forbids newline characters in filenames on Windows.
+	it.skipIf(process.platform === "win32")(
+		"keeps a path starting with a newline as written",
+		async () => {
+			const dir = mkdtempSync(join(tmpdir(), "git-history-"));
+			try {
+				const git = (...a: string[]) =>
+					execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir });
+				git("init", "-q");
+				writeFileSync(join(dir, "\nlead"), "y");
+				git("add", ".");
+				git("commit", "-q", "-m", "add");
+				const out = await readHistory({
+					gitDir: dir,
+					ref: "HEAD",
+					since: new Date(Date.now() - 3_600_000),
+					until: new Date(Date.now() + 60_000),
+					max: 5,
+				});
+				expect(out.map((c) => c.files.sort())).toEqual([["\nlead"]]);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		},
+	);
 });

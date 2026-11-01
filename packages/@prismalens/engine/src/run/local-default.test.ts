@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, write
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { localDefault, opencodeUserConfig } from "./local-default.js";
+import { localDefault, opencodeUserConfig, shown } from "./local-default.js";
 
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `pl-ld-${name}-`)));
 
@@ -321,8 +321,8 @@ approval_policy = "on-request"
 			expect(localDefault("gemini", { HOME: home }, { geminiSystemFile: null, onDebug })).toEqual({ permission: null });
 			expect(localDefault("opencode", { HOME: home }, { onDebug })).toEqual({ permission: null });
 
-			expect(debugMsgs.some((m) => m.includes(".codex/config.toml"))).toBe(true);
-			expect(debugMsgs.some((m) => m.includes(".gemini/settings.json"))).toBe(true);
+			expect(debugMsgs.some((m) => m.includes(join(".codex", "config.toml")))).toBe(true);
+			expect(debugMsgs.some((m) => m.includes(join(".gemini", "settings.json")))).toBe(true);
 		});
 
 		it("returns null for deepagents, and for OpenCode whose permission default is not read", () => {
@@ -352,4 +352,15 @@ describe("opencodeUserConfig (#809)", () => {
 		write(join(home, ".config", "opencode", "opencode.json"), "{ bad json ");
 		expect(opencodeUserConfig({ HOME: home })).toEqual({});
 	});
+});
+
+describe("shown", () => {
+	it.skipIf(process.platform !== "win32")(
+		"gives '~/.claude/settings.json' on win32",
+		() => {
+			expect(
+				shown("c:\\users\\u\\.claude\\settings.json", "C:\\Users\\u"),
+			).toBe("~/.claude/settings.json");
+		},
+	);
 });

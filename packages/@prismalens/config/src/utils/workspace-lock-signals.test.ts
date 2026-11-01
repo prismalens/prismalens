@@ -15,7 +15,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { WORKSPACE_LOCK_FILE } from "./workspace-lock.js";
 
@@ -27,7 +27,9 @@ const PACKAGE_ROOT = resolve(here, "..", "..");
  * cannot strip this package's TypeScript (it has runtime enums), and the built
  * artifact is the thing that actually ships, so it is the better subject.
  */
-const ENTRY = join(PACKAGE_ROOT, "dist", "utils", "workspace-lock.js");
+const ENTRY = pathToFileURL(
+	join(PACKAGE_ROOT, "dist", "utils", "workspace-lock.js"),
+).href;
 
 const isWindows = process.platform === "win32";
 
@@ -115,7 +117,8 @@ describe("releasing the workspace lock on an ordinary stop", () => {
 		30_000,
 	);
 
-	it(
+	// #937: Windows has no catchable signals; child.kill is TerminateProcess.
+	it.skipIf(process.platform === "win32")(
 		"SIGINT releases the lock",
 		async () => {
 			const holder = await startHolder();
@@ -129,7 +132,8 @@ describe("releasing the workspace lock on an ordinary stop", () => {
 		30_000,
 	);
 
-	it(
+	// #937: Windows has no catchable signals; child.kill is TerminateProcess.
+	it.skipIf(process.platform === "win32")(
 		"a second signal forces an exit when the shutdown hangs",
 		async () => {
 			const holder = await startHolder(["--hang"]);

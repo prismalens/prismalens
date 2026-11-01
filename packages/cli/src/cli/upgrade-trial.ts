@@ -53,6 +53,16 @@ export interface Outcome {
 }
 
 function fsyncPath(path: string): void {
+	if (process.platform === "win32") {
+		if (statSync(path).isDirectory()) return;
+		const fd = openSync(path, "r+");
+		try {
+			fsyncSync(fd);
+		} finally {
+			closeSync(fd);
+		}
+		return;
+	}
 	const fd = openSync(path, "r");
 	try {
 		fsyncSync(fd);
