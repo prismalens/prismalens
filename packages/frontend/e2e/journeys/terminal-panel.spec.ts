@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "../steps/fixtures";
+import {
+	fireIncident,
+	LIVE,
+	openWork,
+	visit,
+	waitForRun,
+} from "../steps/product";
 import { hideQueryDevtools } from "./live-stream-fixtures";
 
 /**
@@ -91,6 +99,8 @@ test.describe("Terminal panel (#931)", () => {
 			.getByTestId("terminal-draft")
 			.locator("input");
 		await expect(draft).toHaveValue("npx -y @augmentcode/auggie@0.36.0 --acp");
+		await expect(page.getByTestId("add-agent-dialog")).toHaveCount(0);
+		await expect(draft).toBeFocused();
 	});
 
 	test("390 px: a command has Copy and no Run in terminal", async ({
@@ -104,5 +114,47 @@ test.describe("Terminal panel (#931)", () => {
 		await expect(chip.getByRole("button", { name: /copy/i })).toBeVisible();
 		await expect(chip.getByTestId("run-in-terminal")).toHaveCount(0);
 		await expect(page.getByTestId("panel-bottom")).toHaveCount(0);
+	});
+
+	test("a run's step command has Run in terminal in the expanded step", async ({
+		page,
+		agents,
+		alertmanager,
+		deliverWebhook,
+		unique,
+	}) => {
+		test.setTimeout(90_000);
+		agents.install(["claude-agent-acp"], "claude");
+		await page.request.post("/api/settings/harness/check", {
+			data: { id: "claude-code" },
+		});
+		await page.request.patch("/api/settings/harness", {
+			data: { harness: "claude-code" },
+		});
+		const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+			name: unique("TerminalStepCommand"),
+			service: LIVE,
+			session: "success",
+		});
+		await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await hideQueryDevtools(page);
+		await asHost(page);
+		await visit(page, `/incidents/${inc.id}/conversation`);
+		await openWork(page);
+		const step = page.getByTestId("step").first();
+		await expect(step.getByTestId("run-in-terminal")).toHaveCount(0);
+		await step.getByTestId("step-toggle").click();
+		const chip = step.getByTestId("step-command");
+		await expect(chip.getByRole("button", { name: /copy/i })).toBeVisible();
+		await chip.getByTestId("run-in-terminal").click();
+
+		const draft = page
+			.getByTestId("panel-bottom")
+			.getByTestId("terminal-draft")
+			.locator("input");
+		await expect(draft).toHaveValue("git log --oneline -5");
+		await expect(draft).toBeFocused();
 	});
 });

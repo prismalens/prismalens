@@ -43,17 +43,29 @@ export function TerminalPanel({
 			terminalStore.newTab();
 	}, [open, ready]);
 	// The layout moves the panel into view after this commit, so focus waits a frame.
+	const focusLine = () =>
+		requestAnimationFrame(() => {
+			const panel = self.current;
+			(
+				panel?.querySelector<HTMLElement>(
+					"[data-testid=terminal-draft] input",
+				) ?? panel?.querySelector<HTMLElement>(".xterm-helper-textarea")
+			)?.focus();
+		});
 	useEffect(() => {
 		if (!open) return;
-		const frame = requestAnimationFrame(() =>
-			self.current
-				?.querySelector<HTMLElement>(
-					"[data-testid=terminal-draft] input, .xterm-helper-textarea",
-				)
-				?.focus(),
-		);
+		const frame = focusLine();
 		return () => cancelAnimationFrame(frame);
 	}, [open]);
+	// A command staged into a panel already open moves focus to its line too.
+	useEffect(() => {
+		const off = terminalStore.onOpenRequest(() => {
+			focusLine();
+		});
+		return () => {
+			off();
+		};
+	}, []);
 
 	return (
 		<section
@@ -195,7 +207,7 @@ function TabFooter({ tabId }: { tabId: number }) {
 				htmlFor={inputId}
 				className="whitespace-nowrap text-body text-text-2"
 			>
-				Run in {tab.title}
+				Run in {tab.title.toLowerCase()}
 			</label>
 			<input
 				id={inputId}

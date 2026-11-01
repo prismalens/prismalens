@@ -112,6 +112,9 @@ describe("Run in terminal", () => {
 			"input",
 		) as HTMLInputElement;
 		expect(input.value).toBe("pl doctor");
+		expect(q("terminal-draft")?.querySelector("label")?.textContent).toBe(
+			"Run in terminal",
+		);
 		expect(send).not.toHaveBeenCalled();
 		act(() => {
 			input.dispatchEvent(

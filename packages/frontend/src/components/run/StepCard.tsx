@@ -3,6 +3,7 @@
 
 import { ChevronDown, FileText, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CommandChip } from "@/components/ui/command-chip";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
 import { type AskRecord, askEnd, refusedVerb } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
@@ -96,9 +97,18 @@ export function StepCard({
 						className="flex flex-col bg-[linear-gradient(var(--hairline),var(--hairline))] bg-[length:100%_1px] bg-no-repeat"
 						data-testid="step-body"
 					>
-						<pre className="m-0 px-3 pt-2 pb-1 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
-							$ {step.command}
-						</pre>
+						{step.shell ? (
+							<CommandChip
+								command={step.command}
+								wrap
+								className="mx-3 mt-2 mb-1"
+								testId="step-command"
+							/>
+						) : (
+							<pre className="m-0 px-3 pt-2 pb-1 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
+								$ {step.command}
+							</pre>
+						)}
 						{fileSha && onOpenFile && (
 							<button
 								type="button"
