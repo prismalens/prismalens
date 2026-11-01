@@ -131,7 +131,7 @@ export function ScheduleDialog({
 		setServiceId(seed?.serviceId ?? "");
 		setRunbook(seed?.runbook ?? "");
 		setBrief(seed?.brief ?? "");
-		setWhen(seed ? formOf(seed.recurrence) : defaultWhen(HOST_ZONE));
+		setWhen(seed ? formOf(seed.recurrence, HOST_ZONE) : defaultWhen(HOST_ZONE));
 		setHarness(seed?.harness ?? agents.effective?.id ?? "");
 		setModel(seed?.model ?? agents.model ?? "");
 		setMissedPolicy(seed?.missedPolicy ?? "run_once");

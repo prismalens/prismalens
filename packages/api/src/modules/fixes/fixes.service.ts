@@ -64,7 +64,7 @@ export class FixesService {
 			investigationId: run.id,
 			flagged: run.flagged,
 			options: run.steps.map((step, index) =>
-				optionOf(step, index, rows, events),
+				optionOf(step, index, rows, events, run.incidentId !== null),
 			),
 		};
 	}
@@ -248,7 +248,7 @@ export class FixesService {
 			this.rows(run),
 			this.events(run),
 		]);
-		return optionOf(run.steps[index] as NextStep, index, rows, events);
+		return optionOf(run.steps[index] as NextStep, index, rows, events, true);
 	}
 }
 
@@ -257,6 +257,7 @@ export function optionOf(
 	index: number,
 	rows: Map<string, { status: string; implementedAt: Date | null }>,
 	events: FixEvent[],
+	linked: boolean,
 ): FixOption {
 	const row = step.id ? rows.get(step.id) : undefined;
 	const appliedAt =
@@ -279,6 +280,7 @@ export function optionOf(
 		facts: step.facts ?? [],
 		priority: step.priority ?? null,
 		readOnly: !row,
+		unlinked: !linked,
 		appliedAt: appliedAt?.toISOString() ?? null,
 		lastCheck:
 			last && verdict.success

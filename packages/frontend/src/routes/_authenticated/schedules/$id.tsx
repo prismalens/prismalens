@@ -24,6 +24,7 @@ import {
 } from "@/components/schedules/schedule-time";
 import { TickDot } from "@/components/schedules/TickDot";
 import { tickLine } from "@/components/schedules/tick-copy";
+import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,6 @@ import {
 	useRunScheduleNow,
 	useSchedule,
 } from "@/lib/api/hooks";
-import { client } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +59,13 @@ function ScheduleHistoryPage() {
 	const [editing, setEditing] = useState(false);
 	const [duplicating, setDuplicating] = useState(false);
 	const [deleting, setDeleting] = useState(false);
-	const older = useOlderTicks(id);
+	const older = useOlderTicks(id, (e) =>
+		toast({
+			title: "Could not load older runs",
+			description: getErrorMessage(e),
+			variant: "destructive",
+		}),
+	);
 	usePageTitle(data?.schedule.name ?? "Schedule");
 
 	if (isLoading) return <Loading />;
@@ -379,29 +385,4 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 			</span>
 		</div>
 	);
-}
-
-/** Pages past the first 30 runs on demand; the first page stays the live query (adversary OBJ-018). */
-function useOlderTicks(id: string) {
-	const [ticks, setTicks] = useState<ScheduleTick[]>([]);
-	const [cursor, setCursor] = useState<string | null>(null);
-	const [loading, setLoading] = useState(false);
-	const more = async (from: string | null) => {
-		if (!from) return;
-		setLoading(true);
-		try {
-			const page = await client.schedules.get({ id, cursor: from, limit: 30 });
-			setTicks((t) => [...t, ...page.ticks]);
-			setCursor(page.nextCursor ?? "");
-		} finally {
-			setLoading(false);
-		}
-	};
-	return {
-		ticks,
-		cursor: cursor === "" ? null : cursor,
-		loading,
-		more,
-		done: cursor === "",
-	};
 }

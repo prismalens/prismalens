@@ -321,6 +321,7 @@ async function rewrite(
 					facts: n.facts ?? [],
 					priority: n.priority ?? null,
 					readOnly: false,
+					unlinked: false,
 					appliedAt: applied.get(n.id as string) ?? null,
 					lastCheck: null,
 					canUndo: applied.has(n.id as string),

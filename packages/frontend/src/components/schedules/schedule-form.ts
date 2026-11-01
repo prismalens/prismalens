@@ -72,14 +72,19 @@ export function defaultWhen(timezone: string): WhenForm {
 }
 
 /** A stored recurrence back into the preset it came from; anything else opens as Cron. */
-export function formOf(r: RecurrenceInput): WhenForm {
+export function formOf(r: RecurrenceInput, hostZone = "UTC"): WhenForm {
 	if (r.type === "interval") {
-		const anchor = new Date(r.anchorAt);
+		const startAt = new Intl.DateTimeFormat("en-GB", {
+			timeZone: hostZone,
+			hour: "2-digit",
+			minute: "2-digit",
+			hourCycle: "h23",
+		}).format(new Date(r.anchorAt));
 		return {
-			...defaultWhen("UTC"),
+			...defaultWhen(hostZone),
 			preset: "hours",
 			everyHours: Math.max(1, Math.round(r.everyMinutes / 60)),
-			startAt: `${String(anchor.getUTCHours()).padStart(2, "0")}:${String(anchor.getUTCMinutes()).padStart(2, "0")}`,
+			startAt,
 		};
 	}
 	const base = { ...defaultWhen(r.timezone), cron: r.expr };
