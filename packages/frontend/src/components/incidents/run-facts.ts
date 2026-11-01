@@ -88,14 +88,30 @@ type Timed = {
 	updatedAt?: string | Date;
 };
 
-/** Seconds a run has taken: ticking while live, frozen once it ended. */
-export function runElapsed(run: Timed, now: number | null): number {
+/**
+ * Seconds a run has taken: ticking while live, frozen once it ended. The
+ * time PrismaLens was off between a restart's stop and resume is left out (#1010 N5).
+ */
+export function runElapsed(
+	run: Timed,
+	now: number | null,
+	events: ReadonlyArray<CanonicalEvent> = [],
+): number {
 	const start = new Date(run.startedAt ?? run.createdAt).getTime();
 	const ended =
 		run.completedAt ??
 		(isWorkflowLive(run.status) ? null : (run.updatedAt ?? null));
 	const end = ended ? new Date(ended).getTime() : (now ?? start);
-	return Math.max(0, Math.round((end - start) / 1000));
+	let off = 0;
+	for (const e of events) {
+		const r = e.kind === "operator_message" ? e.via?.restart : undefined;
+		if (r)
+			off += Math.max(
+				0,
+				new Date(r.resumedAt).getTime() - new Date(r.stoppedAt).getTime(),
+			);
+	}
+	return Math.max(0, Math.round((end - start - off) / 1000));
 }
 
 /**

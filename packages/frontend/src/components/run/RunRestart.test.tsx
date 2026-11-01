@@ -313,3 +313,77 @@ describe("the strip's words after a restart (#981)", () => {
 		expect(words(run, "failed", null).detail).toMatch(/^PrismaLens restarted/);
 	});
 });
+
+describe("a resumed run's strip leaves out the time PrismaLens was off (#1010 N5)", () => {
+	it("reads the seconds it worked, not the restart gap", async () => {
+		const done = {
+			id: RUN_ID,
+			kind: "investigation",
+			status: "completed",
+			error: null,
+			report: null,
+			startedAt: new Date("2026-10-28T08:50:00").toISOString(),
+			completedAt: new Date("2026-10-28T09:16:00").toISOString(),
+			createdAt: new Date("2026-10-28T08:50:00").toISOString(),
+			updatedAt: new Date("2026-10-28T09:16:00").toISOString(),
+		} as unknown as InvestigationWithRelations;
+		const w = stripWords(
+			done,
+			"done",
+			null,
+			"Run 1",
+			NOW,
+			"Codex",
+			null,
+			null,
+			[restartMessage("auto")],
+		);
+		await act(async () => {
+			root.render(
+				<RunStrip
+					state="done"
+					label={w.label}
+					detail={w.detail}
+					incidentId="inc-1"
+					runs={[]}
+					current={RUN_ID}
+				/>,
+			);
+		});
+		const detail = container.querySelector('[data-testid="run-strip-detail"]');
+		expect(detail?.textContent).toContain("took 4m 00s");
+	});
+});
+
+describe("an interrupted run's strip at phone width (#1010 N6)", () => {
+	it("reads Run 1 interrupted with Resume, and the reason opens from the label", async () => {
+		await act(async () => {
+			root.render(
+				<RunStrip
+					state="failed"
+					label="Run 1 interrupted"
+					detail="PrismaLens restarted, not resumed"
+					reason={NOT_RESUMED}
+					onResume={() => {}}
+					incidentId="inc-1"
+					runs={[]}
+					current={RUN_ID}
+				/>,
+			);
+		});
+		const label = container.querySelector<HTMLElement>(
+			'[data-testid="run-strip-label"]',
+		);
+		expect(label?.textContent).toBe("Run 1 interrupted");
+		expect(
+			container.querySelector('[data-testid="run-strip-detail"]')?.className,
+		).toContain("max-md:hidden");
+		expect(
+			container.querySelector('[data-testid="run-strip-resume"]')?.textContent,
+		).toBe("Resume");
+		await act(async () => label?.click());
+		expect(
+			document.querySelector('[data-testid="run-strip-reason"]')?.textContent,
+		).toBe(NOT_RESUMED);
+	});
+});
