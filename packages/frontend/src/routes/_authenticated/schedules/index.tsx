@@ -15,7 +15,10 @@ import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useSchedules, useSetScheduleEnabled } from "@/lib/api/hooks";
+import {
+	useSchedules,
+	useSetScheduleEnabled,
+} from "@/lib/api/hooks/use-schedules-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 

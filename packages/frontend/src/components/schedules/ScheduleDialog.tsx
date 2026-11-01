@@ -24,12 +24,12 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useServices } from "@/lib/api/hooks";
 import {
 	useCreateSchedule,
 	useSchedulePreview,
-	useServices,
 	useUpdateSchedule,
-} from "@/lib/api/hooks";
+} from "@/lib/api/hooks/use-schedules-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 import {

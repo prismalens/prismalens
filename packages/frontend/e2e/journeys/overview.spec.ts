@@ -430,7 +430,6 @@ async function rewrite(page: Page, runId: string, o: RewriteOptions = {}) {
 					facts: n.facts ?? [],
 					priority: n.priority ?? null,
 					readOnly: !!n.readOnly,
-					unlinked: false,
 					appliedAt: applied.get(n.id as string) ?? null,
 					lastCheck: null,
 					canUndo: applied.has(n.id as string),
