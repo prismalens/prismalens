@@ -117,6 +117,7 @@ describe("FixesService", () => {
 			appliedAt: null,
 			lastCheck: null,
 			canUndo: false,
+			unlinked: false,
 		});
 	});
 
@@ -197,11 +198,11 @@ describe("FixesService", () => {
 			return { investigationId: inv.id, stepId };
 		}
 
-		it("lists its options read-only of any timeline", async () => {
+		it("lists its options read-only of any timeline, and says no incident can take an apply", async () => {
 			const { investigationId } = await unlinked();
 			const out = await fixes.forInvestigation(investigationId);
 			expect(out.options).toHaveLength(1);
-			expect(out.options[0]).toMatchObject({ appliedAt: null, lastCheck: null });
+			expect(out.options[0]).toMatchObject({ appliedAt: null, lastCheck: null, readOnly: false, unlinked: true });
 		});
 
 		it.each(["apply", "undo", "check"] as const)("%s answers CONFLICT: there is no incident to record it on", async (verb) => {

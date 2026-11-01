@@ -53,4 +53,11 @@ describe("recurrenceOf (#979)", () => {
 			formOf({ type: "interval", everyMinutes: 360, anchorAt: "2026-10-30T00:00:00.000Z" }),
 		).toMatchObject({ preset: "hours", everyHours: 6 });
 	});
+
+	it("shows an interval's start in the host zone it was entered in, and round-trips", () => {
+		const stored = { type: "interval" as const, everyMinutes: 360, anchorAt: "2026-10-30T03:30:00.000Z" };
+		const f = formOf(stored, "Asia/Kolkata");
+		expect(f).toMatchObject({ preset: "hours", startAt: "09:00", timezone: "Asia/Kolkata" });
+		expect(recurrenceOf(f, new Date("2026-10-30T12:40:00Z"))).toEqual(stored);
+	});
 });
