@@ -449,6 +449,12 @@ importers:
       class-validator:
         specifier: ^0.15.1
         version: 0.15.1
+      croner:
+        specifier: ^11.0.0
+        version: 11.0.0
+      cronstrue:
+        specifier: ^3.38.0
+        version: 3.38.0
       express:
         specifier: ^5.3.0
         version: 5.3.0
@@ -4591,6 +4597,14 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  croner@11.0.0:
+    resolution: {integrity: sha512-T17ADjdttrVToyzLpLq9Xb9xzcMwpQ/M3Qs9szhh0MVNTbv6NWQ9OFYa2qlzPYXFMn+uoDlnW1IpIv6cAvFtyA==}
+    engines: {node: '>=18.0'}
+
+  cronstrue@3.38.0:
+    resolution: {integrity: sha512-i10xR7fS4AH9LKwmt3gYdt/5lSsB2qFGSNfC8aeyYybxo48DCMz+nUrSVI4kUj8yo+SgTbMJqp/BWEem9avlcA==}
+    hasBin: true
 
   cross-dirname@0.1.0:
     resolution: {integrity: sha512-+R08/oI0nl3vfPcqftZRpytksBXDzOUveBq/NBVx0sUp1axwzPQrKinNx5yd5sxPu8j1wIy8AfnVQ+5eFdha6Q==}
@@ -11917,6 +11931,10 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
     optional: true
+
+  croner@11.0.0: {}
+
+  cronstrue@3.38.0: {}
 
   cross-dirname@0.1.0:
     optional: true
