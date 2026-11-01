@@ -10,7 +10,12 @@ import {
 	modelSubstituted,
 	type RunState,
 } from "@prismalens/contracts";
-import { useLocation, useSearch } from "@tanstack/react-router";
+import {
+	useLocation,
+	useNavigate,
+	useRouter,
+	useSearch,
+} from "@tanstack/react-router";
 import { PanelRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
@@ -58,6 +63,7 @@ import {
 } from "@/lib/investigation-events";
 import { useRenderProbe } from "@/lib/render-probe";
 import { askTitle } from "@/lib/run-asks";
+import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
 import {
 	type CiteTarget,
@@ -179,7 +185,7 @@ export function RunPage() {
 
 	const { rightPanel, setRightPanel } = useLayoutPrefs();
 	const [sheetOpen, setSheetOpen] = useState(false);
-	const [tab, setTab] = useState<DetailsTab>("summary");
+	const [remembered, setRemembered] = useState<DetailsTab>("summary");
 	const [open, setOpen] = useState<Set<number>>(() => new Set());
 	const [highlight, setHighlight] = useState<number | null>(null);
 	const toggleRef = useRef<HTMLButtonElement>(null);
@@ -204,13 +210,51 @@ export function RunPage() {
 	);
 	const focusLater = useFocusLater();
 	const workspace = inv?.workspace;
-	// The file open in Evidence, and the control (and tab) that opened it, which Back returns to.
-	const [viewing, setViewing] = useState<FileAt | null>(null);
+	// The URL holds the open file and the tab (#973 OBJ-008): Back, Forward and reload show what it names.
+	const navigate = useNavigate();
+	const router = useRouter();
+	const viewing = useMemo(
+		() =>
+			search.file
+				? (fileFromParam(search.file, workspace) ??
+					citedFile(search.file, workspace))
+				: null,
+		[search.file, workspace],
+	);
+	const tab: DetailsTab = search.panel ?? (viewing ? "files" : remembered);
+	const setSearch = useCallback(
+		(
+			patch: { file?: string | undefined; panel?: DetailsTab | undefined },
+			replace: boolean,
+		) =>
+			navigate({
+				to: ".",
+				search: (prev: Record<string, unknown>) => ({ ...prev, ...patch }),
+				replace,
+				hash: (h: string | undefined) => h ?? "",
+			} as never),
+		[navigate],
+	);
+	const setTab = useCallback(
+		(t: DetailsTab) => {
+			setRemembered(t);
+			setSearch({ panel: t }, true);
+		},
+		[setSearch],
+	);
+	// Per file opened: the control that opened it, which Back returns focus to; kept, so Forward then Back finds it again.
+	const origins = useRef(
+		new Map<string, { id: string; tab: DetailsTab; inPanel: boolean }>(),
+	);
 	const origin = useRef<{
 		id: string;
 		tab: DetailsTab;
 		inPanel: boolean;
 	} | null>(null);
+	origin.current = search.file
+		? (origins.current.get(search.file) ?? origin.current)
+		: origin.current;
+	const pushed = useRef<string | null>(null);
 	const tabRef = useRef<DetailsTab>(tab);
 	tabRef.current = tab;
 	// The sheet's "Open the drawing" link, while the drawing it opened is up; Back returns there.
@@ -225,23 +269,67 @@ export function RunPage() {
 			const inPanel = !!document
 				.getElementById("run-details")
 				?.contains(document.getElementById(from));
+			const param = fileParam(f);
 			origin.current = { id: from, tab: tabRef.current, inPanel };
-			setViewing(f);
-			setTab("evidence");
+			origins.current.set(param, origin.current);
+			// The entry it leaves keeps its tab, so Back lands where the reader was; none for a phone sheet that closes on Back.
+			setSearch(
+				{ panel: phone && !inPanel ? undefined : tabRef.current },
+				true,
+			);
+			pushed.current = param;
+			setSearch({ file: param, panel: "files" }, false);
 			setPanel(true);
 			focusLater("evidence-file-back");
 		},
-		[focusLater, setPanel],
+		[focusLater, setPanel, setSearch, phone],
 	);
 	const closeFile = useCallback(() => {
-		setViewing(null);
-		const from = origin.current;
+		if (pushed.current && pushed.current === search.file) {
+			pushed.current = null;
+			router.history.back();
+		} else {
+			const from = origin.current;
+			const lifts = phone && from && !from.inPanel;
+			setSearch(
+				{ file: undefined, panel: lifts ? undefined : from?.tab },
+				true,
+			);
+		}
+	}, [router, search.file, setSearch, phone]);
+	// A closed panel names no tab or file, so a reload or a shared link opens it as the reader left it.
+	const hidePanel = useCallback(() => {
+		// Its focus goes to the panel's toggle, not to what opened the file.
+		if (search.file) origins.current.delete(search.file);
+		setPanel(false);
+		if (search.panel || search.file)
+			setSearch({ panel: undefined, file: undefined }, true);
+	}, [setPanel, setSearch, search.panel, search.file]);
+	// However the file closed (its Back, or the browser's), focus returns to what opened it (#975 OBJ-008).
+	const lastFile = useRef(search.file);
+	useEffect(() => {
+		const closed = lastFile.current && !search.file ? lastFile.current : null;
+		lastFile.current = search.file;
+		const from = closed ? origins.current.get(closed) : undefined;
 		if (!from) return;
-		setTab(from.tab);
 		// On a phone the details are a sheet over the page: Back to a control under it lifts the sheet.
 		if (phone && !from.inPanel) setPanel(false);
 		focusLater(from.id);
-	}, [focusLater, phone, setPanel]);
+	}, [search.file, phone, setPanel, focusLater]);
+	const touched = useMemo(
+		() =>
+			touchedFiles(
+				steps,
+				workspace,
+				(inv?.report?.hypotheses ?? []).flatMap((h) =>
+					h.evidence.flatMap((e) => {
+						const f = citedFile(e.source, workspace);
+						return f ? [f] : [];
+					}),
+				),
+			),
+		[steps, workspace, inv?.report?.hypotheses],
+	);
 	const fileOfStep = useCallback(
 		(s: RunStep) => stepFile(s, workspace),
 		[workspace],
@@ -276,10 +364,10 @@ export function RunPage() {
 	// The step is under the sheet on a phone: lift the sheet to show it.
 	const jumpOut = useCallback(
 		(n: number) => {
-			if (phone) setPanel(false);
+			if (phone) hidePanel();
 			jump(n);
 		},
-		[phone, jump, setPanel],
+		[phone, jump, hidePanel],
 	);
 	const previewOpener = useCallback(() => previewFrom.current, []);
 	const onPreview = useCallback((open: boolean) => {
@@ -300,21 +388,16 @@ export function RunPage() {
 		jump(wanted);
 	}, [wanted, steps, inv?.id, jump]);
 
-	// `?file=` from the overview's evidence opens that file once the run's workspace is known.
-	const openedCite = useRef<string | null>(null);
+	// A deep link to a file or a tab opens the panel it shows in.
 	useEffect(() => {
-		const key = `${inv?.id}:${search.file}`;
-		if (!search.file || openedCite.current === key) return;
-		const f = citedFile(search.file, workspace);
-		if (!f) return;
-		openedCite.current = key;
-		openFile(f, "details-toggle");
-	}, [search.file, workspace, inv?.id, openFile]);
+		if ((viewing || search.panel) && !panel) setPanel(true);
+		// biome-ignore lint/correctness/useExhaustiveDependencies: only a newly named file or tab opens the panel.
+	}, [viewing?.repo, viewing?.path, search.panel]);
 
 	const closePanel = useCallback(() => {
-		setPanel(false);
+		hidePanel();
 		window.setTimeout(() => toggleRef.current?.focus(), 0);
-	}, [setPanel]);
+	}, [hidePanel]);
 	useEffect(() => {
 		if (!panel) return;
 		// Capture: Esc closes the panel before anything bound to Esc on the page goes Back.
@@ -332,7 +415,7 @@ export function RunPage() {
 	const seeFlag = useCallback(() => {
 		setTab("context");
 		setPanel(true);
-	}, [setPanel]);
+	}, [setPanel, setTab]);
 
 	const report = inv?.report;
 	const reportTitle =
@@ -666,6 +749,8 @@ export function RunPage() {
 						onJump={jumpOut}
 						files={{
 							runId: inv.id,
+							workspace,
+							touched,
 							viewing,
 							onOpen: openFile,
 							onClose: closeFile,

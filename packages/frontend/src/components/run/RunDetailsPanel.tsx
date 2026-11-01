@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { RunWorkspace } from "@prismalens/contracts";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { Link } from "@tanstack/react-router";
 import {
@@ -16,8 +17,11 @@ import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
+import type { PanelTab, TouchedFile } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
+import { ChangesTab } from "./ChangesTab";
 import { EvidenceFileView } from "./EvidenceFileView";
+import { RunFileTree } from "./RunFileTree";
 import {
 	type ToolsStatus,
 	type TurnTools,
@@ -33,14 +37,17 @@ import {
 } from "./run-details";
 import type { RunStep } from "./run-steps";
 
-export type DetailsTab = "summary" | "evidence" | "context" | "steps";
+export type DetailsTab = PanelTab;
 
 /** Opens a cited file; `origin` is the id of the control that opened it, which gets focus back. */
 export type OpenFile = (f: FileAt, origin: string) => void;
 
-/** What the Evidence tab needs to open a file the run read, and the one open now. */
+/** What the Files tab needs to open a file the run read, and the one open now. */
 export interface EvidenceFiles {
 	runId: string;
+	workspace: RunWorkspace | null | undefined;
+	/** Files the run's steps named or the report cited, for the tree. */
+	touched: TouchedFile[];
 	viewing: FileAt | null;
 	onOpen: OpenFile;
 	onClose: () => void;
@@ -58,6 +65,8 @@ const TONE = {
 	warn: "text-warn",
 	danger: "text-danger",
 } as const;
+
+const ORDER: DetailsTab[] = ["summary", "files", "changes", "steps", "context"];
 
 const FILTERS: { id: StepFilter; label: string }[] = [
 	{ id: "all", label: "All" },
@@ -118,7 +127,17 @@ export function RunDetailsPanel({
 		aria: string;
 	}[] = [
 		{ id: "summary", label: "Summary", aria: "Summary" },
-		{ id: "evidence", label: "Evidence", aria: "Evidence" },
+		{
+			id: "files",
+			label: "Files",
+			aria: `Files, ${files.touched.length}`,
+			aside: (
+				<span aria-hidden className="ml-1 text-text-3 tabular-nums">
+					{files.touched.length}
+				</span>
+			),
+		},
+		{ id: "changes", label: "Changes", aria: "Changes" },
 		{
 			id: "context",
 			label: "Context",
@@ -130,7 +149,7 @@ export function RunDetailsPanel({
 				flaggedCount > 0 ? (
 					<span
 						aria-hidden
-						className="ml-1.5 inline-block size-1.5 rounded-full bg-danger"
+						className="ml-1 inline-block size-1.5 rounded-full bg-danger"
 					/>
 				) : null,
 		},
@@ -139,12 +158,13 @@ export function RunDetailsPanel({
 			label: "Steps",
 			aria: `Steps, ${steps.length}`,
 			aside: (
-				<span aria-hidden className="ml-1.5 text-text-3 tabular-nums">
+				<span aria-hidden className="ml-1 text-text-3 tabular-nums">
 					{steps.length}
 				</span>
 			),
 		},
 	];
+	tabs.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
 	return (
 		<div
 			id="run-details"
@@ -170,17 +190,17 @@ export function RunDetailsPanel({
 				onValueChange={(v) => onTab(v as DetailsTab)}
 				className="flex min-h-0 flex-1 flex-col"
 			>
-				<div className="relative flex h-9 shrink-0 items-center px-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
+				<div className="relative flex h-9 shrink-0 items-center px-2 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
 					<TabsPrimitive.List
 						aria-label={title}
-						className="flex min-w-0 gap-0.5 self-end"
+						className="flex min-w-0 gap-0.5 self-end overflow-x-auto [scrollbar-width:none]"
 					>
 						{tabs.map((t) => (
 							<TabsPrimitive.Trigger
 								key={t.id}
 								value={t.id}
 								aria-label={t.aria}
-								className="relative inline-flex h-[26px] items-center rounded-t-control px-2 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
 								data-testid={`run-details-tab-${t.id}`}
 							>
 								{t.label}
@@ -189,50 +209,38 @@ export function RunDetailsPanel({
 						))}
 					</TabsPrimitive.List>
 				</div>
-				{files.viewing && (
+				<TabsPrimitive.Content
+					value="files"
+					className="flex min-h-0 flex-1 flex-col"
+					data-testid="run-details-files"
+				>
+					<FilesPane files={files} onJump={onJump} />
+				</TabsPrimitive.Content>
+				<TabsPrimitive.Content
+					value="changes"
+					className="flex min-h-0 flex-1 flex-col"
+					data-testid="run-details-changes"
+				>
+					<ChangesTab runId={files.runId} workspace={files.workspace} />
+				</TabsPrimitive.Content>
+				{(["summary", "context"] as const).map((id) => (
 					<TabsPrimitive.Content
-						value="evidence"
-						className="flex min-h-0 flex-1 flex-col"
-						data-testid="run-details-evidence"
+						key={id}
+						value={id}
+						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
+						data-testid={`run-details-${id}`}
 					>
-						<EvidenceFileView
-							key={`${files.viewing.sha}:${files.viewing.path}`}
-							runId={files.runId}
-							file={files.viewing}
-							onBack={files.onClose}
-							backLabel={files.backLabel}
-							reads={files.reads}
+						{id === "summary" && summaryTop}
+						{id === "context" && contextTop}
+						<Sections
+							sections={id === "summary" ? [...summary, ...evidence] : context}
+							incidentId={incidentId}
 							onJump={onJump}
-							codeHost={files.codeHost}
+							onOpenFile={files.onOpen}
+							onOpenHypotheses={files.onOpenHypotheses}
 						/>
 					</TabsPrimitive.Content>
-				)}
-				{(["summary", "evidence", "context"] as const)
-					.filter((id) => id !== "evidence" || !files.viewing)
-					.map((id) => (
-						<TabsPrimitive.Content
-							key={id}
-							value={id}
-							className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
-							data-testid={`run-details-${id}`}
-						>
-							{id === "summary" && summaryTop}
-							{id === "context" && contextTop}
-							<Sections
-								sections={
-									id === "summary"
-										? summary
-										: id === "evidence"
-											? evidence
-											: context
-								}
-								incidentId={incidentId}
-								onJump={onJump}
-								onOpenFile={files.onOpen}
-								onOpenHypotheses={files.onOpenHypotheses}
-							/>
-						</TabsPrimitive.Content>
-					))}
+				))}
 				<TabsPrimitive.Content
 					value="steps"
 					className="flex min-h-0 flex-1 flex-col"
@@ -696,5 +704,90 @@ export function RunToolsSection({
 				</div>
 			))}
 		</section>
+	);
+}
+
+/**
+ * The Files tab (#973): the tree beside the open file when the panel is wide
+ * enough, else the tree, and the file in its place with Back.
+ */
+function FilesPane({
+	files,
+	onJump,
+}: {
+	files: EvidenceFiles;
+	onJump: (n: number) => void;
+}) {
+	const [mode, setMode] = useState<"touched" | "all">("touched");
+	const { viewing, workspace } = files;
+	return (
+		<div className="flex min-h-0 flex-1 @container">
+			<div
+				id="run-files-tree"
+				tabIndex={-1}
+				className={cn(
+					"min-h-0 flex-col outline-none @2xl:flex @2xl:w-60 @2xl:shrink-0 @2xl:shadow-[1px_0_0_var(--hairline)]",
+					viewing ? "hidden" : "flex flex-1",
+				)}
+			>
+				<fieldset
+					aria-label="Show"
+					className="m-0 flex shrink-0 gap-1 border-0 px-3 pt-2.5 pb-1.5"
+				>
+					{(["touched", "all"] as const).map((m) => (
+						<button
+							key={m}
+							type="button"
+							aria-pressed={mode === m}
+							onClick={() => setMode(m)}
+							className={cn(
+								"h-6 rounded-[4px] px-2 text-meta transition-colors duration-(--dur-instant)",
+								mode === m
+									? "bg-surface-3 text-text-1"
+									: "text-text-2 hover:text-text-1",
+							)}
+							data-testid={`files-mode-${m}`}
+						>
+							{m === "touched" ? "Touched" : "All files"}
+						</button>
+					))}
+				</fieldset>
+				{!workspace || workspace.repos.length === 0 ? (
+					<p className="px-3 text-text-2">This run read no repository.</p>
+				) : mode === "touched" && files.touched.length === 0 ? (
+					<p className="px-3 text-text-2" data-testid="files-none">
+						This run read no files. All files shows the code it was given.
+					</p>
+				) : (
+					<RunFileTree
+						key={mode}
+						mode={mode}
+						runId={files.runId}
+						workspace={workspace}
+						touched={files.touched}
+						selected={viewing}
+						onPick={(f) => files.onOpen(f, "run-files-tree")}
+					/>
+				)}
+			</div>
+			{viewing ? (
+				<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+					<EvidenceFileView
+						key={`${viewing.sha}:${viewing.path}`}
+						runId={files.runId}
+						file={viewing}
+						onBack={files.onClose}
+						backLabel={files.backLabel}
+						reads={files.reads}
+						onJump={onJump}
+						codeHost={files.codeHost}
+					/>
+				</div>
+			) : (
+				<p className="hidden flex-1 px-4 pt-4 text-text-2 @2xl:block">
+					Pick a file to read it at the commit this run recorded.
+				</p>
+			)}
+		</div>
 	);
 }
