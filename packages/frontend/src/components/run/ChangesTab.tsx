@@ -6,6 +6,13 @@ import { comparisonLabel, type RunWorkspace } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loading, Problem } from "@/components/shared/State";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { orpc } from "@/lib/api/orpc-client";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { changeNote, splitPatch } from "@/lib/run-panel";
@@ -92,22 +99,28 @@ export function ChangesTab({
 		>
 			<div className="flex shrink-0 flex-wrap items-center gap-2 px-3 pt-2.5 pb-2">
 				{pairs.length > 1 ? (
-					<select
-						aria-label="Comparison"
-						value={pair}
-						onChange={(e) => {
-							setPair(Number(e.target.value));
+					<Select
+						value={String(pair)}
+						onValueChange={(v) => {
+							setPair(Number(v));
 							setFile(null);
 						}}
-						className="h-7 min-w-0 flex-1 rounded-control bg-surface-2 px-2 text-body text-text-1"
-						data-testid="changes-pair"
 					>
-						{pairs.map((p, i) => (
-							<option key={`${p.repo}:${p.head}`} value={i}>
-								{p.repo}: {comparisonLabel(p)}
-							</option>
-						))}
-					</select>
+						<SelectTrigger
+							aria-label="Comparison"
+							className="min-w-0 flex-1"
+							data-testid="changes-pair"
+						>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{pairs.map((p, i) => (
+								<SelectItem key={`${p.repo}:${p.head}`} value={String(i)}>
+									{p.repo}: {comparisonLabel(p)}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 				) : (
 					current && (
 						<span

@@ -132,7 +132,7 @@ export function RunDetailsPanel({
 			label: "Files",
 			aria: `Files, ${files.touched.length}`,
 			aside: (
-				<span aria-hidden className="ml-1.5 text-text-3 tabular-nums">
+				<span aria-hidden className="ml-1 text-text-3 tabular-nums">
 					{files.touched.length}
 				</span>
 			),
@@ -149,7 +149,7 @@ export function RunDetailsPanel({
 				flaggedCount > 0 ? (
 					<span
 						aria-hidden
-						className="ml-1.5 inline-block size-1.5 rounded-full bg-danger"
+						className="ml-1 inline-block size-1.5 rounded-full bg-danger"
 					/>
 				) : null,
 		},
@@ -158,7 +158,7 @@ export function RunDetailsPanel({
 			label: "Steps",
 			aria: `Steps, ${steps.length}`,
 			aside: (
-				<span aria-hidden className="ml-1.5 text-text-3 tabular-nums">
+				<span aria-hidden className="ml-1 text-text-3 tabular-nums">
 					{steps.length}
 				</span>
 			),
@@ -190,7 +190,7 @@ export function RunDetailsPanel({
 				onValueChange={(v) => onTab(v as DetailsTab)}
 				className="flex min-h-0 flex-1 flex-col"
 			>
-				<div className="relative flex h-9 shrink-0 items-center px-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
+				<div className="relative flex h-9 shrink-0 items-center px-2 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
 					<TabsPrimitive.List
 						aria-label={title}
 						className="flex min-w-0 gap-0.5 self-end overflow-x-auto [scrollbar-width:none]"
@@ -200,7 +200,7 @@ export function RunDetailsPanel({
 								key={t.id}
 								value={t.id}
 								aria-label={t.aria}
-								className="relative inline-flex h-[26px] items-center rounded-t-control px-2 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
 								data-testid={`run-details-tab-${t.id}`}
 							>
 								{t.label}

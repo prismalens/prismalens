@@ -8,7 +8,7 @@ if [ $# -gt 0 ]; then files=$(printf '%s\n' "$@"); else files=$(git ls-files 'sr
 fail=0
 gate() { if [ -n "$1" ]; then printf '%s\n%s\n\n' "$2" "$1"; fail=1; fi; }
 gate "$(echo "$files" | xargs -r grep -nHE '\b(border(-[trblxy])?(-hairline)?|ring-[0-9]|ring-\[|shadow-\[inset)\b' \
-	| grep -vE 'focus-visible|focus-within|border-0|border-none|border-transparent|border-l-transparent|shared/(Row|SettingRow)\.tsx|^\S+:[0-9]+:\s*(//|\*|/\*)|^\S+\.css:[0-9]+:\s*border-(radius|color):')" "border as structure:"
+	| grep -vE 'focus-visible|focus-within|border-0|border-none|border-transparent|border-l-transparent|shared/(Row|SettingRow)\.tsx|--trees-border-color-override|^\S+:[0-9]+:\s*(//|\*|/\*)|^\S+\.css:[0-9]+:\s*border-(radius|color):')" "border as structure:"
 # Lowercase tags only: an intrinsic element's title is the DOM tooltip; a component's `title` prop is not.
 gate "$(echo "$files" | xargs -r grep -nHE '<[a-z][a-z0-9-]*[^>]*[[:space:]]title[[:space:]]*=')" "DOM title tooltip:"
 gate "$(echo "$files" | xargs -r grep -nH '<select')" "native select:"
