@@ -43,7 +43,11 @@ export interface RestartNoticeView {
 	resumed: string | null;
 	skipped: string | null;
 	/** The first run that could not resume, for the action. */
-	open: { investigationId: string; incidentId: string; label: string } | null;
+	open: {
+		investigationId: string;
+		incidentId: string | null;
+		label: string;
+	} | null;
 }
 
 export function restartNoticeView(

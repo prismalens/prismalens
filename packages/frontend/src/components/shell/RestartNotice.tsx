@@ -50,14 +50,24 @@ export function RestartNotice() {
 			className="self-start"
 			data-testid="restart-notice-open"
 		>
-			<Link
-				to="/incidents/$id/conversation"
-				params={{ id: view.open.incidentId }}
-				search={{ investigation: view.open.investigationId }}
-				onClick={dismiss}
-			>
-				{view.open.label}
-			</Link>
+			{view.open.incidentId ? (
+				<Link
+					to="/incidents/$id/conversation"
+					params={{ id: view.open.incidentId }}
+					search={{ investigation: view.open.investigationId }}
+					onClick={dismiss}
+				>
+					{view.open.label}
+				</Link>
+			) : (
+				<Link
+					to="/investigations/$id"
+					params={{ id: view.open.investigationId }}
+					onClick={dismiss}
+				>
+					{view.open.label}
+				</Link>
+			)}
 		</Button>
 	);
 	const close = (
