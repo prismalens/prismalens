@@ -86,11 +86,12 @@ jobs:
           fi
 
       # The run panel's browser shares nothing with the app (#973): cookie, Node, bridge, file: and the window's origin.
+      # --no-sandbox as in the smoke: the runner's chrome-sandbox is not setuid; the isolation under test is the view's own preferences.
       - name: The panel's browser is isolated from the app (xvfb on Linux)
         run: |
           cd packages/desktop
           if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run --auto-servernum npx electron scripts/browser-isolation.mjs || { cat dist/browser-isolation.txt; exit 1; }
+            xvfb-run --auto-servernum npx electron --no-sandbox scripts/browser-isolation.mjs || { cat dist/browser-isolation.txt; exit 1; }
           else
             npx electron scripts/browser-isolation.mjs || { cat dist/browser-isolation.txt; exit 1; }
           fi
