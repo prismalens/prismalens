@@ -25960,7 +25960,14 @@
                                 "type": "string"
                               },
                               "incidentId": {
-                                "type": "string"
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               },
                               "incidentNumber": {
                                 "anyOf": [
@@ -25995,7 +26002,14 @@
                                 "type": "string"
                               },
                               "incidentId": {
-                                "type": "string"
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               },
                               "incidentNumber": {
                                 "anyOf": [

@@ -1341,7 +1341,8 @@ export type RestartRecovery = z.infer<typeof RestartRecoverySchema>;
 
 const RestartRunRefSchema = z.object({
 	investigationId: z.string(),
-	incidentId: z.string(),
+	/** Null for a scheduled check with no incident (#984). */
+	incidentId: z.string().nullable(),
 	incidentNumber: z.number().int().nullable(),
 	title: z.string(),
 });
