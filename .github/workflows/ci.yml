@@ -155,9 +155,11 @@ jobs:
 
       # Coverage floors (#58) run here: cli and database `test` already pass --coverage,
       # and the api's floor only evaluates under `test:cov`.
+      # macos-latest is 3 or 5 CPUs; at turbo's default of 10 tasks the timing-sensitive api
+      # specs ran 5x slower on the 3-CPU ones and flaked the queue (#885).
       - name: Test
         if: runner.os != 'Linux'
-        run: pnpm test
+        run: pnpm turbo run test --concurrency=2
 
       - name: Test with coverage thresholds
         if: runner.os == 'Linux'
