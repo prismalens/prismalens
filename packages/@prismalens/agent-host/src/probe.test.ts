@@ -163,6 +163,18 @@ describe("probeAgent: sign-in-needed only on an auth signal (#1013)", () => {
 			expect((await exits(stderr)).outcome, stderr).toBe("failed-to-start");
 	});
 
+	it("a fatal launch error past the 2 KB tail still wins over later key guidance", async () => {
+		const help = "  --some-option   does a thing\n".repeat(170);
+		const r = await exits(`error: unknown option '--foo'\n${help}Set OPENAI_API_KEY`);
+		expect(r.outcome).toBe("failed-to-start");
+		expect(r.detail).toMatch(/^error: unknown option '--foo' … /);
+		const split = await probe({
+			FAKE_ACP_MODE: "exit-stderr",
+			FAKE_STDERR_PARTS: JSON.stringify(["error: unkn", `own option '--foo'\n${help}`, "Set OPENAI_API_KEY\n"]),
+		});
+		expect(split.outcome).toBe("failed-to-start");
+	});
+
 	it("an agent that exits on an unrecognized flag failed to start", async () => {
 		const r = await exits("ERROR Unrecognized flag: --dir in command opencode acp");
 		expect(r.outcome).toBe("failed-to-start");

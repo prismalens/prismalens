@@ -62,7 +62,14 @@ if (mode === "unauthenticated") {
 	process.exit(1);
 }
 if (mode === "exit-stderr") {
-	process.stderr.write(`${process.env.FAKE_STDERR ?? ""}\n`);
+	// FAKE_STDERR_PARTS (a JSON array) writes in separate chunks, 50 ms apart.
+	const parts = process.env.FAKE_STDERR_PARTS
+		? JSON.parse(process.env.FAKE_STDERR_PARTS)
+		: [`${process.env.FAKE_STDERR ?? ""}\n`];
+	for (const part of parts) {
+		process.stderr.write(part);
+		await new Promise((r) => setTimeout(r, 50));
+	}
 	process.exit(1);
 }
 if (mode === "print-env") {

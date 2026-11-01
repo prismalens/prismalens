@@ -206,10 +206,19 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		};
 	}
 	let stderr = "";
+	// The tail keeps 2 KB; a fatal launch error is caught as it arrives, before help text pushes it out.
+	let fatal: string | null = null;
 	child.stderr.setEncoding("utf8");
 	child.stderr.on("data", (chunk: string) => {
+		const seen = stderr.slice(-128) + chunk;
+		fatal ??= seen.split(/\r?\n/).find((l) => FATAL_LAUNCH.test(l)) ?? null;
 		stderr = (stderr + chunk).slice(-2048);
 	});
+	const startFailed = (): string => {
+		const tail = oneLine(stderr);
+		const head = fatal ? oneLine(fatal) : "";
+		return head && !tail.includes(head) ? `${head} … ${tail}` : tail;
+	};
 	child.stdin.on("error", () => {});
 
 	let timer: NodeJS.Timeout | undefined;
@@ -275,8 +284,8 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 				outcome: "no-answer",
 				detail: `${step}: no answer in ${Math.max(1, Math.round(ms / 1000))}s`,
 			};
-		const detail = oneLine(stderr) || null;
-		return detail && namesSignIn(detail)
+		const detail = startFailed() || null;
+		return detail && !fatal && namesSignIn(detail)
 			? { ...result, outcome: "sign-in-needed", authRequired: true, detail }
 			: { ...result, outcome: "failed-to-start", detail };
 	};
@@ -351,7 +360,9 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		const message = err instanceof Error ? err.message : String(err);
 		// A closed connection is the child exiting; its stderr may still be in flight.
 		if (!(err instanceof RequestError)) await exited(1_000);
-		const said = [message, stderr].find((t) => namesSignIn(t, message, stderr));
+		const said = fatal
+			? undefined
+			: [message, stderr].find((t) => namesSignIn(t, message, stderr));
 		if (said)
 			return {
 				...result,
@@ -362,7 +373,7 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		return {
 			...result,
 			outcome: "failed-to-start",
-			detail: oneLine(stderr || message),
+			detail: startFailed() || oneLine(message),
 		};
 	} finally {
 		clearTimeout(timer);
