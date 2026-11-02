@@ -455,3 +455,135 @@ describe("Worked fold", () => {
 		expect(container.querySelector('[data-testid="after"]')).toBeNull();
 	});
 });
+
+describe("Transcript spine (#1020)", () => {
+	const op = (
+		key: string,
+		state: "started" | "delivered" | "answered",
+		at: string,
+	): TranscriptItem => ({
+		kind: "operator",
+		key,
+		text: key,
+		at,
+		state,
+		mode: "queue",
+		attachments: [],
+	});
+
+	it("prints Answered, marks unquoted evidence unverified and keeps a suspect's own word", async () => {
+		const items: TranscriptItem[] = [
+			op("brief", "started", "2026-11-03T10:00:00Z"),
+			op("follow", "answered", "2026-11-03T10:01:00Z"),
+			{
+				kind: "finding",
+				key: "f1",
+				at: "2026-11-03T10:01:01Z",
+				finding: {
+					type: "evidence",
+					id: "e1",
+					observation: "<b>No backoff</b>",
+					source: "retry.ts",
+					quote: "q",
+					direction: "supports",
+					anchor: null,
+					at: "x",
+				},
+			},
+			{
+				kind: "finding",
+				key: "f2",
+				at: "2026-11-03T10:01:02Z",
+				finding: {
+					type: "hypothesis",
+					id: "h1",
+					statement: "Retry storm",
+					status: "speculative",
+					evidenceIds: [],
+					at: "x",
+				},
+			},
+			{
+				kind: "gateway",
+				key: "g1",
+				node: "knowledge",
+				name: "incidents_similar",
+				outcome: "INC-7 retry storm",
+				failed: false,
+				at: "x",
+			},
+		];
+		await act(async () =>
+			root.render(<Transcript items={items} incidentId={null} agent="Agent" />),
+		);
+		const delivery = container.querySelectorAll(
+			'[data-testid="transcript-delivery"]',
+		);
+		expect(delivery[1]?.textContent).toBe("answered");
+		const evidence = container.querySelector('[data-type="evidence"]');
+		expect(
+			evidence?.querySelector('[data-testid="finding-unverified"]')
+				?.textContent,
+		).toBe("Unverified");
+		// Agent text is plain text, never markup.
+		expect(evidence?.textContent).toContain("<b>No backoff</b>");
+		expect(evidence?.querySelector("b")).toBeNull();
+		expect(
+			container.querySelector('[data-testid="finding-status"]')?.textContent,
+		).toBe("Speculative");
+		expect(container.textContent).not.toMatch(/leading/i);
+		expect(
+			container.querySelector('[data-testid="transcript-gateway"]')
+				?.textContent,
+		).toContain("INC-7 retry storm");
+	});
+
+	it("folds a finished turn behind Worked for, and the chevron opens it", async () => {
+		const items: TranscriptItem[] = [
+			op("brief", "started", "2026-11-03T10:00:00Z"),
+			{
+				kind: "tools",
+				key: "t1",
+				count: 1,
+				summary: "ran 1 command",
+				failed: 0,
+				running: 0,
+				rows: [],
+				callIds: [],
+				at: "2026-11-03T10:00:10Z",
+				until: "2026-11-03T10:03:00Z",
+			},
+			{
+				kind: "prose",
+				key: "p1",
+				text: "The answer",
+				at: "2026-11-03T10:04:00Z",
+			},
+		];
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={items}
+					incidentId={null}
+					agent="Agent"
+					foldTurns={{ live: false }}
+				/>,
+			),
+		);
+		const fold = container.querySelector<HTMLButtonElement>(
+			'[data-testid="turn-fold"]',
+		);
+		expect(fold?.textContent).toBe(`Worked for ${formatElapsed(240)}`);
+		expect(
+			container.querySelector('[data-testid="transcript-tools"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-prose"]')?.textContent,
+		).toContain("The answer");
+		await act(async () => fold?.click());
+		expect(fold?.getAttribute("aria-expanded")).toBe("true");
+		expect(
+			container.querySelector('[data-testid="transcript-tools"]'),
+		).not.toBeNull();
+	});
+});

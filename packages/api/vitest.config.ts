@@ -78,6 +78,7 @@ export default defineConfig({
 				"src/modules/investigations/run-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/attachments.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/harness/ready-harness.ts": NEW_CODE_THRESHOLD,
+				"src/modules/investigations/worktree-changes.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

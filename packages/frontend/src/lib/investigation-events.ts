@@ -14,6 +14,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	Artifact,
 	CanonicalEvent,
+	RecordedFinding,
 	RunCredential,
 	StreamToolResult,
 } from "@prismalens/contracts";
@@ -26,6 +27,7 @@ import { formatClock, formatDayClock, formatElapsed } from "./format-time";
 import { handoffRecord } from "./handoff-line";
 import { notResumedReason, type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
+import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
 
 export type EventIcon =
 	| "activity"
@@ -456,6 +458,21 @@ export type TranscriptItem =
 			rows: EventRow[];
 			/** The tool calls in the group, so a report's evidence link can open it. */
 			callIds: string[];
+			/** When the group opened and its last call or result came, for a turn's duration. */
+			at?: string;
+			until?: string;
+	  }
+	/** Evidence or a suspect the agent recorded; a re-recorded id updates in place (#1020). */
+	| { kind: "finding"; key: string; finding: RecordedFinding; at: string }
+	/** A PrismaLens tool call no ordinary call carries, with its outcome line (#1020). */
+	| {
+			kind: "gateway";
+			key: string;
+			node: NodeKind;
+			name: string;
+			outcome: string | null;
+			failed: boolean;
+			at: string;
 	  }
 	| { kind: "thought"; key: string; seconds: number }
 	/** A page the agent published, drawn where it was published (#871). */
@@ -710,6 +727,11 @@ export function deriveTranscript(
 ): TranscriptItem[] {
 	const { run, pending = [] } = opts;
 	const items: TranscriptItem[] = [];
+	const gateway = matchGateway(events);
+	const findings = new Map<
+		string,
+		Extract<TranscriptItem, { kind: "finding" }>
+	>();
 	let group: OpenGroup | null = null;
 	let lastTs: string | null = null;
 	let sawAgent = false;
@@ -736,11 +758,12 @@ export function deriveTranscript(
 	const closeGroup = () => {
 		group = null;
 	};
-	const openGroup = (key: string): OpenGroup => {
+	const openGroup = (key: string, at?: string): OpenGroup => {
 		if (group) return group;
 		const item: Extract<TranscriptItem, { kind: "tools" }> = {
 			kind: "tools",
 			key: `tools-${key}`,
+			...(at ? { at, until: at } : {}),
 			count: 0,
 			summary: "",
 			failed: 0,
@@ -830,7 +853,8 @@ export function deriveTranscript(
 						});
 						continue;
 					}
-					const g = openGroup(key);
+					const g = openGroup(key, event.ts);
+					g.item.until = event.ts;
 					g.calls.set(call.toolCallId, null);
 					callGroup.set(call.toolCallId, g);
 					const row = canonicalEventToRow({ ...event, toolCalls: [call] });
@@ -847,7 +871,9 @@ export function deriveTranscript(
 			}
 			case "tool_result": {
 				const id = event.result.toolCallId;
-				const g: OpenGroup = callGroup.get(id) ?? group ?? openGroup(key);
+				const g: OpenGroup =
+					callGroup.get(id) ?? group ?? openGroup(key, event.ts);
+				g.item.until = event.ts;
 				callGroup.set(id, g);
 				g.calls.set(id, event.result);
 				const row = canonicalEventToRow(event);
@@ -953,6 +979,46 @@ export function deriveTranscript(
 				closeGroup();
 				items.push({ kind: "artifact", key, artifact: event.artifact });
 				break;
+			case "finding_recorded": {
+				const id = `${event.finding.type}:${event.finding.id}`;
+				const known = findings.get(id);
+				if (known) {
+					known.finding = event.finding;
+					break;
+				}
+				closeGroup();
+				const item = {
+					kind: "finding" as const,
+					key,
+					finding: event.finding,
+					at: event.ts,
+				};
+				findings.set(id, item);
+				items.push(item);
+				break;
+			}
+			case "harness_tool_call": {
+				const node = gatewayNode(event.name);
+				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
+				if (
+					!gateway.unmatched.has(key) ||
+					node === "evidence" ||
+					node === "suspect" ||
+					node === "artifact"
+				)
+					break;
+				closeGroup();
+				items.push({
+					kind: "gateway",
+					key,
+					node: event.isError ? "failed" : node,
+					name: event.name,
+					outcome: outcomeLine(event),
+					failed: !!event.isError,
+					at: event.ts,
+				});
+				break;
+			}
 			case "message_queued":
 				queued.set(event.messageId, event);
 				break;

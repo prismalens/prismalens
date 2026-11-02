@@ -46,7 +46,7 @@ export function RunDock({
 	return (
 		<>
 			{ask && (
-				<AskPanel
+				<AskCard
 					key={ask.askId}
 					ask={ask}
 					count={asks.length}
@@ -91,27 +91,31 @@ export function RunDock({
 /**
  * One ask at a time, keyed by its id: when the next takes the slot, focus
  * moves to what it asks, never onto Approve, and a press in the first moment
- * is ignored, so one Enter never answers two asks.
+ * is ignored, so one Enter never answers two asks. `inline` is the transcript's
+ * copy at the ask's place (#1020): it never takes focus or announces itself.
  */
-function AskPanel({
+export function AskCard({
 	ask,
-	count,
+	count = 1,
 	runId,
 	agent,
 	cwd,
 	onStep,
-	focus,
+	focus = false,
 	onAnswer,
+	inline = false,
 }: {
 	ask: AskRecord;
-	count: number;
+	count?: number;
 	runId?: string;
 	agent: string;
 	cwd?: string | null;
 	onStep?: (n: number) => void;
-	focus: boolean;
-	onAnswer: () => void;
+	focus?: boolean;
+	onAnswer?: () => void;
+	inline?: boolean;
 }) {
+	const id = (name: string) => (inline ? `inline-${name}` : name);
 	const answer = useAnswerAsk();
 	const what = useRef<HTMLParagraphElement>(null);
 	const [armed, setArmed] = useState(false);
@@ -123,7 +127,7 @@ function AskPanel({
 	}, []);
 	const send = (decision: "approve" | "deny") => {
 		if (!runId || !armed) return;
-		onAnswer();
+		onAnswer?.();
 		answer.mutate({ id: runId, askId: ask.askId, decision });
 	};
 	const mcp = mcpTool(ask.title);
@@ -136,14 +140,14 @@ function AskPanel({
 	const title = askTitle(ask);
 	return (
 		<section
-			aria-label="The agent asks before a tool call"
+			aria-label={inline ? undefined : "The agent asks before a tool call"}
 			className="flex min-w-0 flex-col gap-1.5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
-			data-testid="dock-ask"
+			data-testid={inline ? "inline-ask" : "dock-ask"}
 		>
 			<p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-meta">
 				<span
 					aria-hidden
-					className="breathe size-[7px] shrink-0 self-center rounded-full bg-warn"
+					className={`${inline ? "" : "breathe "}size-[7px] shrink-0 self-center rounded-full bg-warn`}
 				/>
 				<span className="font-medium text-text-1">{agent} asks to run</span>
 				{count > 1 && (
@@ -173,16 +177,16 @@ function AskPanel({
 			<p
 				ref={what}
 				tabIndex={-1}
-				aria-live="polite"
+				aria-live={inline ? undefined : "polite"}
 				className="outline-none [overflow-wrap:anywhere]"
-				data-testid="dock-ask-title"
+				data-testid={inline ? "inline-ask-title" : "dock-ask-title"}
 			>
 				{mcp || !body ? title : <span className="sr-only">{title}</span>}
 			</p>
 			{body && (
 				<pre
 					className="m-0 max-h-36 overflow-auto rounded-control bg-surface-2 px-2.5 py-1.5 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]"
-					data-testid="dock-ask-detail"
+					data-testid={inline ? "inline-ask-detail" : "dock-ask-detail"}
 				>
 					{shortPath(body, cwd)}
 				</pre>
@@ -192,7 +196,7 @@ function AskPanel({
 					variant="primary"
 					disabled={!runId || !armed || answer.isPending || answer.isSuccess}
 					onClick={() => send("approve")}
-					data-testid="ask-approve"
+					data-testid={id("ask-approve")}
 				>
 					Approve
 				</Button>
@@ -200,7 +204,7 @@ function AskPanel({
 					variant="secondary"
 					disabled={!runId || !armed || answer.isPending || answer.isSuccess}
 					onClick={() => send("deny")}
-					data-testid="ask-deny"
+					data-testid={id("ask-deny")}
 				>
 					Deny
 				</Button>

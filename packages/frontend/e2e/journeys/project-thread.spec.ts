@@ -193,7 +193,7 @@ test.describe("#1020 — a project thread", () => {
 				});
 			},
 		);
-		await page.getByRole("button", { name: "Approve" }).click();
+		await page.getByTestId("ask-approve").click();
 		await expect.poll(() => answered).toMatchObject({ decision: "approve" });
 
 		// Stop.

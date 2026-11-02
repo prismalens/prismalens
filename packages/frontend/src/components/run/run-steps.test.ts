@@ -231,3 +231,21 @@ describe("a shell step keeps the command it ran (#931)", () => {
 		expect(s?.run).toBe("echo hi");
 	});
 });
+
+describe("deriveSteps nodes (#1020)", () => {
+	it("types each step, and gives a PrismaLens tool the outcome its record kept", () => {
+		const ts = "2026-11-03T10:00:00Z";
+		const b = (seq: number) => ({ runId: "00000000-0000-4000-8000-000000000001", branchId: "m", path: [], seq, ts, label: null });
+		const out = deriveSteps([
+			{ kind: "agent_step", ...b(0), text: "", toolCalls: [
+				{ toolCallId: "a", name: "Bash", args: { command: "ls" } },
+				{ toolCallId: "b", name: "mcp__prismalens-1__incidents_similar", args: {} },
+			] },
+			{ kind: "harness_tool_call", ...b(1), server: "prismalens-1", name: "incidents_similar", at: ts, turn: "first", output: "INC-7 retry storm" },
+		]);
+		expect(out.map((s) => [s.node, s.outcome])).toEqual([
+			["command", null],
+			["knowledge", "INC-7 retry storm"],
+		]);
+	});
+});

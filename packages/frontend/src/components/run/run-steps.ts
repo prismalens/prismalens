@@ -8,6 +8,12 @@ import type {
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
 import { commandText, mcpTool, shortPath } from "@/lib/report-view";
+import {
+	matchGateway,
+	type NodeKind,
+	outcomeLine,
+	stepNode,
+} from "@/lib/spine";
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -22,6 +28,10 @@ export interface RunStep {
 	/** The command or path, workspace paths read as `repo/`. */
 	command: string;
 	kind: StepKind;
+	/** The spine node it draws as (#1020): command, read, edit, search, a PrismaLens tool, or tool. */
+	node?: NodeKind;
+	/** A PrismaLens tool's outcome, the first line it returned; null for any other call. */
+	outcome?: string | null;
 	/** The call named a shell command, so it can be copied or staged in the terminal. */
 	shell?: boolean;
 	/** The shell command as it ran, for Copy and Run in terminal; `command` is display text. */
@@ -86,6 +96,7 @@ export function deriveSteps(
 	const order: string[] = [];
 	const results = new Map<string, { result: StreamToolResult; at: string }>();
 	const delegated = new Set<string>();
+	const gateway = matchGateway(events);
 	for (const e of events) {
 		if (e.kind === "agent_step") {
 			for (const c of e.toolCalls) {
@@ -135,9 +146,17 @@ export function deriveSteps(
 						: result.error || result.preview || "no output",
 				)
 			: null;
+		const recorded = gateway.byCall.get(callId);
 		return {
 			n: i + 1,
 			callId,
+			node: stepNode({
+				name: call.name,
+				args: call.args,
+				category: result?.toolCategory,
+				gateway: recorded?.name,
+			}),
+			outcome: recorded ? outcomeLine(recorded) : null,
 			input: inputOf(call.name, call.args),
 			...fileOf(call.args),
 			title: describe(call.args) ?? command,

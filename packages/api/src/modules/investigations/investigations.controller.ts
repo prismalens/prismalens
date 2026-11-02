@@ -78,6 +78,7 @@ import {
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
 import { threadSubject } from "./run-scope.js";
 import { readRunDiff, readRunTree } from "./run-views.js";
+import { readWorktreeChanges } from "./worktree-changes.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -667,6 +668,11 @@ export class InvestigationsController {
 					this.runView(input.id, (ws) =>
 						readRunDiff(ws, input.pair, input.path),
 					),
+			),
+
+			// GET /investigations/:id/changes - The live workspace against its start (#1020)
+			getChanges: implement(investigationsContract.getChanges).handler(
+				async ({ input }) => this.runView(input.id, readWorktreeChanges),
 			),
 
 			// POST /investigations/:id/result - Write result (Worker)
