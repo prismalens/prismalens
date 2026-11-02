@@ -31,7 +31,7 @@ These are easy for an agent to break and expensive to undo.
 - Commits and PR titles follow Conventional Commits; a required check enforces the PR title.
 
 ## Docs
-A change to anything a user sees updates its doc in the same PR, or the PR says why none is affected. Where the doc lives in `prismalens/prismalens.io`, the PR links the website PR or a tracked docs issue.
+docs.prismalens.io documents a short contract, not every feature: install and upgrade, the basic use of `pl up`, `pl doctor` and `pl upgrade`, the alert webhook contract, the report's structure, and the trust and data guarantees. The list lives in `docs/POLICY.md` in `prismalens/prismalens.io`. A PR that changes an item on it links the website PR or a docs issue. Anything else is described by `--help`, the UI and the release notes, and needs no docs change; a spec says "Docs: none, not on the contract".
 
 - `README.md` is the front page: what it is, quick start, repo layout.
 - `packages/cli/README.md` is the npm page: install, quick start, one line per command, a link to the website.

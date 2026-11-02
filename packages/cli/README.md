@@ -1,6 +1,6 @@
 # prismalens
 
-PrismaLens is a self-hosted incident investigator. When an alert arrives, the
+PrismaLens is an incident investigator that runs as an app on your machine. When an alert arrives, the
 coding agent you already use reads a snapshot of the service's code, under a
 permission level you pick, and writes an ordered-evidence report: hypotheses
 ranked by the evidence behind them, with no numeric confidence scores. The run,
