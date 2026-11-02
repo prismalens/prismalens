@@ -67,12 +67,22 @@ describe("A step's command (#931)", () => {
 		expect(chip?.querySelector("[data-testid=run-in-terminal]")).not.toBeNull();
 	});
 
-	it("gives the chip the command as it ran, not the display text with repo/", () => {
+	it("shows repo/ but copies the command as it ran", async () => {
 		availability = { available: true };
 		unhost = terminalStore.registerHost();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText },
+			configurable: true,
+		});
 		render(step({ command: "ls repo/api", run: "ls /ws/api" }), true);
-		expect(q("step-command")?.textContent).toContain("ls /ws/api");
-		expect(q("step-command")?.textContent).not.toContain("repo/");
+		const chip = q("step-command");
+		expect(chip?.querySelector("code")?.textContent).toBe("ls repo/api");
+		const copy = Array.from(chip?.querySelectorAll("button") ?? []).find((b) =>
+			b.textContent?.includes("Copy"),
+		);
+		await act(async () => copy?.click());
+		expect(writeText).toHaveBeenCalledWith("ls /ws/api");
 	});
 
 	it("keeps the collapsed row quiet", () => {

@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
  */
 export function CommandChip({
 	command,
+	display,
 	run,
 	path = false,
 	wrap = false,
@@ -19,6 +20,8 @@ export function CommandChip({
 	testId = "command-chip",
 }: {
 	command: string;
+	/** Shown in place of `command`; Copy and Run in terminal still use `command`. */
+	display?: string;
 	run?: ReactNode;
 	/** A path to copy, not a command: no Run in terminal. */
 	path?: boolean;
@@ -41,7 +44,7 @@ export function CommandChip({
 					wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate",
 				)}
 			>
-				{command}
+				{display ?? command}
 			</code>
 			{run ?? (path ? null : <RunInTerminal command={command} />)}
 			<CopyButton value={command} />
