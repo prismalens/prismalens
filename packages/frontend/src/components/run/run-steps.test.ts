@@ -180,3 +180,54 @@ describe("evidenceStep (#673 w5-16)", () => {
 		expect(at("anything", "call-unknown")).toBeUndefined();
 	});
 });
+
+describe("a shell step keeps the command it ran (#931)", () => {
+	const cwd = "/home/me/.prismalens/runs/r1/workspace";
+	const ev = [
+		call(1, 0, "s", "bash", { command: `ls ${cwd}/api` }),
+		result(2, 1, "s", `bash({"command":"ls ${cwd}/api"})`, "books.py"),
+	];
+
+	it("reads the workspace as repo/ for display and not for Copy or Run in terminal", () => {
+		const [s] = deriveSteps(ev, { cwd });
+		expect(s?.command).toBe("ls repo/api");
+		expect(s?.run).toBe(`ls ${cwd}/api`);
+	});
+
+	it("has no run text for a file tool", () => {
+		const [s] = deriveSteps(
+			[call(1, 0, "f", "read", { path: "a.py" }), result(2, 1, "f", "read a.py", "x")],
+			{ cwd },
+		);
+		expect(s?.run).toBeUndefined();
+	});
+
+	it("keeps the raw command, not the label commandText reads for an MCP tool", () => {
+		const [s] = deriveSteps(
+			[
+				call(1, 0, "m", "mcp__github__run", { command: "deploy --prod" }),
+				result(2, 1, "m", 'mcp__github__run({"command":"deploy --prod"})', "ok"),
+			],
+			{ cwd },
+		);
+		expect(s?.shell).toBe(false);
+		expect(s?.run).toBeUndefined();
+	});
+
+	it("is no shell step when the command is blank", () => {
+		const [s] = deriveSteps(
+			[call(1, 0, "b", "bash", { command: "  " }), result(2, 1, "b", 'bash({"command":"  "})', "")],
+			{ cwd },
+		);
+		expect(s?.shell).toBe(false);
+		expect(s?.run).toBeUndefined();
+	});
+
+	it("runs the argument itself, not the tool name commandText falls back to", () => {
+		const [s] = deriveSteps(
+			[call(1, 0, "r", "bash", { cmd: "echo hi" }), result(2, 1, "r", "bash", "hi")],
+			{ cwd },
+		);
+		expect(s?.run).toBe("echo hi");
+	});
+});

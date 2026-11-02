@@ -35,6 +35,7 @@ import {
 	NO_BROWSER_LINE,
 	networkBindWarning,
 	noAgentLine,
+	openTarget,
 	portFree,
 	portInUseLine,
 	readTelemetryState,
@@ -327,8 +328,10 @@ async function printStartupLink(
 	watchPairings(link, onDevicePaired, (line, kind) =>
 		kind === "paired" ? consola.success(line) : consola.info(line),
 	);
-	const command = open
-		? browserCommand(process.platform, process.env, startupUrl)
+	const target = open ? openTarget(startupUrl, workspaceDir) : null;
+	if (open && !target) consola.info("Open the link above in your browser.");
+	const command = target
+		? browserCommand(process.platform, process.env, target)
 		: null;
 	if (!command) return;
 	const child = spawn(command.file, command.args, {

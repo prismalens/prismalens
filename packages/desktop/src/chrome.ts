@@ -12,6 +12,10 @@ import type { BrowserWindowConstructorOptions } from "electron";
 export type Theme = "light" | "dark";
 
 export const THEME_CHANNEL = "prismalens:theme";
+/** The renderer asks for the terminal key (#931); `preload.cts` names it too. */
+export const TERMINAL_KEY_CHANNEL = "prismalens:terminal-key";
+/** Main tells the renderer a late claim stored the key; `preload.cts` names it too. */
+export const TERMINAL_KEY_CHANGED_CHANNEL = "prismalens:terminal-key-changed";
 export const THEME_COOKIE = "prismalens-theme";
 export const TITLEBAR_HEIGHT = 32;
 

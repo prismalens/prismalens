@@ -10,6 +10,15 @@ contextBridge.exposeInMainWorld("prismalensDesktop", {
 	platform: process.platform,
 	setTheme: (theme: "light" | "dark") =>
 		ipcRenderer.send("prismalens:theme", theme),
+	terminalKey: (): string | undefined =>
+		ipcRenderer.sendSync("prismalens:terminal-key") ?? undefined,
+	onTerminalKey: (listener: () => void) => {
+		const on = () => listener();
+		ipcRenderer.on("prismalens:terminal-key-changed", on);
+		return () => {
+			ipcRenderer.off("prismalens:terminal-key-changed", on);
+		};
+	},
 	browser: {
 		open: (url: string) => ipcRenderer.send("prismalens:browser:open", url),
 		setBounds: (

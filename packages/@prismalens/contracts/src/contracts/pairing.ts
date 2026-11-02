@@ -52,6 +52,8 @@ const RedeemInputSchema = z.object({
 
 const RedeemResponseSchema = z.object({
 	device: z.object({ id: z.string(), name: z.string() }),
+	/** Only for an operator link redeemed on the host itself: the terminal's second credential (#931). */
+	terminalKey: z.string().optional(),
 });
 
 /** The operator's half: a loopback or signed-in caller, never a paired device. */

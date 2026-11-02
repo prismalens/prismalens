@@ -58,8 +58,10 @@ pl doctor
 pl up
 ```
 
-`pl up` serves the dashboard on http://localhost:6473 and opens your browser
-on a one-time link that pairs it; there is no account. Investigations need a
+`pl up` serves the dashboard on http://localhost:6473 and prints a one-time
+link that pairs your browser; there is no account. It opens that link for you,
+except under WSL and wherever no browser can open: open the printed link
+yourself there. Investigations need a
 coding agent: Settings → Agent in the app lists the ones that can run, and
 Add agent sets one up. `pl doctor` checks PrismaLens's own setup, not agents.
 
