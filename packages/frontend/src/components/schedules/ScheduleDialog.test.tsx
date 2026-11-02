@@ -100,6 +100,20 @@ describe("ScheduleDialog (#979)", () => {
 		expect(chip()).toBe("codex:");
 	});
 
+	it("the Run once help names the schedule's own catch-up window, 6 hours for a new one", async () => {
+		await render();
+		expect(document.body.textContent).toContain("back within 6 hours.");
+
+		await render({ copyOf: source });
+		expect(document.body.textContent).toContain("back within 1 h 30 min.");
+
+		await render({ copyOf: { ...source, catchUpMinutes: 45 } as Schedule });
+		expect(document.body.textContent).toContain("back within 45 minutes.");
+
+		await render({ copyOf: { ...source, catchUpMinutes: 60 } as Schedule });
+		expect(document.body.textContent).toContain("back within 1 hour.");
+	});
+
 	it("Duplicate keeps the source's effort and catch-up window", async () => {
 		await render({ copyOf: source });
 

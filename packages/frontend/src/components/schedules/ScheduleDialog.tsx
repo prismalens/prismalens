@@ -72,6 +72,14 @@ const HOURS = [1, 2, 3, 4, 6, 8, 12];
 const HOST_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const CATCH_UP_MINUTES = 360;
 
+function windowText(minutes: number): string {
+	const h = Math.floor(minutes / 60);
+	const m = minutes % 60;
+	if (h === 0) return `${m} minute${m === 1 ? "" : "s"}`;
+	if (m === 0) return `${h} hour${h === 1 ? "" : "s"}`;
+	return `${h} h ${m} min`;
+}
+
 function zones(current: string): string[] {
 	const all = Intl.supportedValuesOf?.("timeZone") ?? [];
 	return Array.from(new Set([HOST_ZONE, current, "UTC", ...all]));
@@ -161,6 +169,7 @@ export function ScheduleDialog({
 		setWhen((w) => ({ ...w, ...patch }));
 
 	const source = editing ?? copyOf;
+	const catchUp = source?.catchUpMinutes ?? CATCH_UP_MINUTES;
 	const input: ScheduleInput | null =
 		recurrence && name.trim() && serviceId && brief.trim() && harness
 			? {
@@ -173,7 +182,7 @@ export function ScheduleDialog({
 					model: model || null,
 					effort: source?.effort ?? null,
 					missedPolicy,
-					catchUpMinutes: source?.catchUpMinutes ?? CATCH_UP_MINUTES,
+					catchUpMinutes: catchUp,
 				}
 			: null;
 
@@ -510,8 +519,8 @@ export function ScheduleDialog({
 										Run once when it is back
 									</span>
 									<span className="block text-meta text-text-3">
-										Only if it is back within 6 hours. Several missed runs still
-										make one run.
+										Only if it is back within {windowText(catchUp)}. Several
+										missed runs still make one run.
 									</span>
 								</span>
 							</label>
