@@ -1,0 +1,110 @@
+{
+	"row": "gateway-record",
+	"kind": "happy",
+	"title": "Records evidence and a hypothesis through PrismaLens's tools while every ask is refused",
+	"run": {
+		"accessLevel": "supervised",
+		"answer": "deny"
+	},
+	"expect": "gateway",
+	"agents": {
+		"gemini": {
+			"expect": "report",
+			"why": "gemini's permission ask for an MCP tool names no server (its title can be the call's own command argument), so PrismaLens cannot tell its own tool apart: a supervised run shows the card, an unattended one refuses"
+		}
+	},
+	"gateway": {
+		"calls": [
+			{
+				"name": "evidence_record",
+				"ok": true,
+				"outputHas": "e1",
+				"input": {
+					"source": "cat package.json",
+					"quote": "\"main\": \"index.js\""
+				}
+			},
+			{
+				"name": "hypothesis_record",
+				"ok": true,
+				"outputHas": "rh1",
+				"input": {
+					"status": "supported",
+					"evidence": ["e1"]
+				}
+			}
+		],
+		"records": {
+			"evidence": ["e1"],
+			"hypotheses": ["rh1"]
+		},
+		"evidenceHas": {
+			"e1": "index.js as the entry point"
+		},
+		"evidenceQuote": {
+			"e1": "\"main\": \"index.js\""
+		},
+		"hypothesisIs": {
+			"rh1": {
+				"status": "supported",
+				"evidenceIds": ["e1"],
+				"statement": "The entry point is index.js."
+			}
+		},
+		"evidenceSource": {
+			"e1": "cat package.json"
+		}
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-record]",
+				"toolName": "$gw:evidence_record",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:evidence_record",
+						"arguments": {
+							"observation": "package.json names index.js as the entry point",
+							"source": "cat package.json",
+							"quote": "\"main\": \"index.js\""
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-record]",
+				"afterTool": "$gw:evidence_record",
+				"resultContains": "e1",
+				"resultLacks": "invalid_input"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:hypothesis_record",
+						"arguments": {
+							"statement": "The entry point is index.js.",
+							"status": "supported",
+							"evidence": ["e1"]
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-record]",
+				"afterTool": "$gw:hypothesis_record",
+				"resultContains": "h1",
+				"resultLacks": "not_found"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import { conductRun } from "./conductor.js";
 import { FindingsLedger } from "./findings.js";
+import type { GatewayCall } from "./gateway.js";
 import {
 	buildRunFidelity,
 	createSteerChannel,
@@ -1644,7 +1645,8 @@ describe("recorded evidence and hypotheses (#930)", () => {
 			permission: autoApprovePolicy,
 		});
 		const recorded = events.filter((e) => e.kind === "finding_recorded");
-		expect(recorded.map((e) => e.kind === "finding_recorded" && e.finding.type)).toEqual(["evidence", "hypothesis"]);
+		// The quote anchors once `pwd` ran, so the evidence shows again with its anchor.
+		expect(recorded.map((e) => e.kind === "finding_recorded" && e.finding.type)).toEqual(["evidence", "hypothesis", "evidence"]);
 		const first = recorded[0];
 		expect(first?.kind === "finding_recorded" && first.finding.type === "evidence" && first.finding.anchor).toBeNull();
 		const reportIdx = events.findIndex((e) => e.kind === "report");
@@ -1664,6 +1666,68 @@ describe("recorded evidence and hypotheses (#930)", () => {
 				anchor: { in: "tool-output", toolCallId: "t1", line: 1 },
 			}),
 		);
+	});
+
+	describe("a finding is shown once per anchor", () => {
+		const at = "2026-10-28T10:00:00.000Z";
+		const evidence = (quote: string, anchor: RecordedEvidence["anchor"]): RecordedEvidence => ({
+			id: "e1",
+			observation: "the tree is the clone",
+			source: "pwd",
+			quote,
+			direction: "supports",
+			anchor,
+			at,
+		});
+		/** Streams `live` as the agent records, then `after` is what the end-of-turn read holds. */
+		async function evidenceShown(live: RecordedEvidence[], after: RecordedEvidence) {
+			let found: ((f: RecordedFinding) => void) | undefined;
+			const gateway = {
+				url: "http://127.0.0.1:1/mcp",
+				token: "t0k",
+				serverName: "prismalens-abcdefgh23",
+				promptLine: "",
+				tools: ["evidence_record"],
+				connected: () => true,
+				waitConnected: async () => {
+					for (const e of live) found?.({ type: "evidence", ...e });
+					return true;
+				},
+				onCall: () => () => {},
+				calls: () => [],
+				onFinding: (cb: (f: RecordedFinding) => void) => {
+					found = cb;
+					return () => {
+						found = undefined;
+					};
+				},
+				findings: () => ({ evidence: [after], hypotheses: [] }),
+			};
+			const { events } = await collect("ok", {
+				env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+				gateway,
+				permission: autoApprovePolicy,
+			});
+			return events.flatMap((e) =>
+				e.kind === "finding_recorded" && e.finding.type === "evidence" ? [e.finding.anchor] : [],
+			);
+		}
+		const anchor = { in: "tool-output" as const, toolCallId: "t1", line: 1 };
+
+		it("emits an unanchored record again once its quote anchors", async () => {
+			const shown = await evidenceShown([evidence("pl-clone-", null)], evidence("pl-clone-", anchor));
+			expect(shown).toEqual([null, anchor]);
+		});
+
+		it("emits the same anchored record once", async () => {
+			const shown = await evidenceShown([evidence("pl-clone-", anchor), evidence("pl-clone-", anchor)], evidence("pl-clone-", anchor));
+			expect(shown).toEqual([anchor]);
+		});
+
+		it("keeps a record that never anchors to one emission", async () => {
+			const shown = await evidenceShown([evidence("zz-never-", null), evidence("zz-never-", null)], evidence("zz-never-", null));
+			expect(shown).toEqual([null]);
+		});
 	});
 });
 
@@ -1714,6 +1778,103 @@ describe("harness tool call live events and summary (#848)", () => {
 			expect(summary.calls).toEqual([{ name: "incident_get", firstCalledAt: callAt, count: 1 }]);
 			expect(new Date(callAt).getTime()).toBeLessThan(new Date(summary.ts).getTime());
 		}
+	});
+
+	it("yields a harness_tool_call carrying callId, input, output, isError, ms, schemaHash and gateway's server", async () => {
+		let onCallCb: ((c: GatewayCall) => void) | undefined;
+		const callAt = "2026-10-24T10:00:00.000Z";
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-testserver123",
+			promptLine: "",
+			tools: ["runbooks_read"],
+			connected: () => true,
+			waitConnected: async () => {
+				onCallCb?.({
+					name: "runbooks_read",
+					at: callAt,
+					callId: "c1",
+					input: { path: "p" },
+					output: '{"ok":true}',
+					isError: false,
+					ms: 3,
+					schemaHash: "abcd",
+				});
+				return true;
+			},
+			onCall: (cb: (c: GatewayCall) => void) => {
+				onCallCb = cb;
+				return () => {};
+			},
+			calls: () => [{ name: "runbooks_read", firstCalledAt: callAt, count: 1 }],
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+		});
+		const toolCall = events.find((e) => e.kind === "harness_tool_call");
+		expect(toolCall).toBeDefined();
+		expect(toolCall).toMatchObject({
+			kind: "harness_tool_call",
+			server: "prismalens-testserver123",
+			name: "runbooks_read",
+			at: callAt,
+			callId: "c1",
+			input: { path: "p" },
+			output: '{"ok":true}',
+			isError: false,
+			ms: 3,
+			schemaHash: "abcd",
+		});
+	});
+
+	it("calls, findings and pages acknowledged but never streamed are recorded once, after recording closes (#848)", async () => {
+		const page = { id: "a1", title: "Timeline", html: "<p>x</p>", at: "2026-10-24T10:00:00.000Z" };
+		let closed = false;
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-testserver123",
+			promptLine: "",
+			tools: ["artifact_publish"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+			onArtifact: () => () => {},
+			closeRecording: () => {
+				closed = true;
+			},
+			artifacts: () => [page],
+			callLog: () => [
+				{ name: "evidence_record", at: page.at, callId: "c9", input: {}, output: "x" },
+			],
+			findings: () => ({
+				evidence: [
+					{
+						id: "e1",
+						observation: "o",
+						source: "s",
+						quote: "q quote",
+						direction: "supports" as const,
+						anchor: null,
+						at: page.at,
+					},
+				],
+				hypotheses: [],
+			}),
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+		});
+		const pages = events.filter((e) => e.kind === "artifact_published");
+		expect(pages).toHaveLength(1);
+		expect(pages[0]).toMatchObject({ artifact: { id: "a1", title: "Timeline" } });
+		expect(closed).toBe(true);
+		expect(events.filter((e) => e.kind === "harness_tool_call")).toHaveLength(1);
+		expect(events.filter((e) => e.kind === "finding_recorded")).toHaveLength(1);
 	});
 
 	it("a two-turn resume yields turn: 'first' and then turn: 'follow-up'", async () => {

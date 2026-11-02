@@ -10,7 +10,12 @@ import type {
 	FindingsLedger,
 	HypothesisInput,
 } from "@prismalens/engine";
-import { defineSourceTool, type SourceTool } from "@prismalens/integrations";
+import {
+	defineHarnessTool,
+	type Failure,
+	fail,
+	type HarnessTool,
+} from "@prismalens/integrations/harness";
 import { z } from "zod";
 
 /** What the recording tools write to: the run's ledger, and its workspace for file quotes. */
@@ -34,14 +39,35 @@ const HYPOTHESIS_ID = z
 	.trim()
 	.regex(/^rh\d{1,4}$/);
 
+/** A ledger refusal in the failure contract's shape (#848). */
+function refused(error: string): Failure {
+	if (/not live/i.test(error))
+		return fail(
+			"run_ended",
+			error,
+			"Stop recording; finish your answer with what you found.",
+		);
+	if (/^No recorded/.test(error))
+		return fail(
+			"not_found",
+			error,
+			"Record the missing item first, or drop the ids it names.",
+		);
+	return fail(
+		"invalid_input",
+		error,
+		"Stop recording more of these; put the rest in your report.",
+	);
+}
+
 /**
  * Evidence and hypotheses the agent records as it works (#930). A result never
  * repeats the quote: it would be a tool output the quote resolves against.
  */
-export function recordTools(data: FindingsData): SourceTool[] {
-	const base = { category: "knowledge", openWorld: false } as const;
+export function recordTools(data: FindingsData): HarnessTool[] {
+	const base = { group: "record", effect: "record" } as const;
 	return [
-		defineSourceTool({
+		defineHarnessTool({
 			...base,
 			name: "evidence_record",
 			title: "Record evidence",
@@ -56,7 +82,7 @@ export function recordTools(data: FindingsData): SourceTool[] {
 			}),
 			run: async (input, ctx) => {
 				const r = await data.recordEvidence(ctx.runId, input);
-				if ("error" in r) return { isError: true, value: r };
+				if ("error" in r) return refused(r.error);
 				return {
 					value: {
 						id: r.id,
@@ -72,7 +98,7 @@ export function recordTools(data: FindingsData): SourceTool[] {
 				};
 			},
 		}),
-		defineSourceTool({
+		defineHarnessTool({
 			...base,
 			name: "hypothesis_record",
 			title: "Record a hypothesis",
@@ -88,7 +114,7 @@ export function recordTools(data: FindingsData): SourceTool[] {
 			run: async (input, ctx) => {
 				const r = await data.recordHypothesis(ctx.runId, input);
 				return "error" in r
-					? { isError: true, value: r }
+					? refused(r.error)
 					: { value: { id: r.id, evidence: r.evidenceIds } };
 			},
 		}),

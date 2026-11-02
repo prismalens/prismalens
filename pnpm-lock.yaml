@@ -291,6 +291,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ~2.4.0
         version: 2.4.0
+      '@prismalens/integrations':
+        specifier: workspace:*
+        version: link:../integrations
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
@@ -309,6 +312,9 @@ importers:
 
   packages/@prismalens/integrations:
     dependencies:
+      '@modelcontextprotocol/server':
+        specifier: ~2.4.0
+        version: 2.4.0
       '@prismalens/config':
         specifier: workspace:*
         version: link:../config
@@ -322,6 +328,9 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: ~2.4.0
+        version: 2.4.0
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
