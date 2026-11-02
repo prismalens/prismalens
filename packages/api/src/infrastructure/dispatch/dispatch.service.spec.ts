@@ -1780,6 +1780,17 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		await expect(service.resumeInterrupted(done.id)).rejects.toBeInstanceOf(FollowUpRefused);
 	});
 
+	it("Resume on a run with a session but no pid receipt is refused, the same rule boot applies (OBJ-010)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+		vi.mocked(service.previousGone).mockRestore();
+
+		await expect(service.resumeInterrupted(row.id)).rejects.toThrow(/may still be running/);
+		expect(await read(row.id)).toMatchObject({ status: "failed" });
+	});
+
 	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap reads unchecked", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });

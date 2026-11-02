@@ -5,7 +5,12 @@ import { EventEmitter } from "node:events";
 import { PassThrough, Readable, Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import type { HarnessChild } from "../launch/types.js";
-import { levelPolicy, type PermissionPolicy } from "../run/permission.js";
+import {
+	createAskChannel,
+	levelPolicy,
+	type PermissionPolicy,
+	SHUTDOWN_REASON,
+} from "../run/permission.js";
 import { AcpSession } from "./acp-client.js";
 
 const OPTIONS = [
@@ -76,14 +81,25 @@ function codex(announce: string | null) {
 	return { child, answers };
 }
 
-async function ask(announce: string | null, policy: PermissionPolicy) {
+async function ask(
+	announce: string | null,
+	policy: PermissionPolicy,
+	cancelWith?: unknown,
+) {
 	const { child, answers } = codex(announce);
-	const session = new AcpSession({
+	const session: AcpSession = new AcpSession({
 		command: "codex-acp",
 		args: [],
 		cwd: "/tmp",
 		launcher: { spawn: () => child, destroy: async () => {} },
-		permission: policy,
+		permission:
+			cancelWith === undefined
+				? policy
+				: (req, ctx) => {
+						const verdict = policy(req, ctx);
+						setTimeout(() => session.cancel(cancelWith), 0);
+						return verdict;
+					},
 		initTimeoutMs: 1_000,
 	});
 	await session.open();
@@ -118,5 +134,18 @@ describe("an ID-only ask matched to the agent's own tool_call (#848, OBJ-011)", 
 		expect(await ask(`mcp.${NAME}.n8n_prod__list_workflows`, unattended)).toEqual(
 			selected("reject"),
 		);
+	});
+});
+
+describe("an ask a cancelled turn leaves waiting (#981)", () => {
+	const waits = createAskChannel().policy;
+	const cancelled = { outcome: { outcome: "cancelled" } };
+
+	it("is answered cancelled when the operator stops the turn", async () => {
+		expect(await ask(null, waits, "stop")).toEqual(cancelled);
+	});
+
+	it("is answered cancelled when PrismaLens shuts down, not with the reject option", async () => {
+		expect(await ask(null, waits, SHUTDOWN_REASON)).toEqual(cancelled);
 	});
 });

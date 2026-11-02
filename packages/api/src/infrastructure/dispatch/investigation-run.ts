@@ -93,7 +93,12 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
-import { clearReceipt, watchReceipt, writeReceipt } from "./harness-receipt.js";
+import {
+	clearReceipt,
+	stampOf,
+	watchReceipt,
+	writeReceipt,
+} from "./harness-receipt.js";
 import {
 	buildPreRunSnapshot,
 	type CopyTarget,
@@ -2414,7 +2419,7 @@ function keepReceipt(runDir: string, pid: number | undefined): void {
 	if (!pid) return;
 	try {
 		mkdirSync(runDir, { recursive: true });
-		writeReceipt(runDir, pid);
+		writeReceipt(runDir, pid, Date.now(), stampOf(pid));
 		receiptWatches.get(runDir)?.();
 		receiptWatches.set(runDir, watchReceipt(runDir));
 	} catch (e) {

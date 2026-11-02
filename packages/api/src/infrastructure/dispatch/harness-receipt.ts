@@ -3,6 +3,7 @@
 
 import { execFile, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -17,7 +18,14 @@ export interface Receipt {
 	rootCreated?: number;
 	/** The tree as last seen while the run worked (Windows), so an orphaned grandchild is still known. */
 	tree?: { pid: number; created: number }[];
+	/** POSIX: where the group was started, so a later boot or another machine never kills by a reused pid. */
+	host?: string;
+	boot?: string;
+	/** POSIX: the group leader's start stamp, from the same reader that checks it. */
+	leaderStart?: number;
 }
+
+type Stamp = Pick<Receipt, "host" | "boot" | "leaderStart">;
 
 export interface OsProcess {
 	pid: number;
@@ -34,6 +42,10 @@ export interface ProcessHost {
 	groupAlive(pgid: number): boolean;
 	kill(pid: number, group: boolean): void;
 	sleep(ms: number): Promise<void>;
+	/** POSIX: this machine and its current boot; `boot` is null when unreadable. */
+	identity(): { host: string; boot: string | null };
+	/** POSIX: the start stamp of the process holding `pid`, or null when none does. */
+	startOf(pid: number): number | null;
 }
 
 const FILE = "harness.pid";
@@ -49,7 +61,7 @@ export function writeReceipt(
 	runDir: string,
 	pid: number,
 	now = Date.now(),
-	seen?: Pick<Receipt, "rootCreated" | "tree">,
+	seen?: Pick<Receipt, "rootCreated" | "tree"> & Stamp,
 ) {
 	writeFileSync(
 		join(runDir, FILE),
@@ -80,10 +92,50 @@ export function readReceipt(runDir: string): Receipt | null {
 				? { rootCreated: r.rootCreated }
 				: {}),
 			...(tree ? { tree } : {}),
+			...(typeof r.host === "string" ? { host: r.host } : {}),
+			...(typeof r.boot === "string" ? { boot: r.boot } : {}),
+			...(typeof r.leaderStart === "number"
+				? { leaderStart: r.leaderStart }
+				: {}),
 		};
 	} catch {
 		return null;
 	}
+}
+
+/** What a POSIX receipt records so a later check can tell the harness's group from a stranger's. */
+export function stampOf(pid: number, host: ProcessHost = osHost()): Stamp {
+	if (host.platform === "win32") return {};
+	try {
+		const { host: name, boot } = host.identity();
+		const leaderStart = host.startOf(pid);
+		return {
+			host: name,
+			...(boot !== null ? { boot } : {}),
+			...(leaderStart !== null ? { leaderStart } : {}),
+		};
+	} catch {
+		return {};
+	}
+}
+
+/**
+ * Whether a live POSIX group `receipt.pid` is the harness's: "gone" when this host has
+ * rebooted since, "unproven" when nothing ties it to the receipt. A pid stays reserved
+ * while its group has members (POSIX fork), so a leaderless group in the same boot is ours.
+ */
+function posixOwner(
+	receipt: Receipt,
+	host: ProcessHost,
+): "ours" | "gone" | "unproven" {
+	const now = host.identity();
+	if (receipt.host === undefined || receipt.host !== now.host)
+		return "unproven";
+	if (receipt.boot === undefined || now.boot === null) return "unproven";
+	if (receipt.boot !== now.boot) return "gone";
+	const leader = host.startOf(receipt.pid);
+	if (leader === null) return "ours";
+	return leader === receipt.leaderStart ? "ours" : "unproven";
 }
 
 /**
@@ -152,6 +204,10 @@ export async function containPrevious(
 	host: ProcessHost = osHost(),
 ): Promise<boolean> {
 	if (!receipt) return true;
+	if (host.platform !== "win32" && host.groupAlive(receipt.pid)) {
+		const owner = posixOwner(receipt, host);
+		if (owner !== "ours") return owner === "gone";
+	}
 	const alive = () =>
 		host.platform === "win32"
 			? treeOf(receipt, host.list())
@@ -216,7 +272,11 @@ export async function snapshotReceipt(
 			now.startedAt !== receipt.startedAt
 		)
 			return;
+		const { host, boot, leaderStart } = receipt;
 		writeReceipt(runDir, receipt.pid, receipt.startedAt, {
+			...(host !== undefined ? { host } : {}),
+			...(boot !== undefined ? { boot } : {}),
+			...(leaderStart !== undefined ? { leaderStart } : {}),
 			...(root
 				? { rootCreated: root.created }
 				: receipt.rootCreated !== undefined
@@ -253,7 +313,54 @@ export function osHost(): ProcessHost {
 			}
 		},
 		sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+		identity: () => ({ host: hostname(), boot: bootId() }),
+		startOf: process.platform === "linux" ? linuxStartOf : psStartOf,
 	};
+}
+
+/** Field 22 of /proc/<pid>/stat, clock ticks since boot; the command (field 2) may hold spaces and parens. */
+export function procStartTime(stat: string): number | null {
+	const rest = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+	const ticks = Number(rest[19]);
+	return stat.includes(")") && Number.isFinite(ticks) ? ticks : null;
+}
+
+function linuxStartOf(pid: number): number | null {
+	let stat: string;
+	try {
+		stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw e;
+	}
+	const ticks = procStartTime(stat);
+	if (ticks === null) throw new Error(`unreadable /proc/${pid}/stat`);
+	return ticks;
+}
+
+function psStartOf(pid: number): number | null {
+	const out = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+		encoding: "utf8",
+	});
+	if (out.error) throw out.error;
+	const text = out.stdout.trim();
+	if (!text && out.status === 1) return null;
+	const at = Date.parse(text);
+	if (!Number.isFinite(at)) throw new Error(`ps gave no start for ${pid}`);
+	return at;
+}
+
+function bootId(): string | null {
+	try {
+		if (process.platform === "linux")
+			return readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+		const out = spawnSync("sysctl", ["-n", "kern.boottime"], {
+			encoding: "utf8",
+		});
+		return out.status === 0 && out.stdout.trim() ? out.stdout.trim() : null;
+	} catch {
+		return null;
+	}
 }
 
 const LIST_ARGS = [

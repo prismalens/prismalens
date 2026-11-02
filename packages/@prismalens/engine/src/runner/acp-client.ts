@@ -1147,7 +1147,9 @@ export class AcpSession {
 				this.asks.delete(controller);
 				if (this.closed) return;
 				const optionId =
-					decision.outcome === "stopped" ? undefined : decision.optionId;
+					decision.outcome === "stopped" || decision.outcome === "restarted"
+						? undefined
+						: decision.optionId;
 				this.send({
 					jsonrpc: "2.0",
 					id: msg.id,

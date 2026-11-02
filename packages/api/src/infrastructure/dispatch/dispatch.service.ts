@@ -1931,7 +1931,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const { inv, original, turn } = found;
 		const plan = await this.planFollowUp(inv, {});
 		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");
-		if (!(await containPrevious(readReceipt(runDirFor(id))).catch(() => false)))
+		if (!(await this.previousGone(id, inv.acpSessionId)))
 			throw new FollowUpRefused(
 				`${agentLabel(plan.harness)} from before the restart may still be running. Resume once it has stopped.`,
 			);

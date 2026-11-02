@@ -10,8 +10,10 @@ import {
 	containPrevious,
 	type OsProcess,
 	type ProcessHost,
+	procStartTime,
 	readReceipt,
 	snapshotReceipt,
+	stampOf,
 	treeOf,
 	writeReceipt,
 } from "./harness-receipt.js";
@@ -32,6 +34,8 @@ function winHost(table: OsProcess[], stubborn = new Set<number>()): ProcessHost 
 			if (i >= 0) table.splice(i, 1);
 		},
 		sleep: async () => {},
+		identity: () => ({ host: "win", boot: null }),
+		startOf: () => null,
 	};
 }
 
@@ -85,21 +89,85 @@ describe("harness receipt (#981 OBJ-010)", () => {
 		expect(await containPrevious({ pid: 4120, startedAt: T }, host)).toBe(false);
 	});
 
-	it("POSIX checks and kills the whole process group", async () => {
-		let alive = true;
-		const kills: [number, boolean][] = [];
-		const host: ProcessHost = {
-			platform: "linux",
-			list: () => [],
-			groupAlive: () => alive,
-			kill: (pid, group) => {
-				kills.push([pid, group]);
-				alive = false;
-			},
-			sleep: async () => {},
-		};
-		expect(await containPrevious({ pid: 4120, startedAt: T }, host)).toBe(true);
-		expect(kills).toEqual([[4120, true]]);
+	describe("POSIX kills the group only once it is proven the harness's", () => {
+		const STAMP = { host: "box", boot: "boot-1", leaderStart: 88_000 };
+		function posixHost(now: { host?: string; boot?: string | null; leader?: number | null } = {}) {
+			let alive = true;
+			const kills: [number, boolean][] = [];
+			const host: ProcessHost = {
+				platform: "linux",
+				list: () => [],
+				groupAlive: () => alive,
+				kill: (pid, group) => {
+					kills.push([pid, group]);
+					alive = false;
+				},
+				sleep: async () => {},
+				identity: () => ({ host: now.host ?? "box", boot: now.boot === undefined ? "boot-1" : now.boot }),
+				startOf: () => (now.leader === undefined ? 88_000 : now.leader),
+			};
+			return { host, kills };
+		}
+
+		it("kills the whole group when host, boot and leader start all match", async () => {
+			const { host, kills } = posixHost();
+			expect(await containPrevious({ pid: 4120, startedAt: T, ...STAMP }, host)).toBe(true);
+			expect(kills).toEqual([[4120, true]]);
+		});
+
+		it("kills a group whose leader exited but whose members live on, in the same boot", async () => {
+			const { host, kills } = posixHost({ leader: null });
+			expect(await containPrevious({ pid: 4120, startedAt: T, ...STAMP }, host)).toBe(true);
+			expect(kills).toEqual([[4120, true]]);
+		});
+
+		it("leaves a pid reused by another process alone, and is not contained", async () => {
+			const { host, kills } = posixHost({ leader: 99_000 });
+			expect(await containPrevious({ pid: 4120, startedAt: T, ...STAMP }, host)).toBe(false);
+			expect(kills).toEqual([]);
+		});
+
+		it("a receipt from an earlier boot of this host is gone without a kill", async () => {
+			const { host, kills } = posixHost({ boot: "boot-2", leader: 12 });
+			expect(await containPrevious({ pid: 4120, startedAt: T, ...STAMP }, host)).toBe(true);
+			expect(kills).toEqual([]);
+		});
+
+		it("a receipt from another host, an unreadable boot, or one written before the stamp is not contained and kills nothing", async () => {
+			for (const [receipt, now] of [
+				[{ pid: 4120, startedAt: T, ...STAMP }, { host: "other" }],
+				[{ pid: 4120, startedAt: T, ...STAMP }, { boot: null }],
+				[{ pid: 4120, startedAt: T }, {}],
+			] as const) {
+				const { host, kills } = posixHost(now);
+				expect(await containPrevious(receipt, host)).toBe(false);
+				expect(kills).toEqual([]);
+			}
+		});
+
+		it("a dead group is contained whatever the receipt carries", async () => {
+			const { host, kills } = posixHost();
+			host.groupAlive = () => false;
+			expect(await containPrevious({ pid: 4120, startedAt: T }, host)).toBe(true);
+			expect(kills).toEqual([]);
+		});
+
+		it("stamps and reads back the identity on POSIX, and nothing on Windows", () => {
+			const dir = mkdtempSync(join(tmpdir(), "pl-receipt-"));
+			try {
+				writeReceipt(dir, 4120, T, stampOf(4120, posixHost().host));
+				expect(readReceipt(dir)).toEqual({ pid: 4120, startedAt: T, ...STAMP });
+				expect(stampOf(4120, winHost([]))).toEqual({});
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("reads a leader's start from /proc/<pid>/stat, a command with spaces and parens included", () => {
+			const stat = `4120 (node (x) y) S 1 4120 4120 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 11 0 88000 1000 50 ${"0 ".repeat(30)}`;
+			expect(procStartTime(stat)).toBe(88_000);
+			expect(procStartTime("garbage")).toBeNull();
+		});
 	});
 	it("finds a tool whose parent exited, from the tree the last snapshot recorded", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "pl-receipt-"));
