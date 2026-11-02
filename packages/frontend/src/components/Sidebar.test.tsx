@@ -72,6 +72,14 @@ vi.mock("@/components/shell/IncidentTree", () => ({
 	IncidentTree: () => null,
 }));
 
+vi.mock("@/components/shell/ThreadList", () => ({
+	ThreadList: () => null,
+}));
+
+vi.mock("@/components/shell/SidebarHead", () => ({
+	SidebarHead: () => null,
+}));
+
 vi.mock("@/components/alerts/AlertListPane", () => ({
 	AlertListPane: () => null,
 }));

@@ -238,7 +238,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		});
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
 			where: { id: { in: ids } },
-			data: { settledAt: expect.any(Date) },
+			data: { settledAt: expect.any(Date), lastVisitedAt: expect.any(Date) },
 		});
 		await service().settle(ids[0] as string, false);
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({

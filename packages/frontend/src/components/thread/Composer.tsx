@@ -48,6 +48,13 @@ export interface ComposerChoice {
 	accessLevel: AccessLevel;
 }
 
+/** A `/` menu entry: an app action, never an agent command (#1020). */
+export interface SlashCommand {
+	id: string;
+	label: string;
+	run: () => void;
+}
+
 export interface ComposerProps {
 	state: ComposerState;
 	onSend: (send: ComposerSend, now: boolean) => Promise<void> | void;
@@ -67,6 +74,10 @@ export interface ComposerProps {
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
 	autoFocus?: boolean;
+	/** A row above the box: a new thread's subject and Incident toggle. */
+	top?: ReactNode;
+	/** What `/` offers; the text typed after it narrows the list. */
+	slash?: SlashCommand[];
 }
 
 interface Draft {
@@ -93,6 +104,8 @@ export function Composer({
 	dock,
 	blockedReason,
 	autoFocus,
+	top,
+	slash,
 }: ComposerProps) {
 	const [text, setText] = useState("");
 	const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -104,6 +117,16 @@ export function Composer({
 	const blocked = !!blockedReason;
 	const hasText = !!text.trim();
 	const canSend = !sending && !blocked && hasText;
+	const slashQuery = /^\/(\w*)$/.exec(text)?.[1]?.toLowerCase();
+	const commands =
+		slash && slashQuery !== undefined
+			? slash.filter((c) => c.id.startsWith(slashQuery))
+			: [];
+	const runCommand = (c: SlashCommand) => {
+		setText("");
+		c.run();
+		ref.current?.focus();
+	};
 	const { harness } = choice;
 	const agent = {
 		label: harness?.label ?? "The agent",
@@ -153,6 +176,17 @@ export function Composer({
 	};
 
 	const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+		const first = commands[0];
+		if (
+			first &&
+			e.key === "Enter" &&
+			!e.shiftKey &&
+			!e.nativeEvent.isComposing
+		) {
+			e.preventDefault();
+			runCommand(first);
+			return;
+		}
 		const key = composerKeyAction(
 			{
 				key: e.key,
@@ -220,6 +254,32 @@ export function Composer({
 	const hasEffort = effortLevels(harness).length > 0;
 	return (
 		<div className="flex flex-col gap-1" data-testid="thread-composer">
+			{top}
+			{commands.length > 0 && (
+				<ul
+					aria-label="Commands"
+					className="flex flex-col gap-px rounded-[10px] bg-surface-2 p-1"
+					data-testid="composer-slash"
+				>
+					{commands.map((c, i) => (
+						<li key={c.id}>
+							<button
+								type="button"
+								onMouseDown={(e) => e.preventDefault()}
+								onClick={() => runCommand(c)}
+								className={cn(
+									"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body text-text-1 hover:bg-surface-3",
+									i === 0 && "bg-surface-3",
+								)}
+								data-testid={`composer-slash-${c.id}`}
+							>
+								<span className="font-mono text-meta text-text-3">/{c.id}</span>
+								<span>{c.label}</span>
+							</button>
+						</li>
+					))}
+				</ul>
+			)}
 			<div className="overflow-hidden rounded-[10px] bg-surface-2">
 				{(dock || drafts.length > 0) && (
 					<div className="flex flex-col gap-2.5 bg-surface-3 px-3 pt-2.5 pb-2">

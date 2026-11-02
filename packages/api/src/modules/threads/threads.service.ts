@@ -355,7 +355,7 @@ export class ThreadsService {
 		return { lastVisitedAt: at.toISOString() };
 	}
 
-	/** Settling an incident's thread settles every thread of that incident. */
+	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
 	async settle(id: string, settled: boolean): Promise<{ ids: string[] }> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -368,7 +368,10 @@ export class ThreadsService {
 		).map((r) => r.id);
 		await this.prisma.investigation.updateMany({
 			where: { id: { in: ids } },
-			data: { settledAt: settled ? new Date() : null },
+			// Settling is reading too: an unseen outcome would hold it in Needs you.
+			data: settled
+				? { settledAt: new Date(), lastVisitedAt: new Date() }
+				: { settledAt: null },
 		});
 		return { ids };
 	}

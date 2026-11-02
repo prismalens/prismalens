@@ -35,6 +35,8 @@ import {
 } from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
 import { IncidentTree } from "@/components/shell/IncidentTree";
+import { SidebarHead } from "@/components/shell/SidebarHead";
+import { ThreadList } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { inSettings, useBack } from "@/hooks/use-back";
 import { useBreathePhase } from "@/hooks/use-breathe-phase";
@@ -186,6 +188,7 @@ function MainBar({
 					</Hint>
 				</span>
 			</div>
+			{signedIn && full && <SidebarHead />}
 			<nav className="grid gap-0.5 px-2" aria-label="Areas">
 				{doors
 					.filter((d) => d.to !== "/settings")
@@ -340,7 +343,13 @@ function AreaList({ pathname }: { pathname: string }) {
 		);
 	}
 	if (isOn(pathname, "/services")) return <ServiceList />;
-	return <IncidentTree />;
+	return (
+		<>
+			<ThreadList />
+			<SideLane label="Incidents" />
+			<IncidentTree />
+		</>
+	);
 }
 
 /** Settings at the foot, an icon beside the theme toggle (spec §1). */

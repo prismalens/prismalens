@@ -2,17 +2,18 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
-import type { ThreadStartSubject } from "@prismalens/contracts";
+import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
 	defaultAccessOf,
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { useCreateIncident, useInvestigateIncident } from "@/lib/api/hooks";
 import { useStartThread } from "@/lib/api/hooks/use-threads-orpc";
-import { uploadThreadAttachment } from "@/lib/attachments";
-import { Composer, type ComposerSend } from "./Composer";
+import { uploadAttachment, uploadThreadAttachment } from "@/lib/attachments";
+import { Composer, type ComposerSend, type SlashCommand } from "./Composer";
 
 interface Picked {
 	harness?: HarnessId;
@@ -28,12 +29,24 @@ interface Picked {
 export function NewThread({
 	subject,
 	branch,
+	incident = null,
+	note = false,
+	top,
+	slash,
 }: {
 	subject: ThreadStartSubject;
 	branch: string | null;
+	/** Incident on: the message creates an incident at this severity and investigates it. */
+	incident?: Severity | null;
+	/** With Incident on: keep the text as the incident's description, start no run. */
+	note?: boolean;
+	top?: ReactNode;
+	slash?: SlashCommand[];
 }) {
 	const choice = useAgentChoice();
 	const start = useStartThread();
+	const createIncident = useCreateIncident();
+	const investigate = useInvestigateIncident();
 	const navigate = useNavigate();
 	const [picked, setPicked] = useState<Picked>({});
 	const harness =
@@ -51,7 +64,47 @@ export function NewThread({
 		picked.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
 	const unready = harness ? unreadyLine(harness) : null;
 
-	const onSend = async ({ text, files }: ComposerSend) => {
+	const run = {
+		accessLevel,
+		...(picked.harness ? { harness: picked.harness } : {}),
+		...(picked.model !== undefined ? { model: picked.model } : {}),
+		...(picked.effort !== undefined ? { effort: picked.effort } : {}),
+	};
+
+	/** The text is the brief; its first line names the incident. */
+	const sendIncident = async (
+		severity: Severity,
+		{ text, files }: ComposerSend,
+	) => {
+		const created = await createIncident.mutateAsync({
+			title: (text.split("\n")[0] ?? text).slice(0, 120),
+			description: text,
+			severity,
+			...(subject.kind === "service" ? { serviceId: subject.serviceId } : {}),
+		});
+		const uploaded = await Promise.all(
+			files.map((f) => uploadAttachment(created.id, f)),
+		);
+		if (note) {
+			await navigate({ to: "/incidents/$id", params: { id: created.id } });
+			return;
+		}
+		const started = await investigate.mutateAsync({
+			id: created.id,
+			brief: text,
+			...run,
+			...(uploaded.length ? { attachments: uploaded.map((a) => a.id) } : {}),
+		});
+		await navigate({
+			to: "/incidents/$id/conversation",
+			params: { id: created.id },
+			search: { investigation: started.investigationId },
+		});
+	};
+
+	const onSend = async (send: ComposerSend) => {
+		if (incident) return sendIncident(incident, send);
+		const { text, files } = send;
 		const draftKey = crypto.randomUUID();
 		const uploaded = await Promise.all(
 			files.map((f) => uploadThreadAttachment({ draftKey }, f)),
@@ -59,10 +112,7 @@ export function NewThread({
 		const started = await start.mutateAsync({
 			subject,
 			text,
-			accessLevel,
-			...(picked.harness ? { harness: picked.harness } : {}),
-			...(picked.model !== undefined ? { model: picked.model } : {}),
-			...(picked.effort !== undefined ? { effort: picked.effort } : {}),
+			...run,
 			...(uploaded.length
 				? { draftKey, attachments: uploaded.map((a) => a.id) }
 				: {}),
@@ -77,7 +127,7 @@ export function NewThread({
 		<Composer
 			state="ready"
 			onSend={onSend}
-			placeholder="Ask or describe a change"
+			placeholder={incident ? "What's wrong?" : "Ask or describe a change"}
 			choice={{ harness, model, effort, accessLevel }}
 			onChoice={(next) =>
 				setPicked((p) => ({
@@ -93,6 +143,8 @@ export function NewThread({
 			branch={branch}
 			blockedReason={choice.isLoading ? null : unready}
 			autoFocus
+			top={top}
+			slash={slash}
 		/>
 	);
 }

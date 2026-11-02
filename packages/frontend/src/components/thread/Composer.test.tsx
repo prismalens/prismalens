@@ -153,4 +153,35 @@ describe("the one composer (#1020)", () => {
 		expect((q("composer-input") as HTMLTextAreaElement).disabled).toBe(true);
 		expect(q("composer-blocked")?.textContent).toBe("Sign in to Claude Code");
 	});
+
+	it("shows a top row, and a / menu of app actions that Enter runs", async () => {
+		const investigate = vi.fn();
+		const note = vi.fn();
+		const onSend = vi.fn();
+		await render({
+			onSend,
+			top: <div data-testid="top-row">subject</div>,
+			slash: [
+				{ id: "investigate", label: "Investigate", run: investigate },
+				{ id: "note", label: "Note", run: note },
+			],
+		});
+		expect(q("top-row")).not.toBeNull();
+		expect(q("composer-slash")).toBeNull();
+		await type("/");
+		expect(q("composer-slash-investigate")).not.toBeNull();
+		expect(q("composer-slash-note")).not.toBeNull();
+		const box = await type("/no");
+		expect(q("composer-slash-investigate")).toBeNull();
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(note).toHaveBeenCalledOnce();
+		expect(onSend).not.toHaveBeenCalled();
+		expect(box.value).toBe("");
+		await type("/ship it");
+		expect(q("composer-slash")).toBeNull();
+	});
 });
