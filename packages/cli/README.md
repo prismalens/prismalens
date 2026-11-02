@@ -1,6 +1,6 @@
 # prismalens
 
-PrismaLens is a self-hosted incident investigator. When an alert arrives, the
+PrismaLens is an incident investigator that runs as an app on your machine. When an alert arrives, the
 coding agent you already use reads a snapshot of the service's code, under a
 permission level you pick, and writes an ordered-evidence report: hypotheses
 ranked by the evidence behind them, with no numeric confidence scores. The run,
@@ -10,12 +10,12 @@ app, checks a machine, pairs devices and manages a background service.
 
 ## Install
 
-PrismaLens is alpha: any 0.x release may break, so read the
+PrismaLens is alpha and changes often, so read the
 [release notes](https://github.com/prismalens/prismalens/releases) before upgrading.
 
 ### npm
 
-Needs Node.js 24+.
+Needs Node.js; `pl doctor` says if yours is too old.
 
 ```bash
 npm install -g prismalens
