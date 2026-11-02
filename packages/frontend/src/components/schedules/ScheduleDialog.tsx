@@ -141,6 +141,13 @@ export function ScheduleDialog({
 		setMissedPolicy(seed?.missedPolicy ?? "run_once");
 	}, [open, editing, copyOf, agents.effective?.id, agents.model]);
 
+	// The default agent can load after the dialog opened; fill only what is still empty.
+	useEffect(() => {
+		if (!open || harness || !agents.effective?.id) return;
+		setHarness(agents.effective.id);
+		setModel((m) => m || agents.model);
+	}, [open, harness, agents.effective?.id, agents.model]);
+
 	const recurrence = useMemo(() => {
 		try {
 			return recurrenceOf(when);
@@ -153,6 +160,7 @@ export function ScheduleDialog({
 	const set = (patch: Partial<WhenForm>) =>
 		setWhen((w) => ({ ...w, ...patch }));
 
+	const source = editing ?? copyOf;
 	const input: ScheduleInput | null =
 		recurrence && name.trim() && serviceId && brief.trim() && harness
 			? {
@@ -163,9 +171,9 @@ export function ScheduleDialog({
 					recurrence,
 					harness: harness as HarnessId,
 					model: model || null,
-					effort: editing?.effort ?? null,
+					effort: source?.effort ?? null,
 					missedPolicy,
-					catchUpMinutes: editing?.catchUpMinutes ?? CATCH_UP_MINUTES,
+					catchUpMinutes: source?.catchUpMinutes ?? CATCH_UP_MINUTES,
 				}
 			: null;
 

@@ -10,6 +10,8 @@ import { rmSync } from "node:fs";
 import type { InvestigationReport } from "@prismalens/contracts/schemas";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InternalInvestigationResultDto } from "./dto/index.js";
+import { meetsPromotionRule } from "./promotion.js";
+import { runScope, runScopeKey } from "./run-scope.js";
 
 const env = await vi.hoisted(async () => {
 	const fs = await import("node:fs");
@@ -272,5 +274,93 @@ describe("a finding links the check to an incident (#979, adversary OBJ-010)", (
 
 		expect(await prisma.incident.count()).toBe(1);
 		expect((await prisma.timelineEntry.findMany()).map((t) => t.title)).toEqual(["Investigation completed"]);
+	});
+});
+
+describe("deleting a service keeps its check runs (#979)", () => {
+	it("a run linked to an incident survives with no service", async () => {
+		const gone = await prisma.service.create({ data: { name: `gone-${randomUUID()}` } });
+		incidentNo++;
+		const inc = await prisma.incident.create({ data: { number: 3000 + incidentNo, title: "linked", serviceId: gone.id } });
+		const run = await check({ serviceId: gone.id, incidentId: inc.id });
+
+		await prisma.service.delete({ where: { id: gone.id } });
+
+		expect(await prisma.investigation.findUnique({ where: { id: run.id } })).toMatchObject({ incidentId: inc.id, serviceId: null });
+	});
+});
+
+describe("runScope (#979)", () => {
+	it("scopes by incident when one is set, even if a schedule is too", () => {
+		expect(runScope({ incidentId: "inc-1", scheduleId: "sch-1" })).toEqual({ incidentId: "inc-1" });
+	});
+
+	it("scopes an unlinked run by its schedule, never by incidentId null", () => {
+		expect(runScope({ incidentId: null, scheduleId: "sch-1" })).toEqual({ scheduleId: "sch-1" });
+	});
+
+	it("refuses a run that has neither, instead of matching every unlinked run", () => {
+		expect(() => runScope({ incidentId: null })).toThrow();
+		expect(() => runScope({ incidentId: null, scheduleId: null })).toThrow();
+	});
+
+	it("keys two schedules apart and an incident by its id", () => {
+		expect(runScopeKey({ incidentId: null, scheduleId: "a" })).not.toBe(runScopeKey({ incidentId: null, scheduleId: "b" }));
+		expect(runScopeKey({ incidentId: "inc-1", scheduleId: "a" })).toBe("inc-1");
+	});
+});
+
+type Hypothesis = InvestigationReport["hypotheses"][number];
+type Evidence = Hypothesis["evidence"][number];
+
+const evidence = (status: Evidence["status"], direction: Evidence["direction"]): Evidence => ({
+	observation: "p99 is 4 s",
+	source: "curl prometheus",
+	status,
+	direction,
+});
+
+const report = (...hypotheses: Hypothesis[]) => ({ hypotheses }) as Pick<InvestigationReport, "hypotheses">;
+const hypothesis = (status: Hypothesis["status"], ...e: Evidence[]): Hypothesis => ({
+	statement: "The pool is exhausted",
+	status,
+	evidence: e,
+});
+
+describe("meetsPromotionRule (#979, adversary OBJ-010)", () => {
+	it.each(["confirmed", "supported"] as const)("%s with verified supporting evidence promotes", (status) => {
+		expect(meetsPromotionRule(report(hypothesis(status, evidence("verified", "supports"))))).toBe(true);
+	});
+
+	it("one verified supporting item among others is enough", () => {
+		expect(
+			meetsPromotionRule(
+				report(hypothesis("supported", evidence("inferred", "supports"), evidence("verified", "contradicts"), evidence("verified", "supports"))),
+			),
+		).toBe(true);
+	});
+
+	it.each([
+		["inferred-only evidence", hypothesis("confirmed", evidence("inferred", "supports"))],
+		["verified but contradicting evidence", hypothesis("confirmed", evidence("verified", "contradicts"))],
+		["a refuted hypothesis with verified support", hypothesis("refuted", evidence("verified", "supports"))],
+		["a speculative hypothesis with verified support", hypothesis("speculative", evidence("verified", "supports"))],
+		["a confirmed hypothesis with no evidence", hypothesis("confirmed")],
+	])("%s does not promote", (_name, h) => {
+		expect(meetsPromotionRule(report(h))).toBe(false);
+	});
+
+	it("needs the status and the evidence on the same hypothesis", () => {
+		expect(
+			meetsPromotionRule(
+				report(hypothesis("supported", evidence("inferred", "supports")), hypothesis("refuted", evidence("verified", "supports"))),
+			),
+		).toBe(false);
+	});
+
+	it("does not promote on no hypotheses, and ignores the culprit", () => {
+		expect(meetsPromotionRule(report())).toBe(false);
+		expect(meetsPromotionRule({ hypotheses: [], culprit: { statement: "a bad deploy" } } as never)).toBe(false);
+		expect(meetsPromotionRule(null)).toBe(false);
 	});
 });

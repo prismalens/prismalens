@@ -305,7 +305,7 @@ model Investigation {
   awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
 
   incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: Cascade)
+  service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: SetNull)
   recommendations Recommendation[]
   events          InvestigationEvent[]
 
