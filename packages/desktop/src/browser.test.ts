@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	BROWSER_PARTITION,
+	browserState,
 	browserWebPreferences,
 	browserUrl,
 	clampBounds,
@@ -154,5 +155,45 @@ describe("isAppOrigin", () => {
 		expect(isAppOrigin("http://127.0.0.1:3001/settings", app)).toBe(true);
 		expect(isAppOrigin("http://127.0.0.1:3001.evil/", app)).toBe(false);
 		expect(isAppOrigin("not a url", app)).toBe(false);
+	});
+});
+
+describe("browserState", () => {
+	const none = { refused: null, popup: null, login: false };
+	const page = {
+		getURL: () => "https://example.com/",
+		getTitle: () => "Example",
+		isLoading: () => true,
+		navigationHistory: { canGoBack: () => true, canGoForward: () => false },
+	};
+
+	it("says a refusal before any view exists, with an idle page (#977)", () => {
+		expect(browserState(undefined, { ...none, refused: "file:///etc/passwd" })).toEqual({
+			url: "",
+			title: "",
+			canGoBack: false,
+			canGoForward: false,
+			loading: false,
+			refused: "file:///etc/passwd",
+			popup: null,
+			login: false,
+		});
+	});
+
+	it("answers null when there is no view and nothing was refused", () => {
+		expect(browserState(undefined, none)).toBeNull();
+	});
+
+	it("reads the page when there is a view, refusal or not", () => {
+		expect(browserState(page, { ...none, popup: "https://example.com/p" })).toEqual({
+			url: "https://example.com/",
+			title: "Example",
+			canGoBack: true,
+			canGoForward: false,
+			loading: true,
+			refused: null,
+			popup: "https://example.com/p",
+			login: false,
+		});
 	});
 });

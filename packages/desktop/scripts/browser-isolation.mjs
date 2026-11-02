@@ -10,6 +10,7 @@
 
 import { appendFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, session } from "electron";
 import { attachBrowser, guardAppWindow } from "../dist/browser-pane.js";
 
@@ -77,10 +78,7 @@ async function main() {
 		webPreferences: {
 			contextIsolation: true,
 			nodeIntegration: false,
-			preload: new URL("../dist/preload.cjs", import.meta.url).pathname.replace(
-				/^\/([A-Za-z]:)/,
-				"$1",
-			),
+			preload: fileURLToPath(new URL("../dist/preload.cjs", import.meta.url)),
 		},
 	});
 	guardAppWindow(win, () => base);

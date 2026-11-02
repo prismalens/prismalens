@@ -12,6 +12,7 @@ import {
 import {
 	BROWSER_CHANNEL,
 	BROWSER_PARTITION,
+	browserState,
 	browserUrl,
 	browserWebPreferences,
 	clampBounds,
@@ -20,20 +21,6 @@ import {
 	trustedSender,
 	webUrl,
 } from "./browser.js";
-
-export interface BrowserState {
-	url: string;
-	title: string;
-	canGoBack: boolean;
-	canGoForward: boolean;
-	loading: boolean;
-	/** Set when a navigation was refused, with the address that was. */
-	refused: string | null;
-	/** A window the page tried to open, blocked; the panel offers it (#977 OBJ-019). */
-	popup: string | null;
-	/** The page asked for the browser's login box, which the panel never answers (#977 OBJ-020). */
-	login: boolean;
-}
 
 /** The app window never leaves the backend's origin: the preload's bridge is only for it (#973). */
 export function guardAppWindow(window: BrowserWindow, app: () => string) {
@@ -75,19 +62,11 @@ export function attachBrowser(
 	let login = false;
 
 	const send = () => {
-		if (!view || window.isDestroyed()) return;
-		const wc = view.webContents;
-		const state: BrowserState = {
-			url: wc.getURL(),
-			title: wc.getTitle(),
-			canGoBack: wc.navigationHistory.canGoBack(),
-			canGoForward: wc.navigationHistory.canGoForward(),
-			loading: wc.isLoading(),
-			refused,
-			popup,
-			login,
-		};
-		window.webContents.send(BROWSER_CHANNEL.state, state);
+		if (window.isDestroyed()) return;
+		window.webContents.send(
+			BROWSER_CHANNEL.state,
+			browserState(view?.webContents, { refused, popup, login }),
+		);
 	};
 
 	// A refused main-frame navigation is said once; a subframe's is dropped quietly (#977 OBJ-007).
@@ -175,7 +154,8 @@ export function attachBrowser(
 		if (!trusted(event) || !isGo(go)) return;
 		// A panel that mounts again asks where the view is (#977 OBJ-006).
 		if (!view) {
-			if (go === "state") window.webContents.send(BROWSER_CHANNEL.state, null);
+			if (go === "clear") refused = null;
+			if (go === "state" || go === "clear") send();
 			return;
 		}
 		const wc = view.webContents;

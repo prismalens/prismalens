@@ -17,6 +17,43 @@ export const BROWSER_CHANNEL = {
 	state: "prismalens:browser:state",
 } as const;
 
+export interface BrowserState {
+	url: string;
+	title: string;
+	canGoBack: boolean;
+	canGoForward: boolean;
+	loading: boolean;
+	/** Set when a navigation was refused, with the address that was. */
+	refused: string | null;
+	/** A window the page tried to open, blocked; the panel offers it (#977 OBJ-019). */
+	popup: string | null;
+	/** The page asked for the browser's login box, which the panel never answers (#977 OBJ-020). */
+	login: boolean;
+}
+
+interface PageFacts {
+	getURL(): string;
+	getTitle(): string;
+	isLoading(): boolean;
+	navigationHistory: { canGoBack(): boolean; canGoForward(): boolean };
+}
+
+/** With no view, only a pending refusal has anything to say (#977): the first open can be refused. */
+export function browserState(
+	page: PageFacts | undefined,
+	flags: Pick<BrowserState, "refused" | "popup" | "login">,
+): BrowserState | null {
+	if (!page && flags.refused === null) return null;
+	return {
+		url: page?.getURL() ?? "",
+		title: page?.getTitle() ?? "",
+		canGoBack: page?.navigationHistory.canGoBack() ?? false,
+		canGoForward: page?.navigationHistory.canGoForward() ?? false,
+		loading: page?.isLoading() ?? false,
+		...flags,
+	};
+}
+
 /** No `persist:` prefix: the session lives in memory and dies with the app. */
 export const BROWSER_PARTITION = "pl-browser";
 
