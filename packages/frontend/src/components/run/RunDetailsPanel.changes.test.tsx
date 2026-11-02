@@ -61,6 +61,7 @@ const panel = (runId: string) => (
 			reads: [],
 			codeHost: null,
 			stepFile: () => null,
+			links: [],
 			onOpenHypotheses: vi.fn(),
 		}}
 	/>

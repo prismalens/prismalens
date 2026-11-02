@@ -60,7 +60,7 @@ const PATCH = [
 	"",
 ].join("\n");
 
-function readEvent(): CanonicalEvent[] {
+function readEvent(n = 1): CanonicalEvent[] {
 	const base = (seq: number) => ({
 		runId: RUN_ID,
 		branchId: "main",
@@ -68,44 +68,44 @@ function readEvent(): CanonicalEvent[] {
 		seq,
 		ts: new Date(1700000000000 + seq * 1000).toISOString(),
 	});
-	return [
-		{
-			kind: "agent_step",
-			...base(1),
-			label: "agent",
-			text: "Reading the client",
-			toolCalls: [
-				{
-					toolCallId: "read-1",
-					name: "read_file",
-					args: { path: "repo/src/payments/client.ts", offset: 2 },
-				},
-			],
-		},
-		{
-			kind: "tool_result",
-			...base(2),
-			label: null,
-			result: {
-				toolCallId: "read-1",
-				name: "read_file",
-				toolCategory: "file",
-				ok: true,
-				source: "read_file(repo/src/payments/client.ts)",
-				preview: "read",
+	return Array.from({ length: n }, (_, i) => {
+		const path = `repo/src/payments/client${i % 12 || ""}.ts`;
+		const id = `read-${i + 1}`;
+		return [
+			{
+				kind: "agent_step",
+				...base(2 * i + 1),
+				label: "agent",
+				text: "Reading the client",
+				toolCalls: [
+					{ toolCallId: id, name: "read_file", args: { path, offset: 2 } },
+				],
 			},
-		},
-	] as CanonicalEvent[];
+			{
+				kind: "tool_result",
+				...base(2 * i + 2),
+				label: null,
+				result: {
+					toolCallId: id,
+					name: "read_file",
+					toolCategory: "file",
+					ok: true,
+					source: `read_file(${path})`,
+					preview: "read",
+				},
+			},
+		];
+	}).flat() as CanonicalEvent[];
 }
 
-async function setup(page: Page, width = 1440, url = RUN_URL) {
+async function setup(page: Page, width = 1440, url = RUN_URL, reads = 1) {
 	await page.setViewportSize({ width, height: 900 });
 	await hideQueryDevtools(page);
 	await serveInvestigationAs(page, INVESTIGATION_ID, {
 		status: "completed",
 		workspace,
 	});
-	await serveEventsHistory(page, INVESTIGATION_ID, readEvent());
+	await serveEventsHistory(page, INVESTIGATION_ID, readEvent(reads));
 	const content = "export const gateway = {\n  timeoutMs: 800,\n};\n";
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/blob`,
@@ -327,6 +327,35 @@ test.describe("Panel views (#973)", () => {
 		await expect(page).not.toHaveURL(/panel=|file=/);
 	});
 
+	// Six tabs, with a long run's counts, share the row; none may scroll out of reach (#1010 finding 7).
+	for (const width of [1440, 390, 320]) {
+		test(`every tab fits the row at ${width === 1440 ? "the panel's default width" : `${width} px`}`, async ({
+			page,
+		}) => {
+			await setup(page, width, `${RUN_URL}&panel=browser`, 120);
+			await expect(page.getByTestId("run-details-tab-steps")).toContainText(
+				"120",
+			);
+			await expect(page.getByTestId("run-details-tab-files")).toContainText(
+				"12",
+			);
+			const list = page.getByTestId("run-details").getByRole("tablist");
+			await expect(page.getByTestId("run-details-tab-browser")).toHaveAttribute(
+				"data-state",
+				"active",
+			);
+			if (width === 1440)
+				expect(
+					(await page.getByTestId("run-details").boundingBox())?.width,
+				).toBeCloseTo(420, -1);
+			const { scroll, client } = await list.evaluate((el) => ({
+				scroll: el.scrollWidth,
+				client: el.clientWidth,
+			}));
+			expect(scroll).toBeLessThanOrEqual(client);
+		});
+	}
+
 	test("an old run address keeps its tab and file through the redirect", async ({
 		page,
 	}) => {
@@ -340,5 +369,96 @@ test.describe("Panel views (#973)", () => {
 		await expect(page).toHaveURL(/panel=files/);
 		await expect(page).toHaveURL(/file=repo%3Asrc%2Fpayments%2Fclient\.ts/);
 		await expect(page.getByTestId("evidence-file")).toBeVisible();
+	});
+});
+
+test.describe("Panel browser (#973)", () => {
+	test("in a browser, the run's links open in a new tab", async ({ page }) => {
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await expect(page.getByText("Pages open in your browser")).toBeVisible();
+		const links = page.getByTestId("browser-links").getByRole("link");
+		const count = await links.count();
+		for (let i = 0; i < count; i++) {
+			await expect(links.nth(i)).toHaveAttribute("target", "_blank");
+			await expect(links.nth(i)).toHaveAttribute("rel", /noopener/);
+			expect(await links.nth(i).getAttribute("href")).toMatch(/^https?:\/\//);
+		}
+	});
+
+	test("in the desktop app, the view sits over its slot and steps aside for a dialog", async ({
+		page,
+	}) => {
+		await page.addInitScript(() => {
+			const calls: unknown[] = [];
+			let listener: ((s: unknown) => void) | null = null;
+			let last: unknown = null;
+			(window as unknown as { __calls: unknown[] }).__calls = calls;
+			(window as unknown as { prismalensDesktop: unknown }).prismalensDesktop =
+				{
+					platform: "win32",
+					setTheme: () => {},
+					browser: {
+						open: (url: string) => {
+							calls.push({ open: url });
+							last = {
+								url,
+								title: "",
+								canGoBack: false,
+								canGoForward: false,
+								loading: false,
+								refused: null,
+							};
+							listener?.(last);
+						},
+						setBounds: (rect: unknown) => calls.push({ bounds: rect }),
+						go: (to: string) => {
+							calls.push({ go: to });
+							if (to === "state") listener?.(last);
+						},
+						onState: (l: (s: unknown) => void) => {
+							listener = l;
+							return () => {
+								listener = null;
+							};
+						},
+					},
+				};
+		});
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await page.getByTestId("browser-address").fill("grafana.internal/d/x");
+		await page.getByTestId("browser-address").press("Enter");
+		const slot = page.getByTestId("browser-slot");
+		await expect(slot).toBeVisible();
+		const calls = () =>
+			page.evaluate(
+				() => (window as unknown as { __calls: unknown[] }).__calls,
+			);
+		await expect
+			.poll(async () => (await calls()).at(-1))
+			.toMatchObject({
+				bounds: { width: expect.any(Number) },
+			});
+		expect(await calls()).toContainEqual({ open: "grafana.internal/d/x" });
+		const box = await slot.boundingBox();
+		const last = (await calls()).at(-1) as {
+			bounds: { x: number; width: number };
+		};
+		expect(Math.abs(last.bounds.x - (box?.x ?? 0))).toBeLessThan(1);
+		// Leaving the tab and coming back finds the page again (#977 OBJ-006).
+		await page.getByTestId("run-details-tab-files").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await expect(slot).toBeVisible();
+		await page.evaluate(() =>
+			(document.activeElement as HTMLElement | null)?.blur(),
+		);
+		await page.keyboard.press("?");
+		await expect(page.getByRole("dialog").last()).toBeVisible();
+		await expect
+			.poll(async () => (await calls()).at(-1))
+			.toEqual({ bounds: null });
 	});
 });

@@ -97,8 +97,15 @@ describe("fileParam / fileFromParam", () => {
 });
 
 describe("panelTab", () => {
-	it("accepts the five tabs and nothing else", () => {
-		for (const t of ["summary", "files", "changes", "steps", "context"])
+	it("accepts the six tabs and nothing else", () => {
+		for (const t of [
+			"summary",
+			"files",
+			"changes",
+			"steps",
+			"context",
+			"browser",
+		])
 			expect(panelTab(t)).toBe(t);
 		expect(panelTab("evidence")).toBeUndefined();
 		expect(panelTab(3)).toBeUndefined();
