@@ -67,6 +67,17 @@ export function storedCandidates(input: {
 	return input.stored ? [input.stored] : [];
 }
 
+/** A stored key matches only the device it was issued for, so a replacement device gets none. */
+export function terminalKeyFor(input: {
+	fresh: string | undefined;
+	stored: string | undefined;
+	token: string;
+	storedToken: string | undefined;
+}): string | undefined {
+	if (input.fresh) return input.fresh;
+	return input.token === input.storedToken ? input.stored : undefined;
+}
+
 export interface SessionDeps {
 	baseUrl: string;
 	/** The per-instance cookie name the backend sets, `deviceCookieName(instanceId)`. */

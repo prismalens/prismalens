@@ -11,6 +11,7 @@ import {
 	operatorToken,
 	parsePairingToken,
 	storedCandidates,
+	terminalKeyFor,
 } from "./session.js";
 
 const baseUrl = "http://127.0.0.1:4100";
@@ -163,6 +164,26 @@ describe("the terminal key (#931)", () => {
 				fetchImpl: vi.fn(async () => response(403)),
 			}),
 		).resolves.toBeNull();
+	});
+});
+
+describe("which terminal key a window keeps (#931)", () => {
+	it("prefers the key a fresh redeem returned", () => {
+		expect(
+			terminalKeyFor({ fresh: "new", stored: "old", token: "a", storedToken: "a" }),
+		).toBe("new");
+	});
+
+	it("reuses the stored key while the stored device token still holds", () => {
+		expect(
+			terminalKeyFor({ fresh: undefined, stored: "old", token: "a", storedToken: "a" }),
+		).toBe("old");
+	});
+
+	it("drops the stored key once a replacement device was paired", () => {
+		expect(
+			terminalKeyFor({ fresh: undefined, stored: "old", token: "b", storedToken: "a" }),
+		).toBeUndefined();
 	});
 });
 

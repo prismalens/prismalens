@@ -7,7 +7,7 @@ import type {
 	StreamToolResult,
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
-import { commandText, shortPath } from "@/lib/report-view";
+import { commandText, mcpTool, shortPath } from "@/lib/report-view";
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -122,7 +122,11 @@ export function deriveSteps(
 		const source =
 			result?.source ?? `${call.name}(${JSON.stringify(call.args)})`;
 		const command = commandText(source, opts.cwd);
-		const shell = typeof (call.args.command ?? call.args.cmd) === "string";
+		const raw = call.args.command ?? call.args.cmd;
+		const shell =
+			typeof raw === "string" &&
+			raw.trim() !== "" &&
+			!mcpTool(call.name.replace(/^`([\s\S]*)`$/, "$1"));
 		const unfinished = !result && !!opts.ended;
 		const output = result
 			? unfence(
@@ -143,7 +147,7 @@ export function deriveSteps(
 					? "file"
 					: "command",
 			shell,
-			...(shell ? { run: commandText(source) } : {}),
+			...(shell && typeof raw === "string" ? { run: raw.trim() } : {}),
 			verb: verbOf(result, call.name, unfinished),
 			ok: result ? result.ok : null,
 			unfinished,

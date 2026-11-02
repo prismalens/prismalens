@@ -201,4 +201,33 @@ describe("a shell step keeps the command it ran (#931)", () => {
 		);
 		expect(s?.run).toBeUndefined();
 	});
+
+	it("keeps the raw command, not the label commandText reads for an MCP tool", () => {
+		const [s] = deriveSteps(
+			[
+				call(1, 0, "m", "mcp__github__run", { command: "deploy --prod" }),
+				result(2, 1, "m", 'mcp__github__run({"command":"deploy --prod"})', "ok"),
+			],
+			{ cwd },
+		);
+		expect(s?.shell).toBe(false);
+		expect(s?.run).toBeUndefined();
+	});
+
+	it("is no shell step when the command is blank", () => {
+		const [s] = deriveSteps(
+			[call(1, 0, "b", "bash", { command: "  " }), result(2, 1, "b", 'bash({"command":"  "})', "")],
+			{ cwd },
+		);
+		expect(s?.shell).toBe(false);
+		expect(s?.run).toBeUndefined();
+	});
+
+	it("runs the argument itself, not the tool name commandText falls back to", () => {
+		const [s] = deriveSteps(
+			[call(1, 0, "r", "bash", { cmd: "echo hi" }), result(2, 1, "r", "bash", "hi")],
+			{ cwd },
+		);
+		expect(s?.run).toBe("echo hi");
+	});
 });

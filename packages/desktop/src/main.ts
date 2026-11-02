@@ -78,6 +78,7 @@ import {
 	OlderBackendError,
 	operatorToken,
 	storedCandidates,
+	terminalKeyFor,
 } from "./session.js";
 import { type Splash, splashHtml, startWithSplash } from "./splash.js";
 import {
@@ -593,7 +594,12 @@ async function pairWindow(dir: string): Promise<void> {
 		});
 	}
 	writeIdentity(baseUrl, instanceId);
-	terminalKey = freshKey ?? readTerminalKeys()[instanceId];
+	terminalKey = terminalKeyFor({
+		fresh: freshKey,
+		stored: readTerminalKeys()[instanceId],
+		token: deviceToken,
+		storedToken: stored?.value,
+	});
 	if (terminalKey) {
 		writeTerminalKey(instanceId, terminalKey);
 		return;
