@@ -53,6 +53,7 @@ describe("admission-fake verdictOf and signature", () => {
 			r8: "missing",
 			r9: "missing",
 			r10: "missing",
+			r11: "missing",
 		});
 	});
 
@@ -114,17 +115,20 @@ describe("admission-fake verdictOf and signature", () => {
 			"R8 tool call, first turn: pass",
 			"R9 tool call, follow-up: pass",
 			"R10 resume streams no history: n/a (reopened by load-dedupe, not session/resume)",
+			"R11 killed mid-turn: pass (the next request carried the first prompt)",
 		].join("\n");
 
 		const v = verdictOf(stdout);
 		expect(v.r8).toBe("pass");
 		expect(v.r9).toBe("pass");
 		expect(v.r10).toBe("n/a");
+		expect(v.r11).toBe("pass");
 
 		const sig = signature(v);
 		expect(sig).toContain("R8=pass");
 		expect(sig).toContain("R9=pass");
 		expect(sig).toContain("R10=n/a");
+		expect(sig).toContain("R11=pass");
 	});
 });
 
@@ -294,6 +298,7 @@ describe("admissionProblem known failures (#914)", () => {
 		r8: "pass",
 		r9: "pass",
 		r10: "n/a",
+		r11: "pass",
 	};
 
 	it("accepts gemini failing exactly as its open upstream bugs predict", () => {
@@ -310,6 +315,7 @@ describe("admissionProblem known failures (#914)", () => {
 		expect(admissionProblem("gemini", { ...v, r8: "fail" }, 1)).toMatch(/differently/);
 		expect(admissionProblem("gemini", { ...v, r5: "fail" }, 1)).toMatch(/differently/);
 		expect(admissionProblem("gemini", { ...v, r10: "fail" }, 1)).toMatch(/differently/);
+		expect(admissionProblem("gemini", { ...v, r11: "fail" }, 1)).toMatch(/differently/);
 	});
 
 	it("keeps every other agent strict", () => {

@@ -32,6 +32,20 @@ describe("incidentSummary", () => {
 		expect(s.next?.kind).toBe("link-repo");
 	});
 
+	it("names a run a restart cut off interrupted, not failed (#1010)", () => {
+		const s = incidentSummary({
+			now,
+			alerts: [alert("triggered")],
+			services: ["booklogr-api"],
+			runs: [{ status: "failed", endReason: "interrupted", error: "Not resumed: Resume after a restart is off in Settings." }],
+			noRepo: false,
+			attention: "failed_run",
+		});
+		expect(s.lines[1]).toBe(
+			"The last investigation was interrupted when PrismaLens restarted, and not resumed: Resume after a restart is off in Settings.",
+		);
+	});
+
 	it("counts a correlated alert as firing, not quiet (walk f14)", () => {
 		const s = incidentSummary({
 			now,

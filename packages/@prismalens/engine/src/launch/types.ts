@@ -18,6 +18,8 @@ export interface LaunchOptions {
 
 /** The duplex-stdio child a runner drives: ACP is line-delimited JSON-RPC over these pipes. */
 export interface HarnessChild {
+	/** Absent when the spawn failed before the OS gave it one. */
+	pid?: number;
 	stdin: Writable;
 	stdout: Readable;
 	stderr: Readable;

@@ -15,6 +15,7 @@ import { failureSentence } from "@/lib/failure-sentence";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { commandText } from "@/lib/report-view";
+import { notResumedReason } from "@/lib/restart";
 import { cn } from "@/lib/utils";
 import { Card } from "./Card";
 import { commandOf, noteOf } from "./fixes";
@@ -192,6 +193,7 @@ function FailedRun({
 	const error = inv?.error ?? o.latest?.error ?? null;
 	const said = failureSentence("The agent", error);
 	const words = failureWords(error);
+	const cut = (inv?.endReason ?? o.latest?.endReason) === "interrupted";
 	return (
 		<>
 			<div
@@ -200,11 +202,18 @@ function FailedRun({
 				data-testid="why-failed"
 			>
 				<div className="font-semibold text-danger">
-					{name} stopped before a finding
+					{cut
+						? `${name} was interrupted when PrismaLens restarted`
+						: `${name} stopped before a finding`}
 					{standing ? "; the finding below stands" : ""}
 				</div>
 				<div className="text-text-1">
-					{words.next ? `${words.what} ${words.next}` : said.said}
+					{cut
+						? (notResumedReason(error) ??
+							"Its last command may or may not have completed.")
+						: words.next
+							? `${words.what} ${words.next}`
+							: said.said}
 				</div>
 			</div>
 			{!standing && steps.length > 0 && (

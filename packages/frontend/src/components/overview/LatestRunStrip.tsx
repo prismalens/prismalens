@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
 import { formatElapsed } from "@/lib/format-time";
+import { latestRestart, notResumedReason } from "@/lib/restart";
 import { askTitle } from "@/lib/run-asks";
 import { stripInlineMarkdown } from "@/lib/strip-inline-markdown";
 import { cn } from "@/lib/utils";
@@ -42,16 +43,26 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 	const ask = run.asks.find((a) => a.state === "waiting");
 	const name = latest ? viewName(runs, latest) : null;
 	const took =
-		inv && runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
+		inv && runTimed(inv)
+			? formatElapsed(runElapsed(inv, now, run.events))
+			: null;
 	const outcome = latest ? runOutcome(latest) : "";
+	const cut = (inv?.endReason ?? latest?.endReason) === "interrupted";
+	const unresumed = cut ? notResumedReason(inv?.error) : null;
 	const detail = !latest
 		? "No run yet"
 		: waiting
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: live
-				? stripInlineMarkdown(run.latestText ?? "Working")
+				? latestRestart(run.events)
+					? "Resumed after a restart"
+					: stripInlineMarkdown(run.latestText ?? "Working")
 				: state === "failed"
-					? failureWords(inv?.error ?? latest.error, who.agent).what
+					? unresumed
+						? `Interrupted, not resumed: ${unresumed}`
+						: cut
+							? "PrismaLens restarted"
+							: failureWords(inv?.error ?? latest.error, who.agent).what
 					: latest.hasReport
 						? latest.rootCause
 							? "Likely cause found"
@@ -95,7 +106,9 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 						: live
 							? "investigating"
 							: state === "failed"
-								? "failed"
+								? cut
+									? "interrupted"
+									: "failed"
 								: state === "stopped"
 									? "stopped"
 									: "concluded"}
@@ -111,6 +124,8 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 							: state === "failed"
 								? "text-danger"
 								: "text-text-2",
+					// The Next card below carries the reason on a phone (#1010 N6).
+					unresumed && "max-md:hidden",
 				)}
 				data-testid="latest-run-detail"
 			>

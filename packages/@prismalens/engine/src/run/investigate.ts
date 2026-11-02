@@ -65,6 +65,7 @@ import { type GatewayEntry, gatewayOffer } from "./gateway.js";
 import { RESTART_NOTE } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
+	abortOutcome,
 	askWindow,
 	denyAllPolicy,
 	levelPolicy,
@@ -208,6 +209,8 @@ export interface RunInvestigationOptions {
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
 	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
+	/** The harness's pid once spawned (#981). */
+	onSpawn?: (pid: number | undefined) => void;
 	/** After a follow-up's turn: how it reopened its session, what it dropped as replay, and how long the reopen took (#942). */
 	onReopen?: (r: { path: ReopenPath; replayed: number; ms: number }) => void;
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
@@ -534,6 +537,7 @@ export async function* runInvestigation(
 		...(opts.roots ? { roots: opts.roots } : {}),
 		env,
 		limits: opts.limits,
+		...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
 		permission: levelPolicy(
 			keepMode ? "supervised" : level,
 			{ policy: opts.permission ?? denyAllPolicy },
@@ -601,7 +605,7 @@ export async function* runInvestigation(
 		items: AsyncGenerator<AcpStreamItem>,
 	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 		for await (const item of items) {
-			if (opts.signal?.aborted) session.cancel();
+			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
 			if (item.kind === "update") {
 				const u = item.update;
 				if (u.sessionUpdate === "agent_message_chunk") {
@@ -719,7 +723,7 @@ export async function* runInvestigation(
 	};
 	const leftovers = function* (tools = true): Generator<CanonicalEvent> {
 		for (const askId of openAsks)
-			yield adapter.permissionAnswer(askId, "stopped");
+			yield adapter.permissionAnswer(askId, abortOutcome(opts.signal));
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
@@ -745,7 +749,7 @@ export async function* runInvestigation(
 	const unCalled = opts.gateway?.onCall((c) =>
 		session.inject({ kind: "harness_tool_call", ...c }),
 	);
-	const onAbort = (): void => session.cancel();
+	const onAbort = (): void => session.cancel(opts.signal?.reason);
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
 	const label = HARNESS_REGISTRY[opts.harness]?.label ?? descriptor.binary;
 	const modelVia =

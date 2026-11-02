@@ -35,3 +35,21 @@ const clock = new Intl.DateTimeFormat(undefined, {
 export function formatClock(value: string | number | Date): string {
 	return clock.format(new Date(value));
 }
+
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+const WEEK = 6 * 86_400_000;
+
+/** A time with its day when it is not today: `14:32`, `Mon 18:41`, and past a week `3 Aug 2026 18:41` (#981). */
+export function formatDayClock(
+	value: string | number | Date,
+	now: number,
+): string {
+	const when = new Date(value);
+	const start = new Date(now);
+	start.setHours(0, 0, 0, 0);
+	const clockText = formatClock(when);
+	if (when.getTime() >= start.getTime()) return clockText;
+	if (start.getTime() - when.getTime() <= WEEK)
+		return `${weekday.format(when)} ${clockText}`;
+	return `${formatDate(when)} ${clockText}`;
+}

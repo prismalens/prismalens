@@ -124,6 +124,8 @@ export interface HarnessSettings {
 	localAgent?: LocalAgent;
 	/** Only pass named variables to the agent (#817); off by default. */
 	strictEnv?: boolean;
+	/** Stored only when off: runs a restart cut off resume by default (#981). */
+	resumeAfterRestart?: boolean;
 	/** Read from HARNESS_ENV: names only. */
 	envNames?: Partial<Record<HarnessId, string[]>>;
 }
@@ -154,6 +156,7 @@ export interface HarnessSettingsPatch {
 	env?: Partial<Record<HarnessId, Record<string, string | null>>>;
 	localAgent?: LocalAgent | null;
 	strictEnv?: boolean;
+	resumeAfterRestart?: boolean;
 }
 
 const RUNTIME_FIELDS = [
@@ -162,6 +165,7 @@ const RUNTIME_FIELDS = [
 	"env",
 	"localAgent",
 	"strictEnv",
+	"resumeAfterRestart",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
 
 /** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped (models, efforts and modes alike). */
@@ -590,6 +594,11 @@ export class HarnessService implements OnApplicationBootstrap {
 		return listed?.find((m) => m.id === modeId)?.name ?? modeId;
 	}
 
+	/** Whether boot resumes the runs a restart cut off (#981); on unless turned off. */
+	async resumeAfterRestart(): Promise<boolean> {
+		return (await this.getSettings()).resumeAfterRestart !== false;
+	}
+
 	async getSettings(): Promise<HarnessSettings> {
 		const row = await this.prisma.setting.findUnique({
 			where: { key: SETTING_KEY },
@@ -641,6 +650,9 @@ export class HarnessService implements OnApplicationBootstrap {
 				...nonEmpty("configDirs", cleanModels(parsed.configDirs)),
 				...(localAgent ? { localAgent } : {}),
 				...(parsed.strictEnv === true ? { strictEnv: true } : {}),
+				...(parsed.resumeAfterRestart === false
+					? { resumeAfterRestart: false }
+					: {}),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -719,6 +731,9 @@ export class HarnessService implements OnApplicationBootstrap {
 			...nonEmpty("configDirs", configDirs),
 			...(localAgent ? { localAgent } : {}),
 			...((patch.strictEnv ?? current.strictEnv) ? { strictEnv: true } : {}),
+			...((patch.resumeAfterRestart ?? current.resumeAfterRestart) === false
+				? { resumeAfterRestart: false }
+				: {}),
 		};
 		// The variables and the rest of the PATCH land together or not at all (#911).
 		await this.prisma.$transaction(async (tx) => {

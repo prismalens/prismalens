@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { Snapshot } from "../../core/harness/repo-source.service.js";
 import type { RepoRef, RunPorts } from "./run-ports.js";
+import { SHUTDOWN_REASON } from "./run-abort.js";
 
 const CANCELLED_MESSAGE = "investigation cancelled by request";
 
@@ -170,6 +171,72 @@ describe("run CANCEL path (ADR-0018)", () => {
 		expect(io.streamDone).toHaveBeenCalled();
 		expect(result.success).toBe(false);
 		expect(result.errorType).toBe("cancelled");
+	});
+
+	it("a shutdown abort writes no end: the row stays live for boot to classify as interrupted (#981 OBJ-002)", async () => {
+		mocks.conductRun.mockImplementation(
+			async (opts: { runId: string; signal?: AbortSignal }) => {
+				await new Promise<void>((resolve) => {
+					if (opts.signal?.aborted) return resolve();
+					opts.signal?.addEventListener("abort", () => resolve(), { once: true });
+				});
+				return {
+					runId: opts.runId,
+					report: null,
+					error: CANCELLED_MESSAGE,
+					failureKind: "cancelled",
+				};
+			},
+		);
+		const updateStatus = vi.fn(async () => true);
+		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
+		const ports = makePorts({ updateStatus, createTimelineEntry });
+		const controller = new AbortController();
+		const done = runInvestigationJob(
+			makeJob("inv-1"),
+			makeData("inv-1", "inc-1"),
+			makeIo(controller.signal),
+			ports,
+		);
+		await vi.waitFor(() => expect(mocks.conductRun).toHaveBeenCalled());
+		controller.abort(SHUTDOWN_REASON);
+
+		const result = await done;
+		expect(updateStatus).not.toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "cancelled" }));
+		expect(createTimelineEntry).not.toHaveBeenCalledWith(expect.objectContaining({ type: "investigation_completed" }));
+		expect(result.errorType).toBe("interrupted");
+	});
+
+	it("a shutdown abort before the harness starts writes no end either (#981 OBJ-002)", async () => {
+		mocks.conductRun.mockReset();
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const controller = new AbortController();
+			const updateStatus = vi.fn(async () => true);
+			const ports = makePorts({
+				updateStatus,
+				incidentRepos: vi.fn(async () => [
+					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
+				]),
+				snapshotWith: cloneAs(async (_src, _dest, signal?: AbortSignal) => {
+					controller.abort(SHUTDOWN_REASON);
+					throw signal?.reason;
+				}),
+			});
+			const result = await runInvestigationJob(
+				makeJob("inv-1"),
+				makeData("inv-1", "inc-1"),
+				makeIo(controller.signal),
+				ports,
+			);
+			expect(mocks.conductRun).not.toHaveBeenCalled();
+			expect(updateStatus).not.toHaveBeenCalled();
+			expect(result.errorType).toBe("interrupted");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
 	});
 
 	it("a persistCancelled failure is swallowed — the job still returns cancelled (no rerun)", async () => {

@@ -53,6 +53,8 @@ export interface EnqueueJobInput {
 	kind?: string;
 	/** A scheduled attempt not claimed by then is expired; every other admission clears it (#979). */
 	startBy?: Date | null;
+	/** Not claimed before this; a restart recovery waits for alert catch-up (#981). */
+	runAt?: Date;
 }
 
 /** Scheduled runs take one slot at a time, so they never crowd out runs a person or an alert started (#979). */
@@ -79,6 +81,9 @@ export interface JobStore {
 		status: Extract<JobStatus, "succeeded" | "failed" | "cancelled">,
 		error?: string,
 	): Promise<boolean>;
+
+	/** Hand a claim back unstarted, as it was before `claim`; false when it moved on (#981 OBJ-017). */
+	release(jobId: string, owner: string): Promise<boolean>;
 
 	/** Look a job up by the investigation it belongs to. */
 	findByInvestigation(investigationId: string): Promise<JobRecord | null>;
@@ -180,7 +185,7 @@ export class PrismaJobStore implements JobStore {
 				startBy: input.startBy ?? null,
 				status: "pending",
 				attempts: 0,
-				runAt: new Date(),
+				runAt: input.runAt ?? new Date(),
 				claimedBy: null,
 				claimedAt: null,
 				heartbeatAt: null,
@@ -204,7 +209,7 @@ export class PrismaJobStore implements JobStore {
 				priority: input.priority,
 				startBy: input.startBy ?? null,
 				status: "pending",
-				runAt: new Date(),
+				runAt: input.runAt ?? new Date(),
 			},
 			select: { id: true },
 		});
@@ -259,6 +264,19 @@ export class PrismaJobStore implements JobStore {
 			if (count === 1) claimed.push({ ...job, attempts: job.attempts + 1 });
 		}
 		return claimed;
+	}
+
+	async release(jobId: string, owner: string): Promise<boolean> {
+		const { count } = await this.jobs.updateMany({
+			where: { id: jobId, status: "running", claimedBy: owner },
+			data: {
+				status: "pending",
+				claimedBy: null,
+				claimedAt: null,
+				attempts: { decrement: 1 },
+			},
+		});
+		return count === 1;
 	}
 
 	async complete(
