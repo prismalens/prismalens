@@ -272,10 +272,7 @@ function ServicesPage() {
 	};
 
 	return (
-		<div
-			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas md:left-(--sidebar-w)"
-			data-testid="services-page"
-		>
+		<div className="flex h-full flex-col bg-canvas" data-testid="services-page">
 			<PageHeader
 				title="Services"
 				primary={

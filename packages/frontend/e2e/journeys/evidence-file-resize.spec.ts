@@ -220,10 +220,9 @@ test.describe("Evidence file view resize (#874)", () => {
 		const line20 = page.locator('[data-line="20"]');
 		await expect(line20).toBeInViewport({ timeout: 5000 });
 
-		await page.evaluate(() => {
-			const el = document.getElementById("run-details");
-			if (el) el.style.width = "760px";
-		});
+		// Widen the panel the way a reader does: its separator, by keyboard (#973).
+		await page.getByTestId("panel-right-separator").focus();
+		for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowLeft");
 		await page.waitForTimeout(500);
 
 		// Step 2 opens from the transcript beside the panel: the same code view, its heights cached at the old width.

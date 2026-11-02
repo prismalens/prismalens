@@ -40,10 +40,7 @@ export const Route = createFileRoute("/_authenticated/incidents")({
 
 function IncidentsFrame() {
 	return (
-		<div
-			className="fixed inset-x-0 bottom-0 top-(--frame-top) bg-canvas md:left-(--sidebar-w)"
-			data-testid="incidents-frame"
-		>
+		<div className="h-full bg-canvas" data-testid="incidents-frame">
 			<div className="h-full min-h-0 min-w-0">
 				<Outlet />
 			</div>
