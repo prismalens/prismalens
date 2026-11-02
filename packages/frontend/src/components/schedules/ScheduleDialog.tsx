@@ -144,17 +144,17 @@ export function ScheduleDialog({
 		setRunbook(seed?.runbook ?? "");
 		setBrief(seed?.brief ?? "");
 		setWhen(seed ? formOf(seed.recurrence, HOST_ZONE) : defaultWhen(HOST_ZONE));
-		setHarness(seed?.harness ?? agents.effective?.id ?? "");
-		setModel(seed?.model ?? agents.model ?? "");
+		setHarness(seed ? seed.harness : (agents.effective?.id ?? ""));
+		setModel(seed ? (seed.model ?? "") : agents.model);
 		setMissedPolicy(seed?.missedPolicy ?? "run_once");
 	}, [open, editing, copyOf, agents.effective?.id, agents.model]);
 
 	// The default agent can load after the dialog opened; fill only what is still empty.
 	useEffect(() => {
-		if (!open || harness || !agents.effective?.id) return;
+		if (!open || editing || copyOf || harness || !agents.effective?.id) return;
 		setHarness(agents.effective.id);
 		setModel((m) => m || agents.model);
-	}, [open, harness, agents.effective?.id, agents.model]);
+	}, [open, editing, copyOf, harness, agents.effective?.id, agents.model]);
 
 	const recurrence = useMemo(() => {
 		try {

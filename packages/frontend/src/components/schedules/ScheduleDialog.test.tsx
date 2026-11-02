@@ -100,6 +100,27 @@ describe("ScheduleDialog (#979)", () => {
 		expect(chip()).toBe("codex:");
 	});
 
+	it("a seeded schedule keeps its own agent default (model null) when the default agent is already loaded", async () => {
+		agents = {
+			harnesses: [claude, { id: "codex", label: "Codex" }],
+			effective: claude,
+			model: "sonnet",
+		};
+		await render({
+			copyOf: { ...source, harness: "codex", model: null } as Schedule,
+		});
+		expect(chip()).toBe("codex:");
+
+		const button = Array.from(document.querySelectorAll("button")).find(
+			(b) => b.textContent === "Create schedule",
+		);
+		await act(async () => button?.click());
+
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({ harness: "codex", model: null }),
+		);
+	});
+
 	it("the Run once help names the schedule's own catch-up window, 6 hours for a new one", async () => {
 		await render();
 		expect(document.body.textContent).toContain("back within 6 hours.");
