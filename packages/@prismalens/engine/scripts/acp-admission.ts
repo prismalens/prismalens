@@ -43,9 +43,10 @@ import type {
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
 import { type GatewayEntry, newGatewayServerName } from "../src/run/gateway.js";
+import { buildHandoff } from "../src/run/handoff.js";
 import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
 import { denyAllPolicy } from "../src/run/permission.js";
-import { AcpSession } from "../src/runner/acp-client.js";
+import { AcpSession, type ReopenPath } from "../src/runner/acp-client.js";
 import {
 	admissionExit,
 	firstWord,
@@ -55,6 +56,7 @@ import {
 	proveCwd,
 	readsAllowed,
 	redactNonce,
+	replayedText,
 	toolCallLine,
 } from "./admission-checks.js";
 import { startReportBreakingProxy } from "./report-breaking-proxy.js";
@@ -392,18 +394,26 @@ console.log(
 		nonce,
 	),
 );
-// R5 (#747): a finished session reopened with session/load remembers the run,
-// and none of its replayed history comes back as new events. Data, not a gate.
+// R5 (#747, #942): a finished session reopened by the agent's fastest exact path
+// remembers the run, and no replayed tool event or replayed text comes back as new.
+// R10: an agent that offers session/resume streams no history on it.
+let reopened: { path: ReopenPath; replayed: number; ms: number } | null = null;
 const r5 = await (async (): Promise<string> => {
 	const opened = session as { sessionId: string; loadSession: boolean } | null;
 	if (!report) return "fail (no report to continue)";
-	if (!opened?.loadSession)
-		return "fail (harness does not advertise loadSession)";
+	if (!opened) return "fail (the first run opened no session)";
 	const first = new Set(
-		toolResults.flatMap((e) =>
-			e.kind === "tool_result" ? [e.result.toolCallId] : [],
+		events.flatMap((e) =>
+			e.kind === "tool_result"
+				? [e.result.toolCallId]
+				: e.kind === "agent_step"
+					? e.toolCalls.map((c) => c.toolCallId)
+					: [],
 		),
 	);
+	const wireBefore = existsSync(transcriptFile)
+		? parseTranscript(readFileSync(transcriptFile, "utf8")).length
+		: 0;
 	const followUp: CanonicalEvent[] = [];
 	const before = stub?.count() ?? 0;
 	turns.followUp.ran = true;
@@ -421,8 +431,26 @@ const r5 = await (async (): Promise<string> => {
 			: {}),
 		initTimeoutMs: 120_000,
 		promptTimeoutMs: timeoutMs,
+		onReopen: (r) => {
+			reopened = r;
+		},
 		resume: {
 			sessionId: opened.sessionId,
+			known: async () => first,
+			fresh: async () => {
+				const h = buildHandoff({
+					events,
+					report: report.kind === "report" ? report.report : null,
+					accessLevel: "auto",
+					from: HARNESS_REGISTRY[harness].label,
+				});
+				return {
+					text: h.text,
+					from: harness,
+					carried: h.carried,
+					omitted: h.omitted,
+				};
+			},
 			text: "Reply with the alert name from our conversation and nothing else.",
 			mode: "queue",
 			heads: [],
@@ -430,22 +458,48 @@ const r5 = await (async (): Promise<string> => {
 	}))
 		followUp.push(ev);
 	turns.followUp.calls = (stub?.count() ?? 0) - before;
+	const how = reopened as {
+		path: ReopenPath;
+		replayed: number;
+		ms: number;
+	} | null;
+	const path = how
+		? `${how.path}, ${how.replayed} replayed updates dropped, reopened in ${how.ms}ms`
+		: "no reopen reported";
 	const failed = followUp.find((e) => e.kind === "error");
-	if (failed?.kind === "error") return `fail (${failed.message})`;
-	const leaked = followUp.some(
-		(e) => e.kind === "tool_result" && first.has(e.result.toolCallId),
+	if (failed?.kind === "error") return `fail (${failed.message}; ${path})`;
+	const replayedTool = followUp.some(
+		(e) =>
+			(e.kind === "tool_result" && first.has(e.result.toolCallId)) ||
+			(e.kind === "agent_step" &&
+				e.toolCalls.some((c) => first.has(c.toolCallId))),
 	);
-	if (leaked) return "fail (replayed history came back as new events)";
+	if (replayedTool)
+		return `fail (a replayed tool event came back as new; ${path})`;
 	const reply = followUp
 		.map((e) => (e.kind === "agent_step" ? e.text : ""))
 		.join("");
+	const replayed = replayedText(
+		parseTranscript(readFileSync(transcriptFile, "utf8")).slice(wireBefore),
+		reply,
+	);
+	if (replayed)
+		return `fail (replayed text came back as new: ${JSON.stringify(replayed.slice(0, 80))}; ${path})`;
 	return reply.includes(context.alerts[0]?.alertname ?? "")
-		? "pass (the reply named the alert)"
-		: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))})`;
+		? `pass (the reply named the alert; ${path})`
+		: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))}; ${path})`;
 })().catch(
 	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
 );
 console.log(`R5 resume: ${r5}`);
+const reopenedBy = reopened as { path: ReopenPath; replayed: number } | null;
+const r10 =
+	reopenedBy?.path !== "resume"
+		? `n/a (reopened by ${reopenedBy?.path ?? "nothing"}, not session/resume)`
+		: reopenedBy.replayed === 0
+			? "pass (session/resume streamed no history)"
+			: `fail (session/resume streamed ${reopenedBy.replayed} history updates)`;
+console.log(`R10 resume streams no history: ${r10}`);
 
 /**
  * R6 (OpenCode only, #791): the model in the user's own OpenCode config is the
@@ -606,10 +660,12 @@ await stub?.close();
 process.exit(
 	admissionExit({
 		pass,
+		r5: firstWord(r5),
 		r6: firstWord(r6),
 		r7: firstWord(r7),
 		r8: firstWord(r8),
 		r9: firstWord(r9),
+		r10: firstWord(r10),
 		resumable,
 	}),
 );

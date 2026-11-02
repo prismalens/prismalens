@@ -12,6 +12,7 @@ import {
 	permissionDecisions,
 	proveCwd,
 	redactNonce,
+	replayedText,
 	initializeVersion,
 	type WireLine,
 } from "./admission-checks.js";
@@ -222,10 +223,12 @@ describe("initializeVersion", () => {
 describe("admissionExit (#848): the gate's truth table", () => {
 	const passing: AdmissionVerdictWords = {
 		pass: true,
+		r5: "pass",
 		r6: "pass",
 		r7: "pass",
 		r8: "pass",
 		r9: "pass",
+		r10: "pass",
 		resumable: true,
 	};
 
@@ -235,12 +238,18 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		["R7 skipped (no proxy for this agent)", { ...passing, r7: "skipped" }],
 		["R9 n/a on an agent that cannot resume", { ...passing, r9: "n/a", resumable: false }],
 		["R9 passing on an agent that cannot resume", { ...passing, resumable: false }],
+		["R5 failing on an agent that cannot resume", { ...passing, r5: "fail", resumable: false }],
+		["R10 n/a on an agent that offers no session/resume", { ...passing, r10: "n/a" }],
 	])("returns 0 with %s", (_, v) => {
 		expect(admissionExit(v)).toBe(0);
 	});
 
 	it.each<[string, Partial<AdmissionVerdictWords>]>([
 		["pass = false", { pass: false }],
+		["r5 = fail (a replayed event came back as new, #942)", { r5: "fail" }],
+		["r5 = missing", { r5: "missing" }],
+		["r10 = fail (session/resume streamed history)", { r10: "fail" }],
+		["r10 = missing", { r10: "missing" }],
 		["r6 = fail", { r6: "fail" }],
 		["r6 = missing", { r6: "missing" }],
 		["r7 = fail", { r7: "fail" }],
@@ -281,5 +290,37 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		expect(toolCallLine({ gateway: false, ran: true, calls: 3, connected: true })).toBe(
 			"fail (no PrismaLens gateway was offered)",
 		);
+	});
+});
+
+describe("replayedText (#942)", () => {
+	const update = (sessionUpdate: string, text: string, messageId?: string): WireLine => ({
+		t: 0,
+		d: "in",
+		m: JSON.stringify({
+			method: "session/update",
+			params: { update: { sessionUpdate, ...(messageId ? { messageId } : {}), content: { type: "text", text } } },
+		}),
+	});
+	const prompt: WireLine = { t: 0, d: "out", m: JSON.stringify({ id: 9, method: "session/prompt" }) };
+
+	it("finds history the agent re-sent before the prompt, however short", () => {
+		const wire = [update("agent_message_chunk", "Admission"), update("agent_message_chunk", "Probe"), prompt];
+		expect(replayedText(wire, "AdmissionProbe and more")).toBe("AdmissionProbe");
+	});
+
+	it("finds a late chunk under a message id the history used", () => {
+		const wire = [update("agent_message_chunk", "old ", "m1"), prompt, update("agent_message_chunk", "words", "m1")];
+		expect(replayedText(wire, "old words")).toBe("old words");
+	});
+
+	it("never counts the model saying the same thing again after the prompt", () => {
+		const wire = [prompt, update("agent_message_chunk", "the report text", "m2")];
+		expect(replayedText(wire, "the report text")).toBeNull();
+	});
+
+	it("is null when the history never reached the reply", () => {
+		const wire = [update("agent_message_chunk", "REPLAYED"), prompt];
+		expect(replayedText(wire, "AdmissionProbe")).toBeNull();
 	});
 });

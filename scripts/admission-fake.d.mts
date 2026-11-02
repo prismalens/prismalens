@@ -12,6 +12,7 @@ export interface AdmissionVerdict {
 	r7: string;
 	r8: string;
 	r9: string;
+	r10: string;
 }
 
 export function agentEnv(
