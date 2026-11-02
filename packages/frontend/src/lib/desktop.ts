@@ -35,6 +35,8 @@ interface DesktopBridge {
 	browser?: DesktopBrowser;
 	/** The terminal key the launcher got when it paired (#931); absent in older builds. */
 	terminalKey?: () => string | undefined;
+	/** Main stored a key it claimed after boot; the listener reads `terminalKey` again. */
+	onTerminalKey?: (listener: () => void) => () => void;
 }
 
 declare global {

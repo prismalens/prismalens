@@ -8,9 +8,10 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, isIP } from "node:net";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
 	isOnPath,
 	resolveOnPath,
@@ -186,6 +187,39 @@ export function writeRedirectFile(url: string, dir: string): string {
 	const html = `<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Opening PrismaLens</title><script>location.replace(${target})</script>`;
 	writeFileSync(file, html, { mode: 0o600, flag: "wx" });
 	return file;
+}
+
+type RedirectProc = Pick<NodeJS.Process, "env" | "platform" | "once">;
+
+/**
+ * The file URL the opener gets, or null when the printed link is the way in:
+ * WSL's Windows browser cannot read the distro's files and its opener would carry
+ * the token (#931), and a run directory that cannot be written is no reason to stop.
+ * The file is dropped on a stop signal too, which Node skips `exit` listeners for.
+ */
+export function openTarget(
+	url: string,
+	workspaceDir: string,
+	proc: RedirectProc = process,
+): string | null {
+	if (proc.env.WSL_DISTRO_NAME || proc.env.WSL_INTEROP) return null;
+	let file: string;
+	try {
+		file = writeRedirectFile(url, join(workspaceDir, "run"));
+	} catch {
+		return null;
+	}
+	const drop = () => rmSync(file, { force: true });
+	setTimeout(drop, 120_000).unref();
+	for (const event of [
+		"exit",
+		"SIGINT",
+		"SIGTERM",
+		...(proc.platform === "win32" ? ["SIGBREAK"] : []),
+	] as const) {
+		proc.once(event as NodeJS.Signals, drop);
+	}
+	return pathToFileURL(file).href;
 }
 
 /** Printed when the opener could not start or failed; the printed link still works. */

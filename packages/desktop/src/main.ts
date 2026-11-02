@@ -49,6 +49,7 @@ import {
 	backgroundColor,
 	frameOptions,
 	isTheme,
+	TERMINAL_KEY_CHANGED_CHANNEL,
 	TERMINAL_KEY_CHANNEL,
 	THEME_CHANNEL,
 	THEME_COOKIE,
@@ -72,7 +73,7 @@ import {
 	snapshot,
 } from "./notifications.js";
 import {
-	claimTerminalKey,
+	claimTerminalKeyInBackground,
 	fetchInstanceId,
 	OlderBackendError,
 	operatorToken,
@@ -145,6 +146,7 @@ let baseUrl = "";
 /** The window's device token, also the Bearer the notification poll sends. */
 let deviceToken = "";
 let terminalKey: string | undefined;
+const refusedClaims = new Map<string, number>();
 let ready = false;
 let quitting = false;
 let stopping = false;
@@ -591,12 +593,26 @@ async function pairWindow(dir: string): Promise<void> {
 		});
 	}
 	writeIdentity(baseUrl, instanceId);
-	terminalKey =
-		freshKey ??
-		readTerminalKeys()[instanceId] ??
-		(await claimTerminalKey({ baseUrl, token: deviceToken, pairOperator })) ??
-		undefined;
-	if (terminalKey) writeTerminalKey(instanceId, terminalKey);
+	terminalKey = freshKey ?? readTerminalKeys()[instanceId];
+	if (terminalKey) {
+		writeTerminalKey(instanceId, terminalKey);
+		return;
+	}
+	const token = deviceToken;
+	void claimTerminalKeyInBackground({
+		instanceId,
+		baseUrl,
+		token,
+		pairOperator,
+		refusedAt: refusedClaims,
+		isCurrent: () => token === deviceToken,
+		onKey: (key) => {
+			terminalKey = key;
+			writeTerminalKey(instanceId, key);
+			if (window && !window.isDestroyed())
+				window.webContents.send(TERMINAL_KEY_CHANGED_CHANNEL);
+		},
+	});
 }
 
 /** The terminal's second credential (#931), per instance, beside the identities. */

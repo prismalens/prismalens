@@ -67,6 +67,14 @@ describe("A step's command (#931)", () => {
 		expect(chip?.querySelector("[data-testid=run-in-terminal]")).not.toBeNull();
 	});
 
+	it("gives the chip the command as it ran, not the display text with repo/", () => {
+		availability = { available: true };
+		unhost = terminalStore.registerHost();
+		render(step({ command: "ls repo/api", run: "ls /ws/api" }), true);
+		expect(q("step-command")?.textContent).toContain("ls /ws/api");
+		expect(q("step-command")?.textContent).not.toContain("repo/");
+	});
+
 	it("keeps the collapsed row quiet", () => {
 		availability = { available: true };
 		unhost = terminalStore.registerHost();

@@ -137,6 +137,36 @@ export async function claimTerminalKey(deps: {
 	}
 }
 
+/** A refused claim spent an operator link; the same instance is not asked again for this long. */
+const CLAIM_REFUSAL_COOLDOWN_MS = 10 * 60_000;
+
+/**
+ * The claim off the boot path: the window never waits on `pl pair --operator`
+ * (30 s) or a refusal. A key that lands after the session changed is dropped.
+ */
+export async function claimTerminalKeyInBackground(deps: {
+	instanceId: string;
+	baseUrl: string;
+	token: string;
+	pairOperator: () => Promise<string>;
+	refusedAt: Map<string, number>;
+	isCurrent: () => boolean;
+	onKey: (key: string) => void;
+	now?: () => number;
+	fetchImpl?: typeof fetch;
+}): Promise<void> {
+	const now = (deps.now ?? Date.now)();
+	const refused = deps.refusedAt.get(deps.instanceId);
+	if (refused !== undefined && now - refused < CLAIM_REFUSAL_COOLDOWN_MS)
+		return;
+	const key = await claimTerminalKey(deps);
+	if (key === null) {
+		deps.refusedAt.set(deps.instanceId, now);
+		return;
+	}
+	if (deps.isCurrent()) deps.onKey(key);
+}
+
 async function managesPairing(
 	deps: SessionDeps,
 	token: string,

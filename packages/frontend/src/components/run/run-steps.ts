@@ -24,6 +24,8 @@ export interface RunStep {
 	kind: StepKind;
 	/** The call named a shell command, so it can be copied or staged in the terminal. */
 	shell?: boolean;
+	/** The shell command as it ran, for Copy and Run in terminal; `command` is display text. */
+	run?: string;
 	verb: string;
 	ok: boolean | null;
 	/** The turn ended with the call unanswered. */
@@ -120,6 +122,7 @@ export function deriveSteps(
 		const source =
 			result?.source ?? `${call.name}(${JSON.stringify(call.args)})`;
 		const command = commandText(source, opts.cwd);
+		const shell = typeof (call.args.command ?? call.args.cmd) === "string";
 		const unfinished = !result && !!opts.ended;
 		const output = result
 			? unfence(
@@ -139,7 +142,8 @@ export function deriveSteps(
 				result?.toolCategory === "file" || result?.toolCategory === "search"
 					? "file"
 					: "command",
-			shell: typeof (call.args.command ?? call.args.cmd) === "string",
+			shell,
+			...(shell ? { run: commandText(source) } : {}),
 			verb: verbOf(result, call.name, unfinished),
 			ok: result ? result.ok : null,
 			unfinished,

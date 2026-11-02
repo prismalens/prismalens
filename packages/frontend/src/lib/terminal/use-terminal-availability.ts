@@ -3,9 +3,10 @@
 
 import type { TerminalAvailability } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
-import { terminalKey } from "./key";
+import { subscribeTerminalKey, terminalKey } from "./key";
 
 const PHONE_ANSWER: TerminalAvailability = {
 	available: false,
@@ -18,9 +19,10 @@ const PHONE_ANSWER: TerminalAvailability = {
  */
 export function useTerminalAvailability(): TerminalAvailability | undefined {
 	const phone = useMediaQuery(PHONE);
+	const key = useSyncExternalStore(subscribeTerminalKey, terminalKey);
 	const query = useQuery({
 		...orpc.terminal.availability.queryOptions({
-			input: { key: terminalKey() },
+			input: { key },
 		}),
 		enabled: !phone,
 		staleTime: 60_000,

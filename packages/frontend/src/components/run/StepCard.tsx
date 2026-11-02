@@ -99,7 +99,7 @@ export function StepCard({
 					>
 						{step.shell ? (
 							<CommandChip
-								command={step.command}
+								command={step.run ?? step.command}
 								wrap
 								className="mx-3 mt-2 mb-1"
 								testId="step-command"

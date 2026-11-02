@@ -20,6 +20,11 @@ export function terminalKey(): string | undefined {
 	}
 }
 
+/** The desktop app claims a missing key after the window is up, so the key can appear late. */
+export function subscribeTerminalKey(listener: () => void): () => void {
+	return desktopBridge()?.onTerminalKey?.(listener) ?? (() => {});
+}
+
 export function storeTerminalKey(key: string): void {
 	try {
 		localStorage.setItem(STORAGE_KEY, key);

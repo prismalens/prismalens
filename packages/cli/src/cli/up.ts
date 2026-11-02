@@ -13,7 +13,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,6 +35,7 @@ import {
 	NO_BROWSER_LINE,
 	networkBindWarning,
 	noAgentLine,
+	openTarget,
 	portFree,
 	portInUseLine,
 	readTelemetryState,
@@ -45,7 +46,6 @@ import {
 	TELEMETRY_NOTICE,
 	waitForReady,
 	watchPairings,
-	writeRedirectFile,
 } from "./up-console.js";
 import { updateNotice } from "./update-notice.js";
 import { completePendingRestore } from "./upgrade-trial.js";
@@ -306,20 +306,6 @@ export default defineCommand({
 		printUpdateNotice();
 	},
 });
-
-/**
- * A redirect file keeps the startup token out of the opener's arguments. WSL
- * opens a Windows browser that cannot read the distro's files, and its opener
- * would carry the token, so there the printed link is the way in (#931).
- */
-function openTarget(url: string, workspaceDir: string): string | null {
-	if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return null;
-	const file = writeRedirectFile(url, join(workspaceDir, "run"));
-	const drop = () => rmSync(file, { force: true });
-	setTimeout(drop, 120_000).unref();
-	process.once("exit", drop);
-	return pathToFileURL(file).href;
-}
 
 /**
  * The host's own browser pairs like any other device (ADR 0004 §8): one link,

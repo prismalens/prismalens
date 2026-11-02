@@ -180,3 +180,25 @@ describe("evidenceStep (#673 w5-16)", () => {
 		expect(at("anything", "call-unknown")).toBeUndefined();
 	});
 });
+
+describe("a shell step keeps the command it ran (#931)", () => {
+	const cwd = "/home/me/.prismalens/runs/r1/workspace";
+	const ev = [
+		call(1, 0, "s", "bash", { command: `ls ${cwd}/api` }),
+		result(2, 1, "s", `bash({"command":"ls ${cwd}/api"})`, "books.py"),
+	];
+
+	it("reads the workspace as repo/ for display and not for Copy or Run in terminal", () => {
+		const [s] = deriveSteps(ev, { cwd });
+		expect(s?.command).toBe("ls repo/api");
+		expect(s?.run).toBe(`ls ${cwd}/api`);
+	});
+
+	it("has no run text for a file tool", () => {
+		const [s] = deriveSteps(
+			[call(1, 0, "f", "read", { path: "a.py" }), result(2, 1, "f", "read a.py", "x")],
+			{ cwd },
+		);
+		expect(s?.run).toBeUndefined();
+	});
+});

@@ -2,12 +2,21 @@
 // Copyright 2026 Sumit Patel
 
 import { createServer } from "node:net";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	browserCommand,
+	openTarget,
 	writeRedirectFile,
 	displayUrl,
 	healthUrl,
@@ -214,6 +223,51 @@ describe("writeRedirectFile", () => {
 		expect(html).toContain("t0ken");
 		if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
 		expect(writeRedirectFile(url, join(dir, "run"))).not.toBe(file);
+	});
+});
+
+describe("openTarget", () => {
+	const url = "http://localhost:3001/pair#t0ken";
+	const fakeProc = (env: NodeJS.ProcessEnv = {}) =>
+		Object.assign(new EventEmitter(), { env, platform: process.platform });
+
+	afterEach(() => vi.useRealTimers());
+
+	it("returns no target under WSL, where the printed link is the way in", () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-open-"));
+		const proc = fakeProc({ WSL_DISTRO_NAME: "Ubuntu" });
+		expect(openTarget(url, dir, proc)).toBeNull();
+		expect(existsSync(join(dir, "run"))).toBe(false);
+	});
+
+	it("falls back to the printed link when the run directory cannot be created", () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-open-"));
+		writeFileSync(join(dir, "run"), "a file where the directory belongs");
+		expect(openTarget(url, dir, fakeProc())).toBeNull();
+	});
+
+	it.each(["SIGINT", "SIGTERM"])(
+		"removes the token-bearing file when %s stops the process",
+		(signal) => {
+			const dir = mkdtempSync(join(tmpdir(), "pl-open-"));
+			const proc = fakeProc();
+			const file = fileURLToPath(openTarget(url, dir, proc) as string);
+			expect(existsSync(file)).toBe(true);
+			proc.emit(signal);
+			expect(existsSync(file)).toBe(false);
+		},
+	);
+
+	it("removes the file on exit and after the timer", () => {
+		vi.useFakeTimers();
+		const dir = mkdtempSync(join(tmpdir(), "pl-open-"));
+		const proc = fakeProc();
+		const file = fileURLToPath(openTarget(url, dir, proc) as string);
+		vi.advanceTimersByTime(120_000);
+		expect(existsSync(file)).toBe(false);
+		const second = fileURLToPath(openTarget(url, dir, proc) as string);
+		proc.emit("exit");
+		expect(existsSync(second)).toBe(false);
 	});
 });
 

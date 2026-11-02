@@ -12,6 +12,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 import { client } from "@/lib/api/orpc-client";
+import { chunkTerminalInput } from "@/lib/terminal/input";
 import { terminalKey } from "@/lib/terminal/key";
 import { terminalStore } from "@/lib/terminal/store";
 
@@ -82,7 +83,9 @@ export function TerminalView({
 			return true;
 		};
 		const detach = terminalStore.attachSender(tabId, send);
-		const input = xterm.onData((d) => send({ t: "in", d }));
+		const input = xterm.onData((d) => {
+			for (const chunk of chunkTerminalInput(d)) send({ t: "in", d: chunk });
+		});
 		const resized = xterm.onResize(({ cols, rows }) =>
 			send({ t: "resize", cols, rows }),
 		);
