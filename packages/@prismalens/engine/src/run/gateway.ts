@@ -11,6 +11,8 @@ import type {
 	McpCapabilities,
 	McpServer,
 } from "@agentclientprotocol/sdk/unstable";
+import type { RecordedFinding } from "@prismalens/contracts/schemas";
+import type { Findings } from "./findings.js";
 
 /** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
 export interface GatewayEntry {
@@ -29,6 +31,17 @@ export interface GatewayEntry {
 	onCall(listener: (c: GatewayCall) => void): () => void;
 	/** Per tool called during this lease: the first time and how often. */
 	calls(): GatewayCallCount[];
+	/** A tool output the run saw, for resolving recorded quotes against (#930). */
+	sawOutput?(toolCallId: string, text: string): void;
+	/** Hears each evidence item or hypothesis the agent records; returns the unsubscribe. */
+	onFinding?(listener: (f: RecordedFinding) => void): () => void;
+	/** What the agent recorded during this lease, quotes resolved again. */
+	findings?(): Findings;
+	/**
+	 * Seeds the lease with what earlier turns recorded. Until `load` succeeds, recording
+	 * is refused and retries it. Settles after the first attempt.
+	 */
+	restore?(load: () => Promise<Findings>): Promise<void>;
 }
 
 export interface GatewayCall {

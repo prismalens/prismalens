@@ -10,6 +10,7 @@ import {
 	isRunStateLive,
 	modelSubstituted,
 	type RunState,
+	recordedFindings,
 } from "@prismalens/contracts";
 import {
 	useLocation,
@@ -770,6 +771,7 @@ export function RunPage() {
 							live,
 							standing: standingRun(record, inv.id),
 							fileOf: (source) => citedFile(source, workspace),
+							recorded: recordedFindings(run.events),
 						})}
 						context={contextSections({
 							report,
