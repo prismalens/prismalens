@@ -2,7 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import cronstrue from "cronstrue";
-import { cronShape, nextSlots, type Recurrence } from "./recurrence.js";
+import {
+	cronShape,
+	firstSlotAtOrAfter,
+	nextSlots,
+	type Recurrence,
+} from "./recurrence.js";
 
 const DAYS = [
 	"Sunday",
@@ -111,7 +116,12 @@ export function dstNote(r: Recurrence, now: Date): string | null {
 	if (cronShape(r.expr) === "fixed") {
 		const [minute, hour] = r.expr.trim().split(/\s+/);
 		const at = `${pad(Number(hour))}:${pad(Number(minute))}`;
-		if (change.after > change.before && at >= oldWall && at < newWall)
+		if (
+			change.after > change.before &&
+			at >= oldWall &&
+			at < newWall &&
+			firstSlotAtOrAfter(r, change.at)?.getTime() === change.at.getTime()
+		)
 			return `${lead} That day the ${at} run is at ${newWall}, the first time that exists.`;
 		return `${lead} Runs stay at ${at} local time.`;
 	}

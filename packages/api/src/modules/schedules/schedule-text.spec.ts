@@ -54,6 +54,14 @@ describe("dstNote (#979, adversary OBJ-008)", () => {
 		);
 	});
 
+	it("adds no gap note to a weekday-only schedule on a Sunday change day (#983)", () => {
+		const note = dstNote(ny("30 2 * * 1-5"), new Date("2026-03-01T12:00:00Z"));
+		expect(note).not.toMatch(/the 02:30 run is at 03:00/);
+		expect(note).toBe(
+			"Clocks change in America/New_York on Sun 8 Mar. Runs stay at 02:30 local time.",
+		);
+	});
+
 	it("says nothing when no change is near or the zone has none", () => {
 		expect(dstNote(ny("0 9 * * *"), new Date("2026-06-01T00:00:00Z"))).toBeNull();
 		expect(dstNote(cron("0 9 * * *"), before)).toBeNull();

@@ -40,6 +40,18 @@ describe("cron shapes (#979, adversary OBJ-008)", () => {
 	});
 });
 
+describe("an invalid time zone (#983)", () => {
+	it("is a recurrenceError result, not a throw", () => {
+		const bad: Recurrence = {
+			type: "cron",
+			expr: "0 9 * * *",
+			timezone: "Not/AZone",
+		};
+		expect(() => recurrenceError(bad)).not.toThrow();
+		expect(recurrenceError(bad)).toMatch(/cron/i);
+	});
+});
+
 describe("daylight saving (#979)", () => {
 	it("moves a fixed time inside the spring gap to the first valid time that day", () => {
 		const [first, second] = nextSlots(

@@ -31,13 +31,12 @@ export function recurrenceError(r: Recurrence): string | null {
 	}
 	if (r.expr.trim().split(/\s+/).length !== 5)
 		return "A cron expression has five fields: minute, hour, day of month, month, day of week.";
-	let cron: Cron;
+	let slots: Date[];
 	try {
-		cron = cronOf(r.expr, r.timezone);
+		slots = cronOf(r.expr, r.timezone).nextRuns(200);
 	} catch (error) {
 		return `Not a cron expression PrismaLens can read: ${(error as Error).message}`;
 	}
-	const slots = cron.nextRuns(200);
 	if (slots.length === 0) return "This cron expression never runs.";
 	for (let i = 1; i < slots.length; i++) {
 		if (
