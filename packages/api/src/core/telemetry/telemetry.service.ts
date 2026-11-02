@@ -72,8 +72,14 @@ export function runMode(
 export const BUILD_MODES = ["release", "dev"] as const;
 export type BuildMode = (typeof BUILD_MODES)[number];
 
-export function build(env: NodeJS.ProcessEnv = process.env): BuildMode {
-	return env.NODE_ENV === "production" ? "release" : "dev";
+/**
+ * `release` only for 0.5.0 or later with no pre-release suffix, the set npm does
+ * not deprecate; a source checkout reports its workspace `0.0.x` (#1021).
+ */
+export function build(version: string): BuildMode {
+	const match = /^(\d+)\.(\d+)\.\d+$/.exec(version);
+	if (!match) return "dev";
+	return Number(match[1]) > 0 || Number(match[2]) >= 5 ? "release" : "dev";
 }
 
 export function utcDayString(date: Date): string {
@@ -320,6 +326,13 @@ function doNotTrack(env: NodeJS.ProcessEnv): boolean {
 	);
 }
 
+/** `PRISMALENS_TELEMETRY=internal`: sent as usual, under an `internal-` prefixed id (#1021). */
+export function telemetryInternal(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	return env.PRISMALENS_TELEMETRY?.trim().toLowerCase() === "internal";
+}
+
 /**
  * Three ways to force telemetry off regardless of the stored answer:
  * `PRISMALENS_TELEMETRY=off`, the cross-vendor `DO_NOT_TRACK`, and `CI` —
@@ -339,7 +352,6 @@ export class TelemetryService
 	implements OnApplicationBootstrap, OnModuleDestroy
 {
 	private readonly logger = new Logger(TelemetryService.name);
-	private readonly version = resolveServiceVersion();
 	/**
 	 * Per-entity "already reported" markers, with the time each was recorded, so
 	 * a long-lived install does not accumulate one entry per run forever. A run
@@ -367,6 +379,7 @@ export class TelemetryService
 		private readonly fetchImpl: typeof fetch = fetch,
 		private readonly now: () => Date = () => new Date(),
 		private readonly env: NodeJS.ProcessEnv = process.env,
+		private readonly version: string = resolveServiceVersion(),
 	) {
 		this.bootedAt = this.now().getTime();
 	}
@@ -566,13 +579,15 @@ export class TelemetryService
 			const body = {
 				api_key: POSTHOG_KEY,
 				event,
-				distinct_id: stored.installId,
+				distinct_id: telemetryInternal(this.env)
+					? `internal-${stored.installId}`
+					: stored.installId,
 				timestamp: utcMidnightTimestamp(this.now()),
 				properties: {
 					...sanitize({
 						...props,
 						run_mode: runMode(this.env),
-						build: build(this.env),
+						build: build(this.version),
 						os: process.platform,
 						arch: process.arch,
 						node_major: Number.parseInt(process.versions.node, 10),
