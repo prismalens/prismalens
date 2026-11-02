@@ -1,6 +1,6 @@
 # Releasing
 
-This file says what the release gate is and what a patch and a minor release do and do not do. Each 0.x release's Phase gate issue, filed by `.github/workflows/phase-gate.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks its own run of the gate. The workflow skips any milestone that is not `0.Y.Z`, so a major release gets no automatic issue.
+This file says what the release gate is and what a patch and a minor release do and do not do. Each 0.x release's Phase gate issue, filed by `.github/workflows/milestone-release-checklist.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks its own run of the gate. The workflow skips any milestone that is not `0.Y.Z`, so a major release gets no automatic issue.
 
 ## The gate
 - A release publishes nothing to npm until one packed-tarball walk has passed on the release PR's base SHA. The pass is keyed to that SHA.
@@ -40,12 +40,12 @@ flowchart TD
 | `Packed intake` | a webhook becomes an incident, an unattended investigation reports, a resolution closes it |
 | `Packed service` | `pl service` installs, restarts and uninstalls on a real systemd user manager |
 | `Packed upgrade smoke` | a database that predates `investigation_turns` upgrades, and every release npm lists from 0.5.0 on upgrades to the tarball through its own `pl upgrade`, with its data |
-| `Gate side checks` on Linux, macOS and Windows | telemetry, update notice, workspace lock, reset and Host allowlist; `pl upgrade` through npm on Linux and macOS; on Linux also the trial upgrade and its rollback |
+| `Gate side checks` on Linux, macOS and Windows | telemetry, update notice, workspace lock, reset, Host allowlist and a `pl upgrade` through npm; on Linux also the trial upgrade and its rollback |
 | `Harness admission` for opencode, claude-code and codex | each agent's real binary and adapter against the scripted model |
 | `E2E` | the browser suite |
 
 Also on the base SHA, outside the gate:
-- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run standalone.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow standalone.yml --json headSha`).
+- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run build-standalone-cli.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow build-standalone-cli.yml --json headSha`).
 - [ ] `Desktop` on the base. The desktop part of the walk uses its artifact.
 - [ ] Docs for this release's screens merged in `prismalens/prismalens.io`.
 
@@ -54,7 +54,6 @@ What stays manual, because a runner cannot do it:
 - `pl doctor`, and a private-repo clone through the real credential helper;
 - the desktop window, tray and notification;
 - Ctrl+C in a real terminal on Windows and macOS (the scripted checks end the process by signal or by kill);
-- `pl upgrade` through npm on Windows, until the failure on the CI runner is fixed (#921);
 - WSL2, Tailscale and the phone, when their files changed;
 - a real `irm | iex` install after publish.
 

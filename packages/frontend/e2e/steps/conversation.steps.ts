@@ -24,7 +24,7 @@ import {
 	type Made,
 	openWork,
 	QUIET,
-	sidewaysOverflow,
+	sidewaysFaults,
 	visit,
 	waitFor,
 	waitForRun,
@@ -295,12 +295,9 @@ Then(
 	async ({ page }) => {
 		for (const width of [1440, 1024, 390]) {
 			await page.setViewportSize({ width, height: 900 });
-			await expect.poll(() => sidewaysOverflow(page)).toBe(0);
-			const scroller = page.getByTestId("transcript-scroller");
-			const over = await scroller.evaluate(
-				(el) => el.scrollWidth - el.clientWidth,
-			);
-			expect(over, `transcript at ${width}`).toBeLessThanOrEqual(0);
+			await expect
+				.poll(() => sidewaysFaults(page), { message: `at ${width}` })
+				.toEqual([]);
 		}
 	},
 );

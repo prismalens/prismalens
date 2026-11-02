@@ -185,6 +185,46 @@ describe("buildInvestigationPrompt (#633)", () => {
 		expect(prompt).toContain("<<<END CONTEXT_PACK>>>");
 	});
 
+	it("labels a prior incident's recorded cause, the agent's root cause and its summary by origin", () => {
+		const pack = {
+			window: { start: "2026-09-23T10:00:00Z", end: "2026-09-23T11:00:00Z" },
+			changes: [],
+			neighbors: [],
+			priorIncidents: [
+				{
+					reference: "INC-7",
+					title: "Old checkout outage",
+					recordedCause: "expired TLS cert",
+					agentRootCause: "payments-api regression",
+					agentSummary: "500s from payments",
+					matchedOn: [],
+				},
+				{
+					reference: "INC-9",
+					title: "orders 500s",
+					recordedCause: null,
+					agentRootCause: null,
+					agentSummary: "orders pool exhausted",
+					matchedOn: [],
+				},
+			],
+			unavailable: [],
+			assembledAt: "2026-09-23T11:00:00Z",
+		};
+		const prompt = buildInvestigationPrompt({
+			...baseContext,
+			contextPack: pack,
+		} as InvestigationContext);
+
+		expect(prompt).toContain(
+			'    1. INC-7 "Old checkout outage"\n       recorded cause (operator): expired TLS cert\n       agent\'s root cause (unconfirmed): payments-api regression\n       agent\'s summary (not a cause): 500s from payments',
+		);
+		expect(prompt).toContain(
+			'    2. INC-9 "orders 500s"\n       agent\'s summary (not a cause): orders pool exhausted',
+		);
+		expect(prompt).not.toContain("root cause: orders pool exhausted");
+	});
+
 	describe("the agent's own mode and the network (#673 w21)", () => {
 		const context: InvestigationContext = {
 			...baseContext,
@@ -523,5 +563,74 @@ describe("pre-run prompt states and copy failures (#848)", () => {
 		expect(prompt).not.toContain("Read copies are in");
 		expect(prompt).toContain("Read: loki (loki): 5 logs.");
 		expect(prompt).toContain("<<<PRE_RUN_TELEMETRY — UNTRUSTED DATA.");
+	});
+});
+
+describe("an alert run's prompt does not change when a service check exists (#979)", () => {
+	const alertContext: InvestigationContext = {
+		alerts: [
+			{
+				alertname: "HighErrorRate",
+				severity: "critical",
+				labels: { service: "checkout" },
+				annotations: { summary: "5xx rate > 5%" },
+				startsAt: "2026-10-28T01:00:00.000Z",
+			},
+		],
+		telemetry: { prometheusUrl: "http://prometheus.internal:9090" },
+		service: { name: "checkout", tier: "1", notes: "Restart is safe." },
+	};
+
+	it("keeps the whole prompt byte-identical", () => {
+		expect(
+			buildInvestigationPrompt(alertContext, { level: "supervised" }),
+		).toMatchSnapshot();
+	});
+
+	it("keeps the split prompt byte-identical", () => {
+		expect(
+			investigationPromptParts(alertContext, { level: "supervised" }),
+		).toMatchSnapshot();
+	});
+});
+
+describe("a service-check prompt (#979)", () => {
+	const check: InvestigationContext = {
+		mode: "service-check",
+		alerts: [],
+		service: { name: "checkout", tier: "1", notes: "Restart is safe." },
+		check: {
+			brief: "Look at the p99 for the last day and say if it drifts.",
+			runbook: "runbooks/checkout-latency.md",
+		},
+	};
+
+	it("names a scheduled check of the service, with the brief and the runbook, and no alert", () => {
+		const prompt = buildInvestigationPrompt(check, { level: "supervised" });
+		expect(prompt).toContain("SCHEDULED CHECK");
+		expect(prompt).toContain("checkout");
+		expect(prompt).toContain(
+			"Look at the p99 for the last day and say if it drifts.",
+		);
+		expect(prompt).toContain("runbooks/checkout-latency.md");
+		expect(prompt).not.toContain("FIRING ALERT");
+		expect(prompt).not.toContain("firing production alert");
+		expect(prompt).toContain("RUNBOOK_NOTES");
+	});
+
+	it("omits the runbook line when none is set", () => {
+		const prompt = buildInvestigationPrompt(
+			{ ...check, check: { brief: "Look.", runbook: null } },
+			{ level: "supervised" },
+		);
+		expect(prompt).toContain("Look.");
+		expect(prompt).not.toContain("Runbook:");
+	});
+
+	it("carries the brief in the split prompt's turn, not its standing brief", () => {
+		const parts = investigationPromptParts(check, { level: "supervised" });
+		expect(parts.turn).toContain("Look at the p99");
+		expect(parts.brief).not.toContain("Look at the p99");
+		expect(parts.brief).not.toContain("firing production alert");
 	});
 });

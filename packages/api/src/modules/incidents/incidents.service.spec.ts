@@ -589,18 +589,20 @@ describe("IncidentsService", () => {
 				},
 			});
 
-			expect(mockTimelineService.create).toHaveBeenCalledWith(
-				expect.objectContaining({
+			// The opening entry rides the incident's transaction (#979).
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({
 					incidentId: "inc-11",
 					type: TimelineEntryType.incident_created,
 					description:
 						"New incident: BooklogrLibraryListSlow fired again after INC-10 was resolved",
-					metadata: {
+					metadata: JSON.stringify({
 						priorIncidentId: "inc-10",
 						priorEndedAt: "2026-10-01T14:22:00.000Z",
-					},
+					}),
 				}),
-			);
+			});
+			expect(mockTimelineService.create).not.toHaveBeenCalled();
 			// R1a d5: the card reads the prior from a column, not the timeline.
 			expect(mockTx.incident.create).toHaveBeenCalledWith({
 				data: expect.objectContaining({ priorIncidentId: "inc-10" }),
@@ -1002,6 +1004,28 @@ describe("IncidentsService", () => {
 
 			const entry = mockTx.timelineEntry.create.mock.calls[1][0].data;
 			expect(entry.description).toContain("the next run also clones orders");
+		});
+
+		it("names a legacy row's repo without its query or userinfo (#938)", async () => {
+			mockTx.alert.findMany.mockResolvedValue([
+				{
+					id: "a1",
+					service: {
+						name: "orders",
+						displayName: null,
+						repositories: [
+							{ repository: { sourceKind: "url", url: "git@github.com:acme/orders.git?token=ghp_SENTINEL938" } },
+						],
+					},
+				},
+			]);
+			given(source, { ...target, investigations: [{ id: "run-1" }] });
+
+			await service.merge("inc-src", "inc-tgt");
+
+			const entry = mockTx.timelineEntry.create.mock.calls[1][0].data;
+			expect(entry.description).toContain("the next run also clones orders");
+			expect(entry.description).not.toContain("SENTINEL");
 		});
 
 		it.each([

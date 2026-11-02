@@ -11,6 +11,7 @@ import type { InvestigationQuery } from "@prismalens/contracts";
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
+import { incidentKeys } from "./use-incidents-orpc";
 
 /**
  * Query key factory for investigations
@@ -118,6 +119,30 @@ export function useCancelInvestigation() {
 				investigation,
 			);
 		},
+	});
+}
+
+/** Take up a run a restart cut off and PrismaLens did not resume (#981): 409 when it was not interrupted or is live. */
+export function useResumeInvestigation() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.investigations.resume.mutationOptions(),
+		onSuccess: (investigation) => {
+			queryClient.invalidateQueries({
+				queryKey: investigationKeys.detail(investigation.id),
+			});
+			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+		},
+	});
+}
+
+/** What the last start did with the runs a stop cut off (#981); read once per load. */
+export function useRestartSummary() {
+	return useQuery({
+		...orpc.investigations.restartSummary.queryOptions({ input: {} }),
+		staleTime: Number.POSITIVE_INFINITY,
+		refetchOnWindowFocus: false,
 	});
 }
 

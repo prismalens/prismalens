@@ -46,6 +46,7 @@ export function TagInput({
 
 	return (
 		<div
+			data-scroll-x
 			className={cn(
 				"flex h-8 min-w-0 items-center gap-1 overflow-x-auto rounded-control bg-surface-2 px-1.5 md:h-7 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-accent [[data-pool]_&]:bg-well-in-pool [[role=dialog]_&]:bg-surface-3",
 				disabled && "cursor-not-allowed opacity-50",

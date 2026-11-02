@@ -29,6 +29,7 @@ import {
 	type PreRunSource,
 	type PreRunSummary,
 } from "@prismalens/contracts/schemas";
+import { sourceOrigin } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
 import type { RunbookEntry } from "../../modules/gateway/runbooks.js";
 import {
@@ -174,7 +175,7 @@ export function buildPreRunSnapshot(input: {
 		if (!("part" in t)) {
 			logger.warn(
 				clean(
-					`pre-run: ${t.status === "skipped" ? "skipped" : "not read"} ${t.label} (${t.kind}, ${t.from})${why}: ${t.reason}`,
+					`pre-run: ${t.status === "skipped" ? "skipped" : "not read"} ${t.label} (${t.kind}, ${sourceOrigin(who)})${why}: ${t.reason}`,
 				),
 			);
 			sources.push({ ...who, status: t.status, detail: clean(t.reason) });
@@ -202,7 +203,11 @@ export function buildPreRunSnapshot(input: {
 				),
 		);
 		const detail = clean(t.part.summary);
-		logger.info(clean(`pre-run: read ${t.label} (${t.kind})${why}: ${detail}`));
+		logger.info(
+			clean(
+				`pre-run: read ${t.label} (${t.kind}, ${sourceOrigin(who)})${why}: ${detail}`,
+			),
+		);
 		files.push({ name, about: `${t.label} (${t.kind}): ${detail}`, text });
 		sources.push({
 			...who,

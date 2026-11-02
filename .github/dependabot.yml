@@ -8,6 +8,16 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # Pinned by agent-release-watch (#914) to the SDK the claude adapter declares;
+      # a lone bump fails the bundle check (#913).
+      - dependency-name: "@anthropic-ai/claude-agent-sdk"
+      # The adapters move only with the rolling pin-bump PR, which probes them first (#914).
+      - dependency-name: "@agentclientprotocol/claude-agent-acp"
+      - dependency-name: "@agentclientprotocol/codex-acp"
+      # 1.6 inlines +3.8 MB into the diff worker and busts the prismalens tarball
+      # budget (scripts/artifact-budgets.json); move it with a budget re-base.
+      - dependency-name: "@pierre/diffs"
     groups:
       # One Nest major moves every @nestjs/* package at once; split bumps can
       # never pass (@nestjs/common 12 against @nestjs/core 11). Listed first

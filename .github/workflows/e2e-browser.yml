@@ -1,0 +1,109 @@
+name: Playwright E2E
+
+# Called by ci.yml's `e2e` job, which `CI gate` waits on (#920), so it runs on every PR,
+# push and merge-queue build there. Dispatch is for running it alone on a branch.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo-cache
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright (Chromium, shard ${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    # No service containers: dispatch is in-process over a SQLite job table, so the
+    # app boots with no broker.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ci.yml's `build` job saves this cache and `e2e` needs it, so the key is this commit's own:
+      # a replay for every unchanged package. A dispatch on its own takes the newest earlier one.
+      - name: Restore the turbo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - name: Build monorepo packages
+        run: pnpm build
+
+      # The runner image already carries Chromium's libraries; `--with-deps` only adds fonts and
+      # xvfb, and twice in one day the apt mirror served them at 20-80 kB/s (#885). No test compares
+      # pixels, so apt runs only when the browser cannot launch.
+      - name: Install Playwright Chromium Browser
+        working-directory: packages/frontend
+        run: |
+          pnpm exec playwright install chromium
+          if ! node -e "require('@playwright/test').chromium.launch().then((b) => b.close())"; then
+            pnpm exec playwright install-deps chromium
+          fi
+
+      # Phone and tablet run nightly (e2e-browser-mobile.yml), not per PR. `@quarantine`
+      # tests are excluded here and run in the next step (CONTRIBUTING.md, "Browser e2e tier").
+      - name: Run Playwright E2E Tests
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-main.json
+        run: pnpm --filter @prismalens/frontend test:e2e --project=chromium --project=journeys --shard=${{ matrix.shard }}/2
+
+      - name: Flaky and failed tests to the job summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/playwright-main.json" ]; then
+            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-main.json" "Playwright E2E, shard ${{ matrix.shard }}/2" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Non-blocking by construction: a quarantined test may fail without failing the job.
+      # Each has an open issue; the summary lists how it did. Shard 1 runs them all.
+      - name: Run quarantined tests (non-blocking)
+        id: quarantine
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-quarantine.json
+          PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ github.workspace }}/packages/frontend/playwright-report-quarantine
+        run: pnpm --filter @prismalens/frontend test:e2e --project=chromium-quarantine --project=journeys-quarantine
+
+      - name: Quarantined tests to the job summary
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        run: |
+          if [ -f "$RUNNER_TEMP/playwright-quarantine.json" ]; then
+            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-quarantine.json" "Playwright E2E, quarantined (non-blocking)" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Playwright Report
+        if: ${{ failure() || steps.quarantine.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: |
+            packages/frontend/playwright-report/
+            packages/frontend/playwright-report-quarantine/
+            packages/frontend/test-results/
+          retention-days: 7

@@ -38,6 +38,7 @@ const overview = (latestText: string) =>
 			state: "working",
 			awaiting: false,
 			asks: [],
+			events: [],
 			latestText,
 			stopRequested: false,
 			stop: () => undefined,
@@ -53,6 +54,60 @@ describe("LatestRunStrip (#673 w9-2)", () => {
 		);
 		expect(html).toContain("Checking booklogr-api with docker inspect");
 		expect(html).not.toContain("`");
+	});
+});
+
+describe("LatestRunStrip after a restart (#981)", () => {
+	const restart = {
+		kind: "operator_message",
+		via: { restart: { stoppedAt: "a", resumedAt: "b", by: "auto" } },
+	};
+	const render = (o: Overview) =>
+		renderToStaticMarkup(createElement(LatestRunStrip, { o }));
+
+	it("reads Resumed after a restart on a live run whose latest message is a restart", () => {
+		const o = overview("Working");
+		(o.latestRun as unknown as { events: unknown[] }).events = [restart];
+		expect(render(o)).toContain("Resumed after a restart");
+	});
+
+	it("reads Working once a later message is the operator's own", () => {
+		const o = overview("Checking the pool");
+		(o.latestRun as unknown as { events: unknown[] }).events = [
+			restart,
+			{ kind: "operator_message" },
+		];
+		expect(render(o)).toContain("Checking the pool");
+		expect(render(o)).not.toContain("Resumed after a restart");
+	});
+
+	it("reads Interrupted, not resumed with the reason on an interrupted run", () => {
+		const o = overview("");
+		const error =
+			"Not resumed: Codex isn't signed in on studio-mac. Sign in there, then resume.";
+		o.latestRun = {
+			...o.latestRun,
+			state: "failed",
+			investigation: { endReason: "interrupted", error },
+		} as unknown as Overview["latestRun"];
+		expect(render(o)).toContain(
+			"Interrupted, not resumed: Codex isn&#x27;t signed in on studio-mac. Sign in there, then resume.",
+		);
+	});
+
+	it("drops the reason on a phone, which the Next card carries, so the run name reads whole (#1010 N6)", () => {
+		const o = overview("");
+		o.latestRun = {
+			...o.latestRun,
+			state: "failed",
+			investigation: {
+				endReason: "interrupted",
+				error: "Not resumed: PrismaLens stopped again.",
+			},
+		} as unknown as Overview["latestRun"];
+		expect(render(o)).toMatch(
+			/class="[^"]*max-md:hidden[^"]*" data-testid="latest-run-detail"/,
+		);
 	});
 });
 

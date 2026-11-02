@@ -92,6 +92,20 @@ export function optionOf(
 }
 
 /** A denial: the agent's own reject option when it offered one, else ACP's cancelled outcome. */
+/**
+ * The abort reason when PrismaLens itself is closing, as opposed to the operator's Stop.
+ * A run aborted with it writes no end, so boot can tell the cut from a stop (#981).
+ */
+export const SHUTDOWN_REASON = "prismalens-shutdown";
+
+export function isShutdown(signal: AbortSignal | undefined): boolean {
+	return signal?.aborted === true && signal.reason === SHUTDOWN_REASON;
+}
+
+/** How an ask the abort closed reads: PrismaLens restarting is not a stop. */
+export const abortOutcome = (signal: AbortSignal | undefined) =>
+	isShutdown(signal) ? ("restarted" as const) : ("stopped" as const);
+
 export function deny(
 	req: PermissionRequest,
 	outcome: Exclude<PermissionAskOutcome, "approved" | "allowed">,
@@ -138,6 +152,8 @@ export interface GatewayAsks {
 	connected(): boolean;
 	serverName: string;
 	tools: readonly string[];
+	/** The tools answered without a card: those that only read or write the run's own record (#848). */
+	autoAllow?: readonly string[];
 }
 
 /**
@@ -182,7 +198,7 @@ export function isGatewayToolCall(
 	return (
 		!!named &&
 		named.servers.every((s) => s === gateway.serverName) &&
-		gateway.tools.includes(named.tool)
+		(gateway.autoAllow ?? gateway.tools).includes(named.tool)
 	);
 }
 
@@ -271,7 +287,11 @@ export function createAskChannel(
 				changed();
 			};
 			const onAbort = () =>
-				settle(deny(req, "stopped", "the turn was stopped"));
+				settle(
+					isShutdown(ctx.signal)
+						? deny(req, "restarted", "PrismaLens restarted")
+						: deny(req, "stopped", "the turn was stopped"),
+				);
 			const timer = setTimeout(
 				() =>
 					settle(

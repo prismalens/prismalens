@@ -19,6 +19,7 @@ import {
 	ConversationScrollButton,
 } from "@/components/ai/conversation";
 import { MessageResponse } from "@/components/ai/message";
+import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
@@ -35,6 +36,7 @@ import {
 } from "@/lib/investigation-events";
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
+import { restartSent } from "@/lib/restart";
 import { type AskRecord, askEnd, askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 
@@ -144,7 +146,8 @@ export const Transcript = memo(function Transcript({
 	afterReport,
 }: {
 	items: TranscriptItem[];
-	incidentId: string;
+	/** Null on a scheduled check no finding has linked yet (#979). */
+	incidentId: string | null;
 	/** The run's workspace, shown as `repo/` (walk f16). */
 	cwd?: string | null;
 	agent: string;
@@ -184,7 +187,11 @@ export const Transcript = memo(function Transcript({
 						const lit = steps?.highlight ?? null;
 						return (
 							<Fragment key={item.key}>
-								{(!folds || worked?.open || i <= brief || i >= end) && (
+								{(!folds ||
+									worked?.open ||
+									i <= brief ||
+									i >= end ||
+									item.kind === "artifact") && (
 									<TranscriptRow
 										item={item}
 										incidentId={incidentId}
@@ -289,7 +296,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	...steps
 }: RowSteps & {
 	item: TranscriptItem;
-	incidentId: string;
+	incidentId: string | null;
 	cwd?: string | null;
 	agent: string;
 	runName?: string;
@@ -331,6 +338,9 @@ const TranscriptRow = memo(function TranscriptRow({
 					data-testid={
 						item.kind === "line" ? "transcript-line" : "transcript-divider"
 					}
+					role={
+						item.kind === "divider" && item.separator ? "separator" : undefined
+					}
 				>
 					{item.text}
 				</li>
@@ -365,6 +375,8 @@ const TranscriptRow = memo(function TranscriptRow({
 				</li>
 			);
 		}
+		case "artifact":
+			return <ArtifactCard artifact={item.artifact} />;
 		case "thought":
 			return (
 				<li className="text-meta text-text-3" data-testid="transcript-thought">
@@ -386,17 +398,27 @@ const TranscriptRow = memo(function TranscriptRow({
 					data-state={item.state}
 				>
 					<span className="text-meta text-text-3">
-						{who}, {formatClock(item.at)},{" "}
-						<span
-							className={cn(item.state === "not_delivered" && "text-danger")}
-							data-testid="transcript-delivery"
-						>
-							{brief
-								? runName === "Ask"
-									? "asked"
-									: `brief for ${runName ?? "this run"}`
-								: deliveryWord(item.state, item.mode)}
-						</span>
+						{item.restart ? (
+							<span data-testid="transcript-restart-label">
+								PrismaLens{restartSent(item.restart, Date.now())}
+							</span>
+						) : (
+							<>
+								{who}, {formatClock(item.at)},{" "}
+								<span
+									className={cn(
+										item.state === "not_delivered" && "text-danger",
+									)}
+									data-testid="transcript-delivery"
+								>
+									{brief
+										? runName === "Ask"
+											? "asked"
+											: `brief for ${runName ?? "this run"}`
+										: deliveryWord(item.state, item.mode)}
+								</span>
+							</>
+						)}
 					</span>
 					{item.text && (
 						<p
@@ -406,7 +428,7 @@ const TranscriptRow = memo(function TranscriptRow({
 							{item.text}
 						</p>
 					)}
-					{item.attachments.length > 0 && (
+					{item.attachments.length > 0 && incidentId && (
 						<Attachments incidentId={incidentId} files={item.attachments} />
 					)}
 				</li>
@@ -428,14 +450,16 @@ const TranscriptRow = memo(function TranscriptRow({
 						<span dir="auto" className="text-text-2">
 							{reportSummary}
 						</span>
-						<Link
-							to="/incidents/$id"
-							params={{ id: incidentId }}
-							className="self-start text-accent underline-offset-[3px] hover:underline"
-							data-testid="transcript-report-overview"
-						>
-							See it on the overview
-						</Link>
+						{incidentId && (
+							<Link
+								to="/incidents/$id"
+								params={{ id: incidentId }}
+								className="self-start text-accent underline-offset-[3px] hover:underline"
+								data-testid="transcript-report-overview"
+							>
+								See it on the overview
+							</Link>
+						)}
 						{item.hint && (
 							<span
 								className="text-meta text-text-3"
@@ -444,6 +468,24 @@ const TranscriptRow = memo(function TranscriptRow({
 								{item.hint}
 							</span>
 						)}
+					</li>
+				);
+			if (item.interrupted)
+				return (
+					<li
+						className={cn(
+							"flex flex-col gap-2 rounded-[10px] bg-surface-2 px-3.5 py-3",
+							ENTER,
+						)}
+						data-testid="transcript-interrupted"
+					>
+						<span className="font-semibold">{item.text}</span>
+						<span
+							className="text-text-2 [overflow-wrap:anywhere]"
+							data-testid="transcript-interrupted-reason"
+						>
+							{item.detail}
+						</span>
 					</li>
 				);
 			const failure =

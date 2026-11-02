@@ -291,6 +291,8 @@ const env = Object.fromEntries(
 );
 Object.assign(env, {
 	CI: process.env.CI ?? "true",
+	// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
+	PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY || "internal",
 	PRISMALENS_WORKSPACE_DIR: workspace,
 	PRISMALENS_HOST: "127.0.0.1",
 	PRISMALENS_PORT: String(port),

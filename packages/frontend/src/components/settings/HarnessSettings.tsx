@@ -127,6 +127,18 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 
+			<SettingGroup title="Restarts">
+				<Pool>
+					<ResumeAfterRestartRow />
+				</Pool>
+			</SettingGroup>
+
+			<SettingGroup title="Environment">
+				<Pool>
+					<StrictEnvRow />
+				</Pool>
+			</SettingGroup>
+
 			<SettingGroup
 				title="Agents"
 				count={listed.length || undefined}
@@ -289,6 +301,66 @@ function AutoRow() {
 					})
 				}
 				data-testid="harness-auto"
+			/>
+		</SettingRow>
+	);
+}
+
+/** Runs a restart cut off carry on when PrismaLens starts again (#981); absent is on, and only the host changes it. */
+function ResumeAfterRestartRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const hostOnly = settings?.canEditRuntime === false;
+	return (
+		<SettingRow
+			label={
+				<label htmlFor="harness-resume-after-restart">
+					Resume after a restart
+				</label>
+			}
+			description={
+				hostOnly
+					? "Only the computer running PrismaLens can change this."
+					: "When PrismaLens starts again, the investigations it stopped in the middle carry on if it was off for less than a day."
+			}
+			testId="harness-resume-after-restart-row"
+		>
+			<Switch
+				id="harness-resume-after-restart"
+				checked={settings?.resumeAfterRestart !== false}
+				disabled={update.isPending || hostOnly}
+				onCheckedChange={(resumeAfterRestart) =>
+					update.mutate({ resumeAfterRestart })
+				}
+				data-testid="harness-resume-after-restart"
+			/>
+		</SettingRow>
+	);
+}
+
+/** Strict mode (#817): agents get named variables only, not the user's environment. */
+function StrictEnvRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const on = settings?.strictEnv === true;
+	return (
+		<SettingRow
+			label={
+				<label htmlFor="harness-strict-env">Only pass named variables</label>
+			}
+			description={
+				on
+					? "Agents get the basics (PATH, home, locale, proxy and certificates), their provider keys and the variables set on each agent"
+					: "Agents get your environment, as your terminal has it, minus PrismaLens's own secrets"
+			}
+			testId="harness-strict-env-row"
+		>
+			<Switch
+				id="harness-strict-env"
+				checked={on}
+				disabled={update.isPending || settings?.canEditRuntime === false}
+				onCheckedChange={(strictEnv) => update.mutate({ strictEnv })}
+				data-testid="harness-strict-env"
 			/>
 		</SettingRow>
 	);

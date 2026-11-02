@@ -7,11 +7,12 @@ import { PrismaModule } from "../../core/prisma/prisma.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { ChangeEventsService } from "./change-events.service.js";
 import { ChangesController } from "./changes.controller.js";
+import { DeployEventsService } from "./deploy-events.service.js";
 
 @Module({
 	imports: [PrismaModule, HarnessModule, IntegrationsModule],
 	controllers: [ChangesController],
-	providers: [ChangeEventsService],
-	exports: [ChangeEventsService],
+	providers: [ChangeEventsService, DeployEventsService],
+	exports: [ChangeEventsService, DeployEventsService],
 })
 export class ChangesModule {}

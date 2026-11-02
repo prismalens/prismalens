@@ -10,5 +10,9 @@
 	"@tokenizer/token": {
 		"version": "0.3.0",
 		"source": "https://github.com/Borewit/tokenizer-token/blob/v0.3.0/README.md#licence"
+	},
+	"http_ece": {
+		"version": "1.2.0",
+		"source": "https://github.com/web-push-libs/encrypted-content-encoding/blob/v1.2.0/LICENSE"
 	}
 }

@@ -4,7 +4,13 @@
 import type { CanonicalEvent, HarnessStatus } from "@prismalens/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { RunRef } from "./record-context";
-import { newerRunOf, runAccessLine, runName, turnElapsed } from "./run-facts";
+import {
+	newerRunOf,
+	runAccessLine,
+	runElapsed,
+	runName,
+	turnElapsed,
+} from "./run-facts";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
@@ -35,6 +41,44 @@ const base = (s: number) => ({
 	seq: 1,
 	label: null,
 	ts: at(s),
+});
+
+describe("runElapsed leaves out the time PrismaLens was off (#1010 N5)", () => {
+	const run = {
+		status: "completed",
+		createdAt: at(0),
+		startedAt: at(0),
+		completedAt: at(3600),
+	};
+	const restart = (stopped: number, resumed: number) =>
+		({
+			kind: "operator_message" as const,
+			...base(resumed),
+			text: "PrismaLens stopped and started again.",
+			mode: "queue" as const,
+			delivered: true,
+			via: {
+				harness: "claude-code",
+				model: null,
+				accessLevel: null,
+				restart: { stoppedAt: at(stopped), resumedAt: at(resumed), by: "auto" },
+			},
+		}) as CanonicalEvent;
+
+	it("counts the whole run when it never restarted", () => {
+		expect(runElapsed(run, null, [])).toBe(3600);
+		expect(runElapsed(run, null)).toBe(3600);
+	});
+
+	it("leaves out one stopped-to-resumed gap", () => {
+		expect(runElapsed(run, null, [restart(60, 3000)])).toBe(660);
+	});
+
+	it("leaves out two gaps", () => {
+		expect(
+			runElapsed(run, null, [restart(60, 1000), restart(1100, 3000)]),
+		).toBe(760);
+	});
 });
 
 describe("turnElapsed", () => {

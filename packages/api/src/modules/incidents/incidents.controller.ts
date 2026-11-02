@@ -606,6 +606,7 @@ export class IncidentsController {
 				model: i.model ?? null,
 				stopRequestedAt: iso(i.stopRequestedAt),
 				awaitingApprovalAt: iso(i.awaitingApprovalAt),
+				endReason: i.endReason ?? null,
 				lastEventAt: iso(i.lastEventAt),
 				latestText: i.latestText ?? null,
 				evidenceCount: i.evidenceCount ?? null,

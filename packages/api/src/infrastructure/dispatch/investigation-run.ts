@@ -6,6 +6,7 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
+import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	mkdirSync,
@@ -16,6 +17,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	DEFAULT_ACCESS_LEVEL,
@@ -42,10 +44,13 @@ import {
 	InvestigationJobDataSchema,
 	type InvestigationReport,
 	isWorkflowLive,
+	type RunComparison,
 	type RunWorkspace,
 	type RunWorkspaceRepo,
 	RunWorkspaceSchema,
+	recordedFindings,
 	ServiceInvestigationMetadataSchema,
+	serviceCheckContext,
 	type TurnOutcome,
 	toFiringAlert,
 	type WorkflowStatus,
@@ -76,14 +81,25 @@ import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import {
+	bindRun,
 	releaseWorktreesIn,
 	runWorktreeDir,
+	type SweepOptions,
 	sweepRunWorktrees,
+	unbindRun,
 } from "../../core/harness/run-worktree.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
+import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
+import { compareFor } from "../../modules/investigations/run-views.js";
+import {
+	clearReceipt,
+	stampOf,
+	watchReceipt,
+	writeReceipt,
+} from "./harness-receipt.js";
 import {
 	buildPreRunSnapshot,
 	type CopyTarget,
@@ -97,7 +113,14 @@ import {
 	writeReadCopies,
 } from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
-import type { IncidentRepo, RunPorts } from "./run-ports.js";
+import {
+	composeRestartMessage,
+	NOT_RESUMED,
+	type RestartFacts,
+	type WorkspaceState,
+} from "./restart-recovery.js";
+import { isShutdown } from "./run-abort.js";
+import type { IncidentRepo, RunPorts, RunSubject } from "./run-ports.js";
 
 const logger = new Logger({ context: "InvestigationProcessor" });
 
@@ -148,18 +171,27 @@ async function assembled<T>(
 	return fallback;
 }
 
+/** A service check names its service in the values it was admitted with; an incident run in its incident (#979). */
 function serviceIdOf(
 	incident: Record<string, unknown> | null,
+	data?: InvestigationJobData,
 ): string | undefined {
+	if (data?.scheduled && !data.incidentId) return data.scheduled.serviceId;
 	return typeof incident?.serviceId === "string"
 		? incident.serviceId
 		: undefined;
 }
 
+/** What the pre-run reads are keyed by: the incident, else the service a check is about (#979). */
+function subjectOf(data: InvestigationJobData): RunSubject | null {
+	if (data.incidentId) return data.incidentId;
+	return data.scheduled ? { serviceId: data.scheduled.serviceId } : null;
+}
+
 export interface InvestigationResult {
 	success: boolean;
 	investigationId: string;
-	incidentId: string;
+	incidentId: string | null;
 	findings: { rootCause?: string; summary?: string };
 	recommendations: Array<{
 		title: string;
@@ -274,21 +306,26 @@ async function runJobInternal(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
 
-		const incident = await assembled(
-			"the incident",
-			() => ports.getIncident(data.incidentId),
-			null,
-		);
+		const subject = subjectOf(data);
+		const incident = data.incidentId
+			? await assembled(
+					"the incident",
+					() => ports.getIncident(data.incidentId as string),
+					null,
+				)
+			: null;
 		const connectors = await assembled(
 			"the connectors",
-			() => ports.resolveConnectors(serviceIdOf(incident)),
+			() => ports.resolveConnectors(serviceIdOf(incident, data)),
 			[],
 		);
-		const contextPack = await assembled(
-			"the context pack",
-			() => ports.contextPack(data.incidentId),
-			null,
-		);
+		const contextPack = subject
+			? await assembled(
+					"the context pack",
+					() => ports.contextPack(subject),
+					null,
+				)
+			: null;
 		const context = await assembleInvestigationContext(
 			incident,
 			data,
@@ -301,24 +338,28 @@ async function runJobInternal(
 			new Date(),
 			context.service?.name,
 		);
-		const telemetry = ports.preRun
-			? assembled(
-					"telemetry",
-					() =>
-						(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
-							data.incidentId,
-							window,
-							AbortSignal.any([io.signal, AbortSignal.timeout(TELEMETRY_MS)]),
-						),
-					null,
-					TELEMETRY_MS,
-				)
-			: null;
+		const telemetry =
+			ports.preRun && subject
+				? assembled(
+						"telemetry",
+						() =>
+							(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
+								subject,
+								window,
+								AbortSignal.any([io.signal, AbortSignal.timeout(TELEMETRY_MS)]),
+							),
+						null,
+						TELEMETRY_MS,
+					)
+				: null;
+		const checkout = await resolveWorkspace(data, ports, io.signal);
 		const workspace = {
-			...(await resolveWorkspace(data, ports, io.signal)),
+			...checkout,
 			toolsServer: newGatewayServerName(),
+			compare: await comparisonsFor(checkout.repos, ports, io.signal),
 		};
 		await recordWorkspace(data, workspace, ports, context);
+		const afterSetup = await logWorkspaceSetup(data.investigationId, io, ports);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
 
@@ -364,7 +405,7 @@ async function runJobInternal(
 		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
 		const gateway = await ports.gateway
-			?.lease(runId, workspace.toolsServer)
+			?.lease(runId, workspace.toolsServer, harness)
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the run has no PrismaLens tools",
@@ -388,11 +429,13 @@ async function runJobInternal(
 				...(effort ? { effort } : {}),
 				accessLevel,
 				...(data.unattended ? { unattended: true } : {}),
+				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
 				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
+				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
 				onHarnessStderr: (chunk) => {
@@ -414,6 +457,7 @@ async function runJobInternal(
 		await io.streamDone();
 
 		if (outcome.failureKind === "cancelled") {
+			if (isShutdown(io.signal)) return interruptedResult(data);
 			logger.info(`Job ${job.id} cancelled`);
 			try {
 				await persistCancelled(data, ports, kind);
@@ -444,6 +488,8 @@ async function runJobInternal(
 	} catch (error: unknown) {
 		// A cancel that lands before the harness starts (during the clone) is still a cancel (#605 edge 23).
 		const parsed = InvestigationJobDataSchema.safeParse(rawPayload);
+		if (isShutdown(io.signal) && parsed.success)
+			return interruptedResult(parsed.data);
 		if (io.signal.aborted && parsed.success) {
 			logger.info(`Job ${job.id} cancelled before the harness started`);
 			try {
@@ -501,7 +547,10 @@ async function runJobInternal(
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
-			await clearRunWorkspace(unvalidated.investigationId);
+			// A run PrismaLens's own exit cut off keeps its workspace and pid for auto-resume (#981).
+			if (!isShutdown(io.signal))
+				await clearRunWorkspace(unvalidated.investigationId);
+			dropReceipt(unvalidated.investigationId, isShutdown(io.signal));
 		}
 	}
 }
@@ -817,6 +866,15 @@ async function runFollowUp(
 		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
+		// Before the rebuild: a workspace still on disk is taken up as is, a missing one is rebuilt (#981).
+		const existed = new Map(
+			recorded.repos.map((r) => [r.dir, existsSync(r.dir)]),
+		);
+		await bindRun(id, {
+			incidentId: data.incidentId,
+			serviceName: recorded.repos[0]?.services[0] ?? null,
+			recorded: recorded.cwd,
+		});
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
 		const newer = await ports.newerRun(id).catch(() => null);
 		const moved = newer?.heads.some(
@@ -834,16 +892,20 @@ async function runFollowUp(
 				handoff,
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
+			...(recorded.compare ? { compare: recorded.compare } : {}),
 		};
+		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
-		const incident = await assembled(
-			"the incident",
-			() => ports.getIncident(data.incidentId),
-			null,
-		);
+		const incident = data.incidentId
+			? await assembled(
+					"the incident",
+					() => ports.getIncident(data.incidentId as string),
+					null,
+				)
+			: null;
 		const connectors = await assembled(
 			"the connectors",
-			() => ports.resolveConnectors(serviceIdOf(incident)),
+			() => ports.resolveConnectors(serviceIdOf(incident, data)),
 			[],
 		);
 		const context = await assembleInvestigationContext(
@@ -903,7 +965,7 @@ async function runFollowUp(
 			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
 		const gateway = await ports.gateway
-			?.lease(id, workspace.toolsServer)
+			?.lease(id, workspace.toolsServer, harness, new Date())
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",
@@ -911,6 +973,11 @@ async function runFollowUp(
 				);
 				return null;
 			});
+		// A new lease starts empty; what earlier turns recorded is in the run's events (#930).
+		if (gateway?.restore)
+			await gateway.restore(async () =>
+				recordedFindings(await ports.events(id)),
+			);
 		const customModel = pick
 			? !!pick.customModel
 			: modelSource === "operator" &&
@@ -932,6 +999,24 @@ async function runFollowUp(
 				})
 			: null;
 		if (seed) writeHandoffTranscript(workspace, seed.transcript);
+		const restartAt = new Date();
+		const restartText = resume.restart
+			? composeRestartMessage(
+					await restartFacts(
+						resume,
+						restartAt,
+						data.incidentId,
+						await ports.events(id),
+						observeWorkspace(workspace.repos, existed),
+						!ports.preRun
+							? "none"
+							: context.preRun?.state === "unavailable"
+								? "unavailable"
+								: "available",
+						ports,
+					),
+				)
+			: null;
 		// The new session's first usage lands after the old one is cleared (ruling 13).
 		let handedOff: Promise<void> = Promise.resolve();
 		const usage = usageWriter(ports, id, () => handedOff);
@@ -949,6 +1034,9 @@ async function runFollowUp(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				...(accessLevel ? { accessLevel } : {}),
+				// A recovered alert-started run is still nobody's to answer (#818, #981).
+				...(data.unattended ? { unattended: true } : {}),
+				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -963,9 +1051,11 @@ async function runFollowUp(
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
-				...(seed
+				...(seed || sessionId
 					? {
+							// A load the agent replaced with a fresh session records it as a handoff does (#942).
 							onSession: (s: { sessionId: string; loadSession: boolean }) => {
+								if (!seed && s.sessionId === sessionId) return;
 								handedOff = ports
 									.recordHandoff(id, {
 										harness,
@@ -982,13 +1072,53 @@ async function runFollowUp(
 					: {}),
 				...(kind === "chat" ? { kind: "chat" as const } : {}),
 				resume: {
-					...(sessionId ? { sessionId } : {}),
+					...(sessionId
+						? {
+								sessionId,
+								known: async () =>
+									(await ports.events(id)).flatMap((e) =>
+										e.kind === "agent_step"
+											? e.toolCalls.map((c) => c.toolCallId)
+											: e.kind === "tool_result"
+												? [e.result.toolCallId]
+												: [],
+									),
+								// The agent's load is known broken (#942): the stored conversation seeds a new session.
+								fresh: async () => {
+									const fresh = buildHandoff({
+										events: await ports.events(id),
+										report: storedReport(inv.report),
+										accessLevel: inheritedLevel(data.accessLevel),
+										from: row.label,
+										afterRestart: !!resume.afterRestart,
+									});
+									writeHandoffTranscript(workspace, fresh.transcript);
+									return {
+										text: fresh.text,
+										from: harness,
+										carried: fresh.carried,
+										omitted: fresh.omitted,
+									};
+								},
+							}
+						: {}),
 					...(seed ? { handoff: seed.text } : {}),
-					...(resume.afterRestart ? { afterRestart: true } : {}),
+					...(resume.afterRestart && !restartText
+						? { afterRestart: true }
+						: {}),
 					via: {
 						harness,
 						model,
 						accessLevel: accessLevel ?? null,
+						...(resume.restart
+							? {
+									restart: {
+										stoppedAt: resume.restart.stoppedAt,
+										resumedAt: restartAt.toISOString(),
+										by: resume.restart.by,
+									},
+								}
+							: {}),
 						...(seed
 							? {
 									handoff: {
@@ -999,7 +1129,7 @@ async function runFollowUp(
 								}
 							: {}),
 					},
-					text: resume.text,
+					text: restartText ?? resume.text,
 					mode: resume.mode,
 					heads: workspace.repos.map((r) => ({ name: r.name, head: r.head })),
 					...(continuing
@@ -1043,8 +1173,11 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		await clearRunWorkspace(id);
+		if (!isShutdown(io.signal)) await clearRunWorkspace(id);
+		dropReceipt(id, isShutdown(io.signal));
 	}
+	// PrismaLens is closing: no end is written, so boot reads this turn as interrupted (#981).
+	if (isShutdown(io.signal)) return interruptedResult(data);
 
 	// A `continue` that reached its agent ends as a run (I6-I8); everything else is settled here.
 	const ran = delivered();
@@ -1053,9 +1186,20 @@ async function runFollowUp(
 		outcome: TurnOutcome,
 		sentence: string | null,
 	): Promise<boolean> => {
+		// A recovery that never reached its agent ends saying why it didn't resume (#981 OBJ-020).
+		const unprepared =
+			!!resume.restart &&
+			!ran &&
+			outcome === "error" &&
+			resume.restore.status === "failed";
 		const to = followUpEnd(
 			ran ? kind : null,
-			resume.restore,
+			unprepared
+				? {
+						...resume.restore,
+						error: `${NOT_RESUMED}${sentence ?? "it could not be prepared."}`,
+					}
+				: resume.restore,
 			outcome,
 			sentence,
 		);
@@ -1249,6 +1393,7 @@ export function followUpModelSource(
 function runOptionsOf(runtime: AgentRuntime) {
 	return {
 		env: runtime.env,
+		...(runtime.policy ? { policy: runtime.policy } : {}),
 		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
 		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
 		...(runtime.note ? { runtimeNote: runtime.note } : {}),
@@ -1275,6 +1420,8 @@ export function followUpNotDelivered(
 		path: [],
 		ts: new Date().toISOString(),
 	};
+	// A recovery's text is PrismaLens's, or a question already in the conversation: never a new user line (#981 OBJ-009).
+	if (resume.restart) return [{ kind: "error", ...base, seq, message }];
 	return [
 		{
 			kind: "operator_message",
@@ -1315,6 +1462,68 @@ const RUN_WORKSPACE = [
 	join("config", GATEWAY_RUN_FILE),
 ];
 
+const SETUP_OUTPUT_TAIL = 64 * 1024;
+
+const setups = new Map<string, { name: string; result: HookResult }[]>();
+
+function noteSetup(runId: string, name: string, result: HookResult): void {
+	setups.set(runId, [...(setups.get(runId) ?? []), { name, result }]);
+}
+
+const SETUP_WORDS: Record<HookResult["status"], string> = {
+	ok: "finished",
+	failed: "failed",
+	silent: "was cancelled after 5 minutes without output",
+	capped: "was cut off",
+	aborted: "was stopped",
+};
+
+/**
+ * The workspace setup commands' output, in the run's log (#925). Answers the seq the agent's
+ * events start at after them, so a poller's cursor never passes over one; null when none ran.
+ */
+export async function logWorkspaceSetup(
+	runId: string,
+	io: JobIo,
+	ports: RunPorts,
+): Promise<number | null> {
+	const ran = setups.get(runId);
+	setups.delete(runId);
+	if (!ran?.length) return null;
+	// Past every setup seq even when storing them fails part way: the agent's events never reuse one.
+	let seq: number | null = null;
+	try {
+		seq = (await ports.lastEventSeq(runId)) + 1;
+		const first = seq;
+		const events: CanonicalEvent[] = ran.map(({ name, result }, i) => {
+			const ok = result.status === "ok";
+			const words = `Workspace setup in ${name} ${SETUP_WORDS[result.status]}${result.exitCode !== null && !ok ? ` (exit ${result.exitCode})` : ""}`;
+			return {
+				kind: "tool_result",
+				runId,
+				branchId: "workspace",
+				path: [],
+				seq: first + i,
+				ts: new Date().toISOString(),
+				result: {
+					name: "workspace_setup",
+					toolCallId: `workspace-setup-${name}`,
+					source: words,
+					ok,
+					error: ok ? null : words,
+					preview: result.output.slice(-8000),
+				},
+			};
+		});
+		seq = first + events.length;
+		for (const event of events) await io.emit(event);
+		await ports.appendEvents(runId, events);
+	} catch (e) {
+		logger.warn("Could not record the workspace setup in the run's log", e);
+	}
+	return seq;
+}
+
 async function clearRunWorkspace(runId: string): Promise<void> {
 	const runDir = runDirFor(runId);
 	for (const dir of [
@@ -1329,24 +1538,37 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 		}
 	}
 	for (const rel of RUN_WORKSPACE) {
+		// repo and repos were released above, which removes what no rule or guard kept.
+		if (rel === "repo" || rel === "repos") continue;
 		try {
 			rmSync(join(runDir, rel), { recursive: true, force: true });
 		} catch (e) {
 			logger.warn(`Failed to remove the run's ${rel}`, e);
 		}
 	}
+	setups.delete(runId);
+	unbindRun(runId);
 }
 
 /**
  * Called at boot, when nothing is running: a process that died mid-run never
  * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
+ * A run named by `isInterrupted` keeps all of it until it is resumed (#981); one named by
+ * `isLive` (a follow-up left pending) keeps it whatever its retention says.
  */
-export async function sweepRunWorkspaces(): Promise<number> {
-	const swept = new Set(await sweepRunWorktrees());
+export async function sweepRunWorkspaces(
+	opts: Pick<SweepOptions, "isLive" | "isInterrupted"> = {},
+): Promise<number> {
+	const swept = new Set(await sweepRunWorktrees(opts));
 	const runs = resolve(getAppDataDir(), "runs");
 	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
+		if (
+			!entry.isDirectory() ||
+			opts.isLive?.(entry.name) ||
+			opts.isInterrupted?.(entry.name)
+		)
+			continue;
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
 			try {
@@ -1375,6 +1597,51 @@ export interface Workspace extends RunWorkspace {
 	note: string;
 	/** What this run could not check out; empty on a follow-up. */
 	checkoutsSkipped: CheckoutSkipped[];
+}
+
+const COMPARE_MS = 15_000;
+const COMPARE_DEPLOYMENTS = 10;
+
+/**
+ * The panel's diff pairs, one per repo, recorded before the agent starts so
+ * the diff endpoint never takes a commit from the caller (#973). A repo that
+ * cannot be read is skipped; this never fails the run.
+ */
+export async function comparisonsFor(
+	repos: RunWorkspace["repos"],
+	ports: Pick<RunPorts, "deployments">,
+	cancel: AbortSignal,
+	deadlineMs = COMPARE_MS,
+): Promise<RunComparison[]> {
+	// One deadline for every repo, and Stop still stops: this runs before the agent starts (#975 OBJ-014).
+	const signal = AbortSignal.any([cancel, AbortSignal.timeout(deadlineMs)]);
+	const pairs: RunComparison[] = [];
+	for (const repo of repos) {
+		if (signal.aborted) break;
+		const dir = objectDirFor(repo);
+		if (!dir) continue;
+		try {
+			const deployments = (
+				(await untilAborted(
+					ports.deployments?.(repo.services) ?? Promise.resolve([]),
+					signal,
+				)) ?? []
+			).slice(0, COMPARE_DEPLOYMENTS);
+			const pair = await compareFor(
+				dir,
+				repo.name,
+				repo.head,
+				deployments,
+				signal,
+			);
+			if (pair) pairs.push(pair);
+		} catch (error) {
+			logger.warn(
+				`No comparison recorded for ${repo.name}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+	return pairs;
 }
 
 function toRunWorkspace({
@@ -1505,9 +1772,9 @@ function whereFrom(repo: {
 }
 
 /**
- * Fresh snapshots of the incident's repos (ADR 0004 §2): one local repo is the worktree
- * `worktrees/pl-<run>` (#918), one URL keeps the run's `repo/`, several go under
- * `worktrees/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
+ * Fresh snapshots of the incident's repos (ADR 0004 §2): one repo is the workspace
+ * `<location>/pl-<run>` (#918), of its folder or of a URL's mirror (#925); several go under
+ * `<location>/pl-<run>/<name>/` (#747). A repo not checked out in the budget is skipped
  * and named; with none, the run goes on (#848).
  */
 export async function resolveWorkspace(
@@ -1518,14 +1785,22 @@ export async function resolveWorkspace(
 	const runDir = runDirFor(data.investigationId);
 	let listed: IncidentRepo[] = [];
 	let unlisted: string | null = null;
-	try {
-		const got = await within(ASSEMBLY_MS, ports.incidentRepos(data.incidentId));
-		if (got === LATE) {
-			unlisted = `the repository list did not load in ${ASSEMBLY_MS / 1000} s`;
-			logger.warn(`Ran without code: ${unlisted}`);
-		} else listed = got;
-	} catch (e) {
-		logger.warn("Could not list the incident's repos", e);
+	if (data.scheduled) {
+		// The repositories the schedule was admitted with, never the service's live bindings (#979, OBJ-003).
+		listed = data.scheduled.repos;
+	} else if (data.incidentId) {
+		try {
+			const got = await within(
+				ASSEMBLY_MS,
+				ports.incidentRepos(data.incidentId),
+			);
+			if (got === LATE) {
+				unlisted = `the repository list did not load in ${ASSEMBLY_MS / 1000} s`;
+				logger.warn(`Ran without code: ${unlisted}`);
+			} else listed = got;
+		} catch (e) {
+			logger.warn("Could not list the incident's repos", e);
+		}
 	}
 	const runId = data.investigationId;
 	const all = dedupeRepos(listed);
@@ -1540,10 +1815,18 @@ export async function resolveWorkspace(
 			runDir,
 			unlisted
 				? `Ran without code: ${unlisted}.`
-				: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+				: data.scheduled
+					? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
+					: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
+	await bindRun(runId, {
+		incidentId: data.incidentId,
+		serviceName: repos[0]?.services[0] ?? null,
+	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
+	// A budget abort throws the hook's result away; what it printed so far is kept for the run log (#925).
+	const printed: string[] = repos.map(() => "");
 	const outcomes = await checkoutAll(
 		repos.length,
 		(i, repoSignal) => {
@@ -1556,14 +1839,13 @@ export async function resolveWorkspace(
 					connectionId: repo.connectionId,
 					defaultBranch: repo.defaultBranch,
 				},
-				multi
-					? join(runWorktreeDir(runId), name)
-					: repo.sourceKind === "folder"
-						? runWorktreeDir(runId)
-						: join(runDir, "repo"),
+				multi ? join(runWorktreeDir(runId), name) : runWorktreeDir(runId),
 				repoSignal,
 				undefined,
 				runId,
+				(chunk) => {
+					printed[i] = (printed[i] + chunk).slice(-SETUP_OUTPUT_TAIL);
+				},
 			);
 		},
 		signal,
@@ -1574,10 +1856,17 @@ export async function resolveWorkspace(
 	for (const [i, outcome] of outcomes.entries()) {
 		const { repo, services } = repos[i] as (typeof repos)[number];
 		if (!outcome.ok) {
+			if (printed[i])
+				noteSetup(runId, names[i] as string, {
+					status: "aborted",
+					exitCode: null,
+					output: printed[i] as string,
+				});
 			skipped.push({ repo, reason: outcome.reason, code: outcome.code });
 			continue;
 		}
 		const { snap, credential } = outcome.value;
+		if (snap.setup) noteSetup(runId, names[i] as string, snap.setup);
 		try {
 			inCheckout(runId, snap.path, repo.subPath);
 		} catch (e) {
@@ -1596,6 +1885,7 @@ export async function resolveWorkspace(
 			services,
 			credential,
 		});
+		logger.info(`Checked out ${whereFrom(repo)} with ${credential.label}`);
 	}
 	skipped.push(...guarded);
 	for (const k of skipped)
@@ -1777,7 +2067,7 @@ function untilAborted<T>(
 
 /**
  * A worktree that finished after the run stopped waiting is unlocked and removed now, unless a
- * later attempt re-added that path. A late URL clone has no lock, so the run's end removes it.
+ * later attempt re-added that path.
  */
 function releaseLate({
 	snap,
@@ -1824,7 +2114,7 @@ export async function rebuildWorkspace(
 		owned(repo.dir);
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
-		const { credential } = await untilAborted(
+		const { snap, credential } = await untilAborted(
 			ports.snapshotWith(
 				{
 					sourceKind: repo.sourceKind,
@@ -1839,6 +2129,7 @@ export async function rebuildWorkspace(
 			bounded,
 			releaseLate,
 		);
+		if (snap.setup) noteSetup(investigationId, repo.name, snap.setup);
 		inCheckout(investigationId, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
 	}
@@ -1987,6 +2278,24 @@ async function assembleInvestigationContext(
 	connectors: ResolvedConnector[] = [],
 	contextPack: ContextPack | null = null,
 ): Promise<InvestigationContext> {
+	if (data.scheduled && !data.incidentId) {
+		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
+		const notes = data.scheduled.serviceNotes?.trim();
+		return serviceCheckContext(
+			{
+				name: data.scheduled.serviceName,
+				...(notes ? { notes } : {}),
+			},
+			{
+				...(data.brief ? { brief: data.brief } : {}),
+				runbook: data.scheduled.runbook,
+			},
+			{
+				...(telemetry ? { telemetry } : {}),
+				...(contextPack ? { contextPack } : {}),
+			},
+		);
+	}
 	const rawAlerts = (
 		data.alerts && data.alerts.length > 0
 			? data.alerts
@@ -2019,7 +2328,7 @@ async function assembleInvestigationContext(
 }
 
 /** The service's `metadata.investigation.notes`, stored as JSON text or an object; null when absent or empty. */
-function serviceNotes(metadata: unknown): string | null {
+export function serviceNotes(metadata: unknown): string | null {
 	let value: unknown = metadata;
 	if (typeof value === "string") {
 		try {
@@ -2106,6 +2415,128 @@ function failureResult(
 		findings: {},
 		recommendations: [],
 		error,
+	};
+}
+
+/** Each run dir's tree watch, stopped when its receipt is dropped. */
+const receiptWatches = new Map<string, () => void>();
+
+function keepReceipt(runDir: string, pid: number | undefined): void {
+	if (!pid) return;
+	try {
+		mkdirSync(runDir, { recursive: true });
+		writeReceipt(runDir, pid, Date.now(), stampOf(pid));
+		receiptWatches.get(runDir)?.();
+		receiptWatches.set(runDir, watchReceipt(runDir));
+	} catch (e) {
+		logger.warn("Could not record the harness pid", e);
+	}
+}
+
+/** Stops the tree watch; `keepFile` leaves the receipt for the next boot's containment check. */
+function dropReceipt(runId: string, keepFile = false): void {
+	const runDir = runDirFor(runId);
+	receiptWatches.get(runDir)?.();
+	receiptWatches.delete(runDir);
+	if (keepFile) return;
+	try {
+		clearReceipt(runDir);
+	} catch {
+		// The run dir is already gone.
+	}
+}
+
+/** Each repo as git shows it now, against what the run recorded; never more than git said (#981 OBJ-011). */
+export function observeWorkspace(
+	repos: readonly { name: string; dir: string; head: string }[],
+	existed: ReadonlyMap<string, boolean>,
+	git: (dir: string, args: string[]) => string = gitIn,
+): WorkspaceState[] {
+	const many = repos.length > 1;
+	const out: WorkspaceState[] = [];
+	for (const r of repos) {
+		const repo = many ? r.name : null;
+		let head: string;
+		let changed: number;
+		try {
+			head = git(r.dir, ["rev-parse", "HEAD"]).trim();
+			changed = git(r.dir, ["status", "--porcelain"])
+				.split(/\r?\n/)
+				.filter((l) => l.trim()).length;
+		} catch {
+			continue;
+		}
+		if (!existed.get(r.dir)) out.push({ repo, state: "rebuilt", head });
+		else if (!r.head.startsWith(head.slice(0, 7)) && !head.startsWith(r.head))
+			out.push({ repo, state: "moved", head, recorded: r.head });
+		else if (changed > 0) out.push({ repo, state: "changed", head, changed });
+		else out.push({ repo, state: "as-was", head });
+	}
+	return out;
+}
+
+function gitIn(dir: string, args: string[]): string {
+	return execFileSync("git", ["-C", dir, ...args], {
+		encoding: "utf8",
+		windowsHide: true,
+		timeout: 15_000,
+	});
+}
+
+async function restartFacts(
+	resume: NonNullable<InvestigationJobData["resume"]>,
+	resumedAt: Date,
+	incidentId: string | null,
+	events: readonly CanonicalEvent[],
+	workspace: WorkspaceState[],
+	snapshot: RestartFacts["snapshot"],
+	ports: RunPorts,
+): Promise<RestartFacts> {
+	const restart = resume.restart as NonNullable<typeof resume.restart>;
+	// The message says "while PrismaLens was stopped", so the window opens at the stop.
+	const stoppedAt = new Date(restart.stoppedAt);
+	const asks = new Map<string, string>();
+	const denied: string[] = [];
+	for (const e of events) {
+		if (e.kind === "permission_ask") asks.set(e.askId, e.title);
+		else if (e.kind === "permission_answer" && e.outcome === "restarted")
+			denied.push(
+				(asks.get(e.askId) ?? e.title ?? "run a tool").replace(/^./, (c) =>
+					c.toLowerCase(),
+				),
+			);
+	}
+	const alerts = (await ports
+		.restartAlerts?.(incidentId, stoppedAt, resumedAt, stoppedAt)
+		.catch(() => null)) ?? {
+		catchUp: "unchecked" as const,
+		fired: [],
+		resolved: [],
+	};
+	return {
+		stoppedAt,
+		resumedAt,
+		turn: resume.kind === "continue" ? "report" : "answer",
+		...(resume.kind !== "continue" ? { question: resume.text } : {}),
+		alerts,
+		deniedAsks: [...new Set(denied)],
+		workspace,
+		snapshot,
+	};
+}
+
+/** PrismaLens's own exit cut the run off; nothing was written, boot settles it. */
+function interruptedResult(
+	data: Pick<InvestigationJobData, "investigationId" | "incidentId">,
+): InvestigationResult {
+	return {
+		success: false,
+		investigationId: data.investigationId,
+		incidentId: data.incidentId,
+		findings: {},
+		recommendations: [],
+		error: "PrismaLens stopped while the run was working",
+		errorType: "interrupted",
 	};
 }
 

@@ -212,10 +212,9 @@ describe("AlertIntakeSettings (case 9 and delivery)", () => {
 		expect(deliveryPill?.textContent).toContain("5 alerts, 3 accepted");
 	});
 
-	it("omits deploy events group when deploy is not in webhooksContract", async () => {
+	it("shows the deploy events group with its URL now that deploy is in webhooksContract", async () => {
 		await act(async () => root.render(createElement(AlertIntakeSettings)));
-		expect(
-			container.querySelector('[data-testid="sources-deploy"]'),
-		).toBeNull();
+		const group = container.querySelector('[data-testid="sources-deploy"]');
+		expect(group?.textContent).toContain("/api/webhooks/deploy");
 	});
 });

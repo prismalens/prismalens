@@ -7,7 +7,12 @@
  * Only HTTP is offered, since every agent that honours the field takes it.
  */
 import { randomBytes } from "node:crypto";
-import type { McpCapabilities, McpServer } from "@agentclientprotocol/sdk";
+import type {
+	McpCapabilities,
+	McpServer,
+} from "@agentclientprotocol/sdk/unstable";
+import type { Artifact, RecordedFinding } from "@prismalens/contracts/schemas";
+import type { Findings } from "./findings.js";
 
 /** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
 export interface GatewayEntry {
@@ -19,6 +24,8 @@ export interface GatewayEntry {
 	promptLine: string;
 	/** PrismaLens's own harness tool names, the only ones the gateway serves. */
 	tools: readonly string[];
+	/** The tools the permission policy answers without a card; an `ask` or `act` tool is never one (#848). */
+	autoAllow?: readonly string[];
 	/** True once a request carrying the run's token reached the gateway. */
 	connected(): boolean;
 	waitConnected(ms: number): Promise<boolean>;
@@ -26,11 +33,39 @@ export interface GatewayEntry {
 	onCall(listener: (c: GatewayCall) => void): () => void;
 	/** Per tool called during this lease: the first time and how often. */
 	calls(): GatewayCallCount[];
+	/** A tool output the run saw, for resolving recorded quotes against (#930). */
+	sawOutput?(toolCallId: string, text: string): void;
+	/** Hears each evidence item or hypothesis the agent records; returns the unsubscribe. */
+	onFinding?(listener: (f: RecordedFinding) => void): () => void;
+	/** What the agent recorded during this lease, quotes resolved again. */
+	findings?(): Findings;
+	/**
+	 * Seeds the lease with what earlier turns recorded. Until `load` succeeds, recording
+	 * is refused and retries it. Settles after the first attempt.
+	 */
+	restore?(load: () => Promise<Findings>): Promise<void>;
+	/** The engine stopped hearing this lease: nothing more is recorded or published on it (#848). */
+	closeRecording?(): void;
+	/** Every call executed on this lease, so one answered late is still recorded (#848). */
+	callLog?(): GatewayCall[];
+	/** Every page published on this lease, so one acknowledged late still reaches the stream (#871). */
+	artifacts?(): Artifact[];
+	/** Hears each HTML artifact the agent publishes (#871); returns the unsubscribe. */
+	onArtifact?(listener: (a: Artifact) => void): () => void;
 }
 
+/** One call as the gateway executed it; what replay needs rides on the event (#848). */
 export interface GatewayCall {
 	name: string;
 	at: string;
+	callId?: string;
+	input?: unknown;
+	inputDropped?: true;
+	output?: string;
+	isError?: boolean;
+	ms?: number;
+	schemaHash?: string;
+	via?: "tools_call";
 }
 
 export interface GatewayCallCount {

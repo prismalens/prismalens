@@ -55,6 +55,8 @@ export interface AgentDescriptor {
 	acpEnv: (env: AgentRunEnv) => Record<string, string>;
 	/** Files written under configDir before the run. */
 	configFiles?: (env: AgentRunEnv) => Record<string, string>;
+	/** This config file goes inline in the env key instead, merged over a value the user set there. */
+	configEnv?: { file: string; key: string };
 	/** The agent ignores ACP `mcpServers`; the gateway goes in a run file instead (#848). */
 	gatewayDelivery?: "mcp-config-file";
 	/** `_meta` on ACP `session/new`. */
@@ -99,9 +101,11 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
-		acpArgs: ({ cwd }) => ["acp", "--cwd", cwd],
-		// XDG_CONFIG_HOME stays the user's; OPENCODE_CONFIG_DIR adds this run's own opencode.json (#791, #817).
-		acpEnv: ({ configDir }) => ({ OPENCODE_CONFIG_DIR: configDir }),
+		// No directory flag: OpenCode 2.x exits on one; the spawn and session/new name the folder (#1013).
+		acpArgs: () => ["acp"],
+		// The user's XDG_CONFIG_HOME and OPENCODE_CONFIG_DIR stay theirs; the run's config loads last, inline (#791, #817).
+		acpEnv: () => ({}),
+		configEnv: { file: "opencode.json", key: "OPENCODE_CONFIG_CONTENT" },
 		configFiles: () => ({
 			"opencode.json": JSON.stringify(
 				{

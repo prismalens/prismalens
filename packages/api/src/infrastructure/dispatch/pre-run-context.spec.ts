@@ -16,8 +16,9 @@ import {
 } from "node:fs";
 import os from "node:os";
 import { join, relative } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PreRunDetailSchema } from "@prismalens/contracts/schemas";
+import { Logger } from "@prismalens/logger";
 import {
 	buildPreRunSnapshot,
 	markerReason,
@@ -254,6 +255,44 @@ describe("the run's pre-run snapshot (#848)", () => {
 	});
 });
 
+describe("the run log names each source's value and its origin (#848)", () => {
+	it("a stored connection with an env token, one with no credential, and an env source", () => {
+		const info = vi.spyOn(Logger.prototype, "info").mockImplementation(() => {});
+		const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+		const facts = (f: object) =>
+			({
+				services: ["checkout"],
+				selector: "",
+				selection: { rule: "untagged", service: "checkout" },
+				selectedBy: "mapped to checkout, priority 0",
+				...f,
+			}) as never;
+		const part = { summary: "1 series", data: {}, count: 1 };
+		try {
+			buildPreRunSnapshot({
+				window: WINDOW,
+				telemetry: [
+					{ kind: "prometheus", label: "prod prom", from: "set", status: "found", part, secrets: [], facts: facts({ connectionId: "c1", credentialFrom: "env", envVar: "PROMETHEUS_TOKEN" }) },
+					{ kind: "alertmanager", label: "am", from: "set", status: "found", part, secrets: [], facts: facts({ connectionId: "c2", credentialFrom: "none" }) },
+					{ kind: "loki", label: "LOKI_URL", from: "env", status: "skipped", reason: "the source did not answer in time" },
+				],
+				pastIncidents: [],
+				runbooks: [],
+				now: NOW,
+			});
+			const lines = [...info.mock.calls, ...warn.mock.calls].map((c) => String(c[0]));
+			expect(lines).toContain(
+				"pre-run: read prod prom (prometheus, saved in PrismaLens, token from PROMETHEUS_TOKEN) (mapped to checkout, priority 0): 1 series",
+			);
+			expect(lines).toContain("pre-run: read am (alertmanager, saved in PrismaLens, no credential) (mapped to checkout, priority 0): 1 series");
+			expect(lines).toContain("pre-run: skipped LOKI_URL (loki, from the environment): the source did not answer in time");
+		} finally {
+			info.mockRestore();
+			warn.mockRestore();
+		}
+	});
+});
+
 describe("safe writing of read copies and scrubbing (#848)", () => {
 	function fingerprint(dir: string): Record<string, string> {
 		const result: Record<string, string> = {};
@@ -285,6 +324,10 @@ describe("safe writing of read copies and scrubbing (#848)", () => {
 		execSync("git init", { cwd: dir, stdio: "ignore" });
 		execSync("git config user.email test@example.com", { cwd: dir, stdio: "ignore" });
 		execSync("git config user.name Test", { cwd: dir, stdio: "ignore" });
+		// `git commit` can start auto maintenance that repacks .git/objects after it returns
+		// (detached on Linux), so a fingerprint would race it.
+		execSync("git config maintenance.auto false", { cwd: dir, stdio: "ignore" });
+		execSync("git config gc.auto 0", { cwd: dir, stdio: "ignore" });
 	}
 
 	const sampleSnapshot = buildPreRunSnapshot({

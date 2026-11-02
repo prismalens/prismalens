@@ -160,6 +160,30 @@ describe("buildHandoff: what is always carried", () => {
 		expect(h.text).toContain("(no report yet)");
 	});
 
+	it("never lists PrismaLens's restart message as the user's, in the note or the transcript (#981)", () => {
+		const restart: CanonicalEvent = {
+			...said(40, "PrismaLens stopped at 08:52 and started again at 09:14."),
+			via: {
+				harness: "codex",
+				model: null,
+				accessLevel: "supervised",
+				restart: { stoppedAt: "2026-10-20T08:52:00.000Z", resumedAt: "2026-10-20T09:14:00.000Z", by: "auto" },
+			},
+		} as CanonicalEvent;
+		const h = buildHandoff({
+			events: [said(1, "why is checkout slow?"), restart],
+			report: null,
+			accessLevel: "supervised",
+			from: "Codex",
+		});
+		const users = h.text.split("## The user's messages")[1]?.split("##")[0] ?? "";
+		expect(users).toContain("why is checkout slow?");
+		expect(users).not.toContain("PrismaLens stopped");
+		expect(h.text).toContain("## PrismaLens's messages after it restarted\n- PrismaLens stopped at 08:52");
+		expect(h.transcript).toContain("## PrismaLens\nPrismaLens stopped at 08:52");
+		expect(h.transcript).not.toContain("## User\nPrismaLens stopped");
+	});
+
 	describe("handoff carried and omitted phrases", () => {
 		it("carries no report or calls when budget is 0 and reports omitted calls and turns (handoff-L1)", () => {
 			const testEvents = [

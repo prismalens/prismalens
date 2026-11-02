@@ -12,9 +12,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import { type AccessLevel, getHarnessProviderKeys, type HarnessId } from "@prismalens/config/harness";
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData, type RunWorkspace } from "@prismalens/contracts";
-import { type conductRun, withPreRunCoverage } from "@prismalens/engine";
+import { type conductRun, prismalensLaunchPolicy, withPreRunCoverage } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { RepoSourceService, type Snapshot } from "../../core/harness/repo-source.service.js";
@@ -58,13 +58,27 @@ function cloneAs(
 }
 
 const {
+	logWorkspaceSetup,
 	resolveWorkspace,
 	rebuildWorkspace,
 	runDirFor,
 	writeHandoffTranscript,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
-const { releaseWorktreesIn, runWorktreeDir } = await import("../../core/harness/run-worktree.js");
+const { releaseWorktreesIn, runWorktreeDir, setRunWorkspaceSource } = await import("../../core/harness/run-worktree.js");
+const { DEFAULT_RUN_WORKSPACE_SETTINGS } = await import("@prismalens/contracts");
+
+// These cases read Remove unless changed, the default before #925's ruling made it keep-until-resolved.
+beforeEach(() =>
+	setRunWorkspaceSource({
+		global: () => ({ ...DEFAULT_RUN_WORKSPACE_SETTINGS, retention: { kind: "remove-unless-changed" } }),
+		override: () => undefined,
+		locations: () => [],
+		serviceIdOf: async () => null,
+		record: () => {},
+	}),
+);
+afterEach(() => setRunWorkspaceSource(null));
 
 /** A `RunPorts` double covering exactly what the job makes. */
 function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
@@ -85,7 +99,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
-		agentRuntime: vi.fn(async (id: HarnessId) => ({ env: getHarnessProviderKeys(id, process.env), note: null })),
+		agentRuntime: vi.fn(async (_id: HarnessId) => ({ env: {}, note: null })),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
 		})),
@@ -127,7 +141,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		}
 	});
 
-	it("a linked repo: snapshotWith gets sourceKind/url/connectionId/defaultBranch and a dest under the run dir, cwd is the snapshot path plus subPath, and the note names the commit", async () => {
+	it("a linked repo: snapshotWith gets sourceKind/url/connectionId/defaultBranch and a dest in the run workspace location (#925), cwd is the snapshot path plus subPath, and the note names the commit", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
@@ -158,15 +172,17 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					connectionId: "conn-1",
 					defaultBranch: "main",
 				},
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 			expect(ws.layout).toBe("single");
-			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo", "services", "api"));
+			expect(ws.cwd).toBe(join(tmp, "worktrees", "pl-inv-1", "services", "api"));
 			expect(ws.note).toContain("https://github.com/acme/api-gateway");
 			expect(ws.note).toContain("abc123def456");
+			expect(mocks.logged).toContainEqual(["Checked out URL https://github.com/acme/api-gateway/services/api with public"]);
 		} finally {
 			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });
@@ -186,7 +202,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 			const ws = await resolveWorkspace(minimalData(), ports);
 
-			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "repo"));
+			expect(ws.cwd).toBe(join(tmp, "worktrees", "pl-inv-1"));
 		} finally {
 			vi.unstubAllEnvs();
 			rmSync(tmp, { recursive: true, force: true });
@@ -216,7 +232,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-junction-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const repoDir = join(tmp, "worktrees", "pl-inv-1");
 			const outsideDir = join(tmp, "outside");
 			mkdirSync(repoDir, { recursive: true });
 			mkdirSync(outsideDir, { recursive: true });
@@ -484,7 +500,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-res-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const repoDir = join(tmp, "worktrees", "pl-inv-1");
 			const linked = join(repoDir, "linked");
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
@@ -543,10 +559,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 			expect(snapshot).toHaveBeenCalledWith(
 				{ sourceKind: "url", url: "https://github.com/acme/x", connectionId: null, defaultBranch: null },
-				join(tmp, "runs", "inv-1", "repo"),
+				join(tmp, "worktrees", "pl-inv-1"),
 				expect.any(AbortSignal),
 				undefined,
 				"inv-1",
+				expect.any(Function),
 			);
 		} finally {
 			vi.unstubAllEnvs();
@@ -893,6 +910,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			expect.any(AbortSignal),
 			undefined,
 			"inv-1",
+			expect.any(Function),
 		);
 		expect(ws.note).toContain("folder");
 	});
@@ -1111,16 +1129,17 @@ describe("harness child env (trust floor, #628)", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("passes the resolved harness's provider keys, never PRISMALENS_* or the rest of process.env", async () => {
+	it("hands the run the agent's stored values and its floor; the host env is the engine's to filter (#916)", async () => {
 		vi.stubEnv("PRISMALENS_AUTH_SECRET", "leak-me");
-		vi.stubEnv("PRISMALENS_WEBHOOK_SECRET", "leak-me-too");
-		vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
 		vi.stubEnv("SOME_UNRELATED_HOST_VAR", "noise");
 		mocks.conductRun.mockReset();
 		mocks.conductRun.mockResolvedValue({
 			report: { summary: "done", rootCause: null, nextSteps: [] },
 		});
-		const ports = fakePorts();
+		const policy = prismalensLaunchPolicy({ strict: true });
+		const ports = fakePorts({
+			agentRuntime: vi.fn(async () => ({ env: { MY_KEY: "v" }, policy, note: null })),
+		});
 
 		await runInvestigationJob(
 			{ id: "job-env", investigationId: "inv-env", attempts: 1 },
@@ -1129,13 +1148,9 @@ describe("harness child env (trust floor, #628)", () => {
 			ports,
 		);
 
-		const [opts] = mocks.conductRun.mock.calls[0] as [{ env: Record<string, string> }];
-		// `resolveHarness` in `fakePorts` defaults to opencode, which lists
-		// ANTHROPIC_API_KEY among its provider keys (registry row).
-		expect(opts.env.ANTHROPIC_API_KEY).toBe("sk-ant-test");
-		expect(opts.env.PRISMALENS_AUTH_SECRET).toBeUndefined();
-		expect(opts.env.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
-		expect(opts.env.SOME_UNRELATED_HOST_VAR).toBeUndefined();
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ env: Record<string, string>; policy?: unknown }];
+		expect(opts.env).toEqual({ MY_KEY: "v" });
+		expect(opts.policy).toEqual(policy);
 	});
 
 	it("spawns with the agent's Settings runtime: env, command and arguments (#907)", async () => {
@@ -1395,7 +1410,7 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	}
 	function followUpPorts(overrides: Partial<RunPorts> = {}) {
-		const dir = join(tmp, "runs", "inv-1", "repo");
+		const dir = join(tmp, "worktrees", "pl-inv-1");
 		return fakePorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
@@ -1430,6 +1445,110 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.runtimeNote).toEqual(note);
 	});
 
+	it("a follow-up on a service check with no incident stays a service check and reads no incident (#979)", async () => {
+		const check: InvestigationJobData = {
+			...data,
+			incidentId: null,
+			brief: "Look at p99.",
+			scheduled: {
+				scheduleId: "sch-1",
+				revision: 1,
+				serviceId: "svc-1",
+				serviceName: "checkout",
+				serviceNotes: null,
+				runbook: null,
+				repos: [],
+			},
+		};
+		const ports = followUpPorts({
+			getIncident: vi.fn(async () => {
+				throw new Error("a service check reads no incident");
+			}),
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		const result = await runInvestigationJob({ id: "job-chk", investigationId: "inv-1", attempts: 1 }, check, io(), ports);
+
+		expect(result.success).toBe(true);
+		expect(ports.getIncident).not.toHaveBeenCalled();
+		expect(ports.resolveConnectors).toHaveBeenCalledWith("svc-1");
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { mode?: string; alerts: unknown[] } }];
+		expect(opts.context).toMatchObject({ mode: "service-check", alerts: [] });
+	});
+
+	it("a recovery after a restart stays unattended, and sends PrismaLens's own message about the gap (#981)", async () => {
+		const restartAlerts = vi.fn(async () => ({
+			catchUp: "done" as const,
+			fired: [{ title: "CheckoutLatencyHigh", at: new Date("2026-10-28T09:03:00Z") }],
+			resolved: [],
+		}));
+		const ports = followUpPorts({ restartAlerts });
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+		const recovery: InvestigationJobData = {
+			...data,
+			unattended: true,
+			accessLevel: "auto",
+			resume: {
+				text: "PrismaLens restarted.",
+				mode: "queue",
+				kind: "continue",
+				restore: { status: "failed", completedAt: null, error: "API restarted while the run was in flight" },
+				afterRestart: true,
+				restart: { attempt: 1, by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z", lastActivityAt: "2026-10-28T08:51:00.000Z" },
+			},
+		};
+
+		await runInvestigationJob({ id: "job-r", investigationId: "inv-1", attempts: 1 }, recovery, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ unattended?: boolean; accessLevel?: string; onSpawn?: unknown; resume: { text: string; afterRestart?: boolean; via: { restart?: { by: string; stoppedAt: string } } } },
+		];
+		expect(opts.unattended).toBe(true);
+		expect(opts.accessLevel).toBe("auto");
+		expect(typeof opts.onSpawn).toBe("function");
+		expect(opts.resume.text).toMatch(/^PrismaLens stopped at .* and started again at /);
+		expect(opts.resume.text).toContain("1 alert fired on this incident; the ALERTS_WHILE_STOPPED block below names them.");
+		expect(opts.resume.text).toContain(": CheckoutLatencyHigh\n<<<END ALERTS_WHILE_STOPPED>>>");
+		expect(opts.resume.text).toContain("Continue the investigation from your last step.");
+		expect(opts.resume.afterRestart).toBeUndefined();
+		expect(opts.resume.via.restart).toMatchObject({ by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z" });
+		expect(restartAlerts).toHaveBeenCalledWith("inc-1", new Date("2026-10-28T08:52:00.000Z"), expect.any(Date), new Date("2026-10-28T08:52:00.000Z"));
+	});
+
+	it("a recovery that fails before reaching its agent ends saying why it didn't resume (#981 OBJ-020)", async () => {
+		const ports = followUpPorts({
+			agentRuntime: vi.fn(async () => {
+				throw new Error("the repository could not be cloned");
+			}),
+		});
+		const recovery: InvestigationJobData = {
+			...data,
+			resume: {
+				text: "PrismaLens restarted.",
+				mode: "queue",
+				kind: "continue",
+				restore: { status: "failed", completedAt: null, error: "API restarted while the run was in flight" },
+				restart: { attempt: 1, by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z", lastActivityAt: "2026-10-28T08:51:00.000Z" },
+			},
+		};
+
+		await runInvestigationJob({ id: "job-r2", investigationId: "inv-1", attempts: 1 }, recovery, io(), ports);
+
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.settleFollowUp).mock.calls[0]?.[1]).toMatchObject({
+			status: "failed",
+			error: "Not resumed: the repository could not be cloned",
+		});
+		const said = vi.mocked(ports.appendEvents).mock.calls.flatMap(([, events]) => events as { kind: string }[]);
+		expect(said.map((e) => e.kind)).not.toContain("operator_message");
+	});
+
 	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {
 		const ports = followUpPorts();
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
@@ -1442,7 +1561,7 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(result.success).toBe(true);
 		expect(ports.snapshotWith).toHaveBeenCalledWith(
 			{ sourceKind: "url", url: "https://github.com/acme/api", connectionId: null },
-			join(tmp, "runs", "inv-1", "repo"),
+			join(tmp, "worktrees", "pl-inv-1"),
 			expect.any(AbortSignal),
 			HEAD,
 			"inv-1",
@@ -1470,11 +1589,11 @@ describe("follow-up on a finished run (#747)", () => {
 				{ stopped: false },
 			],
 		]);
-		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
 	it("runFollowUp passes kind: 'chat' to conductRun when investigation is a chat run (#817)", async () => {
-		const dir = join(tmp, "runs", "inv-1", "repo");
+		const dir = join(tmp, "worktrees", "pl-inv-1");
 		const ports = followUpPorts({
 			findInvestigation: vi.fn(async () => ({
 				id: "inv-1",
@@ -1768,7 +1887,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
@@ -1780,7 +1899,7 @@ describe("follow-up on a finished run (#747)", () => {
 				return { path: dest, head: HEAD, branch: null };
 			}),
 		});
-		const repo = join(tmp, "runs", "inv-1", "repo");
+		const repo = join(tmp, "worktrees", "pl-inv-1");
 		const outside = join(tmp, "outside");
 		mkdirSync(outside, { recursive: true });
 		let written: { linked: boolean; text: string } | undefined;
@@ -1875,7 +1994,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => []),
@@ -2044,7 +2163,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "deepagents",
 				model: "deepagents/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 			})),
 		});
 
@@ -2067,7 +2186,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(result.error).toBe(`fatal: reference is not a tree: ${HEAD}`);
-		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+		expect(existsSync(join(tmp, "worktrees", "pl-inv-1"))).toBe(false);
 	});
 
 	it("the new session's usage is written after the handoff is recorded (handoff-L8)", async () => {
@@ -2098,7 +2217,7 @@ describe("follow-up on a finished run (#747)", () => {
 				harness: "opencode",
 				model: "opencode/some-model",
 				acpSessionId: "ses_abc",
-				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				workspace: recorded(join(tmp, "worktrees", "pl-inv-1")),
 				report: JSON.stringify(report),
 			})),
 			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
@@ -2550,7 +2669,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 			ports,
 		);
-		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
+		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const updateCall = findWorkspaceCall(updateStatus);
 		const parsed = JSON.parse(updateCall[1].workspace ?? "{}");
@@ -2632,7 +2751,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234");
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date));
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe("prismalens-reused1234");
@@ -2712,7 +2831,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
+		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
@@ -2835,6 +2954,46 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 				},
 			]);
 			expect(abortedSignal?.aborted).toBe(true);
+			rmSync(tmpDir, { recursive: true, force: true });
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("a setup the checkout budget aborts leaves what it printed in the run log (#925)", async () => {
+		vi.useFakeTimers();
+		try {
+			const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-budget-log-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [makeRepo("https://github.com/acme/repo-0", "svc-0")]),
+				snapshotWith: vi.fn(
+					async (
+						_ref: any,
+						_dest: string,
+						_signal?: AbortSignal,
+						_at?: string,
+						_runId?: string,
+						onOutput?: (chunk: string) => void,
+					) => {
+						onOutput?.("installing deps\n");
+						onOutput?.("still installing\n");
+						return new Promise<never>(() => {});
+					},
+				),
+			});
+
+			const wsPromise = resolveWorkspace(minimalData(), ports);
+			await vi.advanceTimersByTimeAsync(600_000);
+			await wsPromise;
+			const io = { emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal };
+			await logWorkspaceSetup("inv-1", io, ports);
+
+			const [, events] = vi.mocked(ports.appendEvents).mock.calls[0] as [string, CanonicalEvent[]];
+			const result = (events[0] as { result: { preview: string; ok: boolean } }).result;
+			expect(result.preview).toBe("installing deps\nstill installing\n");
+			expect(result.ok).toBe(false);
 			rmSync(tmpDir, { recursive: true, force: true });
 		} finally {
 			vi.useRealTimers();
@@ -3131,4 +3290,115 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 			}
 		});
 	}
+});
+
+describe("a service check with no incident (#979)", () => {
+	let tmp: string;
+	const scheduled = {
+		scheduleId: "sch-1",
+		revision: 3,
+		serviceId: "svc-1",
+		serviceName: "checkout",
+		serviceNotes: "Restart is safe.",
+		runbook: "runbooks/latency.md",
+		repos: [
+			{ sourceKind: "url" as const, url: "https://github.com/acme/frozen", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
+		],
+	};
+	const data = (over: Partial<InvestigationJobData> = {}): InvestigationJobData => ({
+		investigationId: "inv-check",
+		incidentId: null,
+		scheduled,
+		brief: "Look at p99 for the last day.",
+		unattended: true,
+		...over,
+	});
+	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+	const pack = {
+		window: { start: "2026-10-27T00:00:00Z", end: "2026-10-28T00:00:00Z" },
+		changes: [],
+		neighbors: [],
+		priorIncidents: [],
+		unavailable: [],
+		assembledAt: "2026-10-28T00:00:00Z",
+	};
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-check-run-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ failureKind: null, report: { summary: "all quiet", rootCause: null, nextSteps: [] } });
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("resolveWorkspace takes the frozen repositories and never asks for the service's current bindings (OBJ-003)", async () => {
+		const incidentRepos = vi.fn(async () => [
+			{ sourceKind: "url" as const, url: "https://github.com/acme/rebound", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
+		]);
+		const ports = fakePorts({
+			incidentRepos,
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const ws = await resolveWorkspace(data(), ports);
+
+		expect(incidentRepos).not.toHaveBeenCalled();
+		expect(ports.snapshotWith).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(ports.snapshotWith).mock.calls[0]?.[0]).toMatchObject({ url: "https://github.com/acme/frozen" });
+		expect(ws.layout).toBe("single");
+	});
+
+	it("a frozen set with no repository is an unmapped run that names the service, not an incident", async () => {
+		const ws = await resolveWorkspace(data({ scheduled: { ...scheduled, repos: [] } }), fakePorts());
+
+		expect(ws.layout).toBe("unmapped");
+		expect(ws.note).toContain("service has no repository linked");
+		expect(ws.note).not.toContain("incident");
+	});
+
+	it("runs from the service: no incident read, connectors, pack and telemetry by service, notes from the frozen values", async () => {
+		const telemetry = vi.fn(async (_subject: unknown) => ({ sources: [], notConfigured: [], endpoints: [] }));
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => {
+				throw new Error("a service check reads no incident");
+			}),
+			incidentRepos: vi.fn(async () => {
+				throw new Error("a service check reads no live bindings");
+			}),
+			contextPack: vi.fn(async (subject: unknown) => (typeof subject === "string" ? null : pack)),
+			preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })), save: vi.fn(async () => {}), load: vi.fn(async () => null) },
+		});
+
+		const result = await runInvestigationJob({ id: "job-check", investigationId: "inv-check", attempts: 1 }, data(), io(), ports);
+
+		expect(result).toMatchObject({ success: true, incidentId: null });
+		expect(ports.getIncident).not.toHaveBeenCalled();
+		expect(ports.incidentRepos).not.toHaveBeenCalled();
+		expect(ports.resolveConnectors).toHaveBeenCalledWith("svc-1");
+		expect(ports.contextPack).toHaveBeenCalledWith({ serviceId: "svc-1" });
+		expect(telemetry.mock.calls[0]?.[0]).toEqual({ serviceId: "svc-1" });
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; brief?: string }];
+		expect(opts.context).toMatchObject({
+			mode: "service-check",
+			alerts: [],
+			service: { name: "checkout", notes: "Restart is safe." },
+			check: { brief: "Look at p99 for the last day.", runbook: "runbooks/latency.md" },
+			contextPack: pack,
+		});
+		expect(opts.context.incident).toBeUndefined();
+	});
+
+	it("keeps the run's end off any incident: the timeline port gets a null incident", async () => {
+		const ports = fakePorts();
+
+		await runInvestigationJob({ id: "job-check", investigationId: "inv-check", attempts: 1 }, data(), io(), ports);
+
+		const calls = vi.mocked(ports.createTimelineEntry).mock.calls.map(([dto]) => dto.incidentId);
+		expect(calls.length).toBeGreaterThan(0);
+		expect(calls.every((id) => id === null)).toBe(true);
+		expect(ports.writeResult).not.toHaveBeenCalledWith("inv-check", expect.objectContaining({ incidentId: expect.any(String) }));
+	});
 });

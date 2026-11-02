@@ -133,6 +133,44 @@ model DeviceSession {
   pairingLinkId String    @unique
 
   pairingLink PairingLink @relation(fields: [pairingLinkId], references: [id])
+  push        PushSubscription?
 
   @@map("device_session")
+}
+
+// =============================================================================
+// PHONE PUSH (#859)
+// =============================================================================
+// Opt-in per device. The push service sees delivery metadata only: a payload
+// carries ids, and the device fetches the words from this instance.
+
+/// A device's Web Push subscription and its health
+model PushSubscription {
+  id             String    @id @default(uuid())
+  deviceId       String    @unique
+  endpoint       String
+  p256dh         String
+  auth           String
+  createdAt      DateTime  @default(now())
+  lastDeliveryAt DateTime?
+  lastError      String?
+  expiredAt      DateTime? // the push service answered 404/410: the device must subscribe again
+
+  device DeviceSession @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("push_subscription")
+}
+
+/// A notification owed, written in the same transaction as the state change it reports
+model PushOutbox {
+  id              String    @id @default(uuid())
+  kind            String // finding_ready | run_failed | ask_waiting | ask_refused
+  investigationId String
+  askId           String?
+  createdAt       DateTime  @default(now())
+  deliveredAt     DateTime?
+  attempts        Int       @default(0)
+
+  @@index([deliveredAt])
+  @@map("push_outbox")
 }

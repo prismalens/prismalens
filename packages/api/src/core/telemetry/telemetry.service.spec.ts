@@ -18,6 +18,7 @@ import {
 	type TelemetryEventProps,
 	TelemetryService,
 	telemetryForcedOff,
+	telemetryInternal,
 	triggerFor,
 } from "./telemetry.service.js";
 
@@ -45,7 +46,11 @@ function fakePrisma() {
 	};
 }
 
-function setup(clock?: () => Date, env: NodeJS.ProcessEnv = process.env) {
+function setup(
+	clock?: () => Date,
+	env: NodeJS.ProcessEnv = process.env,
+	version = "0.0.1",
+) {
 	const prisma = fakePrisma();
 	const fetchImpl = vi.fn(
 		async (_url: string, _init: RequestInit) =>
@@ -57,6 +62,7 @@ function setup(clock?: () => Date, env: NodeJS.ProcessEnv = process.env) {
 			fetchImpl as unknown as typeof fetch,
 			clock,
 			env,
+			version,
 		);
 	const service = boot();
 	const sent = () =>
@@ -392,22 +398,18 @@ describe("TelemetryService (#602)", () => {
 		).resolves.toBeUndefined();
 	});
 
-	it("derives run_mode from PRISMALENS_RUN_MODE and build from NODE_ENV", async () => {
+	it("derives run_mode from PRISMALENS_RUN_MODE", async () => {
 		const { service, optIn, propsOf } = setup();
 		await optIn();
 
 		vi.stubEnv("PRISMALENS_RUN_MODE", "electron");
-		vi.stubEnv("NODE_ENV", "production");
 		await service.capture("report_viewed", {});
 
 		vi.stubEnv("PRISMALENS_RUN_MODE", "something-else");
-		vi.stubEnv("NODE_ENV", "development");
 		await service.capture("incident_closed", {});
 
 		expect(propsOf(2).run_mode).toBe("electron");
-		expect(propsOf(2).build).toBe("release");
 		expect(propsOf(3).run_mode).toBe("npm");
-		expect(propsOf(3).build).toBe("dev");
 
 		expect(runMode({ PRISMALENS_RUN_MODE: "electron" })).toBe("electron");
 		expect(runMode({ PRISMALENS_RUN_MODE: "npm" })).toBe("npm");
@@ -423,9 +425,50 @@ describe("TelemetryService (#602)", () => {
 			runMode({}, "C:\\Users\\me\\scoop\\apps\\prismalens\\0.5.1\\node\\node.exe"),
 		).toBe("scoop");
 
-		expect(build({ NODE_ENV: "production" })).toBe("release");
-		expect(build({ NODE_ENV: "development" })).toBe("dev");
-		expect(build({})).toBe("dev");
+	});
+
+	it("reports build=release only for a published release, 0.5.0 or later without a pre-release suffix", async () => {
+		vi.stubEnv("NODE_ENV", "production");
+		const checkout = setup(undefined, process.env, "0.0.1");
+		await checkout.optIn();
+		expect(checkout.propsOf(0).build).toBe("dev");
+		expect(checkout.propsOf(0).app_version).toBe("0.0.1");
+
+		vi.stubEnv("NODE_ENV", "development");
+		const published = setup(undefined, process.env, "0.5.3");
+		await published.optIn();
+		expect(published.propsOf(0).build).toBe("release");
+
+		expect(build("0.5.3")).toBe("release");
+		expect(build("0.5.0")).toBe("release");
+		expect(build("0.6.0")).toBe("release");
+		expect(build("1.0.0")).toBe("release");
+		expect(build("0.6.0-rc.1")).toBe("dev");
+		expect(build("0.5.0-rc.3")).toBe("dev");
+		expect(build("0.4.9")).toBe("dev");
+		expect(build("0.0.2")).toBe("dev");
+		expect(build("0.0.0")).toBe("dev");
+		expect(build("")).toBe("dev");
+	});
+
+	it("PRISMALENS_TELEMETRY=internal sends under an internal- id and keeps the stored id", async () => {
+		vi.stubEnv("PRISMALENS_TELEMETRY", "internal");
+		const { service, optIn, sent, stored } = setup();
+		await optIn();
+		await service.capture("report_viewed", {});
+		expect(sent().map((e) => e.distinct_id)).toEqual([
+			"internal-install-1",
+			"internal-install-1",
+			"internal-install-1",
+		]);
+		expect(stored()?.installId).toBe("install-1");
+		const recent = (await service.getSettings()).recentlySent;
+		expect(recent[0].payload.distinct_id).toBe("internal-install-1");
+		expect((await service.getSettings()).forcedOff).toBe(false);
+
+		vi.stubEnv("PRISMALENS_TELEMETRY", "");
+		await service.capture("incident_closed", {});
+		expect(sent()[3].distinct_id).toBe("install-1");
 	});
 
 	it("every payload has timestamp equal to UTC midnight of the injected clock", async () => {
@@ -714,6 +757,27 @@ describe("telemetryForcedOff", () => {
 		}
 		expect(telemetryForcedOff({})).toBe(false);
 		expect(telemetryForcedOff({ PRISMALENS_TELEMETRY: "on" })).toBe(false);
+		expect(telemetryForcedOff({ PRISMALENS_TELEMETRY: "internal" })).toBe(
+			false,
+		);
+	});
+
+	it("off still wins over internal: it is one variable, and DO_NOT_TRACK or CI beside internal forces off", async () => {
+		expect(telemetryInternal({ PRISMALENS_TELEMETRY: " Internal " })).toBe(true);
+		expect(telemetryInternal({ PRISMALENS_TELEMETRY: "off" })).toBe(false);
+		expect(telemetryInternal({})).toBe(false);
+		expect(
+			telemetryForcedOff({ PRISMALENS_TELEMETRY: "internal", CI: "true" }),
+		).toBe(true);
+		expect(
+			telemetryForcedOff({ PRISMALENS_TELEMETRY: "internal", DO_NOT_TRACK: "1" }),
+		).toBe(true);
+
+		vi.stubEnv("PRISMALENS_TELEMETRY", "off");
+		const { service, optIn, sent } = setup();
+		await optIn();
+		await service.capture("report_viewed", {});
+		expect(sent()).toEqual([]);
 	});
 
 	it("honours DO_NOT_TRACK, but only when it is actually set", () => {

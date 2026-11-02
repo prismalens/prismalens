@@ -13,6 +13,7 @@ import { AgentDetail } from "@/components/settings/AgentDetail";
 import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { DevicesTab } from "@/components/settings/DevicesTab";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
+import { RunWorkspaceSettings } from "@/components/settings/RunWorkspaceSettings";
 import {
 	FIRST_SETTINGS_TAB,
 	SETTINGS_SECTIONS,
@@ -41,6 +42,11 @@ const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
 		title: "Agent",
 		intro:
 			"The coding agent a run uses to read the code and the telemetry. It signs in on its own. Variables you add under an agent are stored encrypted and passed only to that agent.",
+	},
+	runs: {
+		title: "Runs",
+		intro:
+			"Where a run checks out the code, and what is left of it afterwards.",
 	},
 	"alert-intake": {
 		title: "Alert intake",
@@ -98,6 +104,7 @@ function SettingsPage() {
 			{tab === "appearance" && <AppearanceSettings />}
 			{tab === "agent" &&
 				(agent ? <AgentDetail id={agent} /> : <HarnessSettings />)}
+			{tab === "runs" && <RunWorkspaceSettings />}
 			{tab === "alert-intake" && <AlertIntakeSettings />}
 			{tab === "sources" && <SourcesSettings source={source} />}
 			{tab === "notifications" && <NotificationsSettings />}
@@ -115,7 +122,7 @@ function SettingsPage() {
 function SectionList() {
 	return (
 		<div
-			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas"
+			className="flex h-full flex-col bg-canvas"
 			data-testid="settings-frame"
 		>
 			<PageHeader title="Settings" />

@@ -1,0 +1,81 @@
+{
+	"row": "gateway-attachment-read",
+	"kind": "happy",
+	"title": "Reads one attached text file through PrismaLens's attachment tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "attachment_read",
+				"ok": true,
+				"outputHas": "ScenarioAttachmentText"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-attachment-read]",
+				"toolName": "$gw:attachment_read",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:attachment_read",
+						"arguments": {
+							"id": "00000000-0000-4000-8000-0000000000d1"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-attachment-read]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "read attachment"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-attachment-read]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "attachment_read"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "attachment_read",
+							"arguments": {
+								"id": "00000000-0000-4000-8000-0000000000d1"
+							}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-attachment-read]",
+				"resultContains": "ScenarioAttachmentText"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

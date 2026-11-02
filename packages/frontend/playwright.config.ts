@@ -247,7 +247,7 @@ export default defineConfig({
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
 				// `@quarantine` tests (rule in CONTRIBUTING.md, "Browser e2e tier"): the same
-				// stacks and specs, run by e2e.yml in a step that cannot fail the job.
+				// stacks and specs, run by e2e-browser.yml in a step that cannot fail the job.
 				{
 					name: "chromium-quarantine",
 					testIgnore: [/pl-up\//, /\.features-gen\//, /\.test\.ts$/],
@@ -262,7 +262,7 @@ export default defineConfig({
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
-				// Nightly (e2e-responsive.yml), @responsive features only. Chromium for the
+				// Nightly (e2e-browser-mobile.yml), @responsive features only. Chromium for the
 				// iPad too: these check layout at its size, and CI installs one browser.
 				...(["Pixel 7", "iPad (gen 7)"] as const).map((device) => ({
 					name: device,

@@ -19,8 +19,17 @@ import {
 	SecretEnvVars,
 	secretFileName,
 } from "@prismalens/config";
+import type { Response } from "express";
 import type { RequestWithRawBody } from "../../middlewares/webhook-raw-body.middleware.js";
-import { RENDER_WEBHOOK_PATH } from "../../shared/constants/routes.js";
+import {
+	API_GLOBAL_PREFIX,
+	RENDER_WEBHOOK_PATH,
+	WEBHOOK_ROUTES,
+} from "../../shared/constants/routes.js";
+import {
+	verifyPagerDutySignature,
+	verifySentrySignature,
+} from "./alert-sources/signatures.js";
 
 /** Hashing both sides first keeps the comparison fixed-length, so timing never reveals the secret's length. */
 function safeCompare(a: string, b: string): boolean {
@@ -56,15 +65,25 @@ export class WebhookSignatureGuard implements CanActivate {
 			return true; // Render has its own dedicated signature guard
 		}
 
+		if (this.vendorSignatureMatches(request)) return true;
+
 		const authHeader = request.headers.authorization;
 		const signature = request.headers["x-hub-signature-256"] as
 			| string
 			| undefined;
+		const urlToken = this.urlTokenMatches(request);
+		if (urlToken) return true;
 
 		if (!authHeader && !signature) {
 			this.logger.warn(
 				"Webhook rejected: missing authorization or signature header",
 			);
+			// SNS sends credentials only after a 401 that challenges for Basic.
+			if (request.path === `/${API_GLOBAL_PREFIX}/${WEBHOOK_ROUTES.cloudwatch}`)
+				context
+					.switchToHttp()
+					.getResponse<Response>()
+					.setHeader("WWW-Authenticate", 'Basic realm="PrismaLens webhooks"');
 			throw new UnauthorizedException(
 				"Missing webhook authorization or signature header",
 			);
@@ -91,6 +110,61 @@ export class WebhookSignatureGuard implements CanActivate {
 		this.logger.warn("Webhook rejected: no valid credential");
 		this.reportSecretDrift();
 		throw new ForbiddenException("Invalid webhook credentials");
+	}
+
+	/**
+	 * Sentry and PagerDuty sign the body with their own secret and cannot send a
+	 * Bearer token. With that secret configured, their signature is a credential
+	 * on their own route only; without it they fall through to the shared secret.
+	 */
+	private vendorSignatureMatches(request: RequestWithRawBody): boolean {
+		const rawBody = request.rawBody;
+		if (!rawBody) return false;
+		if (request.path === `/${API_GLOBAL_PREFIX}/${WEBHOOK_ROUTES.sentry}`) {
+			const secret = this.configService.get(
+				"PRISMALENS_SENTRY_WEBHOOK_SECRET",
+				{
+					infer: true,
+				},
+			);
+			return (
+				!!secret &&
+				verifySentrySignature(
+					secret,
+					rawBody,
+					request.headers["sentry-hook-signature"] as string | undefined,
+				)
+			);
+		}
+		if (request.path === `/${API_GLOBAL_PREFIX}/${WEBHOOK_ROUTES.pagerduty}`) {
+			const secret = this.configService.get(
+				"PRISMALENS_PAGERDUTY_WEBHOOK_SECRET",
+				{ infer: true },
+			);
+			return (
+				!!secret &&
+				verifyPagerDutySignature(
+					secret,
+					rawBody,
+					request.headers["x-pagerduty-signature"] as string | undefined,
+				)
+			);
+		}
+		return false;
+	}
+
+	/**
+	 * Azure action groups cannot set a header, so on that route alone the shared
+	 * secret may ride as `?token=`. Query strings reach access logs; rotate it if it leaks.
+	 */
+	private urlTokenMatches(request: RequestWithRawBody): boolean {
+		if (
+			request.path !== `/${API_GLOBAL_PREFIX}/${WEBHOOK_ROUTES.azureMonitor}`
+		) {
+			return false;
+		}
+		const token = request.query?.token;
+		return typeof token === "string" && safeCompare(token, this.secret);
 	}
 
 	/**

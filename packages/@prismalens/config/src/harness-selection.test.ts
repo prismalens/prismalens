@@ -73,17 +73,20 @@ describe("resolveHarnessSelection", () => {
 	it("lists every registry row with installed and tested data", () => {
 		const rows = listHarnessStatus({ isOnPath: onPath(["opencode"]) });
 		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents", "local"]);
+		// Read from the registry: a pin-bump PR moves `tested`, and this test must not need editing (#914).
 		expect(rows[0]).toMatchObject({
 			installed: true,
-			tested: { version: "1.18.30", date: "2026-09-20" },
+			tested: HARNESS_REGISTRY.opencode.tested,
 			defaultModel: null,
 		});
 		expect(rows[1]).toMatchObject({
 			installed: false,
-			tested: { version: "0.81.1", date: "2026-10-20", companion: "2.1.303" },
+			tested: HARNESS_REGISTRY["claude-code"].tested,
 			defaultModel: null,
 		});
-		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(["1.18.30", "0.81.1", "2.2.2", null, "0.1.75", null]);
+		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(
+			rows.map((r) => HARNESS_REGISTRY[r.id as keyof typeof HARNESS_REGISTRY].tested?.version ?? null),
+		);
 	});
 });
 

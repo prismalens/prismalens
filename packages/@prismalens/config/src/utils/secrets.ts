@@ -16,6 +16,8 @@ export const SecretEnvVars = {
 	ENCRYPTION_KEY: "PRISMALENS_ENCRYPTION_KEY",
 	AUTH_SECRET: "PRISMALENS_AUTH_SECRET",
 	WEBHOOK_SECRET: "PRISMALENS_WEBHOOK_SECRET",
+	/** Web Push signing pair, `<publicKey>.<privateKey>` in base64url (#859). */
+	VAPID_KEYS: "PRISMALENS_VAPID_KEYS",
 } as const;
 
 export type SecretEnvVar = (typeof SecretEnvVars)[keyof typeof SecretEnvVars];

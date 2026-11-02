@@ -77,7 +77,7 @@ function scanPath(
 	return { resolved: null, windowsOnly };
 }
 
-/** The first executable `bin` on PATH, or null. The doctor prints it so a bare sudo or service PATH shows. */
+/** The first executable `bin` on PATH, or null; Settings shows it, so a bare sudo or service PATH shows. */
 export function resolveOnPath(
 	bin: string,
 	pathEnv = process.env.PATH ?? "",
@@ -244,7 +244,7 @@ export interface HarnessStatus {
 	defaultModel: string | null;
 	/** How the Model setting reaches this harness; `unsupported` means it is ignored. */
 	modelVia: "acp" | "unsupported";
-	/** One line the picker and the doctor show: how to sign this harness in. */
+	/** One line the picker and the Settings check show: how to sign this harness in. */
 	loginHint: string;
 	/** The model the host env names for this harness (e.g. ANTHROPIC_MODEL); a run with no model set uses it. */
 	envModel: { key: string; model: string } | null;

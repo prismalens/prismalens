@@ -41,7 +41,21 @@ const config = {
 	get: (key: string) =>
 		key === "PRISMALENS_WEBHOOK_SECRET" ? "plw_secret" : undefined,
 } as unknown as ConfigService;
-const controller = new PairingController({} as PrismaService, config);
+const prisma = {
+	pushSubscription: {
+		findMany: vi.fn(async () => [
+			{
+				deviceId: "phone",
+				createdAt: new Date("2026-10-01T00:00:00Z"),
+				lastDeliveryAt: null,
+				lastError: null,
+				expiredAt: new Date("2026-10-02T00:00:00Z"),
+			},
+		]),
+		findUnique: vi.fn(async () => null),
+	},
+} as unknown as PrismaService;
+const controller = new PairingController(prisma, config);
 const as = (device: DeviceRecord) =>
 	({ operator: { device } }) as unknown as Request;
 
@@ -57,6 +71,8 @@ describe("PairingController", () => {
 			["Pixel 9", false],
 		]);
 		expect(devices[1]?.userAgent).toContain("Pixel 9");
+		// Push health rides the list (#859): only the phone turned push on, and it expired.
+		expect(devices.map((d) => d.push?.state ?? null)).toEqual([null, "expired"]);
 	});
 
 	it("renames a device, and says so when there is none", async () => {

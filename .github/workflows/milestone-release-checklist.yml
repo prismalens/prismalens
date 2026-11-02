@@ -1,0 +1,60 @@
+name: Milestone release checklist
+
+on:
+  milestone:
+    types: [created, closed]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  phase-gate:
+    name: File the release checklist
+    if: github.event.action == 'created'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/release-checklists
+
+      - name: File the release checklist
+        env:
+          MILESTONE_TITLE: ${{ github.event.milestone.title }}
+        run: |
+          if [[ ! "$MILESTONE_TITLE" =~ ^0\.[0-9]+\.([0-9]+)$ ]]; then
+            echo "::warning::Milestone '$MILESTONE_TITLE' is not 0.Y.Z; no checklist filed (a major release has no template yet)."
+            exit 0
+          fi
+          KIND=patch
+          [ "${BASH_REMATCH[1]}" = "0" ] && KIND=minor
+
+          ISSUE_TITLE="Phase gate: anti-drift ritual + released-artifact verification"
+          EXISTING=$(gh issue list --milestone "$MILESTONE_TITLE" --state all --search "in:title Phase gate:" --json number -q 'length')
+          if [ "$EXISTING" -eq 0 ]; then
+            BODY=$(sed "s/{{VERSION}}/$MILESTONE_TITLE/g" ".github/release-checklists/$KIND.md")
+            gh issue create --milestone "$MILESTONE_TITLE" --title "$ISSUE_TITLE" --body "$BODY"
+          fi
+
+  close-check:
+    name: Flag a milestone closed before its gate
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Warn when the Phase gate issue is still open
+        env:
+          MILESTONE_TITLE: ${{ github.event.milestone.title }}
+        run: |
+          OPEN=$(gh issue list --milestone "$MILESTONE_TITLE" --state open --search "in:title Phase gate:" --json number -q '.[0].number // empty')
+          if [ -n "$OPEN" ]; then
+            echo "::warning::Milestone '$MILESTONE_TITLE' was closed while Phase gate #$OPEN is still open."
+            gh issue comment "$OPEN" --body "Milestone $MILESTONE_TITLE was closed while this issue is still open. Close this issue last: finish the checklist, close it, then close the milestone. Reopen the milestone if the release is not done."
+          fi

@@ -6,22 +6,21 @@ import type {
 	Repository,
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
-import { redactAddress } from "../integrations/source-query.js";
+import {
+	shownRepoName,
+	shownRepoUrl,
+	UNSHOWN_REPO,
+} from "../../core/harness/git-credential.js";
+import { displayNameFor } from "../../core/harness/repo-source.service.js";
 
-/** A stored scheme URL from before saves refused userinfo and a query comes back without them; scp and folders as saved (#848). */
-function shownUrl(repo: PrismaRepository): string {
-	if (repo.sourceKind !== "url" || !/^[a-z]+:\/\//i.test(repo.url))
-		return repo.url;
+/** A legacy row's fullName was derived from its address and may hold the same credential (#938). */
+function shownFullName(repo: PrismaRepository, url: string): string {
+	if (url === repo.url) return shownRepoName(repo.sourceKind, repo.fullName);
+	if (url === UNSHOWN_REPO) return UNSHOWN_REPO;
 	try {
-		const u = new URL(repo.url);
-		const secret =
-			u.password ||
-			u.search ||
-			u.hash ||
-			(/^https?:$/.test(u.protocol) && u.username);
-		return secret ? redactAddress(repo.url) : repo.url;
+		return displayNameFor("url", url);
 	} catch {
-		return redactAddress(repo.url);
+		return UNSHOWN_REPO;
 	}
 }
 
@@ -30,9 +29,11 @@ export async function serializeRepository(
 	repo: PrismaRepository,
 	credentialFor: (repo: PrismaRepository) => Promise<GitCredentialDisplay>,
 ): Promise<Repository> {
+	const url = shownRepoUrl(repo.sourceKind, repo.url);
 	return {
 		...repo,
-		url: shownUrl(repo),
+		url,
+		fullName: shownFullName(repo, url),
 		createdAt: repo.createdAt.toISOString(),
 		updatedAt: repo.updatedAt.toISOString(),
 		syncedAt: repo.syncedAt?.toISOString() ?? null,

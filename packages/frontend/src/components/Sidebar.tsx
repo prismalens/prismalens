@@ -8,16 +8,19 @@
  * icon rail; `[` or its fold button hides it completely, and a button in the
  * page bar brings it back (#848). On the phone the doors are a strip of icons
  * across the top. Settings swaps the bar for its pages with Back at the foot.
+ * Under the doors, Terminal shows or hides the terminal panel (#931).
  * Hidden on pairing, where nothing leads away.
  */
 import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
 import {
 	Bell,
 	Boxes,
+	CalendarClock,
 	ChevronLeft,
 	Inbox,
 	PanelLeft,
 	SlidersHorizontal,
+	SquareTerminal,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
@@ -42,7 +45,12 @@ import { useOperator } from "@/hooks/use-operator";
 import { useServices } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
-type DoorTo = "/incidents" | "/alerts" | "/services" | "/settings";
+type DoorTo =
+	| "/incidents"
+	| "/alerts"
+	| "/services"
+	| "/schedules"
+	| "/settings";
 
 interface Door {
 	to: DoorTo;
@@ -70,6 +78,11 @@ function useDoors(signedIn: boolean): Door[] {
 		},
 		{ to: "/alerts", label: "Alerts", icon: <Bell className={ICON} /> },
 		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
+		{
+			to: "/schedules",
+			label: "Schedules",
+			icon: <CalendarClock className={ICON} />,
+		},
 		{
 			to: "/settings",
 			label: "Settings",
@@ -184,6 +197,7 @@ function MainBar({
 							labelled={full}
 						/>
 					))}
+				<TerminalDoor labelled={full} />
 			</nav>
 			<div className="mt-3.5 min-h-0 flex-1 overflow-y-auto pb-2">
 				{signedIn && full && <AreaList pathname={pathname} />}
@@ -237,6 +251,28 @@ function ShowSidebar({ onShow }: { onShow: () => void }) {
 	);
 }
 
+const DOOR =
+	"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0";
+
+function TerminalDoor({ labelled }: { labelled: boolean }) {
+	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
+	return (
+		<Hint label="Terminal" keys={["Ctrl", "`"]} side="right" when={!labelled}>
+			<button
+				type="button"
+				aria-label="Terminal"
+				aria-expanded={bottomPanel}
+				onClick={() => setBottomPanel(!bottomPanel)}
+				className={cn(DOOR, bottomPanel && "bg-surface-3 text-text-1")}
+				data-testid="nav-terminal"
+			>
+				<SquareTerminal className={ICON} />
+				<span className={FULL_ONLY}>Terminal</span>
+			</button>
+		</Hint>
+	);
+}
+
 function DoorLink({
 	door,
 	on,
@@ -261,10 +297,7 @@ function DoorLink({
 					door.countLabel ? `${door.label}, ${door.countLabel}` : door.label
 				}
 				data-testid={`nav-${door.label.toLowerCase()}`}
-				className={cn(
-					"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0",
-					on && "bg-surface-3 font-medium text-text-1",
-				)}
+				className={cn(DOOR, on && "bg-surface-3 font-medium text-text-1")}
 			>
 				<span className="relative">
 					{door.icon}
@@ -278,6 +311,7 @@ function DoorLink({
 				</span>
 				<span className={FULL_ONLY}>{door.label}</span>
 				{door.dot && <span className="sr-only">, update available</span>}
+				{door.count !== undefined && " "}
 				{door.count !== undefined && (
 					<span
 						className={cn(

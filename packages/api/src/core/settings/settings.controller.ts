@@ -147,6 +147,6 @@ export class SettingsController {
 }
 
 /** The host's own session holds `admin:access`; a paired device does not (#907 decision 11). */
-function isHost(request: Request): boolean {
+export function isHost(request: Request): boolean {
 	return !!request.operator?.device.scopes.includes(ACCESS_SCOPE);
 }

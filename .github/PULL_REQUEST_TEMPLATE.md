@@ -29,9 +29,7 @@ Keep PRs focused and small where you can.
 
 ## Docs
 
-- [ ] Docs updated for every changed operator-facing surface (READMEs, docs/, help strings), or none affected (explain below)
-
-<!-- If none affected, explain: -->
+- [ ] Changes the documented contract ([docs/POLICY.md](https://github.com/prismalens/prismalens.io/blob/main/docs/POLICY.md)): website PR or docs issue linked below. Otherwise nothing to do.
 
 ## Related issues
 

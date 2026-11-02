@@ -50,7 +50,7 @@ concurrency:
 env:
   TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo-cache
   # The live jobs' model: OpenCode's own free one. Their agent versions are the pins in
-  # scripts/agent-pins.json, which `agent-releases.yml` moves (#639, #712, #914).
+  # scripts/agent-pins.json, which `agent-release-watch.yml` moves (#639, #712, #914).
   FREE_MODEL: opencode/deepseek-v4.1-flash-free
 
 jobs:
@@ -59,6 +59,8 @@ jobs:
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -103,17 +105,16 @@ jobs:
         run: pnpm publint
 
   test:
-    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    name: Unit tests (${{ matrix.os }})
     needs: build
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      # engines.node is >=24 everywhere, the floor `pl doctor` enforces (#673 s6);
-      # macOS runs on the merge queue and main only, not on every PR push (#885).
+      # Node is .nvmrc's, the engines.node floor `pl doctor` enforces (#673 s6). macOS runs on
+      # every PR: the queue that used to run it first is gone (#959 tracks its flake).
       matrix:
-        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
-        node: [24]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
 
@@ -123,7 +124,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node }}
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install dependencies
@@ -138,9 +139,11 @@ jobs:
 
       # Coverage floors (#58) run here: cli and database `test` already pass --coverage,
       # and the api's floor only evaluates under `test:cov`.
+      # macos-latest is 3 or 5 CPUs; at turbo's default of 10 tasks the timing-sensitive api
+      # specs ran 5x slower on the 3-CPU ones and flaked the queue (#885).
       - name: Test
         if: runner.os != 'Linux'
-        run: pnpm test
+        run: pnpm turbo run test --concurrency=2
 
       - name: Test with coverage thresholds
         if: runner.os == 'Linux'
@@ -216,7 +219,7 @@ jobs:
           retention-days: 3
 
   packed-smoke:
-    name: Packed smoke (${{ matrix.image }})
+    name: "Tarball: installs and boots (${{ matrix.image }})"
     needs: pack
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -266,7 +269,7 @@ jobs:
     # the keyless model; `packed-intake-live` below runs it that way.
     #
     # REQUIRED: in `ci-gate`'s `needs` (#920, operator ruling 2026-10-24).
-    name: Packed intake (Prometheus webhook -> incident -> report)
+    name: "Tarball: alert to incident to report, unattended"
     needs: pack
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -295,7 +298,7 @@ jobs:
   packed-service:
     # `pl service` on a real systemd user manager (#732).
     # REQUIRED: in `ci-gate`'s `needs` (#920).
-    name: Packed service (systemd user unit)
+    name: "Tarball: pl service under systemd"
     needs: pack
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -347,7 +350,7 @@ jobs:
     # (`gate:upgrade-chain`, #920).
     #
     # REQUIRED: in `ci-gate`'s `needs` (#920).
-    name: Packed upgrade smoke
+    name: "Tarball: upgrades an old database and every release"
     needs: pack
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -388,7 +391,7 @@ jobs:
     # script runs on all three OSes and `--no-skip` makes a SKIP a failure (#920).
     #
     # REQUIRED: in `ci-gate`'s `needs` (#920).
-    name: Gate side checks (${{ matrix.os }})
+    name: "Tarball: release side checks (${{ matrix.os }})"
     needs: pack
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -439,14 +442,14 @@ jobs:
   harness-admission:
     # Qualification (ADR 0003 §10, #914): the pinned agent is real, its model is aimock
     # serving scripts/fakes/scenarios/, so a red run means the code is wrong and the same
-    # commit gives the same verdict (#884). Each leg runs the admission (R1-R9) and the
+    # commit gives the same verdict (#884). Each leg runs the admission (R1-R11) and the
     # behaviour matrix 3 times; the runs must agree. The live-model run is
     # `harness-admission-live` below.
     #
     # REQUIRED for the tier-1 legs (opencode, claude-code, codex): listed in `ci-gate`'s
     # `needs`. gemini and dcode run on every PR, but a red tier-2 leg leaves the job green
     # (`continue-on-error`), so it gates nothing (#914 rulings of 2026-10-24).
-    name: Harness admission (${{ matrix.harness }}, aimock)
+    name: Agent qualification (${{ matrix.harness }}, scripted model)
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -494,11 +497,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the packages the engine imports
-        run: pnpm --filter "@prismalens/contracts..." build
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
 
       - name: Setup uv
         if: matrix.harness == 'deepagents'
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Install the pinned agent
         env:
@@ -519,8 +522,31 @@ jobs:
         if: matrix.harness == 'codex'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      - name: Run the admission (R1-R9) and the behaviour matrix against aimock, 3 times
-        run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3
+      - name: Run the admission (R1-R11) and the behaviour matrix against aimock, 3 times
+        run: |
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3 | tee admission.log
+
+      # Tool search (#848): the run above uses each agent's shipped setting; a PR labelled
+      # `tool-search` also runs the other mode, so both costs and pass rates show.
+      - name: The behaviour matrix with tool search in the other mode
+        if: contains(github.event.pull_request.labels.*.name, 'tool-search')
+        continue-on-error: true
+        run: |
+          shipped=$(grep -E "^SEARCH (on|off)$" admission.log | head -1 | cut -d' ' -f2)
+          export PL_TOOL_SEARCH=$([ "$shipped" = on ] && echo off || echo on)
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix --repeat 3 | tee search-on.log
+
+      - name: PrismaLens tool cost and pass rate
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.harness }}: PrismaLens tools"
+            echo '```'
+            grep -hE "^(TOOLCOST|PASSRATE)" admission.log search-on.log 2>/dev/null || echo "no matrix run"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The negative run (#848): with no gateway the model calls no PrismaLens tool, so R8 must fail the gate.
       - name: Without the gateway, the admission must fail
@@ -562,12 +588,12 @@ jobs:
   # guards. All of it was deleted with the `review-evidence` gate in #415, so the
   # directory is gone and there is nothing left for this job to run.
 
-  # Playwright (e2e.yml, called here so `CI gate` can wait on it and the merge queue runs it).
+  # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it and the merge queue runs it).
   e2e:
     name: E2E
     needs: build
     if: github.event_name != 'workflow_dispatch'
-    uses: ./.github/workflows/e2e.yml
+    uses: ./.github/workflows/e2e-browser.yml
 
   # The single aggregating required status check. The branch ruleset requires
   # THIS context instead of enumerating every job above, so adding, renaming, or
@@ -599,10 +625,14 @@ jobs:
       - harness-admission
       - e2e
     if: always() && github.event_name != 'workflow_dispatch'
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Assert every required job succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo "Needed job results:"
           echo "$NEEDS_JSON"
@@ -612,6 +642,10 @@ jobs:
             | join(", ")')
           if [ -n "$bad" ]; then
             echo "::error::CI gate is red — these jobs did not succeed: $bad"
+            # Name each failed job, its failed step and its log, so nobody digs for them (#885).
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+              --jq '.jobs[] | select(.conclusion == "failure") | "  failed: \(.name) / \(first(.steps[]? | select(.conclusion == "failure") | .name) // "-") -> \(.html_url)"' \
+              || echo "(could not list the failed jobs)"
             exit 1
           fi
           echo "All required jobs succeeded."
@@ -620,7 +654,7 @@ jobs:
   # only; advisory, and not in `ci-gate`'s `needs`. Release gate: dispatch with
   # `ref` set to the release PR's base SHA (.github/workflows/README.md).
   live-pack:
-    name: Pack npm tarball (live)
+    name: "Live: pack npm tarball"
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -657,7 +691,7 @@ jobs:
   packed-intake-live:
     # 3 attempts, passes on at least 2 valid reports; each uploads its paged event
     # stream, the recording source for #533.
-    name: Packed intake, live agent (2 of 3)
+    name: "Live: alert to report on the free model (2 of 3)"
     needs: live-pack
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -733,7 +767,7 @@ jobs:
           retention-days: 30
 
   harness-admission-live:
-    name: Harness admission, live (opencode)
+    name: "Live: agent qualification (opencode, free model)"
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -756,7 +790,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the packages the engine imports
-        run: pnpm --filter "@prismalens/contracts..." build
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
 
       - name: Install the pinned OpenCode
         run: npm install -g "opencode-ai@$(node -p "require('./scripts/agent-pins.json').pins['opencode-ai']")" && opencode --version

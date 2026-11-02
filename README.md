@@ -7,7 +7,7 @@
 
 <!-- Demo video/GIF goes here: an alert arriving, the run streaming, the report on the incident. Added once it is recorded. -->
 
-PrismaLens is a self-hosted incident investigator. When an alert arrives, the
+PrismaLens is an incident investigator that runs as an app on your machine. When an alert arrives, the
 coding agent you already use reads a snapshot of the service's code, under a
 permission level you pick, and writes an **ordered-evidence report**:
 hypotheses ranked from most to least plausible, each backed by evidence the
@@ -24,8 +24,7 @@ PrismaLens never calls a model itself. Before you run it on your machine, read
 **[what PrismaLens reads and never does](https://docs.prismalens.io/trust/)**.
 
 > [!WARNING]
-> PrismaLens is **alpha**. Any 0.x release may change behaviour or break a
-> workflow; read the [release notes](https://github.com/prismalens/prismalens/releases)
+> PrismaLens is **alpha** and changes often; read the [release notes](https://github.com/prismalens/prismalens/releases)
 > before you upgrade. See [VERSIONING.md](VERSIONING.md).
 
 ## Quick start
@@ -34,7 +33,7 @@ You need git and a coding agent; Settings → Agent in the app lists the ones
 that can run, and Add agent sets one up.
 
 ```bash
-npm install -g prismalens   # needs Node.js 24+
+npm install -g prismalens   # needs Node.js
 # or, on macOS and Linux without Node:
 curl -fsSL https://prismalens.io/install.sh | sh
 
@@ -79,10 +78,6 @@ webhook URL and port), never a coding agent; Settings → Agent does that.
   and searches run, and a request to switch the agent's mode is denied, so the
   run keeps its mode; every other action the agent asks about waits for your
   Approve or Deny on the run.
-- **[Try it on a broken app](https://docs.prismalens.io/guides/try-it/)**, with
-  no repository or monitoring of your own. A small app runs with its monitoring
-  in docker compose; you switch a fault on, and a real alert starts the
-  investigation. It needs docker, Node 24, pnpm, git and a coding agent.
 
 To have alerts open incidents on their own, point an Alertmanager receiver at
 `/api/webhooks/prometheus` with the workspace's webhook token; a critical or
@@ -124,7 +119,15 @@ what changed:
   access each pick the agent's own mode and decide which of its requests wait
   for you. A run an alert starts waits for nobody: it runs at Auto and refuses
   anything the agent asks. PrismaLens adds no sandbox: the agent runs as your
-  user, with an allowlisted environment.
+  user.
+- **Your environment, minus PrismaLens's secrets.** The agent gets the
+  environment your terminal has, GitHub tokens included, so its own `gh` and
+  `git` work. PrismaLens removes only its own secrets: every `PRISMALENS_*`
+  variable and the telemetry tokens it reads (`PROMETHEUS_TOKEN`,
+  `ALERTMANAGER_TOKEN`, `LOKI_TOKEN`); its saved git connections never reach
+  the agent. Settings → Agent → **Only pass named variables** switches to strict
+  mode: the basics (`PATH`, home, locale, proxy and certificates), the agent's
+  own provider keys and the variables you set on it.
 - **Every run is durable.** Events, session metadata and the report are written
   to `~/.prismalens/runs/<runId>/`, and the report exports as Markdown.
 
@@ -143,12 +146,14 @@ else, from configuration to commands, is on
 | `packages/desktop` | The desktop app (preview): an Electron window on the same server. |
 | `packages/@prismalens/engine` | The investigation run: ACP session, permission asks, report validation. |
 | `packages/@prismalens/agent-adapters` | The ACP adapters shipped for agents that don't speak ACP themselves. |
+| `packages/@prismalens/agent-host` | How PrismaLens and Assayer launch an agent: registry, levels, env, workspaces, readiness probe. |
 | `packages/@prismalens/*` | Shared contracts, config, auth, database, integrations and logger. |
 
 `packages/cli` is published to npm as `prismalens`, and the other packages travel
 inside its tarball, except the desktop app, which is released as its own zips.
-`@prismalens/agent-adapters` is published to npm on its own, by hand (the
-`Publish agent adapters` workflow), so other tools can depend on the same pinned adapters. For development, see
+`@prismalens/agent-adapters` and `@prismalens/agent-host` are published to npm on
+their own, by hand (the `Publish agent adapters` and `Publish agent host` workflows),
+so other tools can depend on the same pinned adapters and launch code. For development, see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links

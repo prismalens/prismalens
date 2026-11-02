@@ -35,6 +35,7 @@ import {
 	NO_BROWSER_LINE,
 	networkBindWarning,
 	noAgentLine,
+	openTarget,
 	portFree,
 	portInUseLine,
 	readTelemetryState,
@@ -251,14 +252,10 @@ export default defineCommand({
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}
 
-		// Read from a cache written by an earlier run, so nothing here waits on
-		// the network; `refresh` updates that cache for the NEXT run and is
-		// deliberately never awaited.
-		const notice = updateNotice({
-			current: cliVersion(),
-			workspaceDir,
-		});
+		// The line comes from an earlier run's cache; the unawaited refresh starts only after boot,
+		// whose synchronous import outlasts the check's 3 s timeout on a slow machine (#990).
 		const printUpdateNotice = () => {
+			const notice = updateNotice({ current: cliVersion(), workspaceDir });
 			if (notice.line) consola.info(notice.line);
 		};
 
@@ -331,8 +328,10 @@ async function printStartupLink(
 	watchPairings(link, onDevicePaired, (line, kind) =>
 		kind === "paired" ? consola.success(line) : consola.info(line),
 	);
-	const command = open
-		? browserCommand(process.platform, process.env, startupUrl)
+	const target = open ? openTarget(startupUrl, workspaceDir) : null;
+	if (open && !target) consola.info("Open the link above in your browser.");
+	const command = target
+		? browserCommand(process.platform, process.env, target)
 		: null;
 	if (!command) return;
 	const child = spawn(command.file, command.args, {

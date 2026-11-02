@@ -276,6 +276,11 @@ export class ServicesService {
 		}
 	}
 
+	/** Scheduled-check runs name their service in `serviceId`; incident runs leave it null (#979). */
+	countCheckRuns(id: string): Promise<number> {
+		return this.prisma.investigation.count({ where: { serviceId: id } });
+	}
+
 	/**
 	 * Delete a service
 	 */

@@ -216,7 +216,7 @@ command -v tar >/dev/null 2>&1 || fail "tar is required"
 staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT INT TERM
 
-# The newest release with its archives attached. standalone.yml builds them for
+# The newest release with its archives attached. build-standalone-cli.yml builds them for
 # about 20 minutes after a release publishes, so fall back to the one before.
 if [ -n "$version" ]; then
 	fetch "${base_url}/v${version}/SHA256SUMS" "$staging/SHA256SUMS" || fail "PrismaLens ${version} has no installer archives"

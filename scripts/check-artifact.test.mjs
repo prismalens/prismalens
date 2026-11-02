@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { LIMIT, pathModels } from "./check-artifact.mjs";
+import { LIMIT, largest, pathModels } from "./check-artifact.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./check-artifact.mjs", import.meta.url));
 const MIGRATION =
@@ -137,4 +137,15 @@ test("a path one char over the limit fails", () => {
 	const r = run(tarball, { fixture: { bytes: 1e6, files: 10 } }, dir);
 	assert.equal(r.status, 1);
 	assert.match(r.stdout, /npm-global: 221 chars is over 220/);
+});
+
+test("a budget breach names the largest unpacked files, biggest first", () => {
+	const root = mkdtempSync(join(tmpdir(), "pl-largest-"));
+	writeFileSync(join(root, "small.js"), "a");
+	writeFileSync(join(root, "big.js"), "a".repeat(100));
+	writeFileSync(join(root, "mid.js"), "a".repeat(10));
+	assert.deepEqual(largest(root, ["small.js", "big.js", "mid.js"], 2), [
+		{ entry: "big.js", size: 100 },
+		{ entry: "mid.js", size: 10 },
+	]);
 });

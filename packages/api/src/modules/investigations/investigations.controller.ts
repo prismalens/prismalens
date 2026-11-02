@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import { ACCESS_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	InvestigationReport,
@@ -21,10 +22,18 @@ import {
 	OverlaySchema,
 	RunEndReasonSchema,
 	RunUsageSchema,
+	type RunWorkspace,
 	RunWorkspaceSchema,
+	SCHEDULE_HOST_ONLY,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
+import type { Request } from "express";
+import {
+	holdsRemoved,
+	shownRepoUrl,
+	UNSHOWN_REPO,
+} from "../../core/harness/git-credential.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -41,6 +50,24 @@ import type {
 	RecommendationDto,
 } from "./dto/index.js";
 import { EvidenceRequestRefused, readEvidenceBlob } from "./evidence-blob.js";
+
+/** The row keeps the address a rebuild clones; an answer never carries a legacy credential (#938). */
+export function shownWorkspace(ws: RunWorkspace | null): RunWorkspace | null {
+	return ws
+		? {
+				...ws,
+				repos: ws.repos.map((r, i) => {
+					const url = shownRepoUrl(r.sourceKind, r.url);
+					// A run before #938 named a folder from its raw address, nested path or query included.
+					return url === UNSHOWN_REPO ||
+						holdsRemoved(r.url, `${r.name}\0${r.dir}`)
+						? { ...r, url, name: `repo-${i + 1}`, dir: UNSHOWN_REPO }
+						: { ...r, url };
+				}),
+			}
+		: null;
+}
+
 import { inheritedLevel } from "./follow-up-route.js";
 import {
 	followUpBlockedReason,
@@ -49,6 +76,7 @@ import {
 	preRunDetailOf,
 } from "./investigations.service.js";
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
+import { readRunDiff, readRunTree } from "./run-views.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -212,6 +240,30 @@ export class InvestigationsController {
 			//     directly and write the terminal "cancelled" record HERE. If the row was
 			//     already claimed (a dispatcher won the race), fall through to the publish
 			//     path; the grace retries cover the claim→subscribe window.
+			resume: implement(investigationsContract.resume).handler(
+				async ({ input }) => {
+					try {
+						await this.dispatchService.resumeInterrupted(input.id);
+					} catch (error) {
+						if (error instanceof FollowUpRefused)
+							throw new ORPCError("CONFLICT", { message: error.message });
+						throw error;
+					}
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					return this.serializeInvestigation(investigation);
+				},
+			),
+
+			restartSummary: implement(investigationsContract.restartSummary).handler(
+				() => this.dispatchService.restartSummary(),
+			),
+
 			cancel: implement(investigationsContract.cancel).handler(
 				async ({ input }) => {
 					const investigation = await this.investigationsService.findById(
@@ -381,7 +433,7 @@ export class InvestigationsController {
 			),
 
 			message: implement(investigationsContract.message).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -390,16 +442,26 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
+					scheduledRunHostOnly(
+						investigation,
+						context?.request as Request | undefined,
+					);
 					const refuse = () =>
 						new ORPCError("CONFLICT", {
 							message: "The run ended before your message reached it.",
 						});
-					const attachments = input.attachments?.length
-						? await this.attachments.forJob(
-								investigation.incidentId,
-								input.attachments,
-							)
-						: [];
+					if (input.attachments?.length && !investigation.incidentId)
+						throw new ORPCError("BAD_REQUEST", {
+							message:
+								"Files attach to an incident, and this run has none yet.",
+						});
+					const attachments =
+						input.attachments?.length && investigation.incidentId
+							? await this.attachments.forJob(
+									investigation.incidentId,
+									input.attachments,
+								)
+							: [];
 					if (TERMINAL_STATUSES.has(investigation.status)) {
 						const reason = followUpBlockedReason(investigation);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
@@ -491,7 +553,7 @@ export class InvestigationsController {
 
 			// PATCH /investigations/:id/status - Update status (Worker)
 			updateStatus: implement(investigationsContract.updateStatus).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -500,6 +562,10 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
+					scheduledRunHostOnly(
+						investigation,
+						context?.request as Request | undefined,
+					);
 					const updated = await this.investigationsService.updateStatusInternal(
 						input.id,
 						input.status,
@@ -517,6 +583,11 @@ export class InvestigationsController {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
+					if (investigation && !investigation.incident)
+						throw new ORPCError("NOT_FOUND", {
+							message:
+								"This run has no incident yet; its report is on the schedule's page.",
+						});
 					// Validated, not cast: a persisted report that no longer matches
 					// the schema must read as "no report", not throw inside the
 					// renderer when it reaches hypotheses or coverage.
@@ -570,9 +641,27 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/tree - One directory at a recorded commit (#973)
+			getTree: implement(investigationsContract.getTree).handler(
+				async ({ input }) =>
+					this.runView(input.id, (ws) =>
+						readRunTree(ws, input.sha, input.prefix, {
+							recursive: input.recursive === "true",
+						}),
+					),
+			),
+
+			// GET /investigations/:id/diff - A commit pair recorded at run start (#973)
+			getDiff: implement(investigationsContract.getDiff).handler(
+				async ({ input }) =>
+					this.runView(input.id, (ws) =>
+						readRunDiff(ws, input.pair, input.path),
+					),
+			),
+
 			// POST /investigations/:id/result - Write result (Worker)
 			writeResult: implement(investigationsContract.writeResult).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -581,6 +670,10 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
+					scheduledRunHostOnly(
+						investigation,
+						context?.request as Request | undefined,
+					);
 
 					// Map input to InternalInvestigationResultDto structure
 					// Note: The input is already validated by Zod schema in contract
@@ -644,6 +737,25 @@ export class InvestigationsController {
 		return parsed.success ? parsed.data : null;
 	}
 
+	/** A read of the run's recorded commits; a request outside them is a 400. */
+	private async runView<T>(
+		id: string,
+		read: (ws: RunWorkspace | null) => Promise<T>,
+	): Promise<T> {
+		const investigation = await this.investigationsService.findById(id);
+		if (!investigation)
+			throw new ORPCError("NOT_FOUND", {
+				message: `Investigation ${id} not found`,
+			});
+		try {
+			return await read(this.parseWorkspace(investigation.workspace));
+		} catch (error) {
+			if (error instanceof EvidenceRequestRefused)
+				throw new ORPCError("BAD_REQUEST", { message: error.message });
+			throw error;
+		}
+	}
+
 	private parseWorkspace(raw: Investigation["workspace"]) {
 		const parsed = RunWorkspaceSchema.safeParse(safeParseJsonObject(raw));
 		return parsed.success ? parsed.data : null;
@@ -690,6 +802,8 @@ export class InvestigationsController {
 		return {
 			id: investigation.id,
 			incidentId: investigation.incidentId,
+			serviceId: investigation.serviceId ?? null,
+			scheduleId: investigation.scheduleId ?? null,
 			status: investigation.status as WorkflowStatus,
 			kind:
 				investigation.kind === "chat"
@@ -730,7 +844,7 @@ export class InvestigationsController {
 					? (RunEndReasonSchema.safeParse(investigation.endReason).data ?? null)
 					: null,
 			acpSessionId: investigation.acpSessionId ?? null,
-			workspace: this.parseWorkspace(investigation.workspace),
+			workspace: shownWorkspace(this.parseWorkspace(investigation.workspace)),
 			...this.resumeState(investigation),
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),
@@ -744,7 +858,7 @@ export class InvestigationsController {
 
 		return {
 			...base,
-			incidentNumber: investigation.incident.number,
+			incidentNumber: investigation.incident?.number ?? null,
 			recommendations: investigation.recommendations
 				? investigation.recommendations.map((r: Recommendation) => ({
 						id: r.id,
@@ -755,4 +869,19 @@ export class InvestigationsController {
 				: undefined,
 		};
 	}
+}
+
+/**
+ * A scheduled run is a standing permission the host granted, so only the host's session may
+ * message it, rewrite its status or write its result; Stop stays open to every device (#979, #982).
+ */
+function scheduledRunHostOnly(
+	run: { scheduleId?: string | null },
+	request: Request | undefined,
+): void {
+	if (
+		run.scheduleId &&
+		!request?.operator?.device.scopes.includes(ACCESS_SCOPE)
+	)
+		throw new ORPCError("FORBIDDEN", { message: SCHEDULE_HOST_ONLY });
 }

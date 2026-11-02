@@ -3,6 +3,7 @@
 
 import { expect } from "@playwright/test";
 import { Given, Then, When } from "./fixtures";
+import { sidewaysFaults } from "./product";
 
 let navigations = 0;
 
@@ -45,10 +46,5 @@ Then(
 );
 
 Then("the page does not scroll sideways", async ({ page }) => {
-	const overflow = await page.evaluate(
-		() =>
-			document.documentElement.scrollWidth -
-			document.documentElement.clientWidth,
-	);
-	expect(overflow).toBeLessThanOrEqual(0);
+	expect(await sidewaysFaults(page)).toEqual([]);
 });

@@ -12,6 +12,7 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { PushHealthSchema } from "./push.js";
 
 const DeviceSchema = z.object({
 	id: z.string(),
@@ -22,6 +23,8 @@ const DeviceSchema = z.object({
 	current: z.boolean(),
 	createdAt: z.string(),
 	lastSeenAt: z.string().nullable(),
+	/** Null until the device turns push on (#859). */
+	push: PushHealthSchema.nullable(),
 });
 export type PairedDevice = z.infer<typeof DeviceSchema>;
 
@@ -49,6 +52,8 @@ const RedeemInputSchema = z.object({
 
 const RedeemResponseSchema = z.object({
 	device: z.object({ id: z.string(), name: z.string() }),
+	/** Only for an operator link redeemed on the host itself: the terminal's second credential (#931). */
+	terminalKey: z.string().optional(),
 });
 
 /** The operator's half: a loopback or signed-in caller, never a paired device. */

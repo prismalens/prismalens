@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { resolveOrigin } from "./pair.js";
+import { pairingQr, resolveOrigin } from "./pair.js";
 
 describe("resolveOrigin", () => {
 	it("no address → http://localhost:<port>, loopback true", () => {
@@ -35,5 +35,15 @@ describe("resolveOrigin", () => {
 			origin: "http://127.0.0.1:4000",
 			loopback: true,
 		});
+	});
+});
+
+describe("pairingQr", () => {
+	it("draws the link as a block QR code a phone camera can scan (#859)", async () => {
+		const qr = await pairingQr("https://box.tail1234.ts.net/pair#t=abc");
+		const rows = qr.trim().split("\n");
+		expect(rows.length).toBeGreaterThan(10);
+		expect(qr).toMatch(/[▀▄█]/);
+		expect(qr).not.toContain("abc");
 	});
 });

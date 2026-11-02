@@ -167,7 +167,7 @@ echo "$VERDICT_OUT" | grep -q "opencode|not-installed|" || fail "opencode status
 $VERDICT_OUT"
 echo "$VERDICT_OUT" | grep -q "claude-code|not-installed|" || fail "claude-code status on a no-agent machine is not 'not-installed':
 $VERDICT_OUT"
-echo "$VERDICT_OUT" | grep -qi "opencode.ai/install" || fail "status does not carry the install hint:
+echo "$VERDICT_OUT" | grep -q "npm i -g opencode-ai" || fail "status does not carry the install hint:
 $VERDICT_OUT"
 echo "    $(echo "$VERDICT_OUT" | head -1)"
 
@@ -192,6 +192,7 @@ fi
 # those only to the log file, which is asserted separately (#610). CI keeps `pl up`
 # from opening a browser on the startup link it prints.
 CI="${CI:-true}" \
+PRISMALENS_TELEMETRY="${PRISMALENS_TELEMETRY:-internal}" \
 PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
 PRISMALENS_LOG_CONSOLE=verbose \
 PRISMALENS_HOST=127.0.0.1 \

@@ -6,7 +6,8 @@
 // picked by FAKE_ACP_MODE: "ok" (valid report first try), "retry" (invalid then
 // valid), "never" (never valid), "crash" (exit mid-turn), "nowrite" (no tool
 // runs), "hang" (never answers the handshake — a doctor-probe timeout),
-// "unauthenticated" (exits immediately with a stderr line), "print-env" (exits
+// "unauthenticated" (exits immediately with a stderr line), "exit-stderr" (exits 1 printing
+// FAKE_STDERR), "print-env" (exits
 // naming which of FAKE_ENV_PROBE's comma-separated vars it received), "tolerant"
 // (emits unknown update kinds, unknown tool kinds, extra fields, and unknown stopReason),
 // "steerable" (like "ok"; with FAKE_WAIT_CANCEL its first turn waits for session/cancel;
@@ -19,6 +20,7 @@
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
 // FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_SESSION_DELAY_MS delays the session/new answer in any mode.
 // FAKE_ADDITIONAL_DIRS=1 advertises sessionCapabilities.additionalDirectories.
 // FAKE_MCP_HTTP=1 advertises mcpCapabilities.http, so a run offers it the gateway.
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
@@ -32,7 +34,15 @@
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 // FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
-import { existsSync, writeFileSync } from "node:fs";
+// FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
+// tool call whose output is the file's text, as an agent reading the pre-run copies would.
+// Reopen paths (#942): FAKE_SESSION_RESUME=1 advertises sessionCapabilities.resume and answers
+// session/resume with no replay (=replay sends one replayed message anyway, =state one state update,
+// =straggler one id-less message after the answer); FAKE_REPLAY_COMPLETE=1 advertises replayComplete
+// and ends the load replay with the marker, then one state update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
+// with ids; FAKE_AGENT_NAME names the agent in initialize.
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
@@ -54,6 +64,17 @@ const profile = process.env.FAKE_PROFILE ?? "";
 
 if (mode === "unauthenticated") {
 	process.stderr.write("Error: not logged in\n");
+	process.exit(1);
+}
+if (mode === "exit-stderr") {
+	// FAKE_STDERR_PARTS (a JSON array) writes in separate chunks, 50 ms apart.
+	const parts = process.env.FAKE_STDERR_PARTS
+		? JSON.parse(process.env.FAKE_STDERR_PARTS)
+		: [`${process.env.FAKE_STDERR ?? ""}\n`];
+	for (const part of parts) {
+		process.stderr.write(part);
+		await new Promise((r) => setTimeout(r, 50));
+	}
 	process.exit(1);
 }
 if (mode === "print-env") {
@@ -238,8 +259,33 @@ async function turn(sessionId, promptText) {
 				],
 			});
 		}
+		const readDir = process.env.FAKE_READ_DIR;
+		const files = readDir
+			? readdirSync(join(cwd, readDir), {
+					recursive: true,
+					withFileTypes: true,
+				})
+					.filter((e) => e.isFile())
+					.map((e) => join(e.parentPath, e.name))
+			: [];
+		for (const [i, file] of files.entries())
+			notify(sessionId, {
+				sessionUpdate: "tool_call",
+				toolCallId: `t_read${i}`,
+				title: `Read ${file}`,
+				kind: "read",
+				status: "completed",
+				rawInput: { path: file },
+				content: [
+					{
+						type: "content",
+						content: { type: "text", text: readFileSync(file, "utf8") },
+					},
+				],
+			});
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
+			messageId: "m_live",
 			content: {
 				type: "text",
 				text: `Heard: ${promptText}${mode === "continue" ? `\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`\n` : ""}`,
@@ -485,9 +531,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			id: msg.id,
 			result: {
 				protocolVersion: 1,
-				agentInfo: { name: "fake", version: "0" },
+				agentInfo: {
+					name: process.env.FAKE_AGENT_NAME ?? "fake",
+					version: "0",
+				},
 				agentCapabilities: {
 					...(process.env.FAKE_LOAD_SESSION ? { loadSession: true } : {}),
+					...(process.env.FAKE_SESSION_RESUME ||
+					process.env.FAKE_REPLAY_COMPLETE
+						? {
+								sessionCapabilities: {
+									...(process.env.FAKE_SESSION_RESUME ? { resume: {} } : {}),
+									...(process.env.FAKE_REPLAY_COMPLETE
+										? { replayComplete: {} }
+										: {}),
+								},
+							}
+						: {}),
 					...(process.env.FAKE_IMAGES
 						? { promptCapabilities: { image: true } }
 						: {}),
@@ -526,6 +586,10 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 	} else if (msg.method === "session/new" && mode === "slow-init") {
 		// never answered
 	} else if (msg.method === "session/new") {
+		if (process.env.FAKE_SESSION_DELAY_MS)
+			await new Promise((r) =>
+				setTimeout(r, Number(process.env.FAKE_SESSION_DELAY_MS)),
+			);
 		if (msg.params?.cwd !== cwd)
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);
 		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.
@@ -540,16 +604,49 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
-	} else if (msg.method === "session/load") {
+	} else if (msg.method === "session/load" || msg.method === "session/resume") {
 		const sessionId = msg.params?.sessionId;
-		notify(sessionId, {
-			sessionUpdate: "user_message_chunk",
-			content: { type: "text", text: "the first prompt" },
-		});
-		notify(sessionId, {
-			sessionUpdate: "agent_message_chunk",
-			content: { type: "text", text: "REPLAYED" },
-		});
+		const history = [
+			{
+				sessionUpdate: "user_message_chunk",
+				messageId: "m_user",
+				content: { type: "text", text: "the first prompt" },
+			},
+			{
+				sessionUpdate: "agent_message_chunk",
+				messageId: "m_agent",
+				content: { type: "text", text: "REPLAYED" },
+			},
+			{
+				sessionUpdate: "tool_call",
+				toolCallId: "t_old",
+				title: "REPLAYED tool",
+				kind: "read",
+				status: "completed",
+			},
+		];
+		const resuming = msg.method === "session/resume";
+		const late = !resuming && process.env.FAKE_LATE_REPLAY;
+		if (resuming) {
+			if (process.env.FAKE_SESSION_RESUME === "replay")
+				notify(sessionId, history[1]);
+			if (process.env.FAKE_SESSION_RESUME === "state")
+				notify(sessionId, {
+					sessionUpdate: "available_commands_update",
+					availableCommands: [{ name: "LIVE", description: "state" }],
+				});
+		} else {
+			for (const u of history.slice(0, 2)) notify(sessionId, u);
+			if (process.env.FAKE_REPLAY_COMPLETE) {
+				notify(sessionId, { sessionUpdate: "replay_complete" });
+				notify(sessionId, {
+					sessionUpdate: "available_commands_update",
+					availableCommands: [
+						{ name: "LIVE", description: "after the marker" },
+					],
+				});
+			}
+		}
 		const options = configOptions();
 		const modes = sessionModes();
 		send({
@@ -560,6 +657,13 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
+		// gemini-cli's shape (google-gemini/gemini-cli#29707): the history after the answer.
+		if (late) for (const u of history) notify(sessionId, u);
+		if (process.env.FAKE_SESSION_RESUME === "straggler")
+			notify(sessionId, {
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "REPLAYED with no id" },
+			});
 	} else if (msg.method === "session/set_config_option") {
 		const { configId, value } = msg.params ?? {};
 		// FAKE_REJECT_SET: the agent answers with an RPC error instead of a silent non-switch.

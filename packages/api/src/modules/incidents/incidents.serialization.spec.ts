@@ -246,6 +246,15 @@ describe("incidents serialization contract conformance", () => {
 		);
 	});
 
+	it("carries a run's endReason, so the inbox and overview can tell a restart's cut-off run from a failure (#1010)", () => {
+		const row = {
+			...seededIncidentRow,
+			investigations: [{ ...seededIncidentRow.investigations[0], status: "failed", endReason: "interrupted" }],
+		};
+		const serialized = serialize(row) as { investigations: { endReason: unknown }[] };
+		expect(serialized.investigations[0].endReason).toBe("interrupted");
+	});
+
 	it("preserves a completed investigation's completedAt", async () => {
 		const { IncidentWithRelationsSchema } = await import(
 			"@prismalens/contracts/schemas"

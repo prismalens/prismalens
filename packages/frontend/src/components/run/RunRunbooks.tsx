@@ -198,6 +198,7 @@ function ManyRunbooks({ runbooks }: { runbooks: Runbook[] }) {
 			</div>
 			<fieldset
 				aria-label="Service"
+				data-scroll-x
 				className="m-0 flex gap-1.5 overflow-x-auto border-0 p-0.5"
 			>
 				<ServiceChip

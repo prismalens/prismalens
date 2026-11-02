@@ -33,12 +33,29 @@ export class WebhookRawBodyMiddleware implements NestMiddleware {
 	 */
 	private readonly parseJson = express.json({
 		limit: "1mb",
+		// SNS posts its JSON as text/plain; only the CloudWatch route reads it that way.
+		type: (req) => {
+			const type = (req.headers["content-type"] ?? "").toLowerCase();
+			return (
+				type.startsWith("application/json") ||
+				(type.startsWith("text/plain") &&
+					((req as Request).originalUrl ?? req.url ?? "")
+						.split("?")[0]
+						.endsWith("/webhooks/cloudwatch"))
+			);
+		},
 		verify: (req, _res, buf) => {
 			(req as RequestWithRawBody).rawBody = Buffer.from(buf);
 		},
 	});
 
 	use(req: Request, res: Response, next: NextFunction) {
-		this.parseJson(req, res, next);
+		this.parseJson(req, res, (err?: unknown) => {
+			// oRPC picks its decoder by content type; once SNS text is parsed it is JSON.
+			if (!err && req.body !== undefined) {
+				req.headers["content-type"] = "application/json";
+			}
+			next(err);
+		});
 	}
 }

@@ -30,9 +30,17 @@ export interface Incident {
 
 export interface Investigation {
 	id: string;
-	incidentId: string;
+	/** Null for a scheduled check no finding linked yet (#979). */
+	incidentId: string | null;
 	status: string;
-	report?: { rootCause: string | null } | null;
+	triggerType?: string | null;
+	report?: {
+		rootCause: string | null;
+		hypotheses?: Array<{
+			status: string;
+			evidence: Array<{ status: string; direction: string }>;
+		}>;
+	} | null;
 	error?: string | null;
 }
 
@@ -89,6 +97,33 @@ export class ScenarioApp {
 	async stop(): Promise<void> {
 		await this.app?.close();
 		this.app = null;
+	}
+
+	/** The running app's database; every job and run lives here. */
+	async prisma() {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { PrismaService } = await import(
+			"../../../src/core/prisma/prisma.service.js"
+		);
+		return this.app.get(PrismaService);
+	}
+
+	/** Runs one dispatch pass: the loop has no poll timer, so a job moved to now waits for one (#981). */
+	async tick(): Promise<void> {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { DispatchService } = await import(
+			"../../../src/infrastructure/dispatch/dispatch.service.js"
+		);
+		await this.app.get(DispatchService)["dispatcher"].tick();
+	}
+
+	/** Makes this process read as having run since `startedAt`, so its stop is not a boot loop (#981). */
+	async ranSince(startedAt: Date): Promise<void> {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { RuntimeLifecycleService } = await import(
+			"../../../src/core/lifecycle/runtime-lifecycle.service.js"
+		);
+		Object.assign(this.app.get(RuntimeLifecycleService), { startedAt });
 	}
 
 	async dispose(): Promise<void> {

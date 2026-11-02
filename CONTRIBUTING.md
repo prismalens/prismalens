@@ -62,20 +62,22 @@ pnpm dev          # turbo run dev (or dev:api / dev:frontend)
 
 There is no login, and in dev no pairing step either. The first page request from a browser with no device session makes `vite dev` mint an operator link, redeem it through the real API and set the device cookie, so `localhost:3000` opens straight into the app. Set `PRISMALENS_DEV_PAIR=off` to pair by hand instead (the dev API still logs `Open this machine's session: <link>`). `pnpm db:init` on an empty database seeds demo data (~60 alerts, incidents, investigations) when `NODE_ENV=development` or `PRISMALENS_SEED_DEMO=1` — the same gate e2e tests and CI use to force it outside development. `pnpm --filter @prismalens/database db:seed` reruns the seed directly.
 
+Usage telemetry from your own testing must not count as an install (#1021). Export `PRISMALENS_TELEMETRY=internal` in your shell profile: events still go out, as they would for a user, but under the install id prefixed `internal-`, so PostHog can drop them at ingestion. The stored id is unchanged, and Settings → Usage data → Recently sent shows the prefixed id that was sent. `off`, `0` and `false` still turn telemetry off. `pnpm dev` and every script that boots the app for testing (the packed smokes, `pl-up-e2e.mjs`, `cross-os-app-boot.mjs`, the desktop smoke) default to `internal` unless the variable is already set, and `gate:side-checks` always uses it. `build` is `release` only for a published version, 0.5.0 or later without a pre-release suffix; a source checkout (`0.0.x`) or an rc reports `dev`.
+
 To work on the Electron app, run `pnpm dev:desktop`. It starts the API, the frontend and the desktop together, and the window loads the Vite dev server (`PRISMALENS_DESKTOP_DEV_URL`, default `http://localhost:3000`) and pairs itself, with hot reload for the renderer and a restart of Electron on every compiled change to `packages/desktop`. The packed-backend path (`pnpm --filter @prismalens/desktop stage:backend`, then `start`) is for checking the shipped artifact, not for day-to-day work.
 
 ### Browser e2e tier
 
-The Playwright suite runs in CI as its own workflow (`.github/workflows/e2e.yml`, chromium-only) on
+The Playwright suite runs in CI as its own workflow (`.github/workflows/e2e-browser.yml`, chromium-only) on
 every pull request and on pushes to `main`. It is **not a required check yet** — it is promoted to
-required when the last 20 `main`-branch runs are green *and* none of them consumed a Playwright
+required when the last 20 `main`-branch runs are green _and_ none of them consumed a Playwright
 retry, and once the storm-intake spec has landed. The rationale, the promotion trigger, and the
 journey-by-journey coverage matrix live in
 [`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md).
 
 Two things to know before running it locally:
 
-- Each Playwright worker gets its own API, Vite, workspace and database; worker *n* binds
+- Each Playwright worker gets its own API, Vite, workspace and database; worker _n_ binds
   ports 3000+2n and 3001+2n (2 workers locally, one per CPU in CI). Stop `pnpm dev` first, or move
   the base ports with `PRISMALENS_FRONTEND_PORT`/`PRISMALENS_PORT`. `--workers=1` runs one stack.
 - The servers get a PATH holding only node, pnpm, git and the fake agents, so a real `claude` or
@@ -123,13 +125,13 @@ fixed together with the journey or scenario that would have caught it. How to wr
 
 A PR never waits on a live model, and nothing here spends money on one (#884, #914). The agent loop is checked these ways:
 
-| Check | Model | Runs | Where |
-| --- | --- | --- | --- |
-| `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
-| `harness-admission`, one leg per agent: the admission (R1-R9) and the behaviour matrix | the real pinned agent, its model calls served by aimock (`@copilotkit/aimock`, pinned) from `scripts/fakes/scenarios/` | every PR; tier-1 legs gate, tier-2 legs do not | `ci.yml` |
-| protocol probe | none: `initialize` and `session/new` against each row's latest release | nightly | `agent-releases.yml` |
-| pin bump | none: a pull request once a release has soaked 3 days | daily | `agent-releases.yml` |
-| `harness-admission-live`, `packed-intake-live` | the real pinned OpenCode on its own free model | on dispatch, and before a release | `ci.yml` (dispatch only: that model stalls, so a nightly would be red most nights) |
+| Check                                                                                  | Model                                                                                                                  | Runs                                           | Where                                                                              |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks`                    | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`)                                                            | every PR                                       | `ci.yml`                                                                           |
+| `harness-admission`, one leg per agent: the admission (R1-R11) and the behaviour matrix | the real pinned agent, its model calls served by aimock (`@copilotkit/aimock`, pinned) from `scripts/fakes/scenarios/` | every PR; tier-1 legs gate, tier-2 legs do not | `ci.yml`                                                                           |
+| protocol probe                                                                         | none: `initialize` and `session/new` against each row's latest release                                                 | nightly                                        | `agent-release-watch.yml`                                                          |
+| pin bump                                                                               | none: a pull request once a release has soaked 3 days                                                                  | daily                                          | `agent-release-watch.yml`                                                          |
+| `harness-admission-live`, `packed-intake-live`                                         | the real pinned OpenCode on its own free model                                                                         | on dispatch, and before a release              | `ci.yml` (dispatch only: that model stalls, so a nightly would be red most nights) |
 
 Tier 1 is opencode, claude-code and codex; gemini and deepagents (`dcode`) are tier 2. A row's `tested` comes from CI only: it equals the pin CI installs (`scripts/agent-pins.json` for the agent, `@prismalens/agent-adapters` for the adapter, checked by `harness-pins.test.ts`) and moves only in a merged bump PR, whose CI runs the matrix on the new version.
 
@@ -144,9 +146,9 @@ node scripts/admission-fake.mjs claude-code "$PWD" --repeat 3
 ROW cancel: pass [cancelled; error: investigation cancelled; 5s]
 ROW http-500: pass [fault; error: Internal error: API Error: 500 scripted server error. ...; 3s]
 ...
-run 1/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass | cancel=pass empty-response=pass ...
-run 2/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass | cancel=pass empty-response=pass ...
-run 3/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass | cancel=pass empty-response=pass ...
+run 1/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass R10=pass R11=pass | cancel=pass empty-response=pass ...
+run 2/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass R10=pass R11=pass | cancel=pass empty-response=pass ...
+run 3/3: ok R1-R4=pass R5=pass R6=skipped R7=pass R8=pass R9=pass R10=pass R11=pass | cancel=pass empty-response=pass ...
 ```
 
 The driver starts aimock on `127.0.0.1` with that agent's fixtures, points the agent at it from a throwaway
@@ -167,34 +169,35 @@ wire; `scripts/fakes/scenarios/agents.json` maps each agent's shell tool, read f
 process is gone; `cancelled-orphaned` a known agent bug: cancelled, but the tool's process outlives the run, and the
 row fails once the agent fixes it.
 
-| Row | PrismaLens must | opencode | claude-code | codex | gemini | dcode |
-| --- | --- | --- | --- | --- | --- | --- |
-| R1-R4 admission | run in the clone, read allowed, report validates | pass | pass | pass | known failure: Gemini's ACP shell update carries no output, so the nonce never reaches PrismaLens (google-gemini/gemini-cli#29930) | pass |
-| R5 resume | reopen with `session/load`, no replayed history as new events | pass | pass | pass | known failure: Gemini answers `session/load` before its replay ends (google-gemini/gemini-cli#29707; worked around in #942) | pass |
-| R6 user model | serve the user's OpenCode model | pass | n/a: OpenCode only | n/a | n/a | n/a |
-| R7 resume after a failed report | reopen after a broken report | n/a: no base-URL proxy | pass | n/a: no base-URL proxy | n/a: no base-URL proxy | n/a: cannot reopen |
-| R8, R9 gateway tool call | call `incident_get` on the first turn and the follow-up | pass | pass | pass | pass | pass (R9 n/a: cannot reopen) |
-| report | `report` | pass | pass | pass | pass | pass |
-| tool-call | `tool-report` | pass | pass | pass | pass | pass |
-| permission-allowed | the ask is approved, the file is written, `report` | pass | pass | pass (escalated command: Codex's Ask-for-approval mode writes the workspace unasked) | pass | pass |
-| permission-declined | only refused asks, no file | pass | pass | pass (escalated, as above) | pass | pass |
-| cancel | `cancelled`, the tool's process gone | pass | pass | pass | pass | known failure (`cancelled-orphaned`): dcode's command outlives the cancelled run, langchain-ai/deepagents#5907 |
-| not-signed-in | `error` | pass | pass | pass | pass | pass (`exited`: dcode exits before `initialize` with no provider key) |
-| modes | modes and model options from `session/new` as the registry row says | pass | pass | pass | pass | pass (none, as the row says) |
-| invalid-tool-args | `report` | pass | pass | pass | pass (`fault`: Gemini re-sends the request on a malformed call, then ends the turn empty) | pass |
-| unknown-tool | `report` | pass | pass | pass | pass | pass |
-| empty-response | `fault` | pass | pass | pass | pass | pass |
-| length-cutoff | `fault` | pass (the prompt limit ends it: OpenCode re-asks) | pass | pass | pass | pass (prompt limit) |
-| refusal | `fault` | pass | pass | pass | pass (as a safety stop) | pass |
-| http-500 | `fault` | pass | pass | pass | pass | pass |
-| http-429 | `report` after the agent's own retry | pass | pass | pass | pass | pass |
-| stream-dropped | `fault` | pass | pass | pass | pass | pass |
-| slow-first-token | `fault`: the engine's prompt limit (15 s here) ends the turn | pass | pass | pass | pass | pass |
-| parallel-tool-calls | two tool results, `report` | pass | pass | pass | pass | pass |
+| Row                             | PrismaLens must                                                     | opencode                                          | claude-code        | codex                                                                                | gemini                                                                                                                             | dcode                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| R1-R4 admission                 | run in the clone, read allowed, report validates                    | pass                                              | pass               | pass                                                                                 | known failure: Gemini's ACP shell update carries no output, so the nonce never reaches PrismaLens (google-gemini/gemini-cli#29930) | pass                                                                                                           |
+| R5 resume                       | reopen with `session/load`, no replayed history as new events       | pass                                              | pass               | pass                                                                                 | known failure: Gemini answers `session/load` before its replay ends (google-gemini/gemini-cli#29707; worked around in #942)        | pass                                                                                                           |
+| R6 user model                   | serve the user's OpenCode model                                     | pass                                              | n/a: OpenCode only | n/a                                                                                  | n/a                                                                                                                                | n/a                                                                                                            |
+| R7 resume after a failed report | reopen after a broken report                                        | n/a: no base-URL proxy                            | pass               | n/a: no base-URL proxy                                                               | n/a: no base-URL proxy                                                                                                             | n/a: cannot reopen                                                                                             |
+| R8, R9 gateway tool call        | call `incident_get` on the first turn and the follow-up             | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass (R9 n/a: cannot reopen)                                                                                   |
+| R11 killed mid-turn             | kill the agent's process tree while a tool runs, reopen the session in a new process by the engine's own path, prompt again: the next model request carries the first prompt (on a fresh session, the handoff does), and no tool call id or earlier text comes back as new | pass (`session/resume`)                           | pass (`session/resume`) | pass (`session/resume`)                                                              | pass (fresh session seeded by the handoff)                                                                                         | pass (handoff: its row cannot resume, so a follow-up is a new session)                                         |
+| report                          | `report`                                                            | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| tool-call                       | `tool-report`                                                       | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| permission-allowed              | the ask is approved, the file is written, `report`                  | pass                                              | pass               | pass (escalated command: Codex's Ask-for-approval mode writes the workspace unasked) | pass                                                                                                                               | pass                                                                                                           |
+| permission-declined             | only refused asks, no file                                          | pass                                              | pass               | pass (escalated, as above)                                                           | pass                                                                                                                               | pass                                                                                                           |
+| cancel                          | `cancelled`, the tool's process gone                                | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | known failure (`cancelled-orphaned`): dcode's command outlives the cancelled run, langchain-ai/deepagents#5907 |
+| not-signed-in                   | `error`                                                             | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass (`exited`: dcode exits before `initialize` with no provider key)                                          |
+| modes                           | modes and model options from `session/new` as the registry row says | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass (none, as the row says)                                                                                   |
+| invalid-tool-args               | `report`                                                            | pass                                              | pass               | pass                                                                                 | pass (`fault`: Gemini re-sends the request on a malformed call, then ends the turn empty)                                          | pass                                                                                                           |
+| unknown-tool                    | `report`                                                            | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| empty-response                  | `fault`                                                             | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| length-cutoff                   | `fault`                                                             | pass (the prompt limit ends it: OpenCode re-asks) | pass               | pass                                                                                 | pass                                                                                                                               | pass (prompt limit)                                                                                            |
+| refusal                         | `fault`                                                             | pass                                              | pass               | pass                                                                                 | pass (as a safety stop)                                                                                                            | pass                                                                                                           |
+| http-500                        | `fault`                                                             | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| http-429                        | `report` after the agent's own retry                                | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| stream-dropped                  | `fault`                                                             | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| slow-first-token                | `fault`: the engine's prompt limit (15 s here) ends the turn        | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
+| parallel-tool-calls             | two tool results, `report`                                          | pass                                              | pass               | pass                                                                                 | pass                                                                                                                               | pass                                                                                                           |
 
 As of CI run 40182891095 on 7b68402a (3 agreeing runs per leg). The gemini and dcode legs are red on the cells in bold; they gate nothing until those are fixed.
 
-`R1-R9` (the admission) run beside the matrix in every leg. A fault a wire cannot express is `n/a` with its
+`R1-R11` (the admission) run beside the matrix in every leg. A fault a wire cannot express is `n/a` with its
 reason in the row's `na` field, and the table shows it; none is today: aimock serves every fault on the wires these
 agents use, and on Gemini's wire, which has no refusal, the refusal row is a safety stop (`content-filter`).
 
@@ -217,7 +220,10 @@ gets a shell step, and the result of that step gets the report.
 		{
 			"match": { "inConversation": "[row:http-429]", "sequenceIndex": 0 },
 			"response": {
-				"error": { "message": "scripted rate limit", "type": "rate_limit_error" },
+				"error": {
+					"message": "scripted rate limit",
+					"type": "rate_limit_error"
+				},
 				"status": 429,
 				"retryAfter": 1
 			}
@@ -264,12 +270,12 @@ SQLite app-data databases are migrated **by the app itself, at boot**, not by th
 Prisma CLI: `pl up` runs on a machine with no `pnpm`, no `prisma` binary, and no
 schema source. Four stages, and what carries each:
 
-| Stage | Who does it | Where it lives | How to see it |
-|---|---|---|---|
-| **Author** | you, once per schema change | `packages/@prismalens/database/prisma/sqlite/schema/<timestamp>_<name>/migration.sql` | `pnpm db:migrate` |
-| **Ship** | `pnpm build` | `dist/prisma/sqlite/schema/…` — `scripts/copy-migrations.mjs` stages the SQL next to the compiled runner, because `tsc` emits only JS | `ls packages/@prismalens/database/dist/prisma/sqlite/schema` |
-| **Detect** | the runner, on every app start | shipped migrations minus the rows in `_prisma_migrations` | `pnpm db:init` prints what it will apply |
-| **Apply + record** | the runner, in one `BEGIN IMMEDIATE` transaction | the SQL runs and its `_prisma_migrations` row is written **in the same transaction** — there is no half-applied state to repair | `pnpm exec prisma migrate status` agrees with it |
+| Stage              | Who does it                                      | Where it lives                                                                                                                        | How to see it                                                |
+| ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **Author**         | you, once per schema change                      | `packages/@prismalens/database/prisma/sqlite/schema/<timestamp>_<name>/migration.sql`                                                 | `pnpm db:migrate`                                            |
+| **Ship**           | `pnpm build`                                     | `dist/prisma/sqlite/schema/…` — `scripts/copy-migrations.mjs` stages the SQL next to the compiled runner, because `tsc` emits only JS | `ls packages/@prismalens/database/dist/prisma/sqlite/schema` |
+| **Detect**         | the runner, on every app start                   | shipped migrations minus the rows in `_prisma_migrations`                                                                             | `pnpm db:init` prints what it will apply                     |
+| **Apply + record** | the runner, in one `BEGIN IMMEDIATE` transaction | the SQL runs and its `_prisma_migrations` row is written **in the same transaction** — there is no half-applied state to repair       | `pnpm exec prisma migrate status` agrees with it             |
 
 The runner writes `_prisma_migrations` byte-for-byte the way Prisma does
 (identical DDL, sha256-of-the-file checksum, `applied_steps_count = 1`), so a
@@ -299,19 +305,19 @@ Database schema is up to date!
 
 It never partially applies. Each of these leaves the database exactly as found:
 
-| `MigrationError.code` | What happened | What to do |
-|---|---|---|
-| `pre-release-database` | the database was created by a version before 0.5.0; that lineage was replaced by one `init` at 0.5.0 and does not upgrade | move the file aside, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
-| `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
-| `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only. If the edit already shipped, see *Recovering a database that drifted* below — **never** delete the database |
-| `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore a *validated* `prismalens.db.bak-*` (see below), or reconcile with the Prisma CLI |
-| `incomplete-migration` | a row is started-but-unfinished on SQLite (reachable only via the Prisma CLI, not this runner) | restore a *validated* `prismalens.db.bak-*` (see below). `prisma migrate resolve --rolled-back` clears the ledger row only without reverting schema changes, and is correct only when confirmed that no schema changes occurred or after manually reverting partial schema changes |
-| `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
+| `MigrationError.code`  | What happened                                                                                                             | What to do                                                                                                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pre-release-database` | the database was created by a version before 0.5.0; that lineage was replaced by one `init` at 0.5.0 and does not upgrade | move the file aside, or point `PRISMALENS_WORKSPACE_DIR` elsewhere                                                                                                                                                                                                                 |
+| `version-skew`         | the database records a migration this build does not ship — it was written by a newer PrismaLens                          | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere                                                                                                                                                                                                                  |
+| `checksum-mismatch`    | a shipped migration's SQL differs from what was applied — an edited or squashed history                                   | restore the migration file; history is append-only. If the edit already shipped, see _Recovering a database that drifted_ below — **never** delete the database                                                                                                                    |
+| `history-gap`          | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row                          | restore a _validated_ `prismalens.db.bak-*` (see below), or reconcile with the Prisma CLI                                                                                                                                                                                          |
+| `incomplete-migration` | a row is started-but-unfinished on SQLite (reachable only via the Prisma CLI, not this runner)                            | restore a _validated_ `prismalens.db.bak-*` (see below). `prisma migrate resolve --rolled-back` clears the ledger row only without reverting schema changes, and is correct only when confirmed that no schema changes occurred or after manually reverting partial schema changes |
+| `locked`               | another PrismaLens process held the write lock for the whole retry budget                                                 | wait for it and retry                                                                                                                                                                                                                                                              |
 
 Before applying anything to a database that already holds data, the runner takes
 an online backup to `prismalens.db.bak-<epoch-ms>` next to it.
 
-**"Restore the backup" means restore a *validated* one — not simply the newest.**
+**"Restore the backup" means restore a _validated_ one — not simply the newest.**
 The newest backup may be the one taken immediately before the run that produced
 the broken state. Check each candidate, newest first, and use the first whose
 history is an ordered prefix of the shipped migrations with no unfinished rows:
@@ -343,6 +349,7 @@ What the operator sees: the migration fails with a raw `SqliteError: UNIQUE cons
 
 What to do:
 1. Run the diagnostic query to inspect the duplicate rows:
+
    ```console
    $ sqlite3 ~/.prismalens/prismalens.db \
        "SELECT issuer, accountId, GROUP_CONCAT(id, ', ') AS ids, COUNT(*) AS count
@@ -397,8 +404,8 @@ nothing but** the missing `jobs` table, its three indexes, and
 other than `20260803122809_init` is named in the error, stop — this recipe does
 not describe your drift, and you need the actual delta for your case.
 
-The checksum to write is the one the error message printed as *"shipped by this
-build"*; for the `20260803122809_init` drift it is
+The checksum to write is the one the error message printed as _"shipped by this
+build"_; for the `20260803122809_init` drift it is
 `0e7aa00150d19520db40e2faf4400c93e317e19051d891dced3541e147b7ab76`. Confirm it
 matches your error before running this — a checksum copied from documentation is
 only correct for the release it was written against.
@@ -492,7 +499,7 @@ Versioning and publishing run through
    1. release-please creates the tag and a **draft** release (`draft` and
       `force-tag-creation` in `release-please-config.json`; without the forced
       tag a draft has none, and release-please could not find it next time).
-   2. `standalone.yml` and `desktop.yml`, called with the tag, build from it
+   2. `build-standalone-cli.yml` and `build-desktop-app.yml`, called with the tag, build from it
       and attach the archives, the CycloneDX SBOM, `install.sh`, `install.ps1`
       and the desktop zips to the draft.
    3. The `sums` job writes one `SHA256SUMS` over every asset on the draft and
@@ -511,14 +518,14 @@ Versioning and publishing run through
    What a failure leaves, and what finishes it, for a `v0.5.3` release whose
    previous version is `0.5.2`:
 
-   | Job that failed | GitHub release `v0.5.3` | npm `latest` | Finish it with |
-   | --- | --- | --- | --- |
-   | `release-please`, after it made the tag and draft | draft, no assets | `0.5.2` | `gh workflow run release.yml -f tag=v0.5.3`. A re-run sees an existing release and builds nothing. |
-   | `Resolve the draft release`, `standalone` or `desktop` | draft, some assets | `0.5.2` | **Re-run failed jobs**. An upload to a draft replaces what is there. |
-   | `Publish to npm` | draft, every asset | `0.5.2`, or `0.5.3` if the publish went through | **Re-run failed jobs**. npm is skipped when the version is already on it. |
-   | `Publish the release` | draft, every asset | `0.5.3` | **Re-run failed jobs**. |
-   | `Update the Homebrew tap and Scoop bucket` | published, immutable | `0.5.3` | **Re-run failed jobs**. It reads the published `SHA256SUMS`. |
-   | `Install from the real Homebrew tap`, `Install from the real Scoop bucket` | published, immutable | `0.5.3` | **Re-run failed jobs**, once the tap or bucket has the new version. |
+   | Job that failed                                                            | GitHub release `v0.5.3` | npm `latest`                                    | Finish it with                                                                                     |
+   | -------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+   | `release-please`, after it made the tag and draft                          | draft, no assets        | `0.5.2`                                         | `gh workflow run release.yml -f tag=v0.5.3`. A re-run sees an existing release and builds nothing. |
+   | `Resolve the draft release`, `standalone` or `desktop`                     | draft, some assets      | `0.5.2`                                         | **Re-run failed jobs**. An upload to a draft replaces what is there.                               |
+   | `Publish to npm`                                                           | draft, every asset      | `0.5.2`, or `0.5.3` if the publish went through | **Re-run failed jobs**. npm is skipped when the version is already on it.                          |
+   | `Publish the release`                                                      | draft, every asset      | `0.5.3`                                         | **Re-run failed jobs**.                                                                            |
+   | `Update the Homebrew tap and Scoop bucket`                                 | published, immutable    | `0.5.3`                                         | **Re-run failed jobs**. It reads the published `SHA256SUMS`.                                       |
+   | `Install from the real Homebrew tap`, `Install from the real Scoop bucket` | published, immutable    | `0.5.3`                                         | **Re-run failed jobs**, once the tap or bucket has the new version.                                |
 
    The hand-run **Release** refuses a release that is not a draft. A version
    older than the current latest release is published to npm under the
@@ -545,19 +552,20 @@ with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 
 Each artifact is held to a standard by a gate that fails the PR or the release (#906):
 
-| Artifact | Standard | Gate |
-|---|---|---|
-| npm `prismalens` | `files` allowlist, npm provenance, copied (not bundled) first-party tree (#237) | `scripts/check-artifact.mjs` (path, size, licences), publint on the packed manifest, and a second pack that must match byte for byte, in `ci.yml` |
-| npm `@prismalens/agent-adapters` | one esbuild file per adapter, licence texts of everything inlined | `bundle.test.mjs` (ACP `initialize`), `check-artifact.mjs`, publint |
-| Standalone archives (5) | `app/` is the npm global tree relocated, pruned; Node is the binary and its LICENSE | `check-artifact.mjs` on every target, Windows PowerShell 5.1 install and Scoop install with long paths off |
-| `install.ps1` / `install.sh` | `.ps1` is ASCII only (no BOM: `irm \| iex` reads the body as text); `.sh` is UTF-8 without a BOM | `scripts/install/encoding.test.mjs`, `install.ps1 -Help` under `powershell -File` |
-| Desktop zips | asar, unsigned (#697) | `check-release-paths.mjs --paths --max-mb --max-files`, `missingLicences` in `pack-desktop.mjs` |
-| Every release asset | one `SHA256SUMS` and one build-provenance attestation (SLSA v1 Build L2) | `release.yml` `sums` job |
-| SBOM | CycloneDX from `npm sbom` over the linux-x64 `app/` tree, `prismalens-<v>.cdx.json` | `standalone.yml` asserts `bomFormat` and an `@prismalens/api` component |
+| Artifact                         | Standard                                                                                         | Gate                                                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| npm `prismalens`                 | `files` allowlist, npm provenance, copied (not bundled) first-party tree (#237)                  | `scripts/check-artifact.mjs` (path, size, licences), publint on the packed manifest, and a second pack that must match byte for byte, in `ci.yml` |
+| npm `@prismalens/agent-adapters` | one esbuild file per adapter, licence texts of everything inlined                                | `bundle.test.mjs` (ACP `initialize`), `check-artifact.mjs`, publint                                                                               |
+| Standalone archives (5)          | `app/` is the npm global tree relocated, pruned; Node is the binary and its LICENSE              | `check-artifact.mjs` on every target, Windows PowerShell 5.1 install and Scoop install with long paths off                                        |
+| `install.ps1` / `install.sh`     | `.ps1` is ASCII only (no BOM: `irm \| iex` reads the body as text); `.sh` is UTF-8 without a BOM | `scripts/install/encoding.test.mjs`, `install.ps1 -Help` under `powershell -File`                                                                 |
+| Desktop zips                     | asar, unsigned (#697)                                                                            | `check-release-paths.mjs --paths --max-mb --max-files`, `missingLicences` in `pack-desktop.mjs`                                                   |
+| Every release asset              | one `SHA256SUMS` and one build-provenance attestation (SLSA v1 Build L2)                         | `release.yml` `sums` job                                                                                                                          |
+| SBOM                             | CycloneDX from `npm sbom` over the linux-x64 `app/` tree, `prismalens-<v>.cdx.json`              | `build-standalone-cli.yml` asserts `bomFormat` and an `@prismalens/api` component                                                                 |
 
 Budgets live in `scripts/artifact-budgets.json`: bytes and file count per artifact,
 and the unpacked size for each desktop OS. A change that grows an artifact past its
-budget raises the number in the same PR, with the reason.
+budget raises the number in the same PR, with the reason. A breach prints the five
+largest unpacked files, which names what grew.
 
 The path limit is 260 - 40 = **220** characters for a 20-character username, on every
 Windows prefix an artifact lands under: the npm global prefix, the installer's
@@ -622,7 +630,7 @@ a local stub. A terminal is a pseudo-terminal from `@lydell/node-pty` on every O
 runs as `node <bin>`, so no shell shim or `script(1)` is involved. The script prints one
 PASS, FAIL, SKIP or N/A line per check and exits non-zero on any FAIL, and on a SKIP
 under `--no-skip`, which CI passes. `rollback` is N/A off Linux (the trial runs under
-systemd), `upgrade` is N/A on Windows (the runner's `pl upgrade` dies when npm moves the running `pl`'s own directory; see #921), and `rollback` is skipped on Linux when there is no systemd user manager or a
+systemd) and is skipped on Linux when there is no systemd user manager or a
 `prismalens.service` already exists. On Windows there is no SIGTERM: the lock check ends the holder
 outright and expects the next boot to take the stale lock. CI's `Gate side checks`
 job runs them on Linux, macOS and Windows on every PR and every push to `main`, and its run on the release PR's base
@@ -647,7 +655,7 @@ Product documentation lives on the documentation website at
 only the root `README.md`, package `README.md` files, and contributor process
 documentation.
 
-Each 0.x release is gated by its own Phase gate issue, which `phase-gate.yml` files
+Each 0.x release is gated by its own Phase gate issue, which `milestone-release-checklist.yml` files
 when the release's milestone is created, from the patch or minor template in
 `.github/release-checklists/`. A packed walk passes on the release PR's base SHA
 (see [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
@@ -662,9 +670,9 @@ Milestones are versions, and exactly two are open: the current release and the
 next. With `0.5.3` and `0.5.4` open, once the `0.5.3` release PR merges:
 
 1. Finish and close the `0.5.3` Phase gate issue. A milestone closed before its
-   gate issue makes `phase-gate.yml` warn on that issue.
+   gate issue makes `milestone-release-checklist.yml` warn on that issue.
 2. Move `0.5.3`'s open issues to `0.5.4`, then close `0.5.3`.
-3. Create `0.5.5`; `phase-gate.yml` files its Phase gate issue from `patch.md`
+3. Create `0.5.5`; `milestone-release-checklist.yml` files its Phase gate issue from `patch.md`
    (`minor.md` for a `0.N.0`).
 
 `0.5.4` and `0.5.5` are then the two open milestones. Direction by theme lives in the pinned

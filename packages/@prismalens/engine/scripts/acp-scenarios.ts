@@ -11,6 +11,8 @@ import {
 	existsSync,
 	mkdtempSync,
 	readFileSync,
+	readlinkSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -23,6 +25,7 @@ import type {
 } from "@prismalens/contracts/schemas";
 import type {
 	Expectation,
+	GatewayExpectation,
 	Row,
 } from "../../../../scripts/fakes/scripted-model.mjs";
 import {
@@ -37,6 +40,7 @@ import {
 } from "../src/run/permission.js";
 import { AcpSession } from "../src/runner/acp-client.js";
 import { parseTranscript } from "./admission-checks.js";
+import { startStubGateway } from "./stub-gateway.js";
 
 export const ROW_RUN_ID = "00000000-0000-4000-8000-0000000000a1";
 const DEFAULT_PROMPT_MS = 120_000;
@@ -91,8 +95,8 @@ export interface RowEnv {
 	signedOutEnv: NodeJS.ProcessEnv;
 }
 
-/** Command lines of every process on this machine. */
-function commandLines(): string[] {
+/** Pid and command line of every process on this machine. */
+function processes(): { pid: number; args: string }[] {
 	const out =
 		process.platform === "win32"
 			? execFileSync(
@@ -100,15 +104,45 @@ function commandLines(): string[] {
 					[
 						"-NoProfile",
 						"-Command",
-						"Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }",
+						'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }',
 					],
 					{ encoding: "utf8" },
 				)
-			: execFileSync("ps", ["-eo", "args="], { encoding: "utf8" });
-	return out.split(/\r?\n/);
+			: execFileSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" });
+	return out.split(/\r?\n/).flatMap((line) => {
+		const m = /^\s*(\d+) (.*)$/.exec(line);
+		return m ? [{ pid: Number(m[1]), args: m[2] ?? "" }] : [];
+	});
 }
-const running = (needle: string): boolean =>
-	commandLines().some((line) => line.includes(needle));
+/** The program a command line runs: `node` for `"C:\…\node.exe" -e …` or `node -e …`. */
+const program = (args: string): string =>
+	(/^"([^"]+)"|^(\S+)/.exec(args.trim())?.slice(1).find(Boolean) ?? "")
+		.split(/[\\/]/)
+		.pop()
+		?.replace(/\.exe$/i, "")
+		.toLowerCase() ?? "";
+
+/**
+ * This row's `node` processes running `needle`: the tool itself, never the agent's shell wrapper
+ * around it, which shows the needle before the tool starts (#885). On Linux only those whose cwd is
+ * the row's workspace, so matrix runs going at once (admission-fake.mjs) never see each other's.
+ */
+function running(needle: string, workspace: string): number[] {
+	// /proc reports the physical path; the workspace may sit under a symlink.
+	const root =
+		process.platform === "linux" ? realpathSync(workspace) : workspace;
+	return processes()
+		.filter(({ pid, args }) => {
+			if (!args.includes(needle) || program(args) !== "node") return false;
+			if (process.platform !== "linux") return true;
+			try {
+				return readlinkSync(`/proc/${pid}/cwd`).startsWith(root);
+			} catch {
+				return false;
+			}
+		})
+		.map(({ pid }) => pid);
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function openSession(
@@ -126,6 +160,7 @@ async function openSession(
 		cwd,
 		runDir,
 		env,
+		hostEnv: env,
 	});
 	const acp = new AcpSession({
 		command: launch.command,
@@ -199,13 +234,18 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 		let sawTool = false;
 		const poll = needle
 			? setInterval(() => {
-					if (!sawTool && running(needle)) {
+					if (!sawTool && running(needle, workspace).length > 0) {
 						sawTool = true;
 						controller.abort();
 					}
 				}, 500)
 			: undefined;
 		const events: CanonicalEvent[] = [];
+		// Every row runs with PrismaLens's tools, as a real run does (#848); off only to compare.
+		const stub =
+			process.env.PL_MATRIX_GATEWAY === "off"
+				? null
+				: await startStubGateway({ harness: base.harness });
 		try {
 			for await (const ev of runInvestigation({
 				harness: base.harness,
@@ -215,28 +255,50 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 				cwd: workspace,
 				runDir,
 				env,
+				// The floor inherits the host env (#817), so a signed-out row needs a signed-out host too.
+				hostEnv: env,
 				permission: answerPolicy(row.run.answer ?? "deny"),
 				promptSuffix: `[row:${row.row}] Follow the scripted steps, then report.`,
 				sandboxCheck: async () => ({}),
 				initTimeoutMs: 60_000,
 				promptTimeoutMs: promptMs,
 				signal: controller.signal,
+				...(stub ? { gateway: stub.entry } : {}),
 			}))
 				events.push(ev);
 		} finally {
 			clearTimeout(watchdog);
 			if (poll) clearInterval(poll);
+			await stub?.close();
 		}
 		let orphan: boolean | undefined;
 		if (needle && sawTool) {
 			orphan = true;
+			let pids: number[] = [];
 			for (let i = 0; i < 20 && orphan; i++) {
-				orphan = running(needle);
+				pids = running(needle, workspace);
+				orphan = pids.length > 0;
 				if (orphan) await sleep(500);
 			}
-			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
+			// Who outlived the cancel, on stderr, which admission-fake.mjs prints only for a failed run.
 			if (orphan && process.platform !== "win32")
-				spawnSync("pkill", ["-f", needle], { stdio: "ignore" });
+				console.error(
+					spawnSync(
+						"ps",
+						["-o", "pid,ppid,pgid,stat,etime,args", "-p", pids.join(",")],
+						{
+							encoding: "utf8",
+						},
+					).stdout,
+				);
+			// A known orphan (cancelled-orphaned) must not outlive the matrix run either.
+			for (const pid of orphan ? running(needle, workspace) : []) {
+				try {
+					process.kill(pid);
+				} catch {
+					// already gone
+				}
+			}
 		}
 		return {
 			events,
@@ -266,6 +328,7 @@ export function checkRow(
 	harness: HarnessId,
 	expect: Expectation,
 	seen: RowObservation,
+	gateway?: GatewayExpectation,
 ): string | null {
 	if (seen.hung) return `hung: still running after ${seen.elapsedMs}ms`;
 	if (!seen.agentSpoke && expect !== "exited")
@@ -331,6 +394,9 @@ export function checkRow(
 			return toolResults > 0 && errors.length > 0 && !report
 				? null
 				: `expected the step's tool result, then an error and no report (${saw})`;
+		case "gateway":
+			if (!report) return `no report (${saw})`;
+			return gatewayProblem(seen.events, gateway);
 		case "modes": {
 			const row = HARNESS_REGISTRY[harness];
 			const s = seen.session ?? { modes: [], models: [] };
@@ -344,4 +410,114 @@ export function checkRow(
 				: `modes [${s.modes.join(",")}] (registry ${row.modeMechanism}), ${s.models.length} models (registry ${row.modelVia})`;
 		}
 	}
+}
+
+/**
+ * `null` when the run recorded PrismaLens's tool calls a `gateway` row expects, in order,
+ * each with the outcome and the text the real tool answers with (#848).
+ */
+export function gatewayProblem(
+	events: readonly CanonicalEvent[],
+	want: GatewayExpectation | undefined,
+): string | null {
+	if (!want) return "the row names no gateway expectation";
+	const calls = events.flatMap((e) =>
+		e.kind === "harness_tool_call" ? [e] : [],
+	);
+	let at = 0;
+	for (const w of want.calls) {
+		const i = calls.findIndex(
+			(c, n) =>
+				n >= at &&
+				c.name === w.name &&
+				c.input !== undefined &&
+				typeof c.callId === "string" &&
+				c.callId.length > 0 &&
+				subset(w.input, c.input) &&
+				(c.isError === true) === !w.ok &&
+				(!w.outputHas || (c.output ?? "").includes(w.outputHas)),
+		);
+		if (i < 0)
+			return `no ${w.ok ? "successful" : "failed"} ${w.name}${w.outputHas ? ` answering "${w.outputHas}"` : ""} after call ${at}; saw ${calls.map((c) => `${c.name}${c.isError ? "!" : ""}`).join(",") || "no PrismaLens call"}`;
+		at = i + 1;
+	}
+	const ids = (type: "evidence" | "hypothesis") =>
+		events.flatMap((e) =>
+			e.kind === "finding_recorded" &&
+			e.finding.type === type &&
+			(e.finding.type === "evidence"
+				? e.finding.observation.trim() && e.finding.quote.trim()
+				: e.finding.statement.trim())
+				? [e.finding.id]
+				: [],
+		);
+	for (const [type, wanted] of [
+		["evidence", want.records?.evidence],
+		["hypothesis", want.records?.hypotheses],
+	] as const)
+		for (const id of wanted ?? [])
+			if (!ids(type).includes(id))
+				return `no recorded ${type} "${id}" (saw ${ids(type).join(",") || "none"})`;
+	for (const [id, words] of Object.entries(want.evidenceHas ?? {})) {
+		const found = events.find(
+			(e) =>
+				e.kind === "finding_recorded" &&
+				e.finding.type === "evidence" &&
+				e.finding.id === id,
+		);
+		if (
+			found?.kind !== "finding_recorded" ||
+			found.finding.type !== "evidence" ||
+			!found.finding.observation.includes(words)
+		)
+			return `evidence "${id}" does not hold "${words}"`;
+	}
+	const finding = (type: "evidence" | "hypothesis", id: string) =>
+		events.flatMap((e) =>
+			e.kind === "finding_recorded" &&
+			e.finding.type === type &&
+			e.finding.id === id
+				? [e.finding]
+				: [],
+		)[0];
+	for (const [id, quote] of Object.entries(want.evidenceQuote ?? {})) {
+		const f = finding("evidence", id);
+		if (f?.type !== "evidence" || f.quote !== quote)
+			return `evidence "${id}" quote is not ${JSON.stringify(quote)}`;
+	}
+	for (const [id, source] of Object.entries(want.evidenceSource ?? {})) {
+		const f = finding("evidence", id);
+		if (f?.type !== "evidence" || f.source !== source)
+			return `evidence "${id}" source is not ${JSON.stringify(source)}`;
+	}
+	for (const [id, is] of Object.entries(want.hypothesisIs ?? {})) {
+		const f = finding("hypothesis", id);
+		if (
+			f?.type !== "hypothesis" ||
+			f.status !== is.status ||
+			(is.statement !== undefined && f.statement !== is.statement) ||
+			JSON.stringify(f.evidenceIds) !== JSON.stringify(is.evidenceIds)
+		)
+			return `hypothesis "${id}" is not ${JSON.stringify(is)}`;
+	}
+	const titles = events.flatMap((e) =>
+		e.kind === "artifact_published" ? [e.artifact.title] : [],
+	);
+	for (const title of want.artifacts ?? [])
+		if (!titles.includes(title))
+			return `no published page "${title}" (saw ${titles.join(",") || "none"})`;
+	return null;
+}
+
+/** Every key of `want` is in `got` with an equal value (deep); no `want` is a match. */
+function subset(
+	want: Record<string, unknown> | undefined,
+	got: unknown,
+): boolean {
+	if (!want) return true;
+	if (!got || typeof got !== "object") return false;
+	const have = got as Record<string, unknown>;
+	return Object.entries(want).every(
+		([k, v]) => JSON.stringify(have[k]) === JSON.stringify(v),
+	);
 }

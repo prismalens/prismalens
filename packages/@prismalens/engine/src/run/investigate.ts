@@ -7,14 +7,14 @@
  * permission asks by the run's level, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
-import {
-	appendFileSync,
-	chmodSync,
-	mkdirSync,
-	readFileSync,
-	writeFileSync,
-} from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+	AGENT_REGISTRY,
+	type LaunchPolicy,
+	planLaunch,
+	writeLaunchFiles,
+} from "@prismalens/agent-host";
 import {
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
@@ -24,7 +24,6 @@ import {
 	type HarnessRunEnv,
 	levelOfAgentMode,
 	type ModelSource,
-	mergeConfigPatch,
 	modeFidelity,
 	NO_MODE_KEY,
 	resolveAccess,
@@ -43,26 +42,34 @@ import {
 	type InvestigationKind,
 	type JobAttachment,
 	type OperatorMessageMode,
+	type PreRunSource,
+	type RecordedFinding,
 	type RunFidelity,
 	type RunRuntimeNote,
 	type RunUsage,
 } from "@prismalens/contracts/schemas";
 import {
 	AcpAdapter,
+	type AcpUpdate,
 	type HarnessToolsTurn,
 	mapStopReason,
+	toolOutputText,
 } from "../adapter/acp-adapter.js";
+import { prismalensLaunchPolicy } from "../launch/policy.js";
 import type { RunLimits } from "../launch/types.js";
 import {
 	AcpSession,
 	type AcpStreamItem,
 	type PromptPart,
+	type ReopenPath,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
+import { withFindings } from "./findings.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
 import { RESTART_NOTE } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
+	abortOutcome,
 	askWindow,
 	denyAllPolicy,
 	levelPolicy,
@@ -84,6 +91,15 @@ import {
 } from "./report.js";
 import { checkSandbox } from "./sandbox-check.js";
 import { parseUsageUpdate } from "./usage.js";
+
+/** What a fresh session is given in place of a session the agent cannot reload (#942). */
+export interface FreshSeed {
+	text: string;
+	/** The agent the run was in; null when it named none. */
+	from: string | null;
+	carried: string;
+	omitted: string | null;
+}
 
 export interface RunInvestigationOptions {
 	runId: string;
@@ -127,8 +143,12 @@ export interface RunInvestigationOptions {
 	 * one keeps the reopened session's mode and shows every ask.
 	 */
 	accessLevel?: AccessLevel;
-	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
+	/** The user's stored values for this agent from Settings (#907); they win over the host's. */
 	env?: NodeJS.ProcessEnv;
+	/** Which host variables reach the agent; the user's env minus PrismaLens's own secrets by default (#817). */
+	policy?: LaunchPolicy;
+	/** The host env the floor reads; `process.env` by default. */
+	hostEnv?: NodeJS.ProcessEnv;
 	/** Settings → Agent → Binary path; for `local`, its command (#907). */
 	binaryPath?: string;
 	/** `local` only: its command's arguments. */
@@ -170,6 +190,10 @@ export interface RunInvestigationOptions {
 	resume?: {
 		sessionId?: string;
 		handoff?: string;
+		/** The tool call ids the stored run holds; a reopened load drops any update carrying one (#942). */
+		known?: () => Promise<Iterable<string>>;
+		/** The stored conversation for a fresh session, when the agent's load is known broken (#942). */
+		fresh?: () => Promise<FreshSeed>;
 		/** A restart cut the run off; a reopened session is told so too. */
 		afterRestart?: boolean;
 		/** Recorded on the follow-up's first message. */
@@ -189,6 +213,10 @@ export interface RunInvestigationOptions {
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
 	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
+	/** The harness's pid once spawned (#981). */
+	onSpawn?: (pid: number | undefined) => void;
+	/** After a follow-up's turn: how it reopened its session, what it dropped as replay, and how long the reopen took (#942). */
+	onReopen?: (r: { path: ReopenPath; replayed: number; ms: number }) => void;
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
 	gateway?: GatewayEntry;
 	signal?: AbortSignal;
@@ -374,36 +402,18 @@ export type PrepareRunEnvOptions = Pick<
 	| "binaryPath"
 	| "launchArgs"
 	| "gateway"
+	| "policy"
+	| "hostEnv"
 >;
 
-/** The row's config files with the level's overlay merged into each JSON one. */
-function levelConfigFiles(
-	files: Record<string, string>,
-	patch: Record<string, unknown> | undefined,
-): Record<string, string> {
-	if (!patch) return files;
-	return Object.fromEntries(
-		Object.entries(files).map(([rel, content]) => {
-			if (!rel.endsWith(".json")) return [rel, content];
-			const base = JSON.parse(content) as Record<string, unknown>;
-			return [rel, JSON.stringify(mergeConfigPatch(base, patch), null, 2)];
-		}),
-	);
-}
-
-/** Materialise the per-run config and data dirs the registry row points the harness at. */
+/** Materialise the per-run config and data dirs, and the child's env, from the agent-host launch plan (#916). */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
-	env: NodeJS.ProcessEnv;
+	env: Record<string, string>;
+	args: string[];
 	runEnv: HarnessRunEnv;
 	launch: HarnessLaunch;
 } {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
-	const configDir = join(opts.runDir, "config");
-	const dataDir = join(opts.runDir, "home");
-	// A run file can hold the run's gateway bearer: owner-only whatever the umask (#848, OBJ-029).
-	mkdirSync(configDir, { recursive: true, mode: 0o700 });
-	chmodSync(configDir, 0o700);
-	mkdirSync(dataDir, { recursive: true });
 	const companionPath = descriptor.companionBinary
 		? (opts.binaryPath ?? resolveOnPath(descriptor.companionBinary))
 		: null;
@@ -420,14 +430,35 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		env: {},
 		shipped: false,
 	};
-	const runEnv: HarnessRunEnv = {
-		configDir,
-		dataDir,
+	const host = opts.hostEnv ?? process.env;
+	const stored = Object.fromEntries(
+		Object.entries(opts.env ?? {}).filter(
+			(e): e is [string, string] => e[1] !== undefined,
+		),
+	);
+	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
+	const plan = planLaunch({
+		agent: opts.harness,
+		...(opts.accessLevel ? { level: opts.accessLevel } : {}),
+		policy: opts.policy ?? prismalensLaunchPolicy(),
+		launch: {
+			command: launch.command,
+			args: launch.args,
+			env: launch.env,
+			shipped: launch.shipped,
+			...(companionPath ? { companionPath } : {}),
+		},
 		cwd: opts.cwd,
-		...(opts.model ? { model: opts.model } : {}),
-		...(companionPath ? { companionPath } : {}),
-		...(launch.shipped ? { shipped: true } : {}),
-		...(opts.gateway && descriptor.gatewayDelivery
+		runDir: opts.runDir,
+		hostEnv: host,
+		stored,
+		...(opts.customModel && opts.model && customKey
+			? { overrides: { [customKey]: opts.model } }
+			: {}),
+		...(opts.harness === "opencode"
+			? { userConfig: opencodeUserConfig({ ...host, ...stored }) }
+			: {}),
+		...(opts.gateway
 			? {
 					gateway: {
 						url: opts.gateway.url,
@@ -436,34 +467,10 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 					},
 				}
 			: {}),
-	};
-	const overlay = opts.accessLevel
-		? HARNESS_REGISTRY[opts.harness]?.access[opts.accessLevel].configPatch
-		: undefined;
-	const patch = overlay?.(
-		opts.harness === "opencode" ? opencodeUserConfig(opts.env) : {},
-	);
-	for (const [rel, content] of Object.entries(
-		levelConfigFiles(descriptor.configFiles?.(runEnv) ?? {}, patch),
-	)) {
-		const path = join(configDir, rel);
-		mkdirSync(join(path, ".."), { recursive: true });
-		writeFileSync(path, content, { mode: 0o600 });
-		chmodSync(path, 0o600);
-	}
-	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
-	return {
-		env: {
-			...(opts.env ?? {}),
-			...launch.env,
-			...descriptor.acpEnv(runEnv),
-			...(opts.customModel && opts.model && customKey
-				? { [customKey]: opts.model }
-				: {}),
-		},
-		runEnv,
-		launch,
-	};
+		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
+	});
+	writeLaunchFiles(plan);
+	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
 }
 
 /** How long a run waits after `session/new` for the agent's first gateway request. */
@@ -479,7 +486,7 @@ export async function* runInvestigation(
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
 	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
-	const keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
+	let keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
 	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
 	const access = resolveAccess(opts.harness, level);
 	const askedMode = access.mode ?? null;
@@ -490,7 +497,7 @@ export async function* runInvestigation(
 		access.mechanism,
 		opts.runtimeNote,
 	);
-	const { env, runEnv, launch } = prepareRunEnv({
+	const { env, args, launch } = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
@@ -516,7 +523,7 @@ export async function* runInvestigation(
 	const brief =
 		descriptor.systemPromptVia === "claude-meta" &&
 		opts.kind !== "chat" &&
-		opts.context.alerts.length > 0
+		(opts.context.alerts.length > 0 || opts.context.mode === "service-check")
 			? investigationPromptParts(opts.context, { level }).brief
 			: null;
 	const investigationPrompt = (
@@ -529,11 +536,12 @@ export async function* runInvestigation(
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
 		command: launch.command,
-		args: [...launch.args, ...descriptor.acpArgs(runEnv)],
+		args,
 		cwd: opts.cwd,
 		...(opts.roots ? { roots: opts.roots } : {}),
 		env,
 		limits: opts.limits,
+		...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
 		permission: levelPolicy(
 			keepMode ? "supervised" : level,
 			{ policy: opts.permission ?? denyAllPolicy },
@@ -557,7 +565,13 @@ export async function* runInvestigation(
 		onWire: wire,
 		onStderr: opts.onHarnessStderr,
 		...(opts.resume?.sessionId
-			? { resume: { sessionId: opts.resume.sessionId } }
+			? {
+					resume: {
+						sessionId: opts.resume.sessionId,
+						...(opts.resume.known ? { known: opts.resume.known } : {}),
+						fresh: !!opts.resume.fresh,
+					},
+				}
 			: {}),
 		...(offer ? { mcpServers: offer.pick } : {}),
 		onDrift: (drift) => {
@@ -570,6 +584,7 @@ export async function* runInvestigation(
 
 	let text = "";
 	let sawEvidence = false;
+	const ownCalls = new Set<string>();
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
 	let heldMode: string | null = null;
 	let lastCall: { title?: string; toolCallId?: string } | null = null;
@@ -595,7 +610,7 @@ export async function* runInvestigation(
 		items: AsyncGenerator<AcpStreamItem>,
 	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 		for await (const item of items) {
-			if (opts.signal?.aborted) session.cancel();
+			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
 			if (item.kind === "update") {
 				const u = item.update;
 				if (u.sessionUpdate === "agent_message_chunk") {
@@ -611,6 +626,18 @@ export async function* runInvestigation(
 				}
 				if (u.sessionUpdate === "tool_call")
 					lastCall = { title: u.title, toolCallId: u.toolCallId };
+				if (u.toolCallId && opts.gateway?.sawOutput) {
+					// A call to PrismaLens's own tools carries the quote it records, so it never anchors one (#930).
+					if (namesServer(u, opts.gateway.serverName))
+						ownCalls.add(u.toolCallId);
+					const done =
+						u.sessionUpdate === "tool_call_update" ||
+						u.status === "completed" ||
+						u.status === "failed";
+					const out = done ? toolOutputText(u) : "";
+					if (out && !ownCalls.has(u.toolCallId))
+						opts.gateway.sawOutput(u.toolCallId, out);
+				}
 				for (const ev of adapter.events(u)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
@@ -664,13 +691,20 @@ export async function* runInvestigation(
 			} else if (item.kind === "nudge") {
 				yield* recordQueued();
 			} else if (item.kind === "harness_tool_call") {
-				if (opts.gateway)
+				if (opts.gateway && shown(`call:${item.call.callId ?? item.call.at}`))
 					yield adapter.harnessToolCall(
 						opts.gateway.serverName,
-						item.name,
-						item.at,
+						item.call,
 						toolsTurn,
 					);
+			} else if (item.kind === "harness_finding") {
+				if (shown(findingKey(item.finding)))
+					yield adapter.findingRecorded(item.finding);
+			} else if (item.kind === "harness_artifact") {
+				if (!shownPages.has(item.artifact.id)) {
+					shownPages.add(item.artifact.id);
+					yield adapter.artifactPublished(item.artifact);
+				}
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -699,8 +733,40 @@ export async function* runInvestigation(
 	 * What the run leaves behind on any end (#820): an ask it never heard back on
 	 * reads stopped, and a message it never read, not delivered.
 	 */
+	const shownPages = new Set<string>();
+	const seen = new Set<string>();
+	/** True the first time `key` is seen this run. */
+	const shown = (key: string): boolean => !seen.has(key) && !!seen.add(key);
+	// The anchor is in the key so evidence that anchors after its first emission shows again.
+	const findingKey = (f: RecordedFinding) =>
+		`finding:${f.type}:${f.id}:${f.at}:${JSON.stringify(f.type === "evidence" ? (f.anchor ?? null) : null)}`;
 	const toolsSummary = function* (): Generator<CanonicalEvent> {
 		unCalled?.();
+		unFound?.();
+		unPublished?.();
+		opts.gateway?.closeRecording?.();
+		// What was acknowledged after the turn's last item was read is still recorded, once.
+		const gw = opts.gateway;
+		for (const call of gw?.callLog?.() ?? [])
+			if (gw && call.callId && shown(`call:${call.callId}`))
+				yield adapter.harnessToolCall(gw.serverName, call, toolsTurn);
+		const found = gw?.findings?.();
+		for (const f of [
+			...(found?.evidence ?? []).map((e) => ({
+				type: "evidence" as const,
+				...e,
+			})),
+			...(found?.hypotheses ?? []).map((h) => ({
+				type: "hypothesis" as const,
+				...h,
+			})),
+		])
+			if (shown(findingKey(f))) yield adapter.findingRecorded(f);
+		for (const page of gw?.artifacts?.() ?? [])
+			if (!shownPages.has(page.id)) {
+				shownPages.add(page.id);
+				yield adapter.artifactPublished(page);
+			}
 		if (offer && opts.gateway && !summarized) {
 			summarized = true;
 			yield adapter.harnessTools(
@@ -713,7 +779,7 @@ export async function* runInvestigation(
 	};
 	const leftovers = function* (tools = true): Generator<CanonicalEvent> {
 		for (const askId of openAsks)
-			yield adapter.permissionAnswer(askId, "stopped");
+			yield adapter.permissionAnswer(askId, abortOutcome(opts.signal));
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
@@ -737,9 +803,15 @@ export async function* runInvestigation(
 	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
 	let summarized = false;
 	const unCalled = opts.gateway?.onCall((c) =>
-		session.inject({ kind: "harness_tool_call", ...c }),
+		session.inject({ kind: "harness_tool_call", call: c }),
 	);
-	const onAbort = (): void => session.cancel();
+	const unFound = opts.gateway?.onFinding?.((finding) =>
+		session.inject({ kind: "harness_finding", finding }),
+	);
+	const unPublished = opts.gateway?.onArtifact?.((artifact) =>
+		session.inject({ kind: "harness_artifact", artifact }),
+	);
+	const onAbort = (): void => session.cancel(opts.signal?.reason);
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
 	const label = HARNESS_REGISTRY[opts.harness]?.label ?? descriptor.binary;
 	const modelVia =
@@ -754,8 +826,12 @@ export async function* runInvestigation(
 				loadSession: session.loadSession,
 			});
 		}
-		if (opts.resume?.sessionId)
-			wire("in", JSON.stringify({ replayed: session.replayed }));
+		const fresh: FreshSeed | null =
+			session.reopen === "fresh" && opts.resume?.fresh
+				? await opts.resume.fresh()
+				: null;
+		// A fresh session has no mode to keep: it takes the run's level, supervised when it named none.
+		if (session.reopen === "fresh") keepMode = false;
 		// Only a request with the run's token proves the agent loaded our server (OBJ-011).
 		const connected =
 			opts.gateway && offer?.offered()
@@ -870,6 +946,8 @@ export async function* runInvestigation(
 		let outcome: { stop: string } | { error: string };
 		if (opts.resume) {
 			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
+			const handoff = fresh?.text ?? opts.resume.handoff;
+			const via = opts.resume.via;
 			yield adapter.operatorMessage(
 				line,
 				mode,
@@ -878,23 +956,40 @@ export async function* runInvestigation(
 				refsOf(attachments),
 				kind ?? "chat",
 				undefined,
-				opts.resume.via,
+				fresh && via
+					? {
+							...via,
+							handoff: {
+								from: fresh.from,
+								carried: fresh.carried,
+								omitted: fresh.omitted,
+							},
+						}
+					: via,
 			);
 			const said = [
-				...(opts.resume.afterRestart && !opts.resume.handoff
-					? [RESTART_NOTE]
-					: []),
+				...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
 				line,
 				...(newer ? [newerRunNote(newer)] : []),
 			].join("\n\n");
-			const seeded = opts.resume.handoff
+			const seeded = handoff
 				? kind === "continue"
-					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${opts.resume.handoff}\n\n${said}`
-					: buildChatPrompt(opts.context, `${opts.resume.handoff}\n\n${said}`, {
+					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${handoff}\n\n${said}`
+					: buildChatPrompt(opts.context, `${handoff}\n\n${said}`, {
 							noNetwork,
 						})
 				: said;
 			outcome = yield* turn(promptParts(seeded, attachments));
+			// After the turn, so history an agent streams late is counted too.
+			if (session.reopen) {
+				const reopen = {
+					path: session.reopen,
+					replayed: session.replayed,
+					ms: session.reopenMs,
+				};
+				wire("in", JSON.stringify({ reopen }));
+				opts.onReopen?.(reopen);
+			}
 		} else if (opts.kind === "chat") {
 			const message = opts.brief?.trim() ?? "";
 			yield adapter.operatorMessage(
@@ -928,7 +1023,10 @@ export async function* runInvestigation(
 						level,
 					}) +
 						toolsLine +
-						(brief ? `\n\n${brief}` : "") +
+						// A service check's prompt already holds the brief (#979).
+						(brief && opts.context.mode !== "service-check"
+							? `\n\n${brief}`
+							: "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
 				),
@@ -1029,9 +1127,9 @@ export async function* runInvestigation(
 		}
 		yield* toolsSummary();
 		yield adapter.branchDone(mapStopReason(outcome.stop));
-		const gapped = noNetwork
-			? withSandboxGap(parsed.report, label)
-			: parsed.report;
+		const found = opts.gateway?.findings?.();
+		const answered = found ? withFindings(parsed.report, found) : parsed.report;
+		const gapped = noNetwork ? withSandboxGap(answered, label) : answered;
 		yield adapter.report(
 			stampReport(withPreRunCoverage(gapped, opts.context), fidelity),
 		);
@@ -1063,6 +1161,19 @@ async function applyMode(
 		: `${run.label} did not offer mode "${run.target}"; run a check in Settings, Agent`;
 }
 
+/** A call to the run's own MCP server, by its title, Claude Code's `_meta`, or its input's `server`. */
+function namesServer(u: AcpUpdate, server: string): boolean {
+	const meta = u._meta as
+		| { claudeCode?: { mcpServer?: { name?: unknown } } }
+		| undefined;
+	const raw = u.rawInput as { server?: unknown } | undefined;
+	return (
+		(typeof u.title === "string" && u.title.includes(server)) ||
+		meta?.claudeCode?.mcpServer?.name === server ||
+		raw?.server === server
+	);
+}
+
 /** An agent sandbox with no network is named under What we could not check (#778). */
 function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
 	report: R,
@@ -1084,6 +1195,18 @@ const FROM_WORDS = {
 	env: "from the environment",
 } as const;
 
+/** Where a pre-run source's address and credential came from, for the report and the run log (#848). */
+export function sourceOrigin(
+	s: Pick<PreRunSource, "from" | "credentialFrom" | "envVar" | "overridesEnv">,
+): string {
+	const parts: string[] = [FROM_WORDS[s.from]];
+	if (s.from === "set" && s.credentialFrom === "env")
+		parts.push(`token from ${s.envVar ?? "the environment"}`);
+	if (s.credentialFrom === "none") parts.push("no credential");
+	if (s.overridesEnv) parts.push(`overrides ${s.overridesEnv}`);
+	return parts.join(", ");
+}
+
 /**
  * What PrismaLens read before the run, in the report's coverage whatever the agent wrote (#848):
  * found and empty sources under queried; skipped and not-read sources, skipped runbooks and
@@ -1098,7 +1221,7 @@ export function withPreRunCoverage<
 	const notQueried: string[] = [];
 	if (pre.state !== "unavailable") {
 		for (const s of pre.sources) {
-			const who = `${s.label} (${s.kind}, ${FROM_WORDS[s.from]}${s.overridesEnv ? `, overrides ${s.overridesEnv}` : ""})`;
+			const who = `${s.label} (${s.kind}, ${sourceOrigin(s)})`;
 			if (s.status === "found") queried.push(`${who}: ${s.detail}`);
 			else if (s.status === "empty")
 				queried.push(`${who}: queried, nothing for the window`);

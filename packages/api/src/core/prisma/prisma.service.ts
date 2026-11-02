@@ -73,6 +73,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.job;
 	}
 
+	get schedule() {
+		return db.schedule;
+	}
+
+	get scheduleTick() {
+		return db.scheduleTick;
+	}
+
+	get scheduleEvent() {
+		return db.scheduleEvent;
+	}
+
 	get incident() {
 		return db.incident;
 	}
@@ -140,6 +152,15 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
 	get verification() {
 		return db.verification;
+	}
+
+	// Phone push (#859)
+	get pushSubscription() {
+		return db.pushSubscription;
+	}
+
+	get pushOutbox() {
+		return db.pushOutbox;
 	}
 
 	async onModuleInit(): Promise<void> {

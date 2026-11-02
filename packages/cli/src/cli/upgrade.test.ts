@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { upgradeArgv } from "./upgrade.js";
+import { upgradeArgv, upgradeEnv } from "./upgrade.js";
 
 describe("upgradeArgv", () => {
 	it("runs each channel's own upgrade", () => {
@@ -18,5 +18,16 @@ describe("upgradeArgv", () => {
 	});
 	it("leaves the desktop app to its download", () => {
 		expect(upgradeArgv("electron", "0.5.1", "darwin")).toBe(null);
+	});
+});
+
+describe("upgradeEnv (#965)", () => {
+	it("drops PSModulePath on Windows, in any case, and keeps the rest", () => {
+		const env = { PSModulePath: "C:\pwsh7\Modules", Path: "C:\bin", psmodulepath: "x" };
+		expect(upgradeEnv(env, "win32")).toEqual({ Path: "C:\bin" });
+	});
+	it("leaves the env alone elsewhere", () => {
+		const env = { PSModulePath: "/opt/microsoft/powershell/Modules", PATH: "/bin" };
+		expect(upgradeEnv(env, "linux")).toBe(env);
 	});
 });

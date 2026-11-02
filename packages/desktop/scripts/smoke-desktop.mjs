@@ -57,6 +57,8 @@ console.log(`launching ${bin} on ${workspace}`);
 const child = spawn(bin, args, {
 	env: {
 		...process.env,
+		// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
+		PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY || "internal",
 		PRISMALENS_WORKSPACE_DIR: workspace,
 		PRISMALENS_DESKTOP_SMOKE: out,
 	},

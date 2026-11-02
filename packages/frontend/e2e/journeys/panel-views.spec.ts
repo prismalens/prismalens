@@ -1,0 +1,464 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { expect, type Page, test } from "@playwright/test";
+import type { CanonicalEvent } from "@prismalens/contracts";
+import {
+	hideQueryDevtools,
+	INVESTIGATION_ID,
+	RUN_ID,
+	serveEventsHistory,
+	serveInvestigationAs,
+} from "./live-stream-fixtures";
+
+// The panel's views (#973): Files (the tree and the file at its commit) and Changes (a recorded pair).
+const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
+const HEAD = "a".repeat(40);
+const BASE = "c".repeat(40);
+const RUN_URL = `/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`;
+
+const compare = {
+	repo: "repo",
+	head: HEAD,
+	headKind: "deployment",
+	headName: "v2.14.0",
+	base: BASE,
+	baseKind: "deployment",
+	baseName: "v2.13.2",
+	between: 3,
+};
+
+const workspace = {
+	layout: "single" as const,
+	cwd: "/work/repo",
+	repos: [
+		{
+			name: "repo",
+			dir: "/work/repo",
+			sourceKind: "folder" as const,
+			url: "/src/repo",
+			subPath: null,
+			connectionId: null,
+			head: HEAD,
+			branch: "main",
+			services: [],
+		},
+	],
+	compare: [compare],
+};
+
+const PATCH = [
+	"diff --git a/src/payments/client.ts b/src/payments/client.ts",
+	"index 1111111..2222222 100644",
+	"--- a/src/payments/client.ts",
+	"+++ b/src/payments/client.ts",
+	"@@ -1,3 +1,3 @@",
+	" export const gateway = {",
+	"-  timeoutMs: 3000,",
+	"+  timeoutMs: 800,",
+	" };",
+	"",
+].join("\n");
+
+function readEvent(n = 1): CanonicalEvent[] {
+	const base = (seq: number) => ({
+		runId: RUN_ID,
+		branchId: "main",
+		path: [] as string[],
+		seq,
+		ts: new Date(1700000000000 + seq * 1000).toISOString(),
+	});
+	return Array.from({ length: n }, (_, i) => {
+		const path = `repo/src/payments/client${i % 12 || ""}.ts`;
+		const id = `read-${i + 1}`;
+		return [
+			{
+				kind: "agent_step",
+				...base(2 * i + 1),
+				label: "agent",
+				text: "Reading the client",
+				toolCalls: [
+					{ toolCallId: id, name: "read_file", args: { path, offset: 2 } },
+				],
+			},
+			{
+				kind: "tool_result",
+				...base(2 * i + 2),
+				label: null,
+				result: {
+					toolCallId: id,
+					name: "read_file",
+					toolCategory: "file",
+					ok: true,
+					source: `read_file(${path})`,
+					preview: "read",
+				},
+			},
+		];
+	}).flat() as CanonicalEvent[];
+}
+
+async function setup(page: Page, width = 1440, url = RUN_URL, reads = 1) {
+	await page.setViewportSize({ width, height: 900 });
+	await hideQueryDevtools(page);
+	await serveInvestigationAs(page, INVESTIGATION_ID, {
+		status: "completed",
+		workspace,
+	});
+	await serveEventsHistory(page, INVESTIGATION_ID, readEvent(reads));
+	const content = "export const gateway = {\n  timeoutMs: 800,\n};\n";
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/blob`,
+		(route) =>
+			route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					state: "ok",
+					repo: "repo",
+					sha: HEAD,
+					path: "src/payments/client.ts",
+					kind: "file",
+					size: content.length,
+					oid: "b".repeat(40),
+					content,
+					omitted: null,
+				}),
+			}),
+	);
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/diff`,
+		(route) =>
+			route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					state: "ok",
+					comparison: compare,
+					files: [
+						{
+							path: "src/payments/client.ts",
+							oldPath: null,
+							additions: 1,
+							deletions: 1,
+						},
+					],
+					patch: PATCH,
+					omitted: null,
+				}),
+			}),
+	);
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/tree`,
+		(route) =>
+			route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					state: "ok",
+					repo: "repo",
+					sha: HEAD,
+					prefix: null,
+					entries: [
+						{ name: "README.md", path: "README.md", type: "file" },
+						{
+							name: "client.ts",
+							path: "src/payments/client.ts",
+							type: "file",
+						},
+					],
+					truncated: false,
+				}),
+			}),
+	);
+	await page.goto(url);
+	await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
+}
+
+test.describe("Panel views (#973)", () => {
+	test("a Read step opens the file under Files; Back, Forward and reload show what the URL names", async ({
+		page,
+	}) => {
+		await setup(page);
+		const step1 = page.locator('[data-testid="step"][data-step="1"]');
+		await expect(step1).toBeVisible({ timeout: 15_000 });
+		if (!(await step1.getByTestId("step-body").isVisible()))
+			await step1.getByTestId("step-toggle").click();
+		await page.locator("#open-step-1").click();
+
+		await expect(page.getByTestId("run-details-tab-files")).toHaveAttribute(
+			"data-state",
+			"active",
+		);
+		await expect(page.getByTestId("evidence-file")).toBeVisible();
+		await expect(page).toHaveURL(/panel=files/);
+		await expect(page).toHaveURL(/file=repo%3Asrc%2Fpayments%2Fclient\.ts/);
+
+		await page.getByTestId("evidence-file-back").click();
+		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
+		await expect(page.locator("#open-step-1")).toBeFocused();
+
+		await page.goForward();
+		await expect(page.getByTestId("evidence-file")).toBeVisible();
+		await page.reload();
+		await expect(page.getByTestId("evidence-file")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.goBack();
+		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
+
+		// The browser's Back returns focus to the step too (#975 OBJ-008).
+		if (!(await step1.getByTestId("step-body").isVisible()))
+			await step1.getByTestId("step-toggle").click();
+		await page.locator("#open-step-1").click();
+		await expect(page.getByTestId("evidence-file")).toBeVisible();
+		await page.goBack();
+		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
+		await expect(page.locator("#open-step-1")).toBeFocused();
+	});
+
+	test("on a phone, a sheet opened for a file closes with it on Back, again after Forward", async ({
+		page,
+	}) => {
+		await setup(page, 390);
+		const step1 = page.locator('[data-testid="step"][data-step="1"]');
+		await expect(step1).toBeVisible({ timeout: 15_000 });
+		if (!(await step1.getByTestId("step-body").isVisible()))
+			await step1.getByTestId("step-toggle").click();
+		await page.locator("#open-step-1").click();
+		const sheet = page.getByRole("dialog", { name: /details/i });
+		await expect(sheet.getByTestId("evidence-file")).toBeVisible();
+		for (let i = 0; i < 2; i++) {
+			await page.goBack();
+			await expect(sheet).toHaveCount(0);
+			await page.goForward();
+			await expect(sheet.getByTestId("evidence-file")).toBeVisible();
+		}
+		await page.goBack();
+		await expect(sheet).toHaveCount(0);
+	});
+
+	test("Files lists what the run touched in a named tree", async ({ page }) => {
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-files").click();
+		await expect(page).toHaveURL(/panel=files/);
+		await expect(page.getByTestId("run-details-tab-files")).toContainText("1");
+		const tree = page.getByRole("tree", { name: "Files this run touched" });
+		await expect(tree).toBeVisible();
+		const item = tree.getByRole("treeitem", { name: /client\.\s?ts/ });
+		await expect(item).toBeVisible();
+		await item.click();
+		await expect(page.getByTestId("evidence-file")).toBeVisible();
+	});
+
+	test("All files opens a folder by keyboard with its files already listed", async ({
+		page,
+	}) => {
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-files").click();
+		await page.getByTestId("files-mode-all").click();
+		const tree = page.getByRole("tree", { name: /All files at/ });
+		const folder = tree.getByRole("treeitem", { name: /src/ }).first();
+		await expect(folder).toBeVisible();
+		await folder.focus();
+		await page.keyboard.press("ArrowRight");
+		await expect(
+			tree.getByRole("treeitem", { name: /client\.\s?ts/ }),
+		).toBeVisible();
+	});
+
+	test("Changes names the recorded pair and draws its diff split, or unified when narrow", async ({
+		page,
+	}) => {
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-changes").click();
+		await expect(page.getByTestId("changes-label")).toHaveText(
+			"Deployment v2.14.0 against deployment v2.13.2, 3 commits",
+		);
+		const diff = page.getByTestId("changes-diff");
+		await expect(diff).toBeVisible();
+		// The default panel is narrower than the split breakpoint.
+		await expect(diff).toHaveAttribute("data-style", "unified");
+		const sep = page.getByTestId("panel-right-separator");
+		await sep.focus();
+		for (let i = 0; i < 30; i++) await page.keyboard.press("ArrowLeft");
+		await page.getByTestId("changes-style-split").click();
+		await expect(diff).toHaveAttribute("data-style", "split");
+		await page.getByTestId("changes-style-unified").click();
+		await expect(diff).toHaveAttribute("data-style", "unified");
+	});
+
+	test("a run that recorded no pair says so", async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await hideQueryDevtools(page);
+		await serveInvestigationAs(page, INVESTIGATION_ID, {
+			status: "completed",
+			workspace: { ...workspace, compare: undefined },
+		});
+		await page.goto(`${RUN_URL}&panel=changes`);
+		await expect(page.getByTestId("run-page")).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("changes-none")).toBeVisible();
+	});
+
+	test("a link naming a tab opens the panel on it; closing the panel drops the tab and file from the URL", async ({
+		page,
+	}) => {
+		await setup(page, 1440, `${RUN_URL}&panel=changes`);
+		await expect(page.getByTestId("run-details-tab-changes")).toHaveAttribute(
+			"data-state",
+			"active",
+		);
+		await expect(page.getByTestId("changes-diff")).toBeVisible();
+		await page.getByTestId("details-toggle").click();
+		await expect(page.getByTestId("run-details-tab-changes")).toHaveCount(0);
+		await expect(page).not.toHaveURL(/panel=/);
+
+		await page.goto(
+			`${RUN_URL}&panel=files&file=${encodeURIComponent("repo:src/payments/client.ts")}`,
+		);
+		await expect(page.getByTestId("evidence-file")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.keyboard.press("Escape");
+		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
+		await expect(page).not.toHaveURL(/panel=|file=/);
+	});
+
+	// Six tabs, with a long run's counts, share the row; none may scroll out of reach (#1010 finding 7).
+	for (const width of [1440, 390, 320]) {
+		test(`every tab fits the row at ${width === 1440 ? "the panel's default width" : `${width} px`}`, async ({
+			page,
+		}) => {
+			await setup(page, width, `${RUN_URL}&panel=browser`, 120);
+			await expect(page.getByTestId("run-details-tab-steps")).toContainText(
+				"120",
+			);
+			await expect(page.getByTestId("run-details-tab-files")).toContainText(
+				"12",
+			);
+			const list = page.getByTestId("run-details").getByRole("tablist");
+			await expect(page.getByTestId("run-details-tab-browser")).toHaveAttribute(
+				"data-state",
+				"active",
+			);
+			if (width === 1440)
+				expect(
+					(await page.getByTestId("run-details").boundingBox())?.width,
+				).toBeCloseTo(420, -1);
+			const { scroll, client } = await list.evaluate((el) => ({
+				scroll: el.scrollWidth,
+				client: el.clientWidth,
+			}));
+			expect(scroll).toBeLessThanOrEqual(client);
+		});
+	}
+
+	test("an old run address keeps its tab and file through the redirect", async ({
+		page,
+	}) => {
+		const file = encodeURIComponent("repo:src/payments/client.ts");
+		await setup(
+			page,
+			1440,
+			`/investigations/${INVESTIGATION_ID}?panel=files&file=${file}`,
+		);
+		await expect(page).toHaveURL(/\/incidents\/[^/]+\/conversation\?/);
+		await expect(page).toHaveURL(/panel=files/);
+		await expect(page).toHaveURL(/file=repo%3Asrc%2Fpayments%2Fclient\.ts/);
+		await expect(page.getByTestId("evidence-file")).toBeVisible();
+	});
+});
+
+test.describe("Panel browser (#973)", () => {
+	test("in a browser, the run's links open in a new tab", async ({ page }) => {
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await expect(page.getByText("Pages open in your browser")).toBeVisible();
+		const links = page.getByTestId("browser-links").getByRole("link");
+		const count = await links.count();
+		for (let i = 0; i < count; i++) {
+			await expect(links.nth(i)).toHaveAttribute("target", "_blank");
+			await expect(links.nth(i)).toHaveAttribute("rel", /noopener/);
+			expect(await links.nth(i).getAttribute("href")).toMatch(/^https?:\/\//);
+		}
+	});
+
+	test("in the desktop app, the view sits over its slot and steps aside for a dialog", async ({
+		page,
+	}) => {
+		await page.addInitScript(() => {
+			const calls: unknown[] = [];
+			let listener: ((s: unknown) => void) | null = null;
+			let last: unknown = null;
+			(window as unknown as { __calls: unknown[] }).__calls = calls;
+			(window as unknown as { prismalensDesktop: unknown }).prismalensDesktop =
+				{
+					platform: "win32",
+					setTheme: () => {},
+					browser: {
+						open: (url: string) => {
+							calls.push({ open: url });
+							last = {
+								url,
+								title: "",
+								canGoBack: false,
+								canGoForward: false,
+								loading: false,
+								refused: null,
+							};
+							listener?.(last);
+						},
+						setBounds: (rect: unknown) => calls.push({ bounds: rect }),
+						go: (to: string) => {
+							calls.push({ go: to });
+							if (to === "state") listener?.(last);
+						},
+						onState: (l: (s: unknown) => void) => {
+							listener = l;
+							return () => {
+								listener = null;
+							};
+						},
+					},
+				};
+		});
+		await setup(page);
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await page.getByTestId("browser-address").fill("grafana.internal/d/x");
+		await page.getByTestId("browser-address").press("Enter");
+		const slot = page.getByTestId("browser-slot");
+		await expect(slot).toBeVisible();
+		const calls = () =>
+			page.evaluate(
+				() => (window as unknown as { __calls: unknown[] }).__calls,
+			);
+		await expect
+			.poll(async () => (await calls()).at(-1))
+			.toMatchObject({
+				bounds: { width: expect.any(Number) },
+			});
+		expect(await calls()).toContainEqual({ open: "grafana.internal/d/x" });
+		const box = await slot.boundingBox();
+		const last = (await calls()).at(-1) as {
+			bounds: { x: number; width: number };
+		};
+		expect(Math.abs(last.bounds.x - (box?.x ?? 0))).toBeLessThan(1);
+		// Leaving the tab and coming back finds the page again (#977 OBJ-006).
+		await page.getByTestId("run-details-tab-files").click();
+		await page.getByTestId("run-details-tab-browser").click();
+		await expect(slot).toBeVisible();
+		await page.evaluate(() =>
+			(document.activeElement as HTMLElement | null)?.blur(),
+		);
+		await page.keyboard.press("?");
+		await expect(page.getByRole("dialog").last()).toBeVisible();
+		await expect
+			.poll(async () => (await calls()).at(-1))
+			.toEqual({ bounds: null });
+	});
+});

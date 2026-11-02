@@ -58,6 +58,53 @@ function Healthy([string]$ws) {
 	return $false
 }
 
+# `pl upgrade` run from the old install, as a person runs it (#920). Its two reads of the network are
+# redirected, as smoke-installer.sh does: the release check answers for the staged archive, and the
+# `irm https://prismalens.io/install.ps1` it hands PowerShell reads this checkout's installer.
+# A release whose pl has no `upgrade` is moved by the installer.
+function UpgradeWithPl([string]$base) {
+	$hook = Join-Path $work "ready.mjs"
+	@'
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+const real = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+	const url = String(typeof input === "string" || input instanceof URL ? input : input.url);
+	if (init?.method === "HEAD" && /\/releases\/download\/v[^/]+\/SHA256SUMS$/.test(url))
+		return Promise.resolve(new Response(null, { status: 200 }));
+	return real(input, init);
+};
+const local = `Get-Content -Raw -LiteralPath '${process.env.PL_SMOKE_INSTALLER}'`;
+const spawnSync = childProcess.spawnSync;
+childProcess.spawnSync = (cmd, args, opts) =>
+	spawnSync(cmd, Array.isArray(args) ? args.map((a) => String(a).replace(/irm https:\/\/prismalens\.io\/install\.ps1/g, local)) : args, opts);
+syncBuiltinESMExports();
+'@ | Out-File $hook -Encoding utf8
+	$saved = @{}
+	# PSModulePath is dropped, as in a cmd or Windows PowerShell terminal: pwsh 7's own value reaches the
+	# powershell.exe that pl spawns and hides Get-FileHash from it. Released pl copies pass it on (#965).
+	$set = @{
+		PRISMALENS_RELEASE_BASE_URL = $base; PRISMALENS_UPDATE_CHECK = "off"; PRISMALENS_TELEMETRY = "off"
+		PL_SMOKE_INSTALLER = $installer; NODE_OPTIONS = "--import=file:///$($hook.Replace('\', '/'))"
+		PSModulePath = $null
+	}
+	foreach ($k in $set.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $set[$k]) }
+	try {
+		$log = & (Join-Path $bin "pl.cmd") upgrade --version $NewVersion 2>&1 | Out-String
+		$rc = $LASTEXITCODE
+	} finally {
+		foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
+	}
+	Write-Host $log
+	if ($rc -eq 0) { return "pl upgrade" }
+	if ($log -match "(?i)unknown command") {
+		Write-Host "note: $OldVersion has no pl upgrade; the installer moves it"
+		if ((Install $base @("-Version", $NewVersion, "-NoModifyPath")) -ne 0) { Fail "upgrading to $NewVersion with the installer" }
+		return "the installer"
+	}
+	Fail "upgrading $OldVersion to $NewVersion with pl upgrade"
+}
+
 $newBase = Stage $NewDir $NewVersion "new"
 
 if ($OldDir) {
@@ -65,9 +112,10 @@ if ($OldDir) {
 	if ((Install $oldBase @("-Version", $OldVersion, "-NoModifyPath")) -ne 0) { Fail "installing $OldVersion" }
 	$ws = Join-Path $work "workspace"
 	if (-not (Healthy $ws)) { Fail "$OldVersion pl up" }
-	if ((Install $newBase @("-Version", $NewVersion, "-NoModifyPath")) -ne 0) { Fail "upgrading to $NewVersion" }
+	$by = UpgradeWithPl $newBase
+	if ((& (Join-Path $bin "pl.cmd") --version).Trim() -ne $NewVersion) { Fail "pl --version after the upgrade" }
 	if (-not (Healthy $ws)) { Fail "$NewVersion pl up on the $OldVersion workspace" }
-	Pass "upgrade $OldVersion -> ${NewVersion}: pl up healthy on the old workspace"
+	Pass "upgrade $OldVersion -> $NewVersion by ${by}: pl up healthy on the old workspace"
 	& pwsh -NoProfile -File $installer -Uninstall | Out-Null
 }
 

@@ -1,0 +1,373 @@
+# Standalone CLI archives and installers (#717): build per-OS archives with
+# bundled Node runtime and smoke test without Node on PATH.
+name: Standalone CLI build
+
+on:
+  pull_request:
+    paths:
+      - "scripts/build-standalone.mjs"
+      - "scripts/install/**"
+      - "scripts/pack-cli.mjs"
+      - "scripts/check-artifact.mjs"
+      - "scripts/artifact-budgets.json"
+      - "scripts/lib/**"
+      - "packages/@prismalens/agent-adapters/scripts/**"
+      - ".github/workflows/build-standalone-cli.yml"
+  # release.yml calls this with the draft release's tag to attach the archives (#717).
+  workflow_call:
+    inputs:
+      release-tag:
+        type: string
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-${{ inputs.release-tag || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & smoke (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: macos-latest
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+          - os: windows-2022
+            target: win32-x64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Pack CLI
+        run: pnpm run pack
+
+      - name: Build standalone archive
+        run: node scripts/build-standalone.mjs --out "$GITHUB_WORKSPACE/dist/standalone"
+
+      # Deepest path under the installer and Scoop prefixes (limit 220), size budget and
+      # licence texts (#906). It replaces #905's inline cap.
+      - name: Gate the archive
+        run: node scripts/check-artifact.mjs dist/standalone/prismalens-*
+
+      - name: install.ps1 parses under Windows PowerShell 5.1 -File
+        if: runner.os == 'Windows'
+        run: |
+          out=$(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/install.ps1 -Help 2>&1)
+          echo "$out"
+          echo "$out" | grep -q "Install PrismaLens without Node."
+
+      - name: CycloneDX SBOM of the shipped tree (linux-x64)
+        if: matrix.target == 'linux-x64'
+        run: |
+          archive=$(ls dist/standalone/prismalens-*-linux-x64.tar.gz)
+          version=$(basename "$archive" | sed -E 's/^prismalens-(.+)-linux-x64\.tar\.gz$/\1/')
+          dir=$(mktemp -d)
+          tar -xzf "$archive" -C "$dir"
+          sbom="$GITHUB_WORKSPACE/dist/standalone/prismalens-${version}.cdx.json"
+          (cd "$dir/prismalens-${version}-linux-x64/app" && npm sbom --sbom-format cyclonedx --sbom-type application --omit dev > "$sbom")
+          node -e '
+            const bom = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            if (bom.bomFormat !== "CycloneDX") throw new Error(`bomFormat is ${bom.bomFormat}`);
+            if (!bom.components?.some((c) => c.name === "@prismalens/api")) throw new Error("no @prismalens/api component");
+            console.log(`${bom.components.length} components`);
+          ' "$sbom"
+
+      - name: Smoke test standalone CLI (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          archive=$(ls "$GITHUB_WORKSPACE/dist/standalone"/*.tar.gz | head -1)
+          smoke_dir=$(mktemp -d)
+          tar -xzf "$archive" -C "$smoke_dir"
+          pkg_dir=$(ls -d "$smoke_dir"/prismalens-* | head -1)
+
+          pkg_version=$(tar -xzOf packages/cli/dist-pack/*.tgz package/package.json | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0, 'utf8')).version)")
+
+          CLEAN_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+          out_ver=$(env -i HOME="$HOME" PATH="$CLEAN_PATH" "$pkg_dir/bin/pl" --version)
+          if [ "$out_ver" != "$pkg_version" ]; then
+            echo "Expected $pkg_version, got $out_ver"
+            exit 1
+          fi
+
+          port=3941
+          ws_dir=$(mktemp -d)
+          env -i HOME="$HOME" PATH="$CLEAN_PATH" CI=true "$pkg_dir/bin/pl" up --port "$port" --workspace "$ws_dir" &
+          up_pid=$!
+
+          i=0
+          healthy=false
+          while [ "$i" -lt 60 ]; do
+            if curl -s -f "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+              healthy=true
+              break
+            fi
+            if ! kill -0 "$up_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+            i=$((i + 1))
+          done
+
+          kill -TERM "$up_pid" 2>/dev/null || true
+          kill -9 "$up_pid" 2>/dev/null || true
+          rm -rf "$ws_dir"
+
+          if [ "$healthy" != "true" ]; then
+            echo "Health check failed after ${i}s"
+            exit 1
+          fi
+
+          rm -rf "$smoke_dir"
+
+      - name: Smoke test standalone CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
+          $smokeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pl-smoke-" + [System.Guid]::NewGuid().ToString("N"))
+          Expand-Archive -Path $archive.FullName -DestinationPath $smokeDir -Force
+          $pkgDir = Get-ChildItem -Path "$smokeDir\prismalens-*" -Directory | Select-Object -First 1
+
+          $tgz = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\packages\cli\dist-pack\*.tgz" | Select-Object -First 1
+          $pkgJson = tar -xzOf $tgz.FullName package/package.json | ConvertFrom-Json
+          $pkgVersion = $pkgJson.version
+
+          # Remove Node from PATH for current session
+          $env:Path = ($env:Path -split ';' | Where-Object { $_ -notmatch 'node|hostedtoolcache' }) -join ';'
+          if (Get-Command node -ErrorAction SilentlyContinue) {
+            Write-Error "Node is still on PATH!"
+            exit 1
+          }
+
+          $outVer = (& "$pkgDir\bin\pl.cmd" --version).Trim()
+          if ($outVer -ne $pkgVersion) {
+            Write-Error "Expected $pkgVersion, got $outVer"
+            exit 1
+          }
+
+          $port = 3941
+          $wsDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pl-ws-" + [System.Guid]::NewGuid().ToString("N"))
+          $env:CI = "true"
+          $p = Start-Process -FilePath "$pkgDir\bin\pl.cmd" -ArgumentList "up", "--port", "$port", "--workspace", "$wsDir" -PassThru
+
+          $healthy = $false
+          $i = 0
+          while ($i -lt 60) {
+            try {
+              $res = Invoke-WebRequest -Uri "http://127.0.0.1:$port/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+              if ($res.StatusCode -eq 200) {
+                $healthy = $true
+                break
+              }
+            } catch {}
+            if ($p.HasExited) { break }
+            Start-Sleep -Seconds 1
+            $i++
+          }
+
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path $wsDir -Recurse -Force -ErrorAction SilentlyContinue
+
+          if (-not $healthy) {
+            Write-Error "Health check failed after ${i}s"
+            exit 1
+          }
+
+          Remove-Item -Path $smokeDir -Recurse -Force -ErrorAction SilentlyContinue
+
+      # Every stable release npm lists from 0.5.0 on, below this build; never a version kept in this file (#920).
+      - name: Build every published release since 0.5.0 as an archive, for the upgrade tests
+        run: |
+          set -eu
+          version=$(node -p "require('./packages/cli/package.json').version")
+          olds=$(node scripts/install/previous-releases.mjs "$version")
+          [ -n "$olds" ] || { echo "::error::no published release below $version"; exit 1; }
+          for old in $olds; do
+            mkdir -p "$RUNNER_TEMP/old/$old"
+            npm pack "prismalens@$old" --pack-destination "$RUNNER_TEMP/old/$old"
+            node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/$old/prismalens-$old.tgz" --out "$GITHUB_WORKSPACE/dist/old/$old" --allow-missing-licences
+          done
+
+      - name: Installer end to end, upgrading from each release (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -eu
+          version=$(node -p "require('./packages/cli/package.json').version")
+          olds=$(ls "$GITHUB_WORKSPACE/dist/old")
+          [ -n "$olds" ] || { echo "::error::no old release archives were built"; exit 1; }
+          for old in $olds; do
+            echo "::group::upgrade from $old"
+            sh scripts/install/smoke-installer.sh "$GITHUB_WORKSPACE/dist/standalone" "$version" "$GITHUB_WORKSPACE/dist/old/$old" "$old"
+            echo "::endgroup::"
+          done
+
+      - name: Installer end to end, upgrading from each release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content "$env:GITHUB_WORKSPACE\packages\cli\package.json" -Raw | ConvertFrom-Json).version
+          $olds = @((Get-ChildItem "$env:GITHUB_WORKSPACE\dist\old" -Directory -ErrorAction Stop).Name)
+          if ($olds.Count -eq 0) { "::error::no old release archives were built"; exit 1 }
+          foreach ($old in $olds) {
+            "::group::upgrade from $old"
+            & pwsh -NoProfile -File scripts/install/smoke-installer.ps1 -NewDir "$env:GITHUB_WORKSPACE\dist\standalone" -NewVersion $version -OldDir "$env:GITHUB_WORKSPACE\dist\old\$old" -OldVersion $old
+            $rc = $LASTEXITCODE
+            "::endgroup::"
+            if ($rc -ne 0) { exit $rc }
+          }
+
+      - name: Installer under Windows PowerShell 5.1, long paths off, 20-char username
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
+          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
+          $base = Join-Path $env:RUNNER_TEMP "mirror51"
+          New-Item -ItemType Directory "$base\v$version" -Force | Out-Null
+          Copy-Item $zip.FullName "$base\v$version"
+          "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" | Out-File "$base\v$version\SHA256SUMS" -Encoding ascii
+          $env:LOCALAPPDATA = "C:\Users\$('u' * 20)\AppData\Local"
+          New-Item -ItemType Directory $env:LOCALAPPDATA -Force | Out-Null
+          $env:PRISMALENS_RELEASE_BASE_URL = "file:///" + $base.Replace('\', '/')
+          $env:PRISMALENS_VERSION = $version
+          $env:PRISMALENS_NO_MODIFY_PATH = "1"
+          $installer = "$env:GITHUB_WORKSPACE\scripts\install\install.ps1"
+          Set-Content "$env:RUNNER_TEMP\wp51.ps1" -Encoding ascii -Value @"
+          `$ErrorActionPreference = 'Stop'
+          "PowerShell `$(`$PSVersionTable.PSVersion)"
+          Get-Content -Raw -Encoding UTF8 '$installer' | iex
+          `$v = (& "`$env:LOCALAPPDATA\prismalens\bin\pl.cmd" --version).Trim()
+          if (`$v -ne '$version') { throw "pl --version printed `$v" }
+          & ([scriptblock]::Create((Get-Content -Raw -Encoding UTF8 '$installer'))) -Uninstall
+          if (Test-Path "`$env:LOCALAPPDATA\prismalens") { throw 'uninstall left the runtime behind' }
+          "@
+          $fs = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+          $was = (Get-ItemProperty $fs).LongPathsEnabled
+          Set-ItemProperty $fs LongPathsEnabled 0
+          try { & powershell -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\wp51.ps1"; $rc = $LASTEXITCODE }
+          finally { if ($null -ne $was) { Set-ItemProperty $fs LongPathsEnabled $was } }
+          exit $rc
+
+      - name: Smoke the Homebrew formula (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          dir="$GITHUB_WORKSPACE/dist/standalone"
+          archive=$(cd "$dir" && ls *.tar.gz | head -1)
+          version=$(echo "$archive" | sed -E 's/^prismalens-(.+)-darwin-(arm64|x64)\.tar\.gz$/\1/')
+          (cd "$dir" && shasum -a 256 "$archive" > SHA256SUMS.brew)
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$dir" >/dev/null 2>&1 &
+          server=$!
+          node scripts/install/package-manifests.mjs --version "$version" --sums "$dir/SHA256SUMS.brew" \
+            --out "$RUNNER_TEMP/manifests" --base-url "http://127.0.0.1:8765" --allow-missing
+          brew tap-new --no-git local/prismalens-test
+          cp "$RUNNER_TEMP/manifests/Formula/prismalens.rb" "$(brew --repository local/prismalens-test)/Formula/"
+          brew install local/prismalens-test/prismalens
+          kill "$server"
+          out=$("$(brew --prefix)/bin/pl" --version)
+          [ "$out" = "$version" ] || { echo "Expected $version, got $out"; exit 1; }
+          brew test local/prismalens-test/prismalens
+          brew uninstall prismalens
+          brew untap local/prismalens-test
+
+      - name: Smoke the Scoop manifest (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = "$env:GITHUB_WORKSPACE\dist\standalone"
+          $zip = Get-ChildItem "$dir\*.zip" | Select-Object -First 1
+          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
+          $hash = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($zip.Name)" | Out-File "$dir\SHA256SUMS.scoop" -Encoding ascii
+          $server = Start-Process python -ArgumentList "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", $dir -PassThru -WindowStyle Hidden
+          node scripts/install/package-manifests.mjs --version $version --sums "$dir\SHA256SUMS.scoop" `
+            --out "$env:RUNNER_TEMP\manifests" --base-url "http://127.0.0.1:8765" --allow-missing
+          Invoke-RestMethod get.scoop.sh -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
+          & "$env:RUNNER_TEMP\install-scoop.ps1" -RunAsAdmin
+          $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
+          # Long paths off, as on a default box (#906).
+          $fs = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+          $was = (Get-ItemProperty $fs).LongPathsEnabled
+          Set-ItemProperty $fs LongPathsEnabled 0
+          try {
+            scoop install "$env:RUNNER_TEMP\manifests\bucket\prismalens.json"
+            if ($LASTEXITCODE -ne 0) { Write-Error "scoop install failed"; exit 1 }
+            Stop-Process -Id $server.Id -Force
+            $out = (pl --version).Trim()
+            if ($out -ne $version) { Write-Error "Expected $version, got $out"; exit 1 }
+            scoop uninstall prismalens
+          }
+          finally { if ($null -ne $was) { Set-ItemProperty $fs LongPathsEnabled $was } }
+
+      - name: Upload standalone archive artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: standalone-${{ matrix.target }}
+          path: |
+            dist/standalone/*.tar.gz
+            dist/standalone/*.zip
+            dist/standalone/*.cdx.json
+          retention-days: 7
+
+  attach:
+    name: Attach to the draft release
+    needs: build
+    if: inputs.release-tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
+
+      - name: Download standalone archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: standalone-*
+          path: archives
+          merge-multiple: true
+
+      # release.yml's `sums` job writes SHA256SUMS and one attestation over every asset (#906).
+      - name: Upload to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release-tag }}
+        run: |
+          gh release upload "$TAG" archives/prismalens-* "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber

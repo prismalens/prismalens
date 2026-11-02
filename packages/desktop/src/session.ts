@@ -67,6 +67,17 @@ export function storedCandidates(input: {
 	return input.stored ? [input.stored] : [];
 }
 
+/** A stored key matches only the device it was issued for, so a replacement device gets none. */
+export function terminalKeyFor(input: {
+	fresh: string | undefined;
+	stored: string | undefined;
+	token: string;
+	storedToken: string | undefined;
+}): string | undefined {
+	if (input.fresh) return input.fresh;
+	return input.token === input.storedToken ? input.stored : undefined;
+}
+
 export interface SessionDeps {
 	baseUrl: string;
 	/** The per-instance cookie name the backend sets, `deviceCookieName(instanceId)`. */
@@ -76,6 +87,8 @@ export interface SessionDeps {
 	/** Runs `pl pair --operator` on the workspace and returns its stdout. */
 	pairOperator: () => Promise<string>;
 	fetchImpl?: typeof fetch;
+	/** The terminal key a fresh local redeem answers with (#931). */
+	onTerminalKey?: (key: string) => void;
 }
 
 /** A device token that holds the operator's scopes: a stored one, or a fresh one. */
@@ -95,7 +108,74 @@ export async function operatorToken(deps: SessionDeps): Promise<string> {
 	if (!res.ok || !token) {
 		throw new Error(`Pairing the window failed: ${res.status}`);
 	}
+	const body = (await res.json().catch(() => ({}))) as {
+		terminalKey?: unknown;
+	};
+	if (typeof body.terminalKey === "string")
+		deps.onTerminalKey?.(body.terminalKey);
 	return token;
+}
+
+/**
+ * A window whose stored session predates the terminal, or lost its key, spends
+ * a fresh operator link on the key instead of pairing a second device (#931).
+ * Null when refused; the terminal panel then says why.
+ */
+export async function claimTerminalKey(deps: {
+	baseUrl: string;
+	token: string;
+	pairOperator: () => Promise<string>;
+	fetchImpl?: typeof fetch;
+}): Promise<string | null> {
+	const fetchImpl = deps.fetchImpl ?? fetch;
+	try {
+		const link = parsePairingToken(await deps.pairOperator());
+		if (!link) return null;
+		const res = await fetchImpl(`${deps.baseUrl}/api/terminal/key`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: deps.baseUrl,
+				authorization: `Bearer ${deps.token}`,
+			},
+			body: JSON.stringify({ token: link }),
+		});
+		if (!res.ok) return null;
+		const body = (await res.json()) as { key?: unknown };
+		return typeof body.key === "string" ? body.key : null;
+	} catch {
+		return null;
+	}
+}
+
+/** A refused claim spent an operator link; the same instance is not asked again for this long. */
+const CLAIM_REFUSAL_COOLDOWN_MS = 10 * 60_000;
+
+/**
+ * The claim off the boot path: the window never waits on `pl pair --operator`
+ * (30 s) or a refusal. A key that lands after the session changed is dropped.
+ */
+export async function claimTerminalKeyInBackground(deps: {
+	instanceId: string;
+	baseUrl: string;
+	token: string;
+	pairOperator: () => Promise<string>;
+	refusedAt: Map<string, number>;
+	isCurrent: () => boolean;
+	onKey: (key: string) => void;
+	now?: () => number;
+	fetchImpl?: typeof fetch;
+}): Promise<void> {
+	const now = (deps.now ?? Date.now)();
+	const refused = deps.refusedAt.get(deps.instanceId);
+	if (refused !== undefined && now - refused < CLAIM_REFUSAL_COOLDOWN_MS)
+		return;
+	const key = await claimTerminalKey(deps);
+	if (key === null) {
+		deps.refusedAt.set(deps.instanceId, now);
+		return;
+	}
+	if (deps.isCurrent()) deps.onKey(key);
 }
 
 async function managesPairing(

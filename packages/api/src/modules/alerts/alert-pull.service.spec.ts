@@ -574,12 +574,12 @@ describe("AlertPullService (#605)", () => {
 			expect(prisma.setting.upsert).toHaveBeenCalledWith({
 				where: { key: ALERT_PULL_SETTING_KEY },
 				update: {
-					value: JSON.stringify({ lastPulledAt: now.toISOString() }),
+					value: JSON.stringify({ lastPulledAt: now.toISOString(), lastCompleteAt: now.toISOString() }),
 					type: "json",
 				},
 				create: {
 					key: ALERT_PULL_SETTING_KEY,
-					value: JSON.stringify({ lastPulledAt: now.toISOString() }),
+					value: JSON.stringify({ lastPulledAt: now.toISOString(), lastCompleteAt: now.toISOString() }),
 					type: "json",
 					category: "general",
 				},
@@ -642,7 +642,8 @@ describe("AlertPullService (#605)", () => {
 			expect(result.errors).toHaveLength(1);
 			expect(result.errors[0]).toContain("Alertmanager network timeout");
 
-			// Checkpoint advances because Prometheus catch-up had zero errors
+			// Checkpoint advances because Prometheus catch-up had zero errors, but the pull
+			// is not complete: a restart's catch-up must not read it as covering the gap (#981 OBJ-008)
 			expect(prisma.setting.upsert).toHaveBeenCalledWith({
 				where: { key: ALERT_PULL_SETTING_KEY },
 				update: {

@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentHostError } from "./errors.js";
 import { GATEWAY_RUN_FILE } from "./registry/index.js";
@@ -97,6 +107,23 @@ describe("planLaunch env", () => {
 		);
 	});
 
+	it("holds a row to a host gateway URL only when it reads ANTHROPIC_BASE_URL or the user stored one", () => {
+		const hostEnv = { ...HOST, ANTHROPIC_BASE_URL: "http://gw.lan:4000" };
+		const floor = { mode: "inherit-minus-own-secrets", ownSecrets: {} } as const;
+		const policy = { ...POLICY, floor };
+		expect(() => plan({ agent: "codex", launch: { command: "codex-acp" }, policy, hostEnv })).not.toThrow();
+		expect(() => plan({ policy, hostEnv })).toThrow(/ANTHROPIC_BASE_URL/);
+		expect(() =>
+			plan({
+				agent: "codex",
+				launch: { command: "codex-acp" },
+				policy,
+				hostEnv,
+				stored: { ANTHROPIC_BASE_URL: "http://gw.lan:4000" },
+			}),
+		).toThrow(/ANTHROPIC_BASE_URL/);
+	});
+
 	it("layers floor, row keys, stored values, then overrides, last wins", () => {
 		const p = plan({
 			hostEnv: { ...HOST, HOME: "/host-home" },
@@ -145,6 +172,45 @@ describe("planLaunch env", () => {
 		expect(env.PRISMALENS_DB).toBeUndefined();
 	});
 
+	it("drops a refuseEnvNames name from a stored value under the allowlist floor", () => {
+		const env = plan({
+			policy: { ...POLICY, floor: { mode: "allowlist" }, refuseEnvNames: ["ENCRYPTION_KEY"] },
+			stored: { ENCRYPTION_KEY: "stored", OTHER: "kept" },
+		}).env;
+		expect(env.ENCRYPTION_KEY).toBeUndefined();
+		expect(env.OTHER).toBe("kept");
+	});
+
+	it("drops an own secret whatever its case, as Windows would read it", () => {
+		const env = plan({
+			policy: {
+				...POLICY,
+				floor: { mode: "inherit-minus-own-secrets", ownSecrets: { names: ["ENCRYPTION_KEY"], prefixes: ["PRISMALENS_"] } },
+			},
+			hostEnv: { ...HOST, prismalens_auth_secret: "host", encryption_key: "host" },
+			stored: { Prismalens_Db: "stored" },
+		}).env;
+		expect(env.prismalens_auth_secret).toBeUndefined();
+		expect(env.encryption_key).toBeUndefined();
+		expect(env.Prismalens_Db).toBeUndefined();
+	});
+
+	it("on Windows a stored value replaces a host variable spelled in another case", () => {
+		const platform = Object.getOwnPropertyDescriptor(process, "platform");
+		Object.defineProperty(process, "platform", { value: "win32" });
+		try {
+			const env = plan({
+				policy: { ...POLICY, floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} } },
+				hostEnv: { ...HOST, my_var: "from-host" },
+				stored: { MY_VAR: "from-settings" },
+			}).env;
+			expect(env.my_var).toBeUndefined();
+			expect(env.MY_VAR).toBe("from-settings");
+		} finally {
+			if (platform) Object.defineProperty(process, "platform", platform);
+		}
+	});
+
 	it("refuses a userSetup with no rows yet", () => {
 		expect(() => plan({ policy: { ...POLICY, userSetup: "supplied" } })).toThrow(/user-setup|supplied/);
 	});
@@ -180,27 +246,63 @@ describe('github: "exclude"', () => {
 });
 
 describe("launch files", () => {
-	it("writes the row's config with the level's overlay merged in", () => {
+	it("puts OpenCode's config inline with the level's overlay, and leaves the user's OPENCODE_CONFIG_DIR alone", () => {
 		const runDir = mkdtempSync(join(tmpdir(), "ah-launch-"));
 		dirs.push(runDir);
 		const p = planLaunch({
 			agent: "opencode",
 			level: "auto-edits",
-			policy: POLICY,
+			policy: { ...POLICY, floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} } },
 			launch: { command: "opencode" },
 			cwd: "/w",
 			runDir,
-			hostEnv: HOST,
+			hostEnv: { ...HOST, OPENCODE_CONFIG_DIR: "/home/u/my-opencode" },
 		});
 		writeLaunchFiles(p);
-		const file = join(runDir, "config", "opencode.json");
-		expect(existsSync(file)).toBe(true);
-		const json = JSON.parse(readFileSync(file, "utf8"));
+		expect(existsSync(join(runDir, "config", "opencode.json"))).toBe(false);
+		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
 		expect(json.share).toBe("disabled");
 		expect(json.permission.edit).toEqual({ "*": "allow" });
-		expect(p.env.OPENCODE_CONFIG_DIR).toBe(join(runDir, "config"));
-		expect(p.args).toEqual(["acp", "--cwd", "/w"]);
-		expect(p.level.mode).toEqual({ id: "build", name: "Build" });
+		expect(p.env.OPENCODE_CONFIG_DIR).toBe("/home/u/my-opencode");
+		expect(p.args).toEqual(["acp"]);
+		expect(p.cwd).toBe("/w");
+		expect(p.level?.mode).toEqual({ id: "build", name: "Build" });
+	});
+
+	it("merges the run's OpenCode config over an OPENCODE_CONFIG_CONTENT the user set, and refuses one that isn't a JSON object", () => {
+		const user = { model: "mine/m", permission: { bash: { "rm *": "deny" } } };
+		const p = plan({
+			agent: "opencode",
+			level: "supervised",
+			launch: { command: "opencode" },
+			stored: { OPENCODE_CONFIG_CONTENT: JSON.stringify(user) },
+		});
+		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
+		expect(json.model).toBe("mine/m");
+		expect(json.agent.build.permission.bash["rm *"]).toBe("deny");
+		expect(json.share).toBe("disabled");
+		expect(() =>
+			plan({ agent: "opencode", launch: { command: "opencode" }, stored: { OPENCODE_CONFIG_CONTENT: "{ model: x" } }),
+		).toThrow(/OPENCODE_CONFIG_CONTENT/);
+	});
+
+	it("lists the user's inline deny rules after the level's catch-all at full-access", () => {
+		const user = { permission: { bash: { "rm *": "deny" } }, agent: { build: { permission: { bash: { "git push *": "deny" } } } } };
+		const p = plan({
+			agent: "opencode",
+			level: "full-access",
+			launch: { command: "opencode" },
+			stored: { OPENCODE_CONFIG_CONTENT: JSON.stringify(user) },
+		});
+		const json = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string);
+		expect(Object.entries(json.agent.explore.permission.bash)).toEqual([
+			["*", "allow"],
+			["rm *", "deny"],
+		]);
+		expect(Object.entries(json.agent.build.permission.bash)).toEqual([
+			["rm *", "deny"],
+			["git push *", "deny"],
+		]);
 	});
 
 	it("writes the gateway run file owner-only and points deepagents at it (#848)", () => {
@@ -240,5 +342,39 @@ describe("launch files", () => {
 		const p = plan({ gateway });
 		expect(p.runEnv.gateway).toBeUndefined();
 		expect(Object.keys(p.files)).toEqual([]);
+	});
+});
+
+// Node refuses to spawn a .cmd without a shell only on Windows; elsewhere npm writes no .cmd shim.
+describe.skipIf(process.platform !== "win32")("a companion behind an npm .cmd shim (#1013)", () => {
+	it("hands the adapter the .exe the shim runs, which spawns without a shell", () => {
+		const dir = mkdtempSync(join(tmpdir(), "ah-shim-"));
+		try {
+			const exe = join(dir, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
+			mkdirSync(dirname(exe), { recursive: true });
+			copyFileSync(process.execPath, exe);
+			const shim = join(dir, "claude.cmd");
+			writeFileSync(
+				shim,
+				'@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n',
+			);
+			expect(spawnSync(shim, ["-e", ""]).error?.message).toMatch(/EINVAL/);
+			const p = planLaunch({
+				agent: "claude-code",
+				policy: POLICY,
+				launch: { command: "claude-agent-acp", shipped: true, companionPath: shim },
+				cwd: dir,
+				runDir: join(dir, "run"),
+				hostEnv: HOST,
+			});
+			expect(p.env.CLAUDE_CODE_EXECUTABLE).toBe(exe);
+			const ran = spawnSync(p.env.CLAUDE_CODE_EXECUTABLE as string, ["-e", "process.stdout.write('ok')"], {
+				encoding: "utf8",
+			});
+			expect(ran.error).toBeUndefined();
+			expect(ran.stdout).toBe("ok");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

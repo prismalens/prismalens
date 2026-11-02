@@ -61,9 +61,6 @@ export default defineConfig({
 		tailwindcss(),
 		thirdPartyNotices({ generated: ["tailwindcss", "tailwindcss-animate"] }),
 	],
-	// Loaded only by the incidents board route; listed so a cold dev server
-	// does not discover it mid-session and reload the page (#743).
-	optimizeDeps: { include: ["@dnd-kit/core"] },
 	// Environment variables
 	define: {
 		"process.env.NEXT_PUBLIC_DASHBOARD_URL": JSON.stringify(

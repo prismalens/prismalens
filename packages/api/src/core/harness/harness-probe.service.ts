@@ -2,12 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The ACP handshake `pl doctor` runs (#630, Unit D on #337): behind the
+ * The readiness check, `probeAgent`'s ACP handshake (#630, #916): behind the
  * Settings Check button, once per installed agent at boot, and before a run
  * when no recent "ready" is remembered (#673 w9). Never on a Settings visit:
  * `getStatus` (PATH presence only) runs there.
  */
 import { Injectable } from "@nestjs/common";
+import type { LaunchPolicy } from "@prismalens/agent-host";
 import type { HarnessId } from "@prismalens/config/harness";
 import type { HarnessProbeResult } from "@prismalens/contracts/schemas";
 import { probeHarness } from "@prismalens/engine";
@@ -17,17 +18,19 @@ import { HarnessModelsService } from "./harness-models.service.js";
 export class HarnessProbeService {
 	constructor(private readonly models: HarnessModelsService) {}
 
-	/** `runtime`: the agent's env, binary path and arguments from Settings (#907). */
+	/** `runtime`: the agent's stored env, floor, binary path and arguments from Settings (#907, #817). */
 	async check(
 		id: HarnessId,
 		runtime?: {
 			env: Record<string, string>;
+			policy?: LaunchPolicy;
 			binaryPath?: string;
 			launchArgs?: string[];
 		},
 	): Promise<HarnessProbeResult> {
 		const probed = await probeHarness(id, {
 			...(runtime ? { env: runtime.env } : {}),
+			...(runtime?.policy ? { policy: runtime.policy } : {}),
 			...(runtime?.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
 			...(runtime?.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
 		});

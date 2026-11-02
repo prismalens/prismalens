@@ -356,6 +356,7 @@ describe("serializeRepository url (#848)", () => {
 		({
 			id: "repo-1",
 			sourceKind,
+			fullName: "acme/api",
 			url,
 			createdAt: new Date(0),
 			updatedAt: new Date(0),

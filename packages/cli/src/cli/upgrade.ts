@@ -36,6 +36,21 @@ import {
 
 type Config = typeof import("@prismalens/config");
 
+/**
+ * The env an upgrade command runs in. On Windows it drops PSModulePath: a PowerShell 7 terminal's
+ * value reaches the Windows PowerShell that the installer and Scoop run, which then can't load its
+ * own Get-FileHash. Each PowerShell rebuilds its default when the variable is unset (#965).
+ */
+export function upgradeEnv(
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+	if (platform !== "win32") return env;
+	return Object.fromEntries(
+		Object.entries(env).filter(([key]) => key.toLowerCase() !== "psmodulepath"),
+	);
+}
+
 /** How `channel` puts `version` back after a failed trial; a reason when it can't (#766). */
 export function switchBackFor(
 	config: Config,
@@ -302,7 +317,10 @@ export default defineCommand({
 		consola.start(
 			`Upgrading ${current} → ${target} with ${channel}: ${argv.join(" ")}`,
 		);
-		const result = spawnSync(argv[0], argv.slice(1), { stdio: "inherit" });
+		const result = spawnSync(argv[0], argv.slice(1), {
+			stdio: "inherit",
+			env: upgradeEnv(),
+		});
 		if (result.status !== 0) {
 			consola.error(
 				`The upgrade command failed${result.error ? `: ${result.error.message}` : ""}. Run it yourself: ${command}`,

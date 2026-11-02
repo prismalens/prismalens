@@ -100,6 +100,31 @@ export const RenderWebhookResponseSchema = z.object({
 });
 
 // =============================================================================
+// DEPLOY EVENT SCHEMAS (#854)
+// =============================================================================
+
+export const DeployStatusSchema = z.enum(["succeeded", "failed", "started"]);
+
+export const DeployWebhookSchema = z.object({
+	service: z.string().min(1),
+	version: z.string().min(1),
+	environment: z.string().min(1).default("production"),
+	status: DeployStatusSchema.default("succeeded"),
+	url: z.url({ protocol: /^https?$/ }).optional(),
+	actor: z.string().optional(),
+	/** The commit the deploy shipped, when it is not the version itself. */
+	sha: z.string().optional(),
+	/** When it happened; the receipt time when absent. */
+	timestamp: z.iso.datetime({ offset: true }).optional(),
+});
+
+export const DeployWebhookResponseSchema = z.object({
+	id: z.string().uuid(),
+	/** False when the same service, version, environment and status was already recorded. */
+	created: z.boolean(),
+});
+
+// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -114,3 +139,21 @@ export type GenericWebhookResponse = z.infer<
 >;
 export type RenderWebhook = z.infer<typeof RenderWebhookSchema>;
 export type RenderWebhookResponse = z.infer<typeof RenderWebhookResponseSchema>;
+export type DeployWebhook = z.input<typeof DeployWebhookSchema>;
+export type DeployWebhookResponse = z.infer<typeof DeployWebhookResponseSchema>;
+
+// =============================================================================
+// VENDOR ALERT SOURCES (Grafana, Datadog, Sentry, PagerDuty, CloudWatch via SNS, Azure Monitor, New Relic)
+// =============================================================================
+
+/** Each vendor's own body; the API maps it, so the contract only asks for a JSON object. */
+export const AlertSourceWebhookSchema = z.record(z.string(), z.unknown());
+
+export const AlertSourceWebhookResponseSchema = z.object({
+	received: z.number().int(),
+	processed: z.number().int(),
+	alertIds: z.array(z.string().uuid()),
+	incidentIds: z.array(z.string().uuid()),
+	/** True when an SNS subscription handshake was answered. */
+	confirmed: z.boolean().optional(),
+});

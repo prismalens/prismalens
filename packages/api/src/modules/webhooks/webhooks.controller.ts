@@ -17,6 +17,12 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
+import {
+	ALERT_MAPPERS,
+	type AlertSource,
+	confirmSnsSubscription,
+	type Payload,
+} from "./alert-sources/index.js";
 import type { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
@@ -44,6 +50,13 @@ export class WebhooksController {
 	@Implement({
 		generic: webhooksContract.generic,
 		prometheus: webhooksContract.prometheus,
+		grafana: webhooksContract.grafana,
+		datadog: webhooksContract.datadog,
+		sentry: webhooksContract.sentry,
+		pagerduty: webhooksContract.pagerduty,
+		cloudwatch: webhooksContract.cloudwatch,
+		azureMonitor: webhooksContract.azureMonitor,
+		newrelic: webhooksContract.newrelic,
 	})
 	webhooks() {
 		return {
@@ -62,6 +75,24 @@ export class WebhooksController {
 					return this.formatResponse(result);
 				},
 			),
+
+			// POST /webhooks/{grafana,datadog,sentry,pagerduty,cloudwatch,azure-monitor,newrelic} (#79)
+			grafana: this.alertSourceHandler("grafana", webhooksContract.grafana),
+			datadog: this.alertSourceHandler("datadog", webhooksContract.datadog),
+			sentry: this.alertSourceHandler("sentry", webhooksContract.sentry),
+			pagerduty: this.alertSourceHandler(
+				"pagerduty",
+				webhooksContract.pagerduty,
+			),
+			cloudwatch: this.alertSourceHandler(
+				"cloudwatch",
+				webhooksContract.cloudwatch,
+			),
+			azureMonitor: this.alertSourceHandler(
+				"azure-monitor",
+				webhooksContract.azureMonitor,
+			),
+			newrelic: this.alertSourceHandler("newrelic", webhooksContract.newrelic),
 
 			// POST /webhooks/prometheus - Receive Prometheus AlertManager webhook
 			prometheus: implement(webhooksContract.prometheus).handler(
@@ -132,6 +163,55 @@ export class WebhooksController {
 				return this.formatResponse(result);
 			},
 		);
+	}
+
+	/**
+	 * One handler per vendor: map the body, hand the alerts to the service. An SNS
+	 * subscription handshake is answered here and carries no alert.
+	 */
+	private alertSourceHandler<C extends typeof webhooksContract.grafana>(
+		source: AlertSource,
+		contract: C,
+	) {
+		return implement(contract).handler(async ({ input, context }) => {
+			const payload = input as Payload;
+			await this.telemetry.captureFirstWebhook("generic");
+
+			if (
+				source === "cloudwatch" &&
+				payload.Type === "SubscriptionConfirmation"
+			) {
+				const subscribeUrl = payload.SubscribeURL;
+				const confirmed =
+					typeof subscribeUrl === "string" &&
+					(await confirmSnsSubscription(subscribeUrl).catch((error) => {
+						this.logger.warn(`SNS subscription confirmation failed: ${error}`);
+						return false;
+					}));
+				return {
+					received: 0,
+					processed: 0,
+					alertIds: [],
+					incidentIds: [],
+					confirmed,
+				};
+			}
+
+			const mapped = ALERT_MAPPERS[source](payload);
+			const { alertIds, incidentIds } =
+				await this.webhooksService.processMappedAlerts(
+					source,
+					mapped,
+					this.idempotencyKeyFrom(context),
+				);
+			await this.rememberDelivery(mapped.length, alertIds.length);
+			return {
+				received: mapped.length,
+				processed: alertIds.length,
+				alertIds,
+				incidentIds: [...new Set(incidentIds)],
+			};
+		});
 	}
 
 	/** Settings, Alert sources reads this back as "Last delivery" (study-v3 §7). Advisory. */

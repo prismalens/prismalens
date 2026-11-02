@@ -136,7 +136,7 @@ function coercePackEvidence<E extends Evidence>(e: E): E {
 }
 
 export function stampReport(
-	report: ModelReport,
+	report: Omit<InvestigationReport, "fidelity">,
 	fidelity: InvestigationReport["fidelity"],
 ): InvestigationReport {
 	return {

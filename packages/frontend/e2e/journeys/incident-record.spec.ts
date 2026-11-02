@@ -116,7 +116,9 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 
 		await settled(page);
 
-		await setTheme(page, "dark");
+		// The app's own toggle, not a cookie and reload: a reload cold-boots the run page.
+		await page.getByTestId("theme-toggle").click();
+		await expect(page.locator("html")).toHaveClass(/dark/);
 		await expect(page.getByTestId("run-page")).toBeVisible();
 		await settled(page);
 	});

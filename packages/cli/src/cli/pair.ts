@@ -134,7 +134,10 @@ export default defineCommand({
 						: undefined,
 				scopes: args.operator ? OPERATOR_SCOPES : undefined,
 			});
-			consola.log(`\n  ${buildPairingUrl(origin, link.token)}\n`);
+			const url = buildPairingUrl(origin, link.token);
+			consola.log(`\n  ${url}\n`);
+			// A phone scans it instead of typing a token (#859).
+			if (!args.operator) consola.log(await pairingQr(url));
 			consola.info(
 				`Open it ${args.operator ? "in this machine's browser" : "on the other device"} within 15 minutes. It works once; treat it as a password.`,
 			);
@@ -152,6 +155,12 @@ export default defineCommand({
 		}
 	},
 });
+
+/** The link as a QR code a terminal can print. */
+export async function pairingQr(url: string): Promise<string> {
+	const { default: QRCode } = await import("qrcode");
+	return QRCode.toString(url, { type: "terminal", small: true });
+}
 
 /** The origin the link carries; loopback unless the operator named an address. */
 export function resolveOrigin(

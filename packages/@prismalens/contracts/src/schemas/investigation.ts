@@ -19,6 +19,7 @@ import {
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
 import { RunCredentialSchema } from "./repository.js";
+import { RunComparisonSchema } from "./run-views.js";
 import { AccessLevelSchema } from "./settings.js";
 import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
@@ -34,6 +35,21 @@ import {
 // The structured investigation result. Supersedes the untyped `rawOutput` blob:
 // ordered hypotheses + discrete evidence status carry certainty. Defined first so
 // the persisted-result schemas below can reference it (eager z.object evaluation).
+
+/** A line of a tool's output, or of a file in the run's workspace, that holds a recorded quote. */
+export const QuoteAnchorSchema = z.discriminatedUnion("in", [
+	z.object({
+		in: z.literal("tool-output"),
+		toolCallId: z.string(),
+		line: z.number().int().min(1),
+	}),
+	z.object({
+		in: z.literal("file"),
+		path: z.string(),
+		line: z.number().int().min(1),
+	}),
+]);
+export type QuoteAnchor = z.infer<typeof QuoteAnchorSchema>;
 
 export const EvidenceSchema = z.object({
 	/** What was observed. */
@@ -64,6 +80,10 @@ export const EvidenceSchema = z.object({
 	 * absent ⇒ treat as "tool".
 	 */
 	origin: z.enum(["tool", "context-pack"]).optional(),
+	/** The agent's verbatim quote, when it recorded this through PrismaLens's tool (#930). */
+	quote: z.string().optional(),
+	/** Where code found `quote` (#740); null when it did not, and then it is never verified. */
+	anchor: QuoteAnchorSchema.nullable().optional(),
 });
 
 export const HypothesisSchema = z.object({
@@ -77,6 +97,51 @@ export const HypothesisSchema = z.object({
 	/** The `id` of the hypothesis this one refines; absent on a top-level idea. */
 	parentId: z.string().min(1).max(64).optional(),
 });
+
+/**
+ * What the agent recorded through PrismaLens's own tool while it worked (#930):
+ * evidence with the quote code resolved, and hypotheses naming evidence by id.
+ */
+export const RecordedEvidenceSchema = z.object({
+	id: z.string(),
+	observation: z.string(),
+	source: z.string(),
+	quote: z.string(),
+	direction: EvidenceDirectionSchema,
+	/** The file the agent said the quote is in, as it wrote it. */
+	path: z.string().optional(),
+	anchor: QuoteAnchorSchema.nullable(),
+	at: z.string(),
+});
+export type RecordedEvidence = z.infer<typeof RecordedEvidenceSchema>;
+
+export const RecordedHypothesisSchema = z.object({
+	id: z.string(),
+	statement: z.string(),
+	status: HypothesisStatusSchema,
+	evidenceIds: z.array(z.string()),
+	parentId: z.string().optional(),
+	at: z.string(),
+});
+export type RecordedHypothesis = z.infer<typeof RecordedHypothesisSchema>;
+
+/** Characters of one artifact's HTML (#871). */
+export const ARTIFACT_HTML_CHARS = 200_000;
+
+/** A self-contained HTML page the agent published during a run (#871); drawn sandboxed, never fetched. */
+export const ArtifactSchema = z.object({
+	id: z.string(),
+	title: z.string().min(1).max(120),
+	html: z.string().min(1).max(ARTIFACT_HTML_CHARS),
+	at: z.string(),
+});
+export type Artifact = z.infer<typeof ArtifactSchema>;
+
+export const RecordedFindingSchema = z.discriminatedUnion("type", [
+	RecordedEvidenceSchema.extend({ type: z.literal("evidence") }),
+	RecordedHypothesisSchema.extend({ type: z.literal("hypothesis") }),
+]);
+export type RecordedFinding = z.infer<typeof RecordedFindingSchema>;
 
 export const RuledOutSchema = z.object({
 	// A candidate cause never promoted to a ranked hypothesis. (A hypothesis that WAS
@@ -278,9 +343,20 @@ const ModelNextStepSchema = NextStepSchema.omit({ id: true }).extend({
  * The report as the model writes it: what the engine accepts and the transcript
  * hides, one schema for both (#673 w7-5). Host-stamped `fidelity` is omitted.
  */
+/** `quote` and `anchor` come only from the recording tool, so a report the model writes drops them. */
+const ModelEvidenceSchema = EvidenceSchema.omit({ quote: true, anchor: true });
+
 export const ModelReportSchema = InvestigationReportSchema.omit({
 	fidelity: true,
-}).extend({ nextSteps: z.array(ModelNextStepSchema) });
+}).extend({
+	hypotheses: z.array(
+		HypothesisSchema.extend({ evidence: z.array(ModelEvidenceSchema) }),
+	),
+	ruledOut: z.array(
+		RuledOutSchema.extend({ evidence: z.array(ModelEvidenceSchema) }),
+	),
+	nextSteps: z.array(ModelNextStepSchema),
+});
 export type ModelReport = z.infer<typeof ModelReportSchema>;
 
 // =============================================================================
@@ -314,6 +390,8 @@ export const RunWorkspaceSchema = z.object({
 	repos: z.array(RunWorkspaceRepoSchema),
 	/** The run's MCP server name, reused by its follow-ups; absent on a run from before (#848). */
 	toolsServer: z.string().optional(),
+	/** Commit pairs the panel may diff, recorded at run start; absent on a run from before (#973). */
+	compare: z.array(RunComparisonSchema).optional(),
 });
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 
@@ -470,7 +548,11 @@ export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
-	incidentId: z.string().uuid(),
+	/** Null for a scheduled service check until a finding links it to an incident (#979). */
+	incidentId: z.string().uuid().nullable(),
+	/** A scheduled service check's subject (#979); null on an incident's run. */
+	serviceId: z.string().nullable().optional(),
+	scheduleId: z.string().nullable().optional(),
 	status: WorkflowStatusSchema,
 	/** A run is a thread (#673): the alert workflow, or a chat a message started. */
 	kind: InvestigationKindSchema.optional().default("investigation"),
@@ -527,7 +609,7 @@ export const InvestigationSchema = z.object({
 	/** Set while the agent waits on the operator's Approve or Deny (#673 w21). */
 	awaitingApprovalAt: DateStringSchema.nullable().optional(),
 	/** The incident's number, on list rows: a notification names `INC-n`. */
-	incidentNumber: z.number().int().optional(),
+	incidentNumber: z.number().int().nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
@@ -900,6 +982,14 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 						omitted: z.string().nullable(),
 					})
 					.optional(),
+				/** PrismaLens wrote this message, not the operator: a restart cut the run off (#981). */
+				restart: z
+					.object({
+						stoppedAt: z.string(),
+						resumedAt: z.string(),
+						by: z.enum(["auto", "operator"]),
+					})
+					.optional(),
 			})
 			.optional(),
 	}),
@@ -930,6 +1020,18 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		name: z.string(),
 		at: z.string(),
 		turn: z.enum(["first", "follow-up"]),
+		/** What the call carried, for replay; absent on events from before #848's framework. */
+		callId: z.string().optional(),
+		input: z.unknown().optional(),
+		/** The input was over the cap and dropped whole, never cut (#453). */
+		inputDropped: z.literal(true).optional(),
+		/** The text the agent received, scrubbed and capped. */
+		output: z.string().optional(),
+		isError: z.boolean().optional(),
+		ms: z.number().int().min(0).optional(),
+		schemaHash: z.string().optional(),
+		/** Reached through `tools_call`, so replay calls it the same way. */
+		via: z.literal("tools_call").optional(),
 	}),
 	z.object({
 		/** Once at the turn's end: whether the agent connected to PrismaLens's tools, and what it called (#848). */
@@ -945,6 +1047,18 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 				count: z.number().int().min(1),
 			}),
 		),
+	}),
+	z.object({
+		/** The agent published a self-contained HTML page through PrismaLens's tool (#871). */
+		kind: z.literal("artifact_published"),
+		...StreamBaseShape,
+		artifact: ArtifactSchema,
+	}),
+	z.object({
+		/** The agent recorded evidence or a hypothesis through PrismaLens's tool (#930). */
+		kind: z.literal("finding_recorded"),
+		...StreamBaseShape,
+		finding: RecordedFindingSchema,
 	}),
 	z.object({
 		/** The agent asked before a tool call; the run waits on the operator (#673 w21). */
@@ -996,6 +1110,34 @@ export type Culprit = z.infer<typeof CulpritSchema>;
 export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
 export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
+
+export interface RecordedFindings {
+	evidence: RecordedEvidence[];
+	hypotheses: RecordedHypothesis[];
+}
+
+/** What a run's events say the agent recorded, each id at its latest (#930). */
+export function recordedFindings(
+	events: readonly CanonicalEvent[],
+): RecordedFindings {
+	const evidence = new Map<string, RecordedEvidence>();
+	const hypotheses = new Map<string, RecordedHypothesis>();
+	for (const e of events) {
+		if (e.kind !== "finding_recorded") continue;
+		const f = e.finding;
+		if (f.type === "evidence") {
+			const { type: _type, ...item } = f;
+			evidence.set(item.id, item);
+		} else {
+			const { type: _type, ...item } = f;
+			hypotheses.set(item.id, item);
+		}
+	}
+	return {
+		evidence: Array.from(evidence.values()),
+		hypotheses: Array.from(hypotheses.values()),
+	};
+}
 
 // =============================================================================
 // DURABLE EVENT RECORD (ADR-0018 store.append) — bulk-append + replay/history
@@ -1133,11 +1275,9 @@ export type LogSystemContext = z.infer<typeof LogSystemContextSchema>;
 /**
  * A prior investigation summary — an episodic-memory seed (top-N similar past).
  *
- * Superseded in practice by `contextPack.priorIncidents`, which carries the same
- * intent with a fence, a rank, and an honest `matchedOn`. Retained because ADR-0015
- * names this field in the host->engine contract and that contract is EXTEND-ONLY:
- * removing it is a breaking narrowing, not a cleanup, even while no host populates
- * it and no stage reads it. Retire it via an ADR-0015 amendment, not a diff.
+ * Superseded by `contextPack.priorIncidents`. The host->engine contract may rename
+ * or drop a field while both sides ship in one bundle; it is extend-only again once
+ * they are versioned separately (#916 - agent-host package).
  */
 export const PriorInvestigationSchema = z.object({
 	incidentTitle: z.string().optional(),
@@ -1152,39 +1292,53 @@ export type PriorInvestigation = z.infer<typeof PriorInvestigationSchema>;
  * app/cloud) supplies, and the context-pack (ADR-0016 §5) rides on. A later
  * per-alert fan-out needs no change here — the context is already 1..N.
  */
-export const InvestigationContextSchema = z.object({
-	/** ≥1 firing alert. A single-alert run is the degenerate case, not empty. */
-	alerts: z.array(FiringAlertSchema).min(1),
-	/** Read-only telemetry surfaces, only when the host has them configured (ADR 0002 §2). */
-	telemetry: TelemetryEndpointsSchema.optional(),
-	incident: IncidentContextSchema.optional(),
-	service: ServiceContextSchema.optional(),
-	/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
-	repos: z.array(z.string()).optional(),
-	logs: LogSystemContextSchema.optional(),
-	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
-	/**
-	 * Host-assembled facts the harness cannot reach by iterating (ADR-0016 §5).
-	 * Absent on the CLI/degenerate path and on any host that could not assemble
-	 * one — the engine renders nothing and behaves exactly as before.
-	 */
-	contextPack: ContextPackSchema.optional(),
-	/** The pre-run fetch; a follow-up reads its run's saved one again (#848 ruling 2026-10-24). */
-	preRun: PreRunContextSchema.optional(),
-	/** Several repos, each at its absolute `path` (#747, #918). */
-	workspace: z
-		.object({
-			repos: z.array(
-				z.object({
-					path: z.string(),
-					services: z.array(z.string()),
-					subPath: z.string().nullable(),
-					head: z.string(),
-				}),
-			),
-		})
-		.optional(),
-});
+export const InvestigationContextSchema = z
+	.object({
+		/** ≥1 firing alert, unless `mode` is `service-check`. A single-alert run is the degenerate case, not empty. */
+		alerts: z.array(FiringAlertSchema),
+		/** A scheduled check of a service has no alert; the prompt frames it from `check` (#979). */
+		mode: z.literal("service-check").optional(),
+		check: z
+			.object({
+				brief: z.string().optional(),
+				/** The runbook path the schedule names, if any. */
+				runbook: z.string().nullable().optional(),
+			})
+			.optional(),
+		/** Read-only telemetry surfaces, only when the host has them configured (ADR 0002 §2). */
+		telemetry: TelemetryEndpointsSchema.optional(),
+		incident: IncidentContextSchema.optional(),
+		service: ServiceContextSchema.optional(),
+		/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
+		repos: z.array(z.string()).optional(),
+		logs: LogSystemContextSchema.optional(),
+		priorInvestigations: z.array(PriorInvestigationSchema).optional(),
+		/**
+		 * Host-assembled facts the harness cannot reach by iterating (ADR-0016 §5).
+		 * Absent on the CLI/degenerate path and on any host that could not assemble
+		 * one — the engine renders nothing and behaves exactly as before.
+		 */
+		contextPack: ContextPackSchema.optional(),
+		/** The pre-run fetch; a follow-up reads its run's saved one again (#848 ruling 2026-10-24). */
+		preRun: PreRunContextSchema.optional(),
+		/** Several repos, each at its absolute `path` (#747, #918). */
+		workspace: z
+			.object({
+				repos: z.array(
+					z.object({
+						path: z.string(),
+						services: z.array(z.string()),
+						subPath: z.string().nullable(),
+						head: z.string(),
+					}),
+				),
+			})
+			.optional(),
+	})
+	.refine((c) => c.mode === "service-check" || c.alerts.length > 0, {
+		message: "at least one firing alert is required",
+		path: ["alerts"],
+	});
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
 
 /** Optional enrichments applied when assembling an InvestigationContext. */
@@ -1237,6 +1391,26 @@ export function correlatedAlertsContext(
 	};
 }
 
+/** A scheduled check of one service: no alert, the schedule's brief and runbook instead (#979). */
+export function serviceCheckContext(
+	service: ServiceContext,
+	check: { brief?: string; runbook?: string | null },
+	extras: Omit<InvestigationContextExtras, "service"> & {
+		telemetry?: TelemetryEndpoints;
+	} = {},
+): InvestigationContext {
+	return {
+		mode: "service-check",
+		alerts: [],
+		check,
+		service,
+		...(extras.telemetry ? { telemetry: extras.telemetry } : {}),
+		...(extras.repos ? { repos: extras.repos } : {}),
+		...(extras.logs ? { logs: extras.logs } : {}),
+		...(extras.contextPack ? { contextPack: extras.contextPack } : {}),
+	};
+}
+
 /**
  * Build an InvestigationContext from ONE firing alert — the degenerate/CLI path
  * (ADR-0012: the CLI is single-alert; incidents are an app/cloud feature).
@@ -1259,8 +1433,64 @@ export const JobAttachmentSchema = AttachmentRefSchema.extend({
 });
 export type JobAttachment = z.infer<typeof JobAttachmentSchema>;
 
+/** The schedule values a scheduled run was admitted with; it never reads them live (#979, adversary OBJ-003). */
+export const ScheduledRunSchema = z.object({
+	scheduleId: z.string(),
+	revision: z.number().int(),
+	serviceId: z.string(),
+	serviceName: z.string(),
+	serviceNotes: z.string().nullable(),
+	runbook: z.string().nullable(),
+	repos: z.array(
+		z.object({
+			sourceKind: z.enum(["folder", "url"]),
+			url: z.string(),
+			defaultBranch: z.string().nullable(),
+			subPath: z.string().nullable(),
+			connectionId: z.string().nullable(),
+			serviceName: z.string(),
+		}),
+	),
+});
+export type ScheduledRun = z.infer<typeof ScheduledRunSchema>;
+/** A run PrismaLens's restart cut off, taken up again (#981). Carried across boots, never recomputed. */
+export const RestartRecoverySchema = z.object({
+	/** Consecutive recoveries of this run; a finished turn starts the count again. */
+	attempt: z.number().int().min(1),
+	/** When PrismaLens was last alive before the stop. */
+	stoppedAt: z.string(),
+	/** The run's own last activity before the stop, boot-written events excluded. */
+	lastActivityAt: z.string(),
+	/** `operator`: Resume was pressed on a run PrismaLens did not resume itself. */
+	by: z.enum(["auto", "operator"]),
+});
+export type RestartRecovery = z.infer<typeof RestartRecoverySchema>;
+
+const RestartRunRefSchema = z.object({
+	investigationId: z.string(),
+	/** Null for a scheduled check with no incident (#984). */
+	incidentId: z.string().nullable(),
+	incidentNumber: z.number().int().nullable(),
+	title: z.string(),
+});
+
+/** What the last start did with the runs a stop cut off, for the once-per-device notice (#981). */
+export const RestartSummarySchema = z
+	.object({
+		at: z.string(),
+		/** When PrismaLens was last alive before this start; null on a first start. */
+		stoppedAt: z.string().nullable(),
+		resumed: z.array(RestartRunRefSchema),
+		skipped: z.array(RestartRunRefSchema.extend({ reason: z.string() })),
+	})
+	.nullable();
+export type RestartSummary = z.infer<typeof RestartSummarySchema>;
+
 export const InvestigationJobDataSchema = z.object({
-	incidentId: z.string(),
+	/** Null for a scheduled service check (#979). */
+	incidentId: z.string().nullable(),
+	/** Set on a scheduled service check: its frozen subject and values (#979). */
+	scheduled: ScheduledRunSchema.optional(),
 	investigationId: z.string(),
 	priority: z.enum(["low", "normal", "high", "critical"]).optional(),
 	context: z.record(z.string(), z.unknown()).optional(),
@@ -1299,6 +1529,8 @@ export const InvestigationJobDataSchema = z.object({
 			handoff: z.boolean().optional(),
 			/** A restart cut the run off: the agent is told its last command may not have completed. */
 			afterRestart: z.boolean().optional(),
+			/** PrismaLens composes the message when the job is claimed, from what it finds then (#981). */
+			restart: RestartRecoverySchema.optional(),
 			/** What the row said before the follow-up; a follow-up never changes it. */
 			restore: z.object({
 				status: WorkflowStatusSchema,

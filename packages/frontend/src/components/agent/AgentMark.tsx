@@ -35,13 +35,12 @@ export function AgentMark({
 			<span
 				aria-hidden
 				data-testid="agent-lettermark"
+				data-letters={letters}
 				className={cn(
-					"inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface-4 text-[9px] leading-none font-semibold text-text-1 [&.size-5]:rounded-[5px] [&.size-5]:text-[10px]",
+					"after:content-[attr(data-letters)] inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface-4 text-[9px] leading-none font-semibold text-text-1 [&.size-5]:rounded-[5px] [&.size-5]:text-[10px]",
 					className,
 				)}
-			>
-				{letters}
-			</span>
+			/>
 		);
 	if (!mark)
 		return (
