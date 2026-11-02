@@ -349,6 +349,8 @@ describe("RunRunbooks (#848)", () => {
 					steps={[]}
 					onJump={vi.fn()}
 					files={{
+						workspace: null,
+						touched: [],
 						runId: "run-1",
 						viewing: null,
 						onOpen: vi.fn(),

@@ -10781,6 +10781,79 @@
                             },
                             "toolsServer": {
                               "type": "string"
+                            },
+                            "compare": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repo": {
+                                    "type": "string"
+                                  },
+                                  "head": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "headKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "headName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "base": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "baseKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "baseName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "between": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "exclusiveMinimum": 0
+                                  }
+                                },
+                                "required": [
+                                  "repo",
+                                  "head",
+                                  "headKind",
+                                  "headName",
+                                  "base",
+                                  "baseKind",
+                                  "baseName",
+                                  "between"
+                                ]
+                              }
                             }
                           },
                           "required": [
@@ -12052,6 +12125,79 @@
                                   },
                                   "toolsServer": {
                                     "type": "string"
+                                  },
+                                  "compare": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "repo": {
+                                          "type": "string"
+                                        },
+                                        "head": {
+                                          "type": "string",
+                                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                        },
+                                        "headKind": {
+                                          "enum": [
+                                            "deployment",
+                                            "tag",
+                                            "merge",
+                                            "commit"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "headName": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "base": {
+                                          "type": "string",
+                                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                        },
+                                        "baseKind": {
+                                          "enum": [
+                                            "deployment",
+                                            "tag",
+                                            "merge",
+                                            "commit"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "baseName": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "between": {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991,
+                                          "exclusiveMinimum": 0
+                                        }
+                                      },
+                                      "required": [
+                                        "repo",
+                                        "head",
+                                        "headKind",
+                                        "headName",
+                                        "base",
+                                        "baseKind",
+                                        "baseName",
+                                        "between"
+                                      ]
+                                    }
                                   }
                                 },
                                 "required": [
@@ -13951,6 +14097,79 @@
                             },
                             "toolsServer": {
                               "type": "string"
+                            },
+                            "compare": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repo": {
+                                    "type": "string"
+                                  },
+                                  "head": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "headKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "headName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "base": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "baseKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "baseName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "between": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "exclusiveMinimum": 0
+                                  }
+                                },
+                                "required": [
+                                  "repo",
+                                  "head",
+                                  "headKind",
+                                  "headName",
+                                  "base",
+                                  "baseKind",
+                                  "baseName",
+                                  "between"
+                                ]
+                              }
                             }
                           },
                           "required": [
@@ -15817,6 +16036,79 @@
                                 },
                                 "toolsServer": {
                                   "type": "string"
+                                },
+                                "compare": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "repo": {
+                                        "type": "string"
+                                      },
+                                      "head": {
+                                        "type": "string",
+                                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                      },
+                                      "headKind": {
+                                        "enum": [
+                                          "deployment",
+                                          "tag",
+                                          "merge",
+                                          "commit"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "headName": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "base": {
+                                        "type": "string",
+                                        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                      },
+                                      "baseKind": {
+                                        "enum": [
+                                          "deployment",
+                                          "tag",
+                                          "merge",
+                                          "commit"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "baseName": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "between": {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991,
+                                        "exclusiveMinimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "repo",
+                                      "head",
+                                      "headKind",
+                                      "headName",
+                                      "base",
+                                      "baseKind",
+                                      "baseName",
+                                      "between"
+                                    ]
+                                  }
                                 }
                               },
                               "required": [
@@ -17140,6 +17432,79 @@
                             },
                             "toolsServer": {
                               "type": "string"
+                            },
+                            "compare": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repo": {
+                                    "type": "string"
+                                  },
+                                  "head": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "headKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "headName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "base": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "baseKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "baseName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "between": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "exclusiveMinimum": 0
+                                  }
+                                },
+                                "required": [
+                                  "repo",
+                                  "head",
+                                  "headKind",
+                                  "headName",
+                                  "base",
+                                  "baseKind",
+                                  "baseName",
+                                  "between"
+                                ]
+                              }
                             }
                           },
                           "required": [
@@ -19991,6 +20356,79 @@
                             },
                             "toolsServer": {
                               "type": "string"
+                            },
+                            "compare": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repo": {
+                                    "type": "string"
+                                  },
+                                  "head": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "headKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "headName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "base": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "baseKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "baseName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "between": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "exclusiveMinimum": 0
+                                  }
+                                },
+                                "required": [
+                                  "repo",
+                                  "head",
+                                  "headKind",
+                                  "headName",
+                                  "base",
+                                  "baseKind",
+                                  "baseName",
+                                  "between"
+                                ]
+                              }
                             }
                           },
                           "required": [
@@ -22316,6 +22754,79 @@
                             },
                             "toolsServer": {
                               "type": "string"
+                            },
+                            "compare": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repo": {
+                                    "type": "string"
+                                  },
+                                  "head": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "headKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "headName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "base": {
+                                    "type": "string",
+                                    "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                  },
+                                  "baseKind": {
+                                    "enum": [
+                                      "deployment",
+                                      "tag",
+                                      "merge",
+                                      "commit"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "baseName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "between": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "exclusiveMinimum": 0
+                                  }
+                                },
+                                "required": [
+                                  "repo",
+                                  "head",
+                                  "headKind",
+                                  "headName",
+                                  "base",
+                                  "baseKind",
+                                  "baseName",
+                                  "between"
+                                ]
+                              }
                             }
                           },
                           "required": [
@@ -23236,6 +23747,481 @@
                         "repo",
                         "sha",
                         "path",
+                        "reason"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/tree": {
+      "get": {
+        "operationId": "investigations.getTree",
+        "summary": "List one directory at a commit the run recorded",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "sha",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "true"
+              ],
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "const": "ok"
+                        },
+                        "repo": {
+                          "type": "string"
+                        },
+                        "sha": {
+                          "type": "string",
+                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                        },
+                        "prefix": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "entries": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "enum": [
+                                  "file",
+                                  "dir",
+                                  "symlink",
+                                  "submodule"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "path",
+                              "type"
+                            ]
+                          }
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "repo",
+                        "sha",
+                        "prefix",
+                        "entries",
+                        "truncated"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "const": "unavailable"
+                        },
+                        "repo": {
+                          "type": "string"
+                        },
+                        "sha": {
+                          "type": "string",
+                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                        },
+                        "prefix": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "enum": [
+                            "source-removed",
+                            "commit-gone",
+                            "not-a-dir"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "repo",
+                        "sha",
+                        "prefix",
+                        "reason"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/diff": {
+      "get": {
+        "operationId": "investigations.getDiff",
+        "summary": "Diff a commit pair the run recorded",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pair",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "const": "ok"
+                        },
+                        "comparison": {
+                          "type": "object",
+                          "properties": {
+                            "repo": {
+                              "type": "string"
+                            },
+                            "head": {
+                              "type": "string",
+                              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                            },
+                            "headKind": {
+                              "enum": [
+                                "deployment",
+                                "tag",
+                                "merge",
+                                "commit"
+                              ],
+                              "type": "string"
+                            },
+                            "headName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "base": {
+                              "type": "string",
+                              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                            },
+                            "baseKind": {
+                              "enum": [
+                                "deployment",
+                                "tag",
+                                "merge",
+                                "commit"
+                              ],
+                              "type": "string"
+                            },
+                            "baseName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "between": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": [
+                            "repo",
+                            "head",
+                            "headKind",
+                            "headName",
+                            "base",
+                            "baseKind",
+                            "baseName",
+                            "between"
+                          ]
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string"
+                              },
+                              "oldPath": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "additions": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "deletions": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "oldPath",
+                              "additions",
+                              "deletions"
+                            ]
+                          }
+                        },
+                        "patch": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "omitted": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "too-large"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "comparison",
+                        "files",
+                        "patch",
+                        "omitted"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "const": "unavailable"
+                        },
+                        "comparison": {
+                          "type": "object",
+                          "properties": {
+                            "repo": {
+                              "type": "string"
+                            },
+                            "head": {
+                              "type": "string",
+                              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                            },
+                            "headKind": {
+                              "enum": [
+                                "deployment",
+                                "tag",
+                                "merge",
+                                "commit"
+                              ],
+                              "type": "string"
+                            },
+                            "headName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "base": {
+                              "type": "string",
+                              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                            },
+                            "baseKind": {
+                              "enum": [
+                                "deployment",
+                                "tag",
+                                "merge",
+                                "commit"
+                              ],
+                              "type": "string"
+                            },
+                            "baseName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "between": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991,
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": [
+                            "repo",
+                            "head",
+                            "headKind",
+                            "headName",
+                            "base",
+                            "baseKind",
+                            "baseName",
+                            "between"
+                          ]
+                        },
+                        "reason": {
+                          "enum": [
+                            "source-removed",
+                            "commit-gone"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "comparison",
                         "reason"
                       ]
                     }

@@ -43,6 +43,7 @@ import {
 	InvestigationJobDataSchema,
 	type InvestigationReport,
 	isWorkflowLive,
+	type RunComparison,
 	type RunWorkspace,
 	type RunWorkspaceRepo,
 	RunWorkspaceSchema,
@@ -87,7 +88,9 @@ import {
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
+import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
+import { compareFor } from "../../modules/investigations/run-views.js";
 import {
 	buildPreRunSnapshot,
 	type CopyTarget,
@@ -318,9 +321,11 @@ async function runJobInternal(
 					TELEMETRY_MS,
 				)
 			: null;
+		const checkout = await resolveWorkspace(data, ports, io.signal);
 		const workspace = {
-			...(await resolveWorkspace(data, ports, io.signal)),
+			...checkout,
 			toolsServer: newGatewayServerName(),
+			compare: await comparisonsFor(checkout.repos, ports, io.signal),
 		};
 		await recordWorkspace(data, workspace, ports, context);
 		const afterSetup = await logWorkspaceSetup(data.investigationId, io, ports);
@@ -845,6 +850,7 @@ async function runFollowUp(
 				handoff,
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
+			...(recorded.compare ? { compare: recorded.compare } : {}),
 		};
 		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
@@ -1494,6 +1500,51 @@ export interface Workspace extends RunWorkspace {
 	note: string;
 	/** What this run could not check out; empty on a follow-up. */
 	checkoutsSkipped: CheckoutSkipped[];
+}
+
+const COMPARE_MS = 15_000;
+const COMPARE_DEPLOYMENTS = 10;
+
+/**
+ * The panel's diff pairs, one per repo, recorded before the agent starts so
+ * the diff endpoint never takes a commit from the caller (#973). A repo that
+ * cannot be read is skipped; this never fails the run.
+ */
+export async function comparisonsFor(
+	repos: RunWorkspace["repos"],
+	ports: Pick<RunPorts, "deployments">,
+	cancel: AbortSignal,
+	deadlineMs = COMPARE_MS,
+): Promise<RunComparison[]> {
+	// One deadline for every repo, and Stop still stops: this runs before the agent starts (#975 OBJ-014).
+	const signal = AbortSignal.any([cancel, AbortSignal.timeout(deadlineMs)]);
+	const pairs: RunComparison[] = [];
+	for (const repo of repos) {
+		if (signal.aborted) break;
+		const dir = objectDirFor(repo);
+		if (!dir) continue;
+		try {
+			const deployments = (
+				(await untilAborted(
+					ports.deployments?.(repo.services) ?? Promise.resolve([]),
+					signal,
+				)) ?? []
+			).slice(0, COMPARE_DEPLOYMENTS);
+			const pair = await compareFor(
+				dir,
+				repo.name,
+				repo.head,
+				deployments,
+				signal,
+			);
+			if (pair) pairs.push(pair);
+		} catch (error) {
+			logger.warn(
+				`No comparison recorded for ${repo.name}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+	return pairs;
 }
 
 function toRunWorkspace({

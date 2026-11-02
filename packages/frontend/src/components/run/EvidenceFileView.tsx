@@ -25,13 +25,13 @@ import { cn } from "@/lib/utils";
 /** Above this, the file is drawn uncoloured: highlighting, not transfer, is the cost. Not yet measured. */
 const PLAIN_TEXT_OVER = 256 * 1024;
 
-const POOL = {
+export const POOL = {
 	poolOptions: { workerFactory: () => new DiffsWorker(), poolSize: 2 },
 	// WebAssembly is blocked by the app's CSP (no 'wasm-unsafe-eval'), so the JS regex engine.
 	highlighterOptions: { preferredHighlighter: "shiki-js" as const },
 };
 
-const CODE_STYLE = {
+export const CODE_STYLE = {
 	"--diffs-font-family": "var(--font-mono)",
 	"--diffs-font-size": "12px",
 	"--diffs-line-height": "18px",
