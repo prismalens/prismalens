@@ -53,6 +53,34 @@ describe("comparisonsFor", () => {
 		expect(pairs[0]?.between).toBe(1);
 	});
 
+	it("pairs deployments recorded as a short or uppercase sha, keeping the full ids", async () => {
+		const second = git(["rev-parse", "HEAD"], root);
+		writeFileSync(join(root, "c.txt"), "c");
+		git(["add", "--", "c.txt"], root);
+		git(["commit", "-q", "-m", "c"], root);
+		const third = git(["rev-parse", "HEAD"], root);
+		const head = repos[0];
+		if (!head) throw new Error("fixture");
+		const pairs = await comparisonsFor(
+			[{ ...head, head: third }],
+			{
+				deployments: async () => [
+					{ sha: third.slice(0, 8).toUpperCase(), name: "v2" },
+					{ sha: second.slice(0, 10), name: "v1" },
+				],
+			},
+			new AbortController().signal,
+		);
+		expect(pairs[0]).toMatchObject({
+			headKind: "deployment",
+			head: third,
+			headName: "v2",
+			base: second,
+			baseKind: "deployment",
+			baseName: "v1",
+		});
+	});
+
 	it("moves on when the deployment lookup never answers", async () => {
 		const started = Date.now();
 		const pairs = await comparisonsFor(

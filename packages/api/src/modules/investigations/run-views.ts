@@ -218,6 +218,26 @@ async function isAncestor(git: Run, a: string, b: string) {
 	}
 }
 
+/** A webhook may record a short or uppercase sha; an ambiguous or unknown one resolves to null. */
+async function fullCommitId(
+	git: Run,
+	recorded: string,
+): Promise<string | null> {
+	if (!/^[0-9a-f]{4,64}$/i.test(recorded)) return null;
+	try {
+		const { stdout } = await git([
+			"rev-parse",
+			"--verify",
+			"--quiet",
+			`${recorded.toLowerCase()}^{commit}`,
+		]);
+		const sha = stdout.trim();
+		return CommitShaSchema.safeParse(sha).success ? sha : null;
+	} catch {
+		return null;
+	}
+}
+
 async function tagAt(git: Run, sha: string): Promise<string | null> {
 	const { stdout } = await git([
 		"tag",
@@ -269,10 +289,11 @@ async function pairFor(
 			(await git(["rev-list", "--count", `${base}..${tip}`])).stdout.trim(),
 		);
 	const known: { sha: string; name: string | null }[] = [];
-	for (const d of deployments) {
-		if (!CommitShaSchema.safeParse(d.sha).success) continue;
-		if (known.some((k) => k.sha === d.sha)) continue;
-		if (await isAncestor(git, d.sha, known[0]?.sha ?? head)) known.push(d);
+	for (const recorded of deployments) {
+		const sha = await fullCommitId(git, recorded.sha);
+		if (!sha || known.some((k) => k.sha === sha)) continue;
+		if (await isAncestor(git, sha, known[0]?.sha ?? head))
+			known.push({ sha, name: recorded.name });
 		if (known.length === 2) break;
 	}
 	const [tip, prev] = known;

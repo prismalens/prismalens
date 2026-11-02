@@ -221,7 +221,11 @@ export function RunDetailsPanel({
 					className="flex min-h-0 flex-1 flex-col"
 					data-testid="run-details-changes"
 				>
-					<ChangesTab runId={files.runId} workspace={files.workspace} />
+					<ChangesTab
+						key={files.runId}
+						runId={files.runId}
+						workspace={files.workspace}
+					/>
 				</TabsPrimitive.Content>
 				{(["summary", "context"] as const).map((id) => (
 					<TabsPrimitive.Content

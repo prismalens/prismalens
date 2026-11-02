@@ -142,9 +142,9 @@ export function RunFileTree({
 		? `${many ? `${selected.repo}/` : ""}${selected.path}`
 		: null;
 	useEffect(() => {
-		if (!selectedPath || !paths.includes(selectedPath)) return;
+		if (!selectedPath || !key.split("\0").includes(selectedPath)) return;
 		model.scrollToPath(selectedPath, { focus: false });
-	}, [model, selectedPath, paths]);
+	}, [model, selectedPath, key]);
 
 	return (
 		<div
