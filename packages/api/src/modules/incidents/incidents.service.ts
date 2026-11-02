@@ -263,10 +263,13 @@ export class IncidentsService {
 		serviceId?: string;
 		fromDate?: Date;
 		toDate?: Date;
+		search?: string;
 		limit?: number;
 		offset?: number;
 	}): Promise<{ data: IncidentWithRelations[]; total: number }> {
+		const search = incidentSearch(options?.search);
 		const where = {
+			...(search && { AND: [search] }),
 			...(options?.status
 				? { status: options.status }
 				: options?.open
@@ -1192,7 +1195,19 @@ function repoName(url: string): string {
 	return last.replace(/\.git$/, "") || url;
 }
 
-function stepText(raw: string): string | null {
+/** `INC-42`, `#42` or `42` matches the number; anything else the title (#1020). */
+export function incidentSearch(
+	raw: string | undefined,
+): Prisma.IncidentWhereInput | null {
+	const q = raw?.trim();
+	if (!q) return null;
+	const n = /^(?:inc-?|#)?(\d{1,9})$/i.exec(q)?.[1];
+	return {
+		OR: [{ title: { contains: q } }, ...(n ? [{ number: Number(n) }] : [])],
+	};
+}
+
+export function stepText(raw: string): string | null {
 	const parsed = safeParseJsonObject(raw) as { text?: unknown } | null;
 	const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
 	return text ? text.slice(0, 280) : null;

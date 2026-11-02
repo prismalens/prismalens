@@ -218,6 +218,8 @@ export const IncidentQuerySchema = z.object({
 	serviceId: z.string().uuid().optional(),
 	fromDate: CoerceDateSchema.optional(),
 	toDate: CoerceDateSchema.optional(),
+	/** Matches the title, or the number as `42` or `INC-42` (#1020). */
+	search: z.string().trim().max(200).optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });

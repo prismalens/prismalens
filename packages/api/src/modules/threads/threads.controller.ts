@@ -27,6 +27,31 @@ export class ThreadsController {
 				data: await this.threads.list(input),
 			})),
 
+			// GET /threads/feed - Every thread in its section (#1020)
+			feed: implement(threadsContract.feed).handler(({ input }) =>
+				this.threads.feed(input),
+			),
+
+			// POST /threads/:id/visit
+			visit: implement(threadsContract.visit).handler(({ input }) =>
+				this.threads.visit(input.id),
+			),
+
+			// POST /threads/:id/settle
+			settle: implement(threadsContract.settle).handler(({ input }) =>
+				this.threads.settle(input.id, input.settled),
+			),
+
+			// GET /threads/settings
+			getSettings: implement(threadsContract.getSettings).handler(() =>
+				this.threads.getSettings(),
+			),
+
+			// PUT /threads/settings
+			updateSettings: implement(threadsContract.updateSettings).handler(
+				({ input }) => this.threads.updateSettings(input),
+			),
+
 			// POST /threads/drafts/:draftKey/attachments
 			uploadDraftAttachment: implement(
 				threadsContract.uploadDraftAttachment,
