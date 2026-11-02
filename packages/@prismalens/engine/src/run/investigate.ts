@@ -977,6 +977,8 @@ export async function* runInvestigation(
 					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${handoff}\n\n${said}`
 					: buildChatPrompt(opts.context, `${handoff}\n\n${said}`, {
 							noNetwork,
+							level,
+							modeName,
 						})
 				: said;
 			outcome = yield* turn(promptParts(seeded, attachments));
@@ -1001,7 +1003,11 @@ export async function* runInvestigation(
 			);
 			outcome = yield* turn(
 				promptParts(
-					buildChatPrompt(opts.context, message, { noNetwork }) + toolsLine,
+					buildChatPrompt(opts.context, message, {
+						noNetwork,
+						level,
+						modeName,
+					}) + toolsLine,
 					opts.attachments,
 				),
 			);

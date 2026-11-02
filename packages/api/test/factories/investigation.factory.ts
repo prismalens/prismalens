@@ -14,6 +14,7 @@ export class InvestigationFactory {
 			tenantId: null,
 			incidentId: faker.string.uuid(),
 			serviceId: null,
+			repositoryId: null,
 			scheduleId: null,
 			scheduleRevision: null,
 			configSnapshot: null,

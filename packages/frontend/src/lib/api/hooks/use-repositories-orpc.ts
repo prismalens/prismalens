@@ -85,9 +85,10 @@ export function useAddRepositorySource() {
 		...orpc.repositories.addSource.mutationOptions(),
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
-			queryClient.invalidateQueries({
-				queryKey: serviceKeys.detail(variables.serviceId),
-			});
+			if (variables.serviceId)
+				queryClient.invalidateQueries({
+					queryKey: serviceKeys.detail(variables.serviceId),
+				});
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
 			// A service that names its code is the board's fourth setup step.
 			queryClient.invalidateQueries({ queryKey: orpc.setup.key() });

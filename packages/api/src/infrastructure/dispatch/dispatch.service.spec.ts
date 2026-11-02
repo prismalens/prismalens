@@ -1820,3 +1820,69 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		count.mockRestore();
 	});
 });
+
+describe("project, service and no-subject threads (#1020)", () => {
+	it("a follow-up on a project thread carries its subject and code, and a live sibling thread never blocks it", async () => {
+		const { service } = realDispatch();
+		const repo = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: "shop", url: "/code/shop", defaultBranch: "main" },
+		});
+		const live = await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: repo.id, status: "running", kind: "chat" },
+		});
+		const done = await prisma.investigation.create({
+			data: {
+				incidentId: null,
+				repositoryId: repo.id,
+				status: "completed",
+				kind: "chat",
+				harness: "opencode",
+				acpSessionId: "ses_1",
+				workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }),
+			},
+		});
+
+		expect(await service.resumeInvestigation(done.id, "and the tests?", "queue")).toBe(true);
+
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: done.id } });
+		expect(JSON.parse(rearmed.payload)).toMatchObject({
+			incidentId: null,
+			thread: {
+				subject: "project",
+				repositoryId: repo.id,
+				name: "shop",
+				repos: [{ sourceKind: "folder", url: "/code/shop", serviceName: "shop" }],
+			},
+		});
+		expect((await read(live.id)).status).toBe("running");
+		await prisma.investigation.deleteMany({ where: { repositoryId: repo.id } });
+		await prisma.repository.delete({ where: { id: repo.id } });
+	});
+
+	it("reads a service thread's repositories, and gives a no-subject thread none", async () => {
+		const { service } = realDispatch();
+		const svc = await prisma.service.create({ data: { name: "checkout" } });
+		const repo = await prisma.repository.create({
+			data: { sourceKind: "url", fullName: "acme/checkout", url: "https://github.com/acme/checkout", defaultBranch: "main" },
+		});
+		await prisma.serviceRepository.create({ data: { serviceId: svc.id, repositoryId: repo.id, subPath: "api" } });
+
+		expect(await service.threadRunOf({ repositoryId: null, serviceId: svc.id })).toMatchObject({
+			subject: "service",
+			serviceId: svc.id,
+			name: "checkout",
+			repos: [{ sourceKind: "url", subPath: "api", serviceName: "checkout" }],
+		});
+		expect(await service.threadRunOf({ repositoryId: null, serviceId: null })).toEqual({
+			subject: "none",
+			repositoryId: null,
+			serviceId: null,
+			name: null,
+			repos: [],
+		});
+		// A project or service deleted since is a no-subject thread now.
+		expect((await service.threadRunOf({ repositoryId: "gone", serviceId: null })).subject).toBe("none");
+		await prisma.service.delete({ where: { id: svc.id } });
+		await prisma.repository.delete({ where: { id: repo.id } });
+	});
+});

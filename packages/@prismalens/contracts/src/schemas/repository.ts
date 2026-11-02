@@ -101,9 +101,12 @@ const SubPathSchema = z
 		"Sub-path must be relative and must not contain '..'",
 	);
 
-/** A service names its code as a local folder or a git URL; save validates it and links it as primary. */
+/**
+ * A folder or git URL; save validates it. With a service it becomes that service's primary
+ * repo; without one it is a project on its own (#1020).
+ */
 export const AddRepositorySourceSchema = z.object({
-	serviceId: z.string().uuid(),
+	serviceId: z.string().uuid().optional(),
 	source: z.string().trim().min(1),
 	subPath: SubPathSchema.optional(),
 });

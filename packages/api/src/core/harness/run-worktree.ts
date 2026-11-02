@@ -116,6 +116,8 @@ export async function bindRun(
 		incidentId: string | null;
 		/** A follow-up's recorded workspace path: its folder stays the run's even after the location changed. */
 		recorded?: string;
+		/** A project thread's project name, for its branch (#1020). */
+		project?: string | null;
 	},
 ): Promise<RunBinding> {
 	const serviceId = opts.serviceName
@@ -129,12 +131,29 @@ export async function bindRun(
 			existingRootOf(runId) ??
 			recordedRootOf(runId, opts.recorded) ??
 			rootOf(settings.location),
-		branch: opts.incidentId
-			? `prismalens/${opts.incidentId}-${runId}`
-			: `prismalens/${runId}`,
+		branch: runBranch(runId, opts),
 	};
 	runs.set(runId, binding);
 	return binding;
+}
+
+/** Only `[a-z0-9-]` from a project's name reaches the ref, so no name makes it invalid (#1020). */
+export function projectSlug(name: string): string {
+	return name
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 40)
+		.replace(/-+$/, "");
+}
+
+export function runBranch(
+	runId: string,
+	opts: { incidentId: string | null; project?: string | null },
+): string {
+	if (opts.incidentId) return `prismalens/${opts.incidentId}-${runId}`;
+	const slug = opts.project ? projectSlug(opts.project) : "";
+	return slug ? `prismalens/${slug}-${runId}` : `prismalens/${runId}`;
 }
 
 export function unbindRun(runId: string): void {

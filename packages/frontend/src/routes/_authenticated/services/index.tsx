@@ -288,6 +288,11 @@ function ServicesPage() {
 				}
 			>
 				<div className="flex basis-full items-center gap-2 md:basis-auto">
+					<Button variant="text" size="sm" asChild>
+						<Link to="/projects" data-testid="services-projects-link">
+							Projects
+						</Link>
+					</Button>
 					<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
 						<Search className="size-3.5 shrink-0 text-text-3" />
 						<input

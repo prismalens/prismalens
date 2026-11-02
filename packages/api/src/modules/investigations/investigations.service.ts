@@ -46,7 +46,7 @@ import {
 	type InternalInvestigationResultDto,
 } from "./dto/index.js";
 import { meetsPromotionRule } from "./promotion.js";
-import { runScope } from "./run-scope.js";
+import { runScope, sharesAdmission } from "./run-scope.js";
 
 export type { Investigation };
 
@@ -150,6 +150,8 @@ export class InvestigationsService {
 			incidentId: string | null;
 			scheduleId?: string;
 			serviceId?: string;
+			/** A project thread's repository (#1020). */
+			repositoryId?: string;
 			triggerType?: string;
 			triggerReason?: string;
 			/** The incident was already resolved or closed; it stays so (#743). */
@@ -173,19 +175,22 @@ export class InvestigationsService {
 		let result: { investigation: Investigation; created: boolean };
 		try {
 			result = await this.prisma.$transaction(async (tx) => {
-				const running = await tx.investigation.findFirst({
-					where: {
-						...runScope(dto),
-						status: { in: [...LIVE_WORKFLOW_STATUSES] },
-					},
-					orderBy: { createdAt: "desc" },
-				});
+				const running = sharesAdmission(dto)
+					? await tx.investigation.findFirst({
+							where: {
+								...runScope(dto),
+								status: { in: [...LIVE_WORKFLOW_STATUSES] },
+							},
+							orderBy: { createdAt: "desc" },
+						})
+					: null;
 				if (running) return { investigation: running, created: false };
 				const investigation = await tx.investigation.create({
 					data: {
 						incidentId: dto.incidentId,
 						...(dto.scheduleId ? { scheduleId: dto.scheduleId } : {}),
 						...(dto.serviceId ? { serviceId: dto.serviceId } : {}),
+						...(dto.repositoryId ? { repositoryId: dto.repositoryId } : {}),
 						status: "pending",
 						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
@@ -223,7 +228,6 @@ export class InvestigationsService {
 		this.logger.log(
 			`Created investigation ${investigation.id} for incident ${dto.incidentId}`,
 		);
-
 		// Create timeline entry
 		await this.timelineService.create({
 			incidentId: dto.incidentId,
@@ -484,7 +488,9 @@ export class InvestigationsService {
 
 	/** `Run #N` as the sidebar counts it: every thread on the incident, oldest first. */
 	async runNumber(
-		inv: Pick<Investigation, "incidentId" | "scheduleId" | "createdAt">,
+		inv: Pick<Investigation, "incidentId" | "scheduleId" | "createdAt"> & {
+			id?: string;
+		},
 	): Promise<number> {
 		return this.prisma.investigation.count({
 			where: { ...runScope(inv), createdAt: { lte: inv.createdAt } },
@@ -499,7 +505,7 @@ export class InvestigationsService {
 		inv: Pick<
 			Investigation,
 			"incidentId" | "scheduleId" | "createdAt" | "kind" | "liveTurn"
-		>,
+		> & { id?: string },
 		kind: FollowUpKind,
 	): Promise<string | null> {
 		const wants: LiveTurn = kind === "continue" ? "report" : "answer";

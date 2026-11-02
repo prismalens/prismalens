@@ -3402,3 +3402,87 @@ describe("a service check with no incident (#979)", () => {
 		expect(ports.writeResult).not.toHaveBeenCalledWith("inv-check", expect.objectContaining({ incidentId: expect.any(String) }));
 	});
 });
+
+describe("a project, service or no-subject thread (#1020)", () => {
+	let tmp: string;
+	const thread = {
+		subject: "project" as const,
+		repositoryId: "repo-1",
+		serviceId: null,
+		name: "shop-monorepo",
+		repos: [
+			{ sourceKind: "url" as const, url: "https://github.com/acme/shop", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "shop-monorepo" },
+		],
+	};
+	const data = (over: Partial<InvestigationJobData> = {}): InvestigationJobData => ({
+		investigationId: "inv-thread",
+		incidentId: null,
+		thread,
+		kind: "chat",
+		chat: { text: "Rename the retry helper" },
+		...over,
+	});
+	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-thread-run-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ failureKind: null, report: null, error: null });
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("checks out the project's own code and never asks for an incident's repositories", async () => {
+		const incidentRepos = vi.fn(async () => []);
+		const ports = fakePorts({
+			incidentRepos,
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const ws = await resolveWorkspace(data(), ports);
+
+		expect(incidentRepos).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.snapshotWith).mock.calls[0]?.[0]).toMatchObject({ url: "https://github.com/acme/shop" });
+		expect(ws.layout).toBe("single");
+	});
+
+	it("a thread with no project runs without code and says so, naming no incident", async () => {
+		const ws = await resolveWorkspace(data({ thread: { ...thread, subject: "none", repositoryId: null, name: null, repos: [] } }), fakePorts());
+
+		expect(ws.layout).toBe("unmapped");
+		expect(ws.note).toBe("Ran without code: this thread has no project linked.");
+	});
+
+	it("frames a coding chat: no incident read, no made-up alert, the project's name", async () => {
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => {
+				throw new Error("a project thread reads no incident");
+			}),
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const result = await runInvestigationJob({ id: "job-thread", investigationId: "inv-thread", attempts: 1 }, data(), io(), ports);
+
+		expect(result).toMatchObject({ success: true, incidentId: null });
+		expect(ports.getIncident).not.toHaveBeenCalled();
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; kind?: string; brief?: string }];
+		expect(opts.context).toMatchObject({ mode: "project-chat", alerts: [], thread: { subject: "project", name: "shop-monorepo" } });
+		expect(opts.context.incident).toBeUndefined();
+		expect(opts.kind).toBe("chat");
+		expect(opts.brief).toBe("Rename the retry helper");
+	});
+
+	it("a service thread reads the service's connectors and names the service", async () => {
+		const ports = fakePorts();
+		const service = { ...thread, subject: "service" as const, repositoryId: null, serviceId: "svc-1", name: "checkout", repos: [] };
+
+		await runInvestigationJob({ id: "job-svc", investigationId: "inv-thread", attempts: 1 }, data({ thread: service }), io(), ports);
+
+		expect(ports.resolveConnectors).toHaveBeenCalledWith("svc-1");
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown> }];
+		expect(opts.context).toMatchObject({ mode: "project-chat", service: { name: "checkout" }, thread: { subject: "service" } });
+	});
+});
