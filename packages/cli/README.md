@@ -10,12 +10,12 @@ app, checks a machine, pairs devices and manages a background service.
 
 ## Install
 
-PrismaLens is alpha: any 0.x release may break, so read the
+PrismaLens is alpha and changes often, so read the
 [release notes](https://github.com/prismalens/prismalens/releases) before upgrading.
 
 ### npm
 
-Needs Node.js 24+.
+Needs Node.js; `pl doctor` says if yours is too old.
 
 ```bash
 npm install -g prismalens
