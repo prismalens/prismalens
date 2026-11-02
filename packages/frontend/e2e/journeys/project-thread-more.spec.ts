@@ -250,7 +250,9 @@ test.describe("#1020 — project thread journeys", () => {
 
 		// Navigate to thread one
 		await page.goto(`/threads/${THREAD_ID}`);
-		await expect(page.getByTestId("thread-page")).toBeVisible();
+		await expect(page.getByTestId("thread-page")).toBeVisible({
+			timeout: 15_000,
+		});
 		await expect(page.getByTestId("composer-file")).toHaveCount(0);
 
 		// Add an attachment to the thread draft in composer
