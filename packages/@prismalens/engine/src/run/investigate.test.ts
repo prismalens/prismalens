@@ -1645,7 +1645,8 @@ describe("recorded evidence and hypotheses (#930)", () => {
 			permission: autoApprovePolicy,
 		});
 		const recorded = events.filter((e) => e.kind === "finding_recorded");
-		expect(recorded.map((e) => e.kind === "finding_recorded" && e.finding.type)).toEqual(["evidence", "hypothesis"]);
+		// The quote anchors once `pwd` ran, so the evidence shows again with its anchor.
+		expect(recorded.map((e) => e.kind === "finding_recorded" && e.finding.type)).toEqual(["evidence", "hypothesis", "evidence"]);
 		const first = recorded[0];
 		expect(first?.kind === "finding_recorded" && first.finding.type === "evidence" && first.finding.anchor).toBeNull();
 		const reportIdx = events.findIndex((e) => e.kind === "report");
@@ -1665,6 +1666,68 @@ describe("recorded evidence and hypotheses (#930)", () => {
 				anchor: { in: "tool-output", toolCallId: "t1", line: 1 },
 			}),
 		);
+	});
+
+	describe("a finding is shown once per anchor", () => {
+		const at = "2026-10-28T10:00:00.000Z";
+		const evidence = (quote: string, anchor: RecordedEvidence["anchor"]): RecordedEvidence => ({
+			id: "e1",
+			observation: "the tree is the clone",
+			source: "pwd",
+			quote,
+			direction: "supports",
+			anchor,
+			at,
+		});
+		/** Streams `live` as the agent records, then `after` is what the end-of-turn read holds. */
+		async function evidenceShown(live: RecordedEvidence[], after: RecordedEvidence) {
+			let found: ((f: RecordedFinding) => void) | undefined;
+			const gateway = {
+				url: "http://127.0.0.1:1/mcp",
+				token: "t0k",
+				serverName: "prismalens-abcdefgh23",
+				promptLine: "",
+				tools: ["evidence_record"],
+				connected: () => true,
+				waitConnected: async () => {
+					for (const e of live) found?.({ type: "evidence", ...e });
+					return true;
+				},
+				onCall: () => () => {},
+				calls: () => [],
+				onFinding: (cb: (f: RecordedFinding) => void) => {
+					found = cb;
+					return () => {
+						found = undefined;
+					};
+				},
+				findings: () => ({ evidence: [after], hypotheses: [] }),
+			};
+			const { events } = await collect("ok", {
+				env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+				gateway,
+				permission: autoApprovePolicy,
+			});
+			return events.flatMap((e) =>
+				e.kind === "finding_recorded" && e.finding.type === "evidence" ? [e.finding.anchor] : [],
+			);
+		}
+		const anchor = { in: "tool-output" as const, toolCallId: "t1", line: 1 };
+
+		it("emits an unanchored record again once its quote anchors", async () => {
+			const shown = await evidenceShown([evidence("pl-clone-", null)], evidence("pl-clone-", anchor));
+			expect(shown).toEqual([null, anchor]);
+		});
+
+		it("emits the same anchored record once", async () => {
+			const shown = await evidenceShown([evidence("pl-clone-", anchor), evidence("pl-clone-", anchor)], evidence("pl-clone-", anchor));
+			expect(shown).toEqual([anchor]);
+		});
+
+		it("keeps a record that never anchors to one emission", async () => {
+			const shown = await evidenceShown([evidence("zz-never-", null), evidence("zz-never-", null)], evidence("zz-never-", null));
+			expect(shown).toEqual([null]);
+		});
 	});
 });
 

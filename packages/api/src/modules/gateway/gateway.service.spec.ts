@@ -1110,7 +1110,9 @@ describe("read tools for the coding agent (#848)", () => {
 						? checkout
 						: where.name === "payments"
 							? { ...known[1], tier: "tier_2" }
-							: null,
+							: where.name === "ledger"
+								? { id: "svc-9", name: "ledger" }
+								: null,
 				),
 				findMany: vi.fn(
 					async ({
@@ -1189,9 +1191,10 @@ describe("read tools for the coding agent (#848)", () => {
 		m: ReturnType<typeof mocks>,
 		name: string,
 		args: Record<string, unknown> = {},
+		turnStartedAt?: Date,
 	): Promise<Result> {
 		const g = gateway(m);
-		const a = await g.lease(RUN_A, NAME);
+		const a = await g.lease(RUN_A, NAME, undefined, turnStartedAt);
 		const res = await g.serve(
 			RUN_A,
 			rpc(RUN_A, "tools/call", { name, arguments: args }, a?.token),
@@ -1263,6 +1266,21 @@ describe("read tools for the coding agent (#848)", () => {
 					take: 3,
 				}),
 			);
+		});
+
+		it("refuses a service outside the run's, since thread_read would refuse its threads", async () => {
+			const m = mocks();
+			const out = await use(m, "thread_list", { service: "ledger" });
+			expect(out.isError).toBe(true);
+			expect(out.value).toEqual(failure("not_found"));
+			expect(m.investigation.findMany).not.toHaveBeenCalled();
+		});
+
+		it("with no incident, a named service is not_found too", async () => {
+			const out = await use(mocks({ run: { incident: null } }), "thread_list", {
+				service: "payments",
+			});
+			expect(out.value).toEqual(failure("not_found"));
 		});
 
 		it("an unknown service is not_found", async () => {
@@ -1577,6 +1595,19 @@ describe("read tools for the coding agent (#848)", () => {
 					},
 				],
 			});
+		});
+
+		it("counts a follow-up's wall clock from its own start, not the run's", async () => {
+			const long = runRow({ startedAt: new Date(NOW.getTime() - 3_600_000) });
+			const first = await use(mocks({ run: long }), "run_status");
+			expect(first.value.secondsLeft).toBe(0);
+			const followUp = await use(
+				mocks({ run: long }),
+				"run_status",
+				{},
+				new Date(NOW.getTime() - 60_000),
+			);
+			expect(followUp.value.secondsLeft).toBe(840);
 		});
 
 		it("says null for what the run never recorded, never zero", async () => {

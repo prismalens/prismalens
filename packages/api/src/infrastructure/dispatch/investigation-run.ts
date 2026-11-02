@@ -965,7 +965,7 @@ async function runFollowUp(
 			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
 		const gateway = await ports.gateway
-			?.lease(id, workspace.toolsServer, harness)
+			?.lease(id, workspace.toolsServer, harness, new Date())
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",

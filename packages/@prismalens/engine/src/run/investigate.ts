@@ -737,8 +737,9 @@ export async function* runInvestigation(
 	const seen = new Set<string>();
 	/** True the first time `key` is seen this run. */
 	const shown = (key: string): boolean => !seen.has(key) && !!seen.add(key);
+	// The anchor is in the key so evidence that anchors after its first emission shows again.
 	const findingKey = (f: RecordedFinding) =>
-		`finding:${f.type}:${f.id}:${f.at}`;
+		`finding:${f.type}:${f.id}:${f.at}:${JSON.stringify(f.type === "evidence" ? (f.anchor ?? null) : null)}`;
 	const toolsSummary = function* (): Generator<CanonicalEvent> {
 		unCalled?.();
 		unFound?.();

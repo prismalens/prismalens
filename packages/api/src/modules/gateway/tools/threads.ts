@@ -63,7 +63,7 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 			name: "thread_list",
 			title: "Threads on this incident or a service",
 			description:
-				"Earlier investigations and chats (threads) on this run's incident, or on a service named in `service`, newest first: id, kind, status, start and finish time, agent and model, and a one-line summary when finished. Excludes this run. Use it to see what was already tried; read one with thread_read.",
+				"Earlier investigations and chats (threads) on this run's incident, or across the incidents of one of its services named in `service`, newest first: id, kind, status, start and finish time, agent and model, and a one-line summary when finished. Excludes this run. Use it to see what was already tried; read one with thread_read.",
 			group: "knowledge",
 			effect: "read",
 			input: z.object({
@@ -81,8 +81,8 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 					"not_found",
 					r.error,
 					service
-						? "Use a service name incident_get returned, or call thread_list without `service`."
-						: "This run has no incident; pass `service` with a service name.",
+						? "Use a service name incident_get returned for this run's incident, or call thread_list without `service`."
+						: "This run has no incident, so it has no threads to list.",
 				);
 			},
 		}),

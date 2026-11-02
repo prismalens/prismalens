@@ -229,6 +229,8 @@ export interface RunPorts {
 			runId: string,
 			serverName: string,
 			harness?: string,
+			/** A follow-up's start, so `run_status` counts its own wall clock. */
+			turnStartedAt?: Date,
 		): Promise<GatewayEntry | null>;
 		revoke(runId: string): void;
 	};

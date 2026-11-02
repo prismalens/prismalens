@@ -2751,7 +2751,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String));
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date));
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe("prismalens-reused1234");
@@ -2831,7 +2831,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String));
+		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");

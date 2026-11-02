@@ -141,6 +141,8 @@ interface RunState {
 	recording: boolean;
 	/** What this run lists and may execute (#848). */
 	view: RunView;
+	/** Set for a follow-up turn, whose wall clock starts anew; the first turn's runs from the row's `startedAt`. */
+	turnStartedAt?: Date;
 }
 
 const NO_TOOLS: RunView = { direct: [], deferred: [] };
@@ -197,6 +199,7 @@ export class GatewayService {
 		runId: string,
 		serverName: string,
 		harness?: string,
+		turnStartedAt?: Date,
 	): Promise<GatewayEntry | null> {
 		const base = this.baseUrl();
 		if (!base) return null;
@@ -213,6 +216,7 @@ export class GatewayService {
 			published: new Set(),
 			recording: true,
 			view: runView(this.tools, { search: this.toolSearch(harness) }),
+			turnStartedAt,
 		};
 		this.runs.set(runId, state);
 		const tools = [...state.view.direct, ...state.view.deferred].map(
@@ -562,7 +566,12 @@ export class GatewayService {
 		service?: string;
 		limit: number;
 	}): Promise<{ threads: ThreadSummary[] } | { error: string }> {
-		let where: Record<string, unknown>;
+		const incident = await this.runIncident(q.runId);
+		if (!incident) return { error: "This run has no incident recorded." };
+		let where: Record<string, unknown> = {
+			id: { not: q.runId },
+			incidentId: incident.id,
+		};
 		if (q.service) {
 			const service = await this.prisma.service.findUnique({
 				where: { name: q.service },
@@ -570,11 +579,13 @@ export class GatewayService {
 			});
 			if (!service)
 				return { error: `PrismaLens has no service named "${q.service}".` };
+			// The scope thread_read enforces, so every id listed can be read.
+			const mine = await this.serviceIdsOf(incident.id, incident.serviceId);
+			if (!mine.includes(service.id))
+				return {
+					error: `"${q.service}" is not a service of this run's incident.`,
+				};
 			where = { id: { not: q.runId }, incident: { serviceId: service.id } };
-		} else {
-			const incident = await this.runIncident(q.runId);
-			if (!incident) return { error: "This run has no incident recorded." };
-			where = { id: { not: q.runId }, incidentId: incident.id };
 		}
 		const rows = await this.prisma.investigation.findMany({
 			where,
@@ -1061,6 +1072,7 @@ export class GatewayService {
 		if (!row) return null;
 		const usage = parseWith(RunUsageSchema, row.usage);
 		const ws = parseWith(RunWorkspaceSchema, row.workspace);
+		const clockStart = this.runs.get(runId)?.turnStartedAt ?? row.startedAt;
 		return {
 			status: row.status,
 			usage: usage
@@ -1070,12 +1082,12 @@ export class GatewayService {
 						...(usage.cost ? { cost: usage.cost } : {}),
 					}
 				: null,
-			// The wall clock runs from the status turning running; a run without a start has no clock to read.
-			secondsLeft: row.startedAt
+			// The wall clock runs from the status turning running, or from a follow-up's own start; a run without one has no clock to read.
+			secondsLeft: clockStart
 				? Math.max(
 						0,
 						Math.round(
-							(row.startedAt.getTime() +
+							(clockStart.getTime() +
 								INVESTIGATION_DEFAULTS.harnessWallClockMs -
 								Date.now()) /
 								1000,
