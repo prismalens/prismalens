@@ -312,6 +312,8 @@ exec "${target}" "$@"
 		NODE_OPTIONS: `--import=${ctx.preload}`,
 		GATE_STUB_URL: ctx.stub.url,
 		PRISMALENS_HOST: "127.0.0.1",
+		// Captures go to the stub; if one ever leaked, it would count as internal (#1021).
+		PRISMALENS_TELEMETRY: "internal",
 	});
 	return {
 		dir,
@@ -564,6 +566,10 @@ async function checkTelemetry() {
 	assert(active, "second plain start sent no install_active");
 	const p = active.properties ?? {};
 	assert(p.build === "release", `install_active build=${p.build}`);
+	assert(
+		/^internal-/.test(active.distinct_id ?? ""),
+		`install_active distinct_id=${active.distinct_id}`,
+	);
 	assert(p.run_mode === "npm", `install_active run_mode=${p.run_mode}`);
 	assert(
 		/T00:00:00\.000Z$/.test(active.timestamp ?? ""),
@@ -580,7 +586,7 @@ async function checkTelemetry() {
 		`Recently sent lacks install_active: ${JSON.stringify(recent)}`,
 	);
 	await next.stop();
-	return `notice on 1st start, 0 sent; 4 overrides sent 0; next start sent install_active (build=release, run_mode=npm, ts=${active.timestamp}); Recently sent shows it`;
+	return `notice on 1st start, 0 sent; 4 overrides sent 0; next start sent install_active (build=release, run_mode=npm, internal- id, ts=${active.timestamp}); Recently sent shows it`;
 }
 
 async function checkUpdate() {

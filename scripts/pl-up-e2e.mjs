@@ -106,6 +106,8 @@ const child = spawn(bin, ["up", "--no-open"], {
 	stdio: ["inherit", "pipe", "inherit"],
 	env: {
 		...process.env,
+		// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
+		PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY || "internal",
 		PRISMALENS_WORKSPACE_DIR: workspace,
 		PRISMALENS_HOST: "127.0.0.1",
 		PRISMALENS_PORT: PORT,

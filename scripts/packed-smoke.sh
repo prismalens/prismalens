@@ -192,6 +192,7 @@ fi
 # those only to the log file, which is asserted separately (#610). CI keeps `pl up`
 # from opening a browser on the startup link it prints.
 CI="${CI:-true}" \
+PRISMALENS_TELEMETRY="${PRISMALENS_TELEMETRY:-internal}" \
 PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
 PRISMALENS_LOG_CONSOLE=verbose \
 PRISMALENS_HOST=127.0.0.1 \
