@@ -65,6 +65,8 @@ fail() {
 WORKSPACE_DIR="$SCRATCH/.prismalens-workspace"
 mkdir -p "$WORKSPACE_DIR"
 export PRISMALENS_WORKSPACE_DIR="$WORKSPACE_DIR"
+# Keeps an exported `off`; otherwise a local run counts as internal (#1021).
+export PRISMALENS_TELEMETRY="${PRISMALENS_TELEMETRY:-internal}"
 
 echo "==> --version matches the installed package.json"
 EXPECTED=$(node -p "require('$SCRATCH/node_modules/prismalens/package.json').version")

@@ -186,6 +186,8 @@ async function main() {
 		env: {
 			...process.env,
 			CI: process.env.CI ?? "true",
+			// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
+			PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY || "internal",
 			PATH: agentPath,
 			PRISMALENS_WORKSPACE_DIR: workspace,
 			// The default (quiet) console level sends info records to the log
