@@ -3,7 +3,8 @@
 
 /**
  * A service check's run with no incident, over a temp SQLite database (#979): its
- * timeline writes, and the promotion that links it to an incident on a finding.
+ * timeline writes, the promotion that links it to an incident on a finding, and the
+ * service delete that is refused while check runs exist.
  */
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
@@ -26,6 +27,7 @@ const { PrismaService } = await import("../../core/prisma/prisma.service.js");
 const { IncidentsService } = await import("../incidents/incidents.service.js");
 const { TimelineService } = await import("../timeline/timeline.service.js");
 const { InvestigationsService } = await import("./investigations.service.js");
+const { ServicesService } = await import("../services/services.service.js");
 
 let prisma: InstanceType<typeof PrismaService>;
 let timeline: InstanceType<typeof TimelineService>;
@@ -277,16 +279,70 @@ describe("a finding links the check to an incident (#979, adversary OBJ-010)", (
 	});
 });
 
-describe("deleting a service keeps its check runs (#979)", () => {
-	it("a run linked to an incident survives with no service", async () => {
-		const gone = await prisma.service.create({ data: { name: `gone-${randomUUID()}` } });
+describe("deleting a service that has check runs is refused (#979)", () => {
+	const scheduleFor = (serviceId: string) => ({
+		name: "Morning check",
+		serviceId,
+		brief: "Look at the pool",
+		recurrence: JSON.stringify({ kind: "interval", everyMinutes: 60 }),
+		harness: "claude",
+		bindingsHash: "x",
+	});
+	const deleteService = async (id: string) => {
+		const { ServicesController } = await import("../services/services.controller.js");
+		const controller = new ServicesController(new ServicesService(prisma), {} as never);
+		const procs = controller.services() as unknown as Record<string, { "~orpc": { handler: (o: unknown) => Promise<unknown> } }>;
+		return procs.delete["~orpc"].handler({ input: { id }, context: {} });
+	};
+
+	it("answers 409 naming the run count, and the service and its runs stay", async () => {
+		const kept = await prisma.service.create({ data: { name: `kept-${randomUUID()}` } });
 		incidentNo++;
-		const inc = await prisma.incident.create({ data: { number: 3000 + incidentNo, title: "linked", serviceId: gone.id } });
-		const run = await check({ serviceId: gone.id, incidentId: inc.id });
+		const inc = await prisma.incident.create({ data: { number: 3000 + incidentNo, title: "linked", serviceId: kept.id } });
+		const linked = await check({ serviceId: kept.id, incidentId: inc.id });
+		const unlinked = await check({ serviceId: kept.id });
+
+		const refused = await deleteService(kept.id).catch((e: unknown) => e);
+
+		expect(refused).toMatchObject({
+			code: "CONFLICT",
+			status: 409,
+			message: "Service has 2 scheduled check runs and cannot be deleted while they exist.",
+		});
+		expect(await prisma.service.findUnique({ where: { id: kept.id } })).not.toBeNull();
+		expect(await prisma.investigation.findMany({ where: { id: { in: [linked.id, unlinked.id] } } })).toHaveLength(2);
+	});
+
+	it("says 'run' for one", async () => {
+		const kept = await prisma.service.create({ data: { name: `kept-${randomUUID()}` } });
+		await check({ serviceId: kept.id });
+
+		await expect(deleteService(kept.id)).rejects.toMatchObject({
+			message: "Service has 1 scheduled check run and cannot be deleted while it exists.",
+		});
+	});
+
+	it("deletes a service with no check runs, and its schedules go with it", async () => {
+		const free = await prisma.service.create({ data: { name: `free-${randomUUID()}` } });
+		const schedule = await prisma.schedule.create({ data: scheduleFor(free.id) });
+
+		await deleteService(free.id);
+
+		expect(await prisma.service.findUnique({ where: { id: free.id } })).toBeNull();
+		expect(await prisma.schedule.findUnique({ where: { id: schedule.id } })).toBeNull();
+	});
+
+	it("still answers 404 for a service that does not exist", async () => {
+		await expect(deleteService(randomUUID())).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+
+	it("the database keeps a run when its service is removed underneath (the migration's net)", async () => {
+		const gone = await prisma.service.create({ data: { name: `gone-${randomUUID()}` } });
+		const run = await check({ serviceId: gone.id });
 
 		await prisma.service.delete({ where: { id: gone.id } });
 
-		expect(await prisma.investigation.findUnique({ where: { id: run.id } })).toMatchObject({ incidentId: inc.id, serviceId: null });
+		expect(await prisma.investigation.findUnique({ where: { id: run.id } })).toMatchObject({ serviceId: null });
 	});
 });
 
