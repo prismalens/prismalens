@@ -81,6 +81,7 @@ import {
 	sharesAdmission,
 } from "../../modules/investigations/run-scope.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import { shownFullName } from "../../modules/repositories/serialize-repository.js";
 import {
 	interruptedRunIds,
 	RunWorkspacesService,
@@ -1302,14 +1303,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				where: { id: row.repositoryId },
 				select: repoFields,
 			});
-			if (repo)
+			if (repo) {
+				// Agent-facing: a legacy name may hold its address's credential (#1020).
+				const name = shownFullName(repo);
 				return {
 					subject: "project",
 					repositoryId: row.repositoryId,
 					serviceId: null,
-					name: repo.fullName,
-					repos: [ref(repo, null, repo.fullName)],
+					name,
+					repos: [ref(repo, null, name)],
 				};
+			}
 		}
 		if (row.serviceId) {
 			const service = await this.prisma.service.findUnique({

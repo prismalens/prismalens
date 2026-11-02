@@ -173,6 +173,14 @@ async function assembled<T>(
 }
 
 /** A service check names its service in the values it was admitted with; an incident run in its incident (#979). */
+/** A project thread takes the global workspace policy, never a same-named service's (#1020). */
+function policyService(
+	data: InvestigationJobData,
+	name: string | undefined,
+): string | null {
+	return data.thread?.subject === "project" ? null : (name ?? null);
+}
+
 function serviceIdOf(
 	incident: Record<string, unknown> | null,
 	data?: InvestigationJobData,
@@ -876,7 +884,7 @@ async function runFollowUp(
 		);
 		await bindRun(id, {
 			incidentId: data.incidentId,
-			serviceName: recorded.repos[0]?.services[0] ?? null,
+			serviceName: policyService(data, recorded.repos[0]?.services[0]),
 			recorded: recorded.cwd,
 			project: data.thread?.name ?? null,
 		});
@@ -1830,7 +1838,7 @@ export async function resolveWorkspace(
 		);
 	await bindRun(runId, {
 		incidentId: data.incidentId,
-		serviceName: repos[0]?.services[0] ?? null,
+		serviceName: policyService(data, repos[0]?.services[0]),
 		project: data.thread?.name ?? null,
 	});
 	const multi = repos.length > 1;

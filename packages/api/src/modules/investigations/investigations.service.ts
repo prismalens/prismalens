@@ -160,6 +160,8 @@ export class InvestigationsService {
 			kind?: InvestigationKind;
 			title?: string | null;
 			accessLevel?: AccessLevel | null;
+			/** Runs in the create's transaction; a throw leaves no run behind (#1020). */
+			onCreate?: (tx: Prisma.TransactionClient, id: string) => Promise<void>;
 		},
 	): Promise<{ investigation: Investigation; created: boolean }> {
 		// Every run starts here — the manual button, a webhook trigger and the
@@ -200,6 +202,7 @@ export class InvestigationsService {
 						...(dto.accessLevel ? { accessLevel: dto.accessLevel } : {}),
 					},
 				});
+				await dto.onCreate?.(tx, investigation.id);
 				return { investigation, created: true };
 			});
 		} catch (error) {

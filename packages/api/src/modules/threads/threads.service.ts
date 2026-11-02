@@ -5,6 +5,7 @@ import { Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import type {
 	Investigation as InvestigationView,
+	JobAttachment,
 	RunChoice,
 	StartThreadInput,
 } from "@prismalens/contracts";
@@ -109,6 +110,8 @@ export class ThreadsService {
 		const choice = runChoice(input);
 		await requireReadyHarness(this.harness, choice);
 
+		let attachments: JobAttachment[] = [];
+		const draftKey = input.draftKey;
 		const { investigation } = await this.investigations.startOrGet({
 			incidentId: null,
 			...(ids.repositoryId ? { repositoryId: ids.repositoryId } : {}),
@@ -117,15 +120,20 @@ export class ThreadsService {
 			kind: "chat",
 			title: input.text.slice(0, 120),
 			accessLevel: input.accessLevel ?? null,
+			...(draftKey && files.length
+				? {
+						onCreate: async (tx, id) => {
+							attachments = await this.attachments.claimDraft(
+								draftKey,
+								files,
+								id,
+								tx,
+							);
+						},
+					}
+				: {}),
 		});
 		const thread = await this.dispatch.threadRunOf(ids);
-		const attachments = input.draftKey
-			? await this.attachments.claimDraft(
-					input.draftKey,
-					files,
-					investigation.id,
-				)
-			: [];
 		const connections = ids.serviceId
 			? await this.integrations.getIntegrationsForService(ids.serviceId)
 			: [];

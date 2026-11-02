@@ -27,6 +27,7 @@ import {
 	attachmentKind,
 	type JobAttachment,
 } from "@prismalens/contracts";
+import type { Prisma } from "@prismalens/database";
 import { fileTypeFromBuffer } from "file-type";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
@@ -181,21 +182,31 @@ export class AttachmentsService {
 			});
 	}
 
-	/** The draft's files as a job carries them, now owned by the run that starts with them. */
+	/**
+	 * The draft's files as a job carries them, now owned by the run that starts with them.
+	 * The write is the claim: a racing start sees a short count and throws, so the caller's
+	 * transaction rolls its run back (#1020).
+	 */
 	async claimDraft(
 		draftKey: string,
 		ids: string[],
 		investigationId: string,
+		db: Prisma.TransactionClient | PrismaService = this.prisma,
 	): Promise<JobAttachment[]> {
 		if (ids.length === 0) return [];
-		const where = { draftKey, investigationId: null, id: { in: ids } };
-		const rows = await this.prisma.attachment.findMany({ where });
-		const owned = asJob(rows, ids);
-		await this.prisma.attachment.updateMany({
-			where,
+		const unique = [...new Set(ids)];
+		const claimed = await db.attachment.updateMany({
+			where: { draftKey, investigationId: null, id: { in: unique } },
 			data: { investigationId },
 		});
-		return owned;
+		if (claimed.count !== unique.length)
+			throw new ORPCError("BAD_REQUEST", {
+				message: "An attachment is not on this thread; attach it again.",
+			});
+		const rows = await db.attachment.findMany({
+			where: { draftKey, investigationId, id: { in: unique } },
+		});
+		return asJob(rows, unique);
 	}
 
 	/** The ids as a job carries them; refuses one this run does not own. */

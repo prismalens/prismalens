@@ -1859,6 +1859,24 @@ describe("project, service and no-subject threads (#1020)", () => {
 		await prisma.repository.delete({ where: { id: repo.id } });
 	});
 
+	it("never hands the agent a legacy project name's credentials", async () => {
+		const { service } = realDispatch();
+		const secrets = ["hunter2", "tok3n", "innerpw"];
+		for (const fullName of [
+			"https://bob:hunter2@git.example.com/acme/shop.git",
+			"https://git.example.com/acme/shop.git?access_token=tok3n",
+			"git.example.com/https://eve:innerpw@other.example/x",
+		]) {
+			const repo = await prisma.repository.create({
+				data: { sourceKind: "url", fullName, url: fullName, defaultBranch: "main" },
+			});
+			const run = await service.threadRunOf({ repositoryId: repo.id, serviceId: null });
+			const shown = JSON.stringify({ name: run.name, names: run.repos.map((r) => r.serviceName) });
+			for (const secret of secrets) expect(shown).not.toContain(secret);
+			await prisma.repository.delete({ where: { id: repo.id } });
+		}
+	});
+
 	it("reads a service thread's repositories, and gives a no-subject thread none", async () => {
 		const { service } = realDispatch();
 		const svc = await prisma.service.create({ data: { name: "checkout" } });

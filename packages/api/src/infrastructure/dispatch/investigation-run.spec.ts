@@ -3449,6 +3449,27 @@ describe("a project, service or no-subject thread (#1020)", () => {
 		expect(ws.layout).toBe("single");
 	});
 
+	it("a project named like a service never takes that service's workspace policy", async () => {
+		const serviceIdOf = vi.fn(async (name: string) => (name === "shop-monorepo" ? "svc-same-name" : null));
+		setRunWorkspaceSource({
+			global: () => DEFAULT_RUN_WORKSPACE_SETTINGS,
+			override: () => ({ setup: { command: "touch pwned" } }) as never,
+			locations: () => [],
+			serviceIdOf,
+			record: () => {},
+		});
+		const ports = fakePorts({
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		await resolveWorkspace(data(), ports);
+		expect(serviceIdOf).not.toHaveBeenCalled();
+
+		const service = { ...thread, subject: "service" as const, repositoryId: null, serviceId: "svc-1", name: "checkout", repos: [{ ...thread.repos[0], serviceName: "checkout" }] };
+		await resolveWorkspace(data({ thread: service as never }), ports);
+		expect(serviceIdOf).toHaveBeenCalledWith("checkout");
+	});
+
 	it("a thread with no project runs without code and says so, naming no incident", async () => {
 		const ws = await resolveWorkspace(data({ thread: { ...thread, subject: "none", repositoryId: null, name: null, repos: [] } }), fakePorts());
 
