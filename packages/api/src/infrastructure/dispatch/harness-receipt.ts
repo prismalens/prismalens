@@ -121,8 +121,8 @@ export function stampOf(pid: number, host: ProcessHost = osHost()): Stamp {
 
 /**
  * Whether a live POSIX group `receipt.pid` is the harness's: "gone" when this host has
- * rebooted since, "unproven" when nothing ties it to the receipt. A pid stays reserved
- * while its group has members (POSIX fork), so a leaderless group in the same boot is ours.
+ * rebooted since, "unproven" when nothing ties it to the receipt. A leaderless group is
+ * unproven: its id may have been reused by a stranger's group whose leader then exited.
  */
 function posixOwner(
 	receipt: Receipt,
@@ -134,8 +134,9 @@ function posixOwner(
 	if (receipt.boot === undefined || now.boot === null) return "unproven";
 	if (receipt.boot !== now.boot) return "gone";
 	const leader = host.startOf(receipt.pid);
-	if (leader === null) return "ours";
-	return leader === receipt.leaderStart ? "ours" : "unproven";
+	return leader !== null && leader === receipt.leaderStart
+		? "ours"
+		: "unproven";
 }
 
 /**

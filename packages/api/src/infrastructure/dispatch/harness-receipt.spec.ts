@@ -115,10 +115,16 @@ describe("harness receipt (#981 OBJ-010)", () => {
 			expect(kills).toEqual([[4120, true]]);
 		});
 
-		it("kills a group whose leader exited but whose members live on, in the same boot", async () => {
-			const { host, kills } = posixHost({ leader: null });
-			expect(await containPrevious({ pid: 4120, startedAt: T, ...STAMP }, host)).toBe(true);
-			expect(kills).toEqual([[4120, true]]);
+		it("leaves a leaderless group alone in the same boot: its id may be a stranger's reused group whose leader exited", async () => {
+			// The harness group emptied; an unrelated group took id 4120, then its leader exited leaving children.
+			for (const receipt of [
+				{ pid: 4120, startedAt: T, ...STAMP },
+				{ pid: 4120, startedAt: T, host: "box", boot: "boot-1" },
+			]) {
+				const { host, kills } = posixHost({ leader: null });
+				expect(await containPrevious(receipt, host)).toBe(false);
+				expect(kills).toEqual([]);
+			}
 		});
 
 		it("leaves a pid reused by another process alone, and is not contained", async () => {
