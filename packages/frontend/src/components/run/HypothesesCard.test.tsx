@@ -348,4 +348,67 @@ describe("HypothesesCard", () => {
 		expect(fallback.textContent).toContain("Invalid status hypothesis");
 		expect(fallback.textContent).toContain("Second hypothesis");
 	});
+	it("has no Open larger button and no clip when the page passes no preview handler", async () => {
+		await act(async () => {
+			root.render(
+				<HypothesesCard
+					report={{ rootCause: "Root cause", hypotheses: sampleHypotheses }}
+					at={null}
+					targetOf={sampleTargetOf}
+					onOpenFile={vi.fn()}
+					onJump={vi.fn()}
+				/>,
+			);
+		});
+
+		expect(q("hypotheses-open")).toBeNull();
+		const body = q<HTMLElement>("hypotheses-body");
+		expect(body.style.maxHeight).toBe("");
+		expect(body.className).not.toContain("overflow-hidden");
+		expect(qAll("hypothesis-row")).toHaveLength(6);
+	});
+
+	it("keeps the 360px clip and Open larger when the page owns a preview", async () => {
+		await act(async () => {
+			root.render(
+				<HypothesesCard
+					report={{ rootCause: "Root cause", hypotheses: sampleHypotheses }}
+					at={null}
+					targetOf={sampleTargetOf}
+					onOpenFile={vi.fn()}
+					onJump={vi.fn()}
+					onPreview={vi.fn()}
+					preview={false}
+				/>,
+			);
+		});
+
+		expect(q("hypotheses-open")).not.toBeNull();
+		expect(q<HTMLElement>("hypotheses-body").style.maxHeight).toBe("360px");
+	});
+
+	it("reads a cite with nowhere to go as plain text, not a link", async () => {
+		await act(async () => {
+			root.render(
+				<HypothesesCard
+					report={{ rootCause: "Root cause", hypotheses: sampleHypotheses }}
+					at={null}
+					targetOf={() => null}
+					onOpenFile={vi.fn()}
+					onJump={vi.fn()}
+				/>,
+			);
+		});
+
+		const card = q("hypotheses-card");
+		expect(qAll("hypotheses-cite")).toHaveLength(0);
+		expect(
+			card.querySelectorAll("a, button[id^='hyp-card-cite']"),
+		).toHaveLength(0);
+		const plain = qAll("hypotheses-cite-text");
+		expect(plain.map((c) => c.textContent)).toEqual([
+			"src/db/pool.ts:41-42",
+			"step:5",
+		]);
+	});
 });

@@ -516,7 +516,7 @@ export async function* runInvestigation(
 	const brief =
 		descriptor.systemPromptVia === "claude-meta" &&
 		opts.kind !== "chat" &&
-		opts.context.alerts.length > 0
+		(opts.context.alerts.length > 0 || opts.context.mode === "service-check")
 			? investigationPromptParts(opts.context, { level }).brief
 			: null;
 	const investigationPrompt = (
@@ -957,7 +957,10 @@ export async function* runInvestigation(
 						level,
 					}) +
 						toolsLine +
-						(brief ? `\n\n${brief}` : "") +
+						// A service check's prompt already holds the brief (#979).
+						(brief && opts.context.mode !== "service-check"
+							? `\n\n${brief}`
+							: "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
 				),

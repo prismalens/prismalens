@@ -124,16 +124,20 @@ export class ServicesController {
 			}),
 
 			// DELETE /services/:id - Delete a service
-			delete: implement(servicesContract.delete).handler(
-				async ({ input, context }) => {
-					const deleted = await this.servicesService.delete(input.id);
-					if (!deleted) {
-						throw new ORPCError("NOT_FOUND", {
-							message: `Service ${input.id} not found`,
-						});
-					}
-				},
-			),
+			delete: implement(servicesContract.delete).handler(async ({ input }) => {
+				const runs = await this.servicesService.countCheckRuns(input.id);
+				if (runs > 0) {
+					throw new ORPCError("CONFLICT", {
+						message: `Service has ${runs} scheduled check ${runs === 1 ? "run and cannot be deleted while it exists" : "runs and cannot be deleted while they exist"}.`,
+					});
+				}
+				const deleted = await this.servicesService.delete(input.id);
+				if (!deleted) {
+					throw new ORPCError("NOT_FOUND", {
+						message: `Service ${input.id} not found`,
+					});
+				}
+			}),
 
 			// POST /services/:id/dependencies - Add a dependency
 			addDependency: implement(servicesContract.addDependency).handler(

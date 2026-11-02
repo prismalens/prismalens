@@ -37,6 +37,7 @@ import {
 } from "../../core/settings/settings.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { IncidentsService } from "../incidents/incidents.service.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { owePush, pushOwedBy } from "../push/push-outbox.js";
 import { TimelineService } from "../timeline/timeline.service.js";
@@ -44,6 +45,8 @@ import {
 	CreateInvestigationDto,
 	type InternalInvestigationResultDto,
 } from "./dto/index.js";
+import { meetsPromotionRule } from "./promotion.js";
+import { runScope } from "./run-scope.js";
 
 export type { Investigation };
 
@@ -102,6 +105,7 @@ export function followUpBlockedReason(
 }
 
 export type InvestigationWithRelations = Investigation & {
+	/** Null for a service check no finding has linked to an incident (#979). */
 	incident: {
 		id: string;
 		number: number;
@@ -115,7 +119,7 @@ export type InvestigationWithRelations = Investigation & {
 		mergedIntoId?: string | null;
 		/** The incident a merge moved this one's alerts to (#673 w37). */
 		mergedInto?: { number: number } | null;
-	};
+	} | null;
 	recommendations: Recommendation[];
 };
 
@@ -129,6 +133,8 @@ export class InvestigationsService {
 		private readonly timelineService: TimelineService,
 		private readonly overlayService: OverlayService,
 		private readonly settingsService: SettingsService,
+		@Inject(forwardRef(() => IncidentsService))
+		private readonly incidentsService: IncidentsService,
 	) {}
 
 	/**
@@ -139,7 +145,11 @@ export class InvestigationsService {
 	 * one transaction, so two clicks or a click and a trigger cannot both start a run (#637).
 	 */
 	async startOrGet(
-		dto: CreateInvestigationDto & {
+		dto: Omit<CreateInvestigationDto, "incidentId"> & {
+			/** Null for a scheduled service check, which is scoped by `scheduleId` instead (#979). */
+			incidentId: string | null;
+			scheduleId?: string;
+			serviceId?: string;
 			triggerType?: string;
 			triggerReason?: string;
 			/** The incident was already resolved or closed; it stays so (#743). */
@@ -165,7 +175,7 @@ export class InvestigationsService {
 			result = await this.prisma.$transaction(async (tx) => {
 				const running = await tx.investigation.findFirst({
 					where: {
-						incidentId: dto.incidentId,
+						...runScope(dto),
 						status: { in: [...LIVE_WORKFLOW_STATUSES] },
 					},
 					orderBy: { createdAt: "desc" },
@@ -174,6 +184,8 @@ export class InvestigationsService {
 				const investigation = await tx.investigation.create({
 					data: {
 						incidentId: dto.incidentId,
+						...(dto.scheduleId ? { scheduleId: dto.scheduleId } : {}),
+						...(dto.serviceId ? { serviceId: dto.serviceId } : {}),
 						status: "pending",
 						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
@@ -263,7 +275,10 @@ export class InvestigationsService {
 		});
 		return {
 			...investigation,
-			incident: { ...investigation.incident, mergedInto },
+			incident: investigation.incident && {
+				...investigation.incident,
+				mergedInto,
+			},
 		};
 	}
 
@@ -469,10 +484,10 @@ export class InvestigationsService {
 
 	/** `Run #N` as the sidebar counts it: every thread on the incident, oldest first. */
 	async runNumber(
-		inv: Pick<Investigation, "incidentId" | "createdAt">,
+		inv: Pick<Investigation, "incidentId" | "scheduleId" | "createdAt">,
 	): Promise<number> {
 		return this.prisma.investigation.count({
-			where: { incidentId: inv.incidentId, createdAt: { lte: inv.createdAt } },
+			where: { ...runScope(inv), createdAt: { lte: inv.createdAt } },
 		});
 	}
 
@@ -481,7 +496,10 @@ export class InvestigationsService {
 	 * (#673 w59, OBJ-004, OBJ-021): a stale page must be refused, never reread.
 	 */
 	async liveKindRefusal(
-		inv: Pick<Investigation, "incidentId" | "createdAt" | "kind" | "liveTurn">,
+		inv: Pick<
+			Investigation,
+			"incidentId" | "scheduleId" | "createdAt" | "kind" | "liveTurn"
+		>,
 		kind: FollowUpKind,
 	): Promise<string | null> {
 		const wants: LiveTurn = kind === "continue" ? "report" : "answer";
@@ -554,7 +572,7 @@ export class InvestigationsService {
 	 */
 	async cancelPending(
 		id: string,
-		incidentId: string,
+		incidentId: string | null,
 		description = "The investigation was cancelled before it started.",
 	): Promise<Investigation | null> {
 		const updated = await this.updateStatus(id, "cancelled");
@@ -583,7 +601,13 @@ export class InvestigationsService {
 		try {
 			const investigation = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { incidentId: true, status: true, kind: true },
+				select: {
+					incidentId: true,
+					serviceId: true,
+					title: true,
+					status: true,
+					kind: true,
+				},
 			});
 
 			if (!investigation) return null;
@@ -623,6 +647,22 @@ export class InvestigationsService {
 						investigationId: id,
 					});
 
+				// A finding links an unlinked service check to an incident (#979).
+				const linked =
+					!investigation.incidentId &&
+					investigation.serviceId &&
+					!chat &&
+					dto.status === "completed" &&
+					meetsPromotionRule(dto.report)
+						? await this.linkFinding(tx, {
+								id,
+								serviceId: investigation.serviceId,
+								title: investigation.title,
+								summary: dto.summary ?? dto.report?.summary ?? "",
+							})
+						: null;
+				const incidentId = linked ?? investigation.incidentId;
+
 				// 2. Create recommendations
 				if (dto.recommendations && dto.recommendations.length > 0) {
 					await tx.recommendation.createMany({
@@ -659,24 +699,25 @@ export class InvestigationsService {
 								? `Root cause identified: ${dto.rootCause}`
 								: "Investigation completed";
 
-				await tx.timelineEntry.create({
-					data: {
-						incidentId: dto.incidentId,
-						type:
-							dto.status === "failed"
-								? "investigation_failed"
-								: "investigation_completed",
-						title: timelineTitle,
-						description: timelineDescription,
-						source: "ai_worker",
-						metadata: JSON.stringify({
-							investigationId: id,
-							rootCause: dto.rootCause,
-							rootCauseCategory: dto.rootCauseCategory,
-							recommendationCount: dto.recommendations?.length ?? 0,
-						}),
-					},
-				});
+				if (incidentId)
+					await tx.timelineEntry.create({
+						data: {
+							incidentId,
+							type:
+								dto.status === "failed"
+									? "investigation_failed"
+									: "investigation_completed",
+							title: timelineTitle,
+							description: timelineDescription,
+							source: "ai_worker",
+							metadata: JSON.stringify({
+								investigationId: id,
+								rootCause: dto.rootCause,
+								rootCauseCategory: dto.rootCauseCategory,
+								recommendationCount: dto.recommendations?.length ?? 0,
+							}),
+						},
+					});
 				return true;
 			});
 			if (!applied) {
@@ -713,6 +754,62 @@ export class InvestigationsService {
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Link a service check to the newest unresolved incident on its service, or a new one,
+	 * inside the result transaction. The link only takes while the run has no incident, so
+	 * a repeated write is a no-op (#979, adversary OBJ-010).
+	 */
+	private async linkFinding(
+		tx: Prisma.TransactionClient,
+		run: {
+			id: string;
+			serviceId: string;
+			title: string | null;
+			summary: string;
+		},
+	): Promise<string | null> {
+		const open = await tx.incident.findFirst({
+			where: {
+				serviceId: run.serviceId,
+				status: { notIn: ["resolved", "closed"] },
+			},
+			orderBy: { createdAt: "desc" },
+			select: { id: true },
+		});
+		const incidentId =
+			open?.id ??
+			(await (async () => {
+				const service = run.title
+					? null
+					: await tx.service.findUnique({
+							where: { id: run.serviceId },
+							select: { name: true },
+						});
+				return (
+					await this.incidentsService.createInTx(tx, {
+						title: `Scheduled check: ${run.title ?? service?.name ?? "service"}`,
+						severity: "medium",
+						serviceId: run.serviceId,
+					})
+				).id;
+			})());
+		const { count } = await tx.investigation.updateMany({
+			where: { id: run.id, incidentId: null },
+			data: { incidentId },
+		});
+		if (count === 0) return null;
+		await tx.timelineEntry.create({
+			data: {
+				incidentId,
+				type: TimelineEntryType.custom,
+				title: `Scheduled check found: ${run.summary}`,
+				source: TimelineSource.ai_worker,
+				metadata: JSON.stringify({ investigationId: run.id }),
+			},
+		});
+		return incidentId;
 	}
 
 	/**

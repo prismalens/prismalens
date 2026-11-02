@@ -359,23 +359,39 @@ export class GatewayService {
 			where: {
 				id: { not: q.excludeRunId },
 				status: "completed",
-				OR: [
-					{ summary: text },
-					{ rootCause: text },
-					{ title: text },
-					{ incident: { title: text } },
-					{ incident: { description: text } },
-					{ incident: { actualCause: text } },
-				],
-				...(q.service
-					? {
-							incident: {
-								service: {
-									OR: [{ name: q.service }, { displayName: q.service }],
+				AND: [
+					{
+						OR: [
+							{ summary: text },
+							{ rootCause: text },
+							{ title: text },
+							{ incident: { title: text } },
+							{ incident: { description: text } },
+							{ incident: { actualCause: text } },
+						],
+					},
+					// A service check is found by its own service too (#979).
+					...(q.service
+						? [
+								{
+									OR: [
+										{
+											incident: {
+												service: {
+													OR: [{ name: q.service }, { displayName: q.service }],
+												},
+											},
+										},
+										{
+											service: {
+												OR: [{ name: q.service }, { displayName: q.service }],
+											},
+										},
+									],
 								},
-							},
-						}
-					: {}),
+							]
+						: []),
+				],
 			},
 			orderBy: { completedAt: "desc" },
 			take: q.limit,
@@ -398,18 +414,20 @@ export class GatewayService {
 		});
 		return rows.map((r) => ({
 			investigationId: r.id,
-			incident: {
-				number: r.incident.number,
-				title: r.incident.title,
-				service: r.incident.service?.name ?? null,
-			},
+			incident: r.incident
+				? {
+						number: r.incident.number,
+						title: r.incident.title,
+						service: r.incident.service?.name ?? null,
+					}
+				: null,
 			completedAt: r.completedAt?.toISOString() ?? null,
 			agentFinding: {
 				summary: r.summary,
 				rootCause: r.rootCause,
 				category: r.rootCauseCategory,
 			},
-			operatorRecordedCause: r.incident.actualCause
+			operatorRecordedCause: r.incident?.actualCause
 				? {
 						cause: r.incident.actualCause,
 						category: r.incident.actualCauseCategory,

@@ -120,8 +120,9 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 | J15 | Correlation & alert-mapping rule management | `/rules?tab=…` | C8 | `rules-management.spec.ts` | ✅ |
 | J16 | Approve → execute | — | C13 | — | ◻️ by design (ADR-0023) |
 | J17 | Manual authorship (demo without an alert source) | `/incidents`, `/incidents/$id` | C10 | `manual-authorship.spec.ts` | ✅ |
+| J18 | Scheduled checks (every device sees them, the host changes them) | `/schedules`, `/schedules/$id`, `/schedules/$id/runs/$runId` | — | `schedules.spec.ts`; `packages/api/test/scenarios/scheduled-check.spec.ts` | 🟦 sidebar door, list and history; the run page and the host-only edits are not driven in a browser |
 
-**Read this matrix as: 17 journeys, 6 specs, 2 journeys verified end-to-end.** Nearly every
+**Read this matrix as: 18 journeys, 6 specs, 2 journeys verified end-to-end.** Nearly every
 ✅-shaped claim the suite could make, it still does not make. See [What the specs actually
 prove](#what-the-specs-actually-prove).
 
@@ -453,6 +454,14 @@ assert that **no execution path exists without a verified module**, not that app
 Scope note: manual **alert** creation and manual **correlation** were deliberately left unbuilt
 (#286). `alerts.create` and `incidents.addAlert` still have no UI caller, and that is intentional
 — hand-stitched alerts would fake a correlation the engine never ran.
+
+### J18 — Scheduled checks — 🟦 read path covered
+
+- **Entry point**: the sidebar's *Schedules* door (#979).
+- **Routes**: `/schedules` → `/schedules/$id` (history, *Show older runs*) → `/schedules/$id/runs/$runId`.
+- **Coverage**: `schedules.spec.ts` creates a schedule through the API, opens the list from the
+  sidebar and opens the schedule's history. The run page, the dialog and the view-only state on a
+  device that is not the host have unit tests only.
 
 ## What the specs actually prove
 

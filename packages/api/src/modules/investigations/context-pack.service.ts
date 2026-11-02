@@ -173,6 +173,44 @@ export class ContextPackService {
 		};
 	}
 
+	/**
+	 * The pack for a service check: the service's own changes and neighbours over the
+	 * last day, and no prior incidents, since no incident is being investigated (#979).
+	 */
+	async assembleForService(serviceId: string): Promise<ContextPack> {
+		const window = computeWindow([], new Date());
+		const unavailable: UnavailableFamily[] = [];
+		let changes: ChangeFact[] = [];
+		try {
+			changes = await this.loadChanges([serviceId], window);
+		} catch (e) {
+			this.logger.warn(
+				`Context pack: changes family failed — ${errorMessage(e)}`,
+			);
+			unavailable.push({ family: "changes", reason: errorMessage(e) });
+		}
+		let neighbors: NeighborService[] = [];
+		try {
+			neighbors = await this.loadNeighbors([serviceId]);
+		} catch (e) {
+			this.logger.warn(
+				`Context pack: neighbors family failed — ${errorMessage(e)}`,
+			);
+			unavailable.push({ family: "neighbors", reason: errorMessage(e) });
+		}
+		return {
+			window: {
+				start: window.start.toISOString(),
+				end: window.end.toISOString(),
+			},
+			changes,
+			neighbors,
+			priorIncidents: [],
+			unavailable,
+			assembledAt: new Date().toISOString(),
+		};
+	}
+
 	private async loadChanges(
 		affected: string[],
 		window: { start: Date; end: Date },

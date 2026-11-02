@@ -1,0 +1,422 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+/**
+ * A service check's run with no incident, over a temp SQLite database (#979): its
+ * timeline writes, the promotion that links it to an incident on a finding, and the
+ * service delete that is refused while check runs exist.
+ */
+import { randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
+import type { InvestigationReport } from "@prismalens/contracts/schemas";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { InternalInvestigationResultDto } from "./dto/index.js";
+import { meetsPromotionRule } from "./promotion.js";
+import { runScope, runScopeKey } from "./run-scope.js";
+
+const env = await vi.hoisted(async () => {
+	const fs = await import("node:fs");
+	const os = await import("node:os");
+	const path = await import("node:path");
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pl-check-runs-"));
+	process.env.PRISMALENS_WORKSPACE_DIR = path.join(root, "data");
+	return { root };
+});
+
+const { PrismaService } = await import("../../core/prisma/prisma.service.js");
+const { IncidentsService } = await import("../incidents/incidents.service.js");
+const { TimelineService } = await import("../timeline/timeline.service.js");
+const { InvestigationsService } = await import("./investigations.service.js");
+const { ServicesService } = await import("../services/services.service.js");
+
+let prisma: InstanceType<typeof PrismaService>;
+let timeline: InstanceType<typeof TimelineService>;
+let investigations: InstanceType<typeof InvestigationsService>;
+let serviceId: string;
+let incidentNo = 0;
+const computeOverlay = vi.fn(async () => undefined);
+
+const found = (statement = "The pool is exhausted"): InvestigationReport =>
+	({
+		summary: "The checkout pool is exhausted.",
+		rootCause: statement,
+		hypotheses: [
+			{
+				statement,
+				status: "confirmed",
+				evidence: [{ observation: "pool at 100%", source: "curl prometheus", status: "verified", direction: "supports" }],
+			},
+		],
+		nextSteps: [],
+	}) as unknown as InvestigationReport;
+
+const inferred = (): InvestigationReport =>
+	({
+		summary: "Looks fine.",
+		rootCause: null,
+		hypotheses: [
+			{
+				statement: "Nothing wrong",
+				status: "supported",
+				evidence: [{ observation: "it seemed fine", source: "reasoning", status: "inferred", direction: "supports" }],
+			},
+		],
+		nextSteps: [],
+	}) as unknown as InvestigationReport;
+
+async function check(over: Record<string, unknown> = {}) {
+	return prisma.investigation.create({
+		data: {
+			incidentId: null,
+			serviceId,
+			scheduleId: "sch-1",
+			scheduleRevision: 1,
+			status: "running",
+			title: "Morning check",
+			triggerType: "scheduled",
+			...over,
+		},
+	});
+}
+
+async function openIncident(title: string, status = "investigating", at = Date.now()) {
+	incidentNo++;
+	return prisma.incident.create({
+		data: { number: 1000 + incidentNo, title, status, serviceId, createdAt: new Date(at) },
+	});
+}
+
+const result = (over: Partial<InternalInvestigationResultDto> = {}) =>
+	({ incidentId: null, status: "completed", summary: "The checkout pool is exhausted.", report: found(), ...over }) as unknown as InternalInvestigationResultDto;
+
+const counts = async () => ({
+	incidents: await prisma.incident.count(),
+	timeline: await prisma.timelineEntry.count(),
+});
+
+beforeAll(async () => {
+	const { resolveMigrationsDir, runMigrations } = await import("@prismalens/database/migrator");
+	await runMigrations({ migrationsDir: resolveMigrationsDir(), log: () => {} });
+	prisma = new PrismaService();
+	await prisma.$connect();
+	serviceId = (await prisma.service.create({ data: { name: `checkout-${randomUUID()}` } })).id;
+	timeline = new TimelineService(prisma);
+	const incidents = new IncidentsService(prisma, timeline, {} as never);
+	investigations = new InvestigationsService(
+		prisma,
+		timeline,
+		{ computeOverlay } as never,
+		{ isResetting: () => false, resetGeneration: () => 0, resetSince: () => false } as never,
+		incidents,
+	);
+});
+
+afterAll(async () => {
+	await prisma.$disconnect();
+	rmSync(env.root, { recursive: true, force: true });
+});
+
+beforeEach(async () => {
+	await prisma.timelineEntry.deleteMany();
+	await prisma.recommendation.deleteMany();
+	await prisma.investigation.deleteMany();
+	await prisma.incident.deleteMany();
+	computeOverlay.mockClear();
+});
+
+describe("a run with no incident writes no timeline (#979)", () => {
+	it("TimelineService.create answers null and writes nothing", async () => {
+		const entry = await timeline.create({ incidentId: null, type: "investigation_started", title: "x" } as never);
+
+		expect(entry).toBeNull();
+		expect(await prisma.timelineEntry.count()).toBe(0);
+	});
+
+	it("cancelling a pending run, and an orphaned one, ends each cancelled", async () => {
+		const pending = await check({ status: "pending" });
+		const orphan = await check({ status: "running" });
+
+		expect(await investigations.cancelPending(pending.id, null)).toMatchObject({ status: "cancelled" });
+		expect(await investigations.cancelPending(orphan.id, null, "The investigation was cancelled; no run held it.")).toMatchObject({
+			status: "cancelled",
+		});
+		expect(await prisma.timelineEntry.count()).toBe(0);
+	});
+
+	it("a result write that finds nothing completes the run, keeps it unlinked and writes no timeline", async () => {
+		const run = await check();
+
+		const written = await investigations.writeResultWithRelations(run.id, result({ report: inferred() }));
+
+		expect(written).toMatchObject({ status: "completed", incidentId: null });
+		expect(await counts()).toEqual({ incidents: 0, timeline: 0 });
+	});
+
+	it("a failure write ends the run failed with its error and writes no timeline", async () => {
+		const run = await check();
+
+		const written = await investigations.writeResultWithRelations(run.id, result({ status: "failed", error: "agent crashed", report: undefined }));
+
+		expect(written).toMatchObject({ status: "failed", error: "agent crashed", incidentId: null });
+		expect(await counts()).toEqual({ incidents: 0, timeline: 0 });
+	});
+});
+
+describe("a finding links the check to an incident (#979, adversary OBJ-010)", () => {
+	it("creates an incident on the service when none is open, and links the run in the same write", async () => {
+		const run = await check();
+
+		const written = await investigations.writeResultWithRelations(run.id, result());
+
+		const incident = await prisma.incident.findFirstOrThrow();
+		expect(incident).toMatchObject({ title: "Scheduled check: Morning check", severity: "medium", serviceId, status: "triggered" });
+		expect(written?.incidentId).toBe(incident.id);
+		const titles = (await prisma.timelineEntry.findMany({ where: { incidentId: incident.id } })).map((t) => t.title);
+		expect(titles).toEqual(expect.arrayContaining(["Incident created", "Investigation completed"]));
+		expect(titles).toContain("Scheduled check found: The checkout pool is exhausted.");
+	});
+
+	it("names the incident after the service when the run has no schedule name", async () => {
+		const run = await check({ title: null });
+
+		await investigations.writeResultWithRelations(run.id, result());
+
+		const service = await prisma.service.findUniqueOrThrow({ where: { id: serviceId } });
+		expect((await prisma.incident.findFirstOrThrow()).title).toBe(`Scheduled check: ${service.name}`);
+	});
+
+	it("links to the newest incident on the service that is not resolved or closed, creating none", async () => {
+		await openIncident("older open", "triggered", Date.now() - 3_000);
+		const newest = await openIncident("newest open", "monitoring", Date.now() - 2_000);
+		await openIncident("newer but resolved", "resolved", Date.now() - 1_000);
+		await openIncident("newest but closed", "closed", Date.now());
+		const run = await check();
+
+		const written = await investigations.writeResultWithRelations(run.id, result());
+
+		expect(written?.incidentId).toBe(newest.id);
+		expect(await prisma.incident.count()).toBe(4);
+		expect((await prisma.timelineEntry.findMany({ where: { incidentId: newest.id } })).map((t) => t.title)).toContain(
+			"Scheduled check found: The checkout pool is exhausted.",
+		);
+	});
+
+	it("never links to another service's open incident", async () => {
+		const other = await prisma.service.create({ data: { name: `other-${randomUUID()}` } });
+		incidentNo++;
+		await prisma.incident.create({ data: { number: 2000 + incidentNo, title: "elsewhere", serviceId: other.id } });
+		const run = await check();
+
+		const written = await investigations.writeResultWithRelations(run.id, result());
+
+		expect(await prisma.incident.count()).toBe(2);
+		expect(written?.incidentId).not.toBeNull();
+		expect((await prisma.incident.findUniqueOrThrow({ where: { id: written?.incidentId as string } })).serviceId).toBe(serviceId);
+	});
+
+	it("a repeated result write changes nothing", async () => {
+		const run = await check();
+		const first = await investigations.writeResultWithRelations(run.id, result());
+		const after = await counts();
+
+		const again = await investigations.writeResultWithRelations(run.id, result());
+
+		expect(first?.incidentId).not.toBeNull();
+		expect(again).toBeNull();
+		expect(await counts()).toEqual(after);
+		expect((await prisma.investigation.findUniqueOrThrow({ where: { id: run.id } })).incidentId).toBe(first?.incidentId);
+	});
+
+	it("a run already linked to an incident is left where it is", async () => {
+		const mine = await openIncident("mine");
+		await openIncident("newer open", "triggered", Date.now() + 5_000);
+		const run = await check({ incidentId: mine.id });
+
+		const written = await investigations.writeResultWithRelations(run.id, result({ incidentId: mine.id }));
+
+		expect(written?.incidentId).toBe(mine.id);
+		expect(await prisma.incident.count()).toBe(2);
+	});
+
+	it("does not promote a result with no verified support, or a failed run", async () => {
+		const quiet = await check();
+		const failed = await check();
+
+		await investigations.writeResultWithRelations(quiet.id, result({ report: inferred() }));
+		await investigations.writeResultWithRelations(failed.id, result({ status: "failed", error: "boom" }));
+
+		expect(await counts()).toEqual({ incidents: 0, timeline: 0 });
+		expect((await prisma.investigation.findUniqueOrThrow({ where: { id: quiet.id } })).incidentId).toBeNull();
+	});
+
+	it("a rollback after the incident was created leaves no incident and the run unlinked", async () => {
+		const run = await check();
+		const dup = randomUUID();
+
+		const written = await investigations.writeResultWithRelations(
+			run.id,
+			result({
+				recommendations: [
+					{ id: dup, title: "a" },
+					{ id: dup, title: "b" },
+				] as never,
+			}),
+		);
+
+		expect(written).toBeNull();
+		expect(await counts()).toEqual({ incidents: 0, timeline: 0 });
+		expect(await prisma.investigation.findUniqueOrThrow({ where: { id: run.id } })).toMatchObject({ status: "running", incidentId: null });
+	});
+
+	it("an incident-owned run's result write is unchanged", async () => {
+		const inc = await openIncident("mine");
+		const run = await check({ incidentId: inc.id, serviceId: null, scheduleId: null });
+
+		await investigations.writeResultWithRelations(run.id, result({ incidentId: inc.id }));
+
+		expect(await prisma.incident.count()).toBe(1);
+		expect((await prisma.timelineEntry.findMany()).map((t) => t.title)).toEqual(["Investigation completed"]);
+	});
+});
+
+describe("deleting a service that has check runs is refused (#979)", () => {
+	const scheduleFor = (serviceId: string) => ({
+		name: "Morning check",
+		serviceId,
+		brief: "Look at the pool",
+		recurrence: JSON.stringify({ kind: "interval", everyMinutes: 60 }),
+		harness: "claude",
+		bindingsHash: "x",
+	});
+	const deleteService = async (id: string) => {
+		const { ServicesController } = await import("../services/services.controller.js");
+		const controller = new ServicesController(new ServicesService(prisma), {} as never);
+		const procs = controller.services() as unknown as Record<string, { "~orpc": { handler: (o: unknown) => Promise<unknown> } }>;
+		return procs.delete["~orpc"].handler({ input: { id }, context: {} });
+	};
+
+	it("answers 409 naming the run count, and the service and its runs stay", async () => {
+		const kept = await prisma.service.create({ data: { name: `kept-${randomUUID()}` } });
+		incidentNo++;
+		const inc = await prisma.incident.create({ data: { number: 3000 + incidentNo, title: "linked", serviceId: kept.id } });
+		const linked = await check({ serviceId: kept.id, incidentId: inc.id });
+		const unlinked = await check({ serviceId: kept.id });
+
+		const refused = await deleteService(kept.id).catch((e: unknown) => e);
+
+		expect(refused).toMatchObject({
+			code: "CONFLICT",
+			status: 409,
+			message: "Service has 2 scheduled check runs and cannot be deleted while they exist.",
+		});
+		expect(await prisma.service.findUnique({ where: { id: kept.id } })).not.toBeNull();
+		expect(await prisma.investigation.findMany({ where: { id: { in: [linked.id, unlinked.id] } } })).toHaveLength(2);
+	});
+
+	it("says 'run' for one", async () => {
+		const kept = await prisma.service.create({ data: { name: `kept-${randomUUID()}` } });
+		await check({ serviceId: kept.id });
+
+		await expect(deleteService(kept.id)).rejects.toMatchObject({
+			message: "Service has 1 scheduled check run and cannot be deleted while it exists.",
+		});
+	});
+
+	it("deletes a service with no check runs, and its schedules go with it", async () => {
+		const free = await prisma.service.create({ data: { name: `free-${randomUUID()}` } });
+		const schedule = await prisma.schedule.create({ data: scheduleFor(free.id) });
+
+		await deleteService(free.id);
+
+		expect(await prisma.service.findUnique({ where: { id: free.id } })).toBeNull();
+		expect(await prisma.schedule.findUnique({ where: { id: schedule.id } })).toBeNull();
+	});
+
+	it("still answers 404 for a service that does not exist", async () => {
+		await expect(deleteService(randomUUID())).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+
+	it("the database keeps a run when its service is removed underneath (the migration's net)", async () => {
+		const gone = await prisma.service.create({ data: { name: `gone-${randomUUID()}` } });
+		const run = await check({ serviceId: gone.id });
+
+		await prisma.service.delete({ where: { id: gone.id } });
+
+		expect(await prisma.investigation.findUnique({ where: { id: run.id } })).toMatchObject({ serviceId: null });
+	});
+});
+
+describe("runScope (#979)", () => {
+	it("scopes by incident when one is set, even if a schedule is too", () => {
+		expect(runScope({ incidentId: "inc-1", scheduleId: "sch-1" })).toEqual({ incidentId: "inc-1" });
+	});
+
+	it("scopes an unlinked run by its schedule, never by incidentId null", () => {
+		expect(runScope({ incidentId: null, scheduleId: "sch-1" })).toEqual({ scheduleId: "sch-1" });
+	});
+
+	it("refuses a run that has neither, instead of matching every unlinked run", () => {
+		expect(() => runScope({ incidentId: null })).toThrow();
+		expect(() => runScope({ incidentId: null, scheduleId: null })).toThrow();
+	});
+
+	it("keys two schedules apart and an incident by its id", () => {
+		expect(runScopeKey({ incidentId: null, scheduleId: "a" })).not.toBe(runScopeKey({ incidentId: null, scheduleId: "b" }));
+		expect(runScopeKey({ incidentId: "inc-1", scheduleId: "a" })).toBe("inc-1");
+	});
+});
+
+type Hypothesis = InvestigationReport["hypotheses"][number];
+type Evidence = Hypothesis["evidence"][number];
+
+const evidence = (status: Evidence["status"], direction: Evidence["direction"]): Evidence => ({
+	observation: "p99 is 4 s",
+	source: "curl prometheus",
+	status,
+	direction,
+});
+
+const report = (...hypotheses: Hypothesis[]) => ({ hypotheses }) as Pick<InvestigationReport, "hypotheses">;
+const hypothesis = (status: Hypothesis["status"], ...e: Evidence[]): Hypothesis => ({
+	statement: "The pool is exhausted",
+	status,
+	evidence: e,
+});
+
+describe("meetsPromotionRule (#979, adversary OBJ-010)", () => {
+	it.each(["confirmed", "supported"] as const)("%s with verified supporting evidence promotes", (status) => {
+		expect(meetsPromotionRule(report(hypothesis(status, evidence("verified", "supports"))))).toBe(true);
+	});
+
+	it("one verified supporting item among others is enough", () => {
+		expect(
+			meetsPromotionRule(
+				report(hypothesis("supported", evidence("inferred", "supports"), evidence("verified", "contradicts"), evidence("verified", "supports"))),
+			),
+		).toBe(true);
+	});
+
+	it.each([
+		["inferred-only evidence", hypothesis("confirmed", evidence("inferred", "supports"))],
+		["verified but contradicting evidence", hypothesis("confirmed", evidence("verified", "contradicts"))],
+		["a refuted hypothesis with verified support", hypothesis("refuted", evidence("verified", "supports"))],
+		["a speculative hypothesis with verified support", hypothesis("speculative", evidence("verified", "supports"))],
+		["a confirmed hypothesis with no evidence", hypothesis("confirmed")],
+	])("%s does not promote", (_name, h) => {
+		expect(meetsPromotionRule(report(h))).toBe(false);
+	});
+
+	it("needs the status and the evidence on the same hypothesis", () => {
+		expect(
+			meetsPromotionRule(
+				report(hypothesis("supported", evidence("inferred", "supports")), hypothesis("refuted", evidence("verified", "supports"))),
+			),
+		).toBe(false);
+	});
+
+	it("does not promote on no hypotheses, and ignores the culprit", () => {
+		expect(meetsPromotionRule(report())).toBe(false);
+		expect(meetsPromotionRule({ hypotheses: [], culprit: { statement: "a bad deploy" } } as never)).toBe(false);
+		expect(meetsPromotionRule(null)).toBe(false);
+	});
+});

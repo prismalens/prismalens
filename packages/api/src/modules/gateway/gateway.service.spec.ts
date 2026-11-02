@@ -348,6 +348,28 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(where.take).toBe(3);
 	});
 
+	it("investigations_search names an unlinked service check's match without an incident, and finds it by service (#979)", async () => {
+		investigation.findMany.mockResolvedValueOnce([
+			{
+				id: RUN_B,
+				completedAt: new Date("2026-10-27T10:00:00Z"),
+				summary: "checkout p99 drifting",
+				rootCause: null,
+				rootCauseCategory: null,
+				incident: null,
+			},
+		] as never);
+
+		const out = await call("tools/call", { name: "investigations_search", arguments: { query: "p99", service: "checkout" } });
+
+		expect(out.error).toBeUndefined();
+		const found = JSON.parse(text(out)) as { investigationId: string; incident: unknown; operatorRecordedCause: unknown }[];
+		expect(found).toHaveLength(1);
+		expect(found[0]).toMatchObject({ investigationId: RUN_B, incident: null, operatorRecordedCause: null });
+		const where = JSON.stringify(investigation.findMany.mock.calls.at(-1));
+		expect(where).toContain('"service":{"OR":[{"name":"checkout"},{"displayName":"checkout"}]}');
+	});
+
 	it("investigations_search refuses a limit over 20", async () => {
 		const out = await call("tools/call", {
 			name: "investigations_search",

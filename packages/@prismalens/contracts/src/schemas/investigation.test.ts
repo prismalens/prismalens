@@ -22,9 +22,11 @@ import {
 	InvestigationSchema,
 	fidelityAccess,
 	RunFidelitySchema,
+	serviceCheckContext,
 	SendInvestigationMessageResultSchema,
 	toFiringAlert,
 } from "./investigation.js";
+import { RecommendationWithRelationsSchema } from "./recommendation.js";
 
 describe("RunFidelitySchema", () => {
 	it("parses a fidelity record with a model, and strips keys older records carry", () => {
@@ -640,3 +642,55 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 	});
 });
 
+
+describe("InvestigationContextSchema service-check mode (#979)", () => {
+	it("still rejects an empty alerts list on an alert run", () => {
+		expect(() => InvestigationContextSchema.parse({ alerts: [] })).toThrow();
+	});
+
+	it("accepts no alerts in service-check mode", () => {
+		const parsed = InvestigationContextSchema.parse({
+			mode: "service-check",
+			alerts: [],
+			service: { name: "checkout" },
+			check: { brief: "Look.", runbook: null },
+		});
+		expect(parsed.mode).toBe("service-check");
+	});
+
+	it("builds a service-check context without an alert", () => {
+		const built = serviceCheckContext(
+			{ name: "checkout" },
+			{ brief: "Look.", runbook: "rb.md" },
+		);
+		expect(InvestigationContextSchema.parse(built)).toEqual(built);
+		expect(built.alerts).toEqual([]);
+	});
+});
+
+describe("RecommendationWithRelationsSchema (#979)", () => {
+	const base = {
+		id: "11111111-1111-4111-8111-111111111111",
+		investigationId: "22222222-2222-4222-8222-222222222222",
+		title: "Roll back",
+		description: null,
+		priority: "high",
+		category: null,
+		urgency: null,
+		actionable: true,
+		estimatedEffort: null,
+		status: "pending",
+		implementedAt: null,
+		implementedBy: null,
+		createdAt: "2026-10-28T09:00:00.000Z",
+		updatedAt: "2026-10-28T09:00:00.000Z",
+	};
+
+	it("takes a run with no incident yet", () => {
+		const parsed = RecommendationWithRelationsSchema.parse({
+			...base,
+			investigation: { id: base.investigationId, incidentId: null, status: "completed" },
+		});
+		expect(parsed.investigation?.incidentId).toBeNull();
+	});
+});
