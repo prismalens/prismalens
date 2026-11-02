@@ -82,10 +82,28 @@ export interface HarnessAccess extends LevelFacts {
 	line: (checked: CheckedModes) => string;
 }
 
+/** A package registry an install hint names: npm, or uv's PyPI with the first package the CLI. */
+export type InstallChannel =
+	| { npm: string }
+	| { uv: readonly [string, ...string[]] };
+
+/** The command an install hint gives for `channel`. */
+export function installCommand(channel: InstallChannel): string {
+	if ("npm" in channel) return `npm i -g ${channel.npm}`;
+	const [cli, ...extras] = channel.uv;
+	return ["uv tool install -U", cli, ...extras.map((p) => `--with ${p}`)].join(
+		" ",
+	);
+}
+
 /** What PrismaLens alone says and pins about an agent (#916). */
 interface ProductFacts {
-	/** One line the readiness check shows when the binary is missing. */
+	/** One line the readiness check shows when the binary is missing; it names `channel`'s command. */
 	install: string;
+	/** Where `install` gets the agent's CLI from; the nightly probe installs from here (#1013). */
+	channel?: InstallChannel;
+	/** The vendor's next major, on its own package; the nightly probes its latest too (#1013). */
+	nextChannel?: InstallChannel;
 	/** One line the picker and the readiness check show: how to sign this harness in. */
 	loginHint: string;
 	/**
@@ -101,6 +119,11 @@ interface ProductFacts {
 	acpRegistryIds?: readonly string[];
 	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
 	toolsHint?: { text: string };
+	/**
+	 * PrismaLens's tools come as a core plus `tools_search`, not all listed; on only where the
+	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
+	 */
+	harnessToolSearch?: true;
 }
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
@@ -136,9 +159,14 @@ function noModeLines(label: string): Lines {
 
 const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	opencode: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
-		install:
-			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
+		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
+		install: "npm i -g opencode-ai",
+		channel: { npm: "opencode-ai" },
+		// OpenCode 2's docs install it as `npm install -g @opencode/cli`.
+		nextChannel: { npm: "@opencode/cli" },
 		lines: {
 			supervised: () =>
 				"OpenCode runs its build agent; each tool's catch-all asks.",
@@ -149,13 +177,16 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 			"full-access": () =>
 				"OpenCode runs its build agent with each tool's catch-all allowed; your own deny rules stay.",
 		},
-		tested: { version: "1.18.30", date: "2026-09-20" },
+		// The pin-bump PR moved this on 2026-10-31: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "1.19.5", date: "2026-10-31" },
 		loginHint: "`opencode auth login`, or a provider key in env",
 	},
 	"claude-code": {
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
 		install:
 			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
+		channel: { npm: "@anthropic-ai/claude-code" },
 		// claude-agent-acp 0.81.1 reports `acceptEdits` when the model has no `auto`, and
 		// leaves `bypassPermissions` unoffered when the user's settings turn it off (#673 w21).
 		lines: {
@@ -173,14 +204,16 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
 			},
 		},
-		// #848 live runs (gateway tools, a removed source, proxied MCP asks) through the shipped adapter on claude 2.1.303. Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "0.81.1", date: "2026-10-20", companion: "2.1.303" },
+		// The pin-bump PR moved this on 2026-10-31: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "0.98.0", date: "2026-10-31", companion: "2.1.312" },
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
+		channel: { npm: "@openai/codex" },
 		lines: {
 			supervised: (c) =>
 				`Codex runs in ${modeNamed(c, "read-only", "Ask for approval")}.`,
@@ -198,13 +231,16 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 				`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
 		},
 		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
-		// Companion 0.156.1 is the CI pin: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "2.2.2", date: "2026-10-23", companion: "0.156.1" },
+		// The pin-bump PR moved this on 2026-10-31: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "2.3.0", date: "2026-10-31", companion: "0.165.0" },
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	},
 	gemini: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
 		install: "npm i -g @google/gemini-cli",
+		channel: { npm: "@google/gemini-cli" },
 		lines: {
 			supervised: (c) =>
 				`Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,
@@ -222,8 +258,11 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		},
 	},
 	deepagents: {
+		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
+		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
+		channel: { uv: ["deepagents-code", "deepagents-acp"] },
 		lines: noModeLines("deepagents"),
 		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
 		tested: { version: "0.1.75", date: "2026-09-23" },

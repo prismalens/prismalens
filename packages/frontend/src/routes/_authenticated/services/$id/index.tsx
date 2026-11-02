@@ -137,10 +137,7 @@ function ServicePage() {
 	const backHref = backTarget(inServiceRecord, "/services");
 
 	return (
-		<div
-			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas md:left-(--sidebar-w)"
-			data-testid="service-page"
-		>
+		<div className="flex h-full flex-col bg-canvas" data-testid="service-page">
 			<header
 				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-3 md:px-4"
 				data-testid="service-band"

@@ -3,14 +3,18 @@
 // Copyright 2026 Sumit Patel
 
 // Qualifies one agent against the scripted model (aimock, scripts/fakes/scripted-model.mjs):
-// the admission (R1-R9) and the behaviour matrix, so a PR's verdict never depends on a live model (#884, #914).
+// the admission (R1-R11) and the behaviour matrix, so a PR's verdict never depends on a live model (#884, #914).
 //   node scripts/admission-fake.mjs <agent> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--journal]
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { SCRIPTED_KEY, startScriptedModel } from "./fakes/scripted-model.mjs";
+import {
+	agentTools,
+	SCRIPTED_KEY,
+	startScriptedModel,
+} from "./fakes/scripted-model.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const AGENTS = [
@@ -175,6 +179,8 @@ export function verdictOf(stdout) {
 		r7: word("R7 resume after a failed report"),
 		r8: word("R8 tool call, first turn"),
 		r9: word("R9 tool call, follow-up"),
+		r10: word("R10 resume streams no history"),
+		r11: word("R11 killed mid-turn"),
 	};
 }
 
@@ -186,8 +192,8 @@ export function verdictOf(stdout) {
 export const KNOWN_ADMISSION_FAILURES = {
 	gemini: {
 		failedChecks: ["cwdProved", "readAllowed"],
-		r5: "fail",
-		why: "shell output never reaches ACP clients (google-gemini/gemini-cli#29930); history replays after the session/load answer (google-gemini/gemini-cli#29707)",
+		r5: "pass",
+		why: "shell output never reaches ACP clients (google-gemini/gemini-cli#29930)",
 	},
 };
 
@@ -204,16 +210,16 @@ export function admissionProblem(harness, v, code) {
 		!v.pass &&
 		v.failedChecks.join(",") === known.failedChecks.join(",") &&
 		v.r5 === known.r5 &&
-		[v.r8, v.r9].every((r) => r === "pass" || r === "n/a");
+		[v.r8, v.r9, v.r10, v.r11].every((r) => r === "pass" || r === "n/a");
 	if (same) return null;
-	return code === 0 || v.pass || v.r5 === "pass"
+	return code === 0 || v.pass
 		? `the known failure is fixed (${known.why}); remove it from KNOWN_ADMISSION_FAILURES`
 		: "the admission failed differently from its known failure";
 }
 
 /** One verdict as one comparable line. */
 export const signature = (/** @type {ReturnType<typeof verdictOf>} */ v) =>
-	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7} R8=${v.r8} R9=${v.r9}`;
+	`R1-R4=${v.pass ? "pass" : `fail(${v.failedChecks.join(",") || "no report"})`} R5=${v.r5} R6=${v.r6} R7=${v.r7} R8=${v.r8} R9=${v.r9} R10=${v.r10} R11=${v.r11}`;
 
 /**
  * Each matrix row's first word, as one comparable line.
@@ -300,6 +306,45 @@ export function parseArgs(argv) {
 }
 
 const MATRIX_AT_ONCE = 3;
+
+/**
+ * What PrismaLens's own tools cost the model over a matrix run (#848): definition characters
+ * and `tools_search` results, both summed over every main-loop request that carries them,
+ * the first request of each row, and side requests apart. Tokens are chars/4, an estimate.
+ * @param {import("./fakes/scripted-model.d.mts").RequestSummary[]} requests
+ * @param {string} shell
+ * @param {boolean} search
+ */
+export function toolCost(requests, shell, search) {
+	const main = requests.filter((r) => r.tools.some((t) => t.endsWith(shell)));
+	const side = requests.filter((r) => !main.includes(r));
+	const rows = new Set(main.map((r) => r.row).filter(Boolean));
+	const defs = main.reduce((n, r) => n + r.plDefChars, 0);
+	// A search result stays in the conversation, so it is counted in every request that resends it.
+	const searched = main.reduce(
+		(n, r) => n + Object.values(r.searchResults).reduce((m, c) => m + c, 0),
+		0,
+	);
+	const first = [...rows].reduce(
+		(n, row) => n + (main.find((r) => r.row === row)?.plDefChars ?? 0),
+		0,
+	);
+	const perRun = rows.size ? Math.round((defs + searched) / rows.size) : 0;
+	return `TOOLCOST search=${search ? "on" : "off"} rows=${rows.size} requests=${main.length} defChars=${defs} searchChars=${searched} firstRequestChars=${rows.size ? Math.round(first / rows.size) : 0} perRunChars=${perRun} perRunTokensEst=${Math.round(perRun / 4)} sideDefChars=${side.reduce((n, r) => n + r.plDefChars, 0)}`;
+}
+
+/**
+ * Passing rows over applicable rows (n/a left out), from the matrix's ROW lines.
+ * @param {string} stdout
+ */
+export function passRate(stdout) {
+	const verdicts = [...stdout.matchAll(/^ROW [^:]+: (pass|fail|n\/a)/gm)].map(
+		(m) => m[1],
+	);
+	const applicable = verdicts.filter((v) => v !== "n/a").length;
+	const passed = verdicts.filter((v) => v === "pass").length;
+	return `PASSRATE ${passed}/${applicable}${applicable ? ` ${Math.round((100 * passed) / applicable)}%` : ""}`;
+}
 
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
@@ -397,6 +442,16 @@ async function main() {
 					);
 				run.seen.push(seen());
 				run.parts.push(matrixSignature(out.stdout));
+				const { requests } = run.seen[run.seen.length - 1];
+				console.log(/^SEARCH (on|off)$/m.exec(out.stdout)?.[0] ?? "SEARCH off");
+				console.log(
+					toolCost(
+						requests,
+						agentTools()[args.harness]?.shell ?? "",
+						/^SEARCH on$/m.test(out.stdout),
+					),
+				);
+				console.log(passRate(out.stdout));
 				if (out.code !== 0) {
 					run.failed = true;
 					console.error(out.stderr.slice(-2000));

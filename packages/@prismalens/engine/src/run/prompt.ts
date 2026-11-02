@@ -244,13 +244,34 @@ ${p.standing}`,
 	};
 }
 
+/** The schedule's brief and runbook in the alert block's place (#979). */
+function renderCheck(context: InvestigationContext): string {
+	const c = context.check;
+	const brief = c?.brief?.trim();
+	return `SCHEDULED CHECK
+  Service: ${sanitizeUntrustedLine(context.service?.name ?? "unknown")}${
+		c?.runbook
+			? `
+  Runbook: ${sanitizeUntrustedLine(c.runbook)}`
+			: ""
+	}${
+		brief
+			? `
+
+${sanitizeUntrustedBlock(brief)}`
+			: ""
+	}`;
+}
+
 function promptPieces(
 	context: InvestigationContext,
 	options: InvestigationPromptOptions,
 	runLinesInTurn: boolean,
 ): { role: string; turn: string; standing: string } {
 	const [primary, ...rest] = context.alerts;
-	if (!primary) throw new Error("buildInvestigationPrompt: no alerts");
+	const check = context.mode === "service-check";
+	if (!primary && !check)
+		throw new Error("buildInvestigationPrompt: no alerts");
 
 	const s = context.service;
 	const serviceBlock = s
@@ -315,10 +336,15 @@ function promptPieces(
 		.map((step, i) => `  ${i + 1}. ${step}`)
 		.join("\n");
 
-	const role =
-		"You are an on-call Site Reliability Engineer running a LIVE investigation of a firing production alert. Your job is to find the ROOT CAUSE — the specific code path, configuration, dependency, or resource that produced this alert — not merely the symptom.";
-	const turn = `FIRING ALERT
-${renderAlertPayload(primary, rest)}${serviceBlock}
+	const role = check
+		? `You are an on-call Site Reliability Engineer running a SCHEDULED CHECK of the service ${s?.name ?? "named below"}. No alert fired: the operator asked for this look. Report what the evidence shows, a problem you can name or none; a clean check is a valid result.`
+		: "You are an on-call Site Reliability Engineer running a LIVE investigation of a firing production alert. Your job is to find the ROOT CAUSE — the specific code path, configuration, dependency, or resource that produced this alert — not merely the symptom.";
+	const opening =
+		check || !primary
+			? renderCheck(context)
+			: `FIRING ALERT
+${renderAlertPayload(primary, rest)}`;
+	const turn = `${opening}${serviceBlock}
 
 SURFACES
 ${surfaces.join("\n")}${renderPreRun(context)}${packBlock}${

@@ -765,7 +765,31 @@ export class TelemetrySnapshotService {
 		window: SnapshotWindow,
 		signal?: AbortSignal,
 	): Promise<TelemetrySnapshot> {
-		const picked = await this.select(incidentId);
+		return this.readPicked(await this.select(incidentId), window, signal);
+	}
+
+	/** What a service check reads: the one service's sources, picked as `preview` picks them (#979). */
+	async fetchForService(
+		serviceId: string,
+		window: SnapshotWindow,
+		signal?: AbortSignal,
+	): Promise<TelemetrySnapshot> {
+		const svc = await this.prisma.service.findUnique({
+			where: { id: serviceId },
+			select: { id: true, name: true },
+		});
+		const picked = await this.selectIn(
+			{ services: svc ? [svc] : [] },
+			process.env,
+		);
+		return this.readPicked(picked, window, signal);
+	}
+
+	private async readPicked(
+		picked: Selected,
+		window: SnapshotWindow,
+		signal?: AbortSignal,
+	): Promise<TelemetrySnapshot> {
 		const read = await fetchSnapshot(picked.units, window, {
 			...(signal ? { signal } : {}),
 		});

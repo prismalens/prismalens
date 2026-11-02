@@ -9,6 +9,10 @@ import {
 	scrubGitStderr,
 } from "./git-failure.js";
 
+// A quadratic scan on these inputs takes minutes, so a loose ceiling still catches it;
+// a tight one fails on a loaded shared runner (#885 - CI hygiene).
+const TIMING_CEILING_MS = 5_000;
+
 describe("git-failure", () => {
 	it("GitFailure is an instance of Error with typed properties", () => {
 		const failure = new GitFailure(
@@ -36,7 +40,7 @@ describe("git-failure", () => {
 		expect(scrubbed).toContain("https://***@github.com/org/repo.git");
 	});
 
-	it("scrubs and classifies 16 MiB of repeated a:// in under 500 ms (#848)", () => {
+	it("scrubs and classifies 16 MiB of repeated a:// in under 5 s (#848)", () => {
 		const stderr = "a://".repeat(4 * 1024 * 1024);
 		const started = performance.now();
 		scrubGitStderr(stderr);
@@ -47,7 +51,7 @@ describe("git-failure", () => {
 			repo: "acme/api",
 			sshAuthSockSet: false,
 		});
-		expect(performance.now() - started).toBeLessThan(500);
+		expect(performance.now() - started).toBeLessThan(TIMING_CEILING_MS);
 	});
 
 	it("a token rejection after 1 MiB of progress is still token-rejected: the tail is scanned (#938)", () => {
@@ -114,7 +118,7 @@ describe("git-failure", () => {
 	it.each([
 		["Authorization headers", "Authorization:".repeat(1_200_000)],
 		["repository-not-found lines", "repository '".repeat(1_400_000)],
-	])("16 MiB of %s scrubs and classifies in under 500 ms: the cap holds (#938)", (_name, stderr) => {
+	])("16 MiB of %s scrubs and classifies in under 5 s: the cap holds (#938)", (_name, stderr) => {
 		const started = performance.now();
 		const scrubbed = scrubGitStderr(stderr);
 		diagnoseGitFailure({
@@ -124,7 +128,7 @@ describe("git-failure", () => {
 			repo: "acme/api",
 			sshAuthSockSet: false,
 		});
-		expect(performance.now() - started).toBeLessThan(500);
+		expect(performance.now() - started).toBeLessThan(TIMING_CEILING_MS);
 		expect(scrubbed.length).toBeLessThanOrEqual(64 * 1024);
 	});
 

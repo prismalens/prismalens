@@ -127,6 +127,12 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 
+			<SettingGroup title="Restarts">
+				<Pool>
+					<ResumeAfterRestartRow />
+				</Pool>
+			</SettingGroup>
+
 			<SettingGroup title="Environment">
 				<Pool>
 					<StrictEnvRow />
@@ -295,6 +301,38 @@ function AutoRow() {
 					})
 				}
 				data-testid="harness-auto"
+			/>
+		</SettingRow>
+	);
+}
+
+/** Runs a restart cut off carry on when PrismaLens starts again (#981); absent is on, and only the host changes it. */
+function ResumeAfterRestartRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const hostOnly = settings?.canEditRuntime === false;
+	return (
+		<SettingRow
+			label={
+				<label htmlFor="harness-resume-after-restart">
+					Resume after a restart
+				</label>
+			}
+			description={
+				hostOnly
+					? "Only the computer running PrismaLens can change this."
+					: "When PrismaLens starts again, the investigations it stopped in the middle carry on if it was off for less than a day."
+			}
+			testId="harness-resume-after-restart-row"
+		>
+			<Switch
+				id="harness-resume-after-restart"
+				checked={settings?.resumeAfterRestart !== false}
+				disabled={update.isPending || hostOnly}
+				onCheckedChange={(resumeAfterRestart) =>
+					update.mutate({ resumeAfterRestart })
+				}
+				data-testid="harness-resume-after-restart"
 			/>
 		</SettingRow>
 	);

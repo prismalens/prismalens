@@ -17,6 +17,11 @@ export type TimelineEntryWithUser = TimelineEntry & {
 	} | null;
 };
 
+/** A timeline write whose incident may not exist yet: a service check's, until a finding links it (#979). */
+export type TimelineWrite = Omit<CreateTimelineEntryDto, "incidentId"> & {
+	incidentId: string | null;
+};
+
 @Injectable()
 export class TimelineService {
 	private readonly logger = new Logger(TimelineService.name);
@@ -26,7 +31,11 @@ export class TimelineService {
 	/**
 	 * Create a timeline entry
 	 */
-	async create(dto: CreateTimelineEntryDto): Promise<TimelineEntry> {
+	async create(dto: CreateTimelineEntryDto): Promise<TimelineEntry>;
+	/** Null, and nothing written, when there is no incident to put it on (#979). */
+	async create(dto: TimelineWrite): Promise<TimelineEntry | null>;
+	async create(dto: TimelineWrite): Promise<TimelineEntry | null> {
+		if (!dto.incidentId) return null;
 		const entry = await this.prisma.timelineEntry.create({
 			data: {
 				incidentId: dto.incidentId,

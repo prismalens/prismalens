@@ -19,9 +19,13 @@ import type {
 	StopReason,
 	ToolCallStatus,
 	ToolKind,
-} from "@agentclientprotocol/sdk";
-import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
-import type { PermissionAskOutcome } from "@prismalens/contracts/schemas";
+} from "@agentclientprotocol/sdk/unstable";
+import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
+import type {
+	Artifact,
+	PermissionAskOutcome,
+	RecordedFinding,
+} from "@prismalens/contracts/schemas";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessLauncher } from "../launch/process.js";
 import type {
@@ -29,6 +33,7 @@ import type {
 	HarnessLauncher,
 	RunLimits,
 } from "../launch/types.js";
+import type { GatewayCall } from "../run/gateway.js";
 import {
 	newAskId,
 	type PermissionDecision,
@@ -63,7 +68,11 @@ export type AcpStreamItem =
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
 	| { kind: "nudge" }
 	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
-	| { kind: "harness_tool_call"; name: string; at: string };
+	| { kind: "harness_tool_call"; call: GatewayCall }
+	/** The agent recorded evidence or a hypothesis through the gateway (#930). */
+	| { kind: "harness_finding"; finding: RecordedFinding }
+	/** The agent published an HTML artifact through the gateway (#871). */
+	| { kind: "harness_artifact"; artifact: Artifact };
 
 /**
  * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
@@ -159,6 +168,8 @@ export interface AcpSessionConfig {
 	env?: NodeJS.ProcessEnv;
 	launcher?: HarnessLauncher;
 	limits?: RunLimits;
+	/** The harness's pid once spawned, so a later boot can prove it is gone (#981). */
+	onSpawn?: (pid: number | undefined) => void;
 	permission: PermissionPolicy;
 	/** Sent as `_meta` on `session/new`. */
 	sessionMeta?: Record<string, unknown>;
@@ -172,14 +183,20 @@ export interface AcpSessionConfig {
 	onDrift?: (drift: AcpDrift) => void;
 	/** Each ask's window, read when it arrives; the policy's own timeout when absent (#673 w21). */
 	askWindow?: () => { timeoutMs: number; clamped: boolean };
-	/** Reopen this session with `session/load` instead of starting one (#747). */
-	resume?: { sessionId: string };
+	/** Reopen this session instead of starting one, by the path {@link reopenPath} picks (#747, #942). */
+	resume?: {
+		sessionId: string;
+		/** The tool call ids the stored run holds; a load drops any update carrying one. */
+		known?: () => Promise<Iterable<string>>;
+		/** The caller can seed a fresh session, so a known-broken load starts one instead. */
+		fresh?: boolean;
+	};
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
 		capabilities:
-			| import("@agentclientprotocol/sdk").McpCapabilities
+			| import("@agentclientprotocol/sdk/unstable").McpCapabilities
 			| undefined,
-	) => import("@agentclientprotocol/sdk").McpServer[];
+	) => import("@agentclientprotocol/sdk/unstable").McpServer[];
 }
 
 /** Outcomes the run's level gives without the operator; they never show an ask. */
@@ -189,8 +206,62 @@ const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
 	"unattended",
 ]);
 
-// ACP v2 folds load into session/resume; one constant to move (#747).
 const SESSION_LOAD = "session/load";
+const SESSION_RESUME = "session/resume";
+
+/**
+ * How a stored session is reopened (#942): `resume` streams no history;
+ * `load-marker` drops the replay up to its end marker; `load-dedupe` drops it up
+ * to the load answer, then every update whose id the history held; `fresh` is a
+ * `session/new` the caller seeds with the stored conversation.
+ */
+export type ReopenPath = "resume" | "load-marker" | "load-dedupe" | "fresh";
+
+/** Agents whose `session/load` answers before its replay, so no update after it can be trusted as live. */
+const BROKEN_LOAD: Record<string, string> = {
+	"gemini-cli": "google-gemini/gemini-cli#29707",
+};
+
+/**
+ * The fastest exact path the agent's `initialize` offers; null when it can
+ * reopen nothing. `fresh` only when the caller can seed a new session.
+ */
+export function reopenPath(
+	agent: AcpAgentInfo,
+	capabilities: InitializeResponse["agentCapabilities"] | undefined,
+	canStartFresh: boolean,
+): ReopenPath | null {
+	const session = capabilities?.sessionCapabilities as
+		| Record<string, unknown>
+		| null
+		| undefined;
+	if (session?.resume != null) return "resume";
+	if (agent.name && BROKEN_LOAD[agent.name])
+		return canStartFresh ? "fresh" : null;
+	if (capabilities?.loadSession !== true) return null;
+	return session?.replayComplete != null ? "load-marker" : "load-dedupe";
+}
+
+/** Updates that are conversation, so a replay of them is history; state updates are not. */
+const CONVERSATION: ReadonlySet<unknown> = new Set([
+	"user_message_chunk",
+	"agent_message_chunk",
+	"agent_thought_chunk",
+	"tool_call",
+	"tool_call_update",
+	"plan",
+]);
+
+/** ACP's `replay_complete` (RFD agent-client-protocol#2407), or claude-agent-acp's AIR `loadReplayEnd`. */
+function endsReplay(u: Record<string, unknown>): boolean {
+	if (u.sessionUpdate === "replay_complete") return true;
+	const air = (u._meta as { jetbrains?: { air?: { loadReplayEnd?: unknown } } })
+		?.jetbrains?.air;
+	return (
+		u.sessionUpdate === "session_info_update" && air?.loadReplayEnd === true
+	);
+}
+
 /** claude-agent-acp's push-only sign-in extension (0.81.1 `dist/auth-status.js`). */
 const AUTH_STATUS_UPDATE = "_auth/status_update";
 
@@ -490,7 +561,7 @@ export class AcpSession {
 	modelOptionId: string | null = null;
 	/** `initialize` advertised `promptCapabilities.image` (R4.3). */
 	takesImages = false;
-	/** The harness advertised `loadSession` at `initialize`. */
+	/** The harness advertised `loadSession` or `session/resume` at `initialize`, so a follow-up can reopen it. */
 	loadSession = false;
 	/** The modes `session/new` (or `session/load`) offered. */
 	private modes: AcpModeSurface = { configId: null, modes: [], current: null };
@@ -498,8 +569,16 @@ export class AcpSession {
 	private options: Array<Record<string, unknown>> = [];
 	/** Counts mode reports from the agent, so `setMode` can tell whether one answered it. */
 	private modeReports = 0;
-	/** History updates `session/load` replayed; dropped, never yielded. */
+	/** History updates the reopen replayed; dropped, never yielded. */
 	replayed = 0;
+	/** How `open` reopened the stored session; null when it started a new one unasked. */
+	reopen: ReopenPath | null = null;
+	/** Milliseconds the reopen request took, `initialize` excluded. */
+	reopenMs = 0;
+	/** `tool:` and `message:` ids of the history; a later update carrying one is replay too. */
+	private readonly history = new Set<string>();
+	/** A `session/prompt` went out, so the agent may speak live. */
+	private prompted = false;
 	/** `initialize` advertised `_meta.authStatus`: the agent pushes its sign-in on `_auth/status_update`. */
 	pushesAuthStatus = false;
 	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
@@ -523,6 +602,7 @@ export class AcpSession {
 			...(config.limits ? { limits: config.limits } : {}),
 		});
 		this.child = child;
+		config.onSpawn?.(child.pid);
 		// setEncoding keeps a multibyte character split across two chunks intact.
 		child.stderr.setEncoding("utf8");
 		child.stderr.on("data", (chunk: string) => {
@@ -593,6 +673,7 @@ export class AcpSession {
 				protocolVersion: PROTOCOL_VERSION,
 				clientCapabilities: {
 					fs: { readTextFile: false, writeTextFile: false },
+					session: { replayComplete: {} },
 				},
 			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
@@ -601,7 +682,9 @@ export class AcpSession {
 		this.authMethods = Array.isArray(init?.authMethods)
 			? (init.authMethods as AcpAuthMethod[])
 			: [];
-		this.loadSession = init?.agentCapabilities?.loadSession === true;
+		this.loadSession =
+			init?.agentCapabilities?.loadSession === true ||
+			init?.agentCapabilities?.sessionCapabilities?.resume != null;
 		this.takesImages =
 			init?.agentCapabilities?.promptCapabilities?.image === true;
 		this.pushesAuthStatus =
@@ -617,20 +700,37 @@ export class AcpSession {
 				config.mcpServers?.(init?.agentCapabilities?.mcpCapabilities) ?? [],
 			...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 		};
+		const started = Date.now();
 		if (config.resume) {
-			if (!this.loadSession)
+			const path = reopenPath(
+				this.agent,
+				init?.agentCapabilities,
+				!!config.resume.fresh,
+			);
+			const name = `${this.agent.name ?? config.command} ${this.agent.version ?? ""}`;
+			if (!path) {
+				const broken = this.agent.name && BROKEN_LOAD[this.agent.name];
 				throw new Error(
-					`${this.agent.name ?? config.command} ${this.agent.version ?? ""} does not support session/load`,
+					broken
+						? `${name} cannot reopen a session: its session/load answers before the history (${broken})`
+						: `${name} does not support session/load or session/resume`,
 				);
+			}
+			this.reopen = path;
+		}
+		if (config.resume && this.reopen !== "fresh") {
+			for (const id of (await config.resume.known?.()) ?? [])
+				this.history.add(`tool:${id}`);
 			this.loading = true;
 			this.loadRequestId = this.nextId;
 			this.currentSessionId = config.resume.sessionId;
 			const loaded = (await this.request(
-				SESSION_LOAD,
+				this.reopen === "resume" ? SESSION_RESUME : SESSION_LOAD,
 				{ sessionId: config.resume.sessionId, ...params },
 				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 			).finally(() => {
 				this.loading = false;
+				this.reopenMs = Date.now() - started;
 			})) as Partial<LoadSessionResponse> | null;
 			this.takeOptions(loaded?.configOptions);
 			this.modes = offeredModes(loaded);
@@ -643,6 +743,7 @@ export class AcpSession {
 		)) as Partial<NewSessionResponse> | null;
 		if (!session?.sessionId)
 			throw new Error("ACP session/new returned no sessionId");
+		if (this.reopen === "fresh") this.reopenMs = Date.now() - started;
 		this.currentSessionId = session.sessionId;
 		this.takeOptions(session.configOptions);
 		this.modes = offeredModes(session);
@@ -768,6 +869,7 @@ export class AcpSession {
 			return;
 		}
 		let turnDone = false;
+		this.prompted = true;
 		this.request(
 			"session/prompt",
 			{ sessionId: this.currentSessionId, prompt },
@@ -803,10 +905,10 @@ export class AcpSession {
 	}
 
 	/** Cancel the in-flight turn; the harness answers with a done carrying stopReason "cancelled". */
-	cancel(): void {
+	cancel(reason?: unknown): void {
 		if (!this.currentSessionId) return;
-		// ACP: a cancelled turn's waiting asks are answered `cancelled`.
-		for (const ask of this.asks) ask.abort();
+		// ACP: a cancelled turn's waiting asks are answered `cancelled`; the reason says why (#981).
+		for (const ask of this.asks) ask.abort(reason);
 		this.send({
 			jsonrpc: "2.0",
 			method: "session/cancel",
@@ -826,7 +928,12 @@ export class AcpSession {
 	}
 
 	/** Queue an item from outside the agent into the turn's stream, in arrival order (#848). */
-	inject(item: Extract<AcpStreamItem, { kind: "harness_tool_call" }>): void {
+	inject(
+		item: Extract<
+			AcpStreamItem,
+			{ kind: "harness_tool_call" | "harness_finding" | "harness_artifact" }
+		>,
+	): void {
 		this.push(item);
 	}
 
@@ -915,7 +1022,7 @@ export class AcpSession {
 		if (msg.id !== undefined && msg.method) {
 			this.onServerRequest(msg);
 		} else if (msg.id !== undefined) {
-			// Updates after the load answer are live, even in the same stdout chunk.
+			// Updates after the load answer are live unless their id is history, even in the same stdout chunk.
 			if (msg.id === this.loadRequestId) this.loading = false;
 			const p = this.pending.get(msg.id);
 			if (!p) return;
@@ -931,7 +1038,33 @@ export class AcpSession {
 			else p.resolve(msg.result);
 		} else if (msg.method === "session/update") {
 			const update = msg.params?.update;
+			const fields =
+				update && typeof update === "object"
+					? (update as Record<string, unknown>)
+					: null;
+			const ids = [
+				typeof fields?.toolCallId === "string" && fields.toolCallId
+					? `tool:${fields.toolCallId}`
+					: "",
+				typeof fields?.messageId === "string" && fields.messageId
+					? `message:${fields.messageId}`
+					: "",
+			].filter(Boolean);
+			if (this.reopen && fields && endsReplay(fields)) {
+				this.loading = false;
+				return;
+			}
+			const said = CONVERSATION.has(fields?.sessionUpdate);
 			if (this.loading) {
+				if (said) this.replayed += 1;
+				for (const id of ids) this.history.add(id);
+				return;
+			}
+			// Nothing is said before the first prompt, and history after the answer still carries its ids (#942).
+			if (
+				(said && this.reopen && !this.prompted) ||
+				ids.some((id) => this.history.has(id))
+			) {
 				this.replayed += 1;
 				return;
 			}
@@ -1028,7 +1161,9 @@ export class AcpSession {
 				this.asks.delete(controller);
 				if (this.closed) return;
 				const optionId =
-					decision.outcome === "stopped" ? undefined : decision.optionId;
+					decision.outcome === "stopped" || decision.outcome === "restarted"
+						? undefined
+						: decision.optionId;
 				this.send({
 					jsonrpc: "2.0",
 					id: msg.id,

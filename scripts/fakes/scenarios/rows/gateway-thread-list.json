@@ -1,0 +1,77 @@
+{
+	"row": "gateway-thread-list",
+	"kind": "happy",
+	"title": "Lists the incident's other threads through PrismaLens's thread tool, listed or found by search",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "thread_list",
+				"ok": true,
+				"outputHas": "ScenarioPriorSummary"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-list]",
+				"toolName": "$gw:thread_list",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:thread_list",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-list]",
+				"toolName": "$gw:tools_search",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_search",
+						"arguments": {
+							"query": "list threads"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-list]",
+				"afterTool": "$gw:tools_search",
+				"resultContains": "thread_list"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:tools_call",
+						"arguments": {
+							"name": "thread_list",
+							"arguments": {}
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-list]",
+				"resultContains": "ScenarioPriorSummary"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

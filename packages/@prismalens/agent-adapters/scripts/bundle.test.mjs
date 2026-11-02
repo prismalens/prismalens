@@ -15,7 +15,8 @@ import { Readable, Writable } from "node:stream";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-	ClientSideConnection,
+	client,
+	methods,
 	ndJsonStream,
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
@@ -91,15 +92,17 @@ for (const [pkg, { script, version }] of Object.entries(bundled)) {
 			stderr += c;
 		});
 		try {
-			const connection = new ClientSideConnection(
-				() => ({
-					requestPermission: async () => ({
-						outcome: { outcome: "cancelled" },
-					}),
-					sessionUpdate: async () => {},
-				}),
-				ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout)),
-			);
+			const connection = client({ name: "bundle-test" })
+				.onRequest(methods.client.session.requestPermission, () => ({
+					outcome: { outcome: "cancelled" },
+				}))
+				.onNotification(methods.client.session.update, () => {})
+				.connect(
+					ndJsonStream(
+						Writable.toWeb(child.stdin),
+						Readable.toWeb(child.stdout),
+					),
+				);
 			const exited = new Promise((_, reject) =>
 				child.on("exit", (code) =>
 					reject(new Error(`${pkg} exited ${code}: ${stderr.slice(-2000)}`)),
@@ -115,7 +118,7 @@ for (const [pkg, { script, version }] of Object.entries(bundled)) {
 				).unref(),
 			);
 			const reply = await Promise.race([
-				connection.initialize({
+				connection.agent.request(methods.agent.initialize, {
 					protocolVersion: PROTOCOL_VERSION,
 					clientCapabilities: {},
 				}),

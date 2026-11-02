@@ -1445,6 +1445,110 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.runtimeNote).toEqual(note);
 	});
 
+	it("a follow-up on a service check with no incident stays a service check and reads no incident (#979)", async () => {
+		const check: InvestigationJobData = {
+			...data,
+			incidentId: null,
+			brief: "Look at p99.",
+			scheduled: {
+				scheduleId: "sch-1",
+				revision: 1,
+				serviceId: "svc-1",
+				serviceName: "checkout",
+				serviceNotes: null,
+				runbook: null,
+				repos: [],
+			},
+		};
+		const ports = followUpPorts({
+			getIncident: vi.fn(async () => {
+				throw new Error("a service check reads no incident");
+			}),
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		const result = await runInvestigationJob({ id: "job-chk", investigationId: "inv-1", attempts: 1 }, check, io(), ports);
+
+		expect(result.success).toBe(true);
+		expect(ports.getIncident).not.toHaveBeenCalled();
+		expect(ports.resolveConnectors).toHaveBeenCalledWith("svc-1");
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { mode?: string; alerts: unknown[] } }];
+		expect(opts.context).toMatchObject({ mode: "service-check", alerts: [] });
+	});
+
+	it("a recovery after a restart stays unattended, and sends PrismaLens's own message about the gap (#981)", async () => {
+		const restartAlerts = vi.fn(async () => ({
+			catchUp: "done" as const,
+			fired: [{ title: "CheckoutLatencyHigh", at: new Date("2026-10-28T09:03:00Z") }],
+			resolved: [],
+		}));
+		const ports = followUpPorts({ restartAlerts });
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+		const recovery: InvestigationJobData = {
+			...data,
+			unattended: true,
+			accessLevel: "auto",
+			resume: {
+				text: "PrismaLens restarted.",
+				mode: "queue",
+				kind: "continue",
+				restore: { status: "failed", completedAt: null, error: "API restarted while the run was in flight" },
+				afterRestart: true,
+				restart: { attempt: 1, by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z", lastActivityAt: "2026-10-28T08:51:00.000Z" },
+			},
+		};
+
+		await runInvestigationJob({ id: "job-r", investigationId: "inv-1", attempts: 1 }, recovery, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ unattended?: boolean; accessLevel?: string; onSpawn?: unknown; resume: { text: string; afterRestart?: boolean; via: { restart?: { by: string; stoppedAt: string } } } },
+		];
+		expect(opts.unattended).toBe(true);
+		expect(opts.accessLevel).toBe("auto");
+		expect(typeof opts.onSpawn).toBe("function");
+		expect(opts.resume.text).toMatch(/^PrismaLens stopped at .* and started again at /);
+		expect(opts.resume.text).toContain("1 alert fired on this incident; the ALERTS_WHILE_STOPPED block below names them.");
+		expect(opts.resume.text).toContain(": CheckoutLatencyHigh\n<<<END ALERTS_WHILE_STOPPED>>>");
+		expect(opts.resume.text).toContain("Continue the investigation from your last step.");
+		expect(opts.resume.afterRestart).toBeUndefined();
+		expect(opts.resume.via.restart).toMatchObject({ by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z" });
+		expect(restartAlerts).toHaveBeenCalledWith("inc-1", new Date("2026-10-28T08:52:00.000Z"), expect.any(Date), new Date("2026-10-28T08:52:00.000Z"));
+	});
+
+	it("a recovery that fails before reaching its agent ends saying why it didn't resume (#981 OBJ-020)", async () => {
+		const ports = followUpPorts({
+			agentRuntime: vi.fn(async () => {
+				throw new Error("the repository could not be cloned");
+			}),
+		});
+		const recovery: InvestigationJobData = {
+			...data,
+			resume: {
+				text: "PrismaLens restarted.",
+				mode: "queue",
+				kind: "continue",
+				restore: { status: "failed", completedAt: null, error: "API restarted while the run was in flight" },
+				restart: { attempt: 1, by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z", lastActivityAt: "2026-10-28T08:51:00.000Z" },
+			},
+		};
+
+		await runInvestigationJob({ id: "job-r2", investigationId: "inv-1", attempts: 1 }, recovery, io(), ports);
+
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.settleFollowUp).mock.calls[0]?.[1]).toMatchObject({
+			status: "failed",
+			error: "Not resumed: the repository could not be cloned",
+		});
+		const said = vi.mocked(ports.appendEvents).mock.calls.flatMap(([, events]) => events as { kind: string }[]);
+		expect(said.map((e) => e.kind)).not.toContain("operator_message");
+	});
+
 	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {
 		const ports = followUpPorts();
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
@@ -2565,7 +2669,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 			ports,
 		);
-		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
+		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const updateCall = findWorkspaceCall(updateStatus);
 		const parsed = JSON.parse(updateCall[1].workspace ?? "{}");
@@ -2647,7 +2751,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234");
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date));
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe("prismalens-reused1234");
@@ -2727,7 +2831,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
+		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
@@ -3186,4 +3290,115 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 			}
 		});
 	}
+});
+
+describe("a service check with no incident (#979)", () => {
+	let tmp: string;
+	const scheduled = {
+		scheduleId: "sch-1",
+		revision: 3,
+		serviceId: "svc-1",
+		serviceName: "checkout",
+		serviceNotes: "Restart is safe.",
+		runbook: "runbooks/latency.md",
+		repos: [
+			{ sourceKind: "url" as const, url: "https://github.com/acme/frozen", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
+		],
+	};
+	const data = (over: Partial<InvestigationJobData> = {}): InvestigationJobData => ({
+		investigationId: "inv-check",
+		incidentId: null,
+		scheduled,
+		brief: "Look at p99 for the last day.",
+		unattended: true,
+		...over,
+	});
+	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+	const pack = {
+		window: { start: "2026-10-27T00:00:00Z", end: "2026-10-28T00:00:00Z" },
+		changes: [],
+		neighbors: [],
+		priorIncidents: [],
+		unavailable: [],
+		assembledAt: "2026-10-28T00:00:00Z",
+	};
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-check-run-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ failureKind: null, report: { summary: "all quiet", rootCause: null, nextSteps: [] } });
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("resolveWorkspace takes the frozen repositories and never asks for the service's current bindings (OBJ-003)", async () => {
+		const incidentRepos = vi.fn(async () => [
+			{ sourceKind: "url" as const, url: "https://github.com/acme/rebound", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
+		]);
+		const ports = fakePorts({
+			incidentRepos,
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const ws = await resolveWorkspace(data(), ports);
+
+		expect(incidentRepos).not.toHaveBeenCalled();
+		expect(ports.snapshotWith).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(ports.snapshotWith).mock.calls[0]?.[0]).toMatchObject({ url: "https://github.com/acme/frozen" });
+		expect(ws.layout).toBe("single");
+	});
+
+	it("a frozen set with no repository is an unmapped run that names the service, not an incident", async () => {
+		const ws = await resolveWorkspace(data({ scheduled: { ...scheduled, repos: [] } }), fakePorts());
+
+		expect(ws.layout).toBe("unmapped");
+		expect(ws.note).toContain("service has no repository linked");
+		expect(ws.note).not.toContain("incident");
+	});
+
+	it("runs from the service: no incident read, connectors, pack and telemetry by service, notes from the frozen values", async () => {
+		const telemetry = vi.fn(async (_subject: unknown) => ({ sources: [], notConfigured: [], endpoints: [] }));
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => {
+				throw new Error("a service check reads no incident");
+			}),
+			incidentRepos: vi.fn(async () => {
+				throw new Error("a service check reads no live bindings");
+			}),
+			contextPack: vi.fn(async (subject: unknown) => (typeof subject === "string" ? null : pack)),
+			preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })), save: vi.fn(async () => {}), load: vi.fn(async () => null) },
+		});
+
+		const result = await runInvestigationJob({ id: "job-check", investigationId: "inv-check", attempts: 1 }, data(), io(), ports);
+
+		expect(result).toMatchObject({ success: true, incidentId: null });
+		expect(ports.getIncident).not.toHaveBeenCalled();
+		expect(ports.incidentRepos).not.toHaveBeenCalled();
+		expect(ports.resolveConnectors).toHaveBeenCalledWith("svc-1");
+		expect(ports.contextPack).toHaveBeenCalledWith({ serviceId: "svc-1" });
+		expect(telemetry.mock.calls[0]?.[0]).toEqual({ serviceId: "svc-1" });
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; brief?: string }];
+		expect(opts.context).toMatchObject({
+			mode: "service-check",
+			alerts: [],
+			service: { name: "checkout", notes: "Restart is safe." },
+			check: { brief: "Look at p99 for the last day.", runbook: "runbooks/latency.md" },
+			contextPack: pack,
+		});
+		expect(opts.context.incident).toBeUndefined();
+	});
+
+	it("keeps the run's end off any incident: the timeline port gets a null incident", async () => {
+		const ports = fakePorts();
+
+		await runInvestigationJob({ id: "job-check", investigationId: "inv-check", attempts: 1 }, data(), io(), ports);
+
+		const calls = vi.mocked(ports.createTimelineEntry).mock.calls.map(([dto]) => dto.incidentId);
+		expect(calls.length).toBeGreaterThan(0);
+		expect(calls.every((id) => id === null)).toBe(true);
+		expect(ports.writeResult).not.toHaveBeenCalledWith("inv-check", expect.objectContaining({ incidentId: expect.any(String) }));
+	});
 });

@@ -150,8 +150,20 @@ export function renderContextPack(pack: ContextPack): string {
 			"  PRIOR SIMILAR INCIDENTS (most → least similar; order is the rank, there is no score)",
 		);
 		pack.priorIncidents.forEach((p, i) => {
-			const cause = p.rootCause ? `  root cause: ${s(p.rootCause)}` : "";
-			lines.push(`    ${i + 1}. ${s(p.reference)} "${s(p.title)}"${cause}`);
+			lines.push(`    ${i + 1}. ${s(p.reference)} "${s(p.title)}"`);
+			if (p.recordedCause) {
+				lines.push(`       recorded cause (operator): ${s(p.recordedCause)}`);
+			}
+			if (p.agentRootCause) {
+				lines.push(
+					`       agent's root cause (unconfirmed): ${s(p.agentRootCause)}`,
+				);
+			}
+			if (p.agentSummary) {
+				lines.push(
+					`       agent's summary (not a cause): ${s(p.agentSummary)}`,
+				);
+			}
 			if (p.matchedOn.length) {
 				lines.push(`       matched on: ${p.matchedOn.map(s).join(", ")}`);
 			}

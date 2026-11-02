@@ -128,6 +128,14 @@ function files(root) {
 	return out;
 }
 
+/** The biggest unpacked files, so a budget breach names what grew (#885). */
+export function largest(root, entries, count = 5) {
+	return entries
+		.map((e) => ({ entry: e, size: statSync(join(root, e)).size }))
+		.sort((a, b) => b.size - a.size)
+		.slice(0, count);
+}
+
 export function checkArtifact(file, budgets) {
 	const problems = [];
 	const lines = [];
@@ -159,6 +167,9 @@ export function checkArtifact(file, budgets) {
 					`${info.key}: ${entries.length} files is over its budget of ${budget.files}`,
 				);
 		}
+		if (problems.some((p) => p.includes("over its budget")))
+			for (const { entry, size } of largest(root, entries))
+				lines.push(`  largest unpacked: ${size} bytes ${entry}`);
 		// An npm tarball's own bundled.json sits under package/, which the node_modules walk skips.
 		const missing = missingLicences(
 			info.kind === "npm" ? join(root, info.top) : root,

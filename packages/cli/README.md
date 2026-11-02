@@ -1,6 +1,6 @@
 # prismalens
 
-PrismaLens is a self-hosted incident investigator. When an alert arrives, the
+PrismaLens is an incident investigator that runs as an app on your machine. When an alert arrives, the
 coding agent you already use reads a snapshot of the service's code, under a
 permission level you pick, and writes an ordered-evidence report: hypotheses
 ranked by the evidence behind them, with no numeric confidence scores. The run,
@@ -10,12 +10,12 @@ app, checks a machine, pairs devices and manages a background service.
 
 ## Install
 
-PrismaLens is alpha: any 0.x release may break, so read the
+PrismaLens is alpha and changes often, so read the
 [release notes](https://github.com/prismalens/prismalens/releases) before upgrading.
 
 ### npm
 
-Needs Node.js 24+.
+Needs Node.js; `pl doctor` says if yours is too old.
 
 ```bash
 npm install -g prismalens
@@ -58,8 +58,10 @@ pl doctor
 pl up
 ```
 
-`pl up` serves the dashboard on http://localhost:6473 and opens your browser
-on a one-time link that pairs it; there is no account. Investigations need a
+`pl up` serves the dashboard on http://localhost:6473 and prints a one-time
+link that pairs your browser; there is no account. It opens that link for you,
+except under WSL and wherever no browser can open: open the printed link
+yourself there. Investigations need a
 coding agent: Settings → Agent in the app lists the ones that can run, and
 Add agent sets one up. `pl doctor` checks PrismaLens's own setup, not agents.
 

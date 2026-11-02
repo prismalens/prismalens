@@ -233,9 +233,7 @@ export class PushService
 			where: { id: row.investigationId },
 			include: { incident: { select: { number: true, title: true } } },
 		});
-		const where = run
-			? `#${run.incident.number} ${run.title ?? run.incident.title}`
-			: "A run that was deleted";
+		const where = run ? await this.whereOf(run) : "A run that was deleted";
 		const runUrl = `/investigations/${row.investigationId}`;
 		const askUrl = row.askId
 			? `${runUrl}?ask=${encodeURIComponent(row.askId)}`
@@ -271,6 +269,23 @@ export class PushService
 			default:
 				return { title: "PrismaLens", body: where, url: runUrl };
 		}
+	}
+
+	private async whereOf(run: {
+		title: string | null;
+		scheduleId: string | null;
+		incident: { number: number; title: string } | null;
+	}): Promise<string> {
+		if (run.incident)
+			return `#${run.incident.number} ${run.title ?? run.incident.title}`;
+		const schedule = run.scheduleId
+			? await this.prisma.schedule.findUnique({
+					where: { id: run.scheduleId },
+					select: { name: true },
+				})
+			: null;
+		const name = run.title ?? "Scheduled check";
+		return schedule ? `${name} · ${schedule.name}` : name;
 	}
 
 	async askState(investigationId: string, askId: string) {

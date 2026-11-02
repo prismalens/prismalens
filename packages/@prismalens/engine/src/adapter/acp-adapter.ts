@@ -32,14 +32,17 @@
  * stream (the UI's idempotent-upsert key is `(branchId, seq)`).
  */
 import type {
+	Artifact,
 	AttachmentRef,
 	CanonicalEvent,
 	FollowUpKind,
 	InvestigationReport,
 	OperatorMessageMode,
 	PermissionAskOutcome,
+	RecordedFinding,
 	ToolCategory,
 } from "@prismalens/contracts/schemas";
+import type { GatewayCall } from "../run/gateway.js";
 
 /**
  * The structural subset of an ACP `session/update` payload's `update` object the
@@ -226,18 +229,20 @@ export class AcpAdapter {
 	/** One call to PrismaLens's own tools, as the gateway saw it (#848). */
 	harnessToolCall(
 		server: string,
-		name: string,
-		at: string,
+		call: GatewayCall,
 		turn: HarnessToolsTurn,
 	): CanonicalEvent {
-		return {
-			kind: "harness_tool_call",
-			...this.base(),
-			server,
-			name,
-			at,
-			turn,
-		};
+		return { kind: "harness_tool_call", ...this.base(), server, turn, ...call };
+	}
+
+	/** An HTML artifact the agent published through PrismaLens's tool (#871). */
+	artifactPublished(artifact: Artifact): CanonicalEvent {
+		return { kind: "artifact_published", ...this.base(), artifact };
+	}
+
+	/** Evidence or a hypothesis the agent recorded through PrismaLens's tool (#930). */
+	findingRecorded(finding: RecordedFinding): CanonicalEvent {
+		return { kind: "finding_recorded", ...this.base(), finding };
 	}
 
 	/** The turn's summary of PrismaLens's own tools: connected, and each tool called (#848). */

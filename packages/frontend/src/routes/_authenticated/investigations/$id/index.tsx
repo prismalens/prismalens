@@ -1,8 +1,8 @@
 /**
  * A run has no page of its own: it lives under its incident (#599, #523). This
  * route keeps old deep links working by sending them to its page (#743), a
- * `#step-N` with them (#811). Redirecting in beforeLoad: a rendered <Navigate>
- * here hung the page (#814).
+ * `#step-N`, `?panel=` and `?file=` with them (#811, #975). Redirecting in
+ * beforeLoad: a rendered <Navigate> here hung the page (#814).
  */
 import {
 	createFileRoute,
@@ -14,6 +14,7 @@ import { NotFound } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
 import { isNotFound } from "@/lib/not-found";
+import { panelSearch } from "@/lib/run-panel";
 
 export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 	beforeLoad: async ({ context, params, location }) => {
@@ -26,10 +27,18 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 				if (isNotFound(error, params.id)) throw notFound();
 				throw error;
 			});
+		// A scheduled check with no incident yet has its page under its schedule (#979).
+		if (!run.incidentId && run.scheduleId)
+			throw redirect({
+				to: "/schedules/$id/runs/$runId",
+				params: { id: run.scheduleId, runId: params.id },
+				replace: true,
+			});
+		if (!run.incidentId) throw notFound();
 		throw redirect({
 			to: "/incidents/$id/conversation",
 			params: { id: run.incidentId },
-			search: { investigation: params.id },
+			search: { investigation: params.id, ...panelSearch(location.search) },
 			hash: location.hash || undefined,
 			replace: true,
 		});

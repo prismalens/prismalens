@@ -342,6 +342,12 @@ describe("review round 1 (#925)", () => {
 		unbindRun("r1");
 	});
 
+	it("names a run with no incident (a scheduled check) after the run alone", async () => {
+		const bound = await bindRun("r12", { incidentId: null, serviceName: null });
+		expect(bound.branch).toBe("prismalens/r12");
+		unbindRun("r12");
+	});
+
 	it("lists a workspace a guard kept, not only those with a kept clock", async () => {
 		global = { ...global, method: "clone", retention: { kind: "always-remove" } };
 		const { dest } = await run("r1", initRepo());

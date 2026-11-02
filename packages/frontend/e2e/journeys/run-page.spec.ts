@@ -240,8 +240,8 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.getByTestId("details-toggle").click();
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
-		// Click detail-step in Evidence tab
-		await page.getByTestId("run-details-tab-evidence").click();
+		// Click detail-step in the evidence, now on Summary (#973)
+		await page.getByTestId("run-details-tab-summary").click();
 		const stepBtn = page.getByTestId("detail-step").first();
 		await expect(stepBtn).toBeVisible();
 		await stepBtn.click();
@@ -292,26 +292,17 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			"active",
 		);
 
-		await page.keyboard.press("ArrowRight");
-		await expect(page.getByTestId("run-details-tab-evidence")).toHaveAttribute(
-			"data-state",
-			"active",
-		);
-
-		await page.keyboard.press("ArrowRight");
-		await expect(page.getByTestId("run-details-tab-context")).toHaveAttribute(
-			"data-state",
-			"active",
-		);
-
-		await page.keyboard.press("ArrowRight");
-		await expect(page.getByTestId("run-details-tab-steps")).toHaveAttribute(
-			"data-state",
-			"active",
-		);
+		// Summary, Files, Changes, Steps, Context (#973).
+		for (const id of ["files", "changes", "steps", "context"]) {
+			await page.keyboard.press("ArrowRight");
+			await expect(page.getByTestId(`run-details-tab-${id}`)).toHaveAttribute(
+				"data-state",
+				"active",
+			);
+		}
 
 		await page.keyboard.press("ArrowLeft");
-		await expect(page.getByTestId("run-details-tab-context")).toHaveAttribute(
+		await expect(page.getByTestId("run-details-tab-steps")).toHaveAttribute(
 			"data-state",
 			"active",
 		);
@@ -631,9 +622,9 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			.filter({ hasText: "Status" });
 		await expect(statusRow).toContainText("Failed");
 
-		// Evidence "The run failed before it reported."
-		await page.getByTestId("run-details-tab-evidence").click();
-		const evidenceContent = page.getByTestId("run-details-evidence");
+		// Evidence "The run failed before it reported.", now on Summary (#973)
+		await page.getByTestId("run-details-tab-summary").click();
+		const evidenceContent = page.getByTestId("run-details-summary");
 		await expect(evidenceContent).toContainText(
 			"The run failed before it reported.",
 		);

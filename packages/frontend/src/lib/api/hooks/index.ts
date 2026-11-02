@@ -67,6 +67,8 @@ export {
 	useInvestigationStatus,
 	useInvestigations,
 	useInvestigationsByIncident,
+	useRestartSummary,
+	useResumeInvestigation,
 } from "./use-investigations-orpc";
 // Recommendation hooks
 export {

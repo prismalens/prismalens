@@ -60,7 +60,7 @@ export function ServiceConnectionsMatrix({
 	return (
 		<div data-testid="service-matrix">
 			<h3 className="mb-2 text-heading">By deployment</h3>
-			<div className="overflow-x-auto">
+			<div data-scroll-x className="overflow-x-auto">
 				<table
 					aria-label="Connections by deployment"
 					className="grid min-w-[560px] gap-1.5"

@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
 	"vcs": {
 		"enabled": true,
 		"clientKind": "git",
@@ -13,6 +13,9 @@
 			"!**/*.spec.ts",
 			"packages/frontend/e2e/**/*.spec.ts",
 			"packages/frontend/e2e/**/*.test.ts",
+			"!**/*.md",
+			"!**/*.yaml",
+			"!**/*.yml",
 			"!**/routeTree.gen.ts",
 			"!**/project.inlang",
 			"!packages/api/openapi.json",
@@ -31,14 +34,16 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"preset": "recommended",
 			"a11y": {
 				"noLabelWithoutControl": "warn",
 				"noStaticElementInteractions": "warn",
 				"useKeyWithClickEvents": "warn"
 			},
 			"correctness": {
-				"useExhaustiveDependencies": "warn"
+				"noComponentHookFactories": "warn",
+				"useExhaustiveDependencies": "warn",
+				"usePlaywrightValidDescribeCallback": "warn"
 			},
 			"suspicious": {
 				"noArrayIndexKey": "warn"

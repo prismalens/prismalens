@@ -243,7 +243,9 @@ export function runLabel(runs: Run[], run: Run): string {
 				? "likely cause"
 				: "no cause named"
 			: run.status === "failed"
-				? "failed"
+				? run.endReason === "interrupted"
+					? "interrupted"
+					: "failed"
 				: run.status === "cancelled"
 					? "stopped by you"
 					: run.status;

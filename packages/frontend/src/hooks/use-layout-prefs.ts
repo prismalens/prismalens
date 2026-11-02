@@ -5,8 +5,8 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 /**
  * Per-viewer layout choices: the sidebar full, folded to its rail, or hidden
- * (`[`, #848), the alerts pane grouped by service or not, and per view which
- * service groups are folded (#743).
+ * (`[`, #848), the alerts pane grouped by service or not, per view which
+ * service groups are folded (#743), whether the right panel is open (#973), and the bottom panel (#931).
  * Kept in localStorage, which can be absent or throw, so every access is
  * guarded and the defaults win without it. The state is an attribute on the
  * root, so the bar and every frame read one width from tokens.css.
@@ -28,6 +28,10 @@ interface LayoutPrefs {
 	alertsGroupBy: GroupBy;
 	/** Folded group ids, per view. */
 	folded: Record<GroupView, string[]>;
+	/** The right panel beside the page; a phone's sheet never reopens on its own. */
+	rightPanel: boolean;
+	/** The terminal under the page. */
+	bottomPanel: boolean;
 }
 
 const DEFAULTS: LayoutPrefs = {
@@ -35,6 +39,8 @@ const DEFAULTS: LayoutPrefs = {
 	sidebarRest: "full",
 	alertsGroupBy: "none",
 	folded: { list: [], alerts: [] },
+	rightPanel: false,
+	bottomPanel: false,
 };
 let current: LayoutPrefs = DEFAULTS;
 const listeners = new Set<() => void>();
@@ -65,6 +71,8 @@ function read(): LayoutPrefs {
 			sidebarRest: rest,
 			alertsGroupBy: parsed.alertsGroupBy === "service" ? "service" : "none",
 			folded,
+			rightPanel: parsed.rightPanel === true,
+			bottomPanel: parsed.bottomPanel === true,
 		};
 	} catch {
 		return DEFAULTS;
@@ -137,6 +145,15 @@ export function useLayoutPrefs() {
 		});
 	}, []);
 
+	const setRightPanel = useCallback(
+		(open: boolean) => publish({ ...current, rightPanel: open }),
+		[],
+	);
+	const setBottomPanel = useCallback(
+		(open: boolean) => publish({ ...current, bottomPanel: open }),
+		[],
+	);
+
 	return {
 		...prefs,
 		sidebarFolded: prefs.sidebar === "folded",
@@ -145,5 +162,7 @@ export function useLayoutPrefs() {
 		setSidebarRest,
 		setAlertsGroupBy,
 		toggleLane,
+		setRightPanel,
+		setBottomPanel,
 	};
 }

@@ -41,6 +41,7 @@ export {
 export { recommendationsContract } from "./recommendations.js";
 export { repositoriesContract } from "./repositories.js";
 export { runWorkspacesContract } from "./run-workspaces.js";
+export { schedulesContract } from "./schedules.js";
 export { servicesContract } from "./services.js";
 export { settingsContract } from "./settings.js";
 export {
@@ -51,6 +52,7 @@ export {
 	setupContract,
 } from "./setup.js";
 export { sourcesContract } from "./sources.js";
+export { terminalContract } from "./terminal.js";
 export { timelineContract } from "./timeline.js";
 export { webhooksContract } from "./webhooks.js";
 
@@ -71,10 +73,12 @@ import { pushContract } from "./push.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
 import { runWorkspacesContract } from "./run-workspaces.js";
+import { schedulesContract } from "./schedules.js";
 import { servicesContract } from "./services.js";
 import { settingsContract } from "./settings.js";
 import { setupContract } from "./setup.js";
 import { sourcesContract } from "./sources.js";
+import { terminalContract } from "./terminal.js";
 import { timelineContract } from "./timeline.js";
 import { webhooksContract } from "./webhooks.js";
 
@@ -93,6 +97,7 @@ export const contract = {
 	recommendations: recommendationsContract,
 	repositories: repositoriesContract,
 	runWorkspaces: runWorkspacesContract,
+	schedules: schedulesContract,
 	services: servicesContract,
 	webhooks: webhooksContract,
 	events: eventsContract,
@@ -105,6 +110,7 @@ export const contract = {
 	instance: instanceContract,
 	pairing: pairingContract,
 	push: pushContract,
+	terminal: terminalContract,
 };
 
 export type Contract = typeof contract;

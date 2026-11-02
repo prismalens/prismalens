@@ -6,8 +6,14 @@
  * the floor, the row's provider keys from the host, the user's stored values, the
  * row's own env, then the caller's overrides; refusals run over the result (#916).
  */
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
+import { dirname, join, win32 } from "node:path";
 import { AgentHostError } from "./errors.js";
 import {
 	type AccessLevel,
@@ -23,6 +29,29 @@ import {
 	resolveLevel,
 	type UserSetup,
 } from "./registry/index.js";
+
+/**
+ * The `.exe` an npm `.cmd` shim runs, else `path`. The companion is handed to an adapter that
+ * spawns it without a shell, and Node refuses a `.cmd` that way (CVE-2024-27980, #1013).
+ */
+export function shimTarget(
+	path: string,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	if (platform !== "win32" || !/\.(cmd|bat)$/i.test(path)) return path;
+	let shim: string;
+	try {
+		shim = readFileSync(path, "utf8");
+	} catch {
+		return path;
+	}
+	const exe = [...shim.matchAll(/"%dp0%\\([^"]+\.exe)"/gi)]
+		.map((m) => m[1] as string)
+		.filter((rel) => !/^node\.exe$/i.test(rel))
+		.at(-1);
+	const target = exe && win32.join(win32.dirname(path), exe);
+	return target && existsSync(target) ? target : path;
+}
 
 /**
  * Own-secret isolation (ADR-0009): the child gets a bare-minimum shell env, never
@@ -260,7 +289,7 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		dataDir: join(input.runDir, "home"),
 		cwd: input.cwd,
 		...(input.launch.companionPath
-			? { companionPath: input.launch.companionPath }
+			? { companionPath: shimTarget(input.launch.companionPath) }
 			: {}),
 		...(input.launch.shipped ? { shipped: true } : {}),
 		...(input.gateway && row.gatewayDelivery ? { gateway: input.gateway } : {}),

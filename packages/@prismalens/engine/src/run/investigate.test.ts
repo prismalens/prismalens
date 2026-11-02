@@ -13,10 +13,18 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
-import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
+import type {
+	CanonicalEvent,
+	InvestigationContext,
+	RecordedEvidence,
+	RecordedFinding,
+	RecordedHypothesis,
+} from "@prismalens/contracts/schemas";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import { conductRun } from "./conductor.js";
+import { FindingsLedger } from "./findings.js";
+import type { GatewayCall } from "./gateway.js";
 import {
 	buildRunFidelity,
 	createSteerChannel,
@@ -553,8 +561,12 @@ describe("runInvestigation over a fake ACP harness", () => {
 		setTimeout(() => {
 			expect(channel.send("Also check the TTL revert.", "queue", [], id)).toBe("queued");
 		}, 150);
-		setTimeout(() => stop.abort(), 400);
-		for await (const ev of runInvestigation(opts("silent", { signal: stop.signal, steer: channel.port }))) events.push(ev);
+		const failsafe = setTimeout(() => stop.abort(), 5_000);
+		for await (const ev of runInvestigation(opts("silent", { signal: stop.signal, steer: channel.port }))) {
+			events.push(ev);
+			if (ev.kind === "message_queued") stop.abort();
+		}
+		clearTimeout(failsafe);
 		const queued = events.findIndex((e) => e.kind === "message_queued");
 		const ended = events.findIndex((e) => e.kind === "operator_message");
 		expect(events[queued]).toMatchObject({ messageId: id, text: "Also check the TTL revert." });
@@ -617,6 +629,32 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.some((e) => e.kind === "report" || e.kind === "error")).toBe(false);
 		expect(events.at(-1)?.kind).toBe("branch_done");
 		expect(sessions).toEqual([{ sessionId: "ses_old", loadSession: true }]);
+	});
+
+	it("a follow-up on gemini-cli starts a fresh session seeded with the stored conversation, never its load (#942)", async () => {
+		const reopens: { path: string; replayed: number }[] = [];
+		const { events, runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", FAKE_AGENT_NAME: "gemini-cli" },
+			resume: {
+				sessionId: "ses_old",
+				fresh: async () => ({ text: "STORED: the pool", from: "gemini", carried: "alert, 1 message", omitted: null }),
+				via: { harness: "gemini", model: null, accessLevel: null },
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [],
+			},
+			onReopen: (r) => reopens.push(r),
+		});
+		expect(reopens).toMatchObject([{ path: "fresh", replayed: 0 }]);
+		expect(events[0]).toMatchObject({
+			kind: "operator_message",
+			via: { harness: "gemini", handoff: { from: "gemini", carried: "alert, 1 message" } },
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).not.toContain("session/load");
+		const prompt = wire.split("\n").find((l) => l.includes("session/prompt"));
+		expect(prompt).toContain("STORED: the pool");
+		expect(prompt).toContain("Why the pool?");
 	});
 
 	it("a handoff opens a fresh session seeded with the handoff, and records the agent, model and level on the first message", async () => {
@@ -768,7 +806,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 			resume: { sessionId: "ses_old", text: "hi", mode: "queue", heads: [] },
 		});
 		const last = events.at(-1);
-		expect(last).toMatchObject({ kind: "error", message: "fake 0 does not support session/load" });
+		expect(last).toMatchObject({ kind: "error", message: "fake 0 does not support session/load or session/resume" });
 	});
 
 	it("hands the host the session/new id on a normal run (#747)", async () => {
@@ -1563,6 +1601,136 @@ describe("the agent's own mode (#673 w21)", () => {
 	});
 });
 
+describe("recorded evidence and hypotheses (#930)", () => {
+	it("streams each record as it lands, and the report joins them to the final answer with quotes resolved by code", async () => {
+		const at = "2026-10-28T10:00:00.000Z";
+		const ledger = new FindingsLedger();
+		let found: ((f: RecordedFinding) => void) | undefined;
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["evidence_record", "hypothesis_record"],
+			connected: () => true,
+			waitConnected: async () => {
+				// Recorded before `pwd` ran: unanchored now, resolved when the report is written.
+				const e = ledger.addEvidence(
+					{ observation: "the tree is the clone", source: "pwd", quote: "pl-clone-", direction: "supports" },
+					null,
+					at,
+				) as RecordedEvidence;
+				const h = ledger.addHypothesis(
+					{ statement: "Connection pool exhausted", status: "confirmed", evidence: ["e1"] },
+					at,
+				) as RecordedHypothesis;
+				found?.({ type: "evidence", ...e });
+				found?.({ type: "hypothesis", ...h });
+				return true;
+			},
+			onCall: () => () => {},
+			calls: () => [],
+			sawOutput: (id: string, text: string) => ledger.sawOutput(id, text),
+			onFinding: (cb: (f: RecordedFinding) => void) => {
+				found = cb;
+				return () => {
+					found = undefined;
+				};
+			},
+			findings: () => ledger.snapshot(),
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+			permission: autoApprovePolicy,
+		});
+		const recorded = events.filter((e) => e.kind === "finding_recorded");
+		// The quote anchors once `pwd` ran, so the evidence shows again with its anchor.
+		expect(recorded.map((e) => e.kind === "finding_recorded" && e.finding.type)).toEqual(["evidence", "hypothesis", "evidence"]);
+		const first = recorded[0];
+		expect(first?.kind === "finding_recorded" && first.finding.type === "evidence" && first.finding.anchor).toBeNull();
+		const reportIdx = events.findIndex((e) => e.kind === "report");
+		expect(events.indexOf(recorded[1] as CanonicalEvent)).toBeLessThan(reportIdx);
+		const report = events[reportIdx];
+		expect(report?.kind).toBe("report");
+		if (report?.kind !== "report") return;
+		const [pool] = report.report.hypotheses;
+		// The final answer's status stands; the recorded evidence joins it, verified by where code found the quote.
+		expect(pool?.status).toBe("supported");
+		expect(pool?.evidence).toContainEqual(
+			expect.objectContaining({
+				observation: "the tree is the clone",
+				status: "verified",
+				toolCallId: "t1",
+				quote: "pl-clone-",
+				anchor: { in: "tool-output", toolCallId: "t1", line: 1 },
+			}),
+		);
+	});
+
+	describe("a finding is shown once per anchor", () => {
+		const at = "2026-10-28T10:00:00.000Z";
+		const evidence = (quote: string, anchor: RecordedEvidence["anchor"]): RecordedEvidence => ({
+			id: "e1",
+			observation: "the tree is the clone",
+			source: "pwd",
+			quote,
+			direction: "supports",
+			anchor,
+			at,
+		});
+		/** Streams `live` as the agent records, then `after` is what the end-of-turn read holds. */
+		async function evidenceShown(live: RecordedEvidence[], after: RecordedEvidence) {
+			let found: ((f: RecordedFinding) => void) | undefined;
+			const gateway = {
+				url: "http://127.0.0.1:1/mcp",
+				token: "t0k",
+				serverName: "prismalens-abcdefgh23",
+				promptLine: "",
+				tools: ["evidence_record"],
+				connected: () => true,
+				waitConnected: async () => {
+					for (const e of live) found?.({ type: "evidence", ...e });
+					return true;
+				},
+				onCall: () => () => {},
+				calls: () => [],
+				onFinding: (cb: (f: RecordedFinding) => void) => {
+					found = cb;
+					return () => {
+						found = undefined;
+					};
+				},
+				findings: () => ({ evidence: [after], hypotheses: [] }),
+			};
+			const { events } = await collect("ok", {
+				env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+				gateway,
+				permission: autoApprovePolicy,
+			});
+			return events.flatMap((e) =>
+				e.kind === "finding_recorded" && e.finding.type === "evidence" ? [e.finding.anchor] : [],
+			);
+		}
+		const anchor = { in: "tool-output" as const, toolCallId: "t1", line: 1 };
+
+		it("emits an unanchored record again once its quote anchors", async () => {
+			const shown = await evidenceShown([evidence("pl-clone-", null)], evidence("pl-clone-", anchor));
+			expect(shown).toEqual([null, anchor]);
+		});
+
+		it("emits the same anchored record once", async () => {
+			const shown = await evidenceShown([evidence("pl-clone-", anchor), evidence("pl-clone-", anchor)], evidence("pl-clone-", anchor));
+			expect(shown).toEqual([anchor]);
+		});
+
+		it("keeps a record that never anchors to one emission", async () => {
+			const shown = await evidenceShown([evidence("zz-never-", null), evidence("zz-never-", null)], evidence("zz-never-", null));
+			expect(shown).toEqual([null]);
+		});
+	});
+});
+
 describe("harness tool call live events and summary (#848)", () => {
 	it("a call 5 s before turn end yields a harness_tool_call before the turn's last message, with at before the summary's ts", async () => {
 		let onCallCb: ((c: { name: string; at: string }) => void) | undefined;
@@ -1610,6 +1778,103 @@ describe("harness tool call live events and summary (#848)", () => {
 			expect(summary.calls).toEqual([{ name: "incident_get", firstCalledAt: callAt, count: 1 }]);
 			expect(new Date(callAt).getTime()).toBeLessThan(new Date(summary.ts).getTime());
 		}
+	});
+
+	it("yields a harness_tool_call carrying callId, input, output, isError, ms, schemaHash and gateway's server", async () => {
+		let onCallCb: ((c: GatewayCall) => void) | undefined;
+		const callAt = "2026-10-24T10:00:00.000Z";
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-testserver123",
+			promptLine: "",
+			tools: ["runbooks_read"],
+			connected: () => true,
+			waitConnected: async () => {
+				onCallCb?.({
+					name: "runbooks_read",
+					at: callAt,
+					callId: "c1",
+					input: { path: "p" },
+					output: '{"ok":true}',
+					isError: false,
+					ms: 3,
+					schemaHash: "abcd",
+				});
+				return true;
+			},
+			onCall: (cb: (c: GatewayCall) => void) => {
+				onCallCb = cb;
+				return () => {};
+			},
+			calls: () => [{ name: "runbooks_read", firstCalledAt: callAt, count: 1 }],
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+		});
+		const toolCall = events.find((e) => e.kind === "harness_tool_call");
+		expect(toolCall).toBeDefined();
+		expect(toolCall).toMatchObject({
+			kind: "harness_tool_call",
+			server: "prismalens-testserver123",
+			name: "runbooks_read",
+			at: callAt,
+			callId: "c1",
+			input: { path: "p" },
+			output: '{"ok":true}',
+			isError: false,
+			ms: 3,
+			schemaHash: "abcd",
+		});
+	});
+
+	it("calls, findings and pages acknowledged but never streamed are recorded once, after recording closes (#848)", async () => {
+		const page = { id: "a1", title: "Timeline", html: "<p>x</p>", at: "2026-10-24T10:00:00.000Z" };
+		let closed = false;
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-testserver123",
+			promptLine: "",
+			tools: ["artifact_publish"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+			onArtifact: () => () => {},
+			closeRecording: () => {
+				closed = true;
+			},
+			artifacts: () => [page],
+			callLog: () => [
+				{ name: "evidence_record", at: page.at, callId: "c9", input: {}, output: "x" },
+			],
+			findings: () => ({
+				evidence: [
+					{
+						id: "e1",
+						observation: "o",
+						source: "s",
+						quote: "q quote",
+						direction: "supports" as const,
+						anchor: null,
+						at: page.at,
+					},
+				],
+				hypotheses: [],
+			}),
+		};
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway,
+		});
+		const pages = events.filter((e) => e.kind === "artifact_published");
+		expect(pages).toHaveLength(1);
+		expect(pages[0]).toMatchObject({ artifact: { id: "a1", title: "Timeline" } });
+		expect(closed).toBe(true);
+		expect(events.filter((e) => e.kind === "harness_tool_call")).toHaveLength(1);
+		expect(events.filter((e) => e.kind === "finding_recorded")).toHaveLength(1);
 	});
 
 	it("a two-turn resume yields turn: 'first' and then turn: 'follow-up'", async () => {
@@ -1831,5 +2096,26 @@ describe("Settings → Agent runtime at spawn (#907)", () => {
 		expect(buildRunFidelity("codex", {}, "read-only").runtime).toBeUndefined();
 		const runtime = { binaryPath: "/opt/codex", configDir: null, envNames: ["OPENAI_API_KEY"], args: [] };
 		expect(buildRunFidelity("codex", {}, "read-only", "acp-config", runtime).runtime).toEqual(runtime);
+	});
+});
+
+describe("a service-check run (#979)", () => {
+	const check = {
+		mode: "service-check" as const,
+		alerts: [],
+		service: { name: "checkout" },
+		check: { brief: "Compare today's p99 with yesterday's.", runbook: null },
+	};
+
+	it("puts the brief in the first prompt once: the check's prompt holds it already", async () => {
+		const { events, runDir } = await collect("ok", { context: check, brief: "Compare today's p99 with yesterday's." });
+
+		expect(events.at(-1)?.kind).toBe("report");
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const prompts = wire.split("\n").filter((l) => l.includes('"d":"out"') && l.includes("session/prompt"));
+		expect(prompts).toHaveLength(1);
+		expect(prompts[0]?.split("Compare today's p99 with yesterday's.").length).toBe(2);
+		expect(prompts[0]).toContain("SCHEDULED CHECK");
+		expect(prompts[0]).not.toContain("FIRING ALERT");
 	});
 });

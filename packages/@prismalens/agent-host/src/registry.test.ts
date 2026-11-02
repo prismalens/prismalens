@@ -114,7 +114,7 @@ describe("registry facts", () => {
 			},
 		});
 		const opencodeArgs = AGENT_REGISTRY.opencode.acpArgs({ configDir: "c", dataDir: "d", cwd: "w" });
-		expect(opencodeArgs).toEqual(["acp", "--cwd", "w"]);
+		expect(opencodeArgs).toEqual(["acp"]);
 		expect(opencodeArgs).not.toContain("--pure");
 	});
 

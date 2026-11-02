@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
 import { formatElapsed } from "@/lib/format-time";
+import { latestRestart, notResumedReason } from "@/lib/restart";
 import { askTitle } from "@/lib/run-asks";
 import { stripInlineMarkdown } from "@/lib/strip-inline-markdown";
 import { cn } from "@/lib/utils";
@@ -42,16 +43,26 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 	const ask = run.asks.find((a) => a.state === "waiting");
 	const name = latest ? viewName(runs, latest) : null;
 	const took =
-		inv && runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
+		inv && runTimed(inv)
+			? formatElapsed(runElapsed(inv, now, run.events))
+			: null;
 	const outcome = latest ? runOutcome(latest) : "";
+	const cut = (inv?.endReason ?? latest?.endReason) === "interrupted";
+	const unresumed = cut ? notResumedReason(inv?.error) : null;
 	const detail = !latest
 		? "No run yet"
 		: waiting
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: live
-				? stripInlineMarkdown(run.latestText ?? "Working")
+				? latestRestart(run.events)
+					? "Resumed after a restart"
+					: stripInlineMarkdown(run.latestText ?? "Working")
 				: state === "failed"
-					? failureWords(inv?.error ?? latest.error, who.agent).what
+					? unresumed
+						? `Interrupted, not resumed: ${unresumed}`
+						: cut
+							? "PrismaLens restarted"
+							: failureWords(inv?.error ?? latest.error, who.agent).what
 					: latest.hasReport
 						? latest.rootCause
 							? "Likely cause found"
@@ -69,10 +80,10 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 		: "";
 	return (
 		<div
-			className="relative flex h-9 min-w-0 shrink-0 items-center gap-3 px-4 whitespace-nowrap after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline"
+			className="relative flex h-9 min-w-0 shrink-0 items-center gap-2 px-4 whitespace-nowrap md:gap-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline"
 			data-testid="latest-run-strip"
 		>
-			<span className="shrink-0 text-text-3">Latest run</span>
+			<span className="shrink-0 text-text-3 max-md:hidden">Latest run</span>
 			{state ? (
 				<RunDot state={state} waiting={waiting} className="size-[7px]" />
 			) : (
@@ -86,7 +97,7 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 					to="/incidents/$id/conversation"
 					params={{ id: incident.id }}
 					search={{ investigation: latest.id }}
-					className="shrink-0 font-medium hover:underline"
+					className="min-w-0 truncate font-medium hover:underline md:shrink-0"
 					data-testid="latest-run-link"
 				>
 					{name}{" "}
@@ -95,7 +106,9 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 						: live
 							? "investigating"
 							: state === "failed"
-								? "failed"
+								? cut
+									? "interrupted"
+									: "failed"
 								: state === "stopped"
 									? "stopped"
 									: "concluded"}
@@ -103,7 +116,7 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 			) : null}
 			<span
 				className={cn(
-					"min-w-[100px] shrink truncate",
+					"min-w-0 shrink truncate md:min-w-[100px]",
 					waiting
 						? "text-warn"
 						: live
@@ -111,6 +124,8 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 							: state === "failed"
 								? "text-danger"
 								: "text-text-2",
+					// The Next card below carries the reason on a phone (#1010 N6).
+					unresumed && "max-md:hidden",
 				)}
 				data-testid="latest-run-detail"
 			>

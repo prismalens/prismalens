@@ -6,6 +6,7 @@ import { ConfigModule } from "@nestjs/config";
 import { HarnessModule } from "../../core/harness/harness.module.js";
 import { SettingsModule } from "../../core/settings/settings.module.js";
 import { ReportDeliveryModule } from "../delivery/report-delivery.module.js";
+import { IncidentsModule } from "../incidents/incidents.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { OverlayModule } from "../overlay/overlay.module.js";
 import { TimelineModule } from "../timeline/timeline.module.js";
@@ -23,6 +24,7 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		ConfigModule,
 		HarnessModule,
 		forwardRef(() => TimelineModule),
+		forwardRef(() => IncidentsModule),
 		OverlayModule,
 		SettingsModule,
 		IntegrationsModule,

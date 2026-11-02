@@ -140,6 +140,8 @@ async function main() {
 		stdio: ["ignore", "pipe", "pipe"],
 		env: {
 			...process.env,
+			// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
+			PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY || "internal",
 			// A harness run must never reach a real placement/sign-in; server
 			// placement plus a loopback base URL is the whole guard (AGENTS.md).
 			PRISMALENS_PLACEMENT: "server",

@@ -54,7 +54,14 @@ test("a moved pin rewrites only its row's tested line and the note above it", ()
 		),
 	);
 	assert.equal(source.split("\n").length, HARNESS.split("\n").length);
-	assert.equal((source.match(/no real-model run yet/g) ?? []).length, 2);
+	// The live file may already carry the note on a row a pin-bump PR moved, so look above the two rows.
+	const lines = source.split("\n");
+	for (const marker of ['version: "8.8.8"', 'companion: "9.9.9"']) {
+		const at = lines.findIndex(
+			(l) => l.includes("tested:") && l.includes(marker),
+		);
+		assert.match(lines[at - 1], /no real-model run yet/);
+	}
 	const opencode = /^\t\ttested: \{ version: "[^"]*", date: "[^"]*" \},$/m.exec(
 		HARNESS,
 	)?.[0];

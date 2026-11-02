@@ -9,6 +9,7 @@ import {
 	isGatewayToolCall,
 	levelPolicy,
 	type PermissionRequest,
+	SHUTDOWN_REASON,
 } from "./permission.js";
 
 describe("askWindow", () => {
@@ -191,6 +192,23 @@ describe("createAskChannel", () => {
 			optionId: "reject",
 			why: "the turn was stopped",
 			outcome: "stopped",
+		});
+	});
+
+	it("an abort because PrismaLens is closing resolves restarted, not stopped (#981)", async () => {
+		vi.useFakeTimers();
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const ac = new AbortController();
+		const p = channel.policy(
+			{ options: [{ optionId: "reject", kind: "reject_once" }] },
+			{ askId: "ask1", signal: ac.signal },
+		);
+		ac.abort(SHUTDOWN_REASON);
+		expect(await p).toEqual({
+			allow: false,
+			optionId: "reject",
+			why: "PrismaLens restarted",
+			outcome: "restarted",
 		});
 	});
 
@@ -671,6 +689,16 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 			},
 		};
 		expect(await policy(legacy, ctx)).toMatchObject({ allow: false, why: "card" });
+	});
+
+	it("a gateway tool outside autoAllow gets the card, even unattended (#848)", async () => {
+		const gw = { ...gateway(true), autoAllow: ["incident_get"] };
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw, unattended: true });
+		expect(await policy(claudeAsk("incident_get"), ctx)).toMatchObject({ allow: true });
+		expect(await policy(claudeAsk("sources_list"), ctx)).toMatchObject({
+			allow: false,
+			outcome: "unattended",
+		});
 	});
 
 	it("asks titled mcp__<name>__incident_get and mcp.<name>.incident_get are allowed", async () => {

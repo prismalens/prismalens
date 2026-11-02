@@ -6,9 +6,12 @@ import {
 	deviceTokenFrom,
 	fetchInstanceId,
 	OlderBackendError,
+	claimTerminalKey,
+	claimTerminalKeyInBackground,
 	operatorToken,
 	parsePairingToken,
 	storedCandidates,
+	terminalKeyFor,
 } from "./session.js";
 
 const baseUrl = "http://127.0.0.1:4100";
@@ -113,6 +116,77 @@ describe("operatorToken", () => {
 	});
 });
 
+describe("the terminal key (#931)", () => {
+	it("keeps the key a fresh redeem returns", async () => {
+		const onTerminalKey = vi.fn();
+		const fetchImpl = vi.fn(async () =>
+			response(200, { terminalKey: "tk" }, [`${cookieName}=fresh; Path=/; HttpOnly`]),
+		);
+		await operatorToken({
+			baseUrl,
+			cookieName,
+			candidates: [],
+			pairOperator: async () => "/pair#link",
+			fetchImpl,
+			onTerminalKey,
+		});
+		expect(onTerminalKey).toHaveBeenCalledWith("tk");
+	});
+
+	it("claims a key for a stored session with a fresh operator link, pairing no second device", async () => {
+		const fetchImpl = vi.fn(async () => response(200, { key: "tk" }));
+		await expect(
+			claimTerminalKey({
+				baseUrl,
+				token: "old",
+				pairOperator: async () => "/pair#link",
+				fetchImpl,
+			}),
+		).resolves.toBe("tk");
+		expect(fetchImpl).toHaveBeenCalledWith(`${baseUrl}/api/terminal/key`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: baseUrl,
+				authorization: "Bearer old",
+			},
+			body: JSON.stringify({ token: "link" }),
+		});
+		expect(fetchImpl).not.toHaveBeenCalledWith(`${baseUrl}/api/pairing/redeem`, expect.anything());
+	});
+
+	it("gives up quietly when the claim is refused: the panel then says why", async () => {
+		await expect(
+			claimTerminalKey({
+				baseUrl,
+				token: "old",
+				pairOperator: async () => "/pair#link",
+				fetchImpl: vi.fn(async () => response(403)),
+			}),
+		).resolves.toBeNull();
+	});
+});
+
+describe("which terminal key a window keeps (#931)", () => {
+	it("prefers the key a fresh redeem returned", () => {
+		expect(
+			terminalKeyFor({ fresh: "new", stored: "old", token: "a", storedToken: "a" }),
+		).toBe("new");
+	});
+
+	it("reuses the stored key while the stored device token still holds", () => {
+		expect(
+			terminalKeyFor({ fresh: undefined, stored: "old", token: "a", storedToken: "a" }),
+		).toBe("old");
+	});
+
+	it("drops the stored key once a replacement device was paired", () => {
+		expect(
+			terminalKeyFor({ fresh: undefined, stored: "old", token: "b", storedToken: "a" }),
+		).toBeUndefined();
+	});
+});
+
 describe("identity before credential", () => {
 	const id = "0123456789ab-cdef";
 	it("sends the stored token only to the instance it was recorded for", () => {
@@ -157,5 +231,52 @@ describe("identity before credential", () => {
 		await expect(
 			fetchInstanceId(baseUrl, vi.fn(async () => response(404))),
 		).rejects.toBeInstanceOf(OlderBackendError);
+	});
+});
+
+describe("the background terminal-key claim (#931)", () => {
+	const claim = (over: Partial<Parameters<typeof claimTerminalKeyInBackground>[0]> = {}) => {
+		const onKey = vi.fn();
+		const refusedAt = new Map<string, number>();
+		const deps = {
+			instanceId: "i1",
+			baseUrl,
+			token: "old",
+			pairOperator: vi.fn(async () => "/pair#link"),
+			fetchImpl: vi.fn(async () => response(200, { key: "tk" })),
+			isCurrent: () => true,
+			onKey,
+			refusedAt,
+			now: () => 1_000,
+			...over,
+		};
+		return { deps, onKey, refusedAt };
+	};
+
+	it("hands the key over when the claim resolves", async () => {
+		const { deps, onKey } = claim();
+		await claimTerminalKeyInBackground(deps);
+		expect(onKey).toHaveBeenCalledWith("tk");
+	});
+
+	it("drops a key that arrives after the window moved to another session", async () => {
+		const { deps, onKey } = claim({ isCurrent: () => false });
+		await claimTerminalKeyInBackground(deps);
+		expect(onKey).not.toHaveBeenCalled();
+	});
+
+	it("does not spend another operator link on an instance that just refused", async () => {
+		const refused = claim({ fetchImpl: vi.fn(async () => response(403)) });
+		await claimTerminalKeyInBackground(refused.deps);
+		expect(refused.onKey).not.toHaveBeenCalled();
+		const again = claim({ refusedAt: refused.refusedAt, now: () => 2_000 });
+		await claimTerminalKeyInBackground(again.deps);
+		expect(again.deps.pairOperator).not.toHaveBeenCalled();
+		const later = claim({
+			refusedAt: refused.refusedAt,
+			now: () => 1_000 + 11 * 60_000,
+		});
+		await claimTerminalKeyInBackground(later.deps);
+		expect(later.onKey).toHaveBeenCalledWith("tk");
 	});
 });

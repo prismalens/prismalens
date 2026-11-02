@@ -64,6 +64,7 @@ declare module "@orpc/nest" {
 }
 
 import { AuthGuard, AuthModule } from "./core/auth/index.js";
+import { RuntimeLifecycleModule } from "./core/lifecycle/runtime-lifecycle.module.js";
 import { WorkspaceLockShutdownService } from "./core/lifecycle/workspace-lock-shutdown.service.js";
 import { LiveModule } from "./core/live/live.module.js";
 // Core modules
@@ -88,7 +89,9 @@ import { OpenAPIModule } from "./modules/openapi/openapi.module.js";
 import { PushModule } from "./modules/push/push.module.js";
 import { RecommendationsModule } from "./modules/recommendations/recommendations.module.js";
 import { RepositoriesModule } from "./modules/repositories/repositories.module.js";
+import { SchedulesModule } from "./modules/schedules/schedules.module.js";
 import { ServicesModule } from "./modules/services/services.module.js";
+import { TerminalModule } from "./modules/terminal/terminal.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 import { resolveServiceVersion } from "./shared/utils/service-version.js";
@@ -164,6 +167,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		SetupModule, // on-ramp status (oRPC)
 		SettingsModule,
 		TelemetryModule,
+		RuntimeLifecycleModule, // When PrismaLens last ran and the gaps since (#981, #979)
 
 		// Infrastructure
 		HealthModule,
@@ -179,6 +183,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 
 		// Feature modules (incident-centric architecture)
 		EventsModule, // Raw event ingestion
+		SchedulesModule, // Scheduled tasks (#979)
 		ServicesModule, // Service catalog
 		RepositoriesModule, // Repository management
 		AlertsModule, // Alert processing
@@ -186,6 +191,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		IncidentsModule, // Incident management (primary entity)
 		InvestigationsModule, // AI investigation (replaces AnalysisModule)
 		TimelineModule, // Incident timeline
+		TerminalModule, // host-only shells (#931)
 		ChangesModule, // What changed around an incident, from its git hosts (#811)
 		ImpactModule, // The Impact chart, live from the alert's own expression (#811)
 		FixesModule, // Stop-the-impact options: applied, undo, check (#811)

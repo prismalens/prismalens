@@ -7,13 +7,19 @@ import {
 	runState,
 } from "@prismalens/contracts";
 import { failureWords } from "./failure-words";
+import { notResumedReason } from "./restart";
 
 export interface SummaryInput {
 	now: number;
 	alerts: { status: string; triggeredAt: string }[];
 	services: string[];
 	/** Newest first. */
-	runs: { status: string; error?: string | null; rootCause?: string | null }[];
+	runs: {
+		status: string;
+		error?: string | null;
+		rootCause?: string | null;
+		endReason?: string | null;
+	}[];
 	/** The latest investigation ran with no repository. */
 	noRepo: boolean;
 	attention: IncidentAttention | null;
@@ -85,7 +91,14 @@ export function incidentSummary(i: SummaryInput): {
 		);
 	else if (state === "stopped")
 		lines.push("The last investigation was stopped.");
-	else {
+	else if (latest.endReason === "interrupted") {
+		const why = notResumedReason(latest.error);
+		lines.push(
+			why
+				? `The last investigation was interrupted when PrismaLens restarted, and not resumed: ${why}`
+				: "The last investigation was interrupted when PrismaLens restarted.",
+		);
+	} else {
 		let streak = 0;
 		while (
 			streak < i.runs.length &&

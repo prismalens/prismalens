@@ -554,6 +554,7 @@ function ManySources({
 				</div>
 				<fieldset
 					aria-label="Kind"
+					data-scroll-x
 					className="m-0 flex gap-1.5 overflow-x-auto border-0 p-0.5"
 				>
 					{["all", ...groups].map((g) => {

@@ -18,21 +18,19 @@
  * the model must call it on the first turn and on the follow-up. ADMISSION_NO_GATEWAY=1
  * omits the stub, so the run must fail.
  */
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { createServer, type IncomingMessage } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
-import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
@@ -42,10 +40,12 @@ import type {
 	CanonicalEvent,
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
-import { type GatewayEntry, newGatewayServerName } from "../src/run/gateway.js";
+import { createProcessLauncher } from "../src/launch/process.js";
+import type { HarnessChild, HarnessLauncher } from "../src/launch/types.js";
+import { buildHandoff } from "../src/run/handoff.js";
 import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
-import { denyAllPolicy } from "../src/run/permission.js";
-import { AcpSession } from "../src/runner/acp-client.js";
+import { denyAllPolicy, optionOf } from "../src/run/permission.js";
+import { AcpSession, type ReopenPath } from "../src/runner/acp-client.js";
 import {
 	admissionExit,
 	firstWord,
@@ -55,9 +55,11 @@ import {
 	proveCwd,
 	readsAllowed,
 	redactNonce,
+	replayedText,
 	toolCallLine,
 } from "./admission-checks.js";
 import { startReportBreakingProxy } from "./report-breaking-proxy.js";
+import { startStubGateway } from "./stub-gateway.js";
 
 const [harnessArg, cloneDir] = process.argv.slice(2);
 if (!harnessArg || !cloneDir) {
@@ -114,147 +116,10 @@ const context: InvestigationContext = {
 	service: { name: "admission" },
 };
 
-/** A stand-in for the API's gateway: one read-only tool, the run's bearer, a call count. */
-async function startStubGateway(): Promise<{
-	entry: GatewayEntry;
-	count: () => number;
-	close: () => Promise<void>;
-}> {
-	const token = randomBytes(24).toString("hex");
-	const serverName = newGatewayServerName();
-	let connected = false;
-	let total = 0;
-	const waiters = new Set<(ok: boolean) => void>();
-	const listeners = new Set<(c: { name: string; at: string }) => void>();
-	const calls = new Map<
-		string,
-		{ name: string; firstCalledAt: string; count: number }
-	>();
-	const handler = createMcpHandler(
-		() => {
-			const server = new Server(
-				{ name: "prismalens", version: "0.3.0" },
-				{ capabilities: { tools: {} } },
-			);
-			server.setRequestHandler("tools/list", () => ({
-				tools: [
-					{
-						name: "incident_get",
-						description:
-							"The incident this run investigates: its alerts, deploy and change events PrismaLens recorded.",
-						inputSchema: { type: "object", properties: {} },
-						annotations: { readOnlyHint: true, openWorldHint: false },
-					},
-				],
-			}));
-			server.setRequestHandler("tools/call", (req) => {
-				const at = new Date().toISOString();
-				const name = req.params.name;
-				total++;
-				const seen = calls.get(name);
-				calls.set(
-					name,
-					seen
-						? { ...seen, count: seen.count + 1 }
-						: { name, firstCalledAt: at, count: 1 },
-				);
-				for (const l of [...listeners]) l({ name, at });
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: JSON.stringify({
-								number: 1,
-								title: "AdmissionProbe",
-								alerts: [{ alertname: "AdmissionProbe" }],
-								changes: [],
-							}),
-						},
-					],
-				};
-			});
-			return server;
-		},
-		{ responseMode: "json" },
-	);
-	const toRequest = (req: IncomingMessage): Request => {
-		const headers = new Headers();
-		for (const [name, value] of Object.entries(req.headers))
-			if (typeof value === "string") headers.set(name, value);
-		const hasBody = req.method !== "GET" && req.method !== "HEAD";
-		return new Request(`http://gateway${req.url ?? "/"}`, {
-			method: req.method,
-			headers,
-			...(hasBody
-				? { body: Readable.toWeb(req) as ReadableStream, duplex: "half" }
-				: {}),
-		} as RequestInit);
-	};
-	const http = createServer((req, res) => {
-		void (async () => {
-			if (req.headers.authorization !== `Bearer ${token}`) {
-				res.writeHead(401, { "WWW-Authenticate": "Bearer" }).end();
-				return;
-			}
-			if (!connected) {
-				connected = true;
-				for (const done of waiters) done(true);
-			}
-			const response = await handler.fetch(toRequest(req), {
-				authInfo: { token, clientId: "admission", scopes: [] },
-			});
-			res.statusCode = response.status;
-			response.headers.forEach((value, name) => {
-				res.setHeader(name, value);
-			});
-			if (!response.body) res.end();
-			else Readable.fromWeb(response.body as never).pipe(res);
-		})().catch(() => {
-			if (!res.headersSent) res.writeHead(500);
-			res.end();
-		});
-	});
-	await new Promise<void>((resolve) =>
-		http.listen(0, "127.0.0.1", () => resolve()),
-	);
-	const { port } = http.address() as AddressInfo;
-	return {
-		entry: {
-			url: `http://127.0.0.1:${port}/mcp`,
-			token,
-			serverName,
-			promptLine: `PrismaLens tools (MCP server \`${serverName}\`, read-only): \`incident_get\`.`,
-			tools: ["incident_get"],
-			connected: () => connected,
-			waitConnected: (ms) =>
-				connected
-					? Promise.resolve(true)
-					: new Promise<boolean>((resolve) => {
-							const done = (ok: boolean) => {
-								clearTimeout(timer);
-								waiters.delete(done);
-								resolve(ok);
-							};
-							const timer = setTimeout(() => done(false), ms);
-							waiters.add(done);
-						}),
-			onCall: (listener) => {
-				listeners.add(listener);
-				return () => listeners.delete(listener);
-			},
-			calls: () => [...calls.values()].map((c) => ({ ...c })),
-		},
-		count: () => total,
-		close: () =>
-			new Promise<void>((resolve) => {
-				http.closeAllConnections();
-				http.close(() => resolve());
-			}),
-	};
-}
-
 const stub =
-	process.env.ADMISSION_NO_GATEWAY === "1" ? null : await startStubGateway();
+	process.env.ADMISSION_NO_GATEWAY === "1"
+		? null
+		: await startStubGateway({ incidentTitle: "AdmissionProbe", harness });
 const gatewayOpt = stub ? { gateway: stub.entry } : {};
 const turns = {
 	first: { ran: false, calls: 0 },
@@ -392,18 +257,26 @@ console.log(
 		nonce,
 	),
 );
-// R5 (#747): a finished session reopened with session/load remembers the run,
-// and none of its replayed history comes back as new events. Data, not a gate.
+// R5 (#747, #942): a finished session reopened by the agent's fastest exact path
+// remembers the run, and no replayed tool event or replayed text comes back as new.
+// R10: an agent that offers session/resume streams no history on it.
+let reopened: { path: ReopenPath; replayed: number; ms: number } | null = null;
 const r5 = await (async (): Promise<string> => {
 	const opened = session as { sessionId: string; loadSession: boolean } | null;
 	if (!report) return "fail (no report to continue)";
-	if (!opened?.loadSession)
-		return "fail (harness does not advertise loadSession)";
+	if (!opened) return "fail (the first run opened no session)";
 	const first = new Set(
-		toolResults.flatMap((e) =>
-			e.kind === "tool_result" ? [e.result.toolCallId] : [],
+		events.flatMap((e) =>
+			e.kind === "tool_result"
+				? [e.result.toolCallId]
+				: e.kind === "agent_step"
+					? e.toolCalls.map((c) => c.toolCallId)
+					: [],
 		),
 	);
+	const wireBefore = existsSync(transcriptFile)
+		? parseTranscript(readFileSync(transcriptFile, "utf8")).length
+		: 0;
 	const followUp: CanonicalEvent[] = [];
 	const before = stub?.count() ?? 0;
 	turns.followUp.ran = true;
@@ -421,8 +294,26 @@ const r5 = await (async (): Promise<string> => {
 			: {}),
 		initTimeoutMs: 120_000,
 		promptTimeoutMs: timeoutMs,
+		onReopen: (r) => {
+			reopened = r;
+		},
 		resume: {
 			sessionId: opened.sessionId,
+			known: async () => first,
+			fresh: async () => {
+				const h = buildHandoff({
+					events,
+					report: report.kind === "report" ? report.report : null,
+					accessLevel: "auto",
+					from: HARNESS_REGISTRY[harness].label,
+				});
+				return {
+					text: h.text,
+					from: harness,
+					carried: h.carried,
+					omitted: h.omitted,
+				};
+			},
 			text: "Reply with the alert name from our conversation and nothing else.",
 			mode: "queue",
 			heads: [],
@@ -430,22 +321,245 @@ const r5 = await (async (): Promise<string> => {
 	}))
 		followUp.push(ev);
 	turns.followUp.calls = (stub?.count() ?? 0) - before;
+	const how = reopened as {
+		path: ReopenPath;
+		replayed: number;
+		ms: number;
+	} | null;
+	const path = how
+		? `${how.path}, ${how.replayed} replayed updates dropped, reopened in ${how.ms}ms`
+		: "no reopen reported";
 	const failed = followUp.find((e) => e.kind === "error");
-	if (failed?.kind === "error") return `fail (${failed.message})`;
-	const leaked = followUp.some(
-		(e) => e.kind === "tool_result" && first.has(e.result.toolCallId),
+	if (failed?.kind === "error") return `fail (${failed.message}; ${path})`;
+	const replayedTool = followUp.some(
+		(e) =>
+			(e.kind === "tool_result" && first.has(e.result.toolCallId)) ||
+			(e.kind === "agent_step" &&
+				e.toolCalls.some((c) => first.has(c.toolCallId))),
 	);
-	if (leaked) return "fail (replayed history came back as new events)";
+	if (replayedTool)
+		return `fail (a replayed tool event came back as new; ${path})`;
 	const reply = followUp
 		.map((e) => (e.kind === "agent_step" ? e.text : ""))
 		.join("");
+	const replayed = replayedText(
+		parseTranscript(readFileSync(transcriptFile, "utf8")).slice(wireBefore),
+		reply,
+	);
+	if (replayed)
+		return `fail (replayed text came back as new: ${JSON.stringify(replayed.slice(0, 80))}; ${path})`;
 	return reply.includes(context.alerts[0]?.alertname ?? "")
-		? "pass (the reply named the alert)"
-		: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))})`;
+		? `pass (the reply named the alert; ${path})`
+		: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))}; ${path})`;
 })().catch(
 	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
 );
 console.log(`R5 resume: ${r5}`);
+const reopenedBy = reopened as { path: ReopenPath; replayed: number } | null;
+const r10 =
+	reopenedBy?.path !== "resume"
+		? `n/a (reopened by ${reopenedBy?.path ?? "nothing"}, not session/resume)`
+		: reopenedBy.replayed === 0
+			? "pass (session/resume streamed no history)"
+			: `fail (session/resume streamed ${reopenedBy.replayed} history updates)`;
+console.log(`R10 resume streams no history: ${r10}`);
+
+/**
+ * R11 (#981): a turn cut off mid-tool by killing the agent's process tree, reopened in a new
+ * process by the engine's own reopen path. The next model request must carry the first prompt
+ * (on `fresh`, the handoff does), and no event from before the kill may come back as new.
+ */
+const R11_PROMPT_1 = "R11-PROMPT-1 investigate";
+const R11_MARKER = "44011";
+const r11Pids = (): number[] => {
+	const out =
+		process.platform === "win32"
+			? execFileSync(
+					"powershell",
+					[
+						"-NoProfile",
+						"-Command",
+						`Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${R11_MARKER}*' -and $_.Name -ne 'powershell.exe' } | ForEach-Object { $_.ProcessId }`,
+					],
+					{ encoding: "utf8" },
+				)
+			: execFileSync("sh", ["-c", `pgrep -f ${R11_MARKER} || true`], {
+					encoding: "utf8",
+				});
+	return out
+		.split(/\s+/)
+		.filter(Boolean)
+		.map(Number)
+		.filter((p) => p !== process.pid);
+};
+const r11Reap = (): void => {
+	for (const pid of r11Pids())
+		try {
+			if (process.platform === "win32")
+				execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], {
+					stdio: "ignore",
+				});
+			else process.kill(pid, "SIGKILL");
+		} catch {
+			// already gone
+		}
+};
+const r11 = await (async (): Promise<string> => {
+	const work = realpathSync(mkdtempSync(join(tmpdir(), "pl-r11-ws-")));
+	const dir1 = mkdtempSync(join(tmpdir(), "pl-r11-run1-"));
+	const dir2 = mkdtempSync(join(tmpdir(), "pl-r11-run2-"));
+	try {
+		const prep = prepareRunEnv({
+			harness,
+			cwd: work,
+			runDir: dir1,
+			env: process.env,
+			accessLevel: "auto",
+		});
+		const base = createProcessLauncher();
+		let spawned: HarnessChild | null = null;
+		const launcher: HarnessLauncher = {
+			spawn: (...a) => {
+				spawned = base.spawn(...a);
+				return spawned;
+			},
+			destroy: () => base.destroy(),
+		};
+		const first = new AcpSession({
+			command: prep.launch.command,
+			args: [
+				...prep.launch.args,
+				...HARNESS_REGISTRY[harness].acpArgs(prep.runEnv),
+			],
+			cwd: work,
+			env: prep.env,
+			launcher,
+			permission: (req) => {
+				const option = optionOf(req, "allow");
+				return option
+					? { allow: true, optionId: option.optionId, outcome: "approved" }
+					: { allow: false, why: "no allow option", outcome: "denied" };
+			},
+			initTimeoutMs: 120_000,
+			promptTimeoutMs: 90_000,
+		});
+		await first.open();
+		const oldId = first.sessionId as string;
+		const before = new Set<string>();
+		const kill = () => (spawned as HarnessChild | null)?.kill("SIGKILL");
+		const fallback = setTimeout(kill, 20_000);
+		for await (const item of first.prompt(R11_PROMPT_1)) {
+			if (item.kind !== "update") continue;
+			const u = item.update as { sessionUpdate?: string; toolCallId?: string };
+			if (
+				u.sessionUpdate !== "tool_call" &&
+				u.sessionUpdate !== "tool_call_update"
+			)
+				continue;
+			if (u.toolCallId && before.size === 0) setTimeout(kill, 1000);
+			if (u.toolCallId) before.add(u.toolCallId);
+		}
+		clearTimeout(fallback);
+		if (before.size === 0)
+			return "fail (the first turn never started its tool)";
+		await first.close().catch(() => {});
+		r11Reap();
+
+		const handoffText = `The conversation so far: the user said "${R11_PROMPT_1}", and the agent was cut off while its command was running.`;
+		const reopens = HARNESS_REGISTRY[harness].resume;
+		let newId = "";
+		let reopenedAs: { path: ReopenPath; replayed: number } | null = null;
+		const after: CanonicalEvent[] = [];
+		for await (const ev of runInvestigation({
+			runId: "00000000-0000-4000-8000-000000000011",
+			context,
+			harness,
+			accessLevel: "auto",
+			cwd: work,
+			runDir: dir2,
+			env: process.env,
+			...(process.env.PRISMALENS_HARNESS_MODEL
+				? { model: process.env.PRISMALENS_HARNESS_MODEL }
+				: {}),
+			initTimeoutMs: 120_000,
+			promptTimeoutMs: timeoutMs,
+			onSession: (s) => {
+				newId = s.sessionId;
+			},
+			onReopen: (r) => {
+				reopenedAs = r;
+			},
+			resume: {
+				// A row with resume false is never reopened in production: its follow-up is a handoff (#981).
+				...(reopens ? { sessionId: oldId } : { handoff: handoffText }),
+				known: async () => before,
+				fresh: async () => ({
+					text: handoffText,
+					from: harness,
+					carried: "the first prompt",
+					omitted: null,
+				}),
+				text: "R11-PROMPT-2 continue",
+				mode: "queue",
+				heads: [],
+				afterRestart: true,
+			},
+		}))
+			after.push(ev);
+		const how = reopenedAs as { path: ReopenPath; replayed: number } | null;
+		const path = !reopens
+			? "handoff, a new session"
+			: how
+				? `${how.path}, ${how.replayed} replayed updates dropped`
+				: "no reopen reported";
+		const failed = after.find((e) => e.kind === "error");
+		if (failed?.kind === "error")
+			return /does not support session\/load|cannot reopen a session/.test(
+				failed.message,
+			)
+				? `n/a (${failed.message})`
+				: `fail (${failed.message}; ${path})`;
+		if (reopens && !how) return "fail (no reopen reported)";
+		if (how && (how.path === "fresh") === (newId === oldId))
+			return `fail (${how.path} reopen gave session id ${newId === oldId ? "the same" : "a new"} id; ${path})`;
+		const again = after.find(
+			(e) =>
+				(e.kind === "tool_result" && before.has(e.result.toolCallId)) ||
+				(e.kind === "agent_step" &&
+					e.toolCalls.some((c) => before.has(c.toolCallId))),
+		);
+		if (again)
+			return `fail (a tool call from before the kill came back as new; ${path})`;
+		const reply = after
+			.map((e) => (e.kind === "agent_step" ? e.text : ""))
+			.join("");
+		if (reply.includes("R11-PROMPT-1"))
+			return `fail (the first prompt came back as new text: ${JSON.stringify(reply.slice(0, 80))}; ${path})`;
+		const transcript2 = join(dir2, "transcript.jsonl");
+		const replayed = replayedText(
+			parseTranscript(
+				existsSync(transcript2) ? readFileSync(transcript2, "utf8") : "",
+			),
+			reply,
+		);
+		if (replayed)
+			return `fail (replayed text came back as new: ${JSON.stringify(replayed.slice(0, 80))}; ${path})`;
+		if (!reply.includes("R11-CONTEXT-KEPT"))
+			return `fail (the next model request lacked the first prompt${!how || how.path === "fresh" ? " in the handoff" : ""}: ${JSON.stringify(reply.slice(0, 120))}; ${path})`;
+		return `pass (the next request carried the first prompt, nothing replayed; ${path})`;
+	} finally {
+		r11Reap();
+		for (const d of [work, dir1, dir2])
+			try {
+				rmSync(d, { recursive: true, force: true, maxRetries: 5 });
+			} catch {
+				// a Windows handle outlives the agent for a moment; the OS sweeps the temp dir
+			}
+	}
+})().catch(
+	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
+);
+console.log(`R11 killed mid-turn: ${r11}`);
 
 /**
  * R6 (OpenCode only, #791): the model in the user's own OpenCode config is the
@@ -606,10 +720,13 @@ await stub?.close();
 process.exit(
 	admissionExit({
 		pass,
+		r5: firstWord(r5),
 		r6: firstWord(r6),
 		r7: firstWord(r7),
 		r8: firstWord(r8),
 		r9: firstWord(r9),
+		r10: firstWord(r10),
+		r11: firstWord(r11),
 		resumable,
 	}),
 );

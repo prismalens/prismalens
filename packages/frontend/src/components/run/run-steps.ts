@@ -7,7 +7,7 @@ import type {
 	StreamToolResult,
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
-import { commandText, shortPath } from "@/lib/report-view";
+import { commandText, mcpTool, shortPath } from "@/lib/report-view";
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -22,6 +22,10 @@ export interface RunStep {
 	/** The command or path, workspace paths read as `repo/`. */
 	command: string;
 	kind: StepKind;
+	/** The call named a shell command, so it can be copied or staged in the terminal. */
+	shell?: boolean;
+	/** The shell command as it ran, for Copy and Run in terminal; `command` is display text. */
+	run?: string;
 	verb: string;
 	ok: boolean | null;
 	/** The turn ended with the call unanswered. */
@@ -118,6 +122,11 @@ export function deriveSteps(
 		const source =
 			result?.source ?? `${call.name}(${JSON.stringify(call.args)})`;
 		const command = commandText(source, opts.cwd);
+		const raw = call.args.command ?? call.args.cmd;
+		const shell =
+			typeof raw === "string" &&
+			raw.trim() !== "" &&
+			!mcpTool(call.name.replace(/^`([\s\S]*)`$/, "$1"));
 		const unfinished = !result && !!opts.ended;
 		const output = result
 			? unfence(
@@ -137,6 +146,8 @@ export function deriveSteps(
 				result?.toolCategory === "file" || result?.toolCategory === "search"
 					? "file"
 					: "command",
+			shell,
+			...(shell && typeof raw === "string" ? { run: raw.trim() } : {}),
 			verb: verbOf(result, call.name, unfinished),
 			ok: result ? result.ok : null,
 			unfinished,
