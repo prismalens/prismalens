@@ -119,6 +119,7 @@ const PLACES = [
 	{ to: "/alerts", label: "Alerts" },
 	{ to: "/services", label: "Services" },
 	{ to: "/projects", label: "Projects" },
+	{ to: "/schedules", label: "Schedules" },
 	{ to: "/settings", label: "Settings" },
 ] as const;
 
