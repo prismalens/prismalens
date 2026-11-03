@@ -575,6 +575,36 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 		});
 	});
 
+	it("refuses a follow-up in a plain folder while another thread works in it or a folder inside it (#1020)", async () => {
+		const { service } = realDispatch();
+		const stamp = Date.now();
+		const outer = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `notes-${stamp}`, url: `/plain-${stamp}/notes`, plain: true },
+		});
+		const inner = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `sub-${stamp}`, url: `/plain-${stamp}/notes/sub`, plain: true },
+		});
+		const done = await prisma.investigation.create({
+			data: {
+				incidentId: null,
+				repositoryId: outer.id,
+				kind: "chat",
+				status: "completed",
+				harness: "opencode",
+				acpSessionId: "ses_1",
+				workspace: JSON.stringify({ layout: "folder", cwd: outer.url, repos: [] }),
+			},
+		});
+		await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: inner.id, kind: "chat", status: "running" },
+		});
+
+		await expect(service.resumeInvestigation(done.id, "tidy up", "queue")).rejects.toThrow(
+			"A thread is already working in this folder.",
+		);
+		expect((await read(done.id)).status).toBe("completed");
+	});
+
 	describe("one live thread per incident (T17, OBJ-007)", () => {
 		it("refuses a resume while another row on the incident is live, with the sentence", async () => {
 			const { service } = realDispatch();
