@@ -84,6 +84,7 @@ import {
 	type NewerRun,
 	newerRunNote,
 } from "./prompt.js";
+import { injectedSecrets } from "./redact.js";
 import {
 	parseReport,
 	retryBudgetKey,
@@ -508,9 +509,11 @@ export async function* runInvestigation(
 	});
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
-	const bearer = opts.gateway?.token;
+	// Nor the GitHub token values the agent's env holds (#1020).
+	const hidden = injectedSecrets(env, [opts.gateway?.token]);
 	const wire = (direction: "in" | "out", line: string): void => {
-		const m = bearer ? line.replaceAll(bearer, "[redacted]") : line;
+		let m = line;
+		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
 		try {
 			appendFileSync(
 				transcript,
