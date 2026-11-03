@@ -35,7 +35,7 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 
 	useEffect(() => {
 		/** True when the key did something, so the event's default is dropped. */
-		const run = (key: string): boolean => {
+		const run = (key: string, at = Date.now()): boolean => {
 			if (pending.current !== null) {
 				window.clearTimeout(pending.current);
 				pending.current = null;
@@ -44,9 +44,12 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 				return !!go;
 			}
 			if (key === "g") {
+				// A buffered g counts its age against the window; one already past it arms nothing.
+				const left = EARLY_CHORD_MS - (Date.now() - at);
+				if (left <= 0) return false;
 				pending.current = window.setTimeout(() => {
 					pending.current = null;
-				}, 1000);
+				}, left);
 			} else if (key === "?") {
 				onHelp();
 				return true;
@@ -68,7 +71,7 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 				window.clearTimeout(pending.current);
 				pending.current = null;
 			}
-			run(early.k);
+			run(early.k, early.t);
 			last = early.t;
 		}
 		window.addEventListener("keydown", onKey);

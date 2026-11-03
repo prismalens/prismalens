@@ -97,6 +97,26 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		expect(navigate).not.toHaveBeenCalled();
 	});
 
+	it("a g buffered 1.5 s ago arms no chord: a live a then moves nowhere", async () => {
+		win.__plEarlyKeys = [early("g", 1_500)];
+		await act(async () => root.render(createElement(Probe)));
+		window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("a g buffered 300 ms ago keeps only what is left of its window", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			win.__plEarlyKeys = [early("g", 300)];
+			await act(async () => root.render(createElement(Probe)));
+			vi.advanceTimersByTime(800);
+			window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+			expect(navigate).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("drops keys pressed on another page", async () => {
 		win.__plEarlyKeys = [early("c", 100, "/elsewhere")];
 		await act(async () => root.render(createElement(Probe)));
