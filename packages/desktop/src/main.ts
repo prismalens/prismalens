@@ -73,6 +73,11 @@ import {
 	snapshot,
 } from "./notifications.js";
 import {
+	PICK_FOLDER_CHANNEL,
+	pickFolder,
+	pickFolderAvailable,
+} from "./pick-folder.js";
+import {
 	claimTerminalKeyInBackground,
 	fetchInstanceId,
 	OlderBackendError,
@@ -1188,6 +1193,15 @@ if (!app.requestSingleInstanceLock()) {
 			event.sender === window?.webContents &&
 			event.senderFrame?.origin === new URL(baseUrl).origin;
 		event.returnValue = own ? (terminalKey ?? null) : null;
+	});
+	ipcMain.handle(PICK_FOLDER_CHANNEL, async (event) => {
+		if (!window || !trustedSender(event, window.webContents, baseUrl))
+			return { unavailable: true };
+		return pickFolder(
+			{ showOpenDialog: (w, o) => dialog.showOpenDialog(w, o) },
+			window,
+			pickFolderAvailable(baseUrl, inWsl),
+		);
 	});
 	ipcMain.on(THEME_CHANNEL, (event, value: unknown) => {
 		if (
