@@ -88,5 +88,7 @@ test.describe("#979 - schedules", () => {
 		await expect(
 			page.getByRole("dialog").getByText("Add a service"),
 		).toBeVisible();
+		// A services read still in flight must not outlive the test's routes.
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 	});
 });
