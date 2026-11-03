@@ -9,7 +9,15 @@ const REPO = "11111111-1111-4111-8111-111111111111";
 const SERVICE = "22222222-2222-4222-8222-222222222222";
 const DRAFT = "33333333-3333-4333-8333-333333333333";
 const RUN = "44444444-4444-4444-8444-444444444444";
-const TX = { tx: true };
+const TX = {
+	tx: true,
+	repository: {
+		findUnique: vi.fn(async () => ({ plain: false, url: "/code/shop" })),
+	},
+	investigation: {
+		findMany: vi.fn(async (): Promise<unknown[]> => []),
+	},
+};
 
 const row = (over: Record<string, unknown> = {}) => ({
 	id: RUN,
@@ -162,6 +170,26 @@ describe("ThreadsService (#1020)", () => {
 		expect(
 			dispatch.addInvestigationJob.mock.calls[1]?.[0].connectionIds,
 		).toBeUndefined();
+	});
+
+	it("refuses a second live thread in a plain folder, inside the admitting transaction (#1020)", async () => {
+		TX.repository.findUnique.mockResolvedValueOnce({ plain: true, url: "/code/notes" });
+		TX.investigation.findMany.mockResolvedValueOnce([
+			{ repository: { url: "/code/notes" } },
+		]);
+		await expect(
+			service().start({
+				subject: { kind: "project", repositoryId: REPO },
+				text: "Tidy the notes",
+				harness: "claude-code",
+			}),
+		).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(TX.investigation.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: expect.objectContaining({ id: { not: RUN } }),
+			}),
+		);
+		expect(dispatch.addInvestigationJob).not.toHaveBeenCalled();
 	});
 
 	it("keeps a helper's page on a no-subject run and its job, and drops it on any other subject", async () => {

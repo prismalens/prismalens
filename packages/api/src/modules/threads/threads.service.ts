@@ -27,6 +27,10 @@ import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import {
+	FOLDER_BUSY,
+	folderBusy,
+} from "../../infrastructure/dispatch/folder-lock.js";
 import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
@@ -154,6 +158,7 @@ export class ThreadsService {
 
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;
+		const repositoryId = ids.repositoryId;
 		const { investigation } = await this.investigations.startOrGet({
 			incidentId: null,
 			...(ids.repositoryId ? { repositoryId: ids.repositoryId } : {}),
@@ -163,18 +168,17 @@ export class ThreadsService {
 			kind: "chat",
 			title: input.text.slice(0, 120),
 			accessLevel: input.accessLevel ?? null,
-			...(draftKey && files.length
-				? {
-						onCreate: async (tx, id) => {
-							attachments = await this.attachments.claimDraft(
-								draftKey,
-								files,
-								id,
-								tx,
-							);
-						},
-					}
-				: {}),
+			onCreate: async (tx, id) => {
+				if (repositoryId && (await folderBusy(tx, repositoryId, id)))
+					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
+				if (draftKey && files.length)
+					attachments = await this.attachments.claimDraft(
+						draftKey,
+						files,
+						id,
+						tx,
+					);
+			},
 		});
 		const thread = await this.dispatch.threadRunOf({
 			...ids,

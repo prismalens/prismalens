@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import {
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readdirSync,
 	realpathSync,
@@ -733,6 +734,7 @@ export function sessionCwds(ws: RunWorkspace): string[] {
  * so the snapshot's `git status` stays clean.
  */
 export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
+	if (ws.layout === "folder") return writeInFolder(ws.cwd, text);
 	for (const cwd of sessionCwds(ws)) {
 		const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
 		const dir = dirname(file);
@@ -744,7 +746,22 @@ export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
 	}
 }
 
+/** The user's own folder: nothing of theirs is removed, so a name already there means no transcript. */
+function writeInFolder(cwd: string, text: string): void {
+	const dir = dirname(join(cwd, HANDOFF_TRANSCRIPT_PATH));
+	try {
+		mkdirSync(dir);
+	} catch (e) {
+		logger.warn(`No handoff transcript in the folder: ${messageOf(e)}`);
+		return;
+	}
+	writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
+	writeFileSync(join(cwd, HANDOFF_TRANSCRIPT_PATH), text, { flag: "wx" });
+}
+
 function copyTargets(ws: RunWorkspace): CopyTarget[] {
+	// Read copies go into a snapshot; a plain folder is the user's own (#1020).
+	if (ws.layout === "folder") return [];
 	return sessionCwds(ws).map((dir) => {
 		const repo = ws.repos.find((r) => {
 			const rel = relative(r.dir, dir);
@@ -922,6 +939,7 @@ async function runFollowUp(
 				ports,
 				io.signal,
 				handoff,
+				data.thread?.repos.find((r) => r.plain)?.url ?? null,
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 			...(recorded.compare ? { compare: recorded.compare } : {}),
@@ -1780,7 +1798,15 @@ function inCheckout(runId: string, snap: string, sub: string | null): string {
 	const dir = inside(snap, sub);
 	const root = ownerOf(runId, snap);
 	onDisk(root, snap, relative(root, snap));
-	return onDisk(snap, dir, sub ?? ".");
+	const found = onDisk(snap, dir, sub ?? ".");
+	// A committed link on the way down, even one inside the repo, starts the agent elsewhere (#1020).
+	let at = snap;
+	for (const part of relative(snap, dir).split(/[\\/]/).filter(Boolean)) {
+		at = join(at, part);
+		if (lstatSync(at).isSymbolicLink())
+			throw new Error(`the sub-path ${sub} goes through a link`);
+	}
+	return found;
 }
 
 /** The run's own dir that lexically holds `path`: its worktree dir (#918) or its run dir. */
@@ -1844,25 +1870,46 @@ export async function resolveWorkspace(
 	}
 	const runId = data.investigationId;
 	// A project has no service: its display name never selects a service's policy or deployments (#1020).
-	const all = dedupeRepos(listed).map((r) =>
+	const deduped = dedupeRepos(listed).map((r) =>
 		data.thread?.subject === "project" ? { ...r, services: [] } : r,
 	);
+	// A plain folder runs in place, only in a thread a person started on its project (#1020).
+	const inPlace =
+		data.thread?.subject === "project" &&
+		!data.scheduled &&
+		!data.incidentId &&
+		!data.unattended
+			? deduped.find((r) => r.repo.plain)
+			: undefined;
+	if (inPlace) return folderWorkspace(runDir, inPlace.repo.url);
+	const all = deduped.filter((r) => !r.repo.plain);
 	const repos = all.slice(0, WORKSPACE_REPOS_GUARD);
-	const guarded: Skip[] = all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
-		repo,
-		reason: `over the ${WORKSPACE_REPOS_GUARD}-repository guard`,
-		code: "guard",
-	}));
+	const guarded: Skip[] = [
+		...deduped
+			.filter((r) => r.repo.plain)
+			.map(({ repo }) => ({
+				repo,
+				reason: "a folder with no git runs only in a thread you start",
+				code: "failed" as const,
+			})),
+		...all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
+			repo,
+			reason: `over the ${WORKSPACE_REPOS_GUARD}-repository guard`,
+			code: "guard" as const,
+		})),
+	];
 	if (repos.length === 0)
 		return unmappedWorkspace(
 			runDir,
 			unlisted
 				? `Ran without code: ${unlisted}.`
-				: data.thread
-					? "Ran without code: this thread has no project linked."
-					: data.scheduled
-						? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
-						: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+				: guarded.length
+					? `Ran without code: ${guarded.map((k) => `${whereFrom(k.repo)} (${k.reason})`).join("; ")}.`
+					: data.thread
+						? "Ran without code: this thread has no project linked."
+						: data.scheduled
+							? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
+							: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
 	await bindRun(runId, {
 		incidentId: data.incidentId,
@@ -2014,6 +2061,23 @@ interface Skip {
 	code: CheckoutSkipped["code"];
 }
 
+/** The plain folder itself (#1020): no snapshot, no branch and no diff base, so nothing to undo. */
+function folderWorkspace(runDir: string, dir: string): Workspace {
+	const st = lstatSync(dir, { throwIfNoEntry: false });
+	if (!st?.isDirectory() || st.isSymbolicLink())
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: the folder ${dir} is gone or is a link.`,
+		);
+	return {
+		layout: "folder",
+		cwd: dir,
+		repos: [],
+		checkoutsSkipped: [],
+		note: `Working in the folder ${dir} itself. Changes there are not undone.`,
+	};
+}
+
 function unmappedWorkspace(
 	runDir: string,
 	note: string,
@@ -2149,7 +2213,18 @@ export async function rebuildWorkspace(
 	ports: RunPorts,
 	signal?: AbortSignal,
 	handoff = false,
+	folder?: string | null,
 ): Promise<Workspace> {
+	if (ws.layout === "folder") {
+		// Only the project's plain folder as it stands now; Start git there ends in-place runs.
+		if (!folder || folder !== ws.cwd)
+			throw new Error(
+				"This folder project changed since the thread started. Start a new thread.",
+			);
+		const again = folderWorkspace(runDirFor(investigationId), ws.cwd);
+		if (again.layout !== "folder") throw new Error(again.note);
+		return { ...again, toolsServer: ws.toolsServer };
+	}
 	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.
 	const owned = ownedBy(investigationId);
 	owned(ws.cwd);

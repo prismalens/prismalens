@@ -101,6 +101,7 @@ import {
 	runCancelTopic,
 	runMessageTopic,
 } from "./event-bus.js";
+import { FOLDER_BUSY, folderBusy } from "./folder-lock.js";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
@@ -1233,6 +1234,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						select: { createdAt: true },
 					})
 				: null;
+			if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
+				throw new FollowUpRefused(FOLDER_BUSY);
 			if (other) {
 				const n = await tx.investigation.count({
 					where: {
@@ -1723,6 +1726,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		from: "live" | "interrupted",
 	): Promise<boolean> {
 		return this.prisma.$transaction(async (tx) => {
+			const own = await tx.investigation.findUnique({
+				where: { id },
+				select: { repositoryId: true },
+			});
+			if (own?.repositoryId && (await folderBusy(tx, own.repositoryId, id)))
+				return false;
 			const { count } = await tx.investigation.updateMany({
 				where:
 					from === "live"

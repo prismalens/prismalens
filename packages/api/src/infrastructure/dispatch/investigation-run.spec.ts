@@ -3511,6 +3511,89 @@ describe("a project, service or no-subject thread (#1020)", () => {
 		expect(opts.brief).toBe("Rename the retry helper");
 	});
 
+	describe("a plain folder project runs in place (#1020)", () => {
+		let folder: string;
+		const plainThread = () => ({
+			...thread,
+			name: "notes",
+			repos: [{ sourceKind: "folder" as const, url: folder, defaultBranch: null, subPath: null, connectionId: null, serviceName: "notes", plain: true }],
+		});
+		beforeEach(() => {
+			folder = mkdtempSync(join(os.tmpdir(), "pl-plain-"));
+		});
+		afterEach(() => rmSync(folder, { recursive: true, force: true }));
+
+		it("a thread you start works in the folder itself: no snapshot, no branch, nothing to diff", async () => {
+			const ports = fakePorts();
+			const ws = await resolveWorkspace(data({ thread: plainThread() }), ports);
+			expect(ws).toMatchObject({ layout: "folder", cwd: folder, repos: [] });
+			expect(ports.snapshotWith).not.toHaveBeenCalled();
+			expect(ws.note).toContain("not undone");
+		});
+
+		it("an alert or schedule run on a plain folder never touches it", async () => {
+			const ports = fakePorts({ incidentRepos: vi.fn(async () => [plainThread().repos[0] as IncidentRepo]) });
+			const alert = await resolveWorkspace(data({ thread: undefined, incidentId: "inc-1" }), ports);
+			expect(alert.layout).toBe("unmapped");
+			expect(alert.note).toContain("runs only in a thread you start");
+			const unattended = await resolveWorkspace(data({ thread: plainThread(), unattended: true }), ports);
+			expect(unattended.layout).toBe("unmapped");
+			expect(ports.snapshotWith).not.toHaveBeenCalled();
+		});
+
+		it("a folder swapped for a link is not run in", async () => {
+			const target = mkdtempSync(join(os.tmpdir(), "pl-plain-target-"));
+			const link = join(folder, "door");
+			symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+			const t = plainThread();
+			const ws = await resolveWorkspace(data({ thread: { ...t, repos: [{ ...t.repos[0], url: link }] } as never }), fakePorts());
+			expect(ws.layout).toBe("unmapped");
+			rmSync(target, { recursive: true, force: true });
+		});
+
+		it("a follow-up keeps the folder only while the project still names it as a plain folder", async () => {
+			const ws: RunWorkspace = { layout: "folder", cwd: folder, repos: [] };
+			const again = await rebuildWorkspace(ws, "inv-thread", "OpenCode", fakePorts(), undefined, false, folder);
+			expect(again).toMatchObject({ layout: "folder", cwd: folder });
+			await expect(rebuildWorkspace(ws, "inv-thread", "OpenCode", fakePorts(), undefined, false, null)).rejects.toThrow(/changed/);
+		});
+
+		it("a handoff never deletes a folder of the user's that holds the transcript's name", () => {
+			const mine = join(folder, ".prismalens-handoff");
+			mkdirSync(mine);
+			writeFileSync(join(mine, "keep.txt"), "mine");
+			writeHandoffTranscript({ layout: "folder", cwd: folder, repos: [] }, "t");
+			expect(readFileSync(join(mine, "keep.txt"), "utf8")).toBe("mine");
+			expect(existsSync(join(mine, "transcript.md"))).toBe(false);
+		});
+	});
+
+	it("a subfolder project starts the agent in its sub-path, and a link on the way is refused", async () => {
+		const sub = { ...thread, repos: [{ ...thread.repos[0], subPath: "packages/api" }] };
+		const ports = fakePorts({
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => {
+				mkdirSync(join(dest, "packages", "api"), { recursive: true });
+				return { path: dest, head: "abc123def456789", branch: "main" as const };
+			}),
+		});
+		const ws = await resolveWorkspace(data({ thread: sub as never }), ports);
+		expect(ws.cwd).toBe(join(runWorktreeDir("inv-thread"), "packages", "api"));
+
+		const outside = mkdtempSync(join(os.tmpdir(), "pl-sub-out-"));
+		const linked = fakePorts({
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => {
+				mkdirSync(join(dest, "packages"), { recursive: true });
+				mkdirSync(join(dest, "real"), { recursive: true });
+				symlinkSync(join(dest, "real"), join(dest, "packages", "api"), process.platform === "win32" ? "junction" : "dir");
+				return { path: dest, head: "abc123def456789", branch: "main" as const };
+			}),
+		});
+		const refused = await resolveWorkspace(data({ thread: sub as never, investigationId: "inv-thread2" }), linked);
+		expect(refused.layout).toBe("unmapped");
+		expect(refused.note).toContain("goes through a link");
+		rmSync(outside, { recursive: true, force: true });
+	});
+
 	it("a service thread reads the service's connectors and names the service", async () => {
 		const ports = fakePorts();
 		const service = { ...thread, subject: "service" as const, repositoryId: null, serviceId: "svc-1", name: "checkout", repos: [] };
