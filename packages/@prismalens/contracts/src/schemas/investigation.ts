@@ -1134,6 +1134,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		input: z.string().optional(),
 		/** The MCP server the tool comes from, when the agent says (#820). */
 		server: z.string().optional(),
+		/** A hash of what the call would do, for Always allow; absent when nothing stable names it (#1020). */
+		identity: z.string().optional(),
 	}),
 	z.object({
 		kind: z.literal("permission_answer"),
@@ -1540,7 +1542,7 @@ export const ScheduledRunSchema = z.object({
 	projectName: z.string().nullable().optional(),
 	/** Asks answered "Always allow" before this run was admitted; matched exactly (#1020). */
 	alwaysAllow: z
-		.array(z.object({ kind: z.string().nullable(), title: z.string() }))
+		.array(z.object({ kind: z.string().nullable(), identity: z.string() }))
 		.optional(),
 	serviceNotes: z.string().nullable(),
 	runbook: z.string().nullable(),

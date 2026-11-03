@@ -3,6 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	askIdentity,
 	askWindow,
 	createAskChannel,
 	denyAllPolicy,
@@ -771,39 +772,63 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 	});
 });
 
-describe("asks a person allowed always on a schedule (#1020 R33)", () => {
+describe("asks a person allowed always on a schedule (#1020 R33, CP4 OBJ-011)", () => {
 	const ctx = { askId: "ask1", signal: new AbortController().signal };
-	const ask = (title: string, kind = "execute"): PermissionRequest => ({
-		toolCall: { title, kind },
+	const ask = (kind: string, rawInput: unknown, title = "Run command"): PermissionRequest => ({
+		toolCall: { title, kind, rawInput },
 		options: [
 			{ optionId: "yes", name: "Allow", kind: "allow_once" },
 			{ optionId: "no", name: "Deny", kind: "reject_once" },
 		],
 	});
-	const remembered = [{ kind: "execute", title: "npm test" }];
+	const npmTest = ask("execute", { command: "npm test", cwd: "/w" });
+	const remembered = [{ kind: "execute", identity: askIdentity(npmTest.toolCall) as string }];
 
-	it("allows the exact remembered ask, even where nobody can answer", () => {
+	it("names an operation by what it does, never by its title", () => {
+		expect(askIdentity(npmTest.toolCall)).toMatch(/^[0-9a-f]{64}$/);
+		expect(askIdentity(ask("execute", { command: "npm test", cwd: "/w" }, "Other title").toolCall)).toBe(askIdentity(npmTest.toolCall));
+		expect(askIdentity(ask("execute", { command: "npm test", cwd: "/elsewhere" }).toolCall)).not.toBe(askIdentity(npmTest.toolCall));
+		expect(askIdentity(ask("edit", { file_path: "/w/a.ts" }).toolCall)).not.toBe(askIdentity(ask("edit", { file_path: "/w/b.ts" }).toolCall));
+		expect(askIdentity(ask("other", { b: 1, a: 2 }).toolCall)).toBe(askIdentity(ask("other", { a: 2, b: 1 }).toolCall));
+		// Nothing stable to name: no identity, so nothing can be remembered.
+		expect(askIdentity({ title: "Run command", kind: "execute" })).toBeNull();
+		expect(askIdentity({ title: "Edit", kind: "edit", rawInput: {} })).toBeNull();
+	});
+
+	it("allows the exact remembered operation, even where nobody can answer", () => {
 		const channel = createAskChannel({ timeoutMs: 5000 });
 		const policy = levelPolicy("supervised", channel, { unattended: true, remembered });
-		expect(policy(ask("npm test"), ctx)).toEqual({ allow: true, optionId: "yes", outcome: "allowed" });
+		expect(policy(npmTest, ctx)).toEqual({ allow: true, optionId: "yes", outcome: "allowed" });
+	});
+
+	it("never allows another command that shares the title, an edit to another path, or a mode switch", () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const edits = [{ kind: "edit", identity: askIdentity(ask("edit", { file_path: "/w/a.ts" }).toolCall) as string }];
+		const policy = levelPolicy("supervised", channel, { unattended: true, remembered: [...remembered, ...edits] });
+		expect(policy(ask("execute", { command: "git push origin main --force", cwd: "/w" }), ctx)).toMatchObject({ allow: false, outcome: "unattended" });
+		expect(policy(ask("edit", { file_path: "/w/b.ts" }), ctx)).toMatchObject({ allow: false, outcome: "unattended" });
+		expect(policy(ask("switch_mode", { command: "npm test", cwd: "/w" }), ctx)).toMatchObject({ allow: false, outcome: "mode_kept" });
+	});
+
+	it("Wait for me: an ask that is not the remembered operation still waits for a person", async () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const policy = levelPolicy("full-access", channel, { waitForAsks: true, remembered });
+		const verdict = policy(ask("execute", { command: "git push origin main --force", cwd: "/w" }), ctx);
+		expect(verdict).toBeInstanceOf(Promise);
+		expect(channel.pending()).toHaveLength(1);
+		channel.answer(channel.pending()[0]?.askId as string, false);
+		await expect(verdict).resolves.toMatchObject({ allow: false, outcome: "denied" });
+		expect(policy(npmTest, ctx)).toEqual({ allow: true, optionId: "yes", outcome: "allowed" });
 	});
 
 	it("Wait for me sends every ask past reads to a person, whatever the level", async () => {
 		const channel = createAskChannel({ timeoutMs: 5000 });
 		const policy = levelPolicy("full-access", channel, { waitForAsks: true });
-		const verdict = policy(ask("rm -rf build"), ctx);
+		const verdict = policy(ask("execute", { command: "rm -rf build" }), ctx);
 		expect(verdict).toBeInstanceOf(Promise);
 		expect(channel.pending()).toHaveLength(1);
 		const id = channel.pending()[0]?.askId as string;
 		expect(channel.answer(id, false)).toBe("denied");
 		await expect(verdict).resolves.toMatchObject({ allow: false, outcome: "denied" });
-	});
-
-	it("never stretches to another command, another kind or a mode switch", () => {
-		const channel = createAskChannel({ timeoutMs: 5000 });
-		const policy = levelPolicy("supervised", channel, { unattended: true, remembered });
-		expect(policy(ask("npm test && curl evil"), ctx)).toMatchObject({ allow: false, outcome: "unattended" });
-		expect(policy(ask("npm test", "edit"), ctx)).toMatchObject({ allow: false, outcome: "unattended" });
-		expect(policy(ask("npm test", "switch_mode"), ctx)).toMatchObject({ allow: false, outcome: "mode_kept" });
 	});
 });

@@ -6,7 +6,7 @@
  * answers it (#673 w21 ruling 2026-10-10). At Ask always every ask waits on
  * the operator's Approve or Deny, and nobody answering denies it.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ASK_TIMEOUT_MS,
@@ -147,21 +147,70 @@ function allowed(
 	return { allow: true, optionId: allow.optionId, outcome: "allowed" };
 }
 
-/** An ask a person answered "Always allow" on, as the conversation showed it. */
+/** An ask a person answered "Always allow" on: its kind and the operation's identity. */
 export interface RememberedAsk {
 	kind: string | null;
-	title: string;
+	identity: string;
 }
 
-/** The same kind and the same title the card showed; a title carries the command or path. */
+const FILE_KINDS = new Set(["edit", "delete", "move"]);
+
+/** JSON with keys sorted, so the same input always names the same operation. */
+function stable(v: unknown): string {
+	if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
+	if (v && typeof v === "object")
+		return `{${Object.keys(v)
+			.sort()
+			.map(
+				(k) =>
+					`${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`,
+			)
+			.join(",")}}`;
+	return JSON.stringify(v) ?? "null";
+}
+
+/**
+ * What an ask would do, as a hash: a command and its cwd, a file change and its paths, or
+ * a tool and its whole input; never the title, which two different operations can share.
+ * Null when there is nothing stable to name, so it can never be remembered (#1020, CP4 OBJ-011).
+ */
+export function askIdentity(
+	tc: PermissionRequest["toolCall"] | undefined,
+): string | null {
+	if (!tc) return null;
+	const kind = tc.kind ?? null;
+	const raw =
+		tc.rawInput && typeof tc.rawInput === "object"
+			? (tc.rawInput as Record<string, unknown>)
+			: {};
+	let what: unknown;
+	if (kind === "execute") {
+		const cmd = Array.isArray(raw.command)
+			? raw.command.map(String).join(" ")
+			: raw.command;
+		if (typeof cmd !== "string" || !cmd.trim()) return null;
+		what = { cmd, cwd: typeof raw.cwd === "string" ? raw.cwd : null };
+	} else if (kind && FILE_KINDS.has(kind)) {
+		const path =
+			raw.file_path ?? raw.path ?? raw.abs_path ?? tc.locations?.[0]?.path;
+		if (typeof path !== "string" || !path) return null;
+		what = kind === "move" ? { path, raw } : { path };
+	} else {
+		if (Object.keys(raw).length === 0) return null;
+		what = { title: tc.title ?? null, raw };
+	}
+	return createHash("sha256").update(stable({ kind, what })).digest("hex");
+}
+
 function isRemembered(
 	req: PermissionRequest,
 	remembered: readonly RememberedAsk[] | undefined,
 ): boolean {
-	const title = req.toolCall?.title?.trim();
-	if (!title || !remembered?.length) return false;
+	if (!remembered?.length) return false;
+	const identity = askIdentity(req.toolCall);
+	if (!identity) return false;
 	const kind = req.toolCall?.kind ?? null;
-	return remembered.some((a) => a.title === title && a.kind === kind);
+	return remembered.some((a) => a.identity === identity && a.kind === kind);
 }
 
 /** The run's gateway as the policy sees it: connected, its server name, and PrismaLens's own tool names. */
@@ -243,9 +292,10 @@ export function levelPolicy(
 		const kind = req.toolCall?.kind;
 		if (kind === "switch_mode")
 			return deny(req, "mode_kept", "the run stays in its mode");
-		if (isRemembered(req, opts.remembered)) return allowed(req, ctx, card);
 		if (isGatewayToolCall(req, opts.gateway)) return allowed(req, ctx, card);
 		if (kind && READS.has(kind)) return allowed(req, ctx, card);
+		// Only the exact operation a person allowed; anything else goes on to the card below.
+		if (isRemembered(req, opts.remembered)) return allowed(req, ctx, card);
 		if (opts.unattended || opts.waitForAsks || level === "supervised")
 			return card(req, ctx);
 		if (level === "auto-edits")

@@ -3545,7 +3545,7 @@ describe("a schedule on a project, a service or nothing (#1020)", () => {
 	});
 
 	it("hands the schedule's remembered asks to the run, and none when it has none", async () => {
-		const remembered = [{ kind: "execute", title: "npm test" }];
+		const remembered = [{ kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }];
 		await runInvestigationJob(
 			{ id: "job-sched", investigationId: "inv-sched", attempts: 1 },
 			data({ scheduled: { ...onProject, alwaysAllow: remembered } }),

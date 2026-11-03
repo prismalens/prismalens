@@ -77,10 +77,13 @@ export const WHEN_ASKS = ["decide", "wait"] as const;
 export const WhenAsksSchema = z.enum(WHEN_ASKS);
 export type WhenAsks = z.infer<typeof WhenAsksSchema>;
 
-/** An ask a person answered "Always allow" on, matched exactly on the schedule's next runs. */
+/**
+ * An ask a person answered "Always allow" on, matched exactly on the schedule's next runs: its
+ * kind and the hash of what it does (the engine's `askIdentity`), never its title (#1020).
+ */
 export const AllowedAskSchema = z.object({
 	kind: z.string().max(64).nullable(),
-	title: z.string().min(1).max(500),
+	identity: z.string().regex(/^[0-9a-f]{64}$/),
 });
 export type AllowedAsk = z.infer<typeof AllowedAskSchema>;
 export const ALWAYS_ALLOW_MAX = 50;

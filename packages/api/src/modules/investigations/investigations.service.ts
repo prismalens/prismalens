@@ -14,6 +14,7 @@ import type {
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
+	AllowedAskSchema,
 	CanonicalEventSchema,
 	effectiveLiveTurn,
 	INVESTIGATION_REPORT_BRANCH,
@@ -930,12 +931,14 @@ export class InvestigationsService {
 		const ask = (await this.allEvents(investigationId)).find(
 			(e) => e.kind === "permission_ask" && e.askId === askId,
 		);
-		if (ask?.kind !== "permission_ask" || ask.title.length > 500)
-			return "unknown";
-		const remembered = {
+		// No identity: nothing stable names the operation, so it is never remembered.
+		if (ask?.kind !== "permission_ask" || !ask.identity) return "unknown";
+		const parsed = AllowedAskSchema.safeParse({
 			kind: ask.toolKind?.slice(0, 64) ?? null,
-			title: ask.title,
-		};
+			identity: ask.identity,
+		});
+		if (!parsed.success) return "unknown";
+		const remembered = parsed.data;
 		await this.prisma.$transaction(async (tx) => {
 			const s = await tx.schedule.findUnique({
 				where: { id: scheduleId },

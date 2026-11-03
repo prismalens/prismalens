@@ -212,7 +212,7 @@ export function AskCard({
 				>
 					Approve
 				</Button>
-				{always && (
+				{always && ask.identity && (
 					<Button
 						variant="secondary"
 						disabled={!runId || !armed || answer.isPending || answer.isSuccess}

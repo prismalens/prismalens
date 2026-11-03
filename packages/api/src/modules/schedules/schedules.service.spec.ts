@@ -176,13 +176,13 @@ describe("SchedulesService (#979)", () => {
 			const s = scheduler();
 			const created = await s.create(input(), "host", new Date("2026-07-06T08:00:00Z"));
 			const other = await s.create(input({ name: "Other" }), "host", new Date("2026-07-06T08:00:00Z"));
-			await s.remember(created.id, { kind: "execute", title: "npm test" });
-			await s.remember(created.id, { kind: "execute", title: "npm test" });
-			expect((await s.get(created.id, undefined, 10)).schedule.alwaysAllow).toEqual([{ kind: "execute", title: "npm test" }]);
+			await s.remember(created.id, { kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+			await s.remember(created.id, { kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+			expect((await s.get(created.id, undefined, 10)).schedule.alwaysAllow).toEqual([{ kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]);
 			await s.evaluate(new Date("2026-07-06T09:00:05Z"));
 			const mine = (await ticks(created.id))[0];
 			const theirs = (await ticks(other.id))[0];
-			expect((await jobOf(mine?.investigationId)).scheduled.alwaysAllow).toEqual([{ kind: "execute", title: "npm test" }]);
+			expect((await jobOf(mine?.investigationId)).scheduled.alwaysAllow).toEqual([{ kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]);
 			expect((await jobOf(theirs?.investigationId)).scheduled.alwaysAllow).toBeUndefined();
 		});
 

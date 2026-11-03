@@ -18,15 +18,17 @@ describe("a schedule's remembered asks (#1020 R33)", () => {
 	});
 
 	it("adds an ask once, newest last, and drops the oldest past the cap", () => {
-		const one = withAsk(null, { kind: "execute", title: "npm test" });
-		expect(allowedAsks(withAsk(one, { kind: "execute", title: "npm test" }))).toHaveLength(1);
+		const one = withAsk(null, { kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+		expect(allowedAsks(withAsk(one, { kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }))).toHaveLength(1);
+		// A list from before identities (titles) reads as none.
+		expect(allowedAsks('[{"kind":"execute","title":"npm test"}]')).toEqual([]);
 		let json: string | null = null;
 		for (let i = 0; i <= ALWAYS_ALLOW_MAX; i++)
-			json = withAsk(json, { kind: "execute", title: `cmd ${i}` });
+			json = withAsk(json, { kind: "execute", identity: i.toString(16).padStart(64, "0") });
 		const all = allowedAsks(json);
 		expect(all).toHaveLength(ALWAYS_ALLOW_MAX);
-		expect(all[0]?.title).toBe("cmd 1");
-		expect(all.at(-1)?.title).toBe(`cmd ${ALWAYS_ALLOW_MAX}`);
+		expect(all[0]?.identity).toBe((1).toString(16).padStart(64, "0"));
+		expect(all.at(-1)?.identity).toBe(ALWAYS_ALLOW_MAX.toString(16).padStart(64, "0"));
 	});
 });
 
@@ -52,22 +54,24 @@ describe("InvestigationsService.rememberAsk (#1020 R33)", () => {
 		vi.spyOn(svc, "allEvents").mockResolvedValue(events as never);
 		return { svc, tx };
 	}
-	const ask = { kind: "permission_ask", askId: "ask-1", title: "npm test", toolKind: "execute" };
+	const ask = { kind: "permission_ask", askId: "ask-1", title: "Run command", toolKind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" };
 
 	it("stores the ask as the run's own events show it, on the run's schedule", async () => {
 		const { svc, tx } = service({ scheduleId: "sch-1" }, [ask]);
 		expect(await svc.rememberAsk("inv-1", "ask-1")).toBe("remembered");
 		expect(tx.schedule.update).toHaveBeenCalledWith({
 			where: { id: "sch-1" },
-			data: { alwaysAllow: JSON.stringify([{ kind: "execute", title: "npm test" }]) },
+			data: { alwaysAllow: JSON.stringify([{ kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]) },
 		});
 	});
 
-	it("stores nothing for a run with no schedule, an ask it never made, or an over-long title", async () => {
+	it("stores nothing for a run with no schedule, an ask it never made, or an ask nothing stable names (CP4 OBJ-011)", async () => {
+		const { identity: _none, ...unnamed } = ask;
 		for (const [run, events, id] of [
 			[{ scheduleId: null }, [ask], "ask-1"],
 			[{ scheduleId: "sch-1" }, [ask], "ask-2"],
-			[{ scheduleId: "sch-1" }, [{ ...ask, title: "x".repeat(501) }], "ask-1"],
+			[{ scheduleId: "sch-1" }, [unnamed], "ask-1"],
+			[{ scheduleId: "sch-1" }, [{ ...ask, identity: "not-a-hash" }], "ask-1"],
 		] as const) {
 			const { svc, tx } = service(run, [...events]);
 			expect(await svc.rememberAsk("inv-1", id)).toBe("unknown");

@@ -21,7 +21,7 @@ export function allowedAsks(json: string | null): AllowedAsk[] {
 /** The list with `ask` added once, newest last, capped: the oldest goes first (#1020 R33). */
 export function withAsk(json: string | null, ask: AllowedAsk): string {
 	const kept = allowedAsks(json).filter(
-		(a) => a.kind !== ask.kind || a.title !== ask.title,
+		(a) => a.kind !== ask.kind || a.identity !== ask.identity,
 	);
 	return JSON.stringify([...kept, ask].slice(-ALWAYS_ALLOW_MAX));
 }
