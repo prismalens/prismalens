@@ -5,7 +5,9 @@
  * The scheduler over a temp SQLite database (#979): what the operator asked to see proven.
  */
 import { randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = await vi.hoisted(async () => {
@@ -198,6 +200,30 @@ describe("SchedulesService (#979)", () => {
 			expect(await prisma.investigation.count({ where: { scheduleId: created.id } })).toBe(0);
 			await expect(s.setEnabled(created.id, true, "host")).rejects.toMatchObject({ code: "BAD_REQUEST" });
 			await expect(s.runNow(created.id, "host")).rejects.toMatchObject({ code: "CONFLICT" });
+		});
+
+		it("pauses a project schedule whose folder was swapped for a link to another repository (CP4 OBJ-014)", async () => {
+			const base = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-sched-swap-")));
+			const real = join(base, "shop");
+			const other = join(base, "other");
+			mkdirSync(real);
+			mkdirSync(other);
+			const repo = await project({ sourceKind: "folder", url: real, subPath: null });
+			const s = scheduler();
+			const created = await s.create(input({ serviceId: null, repositoryId: repo.id }), "host", new Date("2026-07-08T08:00:00Z"));
+			renameSync(real, join(base, "shop-aside"));
+			symlinkSync(other, real, "junction");
+			try {
+				await s.evaluate(new Date("2026-07-08T09:00:05Z"));
+				expect((await ticks(created.id)).map((t) => t.outcome)).toEqual(["skipped_bindings_changed"]);
+				expect(await prisma.investigation.count({ where: { scheduleId: created.id } })).toBe(0);
+				const row = await prisma.schedule.findUniqueOrThrow({ where: { id: created.id } });
+				expect(row).toMatchObject({ enabled: false });
+				expect(row.pausedReason).toMatch(/^The project's folder is not where it was saved/);
+				await expect(s.setEnabled(created.id, true, "host")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+			} finally {
+				rmSync(base, { recursive: true, force: true });
+			}
 		});
 
 		it("refuses a schedule on both a project and a service", async () => {

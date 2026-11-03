@@ -30,6 +30,7 @@ import { HarnessService } from "../../core/harness/harness.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import { isCanonical } from "../../infrastructure/dispatch/folder-lock.js";
 import { serviceNotes } from "../../infrastructure/dispatch/investigation-run.js";
 import {
 	type JobDelegate,
@@ -88,6 +89,10 @@ function subjectOf(s: {
 }): ScheduleSubject {
 	return s.repositoryId ? "project" : s.serviceId ? "service" : "none";
 }
+
+/** A project folder that now resolves elsewhere, through a link, or cannot be read in time (#1020). */
+export const FOLDER_MOVED =
+	"The project's folder is not where it was saved. Review it and resume.";
 
 /** What changed, worded for what the schedule is about; the run stays paused until a host resumes it. */
 function bindingsChanged(subject: ScheduleSubject, fix: string): string {
@@ -212,6 +217,8 @@ export class SchedulesService
 		},
 		mode: "tick" | "run_now",
 	): Promise<ScheduleTickDto | null> {
+		// Read outside the transaction: a stalled drive never holds the database (CP4 OBJ-014).
+		const moved = STARTING.has(d.outcome) && (await this.folderMoved(s));
 		const admitted = await this.prisma.$transaction(async (tx) => {
 			if (mode === "tick") {
 				const { count } = await tx.schedule.updateMany({
@@ -256,13 +263,15 @@ export class SchedulesService
 				} else {
 					frozen = await this.freeze(tx, s);
 					const subject = subjectOf(s);
-					if (frozen.hash !== s.bindingsHash || frozen.folder) {
+					if (frozen.hash !== s.bindingsHash || frozen.folder || moved) {
 						if (mode === "run_now")
 							throw new ScheduleError(
 								"CONFLICT",
 								frozen.folder
 									? FOLDER_REFUSED
-									: bindingsChanged(subject, "Save it again to confirm."),
+									: moved
+										? FOLDER_MOVED
+										: bindingsChanged(subject, "Save it again to confirm."),
 							);
 						outcome = "skipped_bindings_changed";
 						frozen = null;
@@ -270,7 +279,9 @@ export class SchedulesService
 							where: { id: s.id, revision: s.revision },
 							data: {
 								enabled: false,
-								pausedReason: bindingsChanged(subject, "Review it and resume."),
+								pausedReason: moved
+									? FOLDER_MOVED
+									: bindingsChanged(subject, "Review it and resume."),
 							},
 						});
 						await tx.scheduleEvent.create({
@@ -747,6 +758,8 @@ export class SchedulesService
 			const frozen = enabled ? await this.freeze(this.prisma, s) : null;
 			if (frozen?.folder)
 				throw new ScheduleError("BAD_REQUEST", FOLDER_REFUSED);
+			if (enabled && (await this.folderMoved(s)))
+				throw new ScheduleError("BAD_REQUEST", FOLDER_MOVED);
 			const row = await this.prisma.$transaction(async (tx) => {
 				await tx.schedule.update({
 					where: { id },
@@ -855,6 +868,20 @@ export class SchedulesService
 	}
 
 	// --- helpers -------------------------------------------------------------
+
+	/**
+	 * A project schedule on a local folder: true unless the disk still names the saved path
+	 * as written (no link, junction or swap), read under the folder-read cap (CP4 OBJ-014).
+	 */
+	private async folderMoved(s: Pick<Row, "repositoryId">): Promise<boolean> {
+		if (!s.repositoryId) return false;
+		const repo = await this.prisma.repository.findUnique({
+			where: { id: s.repositoryId },
+			select: { sourceKind: true, url: true },
+		});
+		if (repo?.sourceKind !== "folder") return false;
+		return !(await isCanonical(repo.url));
+	}
 
 	/** One subject at most, and never a Folder project; the values a save confirms. */
 	private async saveable(
