@@ -18,14 +18,35 @@ const fold = (p: string) =>
 /** A realpath that gives up, as unknown, past `ms`: a stalled drive never holds a request. */
 const CANONICAL_MS = 3000;
 
-/** The folder as the disk names it (links, junctions and short names resolved); null if unknown. */
+/** Realpaths still running, answered or not; past the cap none starts, so a stalled drive holds few threads. */
+let pending = 0;
+export const CANONICAL_MAX = 8;
+export const pendingCanonical = () => pending;
+/** Live runs a lock check reads one at a time; more than this answers busy. */
+const FANOUT_MAX = 16;
+
+/** Too many folder reads are still waiting on the disk. */
+export class CanonicalBusy extends Error {
+	constructor() {
+		super("Folder reads busy. Try again in a moment.");
+	}
+}
+
+/**
+ * The folder as the disk names it (links, junctions and short names resolved); null if unknown.
+ * Throws CanonicalBusy past CANONICAL_MAX pending reads (#1020).
+ */
 export async function canonical(
 	p: string,
 	ms = CANONICAL_MS,
 ): Promise<string | null> {
+	if (pending >= CANONICAL_MAX) throw new CanonicalBusy();
+	pending++;
 	let timer: NodeJS.Timeout | undefined;
 	const op = realpath(p);
-	op.catch(() => {});
+	op.catch(() => {}).finally(() => {
+		pending--;
+	});
 	try {
 		return await Promise.race([
 			op,
@@ -55,8 +76,13 @@ export function sameAsDisk(written: string, real: string): boolean {
  * (#1020). Never blocks the event loop; a swap after this check is not caught.
  */
 export async function isCanonical(p: string, ms?: number): Promise<boolean> {
-	const real = await canonical(p, ms);
-	return real !== null && sameAsDisk(resolve(p), real);
+	try {
+		const real = await canonical(p, ms);
+		return real !== null && sameAsDisk(resolve(p), real);
+	} catch (e) {
+		if (e instanceof CanonicalBusy) return false;
+		throw e;
+	}
 }
 
 /** One folder holds the other, or they are the same; both already as the disk names them. */
@@ -98,9 +124,15 @@ export async function folderBusy(
 		select: { plain: true, url: true },
 	});
 	if (!repo?.plain) return false;
-	const at = await named(repo.url);
-	const held = await Promise.all([...converting.values()].map(named));
-	if (held.some((c) => overlaps(c, at))) return true;
+	try {
+		const at = await named(repo.url);
+		for (const c of converting.values())
+			if (overlaps(await named(c), at)) return true;
+	} catch (e) {
+		// Unknown is busy: a run never starts beside one it could not rule out.
+		if (e instanceof CanonicalBusy) return true;
+		throw e;
+	}
 	return liveIn(db, repo.url, selfId);
 }
 
@@ -118,7 +150,15 @@ export async function liveIn(
 		},
 		select: { repository: { select: { url: true } } },
 	});
-	const at = await named(folder);
 	const urls = live.flatMap((r) => (r.repository ? [r.repository.url] : []));
-	return (await Promise.all(urls.map(named))).some((u) => overlaps(u, at));
+	if (urls.length > FANOUT_MAX) return true;
+	try {
+		const at = await named(folder);
+		// One at a time, so a check holds at most one pending read.
+		for (const u of urls) if (overlaps(await named(u), at)) return true;
+		return false;
+	} catch (e) {
+		if (e instanceof CanonicalBusy) return true;
+		throw e;
+	}
 }

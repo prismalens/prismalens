@@ -24,6 +24,7 @@ import {
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import {
+	CanonicalBusy,
 	canonical,
 	FOLDER_BUSY,
 	holdConversion,
@@ -92,7 +93,14 @@ export class RepositoriesService {
 		}
 		let { kind, source } = classified;
 		// A folder is saved as the disk names it, so an alias is the same project (#1020).
-		if (kind === "folder") source = (await canonical(source)) ?? source;
+		if (kind === "folder")
+			try {
+				source = (await canonical(source)) ?? source;
+			} catch (e) {
+				if (e instanceof CanonicalBusy)
+					throw new BadRequestException(e.message);
+				throw e;
+			}
 		let subPath = input.subPath ?? null;
 
 		const existing =
