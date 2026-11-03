@@ -4,6 +4,7 @@
 import {
 	mkdirSync,
 	mkdtempSync,
+	realpathSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -19,7 +20,7 @@ import type { RepositoriesService } from "./repositories.service.js";
 
 let root: string;
 beforeEach(() => {
-	root = mkdtempSync(join(tmpdir(), "pl-browse-"));
+	root = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-browse-")));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 

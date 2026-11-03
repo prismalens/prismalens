@@ -6,6 +6,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	realpathSync,
 	renameSync,
 	rmSync,
 	symlinkSync,
@@ -45,7 +46,8 @@ const { startGit, StartGitRefused } = await import("./start-git.js");
 
 let folder: string;
 beforeEach(() => {
-	folder = mkdtempSync(join(tmpdir(), "pl-startgit-"));
+	// The real path, as a project stores it: macOS tmpdir() goes through /var -> /private/var.
+	folder = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-startgit-")));
 	who.name = "Ada";
 	who.email = "ada@example.com";
 	who.excludes = "";

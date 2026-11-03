@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +20,7 @@ const folder = (name: string) => ({ name, isDirectory: () => true });
 
 let root: string;
 beforeEach(() => {
-	root = mkdtempSync(join(tmpdir(), "pl-browse-deadline-"));
+	root = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-browse-deadline-")));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 

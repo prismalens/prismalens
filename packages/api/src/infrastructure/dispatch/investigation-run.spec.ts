@@ -9,7 +9,7 @@
  * needs `conductRun` to run at all.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
@@ -3519,7 +3519,7 @@ describe("a project, service or no-subject thread (#1020)", () => {
 			repos: [{ sourceKind: "folder" as const, url: folder, defaultBranch: null, subPath: null, connectionId: null, serviceName: "notes", plain: true }],
 		});
 		beforeEach(() => {
-			folder = mkdtempSync(join(os.tmpdir(), "pl-plain-"));
+			folder = realpathSync.native(mkdtempSync(join(os.tmpdir(), "pl-plain-")));
 		});
 		afterEach(() => rmSync(folder, { recursive: true, force: true }));
 
