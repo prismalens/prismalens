@@ -114,6 +114,18 @@ describe("Changes tab across runs (#975)", () => {
 			"Browser",
 		]);
 		for (const t of tabs) expect(t.querySelector("svg")).not.toBeNull();
+		// The open tab's name shows beside its icon only where nothing can hover.
+		const labels = tabs.map((t) =>
+			t.querySelector('[data-testid^="run-details-tab-label-"]'),
+		);
+		expect(
+			labels.map((l) =>
+				l?.className.includes(
+					"[@media(hover:none)]:group-data-[state=active]:inline",
+				),
+			),
+		).toEqual(Array(6).fill(true));
+		for (const l of labels) l?.remove();
 		expect(tabs.map((t) => t.textContent)).toEqual(["", "0", "", "0", "", ""]);
 	});
 });
