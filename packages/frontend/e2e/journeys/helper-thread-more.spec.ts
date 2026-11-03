@@ -261,6 +261,8 @@ test.describe("helper threads more journeys (#1020)", () => {
 				seq: 0,
 				ts: new Date().toISOString(),
 				text: "hi",
+				mode: "queue",
+				delivered: true,
 			},
 			{
 				kind: "agent_step",
@@ -313,6 +315,8 @@ test.describe("helper threads more journeys (#1020)", () => {
 				seq: 0,
 				ts: new Date().toISOString(),
 				text: "How do I configure alert webhooks?",
+				mode: "queue",
+				delivered: true,
 			},
 			{
 				kind: "agent_step",
@@ -367,6 +371,8 @@ test.describe("helper threads more journeys (#1020)", () => {
 				seq: 0,
 				ts,
 				text: "Help me configure alerts and publish a runbook",
+				mode: "queue",
+				delivered: true,
 			},
 			{
 				kind: "agent_step",
