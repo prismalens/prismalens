@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import type {
-	SettledState,
 	ThreadRow,
 	ThreadSection,
 	ThreadUnit,
@@ -26,6 +25,7 @@ import { RingTick } from "@/components/shared/RingTick";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
+import { useSettleUndo } from "@/hooks/use-settle-undo";
 import { useCancelInvestigation } from "@/lib/api/hooks";
 import {
 	type ThreadFeedInput,
@@ -53,7 +53,6 @@ const SECTION_LABEL: Record<ThreadSection, string> = {
 	active: "Active",
 	settled: "Settled",
 };
-const UNDO_MS = 8000;
 
 /**
  * The sidebar's thread list (#1020): Needs you, Active, and Settled folded at
@@ -63,11 +62,7 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 	const feed = useThreadFeed(filters);
 	const settle = useSettleThread();
 	const [settledOpen, setSettledOpen] = useState(false);
-	const [undo, setUndo] = useState<{
-		id: string;
-		title: string;
-		previous?: SettledState[];
-	} | null>(null);
+	const { undo, settle: onSettle, restore } = useSettleUndo(settle.mutate);
 	const units = useMemo(
 		() => feed.data?.pages.flatMap((p) => p.units) ?? [],
 		[feed.data],
@@ -76,23 +71,6 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
-
-	useEffect(() => {
-		if (!undo) return;
-		const t = window.setTimeout(() => setUndo(null), UNDO_MS);
-		return () => window.clearTimeout(t);
-	}, [undo]);
-
-	const onSettle = (t: ThreadRow) => {
-		setUndo({ id: t.id, title: t.title?.trim() || "Thread" });
-		settle.mutate(
-			{ id: t.id, settled: true },
-			{
-				onSuccess: ({ previous }) =>
-					setUndo((u) => (u?.id === t.id ? { ...u, previous } : u)),
-			},
-		);
-	};
 
 	if (feed.isLoading)
 		return (
@@ -181,16 +159,8 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 							<button
 								type="button"
 								// Until Settle answers there is nothing exact to restore (#1020).
-								disabled={!undo.previous}
-								onClick={() => {
-									if (!undo.previous) return;
-									settle.mutate({
-										id: undo.id,
-										settled: false,
-										restore: undo.previous,
-									});
-									setUndo(null);
-								}}
+								disabled={!undo.previous || undo.restoring}
+								onClick={restore}
 								className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
 								data-testid="settle-undo"
 							>

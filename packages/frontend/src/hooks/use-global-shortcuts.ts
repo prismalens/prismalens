@@ -64,15 +64,19 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
 			if (run(e.key)) e.preventDefault();
 		};
-		let last = 0;
+		// A chord finished before mount counts by its recorded gap; only a trailing g waits live.
+		let g: number | null = null;
 		for (const early of takeEarlyKeys()) {
-			if (pending.current !== null && early.t - last > EARLY_CHORD_MS) {
-				window.clearTimeout(pending.current);
-				pending.current = null;
+			if (g !== null && early.t - g <= EARLY_CHORD_MS) {
+				g = null;
+				const go = GO_SHORTCUTS.find((s) => s.key === early.k);
+				if (go) navigate({ to: go.to });
+				continue;
 			}
-			run(early.k, early.t);
-			last = early.t;
+			g = early.k === "g" ? early.t : null;
+			if (g === null) run(early.k, early.t);
 		}
+		if (g !== null) run("g", g);
 		window.addEventListener("keydown", onKey);
 		return () => {
 			window.removeEventListener("keydown", onKey);
