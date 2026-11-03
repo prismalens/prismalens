@@ -155,24 +155,46 @@ export interface RememberedAsk {
 
 const FILE_KINDS = new Set(["edit", "delete", "move"]);
 
-/** JSON with keys sorted, so the same input always names the same operation. */
-function stable(v: unknown): string {
-	if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
-	if (v && typeof v === "object")
-		return `{${Object.keys(v)
-			.sort()
-			.map(
-				(k) =>
-					`${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`,
-			)
-			.join(",")}}`;
-	return JSON.stringify(v) ?? "null";
+class Unserializable extends Error {}
+
+/**
+ * JSON with keys sorted, so the same input always names the same operation. Arrays keep
+ * their elements as they are; a cycle or a value JSON cannot hold throws Unserializable.
+ */
+function stable(v: unknown, seen = new Set<unknown>()): string {
+	if (v === null) return "null";
+	switch (typeof v) {
+		case "string":
+		case "boolean":
+			return JSON.stringify(v);
+		case "number":
+			if (!Number.isFinite(v)) throw new Unserializable();
+			return JSON.stringify(v);
+		case "object": {
+			if (seen.has(v)) throw new Unserializable();
+			seen.add(v);
+			const out = Array.isArray(v)
+				? `[${v.map((x) => stable(x, seen)).join(",")}]`
+				: `{${Object.keys(v as object)
+						.filter((k) => (v as Record<string, unknown>)[k] !== undefined)
+						.sort()
+						.map(
+							(k) =>
+								`${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k], seen)}`,
+						)
+						.join(",")}}`;
+			seen.delete(v);
+			return out;
+		}
+		default:
+			throw new Unserializable();
+	}
 }
 
 /**
- * What an ask would do, as a hash: a command and its cwd, a file change and its paths, or
- * a tool and its whole input; never the title, which two different operations can share.
- * Null when there is nothing stable to name, so it can never be remembered (#1020, CP4 OBJ-011).
+ * What an ask would do, as a hash of its whole input as given (an argv stays an array), every
+ * location in order, and, for a tool that is not a command or file change, its name; never
+ * the title alone. Null when nothing names it or it cannot be serialized (#1020, CP4 OBJ-011).
  */
 export function askIdentity(
 	tc: PermissionRequest["toolCall"] | undefined,
@@ -183,23 +205,33 @@ export function askIdentity(
 		tc.rawInput && typeof tc.rawInput === "object"
 			? (tc.rawInput as Record<string, unknown>)
 			: {};
-	let what: unknown;
+	const locations = (tc.locations ?? []).map((l) => l.path ?? null);
 	if (kind === "execute") {
-		const cmd = Array.isArray(raw.command)
-			? raw.command.map(String).join(" ")
-			: raw.command;
-		if (typeof cmd !== "string" || !cmd.trim()) return null;
-		what = { cmd, cwd: typeof raw.cwd === "string" ? raw.cwd : null };
+		const cmd = raw.command;
+		const named =
+			(typeof cmd === "string" && cmd.trim() !== "") ||
+			(Array.isArray(cmd) && cmd.length > 0);
+		if (!named) return null;
 	} else if (kind && FILE_KINDS.has(kind)) {
-		const path =
-			raw.file_path ?? raw.path ?? raw.abs_path ?? tc.locations?.[0]?.path;
-		if (typeof path !== "string" || !path) return null;
-		what = kind === "move" ? { path, raw } : { path };
-	} else {
-		if (Object.keys(raw).length === 0) return null;
-		what = { title: tc.title ?? null, raw };
+		const path = raw.file_path ?? raw.path ?? raw.abs_path;
+		if (typeof path !== "string" && !locations.some(Boolean)) return null;
+	} else if (Object.keys(raw).length === 0) return null;
+	const command = kind === "execute" || (kind !== null && FILE_KINDS.has(kind));
+	try {
+		return createHash("sha256")
+			.update(
+				stable({
+					kind,
+					raw,
+					locations,
+					...(command ? {} : { tool: tc.title ?? null }),
+				}),
+			)
+			.digest("hex");
+	} catch (e) {
+		if (e instanceof Unserializable) return null;
+		throw e;
 	}
-	return createHash("sha256").update(stable({ kind, what })).digest("hex");
 }
 
 function isRemembered(

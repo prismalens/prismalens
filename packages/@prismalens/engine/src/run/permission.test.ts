@@ -795,6 +795,27 @@ describe("asks a person allowed always on a schedule (#1020 R33, CP4 OBJ-011)", 
 		expect(askIdentity({ title: "Edit", kind: "edit", rawInput: {} })).toBeNull();
 	});
 
+	it("never lets two different operations share an identity (CP4 r2 OBJ-011)", () => {
+		// One argument with a space is not two arguments.
+		expect(askIdentity(ask("execute", { command: ["a b"], cwd: "/w" }).toolCall)).not.toBe(
+			askIdentity(ask("execute", { command: ["a", "b"], cwd: "/w" }).toolCall),
+		);
+		// An edit of /repo/a does not approve an edit of /repo/a and /repo/b.
+		const one = { title: "Edit", kind: "edit", rawInput: { file_path: "/repo/a" }, locations: [{ path: "/repo/a" }] };
+		const two = { title: "Edit", kind: "edit", rawInput: { file_path: "/repo/a" }, locations: [{ path: "/repo/a" }, { path: "/repo/b" }] };
+		expect(askIdentity(one)).not.toBe(askIdentity(two));
+		// The same operation still matches, whatever the title or key order.
+		expect(askIdentity({ ...two, title: "Other" })).toBe(askIdentity(two));
+		expect(askIdentity(ask("execute", { cwd: "/w", command: ["a", "b"] }).toolCall)).toBe(
+			askIdentity(ask("execute", { command: ["a", "b"], cwd: "/w" }).toolCall),
+		);
+		// Input that cannot be serialized offers no identity, so no Always allow.
+		const loop: Record<string, unknown> = { x: 1 };
+		loop.self = loop;
+		expect(askIdentity({ title: "t", kind: "other", rawInput: loop })).toBeNull();
+		expect(askIdentity({ title: "t", kind: "other", rawInput: { n: 10n } })).toBeNull();
+	});
+
 	it("allows the exact remembered operation, even where nobody can answer", () => {
 		const channel = createAskChannel({ timeoutMs: 5000 });
 		const policy = levelPolicy("supervised", channel, { unattended: true, remembered });
