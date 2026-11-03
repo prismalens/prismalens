@@ -944,6 +944,30 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 		});
 	});
 
+	it("takes a new service link back when the rest of the same update fails (#1020, review of #1040)", async () => {
+		const svc = "223e4567-e89b-12d3-a456-426614174000";
+		const failing = handlersFor("triggered");
+		failing.incidentsService.findById.mockResolvedValue({ ...base, status: "triggered", serviceId: null });
+		const unlink = vi.fn().mockResolvedValue(undefined);
+		Object.assign(failing.incidentsService, {
+			linkService: vi.fn().mockResolvedValue("linked"),
+			unlinkService: unlink,
+		});
+		failing.incidentsService.update.mockRejectedValueOnce(new Error("relation"));
+		await expect(failing.call("update", { serviceId: svc, assignedToId: svc })).rejects.toThrow("relation");
+		expect(unlink).toHaveBeenCalledWith(id, svc);
+		unlink.mockClear();
+		failing.incidentsService.update.mockResolvedValueOnce(null);
+		await expect(failing.call("update", { serviceId: svc, title: "Pool" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+		expect(unlink).toHaveBeenCalledWith(id, svc);
+		unlink.mockClear();
+		// A link the incident already had is never taken away.
+		failing.incidentsService.findById.mockResolvedValue({ ...base, status: "triggered", serviceId: svc });
+		failing.incidentsService.update.mockResolvedValueOnce(null);
+		await expect(failing.call("update", { serviceId: svc, title: "Pool" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+		expect(unlink).not.toHaveBeenCalled();
+	});
+
 	it("resolves from Triggered, Acknowledged and Alerts cleared, never twice", async () => {
 		for (const status of ["triggered", "investigating", "resolved"]) {
 			const { call, incidentsService } = handlersFor(status);

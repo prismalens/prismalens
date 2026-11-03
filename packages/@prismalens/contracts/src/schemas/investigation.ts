@@ -795,7 +795,7 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	fixes_list: "Listed past fixes",
 	hypothesis_record: "Recorded a hypothesis",
 	incident_get: "Read the incident",
-	incidents_similar: "Found similar incidents",
+	incidents_similar: "Searched for similar incidents",
 	investigations_search: "Searched past reports",
 	report_validate: "Checked the report",
 	run_status: "Checked the run",

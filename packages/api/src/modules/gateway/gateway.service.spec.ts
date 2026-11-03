@@ -305,6 +305,8 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const names = [...gateway().tools.map((t) => t.name), TOOLS_SEARCH, TOOLS_CALL];
 		for (const n of names) expect(HARNESS_TOOL_STEPS[n], n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
 		expect(Object.keys(HARNESS_TOOL_STEPS).sort()).toEqual([...names].sort());
+		// A search can come back empty: its step line never claims a find.
+		expect(HARNESS_TOOL_STEPS.incidents_similar).toBe("Searched for similar incidents");
 	});
 
 	it("a report's tools go by what the run owes, not by its subject (#1020)", async () => {
@@ -1511,11 +1513,12 @@ describe("read tools for the coding agent (#848)", () => {
 			});
 		});
 
-		it("an unknown service is not_found and points to incident_get", async () => {
+		it("an unknown service is not_found and points to tools every scoped thread has", async () => {
 			const out = await use(mocks(), "service_get", { name: "nope" });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("not_found"));
-			expect(out.value.next).toContain("incident_get");
+			expect(out.value.next).not.toContain("incident_get");
+			expect(out.value.next).toContain("thread_list");
 			expect(JSON.stringify(out.value)).not.toContain("payments");
 		});
 

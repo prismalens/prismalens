@@ -197,6 +197,12 @@ export class IncidentsController {
 					}
 				}
 				const { serviceId, ...rest } = updateData;
+				const others = fields.some((f) => f !== "serviceId");
+				// A link this request makes is taken back if the rest of it fails (#1020).
+				const fresh =
+					!!serviceId &&
+					others &&
+					!(await this.incidentsService.findById(id))?.serviceId;
 				if (serviceId) {
 					const linked = await this.incidentsService.linkService(id, serviceId);
 					if (linked === "missing")
@@ -208,9 +214,20 @@ export class IncidentsController {
 							message: "This incident already has a service.",
 						});
 				}
-				const incident = fields.some((f) => f !== "serviceId")
-					? await this.incidentsService.update(id, rest as UpdateIncidentDto)
-					: await this.incidentsService.findById(id);
+				let incident:
+					| Awaited<ReturnType<IncidentsService["findById"]>>
+					| Awaited<ReturnType<IncidentsService["update"]>>;
+				try {
+					incident = others
+						? await this.incidentsService.update(id, rest as UpdateIncidentDto)
+						: await this.incidentsService.findById(id);
+				} catch (error) {
+					if (fresh && serviceId)
+						await this.incidentsService.unlinkService(id, serviceId);
+					throw error;
+				}
+				if (!incident && fresh && serviceId)
+					await this.incidentsService.unlinkService(id, serviceId);
 				if (!incident) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Incident ${id} not found`,
