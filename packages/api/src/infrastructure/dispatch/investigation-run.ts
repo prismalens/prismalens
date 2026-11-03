@@ -1818,7 +1818,10 @@ export async function resolveWorkspace(
 		}
 	}
 	const runId = data.investigationId;
-	const all = dedupeRepos(listed);
+	// A project has no service: its display name never selects a service's policy or deployments (#1020).
+	const all = dedupeRepos(listed).map((r) =>
+		data.thread?.subject === "project" ? { ...r, services: [] } : r,
+	);
 	const repos = all.slice(0, WORKSPACE_REPOS_GUARD);
 	const guarded: Skip[] = all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
 		repo,

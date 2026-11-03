@@ -3470,6 +3470,21 @@ describe("a project, service or no-subject thread (#1020)", () => {
 		expect(serviceIdOf).toHaveBeenCalledWith("checkout");
 	});
 
+	it("a project named like a service never reads that service's deployments", async () => {
+		const deployments = vi.fn(async () => []);
+		const ports = fakePorts({
+			deployments,
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const ws = await resolveWorkspace(data(), ports);
+		expect(ws.repos[0]?.services).toEqual([]);
+
+		await runInvestigationJob({ id: "job-deploys", investigationId: "inv-thread", attempts: 1 }, data(), io(), ports);
+		for (const [names] of deployments.mock.calls as unknown as [string[]][])
+			expect(names).not.toContain("shop-monorepo");
+	});
+
 	it("a thread with no project runs without code and says so, naming no incident", async () => {
 		const ws = await resolveWorkspace(data({ thread: { ...thread, subject: "none", repositoryId: null, name: null, repos: [] } }), fakePorts());
 
