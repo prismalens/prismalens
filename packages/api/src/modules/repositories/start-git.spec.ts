@@ -45,13 +45,20 @@ vi.mock("../../core/harness/git-spawn.js", async (orig) => {
 const { startGit, StartGitRefused } = await import("./start-git.js");
 
 let folder: string;
+let home: string;
+const globalConfig = (body: string) =>
+	writeFileSync(join(home, ".gitconfig"), body);
 beforeEach(() => {
 	// The real path, as a project stores it: macOS tmpdir() goes through /var -> /private/var.
 	folder = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-startgit-")));
 	who.name = "Ada";
 	who.email = "ada@example.com";
 	who.excludes = "";
-	// No default global ignore file from the machine running the tests.
+	// No global config or ignore file from the machine running the tests; git reads HOME
+	// first and USERPROFILE only without it, so the two differ here on purpose.
+	home = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-home-")));
+	vi.stubEnv("HOME", home);
+	vi.stubEnv("USERPROFILE", realpathSync.native(mkdtempSync(join(tmpdir(), "pl-profile-"))));
 	vi.stubEnv("XDG_CONFIG_HOME", mkdtempSync(join(tmpdir(), "pl-xdg-")));
 });
 afterEach(() => {
@@ -102,13 +109,20 @@ describe("Start git here (#1020)", () => {
 	});
 
 	it("keeps the user's own global ignore rules: a secret they ignore everywhere is not committed (#1020)", async () => {
-		const ignore = join(mkdtempSync(join(tmpdir(), "pl-global-ignore-")), "ignore");
-		writeFileSync(ignore, "credentials.env\n");
-		who.excludes = ignore;
+		writeFileSync(join(home, "my-ignore"), "credentials.env\n");
+		// `~` is git's: under HOME, which is not USERPROFILE here.
+		globalConfig("[core]\n\texcludesFile = ~/my-ignore\n");
 		writeFileSync(join(folder, "credentials.env"), "TOKEN=x");
 		writeFileSync(join(folder, "app.js"), "1");
 		await startGit(folder);
 		expect(git("ls-files")).toBe("app.js");
+	});
+
+	it("refuses, and makes no .git, when the global ignore file set cannot be read", async () => {
+		globalConfig("[core]\n\texcludesFile = ~/missing-ignore\n");
+		writeFileSync(join(folder, "credentials.env"), "TOKEN=x");
+		await expect(startGit(folder)).rejects.toThrow(/ignore file/);
+		expect(existsSync(join(folder, ".git"))).toBe(false);
 	});
 
 	it("the default global ignore file counts too when none is set", async () => {

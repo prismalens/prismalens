@@ -9,7 +9,7 @@ import {
 	type Stats,
 	statSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
@@ -81,33 +81,65 @@ function hardened(who: {
 	};
 }
 
+/** Only what locates the user's global config; nothing else of the server's env reaches git. */
+const LOCATE = new Set([
+	"HOME",
+	"USERPROFILE",
+	"HOMEDRIVE",
+	"HOMEPATH",
+	"XDG_CONFIG_HOME",
+	"PATH",
+	"SYSTEMROOT",
+]);
+
+const isFile = (p: string) => {
+	try {
+		return statSync(p).isFile();
+	} catch {
+		return false;
+	}
+};
+
 /**
- * The user's own global ignore file: core.excludesFile, else git's default place. Only a
- * plain file's path passes, so a secret ignored everywhere stays out of the first commit.
+ * The user's own global ignore file, as git itself resolves it (`~` under HOME, else
+ * USERPROFILE), else git's default place. A file set but unreadable refuses the start
+ * rather than drop the user's ignores (#1020).
  */
 async function globalExcludes(): Promise<string> {
+	const parent = Object.fromEntries(
+		Object.entries(process.env).filter(([k]) => LOCATE.has(k.toUpperCase())),
+	);
+	const env = {
+		...gitEnv({ source: "none", parent }),
+		GIT_CONFIG_NOSYSTEM: "1",
+	};
 	let set = "";
 	try {
 		set = (
-			await gitConfigRead(["config", "--get", "core.excludesFile"])
+			await spawnGit(
+				["config", "--global", "--type=path", "--get", "core.excludesFile"],
+				{ cwd: tmpdir(), env, timeoutMs: GIT_PROBE_TIMEOUT_MS },
+			)
 		).stdout.trim();
-	} catch {}
-	const home = homedir();
-	const path = set
-		? set.startsWith("~/")
-			? join(home, set.slice(2))
-			: set
-		: join(
-				process.env.XDG_CONFIG_HOME || join(home, ".config"),
-				"git",
-				"ignore",
-			);
-	if (!isAbsolute(path)) return NULL_FILE;
-	try {
-		return statSync(path).isFile() ? path : NULL_FILE;
-	} catch {
-		return NULL_FILE;
+	} catch (e) {
+		// Exit 1 is "not set"; anything else means the setting could not be read.
+		if (!(e instanceof GitSpawnError && e.exitCode === 1))
+			throw new StartGitRefused("Your git ignore setting could not be read.");
 	}
+	if (set) {
+		if (!isAbsolute(set) || !isFile(set))
+			throw new StartGitRefused(
+				`Your global git ignore file cannot be read: ${set}`,
+			);
+		return set;
+	}
+	const home = process.env.HOME || process.env.USERPROFILE || homedir();
+	const fallback = join(
+		process.env.XDG_CONFIG_HOME || join(home, ".config"),
+		"git",
+		"ignore",
+	);
+	return isFile(fallback) ? fallback : NULL_FILE;
 }
 
 const PINNED = [
