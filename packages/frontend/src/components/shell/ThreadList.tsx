@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
+import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useCancelInvestigation } from "@/lib/api/hooks";
 import {
@@ -422,7 +423,7 @@ function RenameRow({
 				save();
 			}}
 		>
-			<input
+			<Input
 				// biome-ignore lint/a11y/noAutofocus: the field opens only from its own Rename button.
 				autoFocus
 				value={value}
@@ -437,7 +438,7 @@ function RenameRow({
 				}}
 				aria-label="Thread name"
 				dir="auto"
-				className="h-8 w-full rounded-control bg-surface-2 px-2 text-body text-text-1 outline-none ring-1 ring-accent"
+				className="h-8"
 				data-testid="thread-rename-input"
 			/>
 		</form>
