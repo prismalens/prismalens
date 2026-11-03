@@ -24,13 +24,23 @@ export function canonical(p: string): string {
 	}
 }
 
+const drive = (p: string) => p.replace(/^[a-z]:/, (d) => d.toUpperCase());
+
+/**
+ * The written path is the disk's own name for it, exactly: letter case counts, since a
+ * case-sensitive folder may hold `Alias` linking to `alias`; only a drive letter is folded.
+ */
+export function sameAsDisk(written: string, real: string): boolean {
+	return drive(written) === drive(real);
+}
+
 /**
  * True when no part of `p` is a link, junction or short name: the disk names it as written
- * (letter case aside where the disk ignores it). A swap after this check is not caught (#1020).
+ * (#1020). A swap after this check is not caught.
  */
 export function isCanonical(p: string): boolean {
 	try {
-		return fold(realpathSync.native(p)) === fold(resolve(p));
+		return sameAsDisk(resolve(p), realpathSync.native(p));
 	} catch {
 		return false;
 	}

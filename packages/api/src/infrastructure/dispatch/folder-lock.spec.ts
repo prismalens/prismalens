@@ -5,7 +5,12 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { folderBusy, holdConversion, overlaps } from "./folder-lock.js";
+import {
+	folderBusy,
+	holdConversion,
+	overlaps,
+	sameAsDisk,
+} from "./folder-lock.js";
 
 const at = (...p: string[]) => resolve("/", "code", ...p);
 
@@ -95,5 +100,14 @@ describe("one live run per plain folder (#1020)", () => {
 		expect(await child()).toBe(true);
 		first();
 		expect(await child()).toBe(false);
+	});
+
+	it("a path the disk names differently only by letter case is not taken as the same path", () => {
+		// On a case-sensitive folder, Alias may be a link to alias: only an exact name is no link.
+		expect(sameAsDisk("/code/Alias/notes", "/code/alias/notes")).toBe(false);
+		expect(sameAsDisk("C:\\code\\Alias\\notes", "C:\\code\\alias\\notes")).toBe(false);
+		expect(sameAsDisk("/code/notes", "/code/notes")).toBe(true);
+		// A drive letter is not part of any folder's name.
+		expect(sameAsDisk("c:\\code\\notes", "C:\\code\\notes")).toBe(true);
 	});
 });
