@@ -5,6 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { RunDetailsPanel } from "./RunDetailsPanel";
 
 vi.mock("@/components/run/EvidenceFileView", () => ({
@@ -38,33 +39,35 @@ vi.mock("./ChangesTab", async () => {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 const panel = (runId: string) => (
-	<RunDetailsPanel
-		title="Run Details"
-		tab="changes"
-		onTab={vi.fn()}
-		onClose={vi.fn()}
-		incidentId="inc-1"
-		summary={[]}
-		evidence={[]}
-		context={[]}
-		flaggedCount={0}
-		steps={[]}
-		onJump={vi.fn()}
-		files={{
-			workspace: null,
-			touched: [],
-			runId,
-			viewing: null,
-			onOpen: vi.fn(),
-			onClose: vi.fn(),
-			backLabel: "Back",
-			reads: [],
-			codeHost: null,
-			stepFile: () => null,
-			links: [],
-			onOpenHypotheses: vi.fn(),
-		}}
-	/>
+	<TooltipProvider>
+		<RunDetailsPanel
+			title="Run Details"
+			tab="changes"
+			onTab={vi.fn()}
+			onClose={vi.fn()}
+			incidentId="inc-1"
+			summary={[]}
+			evidence={[]}
+			context={[]}
+			flaggedCount={0}
+			steps={[]}
+			onJump={vi.fn()}
+			files={{
+				workspace: null,
+				touched: [],
+				runId,
+				viewing: null,
+				onOpen: vi.fn(),
+				onClose: vi.fn(),
+				backLabel: "Back",
+				reads: [],
+				codeHost: null,
+				stepFile: () => null,
+				links: [],
+				onOpenHypotheses: vi.fn(),
+			}}
+		/>
+	</TooltipProvider>
 );
 
 describe("Changes tab across runs (#975)", () => {
@@ -97,5 +100,20 @@ describe("Changes tab across runs (#975)", () => {
 
 		await act(async () => root.render(panel("run-2")));
 		expect(state()).toBe("fresh");
+	});
+
+	it("draws each tab as an icon, named for assistive tech (#1020)", async () => {
+		await act(async () => root.render(panel("run-1")));
+		const tabs = [...container.querySelectorAll('[role="tab"]')];
+		expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual([
+			"Summary",
+			"Files, 0",
+			"Changes",
+			"Steps, 0",
+			"Context",
+			"Browser",
+		]);
+		for (const t of tabs) expect(t.querySelector("svg")).not.toBeNull();
+		expect(tabs.map((t) => t.textContent)).toEqual(["", "0", "", "0", "", ""]);
 	});
 });

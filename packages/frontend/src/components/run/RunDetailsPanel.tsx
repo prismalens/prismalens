@@ -5,15 +5,23 @@ import type { RunWorkspace } from "@prismalens/contracts";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { Link } from "@tanstack/react-router";
 import {
+	BookOpenText,
 	Bot,
 	Camera,
 	CircleCheck,
+	FileCheck2,
+	FileDiff,
+	FolderTree,
 	GitBranch,
+	Globe,
+	ListTree,
+	type LucideIcon,
 	Plug,
 	TriangleAlert,
 	X,
 } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
@@ -78,6 +86,16 @@ const ORDER: DetailsTab[] = [
 	"context",
 	"browser",
 ];
+
+/** The same icons as a thread's surfaces where they show the same thing (#1020). */
+const TAB_ICON: Record<DetailsTab, LucideIcon> = {
+	summary: FileCheck2,
+	files: FolderTree,
+	changes: FileDiff,
+	steps: ListTree,
+	context: BookOpenText,
+	browser: Globe,
+};
 
 const FILTERS: { id: StepFilter; label: string }[] = [
 	{ id: "all", label: "All" },
@@ -213,18 +231,26 @@ export function RunDetailsPanel({
 						aria-label={title}
 						className="flex min-w-0 gap-0.5 max-[359px]:gap-0 self-end overflow-x-auto [scrollbar-width:none]"
 					>
-						{tabs.map((t) => (
-							<TabsPrimitive.Trigger
-								key={t.id}
-								value={t.id}
-								aria-label={t.aria}
-								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
-								data-testid={`run-details-tab-${t.id}`}
-							>
-								{t.label}
-								{t.aside}
-							</TabsPrimitive.Trigger>
-						))}
+						{tabs.map((t) => {
+							const Icon = TAB_ICON[t.id];
+							// The hint sits on the icon: on the trigger it would take over the tab's data-state.
+							return (
+								<TabsPrimitive.Trigger
+									key={t.id}
+									value={t.id}
+									aria-label={t.aria}
+									className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+									data-testid={`run-details-tab-${t.id}`}
+								>
+									<Hint label={t.label}>
+										<span className="flex">
+											<Icon className="size-4" aria-hidden />
+										</span>
+									</Hint>
+									{t.aside}
+								</TabsPrimitive.Trigger>
+							);
+						})}
 					</TabsPrimitive.List>
 				</div>
 				<TabsPrimitive.Content
