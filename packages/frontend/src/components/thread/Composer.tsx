@@ -9,6 +9,7 @@ import {
 	Paperclip,
 	Play,
 	Plus,
+	Repeat,
 	Square,
 	X,
 } from "lucide-react";
@@ -174,6 +175,10 @@ export interface ComposerProps {
 	above?: ReactNode;
 	/** A new conversation's box floats in the middle of the page. */
 	floating?: boolean;
+	/** The box takes no files (a schedule's saved text): no attach, no pasted files. */
+	noFiles?: boolean;
+	/** Beside Send: save this text as a schedule instead (#1020). */
+	onRepeat?: (text: string) => void;
 }
 
 interface Draft {
@@ -236,6 +241,8 @@ export function Composer({
 	onSaveAsNote,
 	above,
 	floating,
+	noFiles,
+	onRepeat,
 }: ComposerProps) {
 	const [ownText, setOwnText] = useState("");
 	const text = keptText ?? ownText;
@@ -356,7 +363,7 @@ export function Composer({
 
 	const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
 		const files = Array.from(e.clipboardData.files);
-		if (!files.length) return;
+		if (!files.length || noFiles) return;
 		e.preventDefault();
 		add(files);
 	};
@@ -387,16 +394,31 @@ export function Composer({
 				</PromptInputButton>
 			</Hint>
 		) : (
-			<Hint label={sendLabel} keys={["Enter"]} side="top">
-				<span className="inline-flex">
-					<PromptInputSubmit
-						status={busy ? "submitted" : undefined}
-						disabled={!canSend}
-						aria-label={sendLabel}
-						data-testid="composer-send"
-					/>
-				</span>
-			</Hint>
+			<>
+				{onRepeat && (
+					<Hint label="Repeat…" side="top">
+						<PromptInputButton
+							aria-label="Repeat…"
+							disabled={!hasText || busy}
+							onClick={() => onRepeat(text.trim())}
+							className="w-8 text-text-3"
+							data-testid="composer-repeat"
+						>
+							<Repeat className="size-3.5" />
+						</PromptInputButton>
+					</Hint>
+				)}
+				<Hint label={sendLabel} keys={["Enter"]} side="top">
+					<span className="inline-flex">
+						<PromptInputSubmit
+							status={busy ? "submitted" : undefined}
+							disabled={!canSend}
+							aria-label={sendLabel}
+							data-testid="composer-send"
+						/>
+					</span>
+				</Hint>
+			</>
 		);
 
 	if (ended)
@@ -588,17 +610,19 @@ export function Composer({
 							className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1"
 							data-testid="composer-chips"
 						>
-							<Hint label={clipHint} side="top">
-								<PromptInputButton
-									aria-label="Attach a file"
-									disabled={blocked}
-									onClick={() => picker.current?.click()}
-									className="w-8 text-text-3"
-									data-testid="composer-attach"
-								>
-									<Paperclip className="size-3.5" />
-								</PromptInputButton>
-							</Hint>
+							{!noFiles && (
+								<Hint label={clipHint} side="top">
+									<PromptInputButton
+										aria-label="Attach a file"
+										disabled={blocked}
+										onClick={() => picker.current?.click()}
+										className="w-8 text-text-3"
+										data-testid="composer-attach"
+									>
+										<Paperclip className="size-3.5" />
+									</PromptInputButton>
+								</Hint>
+							)}
 							<input
 								ref={picker}
 								type="file"
@@ -648,7 +672,9 @@ export function Composer({
 								/>
 							)}
 						</PromptInputTools>
-						<div className="ml-auto flex shrink-0 items-center">{action}</div>
+						<div className="ml-auto flex shrink-0 items-center gap-0.5">
+							{action}
+						</div>
 					</PromptInputFooter>
 				</PromptInput>
 			</div>

@@ -210,3 +210,21 @@ describe("the one composer (#1020)", () => {
 		expect(q("composer-slash")).toBeNull();
 	});
 });
+
+describe("a schedule's composer (#1020)", () => {
+	it("takes no files when told, and offers Repeat… beside Send with the text", async () => {
+		const onRepeat = vi.fn();
+		await render({ noFiles: true, onRepeat });
+		expect(q("composer-attach")).toBeNull();
+		expect((q("composer-repeat") as HTMLButtonElement).disabled).toBe(true);
+		await type("  Run the tests  ");
+		await act(async () => (q("composer-repeat") as HTMLButtonElement).click());
+		expect(onRepeat).toHaveBeenCalledWith("Run the tests");
+	});
+
+	it("shows no Repeat… unless the page offers it", async () => {
+		await render();
+		expect(q("composer-repeat")).toBeNull();
+		expect(q("composer-attach")).not.toBeNull();
+	});
+});

@@ -14,6 +14,7 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import {
 	useCreateIncident,
 	useInvestigateIncident,
@@ -44,6 +45,7 @@ export function NewThread({
 	place,
 	placeholder,
 	autoFocus = true,
+	onRepeat,
 }: {
 	subject: ThreadStartSubject;
 	branch: string | null;
@@ -57,6 +59,8 @@ export function NewThread({
 	place?: HelperPlace;
 	placeholder?: string;
 	autoFocus?: boolean;
+	/** Repeat… beside Send: this box, as a new schedule's form (#1020). */
+	onRepeat?: (draft: SchedulePrefill) => void;
 }) {
 	const choice = useAgentChoice();
 	const start = useStartThread();
@@ -193,6 +197,19 @@ export function NewThread({
 			autoFocus={autoFocus}
 			top={top}
 			slash={slash}
+			{...(onRepeat && !incident
+				? {
+						onRepeat: (text: string) =>
+							onRepeat({
+								brief: text,
+								subject,
+								...(hid ? { harness: hid } : {}),
+								model,
+								effort,
+								accessLevel,
+							}),
+					}
+				: {})}
 		/>
 	);
 }

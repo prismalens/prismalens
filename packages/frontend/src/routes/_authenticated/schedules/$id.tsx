@@ -23,7 +23,7 @@ import {
 	whenText,
 } from "@/components/schedules/schedule-time";
 import { TickDot } from "@/components/schedules/TickDot";
-import { tickLine } from "@/components/schedules/tick-copy";
+import { aboutText, tickLine } from "@/components/schedules/tick-copy";
 import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
@@ -315,7 +315,7 @@ function LatestNote({
 
 function Facts({ schedule: s }: { schedule: Schedule }) {
 	const items: Array<[string, string, string]> = [
-		["Runs", `Check ${s.serviceName}`, s.runbook ? `Runbook ${s.runbook}` : ""],
+		["Runs", aboutText(s), s.runbook ? `Runbook ${s.runbook}` : ""],
 		[
 			"When",
 			s.description,

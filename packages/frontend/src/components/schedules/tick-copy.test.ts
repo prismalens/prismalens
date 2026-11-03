@@ -3,7 +3,7 @@
 
 import { TICK_OUTCOMES, type ScheduleTick } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { tickLine } from "./tick-copy";
+import { aboutText, tickLine } from "./tick-copy";
 
 const tick = (over: Partial<ScheduleTick>): ScheduleTick => ({
 	id: "t",
@@ -59,5 +59,13 @@ describe("tickLine (#979)", () => {
 		expect(tickLine(tick({ outcome: "missed_off", missedCount: 3 }), fmt).text).toBe(
 			"Missed 3 runs: PrismaLens was off",
 		);
+	});
+});
+
+describe("aboutText (#1020)", () => {
+	it("names a service's check, a project, or no project", () => {
+		expect(aboutText({ subject: "service", serviceName: "checkout", repositoryName: null })).toBe("Check checkout");
+		expect(aboutText({ subject: "project", serviceName: "", repositoryName: "acme/shop" })).toBe("acme/shop");
+		expect(aboutText({ subject: "none", serviceName: "", repositoryName: null })).toBe("No project");
 	});
 });

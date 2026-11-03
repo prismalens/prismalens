@@ -4,6 +4,11 @@
 import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Siren, SquarePen } from "lucide-react";
+import { useState } from "react";
+import {
+	ScheduleDialog,
+	type SchedulePrefill,
+} from "@/components/schedules/ScheduleDialog";
 import {
 	Select,
 	SelectContent,
@@ -15,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useRepositories, useServices } from "@/lib/api/hooks";
+import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { cn } from "@/lib/utils";
 import { NewThread } from "./NewThread";
 
@@ -51,6 +57,9 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 	const navigate = useNavigate();
 	const repos = useRepositories({ limit: 100 });
 	const services = useServices();
+	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
+	const canSchedule = useSchedules().data?.canEdit === true;
+	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
 	const set = (next: Partial<NewThreadSearch>) =>
 		void navigate({
 			to: "/threads/new",
@@ -188,6 +197,7 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 						incident={incident}
 						note={!!search.note}
 						top={top}
+						{...(canSchedule ? { onRepeat: setRepeat } : {})}
 						slash={[
 							{
 								id: "investigate",
@@ -203,6 +213,16 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 					/>
 				</div>
 			</div>
+			{repeat && (
+				<ScheduleDialog
+					open
+					onOpenChange={(open) => {
+						if (!open) setRepeat(null);
+					}}
+					prefill={repeat}
+					canSetHostZone
+				/>
+			)}
 		</div>
 	);
 }
