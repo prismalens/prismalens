@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Link2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -23,7 +24,7 @@ import {
 import { useRepositories } from "@/lib/api/hooks";
 import { useLinkRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useCreateService } from "@/lib/api/hooks/use-services-orpc";
-import { client } from "@/lib/api/orpc-client";
+import { client, orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -81,6 +82,7 @@ function LinkDialog({
 	const repos = useRepositories({ limit: 100 });
 	const create = useCreateService();
 	const link = useLinkRepository();
+	const queryClient = useQueryClient();
 	const [repositoryId, setRepositoryId] = useState<string>();
 	const [name, setName] = useState(suggested);
 	const [error, setError] = useState<string | null>(null);
@@ -101,6 +103,9 @@ function LinkDialog({
 					? plan.serviceId
 					: (await create.mutateAsync({ name: plan.create })).id;
 			await link.mutateAsync({ id: repositoryId, serviceId });
+			// A new service claims the waiting alerts its label names; the lists read that.
+			void queryClient.invalidateQueries({ queryKey: orpc.alerts.key() });
+			void queryClient.invalidateQueries({ queryKey: orpc.incidents.key() });
 			onOpenChange(false);
 		} catch (err) {
 			setError(getErrorMessage(err));
