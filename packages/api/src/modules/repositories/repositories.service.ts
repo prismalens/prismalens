@@ -23,6 +23,7 @@ import {
 } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
+import { canonical } from "../../infrastructure/dispatch/folder-lock.js";
 import {
 	GitCredentialService,
 	pickOf,
@@ -85,6 +86,8 @@ export class RepositoriesService {
 			throw new BadRequestException((err as Error).message);
 		}
 		let { kind, source } = classified;
+		// A folder is saved as the disk names it, so an alias is the same project (#1020).
+		if (kind === "folder") source = canonical(source);
 		let subPath = input.subPath ?? null;
 
 		const existing =

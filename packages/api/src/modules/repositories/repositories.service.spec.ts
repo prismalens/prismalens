@@ -10,6 +10,9 @@
  * exercised through the same interactive-tx double as
  * `incidents.service.spec.ts` uses.
  */
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { GitSpawnError } from "../../core/harness/git-spawn.js";
@@ -255,6 +258,22 @@ describe("RepositoriesService.addSource", () => {
 				subPath: null,
 			}),
 		});
+	});
+
+	it("saves a plain folder by its real path, so an alias through a linked parent is the same project (#1020)", async () => {
+		const base = mkdtempSync(join(tmpdir(), "pl-add-alias-"));
+		try {
+			mkdirSync(join(base, "real", "notes"), { recursive: true });
+			symlinkSync(join(base, "real"), join(base, "alias"), process.platform === "win32" ? "junction" : "dir");
+			mockRepoSource.checkFolder.mockRejectedValue(new PlainFolderError("x"));
+			await service.addSource({ source: join(base, "alias", "notes") });
+			const where = mockTx.repository.findFirst.mock.calls[0]?.[0];
+			expect(where).toEqual({
+				where: { url: realpathSync.native(join(base, "real", "notes")), subPath: null },
+			});
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
 	});
 
 	it("refuses a plain folder as a service's code: a service runs unattended (#1020)", async () => {

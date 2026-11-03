@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { folderBusy, overlaps } from "./folder-lock.js";
@@ -57,5 +59,19 @@ describe("one live run per plain folder (#1020)", () => {
 		expect(await folderBusy(repo as never, "repo-2")).toBe(false);
 		expect(repo.investigation.findMany).not.toHaveBeenCalled();
 		expect(await folderBusy(db(null, []) as never, "gone")).toBe(false);
+	});
+
+	it("the same folder reached through a linked parent is still the same folder", async () => {
+		const base = mkdtempSync(join(tmpdir(), "pl-lock-alias-"));
+		try {
+			mkdirSync(join(base, "real", "notes"), { recursive: true });
+			symlinkSync(join(base, "real"), join(base, "alias"), process.platform === "win32" ? "junction" : "dir");
+			const d = db({ plain: true, url: join(base, "alias", "notes") }, [
+				{ repository: { url: join(base, "real", "notes") } },
+			]);
+			expect(await folderBusy(d as never, "repo-alias", "self")).toBe(true);
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
 	});
 });

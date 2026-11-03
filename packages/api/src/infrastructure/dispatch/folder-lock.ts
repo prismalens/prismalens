@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { realpathSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
@@ -14,10 +15,19 @@ const fold = (p: string) =>
 		? p.toLowerCase()
 		: p;
 
-/** One folder holds the other, or they are the same. */
+/** The folder as the disk names it: links, junctions and short names resolved. */
+export function canonical(p: string): string {
+	try {
+		return realpathSync.native(p);
+	} catch {
+		return p;
+	}
+}
+
+/** One folder holds the other, or they are the same, however each path reaches it. */
 export function overlaps(a: string, b: string): boolean {
 	const within = (root: string, p: string) => {
-		const rel = relative(fold(root), fold(p));
+		const rel = relative(fold(canonical(root)), fold(canonical(p)));
 		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 	};
 	return within(a, b) || within(b, a);
