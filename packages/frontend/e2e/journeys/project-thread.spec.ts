@@ -153,9 +153,16 @@ test.describe("#1020 — a project thread", () => {
 		await expect(page.getByTestId("thread-title")).toHaveText(
 			"Rename retryOnce to retry",
 		);
-		await expect(page.getByTestId("composer-branch")).toHaveText(
+		// A follow-up's branch is in the status box; nothing sits under the box (#1020).
+		await expect(page.getByTestId("composer-branch")).toHaveCount(0);
+		await expect(
+			page.getByTestId("thread-composer").getByTestId("access-chip"),
+		).toBeVisible();
+		await page.getByTestId("status-box-toggle").click();
+		await expect(page.getByTestId("status-branch")).toHaveText(
 			"prismalens/shop-f1111111",
 		);
+		await page.getByTestId("status-box-toggle").click();
 
 		// The agent edits a file, then asks to run a command.
 		const ev = eventFactory("main");
@@ -238,7 +245,8 @@ test.describe("#1020 — a project thread", () => {
 				kind: "chat",
 			});
 		await expect(page.getByTestId("thread-state")).toHaveText("Working");
-		await expect(page.getByTestId("composer-branch")).toHaveText(
+		await page.getByTestId("status-box-toggle").click();
+		await expect(page.getByTestId("status-branch")).toHaveText(
 			"prismalens/shop-f1111111",
 		);
 	});

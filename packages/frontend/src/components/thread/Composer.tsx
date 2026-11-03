@@ -67,8 +67,8 @@ export interface ComposerProps {
 	onChoice: (next: Partial<ComposerChoice> & { harnessId?: HarnessId }) => void;
 	/** A follow-up keeps the run's agent and level: the chips show them, read-only. */
 	locked?: boolean;
-	/** The branch the run works on, or the one a new thread starts from. */
-	branch: string | null;
+	/** The branch a new thread starts from, above the box; a follow-up's is in the status box. */
+	branch?: string | null;
 	/** The agent's asks, docked on the box. */
 	dock?: ReactNode;
 	/** Why nothing can be sent now. */
@@ -86,8 +86,9 @@ interface Draft {
 }
 
 /**
- * The one composer (#1020): text, then attach; agent, model and effort; Send, Stop
- * or Resume. Branch and access sit under the box.
+ * The one composer (#1020): above the box what the thread is about, inside it how the
+ * agent runs (attach, model, effort, access, Send / Stop / Resume), under it only a
+ * blocked reason or an error.
  */
 export function Composer({
 	state,
@@ -254,7 +255,20 @@ export function Composer({
 	const hasEffort = effortLevels(harness).length > 0;
 	return (
 		<div className="flex flex-col gap-1" data-testid="thread-composer">
-			{top}
+			{(top || branch) && (
+				<div className="flex min-w-0 flex-wrap items-center gap-1.5">
+					{top}
+					{branch && (
+						<span
+							className="inline-flex h-7 min-w-0 items-center gap-1 px-1.5 text-meta text-text-3"
+							data-testid="composer-branch"
+						>
+							<GitBranch className="size-3.5 shrink-0" aria-hidden />
+							<span className="truncate">{branch}</span>
+						</span>
+					)}
+				</div>
+			)}
 			{commands.length > 0 && (
 				<ul
 					aria-label="Commands"
@@ -376,31 +390,17 @@ export function Composer({
 									onModel={(model) => onChoice({ model })}
 								/>
 							)}
+							<AccessChip
+								harness={harness}
+								level={choice.accessLevel}
+								onLevel={(accessLevel) => onChoice({ accessLevel })}
+								lockedHint={locked ? "Kept from the first message" : undefined}
+								disabled={blocked}
+							/>
 						</PromptInputTools>
 						<div className="ml-auto flex shrink-0 items-center">{action}</div>
 					</PromptInputFooter>
 				</PromptInput>
-			</div>
-			<div
-				className="flex flex-wrap items-center gap-3 px-1.5 text-meta text-text-3"
-				data-testid="composer-under"
-			>
-				{branch && (
-					<span
-						className="inline-flex min-w-0 items-center gap-1"
-						data-testid="composer-branch"
-					>
-						<GitBranch className="size-3.5 shrink-0" aria-hidden />
-						<span className="truncate">{branch}</span>
-					</span>
-				)}
-				<AccessChip
-					harness={harness}
-					level={choice.accessLevel}
-					onLevel={(accessLevel) => onChoice({ accessLevel })}
-					lockedHint={locked ? "Kept from the first message" : undefined}
-					disabled={blocked}
-				/>
 			</div>
 			{(blocked || refusal) && (
 				<p

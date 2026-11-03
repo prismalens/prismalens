@@ -165,9 +165,29 @@ describe("the box's chips (#673)", () => {
 		expect(off).toContain("disabled");
 		expect(off).toContain("Fixed");
 		expect(off).not.toContain("Default");
-		// The agent's own effort is tagged by its name, never "Default" (#907).
+		// The agent's pick is tagged by its name; the no-level entry reads "Default" (#1020).
 		expect(on).toMatch(/Claude Code(&#x27;|')s pick/);
-		expect(on).not.toMatch(/>Default</);
+		expect(on).toMatch(/>Default</);
+		expect(on).not.toContain("Set by");
+	});
+
+	it("shows access as icon plus word, warning above the agent's default level (#1020)", () => {
+		const at = (level: "supervised" | "full-access") =>
+			renderToStaticMarkup(
+				React.createElement(AccessChip, {
+					harness: claude(),
+					level,
+					onLevel: () => {},
+				}),
+			).split("</button>")[0] ?? "";
+		const calm = at("supervised");
+		expect(calm).toContain('data-testid="access-chip-icon"');
+		expect(calm).toContain("Ask always");
+		expect(calm).not.toContain('data-tone="warn"');
+		const loud = at("full-access");
+		expect(loud).toContain('data-testid="access-chip-icon"');
+		expect(loud).toContain('data-tone="warn"');
+		expect(loud).toContain("Full access");
 	});
 
 	it("lists the four levels, the default first and tagged, each with the agent's own mode name (#673 w21)", () => {

@@ -332,7 +332,6 @@ export function ThreadPage({ id }: { id: string }) {
 				cwd={workspace?.cwd}
 			/>
 		) : null;
-	const branch = workspace?.repos[0]?.branch ?? null;
 	const blocked =
 		run.ended && !run.resumable && state !== "interrupted"
 			? (run.resumeBlockedReason ?? "Can't continue")
@@ -408,7 +407,6 @@ export function ThreadPage({ id }: { id: string }) {
 						}}
 						onChoice={() => {}}
 						locked
-						branch={branch}
 						dock={dock}
 						blockedReason={blocked}
 					/>

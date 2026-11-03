@@ -83,13 +83,38 @@ async function type(text: string) {
 }
 
 describe("the one composer (#1020)", () => {
-	it("puts attach, the agent's model and Send on the row, and branch and access under it", async () => {
+	it("puts attach, model, access and Send inside the box, and the branch above it", async () => {
 		await render();
-		expect(q("composer-attach")).not.toBeNull();
-		expect(q("model-chip")?.textContent).toBe("sonnet");
-		expect(q("composer-send")).not.toBeNull();
-		expect(q("composer-under")?.textContent).toContain("prismalens/shop-r1");
-		expect(q("access-chip")?.textContent).toBe("auto-edits");
+		const box = q("composer-input")?.closest("form");
+		expect(
+			box?.querySelector('[data-testid="composer-attach"]'),
+		).not.toBeNull();
+		expect(box?.querySelector('[data-testid="model-chip"]')?.textContent).toBe(
+			"sonnet",
+		);
+		expect(box?.querySelector('[data-testid="access-chip"]')?.textContent).toBe(
+			"auto-edits",
+		);
+		expect(box?.querySelector('[data-testid="composer-send"]')).not.toBeNull();
+		const branch = q("composer-branch");
+		expect(branch?.textContent).toContain("prismalens/shop-r1");
+		expect(box?.contains(branch)).toBe(false);
+		expect(
+			branch?.compareDocumentPosition(box as Node) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+	});
+
+	it("renders nothing under the box unless it is blocked", async () => {
+		await render({ branch: null });
+		const shell = q("thread-composer");
+		const box = q("composer-input")?.closest("form");
+		const wrap = box?.parentElement;
+		expect(wrap?.nextElementSibling).toBeNull();
+		expect(q("composer-under")).toBeNull();
+		await render({ branch: null, blockedReason: "Claude Code is not ready" });
+		expect(q("composer-blocked")?.textContent).toBe("Claude Code is not ready");
+		expect(shell?.lastElementChild).toBe(q("composer-blocked"));
 	});
 
 	it("hides effort when the agent has none, and shows it when it does", async () => {
