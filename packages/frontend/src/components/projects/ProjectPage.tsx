@@ -11,6 +11,7 @@ import { NewThread } from "@/components/thread/NewThread";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useServices } from "@/lib/api/hooks";
 import {
 	useLinkRepository,
 	useRepository,
@@ -166,26 +167,39 @@ function MakeService({
 }) {
 	const create = useCreateService();
 	const link = useLinkRepository();
+	const services = useServices();
 	const [name, setName] = useState(defaultName);
 	const [error, setError] = useState<string | null>(null);
 	const first = linked[0];
-	if (first)
+	if (first) {
+		const serviceName = services.data?.data.find((s) => s.id === first)?.name;
 		return (
 			<section
 				aria-label="Service"
-				className="flex items-center gap-2 text-body text-text-2"
+				className="grid gap-1"
 				data-testid="project-service"
 			>
-				<Server className="size-4 shrink-0 text-text-3" aria-hidden />
-				<Link
-					to="/services/$id"
-					params={{ id: first }}
-					className="text-text-1 hover:underline"
-				>
-					Open service
-				</Link>
+				<span className="flex items-center gap-2 text-body text-text-2">
+					<Server className="size-4 shrink-0 text-text-3" aria-hidden />
+					<Link
+						to="/services/$id"
+						params={{ id: first }}
+						className="text-text-1 hover:underline"
+					>
+						Open service
+					</Link>
+				</span>
+				{serviceName && (
+					<p
+						className="ml-6 font-mono text-meta text-text-3"
+						data-testid="project-service-rule"
+					>
+						service={serviceName}
+					</p>
+				)}
 			</section>
 		);
+	}
 	const onMake = async (e: FormEvent) => {
 		e.preventDefault();
 		const n = name.trim();
