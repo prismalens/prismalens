@@ -895,6 +895,10 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		const composerInput = page.getByTestId("composer-input");
 		const mode = page.getByTestId("composer-mode");
 		await expect(mode).toHaveAttribute("data-mode", "ask");
+		// Access sits inside the box, beside the model (#1020).
+		await expect(
+			page.getByTestId("composer-chips").getByTestId("access-chip"),
+		).toBeVisible();
 
 		// 1. Ask action stays on the page and fills you-asked (Ask is default initial action)
 		await composerInput.fill("What is the current sort mechanism?");
