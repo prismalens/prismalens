@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { unreadyReason } from "@/components/agent/AgentPicker";
 import { IncidentHeader } from "@/components/run/IncidentHeader";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useResumeInvestigation } from "@/lib/api/hooks";
+import { useResumeInvestigation, useServices } from "@/lib/api/hooks";
+import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { resumeFailed } from "@/lib/restart";
+import { isBlankIncident } from "./blank";
 import { ChangesCard } from "./ChangesCard";
 import type { NextActionId } from "./fixes";
 import { ImpactCard } from "./ImpactCard";
@@ -49,6 +59,12 @@ export function OverviewPage() {
 		);
 	};
 	const box = useBoxChoice(o.record);
+	const blank = isBlankIncident({
+		alerts: incident.alerts?.length ?? 0,
+		runs: o.record.runs.length,
+		changes: o.changes?.total ?? 0,
+		deploy: !!o.changes?.deploy,
+	});
 	const resume = useResumeInvestigation();
 	const start = () =>
 		void o.record
@@ -116,20 +132,69 @@ export function OverviewPage() {
 				onEditCause={o.record.openEditCause}
 			/>
 			<LatestRunStrip o={o} />
-			{/* A card row never shrinks below its header and foot; past that the grid scrolls, under 768 px in one column (#673 w5-19). */}
-			<main
-				className="grid min-h-0 flex-1 auto-rows-[280px] grid-cols-1 grid-rows-[auto] gap-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-1 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:grid-rows-[auto_minmax(120px,1fr)_minmax(120px,1fr)]"
-				data-testid="overview-grid"
-			>
-				<div className="min-w-0 md:col-span-2">
-					<SituationCard o={o} onAction={onNext} canStart={!!box.harness} />
-				</div>
-				<ImpactCard view={o.impact} />
-				<StopImpactCard o={o} commandRef={commandRef} />
-				<WhyCard o={o} onInvestigate={() => focusBox("investigate")} />
-				<ChangesCard o={o} />
-			</main>
-			<OverviewComposer o={o} action={action} onAction={setAction} />
+			{blank ? (
+				<main
+					className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-4"
+					data-testid="incident-blank"
+				>
+					<p className="text-heading text-text-2">Nothing yet</p>
+					{!incident.service && <LinkService incidentId={incident.id} />}
+					<div className="w-full max-w-(--reading-w)">
+						<OverviewComposer o={o} action={action} onAction={setAction} />
+					</div>
+				</main>
+			) : (
+				<>
+					{/* A card row never shrinks below its header and foot; past that the grid scrolls, under 768 px in one column (#673 w5-19). */}
+					<main
+						className="grid min-h-0 flex-1 auto-rows-[280px] grid-cols-1 grid-rows-[auto] gap-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-1 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:grid-rows-[auto_minmax(120px,1fr)_minmax(120px,1fr)]"
+						data-testid="overview-grid"
+					>
+						<div className="min-w-0 md:col-span-2">
+							<SituationCard o={o} onAction={onNext} canStart={!!box.harness} />
+						</div>
+						<ImpactCard view={o.impact} />
+						<StopImpactCard o={o} commandRef={commandRef} />
+						<WhyCard o={o} onInvestigate={() => focusBox("investigate")} />
+						<ChangesCard o={o} />
+					</main>
+					<OverviewComposer o={o} action={action} onAction={setAction} />
+				</>
+			)}
 		</div>
+	);
+}
+
+/** A blank incident's service, picked from the ones PrismaLens knows. */
+function LinkService({ incidentId }: { incidentId: string }) {
+	const services = useServices();
+	const queryClient = useQueryClient();
+	const link = useMutation({
+		...orpc.incidents.update.mutationOptions(),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: orpc.incidents.key() }),
+	});
+	const list = services.data?.data ?? [];
+	if (list.length === 0) return null;
+	return (
+		<Select
+			disabled={link.isPending}
+			onValueChange={(serviceId) => link.mutate({ id: incidentId, serviceId })}
+		>
+			<SelectTrigger
+				aria-label="Link service"
+				className="w-56"
+				data-testid="incident-link-service"
+			>
+				<SelectValue placeholder="Link service" />
+			</SelectTrigger>
+			<SelectContent>
+				{list.map((s) => (
+					<SelectItem key={s.id} value={s.id}>
+						{s.displayName || s.name}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
 	);
 }

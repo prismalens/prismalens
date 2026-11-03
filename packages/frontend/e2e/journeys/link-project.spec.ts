@@ -6,6 +6,7 @@
  * read-only `service=<name>` rule alerts map by.
  */
 import { expect, test } from "@playwright/test";
+import { createIncidentByHand } from "./by-hand";
 
 const ALERT_ID = "a1020000-0000-4000-8000-000000000001";
 
@@ -82,5 +83,19 @@ test.describe("#1020 — services for projects", () => {
 		);
 
 		await page.request.delete(`/api/services/${made?.id}`);
+	});
+
+	test("a blank incident says Nothing yet, links a service and keeps the composer", async ({
+		page,
+	}) => {
+		await createIncidentByHand(page, `Blank incident ${Date.now()}`);
+		const blank = page.getByTestId("incident-blank");
+		await expect(blank).toContainText("Nothing yet");
+		await expect(blank.getByTestId("overview-composer")).toBeVisible();
+		await expect(page.getByTestId("impact-card")).toHaveCount(0);
+		await expect(page.getByTestId("why-card")).toHaveCount(0);
+		await blank.getByTestId("incident-link-service").click();
+		await page.getByRole("option").first().click();
+		await expect(blank.getByTestId("incident-link-service")).toHaveCount(0);
 	});
 });
