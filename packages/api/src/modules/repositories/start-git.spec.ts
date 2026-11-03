@@ -15,7 +15,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const who = vi.hoisted(() => ({ name: "Ada", email: "ada@example.com" }));
+const who = vi.hoisted(() => ({
+	name: "Ada",
+	email: "ada@example.com",
+	excludes: "",
+}));
 vi.mock("../../core/harness/git-spawn.js", async (orig) => {
 	const real =
 		await orig<typeof import("../../core/harness/git-spawn.js")>();
@@ -23,7 +27,14 @@ vi.mock("../../core/harness/git-spawn.js", async (orig) => {
 		...real,
 		gitConfigRead: async (args: string[]) => {
 			const key = args.at(-1);
-			const value = key === "user.name" ? who.name : who.email;
+			const value =
+				key === "user.name"
+					? who.name
+					: key === "user.email"
+						? who.email
+						: key === "core.excludesFile"
+							? who.excludes
+							: "";
 			if (!value) throw new Error("unset");
 			return { stdout: `${value}\n`, stderr: "" };
 		},
@@ -37,8 +48,14 @@ beforeEach(() => {
 	folder = mkdtempSync(join(tmpdir(), "pl-startgit-"));
 	who.name = "Ada";
 	who.email = "ada@example.com";
+	who.excludes = "";
+	// No default global ignore file from the machine running the tests.
+	vi.stubEnv("XDG_CONFIG_HOME", mkdtempSync(join(tmpdir(), "pl-xdg-")));
 });
-afterEach(() => rmSync(folder, { recursive: true, force: true }));
+afterEach(() => {
+	vi.unstubAllEnvs();
+	rmSync(folder, { recursive: true, force: true });
+});
 
 const git = (...args: string[]) =>
 	execFileSync("git", args, { cwd: folder, encoding: "utf8" }).trim();
@@ -80,6 +97,26 @@ describe("Start git here (#1020)", () => {
 		expect(() => execFileSync("git", ["rev-parse", "HEAD"], { cwd: outside, stdio: "pipe" })).toThrow();
 		expect(before).toBeTruthy();
 		rmSync(outside, { recursive: true, force: true });
+	});
+
+	it("keeps the user's own global ignore rules: a secret they ignore everywhere is not committed (#1020)", async () => {
+		const ignore = join(mkdtempSync(join(tmpdir(), "pl-global-ignore-")), "ignore");
+		writeFileSync(ignore, "credentials.env\n");
+		who.excludes = ignore;
+		writeFileSync(join(folder, "credentials.env"), "TOKEN=x");
+		writeFileSync(join(folder, "app.js"), "1");
+		await startGit(folder);
+		expect(git("ls-files")).toBe("app.js");
+	});
+
+	it("the default global ignore file counts too when none is set", async () => {
+		const xdg = process.env.XDG_CONFIG_HOME as string;
+		mkdirSync(join(xdg, "git"), { recursive: true });
+		writeFileSync(join(xdg, "git", "ignore"), "*.pem\n");
+		writeFileSync(join(folder, "key.pem"), "k");
+		writeFileSync(join(folder, "app.js"), "1");
+		await startGit(folder);
+		expect(git("ls-files")).toBe("app.js");
 	});
 
 	it("refuses with no identity and leaves no .git", async () => {

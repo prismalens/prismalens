@@ -7,8 +7,10 @@ import {
 	realpathSync,
 	rmSync,
 	type Stats,
+	statSync,
 } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
@@ -60,7 +62,7 @@ async function identity(): Promise<{ name: string; email: string } | null> {
 
 /**
  * No config but the identity reaches these calls: no system or global file, no template,
- * hooks or signing, and ignores come only from the folder's own `.gitignore` (#1020).
+ * hooks or signing; ignores are the folder's `.gitignore` and the user's global ignore file (#1020).
  */
 function hardened(who: {
 	name: string;
@@ -79,9 +81,36 @@ function hardened(who: {
 	};
 }
 
+/**
+ * The user's own global ignore file: core.excludesFile, else git's default place. Only a
+ * plain file's path passes, so a secret ignored everywhere stays out of the first commit.
+ */
+async function globalExcludes(): Promise<string> {
+	let set = "";
+	try {
+		set = (
+			await gitConfigRead(["config", "--get", "core.excludesFile"])
+		).stdout.trim();
+	} catch {}
+	const home = homedir();
+	const path = set
+		? set.startsWith("~/")
+			? join(home, set.slice(2))
+			: set
+		: join(
+				process.env.XDG_CONFIG_HOME || join(home, ".config"),
+				"git",
+				"ignore",
+			);
+	if (!isAbsolute(path)) return NULL_FILE;
+	try {
+		return statSync(path).isFile() ? path : NULL_FILE;
+	} catch {
+		return NULL_FILE;
+	}
+}
+
 const PINNED = [
-	"-c",
-	`core.excludesFile=${NULL_FILE}`,
 	"-c",
 	`core.attributesFile=${NULL_FILE}`,
 	"-c",
@@ -128,13 +157,18 @@ async function startIn(
 			"git has no user.name and user.email. Set them, then try again.",
 		);
 	const env = hardened(who);
+	const excludes = ["-c", `core.excludesFile=${await globalExcludes()}`];
 	const timeoutMs = opts.timeoutMs ?? START_GIT_MS;
 	const git = (args: string[], ms = timeoutMs) => {
 		// Each step runs only while the path still names the folder it started in.
 		const now = lstatSync(folder, { throwIfNoEntry: false });
 		if (!now || now.isSymbolicLink() || !same(dir, now))
 			throw new StartGitRefused("This folder changed while git was starting.");
-		return spawnGit([...PINNED, ...args], { cwd: folder, env, timeoutMs: ms });
+		return spawnGit([...PINNED, ...excludes, ...args], {
+			cwd: folder,
+			env,
+			timeoutMs: ms,
+		});
 	};
 	// Making `.git` ourselves is the claim: it fails if one is there, from anyone.
 	try {
