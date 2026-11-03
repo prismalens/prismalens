@@ -719,6 +719,7 @@ export function RunPage() {
 							cwd={cwd}
 							agent={who.agent}
 							runName={name}
+							chat={chat}
 							briefBy={
 								startedBy(inv.triggerType) === "you" ? "You" : "PrismaLens"
 							}

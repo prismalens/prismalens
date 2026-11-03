@@ -6,10 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type CanonicalEvent,
+	HARNESS_TOOL_STEPS,
 	type RecordedFinding,
 	recordedFindings,
 } from "@prismalens/contracts/schemas";
-import { resultValue } from "@prismalens/integrations/harness";
+import { resultValue, TOOLS_CALL, TOOLS_SEARCH } from "@prismalens/integrations/harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import runInvestigationJob from "../../infrastructure/dispatch/investigation-run.js";
 import type { RunPorts } from "../../infrastructure/dispatch/run-ports.js";
@@ -298,6 +299,12 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const service = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "service", owes: "answer" });
 		expect(service?.tools).toContain("changes_list");
 		expect(service?.tools).not.toContain("incidents_similar");
+	});
+
+	it("every PrismaLens tool, search and call included, has a plain step name (#1020)", () => {
+		const names = [...gateway().tools.map((t) => t.name), TOOLS_SEARCH, TOOLS_CALL];
+		for (const n of names) expect(HARNESS_TOOL_STEPS[n], n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
+		expect(Object.keys(HARNESS_TOOL_STEPS).sort()).toEqual([...names].sort());
 	});
 
 	it("a report's tools go by what the run owes, not by its subject (#1020)", async () => {

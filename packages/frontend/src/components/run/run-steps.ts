@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	CanonicalEvent,
-	InvestigationReport,
-	StreamToolResult,
+import {
+	type CanonicalEvent,
+	HARNESS_TOOL_STEPS,
+	type InvestigationReport,
+	type StreamToolResult,
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
 import { commandText, mcpTool, shortPath } from "@/lib/report-view";
@@ -150,6 +151,7 @@ export function deriveSteps(
 				)
 			: null;
 		const recorded = gateway.byCall.get(callId);
+		const plain = recorded ? HARNESS_TOOL_STEPS[recorded.name] : undefined;
 		return {
 			n: i + 1,
 			callId,
@@ -163,7 +165,7 @@ export function deriveSteps(
 			...(callId === noted ? { dataNote: true } : {}),
 			input: inputOf(call.name, call.args),
 			...fileOf(call.args),
-			title: describe(call.args) ?? command,
+			title: plain ?? describe(call.args) ?? command,
 			command,
 			kind:
 				result?.toolCategory === "file" || result?.toolCategory === "search"

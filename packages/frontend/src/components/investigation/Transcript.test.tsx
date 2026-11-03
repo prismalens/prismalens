@@ -536,6 +536,42 @@ describe("Transcript spine (#1020)", () => {
 			container.querySelector('[data-testid="transcript-gateway"]')
 				?.textContent,
 		).toContain("INC-7 retry storm");
+		expect(
+			container.querySelector('[data-testid="transcript-gateway"]')
+				?.textContent,
+		).toContain("Found similar incidents");
+	});
+
+	it("never calls a chat's first message a brief", async () => {
+		const items = [op("hi", "started", "2026-11-03T10:00:00Z")];
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={items}
+					incidentId={null}
+					agent="Agent"
+					runName="Hi"
+					chat
+				/>,
+			),
+		);
+		const line = container.querySelector('[data-testid="transcript-delivery"]');
+		expect(line?.textContent).toBe("sent");
+		expect(container.textContent).not.toMatch(/brief/i);
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={items}
+					incidentId={null}
+					agent="Agent"
+					runName="Run 2"
+				/>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="transcript-delivery"]')
+				?.textContent,
+		).toBe("brief for Run 2");
 	});
 
 	it("folds a finished turn behind Worked for, and the chevron opens it", async () => {

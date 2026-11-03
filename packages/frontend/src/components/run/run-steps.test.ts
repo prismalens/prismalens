@@ -247,6 +247,8 @@ describe("deriveSteps nodes (#1020)", () => {
 			["command", null],
 			["knowledge", "INC-7 retry storm"],
 		]);
+		// A PrismaLens step reads as plain words, never its raw tool name.
+		expect(out[1]?.title).toBe("Found similar incidents");
 	});
 
 	it("marks only the first PrismaLens step to show the data note, and never puts the note in an outcome", () => {
