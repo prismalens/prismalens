@@ -57,7 +57,13 @@ function baseEnv(): Record<string, string> {
 
 /** Reads one config value the checkout used; only the whitelisted values survive. */
 async function mirrored(dir: string): Promise<string> {
-	const lines = ["[core]", "\trepositoryformatversion = 0", "\tbare = false"];
+	// quotePath off: patch headers carry raw paths, as the -z file lists do (#1020).
+	const lines = [
+		"[core]",
+		"\trepositoryformatversion = 0",
+		"\tbare = false",
+		"\tquotePath = false",
+	];
 	for (const [key, ok] of Object.entries(MIRRORED)) {
 		try {
 			const { stdout } = await spawnGit(["config", "--get", key], {
