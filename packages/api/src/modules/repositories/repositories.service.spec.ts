@@ -14,6 +14,7 @@ import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { GitSpawnError } from "../../core/harness/git-spawn.js";
 import {
+	NoHeadError,
 	PlainFolderError,
 	RepoSourceService,
 	remoteFailure,
@@ -224,6 +225,22 @@ describe("RepositoriesService.addSource", () => {
 			["repo/packages/api", "packages/api"],
 			["repo/packages/web", "packages/web"],
 		]);
+	});
+
+	it("a pick in a repo with no commit yet still keeps its root and sub-path (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(
+			new NoHeadError("git rev-parse failed (exit 128)", "/repo", "packages/api"),
+		);
+		await service.addSource({ source: "/repo/packages/api" });
+		expect(mockTx.repository.create).toHaveBeenCalledWith({
+			data: expect.objectContaining({
+				url: "/repo",
+				subPath: "packages/api",
+				fullName: "repo/packages/api",
+				plain: false,
+				syncError: "git rev-parse failed (exit 128)",
+			}),
+		});
 	});
 
 	it("saves a folder with no git as a plain Folder project, with no sync error (#1020)", async () => {

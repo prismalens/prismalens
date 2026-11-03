@@ -77,6 +77,17 @@ export class PlainFolderError extends Error {
 	}
 }
 
+/** A repo git found but could not read a commit in (none yet, say); where it sits is still known. */
+export class NoHeadError extends Error {
+	constructor(
+		message: string,
+		readonly root: string,
+		readonly prefix: string,
+	) {
+		super(message);
+	}
+}
+
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
 
 /** Folder or URL; anything else is refused before git sees it. */
@@ -213,9 +224,13 @@ export class RepoSourceService {
 				throw new PlainFolderError(folder);
 			throw err instanceof Error ? new Error(err.message) : err;
 		}
-		const [root = folder, prefix = ""] = stdout.split("\n");
-		const check = await this.headOf(root);
-		return { ...check, root, prefix: prefix.replace(/\/$/, "") };
+		const [root = folder, rawPrefix = ""] = stdout.split("\n");
+		const prefix = rawPrefix.replace(/\/$/, "");
+		try {
+			return { ...(await this.headOf(root)), root, prefix };
+		} catch (err) {
+			throw new NoHeadError((err as Error).message, root, prefix);
+		}
 	}
 
 	/**

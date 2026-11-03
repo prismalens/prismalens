@@ -17,6 +17,7 @@ import { repoLabel, shownRepoName } from "../../core/harness/git-credential.js";
 import {
 	classifySource,
 	displayNameFor,
+	NoHeadError,
 	PlainFolderError,
 	RepoSourceService,
 } from "../../core/harness/repo-source.service.js";
@@ -103,6 +104,10 @@ export class RepositoriesService {
 			} catch (err) {
 				if (err instanceof PlainFolderError) plain = true;
 				else sync.syncError = (err as Error).message;
+				if (err instanceof NoHeadError) {
+					source = err.root;
+					subPath = [err.prefix, subPath].filter(Boolean).join("/") || null;
+				}
 			}
 		} else {
 			sync = await this.validateUrl(
