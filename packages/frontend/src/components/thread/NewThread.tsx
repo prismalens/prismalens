@@ -8,7 +8,7 @@ import type {
 	ThreadStartSubject,
 } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import {
 	defaultAccessOf,
 	unreadyLine,
@@ -60,6 +60,8 @@ export function NewThread({
 	const investigate = useInvestigateIncident();
 	const navigate = useNavigate();
 	const [picked, setPicked] = useState<Picked>({});
+	// The incident a failed send already made: a retry investigates it, never makes another.
+	const madeIncident = useRef<string | null>(null);
 	const harness =
 		choice.harnesses.find((h) => h.id === picked.harness) ?? choice.effective;
 	const hid = harness?.id as HarnessId | undefined;
@@ -87,28 +89,37 @@ export function NewThread({
 		severity: Severity,
 		{ text, files }: ComposerSend,
 	) => {
-		const created = await createIncident.mutateAsync({
-			title: (text.split("\n")[0] ?? text).slice(0, 120),
-			description: text,
-			severity,
-			...(subject.kind === "service" ? { serviceId: subject.serviceId } : {}),
-		});
+		const id =
+			madeIncident.current ??
+			(
+				await createIncident.mutateAsync({
+					title: (text.split("\n")[0] ?? text).slice(0, 120),
+					description: text,
+					severity,
+					...(subject.kind === "service"
+						? { serviceId: subject.serviceId }
+						: {}),
+				})
+			).id;
+		madeIncident.current = id;
 		const uploaded = await Promise.all(
-			files.map((f) => uploadAttachment(created.id, f)),
+			files.map((f) => uploadAttachment(id, f)),
 		);
 		if (note) {
-			await navigate({ to: "/incidents/$id", params: { id: created.id } });
+			madeIncident.current = null;
+			await navigate({ to: "/incidents/$id", params: { id } });
 			return;
 		}
 		const started = await investigate.mutateAsync({
-			id: created.id,
+			id,
 			brief: text,
 			...run,
 			...(uploaded.length ? { attachments: uploaded.map((a) => a.id) } : {}),
 		});
+		madeIncident.current = null;
 		await navigate({
 			to: "/incidents/$id/conversation",
-			params: { id: created.id },
+			params: { id },
 			search: { investigation: started.investigationId },
 		});
 	};
