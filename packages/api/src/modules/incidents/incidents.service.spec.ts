@@ -51,6 +51,7 @@ describe("IncidentsService", () => {
 		},
 		incident: {
 			update: vi.fn(),
+			updateMany: vi.fn(),
 			findFirst: vi.fn(),
 			findUnique: vi.fn(),
 			findMany: vi.fn(),
@@ -85,6 +86,39 @@ describe("IncidentsService", () => {
 		}).compile();
 
 		service = moduleRef.get(IncidentsService);
+	});
+
+	describe("linkService: link-only (#1020, review of #1031)", () => {
+		it("writes the service only where the incident has none or the same one", async () => {
+			mockPrisma.incident.updateMany.mockResolvedValue({ count: 1 });
+			await expect(service.linkService("inc-1", "svc-1")).resolves.toBe(
+				"linked",
+			);
+			expect(mockPrisma.incident.updateMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						id: "inc-1",
+						OR: [{ serviceId: null }, { serviceId: "svc-1" }],
+					},
+					data: expect.objectContaining({ serviceId: "svc-1" }),
+				}),
+			);
+		});
+
+		it("says taken when another service holds it, missing when there is no incident", async () => {
+			mockPrisma.incident.updateMany.mockResolvedValue({ count: 0 });
+			mockPrisma.incident.findUnique.mockResolvedValueOnce({
+				id: "inc-1",
+				serviceId: "svc-other",
+			});
+			await expect(service.linkService("inc-1", "svc-1")).resolves.toBe(
+				"taken",
+			);
+			mockPrisma.incident.findUnique.mockResolvedValueOnce(null);
+			await expect(service.linkService("inc-2", "svc-1")).resolves.toBe(
+				"missing",
+			);
+		});
 	});
 
 	describe("addAlert idempotency", () => {
