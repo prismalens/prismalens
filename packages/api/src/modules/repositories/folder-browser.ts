@@ -14,19 +14,35 @@ import {
 import { isCanonical } from "../../infrastructure/dispatch/folder-lock.js";
 
 class ReadTimeout extends Error {}
+class Busy extends Error {}
 
-/** File system reads still running, answered or not: a stalled drive holds a thread each. */
+/** File system operations still running, answered or not: a stalled drive holds a thread each. */
 let outstanding = 0;
 const MAX_READS = 2;
 
-function timed<T>(op: Promise<T>, deadline: number): Promise<T> {
+/** Every listing operation (read, stat, close) until it settles, for the cap (#1020). */
+export const outstandingReads = () => outstanding;
+
+function track<T>(op: Promise<T>): Promise<T> {
 	outstanding++;
 	// An op that loses the race may still fail later; that failure is nobody's to handle.
 	op.catch(() => {}).finally(() => {
 		outstanding--;
 	});
-	const left = deadline - Date.now();
+	return op;
+}
+
+interface Budget {
+	deadline: number;
+	maxReads: number;
+}
+
+/** Starts `make` only inside the deadline and under the cap, then races it against the deadline. */
+function timed<T>(make: () => Promise<T>, b: Budget): Promise<T> {
+	const left = b.deadline - Date.now();
 	if (left <= 0) return Promise.reject(new ReadTimeout());
+	if (outstanding >= b.maxReads) return Promise.reject(new Busy());
+	const op = track(make());
 	let timer: NodeJS.Timeout | undefined;
 	return Promise.race([
 		op,
@@ -36,20 +52,20 @@ function timed<T>(op: Promise<T>, deadline: number): Promise<T> {
 	]).finally(() => clearTimeout(timer));
 }
 
-async function hasGit(dir: string, deadline: number): Promise<boolean> {
+async function hasGit(dir: string, b: Budget): Promise<boolean> {
 	try {
-		const st = await timed(lstat(join(dir, ".git")), deadline);
+		const st = await timed(() => lstat(join(dir, ".git")), b);
 		return st.isDirectory() || st.isFile();
 	} catch (e) {
-		if (e instanceof ReadTimeout) throw e;
+		if (e instanceof ReadTimeout || e instanceof Busy) throw e;
 		return false;
 	}
 }
 
 /** True when `dir` or a folder above it holds a `.git`, so a pick here adds as a Repo. */
-async function inRepo(dir: string, deadline: number): Promise<boolean> {
+async function inRepo(dir: string, b: Budget): Promise<boolean> {
 	for (let at = dir, n = 0; n < 64; n++) {
-		if (await hasGit(at, deadline)) return true;
+		if (await hasGit(at, b)) return true;
 		const up = dirname(at);
 		if (up === at) return false;
 		at = up;
@@ -59,6 +75,7 @@ async function inRepo(dir: string, deadline: number): Promise<boolean> {
 
 function failed(path: string, e: unknown): BrowseFoldersResult {
 	if (e instanceof ReadTimeout) return { ok: false, path, error: "timeout" };
+	if (e instanceof Busy) return { ok: false, path, error: "busy" };
 	const code = (e as NodeJS.ErrnoException).code;
 	if (code === "EACCES" || code === "EPERM")
 		return { ok: false, path, error: "denied" };
@@ -99,24 +116,35 @@ export async function browseFolders(
 	if (outstanding >= (opts.maxReads ?? MAX_READS))
 		return { ok: false, path, error: "busy" };
 	const max = opts.max ?? FOLDER_LIST_MAX;
-	const deadline = Date.now() + (opts.readMs ?? FOLDER_READ_MS);
+	const b: Budget = {
+		deadline: Date.now() + (opts.readMs ?? FOLDER_READ_MS),
+		maxReads: opts.maxReads ?? MAX_READS,
+	};
 	const entries: FolderEntry[] = [];
 	let truncated = false;
+	// Cut short by the deadline or the cap: nothing more is started for this listing.
+	let cut = false;
 	let dir: Dir | undefined;
 	let pending: Promise<unknown> | undefined;
 	try {
-		const st = await timed(lstat(path), deadline);
+		const st = await timed(() => lstat(path), b);
 		if (st.isSymbolicLink() || !st.isDirectory())
 			return { ok: false, path, error: "not-folder" };
 		// A linked parent would list somewhere else under this name (#1020).
 		if (!isCanonical(path)) return { ok: false, path, error: "link" };
-		const opening = opendir(path);
-		pending = opening;
-		dir = await timed(opening, deadline);
+		dir = await timed(() => {
+			const opening = opendir(path);
+			pending = opening;
+			return opening;
+		}, b);
+		pending = undefined;
 		for (;;) {
-			const reading = dir.read();
-			pending = reading;
-			const d = await timed(reading, deadline);
+			const open = dir;
+			const d = await timed(() => {
+				const reading = open.read();
+				pending = reading;
+				return reading;
+			}, b);
 			pending = undefined;
 			if (!d) break;
 			// A Dirent is not followed: a link or junction is never a directory here.
@@ -133,9 +161,10 @@ export async function browseFolders(
 			});
 		}
 	} catch (e) {
-		if (!(e instanceof ReadTimeout) || entries.length === 0)
-			return failed(path, e);
+		const short = e instanceof ReadTimeout || e instanceof Busy;
+		if (!short || entries.length === 0) return failed(path, e);
 		truncated = true;
+		cut = true;
 	} finally {
 		const open = dir;
 		const wait = pending ?? Promise.resolve();
@@ -143,16 +172,17 @@ export async function browseFolders(
 			.catch(() => {})
 			.then(async () => {
 				const late = open ?? ((await wait.catch(() => null)) as Dir | null);
-				await late?.close().catch(() => {});
+				if (late) await track(late.close()).catch(() => {});
 			});
 	}
 	let git = false;
-	try {
-		for (const e of entries) e.git = await hasGit(e.path, deadline);
-		git = await inRepo(path, deadline);
-	} catch {
-		truncated = true;
-	}
+	if (!cut)
+		try {
+			for (const e of entries) e.git = await hasGit(e.path, b);
+			git = await inRepo(path, b);
+		} catch {
+			truncated = true;
+		}
 	entries.sort((a, b) => a.name.localeCompare(b.name));
 	const parent = dirname(path);
 	return {

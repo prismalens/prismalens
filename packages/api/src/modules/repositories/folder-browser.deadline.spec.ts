@@ -6,13 +6,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fsMock = vi.hoisted(() => ({ opendir: vi.fn() }));
-vi.mock("node:fs/promises", async (orig) => ({
-	...(await orig<typeof import("node:fs/promises")>()),
-	opendir: fsMock.opendir,
-}));
+const fsMock = vi.hoisted(() => ({ opendir: vi.fn(), lstat: vi.fn() }));
+vi.mock("node:fs/promises", async (orig) => {
+	const real = await orig<typeof import("node:fs/promises")>();
+	fsMock.lstat.mockImplementation(real.lstat);
+	return { ...real, opendir: fsMock.opendir, lstat: fsMock.lstat };
+});
 
-const { browseFolders } = await import("./folder-browser.js");
+const { browseFolders, outstandingReads } = await import("./folder-browser.js");
 
 const later = <T>(ms: number, value: T) =>
 	new Promise<T>((r) => setTimeout(() => r(value), ms));
@@ -87,5 +88,38 @@ describe("the folder listing's deadline (#1020)", () => {
 			for (const end of ends) end();
 			fsMock.opendir.mockReset();
 		}
+	});
+
+	it("after a partial read times out, no more stats start, and the stalled read is still counted", async () => {
+		let endRead = () => {};
+		const read = vi
+			.fn()
+			.mockResolvedValueOnce(folder("api"))
+			.mockReturnValueOnce(new Promise((r) => (endRead = () => r(null))));
+		fsMock.opendir.mockResolvedValueOnce({ read, close: async () => {} });
+		await vi.waitFor(() => expect(outstandingReads()).toBe(0));
+		fsMock.lstat.mockClear();
+		const got = await browseFolders(root, { readMs: 30, maxReads: 5 });
+		expect(got).toMatchObject({ ok: true, truncated: true });
+		// Only the folder's own lstat ran: none for the entry's .git or the parents.
+		expect(fsMock.lstat).toHaveBeenCalledTimes(1);
+		expect(outstandingReads()).toBe(1);
+		endRead();
+		await vi.waitFor(() => expect(outstandingReads()).toBe(0));
+	});
+
+	it("a close that stalls is counted against the cap until it ends", async () => {
+		let endClose = () => {};
+		const close = vi.fn(() => new Promise<void>((r) => (endClose = r)));
+		fsMock.opendir.mockResolvedValueOnce({ read: async () => null, close });
+		await vi.waitFor(() => expect(outstandingReads()).toBe(0));
+		expect((await browseFolders(root, { readMs: 200, maxReads: 1 })).ok).toBe(true);
+		await vi.waitFor(() => expect(close).toHaveBeenCalled());
+		expect(outstandingReads()).toBe(1);
+		expect(await browseFolders(root, { readMs: 200, maxReads: 1 })).toMatchObject({
+			error: "busy",
+		});
+		endClose();
+		await vi.waitFor(() => expect(outstandingReads()).toBe(0));
 	});
 });
