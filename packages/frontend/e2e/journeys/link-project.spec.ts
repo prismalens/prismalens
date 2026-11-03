@@ -5,6 +5,7 @@
  * Make it a service and Link to a project (#1020): both name a service and show the
  * read-only `service=<name>` rule alerts map by.
  */
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { createIncidentByHand } from "./by-hand";
 
@@ -16,7 +17,10 @@ test.describe("#1020 — services for projects", () => {
 	}) => {
 		const name = `cart-api-${Date.now()}`;
 		await page.goto("/projects");
-		await page.getByTestId("add-project-source").fill(process.cwd());
+		// Its own folder, so the project journeys that add the package folder never meet it.
+		await page
+			.getByTestId("add-project-source")
+			.fill(join(process.cwd(), "e2e"));
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();
 		const repo = { id: page.url().split("/projects/")[1] ?? "" };

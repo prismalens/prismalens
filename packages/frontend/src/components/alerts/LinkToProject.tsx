@@ -20,9 +20,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { useRepositories, useServices } from "@/lib/api/hooks";
+import { useRepositories } from "@/lib/api/hooks";
 import { useLinkRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useCreateService } from "@/lib/api/hooks/use-services-orpc";
+import { client } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -78,7 +79,6 @@ function LinkDialog({
 	onOpenChange: (open: boolean) => void;
 }) {
 	const repos = useRepositories({ limit: 100 });
-	const services = useServices();
 	const create = useCreateService();
 	const link = useLinkRepository();
 	const [repositoryId, setRepositoryId] = useState<string>();
@@ -93,7 +93,9 @@ function LinkDialog({
 		if (!repositoryId || !shown) return;
 		setError(null);
 		try {
-			const plan = linkPlan(shown, services.data?.data ?? []);
+			// Ask the server by name: a page of the catalog may not hold it.
+			const found = await client.services.list({ search: shown, limit: 100 });
+			const plan = linkPlan(shown, found.data);
 			const serviceId =
 				"serviceId" in plan
 					? plan.serviceId

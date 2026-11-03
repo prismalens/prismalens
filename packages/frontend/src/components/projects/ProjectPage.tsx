@@ -11,12 +11,14 @@ import { NewThread } from "@/components/thread/NewThread";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useServices } from "@/lib/api/hooks";
 import {
 	useLinkRepository,
 	useRepository,
 } from "@/lib/api/hooks/use-repositories-orpc";
-import { useCreateService } from "@/lib/api/hooks/use-services-orpc";
+import {
+	useCreateService,
+	useService,
+} from "@/lib/api/hooks/use-services-orpc";
 import { useThreads } from "@/lib/api/hooks/use-threads-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 
@@ -167,12 +169,12 @@ function MakeService({
 }) {
 	const create = useCreateService();
 	const link = useLinkRepository();
-	const services = useServices();
+	const service = useService(linked[0] ?? "");
 	const [name, setName] = useState(defaultName);
 	const [error, setError] = useState<string | null>(null);
 	const first = linked[0];
 	if (first) {
-		const serviceName = services.data?.data.find((s) => s.id === first)?.name;
+		const serviceName = service.data?.name;
 		return (
 			<section
 				aria-label="Service"
