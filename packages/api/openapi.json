@@ -29394,7 +29394,8 @@
                             "missing",
                             "timeout",
                             "not-folder",
-                            "not-absolute"
+                            "not-absolute",
+                            "link"
                           ],
                           "type": "string"
                         }

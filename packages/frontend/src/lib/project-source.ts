@@ -73,6 +73,7 @@ export const BROWSE_ERROR: Record<
 	timeout: "Took too long",
 	"not-folder": "Not a folder",
 	"not-absolute": "Type a full path",
+	link: "Goes through a link",
 };
 
 const RECENT_KEY = "pl.recentProjects";

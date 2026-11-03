@@ -11,6 +11,7 @@ import {
 	FOLDER_READ_MS,
 	type FolderEntry,
 } from "@prismalens/contracts";
+import { isCanonical } from "../../infrastructure/dispatch/folder-lock.js";
 
 class ReadTimeout extends Error {}
 
@@ -96,6 +97,8 @@ export async function browseFolders(
 		const st = await timed(lstat(path), deadline);
 		if (st.isSymbolicLink() || !st.isDirectory())
 			return { ok: false, path, error: "not-folder" };
+		// A linked parent would list somewhere else under this name (#1020).
+		if (!isCanonical(path)) return { ok: false, path, error: "link" };
 		const opening = opendir(path);
 		pending = opening;
 		dir = await timed(opening, deadline);

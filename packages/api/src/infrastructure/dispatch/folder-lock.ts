@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { realpathSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 
@@ -21,6 +21,18 @@ export function canonical(p: string): string {
 		return realpathSync.native(p);
 	} catch {
 		return p;
+	}
+}
+
+/**
+ * True when no part of `p` is a link, junction or short name: the disk names it as written
+ * (letter case aside where the disk ignores it). A swap after this check is not caught (#1020).
+ */
+export function isCanonical(p: string): boolean {
+	try {
+		return fold(realpathSync.native(p)) === fold(resolve(p));
+	} catch {
+		return false;
 	}
 }
 

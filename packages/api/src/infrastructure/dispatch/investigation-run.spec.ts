@@ -3551,6 +3551,14 @@ describe("a project, service or no-subject thread (#1020)", () => {
 			rmSync(target, { recursive: true, force: true });
 		});
 
+		it("a folder reached through a linked parent is not run in (#1020)", async () => {
+			mkdirSync(join(folder, "real", "notes"), { recursive: true });
+			symlinkSync(join(folder, "real"), join(folder, "alias"), process.platform === "win32" ? "junction" : "dir");
+			const t = plainThread();
+			const ws = await resolveWorkspace(data({ thread: { ...t, repos: [{ ...t.repos[0], url: join(folder, "alias", "notes") }] } as never }), fakePorts());
+			expect(ws.layout).toBe("unmapped");
+		});
+
 		it("a follow-up keeps the folder only while the project still names it as a plain folder", async () => {
 			const ws: RunWorkspace = { layout: "folder", cwd: folder, repos: [] };
 			const again = await rebuildWorkspace(ws, "inv-thread", "OpenCode", fakePorts(), undefined, false, folder);

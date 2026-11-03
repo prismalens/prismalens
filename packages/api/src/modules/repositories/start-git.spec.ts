@@ -135,6 +135,18 @@ describe("Start git here (#1020)", () => {
 		expect(git("log", "-1", "--format=%s")).toBe("Initial commit");
 	});
 
+	it("refuses a folder reached through a linked parent (#1020)", async () => {
+		const base = mkdtempSync(join(tmpdir(), "pl-startgit-alias-"));
+		try {
+			mkdirSync(join(base, "real", "notes"), { recursive: true });
+			symlinkSync(join(base, "real"), join(base, "alias"), process.platform === "win32" ? "junction" : "dir");
+			await expect(startGit(join(base, "alias", "notes"))).rejects.toThrow(/link/);
+			expect(existsSync(join(base, "real", "notes", ".git"))).toBe(false);
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+	});
+
 	it("refuses a folder that already has git", async () => {
 		mkdirSync(join(folder, ".git"));
 		await expect(startGit(folder)).rejects.toThrow(/already has git/);

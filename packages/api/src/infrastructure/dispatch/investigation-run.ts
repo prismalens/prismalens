@@ -98,6 +98,7 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
+import { isCanonical } from "./folder-lock.js";
 import {
 	clearReceipt,
 	stampOf,
@@ -2067,7 +2068,7 @@ interface Skip {
 /** The plain folder itself (#1020): no snapshot, no branch and no diff base, so nothing to undo. */
 function folderWorkspace(runDir: string, dir: string): Workspace {
 	const st = lstatSync(dir, { throwIfNoEntry: false });
-	if (!st?.isDirectory() || st.isSymbolicLink())
+	if (!st?.isDirectory() || st.isSymbolicLink() || !isCanonical(dir))
 		return unmappedWorkspace(
 			runDir,
 			`Ran without code: the folder ${dir} is gone or is a link.`,

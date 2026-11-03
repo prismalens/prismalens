@@ -16,6 +16,7 @@ import {
 	gitConfigRead,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
+import { isCanonical } from "../../infrastructure/dispatch/folder-lock.js";
 
 /** More files than this are left for the user to commit themselves. */
 export const START_GIT_MAX_FILES = 5000;
@@ -103,7 +104,7 @@ export async function startGit(
 	opts: { maxFiles?: number; timeoutMs?: number; afterInit?: () => void } = {},
 ): Promise<void> {
 	const st = lstatSync(folder, { throwIfNoEntry: false });
-	if (!st || st.isSymbolicLink() || !st.isDirectory())
+	if (!st || st.isSymbolicLink() || !st.isDirectory() || !isCanonical(folder))
 		throw new StartGitRefused("This folder is gone or is a link.");
 	const key = realpathSync(folder);
 	if (starting.has(key))

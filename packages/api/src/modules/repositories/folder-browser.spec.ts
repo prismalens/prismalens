@@ -58,6 +58,17 @@ describe("the host's folder listing (#1020)", () => {
 		}
 	});
 
+	it("refuses a path that reaches its folder through a linked parent (#1020)", async () => {
+		mkdirSync(join(root, "real", "inner"), { recursive: true });
+		dirLink(join(root, "real"), join(root, "alias"));
+		expect(await browseFolders(join(root, "alias", "inner"))).toMatchObject({
+			ok: false,
+			error: "link",
+		});
+		const fine = await browseFolders(join(root, "real", "inner"));
+		expect(fine.ok).toBe(true);
+	});
+
 	it("marks git folders and says when the folder itself is in a repo", async () => {
 		mkdirSync(join(root, "shop", ".git"), { recursive: true });
 		mkdirSync(join(root, "shop", "api"));
