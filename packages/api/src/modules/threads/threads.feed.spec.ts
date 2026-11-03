@@ -240,9 +240,10 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			where: { id: { in: ids } },
 			data: { settledAt: expect.any(Date) },
 		});
+		// A bare Undo clears only the thread it names, never its siblings (#1020).
 		await service().settle(ids[0] as string, false);
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
-			where: { id: { in: ids } },
+			where: { id: ids[0] },
 			data: { settledAt: null },
 		});
 		prisma.investigation.findUnique.mockResolvedValue(null);

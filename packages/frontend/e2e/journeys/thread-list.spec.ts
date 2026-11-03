@@ -187,12 +187,17 @@ test.describe("#1020 — thread list and New thread", () => {
 				});
 			},
 		);
+		let answer = () => {};
+		const answered = new Promise<void>((r) => {
+			answer = r;
+		});
 		await page.route(
 			(url) => url.pathname === `/api/threads/${RUN_ID}/settle`,
 			async (route) => {
 				const body = route.request().postDataJSON() as { settled: boolean };
 				settles.push(body);
 				settledAt = body.settled ? new Date().toISOString() : null;
+				if (body.settled) await answered;
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
@@ -215,6 +220,10 @@ test.describe("#1020 — thread list and New thread", () => {
 		);
 		await needs.getByTestId("thread-row-wrap").hover();
 		await needs.getByTestId("thread-settle").click();
+		// Undo waits for Settle's answer: without it, it would not know what to restore.
+		await expect(page.getByTestId("settle-undo")).toBeDisabled();
+		answer();
+		await expect(page.getByTestId("settle-undo")).toBeEnabled();
 		await expect(page.getByTestId("threads-needs")).toHaveCount(0);
 		await expect(page.getByTestId("settle-undo-line")).toContainText(
 			"Settled Why does checkout cache miss",

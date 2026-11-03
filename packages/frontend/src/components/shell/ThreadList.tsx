@@ -172,15 +172,18 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 							<span className="min-w-0 truncate">Settled {undo.title}</span>
 							<button
 								type="button"
+								// Until Settle answers there is nothing exact to restore (#1020).
+								disabled={!undo.previous}
 								onClick={() => {
+									if (!undo.previous) return;
 									settle.mutate({
 										id: undo.id,
 										settled: false,
-										...(undo.previous ? { restore: undo.previous } : {}),
+										restore: undo.previous,
 									});
 									setUndo(null);
 								}}
-								className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3"
+								className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
 								data-testid="settle-undo"
 							>
 								Undo

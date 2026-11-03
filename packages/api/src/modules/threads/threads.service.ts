@@ -422,7 +422,8 @@ export class ThreadsService {
 			return { ids, previous: [] };
 		}
 		await this.prisma.investigation.updateMany({
-			where: { id: { in: ids } },
+			// Undo with no states to restore clears only the thread named, never its block.
+			where: settled ? { id: { in: ids } } : { id },
 			data: { settledAt: settled ? new Date() : null },
 		});
 		return {
