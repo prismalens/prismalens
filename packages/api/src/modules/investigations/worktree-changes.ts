@@ -165,6 +165,27 @@ async function recordedRoot(
 	return null;
 }
 
+/** More refused paths than this and no content is diffed at all. */
+const MAX_REFUSED = 200;
+
+/**
+ * Whether git must not open this changed path: a link on its way, or a regular file with
+ * another hard link. A path gone from disk is a deletion, diffed from the object store.
+ */
+async function linkedPath(root: string, path: string): Promise<boolean> {
+	if (!isSafeRepoPath(path)) return true;
+	let at = root;
+	const parts = path.split("/");
+	for (const [i, part] of parts.entries()) {
+		at = join(at, part);
+		const st = await lstat(at).catch(() => null);
+		if (!st) return false;
+		if (st.isSymbolicLink()) return true;
+		if (i === parts.length - 1 && st.isFile() && st.nlink > 1) return true;
+	}
+	return false;
+}
+
 /** The work's result, or null once the request's deadline passes first. */
 function beforeDeadline<T>(work: Promise<T>, until: number): Promise<T | null> {
 	const left = until - Date.now();
@@ -193,6 +214,8 @@ async function untrackedEntry(
 		at = join(at, part);
 		const st = await lstat(at).catch(() => null);
 		if (!st || st.isSymbolicLink()) return entry("link");
+		if (at === join(root, path) && st.isFile() && st.nlink > 1)
+			return entry("link");
 	}
 	return entry("added");
 }
@@ -225,14 +248,18 @@ async function repoChanges(
 	const objects = await objectsOf(root);
 	if (!objects) return gone("not-a-workspace");
 	const gitDir = await scratchRepo(root, objects);
-	const env = {
+	const env: Record<string, string> = {
 		...baseEnv(),
 		GIT_DIR: gitDir,
 		GIT_WORK_TREE: root,
 		GIT_INDEX_FILE: join(gitDir, "index"),
 	};
-	const git = (args: string[], timeoutMs = READ_TIMEOUT_MS) =>
-		spawnGit(["--no-replace-objects", ...args], { cwd: root, timeoutMs, env });
+	const git = (args: string[], timeoutMs = READ_TIMEOUT_MS, over = env) =>
+		spawnGit(["--no-replace-objects", ...args], {
+			cwd: root,
+			timeoutMs,
+			env: over,
+		});
 	try {
 		try {
 			await git(["read-tree", repo.head]);
@@ -248,13 +275,38 @@ async function repoChanges(
 			"--src-prefix=a/",
 			"--dst-prefix=b/",
 		];
-		const [counts, statuses, links] = await Promise.all([
-			git(["diff", "--numstat", "-z", ...diff]).then((r) => numstat(r.stdout)),
+		const [statuses, links] = await Promise.all([
 			git(["diff", "--name-status", "-z", ...diff]).then((r) =>
 				nameStatus(r.stdout),
 			),
 			git(["ls-files", "-z", "-s"]).then((r) => submodules(r.stdout)),
 		]);
+		const refused = new Set<string>();
+		for (const { path } of statuses)
+			if (await linkedPath(root, path)) refused.add(path);
+		// Checked again right before git reads content. A swap in the moment between this
+		// check and git's own open cannot be closed with path-based Node APIs (#1020).
+		const again = await recordedRoot(repo.dir, roots);
+		if (!again || !samePath(again, root)) return gone("not-a-workspace");
+		const blocked = refused.size > MAX_REFUSED;
+		const content = (args: string[]) =>
+			refused.size === 0
+				? git(args)
+				: git(
+						[
+							...args,
+							"--",
+							":(top)",
+							...[...refused].map((p) => `:(exclude,top,literal)${p}`),
+						],
+						READ_TIMEOUT_MS,
+						{ ...env, GIT_LITERAL_PATHSPECS: "0" },
+					);
+		const counts = blocked
+			? new Map<string, [number | null, number | null]>()
+			: await content(["diff", "--numstat", "-z", ...diff]).then((r) =>
+					numstat(r.stdout),
+				);
 		// Names only, within what is left of the deadline; a late listing says truncated.
 		const others = await git(
 			["ls-files", "-z", "--others", "--exclude-standard"],
@@ -263,6 +315,8 @@ async function repoChanges(
 			.then((r) => r.stdout.split("\0").filter(Boolean))
 			.catch(() => null);
 		const files: WorktreeFile[] = statuses.map(({ path, code }) => {
+			if (refused.has(path))
+				return { path, status: "link", additions: null, deletions: null };
 			const [additions, deletions] = counts.get(path) ?? [null, null];
 			return {
 				path,
@@ -280,7 +334,9 @@ async function repoChanges(
 			});
 		let tracked = "";
 		try {
-			tracked = (await git(["diff", ...diff])).stdout;
+			tracked = blocked
+				? "\0too-large"
+				: (await content(["diff", ...diff])).stdout;
 		} catch {
 			tracked = "\0too-large";
 		}

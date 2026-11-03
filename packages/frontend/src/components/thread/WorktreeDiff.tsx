@@ -203,6 +203,9 @@ function RepoDiff({ repo }: { repo: WorktreeRepoChanges }) {
 						/>
 					</section>
 				</WorkerPoolContextProvider>
+			) : repo.files.find((f) => f.path === shown)?.status === "link" ? (
+				// A link or hard link on the path: neither git nor PrismaLens opens it (#1020).
+				<Empty className="px-3" text="Linked file" testId="diff-linked-file" />
 			) : repo.files.find((f) => f.path === shown)?.status === "added" ? (
 				// New files are listed, never read, so they have no lines to show (#1020).
 				<Empty className="px-3" text="New file" testId="diff-new-file" />

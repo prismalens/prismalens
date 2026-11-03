@@ -294,6 +294,25 @@ describe("WorktreeDiff (#1020)", () => {
 		expect(q("diff-new-file")?.textContent).toBe("New file");
 	});
 
+	it("says Linked file for a path git was not allowed to open", async () => {
+		state.changes = {
+			repos: [
+				ok({
+					files: [
+						{
+							path: "src/retry.ts",
+							status: "link",
+							additions: null,
+							deletions: null,
+						},
+					],
+				}),
+			],
+		};
+		await render(panel({ surface: "diff" }));
+		expect(q("diff-linked-file")?.textContent).toBe("Linked file");
+	});
+
 	it("has a state for no code, no changes, a removed workspace, too large and a failed read", async () => {
 		await render(panel({ surface: "diff" }));
 		expect(q("diff-none")?.textContent).toBe("No code here");
