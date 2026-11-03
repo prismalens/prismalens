@@ -11,6 +11,7 @@ import { clock, whenText } from "@/components/schedules/schedule-time";
 import { TickDot } from "@/components/schedules/TickDot";
 import { tickLine } from "@/components/schedules/tick-copy";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -63,14 +64,17 @@ export function SchedulesSection() {
 			) : error ? (
 				<Problem text={getErrorMessage(error)} onRetry={() => void refetch()} />
 			) : data && data.schedules.length === 0 ? (
-				<Empty
-					testId="schedules-empty"
-					text={
-						canEdit
-							? "No schedules yet. A schedule checks a service on its own, at the times you pick."
-							: "No schedules yet."
-					}
-				/>
+				<>
+					<Empty
+						testId="schedules-empty"
+						text={
+							canEdit
+								? "No schedules yet. A schedule checks a service on its own, at the times you pick."
+								: "No schedules yet."
+						}
+					/>
+					<HelperThread place="schedules" />
+				</>
 			) : (
 				data && (
 					<div

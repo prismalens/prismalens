@@ -157,10 +157,40 @@ describe("ThreadsService (#1020)", () => {
 		expect(dispatch.threadRunOf).toHaveBeenLastCalledWith({
 			repositoryId: null,
 			serviceId: null,
+			helperPlace: null,
 		});
 		expect(
 			dispatch.addInvestigationJob.mock.calls[1]?.[0].connectionIds,
 		).toBeUndefined();
+	});
+
+	it("keeps a helper's page on a no-subject run and its job, and drops it on any other subject", async () => {
+		await service().start({
+			subject: { kind: "none" },
+			text: "hi",
+			place: "alerts",
+		});
+		expect(investigations.startOrGet).toHaveBeenLastCalledWith(
+			expect.objectContaining({ helperPlace: "alerts" }),
+		);
+		expect(dispatch.threadRunOf).toHaveBeenLastCalledWith({
+			repositoryId: null,
+			serviceId: null,
+			helperPlace: "alerts",
+		});
+		await service().start({
+			subject: { kind: "project", repositoryId: REPO },
+			text: "hi",
+			place: "alerts",
+		});
+		expect(
+			investigations.startOrGet.mock.lastCall?.[0].helperPlace,
+		).toBeUndefined();
+		expect(dispatch.threadRunOf).toHaveBeenLastCalledWith({
+			repositoryId: REPO,
+			serviceId: null,
+			helperPlace: null,
+		});
 	});
 
 	it("refuses before writing anything: a missing project or service, files with no draft, an agent that cannot run", async () => {

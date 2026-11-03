@@ -8,6 +8,7 @@
 import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
+	type HelperPlace,
 	type InvestigationContext,
 	telemetrySources,
 } from "@prismalens/contracts/schemas";
@@ -19,6 +20,7 @@ import {
 	renderContextPack,
 	sanitizeUntrustedBlock,
 	sanitizeUntrustedLine,
+	UNTRUSTED_DATA_CHAT_GUARD,
 	UNTRUSTED_DATA_METHOD_GUARD,
 } from "./fence.js";
 import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
@@ -175,12 +177,36 @@ export function buildChatPrompt(
 	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
-${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}
+${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}${toolsBlock(options)}
 
 ${UNTRUSTED_DATA_METHOD_GUARD}
 
 ${text}`;
 }
+
+/** The PrismaLens tools paragraph, ahead of the message so the message is read last (#1020). */
+function toolsBlock(options: InvestigationPromptOptions): string {
+	const tools = options.tools?.trim();
+	return tools
+		? `
+
+${tools}`
+		: "";
+}
+
+/** A helper's page in fixed words: no page data, never the webhook token (#1020, OBJ-001). */
+const PLACE_LINES: Record<HelperPlace, string> = {
+	alerts:
+		"The user started this chat from the Alerts page in PrismaLens, which has no alerts yet. Alerts arrive by webhook: the webhook URL and token are shown on this page under Copy URL / Copy token, and the user copies them from there. In any example, write them as <webhook-url> and <webhook-token>; never ask the user to paste the token here.",
+	services:
+		"The user started this chat from the Services page in PrismaLens, which has no services yet. A service is something that runs and alerts: it names the code the agent reads, and alerts map to it by their service label. The user adds one with New service on that page.",
+	schedules:
+		"The user started this chat from Settings, Scheduled prompts in PrismaLens, which has no schedules yet. A schedule runs a prompt on a service at the times the user picks; only the host machine adds one, with New schedule on that page.",
+};
+
+/** A plain greeting gets a plain answer: no tool is probed to look busy (#1020). */
+const ANSWER_FIRST =
+	"Answer the message directly. Use a tool only when the message needs one: a greeting, or a question you can answer from what you know, gets a short reply and no tool calls.";
 
 /**
  * A project, service or no-subject thread's first turn (#1020, OBJ-003): a coding
@@ -201,10 +227,15 @@ function buildThreadPrompt(
 				: "";
 	const surfaces =
 		t?.subject === "none"
-			? [
-					"  - No project is linked: your working directory is an empty scratch folder.",
-				]
+			? ["  - No project is linked: there is no code here to read."]
 			: renderSurfaces(context, !options.noNetwork, "THREAD_SUBJECT");
+	const place = t?.subject === "none" && t.place ? PLACE_LINES[t.place] : null;
+	const page = place
+		? `
+
+THIS PAGE
+  ${place}`
+		: "";
 	const runLines = [
 		...(options.noNetwork ? [NO_NETWORK] : []),
 		accessLine(
@@ -212,15 +243,15 @@ function buildThreadPrompt(
 			options.modeName ?? "the agent's default",
 		),
 	];
-	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed.
+	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed. ${ANSWER_FIRST}
 
 SURFACES
-${surfaces.join("\n")}${renderThreadSubject(context)}
+${surfaces.join("\n")}${renderThreadSubject(context)}${toolsBlock(options)}${page}
 
 THIS RUN
 ${runLines.map((l) => `  - ${l}`).join("\n")}
 
-${UNTRUSTED_DATA_METHOD_GUARD}
+${UNTRUSTED_DATA_CHAT_GUARD}
 
 ${text}`;
 }
@@ -285,6 +316,8 @@ export interface InvestigationPromptOptions {
 	modeName?: string;
 	noNetwork?: boolean;
 	level?: AccessLevel;
+	/** A chat's PrismaLens tools paragraph; it goes before the message. */
+	tools?: string;
 }
 
 /** One prompt, whole: the role, this run's facts, then the standing method and output. */

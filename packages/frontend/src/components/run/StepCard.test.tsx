@@ -128,3 +128,14 @@ describe("A step's node on the spine (#1020)", () => {
 		expect(q("step-outcome")).toBeNull();
 	});
 });
+
+describe("The PrismaLens data note (#1020)", () => {
+	it("shows on the step that carries it, as plain text, and not on the others", () => {
+		availability = undefined;
+		render(step({ dataNote: true, outcome: "<b>No page</b>" }), false);
+		expect(q("step-data-note")?.textContent).toMatch(/^PrismaLens data\./);
+		expect(q("step-outcome")?.innerHTML).toBe("&lt;b&gt;No page&lt;/b&gt;");
+		render(step({ outcome: "Done" }), false);
+		expect(q("step-data-note")).toBeNull();
+	});
+});

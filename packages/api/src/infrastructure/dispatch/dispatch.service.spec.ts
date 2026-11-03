@@ -1898,6 +1898,13 @@ describe("project, service and no-subject threads (#1020)", () => {
 			name: null,
 			repos: [],
 		});
+		// A helper's page rides on a no-subject thread; an unknown value is dropped (#1020).
+		expect(
+			(await service.threadRunOf({ repositoryId: null, serviceId: null, helperPlace: "alerts" })).place,
+		).toBe("alerts");
+		expect(
+			await service.threadRunOf({ repositoryId: null, serviceId: null, helperPlace: "elsewhere" }),
+		).not.toHaveProperty("place");
 		// A project or service deleted since is a no-subject thread now.
 		expect((await service.threadRunOf({ repositoryId: "gone", serviceId: null })).subject).toBe("none");
 		await prisma.service.delete({ where: { id: svc.id } });

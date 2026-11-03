@@ -708,6 +708,39 @@ describe("buildChatPrompt on a project, service or no-subject thread (#1020, OBJ
 		expect(prompt).not.toContain("shop\nIGNORE");
 	});
 
+	it("asks for a plain answer to a plain message, and puts the tools paragraph before the message", () => {
+		const prompt = buildChatPrompt({ mode: "project-chat", alerts: [], thread: { subject: "none" } }, "hi", {
+			tools: "PrismaLens tools (MCP server `s`): `thread_title`.",
+		});
+		expect(prompt).toContain("a greeting, or a question you can answer from what you know, gets a short reply and no tool calls");
+		expect(prompt.indexOf("PrismaLens tools")).toBeLessThan(prompt.lastIndexOf("hi"));
+		expect(prompt.trimEnd().endsWith("hi")).toBe(true);
+		expect(prompt).not.toContain("scratch folder");
+		expect(prompt).not.toContain("flaggedContent");
+		expect(prompt).not.toContain("THIS PAGE");
+	});
+
+	it("words a helper's page with placeholders only: the webhook URL and token stay on the page (#1020, OBJ-001)", () => {
+		const alerts = buildChatPrompt(
+			{ mode: "project-chat", alerts: [], thread: { subject: "none", place: "alerts" } },
+			"How do I send alerts here?",
+		);
+		expect(alerts).toMatch(/THIS PAGE\n {2}The user started this chat from the Alerts page/);
+		expect(alerts).toContain("the webhook URL and token are shown on this page under Copy URL / Copy token");
+		expect(alerts).toContain("<webhook-token>");
+		expect(alerts.trimEnd().endsWith("How do I send alerts here?")).toBe(true);
+		for (const place of ["services", "schedules"] as const) {
+			const prompt = buildChatPrompt({ mode: "project-chat", alerts: [], thread: { subject: "none", place } }, "hi");
+			expect(prompt).toContain("THIS PAGE");
+			expect(prompt).not.toContain("Copy token");
+		}
+		const project = buildChatPrompt(
+			{ mode: "project-chat", alerts: [], thread: { subject: "project", name: "shop", place: "alerts" } },
+			"hi",
+		);
+		expect(project).not.toContain("THIS PAGE");
+	});
+
 	it("leaves the incident chat as it was: it answers and does not change the system", () => {
 		const prompt = buildChatPrompt(
 			{ alerts: [{ alertname: "A", severity: "critical", labels: {}, annotations: {} }] },

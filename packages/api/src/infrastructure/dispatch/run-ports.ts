@@ -15,6 +15,7 @@ import type {
 	CanonicalEvent,
 	LiveTurn,
 	RunEndReason,
+	ThreadSubjectKind,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -231,6 +232,8 @@ export interface RunPorts {
 			harness?: string,
 			/** A follow-up's start, so `run_status` counts its own wall clock. */
 			turnStartedAt?: Date,
+			/** A thread with no incident lists no incident tools (#1020). */
+			subject?: ThreadSubjectKind,
 		): Promise<GatewayEntry | null>;
 		revoke(runId: string): void;
 	};

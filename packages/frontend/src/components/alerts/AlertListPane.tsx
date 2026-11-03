@@ -14,9 +14,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { LinkToProject } from "@/components/alerts/LinkToProject";
+import { WebhookCopy } from "@/components/alerts/WebhookCopy";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
@@ -147,6 +149,9 @@ export function AlertListPane({
 	});
 	const alerts = data?.data ?? [];
 	const rows = useMemo(() => orderAlerts(alerts), [alerts]);
+	const empty = !isLoading && !(error && !data) && rows.length === 0;
+	const unfiltered =
+		!search.status && !search.severity && search.tab !== "unmapped";
 
 	const open = (alert: AlertWithRelations) =>
 		navigate({ to: "/alerts/$id", params: { id: alert.id }, search: keep });
@@ -260,21 +265,27 @@ export function AlertListPane({
 						onRetry={() => void refetch()}
 					/>
 				)}
-				{!isLoading && !(error && !data) && rows.length === 0 && (
+				{empty && (
 					<Empty
 						className="px-4"
 						text="No alerts found."
 						testId="alerts-empty-state"
 						action={
 							sidebar ? undefined : (
-								<Button variant="text" size="sm" asChild>
-									<Link to="/settings" search={{ tab: "alert-intake" }}>
-										Add an alert source
-									</Link>
-								</Button>
+								<>
+									<Button variant="text" size="sm" asChild>
+										<Link to="/settings" search={{ tab: "alert-intake" }}>
+											Add an alert source
+										</Link>
+									</Button>
+									{unfiltered && <WebhookCopy testIdPrefix="alerts" />}
+								</>
 							)
 						}
 					/>
+				)}
+				{!sidebar && unfiltered && empty && (
+					<HelperThread place="alerts" className="mx-auto mt-4 px-4" />
 				)}
 				{lanes.map((lane) => (
 					<section

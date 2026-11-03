@@ -48447,6 +48447,14 @@
                   "draftKey": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "place": {
+                    "enum": [
+                      "alerts",
+                      "services",
+                      "schedules"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
 	deriveSteps,
@@ -246,6 +246,34 @@ describe("deriveSteps nodes (#1020)", () => {
 		expect(out.map((s) => [s.node, s.outcome])).toEqual([
 			["command", null],
 			["knowledge", "INC-7 retry storm"],
+		]);
+	});
+
+	it("marks only the first PrismaLens step to show the data note, and never puts the note in an outcome", () => {
+		const ts = "2026-11-03T10:00:00Z";
+		const b = (seq: number) => ({ runId: "00000000-0000-4000-8000-000000000001", branchId: "m", path: [], seq, ts, label: null });
+		const recorded = (seq: number, name: string, body: string) => ({
+			kind: "harness_tool_call" as const,
+			...b(seq),
+			server: "prismalens-1",
+			name,
+			at: ts,
+			turn: "first" as const,
+			output: [HARNESS_DATA_NOTE, body].join(String.fromCharCode(10)),
+		});
+		const out = deriveSteps([
+			{ kind: "agent_step", ...b(0), text: "", toolCalls: [
+				{ toolCallId: "a", name: "Bash", args: { command: "ls" } },
+				{ toolCallId: "b", name: "mcp__prismalens-1__thread_title", args: {} },
+				{ toolCallId: "c", name: "mcp__prismalens-1__artifact_publish", args: {} },
+			] },
+			recorded(1, "thread_title", '{"title":"Send alerts here"}'),
+			recorded(2, "artifact_publish", "No page to publish"),
+		]);
+		expect(out.map((s) => [s.dataNote ?? false, s.outcome])).toEqual([
+			[false, null],
+			[true, null],
+			[false, "No page to publish"],
 		]);
 	});
 });

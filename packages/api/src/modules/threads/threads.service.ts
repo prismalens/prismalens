@@ -124,6 +124,7 @@ export class ThreadsService {
 			repositoryId: subject.kind === "project" ? subject.repositoryId : null,
 			serviceId: subject.kind === "service" ? subject.serviceId : null,
 		};
+		const helperPlace = subject.kind === "none" ? input.place : undefined;
 		if (ids.repositoryId) {
 			const found = await this.prisma.repository.findUnique({
 				where: { id: ids.repositoryId },
@@ -156,6 +157,7 @@ export class ThreadsService {
 			incidentId: null,
 			...(ids.repositoryId ? { repositoryId: ids.repositoryId } : {}),
 			...(ids.serviceId ? { serviceId: ids.serviceId } : {}),
+			...(helperPlace ? { helperPlace } : {}),
 			triggerType: "manual",
 			kind: "chat",
 			title: input.text.slice(0, 120),
@@ -173,7 +175,10 @@ export class ThreadsService {
 					}
 				: {}),
 		});
-		const thread = await this.dispatch.threadRunOf(ids);
+		const thread = await this.dispatch.threadRunOf({
+			...ids,
+			helperPlace: helperPlace ?? null,
+		});
 		const connections = ids.serviceId
 			? await this.integrations.getIntegrationsForService(ids.serviceId)
 			: [];

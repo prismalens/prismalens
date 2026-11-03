@@ -14,6 +14,7 @@ import {
 } from "./common.js";
 import {
 	AttachmentIdsSchema,
+	HelperPlaceSchema,
 	InvestigationSchema,
 	RunChoiceSchema,
 } from "./investigation.js";
@@ -28,15 +29,22 @@ export const ThreadStartSubjectSchema = z.discriminatedUnion("kind", [
 export type ThreadStartSubject = z.infer<typeof ThreadStartSubjectSchema>;
 
 /** Body of `POST /threads`: the first message starts the thread's run. */
-export const StartThreadSchema = z.object({
-	subject: ThreadStartSubjectSchema,
-	text: z.string().trim().min(1).max(4000),
-	accessLevel: AccessLevelSchema.optional(),
-	...RunChoiceSchema.shape,
-	/** Uploaded first with `POST /threads/drafts/{draftKey}/attachments`. */
-	attachments: AttachmentIdsSchema.optional(),
-	draftKey: z.string().uuid().optional(),
-});
+export const StartThreadSchema = z
+	.object({
+		subject: ThreadStartSubjectSchema,
+		text: z.string().trim().min(1).max(4000),
+		accessLevel: AccessLevelSchema.optional(),
+		...RunChoiceSchema.shape,
+		/** Uploaded first with `POST /threads/drafts/{draftKey}/attachments`. */
+		attachments: AttachmentIdsSchema.optional(),
+		draftKey: z.string().uuid().optional(),
+		/** A helper started from an empty page; only on a no-subject thread. */
+		place: HelperPlaceSchema.optional(),
+	})
+	.refine((v) => !v.place || v.subject.kind === "none", {
+		message: "Only a thread with no subject starts from a page.",
+		path: ["place"],
+	});
 export type StartThreadInput = z.infer<typeof StartThreadSchema>;
 
 export const StartThreadResponseSchema = z.object({

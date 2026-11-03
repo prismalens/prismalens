@@ -32,6 +32,8 @@ export interface RunStep {
 	node?: NodeKind;
 	/** A PrismaLens tool's outcome, the first line it returned; null for any other call. */
 	outcome?: string | null;
+	/** The run's first PrismaLens step: it shows the data note every result carries, once (#1020). */
+	dataNote?: boolean;
 	/** The call named a shell command, so it can be copied or staged in the terminal. */
 	shell?: boolean;
 	/** The shell command as it ran, for Copy and Run in terminal; `command` is display text. */
@@ -122,6 +124,7 @@ export function deriveSteps(
 			}
 		}
 	}
+	const noted = order.find((id) => gateway.byCall.has(id));
 	return order.map((callId, i) => {
 		const call = calls.get(callId) as {
 			name: string;
@@ -157,6 +160,7 @@ export function deriveSteps(
 				gateway: recorded?.name,
 			}),
 			outcome: recorded ? outcomeLine(recorded) : null,
+			...(callId === noted ? { dataNote: true } : {}),
 			input: inputOf(call.name, call.args),
 			...fileOf(call.args),
 			title: describe(call.args) ?? command,

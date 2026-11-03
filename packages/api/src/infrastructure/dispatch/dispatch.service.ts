@@ -44,6 +44,7 @@ import {
 	CanonicalEventSchema,
 	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
+	HelperPlaceSchema,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
@@ -1272,6 +1273,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	async threadRunOf(row: {
 		repositoryId: string | null;
 		serviceId: string | null;
+		helperPlace?: string | null;
 	}): Promise<ThreadRun> {
 		const repoFields = {
 			sourceKind: true,
@@ -1337,12 +1339,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					),
 				};
 		}
+		const place = HelperPlaceSchema.safeParse(row.helperPlace).data;
 		return {
 			subject: "none",
 			repositoryId: null,
 			serviceId: null,
 			name: null,
 			repos: [],
+			...(place ? { place } : {}),
 		};
 	}
 

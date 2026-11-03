@@ -73,7 +73,10 @@ test.describe("#979 - schedules", () => {
 		await expect(
 			page.getByRole("button", { name: "New schedule" }),
 		).toHaveCount(1);
-		await expect(empty.locator("xpath=following-sibling::*[1]")).toContainText(
+		await expect(
+			empty.locator("xpath=following-sibling::*[1]"),
+		).toHaveAttribute("data-testid", "helper-thread");
+		await expect(empty.locator("xpath=following-sibling::*[2]")).toContainText(
 			"Built into PrismaLens",
 		);
 

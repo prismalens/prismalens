@@ -20,11 +20,13 @@ import {
 	useAlertWindow,
 	usePullAlerts,
 } from "@/components/alerts/AlertListPane";
+import { WebhookCopy } from "@/components/alerts/WebhookCopy";
 import { Hint } from "@/components/shared/Hint";
 import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { markFirstOpened, useFirstOpen } from "@/hooks/use-first-open";
@@ -187,17 +189,23 @@ function AlertNumbers() {
 				) : !s ? (
 					<Loading rows={3} />
 				) : s.total === 0 ? (
-					<Empty
-						text="Nothing has fired yet."
-						testId="alerts-none"
-						action={
-							<Button variant="text" size="sm" asChild>
-								<Link to="/settings" search={{ tab: "sources" }}>
-									Add an alert source
-								</Link>
-							</Button>
-						}
-					/>
+					<>
+						<Empty
+							text="Nothing has fired yet."
+							testId="alerts-none"
+							action={
+								<>
+									<Button variant="text" size="sm" asChild>
+										<Link to="/settings" search={{ tab: "sources" }}>
+											Add an alert source
+										</Link>
+									</Button>
+									<WebhookCopy testIdPrefix="alerts" />
+								</>
+							}
+						/>
+						<HelperThread place="alerts" className="mt-4" />
+					</>
 				) : (
 					<>
 						<p

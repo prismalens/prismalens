@@ -75,7 +75,7 @@ export function harnessPromptLine(view: RunView, serverName: string): string {
 			: []),
 		...(titles
 			? [
-					"Name this thread with `thread_title` in 3 to 7 words once you know what it is about.",
+					"Name this thread with `thread_title` in 3 to 7 words once the user has named a task; a greeting keeps the title it has.",
 				]
 			: []),
 		"For metrics, logs and other live data, use the tools your own setup gives you.",
