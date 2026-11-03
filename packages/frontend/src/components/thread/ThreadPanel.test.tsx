@@ -275,6 +275,25 @@ describe("WorktreeDiff (#1020)", () => {
 		expect(q("patch")?.textContent).toContain("+z");
 	});
 
+	it("says New file for an untracked file, whose content is never read", async () => {
+		state.changes = {
+			repos: [
+				ok({
+					files: [
+						{
+							path: "notes.md",
+							status: "added",
+							additions: null,
+							deletions: null,
+						},
+					],
+				}),
+			],
+		};
+		await render(panel({ surface: "diff" }));
+		expect(q("diff-new-file")?.textContent).toBe("New file");
+	});
+
 	it("has a state for no code, no changes, a removed workspace, too large and a failed read", async () => {
 		await render(panel({ surface: "diff" }));
 		expect(q("diff-none")?.textContent).toBe("No code here");
