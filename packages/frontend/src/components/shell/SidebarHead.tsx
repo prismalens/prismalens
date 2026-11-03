@@ -121,6 +121,7 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 			<Hint label="Add project" side="bottom">
 				<Link
 					to="/projects"
+					search={{ add: true }}
 					aria-label="Add project"
 					className={BUTTON}
 					data-testid="sidebar-add-project"
@@ -189,7 +190,7 @@ export function ThreadSearch({
 			id: "add-project",
 			label: "Add project",
 			icon: FolderPlus,
-			run: () => void navigate({ to: "/projects" }),
+			run: () => void navigate({ to: "/projects", search: { add: true } }),
 		},
 		...(phone
 			? []

@@ -5,6 +5,7 @@
  * Make it a service and Link to a project (#1020): both name a service and show the
  * read-only `service=<name>` rule alerts map by.
  */
+import { execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +13,12 @@ import { expect, test } from "@playwright/test";
 import { createIncidentByHand } from "./by-hand";
 
 /** A folder no other journey adds: a folder inside this checkout resolves to the same project. */
-const ownFolder = () => mkdtempSync(join(tmpdir(), "pl-e2e-project-"));
+const ownFolder = () => {
+	const dir = mkdtempSync(join(tmpdir(), "pl-e2e-project-"));
+	// A git folder: a plain one is a Folder project, which cannot be a service (#1020).
+	execFileSync("git", ["init", "-q"], { cwd: dir });
+	return dir;
+};
 
 const ALERT_ID = "a1020000-0000-4000-8000-000000000001";
 
@@ -21,7 +27,7 @@ test.describe("#1020 — services for projects", () => {
 		page,
 	}) => {
 		const name = `cart-api-${Date.now()}`;
-		await page.goto("/projects");
+		await page.goto("/projects?add=1");
 		await page.getByTestId("add-project-source").fill(ownFolder());
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();

@@ -25,7 +25,9 @@ import {
 	useSetRepositoryCredential,
 	useUnlinkRepository,
 } from "@/lib/api/hooks";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { credentialLabel } from "@/lib/investigation-events";
+import { AddProjectDialog } from "../projects/AddProjectDialog";
 
 const AUTO = "auto";
 
@@ -101,7 +103,6 @@ export function ServiceCodeSection({
 	service: ServiceWithRelations;
 }) {
 	const [adding, setAdding] = useState(false);
-	const [source, setSource] = useState("");
 	const add = useAddRepositorySource();
 	const unlink = useUnlinkRepository();
 	const repos = service.repositories ?? [];
@@ -199,44 +200,23 @@ export function ServiceCodeSection({
 					);
 				})}
 			</ul>
-			{adding && (
-				<form
-					className="mt-2 flex flex-col gap-2 sm:flex-row"
-					onSubmit={(e) => {
-						e.preventDefault();
-						add.mutate(
-							{ serviceId: service.id, source: source.trim() },
-							{
-								onSuccess: () => {
-									setAdding(false);
-									setSource("");
-								},
-							},
-						);
-					}}
-				>
-					<Input
-						autoFocus
-						value={source}
-						onChange={(e) => setSource(e.target.value)}
-						placeholder="~/code/payments or git@github.com:acme/payments.git"
-						aria-label="A folder on this machine or a git URL"
-						className="flex-1"
-						data-testid="service-code-input"
-					/>
-					<Button
-						type="submit"
-						variant="secondary"
-						disabled={!source.trim() || add.isPending}
-					>
-						Add
-					</Button>
-					<Button type="button" variant="text" onClick={() => setAdding(false)}>
-						Cancel
-					</Button>
-				</form>
-			)}
-			<MutationError error={add.error ?? unlink.error} className="mt-2" />
+			<AddProjectDialog
+				open={adding}
+				onOpenChange={(o) => {
+					setAdding(o);
+					if (!o) add.reset();
+				}}
+				title="Add code"
+				pending={add.isPending}
+				error={add.error ? getErrorMessage(add.error) : null}
+				onChoose={(source) =>
+					add.mutate(
+						{ serviceId: service.id, source },
+						{ onSuccess: () => setAdding(false) },
+					)
+				}
+			/>
+			<MutationError error={unlink.error} className="mt-2" />
 		</RecordSection>
 	);
 }

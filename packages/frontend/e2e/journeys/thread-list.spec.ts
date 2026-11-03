@@ -12,7 +12,7 @@ const THREAD_ID = "f5555555-5555-4555-8555-555555555555";
 const RUN_ID = "f6666666-6666-4666-8666-666666666666";
 
 async function addProject(page: Page): Promise<string> {
-	await page.goto("/projects");
+	await page.goto("/projects?add=1");
 	await page.getByTestId("add-project-source").fill(process.cwd());
 	await page.getByTestId("add-project-submit").click();
 	await expect(page.getByTestId("project-page")).toBeVisible();

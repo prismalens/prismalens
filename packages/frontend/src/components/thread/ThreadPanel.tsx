@@ -36,6 +36,7 @@ export function ThreadPanel({
 	runId,
 	live,
 	investigation,
+	diff = true,
 	files,
 	suspects,
 }: {
@@ -45,11 +46,15 @@ export function ThreadPanel({
 	runId: string;
 	live: boolean;
 	investigation: boolean;
+	/** False for a plain folder's thread: no diff base, so no Diff (#1020). */
+	diff?: boolean;
 	files: EvidenceFiles;
 	/** In the order the agent first recorded them; each at its latest status. */
 	suspects: RecordedHypothesis[];
 }) {
-	const shown = SURFACES.filter((s) => investigation || s.id !== "suspects");
+	const shown = SURFACES.filter(
+		(s) => (investigation || s.id !== "suspects") && (diff || s.id !== "diff"),
+	);
 	const onKeyDown = (e: KeyboardEvent) => {
 		if (e.key !== "Escape" || e.defaultPrevented) return;
 		e.stopPropagation();
@@ -106,7 +111,7 @@ export function ThreadPanel({
 					/>
 				) : surface === "files" ? (
 					<FilesPane files={files} onJump={() => {}} />
-				) : surface === "diff" ? (
+				) : surface === "diff" && diff ? (
 					<WorktreeDiff runId={runId} live={live} />
 				) : surface === "suspects" && investigation ? (
 					<Suspects suspects={suspects} />

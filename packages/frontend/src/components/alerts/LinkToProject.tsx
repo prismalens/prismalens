@@ -148,7 +148,11 @@ function LinkDialog({
 				) : repos.data && projects.length === 0 && !search ? (
 					<p className="text-body text-text-2">
 						No projects yet.{" "}
-						<Link to="/projects" className="text-text-1 underline">
+						<Link
+							to="/projects"
+							search={{ add: true }}
+							className="text-text-1 underline"
+						>
 							Add project
 						</Link>
 					</p>

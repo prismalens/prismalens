@@ -135,7 +135,7 @@ test.describe("#1020 — a project thread", () => {
 		);
 
 		// Add a project: a real folder, no service.
-		await page.goto("/projects");
+		await page.goto("/projects?add=1");
 		await page.getByTestId("add-project-source").fill(process.cwd());
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();

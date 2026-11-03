@@ -255,6 +255,16 @@ export function ThreadPage({ id }: { id: string }) {
 			>
 				{inv?.title ?? "Thread"}
 			</h1>
+			{workspace?.layout === "folder" && (
+				// A plain folder's thread works in the folder itself (#1020).
+				<span
+					className="inline-flex shrink-0 items-center gap-1 text-meta text-warn"
+					data-testid="thread-no-undo"
+				>
+					<TriangleAlert className="size-3.5" aria-hidden />
+					No undo
+				</span>
+			)}
 			{inv && (
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
@@ -425,6 +435,7 @@ export function ThreadPage({ id }: { id: string }) {
 					runId={inv.id}
 					live={run.isActive}
 					investigation={inv.kind === "investigation"}
+					diff={workspace?.layout !== "folder"}
 					files={files}
 					suspects={suspects}
 				/>
