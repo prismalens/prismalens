@@ -21,6 +21,9 @@ test.describe("#523 S2/final — the incidents queue and the shell keys", () => 
 		await page.goto("/incidents?view=analytics");
 		await expect(headerHeading(page)).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
+		// The reload draws the sidebar before the layout's key listener is attached.
+		await expect(headerHeading(page)).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("thread-list")).toBeVisible();
 
 		// `?` opens the shortcut sheet.
 		await page.keyboard.press("?");
