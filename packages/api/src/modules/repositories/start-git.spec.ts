@@ -125,6 +125,25 @@ describe("Start git here (#1020)", () => {
 		expect(existsSync(join(folder, ".git"))).toBe(false);
 	});
 
+	it("reads an ignore file set in a config the global one includes (#1020, CP3 r3 OBJ-007)", async () => {
+		writeFileSync(join(home, "my-ignore"), "credentials.env\n");
+		writeFileSync(join(home, "extra.gitconfig"), "[core]\n\texcludesFile = ~/my-ignore\n");
+		globalConfig("[include]\n\tpath = ~/extra.gitconfig\n");
+		writeFileSync(join(folder, "credentials.env"), "TOKEN=x");
+		writeFileSync(join(folder, "app.js"), "1");
+		await startGit(folder);
+		expect(git("ls-files")).toBe("app.js");
+	});
+
+	it("refuses, and makes no .git, when the default ignore file is there but cannot be read (CP3 r3 OBJ-007)", async () => {
+		const xdg = process.env.XDG_CONFIG_HOME as string;
+		// A folder in the file's place exists and cannot be read as a file on every platform.
+		mkdirSync(join(xdg, "git", "ignore"), { recursive: true });
+		writeFileSync(join(folder, "credentials.env"), "TOKEN=x");
+		await expect(startGit(folder)).rejects.toThrow(/ignore file/);
+		expect(existsSync(join(folder, ".git"))).toBe(false);
+	});
+
 	it("the default global ignore file counts too when none is set", async () => {
 		const xdg = process.env.XDG_CONFIG_HOME as string;
 		mkdirSync(join(xdg, "git"), { recursive: true });

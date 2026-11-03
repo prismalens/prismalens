@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { lstatSync, mkdirSync, rmSync, type Stats, statSync } from "node:fs";
+import {
+	closeSync,
+	lstatSync,
+	mkdirSync,
+	openSync,
+	rmSync,
+	type Stats,
+	statSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { gitEnv } from "../../core/harness/git-env.js";
@@ -85,9 +93,12 @@ const LOCATE = new Set([
 	"SYSTEMROOT",
 ]);
 
-const isFile = (p: string) => {
+/** Opens and reads it, as git will; metadata alone says nothing of readability. */
+const readable = (p: string) => {
 	try {
-		return statSync(p).isFile();
+		if (!statSync(p).isFile()) return false;
+		closeSync(openSync(p, "r"));
+		return true;
 	} catch {
 		return false;
 	}
@@ -110,7 +121,14 @@ async function globalExcludes(): Promise<string> {
 	try {
 		set = (
 			await spawnGit(
-				["config", "--global", "--type=path", "--get", "core.excludesFile"],
+				[
+					"config",
+					"--global",
+					"--includes",
+					"--type=path",
+					"--get",
+					"core.excludesFile",
+				],
 				{ cwd: tmpdir(), env, timeoutMs: GIT_PROBE_TIMEOUT_MS },
 			)
 		).stdout.trim();
@@ -120,7 +138,7 @@ async function globalExcludes(): Promise<string> {
 			throw new StartGitRefused("Your git ignore setting could not be read.");
 	}
 	if (set) {
-		if (!isAbsolute(set) || !isFile(set))
+		if (!isAbsolute(set) || !readable(set))
 			throw new StartGitRefused(
 				`Your global git ignore file cannot be read: ${set}`,
 			);
@@ -132,7 +150,13 @@ async function globalExcludes(): Promise<string> {
 		"git",
 		"ignore",
 	);
-	return isFile(fallback) ? fallback : NULL_FILE;
+	// Absent is "no ignores"; there but unreadable refuses, never a silent /dev/null (#1020).
+	if (!lstatSync(fallback, { throwIfNoEntry: false })) return NULL_FILE;
+	if (!readable(fallback))
+		throw new StartGitRefused(
+			`Your global git ignore file cannot be read: ${fallback}`,
+		);
+	return fallback;
 }
 
 const PINNED = [
