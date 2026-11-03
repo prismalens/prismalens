@@ -5,7 +5,7 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ComposerBox } from "./ComposerBox";
+import { actionProps, Composer, type ComposerAction } from "../thread/Composer";
 import { DockedComposer, lastMessageWord } from "./DockedComposer";
 
 const record = vi.hoisted(() => ({
@@ -23,6 +23,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	CHIP: "chip",
 	EffortChip: () => null,
 	AccessChip: () => null,
+	effortLevels: () => [],
 	defaultAccessOf: () => ({
 		level: { level: "supervised", from: "prismalens" },
 	}),
@@ -98,6 +99,29 @@ vi.mock("@/components/incidents/run-facts", () => ({
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const MESSAGE = { id: "message", label: "Message", detail: "At the next pause.", needsText: true };
+const OPENCODE = { id: "opencode", label: "OpenCode", checked: { outcome: "answers-acp", images: true } };
+
+/** The shared box as the incident pages mount it: actions, text kept by the page (#1020). */
+function box(p: {
+	actions: ComposerAction[];
+	action: string;
+	onAction?: (id: string) => void;
+	live?: boolean;
+	text: string;
+	onSend: () => void;
+	[k: string]: unknown;
+}) {
+	const { actions, action, onAction = () => {}, live, ...rest } = p;
+	return createElement(Composer, {
+		state: live ? "live" : "ready",
+		placeholder: "p",
+		choice: { harness: OPENCODE as never, model: "", effort: null, accessLevel: "supervised" },
+		onChoice: () => {},
+		onText: () => {},
+		...actionProps(actions, action, onAction),
+		...rest,
+	} as Parameters<typeof Composer>[0]);
+}
 
 let container: HTMLDivElement;
 let root: Root;
@@ -134,24 +158,19 @@ afterEach(async () => {
 	record.extra = {};
 });
 
-describe("ComposerBox image previews (R4.3)", () => {
+describe("the box's image previews (R4.3)", () => {
 	it("keeps a shown thumbnail's URL when another file is added, and revokes each on remove and unmount", async () => {
 		let n = 0;
 		vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:${++n}`);
 		const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
 		await act(async () => {
 			root.render(
-				createElement(ComposerBox, {
+				box({
 					actions: [MESSAGE],
 					action: "message",
-					onAction: () => {},
 					live: true,
-					chips: null,
 					text: "",
-					setText: () => {},
-					placeholder: "Message the agent",
 					onSend: () => {},
-					agent: { label: "OpenCode", images: true },
 				}),
 			);
 		});
@@ -171,7 +190,7 @@ describe("ComposerBox image previews (R4.3)", () => {
 	});
 });
 
-describe("the box: one chip row, one Send (#811)", () => {
+describe("the box: one chip row, one Send (#811, #1020)", () => {
 	const ASK = { id: "ask", label: "Ask", detail: "A question.", needsText: true };
 	const INVESTIGATE = { id: "investigate", label: "Investigate", detail: "A run.", needsText: false };
 	async function render(props: Record<string, unknown>) {
@@ -179,18 +198,14 @@ describe("the box: one chip row, one Send (#811)", () => {
 		const onAction = vi.fn();
 		await act(async () => {
 			root.render(
-				createElement(ComposerBox, {
+				box({
 					actions: [ASK, INVESTIGATE],
 					action: "ask",
 					onAction,
-					chips: null,
 					text: "why the pool?",
-					setText: () => {},
-					placeholder: "p",
 					onSend,
-					agent: { label: "OpenCode", images: true },
 					...props,
-				} as Parameters<typeof ComposerBox>[0]),
+				}),
 			);
 		});
 		return { onSend, onAction };
@@ -203,10 +218,19 @@ describe("the box: one chip row, one Send (#811)", () => {
 		});
 	};
 
-	it("shows the action as a menu only where there is a choice", async () => {
-		await render({});
-		expect(q("action-chip").tagName).toBe("BUTTON");
+	it("names the action above the box and offers the others under /, only where there is a choice", async () => {
+		const { onAction } = await render({ text: "/" });
+		expect(q("composer-mode").getAttribute("data-mode")).toBe("ask");
+		expect(q("composer-mode-clear")).toBeNull();
+		expect(q("composer-slash-ask")).toBeNull();
+		await act(async () => q<HTMLButtonElement>("composer-slash-investigate").click());
+		expect(onAction).toHaveBeenCalledWith("investigate");
+		const picked = await render({ action: "investigate" });
+		expect(q("composer-mode").textContent).toContain("Investigate");
+		await act(async () => q<HTMLButtonElement>("composer-mode-clear").click());
+		expect(picked.onAction).toHaveBeenCalledWith("ask");
 		await render({ actions: [MESSAGE], action: "message", live: true });
+		expect(document.querySelector('[data-testid="composer-mode"]')).toBeNull();
 		expect(document.querySelector('[data-testid="action-chip"]')).toBeNull();
 	});
 

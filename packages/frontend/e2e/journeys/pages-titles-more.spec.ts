@@ -25,6 +25,7 @@ import { createIncidentByHand } from "./by-hand";
 const ownFolder = () => mkdtempSync(join(tmpdir(), "pl-e2e-project-"));
 
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { pickAction } from "./verb";
 
 const THREAD_ID = "e1020000-0000-4000-8000-000000000001";
 const ALERT_ID = "a1020000-0000-4000-8000-000000000002";
@@ -86,9 +87,7 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 		await expect(page.getByTestId("changes-card")).toHaveCount(0);
 
 		// Post a first message (a timeline note) from the composer
-		const actionChip = blank.getByTestId("action-chip");
-		await actionChip.click();
-		await page.getByRole("menuitemradio", { name: "Note" }).click();
+		await pickAction(blank, "note");
 
 		const noteContent = `First incident note ${Date.now()}`;
 		const input = blank.getByTestId("composer-input");

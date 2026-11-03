@@ -14,7 +14,7 @@ import {
 	setTheme,
 } from "./live-stream-fixtures";
 import { settled } from "./settled";
-import { investigateButton } from "./verb";
+import { investigateButton, pickAction } from "./verb";
 
 /**
  * #743, #673 — the incident: a band that never scrolls, one reading column
@@ -90,8 +90,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 
 		// A note from the composer lands in changes-timeline
 		const note = `Design evidence note ${Date.now()}`;
-		await page.getByTestId("action-chip").click();
-		await page.getByTestId("action-note").click();
+		await pickAction(page, "note");
 		await page.getByTestId("composer-input").fill(note);
 		await page.getByTestId("composer-send").click();
 		await expect(page.getByTestId("changes-timeline")).toContainText(note);
@@ -165,7 +164,10 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		// Navigating to Conversation opens on the draft
 		await page.goto(`/incidents/${id}/conversation`);
 		await expect(page.getByTestId("crumb-view")).toHaveText("New conversation");
-		await expect(page.getByTestId("action-chip")).toHaveText("Ask");
+		await expect(page.getByTestId("composer-mode")).toHaveAttribute(
+			"data-mode",
+			"ask",
+		);
 		await expect(await investigateButton(page)).toBeVisible();
 		await settled(page);
 	});

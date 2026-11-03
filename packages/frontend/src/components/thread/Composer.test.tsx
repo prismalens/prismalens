@@ -100,7 +100,7 @@ describe("the one composer (#1020)", () => {
 		expect(branch?.textContent).toContain("prismalens/shop-r1");
 		expect(box?.contains(branch)).toBe(false);
 		expect(
-			branch?.compareDocumentPosition(box as Node) &
+			(branch?.compareDocumentPosition(box as Node) ?? 0) &
 				Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBeTruthy();
 	});

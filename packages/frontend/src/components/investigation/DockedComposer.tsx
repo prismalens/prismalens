@@ -14,10 +14,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { type MutableRefObject, useState } from "react";
 import {
-	AccessChip,
 	defaultAccessOf,
-	EffortChip,
-	ModelChip,
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
@@ -39,10 +36,12 @@ import { handoffHint } from "@/lib/handoff-line";
 import { defaultVerb, recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import {
+	actionProps,
+	Composer,
 	type ComposerAction,
-	ComposerBox,
+	type ComposerChoice,
 	type ComposerSend,
-} from "./ComposerBox";
+} from "../thread/Composer";
 import { RunDock } from "./RunDock";
 
 /** What a chip choice changes: one of the three, the rest stay. */
@@ -400,37 +399,17 @@ export function DockedComposer({
 							? undefined
 							: `${harness?.label ?? own.harness} is not on this machine.`
 						: record.investigateBlocked;
-	const blocked = !!blockedReason;
 
-	const chips = (
-		<>
-			<ModelChip
-				harness={harness}
-				model={model}
-				disabled={blocked}
-				onPick={(h, m) => choose({ kind: "model", harness: h, model: m })}
-			/>
-			<EffortChip
-				harness={harness}
-				model={model}
-				effort={effort}
-				disabled={blocked}
-				onEffort={(e) => choose({ kind: "effort", effort: e })}
-				onModel={(m) => harness && choose({ kind: "model", harness, model: m })}
-			/>
-			<AccessChip
-				harness={harness}
-				level={accessLevel}
-				disabled={blocked}
-				lockedHint={
-					finished
-						? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
-						: undefined
-				}
-				onLevel={(l) => choose({ kind: "level", level: l })}
-			/>
-		</>
-	);
+	const onChoice = (n: Partial<ComposerChoice> & { harnessId?: HarnessId }) => {
+		const picked = n.harnessId
+			? choice.harnesses.find((h) => h.id === n.harnessId)
+			: harness;
+		if (n.harnessId || n.model !== undefined) {
+			if (picked)
+				choose({ kind: "model", harness: picked, model: n.model ?? "" });
+		} else if (n.effort) choose({ kind: "effort", effort: n.effort });
+		else if (n.accessLevel) choose({ kind: "level", level: n.accessLevel });
+	};
 
 	const upload = (files: File[]) =>
 		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
@@ -531,13 +510,17 @@ export function DockedComposer({
 			data-testid="docked-composer"
 		>
 			<div className="mx-auto w-full max-w-[760px]">
-				<ComposerBox
-					actions={thread.actions}
-					action={action}
-					onAction={setAction}
-					chips={chips}
+				<Composer
+					state={live ? "live" : "ready"}
+					{...actionProps(thread.actions, action, setAction)}
+					choice={{ harness, model, effort, accessLevel }}
+					onChoice={onChoice}
+					accessHint={
+						finished
+							? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
+							: undefined
+					}
 					onSend={onSend}
-					live={live}
 					ended={
 						ended
 							? {
@@ -567,22 +550,17 @@ export function DockedComposer({
 					onFilesChange={draft ? record.setDraftFiles : undefined}
 					boxRef={boxRef}
 					text={draft ? record.draftText : message}
-					setText={draft ? record.setDraftText : setMessage}
+					onText={draft ? record.setDraftText : setMessage}
 					autoFocus={draft}
-					agent={{
-						label: harness?.label ?? who.agent,
-						images:
-							harness?.checked?.outcome === "answers-acp"
-								? harness.checked.images
-								: null,
-					}}
 					dock={dock}
-					isPending={record.isStarting}
+					pending={record.isStarting}
 					stopping={run.stopRequested}
-					blockedReason={blockedReason}
+					blockedReason={live ? undefined : blockedReason}
 					notice={notice}
 					holdSend={finished && (preview.isPending || !!handoff?.problem)}
-					onStop={() => run.stop({ onError: stopFailed(toast) })}
+					onStop={
+						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
+					}
 					undeliverable={run.undeliverable}
 					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
 					above={above}
