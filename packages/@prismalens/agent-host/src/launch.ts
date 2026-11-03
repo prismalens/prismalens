@@ -320,7 +320,9 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 
 	const dirs = [runEnv.configDir, runEnv.dataDir];
 	if (policy.github === "exclude") {
-		for (const key of GITHUB_TOKEN_VARS) delete env[key];
+		// Windows env names are case-insensitive: `gh_token` reaches the child as GH_TOKEN (#1020).
+		const token = refusal(GITHUB_TOKEN_VARS);
+		for (const key of Object.keys(env)) if (token(key)) delete env[key];
 		const ghDir = join(input.runDir, "gh");
 		env.GH_CONFIG_DIR = ghDir;
 		dirs.push(ghDir);

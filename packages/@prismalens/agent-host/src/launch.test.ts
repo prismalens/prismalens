@@ -245,6 +245,23 @@ describe('github: "exclude"', () => {
 	});
 });
 
+describe('github: "exclude" on a case-insensitive environment (#1020, CP4 OBJ-012, OBJ-013)', () => {
+	const exclude = (hostEnv: Record<string, string | undefined>, github: "include" | "exclude" = "exclude") =>
+		plan({
+			runDir: "/run",
+			policy: { ...POLICY, github, floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} } },
+			hostEnv,
+		}).env;
+
+	it("drops a token whatever the letter case of its name", () => {
+		const env = exclude({ PATH: "/bin", gh_token: "ghp_low", Github_Token: "ghs_mixed", gh_Enterprise_Token: "ghe" });
+		expect(Object.keys(env).map((k) => k.toUpperCase())).not.toEqual(
+			expect.arrayContaining(["GH_TOKEN"]),
+		);
+		expect(JSON.stringify(env)).not.toMatch(/ghp_low|ghs_mixed|"ghe"/);
+	});
+});
+
 describe("launch files", () => {
 	it("puts OpenCode's config inline with the level's overlay, and leaves the user's OPENCODE_CONFIG_DIR alone", () => {
 		const runDir = mkdtempSync(join(tmpdir(), "ah-launch-"));
