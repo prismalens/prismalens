@@ -215,12 +215,15 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 
 	it("marks one thread seen, and refuses an unknown one", async () => {
 		const id = uuid();
+		const stamp = new Date("2026-01-01T00:00:00Z");
+		prisma.investigation.findUnique.mockResolvedValue({ updatedAt: stamp });
 		await service().visit(id);
+		// Seen state keeps the row's updatedAt, which orders the feed.
 		expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
-			where: { id },
-			data: { lastVisitedAt: expect.any(Date) },
+			where: { id, updatedAt: stamp },
+			data: { lastVisitedAt: expect.any(Date), updatedAt: stamp },
 		});
-		prisma.investigation.updateMany.mockResolvedValue({ count: 0 });
+		prisma.investigation.findUnique.mockResolvedValue(null);
 		await expect(service().visit(id)).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});
@@ -229,22 +232,29 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 	it("settles an incident's whole block, and undoes it", async () => {
 		const inc = uuid();
 		const ids = [uuid(), uuid()];
-		prisma.investigation.findUnique.mockResolvedValue({ incidentId: inc });
+		const stamp = new Date("2026-01-01T00:00:00Z");
+		prisma.investigation.findUnique.mockResolvedValue({
+			incidentId: inc,
+			updatedAt: stamp,
+		});
 		prisma.investigation.findMany.mockResolvedValue(ids.map((id) => ({ id })));
 		expect(await service().settle(ids[0] as string, true)).toMatchObject({ ids });
 		expect(prisma.investigation.findMany).toHaveBeenCalledWith({
 			where: { incidentId: inc },
 			select: { id: true, settledAt: true },
 		});
-		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
-			where: { id: { in: ids } },
-			data: { settledAt: expect.any(Date) },
-		});
+		for (const id of ids)
+			expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
+				where: { id, updatedAt: stamp },
+				data: { settledAt: expect.any(Date), updatedAt: stamp },
+			});
 		// A bare Undo clears only the thread it names, never its siblings (#1020).
+		prisma.investigation.updateMany.mockClear();
 		await service().settle(ids[0] as string, false);
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(1);
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
-			where: { id: ids[0] },
-			data: { settledAt: null },
+			where: { id: ids[0], updatedAt: stamp },
+			data: { settledAt: null, updatedAt: stamp },
 		});
 		prisma.investigation.findUnique.mockResolvedValue(null);
 		await expect(service().settle(uuid(), true)).rejects.toMatchObject({
