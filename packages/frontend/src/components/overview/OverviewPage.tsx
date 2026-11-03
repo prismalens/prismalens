@@ -64,6 +64,9 @@ export function OverviewPage() {
 		runs: o.record.runs.length,
 		changes: o.changes?.total ?? 0,
 		deploy: !!o.changes?.deploy,
+		entries: (o.record.timeline ?? []).filter(
+			(e) => e.type !== "incident_created",
+		).length,
 	});
 	const resume = useResumeInvestigation();
 	const start = () =>
