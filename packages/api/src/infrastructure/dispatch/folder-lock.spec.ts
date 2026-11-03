@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { folderBusy, overlaps } from "./folder-lock.js";
+import { folderBusy, holdConversion, overlaps } from "./folder-lock.js";
 
 const at = (...p: string[]) => resolve("/", "code", ...p);
 
@@ -73,5 +73,16 @@ describe("one live run per plain folder (#1020)", () => {
 		} finally {
 			rmSync(base, { recursive: true, force: true });
 		}
+	});
+
+	it("while a folder is turning into a repo, no thread starts in it or a folder inside it", async () => {
+		const release = holdConversion(at("notes"));
+		try {
+			expect(await folderBusy(db({ plain: true, url: at("notes", "sub") }, []) as never, "child")).toBe(true);
+			expect(await folderBusy(db({ plain: true, url: at("other") }, []) as never, "other")).toBe(false);
+		} finally {
+			release();
+		}
+		expect(await folderBusy(db({ plain: true, url: at("notes", "sub") }, []) as never, "child")).toBe(false);
 	});
 });

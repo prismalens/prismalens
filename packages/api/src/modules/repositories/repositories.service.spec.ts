@@ -276,6 +276,23 @@ describe("RepositoriesService.addSource", () => {
 		}
 	});
 
+	it("Start git here is refused while a thread works in the folder, and git never runs (#1020)", async () => {
+		const live = vi.fn(async () => [{ repository: { url: "/code/notes/sub" } }]);
+		mockPrisma.repository.findUnique.mockResolvedValue({
+			id: "repo-1",
+			plain: true,
+			sourceKind: "folder",
+			url: "/code/notes",
+		});
+		mockPrisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => unknown) =>
+			fn({ investigation: { findMany: live } }),
+		);
+		await expect(service.startGit("repo-1")).rejects.toThrow(
+			"A thread is already working in this folder.",
+		);
+		expect(mockPrisma.repository.update).not.toHaveBeenCalled();
+	});
+
 	it("refuses a plain folder as a service's code: a service runs unattended (#1020)", async () => {
 		mockRepoSource.checkFolder.mockRejectedValue(
 			new PlainFolderError("/notes"),

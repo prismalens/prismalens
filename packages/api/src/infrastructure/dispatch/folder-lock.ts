@@ -33,9 +33,20 @@ export function overlaps(a: string, b: string): boolean {
 	return within(a, b) || within(b, a);
 }
 
+/** Folders Start git here is turning into repos; this server admits every run. */
+const converting = new Set<string>();
+
+/** Holds off runs in `folder` and folders nested with it until the returned release. */
+export function holdConversion(folder: string): () => void {
+	const key = canonical(folder);
+	converting.add(key);
+	return () => converting.delete(key);
+}
+
 /**
  * A plain folder runs in place, so at most one live run may work in it or in a folder
- * nested with it (#1020). Run inside the transaction that admits the run.
+ * nested with it, and none while it is turning into a repo (#1020). Run inside the
+ * transaction that admits the run.
  */
 export async function folderBusy(
 	db: Db,
@@ -47,6 +58,16 @@ export async function folderBusy(
 		select: { plain: true, url: true },
 	});
 	if (!repo?.plain) return false;
+	if ([...converting].some((c) => overlaps(c, repo.url))) return true;
+	return liveIn(db, repo.url, selfId);
+}
+
+/** A live run of any plain folder nested with `folder`, or the same one, other than `selfId`. */
+export async function liveIn(
+	db: { investigation: Pick<Db["investigation"], "findMany"> },
+	folder: string,
+	selfId?: string,
+): Promise<boolean> {
 	const live = await db.investigation.findMany({
 		where: {
 			...(selfId ? { id: { not: selfId } } : {}),
@@ -55,5 +76,5 @@ export async function folderBusy(
 		},
 		select: { repository: { select: { url: true } } },
 	});
-	return live.some((r) => r.repository && overlaps(r.repository.url, repo.url));
+	return live.some((r) => r.repository && overlaps(r.repository.url, folder));
 }

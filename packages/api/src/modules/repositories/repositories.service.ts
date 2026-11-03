@@ -23,7 +23,12 @@ import {
 } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { canonical } from "../../infrastructure/dispatch/folder-lock.js";
+import {
+	canonical,
+	FOLDER_BUSY,
+	holdConversion,
+	liveIn,
+} from "../../infrastructure/dispatch/folder-lock.js";
 import {
 	GitCredentialService,
 	pickOf,
@@ -193,29 +198,38 @@ export class RepositoriesService {
 		if (!repo) throw new NotFoundException("Repository not found");
 		if (!repo.plain || repo.sourceKind !== "folder")
 			throw new BadRequestException("Only a plain folder project starts git.");
+		// Held first, then checked, released only once the row says Repo: a run in place
+		// keeps its folder plain until it ends, and none starts while it changes (#1020).
+		const release = holdConversion(repo.url);
 		try {
-			await startGit(repo.url);
-		} catch (err) {
-			if (err instanceof StartGitRefused)
-				throw new BadRequestException(err.message);
-			throw err;
+			if (await this.prisma.$transaction((tx) => liveIn(tx, repo.url)))
+				throw new ConflictException(FOLDER_BUSY);
+			try {
+				await startGit(repo.url);
+			} catch (err) {
+				if (err instanceof StartGitRefused)
+					throw new BadRequestException(err.message);
+				throw err;
+			}
+			const sync: SyncFields = {
+				syncBranch: null,
+				syncHead: null,
+				syncError: null,
+			};
+			try {
+				const check = await this.repoSource.checkFolder(repo.url);
+				Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
+			} catch (err) {
+				sync.syncError = (err as Error).message;
+			}
+			this.logger.log(`Started git in project ${id}`);
+			return await this.prisma.repository.update({
+				where: { id },
+				data: { plain: false, ...sync, syncedAt: new Date() },
+			});
+		} finally {
+			release();
 		}
-		const sync: SyncFields = {
-			syncBranch: null,
-			syncHead: null,
-			syncError: null,
-		};
-		try {
-			const check = await this.repoSource.checkFolder(repo.url);
-			Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
-		} catch (err) {
-			sync.syncError = (err as Error).message;
-		}
-		this.logger.log(`Started git in project ${id}`);
-		return this.prisma.repository.update({
-			where: { id },
-			data: { plain: false, ...sync, syncedAt: new Date() },
-		});
 	}
 
 	/**
