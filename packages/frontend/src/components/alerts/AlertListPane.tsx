@@ -12,13 +12,12 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { LinkToProject } from "@/components/alerts/LinkToProject";
 import { WebhookCopy } from "@/components/alerts/WebhookCopy";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
-import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
@@ -37,6 +36,8 @@ export interface AlertListPaneProps {
 	className?: string;
 	/** In the sidebar one line a row; as a page, the state, incident and age under it. */
 	variant?: "sidebar" | "page";
+	/** As a page with no alerts and no filter: shown under the empty line. A prop, so the sidebar never loads it. */
+	whenEmpty?: ReactNode;
 }
 
 /** The list query from the frame's search. `unassigned` filters server-side (limit caps at 100). */
@@ -133,6 +134,7 @@ export function AlertListPane({
 	selectedId,
 	className,
 	variant = "page",
+	whenEmpty,
 }: AlertListPaneProps) {
 	const navigate = useNavigate();
 	const sidebar = variant === "sidebar";
@@ -284,9 +286,7 @@ export function AlertListPane({
 						}
 					/>
 				)}
-				{!sidebar && unfiltered && empty && (
-					<HelperThread place="alerts" className="mx-auto mt-4 px-4" />
-				)}
+				{!sidebar && unfiltered && empty && whenEmpty}
 				{lanes.map((lane) => (
 					<section
 						key={lane.id}

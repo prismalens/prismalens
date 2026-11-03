@@ -136,7 +136,13 @@ function AlertsPage() {
 			{listInSidebar ? (
 				<AlertNumbers />
 			) : (
-				<AlertListPane selectedId={null} className="min-h-0 flex-1 pt-1" />
+				<AlertListPane
+					selectedId={null}
+					className="min-h-0 flex-1 pt-1"
+					whenEmpty={
+						<HelperThread place="alerts" className="mx-auto mt-4 px-4" />
+					}
+				/>
 			)}
 		</>
 	);
