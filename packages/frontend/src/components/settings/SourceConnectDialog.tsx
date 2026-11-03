@@ -191,6 +191,14 @@ export function probeWord(r: ProbeReport): Word {
 	return { text: "Failed", tone: "danger" };
 }
 
+/** A save that answered without a connection stored nothing: the mark reads failed. */
+export function saveFailed(m: {
+	error: unknown;
+	data: { connectionId?: string | null } | undefined;
+}): boolean {
+	return !!m.error || (!!m.data && !m.data.connectionId);
+}
+
 const STEPS = ["Kind", "Details", "Test and save"] as const;
 
 /**
@@ -217,7 +225,7 @@ export function SourceConnectDialog({
 	const [report, setReport] = useState<ProbeReport | null>(null);
 	const test = useTestSource();
 	const connect = useConnectSource();
-	const saveRing = useRingTick(connect.isPending, !!connect.error);
+	const saveRing = useRingTick(connect.isPending, saveFailed(connect));
 	const { toast } = useToast();
 	const nameId = useId();
 	const urlId = useId();

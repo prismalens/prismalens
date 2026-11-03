@@ -135,9 +135,16 @@ export function renderPreRun(
 	if (p.runbooks.length)
 		lines.push(
 			"  Runbooks found (read one with runbooks_read):",
-			...p.runbooks.map(
-				(r) =>
-					`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+			fenceUntrusted(
+				"PRE_RUN_RUNBOOKS",
+				"Runbook titles and paths read from the service's repository.",
+				p.runbooks
+					.map(
+						(r) =>
+							`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+					)
+					.join("\n"),
+				owes,
 			),
 		);
 	if (p.runbooksSkipped)
