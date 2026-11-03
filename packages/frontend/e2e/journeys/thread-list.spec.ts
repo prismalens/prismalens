@@ -196,7 +196,10 @@ test.describe("#1020 — thread list and New thread", () => {
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify({ ids: [RUN_ID] }),
+					body: JSON.stringify({
+						ids: [RUN_ID],
+						previous: body.settled ? [{ id: RUN_ID, settledAt: null }] : [],
+					}),
 				});
 			},
 		);
@@ -222,7 +225,11 @@ test.describe("#1020 — thread list and New thread", () => {
 			page.getByTestId("threads-needs").getByTestId("thread-row"),
 		).toBeVisible();
 		await expect(page.getByTestId("settle-undo-line")).toHaveCount(0);
-		expect(settles).toEqual([{ settled: true }, { settled: false }]);
+		// Undo sends back what Settle answered, so each thread returns exactly (#1020).
+		expect(settles).toEqual([
+			{ settled: true },
+			{ settled: false, restore: [{ id: RUN_ID, settledAt: null }] },
+		]);
 	});
 
 	test("d. Search finds a thread and places by name", async ({ page }) => {

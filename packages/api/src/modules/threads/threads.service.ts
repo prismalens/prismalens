@@ -7,6 +7,7 @@ import type {
 	Investigation as InvestigationView,
 	JobAttachment,
 	RunChoice,
+	SettledState,
 	StartThreadInput,
 	ThreadFeed,
 	ThreadFeedQuery,
@@ -387,22 +388,45 @@ export class ThreadsService {
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
-	async settle(id: string, settled: boolean): Promise<{ ids: string[] }> {
+	async settle(
+		id: string,
+		settled: boolean,
+		restore?: SettledState[],
+	): Promise<{ ids: string[]; previous: SettledState[] }> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
 			select: { incidentId: true },
 		});
 		if (!row) throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
 		const where = row.incidentId ? { incidentId: row.incidentId } : { id };
-		const ids = (
-			await this.prisma.investigation.findMany({ where, select: { id: true } })
-		).map((r) => r.id);
+		const rows = await this.prisma.investigation.findMany({
+			where,
+			select: { id: true, settledAt: true },
+		});
+		const ids = rows.map((r) => r.id);
+		if (!settled && restore) {
+			// Undo writes back each thread's own state, an earlier Settle included (#1020).
+			const inBlock = new Set(ids);
+			for (const r of restore.filter((r) => inBlock.has(r.id)))
+				await this.prisma.investigation.updateMany({
+					where: { id: r.id },
+					data: { settledAt: r.settledAt ? new Date(r.settledAt) : null },
+				});
+			return { ids, previous: [] };
+		}
 		await this.prisma.investigation.updateMany({
 			where: { id: { in: ids } },
-			// Only settledAt changes, so Undo restores exactly what Settle hid.
 			data: { settledAt: settled ? new Date() : null },
 		});
-		return { ids };
+		return {
+			ids,
+			previous: settled
+				? rows.map((r) => ({
+						id: r.id,
+						settledAt: r.settledAt?.toISOString() ?? null,
+					}))
+				: [],
+		};
 	}
 
 	rename(id: string, title: string): Promise<{ id: string; title: string }> {

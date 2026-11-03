@@ -51826,6 +51826,34 @@
                 "properties": {
                   "settled": {
                     "type": "boolean"
+                  },
+                  "restore": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "settledAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "settledAt"
+                      ]
+                    }
                   }
                 },
                 "required": [
@@ -51848,10 +51876,38 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "previous": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "settledAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "settledAt"
+                        ]
+                      }
                     }
                   },
                   "required": [
-                    "ids"
+                    "ids",
+                    "previous"
                   ]
                 }
               }

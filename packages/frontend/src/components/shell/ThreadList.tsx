@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	SettledState,
 	ThreadRow,
 	ThreadSection,
 	ThreadUnit,
@@ -60,7 +61,11 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 	const feed = useThreadFeed(filters);
 	const settle = useSettleThread();
 	const [settledOpen, setSettledOpen] = useState(false);
-	const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
+	const [undo, setUndo] = useState<{
+		id: string;
+		title: string;
+		previous?: SettledState[];
+	} | null>(null);
 	const units = useMemo(
 		() => feed.data?.pages.flatMap((p) => p.units) ?? [],
 		[feed.data],
@@ -75,8 +80,14 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 	}, [undo]);
 
 	const onSettle = (t: ThreadRow) => {
-		settle.mutate({ id: t.id, settled: true });
 		setUndo({ id: t.id, title: t.title?.trim() || "Thread" });
+		settle.mutate(
+			{ id: t.id, settled: true },
+			{
+				onSuccess: ({ previous }) =>
+					setUndo((u) => (u?.id === t.id ? { ...u, previous } : u)),
+			},
+		);
 	};
 
 	if (feed.isLoading)
@@ -162,7 +173,11 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 							<button
 								type="button"
 								onClick={() => {
-									settle.mutate({ id: undo.id, settled: false });
+									settle.mutate({
+										id: undo.id,
+										settled: false,
+										...(undo.previous ? { restore: undo.previous } : {}),
+									});
 									setUndo(null);
 								}}
 								className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3"

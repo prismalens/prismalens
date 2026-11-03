@@ -39,7 +39,7 @@ export class ThreadsController {
 
 			// POST /threads/:id/settle
 			settle: implement(threadsContract.settle).handler(({ input }) =>
-				this.threads.settle(input.id, input.settled),
+				this.threads.settle(input.id, input.settled, input.restore),
 			),
 
 			// POST /threads/:id/title - The user names it; the agent never renames it after
