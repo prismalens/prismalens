@@ -15,7 +15,13 @@ import { useGlobalShortcuts } from "./use-global-shortcuts";
 const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
-type Win = Window & { __plEarlyKeys?: string[] | null };
+type Early = { k: string; t: number; p: string };
+type Win = Window & { __plEarlyKeys?: Early[] | null };
+const early = (k: string, agoMs = 0, p = location.pathname): Early => ({
+	k,
+	t: Date.now() - agoMs,
+	p,
+});
 const win = window as Win;
 
 let container: HTMLDivElement;
@@ -58,7 +64,7 @@ describe("keys pressed before the app is ready (#1020)", () => {
 			new KeyboardEvent("keydown", { key: "x", bubbles: true }),
 		);
 		field.remove();
-		expect(takeEarlyKeys()).toEqual(["c"]);
+		expect(takeEarlyKeys().map((e) => e.k)).toEqual(["c"]);
 		expect(takeEarlyKeys()).toEqual([]);
 		document.body.dispatchEvent(
 			new KeyboardEvent("keydown", { key: "c", bubbles: true }),
@@ -67,16 +73,54 @@ describe("keys pressed before the app is ready (#1020)", () => {
 	});
 
 	it("a `c` pressed before the shortcuts mounted opens New thread once they do", async () => {
-		win.__plEarlyKeys = ["c"];
+		win.__plEarlyKeys = [early("c")];
 		await act(async () => root.render(createElement(Probe)));
 		expect(onNew).toHaveBeenCalledTimes(1);
 		expect(win.__plEarlyKeys).toBeNull();
 	});
 
 	it("an early `g` then `a` still moves to Alerts", async () => {
-		win.__plEarlyKeys = ["g", "a"];
+		win.__plEarlyKeys = [early("g", 200), early("a", 100)];
 		await act(async () => root.render(createElement(Probe)));
 		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
+	});
+
+	it("drops a stale key: g then a ten seconds apart moves nowhere", async () => {
+		win.__plEarlyKeys = [early("g", 10_100), early("a", 100)];
+		await act(async () => root.render(createElement(Probe)));
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("an early g and a further apart than the chord window move nowhere", async () => {
+		win.__plEarlyKeys = [early("g", 1_900), early("a", 100)];
+		await act(async () => root.render(createElement(Probe)));
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("drops keys pressed on another page", async () => {
+		win.__plEarlyKeys = [early("c", 100, "/elsewhere")];
+		await act(async () => root.render(createElement(Probe)));
+		expect(onNew).not.toHaveBeenCalled();
+	});
+
+	it("drops keys when a field has focus or a dialog is open at replay", async () => {
+		const field = document.createElement("input");
+		document.body.appendChild(field);
+		field.focus();
+		win.__plEarlyKeys = [early("c")];
+		await act(async () => root.render(createElement(Probe)));
+		expect(onNew).not.toHaveBeenCalled();
+		field.remove();
+		await act(async () => root.unmount());
+		root = createRoot(container);
+
+		const dialog = document.createElement("div");
+		dialog.setAttribute("role", "dialog");
+		document.body.appendChild(dialog);
+		win.__plEarlyKeys = [early("?")];
+		await act(async () => root.render(createElement(Probe)));
+		expect(onHelp).not.toHaveBeenCalled();
+		dialog.remove();
 	});
 
 	it("keys pressed after mounting are handled once, not replayed", async () => {

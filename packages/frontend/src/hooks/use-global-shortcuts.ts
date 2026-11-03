@@ -4,7 +4,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
-import { takeEarlyKeys } from "@/lib/early-keys";
+import { EARLY_CHORD_MS, takeEarlyKeys } from "@/lib/early-keys";
 
 /** The `g` chords: where each second key goes. Rendered by the `?` sheet too. */
 export const GO_SHORTCUTS = [
@@ -62,7 +62,15 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
 			if (run(e.key)) e.preventDefault();
 		};
-		for (const key of takeEarlyKeys()) run(key);
+		let last = 0;
+		for (const early of takeEarlyKeys()) {
+			if (pending.current !== null && early.t - last > EARLY_CHORD_MS) {
+				window.clearTimeout(pending.current);
+				pending.current = null;
+			}
+			run(early.k);
+			last = early.t;
+		}
 		window.addEventListener("keydown", onKey);
 		return () => {
 			window.removeEventListener("keydown", onKey);
