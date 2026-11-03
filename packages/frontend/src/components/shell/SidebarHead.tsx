@@ -148,7 +148,7 @@ const PLACES = [
 	{ to: "/alerts", label: "Alerts" },
 	{ to: "/services", label: "Services" },
 	{ to: "/projects", label: "Projects" },
-	{ to: "/schedules", label: "Schedules" },
+	{ to: "/settings", label: "Scheduled prompts", search: { tab: "schedules" } },
 	{ to: "/settings", label: "Settings" },
 ] as const;
 
@@ -284,9 +284,17 @@ export function ThreadSearch({
 							<CommandGroup heading="Go to">
 								{places.map((p) => (
 									<CommandItem
-										key={p.to}
-										value={p.to}
-										onSelect={() => go(() => void navigate({ to: p.to }))}
+										key={p.label}
+										value={p.label}
+										onSelect={() =>
+											go(
+												() =>
+													void navigate({
+														to: p.to,
+														...("search" in p ? { search: p.search } : {}),
+													}),
+											)
+										}
 										data-testid="thread-search-place"
 									>
 										{p.label}

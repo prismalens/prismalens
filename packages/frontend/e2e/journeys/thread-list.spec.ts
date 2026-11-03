@@ -429,9 +429,12 @@ test.describe("#1020 — thread list and New thread", () => {
 			await page.getByTestId("thread-search-input").fill("sched");
 			await page
 				.getByTestId("thread-search-place")
-				.filter({ hasText: "Schedules" })
+				.filter({ hasText: "Scheduled prompts" })
 				.tap();
-			await expect(page).toHaveURL(/\/schedules/);
+			await expect(page).toHaveURL(/\/settings\?tab=schedules/);
+			await expect(
+				page.getByRole("heading", { name: "Scheduled prompts", level: 2 }),
+			).toBeVisible();
 		});
 	});
 });

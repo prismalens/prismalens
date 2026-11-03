@@ -74,7 +74,11 @@ function ScheduleHistoryPage() {
 		return missing ? (
 			<NotFound
 				text="This schedule no longer exists."
-				back={<Link to="/schedules">Schedules</Link>}
+				back={
+					<Link to="/settings" search={{ tab: "schedules" }}>
+						Scheduled prompts
+					</Link>
+				}
 			/>
 		) : (
 			<Problem text={getErrorMessage(error)} onRetry={() => void refetch()} />
