@@ -260,6 +260,15 @@ describe('github: "exclude" on a case-insensitive environment (#1020, CP4 OBJ-01
 		);
 		expect(JSON.stringify(env)).not.toMatch(/ghp_low|ghs_mixed|"ghe"/);
 	});
+
+	it("drops the SSH agent and askpass programs too; include keeps them", () => {
+		const host = { PATH: "/bin", SSH_AUTH_SOCK: "/tmp/agent.sock", ssh_askpass: "/usr/bin/ask", GIT_ASKPASS: "/usr/bin/gask" };
+		const env = exclude(host);
+		for (const k of Object.keys(env)) expect(["SSH_AUTH_SOCK", "SSH_ASKPASS", "GIT_ASKPASS"]).not.toContain(k.toUpperCase());
+		const kept = exclude(host, "include");
+		expect(kept.SSH_AUTH_SOCK).toBe("/tmp/agent.sock");
+		expect(kept.GIT_ASKPASS).toBe("/usr/bin/gask");
+	});
 });
 
 describe("launch files", () => {
