@@ -734,7 +734,10 @@ export function sessionCwds(ws: RunWorkspace): string[] {
  * so the snapshot's `git status` stays clean.
  */
 export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
-	if (ws.layout === "folder") return writeInFolder(ws.cwd, text);
+	if (ws.layout === "folder") {
+		writeInFolder(ws.cwd, text);
+		return;
+	}
 	for (const cwd of sessionCwds(ws)) {
 		const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
 		const dir = dirname(file);
