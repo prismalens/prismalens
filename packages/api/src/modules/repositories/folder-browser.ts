@@ -15,6 +15,8 @@ import {
 class ReadTimeout extends Error {}
 
 function timed<T>(op: Promise<T>, deadline: number): Promise<T> {
+	// An op that loses the race may still fail later; that failure is nobody's to handle.
+	op.catch(() => {});
 	const left = deadline - Date.now();
 	if (left <= 0) return Promise.reject(new ReadTimeout());
 	let timer: NodeJS.Timeout | undefined;

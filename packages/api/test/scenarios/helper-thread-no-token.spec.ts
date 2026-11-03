@@ -9,29 +9,39 @@ const pl = new ScenarioApp();
 const ASK = "fake-session:echo How do I send alerts here?";
 let token: string;
 let runId: string;
-let streamed: string;
+let streamed: { status: number; text: string; done: boolean };
 
-/** Reads the run's live stream until its done marker, or what arrived within the time. */
-async function readStream(id: string, ms: number): Promise<string> {
+/**
+ * Reads the run's live stream until its done marker. A refused stream throws, a read error
+ * propagates, and a deadline leaves `done` false, so a partial stream never passes for a whole one.
+ */
+async function readStream(
+	id: string,
+	ms: number,
+): Promise<{ status: number; text: string; done: boolean }> {
 	const stop = new AbortController();
 	const timer = setTimeout(() => stop.abort(), ms);
 	let text = "";
+	let status = 0;
 	try {
 		const res = await pl.fetchRaw(`/investigations/${id}/stream`, stop.signal);
-		const reader = res.body?.getReader();
+		status = res.status;
+		if (!res.ok || !res.body) return { status, text, done: false };
+		const reader = res.body.getReader();
 		const decoder = new TextDecoder();
-		while (reader) {
+		for (;;) {
 			const { done, value } = await reader.read();
 			if (done) break;
 			text += decoder.decode(value, { stream: true });
-			if (text.includes('"type":"done"')) break;
+			if (text.includes('"type":"done"')) return { status, text, done: true };
 		}
-	} catch {
-		// Aborted at the deadline: keep what arrived.
+		return { status, text, done: false };
+	} catch (e) {
+		if (stop.signal.aborted) return { status, text, done: false };
+		throw e;
 	} finally {
 		clearTimeout(timer);
 	}
-	return text;
 }
 
 beforeAll(async () => {
@@ -69,8 +79,11 @@ describe("A helper thread started from the empty Alerts page (#1020, OBJ-001)", 
 		expect(feed).not.toContain(token);
 	});
 
-	it("Then the live stream never carries the token", () => {
-		expect(streamed).not.toContain(token);
+	it("Then the live stream, read to its end, never carries the token", () => {
+		expect(streamed.status).toBeGreaterThanOrEqual(200);
+		expect(streamed.status).toBeLessThan(300);
+		expect(streamed.done).toBe(true);
+		expect(streamed.text).not.toContain(token);
 	});
 
 	it("Then the export has nothing to give, and no token in its answer", async () => {

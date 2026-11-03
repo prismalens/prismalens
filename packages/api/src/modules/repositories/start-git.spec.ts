@@ -70,6 +70,13 @@ describe("Start git here (#1020)", () => {
 		expect(existsSync(join(folder, ".git"))).toBe(false);
 	});
 
+	it("refuses a folder that is gone, and says when git took too long", async () => {
+		await expect(startGit(join(folder, "gone"))).rejects.toThrow(/gone or is a link/);
+		writeFileSync(join(folder, "a"), "1");
+		await expect(startGit(folder, { timeoutMs: 1 })).rejects.toThrow(/took too long/);
+		expect(existsSync(join(folder, ".git"))).toBe(false);
+	});
+
 	it("refuses a folder that already has git", async () => {
 		mkdirSync(join(folder, ".git"));
 		await expect(startGit(folder)).rejects.toThrow(/already has git/);
