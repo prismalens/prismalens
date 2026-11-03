@@ -65,11 +65,17 @@ export function harnessMcpServer(o: RunServerOptions): Server {
 export function harnessPromptLine(view: RunView, serverName: string): string {
 	const names = view.direct.map((t) => `\`${t.name}\``).join(", ");
 	const records = view.direct.some((t) => t.name === "evidence_record");
+	const titles = view.direct.some((t) => t.name === "thread_title");
 	return [
 		`PrismaLens tools (MCP server \`${serverName}\`): ${names}.${view.deferred.length ? " Find more PrismaLens tools with `tools_search`." : ""}`,
 		...(records
 			? [
 					"As you work, record each piece of evidence with `evidence_record`, quoting the output exactly, and each hypothesis with `hypothesis_record`; the operator watches them form. Your final report is still required: give each hypothesis you recorded the same `id` there.",
+				]
+			: []),
+		...(titles
+			? [
+					"Name this thread with `thread_title` in 3 to 7 words once you know what it is about.",
 				]
 			: []),
 		"For metrics, logs and other live data, use the tools your own setup gives you.",

@@ -192,6 +192,7 @@ const ALL_TOOLS = [
 	"service_get",
 	"thread_list",
 	"thread_read",
+	"thread_title",
 	"timeline_read",
 ];
 
@@ -767,6 +768,7 @@ describe("gateway views, search and the call record (#848)", () => {
 			"hypothesis_record",
 			"incident_get",
 			"runbooks_read",
+			"thread_title",
 			"tools_call",
 			"tools_search",
 		]);
@@ -1085,6 +1087,7 @@ describe("read tools for the coding agent (#848)", () => {
 						: (rows[where.id] ?? null),
 				),
 				findMany: vi.fn(async () => [rows[FINISHED], rows[LIVE]]),
+				updateMany: vi.fn(async () => ({ count: 1 })),
 			},
 			investigationEvent: {
 				findMany: vi.fn(async () => [
@@ -1362,6 +1365,34 @@ describe("read tools for the coding agent (#848)", () => {
 		it("an empty id is invalid_input", async () => {
 			const out = await use(mocks(), "thread_read", { threadId: "" });
 			expect(out.value).toEqual(failure("invalid_input"));
+		});
+	});
+
+	describe("thread_title (#1020)", () => {
+		it("names this run's thread as one plain line, unless the user named it", async () => {
+			const m = mocks();
+			const out = await use(m, "thread_title", {
+				title: "Checkout\n pool   too small",
+			});
+			expect(out.value).toEqual({ title: "Checkout pool too small", kept: false });
+			expect(m.investigation.updateMany).toHaveBeenCalledWith({
+				where: { id: RUN_A, OR: [{ titleSetBy: null }, { titleSetBy: { not: "user" } }] },
+				data: { title: "Checkout pool too small", titleSetBy: "agent" },
+			});
+		});
+
+		it("returns the user's name when they renamed it, and changes nothing", async () => {
+			const m = mocks({ run: { title: "My name for it" } });
+			m.investigation.updateMany.mockResolvedValue({ count: 0 });
+			const out = await use(m, "thread_title", { title: "Checkout pool too small" });
+			expect(out.value).toEqual({ title: "My name for it", kept: true });
+		});
+
+		it("refuses too few or too many words", async () => {
+			for (const title of ["Pool", "one two three four five six seven eight"]) {
+				const out = await use(mocks(), "thread_title", { title });
+				expect(out.value).toEqual(failure("invalid_input"));
+			}
 		});
 	});
 

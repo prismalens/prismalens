@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { agentTitle } from "../../threads/thread-titles.js";
 
 /** A thread as a list shows it: enough to pick one to read. */
 export interface ThreadSummary {
@@ -53,6 +54,11 @@ export interface ThreadsData {
 	}): Promise<{ threads: ThreadSummary[] } | { error: string }>;
 	/** Null when there is no such thread, or it is not on this run's incident or one of its services. */
 	read(runId: string, threadId: string): Promise<ThreadView | null>;
+	/** Names this run's thread unless the user already did; `kept` is the user's name standing. */
+	title(
+		runId: string,
+		title: string,
+	): Promise<{ title: string; kept: boolean }>;
 }
 
 const limit = z.number().int().min(1).max(50).default(10);
@@ -110,6 +116,27 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 						? { ...head, ...report }
 						: { ...head, ...(error ? { error } : {}), steps },
 				};
+			},
+		}),
+		defineHarnessTool({
+			name: "thread_title",
+			title: "Name this thread",
+			description:
+				"Give this thread a short title, 3 to 7 words and at most 80 characters, once you know what it is about; call it again if the subject changes. Plain words only. Once the user renames the thread, their name stays and this returns it with `kept: true`.",
+			group: "record",
+			effect: "record",
+			input: z.object({
+				title: z.string().min(1).max(200),
+			}),
+			run: async ({ title }, ctx) => {
+				const checked = agentTitle(title);
+				if ("error" in checked)
+					return fail(
+						"invalid_input",
+						checked.error,
+						"Name it in 3 to 7 plain words.",
+					);
+				return { value: await data.title(ctx.runId, checked.title) };
 			},
 		}),
 	];

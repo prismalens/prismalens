@@ -93,6 +93,8 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	/** The agent's latest sentence; untrusted, shown as plain text. */
 	latestText: z.string().nullable(),
 	projectName: z.string().nullable(),
+	/** Who named the thread last; once `user`, the agent's titles are ignored. */
+	titleSetBy: z.enum(["agent", "user"]).nullable(),
 	serviceName: z.string().nullable(),
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
@@ -123,6 +125,14 @@ export const ThreadIdSchema = z.object({ id: z.string().uuid() });
 export const SettleThreadSchema = z.object({
 	id: z.string().uuid(),
 	settled: z.boolean(),
+});
+
+/** A thread title: one line of plain text (#1020). */
+export const THREAD_TITLE_MAX = 80;
+
+export const RenameThreadSchema = z.object({
+	id: z.string().uuid(),
+	title: z.string().trim().min(1).max(THREAD_TITLE_MAX),
 });
 
 export const ThreadSettingsSchema = z.object({

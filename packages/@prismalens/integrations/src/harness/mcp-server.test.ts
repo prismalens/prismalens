@@ -244,6 +244,25 @@ describe("harnessPromptLine", () => {
 		);
 	});
 
+	it("asks for a thread title only when thread_title is listed (#1020)", () => {
+		const titled = defineHarnessTool({
+			name: "thread_title",
+			title: "Name this thread",
+			description: "d",
+			group: "record",
+			effect: "record",
+			input: z.object({ title: z.string() }),
+			run: async () => ({ value: {} }),
+		});
+		const without = harnessPromptLine(runView(makeFakeTools(), { search: false }), "s");
+		const withIt = harnessPromptLine(
+			runView([...makeFakeTools(), titled], { search: false }),
+			"s",
+		);
+		expect(without).not.toContain("Name this thread");
+		expect(withIt).toContain("Name this thread with `thread_title`");
+	});
+
 	it("omits tools_search when no tools are deferred, and omits evidence_record when no record tools", () => {
 		const tools = makeFakeTools().filter(
 			(t) => t.group !== "knowledge" && t.group !== "record",

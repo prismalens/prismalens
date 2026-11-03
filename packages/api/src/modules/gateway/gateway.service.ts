@@ -41,6 +41,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 import { attachmentsDir } from "../investigations/attachments.service.js";
+import { setAgentTitle } from "../threads/thread-titles.js";
 import { bearerOf, RunTokens } from "./run-tokens.js";
 import {
 	listRunbooks,
@@ -409,6 +410,7 @@ export class GatewayService {
 		threads: {
 			list: (q) => this.listThreads(q),
 			read: (runId, threadId) => this.readThread(runId, threadId),
+			title: (runId, title) => setAgentTitle(this.prisma, runId, title),
 		},
 		incidentRecord: {
 			timeline: (runId, limit) => this.timeline(runId, limit),

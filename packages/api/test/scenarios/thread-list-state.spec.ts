@@ -3,6 +3,7 @@
 
 import type { ThreadFeed } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { setAgentTitle } from "../../src/modules/threads/thread-titles.js";
 import { ScenarioApp } from "./support/scenario-app.js";
 
 const pl = new ScenarioApp();
@@ -81,5 +82,29 @@ describe("Thread list state on SQLite (#1020)", () => {
 		expect(await search("100%")).toEqual(["cut 100% of retries"]);
 		expect(await search("e_c")).toEqual(["rename snake_case keys"]);
 		expect(await search("pl%n")).toEqual([]);
+	});
+
+	it("Given an agent title, When the user renames, Then later agent titles leave the user's name", async () => {
+		const id = await thread("first message text", new Date());
+		const prisma = await pl.prisma();
+		expect(await setAgentTitle(prisma, id, "Checkout pool too small")).toEqual({
+			title: "Checkout pool too small",
+			kept: false,
+		});
+		const renamed = await pl.api<{ title: string }>(`/threads/${id}/title`, {
+			method: "POST",
+			body: { title: "<b>Pool</b> sizing\u202e" },
+		});
+		expect(renamed.title).toBe("<b>Pool</b> sizing");
+		const [late, sameTime] = await Promise.all([
+			setAgentTitle(prisma, id, "Cart leak after deploy"),
+			setAgentTitle(prisma, id, "Another agent guess here"),
+		]);
+		expect(late).toEqual({ title: "<b>Pool</b> sizing", kept: true });
+		expect(sameTime.kept).toBe(true);
+		expect(await rowOf(id)).toMatchObject({
+			title: "<b>Pool</b> sizing",
+			titleSetBy: "user",
+		});
 	});
 });
