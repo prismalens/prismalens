@@ -165,6 +165,17 @@ async function recordedRoot(
 	return null;
 }
 
+/** The work's result, or null once the request's deadline passes first. */
+function beforeDeadline<T>(work: Promise<T>, until: number): Promise<T | null> {
+	const left = until - Date.now();
+	if (left <= 0) return Promise.resolve(null);
+	let timer: NodeJS.Timeout | undefined;
+	const late = new Promise<null>((resolve) => {
+		timer = setTimeout(() => resolve(null), left);
+	});
+	return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
 /** An untracked entry by name; a link on its path is told apart by metadata, never followed. */
 async function untrackedEntry(
 	root: string,
@@ -273,18 +284,24 @@ async function repoChanges(
 		} catch {
 			tracked = "\0too-large";
 		}
+		let late = others === null;
 		for (const path of (others ?? []).slice(0, WORKTREE_MAX_FILES)) {
 			// A nested repository shows as its folder with a slash; it is never descended into.
-			files.push(
-				path.endsWith("/")
-					? {
-							path: path.slice(0, -1),
-							status: "submodule",
-							additions: null,
-							deletions: null,
-						}
-					: await untrackedEntry(root, path),
-			);
+			if (path.endsWith("/")) {
+				files.push({
+					path: path.slice(0, -1),
+					status: "submodule",
+					additions: null,
+					deletions: null,
+				});
+				continue;
+			}
+			const one = await beforeDeadline(untrackedEntry(root, path), until);
+			if (!one) {
+				late = true;
+				break;
+			}
+			files.push(one);
 		}
 		const tooLarge =
 			tracked === "\0too-large" ||
@@ -301,7 +318,7 @@ async function repoChanges(
 			deletions: sum("deletions"),
 			patch: tooLarge ? null : tracked,
 			omitted: tooLarge ? "too-large" : null,
-			truncated: others === null || others.length > WORKTREE_MAX_FILES,
+			truncated: late || (others?.length ?? 0) > WORKTREE_MAX_FILES,
 		};
 	} finally {
 		await rm(gitDir, { recursive: true, force: true }).catch(() => {});

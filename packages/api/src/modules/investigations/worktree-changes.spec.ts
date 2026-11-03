@@ -25,7 +25,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readWorktreeChanges } from "./worktree-changes.js";
 
 // Counts every content read Node could make, and every git env the reader passes.
-const fsHooks = vi.hoisted(() => ({ opened: 0, envs: [] as Record<string, string>[] }));
+const fsHooks = vi.hoisted(() => ({
+	opened: 0,
+	envs: [] as Record<string, string>[],
+	slowLstat: null as null | { match: string; ms: number },
+}));
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const real = await importOriginal<typeof import("node:fs/promises")>();
 	return {
@@ -37,6 +41,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 		readFile: (...args: Parameters<typeof real.readFile>) => {
 			fsHooks.opened++;
 			return real.readFile(...args);
+		},
+		lstat: async (...args: Parameters<typeof real.lstat>) => {
+			const slow = fsHooks.slowLstat;
+			if (slow && String(args[0]).includes(slow.match))
+				await new Promise((r) => setTimeout(r, slow.ms));
+			return real.lstat(...args);
 		},
 	};
 });
@@ -122,6 +132,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	fsHooks.opened = 0;
+	fsHooks.slowLstat = null;
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -365,6 +376,24 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo).toMatchObject({ state: "ok", truncated: true });
 		if (repo?.state === "ok")
 			expect(repo.files.some((f) => f.path === "late.txt")).toBe(false);
+	});
+
+	it("stops the untracked metadata pass at the deadline and says truncated", async () => {
+		const many: Record<string, string> = {};
+		for (let i = 0; i < 20; i++) many[`slowgen/f${i}.txt`] = "x\n";
+		write(run, many);
+		fsHooks.slowLstat = { match: "slowgen", ms: 250 };
+		const started = Date.now();
+		try {
+			const out = await read(ws(), { deadlineMs: 3_000 });
+			const repo = out.repos[0];
+			expect(Date.now() - started).toBeLessThan(4_500);
+			expect(repo).toMatchObject({ state: "ok", truncated: true });
+			if (repo?.state === "ok")
+				expect(repo.files.filter((f) => f.path.startsWith("slowgen/")).length).toBeLessThan(20);
+		} finally {
+			fsHooks.slowLstat = null;
+		}
 	});
 
 	it("runs every git call with no system or global config or attributes", async () => {
