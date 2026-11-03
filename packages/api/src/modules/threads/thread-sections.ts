@@ -27,7 +27,10 @@ export function isUnseen(t: SectionFacts): boolean {
 	if (isWorkflowLive(t.status)) return false;
 	if (t.status !== "completed" && t.status !== "failed") return false;
 	if (t.lastTurnOutcome === "stopped") return false;
-	return !t.lastVisitedAt || t.lastVisitedAt < t.lastActivityAt;
+	// Settling reads it too; held apart from lastVisitedAt so Undo restores the exact state.
+	for (const seen of [t.lastVisitedAt, t.settledAt])
+		if (seen && seen >= t.lastActivityAt) return false;
+	return true;
 }
 
 export function threadSection(

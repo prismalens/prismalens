@@ -25,7 +25,12 @@ import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import { incidentSearch, stepText } from "../incidents/incidents.service.js";
+import {
+	hasLiteral,
+	incidentSearch,
+	likeEach,
+	stepText,
+} from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -225,16 +230,26 @@ export class ThreadsService {
 		const { settleAfterDays } = await this.getSettings();
 		const search = q.search?.trim();
 		const incidentMatch = incidentSearch(search);
-		const rows = await this.prisma.investigation.findMany({
+		const found = await this.prisma.investigation.findMany({
 			where: {
 				...(q.kind ? { kind: q.kind } : {}),
 				...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
 				...(search
 					? {
 							OR: [
-								{ title: { contains: search } },
-								{ service: { is: { name: { contains: search } } } },
-								{ repository: { is: { fullName: { contains: search } } } },
+								likeEach(search, (p) => ({ title: { contains: p } })),
+								{
+									service: {
+										is: likeEach(search, (p) => ({ name: { contains: p } })),
+									},
+								},
+								{
+									repository: {
+										is: likeEach(search, (p) => ({
+											fullName: { contains: p },
+										})),
+									},
+								},
 								...(incidentMatch ? [{ incident: { is: incidentMatch } }] : []),
 							],
 						}
@@ -244,6 +259,17 @@ export class ThreadsService {
 			orderBy: { updatedAt: "desc" },
 			take: FEED_CAP,
 		});
+		const rows =
+			search && /[%_]/.test(search)
+				? found.filter((r) =>
+						hasLiteral(search, [
+							r.title,
+							r.service?.name,
+							r.repository?.fullName,
+							r.incident?.title,
+						]),
+					)
+				: found;
 		const lastEvents = rows.length
 			? await this.prisma.investigationEvent.groupBy({
 					by: ["investigationId"],
@@ -368,10 +394,8 @@ export class ThreadsService {
 		).map((r) => r.id);
 		await this.prisma.investigation.updateMany({
 			where: { id: { in: ids } },
-			// Settling is reading too: an unseen outcome would hold it in Needs you.
-			data: settled
-				? { settledAt: new Date(), lastVisitedAt: new Date() }
-				: { settledAt: null },
+			// Only settledAt changes, so Undo restores exactly what Settle hid.
+			data: { settledAt: settled ? new Date() : null },
 		});
 		return { ids };
 	}

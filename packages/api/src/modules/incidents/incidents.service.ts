@@ -1203,8 +1203,26 @@ export function incidentSearch(
 	if (!q) return null;
 	const n = /^(?:inc-?|#)?(\d{1,9})$/i.exec(q)?.[1];
 	return {
-		OR: [{ title: { contains: q } }, ...(n ? [{ number: Number(n) }] : [])],
+		OR: [
+			likeEach(q, (p) => ({ title: { contains: p } })),
+			...(n ? [{ number: Number(n) }] : []),
+		],
 	};
+}
+
+/**
+ * SQLite's `contains` has no escape, so a search with `%` or `_` matches the pieces between
+ * them; a caller that needs the exact text filters the rows with `hasLiteral` (#1020).
+ */
+export function likeEach<T>(q: string, filter: (piece: string) => T) {
+	if (!/[%_]/.test(q)) return filter(q);
+	const pieces = q.split(/[%_]/).filter(Boolean);
+	return pieces.length ? { AND: pieces.map(filter) } : filter("");
+}
+
+export function hasLiteral(q: string, texts: (string | null | undefined)[]) {
+	const want = q.toLowerCase();
+	return texts.some((t) => !!t && t.toLowerCase().includes(want));
 }
 
 export function stepText(raw: string): string | null {
