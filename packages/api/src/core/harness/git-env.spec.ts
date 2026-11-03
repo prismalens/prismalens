@@ -190,6 +190,17 @@ describe("git-env", () => {
 		expect(tortoise).toBe("/usr/bin/tortoiseplink -batch");
 	});
 
+	it("reads the ssh command from the filtered env, never a name the filter dropped (#1020, CP3 r3 OBJ-001)", () => {
+		// Windows' process.env answers any letter case; a lowercase name must not come back as GIT_SSH_COMMAND.
+		const raw: Record<string, string> = { git_ssh_command: "evil-ssh -o ProxyCommand=x", PATH: "/bin" };
+		const caseless = new Proxy(raw, {
+			get: (t, k) => (typeof k === "string" ? Object.entries(t).find(([n]) => n.toUpperCase() === k.toUpperCase())?.[1] : undefined),
+		});
+		const env = gitEnv({ source: "none", parent: caseless as NodeJS.ProcessEnv, wsl: false });
+		expect(env.GIT_SSH_COMMAND).toBe("ssh -o BatchMode=yes -o ConnectTimeout=15");
+		expect(JSON.stringify(env)).not.toContain("evil-ssh");
+	});
+
 	it("T10b: config pairs per source", () => {
 		// machine: no pairs
 		expect(gitConfigPairs({ source: "machine" })).toEqual([]);

@@ -95,7 +95,8 @@ export function gitEnv(input: GitEnvInput): Record<string, string> {
 		env.WSLENV = parent.WSLENV
 			? `${parent.WSLENV}:GCM_INTERACTIVE`
 			: "GCM_INTERACTIVE";
-	const ssh = sshCommandFor(parent, input.coreSshCommand);
+	// The filtered env, so a name the filter dropped is never restored here (#1020).
+	const ssh = sshCommandFor(stripped(parent), input.coreSshCommand);
 	if (ssh === undefined) delete env.GIT_SSH_COMMAND;
 	else env.GIT_SSH_COMMAND = ssh;
 	const pairs = gitConfigPairs(input);
