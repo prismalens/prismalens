@@ -125,6 +125,11 @@ export class RepositoriesService {
 			);
 		}
 
+		// A plain folder's runs work in the folder itself, so a sub-path would be ignored (#1020).
+		if (plain && input.subPath)
+			throw new BadRequestException(
+				"A folder with no git takes no sub-path. Add the folder you mean.",
+			);
 		// A service runs a plain folder unattended, so it needs git first (#1020).
 		if (plain && serviceId)
 			throw new BadRequestException(
