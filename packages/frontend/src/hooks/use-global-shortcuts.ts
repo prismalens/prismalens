@@ -4,6 +4,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
+import { takeEarlyKeys } from "@/lib/early-keys";
 
 /** The `g` chords: where each second key goes. Rendered by the `?` sheet too. */
 export const GO_SHORTCUTS = [
@@ -33,31 +34,35 @@ export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 	const pending = useRef<number | null>(null);
 
 	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+		/** True when the key did something, so the event's default is dropped. */
+		const run = (key: string): boolean => {
 			if (pending.current !== null) {
 				window.clearTimeout(pending.current);
 				pending.current = null;
-				const go = GO_SHORTCUTS.find((s) => s.key === e.key);
-				if (go) {
-					e.preventDefault();
-					navigate({ to: go.to });
-				}
-				return;
+				const go = GO_SHORTCUTS.find((s) => s.key === key);
+				if (go) navigate({ to: go.to });
+				return !!go;
 			}
-			if (e.key === "g") {
+			if (key === "g") {
 				pending.current = window.setTimeout(() => {
 					pending.current = null;
 				}, 1000);
-			} else if (e.key === "?") {
-				e.preventDefault();
+			} else if (key === "?") {
 				onHelp();
-			} else if (e.key === NEW_INCIDENT_KEY) {
-				if (document.querySelector("[role=dialog], [role=alertdialog]")) return;
-				e.preventDefault();
+				return true;
+			} else if (key === NEW_INCIDENT_KEY) {
+				if (document.querySelector("[role=dialog], [role=alertdialog]"))
+					return false;
 				onNew();
+				return true;
 			}
+			return false;
 		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+			if (run(e.key)) e.preventDefault();
+		};
+		for (const key of takeEarlyKeys()) run(key);
 		window.addEventListener("keydown", onKey);
 		return () => {
 			window.removeEventListener("keydown", onKey);
