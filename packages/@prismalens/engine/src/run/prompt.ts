@@ -100,7 +100,10 @@ function renderSurfaces(
  * What PrismaLens read before the run (#848): the read-copy folder when it was written,
  * each source's result, the runbooks, then the start of each telemetry file fenced as data.
  */
-export function renderPreRun(context: InvestigationContext): string {
+export function renderPreRun(
+	context: InvestigationContext,
+	owes: "report" | "answer" = "report",
+): string {
 	const p = context.preRun;
 	if (!p) return "";
 	if (p.state === "unavailable")
@@ -158,6 +161,7 @@ export function renderPreRun(context: InvestigationContext): string {
 				"PRE_RUN_TELEMETRY",
 				"Read by PrismaLens from the user's telemetry sources before the run.",
 				sanitizeUntrustedBlock(excerpts.join("\n")),
+				owes,
 			),
 		);
 	return `\n\n${lines.join("\n")}`;
@@ -246,7 +250,7 @@ THIS PAGE
 	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed. ${ANSWER_FIRST}
 
 SURFACES
-${surfaces.join("\n")}${renderThreadSubject(context)}${renderPreRun(context)}${toolsBlock(options)}${page}
+${surfaces.join("\n")}${renderThreadSubject(context)}${renderPreRun(context, "answer")}${toolsBlock(options)}${page}
 
 THIS RUN
 ${runLines.map((l) => `  - ${l}`).join("\n")}
@@ -280,6 +284,7 @@ function renderThreadSubject(context: InvestigationContext): string {
 		"THREAD_SUBJECT",
 		"Names the user gave this thread's project, service and folders in PrismaLens.",
 		lines.join("\n"),
+		"answer",
 	)}`;
 }
 

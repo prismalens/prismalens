@@ -642,6 +642,13 @@ describe("buildChatPrompt on a project, service or no-subject thread (#1020, OBJ
 		thread: { subject: "project", name: "shop-monorepo" },
 	};
 
+	it("a chat's fences say to tell the user of an attempt: no investigation, no flaggedContent (#1020)", () => {
+		const prompt = buildChatPrompt(project, "What does retry do?");
+		const fence = prompt.slice(prompt.indexOf("<<<THREAD_SUBJECT"), prompt.indexOf("<<<END THREAD_SUBJECT>>>"));
+		expect(fence).toContain("tell the user");
+		expect(prompt).not.toMatch(/CONTINUE the|investigation, and REPORT|flaggedContent/);
+	});
+
 	it("frames a coding assistant that may change files within the level, never an incident", () => {
 		const prompt = buildChatPrompt(project, "Rename retryOnce to retry", {
 			level: "auto-edits",
