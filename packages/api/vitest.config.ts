@@ -85,6 +85,7 @@ export default defineConfig({
 				"src/modules/repositories/folder-browser.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/start-git.ts": NEW_CODE_THRESHOLD,
 				"src/infrastructure/dispatch/folder-lock.ts": NEW_CODE_THRESHOLD,
+				"src/modules/schedules/allowed-asks.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

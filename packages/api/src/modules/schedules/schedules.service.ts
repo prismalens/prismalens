@@ -13,9 +13,7 @@ import {
 import type { HarnessId } from "@prismalens/config/harness";
 import {
 	AccessLevelSchema,
-	ALWAYS_ALLOW_MAX,
 	type AllowedAsk,
-	AllowedAskSchema,
 	AUTO_START_ACCESS_LEVEL,
 	type BuiltInJob,
 	type InvestigationJobData,
@@ -39,6 +37,7 @@ import {
 	SCHEDULED_KIND,
 } from "../../infrastructure/dispatch/job-store.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { allowedAsks, withAsk } from "./allowed-asks.js";
 import { type Decision, decide } from "./decide.js";
 import {
 	cronShape,
@@ -95,16 +94,6 @@ function bindingsChanged(subject: ScheduleSubject, fix: string): string {
 	return subject === "project"
 		? `The project's code location changed since this schedule was saved. ${fix}`
 		: `The service's repositories or notes changed since this schedule was saved. ${fix}`;
-}
-
-export function allowedAsks(json: string | null): AllowedAsk[] {
-	if (!json) return [];
-	try {
-		const parsed = AllowedAskSchema.array().safeParse(JSON.parse(json));
-		return parsed.success ? parsed.data : [];
-	} catch {
-		return [];
-	}
 }
 
 export function parseRecurrence(json: string): Recurrence {
@@ -858,13 +847,9 @@ export class SchedulesService
 				select: { alwaysAllow: true },
 			});
 			if (!s) return;
-			const kept = allowedAsks(s.alwaysAllow).filter(
-				(a) => a.kind !== ask.kind || a.title !== ask.title,
-			);
-			const next = [...kept, ask].slice(-ALWAYS_ALLOW_MAX);
 			await this.prisma.schedule.update({
 				where: { id: scheduleId },
-				data: { alwaysAllow: JSON.stringify(next) },
+				data: { alwaysAllow: withAsk(s.alwaysAllow, ask) },
 			});
 		});
 	}

@@ -419,7 +419,17 @@ export class InvestigationsController {
 
 			// POST /investigations/:id/asks/:askId - The operator's Approve or Deny (#673 w21).
 			answerAsk: implement(investigationsContract.answerAsk).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
+					const run = await this.investigationsService.findById(input.id);
+					if (run)
+						unattendedRunHostOnly(run, context?.request as Request | undefined);
+					if (
+						input.always &&
+						(input.decision !== "approve" || !run?.scheduleId)
+					)
+						throw new ORPCError("BAD_REQUEST", {
+							message: "Always allow is for a schedule's runs.",
+						});
 					const outcome = this.dispatchService.answerAsk(
 						input.id,
 						input.askId,
@@ -430,6 +440,8 @@ export class InvestigationsController {
 							message:
 								"This ask is no longer waiting: it was answered, timed out, or the run ended.",
 						});
+					if (input.always && outcome === "approved")
+						await this.investigationsService.rememberAsk(input.id, input.askId);
 					return { outcome };
 				},
 			),
@@ -904,6 +916,20 @@ export class InvestigationsController {
  * A scheduled run is a standing permission the host granted, so only the host's session may
  * message it, rewrite its status or write its result; Stop stays open to every device (#979, #982).
  */
+/**
+ * A run PrismaLens started (a schedule or an alert) waits on the host's answers only: a paired
+ * device never approves what nobody on this machine asked for (#1020 R33).
+ */
+function unattendedRunHostOnly(
+	run: { scheduleId?: string | null; triggerType?: string | null },
+	request: Request | undefined,
+): void {
+	const byPrismaLens =
+		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual");
+	if (byPrismaLens && !request?.operator?.device.scopes.includes(ACCESS_SCOPE))
+		throw new ORPCError("FORBIDDEN", { message: SCHEDULE_HOST_ONLY });
+}
+
 function scheduledRunHostOnly(
 	run: { scheduleId?: string | null },
 	request: Request | undefined,

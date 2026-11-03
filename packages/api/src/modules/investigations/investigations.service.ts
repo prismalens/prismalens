@@ -41,6 +41,7 @@ import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { IncidentsService } from "../incidents/incidents.service.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { owePush, pushOwedBy } from "../push/push-outbox.js";
+import { withAsk } from "../schedules/allowed-asks.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import {
 	CreateInvestigationDto,
@@ -910,6 +911,43 @@ export class InvestigationsService {
 			);
 		}
 		return count;
+	}
+
+	/**
+	 * "Always allow" on a scheduled run's ask (#1020 R33): its schedule's next runs allow the
+	 * same kind and title. The ask is read from the run's own events, never from the request.
+	 */
+	async rememberAsk(
+		investigationId: string,
+		askId: string,
+	): Promise<"remembered" | "unknown"> {
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: investigationId },
+			select: { scheduleId: true },
+		});
+		const scheduleId = run?.scheduleId;
+		if (!scheduleId) return "unknown";
+		const ask = (await this.allEvents(investigationId)).find(
+			(e) => e.kind === "permission_ask" && e.askId === askId,
+		);
+		if (ask?.kind !== "permission_ask" || ask.title.length > 500)
+			return "unknown";
+		const remembered = {
+			kind: ask.toolKind?.slice(0, 64) ?? null,
+			title: ask.title,
+		};
+		await this.prisma.$transaction(async (tx) => {
+			const s = await tx.schedule.findUnique({
+				where: { id: scheduleId },
+				select: { alwaysAllow: true },
+			});
+			if (s)
+				await tx.schedule.update({
+					where: { id: scheduleId },
+					data: { alwaysAllow: withAsk(s.alwaysAllow, remembered) },
+				});
+		});
+		return "remembered";
 	}
 
 	/** Every stored event of a run, in order. */
