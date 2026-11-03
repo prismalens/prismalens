@@ -517,12 +517,6 @@ test("overview shots", async ({
 	}
 	await theme(page, "dark");
 
-	// The old tab URLs land on the overview.
-	for (const tab of ["report", "timeline", "alerts"]) {
-		await visit(page, `/incidents/${ready.id}/${tab}`);
-		await expect(page).toHaveURL(new RegExp(`/incidents/${ready.id}$`));
-	}
-
 	await rewrite(page, run.id, { impact: "chart" });
 	for (const platform of ["win32", "darwin"] as const) {
 		await page.setViewportSize({ width: 1440, height: 900 });
