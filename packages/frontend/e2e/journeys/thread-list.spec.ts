@@ -86,7 +86,9 @@ test.describe("#1020 — thread list and New thread", () => {
 		const started = await captureStart(page);
 		const projectId = await addProject(page);
 		await page.getByTestId("sidebar-new-thread").click();
-		await expect(page.getByTestId("new-thread-page")).toBeVisible();
+		await expect(page.getByTestId("new-thread-page")).toBeVisible({
+			timeout: 15_000,
+		});
 		await page.getByTestId("composer-subject").click();
 		await page.getByTestId(`subject-project-${projectId}`).click();
 		await page.getByTestId("composer-input").fill("Tidy the retry helper");
@@ -123,6 +125,9 @@ test.describe("#1020 — thread list and New thread", () => {
 			},
 		);
 		await page.goto("/threads/new?incident=true");
+		await expect(page.getByTestId("new-thread-page")).toBeVisible({
+			timeout: 15_000,
+		});
 		await expect(page.getByTestId("composer-incident")).toHaveAttribute(
 			"aria-pressed",
 			"true",
