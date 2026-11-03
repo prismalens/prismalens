@@ -104,7 +104,7 @@ describe("Changes tab across runs (#975)", () => {
 
 	it("draws each tab as an icon, named for assistive tech (#1020)", async () => {
 		await act(async () => root.render(panel("run-1")));
-		const tabs = [...container.querySelectorAll('[role="tab"]')];
+		const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
 		expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual([
 			"Summary",
 			"Files, 0",

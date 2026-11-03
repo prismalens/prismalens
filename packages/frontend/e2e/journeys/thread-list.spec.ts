@@ -344,6 +344,24 @@ test.describe("#1020 — thread list and New thread", () => {
 		).toBeVisible();
 	});
 
+	test("h. Settings sets how many quiet days settle a thread", async ({
+		page,
+	}) => {
+		await page.goto("/incidents");
+		await expect(page.getByTestId("sidebar-search")).toBeVisible();
+		await page.getByTestId("nav-settings").click();
+		const days = page.getByTestId("general-settle-days");
+		await expect(days).toHaveText(/3 days/);
+		await days.click();
+		await page.getByRole("option", { name: "7 days" }).click();
+		await expect(days).toHaveText(/7 days/);
+		await page.reload();
+		await expect(page.getByTestId("general-settle-days")).toHaveText(/7 days/);
+		await page.getByTestId("general-settle-days").click();
+		await page.getByRole("option", { name: "3 days" }).click();
+		await expect(page.getByTestId("general-settle-days")).toHaveText(/3 days/);
+	});
+
 	test.describe("on a phone", () => {
 		test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
