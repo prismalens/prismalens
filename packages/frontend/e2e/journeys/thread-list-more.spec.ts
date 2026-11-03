@@ -485,7 +485,10 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		// `c` opens New thread with Incident on
 		await expect(page.getByTestId("sidebar-search")).toBeVisible();
 		await expect(page.getByTestId("thread-list")).toBeVisible();
-		await page.locator("body").click();
+		// Clear focus without clicking: a click at the page's centre can land on a field or a row.
+		await page.evaluate(() =>
+			(document.activeElement as HTMLElement | null)?.blur(),
+		);
 		await page.keyboard.press("c");
 		await expect(page).toHaveURL(/\/threads\/new\?incident=true/);
 		await expect(page.getByTestId("new-thread-page")).toBeVisible({
