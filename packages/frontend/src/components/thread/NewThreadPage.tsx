@@ -4,6 +4,15 @@
 import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Siren, SquarePen } from "lucide-react";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectLabel,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
@@ -62,39 +71,57 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 			className="flex flex-wrap items-center gap-1.5 px-0.5"
 			data-testid="composer-top"
 		>
-			<select
-				aria-label="Subject"
+			<Select
 				value={value}
-				onChange={(e) => {
-					const [kind, id] = e.target.value.split(":");
+				onValueChange={(v) => {
+					const [kind, id] = v.split(":");
 					set({
 						project: kind === "project" ? id : undefined,
 						service: kind === "service" ? id : undefined,
 					});
 				}}
-				className="h-7 max-w-64 truncate rounded-control bg-surface-2 px-2 text-meta text-text-1"
-				data-testid="composer-subject"
 			>
-				<option value="none">No project</option>
-				{(repos.data?.data ?? []).length > 0 && (
-					<optgroup label="Projects">
-						{repos.data?.data.map((r) => (
-							<option key={r.id} value={`project:${r.id}`}>
-								{r.fullName}
-							</option>
-						))}
-					</optgroup>
-				)}
-				{(services.data?.data ?? []).length > 0 && (
-					<optgroup label="Services">
-						{services.data?.data.map((s) => (
-							<option key={s.id} value={`service:${s.id}`}>
-								{s.displayName || s.name}
-							</option>
-						))}
-					</optgroup>
-				)}
-			</select>
+				<SelectTrigger
+					aria-label="Subject"
+					className="max-w-64 text-meta"
+					data-testid="composer-subject"
+				>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="none" data-testid="subject-none">
+						No project
+					</SelectItem>
+					{(repos.data?.data ?? []).length > 0 && (
+						<SelectGroup>
+							<SelectLabel>Projects</SelectLabel>
+							{repos.data?.data.map((r) => (
+								<SelectItem
+									key={r.id}
+									value={`project:${r.id}`}
+									data-testid={`subject-project-${r.id}`}
+								>
+									{r.fullName}
+								</SelectItem>
+							))}
+						</SelectGroup>
+					)}
+					{(services.data?.data ?? []).length > 0 && (
+						<SelectGroup>
+							<SelectLabel>Services</SelectLabel>
+							{services.data?.data.map((sv) => (
+								<SelectItem
+									key={sv.id}
+									value={`service:${sv.id}`}
+									data-testid={`subject-service-${sv.id}`}
+								>
+									{sv.displayName || sv.name}
+								</SelectItem>
+							))}
+						</SelectGroup>
+					)}
+				</SelectContent>
+			</Select>
 			<button
 				type="button"
 				aria-pressed={!!search.incident}
@@ -113,19 +140,25 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 				Incident
 			</button>
 			{incident && (
-				<select
-					aria-label="Severity"
+				<Select
 					value={incident}
-					onChange={(e) => set({ severity: e.target.value as Severity })}
-					className="h-7 rounded-control bg-surface-2 px-2 text-meta text-text-1"
-					data-testid="composer-severity"
+					onValueChange={(v) => set({ severity: v as Severity })}
 				>
-					{SEVERITIES.map((s) => (
-						<option key={s} value={s}>
-							{SEVERITY_WORD[s]}
-						</option>
-					))}
-				</select>
+					<SelectTrigger
+						aria-label="Severity"
+						className="text-meta"
+						data-testid="composer-severity"
+					>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{SEVERITIES.map((sv) => (
+							<SelectItem key={sv} value={sv} data-testid={`severity-${sv}`}>
+								{SEVERITY_WORD[sv]}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 			)}
 			{search.note && incident && (
 				<span className="text-meta text-text-3" data-testid="composer-note">

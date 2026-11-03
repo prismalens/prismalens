@@ -141,7 +141,7 @@ export function NewThread({
 				}))
 			}
 			branch={branch}
-			blockedReason={choice.isLoading ? null : unready}
+			blockedReason={choice.isLoading || (incident && note) ? null : unready}
 			autoFocus
 			top={top}
 			slash={slash}

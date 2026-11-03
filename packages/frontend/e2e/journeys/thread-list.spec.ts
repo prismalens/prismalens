@@ -87,9 +87,8 @@ test.describe("#1020 — thread list and New thread", () => {
 		const projectId = await addProject(page);
 		await page.getByTestId("sidebar-new-thread").click();
 		await expect(page.getByTestId("new-thread-page")).toBeVisible();
-		await page
-			.getByTestId("composer-subject")
-			.selectOption(`project:${projectId}`);
+		await page.getByTestId("composer-subject").click();
+		await page.getByTestId(`subject-project-${projectId}`).click();
 		await page.getByTestId("composer-input").fill("Tidy the retry helper");
 		await page.getByTestId("composer-input").press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
@@ -128,7 +127,8 @@ test.describe("#1020 — thread list and New thread", () => {
 			"aria-pressed",
 			"true",
 		);
-		await page.getByTestId("composer-severity").selectOption("critical");
+		await page.getByTestId("composer-severity").click();
+		await page.getByTestId("severity-critical").click();
 		await page
 			.getByTestId("composer-input")
 			.fill("Checkout returns 502 since noon\nSeen on every region");

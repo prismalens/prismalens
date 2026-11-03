@@ -65,15 +65,15 @@ test.describe("#523 — the settings frame", () => {
 		await expect(page.getByTestId("model-pill")).toBeVisible();
 		await expect(page.getByTestId("model-pill")).not.toHaveText(/default$/i);
 
-		// 3. Back leaves Settings; Services is a door of its own (decision 1)
+		// 3. Back leaves Settings; Services is its own page, reached from Search (#1020)
 		await sidebar.getByTestId("settings-back").click();
 		await expect(page).not.toHaveURL(/\/settings/);
-		await sidebar.getByTestId("nav-services").click();
+		await sidebar.getByTestId("sidebar-search").click();
+		await page
+			.getByTestId("thread-search-place")
+			.filter({ hasText: "Services" })
+			.click();
 		await expect(page).toHaveURL(/\/services/);
-		await expect(sidebar.getByTestId("nav-services")).toHaveAttribute(
-			"aria-current",
-			"page",
-		);
 		// From the door at this width the first service opens (look ruling L32);
 		// a service is one page, with no tabs (services.feature).
 		await expect(page).toHaveURL(/\/services\/[0-9a-f-]{36}/);

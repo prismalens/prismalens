@@ -269,8 +269,8 @@ export function FirstRunPanel() {
 			</ol>
 			<p className="mt-5 text-body text-text-2">
 				No alert source yet?{" "}
-				<span className="font-medium text-text-1">+ New incident</span> in the
-				header creates one by hand and investigates it.
+				<span className="font-medium text-text-1">New thread</span> with
+				Incident on creates one by hand and investigates it.
 			</p>
 		</div>
 	);

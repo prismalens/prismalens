@@ -227,10 +227,7 @@ test("inbox shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await theme(page, "dark");
 	await visit(page, "/incidents");
-	await page
-		.getByRole("button", { name: `Runs and questions in INC-${ready.number}` })
-		.click();
-	await expect(page.getByTestId("tree-run").first()).toBeVisible();
+	await expect(page.getByTestId("thread-list")).toBeVisible();
 	await shot(page, "inbox-1440-dark-expanded");
 	await visit(page, `/incidents/${ready.id}`);
 	await shot(page, "overview-sidebar-1440-dark");

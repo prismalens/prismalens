@@ -476,37 +476,14 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("all-severity")).toBeVisible();
 	});
 
-	test("sidebar IncidentTree: data-health, tree-toggle, tree-run, tree-more, nav-incidents-count, nav-settings", async ({
+	test("sidebar thread list: an incident's run is a row under its INC chip, in Needs you until opened", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
 		unique,
 	}) => {
-		test.slow();
-		await ensureService(page, {
-			name: "tree-test-service",
-			displayName: "Tree Test Service",
-			trigger: "never",
-		});
-
-		// Seed 9 incidents on the same service to exercise tree-more (cap is 8)
-		const prefix = unique("TreeItem");
-		const treeIncidents: { id: string; number: number; title: string }[] = [];
-		for (let i = 0; i < 9; i++) {
-			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
-				name: `${prefix}-${i}`,
-				service: {
-					name: "tree-test-service",
-					displayName: "Tree Test Service",
-				},
-				quiet: true,
-			});
-			treeIncidents.push(inc);
-		}
-
-		// Also an incident with a run on LIVE service
 		const liveRunInc = await fireIncident(page, alertmanager, deliverWebhook, {
-			name: unique("TreeLiveRun"),
+			name: unique("ListLiveRun"),
 			service: LIVE,
 			session: "success",
 		});
@@ -518,54 +495,29 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		);
 
 		await visit(page, "/incidents");
-		const tree = page.getByTestId("incident-tree");
-		await expect(tree).toBeVisible({ timeout: 15_000 });
-
-		// Service item with data-health
-		const serviceSection = page
-			.getByTestId("tree-service")
-			.filter({ hasText: "Tree Test Service" });
-		await expect(serviceSection).toBeVisible();
-		await expect(serviceSection.locator("[data-health]")).toBeVisible();
-
-		// tree-more appears after 8 incidents
-		const moreBtn = serviceSection.getByTestId("tree-more");
-		await expect(moreBtn).toBeVisible();
-		await expect(moreBtn).toContainText("1 more");
-		await moreBtn.click();
-		await expect(moreBtn).toHaveCount(0);
-
-		// tree-toggle toggles aria-expanded and displays runs
-		const liveServiceSection = page
-			.getByTestId("tree-service")
-			.filter({ hasText: LIVE.displayName });
-		await expect(liveServiceSection).toBeVisible();
-		const liveRow = liveServiceSection
-			.getByTestId("tree-incident")
-			.filter({ has: page.locator(`a[href*="${liveRunInc.id}"]`) });
-		await expect(liveRow).toBeVisible();
-
-		const toggleBtn = liveRow.getByTestId("tree-toggle");
-		await expect(toggleBtn).toHaveAttribute("aria-expanded", "false");
-		await toggleBtn.click();
-		await expect(toggleBtn).toHaveAttribute("aria-expanded", "true");
-
-		const treeRun = liveServiceSection.locator(
-			`[data-testid="tree-run"][data-run="${completedRun.id}"]`,
+		const sidebar = page.getByTestId("sidebar");
+		const row = sidebar.locator(
+			`[data-testid="thread-row"][data-id="${completedRun.id}"]`,
 		);
-		await expect(treeRun).toBeVisible();
-		await expect(treeRun).toHaveAttribute(
+		await expect(row).toBeVisible({ timeout: 15_000 });
+		await expect(row).toHaveAttribute("data-section", "needs");
+		await expect(row).toHaveAttribute(
 			"href",
 			`/incidents/${liveRunInc.id}/conversation?investigation=${completedRun.id}`,
 		);
+		await expect(
+			sidebar.locator(
+				`[data-testid="thread-unit"][data-incident="${liveRunInc.number}"]`,
+			),
+		).toBeVisible();
 
-		// nav-incidents-count in sidebar equals Needs-you total
-		const countBadge = page
-			.getByTestId("sidebar")
-			.getByTestId("nav-incidents-count");
-		await expect(countBadge).toBeVisible();
-		const countText = await countBadge.innerText();
-		expect(Number.parseInt(countText, 10)).toBeGreaterThanOrEqual(10);
+		// Opening it marks it seen: it leaves Needs you
+		await row.click();
+		await expect(
+			sidebar.locator(
+				`[data-testid="thread-row"][data-id="${completedRun.id}"]`,
+			),
+		).toHaveAttribute("data-section", "active", { timeout: 15_000 });
 
 		// nav-settings at the foot of sidebar
 		await expect(page.getByTestId("nav-settings")).toBeVisible();

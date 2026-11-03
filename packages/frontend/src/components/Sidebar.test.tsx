@@ -68,10 +68,6 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-vi.mock("@/components/shell/IncidentTree", () => ({
-	IncidentTree: () => null,
-}));
-
 vi.mock("@/components/shell/ThreadList", () => ({
 	ThreadList: () => null,
 }));

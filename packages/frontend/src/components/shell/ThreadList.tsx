@@ -212,11 +212,17 @@ function UnitRows({
 	const stripe = unit.incident ? severityColor(unit.incident.severity) : null;
 	return (
 		<div
-			className={cn("flex flex-col gap-px", stripe && "border-l-2 pl-px")}
-			style={stripe ? { borderColor: stripe } : undefined}
+			className={cn("relative flex flex-col gap-px", stripe && "pl-1")}
 			data-testid="thread-unit"
 			data-incident={unit.incident?.number}
 		>
+			{stripe && (
+				<span
+					aria-hidden
+					className="absolute inset-y-1 left-0 w-0.5 rounded-full"
+					style={{ background: stripe }}
+				/>
+			)}
 			{unit.threads.map((t, i) => (
 				<Row
 					key={t.id}

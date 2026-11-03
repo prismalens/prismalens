@@ -20,6 +20,13 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { useRepositories } from "@/lib/api/hooks";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
 import { rowContext, threadLink } from "@/lib/thread-rows";
@@ -33,7 +40,7 @@ const BUTTON =
  * The sidebar's head (#1020): Search (Ctrl K) over threads with filters, Add
  * project, and New thread (Ctrl Shift O).
  */
-export function SidebarHead() {
+export function SidebarHead({ compact = false }: { compact?: boolean }) {
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
 	useEffect(() => {
@@ -52,18 +59,26 @@ export function SidebarHead() {
 	}, [navigate]);
 	return (
 		<div
-			className="flex items-center gap-0.5 px-2 pb-1"
+			className={cn(
+				"flex gap-0.5 px-2 pb-1",
+				compact ? "flex-col items-center" : "items-center",
+			)}
 			data-testid="sidebar-head"
 		>
 			<Hint label="Search" keys={["Ctrl", "K"]} side="bottom">
 				<button
 					type="button"
 					onClick={() => setOpen(true)}
-					className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 text-body text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+					aria-label="Search"
+					className={
+						compact
+							? BUTTON
+							: "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 text-body text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+					}
 					data-testid="sidebar-search"
 				>
 					<Search className={ICON} />
-					<span>Search</span>
+					{!compact && <span>Search</span>}
 				</button>
 			</Hint>
 			<Hint label="Add project" side="bottom">
@@ -243,6 +258,8 @@ export function ThreadSearch({
 	);
 }
 
+const ANY = "any";
+
 function Filter({
 	label,
 	value,
@@ -254,22 +271,32 @@ function Filter({
 	onChange: (v: string | undefined) => void;
 	options: Array<[string, string]>;
 }) {
+	const id = label.toLowerCase();
 	return (
-		<label className="inline-flex h-7 items-center gap-1 rounded-control bg-surface-2 pl-2 text-meta text-text-2">
-			<span>{label}</span>
-			<select
-				value={value ?? ""}
-				onChange={(e) => onChange(e.target.value || undefined)}
-				className="h-7 rounded-control bg-transparent pr-1 text-text-1 outline-none"
-				data-testid={`thread-filter-${label.toLowerCase()}`}
+		<Select
+			value={value ?? ANY}
+			onValueChange={(v) => onChange(v === ANY ? undefined : v)}
+		>
+			<SelectTrigger
+				aria-label={label}
+				className="text-meta"
+				data-testid={`thread-filter-${id}`}
 			>
-				<option value="">Any</option>
+				<span className="text-text-3">{label}</span>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				<SelectItem value={ANY}>Any</SelectItem>
 				{options.map(([v, l]) => (
-					<option key={v} value={v}>
+					<SelectItem
+						key={v}
+						value={v}
+						data-testid={`thread-filter-${id}-${v}`}
+					>
 						{l}
-					</option>
+					</SelectItem>
 				))}
-			</select>
-		</label>
+			</SelectContent>
+		</Select>
 	);
 }

@@ -25,7 +25,7 @@ function isTyping(target: EventTarget | null): boolean {
 
 /**
  * `g` then `i` / `a` / `s` moves between the front doors; `c` opens New
- * incident; `?` opens the shortcut sheet. Mounted once in the authenticated
+ * thread with Incident on; `?` opens the shortcut sheet. Mounted once in the authenticated
  * layout. A chord waits one second for its second key, then forgets the first.
  */
 export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {

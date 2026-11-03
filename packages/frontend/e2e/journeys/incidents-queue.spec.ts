@@ -5,19 +5,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { setTheme } from "./live-stream-fixtures";
 
 /**
- * #523 S2/final, #811 — the incident sidebar tree and keyboard surface.
- * Open incidents appear grouped by service in IncidentTree; closed ones are omitted.
+ * #523 S2/final, #811 — the shell's keyboard surface. The sidebar is a
+ * thread list now (#1020); thread-list.spec.ts covers its rows.
  */
 test.use({ viewport: { width: 1440, height: 900 } });
-
-async function createIncident(page: Page, title: string): Promise<string> {
-	const created = await page.request.post("/api/incidents", {
-		data: { title },
-	});
-	expect(created.ok()).toBeTruthy();
-	const incident: { id: string } = await created.json();
-	return incident.id;
-}
 
 function headerHeading(page: Page) {
 	return page
@@ -25,55 +16,11 @@ function headerHeading(page: Page) {
 		.getByRole("heading", { name: "Incidents", exact: true });
 }
 
-function treeRow(page: Page, id: string) {
-	return page
-		.getByTestId("tree-incident")
-		.filter({ has: page.locator(`a[href*="${id}"]`) });
-}
-
-test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
+test.describe("#523 S2/final — the incidents queue and the shell keys", () => {
 	test("grouping and the keyboard surface", async ({ page }) => {
-		const stamp = Date.now();
-		const triggeredTitle = `Queue triggered ${stamp}`;
-		const failedRunTitle = `Queue failed run ${stamp}`;
-		const resolvedTitle = `Queue resolved ${stamp}`;
-		const closedTitle = `Queue closed ${stamp}`;
-
-		const closedId = await createIncident(page, closedTitle);
-		await page.request.post(`/api/incidents/${closedId}/resolve`);
-		await page.request.post(`/api/incidents/${closedId}/close`, {
-			data: {},
-		});
-
-		const triggeredId = await createIncident(page, triggeredTitle);
-
-		const failedRunId = await createIncident(page, failedRunTitle);
-		await page.request.patch(`/api/incidents/${failedRunId}`, {
-			data: { status: "investigating" },
-		});
-
-		const resolvedId = await createIncident(page, resolvedTitle);
-		await page.request.post(`/api/incidents/${resolvedId}/resolve`);
-
 		await page.goto("/incidents?view=analytics");
 		await expect(headerHeading(page)).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
-
-		const tree = page.getByTestId("incident-tree");
-		await expect(tree).toBeVisible({ timeout: 15_000 });
-
-		for (const more of await tree.getByTestId("tree-more").all()) {
-			if (await more.isVisible()) await more.click();
-		}
-
-		const triggeredRow = treeRow(page, triggeredId);
-		const failedRow = treeRow(page, failedRunId);
-		const resolvedRow = treeRow(page, resolvedId);
-		const closedRow = treeRow(page, closedId);
-		await expect(triggeredRow).toBeVisible();
-		await expect(failedRow).toBeVisible();
-		await expect(resolvedRow).toBeVisible();
-		await expect(closedRow).toHaveCount(0);
 
 		// `?` opens the shortcut sheet.
 		await page.keyboard.press("?");
@@ -91,23 +38,12 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await expect(page.getByTestId("sidebar-show")).toBeVisible();
 		await page.keyboard.press("[");
 		await expect.poll(width).toBe(240);
-		await expect(sidebar.getByTestId("nav-alerts")).toBeVisible();
+		await expect(sidebar.getByTestId("sidebar-search")).toBeVisible();
 
 		// `g` then `a` goes to the alerts front door.
 		await page.keyboard.press("g");
 		await page.keyboard.press("a");
 		await expect(page).toHaveURL(/\/alerts(\/|\?|$)/);
-
-		// Clicking a row in the tree navigates to the incident overview
-		await page.goto("/incidents?view=analytics");
-		await expect(headerHeading(page)).toBeVisible({ timeout: 15_000 });
-		for (const more of await tree.getByTestId("tree-more").all()) {
-			if (await more.isVisible()) await more.click();
-		}
-		await treeRow(page, resolvedId).getByTestId("tree-incident-link").click();
-		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}(\?|$)/, {
-			timeout: 15_000,
-		});
 	});
 
 	test("All incidents keeps a 90-day range from Analytics (#673 w6-35)", async ({

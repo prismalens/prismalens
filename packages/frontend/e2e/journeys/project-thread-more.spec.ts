@@ -252,7 +252,7 @@ test.describe("#1020 — project thread journeys", () => {
 
 		// No subject: New thread starts on "No project"
 		await page.goto("/threads/new");
-		await expect(page.getByTestId("composer-subject")).toHaveValue("none");
+		await expect(page.getByTestId("composer-subject")).toHaveText("No project");
 		await page.getByTestId("composer-input").fill("Thread with no subject");
 		await page.getByTestId("composer-input").press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
@@ -267,9 +267,8 @@ test.describe("#1020 — project thread journeys", () => {
 		expect(created.ok()).toBe(true);
 		const serviceId = ((await created.json()) as { id: string }).id;
 		await page.goto("/threads/new");
-		await page
-			.getByTestId("composer-subject")
-			.selectOption(`service:${serviceId}`);
+		await page.getByTestId("composer-subject").click();
+		await page.getByTestId(`subject-service-${serviceId}`).click();
 		await page.getByTestId("composer-input").fill("Thread on a service");
 		await page.getByTestId("composer-input").press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));

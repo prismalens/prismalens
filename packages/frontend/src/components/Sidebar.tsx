@@ -2,25 +2,22 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The shell's left bar, one for every page (#811): three doors, the incidents
- * under their services (the Alerts and Services areas keep their own lists),
- * and Settings beside the theme toggle at the foot. Below 1280 it folds to an
- * icon rail; `[` or its fold button hides it completely, and a button in the
- * page bar brings it back (#848). On the phone the doors are a strip of icons
- * across the top. Settings swaps the bar for its pages with Back at the foot.
- * Under the doors, Terminal shows or hides the terminal panel (#931).
- * Hidden on pairing, where nothing leads away.
+ * The shell's left bar, one for every page: Search, Add project and New
+ * thread over the thread list (#1020; Alerts and Services keep their own
+ * lists), and Settings beside the theme toggle at the foot. Below 1280 it
+ * folds to an icon rail; `[` or its fold button hides it completely, and a
+ * button in the page bar brings it back (#848). On the phone the doors are a
+ * strip of icons across the top. Settings swaps the bar for its pages with
+ * Back at the foot. Hidden on pairing, where nothing leads away.
  */
 import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
 import {
 	Bell,
 	Boxes,
-	CalendarClock,
 	ChevronLeft,
 	Inbox,
 	PanelLeft,
 	SlidersHorizontal,
-	SquareTerminal,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
@@ -34,7 +31,6 @@ import {
 	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
-import { IncidentTree } from "@/components/shell/IncidentTree";
 import { SidebarHead } from "@/components/shell/SidebarHead";
 import { ThreadList } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -47,12 +43,7 @@ import { useOperator } from "@/hooks/use-operator";
 import { useServices } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
-type DoorTo =
-	| "/incidents"
-	| "/alerts"
-	| "/services"
-	| "/schedules"
-	| "/settings";
+type DoorTo = "/incidents" | "/alerts" | "/services" | "/settings";
 
 interface Door {
 	to: DoorTo;
@@ -80,11 +71,6 @@ function useDoors(signedIn: boolean): Door[] {
 		},
 		{ to: "/alerts", label: "Alerts", icon: <Bell className={ICON} /> },
 		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
-		{
-			to: "/schedules",
-			label: "Schedules",
-			icon: <CalendarClock className={ICON} />,
-		},
 		{
 			to: "/settings",
 			label: "Settings",
@@ -188,21 +174,8 @@ function MainBar({
 					</Hint>
 				</span>
 			</div>
-			{signedIn && full && <SidebarHead />}
-			<nav className="grid gap-0.5 px-2" aria-label="Areas">
-				{doors
-					.filter((d) => d.to !== "/settings")
-					.map((door) => (
-						<DoorLink
-							key={door.to}
-							door={door}
-							on={isOn(pathname, door.to)}
-							labelled={full}
-						/>
-					))}
-				<TerminalDoor labelled={full} />
-			</nav>
-			<div className="mt-3.5 min-h-0 flex-1 overflow-y-auto pb-2">
+			{signedIn && <SidebarHead compact={!full} />}
+			<div className="mt-1.5 min-h-0 flex-1 overflow-y-auto pb-2">
 				{signedIn && full && <AreaList pathname={pathname} />}
 			</div>
 			<div className="flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
@@ -254,84 +227,7 @@ function ShowSidebar({ onShow }: { onShow: () => void }) {
 	);
 }
 
-const DOOR =
-	"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0";
-
-function TerminalDoor({ labelled }: { labelled: boolean }) {
-	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
-	return (
-		<Hint label="Terminal" keys={["Ctrl", "`"]} side="right" when={!labelled}>
-			<button
-				type="button"
-				aria-label="Terminal"
-				aria-expanded={bottomPanel}
-				onClick={() => setBottomPanel(!bottomPanel)}
-				className={cn(DOOR, bottomPanel && "bg-surface-3 text-text-1")}
-				data-testid="nav-terminal"
-			>
-				<SquareTerminal className={ICON} />
-				<span className={FULL_ONLY}>Terminal</span>
-			</button>
-		</Hint>
-	);
-}
-
-function DoorLink({
-	door,
-	on,
-	labelled,
-}: {
-	door: Door;
-	on: boolean;
-	labelled: boolean;
-}) {
-	const key = goKey(door.label);
-	return (
-		<Hint
-			label={door.label}
-			keys={key ? ["G", key.toUpperCase()] : undefined}
-			side="right"
-			when={!labelled}
-		>
-			<Link
-				to={door.to}
-				aria-current={on ? "page" : undefined}
-				aria-label={
-					door.countLabel ? `${door.label}, ${door.countLabel}` : door.label
-				}
-				data-testid={`nav-${door.label.toLowerCase()}`}
-				className={cn(DOOR, on && "bg-surface-3 font-medium text-text-1")}
-			>
-				<span className="relative">
-					{door.icon}
-					{door.dot && (
-						<span
-							aria-hidden
-							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent"
-							data-testid={`nav-${door.label.toLowerCase()}-dot`}
-						/>
-					)}
-				</span>
-				<span className={FULL_ONLY}>{door.label}</span>
-				{door.dot && <span className="sr-only">, update available</span>}
-				{door.count !== undefined && " "}
-				{door.count !== undefined && (
-					<span
-						className={cn(
-							"ml-auto text-meta font-normal text-warn tabular-nums",
-							FULL_ONLY,
-						)}
-						data-testid={`nav-${door.label.toLowerCase()}-count`}
-					>
-						{door.count}
-					</span>
-				)}
-			</Link>
-		</Hint>
-	);
-}
-
-/** Under the doors, the list of the area you are in. */
+/** Under the head: the thread list, or the Alerts or Services list there. */
 function AreaList({ pathname }: { pathname: string }) {
 	const alert = useMatch({
 		from: "/_authenticated/alerts/$id/",
@@ -343,13 +239,7 @@ function AreaList({ pathname }: { pathname: string }) {
 		);
 	}
 	if (isOn(pathname, "/services")) return <ServiceList />;
-	return (
-		<>
-			<ThreadList />
-			<SideLane label="Incidents" />
-			<IncidentTree />
-		</>
-	);
+	return <ThreadList />;
 }
 
 /** Settings at the foot, an icon beside the theme toggle (spec §1). */

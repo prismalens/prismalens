@@ -9,7 +9,7 @@ Feature: Phone
 
   Scenario: Landing
     When I open the app
-    Then the top strip shows Incidents, Alerts, Services and Settings as icons, with Incidents current, and the header carries "New incident"
+    Then the top strip shows Incidents, Alerts, Services and Settings as icons, with Incidents current, and the header carries "New thread"
     And the incident list is the page
 
   Scenario: Deep link from Slack to a report, no history
@@ -18,9 +18,9 @@ Feature: Phone
     When I press the chevron at the left of the band
     Then I am on the incident list
 
-  Scenario: New incident from the phone
-    When I press "New incident" in the header
-    Then the create dialog opens and fits the screen without sideways scrolling
+  Scenario: New thread from the phone
+    When I press "New thread" in the header
+    Then New thread opens and fits the screen without sideways scrolling
 
   Scenario: Settings on the phone lands on its sections
     When I press Settings in the strip
