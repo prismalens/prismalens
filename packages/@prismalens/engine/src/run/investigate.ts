@@ -75,6 +75,7 @@ import {
 	levelPolicy,
 	newAskId,
 	type PermissionPolicy,
+	type RememberedAsk,
 } from "./permission.js";
 import {
 	buildChatPrompt,
@@ -164,6 +165,10 @@ export interface RunInvestigationOptions {
 	askTimeoutMs?: number;
 	/** An alert started the run: past reads, every ask is refused at once (#818 w5-29). */
 	unattended?: boolean;
+	/** Wait for me: a run nobody watches whose asks still wait for a person (#1020). */
+	waitForAsks?: boolean;
+	/** A schedule's asks a person allowed always; allowed again without a card (#1020). */
+	alwaysAllow?: readonly RememberedAsk[];
 	/** Whether the agent's own sandbox holds the run's mode here; the report's `enforced` rests on it (#673 w51). */
 	sandboxCheck?: typeof checkSandbox;
 	/** Operator messages to the live session (#743). */
@@ -547,7 +552,9 @@ export async function* runInvestigation(
 			{ policy: opts.permission ?? denyAllPolicy },
 			{
 				unattended: !!opts.unattended,
+				...(opts.waitForAsks ? { waitForAsks: true } : {}),
 				...(opts.gateway ? { gateway: opts.gateway } : {}),
+				...(opts.alwaysAllow?.length ? { remembered: opts.alwaysAllow } : {}),
 			},
 		),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).

@@ -1622,6 +1622,11 @@ export const InvestigationJobDataSchema = z.object({
 	accessLevel: AccessLevelSchema.optional(),
 	/** An alert started the run: nobody is there to answer an ask (#818 w5-29). */
 	unattended: z.boolean().optional(),
+	/**
+	 * Wait for me (#1020): nobody watches, yet every ask past reads waits for a person, whatever
+	 * the level, and lapses after ASK_TIMEOUT_MS; set with `unattended` false.
+	 */
+	waitForAsks: z.boolean().optional(),
 	/** Who started the thread (#1020): an alert's or a schedule's run gets no GitHub token unless the host allows it. */
 	startedBy: z.enum(["person", "alert", "schedule"]).optional(),
 	...RunChoiceSchema.shape,

@@ -449,6 +449,21 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 		expect(JSON.parse(rearmed.payload)).not.toHaveProperty("unattended");
 	});
 
+	it("keeps an alert-started thread's follow-up an alert's run for its GitHub token; a person's stays a person's (#1020 R41)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const ran = await thread(inc.id, { triggerType: "auto_critical", accessLevel: "auto", agentMode: "build" });
+		await service.resumeInvestigation(ran.id, "and now?", "queue");
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
+		expect(JSON.parse(rearmed.payload)).toMatchObject({ startedBy: "alert" });
+
+		const inc2 = await incident();
+		const mine = await thread(inc2.id, { triggerType: "manual", accessLevel: "auto" });
+		await service.resumeInvestigation(mine.id, "and now?", "queue");
+		const own = await prisma.job.findUniqueOrThrow({ where: { investigationId: mine.id } });
+		expect(JSON.parse(own.payload)).toMatchObject({ startedBy: "person" });
+	});
+
 	describe("a follow-up in another agent, or after a restart (never a dead end)", () => {
 		it("hands off to a fresh session of the agent the chips name, at the run's own level", async () => {
 			const { service } = realDispatch();

@@ -770,3 +770,40 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		expect(isGatewayToolCall(dotted, gateway(true))).toBe(false);
 	});
 });
+
+describe("asks a person allowed always on a schedule (#1020 R33)", () => {
+	const ctx = { askId: "ask1", signal: new AbortController().signal };
+	const ask = (title: string, kind = "execute"): PermissionRequest => ({
+		toolCall: { title, kind },
+		options: [
+			{ optionId: "yes", name: "Allow", kind: "allow_once" },
+			{ optionId: "no", name: "Deny", kind: "reject_once" },
+		],
+	});
+	const remembered = [{ kind: "execute", title: "npm test" }];
+
+	it("allows the exact remembered ask, even where nobody can answer", () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const policy = levelPolicy("supervised", channel, { unattended: true, remembered });
+		expect(policy(ask("npm test"), ctx)).toEqual({ allow: true, optionId: "yes", outcome: "allowed" });
+	});
+
+	it("Wait for me sends every ask past reads to a person, whatever the level", async () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const policy = levelPolicy("full-access", channel, { waitForAsks: true });
+		const verdict = policy(ask("rm -rf build"), ctx);
+		expect(verdict).toBeInstanceOf(Promise);
+		expect(channel.pending()).toHaveLength(1);
+		const id = channel.pending()[0]?.askId as string;
+		expect(channel.answer(id, false)).toBe("denied");
+		await expect(verdict).resolves.toMatchObject({ allow: false, outcome: "denied" });
+	});
+
+	it("never stretches to another command, another kind or a mode switch", () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const policy = levelPolicy("supervised", channel, { unattended: true, remembered });
+		expect(policy(ask("npm test && curl evil"), ctx)).toMatchObject({ allow: false, outcome: "unattended" });
+		expect(policy(ask("npm test", "edit"), ctx)).toMatchObject({ allow: false, outcome: "unattended" });
+		expect(policy(ask("npm test", "switch_mode"), ctx)).toMatchObject({ allow: false, outcome: "mode_kept" });
+	});
+});

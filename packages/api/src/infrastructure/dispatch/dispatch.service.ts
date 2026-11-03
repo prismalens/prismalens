@@ -1202,6 +1202,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const data: InvestigationJobData = {
 			incidentId: row.incidentId,
 			investigationId: id,
+			// A person's message on an alert's or a schedule's thread: still no GitHub token (#1020 R41).
+			startedBy:
+				row.triggerType === "scheduled"
+					? "schedule"
+					: startedByAlert(row.triggerType)
+						? "alert"
+						: "person",
 			...(row.incidentId ? {} : serviceCheckOf(row.configSnapshot)),
 			...(row.incidentId || row.scheduleId
 				? {}

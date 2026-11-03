@@ -384,8 +384,15 @@ ${p.standing}`,
 function renderCheck(context: InvestigationContext): string {
 	const c = context.check;
 	const brief = c?.brief?.trim();
-	return `SCHEDULED CHECK
-  Service: ${sanitizeUntrustedLine(context.service?.name ?? "unknown")}${
+	// A project's or a no-code schedule's check names its project, or nothing (#1020).
+	const about = context.service
+		? `
+  Service: ${sanitizeUntrustedLine(context.service.name)}`
+		: c?.project
+			? `
+  Project: ${sanitizeUntrustedLine(c.project)}`
+			: "";
+	return `SCHEDULED CHECK${about}${
 		c?.runbook
 			? `
   Runbook: ${sanitizeUntrustedLine(c.runbook)}`
@@ -473,7 +480,7 @@ function promptPieces(
 		.join("\n");
 
 	const role = check
-		? `You are an on-call Site Reliability Engineer running a SCHEDULED CHECK of the service ${s?.name ?? "named below"}. No alert fired: the operator asked for this look. Report what the evidence shows, a problem you can name or none; a clean check is a valid result.`
+		? `You are an on-call Site Reliability Engineer running a SCHEDULED CHECK${s?.name ? ` of the service ${s.name}` : context.check?.project ? " of the project named below" : ""}. No alert fired: the operator asked for this look. Report what the evidence shows, a problem you can name or none; a clean check is a valid result.`
 		: "You are an on-call Site Reliability Engineer running a LIVE investigation of a firing production alert. Your job is to find the ROOT CAUSE — the specific code path, configuration, dependency, or resource that produced this alert — not merely the symptom.";
 	const opening =
 		check || !primary

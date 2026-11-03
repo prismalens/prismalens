@@ -57,6 +57,10 @@ describe("SchedulesService (#979)", () => {
 		effort: null,
 		missedPolicy: "run_once" as const,
 		catchUpMinutes: 360,
+		repositoryId: null,
+		accessLevel: null,
+		report: true,
+		whenAsks: "decide" as const,
 		...over,
 	});
 
@@ -92,6 +96,114 @@ describe("SchedulesService (#979)", () => {
 		started.length = 0;
 		lifecycle.observe.mockClear();
 		ready.mockResolvedValue({ ready: true });
+	});
+
+	describe("any subject, Report and When it asks (#1020)", () => {
+		const project = (over: Record<string, unknown> = {}) =>
+			prisma.repository.create({
+				data: { fullName: `org/shop-${randomUUID()}`, sourceKind: "url", url: `https://example.test/${randomUUID()}.git`, subPath: "apps/web", ...over },
+			});
+		const jobOf = async (investigationId: string | null | undefined) =>
+			JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: investigationId as string } })).payload);
+
+		it("runs a project schedule in the project's code, at its sub-path, as a run on the project", async () => {
+			const repo = await project();
+			const s = scheduler();
+			const created = await s.create(input({ serviceId: null, repositoryId: repo.id }), "host", new Date("2026-07-01T08:00:00Z"));
+			expect(created).toMatchObject({ subject: "project", repositoryId: repo.id, serviceName: "", repositoryName: repo.fullName });
+			await s.evaluate(new Date("2026-07-01T09:00:05Z"));
+			const [tick] = await ticks(created.id);
+			expect(tick?.outcome).toBe("started");
+			const run = await prisma.investigation.findUniqueOrThrow({ where: { id: tick?.investigationId as string } });
+			expect(run).toMatchObject({ repositoryId: repo.id, serviceId: null, scheduleId: created.id, kind: "investigation", triggerType: "scheduled", title: "Morning check" });
+			const job = await jobOf(tick?.investigationId);
+			expect(job).toMatchObject({ startedBy: "schedule", unattended: true, brief: "Look at the last 12 hours." });
+			expect(job.scheduled).toMatchObject({ subject: "project", serviceId: null, repositoryId: repo.id });
+			expect(job.scheduled.repos).toEqual([expect.objectContaining({ url: repo.url, subPath: "apps/web" })]);
+		});
+
+		it("pauses a project schedule when the project's code location changes", async () => {
+			const repo = await project();
+			const s = scheduler();
+			const created = await s.create(input({ serviceId: null, repositoryId: repo.id }), "host", new Date("2026-07-02T08:00:00Z"));
+			await prisma.repository.update({ where: { id: repo.id }, data: { subPath: "apps/api" } });
+			await s.evaluate(new Date("2026-07-02T09:00:05Z"));
+			expect((await ticks(created.id)).map((t) => t.outcome)).toEqual(["skipped_bindings_changed"]);
+			const row = await prisma.schedule.findUniqueOrThrow({ where: { id: created.id } });
+			expect(row.enabled).toBe(false);
+			expect(row.pausedReason).toMatch(/^The project's code location changed/);
+			expect(await prisma.investigation.count({ where: { scheduleId: created.id } })).toBe(0);
+		});
+
+		it("runs a schedule with no code on nothing, and nothing it does not read pauses it", async () => {
+			const s = scheduler();
+			const created = await s.create(input({ serviceId: null }), "host", new Date("2026-07-03T08:00:00Z"));
+			expect(created.subject).toBe("none");
+			await prisma.service.update({ where: { id: serviceId }, data: { metadata: JSON.stringify({ investigation: { notes: "new" } }) } });
+			await s.evaluate(new Date("2026-07-03T09:00:05Z"));
+			const [tick] = await ticks(created.id);
+			expect(tick?.outcome).toBe("started");
+			const job = await jobOf(tick?.investigationId);
+			expect(job.scheduled).toMatchObject({ subject: "none", serviceId: null, repos: [] });
+			await prisma.service.update({ where: { id: serviceId }, data: { metadata: null } });
+		});
+
+		it("Report off makes each run a chat whose first message is the saved text", async () => {
+			const s = scheduler();
+			const created = await s.create(input({ report: false }), "host", new Date("2026-07-04T08:00:00Z"));
+			await s.evaluate(new Date("2026-07-04T09:00:05Z"));
+			const [tick] = await ticks(created.id);
+			const run = await prisma.investigation.findUniqueOrThrow({ where: { id: tick?.investigationId as string } });
+			expect(run.kind).toBe("chat");
+			const job = await jobOf(tick?.investigationId);
+			expect(job).toMatchObject({ kind: "chat", chat: { text: "Look at the last 12 hours." } });
+			expect(job.brief).toBeUndefined();
+		});
+
+		it("Wait for me leaves the run's asks to a person, at the level the schedule saved", async () => {
+			const s = scheduler();
+			const created = await s.create(input({ whenAsks: "wait", accessLevel: "supervised" }), "host", new Date("2026-07-05T08:00:00Z"));
+			expect(created).toMatchObject({ whenAsks: "wait", accessLevel: "supervised" });
+			await s.evaluate(new Date("2026-07-05T09:00:05Z"));
+			const [tick] = await ticks(created.id);
+			const job = await jobOf(tick?.investigationId);
+			expect(job).toMatchObject({ unattended: false, waitForAsks: true, accessLevel: "supervised", startedBy: "schedule" });
+			const run = await prisma.investigation.findUniqueOrThrow({ where: { id: tick?.investigationId as string } });
+			expect(run.accessLevel).toBe("supervised");
+		});
+
+		it("remembers Always allow per schedule and hands it to the next run, never to another schedule", async () => {
+			const s = scheduler();
+			const created = await s.create(input(), "host", new Date("2026-07-06T08:00:00Z"));
+			const other = await s.create(input({ name: "Other" }), "host", new Date("2026-07-06T08:00:00Z"));
+			await s.remember(created.id, { kind: "execute", title: "npm test" });
+			await s.remember(created.id, { kind: "execute", title: "npm test" });
+			expect((await s.get(created.id, undefined, 10)).schedule.alwaysAllow).toEqual([{ kind: "execute", title: "npm test" }]);
+			await s.evaluate(new Date("2026-07-06T09:00:05Z"));
+			const mine = (await ticks(created.id))[0];
+			const theirs = (await ticks(other.id))[0];
+			expect((await jobOf(mine?.investigationId)).scheduled.alwaysAllow).toEqual([{ kind: "execute", title: "npm test" }]);
+			expect((await jobOf(theirs?.investigationId)).scheduled.alwaysAllow).toBeUndefined();
+		});
+
+		it("refuses a Folder project on save, on resume and at its time", async () => {
+			const folder = await project({ sourceKind: "folder", url: `/tmp/${randomUUID()}`, plain: true, subPath: null });
+			const s = scheduler();
+			await expect(s.create(input({ serviceId: null, repositoryId: folder.id }), "host")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+			const repo = await project({ subPath: null });
+			const created = await s.create(input({ serviceId: null, repositoryId: repo.id }), "host", new Date("2026-07-07T08:00:00Z"));
+			await prisma.repository.update({ where: { id: repo.id }, data: { plain: true } });
+			await s.evaluate(new Date("2026-07-07T09:00:05Z"));
+			expect((await ticks(created.id)).map((t) => t.outcome)).toEqual(["skipped_bindings_changed"]);
+			expect(await prisma.investigation.count({ where: { scheduleId: created.id } })).toBe(0);
+			await expect(s.setEnabled(created.id, true, "host")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+			await expect(s.runNow(created.id, "host")).rejects.toMatchObject({ code: "CONFLICT" });
+		});
+
+		it("refuses a schedule on both a project and a service", async () => {
+			const repo = await project();
+			await expect(scheduler().create(input({ repositoryId: repo.id }), "host")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+		});
 	});
 
 	it("runs once after a sleep that spanned three slots, and says it slept", async () => {

@@ -147,6 +147,23 @@ function allowed(
 	return { allow: true, optionId: allow.optionId, outcome: "allowed" };
 }
 
+/** An ask a person answered "Always allow" on, as the conversation showed it. */
+export interface RememberedAsk {
+	kind: string | null;
+	title: string;
+}
+
+/** The same kind and the same title the card showed; a title carries the command or path. */
+function isRemembered(
+	req: PermissionRequest,
+	remembered: readonly RememberedAsk[] | undefined,
+): boolean {
+	const title = req.toolCall?.title?.trim();
+	if (!title || !remembered?.length) return false;
+	const kind = req.toolCall?.kind ?? null;
+	return remembered.some((a) => a.title === title && a.kind === kind);
+}
+
 /** The run's gateway as the policy sees it: connected, its server name, and PrismaLens's own tool names. */
 export interface GatewayAsks {
 	connected(): boolean;
@@ -212,16 +229,25 @@ export function isGatewayToolCall(
 export function levelPolicy(
 	level: AccessLevel,
 	channel: { policy: PermissionPolicy },
-	opts: { unattended?: boolean; gateway?: GatewayAsks } = {},
+	opts: {
+		unattended?: boolean;
+		/** Wait for me: every ask past reads goes to a person, never answered by the level (#1020). */
+		waitForAsks?: boolean;
+		gateway?: GatewayAsks;
+		/** Asks a person allowed always on this schedule; matched on kind and title exactly (#1020). */
+		remembered?: readonly RememberedAsk[];
+	} = {},
 ): PermissionPolicy {
 	const card = opts.unattended ? unattendedPolicy : channel.policy;
 	return (req, ctx) => {
 		const kind = req.toolCall?.kind;
 		if (kind === "switch_mode")
 			return deny(req, "mode_kept", "the run stays in its mode");
+		if (isRemembered(req, opts.remembered)) return allowed(req, ctx, card);
 		if (isGatewayToolCall(req, opts.gateway)) return allowed(req, ctx, card);
 		if (kind && READS.has(kind)) return allowed(req, ctx, card);
-		if (opts.unattended || level === "supervised") return card(req, ctx);
+		if (opts.unattended || opts.waitForAsks || level === "supervised")
+			return card(req, ctx);
 		if (level === "auto-edits")
 			return kind && FILE_CHANGES.has(kind)
 				? allowed(req, ctx, card)

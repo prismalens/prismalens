@@ -3431,6 +3431,144 @@ describe("a service check with no incident (#979)", () => {
 	});
 });
 
+describe("a schedule on a project, a service or nothing (#1020)", () => {
+	let tmp: string;
+	const projectRepo = {
+		sourceKind: "url" as const,
+		url: "https://github.com/acme/shop",
+		defaultBranch: "main",
+		subPath: "apps/web",
+		connectionId: null,
+		serviceName: "shop-monorepo",
+	};
+	const onProject = {
+		scheduleId: "sch-p",
+		revision: 1,
+		subject: "project" as const,
+		serviceId: null,
+		serviceName: "",
+		repositoryId: "repo-1",
+		projectName: "shop-monorepo",
+		serviceNotes: null,
+		runbook: null,
+		repos: [projectRepo],
+	};
+	const onNothing = { ...onProject, scheduleId: "sch-n", subject: "none" as const, repositoryId: null, projectName: null, repos: [] };
+	const data = (over: Partial<InvestigationJobData> = {}): InvestigationJobData => ({
+		investigationId: "inv-sched",
+		incidentId: null,
+		scheduled: onProject,
+		brief: "Run the tests and say what broke.",
+		unattended: true,
+		startedBy: "schedule",
+		...over,
+	});
+	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+	const leased = () => fakePorts({ gateway: { lease: vi.fn(async () => null), revoke: vi.fn() } });
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-sched-run-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ failureKind: null, report: { summary: "ok", rootCause: null, nextSteps: [] } });
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("a project schedule checks out the project it froze, starts in its sub-path and never takes a same-named service's policy", async () => {
+		const serviceIdOf = vi.fn(async (_name: string) => "svc-same-name");
+		setRunWorkspaceSource({
+			global: () => DEFAULT_RUN_WORKSPACE_SETTINGS,
+			override: () => ({ setup: { command: "touch pwned" } }) as never,
+			locations: () => [],
+			serviceIdOf,
+			record: () => {},
+		});
+		const ports = fakePorts({
+			incidentRepos: vi.fn(async () => {
+				throw new Error("a schedule reads no live bindings");
+			}),
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => {
+				mkdirSync(join(dest, "apps", "web"), { recursive: true });
+				return { path: dest, head: "abc123def456789", branch: "main" as const };
+			}),
+		});
+		const ws = await resolveWorkspace(data(), ports);
+		expect(vi.mocked(ports.snapshotWith).mock.calls[0]?.[0]).toMatchObject({ url: "https://github.com/acme/shop" });
+		expect(ws.cwd.replaceAll("\\", "/")).toMatch(/apps\/web$/);
+		expect(ws.repos[0]?.services).toEqual([]);
+		expect(serviceIdOf).not.toHaveBeenCalled();
+	});
+
+	it("a schedule with no code runs without code and says the schedule has no project", async () => {
+		const ws = await resolveWorkspace(data({ scheduled: onNothing }), fakePorts());
+		expect(ws.layout).toBe("unmapped");
+		expect(ws.note).toBe("Ran without code: this schedule has no project.");
+	});
+
+	it("Report on: a project's check names the project, owes a report, and its tools follow the project", async () => {
+		const ports = leased();
+		await runInvestigationJob({ id: "job-sched", investigationId: "inv-sched", attempts: 1 }, data(), io(), ports);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; kind?: string }];
+		expect(opts.kind).toBeUndefined();
+		expect(opts.context).toMatchObject({
+			mode: "service-check",
+			alerts: [],
+			check: { brief: "Run the tests and say what broke.", project: "shop-monorepo" },
+		});
+		expect(opts.context.service).toBeUndefined();
+		expect(vi.mocked(ports.resolveConnectors)).toHaveBeenCalledWith(undefined);
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "schedule", owes: "report" });
+	});
+
+	it("Report off: the saved text opens a chat about the subject, which owes an answer", async () => {
+		const ports = leased();
+		await runInvestigationJob(
+			{ id: "job-sched", investigationId: "inv-sched", attempts: 1 },
+			data({ brief: undefined, kind: "chat", chat: { text: "Run the tests and say what broke." } }),
+			io(),
+			ports,
+		);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; kind?: string; brief?: string }];
+		expect(opts.kind).toBe("chat");
+		expect(opts.brief).toBe("Run the tests and say what broke.");
+		expect(opts.context).toMatchObject({ mode: "project-chat", thread: { subject: "project", name: "shop-monorepo" } });
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "schedule", owes: "answer" });
+	});
+
+	it("a no-code schedule's run is offered only the tools a no-subject thread gets", async () => {
+		const ports = leased();
+		await runInvestigationJob({ id: "job-sched", investigationId: "inv-sched", attempts: 1 }, data({ scheduled: onNothing }), io(), ports);
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "none", owes: "report" });
+	});
+
+	it("hands the schedule's remembered asks to the run, and none when it has none", async () => {
+		const remembered = [{ kind: "execute", title: "npm test" }];
+		await runInvestigationJob(
+			{ id: "job-sched", investigationId: "inv-sched", attempts: 1 },
+			data({ scheduled: { ...onProject, alwaysAllow: remembered } }),
+			io(),
+			fakePorts(),
+		);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ alwaysAllow?: unknown; unattended?: boolean }];
+		expect(opts.alwaysAllow).toEqual(remembered);
+		mocks.conductRun.mockClear();
+		await runInvestigationJob(
+			{ id: "job-sched", investigationId: "inv-sched", attempts: 1 },
+			data({ unattended: false, waitForAsks: true }),
+			io(),
+			fakePorts(),
+		);
+		const [waiting] = mocks.conductRun.mock.calls[0] as [{ alwaysAllow?: unknown; unattended?: boolean; waitForAsks?: boolean }];
+		expect(waiting.alwaysAllow).toBeUndefined();
+		// Wait for me: the run's asks go to a person, not refused at once and not answered by the level.
+		expect(waiting.unattended).toBeUndefined();
+		expect(waiting.waitForAsks).toBe(true);
+	});
+});
+
 describe("a project, service or no-subject thread (#1020)", () => {
 	let tmp: string;
 	const thread = {

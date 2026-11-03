@@ -186,14 +186,23 @@ function policyService(
 	data: InvestigationJobData,
 	name: string | undefined,
 ): string | null {
-	return data.thread?.subject === "project" ? null : (name ?? null);
+	return onProject(data) ? null : (name ?? null);
+}
+
+/** A project's thread or a project's schedule: its repo names no service (#1020). */
+function onProject(data: InvestigationJobData): boolean {
+	return (
+		data.thread?.subject === "project" ||
+		(!!data.scheduled && data.scheduled.subject === "project")
+	);
 }
 
 function serviceIdOf(
 	incident: Record<string, unknown> | null,
 	data?: InvestigationJobData,
 ): string | undefined {
-	if (data?.scheduled && !data.incidentId) return data.scheduled.serviceId;
+	if (data?.scheduled && !data.incidentId)
+		return data.scheduled.serviceId ?? undefined;
 	if (data?.thread && !data.incidentId)
 		return data.thread.serviceId ?? undefined;
 	return typeof incident?.serviceId === "string"
@@ -204,10 +213,13 @@ function serviceIdOf(
 /** A thread with no incident: its subject picks the PrismaLens tools it is offered (#1020). */
 /** What a run is about and owes, for its gateway tools (#1020); a legacy run keeps them all. */
 function toolScope(data: InvestigationJobData, kind: ThreadKind): HarnessScope {
+	// A schedule with no code gets what a no-subject thread gets (#1020).
 	const subject: ThreadSubjectKind | undefined = data.incidentId
 		? "incident"
 		: data.scheduled
-			? "schedule"
+			? data.scheduled.subject === "none"
+				? "none"
+				: "schedule"
 			: data.thread?.subject;
 	return { subject, owes: kind === "chat" ? "answer" : "report" };
 }
@@ -216,7 +228,9 @@ function toolScope(data: InvestigationJobData, kind: ThreadKind): HarnessScope {
 function subjectOf(data: InvestigationJobData): RunSubject | null {
 	if (data.incidentId) return data.incidentId;
 	if (data.thread?.serviceId) return { serviceId: data.thread.serviceId };
-	return data.scheduled ? { serviceId: data.scheduled.serviceId } : null;
+	return data.scheduled?.serviceId
+		? { serviceId: data.scheduled.serviceId }
+		: null;
 }
 
 export interface InvestigationResult {
@@ -466,6 +480,10 @@ async function runJobInternal(
 				...(effort ? { effort } : {}),
 				accessLevel,
 				...(data.unattended ? { unattended: true } : {}),
+				...(data.waitForAsks ? { waitForAsks: true } : {}),
+				...(data.scheduled?.alwaysAllow?.length
+					? { alwaysAllow: data.scheduled.alwaysAllow }
+					: {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
@@ -1892,7 +1910,7 @@ export async function resolveWorkspace(
 	const runId = data.investigationId;
 	// A project has no service: its display name never selects a service's policy or deployments (#1020).
 	const deduped = dedupeRepos(listed).map((r) =>
-		data.thread?.subject === "project" ? { ...r, services: [] } : r,
+		onProject(data) ? { ...r, services: [] } : r,
 	);
 	// A plain folder runs in place, only in a thread a person started on its project (#1020).
 	const inPlace =
@@ -1928,14 +1946,16 @@ export async function resolveWorkspace(
 					? `Ran without code: ${guarded.map((k) => `${whereFrom(k.repo)} (${k.reason})`).join("; ")}.`
 					: data.thread
 						? "Ran without code: this thread has no project linked."
-						: data.scheduled
-							? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
-							: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+						: data.scheduled?.subject === "none"
+							? "Ran without code: this schedule has no project."
+							: data.scheduled
+								? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
+								: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
 	await bindRun(runId, {
 		incidentId: data.incidentId,
 		serviceName: policyService(data, repos[0]?.services[0]),
-		project: data.thread?.name ?? null,
+		project: data.thread?.name ?? data.scheduled?.projectName ?? null,
 	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
@@ -2446,14 +2466,31 @@ async function assembleInvestigationContext(
 	if (data.scheduled && !data.incidentId) {
 		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
 		const notes = data.scheduled.serviceNotes?.trim();
+		const subject = data.scheduled.subject ?? "service";
+		const project = data.scheduled.projectName ?? undefined;
+		// Report off: the saved text opens a chat about the schedule's subject (#1020).
+		if (data.chat) {
+			const name = subject === "service" ? data.scheduled.serviceName : project;
+			return threadChatContext(
+				{ subject, ...(name ? { name } : {}) },
+				{
+					...(subject === "service" && name ? { service: { name } } : {}),
+					...(telemetry ? { telemetry } : {}),
+					...(contextPack ? { contextPack } : {}),
+				},
+			);
+		}
 		return serviceCheckContext(
-			{
-				name: data.scheduled.serviceName,
-				...(notes ? { notes } : {}),
-			},
+			subject === "service"
+				? {
+						name: data.scheduled.serviceName,
+						...(notes ? { notes } : {}),
+					}
+				: null,
 			{
 				...(data.brief ? { brief: data.brief } : {}),
 				runbook: data.scheduled.runbook,
+				...(subject === "project" && project ? { project } : {}),
 			},
 			{
 				...(telemetry ? { telemetry } : {}),
