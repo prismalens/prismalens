@@ -123,18 +123,13 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	test("the incident tabs: old routes redirect to overview, and chevron returns to inbox", async ({
+	test("the chevron returns from the incident to the inbox", async ({
 		page,
 	}) => {
-		await page.goto(`/incidents/${INCIDENT_ID}/alerts`);
-		await expect(page).toHaveURL(new RegExp(`/incidents/${INCIDENT_ID}$`));
+		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
-
-		await page.goto(`/incidents/${INCIDENT_ID}/timeline`);
-		await expect(page).toHaveURL(new RegExp(`/incidents/${INCIDENT_ID}$`));
-		await expect(page.getByTestId("incident-overview")).toBeVisible();
 
 		// Back chevron in the header returns to the inbox
 		await page.getByTestId("incident-back").click();

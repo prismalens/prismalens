@@ -9,9 +9,10 @@ import {
 	type SourceDraft,
 } from "@prismalens/contracts/schemas";
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
+import { RingTick, useRingTick } from "@/components/shared/RingTick";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -216,6 +217,7 @@ export function SourceConnectDialog({
 	const [report, setReport] = useState<ProbeReport | null>(null);
 	const test = useTestSource();
 	const connect = useConnectSource();
+	const saveRing = useRingTick(connect.isPending, !!connect.error);
 	const { toast } = useToast();
 	const nameId = useId();
 	const urlId = useId();
@@ -414,7 +416,7 @@ export function SourceConnectDialog({
 					<div aria-live="polite" data-testid="source-test-result">
 						{test.isPending ? (
 							<p className="flex items-center gap-2 text-text-2">
-								<Loader2 className="size-4 motion-safe:animate-spin" />
+								<RingTick state="busy" className="size-4" />
 								Testing {host}…
 							</p>
 						) : report && word ? (
@@ -491,9 +493,7 @@ export function SourceConnectDialog({
 							onClick={() => save(!report?.ok)}
 							data-testid="source-save"
 						>
-							{connect.isPending && (
-								<Loader2 className="size-3.5 motion-safe:animate-spin" />
-							)}
+							{saveRing && <RingTick state={saveRing} />}
 							{report?.untested ? "Save, not tested yet" : "Save source"}
 						</Button>
 					)}

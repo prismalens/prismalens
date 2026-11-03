@@ -15,9 +15,9 @@ import {
 	ServiceTypeSchema,
 	type ServiceWithRelations,
 } from "@prismalens/contracts";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Field } from "@/components/settings/Field";
+import { RingTick, useRingTick } from "@/components/shared/RingTick";
 import { TagInput } from "@/components/shared/TagInput";
 import { Button } from "@/components/ui/button";
 import {
@@ -96,6 +96,10 @@ export function ServiceFormDialog({
 	const addSource = useAddRepositorySource();
 	const isPending =
 		createService.isPending || updateService.isPending || addSource.isPending;
+	const ring = useRingTick(
+		isPending,
+		!!(createService.error || updateService.error || addSource.error),
+	);
 	const primaryRepo = service?.repositories?.find((r) => r.isPrimary);
 	const currentRepository = !primaryRepo
 		? ""
@@ -336,9 +340,7 @@ export function ServiceFormDialog({
 						onClick={handleSubmit}
 						disabled={isPending || !name.trim()}
 					>
-						{isPending && (
-							<Loader2 className="size-3.5 motion-safe:animate-spin" />
-						)}
+						{ring && <RingTick state={ring} />}
 						{isEditing ? "Save" : "Create service"}
 					</Button>
 				</DialogFooter>

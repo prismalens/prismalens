@@ -106,7 +106,7 @@ const finished = (s: string) => s === "completed";
 const failed = (s: string) => s === "failed";
 
 async function openReport(page: Page) {
-	await page.goto(`/incidents/${inc(page).id}/report`);
+	await page.goto(`/incidents/${inc(page).id}`);
 	await expect(page.getByTestId("incident-overview")).toBeVisible();
 }
 

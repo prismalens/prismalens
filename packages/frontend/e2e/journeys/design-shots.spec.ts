@@ -132,7 +132,7 @@ test("design shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 			await visit(page, `/incidents/${done.id}/conversation`);
 			await expect(page.getByTestId("transcript-end")).toBeVisible();
 			await shot(page, `conversation-done-${tag}`);
-			await visit(page, `/incidents/${done.id}/report`);
+			await visit(page, `/incidents/${done.id}`);
 			await expect(page.getByTestId("report-answer")).toBeVisible();
 			await shot(page, `report-${tag}`);
 			await visit(page, `/incidents/${done.id}/conversation?investigation=new`);

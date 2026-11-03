@@ -24,6 +24,7 @@ import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
+import { useRowKeys } from "@/hooks/use-row-keys";
 import { useCancelInvestigation } from "@/lib/api/hooks";
 import {
 	type ThreadFeedInput,
@@ -72,6 +73,8 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 	);
 	const counts = feed.data?.pages[0]?.counts;
 	const said = useAnnouncer(units);
+	const listRef = useRef<HTMLDivElement>(null);
+	useRowKeys(listRef, 'a[data-testid="thread-row"]');
 
 	useEffect(() => {
 		if (!undo) return;
@@ -111,7 +114,11 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 	const bySection = (s: ThreadSection) => units.filter((u) => u.section === s);
 	const empty = units.length === 0;
 	return (
-		<div className="flex flex-col gap-2 px-2" data-testid="thread-list">
+		<div
+			ref={listRef}
+			className="flex flex-col gap-2 px-2"
+			data-testid="thread-list"
+		>
 			<div role="status" aria-live="polite" className="sr-only">
 				{said}
 			</div>
@@ -306,7 +313,7 @@ function Row({
 					{...threadLink(t)}
 					aria-current={here ? "page" : undefined}
 					className={cn(
-						"flex min-w-0 flex-col gap-0.5 rounded-control px-2 py-1.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3",
+						"flex min-w-0 flex-col gap-0.5 rounded-control px-2 py-1.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
 						here && "bg-surface-3",
 					)}
 					data-testid="thread-row"

@@ -12,10 +12,10 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { MutationError } from "@/components/shared/MutationError";
+import { RingTick } from "@/components/shared/RingTick";
 import { Row } from "@/components/shared/Row";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -164,7 +164,7 @@ export function PairView({
 	return (
 		<Shell title="Pairing this device">
 			<p className="mt-2 flex items-center gap-2 text-body text-text-2">
-				<Loader2 className="size-3.5 motion-safe:animate-spin" />
+				<RingTick state="busy" />
 				Pairing
 			</p>
 		</Shell>

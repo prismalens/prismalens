@@ -254,15 +254,6 @@ async function amOn(page: Page, path: string, ready: () => Promise<void>) {
 	await expect.poll(() => pathOf(page)).toBe(path);
 }
 
-Given("I am on INC-1's Alerts tab", async ({ page }) => {
-	await amOn(page, `/incidents/${world(page).incident?.id}/alerts`, () =>
-		expect(page.getByTestId("tab-alerts")).toHaveAttribute(
-			"aria-current",
-			"page",
-		),
-	);
-});
-
 Given("I am on INC-1's Overview", async ({ page }) => {
 	await amOn(page, `/incidents/${world(page).incident?.id}`, () =>
 		expect(page.getByTestId("incident-overview")).toBeVisible(),
@@ -484,7 +475,7 @@ Given(
 		await tab.setViewportSize(
 			page.viewportSize() ?? { width: 390, height: 844 },
 		);
-		await visit(tab, `/incidents/${incident.id}/report`);
+		await visit(tab, `/incidents/${incident.id}`);
 		world(page).page = tab;
 	},
 );
