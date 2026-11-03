@@ -200,22 +200,24 @@ export function ServiceCodeSection({
 					);
 				})}
 			</ul>
-			<AddProjectDialog
-				open={adding}
-				onOpenChange={(o) => {
-					setAdding(o);
-					if (!o) add.reset();
-				}}
-				title="Add code"
-				pending={add.isPending}
-				error={add.error ? getErrorMessage(add.error) : null}
-				onChoose={(source) =>
-					add.mutate(
-						{ serviceId: service.id, source },
-						{ onSuccess: () => setAdding(false) },
-					)
-				}
-			/>
+			{adding && (
+				<AddProjectDialog
+					open
+					onOpenChange={(o) => {
+						setAdding(o);
+						if (!o) add.reset();
+					}}
+					title="Add code"
+					pending={add.isPending}
+					error={add.error ? getErrorMessage(add.error) : null}
+					onChoose={(source) =>
+						add.mutate(
+							{ serviceId: service.id, source },
+							{ onSuccess: () => setAdding(false) },
+						)
+					}
+				/>
+			)}
 			<MutationError error={unlink.error} className="mt-2" />
 		</RecordSection>
 	);

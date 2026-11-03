@@ -49,18 +49,20 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 					Add project
 				</Button>
 			</header>
-			<AddProjectDialog
-				open={open}
-				onOpenChange={(o) => {
-					setOpen(o);
-					setError(null);
-					if (!o && openAtStart)
-						void navigate({ to: "/projects", search: {}, replace: true });
-				}}
-				onChoose={(s) => void onAdd(s)}
-				pending={add.isPending}
-				error={error}
-			/>
+			{open && (
+				<AddProjectDialog
+					open
+					onOpenChange={(o) => {
+						setOpen(o);
+						setError(null);
+						if (!o && openAtStart)
+							void navigate({ to: "/projects", search: {}, replace: true });
+					}}
+					onChoose={(s) => void onAdd(s)}
+					pending={add.isPending}
+					error={error}
+				/>
+			)}
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
 				<div className="mx-auto grid max-w-(--reading-w) gap-4 pt-4">
 					{repos.isLoading ? (

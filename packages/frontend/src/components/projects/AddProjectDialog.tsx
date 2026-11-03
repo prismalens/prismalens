@@ -280,17 +280,19 @@ export function BrowseButton({
 				<FolderOpen />
 				Browse
 			</Button>
-			<AddProjectDialog
-				open={open}
-				onOpenChange={setOpen}
-				title={folderOnly ? "Choose a folder" : "Choose code"}
-				submitLabel="Use"
-				folderOnly={folderOnly}
-				onChoose={(s) => {
-					onPick(s);
-					setOpen(false);
-				}}
-			/>
+			{open && (
+				<AddProjectDialog
+					open
+					onOpenChange={setOpen}
+					title={folderOnly ? "Choose a folder" : "Choose code"}
+					submitLabel="Use"
+					folderOnly={folderOnly}
+					onChoose={(s) => {
+						onPick(s);
+						setOpen(false);
+					}}
+				/>
+			)}
 		</>
 	);
 }
