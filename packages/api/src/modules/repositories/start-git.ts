@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	lstatSync,
-	mkdirSync,
-	realpathSync,
-	rmSync,
-	type Stats,
-	statSync,
-} from "node:fs";
+import { lstatSync, mkdirSync, rmSync, type Stats, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { gitEnv } from "../../core/harness/git-env.js";
@@ -165,9 +158,15 @@ export async function startGit(
 	opts: { maxFiles?: number; timeoutMs?: number; afterInit?: () => void } = {},
 ): Promise<void> {
 	const st = lstatSync(folder, { throwIfNoEntry: false });
-	if (!st || st.isSymbolicLink() || !st.isDirectory() || !isCanonical(folder))
+	if (
+		!st ||
+		st.isSymbolicLink() ||
+		!st.isDirectory() ||
+		!(await isCanonical(folder))
+	)
 		throw new StartGitRefused("This folder is gone or is a link.");
-	const key = realpathSync(folder);
+	// Already the disk's own name for it (checked above), so it keys the folder.
+	const key = folder;
 	if (starting.has(key))
 		throw new StartGitRefused("Git is already starting here.");
 	starting.add(key);

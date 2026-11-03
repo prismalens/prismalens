@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { Dir } from "node:fs";
-import { lstat, opendir } from "node:fs/promises";
+import { lstat, opendir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import {
@@ -11,7 +11,7 @@ import {
 	FOLDER_READ_MS,
 	type FolderEntry,
 } from "@prismalens/contracts";
-import { isCanonical } from "../../infrastructure/dispatch/folder-lock.js";
+import { sameAsDisk } from "../../infrastructure/dispatch/folder-lock.js";
 
 class ReadTimeout extends Error {}
 class Busy extends Error {}
@@ -131,7 +131,8 @@ export async function browseFolders(
 		if (st.isSymbolicLink() || !st.isDirectory())
 			return { ok: false, path, error: "not-folder" };
 		// A linked parent would list somewhere else under this name (#1020).
-		if (!isCanonical(path)) return { ok: false, path, error: "link" };
+		const real = await timed(() => realpath(path), b);
+		if (!sameAsDisk(path, real)) return { ok: false, path, error: "link" };
 		dir = await timed(() => {
 			const opening = opendir(path);
 			pending = opening;

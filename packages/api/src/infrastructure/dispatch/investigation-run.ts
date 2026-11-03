@@ -2067,9 +2067,12 @@ interface Skip {
 }
 
 /** The plain folder itself (#1020): no snapshot, no branch and no diff base, so nothing to undo. */
-function folderWorkspace(runDir: string, dir: string): Workspace {
+async function folderWorkspace(
+	runDir: string,
+	dir: string,
+): Promise<Workspace> {
 	const st = lstatSync(dir, { throwIfNoEntry: false });
-	if (!st?.isDirectory() || st.isSymbolicLink() || !isCanonical(dir))
+	if (!st?.isDirectory() || st.isSymbolicLink() || !(await isCanonical(dir)))
 		return unmappedWorkspace(
 			runDir,
 			`Ran without code: the folder ${dir} is gone or is a link.`,
@@ -2226,7 +2229,7 @@ export async function rebuildWorkspace(
 			throw new Error(
 				"This folder project changed since the thread started. Start a new thread.",
 			);
-		const again = folderWorkspace(runDirFor(investigationId), ws.cwd);
+		const again = await folderWorkspace(runDirFor(investigationId), ws.cwd);
 		if (again.layout !== "folder") throw new Error(again.note);
 		return { ...again, toolsServer: ws.toolsServer };
 	}

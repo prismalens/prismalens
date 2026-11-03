@@ -92,7 +92,7 @@ export class RepositoriesService {
 		}
 		let { kind, source } = classified;
 		// A folder is saved as the disk names it, so an alias is the same project (#1020).
-		if (kind === "folder") source = canonical(source);
+		if (kind === "folder") source = (await canonical(source)) ?? source;
 		let subPath = input.subPath ?? null;
 
 		const existing =

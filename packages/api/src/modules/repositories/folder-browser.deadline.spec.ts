@@ -6,11 +6,38 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fsMock = vi.hoisted(() => ({ opendir: vi.fn(), lstat: vi.fn() }));
+const fsMock = vi.hoisted(() => ({
+	opendir: vi.fn(),
+	lstat: vi.fn(),
+	realpath: vi.fn(),
+	slowSync: { ms: 0 },
+}));
 vi.mock("node:fs/promises", async (orig) => {
 	const real = await orig<typeof import("node:fs/promises")>();
 	fsMock.lstat.mockImplementation(real.lstat);
-	return { ...real, opendir: fsMock.opendir, lstat: fsMock.lstat };
+	fsMock.realpath.mockImplementation(real.realpath);
+	return {
+		...real,
+		opendir: fsMock.opendir,
+		lstat: fsMock.lstat,
+		realpath: fsMock.realpath,
+	};
+});
+// A blocking realpath, as a slow disk makes it: the busy wait stands in for the stall.
+vi.mock("node:fs", async (orig) => {
+	const real = await orig<typeof import("node:fs")>();
+	const native = (p: string) => {
+		const until = Date.now() + fsMock.slowSync.ms;
+		while (Date.now() < until) {}
+		return real.realpathSync.native(p);
+	};
+	return {
+		...real,
+		realpathSync: Object.assign(
+			(p: string) => real.realpathSync(p),
+			{ native },
+		),
+	};
 });
 
 const { browseFolders, outstandingReads } = await import("./folder-browser.js");
@@ -121,5 +148,22 @@ describe("the folder listing's deadline (#1020)", () => {
 		});
 		endClose();
 		await vi.waitFor(() => expect(outstandingReads()).toBe(0));
+	});
+
+	it("a slow check for links never stops the server answering others", async () => {
+		fsMock.opendir.mockResolvedValueOnce({ read: async () => null, close: async () => {} });
+		fsMock.slowSync.ms = 200;
+		fsMock.realpath.mockImplementationOnce(
+			(p: string) => new Promise((r) => setTimeout(() => r(p), 200)),
+		);
+		let ticks = 0;
+		const tick = setInterval(() => ticks++, 10);
+		try {
+			await browseFolders(root, { readMs: 2000, maxReads: 5 });
+		} finally {
+			clearInterval(tick);
+			fsMock.slowSync.ms = 0;
+		}
+		expect(ticks).toBeGreaterThanOrEqual(5);
 	});
 });
