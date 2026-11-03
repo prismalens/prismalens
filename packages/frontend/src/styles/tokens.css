@@ -76,6 +76,13 @@
 :root[data-desktop] [data-title-row][data-edge-left] {
 	padding-left: calc(var(--edge-left) + 0.5rem);
 }
+/* A rail narrower than macOS's traffic lights gives them its brand row. */
+:root[data-desktop] [data-title-row][data-edge-left][data-edge-covered] {
+	padding-left: 0;
+}
+:root[data-desktop] [data-title-row][data-edge-covered] > * {
+	visibility: hidden;
+}
 
 @media (max-width: 1279px) {
 	:root {

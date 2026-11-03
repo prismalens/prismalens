@@ -146,7 +146,7 @@ function MainBar({
 		<>
 			<div
 				data-title-row
-				className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 [[data-desktop=darwin]_&]:overflow-hidden max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0"
+				className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0"
 			>
 				<Link
 					to="/incidents"

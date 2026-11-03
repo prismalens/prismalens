@@ -31,6 +31,7 @@ export function markTitleRowEdges(
 			: 0;
 		edge(el, "left", left);
 		edge(el, "right", right);
+		el.toggleAttribute("data-edge-covered", top && left + right >= r.width);
 	}
 }
 

@@ -37,6 +37,8 @@ describe("markTitleRowEdges (#1020)", () => {
 		const header = row({ left: 56, right: 900, top: 0 });
 		markTitleRowEdges(document, 44, { left: 80, right: 0 });
 		expect(rail.style.getPropertyValue("--edge-left")).toBe("80px");
+		expect(rail.hasAttribute("data-edge-covered")).toBe(true);
+		expect(header.hasAttribute("data-edge-covered")).toBe(false);
 		expect(header.style.getPropertyValue("--edge-left")).toBe("24px");
 		expect(header.hasAttribute("data-edge-right")).toBe(false);
 	});

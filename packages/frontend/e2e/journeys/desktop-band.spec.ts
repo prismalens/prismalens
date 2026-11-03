@@ -49,6 +49,7 @@ function underControls(page: Page, box: { left: number; right: number }) {
 			for (const el of Array.from(all)) {
 				const r = el.getBoundingClientRect();
 				if (r.width === 0 || r.height === 0 || r.top >= h) continue;
+				if (!el.checkVisibility({ visibilityProperty: true })) continue;
 				if (r.left < box.left || r.right > w - box.right)
 					hits.push(el.outerHTML.slice(0, 80));
 			}
