@@ -264,4 +264,101 @@ test.describe("#1020 — thread list and New thread", () => {
 		await page.getByTestId("thread-search-place").click();
 		await expect(page).toHaveURL(/\/services/);
 	});
+
+	test("e. Search reaches a match past its first page with More results", async ({
+		page,
+	}) => {
+		const cursors: string[] = [];
+		await page.route(
+			(url) => url.pathname === "/api/threads/feed",
+			async (route) => {
+				const params = new URL(route.request().url()).searchParams;
+				const cursor = params.get("cursor") ?? "0";
+				const searching = params.get("search") === "retry";
+				if (searching) cursors.push(cursor);
+				const ids = !searching
+					? []
+					: cursor === "0"
+						? Array.from({ length: 20 }, (_, i) => i)
+						: [20];
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						units: ids.map((i) => ({
+							section: "active",
+							incident: null,
+							threads: [
+								threadRow({
+									id: `f7777777-7777-4777-8777-${String(i).padStart(12, "0")}`,
+									title: `Retry thread ${i}`,
+									section: "active",
+								}),
+							],
+						})),
+						nextCursor: searching && cursor === "0" ? 20 : null,
+						counts: { needs: 0, active: searching ? 21 : 0, settled: 0 },
+					}),
+				});
+			},
+		);
+		await page.goto("/incidents");
+		await expect(page.getByTestId("sidebar-search")).toBeVisible();
+		await page.keyboard.press("Control+k");
+		await page.getByTestId("thread-search-input").fill("retry");
+		await expect(page.getByTestId("thread-search-result")).toHaveCount(20);
+		await page.getByTestId("thread-search-more").click();
+		await expect(page.getByTestId("thread-search-result")).toHaveCount(21);
+		await expect(
+			page
+				.getByTestId("thread-search-result")
+				.filter({ hasText: "Retry thread 20" }),
+		).toBeVisible();
+		await expect(page.getByTestId("thread-search-more")).toHaveCount(0);
+		expect(cursors).toContain("20");
+	});
+
+	test("f. Search opens with the sidebar hidden, on Settings, and reaches the terminal", async ({
+		page,
+	}) => {
+		await page.goto("/incidents");
+		await expect(page.getByTestId("sidebar-search")).toBeVisible();
+		await page.keyboard.press("[");
+		await expect(page.getByTestId("sidebar-show")).toBeVisible();
+		await page.keyboard.press("Control+k");
+		await expect(page.getByTestId("thread-search")).toBeVisible();
+		await page.keyboard.press("Escape");
+		await page.getByTestId("sidebar-show").click();
+
+		await page.getByTestId("nav-settings").click();
+		await expect(page.getByTestId("settings-back")).toBeVisible();
+		await page.keyboard.press("Control+k");
+		await expect(page.getByTestId("thread-search")).toBeVisible();
+		await page.getByTestId("thread-search-input").fill("term");
+		await page
+			.getByTestId("thread-search-place")
+			.filter({ hasText: "Terminal" })
+			.click();
+		await expect(
+			page.getByTestId("panel-bottom").getByTestId("terminal-panel"),
+		).toBeVisible();
+	});
+
+	test.describe("on a phone", () => {
+		test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+		test("g. Search opens from the strip and reaches Schedules by touch", async ({
+			page,
+		}) => {
+			await page.goto("/incidents");
+			await page.getByTestId("strip-search").tap();
+			await expect(page.getByTestId("thread-search")).toBeVisible();
+			await page.getByTestId("thread-search-input").fill("sched");
+			await page
+				.getByTestId("thread-search-place")
+				.filter({ hasText: "Schedules" })
+				.tap();
+			await expect(page).toHaveURL(/\/schedules/);
+		});
+	});
 });

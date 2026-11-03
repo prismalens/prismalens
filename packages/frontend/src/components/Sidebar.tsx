@@ -17,6 +17,7 @@ import {
 	ChevronLeft,
 	Inbox,
 	PanelLeft,
+	Search,
 	SlidersHorizontal,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
@@ -31,7 +32,11 @@ import {
 	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
-import { SidebarHead } from "@/components/shell/SidebarHead";
+import {
+	SearchHost,
+	SidebarHead,
+	useOpenSearch,
+} from "@/components/shell/SidebarHead";
 import { ThreadList } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { inSettings, useBack } from "@/hooks/use-back";
@@ -104,7 +109,7 @@ function Shell({ pathname }: { pathname: string }) {
 		document.documentElement.toggleAttribute("data-settings", settings);
 	}, [settings]);
 	return (
-		<>
+		<SearchHost enabled={signedIn}>
 			{hidden ? (
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
@@ -124,8 +129,8 @@ function Shell({ pathname }: { pathname: string }) {
 					)}
 				</aside>
 			)}
-			<PhoneStrip pathname={pathname} doors={doors} />
-		</>
+			<PhoneStrip pathname={pathname} doors={doors} signedIn={signedIn} />
+		</SearchHost>
 	);
 }
 
@@ -414,7 +419,16 @@ function useEscape(handler: () => void, enabled: boolean) {
  * `surface-2` with the accent bar; the page header below carries New (#673).
  * It stays on Settings; its Settings door returns a section to the list.
  */
-function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
+function PhoneStrip({
+	pathname,
+	doors,
+	signedIn,
+}: {
+	pathname: string;
+	doors: Door[];
+	signedIn: boolean;
+}) {
+	const openSearch = useOpenSearch();
 	return (
 		<nav
 			className="sticky top-0 z-40 flex h-(--header-h) items-center gap-1 bg-canvas px-2 md:hidden"
@@ -459,6 +473,17 @@ function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
 					</Link>
 				);
 			})}
+			{signedIn && (
+				<button
+					type="button"
+					onClick={openSearch}
+					aria-label="Search"
+					data-testid="strip-search"
+					className="ml-auto flex h-8 min-w-12 items-center justify-center rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				>
+					<Search className={ICON} />
+				</button>
+			)}
 		</nav>
 	);
 }

@@ -4,7 +4,13 @@
 import type { ThreadSection } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { FolderPlus, Search, SquarePen } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+	createContext,
+	type ReactNode,
+	useContext,
+	useEffect,
+	useState,
+} from "react";
 import { Hint } from "@/components/shared/Hint";
 import {
 	Command,
@@ -27,6 +33,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useRepositories } from "@/lib/api/hooks";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
 import { rowContext, threadLink } from "@/lib/thread-rows";
@@ -36,14 +43,26 @@ const ICON = "size-4 shrink-0 stroke-[1.5]";
 const BUTTON =
 	"flex size-8 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1";
 
+const OpenSearch = createContext<() => void>(() => {});
+
+/** Opens the Search palette from anywhere inside `SearchHost`. */
+export const useOpenSearch = () => useContext(OpenSearch);
+
 /**
- * The sidebar's head (#1020): Search (Ctrl K) over threads with filters, Add
- * project, and New thread (Ctrl Shift O).
+ * Holds Search and its shortcuts (Ctrl K, Ctrl Shift O for New thread) for the
+ * whole shell, so they work with the sidebar hidden, on Settings and on a phone.
  */
-export function SidebarHead({ compact = false }: { compact?: boolean }) {
+export function SearchHost({
+	enabled,
+	children,
+}: {
+	enabled: boolean;
+	children: ReactNode;
+}) {
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
 	useEffect(() => {
+		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
 			const mod = e.ctrlKey || e.metaKey;
 			if (mod && !e.shiftKey && e.key.toLowerCase() === "k") {
@@ -56,7 +75,18 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [navigate]);
+	}, [navigate, enabled]);
+	return (
+		<OpenSearch.Provider value={() => setOpen(true)}>
+			{children}
+			{enabled && <ThreadSearch open={open} onOpenChange={setOpen} />}
+		</OpenSearch.Provider>
+	);
+}
+
+/** The sidebar's head (#1020): Search over threads with filters, Add project, and New thread. */
+export function SidebarHead({ compact = false }: { compact?: boolean }) {
+	const openSearch = useOpenSearch();
 	return (
 		<div
 			className={cn(
@@ -68,7 +98,7 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 			<Hint label="Search" keys={["Ctrl", "K"]} side="bottom">
 				<button
 					type="button"
-					onClick={() => setOpen(true)}
+					onClick={openSearch}
 					aria-label="Search"
 					className={
 						compact
@@ -101,7 +131,6 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 					<SquarePen className={ICON} />
 				</Link>
 			</Hint>
-			<ThreadSearch open={open} onOpenChange={setOpen} />
 		</div>
 	);
 }
@@ -132,6 +161,7 @@ export function ThreadSearch({
 	onOpenChange: (open: boolean) => void;
 }) {
 	const navigate = useNavigate();
+	const { setBottomPanel } = useLayoutPrefs();
 	const [query, setQuery] = useState("");
 	const [kind, setKind] = useState<Kind>();
 	const [section, setSection] = useState<ThreadSection>();
@@ -159,6 +189,7 @@ export function ThreadSearch({
 		feed.data?.pages.flatMap((p) => p.units.flatMap((u) => u.threads)) ?? [];
 	const q = query.trim().toLowerCase();
 	const places = PLACES.filter((p) => !q || p.label.toLowerCase().includes(q));
+	const terminal = !q || "terminal".includes(q);
 	const go = (fn: () => void) => {
 		onOpenChange(false);
 		fn();
@@ -236,9 +267,20 @@ export function ThreadSearch({
 										</span>
 									</CommandItem>
 								))}
+								{feed.hasNextPage && (
+									<CommandItem
+										value="more-results"
+										disabled={feed.isFetchingNextPage}
+										onSelect={() => void feed.fetchNextPage()}
+										className="text-text-3"
+										data-testid="thread-search-more"
+									>
+										More results
+									</CommandItem>
+								)}
 							</CommandGroup>
 						)}
-						{places.length > 0 && (
+						{(places.length > 0 || terminal) && (
 							<CommandGroup heading="Go to">
 								{places.map((p) => (
 									<CommandItem
@@ -250,6 +292,15 @@ export function ThreadSearch({
 										{p.label}
 									</CommandItem>
 								))}
+								{terminal && (
+									<CommandItem
+										value="terminal"
+										onSelect={() => go(() => setBottomPanel(true))}
+										data-testid="thread-search-place"
+									>
+										Terminal
+									</CommandItem>
+								)}
 							</CommandGroup>
 						)}
 					</CommandList>
