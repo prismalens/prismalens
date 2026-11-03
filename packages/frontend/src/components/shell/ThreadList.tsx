@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
+import { RingTick } from "@/components/shared/RingTick";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
@@ -358,14 +359,17 @@ function Row({
 						>
 							{state ? (
 								<>
-									<span
-										aria-hidden
-										className={cn(
-											"size-1.5 rounded-full bg-current",
-											(state === "ask" || state === "live") &&
-												"breathe motion-reduce:animate-none",
-										)}
-									/>
+									{state === "live" ? (
+										<RingTick state="busy" className="size-2.5" />
+									) : (
+										<span
+											aria-hidden
+											className={cn(
+												"size-1.5 rounded-full bg-current",
+												state === "ask" && "breathe motion-reduce:animate-none",
+											)}
+										/>
+									)}
 									{STATE_WORD[state]}
 								</>
 							) : (
