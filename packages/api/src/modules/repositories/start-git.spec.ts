@@ -6,7 +6,9 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	renameSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -100,6 +102,37 @@ describe("Start git here (#1020)", () => {
 		writeFileSync(join(folder, "a"), "1");
 		await expect(startGit(folder, { timeoutMs: 1 })).rejects.toThrow(/took too long/);
 		expect(existsSync(join(folder, ".git"))).toBe(false);
+	});
+
+	it("a folder swapped for a link after init never has another repo's .git removed (#1020)", async () => {
+		const other = mkdtempSync(join(tmpdir(), "pl-other-repo-"));
+		execFileSync("git", ["init", "-q"], { cwd: other });
+		for (const n of ["a", "b", "c"]) writeFileSync(join(folder, n), n);
+		const moved = `${folder}-moved`;
+		try {
+			await expect(
+				startGit(folder, {
+					maxFiles: 2,
+					afterInit: () => {
+						renameSync(folder, moved);
+						symlinkSync(other, folder, process.platform === "win32" ? "junction" : "dir");
+					},
+				}),
+			).rejects.toBeInstanceOf(StartGitRefused);
+			expect(existsSync(join(other, ".git", "HEAD"))).toBe(true);
+		} finally {
+			rmSync(folder, { recursive: true, force: true });
+			renameSync(moved, folder);
+			rmSync(other, { recursive: true, force: true });
+		}
+	});
+
+	it("two starts on one folder: exactly one makes the repo, and nothing it made is removed", async () => {
+		writeFileSync(join(folder, "app.js"), "1");
+		const out = await Promise.allSettled([startGit(folder), startGit(folder)]);
+		expect(out.filter((o) => o.status === "fulfilled")).toHaveLength(1);
+		expect(git("ls-files")).toBe("app.js");
+		expect(git("log", "-1", "--format=%s")).toBe("Initial commit");
 	});
 
 	it("refuses a folder that already has git", async () => {

@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { lstatSync, rmSync } from "node:fs";
+import {
+	lstatSync,
+	mkdirSync,
+	realpathSync,
+	rmSync,
+	type Stats,
+} from "node:fs";
 import { join } from "node:path";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
@@ -17,6 +23,26 @@ const START_GIT_MS = 120_000;
 const NULL_FILE = "/dev/null";
 
 export class StartGitRefused extends Error {}
+
+/** Folders a start is running in, by real path, so two starts never share one `.git`. */
+const starting = new Set<string>();
+
+const same = (a: Stats, b: Stats | undefined) =>
+	!!b && a.dev === b.dev && a.ino === b.ino;
+
+/**
+ * Removes the `.git` this start made, only while the folder and that `.git` are still the
+ * ones it made them in: never through a link, never another repository's (#1020).
+ */
+function undo(folder: string, dir: Stats, made: Stats | undefined): boolean {
+	const now = lstatSync(folder, { throwIfNoEntry: false });
+	if (!now || now.isSymbolicLink() || !same(dir, now)) return false;
+	const git = join(folder, ".git");
+	const was = lstatSync(git, { throwIfNoEntry: false });
+	if (!was || was.isSymbolicLink() || !made || !same(made, was)) return false;
+	rmSync(git, { recursive: true, force: true });
+	return true;
+}
 
 /** The user's own name and email, read outside any repository; null when either is unset. */
 async function identity(): Promise<{ name: string; email: string } | null> {
@@ -74,13 +100,27 @@ const PINNED = [
  */
 export async function startGit(
 	folder: string,
-	opts: { maxFiles?: number; timeoutMs?: number } = {},
+	opts: { maxFiles?: number; timeoutMs?: number; afterInit?: () => void } = {},
 ): Promise<void> {
 	const st = lstatSync(folder, { throwIfNoEntry: false });
 	if (!st || st.isSymbolicLink() || !st.isDirectory())
 		throw new StartGitRefused("This folder is gone or is a link.");
-	if (lstatSync(join(folder, ".git"), { throwIfNoEntry: false }))
-		throw new StartGitRefused("This folder already has git.");
+	const key = realpathSync(folder);
+	if (starting.has(key))
+		throw new StartGitRefused("Git is already starting here.");
+	starting.add(key);
+	try {
+		await startIn(folder, st, opts);
+	} finally {
+		starting.delete(key);
+	}
+}
+
+async function startIn(
+	folder: string,
+	dir: Stats,
+	opts: { maxFiles?: number; timeoutMs?: number; afterInit?: () => void },
+): Promise<void> {
 	const who = await identity();
 	if (!who)
 		throw new StartGitRefused(
@@ -88,22 +128,35 @@ export async function startGit(
 		);
 	const env = hardened(who);
 	const timeoutMs = opts.timeoutMs ?? START_GIT_MS;
-	const git = (args: string[], ms = timeoutMs) =>
-		spawnGit([...PINNED, ...args], { cwd: folder, env, timeoutMs: ms });
+	const git = (args: string[], ms = timeoutMs) => {
+		// Each step runs only while the path still names the folder it started in.
+		const now = lstatSync(folder, { throwIfNoEntry: false });
+		if (!now || now.isSymbolicLink() || !same(dir, now))
+			throw new StartGitRefused("This folder changed while git was starting.");
+		return spawnGit([...PINNED, ...args], { cwd: folder, env, timeoutMs: ms });
+	};
+	// Making `.git` ourselves is the claim: it fails if one is there, from anyone.
+	try {
+		mkdirSync(join(folder, ".git"));
+	} catch {
+		throw new StartGitRefused("This folder already has git.");
+	}
+	const made = lstatSync(join(folder, ".git"));
 	try {
 		await git(["init", "--quiet", "--template="], GIT_PROBE_TIMEOUT_MS);
+		opts.afterInit?.();
 	} catch (e) {
+		undo(folder, dir, made);
 		throw new StartGitRefused(failure("git init", e));
 	}
 	try {
 		const max = opts.maxFiles ?? START_GIT_MAX_FILES;
 		let count = 0;
-		await spawnGit(
-			[...PINNED, "ls-files", "--others", "--exclude-standard", "-z"],
-			{ cwd: folder, env, timeoutMs },
-		).then(({ stdout }) => {
-			count = stdout.split("\0").filter(Boolean).length;
-		});
+		await git(["ls-files", "--others", "--exclude-standard", "-z"]).then(
+			({ stdout }) => {
+				count = stdout.split("\0").filter(Boolean).length;
+			},
+		);
 		if (count > max)
 			throw new StartGitRefused(
 				`Over ${max} files to commit. Commit them yourself.`,
@@ -118,10 +171,12 @@ export async function startGit(
 			"Initial commit",
 		]);
 	} catch (e) {
-		// Only the .git this call made: it was absent above, and rm does not follow a link.
-		rmSync(join(folder, ".git"), { recursive: true, force: true });
-		if (e instanceof StartGitRefused) throw e;
-		throw new StartGitRefused(failure("git commit", e));
+		const undone = undo(folder, dir, made);
+		const why =
+			e instanceof StartGitRefused ? e.message : failure("git commit", e);
+		throw new StartGitRefused(
+			undone ? why : `${why} The folder changed, so its .git was left.`,
+		);
 	}
 }
 
