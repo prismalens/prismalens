@@ -75,7 +75,10 @@ export function ProjectPage({ id }: { id: string }) {
 	const rows = threads.data?.data ?? [];
 	return (
 		<div className="flex h-full flex-col bg-canvas" data-testid="project-page">
-			<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2">
+			<header
+				data-title-row
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
+			>
 				<Button
 					variant="ghost"
 					size="icon-lg"

@@ -49,9 +49,12 @@ declare global {
 	}
 }
 
-/** `--titlebar-h` in the desktop window (#819): floating menus keep below the window controls. */
+/**
+ * The desktop title row, `--header-h` and TITLEBAR_HEIGHT in packages/desktop (#1020):
+ * floating menus keep below the window controls.
+ */
 export function titleRowHeight(): number {
-	return desktopBridge() ? 32 : 0;
+	return desktopBridge() ? 44 : 0;
 }
 
 export function desktopBridge(): DesktopBridge | undefined {

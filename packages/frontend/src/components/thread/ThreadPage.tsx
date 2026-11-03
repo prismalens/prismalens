@@ -243,7 +243,10 @@ export function ThreadPage({ id }: { id: string }) {
 			? (["live", "Stopping"] as const)
 			: STATE[inv.status];
 	const header = (
-		<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2">
+		<header
+			data-title-row
+			className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
+		>
 			<Button variant="ghost" size="icon-lg" aria-label={back.label} asChild>
 				<Link to={back.to} params={back.params}>
 					<ChevronLeft />

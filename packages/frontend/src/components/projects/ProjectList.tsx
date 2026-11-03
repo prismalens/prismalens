@@ -42,7 +42,10 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 	const rows = repos.data?.data ?? [];
 	return (
 		<div className="flex h-full flex-col bg-canvas" data-testid="projects-page">
-			<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-4">
+			<header
+				data-title-row
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-4"
+			>
 				<h1 className="flex-1 text-title">Projects</h1>
 				<Button onClick={() => setOpen(true)} data-testid="add-project">
 					<Plus />

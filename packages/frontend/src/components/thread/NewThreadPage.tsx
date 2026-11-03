@@ -173,7 +173,10 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 			className="flex h-full flex-col bg-canvas"
 			data-testid="new-thread-page"
 		>
-			<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-4">
+			<header
+				data-title-row
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-4"
+			>
 				<SquarePen className="size-4 shrink-0 text-text-3" aria-hidden />
 				<h1 className="min-w-0 flex-1 truncate text-title">New thread</h1>
 			</header>

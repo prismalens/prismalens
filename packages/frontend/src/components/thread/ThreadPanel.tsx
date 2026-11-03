@@ -70,6 +70,7 @@ export function ThreadPanel({
 			<div
 				role="tablist"
 				aria-label="Surfaces"
+				data-title-row
 				className="flex h-(--header-h) shrink-0 items-center gap-1 px-2 shadow-[0_1px_0_var(--hairline)]"
 			>
 				{shown.map(({ id, label, Icon }) => (

@@ -102,7 +102,10 @@ function ScheduleHistoryPage() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2">
+			<header
+				data-title-row
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
+			>
 				<Button
 					variant="ghost"
 					size="icon-lg"

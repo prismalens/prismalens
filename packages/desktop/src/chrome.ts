@@ -2,9 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The window frame (#736): no OS title bar; the native controls sit in the
- * app's own empty title row in the app's colours (#819). The frontend's
- * `--titlebar-h` token must equal `TITLEBAR_HEIGHT`.
+ * The window frame (#736): no OS title bar; the native controls sit on the
+ * app's own title row, the brand row and page header (#1020), in its colours.
+ * `TITLEBAR_HEIGHT` must equal the frontend's `--header-h`.
  */
 
 import type { BrowserWindowConstructorOptions } from "electron";
@@ -17,7 +17,7 @@ export const TERMINAL_KEY_CHANNEL = "prismalens:terminal-key";
 /** Main tells the renderer a late claim stored the key; `preload.cts` names it too. */
 export const TERMINAL_KEY_CHANGED_CHANNEL = "prismalens:terminal-key-changed";
 export const THEME_COOKIE = "prismalens-theme";
-export const TITLEBAR_HEIGHT = 32;
+export const TITLEBAR_HEIGHT = 44;
 
 /** The frontend's `--background` per theme, as hex. */
 const BACKGROUND: Record<Theme, string> = { dark: "#09090b", light: "#fafafa" };

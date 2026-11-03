@@ -102,7 +102,7 @@ function Shell({ pathname }: { pathname: string }) {
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
 				<aside
-					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
+					className="fixed bottom-0 left-0 top-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
 					data-testid="sidebar"
 				>
 					{settings ? (
@@ -144,7 +144,10 @@ function MainBar({
 	const settingsDoor = doors.find((d) => d.to === "/settings");
 	return (
 		<>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0">
+			<div
+				data-title-row
+				className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 [[data-desktop=darwin]_&]:overflow-hidden max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0"
+			>
 				<Link
 					to="/incidents"
 					className="flex items-center gap-2.5 rounded-control text-body font-semibold"
@@ -211,7 +214,7 @@ function ShowSidebar({ onShow }: { onShow: () => void }) {
 				type="button"
 				onClick={onShow}
 				aria-label="Show the sidebar"
-				className="fixed top-(--frame-top) left-1 z-40 hidden size-(--header-h) items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 md:flex"
+				className="fixed top-(--frame-top) left-[calc(var(--controls-left)+0.25rem)] z-40 hidden size-(--header-h) items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 md:flex"
 				data-testid="sidebar-show"
 			>
 				<PanelLeft className={ICON} />
@@ -341,7 +344,10 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 	useEscape(onBack, !phone);
 	return (
 		<>
-			<div className="flex h-(--header-h) shrink-0 items-center px-4 text-heading text-text-1">
+			<div
+				data-title-row
+				className="flex h-(--header-h) shrink-0 items-center px-4 text-heading text-text-1"
+			>
 				Settings
 			</div>
 			<nav

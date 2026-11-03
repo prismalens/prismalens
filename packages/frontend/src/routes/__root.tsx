@@ -26,6 +26,7 @@ import { EARLY_KEYS_SCRIPT } from "@/lib/early-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
+import { useTitleRowEdges } from "@/lib/title-row";
 import { queryClient, type RouterContext } from "@/router";
 import appCss from "../app.css?url";
 
@@ -79,19 +80,19 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
+	useTitleRowEdges();
 	return (
 		<html lang="en" className={DEFAULT_THEME} suppressHydrationWarning>
 			<head>
 				<HeadContent />
 			</head>
 			<body className="font-sans">
-				<TitleBarStrip />
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
 						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
 							<div className="min-h-dvh bg-canvas text-text-1">
 								<Sidebar />
-								<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
+								<main className="min-w-0 md:pl-(--sidebar-w)">
 									<ReconnectLine />
 									<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
 										<Outlet />
