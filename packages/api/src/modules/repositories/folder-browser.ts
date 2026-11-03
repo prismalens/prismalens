@@ -15,9 +15,16 @@ import { isCanonical } from "../../infrastructure/dispatch/folder-lock.js";
 
 class ReadTimeout extends Error {}
 
+/** File system reads still running, answered or not: a stalled drive holds a thread each. */
+let outstanding = 0;
+const MAX_READS = 2;
+
 function timed<T>(op: Promise<T>, deadline: number): Promise<T> {
+	outstanding++;
 	// An op that loses the race may still fail later; that failure is nobody's to handle.
-	op.catch(() => {});
+	op.catch(() => {}).finally(() => {
+		outstanding--;
+	});
 	const left = deadline - Date.now();
 	if (left <= 0) return Promise.reject(new ReadTimeout());
 	let timer: NodeJS.Timeout | undefined;
@@ -64,6 +71,8 @@ export interface BrowseOptions {
 	home?: string;
 	max?: number;
 	readMs?: number;
+	/** Reads still running past which a listing answers busy rather than queue another. */
+	maxReads?: number;
 }
 
 /**
@@ -87,6 +96,8 @@ export async function browseFolders(
 	if (!isAbsolute(expanded) || /^[\\/]{2}/.test(expanded))
 		return { ok: false, path: typed, error: "not-absolute" };
 	const path = resolve(expanded);
+	if (outstanding >= (opts.maxReads ?? MAX_READS))
+		return { ok: false, path, error: "busy" };
 	const max = opts.max ?? FOLDER_LIST_MAX;
 	const deadline = Date.now() + (opts.readMs ?? FOLDER_READ_MS);
 	const entries: FolderEntry[] = [];

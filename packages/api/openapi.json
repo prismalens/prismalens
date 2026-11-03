@@ -29395,7 +29395,8 @@
                             "timeout",
                             "not-folder",
                             "not-absolute",
-                            "link"
+                            "link",
+                            "busy"
                           ],
                           "type": "string"
                         }

@@ -56,4 +56,36 @@ describe("the folder listing's deadline (#1020)", () => {
 		);
 		await expect(browseFolders(root)).rejects.toThrow("busy");
 	});
+
+	it("stalled reads are capped: past the cap a listing answers busy, and frees up when they end", async () => {
+		const ends: Array<() => void> = [];
+		const stalled = () =>
+			new Promise((r) => {
+				ends.push(() => r({ read: async () => null, close: async () => {} }));
+			});
+		fsMock.opendir.mockImplementation(stalled);
+		try {
+			for (let i = 0; i < 2; i++)
+				expect(await browseFolders(root, { readMs: 10, maxReads: 2 })).toMatchObject({
+					error: "timeout",
+				});
+			expect(await browseFolders(root, { readMs: 10, maxReads: 2 })).toMatchObject({
+				ok: false,
+				error: "busy",
+			});
+			fsMock.opendir.mockImplementation(async () => ({
+				read: async () => null,
+				close: async () => {},
+			}));
+			for (const end of ends) end();
+			await vi.waitFor(async () =>
+				expect(
+					(await browseFolders(root, { readMs: 200, maxReads: 2 })).ok,
+				).toBe(true),
+			);
+		} finally {
+			for (const end of ends) end();
+			fsMock.opendir.mockReset();
+		}
+	});
 });

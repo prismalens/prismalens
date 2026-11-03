@@ -133,6 +133,7 @@ export const FOLDER_ERRORS = [
 	"not-folder",
 	"not-absolute",
 	"link",
+	"busy",
 ] as const;
 
 export const BrowseFoldersResultSchema = z.discriminatedUnion("ok", [

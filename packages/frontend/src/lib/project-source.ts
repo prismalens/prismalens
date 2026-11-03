@@ -74,6 +74,7 @@ export const BROWSE_ERROR: Record<
 	"not-folder": "Not a folder",
 	"not-absolute": "Type a full path",
 	link: "Goes through a link",
+	busy: "Folder reads busy",
 };
 
 const RECENT_KEY = "pl.recentProjects";
