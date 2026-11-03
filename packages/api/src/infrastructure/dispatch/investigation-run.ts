@@ -82,6 +82,7 @@ import {
 import type { HarnessScope } from "@prismalens/integrations/harness";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
+import { gitEnv } from "../../core/harness/git-env.js";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import {
@@ -2622,6 +2623,7 @@ export function observeWorkspace(
 
 function gitIn(dir: string, args: string[]): string {
 	return execFileSync("git", ["-C", dir, ...args], {
+		env: gitEnv({ source: "none" }),
 		encoding: "utf8",
 		windowsHide: true,
 		timeout: 15_000,

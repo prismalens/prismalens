@@ -37,7 +37,7 @@ import {
 	TEARDOWN_CAP_MS,
 } from "./hooks.js";
 
-export { type FetchCredential, gitEnv } from "./git.js";
+export { type FetchCredential, gitChildEnv, gitEnv } from "./git.js";
 export {
 	commandFor,
 	type HookResult,

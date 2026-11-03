@@ -7,6 +7,7 @@
  * credential config that says who authenticates. Pure: no spawn, no Nest.
  */
 import { basename } from "node:path";
+import { gitChildEnv } from "@prismalens/agent-host";
 import { isWsl } from "@prismalens/config";
 
 /** Who authenticates a git call: a saved token, the machine's own git, or nobody. */
@@ -44,28 +45,8 @@ export const GIT_LOCAL_ENV_VARS = [
 	"GIT_NAMESPACE",
 ] as const;
 
-const STRIP_EXACT = new Set<string>([
-	...GIT_LOCAL_ENV_VARS,
-	"GIT_CURL_VERBOSE",
-	"GIT_ASKPASS",
-	"SSH_ASKPASS",
-	"LANGUAGE",
-]);
-const STRIP_PREFIX = ["GIT_TRACE", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"];
-
-function stripped(parent: NodeJS.ProcessEnv): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const [key, value] of Object.entries(parent)) {
-		// Windows reads `git_dir` as GIT_DIR (#1020): match by upper case, and drop any
-		// git name not written in upper case, so nothing here sits beside our own value.
-		const name = key.toUpperCase();
-		if (value === undefined || STRIP_EXACT.has(name)) continue;
-		if (STRIP_PREFIX.some((p) => name.startsWith(p))) continue;
-		if (name.startsWith("GIT_") && name !== key) continue;
-		env[key] = value;
-	}
-	return env;
-}
+/** The shared filter (agent-host `gitChildEnv`), so every git child drops the same names. */
+const stripped = gitChildEnv;
 
 /** `GIT_SSH_COMMAND` with BatchMode for OpenSSH; any other client is left as it is. */
 export function sshCommandFor(

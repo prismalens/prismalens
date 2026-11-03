@@ -19,6 +19,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	createWorkspace,
+	gitEnv,
 	releaseWorkspace,
 	resolveWorkspacePolicy,
 	runHook,
@@ -81,6 +82,24 @@ describe("createWorkspace", () => {
 		expect(sh(ws.dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("HEAD");
 		const list = sh(repo, "worktree", "list", "--porcelain");
 		expect(list).toContain("locked prismalens run r1");
+	}, 60_000);
+
+	it("a lowercase git_dir or git_work_tree in the env never sends worktree add or reset elsewhere (#1020)", async () => {
+		const outside = mkdtempSync(join(tmpdir(), "pl-ah-outside-"));
+		sh(outside, "init", "-q");
+		const env = {
+			...process.env,
+			git_dir: join(outside, ".git"),
+			Git_Work_Tree: outside,
+			git_index_file: join(outside, ".git", "index"),
+		};
+		const clean = gitEnv(env);
+		expect(Object.keys(clean).filter((k) => /^git_/i.test(k) && k !== k.toUpperCase())).toEqual([]);
+		const ws = await createWorkspace({ ...owner, id: "r-lower", project: "p1", policy: POLICY, source: { kind: "local", repo, commit }, env });
+		expect(sh(ws.dir, "rev-parse", "HEAD")).toBe(commit);
+		expect(existsSync(join(outside, ".git", "worktrees"))).toBe(false);
+		expect(existsSync(join(outside, ".git", "index"))).toBe(false);
+		rmSync(outside, { recursive: true, force: true });
 	}, 60_000);
 
 	it("clones, copies named ignored files in, and checks out a named branch", async () => {
