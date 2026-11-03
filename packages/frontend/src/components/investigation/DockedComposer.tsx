@@ -501,6 +501,7 @@ export function DockedComposer({
 			agent={harness?.label ?? who.agent}
 			cwd={inv?.workspace?.cwd}
 			onStep={onStep}
+			always={!!inv?.scheduleId}
 		/>
 	) : null;
 

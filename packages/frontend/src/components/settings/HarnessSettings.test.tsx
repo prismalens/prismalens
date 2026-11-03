@@ -209,6 +209,51 @@ afterEach(async () => {
 	}
 });
 
+describe("runs nobody started (#1020)", () => {
+	it("keeps the GitHub token off by default; turning it on saves it", async () => {
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+		const row = container.querySelector(
+			'[data-testid="harness-unattended-github-row"]',
+		);
+		expect(row?.textContent).toContain("Only threads you start");
+		const toggle = container.querySelector<HTMLButtonElement>(
+			'[data-testid="harness-unattended-github"]',
+		);
+		expect(toggle?.getAttribute("aria-checked")).toBe("false");
+		await act(async () => {
+			toggle?.click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({ unattendedGithub: true });
+		expect(
+			container.querySelector('[data-testid="harness-alert-asks"]')
+				?.textContent,
+		).toContain("Decide for me");
+	});
+
+	it("is read-only on a paired device", async () => {
+		mockSettings.canEditRuntime = false;
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(
+				container.querySelector<HTMLButtonElement>(
+					'[data-testid="harness-unattended-github"]',
+				)?.disabled,
+			).toBe(true);
+			expect(
+				container.querySelector<HTMLButtonElement>(
+					'[data-testid="harness-alert-asks"]',
+				)?.disabled,
+			).toBe(true);
+		} finally {
+			delete mockSettings.canEditRuntime;
+		}
+	});
+});
+
 describe("HarnessSettings strict mode (#817)", () => {
 	it("is off by default and turning it on saves strictEnv", async () => {
 		await act(async () => {
