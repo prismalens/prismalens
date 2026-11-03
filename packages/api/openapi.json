@@ -19791,6 +19791,9 @@
                               },
                               "server": {
                                 "type": "string"
+                              },
+                              "identity": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -33134,15 +33137,14 @@
                                     }
                                   ]
                                 },
-                                "title": {
+                                "identity": {
                                   "type": "string",
-                                  "minLength": 1,
-                                  "maxLength": 500
+                                  "pattern": "^[0-9a-f]{64}$"
                                 }
                               },
                               "required": [
                                 "kind",
-                                "title"
+                                "identity"
                               ]
                             }
                           },
@@ -33902,15 +33904,14 @@
                               }
                             ]
                           },
-                          "title": {
+                          "identity": {
                             "type": "string",
-                            "minLength": 1,
-                            "maxLength": 500
+                            "pattern": "^[0-9a-f]{64}$"
                           }
                         },
                         "required": [
                           "kind",
-                          "title"
+                          "identity"
                         ]
                       }
                     },
@@ -34437,15 +34438,14 @@
                                   }
                                 ]
                               },
-                              "title": {
+                              "identity": {
                                 "type": "string",
-                                "minLength": 1,
-                                "maxLength": 500
+                                "pattern": "^[0-9a-f]{64}$"
                               }
                             },
                             "required": [
                               "kind",
-                              "title"
+                              "identity"
                             ]
                           }
                         },
@@ -35328,15 +35328,14 @@
                               }
                             ]
                           },
-                          "title": {
+                          "identity": {
                             "type": "string",
-                            "minLength": 1,
-                            "maxLength": 500
+                            "pattern": "^[0-9a-f]{64}$"
                           }
                         },
                         "required": [
                           "kind",
-                          "title"
+                          "identity"
                         ]
                       }
                     },
@@ -36034,15 +36033,14 @@
                               }
                             ]
                           },
-                          "title": {
+                          "identity": {
                             "type": "string",
-                            "minLength": 1,
-                            "maxLength": 500
+                            "pattern": "^[0-9a-f]{64}$"
                           }
                         },
                         "required": [
                           "kind",
-                          "title"
+                          "identity"
                         ]
                       }
                     },
