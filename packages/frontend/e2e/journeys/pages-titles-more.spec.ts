@@ -15,9 +15,15 @@
  * 5. Project page Make it a service takes name only and shows the read-only service=<name> rule.
  * 6. After a user rename, an agent title update cannot overwrite the user's title.
  */
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { createIncidentByHand } from "./by-hand";
+
+/** A folder no other journey adds: a folder inside this checkout resolves to the same project. */
+const ownFolder = () => mkdtempSync(join(tmpdir(), "pl-e2e-project-"));
+
 import { hideQueryDevtools } from "./live-stream-fixtures";
 
 const THREAD_ID = "e1020000-0000-4000-8000-000000000001";
@@ -295,9 +301,7 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 	}) => {
 		const serviceName = `cart-api-${Date.now()}`;
 		await page.goto("/projects");
-		await page
-			.getByTestId("add-project-source")
-			.fill(join(process.cwd(), "e2e"));
+		await page.getByTestId("add-project-source").fill(ownFolder());
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();
 		const repoId = page.url().split("/projects/")[1] ?? "";
@@ -394,9 +398,7 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 	}) => {
 		const serviceName = `service-make-${Date.now()}`;
 		await page.goto("/projects");
-		await page
-			.getByTestId("add-project-source")
-			.fill(join(process.cwd(), "e2e", "steps"));
+		await page.getByTestId("add-project-source").fill(ownFolder());
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();
 		const repoId = page.url().split("/projects/")[1] ?? "";
