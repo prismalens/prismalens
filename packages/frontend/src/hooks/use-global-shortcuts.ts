@@ -5,13 +5,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
 import { EARLY_CHORD_MS, takeEarlyKeys } from "@/lib/early-keys";
+import { PLACES } from "@/lib/places";
 
-/** The `g` chords: where each second key goes. Rendered by the `?` sheet too. */
-export const GO_SHORTCUTS = [
-	{ key: "i", to: "/incidents", label: "Incidents" },
-	{ key: "a", to: "/alerts", label: "Alerts" },
-	{ key: "s", to: "/settings", label: "Settings" },
-] as const;
+/** The `g` chords, from the one places list: where each second key goes. Rendered by the `?` sheet too. */
+export const GO_SHORTCUTS = PLACES.flatMap((p) =>
+	p.goKey ? [{ key: p.goKey, to: p.to, label: p.label }] : [],
+);
 
 function isTyping(target: EventTarget | null): boolean {
 	const el = target as HTMLElement | null;

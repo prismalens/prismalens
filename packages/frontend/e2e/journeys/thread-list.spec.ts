@@ -351,10 +351,7 @@ test.describe("#1020 — thread list and New thread", () => {
 		await page.keyboard.press("Control+k");
 		await expect(page.getByTestId("thread-search")).toBeVisible();
 		await page.getByTestId("thread-search-input").fill("term");
-		await page
-			.getByTestId("thread-search-place")
-			.filter({ hasText: "Terminal" })
-			.click();
+		await page.getByTestId("thread-search-action-terminal").click();
 		await expect(
 			page.getByTestId("panel-bottom").getByTestId("terminal-panel"),
 		).toBeVisible();
@@ -444,7 +441,9 @@ test.describe("#1020 — thread list and New thread", () => {
 			await expect(page.getByTestId("thread-search")).toBeVisible();
 			// A phone has no bottom panel, so Terminal is not offered.
 			await page.getByTestId("thread-search-input").fill("term");
-			await expect(page.getByTestId("thread-search-place")).toHaveCount(0);
+			await expect(
+				page.getByTestId("thread-search-action-terminal"),
+			).toHaveCount(0);
 			await page.getByTestId("thread-search-input").fill("sched");
 			await page
 				.getByTestId("thread-search-place")

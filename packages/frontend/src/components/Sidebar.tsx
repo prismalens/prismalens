@@ -11,15 +11,7 @@
  * Back at the foot. Hidden on pairing, where nothing leads away.
  */
 import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
-import {
-	Bell,
-	Boxes,
-	ChevronLeft,
-	Inbox,
-	PanelLeft,
-	Search,
-	SlidersHorizontal,
-} from "lucide-react";
+import { ChevronLeft, PanelLeft, Search } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
@@ -37,6 +29,7 @@ import {
 	SidebarHead,
 	useOpenSearch,
 } from "@/components/shell/SidebarHead";
+import { useThreadFilters } from "@/components/shell/ThreadFilters";
 import { ThreadList } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { inSettings, useBack } from "@/hooks/use-back";
@@ -46,6 +39,7 @@ import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useServices } from "@/lib/api/hooks";
+import { PLACES } from "@/lib/places";
 import { cn } from "@/lib/utils";
 
 type DoorTo = "/incidents" | "/alerts" | "/services" | "/settings";
@@ -66,23 +60,17 @@ const ICON = "size-4 shrink-0 stroke-[1.5]";
 function useDoors(signedIn: boolean): Door[] {
 	const needs = useNeedsYouCount(signedIn);
 	const about = useAbout(signedIn);
-	return [
-		{
-			to: "/incidents",
-			label: "Incidents",
-			icon: <Inbox className={ICON} />,
-			count: needs || undefined,
-			countLabel: needs ? `${needs} need you` : undefined,
-		},
-		{ to: "/alerts", label: "Alerts", icon: <Bell className={ICON} /> },
-		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
-		{
-			to: "/settings",
-			label: "Settings",
-			icon: <SlidersHorizontal className={ICON} />,
-			dot: about.data?.update.available === true,
-		},
-	];
+	return PLACES.filter((p) => p.door).map((p) => ({
+		to: p.to as DoorTo,
+		label: p.label,
+		icon: <p.icon className={ICON} />,
+		...(p.id === "incidents" && needs
+			? { count: needs, countLabel: `${needs} need you` }
+			: {}),
+		...(p.id === "settings"
+			? { dot: about.data?.update.available === true }
+			: {}),
+	}));
 }
 
 const goKey = (label: string) =>
@@ -244,7 +232,11 @@ function AreaList({ pathname }: { pathname: string }) {
 		);
 	}
 	if (isOn(pathname, "/services")) return <ServiceList />;
-	return <ThreadList />;
+	return <FilteredThreadList />;
+}
+
+function FilteredThreadList() {
+	return <ThreadList filters={useThreadFilters()} />;
 }
 
 /** Settings at the foot, an icon beside the theme toggle (spec §1). */
