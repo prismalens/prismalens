@@ -16,33 +16,28 @@ import { sameAsDisk } from "../../infrastructure/dispatch/folder-lock.js";
 class ReadTimeout extends Error {}
 class Busy extends Error {}
 
-/** File system operations still running, answered or not: a stalled drive holds a thread each. */
+/**
+ * Listings with a file system operation still running, answered or not: a stalled drive holds
+ * a thread each. A listing runs one operation at a time and keeps its slot until the last one,
+ * its directory's close included, settles, so the cap bounds every pending operation (#1020).
+ */
 let outstanding = 0;
 const MAX_READS = 2;
 
-/** Every listing operation (read, stat, close) until it settles, for the cap (#1020). */
 export const outstandingReads = () => outstanding;
-
-function track<T>(op: Promise<T>): Promise<T> {
-	outstanding++;
-	// An op that loses the race may still fail later; that failure is nobody's to handle.
-	op.catch(() => {}).finally(() => {
-		outstanding--;
-	});
-	return op;
-}
 
 interface Budget {
 	deadline: number;
-	maxReads: number;
+	/** The listing's operation still running, if any; its close waits for it. */
+	inflight?: Promise<unknown>;
 }
 
-/** Starts `make` only inside the deadline and under the cap, then races it against the deadline. */
+/** Starts `make` only inside the deadline, then races it against the deadline. */
 function timed<T>(make: () => Promise<T>, b: Budget): Promise<T> {
 	const left = b.deadline - Date.now();
 	if (left <= 0) return Promise.reject(new ReadTimeout());
-	if (outstanding >= b.maxReads) return Promise.reject(new Busy());
-	const op = track(make());
+	const op = make();
+	b.inflight = op;
 	let timer: NodeJS.Timeout | undefined;
 	return Promise.race([
 		op,
@@ -115,17 +110,14 @@ export async function browseFolders(
 	const path = resolve(expanded);
 	if (outstanding >= (opts.maxReads ?? MAX_READS))
 		return { ok: false, path, error: "busy" };
+	outstanding++;
 	const max = opts.max ?? FOLDER_LIST_MAX;
-	const b: Budget = {
-		deadline: Date.now() + (opts.readMs ?? FOLDER_READ_MS),
-		maxReads: opts.maxReads ?? MAX_READS,
-	};
+	const b: Budget = { deadline: Date.now() + (opts.readMs ?? FOLDER_READ_MS) };
 	const entries: FolderEntry[] = [];
 	let truncated = false;
-	// Cut short by the deadline or the cap: nothing more is started for this listing.
-	let cut = false;
+	let git = false;
 	let dir: Dir | undefined;
-	let pending: Promise<unknown> | undefined;
+	let opening: Promise<Dir> | undefined;
 	try {
 		const st = await timed(() => lstat(path), b);
 		if (st.isSymbolicLink() || !st.isDirectory())
@@ -133,20 +125,12 @@ export async function browseFolders(
 		// A linked parent would list somewhere else under this name (#1020).
 		const real = await timed(() => realpath(path), b);
 		if (!sameAsDisk(path, real)) return { ok: false, path, error: "link" };
-		dir = await timed(() => {
-			const opening = opendir(path);
-			pending = opening;
-			return opening;
-		}, b);
-		pending = undefined;
+		opening = opendir(path);
+		const started = opening;
+		dir = await timed(() => started, b);
 		for (;;) {
 			const open = dir;
-			const d = await timed(() => {
-				const reading = open.read();
-				pending = reading;
-				return reading;
-			}, b);
-			pending = undefined;
+			const d = await timed(() => open.read(), b);
 			if (!d) break;
 			// A Dirent is not followed: a link or junction is never a directory here.
 			if (!d.isDirectory()) continue;
@@ -161,29 +145,30 @@ export async function browseFolders(
 				git: false,
 			});
 		}
-	} catch (e) {
-		const short = e instanceof ReadTimeout || e instanceof Busy;
-		if (!short || entries.length === 0) return failed(path, e);
-		truncated = true;
-		cut = true;
-	} finally {
-		const open = dir;
-		const wait = pending ?? Promise.resolve();
-		void wait
-			.catch(() => {})
-			.then(async () => {
-				const late = open ?? ((await wait.catch(() => null)) as Dir | null);
-				if (late) await track(late.close()).catch(() => {});
-			});
-	}
-	let git = false;
-	if (!cut)
 		try {
 			for (const e of entries) e.git = await hasGit(e.path, b);
 			git = await inRepo(path, b);
 		} catch {
 			truncated = true;
 		}
+	} catch (e) {
+		const short = e instanceof ReadTimeout || e instanceof Busy;
+		if (!short || entries.length === 0) return failed(path, e);
+		truncated = true;
+	} finally {
+		// The slot is freed only once the last operation and the close have settled.
+		const last = b.inflight ?? Promise.resolve();
+		const handle = dir ? Promise.resolve(dir) : opening;
+		void last
+			.catch(() => {})
+			.then(async () => {
+				const late = await handle?.catch(() => undefined);
+				if (late) await late.close().catch(() => {});
+			})
+			.finally(() => {
+				outstanding--;
+			});
+	}
 	entries.sort((a, b) => a.name.localeCompare(b.name));
 	const parent = dirname(path);
 	return {

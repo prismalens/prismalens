@@ -150,6 +150,36 @@ describe("the folder listing's deadline (#1020)", () => {
 		await vi.waitFor(() => expect(outstandingReads()).toBe(0));
 	});
 
+	it("two listings whose closes stall never put more than the cap in flight (CP3 r3 OBJ-008)", async () => {
+		const ends: Array<() => void> = [];
+		let peak = 0;
+		const watch = setInterval(() => (peak = Math.max(peak, outstandingReads())), 1);
+		fsMock.opendir.mockImplementation(async () => ({
+			read: async () => null,
+			close: () => {
+				peak = Math.max(peak, outstandingReads());
+				return new Promise<void>((r) => ends.push(r));
+			},
+		}));
+		try {
+			await vi.waitFor(() => expect(outstandingReads()).toBe(0));
+			const both = await Promise.all([
+				browseFolders(root, { readMs: 200, maxReads: 2 }),
+				browseFolders(root, { readMs: 200, maxReads: 2 }),
+			]);
+			await vi.waitFor(() => expect(ends.length).toBe(both.filter((r) => r.ok).length));
+			// A third listing while the two closes are pending is refused, not started.
+			expect(await browseFolders(root, { readMs: 200, maxReads: 2 })).toMatchObject({ error: "busy" });
+			peak = Math.max(peak, outstandingReads());
+			expect(peak).toBeLessThanOrEqual(2);
+		} finally {
+			clearInterval(watch);
+			for (const end of ends) end();
+			fsMock.opendir.mockReset();
+		}
+		await vi.waitFor(() => expect(outstandingReads()).toBe(0));
+	});
+
 	it("a slow check for links never stops the server answering others", async () => {
 		fsMock.opendir.mockResolvedValueOnce({ read: async () => null, close: async () => {} });
 		fsMock.slowSync.ms = 200;
