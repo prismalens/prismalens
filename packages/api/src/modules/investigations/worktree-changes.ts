@@ -228,7 +228,10 @@ async function readChecked(
 	}
 }
 
-function spend<T extends { patch: string }>(budget: Budget, one: T): T {
+function spend(
+	budget: Budget,
+	one: { file: WorktreeFile; patch: string },
+): { file: WorktreeFile; patch: string } {
 	budget.bytes -= Buffer.byteLength(one.patch);
 	if (budget.bytes < 0) budget.over = true;
 	return one;
