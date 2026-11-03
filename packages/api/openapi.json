@@ -22396,6 +22396,9 @@
                       "deny"
                     ],
                     "type": "string"
+                  },
+                  "always": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -32927,8 +32930,27 @@
                             "maxLength": 120
                           },
                           "serviceId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "repositoryId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
                           },
                           "runbook": {
                             "anyOf": [
@@ -33031,6 +33053,35 @@
                               }
                             ]
                           },
+                          "accessLevel": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "supervised",
+                                  "auto-edits",
+                                  "auto",
+                                  "full-access"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
+                          "report": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "whenAsks": {
+                            "enum": [
+                              "decide",
+                              "wait"
+                            ],
+                            "type": "string",
+                            "default": "decide"
+                          },
                           "missedPolicy": {
                             "enum": [
                               "run_once",
@@ -33046,8 +33097,54 @@
                           "id": {
                             "type": "string"
                           },
+                          "subject": {
+                            "enum": [
+                              "service",
+                              "project",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
                           "serviceName": {
                             "type": "string"
+                          },
+                          "repositoryName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "alwaysAllow": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 64
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 500
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "title"
+                              ]
+                            }
                           },
                           "description": {
                             "type": "string"
@@ -33285,7 +33382,10 @@
                           "missedPolicy",
                           "catchUpMinutes",
                           "id",
+                          "subject",
                           "serviceName",
+                          "repositoryName",
+                          "alwaysAllow",
                           "description",
                           "shape",
                           "enabled",
@@ -33403,8 +33503,27 @@
                     "maxLength": 120
                   },
                   "serviceId": {
-                    "type": "string",
-                    "format": "uuid"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "repositoryId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
                   },
                   "runbook": {
                     "anyOf": [
@@ -33507,6 +33626,35 @@
                       }
                     ]
                   },
+                  "accessLevel": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "supervised",
+                          "auto-edits",
+                          "auto",
+                          "full-access"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "report": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "whenAsks": {
+                    "enum": [
+                      "decide",
+                      "wait"
+                    ],
+                    "type": "string",
+                    "default": "decide"
+                  },
                   "missedPolicy": {
                     "enum": [
                       "run_once",
@@ -33550,8 +33698,27 @@
                       "maxLength": 120
                     },
                     "serviceId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     },
                     "runbook": {
                       "anyOf": [
@@ -33654,6 +33821,35 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "report": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "whenAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string",
+                      "default": "decide"
+                    },
                     "missedPolicy": {
                       "enum": [
                         "run_once",
@@ -33669,8 +33865,54 @@
                     "id": {
                       "type": "string"
                     },
+                    "subject": {
+                      "enum": [
+                        "service",
+                        "project",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "serviceName": {
                       "type": "string"
+                    },
+                    "repositoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alwaysAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "title"
+                        ]
+                      }
                     },
                     "description": {
                       "type": "string"
@@ -33908,7 +34150,10 @@
                     "missedPolicy",
                     "catchUpMinutes",
                     "id",
+                    "subject",
                     "serviceName",
+                    "repositoryName",
+                    "alwaysAllow",
                     "description",
                     "shape",
                     "enabled",
@@ -33988,8 +34233,27 @@
                           "maxLength": 120
                         },
                         "serviceId": {
-                          "type": "string",
-                          "format": "uuid"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "repositoryId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
                         },
                         "runbook": {
                           "anyOf": [
@@ -34092,6 +34356,35 @@
                             }
                           ]
                         },
+                        "accessLevel": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "supervised",
+                                "auto-edits",
+                                "auto",
+                                "full-access"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
+                        },
+                        "report": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "whenAsks": {
+                          "enum": [
+                            "decide",
+                            "wait"
+                          ],
+                          "type": "string",
+                          "default": "decide"
+                        },
                         "missedPolicy": {
                           "enum": [
                             "run_once",
@@ -34107,8 +34400,54 @@
                         "id": {
                           "type": "string"
                         },
+                        "subject": {
+                          "enum": [
+                            "service",
+                            "project",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
                         "serviceName": {
                           "type": "string"
+                        },
+                        "repositoryName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "alwaysAllow": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 64
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "title": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 500
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "title"
+                            ]
+                          }
                         },
                         "description": {
                           "type": "string"
@@ -34346,7 +34685,10 @@
                         "missedPolicy",
                         "catchUpMinutes",
                         "id",
+                        "subject",
                         "serviceName",
+                        "repositoryName",
+                        "alwaysAllow",
                         "description",
                         "shape",
                         "enabled",
@@ -34581,8 +34923,27 @@
                         "maxLength": 120
                       },
                       "serviceId": {
-                        "type": "string",
-                        "format": "uuid"
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "repositoryId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
                       },
                       "runbook": {
                         "anyOf": [
@@ -34685,6 +35046,35 @@
                           }
                         ]
                       },
+                      "accessLevel": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "supervised",
+                              "auto-edits",
+                              "auto",
+                              "full-access"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      },
+                      "report": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "whenAsks": {
+                        "enum": [
+                          "decide",
+                          "wait"
+                        ],
+                        "type": "string",
+                        "default": "decide"
+                      },
                       "missedPolicy": {
                         "enum": [
                           "run_once",
@@ -34734,8 +35124,27 @@
                       "maxLength": 120
                     },
                     "serviceId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     },
                     "runbook": {
                       "anyOf": [
@@ -34838,6 +35247,35 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "report": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "whenAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string",
+                      "default": "decide"
+                    },
                     "missedPolicy": {
                       "enum": [
                         "run_once",
@@ -34853,8 +35291,54 @@
                     "id": {
                       "type": "string"
                     },
+                    "subject": {
+                      "enum": [
+                        "service",
+                        "project",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "serviceName": {
                       "type": "string"
+                    },
+                    "repositoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alwaysAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "title"
+                        ]
+                      }
                     },
                     "description": {
                       "type": "string"
@@ -35092,7 +35576,10 @@
                     "missedPolicy",
                     "catchUpMinutes",
                     "id",
+                    "subject",
                     "serviceName",
+                    "repositoryName",
+                    "alwaysAllow",
                     "description",
                     "shape",
                     "enabled",
@@ -35343,8 +35830,27 @@
                       "maxLength": 120
                     },
                     "serviceId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     },
                     "runbook": {
                       "anyOf": [
@@ -35447,6 +35953,35 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "report": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "whenAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string",
+                      "default": "decide"
+                    },
                     "missedPolicy": {
                       "enum": [
                         "run_once",
@@ -35462,8 +35997,54 @@
                     "id": {
                       "type": "string"
                     },
+                    "subject": {
+                      "enum": [
+                        "service",
+                        "project",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "serviceName": {
                       "type": "string"
+                    },
+                    "repositoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alwaysAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "title"
+                        ]
+                      }
                     },
                     "description": {
                       "type": "string"
@@ -35701,7 +36282,10 @@
                     "missedPolicy",
                     "catchUpMinutes",
                     "id",
+                    "subject",
                     "serviceName",
+                    "repositoryName",
+                    "alwaysAllow",
                     "description",
                     "shape",
                     "enabled",
@@ -45631,6 +46215,16 @@
                     "strictEnv": {
                       "type": "boolean"
                     },
+                    "unattendedGithub": {
+                      "type": "boolean"
+                    },
+                    "alertAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string"
+                    },
                     "resumeAfterRestart": {
                       "type": "boolean"
                     },
@@ -46010,6 +46604,16 @@
                   "strictEnv": {
                     "type": "boolean"
                   },
+                  "unattendedGithub": {
+                    "type": "boolean"
+                  },
+                  "alertAsks": {
+                    "enum": [
+                      "decide",
+                      "wait"
+                    ],
+                    "type": "string"
+                  },
                   "resumeAfterRestart": {
                     "type": "boolean"
                   }
@@ -46259,6 +46863,16 @@
                     },
                     "strictEnv": {
                       "type": "boolean"
+                    },
+                    "unattendedGithub": {
+                      "type": "boolean"
+                    },
+                    "alertAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string"
                     },
                     "resumeAfterRestart": {
                       "type": "boolean"
