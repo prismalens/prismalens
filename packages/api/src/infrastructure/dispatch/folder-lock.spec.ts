@@ -85,4 +85,15 @@ describe("one live run per plain folder (#1020)", () => {
 		}
 		expect(await folderBusy(db({ plain: true, url: at("notes", "sub") }, []) as never, "child")).toBe(false);
 	});
+
+	it("a second request's hold, refused and released, leaves the first request's hold in place", async () => {
+		const first = holdConversion(at("notes"));
+		const second = holdConversion(at("notes"));
+		second();
+		second();
+		const child = () => folderBusy(db({ plain: true, url: at("notes", "sub") }, []) as never, "child");
+		expect(await child()).toBe(true);
+		first();
+		expect(await child()).toBe(false);
+	});
 });

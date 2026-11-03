@@ -45,14 +45,16 @@ export function overlaps(a: string, b: string): boolean {
 	return within(a, b) || within(b, a);
 }
 
-/** Folders Start git here is turning into repos; this server admits every run. */
-const converting = new Set<string>();
+/** Folders Start git here is turning into repos, one entry per hold; this server admits every run. */
+const converting = new Map<symbol, string>();
 
-/** Holds off runs in `folder` and folders nested with it until the returned release. */
+/** Holds off runs in `folder` and folders nested with it until the returned release, which frees only this hold. */
 export function holdConversion(folder: string): () => void {
-	const key = canonical(folder);
-	converting.add(key);
-	return () => converting.delete(key);
+	const own = Symbol("hold");
+	converting.set(own, canonical(folder));
+	return () => {
+		converting.delete(own);
+	};
 }
 
 /**
@@ -70,7 +72,7 @@ export async function folderBusy(
 		select: { plain: true, url: true },
 	});
 	if (!repo?.plain) return false;
-	if ([...converting].some((c) => overlaps(c, repo.url))) return true;
+	if ([...converting.values()].some((c) => overlaps(c, repo.url))) return true;
 	return liveIn(db, repo.url, selfId);
 }
 
