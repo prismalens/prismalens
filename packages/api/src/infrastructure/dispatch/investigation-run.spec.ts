@@ -1153,6 +1153,34 @@ describe("harness child env (trust floor, #628)", () => {
 		expect(opts.policy).toEqual(policy);
 	});
 
+	it("launches an alert's or a schedule's run with no GitHub token, a person's with it, unless the host allows it (#1020 R41)", async () => {
+		const githubOf = async (job: Partial<InvestigationJobData>, unattendedGithub?: boolean) => {
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockResolvedValue({ report: { summary: "done", rootCause: null, nextSteps: [] } });
+			const policy = prismalensLaunchPolicy();
+			const ports = fakePorts({
+				agentRuntime: vi.fn(async () => ({ env: {}, policy, note: null, ...(unattendedGithub ? { unattendedGithub } : {}) })),
+			});
+			await runInvestigationJob(
+				{ id: "job-gh", investigationId: "inv-gh", attempts: 1 },
+				{ investigationId: "inv-gh", incidentId: "inc-gh", ...job },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ policy?: { github: string } }];
+			return opts.policy?.github;
+		};
+		expect(await githubOf({})).toBe("include");
+		expect(await githubOf({ startedBy: "person" })).toBe("include");
+		expect(await githubOf({ startedBy: "alert" })).toBe("exclude");
+		// A Wait for me alert run is attended for asks, still not a person's thread.
+		expect(await githubOf({ startedBy: "alert", unattended: false })).toBe("exclude");
+		expect(await githubOf({ unattended: true })).toBe("exclude");
+		expect(await githubOf({ startedBy: "schedule" })).toBe("exclude");
+		expect(await githubOf({ startedBy: "schedule" }, true)).toBe("include");
+		expect(await githubOf({ startedBy: "alert" }, true)).toBe("include");
+	});
+
 	it("spawns with the agent's Settings runtime: env, command and arguments (#907)", async () => {
 		mocks.conductRun.mockReset();
 		mocks.conductRun.mockResolvedValue({ report: { summary: "done", rootCause: null, nextSteps: [] } });

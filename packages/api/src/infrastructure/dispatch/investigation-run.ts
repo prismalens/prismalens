@@ -71,11 +71,14 @@ import type {
 import {
 	buildHandoff,
 	conductRun,
+	githubFor,
 	HANDOFF_TRANSCRIPT_PATH,
 	type InvestigationSink,
 	newGatewayServerName,
 	type PermissionPolicy,
+	prismalensLaunchPolicy,
 	type ResolvedConnector,
+	type StartedBy,
 	type SteerPort,
 	telemetryEndpointsFrom,
 } from "@prismalens/engine";
@@ -467,7 +470,7 @@ async function runJobInternal(
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
-				...runOptionsOf(runtime),
+				...runOptionsOf(runtime, data),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -1098,7 +1101,7 @@ async function runFollowUp(
 				// A recovered alert-started run is still nobody's to answer (#818, #981).
 				...(data.unattended ? { unattended: true } : {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
-				...runOptionsOf(runtime),
+				...runOptionsOf(runtime, data),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -1451,10 +1454,23 @@ export function followUpModelSource(
 }
 
 /** A run's spawn inputs from Settings → Agent (#907). */
-function runOptionsOf(runtime: AgentRuntime) {
+/** Who started the thread; a job from before #1020 says it by `scheduled` or `unattended`. */
+export function startedByOf(data: InvestigationJobData): StartedBy {
+	return (
+		data.startedBy ??
+		(data.scheduled ? "schedule" : data.unattended ? "alert" : "person")
+	);
+}
+
+function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
+	const policy = runtime.policy ?? prismalensLaunchPolicy();
 	return {
 		env: runtime.env,
-		...(runtime.policy ? { policy: runtime.policy } : {}),
+		// R41: an alert's or a schedule's run gets no GitHub token unless the host allows it (#1020).
+		policy: {
+			...policy,
+			github: githubFor(startedByOf(data), runtime.unattendedGithub === true),
+		},
 		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
 		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
 		...(runtime.note ? { runtimeNote: runtime.note } : {}),
