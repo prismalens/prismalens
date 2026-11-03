@@ -1281,6 +1281,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			defaultBranch: true,
 			connectionId: true,
 			fullName: true,
+			subPath: true,
+			plain: true,
 		} as const;
 		const ref = (
 			r: {
@@ -1313,7 +1315,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					repositoryId: row.repositoryId,
 					serviceId: null,
 					name,
-					repos: [ref(repo, null, name)],
+					repos: [
+						{
+							...ref(repo, repo.subPath, name),
+							...(repo.plain ? { plain: true } : {}),
+						},
+					],
 				};
 			}
 		}

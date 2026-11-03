@@ -385,7 +385,8 @@ export type RunWorkspaceRepo = z.infer<typeof RunWorkspaceRepoSchema>;
 
 /** Where a run's harness worked, recorded so a follow-up can rebuild it (#747). */
 export const RunWorkspaceSchema = z.object({
-	layout: z.enum(["unmapped", "single", "multi"]),
+	/** `folder`: a plain folder's thread runs in the folder itself, with no snapshot (#1020). */
+	layout: z.enum(["unmapped", "single", "multi", "folder"]),
 	cwd: z.string(),
 	repos: z.array(RunWorkspaceRepoSchema),
 	/** The run's MCP server name, reused by its follow-ups; absent on a run from before (#848). */
@@ -1536,6 +1537,8 @@ export const ScheduledRunSchema = z.object({
 			subPath: z.string().nullable(),
 			connectionId: z.string().nullable(),
 			serviceName: z.string(),
+			/** A folder with no git; only a thread a person starts may run in it (#1020). */
+			plain: z.boolean().optional(),
 		}),
 	),
 });

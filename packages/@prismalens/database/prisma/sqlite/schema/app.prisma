@@ -55,6 +55,8 @@ model Repository {
   sourceKind    String   @default("url")   // "folder" | "url"
   fullName      String               // "org/repo"
   url           String               // "https://github.com/org/repo" or an absolute folder path
+  subPath       String?              // a project rooted below its repository's top folder (#1020)
+  plain         Boolean  @default(false) // a folder with no git: threads you start run in it (#1020)
   description   String?
   language      String?
   defaultBranch String   @default("main")

@@ -17,6 +17,7 @@ import { repoLabel, shownRepoName } from "../../core/harness/git-credential.js";
 import {
 	classifySource,
 	displayNameFor,
+	PlainFolderError,
 	RepoSourceService,
 } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -26,6 +27,7 @@ import {
 	pickOf,
 } from "../integrations/git-credential.service.js";
 import type { LinkRepositoryDto } from "./dto/index.js";
+import { StartGitRefused, startGit } from "./start-git.js";
 
 export type { Repository, ServiceRepository };
 
@@ -90,6 +92,7 @@ export class RepositoriesService {
 				: null;
 
 		let sync: SyncFields;
+		let plain = false;
 		if (kind === "folder") {
 			sync = { syncBranch: null, syncHead: null, syncError: null };
 			try {
@@ -98,7 +101,8 @@ export class RepositoriesService {
 				subPath = [check.prefix, subPath].filter(Boolean).join("/") || null;
 				Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
 			} catch (err) {
-				sync.syncError = (err as Error).message;
+				if (err instanceof PlainFolderError) plain = true;
+				else sync.syncError = (err as Error).message;
 			}
 		} else {
 			sync = await this.validateUrl(
@@ -108,23 +112,33 @@ export class RepositoriesService {
 			);
 		}
 
+		// A service runs a plain folder unattended, so it needs git first (#1020).
+		if (plain && serviceId)
+			throw new BadRequestException(
+				"This folder has no git. Add it as a project and start git there first.",
+			);
+		// A service links the top folder and keeps its sub-path on the link; a project is the folder picked.
+		const own = serviceId ? null : subPath;
 		const fields = {
 			sourceKind: kind,
 			url: source,
+			subPath: own,
+			plain,
 			...sync,
 			syncedAt: new Date(),
 		};
 		const repository = await this.prisma.$transaction(async (tx) => {
 			const sameRoot = await tx.repository.findFirst({
-				where: { url: source },
+				where: { url: source, subPath: own },
 			});
+			const name = displayNameFor(kind, source);
 			const repo = sameRoot
 				? await tx.repository.update({
 						where: { id: sameRoot.id },
 						data: fields,
 					})
 				: await tx.repository.create({
-						data: { ...fields, fullName: displayNameFor(kind, source) },
+						data: { ...fields, fullName: own ? `${name}/${own}` : name },
 					});
 			// A project on its own has no service to link (#1020).
 			if (!serviceId) return repo;
@@ -163,6 +177,37 @@ export class RepositoriesService {
 			source: kind === "folder" ? "local" : "git",
 		});
 		return repository;
+	}
+
+	/** Start git here (#1020): a plain folder project becomes a Repo once its first commit lands. */
+	async startGit(id: string): Promise<Repository> {
+		const repo = await this.prisma.repository.findUnique({ where: { id } });
+		if (!repo) throw new NotFoundException("Repository not found");
+		if (!repo.plain || repo.sourceKind !== "folder")
+			throw new BadRequestException("Only a plain folder project starts git.");
+		try {
+			await startGit(repo.url);
+		} catch (err) {
+			if (err instanceof StartGitRefused)
+				throw new BadRequestException(err.message);
+			throw err;
+		}
+		const sync: SyncFields = {
+			syncBranch: null,
+			syncHead: null,
+			syncError: null,
+		};
+		try {
+			const check = await this.repoSource.checkFolder(repo.url);
+			Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
+		} catch (err) {
+			sync.syncError = (err as Error).message;
+		}
+		this.logger.log(`Started git in project ${id}`);
+		return this.prisma.repository.update({
+			where: { id },
+			data: { plain: false, ...sync, syncedAt: new Date() },
+		});
 	}
 
 	/**
@@ -313,12 +358,17 @@ export class RepositoriesService {
 			where: { id: repositoryId },
 		});
 		if (!repo) throw new NotFoundException("Repository not found");
+		if (repo.plain)
+			throw new BadRequestException(
+				"This folder has no git. Start git here first.",
+			);
 
 		return this.prisma.serviceRepository.create({
 			data: {
 				serviceId: dto.serviceId,
 				repositoryId,
-				subPath: dto.subPath ?? null,
+				// A subfolder project's service runs in the same subfolder (#1020).
+				subPath: dto.subPath ?? repo.subPath ?? null,
 				isPrimary: dto.isPrimary ?? true,
 			},
 		});

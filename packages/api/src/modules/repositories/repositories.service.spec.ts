@@ -14,6 +14,7 @@ import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { GitSpawnError } from "../../core/harness/git-spawn.js";
 import {
+	PlainFolderError,
 	RepoSourceService,
 	remoteFailure,
 } from "../../core/harness/repo-source.service.js";
@@ -198,6 +199,76 @@ describe("RepositoriesService.addSource", () => {
 
 		expect(mockTx.serviceRepository.create).toHaveBeenCalledWith({
 			data: expect.objectContaining({ subPath: "packages/api/src" }),
+		});
+	});
+
+	it("two picks inside one repo make two projects, each keeping its sub-path (#1020)", async () => {
+		for (const prefix of ["packages/api", "packages/web"]) {
+			mockRepoSource.checkFolder.mockResolvedValueOnce({
+				root: "/repo",
+				prefix,
+				branch: "main",
+				head: "abc123",
+			});
+			await service.addSource({ source: `/repo/${prefix}` });
+		}
+		expect(mockTx.repository.findFirst.mock.calls.map((c) => c[0])).toEqual([
+			{ where: { url: "/repo", subPath: "packages/api" } },
+			{ where: { url: "/repo", subPath: "packages/web" } },
+		]);
+		expect(
+			mockTx.repository.create.mock.calls.map(
+				(c) => [c[0].data.fullName, c[0].data.subPath],
+			),
+		).toEqual([
+			["repo/packages/api", "packages/api"],
+			["repo/packages/web", "packages/web"],
+		]);
+	});
+
+	it("saves a folder with no git as a plain Folder project, with no sync error (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(
+			new PlainFolderError("/notes"),
+		);
+		await service.addSource({ source: "/notes" });
+		expect(mockTx.repository.create).toHaveBeenCalledWith({
+			data: expect.objectContaining({
+				plain: true,
+				syncError: null,
+				subPath: null,
+			}),
+		});
+	});
+
+	it("refuses a plain folder as a service's code: a service runs unattended (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(
+			new PlainFolderError("/notes"),
+		);
+		await expect(
+			service.addSource({ serviceId: "svc-1", source: "/notes" }),
+		).rejects.toThrow(/has no git/);
+		expect(mockTx.repository.create).not.toHaveBeenCalled();
+	});
+
+	it("Make it a service refuses a plain folder and keeps a subfolder project's sub-path (#1020)", async () => {
+		const create = vi.fn(async ({ data }) => ({ ...data, createdAt: new Date() }));
+		(mockPrisma as Record<string, unknown>).serviceRepository = { create };
+		mockPrisma.repository.findUnique.mockResolvedValueOnce({
+			id: "repo-1",
+			plain: true,
+			subPath: null,
+		});
+		await expect(
+			service.linkToService("repo-1", { serviceId: "svc-1" }),
+		).rejects.toThrow(/has no git/);
+		mockPrisma.repository.findUnique.mockResolvedValueOnce({
+			id: "repo-2",
+			plain: false,
+			subPath: "packages/api",
+		});
+		await service.linkToService("repo-2", { serviceId: "svc-1" });
+		expect(create).toHaveBeenCalledWith({
+			data: expect.objectContaining({ subPath: "packages/api" }),
 		});
 	});
 
