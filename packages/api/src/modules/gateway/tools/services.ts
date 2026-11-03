@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { SCOPED } from "./serves.js";
 
 export interface ServiceView {
 	name: string;
@@ -33,6 +34,7 @@ export function serviceTools(service: ServiceLookup): HarnessTool[] {
 				"One service from PrismaLens's catalog, by name: tier, team, Slack channel, type, tags, the repositories bound to it (name, sub-path, branch) and what it depends on and what depends on it, each with its criticality. Use it to know who owns a service and what it touches.",
 			group: "knowledge",
 			effect: "read",
+			serves: SCOPED,
 			input: z.object({ name: z.string().trim().min(1).max(200) }),
 			run: async ({ name }) => {
 				const found = await service(name);

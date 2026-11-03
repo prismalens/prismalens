@@ -15,7 +15,6 @@ import type {
 	CanonicalEvent,
 	LiveTurn,
 	RunEndReason,
-	ThreadSubjectKind,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -26,6 +25,7 @@ import type {
 	RunUsage,
 } from "@prismalens/contracts/schemas";
 import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
+import type { HarnessScope } from "@prismalens/integrations/harness";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import type {
 	RepoSource,
@@ -232,8 +232,8 @@ export interface RunPorts {
 			harness?: string,
 			/** A follow-up's start, so `run_status` counts its own wall clock. */
 			turnStartedAt?: Date,
-			/** A thread with no incident lists no incident tools (#1020). */
-			subject?: ThreadSubjectKind,
+			/** What the run is about and owes; its tools follow (#1020). */
+			scope?: HarnessScope,
 		): Promise<GatewayEntry | null>;
 		revoke(runId: string): void;
 	};
