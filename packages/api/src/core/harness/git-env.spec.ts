@@ -90,6 +90,31 @@ describe("git-env", () => {
 		for (const key of [...local, "GIT_NAMESPACE"]) expect(env[key], key).toBeUndefined();
 	});
 
+	it("strips repo-local and override variables whatever their case: Windows names ignore case (#1020)", () => {
+		const env = gitEnv({
+			source: "none",
+			parent: {
+				PATH: "/bin",
+				git_dir: "/outside/.git",
+				Git_Work_Tree: "/outside",
+				git_index_file: "/outside/index",
+				git_config_global: "/outside/config",
+				git_template_dir: "/outside/tpl",
+				git_trace: "1",
+				git_config_key_0: "core.hooksPath",
+				git_config_value_0: "/outside/hooks",
+				git_askpass: "/outside/askpass",
+			},
+			wsl: false,
+		});
+		const left = Object.keys(env).filter(
+			(k) => k.toUpperCase().startsWith("GIT_") && k !== k.toUpperCase(),
+		);
+		expect(left).toEqual([]);
+		expect(JSON.stringify(env)).not.toContain("/outside");
+		expect(env.PATH).toBe("/bin");
+	});
+
 	it("T9b: appends GCM_INTERACTIVE to WSLENV only under isWsl()", () => {
 		const nonWsl = gitEnv({
 			source: "machine",

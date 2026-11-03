@@ -56,8 +56,12 @@ const STRIP_PREFIX = ["GIT_TRACE", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"];
 function stripped(parent: NodeJS.ProcessEnv): Record<string, string> {
 	const env: Record<string, string> = {};
 	for (const [key, value] of Object.entries(parent)) {
-		if (value === undefined || STRIP_EXACT.has(key)) continue;
-		if (STRIP_PREFIX.some((p) => key.startsWith(p))) continue;
+		// Windows reads `git_dir` as GIT_DIR (#1020): match by upper case, and drop any
+		// git name not written in upper case, so nothing here sits beside our own value.
+		const name = key.toUpperCase();
+		if (value === undefined || STRIP_EXACT.has(name)) continue;
+		if (STRIP_PREFIX.some((p) => name.startsWith(p))) continue;
+		if (name.startsWith("GIT_") && name !== key) continue;
 		env[key] = value;
 	}
 	return env;

@@ -55,6 +55,31 @@ describe("Start git here (#1020)", () => {
 		);
 	});
 
+	it("a lowercase git_dir or git_work_tree in the server's env never steers it elsewhere (#1020)", async () => {
+		const outside = mkdtempSync(join(tmpdir(), "pl-outside-repo-"));
+		execFileSync("git", ["init", "-q"], { cwd: outside });
+		const before = execFileSync("git", ["rev-parse", "--git-path", "index"], { cwd: outside, encoding: "utf8" });
+		const saved = { ...process.env };
+		try {
+			Object.assign(process.env, {
+				git_dir: join(outside, ".git"),
+				Git_Work_Tree: outside,
+				git_index_file: join(outside, ".git", "index"),
+			});
+			writeFileSync(join(folder, "app.js"), "1");
+			await startGit(folder);
+		} finally {
+			for (const k of ["git_dir", "Git_Work_Tree", "git_index_file"]) delete process.env[k];
+			Object.assign(process.env, saved);
+		}
+		expect(existsSync(join(folder, ".git"))).toBe(true);
+		expect(git("ls-files")).toBe("app.js");
+		expect(existsSync(join(outside, ".git", "index"))).toBe(false);
+		expect(() => execFileSync("git", ["rev-parse", "HEAD"], { cwd: outside, stdio: "pipe" })).toThrow();
+		expect(before).toBeTruthy();
+		rmSync(outside, { recursive: true, force: true });
+	});
+
 	it("refuses with no identity and leaves no .git", async () => {
 		who.email = "";
 		writeFileSync(join(folder, "a"), "1");
