@@ -22,6 +22,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { FONT_COOKIE, SYSTEM_FONT_STACK } from "@/lib/appearance";
+import { EARLY_KEYS_SCRIPT } from "@/lib/early-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
@@ -70,7 +71,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 		// written into the JSX <head> is not an option: TanStack Start renders
 		// the head through `HeadContent` and silently drops anything else there,
 		// which is exactly how the first attempt vanished from the shell.
-		scripts: [{ children: PRE_PAINT }],
+		scripts: [{ children: PRE_PAINT }, { children: EARLY_KEYS_SCRIPT }],
 	}),
 	component: RootLayout,
 	errorComponent: RootError,
