@@ -38,8 +38,14 @@ import { worktreeRoots } from "../../core/harness/run-worktree.js";
 
 const READ_TIMEOUT_MS = 30_000;
 const NULL_FILE = "/dev/null";
-/** Where the platform lacks O_NOFOLLOW, the identity check after open stands alone. */
-const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+/**
+ * Where the platform lacks O_NOFOLLOW, the identity check after open stands alone.
+ * O_NONBLOCK keeps a FIFO swapped in after the lstat from blocking the open.
+ */
+const OPEN_FLAGS =
+	constants.O_RDONLY |
+	(constants.O_NOFOLLOW ?? 0) |
+	(constants.O_NONBLOCK ?? 0);
 /** Config keys copied from the repo so line endings and modes compare as checked out. */
 const MIRRORED: Record<string, RegExp> = {
 	"core.autocrlf": /^(true|false|input)$/,
