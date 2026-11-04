@@ -74,6 +74,22 @@ describe("MakeService (#1020)", () => {
 		expect(link).toHaveBeenCalledTimes(2);
 		expect(link).toHaveBeenLastCalledWith({ id: REPO, serviceId: SERVICE });
 	});
+
+	it("locks the name once the service exists, so the rule shown is the one linked", async () => {
+		create.mockResolvedValue({ id: SERVICE });
+		link.mockRejectedValueOnce(new Error("link failed"));
+		act(() =>
+			root.render(
+				<MakeService repositoryId={REPO} defaultName="shop" linked={[]} />,
+			),
+		);
+		await submit();
+		const input = host.querySelector<HTMLInputElement>(
+			'[data-testid="make-service-name"]',
+		);
+		expect(input?.readOnly).toBe(true);
+		expect(host.textContent).toContain("service=shop");
+	});
 });
 
 describe("afterRepositoryLink (#1020)", () => {
