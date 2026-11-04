@@ -8535,8 +8535,15 @@
                       "maximum": 9007199254740991
                     },
                     "incidentId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "sha256": {
                       "type": "string"
@@ -9740,6 +9747,26 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "subject": {
+                      "enum": [
+                        "incident",
+                        "project",
+                        "service",
+                        "schedule",
+                        "none"
+                      ],
+                      "type": "string"
                     },
                     "status": {
                       "enum": [
@@ -11230,6 +11257,26 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "repositoryId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "subject": {
+                            "enum": [
+                              "incident",
+                              "project",
+                              "service",
+                              "schedule",
+                              "none"
+                            ],
+                            "type": "string"
                           },
                           "status": {
                             "enum": [
@@ -13349,6 +13396,26 @@
                         }
                       ]
                     },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "subject": {
+                      "enum": [
+                        "incident",
+                        "project",
+                        "service",
+                        "schedule",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "status": {
                       "enum": [
                         "pending",
@@ -15434,6 +15501,26 @@
                             }
                           ]
                         },
+                        "repositoryId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "subject": {
+                          "enum": [
+                            "incident",
+                            "project",
+                            "service",
+                            "schedule",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
                         "status": {
                           "enum": [
                             "pending",
@@ -16975,6 +17062,26 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "subject": {
+                      "enum": [
+                        "incident",
+                        "project",
+                        "service",
+                        "schedule",
+                        "none"
+                      ],
+                      "type": "string"
                     },
                     "status": {
                       "enum": [
@@ -20423,6 +20530,26 @@
                         }
                       ]
                     },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "subject": {
+                      "enum": [
+                        "incident",
+                        "project",
+                        "service",
+                        "schedule",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "status": {
                       "enum": [
                         "pending",
@@ -23078,6 +23205,26 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "subject": {
+                      "enum": [
+                        "incident",
+                        "project",
+                        "service",
+                        "schedule",
+                        "none"
+                      ],
+                      "type": "string"
                     },
                     "status": {
                       "enum": [
@@ -25836,6 +25983,26 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "subject": {
+                      "enum": [
+                        "incident",
+                        "project",
+                        "service",
+                        "schedule",
+                        "none"
+                      ],
+                      "type": "string"
                     },
                     "status": {
                       "enum": [
@@ -28618,7 +28785,6 @@
                   }
                 },
                 "required": [
-                  "serviceId",
                   "source"
                 ]
               }
@@ -47946,6 +48112,2026 @@
                   "required": [
                     "key"
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/threads": {
+      "post": {
+        "operationId": "threads.start",
+        "summary": "Start a project, service or no-subject thread",
+        "tags": [
+          "threads"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "subject": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "project"
+                          },
+                          "repositoryId": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "repositoryId"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "service"
+                          },
+                          "serviceId": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "serviceId"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "none"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      }
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "accessLevel": {
+                    "enum": [
+                      "supervised",
+                      "auto-edits",
+                      "auto",
+                      "full-access"
+                    ],
+                    "type": "string"
+                  },
+                  "harness": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents",
+                      "local"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effort": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "draftKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "subject",
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "investigationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "jobId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "queued": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "investigationId",
+                    "jobId",
+                    "queued"
+                  ]
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "412",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "PRECONDITION_FAILED"
+                        },
+                        "status": {
+                          "const": 412
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "The thread cannot be started"
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "failure": {
+                              "enum": [
+                                "invalid-env-harness",
+                                "pinned-harness-missing",
+                                "no-harness",
+                                "model-unsupported",
+                                "env-pinned-other"
+                              ],
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "harness": {
+                              "enum": [
+                                "opencode",
+                                "claude-code",
+                                "codex",
+                                "gemini",
+                                "deepagents",
+                                "local"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "failure",
+                            "reason"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message",
+                        "data"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "threads.list",
+        "summary": "List threads on a project or service",
+        "tags": [
+          "threads"
+        ],
+        "parameters": [
+          {
+            "name": "repositoryId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "serviceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "incidentId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scheduleId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "repositoryId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "subject": {
+                            "enum": [
+                              "incident",
+                              "project",
+                              "service",
+                              "schedule",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "pending",
+                              "running",
+                              "completed",
+                              "failed",
+                              "cancelled"
+                            ],
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "investigation",
+                              "chat"
+                            ],
+                            "type": "string",
+                            "default": "investigation"
+                          },
+                          "agentMode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "accessLevel": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "supervised",
+                                  "auto-edits",
+                                  "auto",
+                                  "full-access"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hasReport": {
+                            "type": "boolean"
+                          },
+                          "startedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "summary": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rootCause": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rootCauseCategory": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "code",
+                                  "config",
+                                  "infrastructure",
+                                  "external",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "report": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "summary": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "rootCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "rootCauseCategory": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "code",
+                                          "config",
+                                          "infrastructure",
+                                          "external",
+                                          "unknown"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "culprit": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "service": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "default": null
+                                          },
+                                          "changeRef": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "default": null
+                                          },
+                                          "mechanism": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "default": null
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "hypotheses": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "statement": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "status": {
+                                          "enum": [
+                                            "confirmed",
+                                            "supported",
+                                            "speculative",
+                                            "refuted"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "evidence": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "observation": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "source": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "direction": {
+                                                "enum": [
+                                                  "supports",
+                                                  "contradicts"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "status": {
+                                                "enum": [
+                                                  "verified",
+                                                  "inferred"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "toolCallId": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "origin": {
+                                                "enum": [
+                                                  "tool",
+                                                  "context-pack"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "quote": {
+                                                "type": "string"
+                                              },
+                                              "anchor": {
+                                                "anyOf": [
+                                                  {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "in": {
+                                                            "const": "tool-output"
+                                                          },
+                                                          "toolCallId": {
+                                                            "type": "string"
+                                                          },
+                                                          "line": {
+                                                            "type": "integer",
+                                                            "minimum": 1,
+                                                            "maximum": 9007199254740991
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "in",
+                                                          "toolCallId",
+                                                          "line"
+                                                        ]
+                                                      },
+                                                      {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "in": {
+                                                            "const": "file"
+                                                          },
+                                                          "path": {
+                                                            "type": "string"
+                                                          },
+                                                          "line": {
+                                                            "type": "integer",
+                                                            "minimum": 1,
+                                                            "maximum": 9007199254740991
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "in",
+                                                          "path",
+                                                          "line"
+                                                        ]
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            "required": [
+                                              "observation",
+                                              "source",
+                                              "direction",
+                                              "status"
+                                            ]
+                                          }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        },
+                                        "parentId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        }
+                                      },
+                                      "required": [
+                                        "statement",
+                                        "status",
+                                        "evidence"
+                                      ]
+                                    }
+                                  },
+                                  "ruledOut": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "statement": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "why": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "evidence": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "observation": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "source": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "direction": {
+                                                "enum": [
+                                                  "supports",
+                                                  "contradicts"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "status": {
+                                                "enum": [
+                                                  "verified",
+                                                  "inferred"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "toolCallId": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "origin": {
+                                                "enum": [
+                                                  "tool",
+                                                  "context-pack"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "quote": {
+                                                "type": "string"
+                                              },
+                                              "anchor": {
+                                                "anyOf": [
+                                                  {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "in": {
+                                                            "const": "tool-output"
+                                                          },
+                                                          "toolCallId": {
+                                                            "type": "string"
+                                                          },
+                                                          "line": {
+                                                            "type": "integer",
+                                                            "minimum": 1,
+                                                            "maximum": 9007199254740991
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "in",
+                                                          "toolCallId",
+                                                          "line"
+                                                        ]
+                                                      },
+                                                      {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "in": {
+                                                            "const": "file"
+                                                          },
+                                                          "path": {
+                                                            "type": "string"
+                                                          },
+                                                          "line": {
+                                                            "type": "integer",
+                                                            "minimum": 1,
+                                                            "maximum": 9007199254740991
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "in",
+                                                          "path",
+                                                          "line"
+                                                        ]
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            "required": [
+                                              "observation",
+                                              "source",
+                                              "direction",
+                                              "status"
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "statement",
+                                        "why",
+                                        "evidence"
+                                      ]
+                                    }
+                                  },
+                                  "coverage": {
+                                    "type": "object",
+                                    "properties": {
+                                      "queried": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "notQueried": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "queried",
+                                      "notQueried"
+                                    ]
+                                  },
+                                  "nextSteps": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "title": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "detail": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "priority": {
+                                          "anyOf": [
+                                            {
+                                              "enum": [
+                                                "critical",
+                                                "high",
+                                                "medium",
+                                                "low"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "kind": {
+                                          "enum": [
+                                            "stop-impact",
+                                            "lasting",
+                                            "probe"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "command": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 2000
+                                        },
+                                        "facts": {
+                                          "type": "array",
+                                          "maxItems": 3,
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 300
+                                          }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        }
+                                      },
+                                      "required": [
+                                        "title",
+                                        "detail"
+                                      ]
+                                    }
+                                  },
+                                  "fidelity": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "harness": {
+                                            "type": "string"
+                                          },
+                                          "mode": {
+                                            "type": "string"
+                                          },
+                                          "fidelity": {
+                                            "enum": [
+                                              "enforced",
+                                              "cooperative",
+                                              "advisory"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "mechanism": {
+                                            "type": "string"
+                                          },
+                                          "access": {
+                                            "enum": [
+                                              "supervised",
+                                              "auto-edits",
+                                              "auto",
+                                              "full-access"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "ranAccess": {
+                                            "enum": [
+                                              "supervised",
+                                              "auto-edits",
+                                              "auto",
+                                              "full-access"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "unattended": {
+                                            "type": "boolean"
+                                          },
+                                          "model": {
+                                            "type": "string"
+                                          },
+                                          "modelSource": {
+                                            "enum": [
+                                              "operator",
+                                              "product-default",
+                                              "harness-default",
+                                              "env"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "harnessVersion": {
+                                            "type": "string"
+                                          },
+                                          "servedModel": {
+                                            "type": "string"
+                                          },
+                                          "effort": {
+                                            "type": "string"
+                                          },
+                                          "runtime": {
+                                            "type": "object",
+                                            "properties": {
+                                              "binaryPath": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "configDir": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "envNames": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "args": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            },
+                                            "required": [
+                                              "binaryPath",
+                                              "configDir",
+                                              "envNames",
+                                              "args"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "harness",
+                                          "mode",
+                                          "fidelity",
+                                          "mechanism"
+                                        ]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "flaggedContent": {
+                                    "type": "array",
+                                    "maxItems": 10,
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "where": {
+                                          "enum": [
+                                            "context-pack",
+                                            "tool-output"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "quote": {
+                                          "type": "string",
+                                          "maxLength": 120
+                                        },
+                                        "why": {
+                                          "type": "string",
+                                          "maxLength": 300
+                                        }
+                                      },
+                                      "required": [
+                                        "where",
+                                        "quote",
+                                        "why"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "summary",
+                                  "rootCause",
+                                  "rootCauseCategory",
+                                  "hypotheses",
+                                  "ruledOut",
+                                  "coverage",
+                                  "nextSteps"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "overlay": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "matchedChanges": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "enum": [
+                                            "deployment",
+                                            "change_event"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        },
+                                        "source": {
+                                          "type": "string"
+                                        },
+                                        "serviceName": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "timestamp": {
+                                          "type": "string"
+                                        },
+                                        "hypothesisIndex": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "matchedOn": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "id",
+                                        "title",
+                                        "source",
+                                        "serviceName",
+                                        "timestamp",
+                                        "hypothesisIndex",
+                                        "matchedOn"
+                                      ]
+                                    }
+                                  },
+                                  "serviceProximity": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "serviceName": {
+                                          "type": "string"
+                                        },
+                                        "proximity": {
+                                          "anyOf": [
+                                            {
+                                              "const": 0
+                                            },
+                                            {
+                                              "const": 1
+                                            },
+                                            {
+                                              "const": 2
+                                            }
+                                          ]
+                                        },
+                                        "relation": {
+                                          "enum": [
+                                            "self",
+                                            "dependency",
+                                            "dependent",
+                                            "beyond"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "hypothesisIndexes": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 9007199254740991
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "serviceName",
+                                        "proximity",
+                                        "relation",
+                                        "hypothesisIndexes"
+                                      ]
+                                    }
+                                  },
+                                  "similarIncidents": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "incidentId": {
+                                          "type": "string"
+                                        },
+                                        "incidentNumber": {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        },
+                                        "rank": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "matchedOn": {
+                                          "type": "array",
+                                          "items": {
+                                            "enum": [
+                                              "alert labels",
+                                              "same service",
+                                              "same cause category"
+                                            ],
+                                            "type": "string"
+                                          }
+                                        },
+                                        "actualCause": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "incidentId",
+                                        "incidentNumber",
+                                        "title",
+                                        "rank",
+                                        "matchedOn",
+                                        "actualCause"
+                                      ]
+                                    }
+                                  },
+                                  "computedAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "matchedChanges",
+                                  "serviceProximity",
+                                  "similarIncidents",
+                                  "computedAt"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "harness": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "model": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effort": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "usage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "used": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "size": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "cost": {
+                                    "type": "object",
+                                    "properties": {
+                                      "amount": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "currency": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": [
+                                      "amount",
+                                      "currency"
+                                    ]
+                                  },
+                                  "at": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "used",
+                                  "size",
+                                  "at"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "stopRequestedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggerType": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "liveTurn": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "report",
+                                  "answer"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastTurnOutcome": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "answered",
+                                  "stopped",
+                                  "error"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "endReason": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "interrupted",
+                                  "limited"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acpSessionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "workspace": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "layout": {
+                                    "enum": [
+                                      "unmapped",
+                                      "single",
+                                      "multi"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "cwd": {
+                                    "type": "string"
+                                  },
+                                  "repos": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "dir": {
+                                          "type": "string"
+                                        },
+                                        "sourceKind": {
+                                          "enum": [
+                                            "folder",
+                                            "url"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "url": {
+                                          "type": "string"
+                                        },
+                                        "subPath": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "connectionId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "head": {
+                                          "type": "string"
+                                        },
+                                        "branch": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "services": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "credential": {
+                                          "type": "object",
+                                          "properties": {
+                                            "source": {
+                                              "enum": [
+                                                "connection",
+                                                "env",
+                                                "machine",
+                                                "none"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            },
+                                            "via": {
+                                              "type": "string"
+                                            },
+                                            "connectionId": {
+                                              "type": "string"
+                                            },
+                                            "fingerprint": {
+                                              "type": "string"
+                                            },
+                                            "envVar": {
+                                              "type": "string"
+                                            },
+                                            "fallback": {
+                                              "const": true
+                                            },
+                                            "fallbackFrom": {
+                                              "type": "object",
+                                              "properties": {
+                                                "source": {
+                                                  "enum": [
+                                                    "connection",
+                                                    "env",
+                                                    "machine",
+                                                    "none"
+                                                  ],
+                                                  "type": "string"
+                                                },
+                                                "label": {
+                                                  "type": "string"
+                                                },
+                                                "code": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "source",
+                                                "label",
+                                                "code"
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "source",
+                                            "label",
+                                            "via"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "dir",
+                                        "sourceKind",
+                                        "url",
+                                        "subPath",
+                                        "connectionId",
+                                        "head",
+                                        "branch",
+                                        "services"
+                                      ]
+                                    }
+                                  },
+                                  "toolsServer": {
+                                    "type": "string"
+                                  },
+                                  "compare": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "repo": {
+                                          "type": "string"
+                                        },
+                                        "head": {
+                                          "type": "string",
+                                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                        },
+                                        "headKind": {
+                                          "enum": [
+                                            "deployment",
+                                            "tag",
+                                            "merge",
+                                            "commit"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "headName": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "base": {
+                                          "type": "string",
+                                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                                        },
+                                        "baseKind": {
+                                          "enum": [
+                                            "deployment",
+                                            "tag",
+                                            "merge",
+                                            "commit"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "baseName": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "between": {
+                                          "type": "integer",
+                                          "minimum": -9007199254740991,
+                                          "maximum": 9007199254740991,
+                                          "exclusiveMinimum": 0
+                                        }
+                                      },
+                                      "required": [
+                                        "repo",
+                                        "head",
+                                        "headKind",
+                                        "headName",
+                                        "base",
+                                        "baseKind",
+                                        "baseName",
+                                        "between"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "layout",
+                                  "cwd",
+                                  "repos"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resumable": {
+                            "type": "boolean"
+                          },
+                          "resumeBlockedReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "continuable": {
+                            "type": "boolean"
+                          },
+                          "agentModeName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "awaitingApprovalAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "incidentNumber": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "origin": {
+                            "type": "string",
+                            "default": "local"
+                          },
+                          "schemaVersion": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991,
+                            "default": 1
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "incidentId",
+                          "status",
+                          "startedAt",
+                          "completedAt",
+                          "summary",
+                          "rootCause",
+                          "rootCauseCategory",
+                          "error",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/threads/drafts/{draftKey}/attachments": {
+      "post": {
+        "operationId": "threads.uploadDraftAttachment",
+        "summary": "Attach a file before the thread starts",
+        "tags": [
+          "threads"
+        ],
+        "parameters": [
+          {
+            "name": "draftKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "contentMediaType": "*/*"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "contentMediaType": "*/*"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "incidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "mimeType",
+                    "size",
+                    "incidentId",
+                    "sha256",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/threads/{id}/attachments": {
+      "post": {
+        "operationId": "threads.uploadAttachment",
+        "summary": "Attach a file to a thread",
+        "tags": [
+          "threads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "contentMediaType": "*/*"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "contentMediaType": "*/*"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "incidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "mimeType",
+                    "size",
+                    "incidentId",
+                    "sha256",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/threads/{id}/attachments/{attachmentId}": {
+      "get": {
+        "operationId": "threads.attachment",
+        "summary": "Download a thread's attached file",
+        "tags": [
+          "threads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "*/*"
                 }
               }
             }

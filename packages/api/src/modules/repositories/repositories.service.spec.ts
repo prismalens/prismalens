@@ -117,6 +117,29 @@ describe("RepositoriesService.addSource", () => {
 		);
 	});
 
+	it("adds a project with no service: the repository only, no link and no service lookup (#1020)", async () => {
+		mockRepoSource.checkFolder.mockResolvedValue({
+			root: "/code/shop",
+			prefix: "",
+			branch: "main",
+			head: "abc123",
+		});
+
+		const repo = await service.addSource({ source: "/code/shop" });
+
+		expect(repo).toMatchObject({ id: "repo-1", syncBranch: "main" });
+		expect(mockPrisma.service.findUnique).not.toHaveBeenCalled();
+		expect(mockTx.serviceRepository.updateMany).not.toHaveBeenCalled();
+		expect(mockTx.serviceRepository.create).not.toHaveBeenCalled();
+	});
+
+	it("refuses a service that does not exist", async () => {
+		mockPrisma.service.findUnique.mockResolvedValue(null);
+		await expect(
+			service.addSource({ serviceId: "svc-x", source: "/code/shop" }),
+		).rejects.toThrow(/Service not found/);
+	});
+
 	it("stores fixed text as syncError when a URL's git call fails with its query in stderr (#848)", async () => {
 		const source = "https://127.0.0.1:1/org/repo.git?api_key=sentinel";
 		mockGitCredentials.withCredential.mockRejectedValue(

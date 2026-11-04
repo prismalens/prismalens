@@ -26,6 +26,7 @@ import type {
 	Incident as PrismaIncident,
 } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
@@ -381,29 +382,8 @@ export class IncidentsController {
 	}
 
 	/** No run starts on an agent that is missing or not signed in (#520, #673 w9); the run's own agent when it names one (w52). */
-	private async requireReadyHarness(requested: RunChoice = {}): Promise<void> {
-		const selection = await this.harnessService.resolveSelection(requested);
-		if (!selection.runnable) {
-			throw new ORPCError("PRECONDITION_FAILED", {
-				message: selection.reason,
-				data: {
-					failure: selection.failure,
-					reason: selection.reason,
-					harness: selection.harness,
-				},
-			});
-		}
-		const readiness = await this.harnessService.ensureReady(selection.harness);
-		if (!readiness.ready) {
-			throw new ORPCError("PRECONDITION_FAILED", {
-				message: readiness.reason,
-				data: {
-					failure: "not-ready",
-					reason: readiness.reason,
-					harness: selection.harness,
-				},
-			});
-		}
+	private requireReadyHarness(requested: RunChoice = {}): Promise<void> {
+		return requireReadyHarness(this.harnessService, requested);
 	}
 
 	/** The job for a new run; only connectionIds ride in it, credentials are fetched on demand. */

@@ -52,6 +52,7 @@ import {
 	ServiceInvestigationMetadataSchema,
 	serviceCheckContext,
 	type TurnOutcome,
+	threadChatContext,
 	toFiringAlert,
 	type WorkflowStatus,
 } from "@prismalens/contracts";
@@ -177,6 +178,8 @@ function serviceIdOf(
 	data?: InvestigationJobData,
 ): string | undefined {
 	if (data?.scheduled && !data.incidentId) return data.scheduled.serviceId;
+	if (data?.thread && !data.incidentId)
+		return data.thread.serviceId ?? undefined;
 	return typeof incident?.serviceId === "string"
 		? incident.serviceId
 		: undefined;
@@ -185,6 +188,7 @@ function serviceIdOf(
 /** What the pre-run reads are keyed by: the incident, else the service a check is about (#979). */
 function subjectOf(data: InvestigationJobData): RunSubject | null {
 	if (data.incidentId) return data.incidentId;
+	if (data.thread?.serviceId) return { serviceId: data.thread.serviceId };
 	return data.scheduled ? { serviceId: data.scheduled.serviceId } : null;
 }
 
@@ -874,6 +878,7 @@ async function runFollowUp(
 			incidentId: data.incidentId,
 			serviceName: recorded.repos[0]?.services[0] ?? null,
 			recorded: recorded.cwd,
+			project: data.thread?.name ?? null,
 		});
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
 		const newer = await ports.newerRun(id).catch(() => null);
@@ -1788,6 +1793,8 @@ export async function resolveWorkspace(
 	if (data.scheduled) {
 		// The repositories the schedule was admitted with, never the service's live bindings (#979, OBJ-003).
 		listed = data.scheduled.repos;
+	} else if (data.thread) {
+		listed = data.thread.repos;
 	} else if (data.incidentId) {
 		try {
 			const got = await within(
@@ -1815,13 +1822,16 @@ export async function resolveWorkspace(
 			runDir,
 			unlisted
 				? `Ran without code: ${unlisted}.`
-				: data.scheduled
-					? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
-					: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+				: data.thread
+					? "Ran without code: this thread has no project linked."
+					: data.scheduled
+						? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
+						: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
 	await bindRun(runId, {
 		incidentId: data.incidentId,
 		serviceName: repos[0]?.services[0] ?? null,
+		project: data.thread?.name ?? null,
 	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
@@ -2278,6 +2288,21 @@ async function assembleInvestigationContext(
 	connectors: ResolvedConnector[] = [],
 	contextPack: ContextPack | null = null,
 ): Promise<InvestigationContext> {
+	if (data.thread && !data.incidentId) {
+		// A coding chat: never an alert made up from nothing (#1020, OBJ-003).
+		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
+		const name = data.thread.name ?? undefined;
+		return threadChatContext(
+			{ subject: data.thread.subject, ...(name ? { name } : {}) },
+			{
+				...(data.thread.subject === "service" && name
+					? { service: { name } }
+					: {}),
+				...(telemetry ? { telemetry } : {}),
+				...(contextPack ? { contextPack } : {}),
+			},
+		);
+	}
 	if (data.scheduled && !data.incidentId) {
 		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
 		const notes = data.scheduled.serviceNotes?.trim();

@@ -544,6 +544,16 @@ export const PreRunDetailSchema = z.discriminatedUnion("state", [
 export type PreRunDetail = z.infer<typeof PreRunDetailSchema>;
 
 export const InvestigationKindSchema = z.enum(INVESTIGATION_KINDS);
+/** What a thread is about; separate from its identity and its admission lock (#1020). */
+export const THREAD_SUBJECTS = [
+	"incident",
+	"project",
+	"service",
+	"schedule",
+	"none",
+] as const;
+export const ThreadSubjectKindSchema = z.enum(THREAD_SUBJECTS);
+export type ThreadSubjectKind = z.infer<typeof ThreadSubjectKindSchema>;
 export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
 export const InvestigationSchema = z.object({
@@ -553,6 +563,10 @@ export const InvestigationSchema = z.object({
 	/** A scheduled service check's subject (#979); null on an incident's run. */
 	serviceId: z.string().nullable().optional(),
 	scheduleId: z.string().nullable().optional(),
+	/** A project thread's repository (#1020); null otherwise. */
+	repositoryId: z.string().nullable().optional(),
+	/** What the thread is about, derived from the ids above (#1020). */
+	subject: ThreadSubjectKindSchema.optional(),
 	status: WorkflowStatusSchema,
 	/** A run is a thread (#673): the alert workflow, or a chat a message started. */
 	kind: InvestigationKindSchema.optional().default("investigation"),
@@ -1296,8 +1310,18 @@ export const InvestigationContextSchema = z
 	.object({
 		/** ≥1 firing alert, unless `mode` is `service-check`. A single-alert run is the degenerate case, not empty. */
 		alerts: z.array(FiringAlertSchema),
-		/** A scheduled check of a service has no alert; the prompt frames it from `check` (#979). */
-		mode: z.literal("service-check").optional(),
+		/**
+		 * A scheduled check of a service has no alert; the prompt frames it from `check` (#979).
+		 * A project, service or no-subject thread is a coding chat framed from `thread` (#1020).
+		 */
+		mode: z.enum(["service-check", "project-chat"]).optional(),
+		thread: z
+			.object({
+				subject: z.enum(["project", "service", "none"]),
+				/** The project's or service's name; absent on a no-subject thread. */
+				name: z.string().optional(),
+			})
+			.optional(),
 		check: z
 			.object({
 				brief: z.string().optional(),
@@ -1335,7 +1359,7 @@ export const InvestigationContextSchema = z
 			})
 			.optional(),
 	})
-	.refine((c) => c.mode === "service-check" || c.alerts.length > 0, {
+	.refine((c) => c.mode !== undefined || c.alerts.length > 0, {
 		message: "at least one firing alert is required",
 		path: ["alerts"],
 	});
@@ -1411,6 +1435,24 @@ export function serviceCheckContext(
 	};
 }
 
+/** A project, service or no-subject thread: a coding chat with no alert, never a made-up one (#1020). */
+export function threadChatContext(
+	thread: { subject: "project" | "service" | "none"; name?: string },
+	extras: Pick<InvestigationContextExtras, "contextPack"> & {
+		telemetry?: TelemetryEndpoints;
+		service?: ServiceContext;
+	} = {},
+): InvestigationContext {
+	return {
+		mode: "project-chat",
+		alerts: [],
+		thread,
+		...(extras.service ? { service: extras.service } : {}),
+		...(extras.telemetry ? { telemetry: extras.telemetry } : {}),
+		...(extras.contextPack ? { contextPack: extras.contextPack } : {}),
+	};
+}
+
 /**
  * Build an InvestigationContext from ONE firing alert — the degenerate/CLI path
  * (ADR-0012: the CLI is single-alert; incidents are an app/cloud feature).
@@ -1453,6 +1495,17 @@ export const ScheduledRunSchema = z.object({
 	),
 });
 export type ScheduledRun = z.infer<typeof ScheduledRunSchema>;
+
+/** A project, service or no-subject thread's subject and code, frozen when it started (#1020). */
+export const ThreadRunSchema = z.object({
+	subject: z.enum(["project", "service", "none"]),
+	repositoryId: z.string().nullable(),
+	serviceId: z.string().nullable(),
+	/** The project's or service's name; null on a no-subject thread. */
+	name: z.string().nullable(),
+	repos: ScheduledRunSchema.shape.repos,
+});
+export type ThreadRun = z.infer<typeof ThreadRunSchema>;
 /** A run PrismaLens's restart cut off, taken up again (#981). Carried across boots, never recomputed. */
 export const RestartRecoverySchema = z.object({
 	/** Consecutive recoveries of this run; a finished turn starts the count again. */
@@ -1491,6 +1544,8 @@ export const InvestigationJobDataSchema = z.object({
 	incidentId: z.string().nullable(),
 	/** Set on a scheduled service check: its frozen subject and values (#979). */
 	scheduled: ScheduledRunSchema.optional(),
+	/** Set on a project, service or no-subject thread (#1020). */
+	thread: ThreadRunSchema.optional(),
 	investigationId: z.string(),
 	priority: z.enum(["low", "normal", "high", "critical"]).optional(),
 	context: z.record(z.string(), z.unknown()).optional(),

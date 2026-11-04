@@ -1,26 +1,54 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/** The runs a run shares a thread list with: its incident's, else its schedule's (#979). */
-export type RunScope = { incidentId: string } | { scheduleId: string };
+import type { ThreadSubjectKind } from "@prismalens/contracts";
 
-/**
- * `incidentId: null` in a Prisma filter is `IS NULL`, which matches every unlinked run, so a
- * run with no incident is scoped by its schedule instead (#979).
- */
-export function runScope(run: {
+export interface ScopedRun {
+	id?: string;
 	incidentId: string | null;
 	scheduleId?: string | null;
-}): RunScope {
+	serviceId?: string | null;
+	repositoryId?: string | null;
+}
+
+/**
+ * What a thread is about, from its ids (#1020). A finding can link a schedule's run to an
+ * incident later, so the incident wins; a service id alone is a service thread only
+ * when no schedule admitted the run.
+ */
+export function threadSubject(run: ScopedRun): ThreadSubjectKind {
+	if (run.incidentId) return "incident";
+	if (run.scheduleId) return "schedule";
+	if (run.repositoryId) return "project";
+	if (run.serviceId) return "service";
+	return "none";
+}
+
+/**
+ * The runs a run shares a thread list and an admission lock with: its incident's, else its
+ * schedule's (#979). A project, service or no-subject thread is its own unit (#1020).
+ */
+export type RunScope =
+	| { incidentId: string }
+	| { scheduleId: string }
+	| { id: string };
+
+/** `incidentId: null` in a Prisma filter is `IS NULL`, which matches every unlinked run (#979). */
+export function runScope(run: ScopedRun): RunScope {
 	if (run.incidentId) return { incidentId: run.incidentId };
 	if (run.scheduleId) return { scheduleId: run.scheduleId };
-	throw new Error("A run with no incident must name its schedule");
+	if (run.id) return { id: run.id };
+	throw new Error("A run with no incident or schedule is scoped by its own id");
+}
+
+/** True when a new run on this subject must wait for the live one (one per incident or schedule). */
+export function sharesAdmission(run: ScopedRun): boolean {
+	return !!run.incidentId || !!run.scheduleId;
 }
 
 /** One key per thread list, for grouping rows in memory. */
-export function runScopeKey(run: {
-	incidentId: string | null;
-	scheduleId?: string | null;
-}): string {
-	return run.incidentId ?? `schedule:${run.scheduleId}`;
+export function runScopeKey(run: ScopedRun): string {
+	if (run.incidentId) return run.incidentId;
+	if (run.scheduleId) return `schedule:${run.scheduleId}`;
+	return `run:${run.id ?? ""}`;
 }
