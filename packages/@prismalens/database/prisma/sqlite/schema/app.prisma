@@ -586,7 +586,7 @@ model Schedule {
   /// false: each run is a chat that owes an answer, not a report (#1020).
   report         Boolean @default(true)
   whenAsks       String  @default("decide") // decide | wait
-  /// JSON [{kind, title}]: asks a person answered "Always allow" on (#1020).
+  /// JSON [{kind, identity}]: asks a person answered "Always allow" on, matched by identity hash (#1020).
   alwaysAllow    String?
   missedPolicy   String  @default("run_once") // run_once | skip
   catchUpMinutes Int     @default(360)
