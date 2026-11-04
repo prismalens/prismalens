@@ -19,8 +19,23 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunWorkspace } from "@prismalens/contracts";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readWorktreeChanges } from "./worktree-changes.js";
+
+// The module opens untracked files itself; this seam lets a test fail that read.
+const fsHooks = vi.hoisted(() => ({
+	open: null as null | ((path: string) => Promise<unknown>),
+}));
+vi.mock("node:fs/promises", async (orig) => {
+	const real = await orig<typeof import("node:fs/promises")>();
+	return {
+		...real,
+		open: (path: Parameters<typeof real.open>[0], flags?: string) =>
+			fsHooks.open
+				? fsHooks.open(String(path))
+				: real.open(path, flags),
+	};
+});
 
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
 const ID = ["-c", "user.email=t@t.local", "-c", "user.name=T"];
@@ -89,6 +104,7 @@ beforeEach(() => {
 }, 30_000);
 
 afterEach(() => {
+	fsHooks.open = null;
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -266,5 +282,50 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo.patch).toBeNull();
 		expect(repo.omitted).toBe("too-large");
 		expect(repo.additions).toBeGreaterThan(0);
+	});
+
+	it("lists an untracked file it cannot open or read as added, without lines", async () => {
+		write(run, { "locked.txt": "a\nb\n", "flaky.txt": "c\n", "ok.txt": "fine\n" });
+		const real = await vi.importActual<typeof import("node:fs/promises")>(
+			"node:fs/promises",
+		);
+		fsHooks.open = async (path) => {
+			if (path.endsWith("locked.txt")) throw new Error("EBUSY");
+			const handle = await real.open(path, "r");
+			if (!path.endsWith("flaky.txt")) return handle;
+			await handle.close();
+			return {
+				readFile: async () => {
+					throw new Error("EIO");
+				},
+				close: async () => {},
+			};
+		};
+
+		const repo = await changes();
+
+		const added = (p: string) => repo.files.find((f) => f.path === p);
+		expect(added("locked.txt")).toEqual({
+			path: "locked.txt",
+			status: "added",
+			additions: null,
+			deletions: null,
+		});
+		expect(added("flaky.txt")).toMatchObject({ status: "added", additions: null });
+		expect(added("ok.txt")).toMatchObject({ additions: 1, deletions: 0 });
+		expect(repo.patch).toContain("+fine");
+		expect(repo.patch).not.toContain("+a");
+	});
+
+	it("drops the held patch once untracked text passes the cap, and still lists every file", async () => {
+		const chunk = `${"y".repeat(79)}\n`.repeat(5_500);
+		const names = Array.from({ length: 6 }, (_, i) => `big${i}.txt`);
+		write(run, Object.fromEntries(names.map((n) => [n, chunk])));
+
+		const repo = await changes();
+
+		expect(repo.patch).toBeNull();
+		expect(repo.omitted).toBe("too-large");
+		expect(names.every((n) => repo.files.some((f) => f.path === n))).toBe(true);
 	});
 });
