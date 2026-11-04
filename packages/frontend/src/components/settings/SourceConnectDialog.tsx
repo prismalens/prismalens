@@ -298,7 +298,7 @@ export function SourceConnectDialog({
 									className="flex min-h-14 items-center gap-3 rounded-pool bg-surface-1 px-3 py-2.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=checked]:bg-accent/8 data-[state=checked]:outline-2 data-[state=checked]:-outline-offset-2 data-[state=checked]:outline-accent"
 									data-testid={`source-kind-${k.id}`}
 								>
-									<KindIcon kind={k.git ? "git" : k.id} />
+									<KindIcon kind={k.id} />
 									<span className="min-w-0">
 										<strong className="block font-semibold">{k.label}</strong>
 										<small className="block text-meta text-text-2">
