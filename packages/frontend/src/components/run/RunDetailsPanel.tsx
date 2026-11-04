@@ -256,7 +256,7 @@ export function RunDetailsPanel({
 									{/* No hover, no hint: a touch screen names the open tab (all six would not fit 320 px). */}
 									<span
 										className="ml-1 hidden text-meta [@media(hover:none)]:group-data-[state=active]:inline"
-										data-testid={`run-details-tab-label-${t.id}`}
+										data-testid={`run-details-label-${t.id}`}
 									>
 										{t.label}
 									</span>
