@@ -118,6 +118,15 @@ export const EARLY_RESOLUTION_TTL_MS = 15 * 60_000;
 /** The Event row that remembers such a resolution until its firing claims it. */
 export const EARLY_RESOLUTION_EVENT = "alert-resolved-early";
 
+/** The record's payload with the claiming firing's start, so its keyless retry is recognised. */
+function withClaimedStartsAt(payload: string, claimedStartsAt: string): string {
+	try {
+		return JSON.stringify({ ...JSON.parse(payload), claimedStartsAt });
+	} catch {
+		return JSON.stringify({ claimedStartsAt });
+	}
+}
+
 /** The Alertmanager episode a resolved delivery closes. */
 export interface ResolvedEpisode {
 	startsAt: string;
@@ -417,8 +426,9 @@ export class WebhooksService {
 
 	/**
 	 * The alert that already took this firing's early resolution: a keyless retry
-	 * of the same episode (same `startsAt`) must not run the firing path again,
-	 * which inside the flap window would reopen the resolved alert.
+	 * of the claiming firing (its `claimedStartsAt`, else the resolution's own
+	 * `startsAt`) must not run the firing path again, which inside the flap
+	 * window would reopen the resolved alert.
 	 */
 	private async findClaimedEarlyResolution(
 		fingerprint: string,
@@ -434,12 +444,14 @@ export class WebhooksService {
 		if (Number.isNaN(started)) return null;
 		for (const row of claimed) {
 			try {
-				const payload = JSON.parse(row.payload) as { startsAt?: unknown };
-				if (
-					typeof payload.startsAt === "string" &&
-					Date.parse(payload.startsAt) === started
-				) {
-					return row.alertId;
+				const payload = JSON.parse(row.payload) as {
+					startsAt?: unknown;
+					claimedStartsAt?: unknown;
+				};
+				for (const seen of [payload.claimedStartsAt, payload.startsAt]) {
+					if (typeof seen === "string" && Date.parse(seen) === started) {
+						return row.alertId;
+					}
 				}
 			} catch {
 				// A row that is not JSON is not an episode record.
@@ -518,7 +530,11 @@ export class WebhooksService {
 					: `${opts.idempotencyKey}:resolved`,
 			);
 			if (resolved) {
-				await this.eventsService.markProcessed(earlyResolution.id, resolved.id);
+				await this.eventsService.markProcessed(
+					earlyResolution.id,
+					resolved.id,
+					withClaimedStartsAt(earlyResolution.payload, alert.startsAt),
+				);
 			}
 		}
 

@@ -141,15 +141,20 @@ export class EventsService {
 	}
 
 	/**
-	 * Mark event as processed and link to alert
+	 * Mark event as processed and link to alert; `payload` replaces the stored one.
 	 */
-	async markProcessed(id: string, alertId: string): Promise<Event | null> {
+	async markProcessed(
+		id: string,
+		alertId: string,
+		payload?: string,
+	): Promise<Event | null> {
 		try {
 			return await this.prisma.event.update({
 				where: { id },
 				data: {
 					processed: true,
 					alertId,
+					...(payload !== undefined && { payload }),
 				},
 			});
 		} catch {

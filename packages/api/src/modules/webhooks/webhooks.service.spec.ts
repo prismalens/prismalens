@@ -567,7 +567,34 @@ describe("WebhooksService", () => {
 
 			expect(result.alertId).toBe("alt-123");
 			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-1");
-			expect(eventsService.markProcessed).toHaveBeenCalledWith("evt-early", "alt-123");
+			expect(eventsService.markProcessed).toHaveBeenCalledWith(
+				"evt-early",
+				"alt-123",
+				expect.stringContaining(`"claimedStartsAt":"${STARTS}"`),
+			);
+		});
+
+		it("recognises a keyless retry of a claiming firing whose startsAt differs from the resolution's", async () => {
+			vi.mocked(eventsService.findClaimed).mockResolvedValueOnce([
+				{
+					...earlyEvent,
+					processed: true,
+					alertId: "alt-123",
+					payload: JSON.stringify({
+						status: "resolved",
+						startsAt: "2026-09-19T09:59:00Z",
+						claimedStartsAt: STARTS,
+					}),
+				},
+			]);
+
+			const result = await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result).toEqual({ alertId: "alt-123", isNew: false });
+			expect(alertsService.create).not.toHaveBeenCalled();
 		});
 
 		it("treats a keyless retry of a firing whose early resolution is claimed as a replay", async () => {
