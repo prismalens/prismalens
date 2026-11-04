@@ -38,6 +38,14 @@ export function linkPlan(
 	return found ? { serviceId: found.id } : { create: name };
 }
 
+/** The pick, only while the filtered list shows it: a stale id is never linked (#1020). */
+export function shownPick(
+	shown: readonly { id: string }[],
+	id: string | undefined,
+): string | undefined {
+	return id && shown.some((p) => p.id === id) ? id : undefined;
+}
+
 /** The service an alert reaches by the `service=<name>` rule; without that label, linking maps nothing. */
 export function linkName(
 	labels: Record<string, string> | null | undefined,
@@ -96,9 +104,10 @@ function LinkDialog({
 	const create = useCreateService();
 	const link = useLinkRepository();
 	const queryClient = useQueryClient();
-	const [repositoryId, setRepositoryId] = useState<string>();
+	const [picked, setRepositoryId] = useState<string>();
 	const [error, setError] = useState<string | null>(null);
 	const projects = repos.data?.data ?? [];
+	const repositoryId = shownPick(projects, picked);
 	const shown = name;
 	const busy = create.isPending || link.isPending;
 	const onLink = async (e: FormEvent) => {
@@ -157,13 +166,16 @@ function LinkDialog({
 						{needsFind(repos.data, find) && (
 							<Input
 								value={find}
-								onChange={(e) => setFind(e.target.value)}
+								onChange={(e) => {
+									setFind(e.target.value);
+									setRepositoryId(undefined);
+								}}
 								placeholder="Find a project"
 								aria-label="Find a project"
 								data-testid="link-project-find"
 							/>
 						)}
-						<Select value={repositoryId} onValueChange={setRepositoryId}>
+						<Select value={repositoryId ?? ""} onValueChange={setRepositoryId}>
 							<SelectTrigger
 								aria-label="Project"
 								data-testid="link-project-pick"

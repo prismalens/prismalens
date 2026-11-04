@@ -188,6 +188,18 @@ describe("the box's chips (#673)", () => {
 		expect(loud).toContain('data-testid="access-chip-icon"');
 		expect(loud).toContain('data-tone="warn"');
 		expect(loud).toContain("Full access");
+		// The warning reaches a screen reader, not only the icon's colour (review of #1040).
+		expect(loud).toMatch(/aria-label="Permission: Full access, above the default"/);
+		expect(calm).toMatch(/aria-label="Permission: Ask always"/);
+		const lockedLoud = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude(),
+				level: "full-access",
+				onLevel: () => {},
+				lockedHint: "Kept from the run",
+			}),
+		);
+		expect(lockedLoud).toMatch(/aria-label="Permission: Full access, above the default. Kept from the run"/);
 	});
 
 	it("lists the four levels, the default first and tagged, each with the agent's own mode name (#673 w21)", () => {
