@@ -36,6 +36,20 @@ describe("plainTitle (#1020)", () => {
 	});
 });
 
+describe("joiners stay inside words (review of #1031)", () => {
+	it("keeps ZWNJ and ZWJ, still drops bidi overrides", () => {
+		const persian = "می‌خواهم";
+		const family = "\u{1F468}‍\u{1F469}‍\u{1F467}";
+		expect(plainTitle(`Fix ${persian} ${family} now`)).toBe(
+			`Fix ${persian} ${family} now`,
+		);
+		expect(plainTitle("evil‮txt.exe")).toBe("evil txt.exe");
+		expect(agentTitle(`Fix the ${persian} page`)).toEqual({
+			title: `Fix the ${persian} page`,
+		});
+	});
+});
+
 describe("agentTitle (#1020)", () => {
 	it("takes 3 to 7 words", () => {
 		expect(agentTitle("Retry loop in checkout")).toEqual({

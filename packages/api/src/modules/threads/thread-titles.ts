@@ -14,10 +14,13 @@ type Db = Pick<PrismaService, "investigation">;
 const MIN_WORDS = 3;
 const MAX_WORDS = 7;
 
+/** Controls and format characters, but not ZWNJ/ZWJ: they join letters and emoji inside a word. */
+const BREAKS = /(?:(?![‌‍])[\p{Cc}\p{Cf}])+/gu;
+
 /** One line: controls and bidi overrides gone, whitespace collapsed, no address credential. */
 export function plainTitle(raw: string): string {
 	return raw
-		.replace(/[\p{Cc}\p{Cf}]+/gu, " ")
+		.replace(BREAKS, " ")
 		.replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi, "$1")
 		.replace(/\s+/g, " ")
 		.trim()
@@ -27,10 +30,7 @@ export function plainTitle(raw: string): string {
 
 /** The agent's title, or why it is refused; never cut, so it never ends mid-word. */
 export function agentTitle(raw: string): { title: string } | { error: string } {
-	const flat = raw
-		.replace(/[\p{Cc}\p{Cf}]+/gu, " ")
-		.replace(/\s+/g, " ")
-		.trim();
+	const flat = raw.replace(BREAKS, " ").replace(/\s+/g, " ").trim();
 	if (flat.length > THREAD_TITLE_MAX)
 		return { error: `Keep the title to ${THREAD_TITLE_MAX} characters.` };
 	const title = plainTitle(flat);
