@@ -357,3 +357,80 @@ describe("ThreadsController (#1020)", () => {
 		expect(attachments.readForRun).toHaveBeenCalledWith(RUN, "a");
 	});
 });
+
+describe("ThreadsService.settle (#1020)", () => {
+	const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+	const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+	const stamp = new Date("2026-11-03T00:00:00Z");
+
+	/** Two threads of one incident; B's guarded write always loses, like a row that keeps changing. */
+	function build() {
+		const settledAt = new Map<string, Date | null>([
+			[A, null],
+			[B, null],
+		]);
+		const db = {
+			investigation: {
+				findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+					settledAt.has(where.id)
+						? { incidentId: "inc", updatedAt: stamp }
+						: null,
+				),
+				findMany: vi.fn(async () =>
+					[...settledAt].map(([id, at]) => ({ id, settledAt: at })),
+				),
+				updateMany: vi.fn(
+					async ({
+						where,
+						data,
+					}: {
+						where: { id: string };
+						data: { settledAt?: Date | null };
+					}) => {
+						if (where.id === B) return { count: 0 };
+						settledAt.set(where.id, data.settledAt ?? null);
+						return { count: 1 };
+					},
+				),
+			},
+			$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+				const before = new Map(settledAt);
+				try {
+					return await fn(db);
+				} catch (e) {
+					for (const [k, v] of before) settledAt.set(k, v);
+					throw e;
+				}
+			}),
+		};
+		return {
+			settledAt,
+			svc: new ThreadsService(
+				db as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+			),
+		};
+	}
+
+	it("rolls back the earlier threads when a later one keeps conflicting", async () => {
+		const { svc, settledAt } = build();
+		await expect(svc.settle(A, true)).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(settledAt.get(A)).toBeNull();
+	});
+
+	it("rolls back an undo that restores several threads when one conflicts", async () => {
+		const { svc, settledAt } = build();
+		settledAt.set(A, stamp);
+		await expect(
+			svc.settle(A, false, [
+				{ id: A, settledAt: null },
+				{ id: B, settledAt: null },
+			]),
+		).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(settledAt.get(A)).toEqual(stamp);
+	});
+});

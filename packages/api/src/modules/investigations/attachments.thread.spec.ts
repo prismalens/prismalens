@@ -161,6 +161,13 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 		expect(prisma.attachment.updateMany).toHaveBeenCalledTimes(1);
 	});
 
+	it("refuses a scheduled check with no incident yet, whose message route takes no files", async () => {
+		await expect(
+			service().uploadForRun(SCHEDULED_RUN, text("x")),
+		).rejects.toThrow(/no incident yet/);
+		expect(rows).toHaveLength(0);
+	});
+
 	it("keeps one row for the same bytes from one owner, and takes nothing for an empty list", async () => {
 		const a = await service().uploadForRun(RUN, text("same"));
 		const b = await service().uploadForRun(RUN, text("same", "again.txt"));

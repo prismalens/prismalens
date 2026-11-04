@@ -108,12 +108,18 @@ export function NewThread({
 			severity,
 			...(subject.kind === "service" ? { serviceId: subject.serviceId } : {}),
 		};
-		const kept = madeIncident.current;
 		// A retry may carry edited words: they go onto the incident it reuses (#1020).
-		// A service can be set on an incident, never moved: another service makes a new one.
-		if (kept?.fields.serviceId && kept.fields.serviceId !== fields.serviceId)
-			madeIncident.current = null;
-		else if (kept) {
+		// A service can be set on an incident, never moved: another service makes a new one,
+		// and the kept one stays until that create succeeds, so a retry for the first still reuses it.
+		const kept =
+			madeIncident.current &&
+			!(
+				madeIncident.current.fields.serviceId &&
+				madeIncident.current.fields.serviceId !== fields.serviceId
+			)
+				? madeIncident.current
+				: null;
+		if (kept) {
 			const changed = Object.fromEntries(
 				Object.entries(fields).filter(
 					([k, v]) => kept.fields[k as keyof typeof fields] !== v,
@@ -122,8 +128,7 @@ export function NewThread({
 			if (Object.keys(changed).length)
 				await updateIncident.mutateAsync({ id: kept.id, ...changed });
 		}
-		const id =
-			madeIncident.current?.id ?? (await createIncident.mutateAsync(fields)).id;
+		const id = kept?.id ?? (await createIncident.mutateAsync(fields)).id;
 		madeIncident.current = { id, fields };
 		const uploaded = await Promise.all(
 			files.map((f) => uploadAttachment(id, f)),

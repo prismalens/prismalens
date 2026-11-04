@@ -82,7 +82,7 @@ export function StepCard({
 						{waiting ? "Waiting" : (denied ?? step.verb)}
 					</span>
 					<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
-						{step.command}
+						{step.gateway ? step.title : step.command}
 					</span>
 					<span className="shrink-0 text-meta text-text-3 tabular-nums">
 						{waiting ? "" : stepTook(step.took)}

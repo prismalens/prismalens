@@ -907,6 +907,7 @@ export function AccessChip({
 	const above =
 		ACCESS_LEVELS.indexOf(level) > ACCESS_LEVELS.indexOf(fallback.level);
 	const Icon = locked ? Lock : above ? ShieldAlert : Shield;
+	const named = `Permission: ${text}${above ? ", above the default" : ""}`;
 	const mark = (
 		<Icon
 			className={cn("size-3.5 shrink-0", above && "text-warn")}
@@ -924,7 +925,7 @@ export function AccessChip({
 						disabled
 						className={cn(CHIP, "max-w-48")}
 						data-testid={testId}
-						aria-label={`Permission: ${text}. ${lockedHint}`}
+						aria-label={`${named}. ${lockedHint}`}
 					>
 						{mark}
 						<span className="truncate">{text}</span>
@@ -940,7 +941,7 @@ export function AccessChip({
 					disabled={disabled}
 					className={cn(CHIP, "max-w-48")}
 					data-testid={testId}
-					aria-label={`Permission: ${text}`}
+					aria-label={named}
 				>
 					{mark}
 					<span className="truncate">{text}</span>

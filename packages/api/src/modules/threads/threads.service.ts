@@ -408,14 +408,15 @@ export class ThreadsService {
 	private async readState(
 		id: string,
 		data: { lastVisitedAt?: Date; settledAt?: Date | null },
+		db: Prisma.TransactionClient | PrismaService = this.prisma,
 	): Promise<boolean> {
 		for (let attempt = 0; attempt < 3; attempt++) {
-			const row = await this.prisma.investigation.findUnique({
+			const row = await db.investigation.findUnique({
 				where: { id },
 				select: { updatedAt: true },
 			});
 			if (!row) return false;
-			const { count } = await this.prisma.investigation.updateMany({
+			const { count } = await db.investigation.updateMany({
 				where: { id, updatedAt: row.updatedAt },
 				data: { ...data, updatedAt: row.updatedAt },
 			});
@@ -443,17 +444,24 @@ export class ThreadsService {
 		const ids = rows.map((r) => r.id);
 		if (!settled && restore) {
 			// Undo writes back each thread's own state, an earlier Settle included (#1020).
+			// One transaction: a CONFLICT on a later thread rolls the earlier writes back.
 			const inBlock = new Set(ids);
-			for (const r of restore.filter((r) => inBlock.has(r.id)))
-				await this.readState(r.id, {
-					settledAt: r.settledAt ? new Date(r.settledAt) : null,
-				});
+			await this.prisma.$transaction(async (tx) => {
+				for (const r of restore.filter((r) => inBlock.has(r.id)))
+					await this.readState(
+						r.id,
+						{ settledAt: r.settledAt ? new Date(r.settledAt) : null },
+						tx,
+					);
+			});
 			return { ids, previous: [] };
 		}
 		// Undo with no states to restore clears only the thread named, never its block.
 		const at = settled ? new Date() : null;
-		for (const target of settled ? ids : [id])
-			await this.readState(target, { settledAt: at });
+		await this.prisma.$transaction(async (tx) => {
+			for (const target of settled ? ids : [id])
+				await this.readState(target, { settledAt: at }, tx);
+		});
 		return {
 			ids,
 			previous: settled

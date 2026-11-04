@@ -3,7 +3,16 @@
 
 import { describe, expect, it } from "vitest";
 import { needsFind } from "@/lib/needs-find";
-import { linkName, linkPlan } from "./LinkToProject";
+import { linkName, linkPlan, shownPick } from "./LinkToProject";
+
+describe("shownPick (review of #1040)", () => {
+	it("keeps a picked project only while the list still shows it", () => {
+		const shown = [{ id: "a" }, { id: "b" }];
+		expect(shownPick(shown, "a")).toBe("a");
+		expect(shownPick([{ id: "b" }], "a")).toBeUndefined();
+		expect(shownPick(shown, undefined)).toBeUndefined();
+	});
+});
 
 describe("linkPlan (#1020)", () => {
 	const services = [

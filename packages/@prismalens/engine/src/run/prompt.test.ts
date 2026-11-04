@@ -593,7 +593,9 @@ describe("pre-run prompt states and copy failures (#848)", () => {
 		expect(open).toBeGreaterThan(-1);
 		expect(title).toBeGreaterThan(open);
 		expect(title).toBeLessThan(close);
-		expect(prompt.indexOf("docs/runbook.md")).toBeLessThan(close);
+		const path = prompt.indexOf("docs/runbook.md");
+		expect(path).toBeGreaterThan(open);
+		expect(path).toBeLessThan(close);
 		expect(prompt).toContain("Runbooks found (read one with runbooks_read):");
 	});
 });
