@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 
