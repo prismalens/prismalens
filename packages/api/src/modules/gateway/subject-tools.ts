@@ -4,7 +4,7 @@
 import type { ThreadSubjectKind } from "@prismalens/contracts";
 import type { HarnessTool } from "@prismalens/integrations/harness";
 
-/** Tools that read or record an incident's investigation; a thread with no incident has none to read. */
+/** Tools that read or record an incident's investigation or its threads; a thread with no incident has none. */
 export const INCIDENT_TOOLS: ReadonlySet<string> = new Set([
 	"incident_get",
 	"timeline_read",
@@ -12,6 +12,8 @@ export const INCIDENT_TOOLS: ReadonlySet<string> = new Set([
 	"evidence_record",
 	"hypothesis_record",
 	"report_validate",
+	"thread_list",
+	"thread_read",
 ]);
 
 /** A no-subject thread's whole catalogue: no incident, service or code to read about. */

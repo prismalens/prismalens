@@ -287,7 +287,9 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(none?.promptLine).not.toContain("tools_search");
 		const project = await g.lease(RUN_B, NAME, undefined, undefined, "project");
 		expect(project?.tools).not.toContain("incident_get");
-		expect(project?.tools).toContain("thread_list");
+		expect(project?.tools).not.toContain("thread_list");
+		expect(project?.tools).not.toContain("thread_read");
+		expect(project?.tools).toContain("service_get");
 		const incident = await g.lease(RUN_A, NAME, undefined, undefined, "incident");
 		expect([...(incident?.tools ?? [])].sort()).toEqual(ALL_TOOLS);
 	});
