@@ -253,11 +253,10 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			data: { settledAt: expect.any(Date) },
 		});
 		await service().settle(ids[0] as string, false);
-		for (const id of ids)
-			expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
-				where: { id, updatedAt: stamp },
-				data: { settledAt: null, updatedAt: stamp },
-			});
+		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
+			where: { id: { in: ids } },
+			data: { settledAt: null },
+		});
 		prisma.investigation.findUnique.mockResolvedValue(null);
 		await expect(service().settle(uuid(), true)).rejects.toMatchObject({
 			code: "NOT_FOUND",
