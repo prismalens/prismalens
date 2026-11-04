@@ -18,10 +18,13 @@ import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authen
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
 import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
 import { Route as AuthenticatedIncidentsIdRouteRouteImport } from './routes/_authenticated/incidents/$id/route'
+import { Route as AuthenticatedProjectsIndexRouteImport } from './routes/_authenticated/projects/index'
+import { Route as AuthenticatedProjectsIdRouteImport } from './routes/_authenticated/projects/$id'
 import { Route as AuthenticatedSchedulesIndexRouteImport } from './routes/_authenticated/schedules/index'
 import { Route as AuthenticatedSchedulesIdRouteImport } from './routes/_authenticated/schedules/$id'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
+import { Route as AuthenticatedThreadsIdRouteImport } from './routes/_authenticated/threads/$id'
 import { Route as AuthenticatedAlertsIdIndexRouteImport } from './routes/_authenticated/alerts/$id/index'
 import { Route as AuthenticatedIncidentsIdIndexRouteImport } from './routes/_authenticated/incidents/$id/index'
 import { Route as AuthenticatedIncidentsIdAlertsRouteImport } from './routes/_authenticated/incidents/$id/alerts'
@@ -82,6 +85,17 @@ const AuthenticatedIncidentsIdRouteRoute =
     path: '/$id',
     getParentRoute: () => AuthenticatedIncidentsRouteRoute,
   } as any)
+const AuthenticatedProjectsIndexRoute =
+  AuthenticatedProjectsIndexRouteImport.update({
+    id: '/projects/',
+    path: '/projects/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedProjectsIdRoute = AuthenticatedProjectsIdRouteImport.update({
+  id: '/projects/$id',
+  path: '/projects/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedSchedulesIndexRoute =
   AuthenticatedSchedulesIndexRouteImport.update({
     id: '/schedules/',
@@ -106,6 +120,11 @@ const AuthenticatedSettingsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
+const AuthenticatedThreadsIdRoute = AuthenticatedThreadsIdRouteImport.update({
+  id: '/threads/$id',
+  path: '/threads/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAlertsIdIndexRoute =
   AuthenticatedAlertsIdIndexRouteImport.update({
     id: '/$id/',
@@ -168,9 +187,12 @@ export interface FileRoutesByFullPath {
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
+  '/projects/$id': typeof AuthenticatedProjectsIdRoute
   '/schedules/$id': typeof AuthenticatedSchedulesIdRoute
+  '/threads/$id': typeof AuthenticatedThreadsIdRoute
   '/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/incidents/': typeof AuthenticatedIncidentsIndexRoute
+  '/projects/': typeof AuthenticatedProjectsIndexRoute
   '/schedules/': typeof AuthenticatedSchedulesIndexRoute
   '/services/': typeof AuthenticatedServicesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -187,9 +209,12 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/': typeof AuthenticatedIndexRoute
+  '/projects/$id': typeof AuthenticatedProjectsIdRoute
   '/schedules/$id': typeof AuthenticatedSchedulesIdRoute
+  '/threads/$id': typeof AuthenticatedThreadsIdRoute
   '/alerts': typeof AuthenticatedAlertsIndexRoute
   '/incidents': typeof AuthenticatedIncidentsIndexRoute
+  '/projects': typeof AuthenticatedProjectsIndexRoute
   '/schedules': typeof AuthenticatedSchedulesIndexRoute
   '/services': typeof AuthenticatedServicesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
@@ -212,9 +237,12 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
+  '/_authenticated/projects/$id': typeof AuthenticatedProjectsIdRoute
   '/_authenticated/schedules/$id': typeof AuthenticatedSchedulesIdRoute
+  '/_authenticated/threads/$id': typeof AuthenticatedThreadsIdRoute
   '/_authenticated/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/_authenticated/incidents/': typeof AuthenticatedIncidentsIndexRoute
+  '/_authenticated/projects/': typeof AuthenticatedProjectsIndexRoute
   '/_authenticated/schedules/': typeof AuthenticatedSchedulesIndexRoute
   '/_authenticated/services/': typeof AuthenticatedServicesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -237,9 +265,12 @@ export interface FileRouteTypes {
     | '/incidents'
     | '/settings'
     | '/incidents/$id'
+    | '/projects/$id'
     | '/schedules/$id'
+    | '/threads/$id'
     | '/alerts/'
     | '/incidents/'
+    | '/projects/'
     | '/schedules/'
     | '/services/'
     | '/settings/'
@@ -256,9 +287,12 @@ export interface FileRouteTypes {
   to:
     | '/pair'
     | '/'
+    | '/projects/$id'
     | '/schedules/$id'
+    | '/threads/$id'
     | '/alerts'
     | '/incidents'
+    | '/projects'
     | '/schedules'
     | '/services'
     | '/settings'
@@ -280,9 +314,12 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/'
     | '/_authenticated/incidents/$id'
+    | '/_authenticated/projects/$id'
     | '/_authenticated/schedules/$id'
+    | '/_authenticated/threads/$id'
     | '/_authenticated/alerts/'
     | '/_authenticated/incidents/'
+    | '/_authenticated/projects/'
     | '/_authenticated/schedules/'
     | '/_authenticated/services/'
     | '/_authenticated/settings/'
@@ -367,6 +404,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIncidentsIdRouteRouteImport
       parentRoute: typeof AuthenticatedIncidentsRouteRoute
     }
+    '/_authenticated/projects/': {
+      id: '/_authenticated/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof AuthenticatedProjectsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/projects/$id': {
+      id: '/_authenticated/projects/$id'
+      path: '/projects/$id'
+      fullPath: '/projects/$id'
+      preLoaderRoute: typeof AuthenticatedProjectsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/schedules/': {
       id: '/_authenticated/schedules/'
       path: '/schedules'
@@ -394,6 +445,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
+    '/_authenticated/threads/$id': {
+      id: '/_authenticated/threads/$id'
+      path: '/threads/$id'
+      fullPath: '/threads/$id'
+      preLoaderRoute: typeof AuthenticatedThreadsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/alerts/$id/': {
       id: '/_authenticated/alerts/$id/'
@@ -537,7 +595,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedIncidentsRouteRoute: typeof AuthenticatedIncidentsRouteRouteWithChildren
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedProjectsIdRoute: typeof AuthenticatedProjectsIdRoute
   AuthenticatedSchedulesIdRoute: typeof AuthenticatedSchedulesIdRoute
+  AuthenticatedThreadsIdRoute: typeof AuthenticatedThreadsIdRoute
+  AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute
   AuthenticatedSchedulesIndexRoute: typeof AuthenticatedSchedulesIndexRoute
   AuthenticatedServicesIndexRoute: typeof AuthenticatedServicesIndexRoute
   AuthenticatedInvestigationsIdIndexRoute: typeof AuthenticatedInvestigationsIdIndexRoute
@@ -551,7 +612,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedIncidentsRouteRouteWithChildren,
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedProjectsIdRoute: AuthenticatedProjectsIdRoute,
   AuthenticatedSchedulesIdRoute: AuthenticatedSchedulesIdRoute,
+  AuthenticatedThreadsIdRoute: AuthenticatedThreadsIdRoute,
+  AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,
   AuthenticatedSchedulesIndexRoute: AuthenticatedSchedulesIndexRoute,
   AuthenticatedServicesIndexRoute: AuthenticatedServicesIndexRoute,
   AuthenticatedInvestigationsIdIndexRoute:

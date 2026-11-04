@@ -76,6 +76,7 @@ import {
 	preRunDetailOf,
 } from "./investigations.service.js";
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
+import { threadSubject } from "./run-scope.js";
 import { readRunDiff, readRunTree } from "./run-views.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
@@ -450,18 +451,27 @@ export class InvestigationsController {
 						new ORPCError("CONFLICT", {
 							message: "The run ended before your message reached it.",
 						});
-					if (input.attachments?.length && !investigation.incidentId)
+					if (
+						input.attachments?.length &&
+						!investigation.incidentId &&
+						investigation.scheduleId
+					)
 						throw new ORPCError("BAD_REQUEST", {
 							message:
 								"Files attach to an incident, and this run has none yet.",
 						});
-					const attachments =
-						input.attachments?.length && investigation.incidentId
+					// A thread's files are its run's own, never matched through a null incident (#1020).
+					const attachments = !input.attachments?.length
+						? []
+						: investigation.incidentId
 							? await this.attachments.forJob(
 									investigation.incidentId,
 									input.attachments,
 								)
-							: [];
+							: await this.attachments.forRun(
+									investigation.id,
+									input.attachments,
+								);
 					if (TERMINAL_STATUSES.has(investigation.status)) {
 						const reason = followUpBlockedReason(investigation);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
@@ -804,6 +814,8 @@ export class InvestigationsController {
 			incidentId: investigation.incidentId,
 			serviceId: investigation.serviceId ?? null,
 			scheduleId: investigation.scheduleId ?? null,
+			repositoryId: investigation.repositoryId ?? null,
+			subject: threadSubject(investigation),
 			status: investigation.status as WorkflowStatus,
 			kind:
 				investigation.kind === "chat"

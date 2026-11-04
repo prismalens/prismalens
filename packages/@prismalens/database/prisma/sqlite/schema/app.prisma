@@ -69,6 +69,7 @@ model Repository {
 
   connection    Connection?         @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   services      ServiceRepository[]
+  threads       Investigation[]     @relation("ProjectThreads")
 
   @@unique([connectionId, fullName])
   @@map("repositories")
@@ -238,17 +239,20 @@ model Incident {
 /// <workspace>/attachments/<id>, outside every run's snapshot.
 model Attachment {
   id              String   @id @default(uuid())
-  incidentId      String
+  incidentId      String? // null on a project, service or no-subject thread's file (#1020)
   investigationId String? // the run whose message carried it, once one did
+  draftKey        String? // a thread's file before its run exists; the run claims it (#1020)
   name            String
   mimeType        String
   size            Int
   sha256          String
   createdAt       DateTime @default(now())
 
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident Incident? @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
   @@index([incidentId])
+  @@index([investigationId])
+  @@index([draftKey])
   @@map("attachments")
 }
 
@@ -262,6 +266,7 @@ model Investigation {
   tenantId          String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   incidentId        String? // null for a scheduled service check until a finding links it (#979)
   serviceId         String? // a scheduled service check's subject (#979)
+  repositoryId      String? // a project thread's subject (#1020)
   scheduleId        String?
   scheduleRevision  Int?
   configSnapshot    String? // JSON: the schedule values the run was admitted with (#979)
@@ -306,12 +311,14 @@ model Investigation {
 
   incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: SetNull)
+  repository      Repository?          @relation("ProjectThreads", fields: [repositoryId], references: [id], onDelete: SetNull)
   recommendations Recommendation[]
   events          InvestigationEvent[]
 
   @@index([incidentId])
   @@index([scheduleId, createdAt])
   @@index([serviceId])
+  @@index([repositoryId, createdAt])
   @@index([incidentId, createdAt])
   @@index([status])
   @@map("investigations")

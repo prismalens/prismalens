@@ -66,11 +66,14 @@ export class RepositoriesService {
 	 * failed validation still saves, so the card can show why.
 	 */
 	async addSource(input: AddRepositorySourceInput): Promise<Repository> {
-		const service = await this.prisma.service.findUnique({
-			where: { id: input.serviceId },
-			select: { id: true },
-		});
-		if (!service) throw new NotFoundException("Service not found");
+		const serviceId = input.serviceId;
+		if (serviceId) {
+			const service = await this.prisma.service.findUnique({
+				where: { id: serviceId },
+				select: { id: true },
+			});
+			if (!service) throw new NotFoundException("Service not found");
+		}
 
 		let classified: ReturnType<typeof classifySource>;
 		try {
@@ -123,12 +126,14 @@ export class RepositoriesService {
 				: await tx.repository.create({
 						data: { ...fields, fullName: displayNameFor(kind, source) },
 					});
+			// A project on its own has no service to link (#1020).
+			if (!serviceId) return repo;
 			await tx.serviceRepository.updateMany({
-				where: { serviceId: input.serviceId },
+				where: { serviceId },
 				data: { isPrimary: false },
 			});
 			const link = await tx.serviceRepository.findFirst({
-				where: { serviceId: input.serviceId, repositoryId: repo.id, subPath },
+				where: { serviceId, repositoryId: repo.id, subPath },
 			});
 			if (link) {
 				await tx.serviceRepository.update({
@@ -138,7 +143,7 @@ export class RepositoriesService {
 			} else {
 				await tx.serviceRepository.create({
 					data: {
-						serviceId: input.serviceId,
+						serviceId,
 						repositoryId: repo.id,
 						subPath,
 						isPrimary: true,
@@ -148,8 +153,9 @@ export class RepositoriesService {
 			return repo;
 		});
 		this.logger.log(
-			`Service ${input.serviceId} repository → ${kind} ${repoLabel(source)}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
+			`${serviceId ? `Service ${serviceId}` : "Project"} repository → ${kind} ${repoLabel(source)}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
 		);
+		if (!serviceId) return repository;
 		// A service only becomes investigable once it has code behind it, so this
 		// is where "a service was added" is true. `folder`/`url` is the whole of
 		// what is sent — never the path or the repository name.

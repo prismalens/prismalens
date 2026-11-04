@@ -279,3 +279,51 @@ describe("preRunDetailOf (#848 C16a)", () => {
 		expect(preRunDetailOf(JSON.stringify({ state: "bogus" }))).toBeNull();
 	});
 });
+
+describe("admission per subject (#1020)", () => {
+	function admitting(live: unknown) {
+		const tx = {
+			investigation: {
+				findFirst: vi.fn(async () => live),
+				create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: "new", ...data })),
+			},
+		};
+		const prisma = {
+			$transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
+		};
+		const timeline = { create: vi.fn() };
+		const settings = { isResetting: () => false, resetGeneration: () => 0 };
+		const service = new InvestigationsService(
+			prisma as unknown as PrismaService,
+			timeline as unknown as TimelineService,
+			{} as OverlayService,
+			settings as unknown as SettingsService,
+			{} as never,
+		);
+		return { service, tx, timeline };
+	}
+
+	it("two project threads on one project never collide: no live lookup, a new run each time", async () => {
+		const { service, tx } = admitting({ id: "busy" });
+
+		const a = await service.startOrGet({ incidentId: null, repositoryId: "repo-1", kind: "chat" });
+
+		expect(a.created).toBe(true);
+		expect(tx.investigation.findFirst).not.toHaveBeenCalled();
+		expect(tx.investigation.create).toHaveBeenCalledWith({
+			data: expect.objectContaining({ incidentId: null, repositoryId: "repo-1", kind: "chat", liveTurn: "answer" }),
+		});
+	});
+
+	it("an incident still admits one live run", async () => {
+		const { service, tx } = admitting({ id: "busy" });
+
+		const got = await service.startOrGet({ incidentId: "inc-1", kind: "chat" });
+
+		expect(got).toEqual({ investigation: { id: "busy" }, created: false });
+		expect(tx.investigation.findFirst).toHaveBeenCalledWith(
+			expect.objectContaining({ where: expect.objectContaining({ incidentId: "inc-1" }) }),
+		);
+		expect(tx.investigation.create).not.toHaveBeenCalled();
+	});
+});

@@ -35,6 +35,7 @@ import type {
 	RestartRecovery,
 	RestartSummary,
 	RunChoice,
+	ThreadRun,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -77,6 +78,7 @@ import { InvestigationsService } from "../../modules/investigations/investigatio
 import {
 	runScope,
 	runScopeKey,
+	sharesAdmission,
 } from "../../modules/investigations/run-scope.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
 import {
@@ -411,7 +413,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			newerRun: async (id) => {
 				const self = await this.prisma.investigation.findUnique({
 					where: { id },
-					select: { incidentId: true, scheduleId: true, createdAt: true },
+					select: {
+						id: true,
+						incidentId: true,
+						scheduleId: true,
+						createdAt: true,
+					},
 				});
 				if (!self) return null;
 				const newer = await this.prisma.investigation.findFirst({
@@ -1145,6 +1152,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			select: {
 				incidentId: true,
 				scheduleId: true,
+				serviceId: true,
+				repositoryId: true,
 				configSnapshot: true,
 				status: true,
 				completedAt: true,
@@ -1191,6 +1200,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			incidentId: row.incidentId,
 			investigationId: id,
 			...(row.incidentId ? {} : serviceCheckOf(row.configSnapshot)),
+			...(row.incidentId || row.scheduleId
+				? {}
+				: { thread: await this.threadRunOf(row) }),
 			...(accessLevel ? { accessLevel } : {}),
 			resume: {
 				text,
@@ -1208,15 +1220,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 		};
 		const admitted = await this.prisma.$transaction(async (tx) => {
-			const other = await tx.investigation.findFirst({
-				where: {
-					...runScope(row),
-					id: { not: id },
-					status: { in: [...LIVE_WORKFLOW_STATUSES] },
-				},
-				orderBy: { createdAt: "desc" },
-				select: { createdAt: true },
-			});
+			const other = sharesAdmission(row)
+				? await tx.investigation.findFirst({
+						where: {
+							...runScope(row),
+							id: { not: id },
+							status: { in: [...LIVE_WORKFLOW_STATUSES] },
+						},
+						orderBy: { createdAt: "desc" },
+						select: { createdAt: true },
+					})
+				: null;
 			if (other) {
 				const n = await tx.investigation.count({
 					where: {
@@ -1251,6 +1265,81 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();
 		return true;
+	}
+
+	/** A project, service or no-subject thread's subject and code as they stand now (#1020). */
+	async threadRunOf(row: {
+		repositoryId: string | null;
+		serviceId: string | null;
+	}): Promise<ThreadRun> {
+		const repoFields = {
+			sourceKind: true,
+			url: true,
+			defaultBranch: true,
+			connectionId: true,
+			fullName: true,
+		} as const;
+		const ref = (
+			r: {
+				sourceKind: string;
+				url: string;
+				defaultBranch: string;
+				connectionId: string | null;
+			},
+			subPath: string | null,
+			serviceName: string,
+		) => ({
+			sourceKind:
+				r.sourceKind === "folder" ? ("folder" as const) : ("url" as const),
+			url: r.url,
+			defaultBranch: r.defaultBranch,
+			subPath,
+			connectionId: r.connectionId,
+			serviceName,
+		});
+		if (row.repositoryId) {
+			const repo = await this.prisma.repository.findUnique({
+				where: { id: row.repositoryId },
+				select: repoFields,
+			});
+			if (repo)
+				return {
+					subject: "project",
+					repositoryId: row.repositoryId,
+					serviceId: null,
+					name: repo.fullName,
+					repos: [ref(repo, null, repo.fullName)],
+				};
+		}
+		if (row.serviceId) {
+			const service = await this.prisma.service.findUnique({
+				where: { id: row.serviceId },
+				select: {
+					name: true,
+					repositories: {
+						orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+						select: { subPath: true, repository: { select: repoFields } },
+					},
+				},
+			});
+			if (service)
+				return {
+					subject: "service",
+					repositoryId: null,
+					serviceId: row.serviceId,
+					name: service.name,
+					repos: service.repositories.map((r) =>
+						ref(r.repository, r.subPath, service.name),
+					),
+				};
+		}
+		return {
+			subject: "none",
+			repositoryId: null,
+			serviceId: null,
+			name: null,
+			repos: [],
+		};
 	}
 
 	/**

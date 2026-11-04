@@ -306,7 +306,8 @@ export const UploadAttachmentSchema = z.object({
 });
 
 export const AttachmentSchema = AttachmentRefSchema.extend({
-	incidentId: z.string().uuid(),
+	/** Null on a project, service or no-subject thread's file (#1020). */
+	incidentId: z.string().uuid().nullable(),
 	sha256: z.string(),
 	createdAt: DateStringSchema,
 });

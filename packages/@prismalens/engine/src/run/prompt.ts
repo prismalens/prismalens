@@ -124,9 +124,15 @@ export function renderPreRun(context: InvestigationContext): string {
 	if (p.runbooks.length)
 		lines.push(
 			"  Runbooks found (read one with runbooks_read):",
-			...p.runbooks.map(
-				(r) =>
-					`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+			fenceUntrusted(
+				"PRE_RUN_RUNBOOKS",
+				"Runbook titles and paths read from the service's repository.",
+				p.runbooks
+					.map(
+						(r) =>
+							`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+					)
+					.join("\n"),
 			),
 		);
 	if (p.runbooksSkipped)
@@ -162,12 +168,58 @@ export function renderPreRun(context: InvestigationContext): string {
 export function buildChatPrompt(
 	context: InvestigationContext,
 	text: string,
-	options: { noNetwork?: boolean } = {},
+	options: InvestigationPromptOptions = {},
 ): string {
+	if (context.mode === "project-chat")
+		return buildThreadPrompt(context, text, options);
 	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
 ${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}
+
+${UNTRUSTED_DATA_METHOD_GUARD}
+
+${text}`;
+}
+
+/**
+ * A project, service or no-subject thread's first turn (#1020, OBJ-003): a coding
+ * assistant that may change files within the level the user picked. No alert block:
+ * none fired, and none is made up.
+ */
+function buildThreadPrompt(
+	context: InvestigationContext,
+	text: string,
+	options: InvestigationPromptOptions,
+): string {
+	const t = context.thread;
+	const name = t?.name ? sanitizeUntrustedLine(t.name) : "";
+	const where =
+		t?.subject === "project" && name
+			? ` in the project ${name}`
+			: t?.subject === "service" && name
+				? ` on the service ${name}`
+				: "";
+	const surfaces =
+		t?.subject === "none"
+			? [
+					"  - No project is linked: your working directory is an empty scratch folder.",
+				]
+			: renderSurfaces(context, !options.noNetwork);
+	const runLines = [
+		...(options.noNetwork ? [NO_NETWORK] : []),
+		accessLine(
+			options.level ?? "supervised",
+			options.modeName ?? "the agent's default",
+		),
+	];
+	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed.
+
+SURFACES
+${surfaces.join("\n")}${renderPreRun(context)}
+
+THIS RUN
+${runLines.map((l) => `  - ${l}`).join("\n")}
 
 ${UNTRUSTED_DATA_METHOD_GUARD}
 
