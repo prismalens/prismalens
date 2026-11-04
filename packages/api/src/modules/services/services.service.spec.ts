@@ -149,6 +149,17 @@ describe("ServicesService.claimWaiting (#673 w5-10)", () => {
 		);
 	});
 
+	it("reads the service label trimmed, as alert correlation and Link to a project do (review of #1031)", async () => {
+		const { prisma, service } = claimWith([
+			{ id: "inc-1", alerts: [{ id: "a1", labels: '{"service":"  booklogr-api "}' }] },
+		]);
+		expect(await service.claimWaiting(svc)).toBe(1);
+		expect(prisma.alert.updateMany).toHaveBeenCalledWith({
+			where: { id: { in: ["a1"] }, serviceId: null },
+			data: { serviceId: "svc-1" },
+		});
+	});
+
 	it("leaves an incident whose labels name another service, or none of its alerts names this one", async () => {
 		const { prisma, service } = claimWith([
 			{ id: "near", alerts: [{ id: "a1", labels: '{"service":"booklogr-api-v2"}' }] },
