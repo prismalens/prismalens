@@ -26,6 +26,7 @@ import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import {
 	canonical,
 	FOLDER_BUSY,
+	FOLDER_TX,
 	holdConversion,
 	liveIn,
 } from "../../infrastructure/dispatch/folder-lock.js";
@@ -207,7 +208,9 @@ export class RepositoriesService {
 		// keeps its folder plain until it ends, and none starts while it changes (#1020).
 		const release = holdConversion(repo.url);
 		try {
-			if (await this.prisma.$transaction((tx) => liveIn(tx, repo.url)))
+			if (
+				await this.prisma.$transaction((tx) => liveIn(tx, repo.url), FOLDER_TX)
+			)
 				throw new ConflictException(FOLDER_BUSY);
 			try {
 				await startGit(repo.url);

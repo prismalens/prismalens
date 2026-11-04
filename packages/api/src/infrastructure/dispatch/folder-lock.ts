@@ -18,6 +18,12 @@ const fold = (p: string) =>
 /** A realpath that gives up, as unknown, past `ms`: a stalled drive never holds a request. */
 const CANONICAL_MS = 3000;
 
+/**
+ * Transaction budget for the folder checks (#1020): two serial rounds of canonical
+ * lookups, each capped at CANONICAL_MS, plus Prisma's 5 s default for the queries.
+ */
+export const FOLDER_TX = { timeout: 2 * CANONICAL_MS + 5000 };
+
 /** The folder as the disk names it (links, junctions and short names resolved); null if unknown. */
 export async function canonical(
 	p: string,
@@ -98,8 +104,9 @@ export async function folderBusy(
 		select: { plain: true, url: true },
 	});
 	if (!repo?.plain) return false;
-	const at = await named(repo.url);
-	const held = await Promise.all([...converting.values()].map(named));
+	const [at, ...held] = await Promise.all(
+		[repo.url, ...converting.values()].map(named),
+	);
 	if (held.some((c) => overlaps(c, at))) return true;
 	return liveIn(db, repo.url, selfId);
 }
@@ -118,7 +125,7 @@ export async function liveIn(
 		},
 		select: { repository: { select: { url: true } } },
 	});
-	const at = await named(folder);
 	const urls = live.flatMap((r) => (r.repository ? [r.repository.url] : []));
-	return (await Promise.all(urls.map(named))).some((u) => overlaps(u, at));
+	const [at, ...others] = await Promise.all([folder, ...urls].map(named));
+	return others.some((u) => overlaps(u, at));
 }

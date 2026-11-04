@@ -101,7 +101,7 @@ import {
 	runCancelTopic,
 	runMessageTopic,
 } from "./event-bus.js";
-import { FOLDER_BUSY, folderBusy } from "./folder-lock.js";
+import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
@@ -1265,7 +1265,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				priority: PRIORITY_ORDER.normal ?? 3,
 			});
 			return true;
-		});
+		}, FOLDER_TX);
 		if (!admitted) return false;
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();
@@ -1755,7 +1755,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				runAt,
 			});
 			return true;
-		});
+		}, FOLDER_TX);
 	}
 
 	/**
