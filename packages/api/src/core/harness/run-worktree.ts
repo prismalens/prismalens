@@ -319,13 +319,15 @@ export async function addRunWorktree(
 	// A Remove or sweep already deciding on this folder finishes first; a follow-up never resumes mid-removal.
 	await removing.get(dest);
 	await sweeping;
+	const binding = runs.get(runId);
+	// The run's binding names the policy now; an older sidecar may name a same-named service (#1020).
 	const resumed = await resumeWorkspace({
 		...asWorkspace(dest),
 		lockLabel: runId,
+		...(binding ? { project: binding.serviceId } : {}),
 	});
 	if (resumed) return resumed;
 	await releaseWorktree(dest, undefined, true);
-	const binding = runs.get(runId);
 	const settings = binding?.settings ?? settingsFor(null);
 	const workspace = await createWorkspace({
 		...asWorkspace(dest),

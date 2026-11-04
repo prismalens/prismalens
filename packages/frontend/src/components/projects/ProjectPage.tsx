@@ -155,7 +155,7 @@ function ThreadRow({ thread }: { thread: Investigation }) {
  * Make it a service: a name only, the project's by default. Alerts reach it by the
  * existing `service=<name>` label rule, shown read-only (#1020, OBJ-007).
  */
-function MakeService({
+export function MakeService({
 	repositoryId,
 	defaultName,
 	linked,
@@ -168,6 +168,8 @@ function MakeService({
 	const link = useLinkRepository();
 	const [name, setName] = useState(defaultName);
 	const [error, setError] = useState<string | null>(null);
+	// The service made by an attempt whose link failed: a retry links it, never makes another.
+	const [made, setMade] = useState<string | null>(null);
 	const first = linked[0];
 	if (first)
 		return (
@@ -192,8 +194,12 @@ function MakeService({
 		if (!n) return;
 		setError(null);
 		try {
-			const service = await create.mutateAsync({ name: n });
-			await link.mutateAsync({ id: repositoryId, serviceId: service.id });
+			let serviceId = made;
+			if (!serviceId) {
+				serviceId = (await create.mutateAsync({ name: n })).id;
+				setMade(serviceId);
+			}
+			await link.mutateAsync({ id: repositoryId, serviceId });
 		} catch (err) {
 			setError(getErrorMessage(err));
 		}
