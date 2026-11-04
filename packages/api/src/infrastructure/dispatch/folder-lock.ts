@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 
@@ -24,6 +24,12 @@ export const CANONICAL_MAX = 8;
 export const pendingCanonical = () => pending;
 /** Live runs a lock check reads one at a time; more than this answers busy. */
 const FANOUT_MAX = 16;
+
+/**
+ * Transaction budget for the folder checks (#1020): live runs are read one at a time,
+ * each lookup capped at CANONICAL_MS, plus Prisma's 5 s default for the queries.
+ */
+export const FOLDER_TX = { timeout: (FANOUT_MAX + 1) * CANONICAL_MS + 5000 };
 
 /** Too many folder reads are still waiting on the disk. */
 export class CanonicalBusy extends Error {
