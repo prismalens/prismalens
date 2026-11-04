@@ -3,8 +3,10 @@
 
 import type { ThreadFeed } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ScenarioApp } from "./support/scenario-app.js";
+import { ScenarioApp } from "../scenarios/support/scenario-app.js";
 
+// Not a lifecycle scenario: these pin SQL behaviour (quiet days, the 501-row cap) on real
+// SQLite, which needs rows at exact past times that no product path writes (#1020).
 const pl = new ScenarioApp();
 const DAY_MS = 86_400_000;
 
