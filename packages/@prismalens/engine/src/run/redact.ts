@@ -32,10 +32,10 @@ export function injectedSecrets(
 export function redactEvent<T>(event: T, secrets: readonly string[]): T {
 	if (!secrets.length) return event;
 	const text = JSON.stringify(event);
-	if (!secrets.some((s) => text.includes(s))) return event;
-	// Replace inside the JSON string form, so a value is caught in any field, nested or not.
+	// Match the JSON-escaped form: a secret with a quote, backslash or newline is escaped in `text`.
+	const escaped = secrets.map((s) => JSON.stringify(s).slice(1, -1));
+	if (!escaped.some((s) => text.includes(s))) return event;
 	let out = text;
-	for (const s of secrets)
-		out = out.replaceAll(JSON.stringify(s).slice(1, -1), "[redacted]");
+	for (const s of escaped) out = out.replaceAll(s, "[redacted]");
 	return JSON.parse(out) as T;
 }

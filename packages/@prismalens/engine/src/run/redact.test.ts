@@ -44,6 +44,13 @@ describe("the run's own credentials never reach its events (#1020, CP4 OBJ-015)"
 		expect(redactEvent(clean, [BEARER])).toBe(clean);
 	});
 
+	it("redacts a secret that JSON escapes (quote, backslash, newline)", () => {
+		const odd = 'pa"ss\\word\nline';
+		const out = redactEvent(echoed(`x ${odd} y`), [odd]);
+		expect(JSON.stringify(out)).not.toContain(JSON.stringify(odd).slice(1, -1));
+		expect(JSON.stringify(out)).toContain("[redacted]");
+	});
+
 	it("conductRun streams and stores the redacted event", async () => {
 		const sink = vi.fn();
 		const append = vi.fn(async () => {});
