@@ -116,7 +116,7 @@ describe("Changes tab across runs (#975)", () => {
 		for (const t of tabs) expect(t.querySelector("svg")).not.toBeNull();
 		// The open tab's name shows beside its icon only where nothing can hover.
 		const labels = tabs.map((t) =>
-			t.querySelector('[data-testid^="run-details-tab-label-"]'),
+			t.querySelector('[data-testid^="run-details-label-"]'),
 		);
 		expect(
 			labels.map((l) =>

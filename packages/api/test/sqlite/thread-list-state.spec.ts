@@ -4,7 +4,7 @@
 import type { ThreadFeed } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setAgentTitle } from "../../src/modules/threads/thread-titles.js";
-import { ScenarioApp } from "./support/scenario-app.js";
+import { ScenarioApp } from "../scenarios/support/scenario-app.js";
 
 const pl = new ScenarioApp();
 const DAY_MS = 86_400_000;
