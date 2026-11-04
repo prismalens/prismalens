@@ -3,6 +3,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -43,6 +44,24 @@ export function LinkService({ incidentId }: { incidentId: string }) {
 	});
 	const list = services.data?.data ?? [];
 	const finding = needsFind(services.data, find);
+	if (services.isError)
+		return (
+			<p
+				className="flex items-center gap-2 text-body text-danger"
+				role="alert"
+				data-testid="incident-link-service-error"
+			>
+				{getErrorMessage(services.error)}
+				<Button
+					variant="text"
+					size="sm"
+					onClick={() => void services.refetch()}
+					data-testid="incident-link-service-retry"
+				>
+					Retry
+				</Button>
+			</p>
+		);
 	if (list.length === 0 && !finding) return null;
 	return (
 		<div className="flex flex-wrap items-center gap-1.5">

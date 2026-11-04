@@ -50,6 +50,21 @@ describe("joiners stay inside words (review of #1031)", () => {
 	});
 });
 
+describe("joiner-only text is no title (review of #1031)", () => {
+	it("drops words made only of joiners, so nothing invisible is kept or counted", async () => {
+		const zwj = String.fromCodePoint(0x200d);
+		const zwnj = String.fromCodePoint(0x200c);
+		expect(plainTitle(zwj)).toBe("");
+		expect(plainTitle(`Fix ${zwj}${zwnj} it`)).toBe("Fix it");
+		expect(agentTitle(`${zwj} ${zwj} ${zwj}`)).toMatchObject({ error: expect.any(String) });
+		expect(agentTitle(`Fix ${zwj} the ${zwnj} page`)).toEqual({ title: "Fix the page" });
+		expect(agentTitle(`Fix ${zwj} ${zwnj} page`)).toMatchObject({ error: expect.any(String) });
+		const db = { investigation: { updateMany: vi.fn() } };
+		await expect(renameThread(db as never, "t1", zwj)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+		expect(db.investigation.updateMany).not.toHaveBeenCalled();
+	});
+});
+
 describe("agentTitle (#1020)", () => {
 	it("takes 3 to 7 words", () => {
 		expect(agentTitle("Retry loop in checkout")).toEqual({
