@@ -106,6 +106,8 @@ function LinkDialog({
 	const queryClient = useQueryClient();
 	const [picked, setRepositoryId] = useState<string>();
 	const [error, setError] = useState<string | null>(null);
+	// The service a failed link left behind: a retry links it again, never makes a second.
+	const [made, setMade] = useState<string>();
 	const projects = repos.data?.data ?? [];
 	const repositoryId = shownPick(projects, picked);
 	const shown = name;
@@ -115,13 +117,20 @@ function LinkDialog({
 		if (!repositoryId || !shown) return;
 		setError(null);
 		try {
-			// Ask the server by name: a page of the catalog may not hold it.
-			const found = await client.services.list({ search: shown, limit: 100 });
-			const plan = linkPlan(shown, found.data);
-			const serviceId =
-				"serviceId" in plan
-					? plan.serviceId
-					: (await create.mutateAsync({ name: plan.create })).id;
+			let serviceId = made;
+			if (!serviceId) {
+				// Ask the server by name: a page of the catalog may not hold it.
+				const found = await client.services.list({
+					search: shown,
+					limit: 100,
+				});
+				const plan = linkPlan(shown, found.data);
+				if ("serviceId" in plan) serviceId = plan.serviceId;
+				else {
+					serviceId = (await create.mutateAsync({ name: plan.create })).id;
+					setMade(serviceId);
+				}
+			}
 			await link.mutateAsync({ id: repositoryId, serviceId });
 			// A new service claims the waiting alerts its label names; the lists read that.
 			void queryClient.invalidateQueries({ queryKey: orpc.alerts.key() });
