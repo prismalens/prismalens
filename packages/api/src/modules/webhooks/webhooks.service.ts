@@ -416,6 +416,39 @@ export class WebhooksService {
 	}
 
 	/**
+	 * The alert that already took this firing's early resolution: a keyless retry
+	 * of the same episode (same `startsAt`) must not run the firing path again,
+	 * which inside the flap window would reopen the resolved alert.
+	 */
+	private async findClaimedEarlyResolution(
+		fingerprint: string,
+		startsAt: string,
+	): Promise<string | null> {
+		const claimed = await this.eventsService.findClaimed({
+			source: "prometheus",
+			sourceEventId: fingerprint,
+			eventType: EARLY_RESOLUTION_EVENT,
+			receivedSince: new Date(Date.now() - EARLY_RESOLUTION_TTL_MS),
+		});
+		const started = Date.parse(startsAt);
+		if (Number.isNaN(started)) return null;
+		for (const row of claimed) {
+			try {
+				const payload = JSON.parse(row.payload) as { startsAt?: unknown };
+				if (
+					typeof payload.startsAt === "string" &&
+					Date.parse(payload.startsAt) === started
+				) {
+					return row.alertId;
+				}
+			} catch {
+				// A row that is not JSON is not an episode record.
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Process a single Prometheus alert, either from a webhook delivery,
 	 * an Alertmanager pull, or a Prometheus catch-up query (#605).
 	 */
@@ -452,6 +485,13 @@ export class WebhooksService {
 			labels: alert.labels,
 			sourceEventId: alert.fingerprint,
 		};
+		if (alert.fingerprint) {
+			const claimedBy = await this.findClaimedEarlyResolution(
+				alert.fingerprint,
+				alert.startsAt,
+			);
+			if (claimedBy) return { alertId: claimedBy, isNew: false };
+		}
 		// Decided BEFORE the alert is created, because it decides
 		// whether creating it may dispatch a run (#664 review).
 		const earlyResolution = alert.fingerprint

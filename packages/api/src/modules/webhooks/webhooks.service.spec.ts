@@ -81,6 +81,7 @@ describe("WebhooksService", () => {
 						markProcessed: vi.fn().mockResolvedValue(mockEvent),
 						findByIdempotencyKey: vi.fn(),
 						findUnclaimed: vi.fn().mockResolvedValue(null),
+						findClaimed: vi.fn().mockResolvedValue([]),
 					},
 				},
 				{
@@ -567,6 +568,48 @@ describe("WebhooksService", () => {
 			expect(result.alertId).toBe("alt-123");
 			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-1");
 			expect(eventsService.markProcessed).toHaveBeenCalledWith("evt-early", "alt-123");
+		});
+
+		it("treats a keyless retry of a firing whose early resolution is claimed as a replay", async () => {
+			vi.mocked(eventsService.findClaimed).mockResolvedValueOnce([
+				{
+					...earlyEvent,
+					processed: true,
+					alertId: "alt-123",
+					payload: JSON.stringify({ status: "resolved", startsAt: STARTS }),
+				},
+			]);
+
+			const result = await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result).toEqual({ alertId: "alt-123", isNew: false });
+			expect(alertsService.create).not.toHaveBeenCalled();
+			expect(incidentCorrelationService.correlateAlert).not.toHaveBeenCalled();
+		});
+
+		it("lets a later episode's firing past a claimed early resolution of an older one", async () => {
+			vi.mocked(eventsService.findClaimed).mockResolvedValueOnce([
+				{
+					...earlyEvent,
+					processed: true,
+					alertId: "alt-old",
+					payload: JSON.stringify({
+						status: "resolved",
+						startsAt: "2026-09-19T09:00:00Z",
+					}),
+				},
+			]);
+
+			const result = await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result.alertId).toBe("alt-123");
+			expect(alertsService.create).toHaveBeenCalledTimes(1);
 		});
 
 		it("gives a webhook alert and its catch-up the one identity, and keeps the path on the Event (walk f17)", async () => {
