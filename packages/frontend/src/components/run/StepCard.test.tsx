@@ -139,3 +139,22 @@ describe("The PrismaLens data note (#1020)", () => {
 		expect(q("step-data-note")).toBeNull();
 	});
 });
+
+describe("A PrismaLens tool's step header (#1020)", () => {
+	it("names the tool in plain words and keeps the raw call in the details", () => {
+		availability = undefined;
+		render(
+			step({
+				title: "Searched for similar incidents",
+				command: 'incidents_similar (prismalens-1)({"q":"x"})',
+				gateway: true,
+				shell: false,
+			}),
+			true,
+		);
+		const header = q("step")?.querySelector("button");
+		expect(header?.textContent).toContain("Searched for similar incidents");
+		expect(header?.textContent).not.toContain("incidents_similar");
+		expect(q("step-body")?.textContent).toContain("incidents_similar");
+	});
+});

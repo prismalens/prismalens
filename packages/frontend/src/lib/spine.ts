@@ -147,8 +147,18 @@ export function matchGateway(events: readonly CanonicalEvent[]): GatewayMatch {
 			if (byCall.has(c.toolCallId)) continue;
 			const mcp = mcpTool(c.name.replace(/^`([\s\S]*)`$/, "$1"));
 			if (!mcp || !servers.has(mcp.server)) continue;
+			// A deferred call is recorded under its target, marked `via: "tools_call"`.
+			const target =
+				mcp.tool === "tools_call" && typeof c.args.name === "string"
+					? c.args.name
+					: null;
 			const call = calls.find(
-				(h) => !used.has(h) && h.server === mcp.server && h.name === mcp.tool,
+				(h) =>
+					!used.has(h) &&
+					h.server === mcp.server &&
+					(target
+						? h.via === "tools_call" && h.name === target
+						: h.name === mcp.tool),
 			);
 			if (!call) continue;
 			used.add(call);

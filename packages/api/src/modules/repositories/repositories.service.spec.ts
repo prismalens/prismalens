@@ -257,6 +257,14 @@ describe("RepositoriesService.addSource", () => {
 		});
 	});
 
+	it("refuses a sub-path on a folder with no git: its runs work in the folder itself (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(new PlainFolderError("/notes"));
+		await expect(
+			service.addSource({ source: "/notes", subPath: "drafts" }),
+		).rejects.toThrow(/no sub-path/);
+		expect(mockTx.repository.create).not.toHaveBeenCalled();
+	});
+
 	it("refuses a plain folder as a service's code: a service runs unattended (#1020)", async () => {
 		mockRepoSource.checkFolder.mockRejectedValue(
 			new PlainFolderError("/notes"),

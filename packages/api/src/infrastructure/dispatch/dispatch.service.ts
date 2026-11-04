@@ -1731,7 +1731,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				select: { repositoryId: true },
 			});
 			if (own?.repositoryId && (await folderBusy(tx, own.repositoryId, id)))
-				return false;
+				throw new FollowUpRefused(FOLDER_BUSY);
 			const { count } = await tx.investigation.updateMany({
 				where:
 					from === "live"

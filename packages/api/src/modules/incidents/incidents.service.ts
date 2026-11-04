@@ -571,6 +571,14 @@ export class IncidentsService {
 		return row ? "taken" : "missing";
 	}
 
+	/** Takes back a link this request made; never one another request set since. */
+	async unlinkService(id: string, serviceId: string): Promise<void> {
+		await this.prisma.incident.updateMany({
+			where: { id, serviceId },
+			data: { serviceId: null, updatedAt: new Date() },
+		});
+	}
+
 	async update(
 		id: string,
 		dto: UpdateIncidentDto,
