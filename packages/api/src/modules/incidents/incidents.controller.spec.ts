@@ -924,6 +924,26 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 		};
 	}
 
+	it("links a service only to an incident with none, refusing a replacement (#1020, review of #1031)", async () => {
+		const svc = "223e4567-e89b-12d3-a456-426614174000";
+		const taken = handlersFor("triggered");
+		Object.assign(taken.incidentsService, {
+			linkService: vi.fn().mockResolvedValue("taken"),
+		});
+		await expect(
+			taken.call("update", { serviceId: svc }),
+		).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(taken.incidentsService.update).not.toHaveBeenCalled();
+		const ok = handlersFor("triggered");
+		const link = vi.fn().mockResolvedValue("linked");
+		Object.assign(ok.incidentsService, { linkService: link });
+		await ok.call("update", { serviceId: svc, title: "Pool" });
+		expect(link).toHaveBeenCalledWith(id, svc);
+		expect(ok.incidentsService.update).toHaveBeenCalledWith(id, {
+			title: "Pool",
+		});
+	});
+
 	it("resolves from Triggered, Acknowledged and Alerts cleared, never twice", async () => {
 		for (const status of ["triggered", "investigating", "resolved"]) {
 			const { call, incidentsService } = handlersFor(status);
