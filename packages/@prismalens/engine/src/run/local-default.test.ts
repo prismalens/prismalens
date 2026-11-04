@@ -355,6 +355,18 @@ describe("opencodeUserConfig (#809)", () => {
 });
 
 describe("shown", () => {
+	it("keeps a backslash as part of a POSIX file name", () => {
+		const host = Object.getOwnPropertyDescriptor(process, "platform");
+		Object.defineProperty(process, "platform", { value: "linux" });
+		try {
+			expect(shown("/home/ann\\shared", "/home/ann")).toBe(
+				"/home/ann\\shared",
+			);
+			expect(shown("/home/ann/x", "/home/ann")).toBe("~/x");
+		} finally {
+			if (host) Object.defineProperty(process, "platform", host);
+		}
+	});
 	it.skipIf(process.platform !== "win32")(
 		"gives '~/.claude/settings.json' on win32",
 		() => {

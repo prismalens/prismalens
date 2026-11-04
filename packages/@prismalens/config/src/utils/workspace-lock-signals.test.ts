@@ -27,9 +27,8 @@ const PACKAGE_ROOT = resolve(here, "..", "..");
  * cannot strip this package's TypeScript (it has runtime enums), and the built
  * artifact is the thing that actually ships, so it is the better subject.
  */
-const ENTRY = pathToFileURL(
-	join(PACKAGE_ROOT, "dist", "utils", "workspace-lock.js"),
-).href;
+const ENTRY_PATH = join(PACKAGE_ROOT, "dist", "utils", "workspace-lock.js");
+const ENTRY = pathToFileURL(ENTRY_PATH).href;
 
 const isWindows = process.platform === "win32";
 
@@ -39,10 +38,11 @@ const isWindows = process.platform === "win32";
  * here keeps the suite self-contained instead of silently skipping.
  */
 beforeAll(() => {
-	if (existsSync(ENTRY)) return;
+	if (existsSync(ENTRY_PATH)) return;
 	execFileSync("pnpm", ["run", "build"], {
 		cwd: PACKAGE_ROOT,
 		stdio: "inherit",
+		shell: isWindows,
 	});
 }, 180_000);
 

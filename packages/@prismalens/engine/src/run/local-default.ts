@@ -38,9 +38,10 @@ const NONE: LocalDefault = { permission: null };
 
 /** `~/x` for a path under the home directory, so the line reads as the user wrote it. */
 export function shown(path: string, home: string): string {
-	const normPath = path.replaceAll("\\", "/");
-	const normHome = home.replaceAll("\\", "/").replace(/\/+$/, "");
 	const isWin = process.platform === "win32";
+	const norm = (s: string) => (isWin ? s.replaceAll("\\", "/") : s);
+	const normPath = norm(path);
+	const normHome = norm(home).replace(/\/+$/, "");
 	const cmpPath = isWin ? normPath.toLowerCase() : normPath;
 	const cmpHome = isWin ? normHome.toLowerCase() : normHome;
 	if (cmpPath === cmpHome) return "~";

@@ -24,6 +24,10 @@ export function serviceManagerKind(
 	return null;
 }
 
+/** Backslashes only mean a separator on a Windows host (a simulated platform in tests). */
+const norm = (p: string) =>
+	process.platform === "win32" ? p.replaceAll("\\", "/") : p;
+
 export function serviceUnitPath(
 	platform: NodeJS.Platform = process.platform,
 	env: NodeJS.ProcessEnv = process.env,
@@ -31,13 +35,13 @@ export function serviceUnitPath(
 ): string | null {
 	switch (serviceManagerKind(platform)) {
 		case "systemd": {
-			const xdg = env.XDG_CONFIG_HOME?.replaceAll("\\", "/");
-			const base = xdg || posix.join(home.replaceAll("\\", "/"), ".config");
+			const xdg = env.XDG_CONFIG_HOME && norm(env.XDG_CONFIG_HOME);
+			const base = xdg || posix.join(norm(home), ".config");
 			return posix.join(base, "systemd", "user", SYSTEMD_UNIT_NAME);
 		}
 		case "launchd":
 			return posix.join(
-				home.replaceAll("\\", "/"),
+				norm(home),
 				"Library",
 				"LaunchAgents",
 				`${LAUNCHD_LABEL}.plist`,
