@@ -14,6 +14,7 @@ import { Empty, Loading, Problem } from "@/components/shared/State";
 import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
 import {
 	useSchedules,
 	useSetScheduleEnabled,
@@ -123,6 +124,7 @@ function ScheduleRow({
 	canEdit: boolean;
 }) {
 	const toggle = useSetScheduleEnabled();
+	const { toast } = useToast();
 	const last = s.lastTick ? tickLine(s.lastTick, clock) : null;
 	return (
 		<div
@@ -167,7 +169,19 @@ function ScheduleRow({
 						checked={s.enabled}
 						aria-label={`${s.name} active`}
 						disabled={toggle.isPending}
-						onCheckedChange={(enabled) => toggle.mutate({ id: s.id, enabled })}
+						onCheckedChange={(enabled) =>
+							toggle.mutate(
+								{ id: s.id, enabled },
+								{
+									onError: (error) =>
+										toast({
+											title: "Schedule not updated",
+											description: getErrorMessage(error),
+											variant: "destructive",
+										}),
+								},
+							)
+						}
 					/>
 				)}
 			</span>
