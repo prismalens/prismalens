@@ -265,9 +265,11 @@ export function ScheduleDialog({
 		? "Name it first"
 		: folder
 			? "Folder needs git first"
-			: !recurrence
-				? "Pick when it runs"
-				: null;
+			: !harness
+				? "Pick an agent"
+				: !recurrence
+					? "Pick when it runs"
+					: null;
 
 	const save = async (text: string) => {
 		const schedule = input(text);

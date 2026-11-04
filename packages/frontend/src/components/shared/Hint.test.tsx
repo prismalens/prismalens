@@ -4,7 +4,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Hint } from "./Hint";
 
@@ -49,6 +49,46 @@ describe("Hint (#1020)", () => {
 });
 
 describe("Hint on Escape (#1020)", () => {
+	it("keeps a held hint when the pointer only passes over the trigger and leaves", async () => {
+		vi.useFakeTimers();
+		const host = document.createElement("div");
+		document.body.appendChild(host);
+		const root = createRoot(host);
+		act(() =>
+			root.render(
+				<TooltipProvider delayDuration={0}>
+					<Hint label="Files" open>
+						<button type="button">icon</button>
+					</Hint>
+				</TooltipProvider>,
+			),
+		);
+		const button = host.querySelector("button") as HTMLButtonElement;
+		act(() => {
+			button.dispatchEvent(
+				new PointerEvent("pointermove", {
+					bubbles: true,
+					pointerType: "mouse",
+				}),
+			);
+			vi.runAllTimers();
+		});
+		act(() => {
+			button.dispatchEvent(
+				new PointerEvent("pointerout", {
+					bubbles: true,
+					pointerType: "mouse",
+					relatedTarget: document.body,
+				}),
+			);
+			vi.runAllTimers();
+		});
+		expect(document.querySelector('[data-testid="hint"]')).not.toBeNull();
+		act(() => root.unmount());
+		host.remove();
+		vi.useRealTimers();
+	});
+
 	it("closes a hint its parent holds open when Escape asks it to", async () => {
 		const host = document.createElement("div");
 		document.body.appendChild(host);

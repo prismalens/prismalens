@@ -126,6 +126,22 @@ describe("matchGateway (#1020)", () => {
 		expect(out.byCall.has("d2")).toBe(false);
 		expect(Array.from(out.unmatched)).toEqual(["main-3"]);
 	});
+
+	it("pairs a wrapper call that never resolved, recorded as tools_call with no via", () => {
+		const out = matchGateway([
+			{
+				kind: "agent_step",
+				...base(0),
+				text: "",
+				toolCalls: [
+					{ toolCallId: "d1", name: "mcp__prismalens-1__tools_call", args: { name: "nope", arguments: {} } },
+				],
+			},
+			call(1, "tools_call", "Unknown tool"),
+		]);
+		expect(out.byCall.get("d1")?.output).toBe("Unknown tool");
+		expect(Array.from(out.unmatched)).toEqual([]);
+	});
 });
 
 describe("turnFolds (#1020)", () => {
