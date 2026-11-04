@@ -229,6 +229,21 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		});
 	});
 
+	it("reports a conflict, not success, when every read-state write loses its race", async () => {
+		const id = uuid();
+		prisma.investigation.findUnique.mockResolvedValue({
+			incidentId: null,
+			updatedAt: new Date("2026-01-01T00:00:00Z"),
+		});
+		prisma.investigation.findMany.mockResolvedValue([{ id, settledAt: null }]);
+		prisma.investigation.updateMany.mockResolvedValue({ count: 0 });
+		await expect(service().visit(id)).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(3);
+		await expect(service().settle(id, true)).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+	});
+
 	it("settles an incident's whole block, and undoes it", async () => {
 		const inc = uuid();
 		const ids = [uuid(), uuid()];
