@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { createHash } from "node:crypto";
+import { resolve } from "node:path";
 import {
 	Inject,
 	Injectable,
@@ -30,7 +31,11 @@ import { HarnessService } from "../../core/harness/harness.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import { isCanonical } from "../../infrastructure/dispatch/folder-lock.js";
+import {
+	CanonicalBusy,
+	canonical,
+	sameAsDisk,
+} from "../../infrastructure/dispatch/folder-lock.js";
 import { serviceNotes } from "../../infrastructure/dispatch/investigation-run.js";
 import {
 	type JobDelegate,
@@ -880,7 +885,14 @@ export class SchedulesService
 			select: { sourceKind: true, url: true },
 		});
 		if (repo?.sourceKind !== "folder") return false;
-		return !(await isCanonical(repo.url));
+		try {
+			const real = await canonical(repo.url);
+			return real === null || !sameAsDisk(resolve(repo.url), real);
+		} catch (e) {
+			// A busy read says nothing about the folder: do not pause on it; the next tick retries.
+			if (e instanceof CanonicalBusy) return false;
+			throw e;
+		}
 	}
 
 	/** One subject at most, and never a Folder project; the values a save confirms. */

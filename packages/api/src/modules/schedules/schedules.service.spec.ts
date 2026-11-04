@@ -19,6 +19,18 @@ const env = await vi.hoisted(async () => {
 	return { root };
 });
 
+const folderRead = vi.hoisted(() => ({ busy: false }));
+vi.mock("../../infrastructure/dispatch/folder-lock.js", async (orig) => {
+	const real = await orig<typeof import("../../infrastructure/dispatch/folder-lock.js")>();
+	return {
+		...real,
+		canonical: (...args: Parameters<typeof real.canonical>) => {
+			if (folderRead.busy) throw new real.CanonicalBusy();
+			return real.canonical(...args);
+		},
+	};
+});
+
 const { PrismaService } = await import("../../core/prisma/prisma.service.js");
 const { PrismaJobStore } = await import("../../infrastructure/dispatch/job-store.js");
 const { SchedulesService } = await import("./schedules.service.js");
@@ -224,6 +236,23 @@ describe("SchedulesService (#979)", () => {
 			} finally {
 				rmSync(base, { recursive: true, force: true });
 			}
+		});
+
+		it("does not pause a project schedule when the folder read is merely busy (#1020)", async () => {
+			const base = realpathSync.native(mkdtempSync(join(tmpdir(), "pl-sched-busy-")));
+			const real = join(base, "shop");
+			mkdirSync(real);
+			const repo = await project({ sourceKind: "folder", url: real, subPath: null });
+			const s = scheduler();
+			const created = await s.create(input({ serviceId: null, repositoryId: repo.id }), "host", new Date("2026-07-09T08:00:00Z"));
+			folderRead.busy = true;
+			try {
+				await s.evaluate(new Date("2026-07-09T09:00:05Z"));
+			} finally {
+				folderRead.busy = false;
+				rmSync(base, { recursive: true, force: true });
+			}
+			expect(await prisma.schedule.findUniqueOrThrow({ where: { id: created.id } })).toMatchObject({ enabled: true, pausedReason: null });
 		});
 
 		it("refuses a schedule on both a project and a service", async () => {
