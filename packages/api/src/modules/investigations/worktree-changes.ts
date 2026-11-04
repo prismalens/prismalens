@@ -150,10 +150,14 @@ async function untrackedFile(
 	const real = await realpath(full).catch(() => null);
 	if (!real?.startsWith(root + sep)) return entry("link");
 	if (stat.size > WORKTREE_FILE_MAX_BYTES) return entry("added");
-	const handle = await open(real, "r");
+	// The agent may delete or lock the file between the listing and here; list it without lines.
+	const handle = await open(real, "r").catch(() => null);
+	if (!handle) return entry("added");
 	let bytes: Buffer;
 	try {
 		bytes = await handle.readFile();
+	} catch {
+		return entry("added");
 	} finally {
 		await handle.close();
 	}
@@ -259,6 +263,8 @@ async function repoChanges(repo: Repo): Promise<WorktreeRepoChanges> {
 			tracked = "\0too-large";
 		}
 		patches.push(tracked);
+		let patchBytes = Buffer.byteLength(tracked);
+		let overCap = patchBytes > RUN_DIFF_MAX_BYTES;
 		for (const path of others.slice(0, WORKTREE_MAX_FILES)) {
 			// A nested repository shows as its folder with a slash; it is never descended into.
 			if (path.endsWith("/")) {
@@ -272,12 +278,17 @@ async function repoChanges(repo: Repo): Promise<WorktreeRepoChanges> {
 			}
 			const one = await untrackedFile(root, path);
 			files.push(one.file);
-			patches.push(one.patch);
+			// Past the cap the patch is dropped anyway: keep listing files, stop holding text.
+			if (!overCap) {
+				patchBytes += Buffer.byteLength(one.patch);
+				if (patchBytes > RUN_DIFF_MAX_BYTES) {
+					overCap = true;
+					patches.length = 0;
+				} else patches.push(one.patch);
+			}
 		}
 		const patch = patches.join("");
-		const tooLarge =
-			tracked === "\0too-large" ||
-			Buffer.byteLength(patch) > RUN_DIFF_MAX_BYTES;
+		const tooLarge = tracked === "\0too-large" || overCap;
 		const sum = (k: "additions" | "deletions") =>
 			files.reduce((n, f) => n + (f[k] ?? 0), 0);
 		return {
