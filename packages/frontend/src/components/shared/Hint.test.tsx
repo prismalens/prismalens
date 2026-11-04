@@ -47,3 +47,29 @@ describe("Hint (#1020)", () => {
 		expect(document.querySelector('[data-testid="hint"]')).toBeNull();
 	});
 });
+
+describe("Hint on Escape (#1020)", () => {
+	it("closes a hint its parent holds open when Escape asks it to", async () => {
+		const host = document.createElement("div");
+		document.body.appendChild(host);
+		const root = createRoot(host);
+		act(() =>
+			root.render(
+				<TooltipProvider>
+					<Hint label="Files" open>
+						<button type="button">icon</button>
+					</Hint>
+				</TooltipProvider>,
+			),
+		);
+		expect(document.querySelector('[data-testid="hint"]')).not.toBeNull();
+		act(() => {
+			document.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+			);
+		});
+		expect(document.querySelector('[data-testid="hint"]')).toBeNull();
+		act(() => root.unmount());
+		host.remove();
+	});
+});
