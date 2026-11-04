@@ -25,6 +25,7 @@ import { RingTick } from "@/components/shared/RingTick";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
+import { useSettleUndo } from "@/hooks/use-settle-undo";
 import { useCancelInvestigation } from "@/lib/api/hooks";
 import {
 	type ThreadFeedInput,
