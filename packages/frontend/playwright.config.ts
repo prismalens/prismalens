@@ -170,9 +170,9 @@ export default defineConfig({
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
 	// A navigation boots the app from ~320 unbundled module requests: up to 6.7 s with a stack per
-	// core, so a six-page test needs 40 s and an assertion after one 15. Passing runs don't wait. #1048
+	// core. An assertion after one needs 15 s, and a twelve-step scenario took 73 s. #1048
 	expect: { timeout: 15_000 },
-	timeout: 60_000,
+	timeout: 120_000,
 	// One worker against `pl up`: it is a single process with one SQLite file,
 	// and the first-run journey mutates global setup state. The dev stack runs
 	// one stack per worker, so it parallelises.
