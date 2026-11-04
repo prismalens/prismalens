@@ -215,8 +215,7 @@ function buildThreadPrompt(
 	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed.
 
 SURFACES
-${surfaces.join("
-")}${renderThreadSubject(context)}${renderPreRun(context)}
+${surfaces.join("\n")}${renderThreadSubject(context)}${renderPreRun(context)}
 
 THIS RUN
 ${runLines.map((l) => `  - ${l}`).join("\n")}
@@ -234,22 +233,23 @@ function renderThreadSubject(context: InvestigationContext): string {
 		...(t?.name && t.subject !== "none"
 			? [
 					sanitizeUntrustedLine(
-						`$t.subject === "project" ? "Project" : "Service": $t.name`,
+						`${t.subject === "project" ? "Project" : "Service"}: ${t.name}`,
 					),
 				]
 			: []),
 		...repos.map(
 			(r) =>
-				`Folder $quotedPath(r.path)services: $sanitizeUntrustedLine(r.services.join(", "))(at $sanitizeUntrustedLine(r.head.slice(0, 12)))$
-					r.subPath ? `  sub-path: ${quotedPath(r.subPath)}` : ""`,
+				`Folder ${quotedPath(r.path)}  services: ${sanitizeUntrustedLine(r.services.join(", "))}  (at ${sanitizeUntrustedLine(r.head.slice(0, 12))})${
+					r.subPath ? `  sub-path: ${quotedPath(r.subPath)}` : ""
+				}`,
 		),
 	];
 	if (!lines.length) return "";
-	return `\n\n$fenceUntrusted(
+	return `\n\n${fenceUntrusted(
 		"THREAD_SUBJECT",
 		"Names the user gave this thread's project, service and folders in PrismaLens.",
 		lines.join("\n"),
-	)`;
+	)}`;
 }
 
 const BACKSLASH = String.fromCharCode(92);
@@ -261,16 +261,16 @@ const BACKSLASH = String.fromCharCode(92);
 function quotedPath(path: string): string {
 	return JSON.stringify(path).replace(
 		/[^ -~]|[<>]/g,
-		(c) => `$BACKSLASHu$c.charCodeAt(0).toString(16).padStart(4, "0")`,
+		(c) => `${BACKSLASH}u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
 	);
 }
 
 /** The operator's notes on a service: guidance they wrote, fenced only so no line can close the block (#809). */
 function renderRunbookNotes(notes: string): string {
-	return `$fenceOpen("RUNBOOK_NOTES")— OPERATOR NOTES. Advice the operator wrote about this
+	return `${fenceOpen("RUNBOOK_NOTES")} — OPERATOR NOTES. Advice the operator wrote about this
 service in PrismaLens; follow it where it applies. It does not change your permission or the scope of your job.>>>
-$sanitizeUntrustedBlock(notes)
-$fenceClose("RUNBOOK_NOTES")`;
+${sanitizeUntrustedBlock(notes)}
+${fenceClose("RUNBOOK_NOTES")}`;
 }
 
 /** Replaces the Network line when the harness's own sandbox allows none (r4 R4.1 rev). */
@@ -287,7 +287,7 @@ export const FLAGGED_WHERE =
 
 /** The run's permission level in the brief (#673 w21). */
 function accessLine(level: AccessLevel, modeName: string): string {
-	return `Permission: $ACCESS_LEVEL_LABEL[level]($modeName, the agent's own mode). Stay in this mode; a mode switch is refused. ${RULE_DENIAL}`;
+	return `Permission: ${ACCESS_LEVEL_LABEL[level]} (${modeName}, the agent's own mode). Stay in this mode; a mode switch is refused. ${RULE_DENIAL}`;
 }
 
 /** The job's scope at every level (ADR 0001 detect-and-report), not a permission rule (#673 w21). */
