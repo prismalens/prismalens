@@ -73,6 +73,7 @@ vi.mock("@/components/shell/ThreadList", () => ({
 }));
 
 vi.mock("@/components/shell/SidebarHead", () => ({
+	SearchHost: ({ children }: { children?: React.ReactNode }) => children,
 	SidebarHead: () => null,
 	SearchHost: ({ children }: { children: ReactNode }) => children,
 	useOpenSearch: () => () => {},

@@ -41,6 +41,12 @@ describe("LiveChanges (walk f27)", () => {
 		expect(change?.topics).toEqual(["incidents"]);
 	});
 
+	it("sends a topic noted directly, for a shared model no list maps (#1020)", async () => {
+		const live = new LiveChanges(10);
+		const change = await firstChange(live, () => live.noteTopic("threads"));
+		expect(change?.topics).toEqual(["threads"]);
+	});
+
 	it("wakes the thread list for an agent's events, once per slower window (#1020)", async () => {
 		const live = new LiveChanges(1, 30);
 		const seen: string[][] = [];

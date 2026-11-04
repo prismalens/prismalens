@@ -59,6 +59,11 @@ export class LiveChanges {
 		}
 		const topic = model ? TOPIC_BY_MODEL[model] : undefined;
 		if (!topic || !WRITE_OPERATIONS.has(operation)) return;
+		this.noteTopic(topic);
+	}
+
+	/** For a write to a shared model (Setting) that only one list reads. */
+	noteTopic(topic: LiveTopic): void {
 		const ms = SLOW_TOPICS.has(topic) ? this.slowMs : this.windowMs;
 		let batch = this.batches.get(ms);
 		if (!batch) {
