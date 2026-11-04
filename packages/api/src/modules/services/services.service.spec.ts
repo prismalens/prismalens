@@ -160,6 +160,17 @@ describe("ServicesService.claimWaiting (#673 w5-10)", () => {
 		});
 	});
 
+	it("matches a service whose saved name carries surrounding spaces (#1020)", async () => {
+		const { prisma, service } = claimWith([
+			{ id: "inc-1", alerts: [{ id: "a1", labels: '{"service":"booklogr-api"}' }] },
+		]);
+		expect(await service.claimWaiting({ id: "svc-1", name: "  booklogr-api " })).toBe(1);
+		expect(prisma.alert.updateMany).toHaveBeenCalledWith({
+			where: { id: { in: ["a1"] }, serviceId: null },
+			data: { serviceId: "svc-1" },
+		});
+	});
+
 	it("leaves an incident whose labels name another service, or none of its alerts names this one", async () => {
 		const { prisma, service } = claimWith([
 			{ id: "near", alerts: [{ id: "a1", labels: '{"service":"booklogr-api-v2"}' }] },
