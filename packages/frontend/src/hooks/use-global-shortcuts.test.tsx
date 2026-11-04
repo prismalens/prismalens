@@ -85,6 +85,12 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
 	});
 
+	it("a chord finished before mount counts by its own gap: g 1.5 s and a 1.2 s ago move to Alerts", async () => {
+		win.__plEarlyKeys = [early("g", 1_500), early("a", 1_200)];
+		await act(async () => root.render(createElement(Probe)));
+		expect(navigate).toHaveBeenCalledWith({ to: "/alerts" });
+	});
+
 	it("drops a stale key: g then a ten seconds apart moves nowhere", async () => {
 		win.__plEarlyKeys = [early("g", 10_100), early("a", 100)];
 		await act(async () => root.render(createElement(Probe)));
