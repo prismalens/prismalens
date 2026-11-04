@@ -155,7 +155,7 @@ export class AttachmentsService {
 	async uploadForRun(investigationId: string, file: File): Promise<Attachment> {
 		const run = await this.prisma.investigation.findUnique({
 			where: { id: investigationId },
-			select: { incidentId: true },
+			select: { incidentId: true, scheduleId: true },
 		});
 		if (!run)
 			throw new ORPCError("NOT_FOUND", {
@@ -164,6 +164,11 @@ export class AttachmentsService {
 		if (run.incidentId)
 			throw new ORPCError("BAD_REQUEST", {
 				message: "Attach this run's files on its incident.",
+			});
+		if (run.scheduleId)
+			throw new ORPCError("BAD_REQUEST", {
+				message:
+					"Files attach to an incident, and this run has no incident yet.",
 			});
 		return this.uploadOwned({ investigationId }, file);
 	}

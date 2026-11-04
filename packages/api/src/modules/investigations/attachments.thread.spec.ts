@@ -12,6 +12,7 @@ const OTHER_DRAFT = "d2222222-2222-4222-8222-222222222222";
 const RUN = "r1111111-1111-4111-8111-111111111111";
 const OTHER_RUN = "r2222222-2222-4222-8222-222222222222";
 const INCIDENT_RUN = "r3333333-3333-4333-8333-333333333333";
+const SCHEDULED_RUN = "r4444444-4444-4444-8444-444444444444";
 
 type Row = Record<string, unknown>;
 
@@ -34,7 +35,9 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 					? { incidentId: null }
 					: where.id === INCIDENT_RUN
 						? { incidentId: "i1" }
-						: null,
+						: where.id === SCHEDULED_RUN
+							? { incidentId: null, scheduleId: "s1" }
+							: null,
 			),
 		},
 		attachment: {
@@ -129,6 +132,13 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 		await expect(
 			service().uploadForRun(INCIDENT_RUN, text("x")),
 		).rejects.toThrow(/on its incident/);
+	});
+
+	it("refuses a scheduled check with no incident yet, whose message route takes no files", async () => {
+		await expect(
+			service().uploadForRun(SCHEDULED_RUN, text("x")),
+		).rejects.toThrow(/no incident yet/);
+		expect(rows).toHaveLength(0);
 	});
 
 	it("keeps one row for the same bytes from one owner, and takes nothing for an empty list", async () => {

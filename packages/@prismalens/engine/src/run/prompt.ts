@@ -210,7 +210,7 @@ function buildThreadPrompt(
 	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed.
 
 SURFACES
-${surfaces.join("\n")}
+${surfaces.join("\n")}${renderPreRun(context)}
 
 THIS RUN
 ${runLines.map((l) => `  - ${l}`).join("\n")}
