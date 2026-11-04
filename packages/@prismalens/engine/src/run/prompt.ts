@@ -231,12 +231,16 @@ function renderThreadSubject(context: InvestigationContext): string {
 	const repos = context.workspace?.repos ?? [];
 	const lines = [
 		...(t?.name && t.subject !== "none"
-			? [`${t.subject === "project" ? "Project" : "Service"}: ${t.name}`]
+			? [
+					sanitizeUntrustedLine(
+						`${t.subject === "project" ? "Project" : "Service"}: ${t.name}`,
+					),
+				]
 			: []),
 		...repos.map(
 			(r) =>
-				`Folder ${r.path}  services: ${r.services.join(", ")}  (at ${r.head.slice(0, 12)})${
-					r.subPath ? `  sub-path: ${r.subPath}` : ""
+				`Folder ${quotedPath(r.path)}  services: ${sanitizeUntrustedLine(r.services.join(", "))}  (at ${sanitizeUntrustedLine(r.head.slice(0, 12))})${
+					r.subPath ? `  sub-path: ${quotedPath(r.subPath)}` : ""
 				}`,
 		),
 	];
@@ -244,8 +248,21 @@ function renderThreadSubject(context: InvestigationContext): string {
 	return `\n\n${fenceUntrusted(
 		"THREAD_SUBJECT",
 		"Names the user gave this thread's project, service and folders in PrismaLens.",
-		lines.map(sanitizeUntrustedLine).join("\n"),
+		lines.join("\n"),
 	)}`;
+}
+
+const BACKSLASH = String.fromCharCode(92);
+
+/**
+ * A path as a JSON string, exact and reversible (the line sanitizer folds runs of spaces);
+ * anything outside printable ASCII, and < >, is escaped so no path can close the fence (#1020).
+ */
+function quotedPath(path: string): string {
+	return JSON.stringify(path).replace(
+		/[^ -~]|[<>]/g,
+		(c) => `${BACKSLASH}u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+	);
 }
 
 /** The operator's notes on a service: guidance they wrote, fenced only so no line can close the block (#809). */
