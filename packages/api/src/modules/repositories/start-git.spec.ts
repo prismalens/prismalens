@@ -144,6 +144,14 @@ describe("Start git here (#1020)", () => {
 		expect(existsSync(join(folder, ".git"))).toBe(false);
 	});
 
+	it("treats a file where the ignore directory should be as no ignore file (#1020)", async () => {
+		const xdg = process.env.XDG_CONFIG_HOME as string;
+		writeFileSync(join(xdg, "git"), "not a directory");
+		writeFileSync(join(folder, "app.js"), "1");
+		await startGit(folder);
+		expect(git("ls-files")).toBe("app.js");
+	});
+
 	it("the default global ignore file counts too when none is set", async () => {
 		const xdg = process.env.XDG_CONFIG_HOME as string;
 		mkdirSync(join(xdg, "git"), { recursive: true });

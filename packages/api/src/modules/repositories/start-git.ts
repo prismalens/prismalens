@@ -151,7 +151,17 @@ async function globalExcludes(): Promise<string> {
 		"ignore",
 	);
 	// Absent is "no ignores"; there but unreadable refuses, never a silent /dev/null (#1020).
-	if (!lstatSync(fallback, { throwIfNoEntry: false })) return NULL_FILE;
+	let there: unknown;
+	try {
+		there = lstatSync(fallback, { throwIfNoEntry: false });
+	} catch (e) {
+		const code = (e as NodeJS.ErrnoException).code;
+		if (code !== "ENOENT" && code !== "ENOTDIR")
+			throw new StartGitRefused(
+				`Your global git ignore file cannot be read: ${fallback}`,
+			);
+	}
+	if (!there) return NULL_FILE;
 	if (!readable(fallback))
 		throw new StartGitRefused(
 			`Your global git ignore file cannot be read: ${fallback}`,
