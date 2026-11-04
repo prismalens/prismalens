@@ -82,4 +82,42 @@ describe("Thread list state on SQLite (#1020)", () => {
 		expect(await search("e_c")).toEqual(["rename snake_case keys"]);
 		expect(await search("pl%n")).toEqual([]);
 	});
+
+	it("Given 501 newer threads, When the search is %, Then the older literal match still shows", async () => {
+		const prisma = await pl.prisma();
+		const old = new Date(Date.now() - 2 * DAY_MS);
+		const id = await thread("raise the cap to 80% now", old);
+		await prisma.investigation.update({ where: { id }, data: { updatedAt: old } });
+		const now = Date.now();
+		await prisma.investigation.createMany({
+			data: Array.from({ length: 501 }, (_, i) => ({
+				kind: "chat",
+				status: "completed",
+				title: `newer thread at 80 ${i}`,
+				createdAt: new Date(now - i * 1000),
+				updatedAt: new Date(now - i * 1000),
+			})),
+		});
+		expect(await search("80%")).toEqual(["raise the cap to 80% now"]);
+	});
+
+	it("Given 501 incidents, When the incident search is _ or %, Then only literal titles match", async () => {
+		const prisma = await pl.prisma();
+		const top = await prisma.incident.aggregate({ _max: { number: true } });
+		const first = (top._max.number ?? 0) + 1;
+		await prisma.incident.createMany({
+			data: Array.from({ length: 501 }, (_, i) => ({
+				number: first + i,
+				title: i === 0 ? "pool_size too small" : `plain incident ${i}`,
+			})),
+		});
+		const titles = async (q: string) =>
+			(
+				await pl.api<{ data: { title: string }[] }>(
+					`/incidents?limit=100&search=${encodeURIComponent(q)}`,
+				)
+			).data.map((i) => i.title);
+		expect(await titles("_")).toEqual(["pool_size too small"]);
+		expect(await titles("%")).toEqual([]);
+	});
 });

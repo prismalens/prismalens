@@ -43,6 +43,11 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 			liveChanges.afterCommit(() => run(...args))) as typeof bound;
 	}
 
+	/** Read-only raw SQL, for what Prisma's filters cannot say (a LIKE with ESCAPE, #1020). */
+	get $queryRaw() {
+		return db.$queryRaw.bind(db);
+	}
+
 	// Forward all Prisma model access
 	get user() {
 		return db.user;

@@ -26,12 +26,8 @@ import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import {
-	hasLiteral,
-	incidentSearch,
-	likeEach,
-	stepText,
-} from "../incidents/incidents.service.js";
+import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
+import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -231,46 +227,35 @@ export class ThreadsService {
 		const { settleAfterDays } = await this.getSettings();
 		const search = q.search?.trim();
 		const incidentMatch = incidentSearch(search);
-		const found = await this.prisma.investigation.findMany({
-			where: {
-				...(q.kind ? { kind: q.kind } : {}),
-				...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
-				...(search
-					? {
-							OR: [
-								likeEach(search, (p) => ({ title: { contains: p } })),
-								{
-									service: {
-										is: likeEach(search, (p) => ({ name: { contains: p } })),
-									},
-								},
-								{
-									repository: {
-										is: likeEach(search, (p) => ({
-											fullName: { contains: p },
-										})),
-									},
-								},
-								...(incidentMatch ? [{ incident: { is: incidentMatch } }] : []),
-							],
-						}
-					: {}),
-			},
+		const literal =
+			search && hasWildcard(search)
+				? await this.literalThreadIds(search, q)
+				: null;
+		const rows = await this.prisma.investigation.findMany({
+			where: literal
+				? { id: { in: literal } }
+				: {
+						...(q.kind ? { kind: q.kind } : {}),
+						...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
+						...(search
+							? {
+									OR: [
+										{ title: { contains: search } },
+										{ service: { is: { name: { contains: search } } } },
+										{
+											repository: { is: { fullName: { contains: search } } },
+										},
+										...(incidentMatch
+											? [{ incident: { is: incidentMatch } }]
+											: []),
+									],
+								}
+							: {}),
+					},
 			include: FEED_INCLUDE,
 			orderBy: { updatedAt: "desc" },
 			take: FEED_CAP,
 		});
-		const rows =
-			search && /[%_]/.test(search)
-				? found.filter((r) =>
-						hasLiteral(search, [
-							r.title,
-							r.service?.name,
-							r.repository?.fullName,
-							r.incident?.title,
-						]),
-					)
-				: found;
 		const lastEvents = rows.length
 			? await this.prisma.investigationEvent.groupBy({
 					by: ["investigationId"],
@@ -344,6 +329,28 @@ export class ThreadsService {
 				q.cursor + q.limit < listed.length ? q.cursor + q.limit : null,
 			counts,
 		};
+	}
+
+	/** The newest threads holding `search` as typed, `%` and `_` included, before the cap (#1020). */
+	private async literalThreadIds(
+		search: string,
+		q: ThreadFeedQuery,
+	): Promise<string[]> {
+		const like = likePattern(search);
+		const kind = q.kind ?? null;
+		const repositoryId = q.repositoryId ?? null;
+		const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+			SELECT i.id FROM investigations i
+			LEFT JOIN services s ON s.id = i.serviceId
+			LEFT JOIN repositories r ON r.id = i.repositoryId
+			LEFT JOIN incidents n ON n.id = i.incidentId
+			WHERE (${kind} IS NULL OR i.kind = ${kind})
+				AND (${repositoryId} IS NULL OR i.repositoryId = ${repositoryId})
+				AND (i.title LIKE ${like} ESCAPE '\\' OR s.name LIKE ${like} ESCAPE '\\'
+					OR r.fullName LIKE ${like} ESCAPE '\\' OR n.title LIKE ${like} ESCAPE '\\')
+			ORDER BY i.updatedAt DESC
+			LIMIT ${FEED_CAP}`;
+		return rows.map((r) => r.id);
 	}
 
 	/** The agent's latest sentence per thread, plain text, capped. */
