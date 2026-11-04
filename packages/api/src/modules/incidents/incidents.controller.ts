@@ -196,10 +196,21 @@ export class IncidentsController {
 						});
 					}
 				}
-				const incident = await this.incidentsService.update(
-					id,
-					updateData as UpdateIncidentDto,
-				);
+				const { serviceId, ...rest } = updateData;
+				if (serviceId) {
+					const linked = await this.incidentsService.linkService(id, serviceId);
+					if (linked === "missing")
+						throw new ORPCError("NOT_FOUND", {
+							message: `Incident ${id} not found`,
+						});
+					if (linked === "taken")
+						throw new ORPCError("CONFLICT", {
+							message: "This incident already has a service.",
+						});
+				}
+				const incident = fields.some((f) => f !== "serviceId")
+					? await this.incidentsService.update(id, rest as UpdateIncidentDto)
+					: await this.incidentsService.findById(id);
 				if (!incident) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Incident ${id} not found`,

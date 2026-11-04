@@ -112,7 +112,7 @@ function SettingsPage() {
 					<NewScheduleAction />
 				) : undefined
 			}
-			wide={tab === "sources" && manySources}
+			wide={(tab === "sources" && manySources) || tab === "schedules"}
 		>
 			{tab === "general" && <GeneralSettings />}
 			{tab === "appearance" && <AppearanceSettings />}

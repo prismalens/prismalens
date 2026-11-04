@@ -3,6 +3,7 @@
 
 import { ThreadFeedQuerySchema } from "@prismalens/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { liveChanges } from "../../core/live/live-changes.js";
 import { ThreadsService } from "./threads.service.js";
 
 const NOW = new Date("2026-11-10T12:00:00Z");
@@ -207,10 +208,14 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		);
 		prisma.setting.findUnique.mockResolvedValue({ value: "not json" });
 		expect(await service().getSettings()).toEqual({ settleAfterDays: 3 });
+		const note = vi.spyOn(liveChanges, "noteTopic");
 		await service().updateSettings({ settleAfterDays: 5 });
 		expect(prisma.setting.upsert).toHaveBeenCalledWith(
 			expect.objectContaining({ where: { key: "threads.list" } }),
 		);
+		// Other browsers' thread lists re-read the new quiet days.
+		expect(note).toHaveBeenCalledWith("threads");
+		note.mockRestore();
 	});
 
 	it("marks one thread seen, and refuses an unknown one", async () => {

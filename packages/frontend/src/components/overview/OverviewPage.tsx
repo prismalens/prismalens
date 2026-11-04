@@ -6,15 +6,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { unreadyReason } from "@/components/agent/AgentPicker";
 import { IncidentHeader } from "@/components/run/IncidentHeader";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useResumeInvestigation, useServices } from "@/lib/api/hooks";
+import { useResumeInvestigation } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { resumeFailed } from "@/lib/restart";
@@ -23,6 +16,7 @@ import { ChangesCard } from "./ChangesCard";
 import type { NextActionId } from "./fixes";
 import { ImpactCard } from "./ImpactCard";
 import { LatestRunStrip } from "./LatestRunStrip";
+import { LinkService } from "./LinkService";
 import {
 	type OverviewAction,
 	OverviewComposer,
@@ -165,39 +159,5 @@ export function OverviewPage() {
 				</>
 			)}
 		</div>
-	);
-}
-
-/** A blank incident's service, picked from the ones PrismaLens knows. */
-function LinkService({ incidentId }: { incidentId: string }) {
-	const services = useServices();
-	const queryClient = useQueryClient();
-	const link = useMutation({
-		...orpc.incidents.update.mutationOptions(),
-		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: orpc.incidents.key() }),
-	});
-	const list = services.data?.data ?? [];
-	if (list.length === 0) return null;
-	return (
-		<Select
-			disabled={link.isPending}
-			onValueChange={(serviceId) => link.mutate({ id: incidentId, serviceId })}
-		>
-			<SelectTrigger
-				aria-label="Link service"
-				className="w-56"
-				data-testid="incident-link-service"
-			>
-				<SelectValue placeholder="Link service" />
-			</SelectTrigger>
-			<SelectContent>
-				{list.map((s) => (
-					<SelectItem key={s.id} value={s.id}>
-						{s.displayName || s.name}
-					</SelectItem>
-				))}
-			</SelectContent>
-		</Select>
 	);
 }

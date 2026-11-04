@@ -442,6 +442,9 @@ test.describe("#1020 — thread list and New thread", () => {
 			await page.goto("/incidents");
 			await page.getByTestId("strip-search").tap();
 			await expect(page.getByTestId("thread-search")).toBeVisible();
+			// A phone has no bottom panel, so Terminal is not offered.
+			await page.getByTestId("thread-search-input").fill("term");
+			await expect(page.getByTestId("thread-search-place")).toHaveCount(0);
 			await page.getByTestId("thread-search-input").fill("sched");
 			await page
 				.getByTestId("thread-search-place")
