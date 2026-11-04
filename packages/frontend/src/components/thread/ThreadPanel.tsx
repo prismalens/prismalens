@@ -103,7 +103,9 @@ export function ThreadPanel({
 				</Button>
 			</div>
 			<div role="tabpanel" className="flex min-h-0 flex-1 flex-col">
-				{surface === null ? (
+				{surface === null ||
+				(surface === "diff" && !diff) ||
+				(surface === "suspects" && !investigation) ? (
 					<Empty
 						className="justify-center px-3 pt-8"
 						text="Open a surface"
@@ -111,9 +113,9 @@ export function ThreadPanel({
 					/>
 				) : surface === "files" ? (
 					<FilesPane files={files} onJump={() => {}} />
-				) : surface === "diff" && diff ? (
+				) : surface === "diff" ? (
 					<WorktreeDiff runId={runId} live={live} />
-				) : surface === "suspects" && investigation ? (
+				) : surface === "suspects" ? (
 					<Suspects suspects={suspects} />
 				) : (
 					<BrowserTab links={files.links} />
