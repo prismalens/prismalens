@@ -25,7 +25,7 @@ import {
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Logger } from "@nestjs/common";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -126,6 +126,13 @@ describe("repo-source.service", () => {
 			expect(classifySource("~/x")).toEqual({
 				kind: "folder",
 				source: join(homedir(), "x"),
+			});
+		});
+
+		it("expands a bare ~ to the home directory", () => {
+			expect(classifySource(" ~ ")).toEqual({
+				kind: "folder",
+				source: resolve(homedir()),
 			});
 		});
 

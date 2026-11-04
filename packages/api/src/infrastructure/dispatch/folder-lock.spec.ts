@@ -31,6 +31,7 @@ describe("one live run per plain folder (#1020)", () => {
 		expect(overlaps(at("notes", "a"), at("notes"))).toBe(true);
 		expect(overlaps(at("notes"), at("notes-2"))).toBe(false);
 		expect(overlaps(at("a"), at("b"))).toBe(false);
+		expect(overlaps(at("notes"), at("notes", "..cache"))).toBe(true);
 	});
 
 	it("busy while another live run works in the same or a nested folder", async () => {

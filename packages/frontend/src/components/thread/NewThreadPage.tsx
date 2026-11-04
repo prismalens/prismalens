@@ -67,7 +67,10 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 			replace: true,
 		});
 	const subject = subjectOf(search);
-	const incident = search.incident ? (search.severity ?? "high") : null;
+	// An incident carries a service, not a project (the contract has no repositoryId): #1020.
+	const incidentOff = !!search.project;
+	const incident =
+		search.incident && !incidentOff ? (search.severity ?? "high") : null;
 	const value = search.project
 		? `project:${search.project}`
 		: search.service
@@ -87,6 +90,9 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 					set({
 						project: kind === "project" ? id : undefined,
 						service: kind === "service" ? id : undefined,
+						...(kind === "project"
+							? { incident: undefined, note: undefined }
+							: {}),
 					});
 				}}
 			>
@@ -133,15 +139,18 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 			</Select>
 			<button
 				type="button"
-				aria-pressed={!!search.incident}
+				aria-pressed={!!incident}
+				disabled={incidentOff}
+				title={incidentOff ? "Incidents attach to a service" : undefined}
 				onClick={() =>
 					set({ incident: search.incident ? undefined : true, note: undefined })
 				}
 				className={cn(
 					"inline-flex h-7 items-center gap-1.5 rounded-control px-2 text-meta transition-colors duration-(--dur-instant)",
-					search.incident
+					incident
 						? "bg-surface-3 font-medium text-text-1"
 						: "bg-surface-2 text-text-2 hover:text-text-1",
+					incidentOff && "cursor-not-allowed opacity-50",
 				)}
 				data-testid="composer-incident"
 			>
@@ -202,12 +211,14 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 							{
 								id: "investigate",
 								label: "Investigate",
-								run: () => set({ incident: true, note: undefined }),
+								run: () =>
+									set(incidentOff ? {} : { incident: true, note: undefined }),
 							},
 							{
 								id: "note",
 								label: "Note",
-								run: () => set({ incident: true, note: true }),
+								run: () =>
+									set(incidentOff ? {} : { incident: true, note: true }),
 							},
 						]}
 					/>

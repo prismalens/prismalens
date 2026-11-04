@@ -1825,6 +1825,28 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		await expect(service.resumeInterrupted(done.id)).rejects.toBeInstanceOf(FollowUpRefused);
 	});
 
+	it("Resume on an interrupted run in a busy plain folder says so, and the run stays interrupted (#1020)", async () => {
+		const stamp = Date.now();
+		const repo = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `busy-${stamp}`, url: `/plain-${stamp}/busy`, plain: true },
+		});
+		const inc = await incident();
+		const row = await thread(inc.id, {
+			status: "failed",
+			endReason: "interrupted",
+			error: "Not resumed: x",
+			repositoryId: repo.id,
+		});
+		await job(row.id, inc.id, {}, "failed");
+		await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: repo.id, kind: "chat", status: "running" },
+		});
+		const { service } = recovering();
+
+		await expect(service.resumeInterrupted(row.id)).rejects.toThrow("A thread is already working in this folder.");
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+	});
+
 	it("Resume on a run with a session but no pid receipt is refused, the same rule boot applies (OBJ-010)", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });

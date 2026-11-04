@@ -89,7 +89,8 @@ export async function isCanonical(p: string, ms?: number): Promise<boolean> {
 export function overlaps(a: string, b: string): boolean {
 	const within = (root: string, p: string) => {
 		const rel = relative(fold(root), fold(p));
-		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+		const up = rel === ".." || rel.startsWith(`..${sep}`);
+		return rel === "" || (!up && !isAbsolute(rel));
 	};
 	return within(a, b) || within(b, a);
 }
