@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 
@@ -18,7 +18,8 @@ const fold = (p: string) =>
 export function overlaps(a: string, b: string): boolean {
 	const within = (root: string, p: string) => {
 		const rel = relative(fold(root), fold(p));
-		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+		const up = rel === ".." || rel.startsWith(`..${sep}`);
+		return rel === "" || (!up && !isAbsolute(rel));
 	};
 	return within(a, b) || within(b, a);
 }
