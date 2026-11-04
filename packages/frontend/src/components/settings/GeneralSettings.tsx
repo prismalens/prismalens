@@ -77,7 +77,7 @@ function ThreadsGroup() {
 			<Pool>
 				<SettingRow
 					label="Settle quiet threads"
-					description="Chats with no activity move to Settled."
+					description="Incident threads follow the incident."
 				>
 					<Select
 						value={days ? String(days) : undefined}

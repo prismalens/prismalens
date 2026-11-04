@@ -38,8 +38,14 @@ import { worktreeRoots } from "../../core/harness/run-worktree.js";
 
 const READ_TIMEOUT_MS = 30_000;
 const NULL_FILE = "/dev/null";
-/** Where the platform lacks O_NOFOLLOW, the identity check after open stands alone. */
-const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+/**
+ * Where the platform lacks O_NOFOLLOW, the identity check after open stands alone.
+ * O_NONBLOCK keeps a FIFO swapped in after the lstat from blocking the open.
+ */
+const OPEN_FLAGS =
+	constants.O_RDONLY |
+	(constants.O_NOFOLLOW ?? 0) |
+	(constants.O_NONBLOCK ?? 0);
 /** Config keys copied from the repo so line endings and modes compare as checked out. */
 const MIRRORED: Record<string, RegExp> = {
 	"core.autocrlf": /^(true|false|input)$/,
@@ -65,7 +71,13 @@ function baseEnv(): Record<string, string> {
 
 /** Reads one config value the checkout used; only the whitelisted values survive. */
 async function mirrored(dir: string): Promise<string> {
-	const lines = ["[core]", "\trepositoryformatversion = 0", "\tbare = false"];
+	// quotePath off: patch headers carry raw paths, as the -z file lists do (#1020).
+	const lines = [
+		"[core]",
+		"\trepositoryformatversion = 0",
+		"\tbare = false",
+		"\tquotePath = false",
+	];
 	for (const [key, ok] of Object.entries(MIRRORED)) {
 		try {
 			const { stdout } = await spawnGit(["config", "--get", key], {

@@ -23,6 +23,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 
@@ -267,7 +268,11 @@ export class IncidentsService {
 		limit?: number;
 		offset?: number;
 	}): Promise<{ data: IncidentWithRelations[]; total: number }> {
-		const search = incidentSearch(options?.search);
+		const raw = options?.search?.trim();
+		const search =
+			raw && hasWildcard(raw)
+				? { id: { in: await literalIncidentIds(this.prisma, raw) } }
+				: incidentSearch(raw);
 		const where = {
 			...(search && { AND: [search] }),
 			...(options?.status
@@ -1220,26 +1225,19 @@ export function incidentSearch(
 	if (!q) return null;
 	const n = /^(?:inc-?|#)?(\d{1,9})$/i.exec(q)?.[1];
 	return {
-		OR: [
-			likeEach(q, (p) => ({ title: { contains: p } })),
-			...(n ? [{ number: Number(n) }] : []),
-		],
+		OR: [{ title: { contains: q } }, ...(n ? [{ number: Number(n) }] : [])],
 	};
 }
 
-/**
- * SQLite's `contains` has no escape, so a search with `%` or `_` matches the pieces between
- * them; a caller that needs the exact text filters the rows with `hasLiteral` (#1020).
- */
-export function likeEach<T>(q: string, filter: (piece: string) => T) {
-	if (!/[%_]/.test(q)) return filter(q);
-	const pieces = q.split(/[%_]/).filter(Boolean);
-	return pieces.length ? { AND: pieces.map(filter) } : filter("");
-}
-
-export function hasLiteral(q: string, texts: (string | null | undefined)[]) {
-	const want = q.toLowerCase();
-	return texts.some((t) => !!t && t.toLowerCase().includes(want));
+/** Incidents whose title holds `q` as typed, `%` and `_` included (#1020). */
+export async function literalIncidentIds(
+	prisma: Pick<PrismaService, "$queryRaw">,
+	q: string,
+): Promise<string[]> {
+	const like = likePattern(q);
+	const rows = await prisma.$queryRaw<{ id: string }[]>`
+		SELECT id FROM incidents WHERE title LIKE ${like} ESCAPE '\\'`;
+	return rows.map((r) => r.id);
 }
 
 export function stepText(raw: string): string | null {
