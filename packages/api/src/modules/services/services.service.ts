@@ -411,8 +411,9 @@ function serviceLabel(labels: string | null): string | null {
 	if (!labels) return null;
 	try {
 		const parsed = JSON.parse(labels) as Record<string, unknown>;
-		const v = parsed.service;
-		return typeof v === "string" && v ? v : null;
+		// Trimmed, as the alert's correlation key reads it (alerts.service.ts).
+		const v = typeof parsed.service === "string" ? parsed.service.trim() : "";
+		return v || null;
 	} catch {
 		return null;
 	}
