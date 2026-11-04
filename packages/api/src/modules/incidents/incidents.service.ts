@@ -554,6 +554,23 @@ export class IncidentsService {
 	/**
 	 * Update incident
 	 */
+	/**
+	 * Link service on an incident with none (#1020): the write itself carries the rule, so
+	 * two links racing cannot replace each other. The same service again is a no-op link.
+	 */
+	async linkService(
+		id: string,
+		serviceId: string,
+	): Promise<"linked" | "taken" | "missing"> {
+		const { count } = await this.prisma.incident.updateMany({
+			where: { id, OR: [{ serviceId: null }, { serviceId }] },
+			data: { serviceId, updatedAt: new Date() },
+		});
+		if (count > 0) return "linked";
+		const row = await this.prisma.incident.findUnique({ where: { id } });
+		return row ? "taken" : "missing";
+	}
+
 	async update(
 		id: string,
 		dto: UpdateIncidentDto,

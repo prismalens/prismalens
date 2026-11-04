@@ -143,6 +143,7 @@ export function RunDetailsPanel({
 	files: EvidenceFiles;
 }) {
 	const [filter, setFilter] = useState<StepFilter>("all");
+	const [focused, setFocused] = useState<string | null>(null);
 	const onKeyDown = (e: KeyboardEvent) => {
 		if (e.key !== "Escape" || e.defaultPrevented) return;
 		e.stopPropagation();
@@ -239,14 +240,26 @@ export function RunDetailsPanel({
 									key={t.id}
 									value={t.id}
 									aria-label={t.aria}
-									className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+									className="group relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
 									data-testid={`run-details-tab-${t.id}`}
+									onFocus={(e) =>
+										e.currentTarget.matches(":focus-visible") &&
+										setFocused(t.id)
+									}
+									onBlur={() => setFocused(null)}
 								>
-									<Hint label={t.label}>
+									<Hint label={t.label} open={focused === t.id}>
 										<span className="flex">
 											<Icon className="size-4" aria-hidden />
 										</span>
 									</Hint>
+									{/* No hover, no hint: a touch screen names the open tab (all six would not fit 320 px). */}
+									<span
+										className="ml-1 hidden text-meta [@media(hover:none)]:group-data-[state=active]:inline"
+										data-testid={`run-details-tab-label-${t.id}`}
+									>
+										{t.label}
+									</span>
 									{t.aside}
 								</TabsPrimitive.Trigger>
 							);
