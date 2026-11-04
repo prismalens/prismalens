@@ -141,6 +141,9 @@ export function useUnlinkRepository() {
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
 			queryClient.invalidateQueries({
+				queryKey: repositoryKeys.detail(variables.id),
+			});
+			queryClient.invalidateQueries({
 				queryKey: serviceKeys.detail(variables.serviceId),
 			});
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
