@@ -3,7 +3,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { Link2 } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useDeferredValue, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,7 @@ import { useLinkRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useCreateService } from "@/lib/api/hooks/use-services-orpc";
 import { client } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { needsFind } from "@/lib/needs-find";
 import { cn } from "@/lib/utils";
 
 /** The service an unmapped alert's project gets: one of that name, or a new one. */
@@ -36,9 +37,16 @@ export function linkPlan(
 	return found ? { serviceId: found.id } : { create: name };
 }
 
+/** The service an alert reaches by the `service=<name>` rule; without that label, linking maps nothing. */
+export function linkName(
+	labels: Record<string, string> | null | undefined,
+): string | null {
+	return labels?.service?.trim() || null;
+}
+
 /**
  * Link to a project, on an unmapped alert's row (#1020): picks a project and gives it a
- * service by name; alerts reach it by the existing `service=<name>` rule, shown read-only.
+ * service named by the alert's `service` label, which is how the alert reaches it.
  */
 export function LinkToProject({
 	labels,
@@ -48,6 +56,8 @@ export function LinkToProject({
 	className?: string;
 }) {
 	const [open, setOpen] = useState(false);
+	const name = linkName(labels);
+	if (!name) return null;
 	return (
 		<>
 			<Hint label="Link to a project" side="left">
@@ -64,29 +74,30 @@ export function LinkToProject({
 					<Link2 className="size-3.5" />
 				</button>
 			</Hint>
-			{open && (
-				<LinkDialog suggested={labels?.service ?? ""} onOpenChange={setOpen} />
-			)}
+			{open && <LinkDialog name={name} onOpenChange={setOpen} />}
 		</>
 	);
 }
 
 function LinkDialog({
-	suggested,
+	name,
 	onOpenChange,
 }: {
-	suggested: string;
+	name: string;
 	onOpenChange: (open: boolean) => void;
 }) {
-	const repos = useRepositories({ limit: 100 });
+	const [find, setFind] = useState("");
+	const search = useDeferredValue(find.trim());
+	const repos = useRepositories({
+		limit: 100,
+		...(search ? { search } : {}),
+	});
 	const create = useCreateService();
 	const link = useLinkRepository();
 	const [repositoryId, setRepositoryId] = useState<string>();
-	const [name, setName] = useState(suggested);
 	const [error, setError] = useState<string | null>(null);
 	const projects = repos.data?.data ?? [];
-	const picked = projects.find((p) => p.id === repositoryId);
-	const shown = name.trim() || picked?.fullName || "";
+	const shown = name;
 	const busy = create.isPending || link.isPending;
 	const onLink = async (e: FormEvent) => {
 		e.preventDefault();
@@ -113,7 +124,23 @@ function LinkDialog({
 				data-testid="link-project-dialog"
 			>
 				<DialogTitle>Link to a project</DialogTitle>
-				{repos.data && projects.length === 0 ? (
+				{repos.isError ? (
+					<p
+						className="flex items-center gap-2 text-body text-danger"
+						role="alert"
+						data-testid="link-project-error"
+					>
+						{getErrorMessage(repos.error)}
+						<Button
+							variant="text"
+							size="sm"
+							onClick={() => void repos.refetch()}
+							data-testid="link-project-retry"
+						>
+							Retry
+						</Button>
+					</p>
+				) : repos.data && projects.length === 0 && !search ? (
 					<p className="text-body text-text-2">
 						No projects yet.{" "}
 						<Link to="/projects" className="text-text-1 underline">
@@ -122,6 +149,15 @@ function LinkDialog({
 					</p>
 				) : (
 					<form onSubmit={(e) => void onLink(e)} className="grid gap-3">
+						{needsFind(repos.data, find) && (
+							<Input
+								value={find}
+								onChange={(e) => setFind(e.target.value)}
+								placeholder="Find a project"
+								aria-label="Find a project"
+								data-testid="link-project-find"
+							/>
+						)}
 						<Select value={repositoryId} onValueChange={setRepositoryId}>
 							<SelectTrigger
 								aria-label="Project"
@@ -143,8 +179,7 @@ function LinkDialog({
 						</Select>
 						<Input
 							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder={picked?.fullName ?? "Service name"}
+							readOnly
 							aria-label="Service name"
 							data-testid="link-project-name"
 						/>
