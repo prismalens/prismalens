@@ -33,6 +33,8 @@ export interface RunStep {
 	node?: NodeKind;
 	/** A PrismaLens tool's outcome, the first line it returned; null for any other call. */
 	outcome?: string | null;
+	/** A PrismaLens tool call: the header names it by `title`, never the raw call. */
+	gateway?: boolean;
 	/** The run's first PrismaLens step: it shows the data note every result carries, once (#1020). */
 	dataNote?: boolean;
 	/** The call named a shell command, so it can be copied or staged in the terminal. */
@@ -162,6 +164,7 @@ export function deriveSteps(
 				gateway: recorded?.name,
 			}),
 			outcome: recorded ? outcomeLine(recorded) : null,
+			...(recorded ? { gateway: true } : {}),
 			...(callId === noted ? { dataNote: true } : {}),
 			input: inputOf(call.name, call.args),
 			...fileOf(call.args),

@@ -97,10 +97,9 @@ export function ServiceFormDialog({
 	const addSource = useAddRepositorySource();
 	const isPending =
 		createService.isPending || updateService.isPending || addSource.isPending;
-	const ring = useRingTick(
-		isPending,
-		!!(createService.error || updateService.error || addSource.error),
-	);
+	// One flag for the whole save, so a git sync error after the request resolved still reads as failed.
+	const [saving, setSaving] = useState(false);
+	const ring = useRingTick(saving, !!error);
 	const primaryRepo = service?.repositories?.find((r) => r.isPrimary);
 	const currentRepository = !primaryRepo
 		? ""
@@ -145,6 +144,7 @@ export function ServiceFormDialog({
 		}
 
 		setError(null);
+		setSaving(true);
 
 		// The rest of `metadata` (the trigger policy) is kept as stored (#673).
 		const investigation = investigationOf(service?.metadata);
@@ -199,6 +199,8 @@ export function ServiceFormDialog({
 			const message =
 				err instanceof Error ? err.message : "The service was not saved.";
 			setError(message);
+		} finally {
+			setSaving(false);
 		}
 	};
 

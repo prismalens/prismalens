@@ -17,12 +17,17 @@ const MAX_WORDS = 7;
 /** Controls and format characters, but not ZWNJ/ZWJ: they join letters and emoji inside a word. */
 const BREAKS = /(?:(?![‌‍])[\p{Cc}\p{Cf}])+/gu;
 
+/** A word of joiners alone shows nothing; it is dropped, never kept or counted. */
+const JOINERS_ONLY = /^[\u200c\u200d]+$/u;
+
 /** One line: controls and bidi overrides gone, whitespace collapsed, no address credential. */
 export function plainTitle(raw: string): string {
 	return raw
 		.replace(BREAKS, " ")
 		.replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi, "$1")
-		.replace(/\s+/g, " ")
+		.split(/\s+/)
+		.filter((w) => w && !JOINERS_ONLY.test(w))
+		.join(" ")
 		.trim()
 		.slice(0, THREAD_TITLE_MAX)
 		.trim();

@@ -539,7 +539,7 @@ describe("Transcript spine (#1020)", () => {
 		expect(
 			container.querySelector('[data-testid="transcript-gateway"]')
 				?.textContent,
-		).toContain("Found similar incidents");
+		).toContain("Searched for similar incidents");
 	});
 
 	it("never calls a chat's first message a brief", async () => {

@@ -43,7 +43,7 @@ export function serviceTools(service: ServiceLookup): HarnessTool[] {
 					: fail(
 							"not_found",
 							`PrismaLens has no service named "${name}".`,
-							"Call incident_get for the service names of this incident.",
+							"Use a service name from thread_list, changes_list or this thread's own context.",
 						);
 			},
 		}),
