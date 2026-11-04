@@ -158,6 +158,19 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(statSync(indexFile).mtimeMs).toBe(mtime);
 	});
 
+	it("writes a non-ASCII path in the patch as the file list names it, unquoted", async () => {
+		write(src, { "src/café.ts": "a\n" });
+		git(["add", "-A"], src);
+		git(["commit", "-q", "-m", "two"], src);
+		const head = git(["rev-parse", "HEAD"], src);
+		const other = join(root, "pl-run2");
+		git(["worktree", "add", "-q", "-b", "prismalens/shop-run2", other, head], src);
+		write(other, { "src/café.ts": "b\n" });
+		const repo = await changes(other, head);
+		expect(repo.files.map((f) => f.path)).toEqual(["src/café.ts"]);
+		expect(repo.patch).toContain("diff --git a/src/café.ts b/src/café.ts");
+	});
+
 	it("lists binary files without their bytes", async () => {
 		write(run, { "logo.bin": Buffer.from([0, 9, 9, 9]), "new.bin": Buffer.from([1, 0, 2]) });
 		const repo = await changes();

@@ -380,13 +380,32 @@ export class ThreadsService {
 
 	async visit(id: string): Promise<{ lastVisitedAt: string }> {
 		const at = new Date();
-		const { count } = await this.prisma.investigation.updateMany({
-			where: { id },
-			data: { lastVisitedAt: at },
-		});
-		if (count === 0)
+		if (!(await this.readState(id, { lastVisitedAt: at })))
 			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
 		return { lastVisitedAt: at.toISOString() };
+	}
+
+	/**
+	 * Writes seen or settled state with the row's own updatedAt, which orders the feed (#1020).
+	 * A row that changed in between is read again; false when the thread is gone.
+	 */
+	private async readState(
+		id: string,
+		data: { lastVisitedAt?: Date; settledAt?: Date | null },
+	): Promise<boolean> {
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const row = await this.prisma.investigation.findUnique({
+				where: { id },
+				select: { updatedAt: true },
+			});
+			if (!row) return false;
+			const { count } = await this.prisma.investigation.updateMany({
+				where: { id, updatedAt: row.updatedAt },
+				data: { ...data, updatedAt: row.updatedAt },
+			});
+			if (count) return true;
+		}
+		return true;
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */

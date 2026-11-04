@@ -61,24 +61,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      pull-requests: read # paths-filter lists a PR's files through the API
-    outputs:
-      macos: ${{ steps.changes.outputs.macos }}
     steps:
       - uses: actions/checkout@v7
-
-      # The macOS unit leg's timing-sensitive tests live here; a PR touching them runs it
-      # too, so a macOS failure shows on the PR and not first in the merge queue (#885).
-      - name: Which legs this PR needs
-        id: changes
-        if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          filters: |
-            macos:
-              - packages/api/**
-              - packages/@prismalens/engine/**
-              - .github/workflows/ci.yml
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -128,9 +112,9 @@ jobs:
     strategy:
       fail-fast: false
       # Node is .nvmrc's, the engines.node floor `pl doctor` enforces (#673 s6). macOS runs on
-      # the merge queue, main, and a PR that touches the api or the engine (#885).
+      # every PR: the queue that used to run it first is gone (#959 tracks its flake).
       matrix:
-        os: ${{ fromJSON((github.event_name != 'pull_request' || needs.build.outputs.macos == 'true') && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
 

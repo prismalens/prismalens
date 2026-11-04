@@ -672,7 +672,18 @@ export class InvestigationsController {
 
 			// GET /investigations/:id/changes - The live workspace against its start (#1020)
 			getChanges: implement(investigationsContract.getChanges).handler(
-				async ({ input }) => this.runView(input.id, readWorktreeChanges),
+				async ({ input }) =>
+					this.runView(input.id, async (ws) => {
+						const out = await readWorktreeChanges(ws);
+						// Results keep the workspace's repo order; each takes the name shownWorkspace gives (#1020).
+						const shown = shownWorkspace(ws);
+						return {
+							repos: out.repos.map((r, i) => ({
+								...r,
+								repo: shown?.repos[i]?.name ?? r.repo,
+							})),
+						};
+					}),
 			),
 
 			// POST /investigations/:id/result - Write result (Worker)

@@ -963,6 +963,8 @@ export async function resumeWorkspace(
 		id: string;
 		lockLabel?: string;
 		env?: Readonly<Record<string, string | undefined>>;
+		/** The project whose policy now governs it; null clears an older one. Left as is when absent. */
+		project?: string | null;
 	},
 ): Promise<{ lock: string } | null> {
 	const dir = workspaceDir(input, input.id);
@@ -972,7 +974,14 @@ export async function resumeWorkspace(
 	const current = lockOf(dir, side);
 	if (current !== null && !current.startsWith(input.lockPrefix)) return null;
 	const lock = `${input.lockPrefix}${input.lockLabel ?? input.id} ${randomUUID().slice(0, 8)}`;
-	const { keptAt: _kept, lock: _old, ...rest } = side;
+	const { keptAt: _kept, lock: _old, ...kept } = side;
+	const { project: _project, ...bare } = kept;
+	const rest: Sidecar =
+		input.project === undefined
+			? kept
+			: input.project === null
+				? bare
+				: { ...bare, project: input.project };
 	const admin = linkedGitDir(dir);
 	const common = admin ? commonDirOf(admin) : null;
 	if (admin && common) {
