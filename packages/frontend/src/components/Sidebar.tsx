@@ -31,7 +31,7 @@ import {
 	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
-import { SidebarHead } from "@/components/shell/SidebarHead";
+import { SearchHost, SidebarHead } from "@/components/shell/SidebarHead";
 import { ThreadList } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { inSettings, useBack } from "@/hooks/use-back";
@@ -104,7 +104,7 @@ function Shell({ pathname }: { pathname: string }) {
 		document.documentElement.toggleAttribute("data-settings", settings);
 	}, [settings]);
 	return (
-		<>
+		<SearchHost enabled={signedIn}>
 			{hidden ? (
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
@@ -125,7 +125,7 @@ function Shell({ pathname }: { pathname: string }) {
 				</aside>
 			)}
 			<PhoneStrip pathname={pathname} doors={doors} />
-		</>
+		</SearchHost>
 	);
 }
 

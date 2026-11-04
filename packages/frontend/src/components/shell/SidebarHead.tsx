@@ -4,7 +4,13 @@
 import type { ThreadSection } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { FolderPlus, Search, SquarePen } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+	createContext,
+	type ReactNode,
+	useContext,
+	useEffect,
+	useState,
+} from "react";
 import { Hint } from "@/components/shared/Hint";
 import {
 	Command,
@@ -36,14 +42,26 @@ const ICON = "size-4 shrink-0 stroke-[1.5]";
 const BUTTON =
 	"flex size-8 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1";
 
+const OpenSearch = createContext<() => void>(() => {});
+
+/** Opens the Search palette from anywhere inside `SearchHost`. */
+export const useOpenSearch = () => useContext(OpenSearch);
+
 /**
- * The sidebar's head (#1020): Search (Ctrl K) over threads with filters, Add
- * project, and New thread (Ctrl Shift O).
+ * Holds Search and its shortcuts (Ctrl K, Ctrl Shift O for New thread) for the
+ * whole shell, so they work with the sidebar hidden, on Settings and on a phone.
  */
-export function SidebarHead({ compact = false }: { compact?: boolean }) {
+export function SearchHost({
+	enabled,
+	children,
+}: {
+	enabled: boolean;
+	children: ReactNode;
+}) {
 	const [open, setOpen] = useState(false);
 	const navigate = useNavigate();
 	useEffect(() => {
+		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
 			const mod = e.ctrlKey || e.metaKey;
 			if (mod && !e.shiftKey && e.key.toLowerCase() === "k") {
@@ -56,7 +74,18 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [navigate]);
+	}, [navigate, enabled]);
+	return (
+		<OpenSearch.Provider value={() => setOpen(true)}>
+			{children}
+			{enabled && <ThreadSearch open={open} onOpenChange={setOpen} />}
+		</OpenSearch.Provider>
+	);
+}
+
+/** The sidebar's head (#1020): Search over threads with filters, Add project, and New thread. */
+export function SidebarHead({ compact = false }: { compact?: boolean }) {
+	const openSearch = useOpenSearch();
 	return (
 		<div
 			className={cn(
@@ -68,7 +97,7 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 			<Hint label="Search" keys={["Ctrl", "K"]} side="bottom">
 				<button
 					type="button"
-					onClick={() => setOpen(true)}
+					onClick={openSearch}
 					aria-label="Search"
 					className={
 						compact
@@ -101,7 +130,6 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 					<SquarePen className={ICON} />
 				</Link>
 			</Hint>
-			<ThreadSearch open={open} onOpenChange={setOpen} />
 		</div>
 	);
 }
