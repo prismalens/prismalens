@@ -23,6 +23,7 @@ import {
 import type { Investigation, Prisma } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
+import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import {
@@ -424,6 +425,7 @@ export class ThreadsService {
 			create: { key: SETTINGS_KEY, value, type: "json", category: "general" },
 			update: { value },
 		});
+		liveChanges.noteTopic("threads");
 		return next;
 	}
 }

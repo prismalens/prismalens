@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import {
 	Tooltip,
 	TooltipContent,
@@ -12,6 +12,7 @@ import {
  * The only tooltip (a DOM `title` is banned). One line, or a label and one
  * meta line; shortcuts live here and in the ? sheet, never on screen
  * (decision 9). `when={false}` skips it where the label is already visible.
+ * `open` also shows it, for a trigger whose focus lands on a parent.
  */
 export function Hint({
 	label,
@@ -19,6 +20,7 @@ export function Hint({
 	keys,
 	side = "bottom",
 	when = true,
+	open = false,
 	children,
 }: {
 	label: string;
@@ -26,11 +28,17 @@ export function Hint({
 	keys?: string[];
 	side?: "top" | "bottom" | "left" | "right";
 	when?: boolean;
+	open?: boolean;
 	children: ReactNode;
 }) {
+	const [hovered, setHovered] = useState(false);
 	if (!when) return children;
 	return (
-		<Tooltip disableHoverableContent>
+		<Tooltip
+			disableHoverableContent
+			open={hovered || open}
+			onOpenChange={setHovered}
+		>
 			<TooltipTrigger asChild>{children}</TooltipTrigger>
 			<TooltipContent side={side} data-testid="hint">
 				<span className="flex items-center gap-2">
