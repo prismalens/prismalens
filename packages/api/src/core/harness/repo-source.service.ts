@@ -99,9 +99,12 @@ export function classifySource(input: string): {
 	// A leading dash would reach git as an option: `-uCMD@host:x` passes the URL test.
 	if (trimmed.startsWith("-"))
 		throw new Error("Repository must not start with '-'");
-	const expanded = trimmed.startsWith("~/")
-		? join(homedir(), trimmed.slice(2))
-		: trimmed;
+	const expanded =
+		trimmed === "~"
+			? homedir()
+			: trimmed.startsWith("~/")
+				? join(homedir(), trimmed.slice(2))
+				: trimmed;
 	if (isAbsolute(expanded))
 		return { kind: "folder", source: resolve(expanded) };
 	if (URL_LIKE.test(trimmed)) {
