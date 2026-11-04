@@ -138,4 +138,31 @@ describe("NewThread with Incident on (#1020)", () => {
 		await send?.(message);
 		expect(updateIncident).not.toHaveBeenCalled();
 	});
+
+	it("a failed create for another service keeps the first incident for a retry on the first service", async () => {
+		createIncident
+			.mockResolvedValueOnce({ id: "inc-a" })
+			.mockRejectedValueOnce(new Error("create failed"));
+		investigate
+			.mockRejectedValueOnce(new Error("agent not ready"))
+			.mockResolvedValue({ investigationId: "run-1" });
+		const on = (serviceId: string) => (
+			<NewThread
+				subject={{ kind: "service", serviceId } as never}
+				branch={null}
+				incident="high"
+			/>
+		);
+		const message = { text: "checkout is down", files: [] } as ComposerSend;
+		await act(async () => root.render(on("svc-a")));
+		await expect(send?.(message)).rejects.toThrow("agent not ready");
+		await act(async () => root.render(on("svc-b")));
+		await expect(send?.(message)).rejects.toThrow("create failed");
+		await act(async () => root.render(on("svc-a")));
+		await send?.(message);
+		expect(createIncident).toHaveBeenCalledTimes(2);
+		expect(investigate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ id: "inc-a" }),
+		);
+	});
 });
