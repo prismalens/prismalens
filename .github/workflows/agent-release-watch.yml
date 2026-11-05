@@ -32,7 +32,8 @@ permissions:
 
 concurrency:
   group: agent-releases-${{ github.event_name == 'pull_request' && github.ref || 'default' }}
-  cancel-in-progress: false
+  # A PR push supersedes its earlier probe; the nightly and dispatch runs are never cancelled (#1052).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   probe:
