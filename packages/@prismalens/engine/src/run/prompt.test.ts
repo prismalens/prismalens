@@ -839,7 +839,7 @@ describe("buildChatPrompt on a project, service or no-subject thread (#1020, OBJ
 		const prompt = buildChatPrompt({ mode: "project-chat", alerts: [], thread: { subject: "none" } }, "hi", {
 			tools: "PrismaLens tools (MCP server `s`): `thread_title`.",
 		});
-		expect(prompt).toContain("a greeting, or a question you can answer from what you know, gets a short reply and no tool calls");
+		expect(prompt).toContain("a greeting, or a question you can answer from what you know, gets a short reply and no tool calls, except naming the thread once the user's task is clear");
 		expect(prompt.indexOf("PrismaLens tools")).toBeLessThan(prompt.lastIndexOf("hi"));
 		expect(prompt.trimEnd().endsWith("hi")).toBe(true);
 		expect(prompt).not.toContain("scratch folder");
