@@ -850,4 +850,14 @@ describe("the spine's findings and PrismaLens calls (#1020)", () => {
 		]);
 		expect(items.find((i) => i.kind === "tools")).toMatchObject({ at: at(0), until: at(0) });
 	});
+
+	it("keeps a failed record call as a failed row, since no finding or page came of it", () => {
+		const rows = deriveTranscript([
+			gateway(1, "evidence_record", "refused", true),
+			gateway(2, "hypothesis_record", "refused", true),
+			gateway(3, "artifact_publish", "refused", true),
+		]).filter((i) => i.kind === "gateway");
+		expect(rows).toHaveLength(3);
+		expect(rows.every((r) => r.node === "failed" && r.failed)).toBe(true);
+	});
 });
