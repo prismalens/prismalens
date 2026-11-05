@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { lstatSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
@@ -67,14 +67,33 @@ const PINNED = [
 	"init.defaultBranch=main",
 ];
 
+const turns = new Map<string, Promise<void>>();
+
 /**
  * `git init` in a plain folder, then one commit of what its `.gitignore` leaves, as the user.
  * Refuses with no identity, an existing `.git`, a link, or over START_GIT_MAX_FILES files;
  * a refusal after init removes the `.git` it made.
  */
-export async function startGit(
+export function startGit(
 	folder: string,
 	opts: { maxFiles?: number; timeoutMs?: number } = {},
+): Promise<void> {
+	// One start per folder at a time: a failing start removes its own .git, never a rival's.
+	const key = resolve(folder);
+	const turn = (turns.get(key) ?? Promise.resolve()).then(() =>
+		startGitOnce(folder, opts),
+	);
+	const tail = turn.catch(() => undefined);
+	turns.set(key, tail);
+	void tail.then(() => {
+		if (turns.get(key) === tail) turns.delete(key);
+	});
+	return turn;
+}
+
+async function startGitOnce(
+	folder: string,
+	opts: { maxFiles?: number; timeoutMs?: number },
 ): Promise<void> {
 	const st = lstatSync(folder, { throwIfNoEntry: false });
 	if (!st || st.isSymbolicLink() || !st.isDirectory())

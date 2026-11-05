@@ -77,6 +77,17 @@ describe("Start git here (#1020)", () => {
 		expect(existsSync(join(folder, ".git"))).toBe(false);
 	});
 
+	it("serializes two starts on one folder, so a failing one never removes the other's .git", async () => {
+		for (const n of ["a", "b", "c"]) writeFileSync(join(folder, n), n);
+		const [failed, ok] = await Promise.allSettled([
+			startGit(folder, { maxFiles: 2 }),
+			startGit(folder),
+		]);
+		expect(failed.status).toBe("rejected");
+		expect(ok.status).toBe("fulfilled");
+		expect(git("log", "-1", "--format=%s")).toBe("Initial commit");
+	});
+
 	it("refuses a folder that already has git", async () => {
 		mkdirSync(join(folder, ".git"));
 		await expect(startGit(folder)).rejects.toThrow(/already has git/);

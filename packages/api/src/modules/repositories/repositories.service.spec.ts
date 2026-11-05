@@ -48,6 +48,7 @@ describe("RepositoriesService.addSource", () => {
 	const mockPrisma = {
 		service: { findUnique: vi.fn() },
 		repository: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+		investigation: { findMany: vi.fn() },
 		$transaction: vi.fn(),
 	};
 
@@ -133,6 +134,21 @@ describe("RepositoriesService.addSource", () => {
 		expect(mockPrisma.service.findUnique).not.toHaveBeenCalled();
 		expect(mockTx.serviceRepository.updateMany).not.toHaveBeenCalled();
 		expect(mockTx.serviceRepository.create).not.toHaveBeenCalled();
+	});
+
+	it("refuses to start git in a folder a live run is working in (#1020)", async () => {
+		const plain = { id: "repo-1", plain: true, sourceKind: "folder", url: "/code/shop" };
+		mockPrisma.repository.findUnique.mockResolvedValue(plain);
+		mockPrisma.$transaction.mockImplementation(
+			async (fn: (tx: typeof mockPrisma) => unknown) => fn(mockPrisma),
+		);
+		mockPrisma.investigation.findMany.mockResolvedValue([
+			{ repository: { url: "/code/shop" } },
+		]);
+		await expect(service.startGit("repo-1")).rejects.toThrow(
+			/already working in this folder/,
+		);
+		expect(mockPrisma.repository.update).not.toHaveBeenCalled();
 	});
 
 	it("refuses a service that does not exist", async () => {
