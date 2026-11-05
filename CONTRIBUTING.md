@@ -460,6 +460,19 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    commit — a required check enforces it (the repo squash-merges, so the PR
    title becomes the trunk commit subject).
 
+### Landing a stack
+
+A stack is PRs based on each other's branches. A squash merge puts the bottom PR on `main` as a new commit, so the next
+PR's branch no longer lines up with `main`: it needs a merge-up push and a new CI run, and so does every PR above it
+(#1052). Land a stack with **Create a merge commit** instead. The bottom PR's commits join `main`, the next PR retargets
+to `main` with the same head, and its green checks stand. The repo settings and the `main protection` ruleset already
+allow both merge methods.
+
+- Do not run `git merge -s ours origin/main` on a stack PR unless `main` holds nothing but the bottom PR's squash. It keeps
+  your tree and drops every other change on `main`, and a later squash of that PR reverts them.
+- Not yet tried here: how release-please reads the commits inside a merge commit. After the first stack lands this way,
+  check the release PR's changelog for repeated entries.
+
 ## Code style
 
 - Formatting and linting are handled by **Biome** — run `pnpm format-and-lint`.

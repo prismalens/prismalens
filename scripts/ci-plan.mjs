@@ -83,7 +83,7 @@ export function plan({
 			skip: true,
 			full: false,
 			agents: false,
-			reason: `tree identical to ${sameTreeAs}, which already passed CI: nothing re-run`,
+			reason: `tree identical to ${sameTreeAs}, which already passed CI: nothing re-run. A head made with "git merge -s ours" lacks main's other changes (CONTRIBUTING.md, Landing a stack)`,
 		};
 	if (files.length > 0 && files.every((f) => DOCS.some((p) => p.test(f))))
 		return {
