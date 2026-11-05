@@ -204,7 +204,7 @@ function ServicePicker({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				className="inline-flex min-h-6 max-w-[28rem] items-center gap-1 rounded-control px-1.5 text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-focus"
+				className="inline-flex min-h-6 max-w-[28rem] items-center gap-1 rounded-control px-1.5 text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
 				data-testid="home-service"
 			>
 				<span className="truncate">{value.name}</span>
