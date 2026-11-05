@@ -79,9 +79,21 @@ describe("NewThread with Incident on (#1020)", () => {
 			expect.objectContaining({ id: "inc-1" }),
 		);
 
+		// An edited retry is a different incident, not the first one's stale text.
+		createIncident.mockResolvedValue({ id: "inc-edit" });
+		investigate.mockRejectedValueOnce(new Error("agent not ready"));
+		await expect(
+			send?.({ text: "payments is down", files: [] } as ComposerSend),
+		).rejects.toThrow("agent not ready");
+		createIncident.mockResolvedValue({ id: "inc-edited" });
+		await send?.({ text: "payments is down hard", files: [] } as ComposerSend);
+		expect(investigate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ id: "inc-edited" }),
+		);
+
 		// After a success, the next message makes a new incident.
 		createIncident.mockResolvedValue({ id: "inc-2" });
 		await send?.(message);
-		expect(createIncident).toHaveBeenCalledTimes(2);
+		expect(createIncident).toHaveBeenCalledTimes(4);
 	});
 });

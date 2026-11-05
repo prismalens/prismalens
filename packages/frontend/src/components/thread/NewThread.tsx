@@ -60,8 +60,9 @@ export function NewThread({
 	const investigate = useInvestigateIncident();
 	const navigate = useNavigate();
 	const [picked, setPicked] = useState<Picked>({});
-	// The incident a failed send already made: a retry investigates it, never makes another.
-	const madeIncident = useRef<string | null>(null);
+	// The incident a failed send made: a retry of the same text, severity and service
+	// investigates it, never makes another; an edited retry makes its own.
+	const madeIncident = useRef<{ id: string; sent: string } | null>(null);
 	const harness =
 		choice.harnesses.find((h) => h.id === picked.harness) ?? choice.effective;
 	const hid = harness?.id as HarnessId | undefined;
@@ -89,19 +90,25 @@ export function NewThread({
 		severity: Severity,
 		{ text, files }: ComposerSend,
 	) => {
+		const sent = JSON.stringify([
+			text,
+			severity,
+			subject.kind === "service" ? subject.serviceId : null,
+		]);
 		const id =
-			madeIncident.current ??
-			(
-				await createIncident.mutateAsync({
-					title: (text.split("\n")[0] ?? text).slice(0, 120),
-					description: text,
-					severity,
-					...(subject.kind === "service"
-						? { serviceId: subject.serviceId }
-						: {}),
-				})
-			).id;
-		madeIncident.current = id;
+			madeIncident.current?.sent === sent
+				? madeIncident.current.id
+				: (
+						await createIncident.mutateAsync({
+							title: (text.split("\n")[0] ?? text).slice(0, 120),
+							description: text,
+							severity,
+							...(subject.kind === "service"
+								? { serviceId: subject.serviceId }
+								: {}),
+						})
+					).id;
+		madeIncident.current = { id, sent };
 		const uploaded = await Promise.all(
 			files.map((f) => uploadAttachment(id, f)),
 		);
