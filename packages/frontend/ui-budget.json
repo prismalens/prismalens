@@ -572,7 +572,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 20
 		},
 		"webhook-thread-768-dark": {
 			"contrastFails": 0,
@@ -581,7 +581,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 20
 		},
 		"webhook-thread-390-dark": {
 			"contrastFails": 0,
@@ -590,7 +590,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 19
 		},
 		"webhook-thread-1280-light": {
 			"contrastFails": 0,
@@ -599,7 +599,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 20
 		},
 		"webhook-thread-768-light": {
 			"contrastFails": 0,
@@ -608,7 +608,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 20
 		},
 		"webhook-thread-390-light": {
 			"contrastFails": 0,
@@ -617,7 +617,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 19
 		},
 		"ask-thread-1280-dark": {
 			"contrastFails": 0,
@@ -698,7 +698,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 16
 		},
 		"threads-page-768-dark": {
 			"contrastFails": 0,
@@ -707,7 +707,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 16
 		},
 		"threads-page-390-dark": {
 			"contrastFails": 0,
@@ -716,7 +716,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 16
 		},
 		"threads-page-1280-light": {
 			"contrastFails": 0,
@@ -725,7 +725,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 16
 		},
 		"threads-page-768-light": {
 			"contrastFails": 0,
@@ -734,7 +734,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 16
 		},
 		"threads-page-390-light": {
 			"contrastFails": 0,
@@ -743,7 +743,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 16
 		},
 		"automation-page-1280-dark": {
 			"contrastFails": 0,
@@ -995,7 +995,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 20
 		},
 		"failed-1280-dark": {
 			"contrastFails": 0,

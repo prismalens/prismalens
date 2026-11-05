@@ -401,8 +401,11 @@ test("design coverage matrix", async ({
 	});
 	expect(hook.ok(), await hook.text()).toBe(true);
 	const { incidentId: hookId } = (await hook.json()) as { incidentId: string };
+	// The event names its service, so a run starts and the thread may open on its transcript (#1008).
 	await shoot("webhook-thread", `/incidents/${hookId}`, (p) =>
-		expect(p.getByTestId("incident-overview")).toBeVisible(),
+		expect(
+			p.getByTestId("incident-overview").or(p.getByTestId("situation")),
+		).toBeVisible(),
 	);
 	const asking = await fireIncident(page, alertmanager, deliverWebhook, {
 		name: "PaymentsQueueBacklog",
