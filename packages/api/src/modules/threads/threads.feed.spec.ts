@@ -341,6 +341,34 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		expect(rows.map((r) => r.settledAt)).toEqual([earlier, null]);
 	});
 
+	it("says the block is partly settled when a restore write also conflicts", async () => {
+		const inc = uuid();
+		const rows = [
+			{ id: uuid(), settledAt: null as Date | null },
+			{ id: uuid(), settledAt: null as Date | null },
+		];
+		prisma.investigation.findUnique.mockResolvedValue({
+			incidentId: inc,
+			updatedAt: new Date("2026-01-01T00:00:00Z"),
+		});
+		prisma.investigation.findMany.mockImplementation(async () =>
+			rows.map((r) => ({ ...r })),
+		);
+		let firstWrites = 0;
+		prisma.investigation.updateMany.mockImplementation(
+			async ({ where, data }: { where: { id: string }; data: { settledAt: Date | null } }) => {
+				if (where.id !== rows[0]?.id || firstWrites++ > 0) return { count: 0 };
+				(rows[0] as { settledAt: Date | null }).settledAt = data.settledAt;
+				return { count: 1 };
+			},
+		);
+		await expect(service().settle(rows[0]?.id as string, true)).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: expect.stringContaining("could not be put back"),
+		});
+		expect(rows[0]?.settledAt).not.toBeNull();
+	});
+
 	it("restores only threads of the block it was asked about", async () => {
 		const inc = uuid();
 		const own = uuid();
