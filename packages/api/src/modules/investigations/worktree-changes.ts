@@ -175,8 +175,8 @@ async function recordedRoot(
 const MAX_REFUSED = 200;
 
 /**
- * Whether git must not open this changed path: a link on its way, or a regular file with
- * another hard link. A path gone from disk is a deletion, diffed from the object store.
+ * Whether git must not open this changed path: a link on its way, a special file (device,
+ * fifo, socket) at the end, or a regular file with another hard link. A path gone from disk is a deletion, diffed from the object store.
  */
 async function linkedPath(root: string, path: string): Promise<boolean> {
 	if (!isSafeRepoPath(path)) return true;
@@ -187,6 +187,8 @@ async function linkedPath(root: string, path: string): Promise<boolean> {
 		const st = await lstat(at).catch(() => null);
 		if (!st) return false;
 		if (st.isSymbolicLink()) return true;
+		if (i === parts.length - 1 && !st.isFile() && !st.isDirectory())
+			return true;
 		if (i === parts.length - 1 && st.isFile() && st.nlink > 1) return true;
 	}
 	return false;
