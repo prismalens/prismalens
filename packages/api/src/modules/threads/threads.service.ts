@@ -432,13 +432,21 @@ export class ThreadsService {
 				done.push(w.id);
 			}
 		} catch (err) {
+			let unrestored = 0;
 			for (const doneId of done) {
 				const was = before.find((r) => r.id === doneId);
 				if (was)
 					await this.readState(doneId, { settledAt: was.settledAt }).catch(
-						() => false,
+						() => {
+							unrestored++;
+						},
 					);
 			}
+			if (unrestored)
+				throw new ORPCError("CONFLICT", {
+					message: `Thread changed, and ${unrestored} already written could not be put back: reload before trying again`,
+					cause: err,
+				});
 			throw err;
 		}
 	}
