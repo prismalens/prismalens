@@ -51,6 +51,7 @@ const needs = (/** @type {RegExp[]} */ safe, /** @type {string[]} */ files) =>
  *   headRef?: string,
  *   sameTreeAs?: string | null,
  *   draft?: boolean,
+ *   readyOnPassedHead?: boolean,
  * }} input
  * @returns {{ skip: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean }}
  */
@@ -61,6 +62,7 @@ export function plan({
 	headRef = "",
 	sameTreeAs = null,
 	draft = false,
+	readyOnPassedHead = false,
 }) {
 	if (event !== "pull_request")
 		return {
@@ -77,6 +79,14 @@ export function plan({
 			agents: false,
 			defer: true,
 			reason: "draft release PR: CI waits until it is marked ready for review",
+		};
+	// "Ready for review" starts a run; a head that already passed CI as a draft has nothing left to prove.
+	if (readyOnPassedHead)
+		return {
+			skip: true,
+			full: false,
+			agents: false,
+			reason: "marked ready for review: this head already passed CI",
 		};
 	if (sameTreeAs)
 		return {
@@ -136,6 +146,17 @@ function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
 	return hit ? hit.sha : null;
 }
 
+/** Whether a `CI` run on exactly this head commit already succeeded. */
+function headAlreadyPassed(/** @type {NodeJS.ProcessEnv} */ env) {
+	const out = gh([
+		"api",
+		`repos/${env.REPO}/actions/workflows/ci.yml/runs?head_sha=${env.HEAD_SHA}&event=pull_request&status=success&per_page=1`,
+		"--jq",
+		".total_count",
+	]);
+	return Number(out.trim()) > 0;
+}
+
 function main(/** @type {NodeJS.ProcessEnv} */ env) {
 	const event = String(env.EVENT_NAME);
 	/** @type {string[]} */
@@ -159,6 +180,15 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 			console.log(`tree lookup failed, running everything: ${error}`);
 		}
 	}
+	/** @type {boolean} */
+	let readyOnPassedHead = false;
+	if (event === "pull_request" && env.ACTION === "ready_for_review") {
+		try {
+			readyOnPassedHead = headAlreadyPassed(env);
+		} catch (error) {
+			console.log(`pass lookup failed, running everything: ${error}`);
+		}
+	}
 	const result = plan({
 		event,
 		files,
@@ -166,6 +196,7 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 		headRef: env.HEAD_REF || "",
 		sameTreeAs,
 		draft: env.DRAFT === "true",
+		readyOnPassedHead,
 	});
 	const lines = [
 		`skip=${result.skip}`,

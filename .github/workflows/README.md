@@ -60,7 +60,7 @@ required context and accepts a skipped job only when that plan skipped it:
 
 | Plan | Set when | Effect |
 | --- | --- | --- |
-| `skip` | the PR head tree equals the tree of an earlier passing `CI` run on that branch (a merge or rebase that leaves the tree unchanged; not `git merge -s ours` while `main` has other changes, see CONTRIBUTING.md, Landing a stack), or the PR changes only root `*.md` files | no job but `changes` and `CI gate` runs |
+| `skip` | the PR head tree equals the tree of an earlier passing `CI` run on that branch (a merge or rebase that leaves the tree unchanged; not `git merge -s ours` while `main` has other changes, see CONTRIBUTING.md, Landing a stack), or the PR changes only root `*.md` files, or the PR is marked ready for review and a `CI` run on exactly that head commit already passed | no job but `changes` and `CI gate` runs |
 | `full` | not a PR (main, nightly); a release-please PR; the `full-ci` label; or a PR touching any path not on `SAFE_FOR_FULL` in `scripts/ci-plan.mjs` (Markdown, test files, `docs/`, `packages/frontend/`, `packages/desktop/`, repo metadata) | `packed-service` and the release side checks on Linux, macOS and Windows run |
 | `agents` | a release PR or the `full-ci` label, or a PR touching any path not on `SAFE_FOR_AGENTS` (the safe-for-full paths plus `packages/api/`, `packages/cli/`, `auth`, `database`, `logger` and every workflow but `ci.yml`) | the five `Agent qualification` legs run |
 | `defer` | a release-please PR that is a draft | nothing runs; `CI gate` is red on purpose until the PR is marked ready, which starts the run |

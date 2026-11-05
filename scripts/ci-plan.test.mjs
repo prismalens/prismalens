@@ -92,6 +92,14 @@ test("a draft release PR defers everything; the same PR ready, or a draft featur
 	assert.deepEqual([feature.skip, feature.defer], [false, undefined]);
 });
 
+test("marking a PR ready after its head passed CI runs nothing; without that pass it plans as usual", () => {
+	const files = ["packages/api/src/a.ts"];
+	const passed = pr({ files, readyOnPassedHead: true });
+	assert.deepEqual([passed.skip, passed.full], [true, false]);
+	assert.match(passed.reason, /already passed CI/);
+	assert.equal(pr({ files, readyOnPassedHead: false }).skip, false);
+});
+
 test("a PR with no listed files is not mistaken for docs-only and runs every tier", () => {
 	const p = pr({ files: [] });
 	assert.deepEqual([p.skip, p.full, p.agents], [false, true, true]);
