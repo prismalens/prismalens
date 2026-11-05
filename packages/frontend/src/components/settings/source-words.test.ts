@@ -4,7 +4,7 @@
 import type { GitHostView, SourceRow } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import { envTokenChange, originOf } from "./ConnectionFormDialog";
-import { probeWord } from "./SourceConnectDialog";
+import { probeWord, saveFailed } from "./SourceConnectDialog";
 import {
 	credentialWord,
 	hostCredentialWord,
@@ -180,5 +180,14 @@ describe("source words and states (#848 Sources)", () => {
 			text: "Pick a token",
 			tone: "warn",
 		});
+	});
+});
+
+describe("saveFailed (#1020)", () => {
+	it("reads a save that stored no connection as failed", () => {
+		expect(saveFailed({ error: null, data: undefined })).toBe(false);
+		expect(saveFailed({ error: null, data: { connectionId: "c1" } })).toBe(false);
+		expect(saveFailed({ error: null, data: { connectionId: undefined } })).toBe(true);
+		expect(saveFailed({ error: new Error("x"), data: undefined })).toBe(true);
 	});
 });

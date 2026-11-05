@@ -399,7 +399,7 @@ export class ThreadsService {
 	/**
 	 * Writes seen or settled state with the row's own updatedAt, which orders the feed (#1020).
 	 * A row that changed in between is read again; false when the thread is gone,
-	 * CONFLICT when every attempt lost the race.
+	 * CONFLICT when three writes in a row lose the race.
 	 */
 	private async readState(
 		id: string,
@@ -417,9 +417,38 @@ export class ThreadsService {
 			});
 			if (count) return true;
 		}
-		throw new ORPCError("CONFLICT", {
-			message: "Thread changed while saving; try again",
-		});
+		throw new ORPCError("CONFLICT", { message: "Thread changed, try again" });
+	}
+
+	/** Writes each settled state in turn; a failure puts the ones already written back as they were. */
+	private async writeBlock(
+		writes: { id: string; settledAt: Date | null }[],
+		before: { id: string; settledAt: Date | null }[],
+	): Promise<void> {
+		const done: string[] = [];
+		try {
+			for (const w of writes) {
+				await this.readState(w.id, { settledAt: w.settledAt });
+				done.push(w.id);
+			}
+		} catch (err) {
+			let unrestored = 0;
+			for (const doneId of done) {
+				const was = before.find((r) => r.id === doneId);
+				if (was)
+					await this.readState(doneId, { settledAt: was.settledAt }).catch(
+						() => {
+							unrestored++;
+						},
+					);
+			}
+			if (unrestored)
+				throw new ORPCError("CONFLICT", {
+					message: `Thread changed, and ${unrestored} already written could not be put back: reload before trying again`,
+					cause: err,
+				});
+			throw err;
+		}
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
@@ -439,20 +468,26 @@ export class ThreadsService {
 			select: { id: true, settledAt: true },
 		});
 		const ids = rows.map((r) => r.id);
-		// readState keeps each row's updatedAt, so settling or undoing never reorders the feed.
 		if (!settled && restore) {
 			// Undo writes back each thread's own state, an earlier Settle included (#1020).
 			const inBlock = new Set(ids);
-			for (const r of restore.filter((r) => inBlock.has(r.id)))
-				await this.readState(r.id, {
-					settledAt: r.settledAt ? new Date(r.settledAt) : null,
-				});
+			await this.writeBlock(
+				restore
+					.filter((r) => inBlock.has(r.id))
+					.map((r) => ({
+						id: r.id,
+						settledAt: r.settledAt ? new Date(r.settledAt) : null,
+					})),
+				rows,
+			);
 			return { ids, previous: [] };
 		}
 		// Undo with no states to restore clears only the thread named, never its block.
 		const at = settled ? new Date() : null;
-		for (const target of settled ? ids : [id])
-			await this.readState(target, { settledAt: at });
+		await this.writeBlock(
+			(settled ? ids : [id]).map((target) => ({ id: target, settledAt: at })),
+			rows,
+		);
 		return {
 			ids,
 			previous: settled

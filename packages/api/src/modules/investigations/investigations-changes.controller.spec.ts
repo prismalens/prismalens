@@ -86,6 +86,36 @@ describe("InvestigationsController.getChanges (#1020)", () => {
 		expect(readWorktreeChanges).toHaveBeenLastCalledWith(null);
 	});
 
+	it("names a legacy repo the way every other route does, never by its credential-bearing address", async () => {
+		const legacy = {
+			...WORKSPACE,
+			repos: [
+				{
+					...WORKSPACE.repos[0],
+					sourceKind: "url",
+					url: "https://bob:s3cret@git.example/acme/shop.git",
+					name: "bob:s3cret@git.example-acme-shop",
+					dir: "/runs/r1/bob:s3cret@git.example-acme-shop",
+				},
+			],
+		};
+		findById.mockResolvedValue({ id: "r1", workspace: JSON.stringify(legacy) });
+		vi.mocked(readWorktreeChanges).mockResolvedValueOnce({
+			repos: [
+				{
+					state: "unavailable",
+					repo: legacy.repos[0]?.name ?? "",
+					reason: "removed",
+				},
+			],
+		});
+		const result = await getChanges()({ input: { id: "r1" } });
+		expect(result).toEqual({
+			repos: [{ state: "unavailable", repo: "repo-1", reason: "removed" }],
+		});
+		expect(JSON.stringify(result)).not.toContain("s3cret");
+	});
+
 	it("refuses an unknown run", async () => {
 		findById.mockResolvedValue(null);
 		await expect(getChanges()({ input: { id: "nope" } })).rejects.toMatchObject(

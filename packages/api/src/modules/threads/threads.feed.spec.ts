@@ -234,6 +234,21 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		});
 	});
 
+	it("reports a conflict, not success, when every read-state write loses its race", async () => {
+		const id = uuid();
+		prisma.investigation.findUnique.mockResolvedValue({
+			incidentId: null,
+			updatedAt: new Date("2026-01-01T00:00:00Z"),
+		});
+		prisma.investigation.findMany.mockResolvedValue([{ id, settledAt: null }]);
+		prisma.investigation.updateMany.mockResolvedValue({ count: 0 });
+		await expect(service().visit(id)).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(3);
+		await expect(service().settle(id, true)).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+	});
+
 	it("settles an incident's whole block, and undoes it", async () => {
 		const inc = uuid();
 		const ids = [uuid(), uuid()];
@@ -248,13 +263,15 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			where: { incidentId: inc },
 			select: { id: true, settledAt: true },
 		});
-		// Each row is written on its own, keeping its updatedAt.
-		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
-			where: { id: ids[1], updatedAt: stamp },
-			data: { settledAt: expect.any(Date), updatedAt: stamp },
-		});
+		for (const id of ids)
+			expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
+				where: { id, updatedAt: stamp },
+				data: { settledAt: expect.any(Date), updatedAt: stamp },
+			});
 		// A bare Undo clears only the thread it names, never its siblings (#1020).
+		prisma.investigation.updateMany.mockClear();
 		await service().settle(ids[0] as string, false);
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(1);
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
 			where: { id: ids[0], updatedAt: stamp },
 			data: { settledAt: null, updatedAt: stamp },
@@ -293,6 +310,63 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 
 		await service().settle(rows[1]?.id as string, false, done.previous);
 		expect(rows.map((r) => r.settledAt)).toEqual([earlier, null]);
+	});
+
+	it("puts the written threads back when a later one in the block conflicts", async () => {
+		const inc = uuid();
+		const earlier = new Date("2020-01-01T08:00:00Z");
+		const rows = [
+			{ id: uuid(), settledAt: earlier as Date | null },
+			{ id: uuid(), settledAt: null as Date | null },
+		];
+		const stamp = new Date("2026-01-01T00:00:00Z");
+		prisma.investigation.findUnique.mockResolvedValue({
+			incidentId: inc,
+			updatedAt: stamp,
+		});
+		prisma.investigation.findMany.mockImplementation(async () =>
+			rows.map((r) => ({ ...r })),
+		);
+		prisma.investigation.updateMany.mockImplementation(
+			async ({ where, data }: { where: { id: string }; data: { settledAt: Date | null } }) => {
+				const r = rows.find((x) => x.id === where.id);
+				if (!r || where.id === rows[1]?.id) return { count: 0 };
+				r.settledAt = data.settledAt;
+				return { count: 1 };
+			},
+		);
+		await expect(service().settle(rows[0]?.id as string, true)).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		expect(rows.map((r) => r.settledAt)).toEqual([earlier, null]);
+	});
+
+	it("says the block is partly settled when a restore write also conflicts", async () => {
+		const inc = uuid();
+		const rows = [
+			{ id: uuid(), settledAt: null as Date | null },
+			{ id: uuid(), settledAt: null as Date | null },
+		];
+		prisma.investigation.findUnique.mockResolvedValue({
+			incidentId: inc,
+			updatedAt: new Date("2026-01-01T00:00:00Z"),
+		});
+		prisma.investigation.findMany.mockImplementation(async () =>
+			rows.map((r) => ({ ...r })),
+		);
+		let firstWrites = 0;
+		prisma.investigation.updateMany.mockImplementation(
+			async ({ where, data }: { where: { id: string }; data: { settledAt: Date | null } }) => {
+				if (where.id !== rows[0]?.id || firstWrites++ > 0) return { count: 0 };
+				(rows[0] as { settledAt: Date | null }).settledAt = data.settledAt;
+				return { count: 1 };
+			},
+		);
+		await expect(service().settle(rows[0]?.id as string, true)).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: expect.stringContaining("could not be put back"),
+		});
+		expect(rows[0]?.settledAt).not.toBeNull();
 	});
 
 	it("restores only threads of the block it was asked about", async () => {

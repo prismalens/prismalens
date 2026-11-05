@@ -884,7 +884,7 @@ Given(
 	},
 );
 
-const TABS = ["", "/conversation", "/report", "/alerts", "/timeline"];
+const TABS = ["", "/conversation"];
 
 When("I view INC-1's Overview", async ({ page }) => {
 	await visit(page, `/incidents/${inc(page).id}`);

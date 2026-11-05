@@ -134,6 +134,13 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 		).rejects.toThrow(/on its incident/);
 	});
 
+	it("refuses a scheduled check with no incident yet, whose message route takes no files", async () => {
+		await expect(
+			service().uploadForRun(SCHEDULED_RUN, text("x")),
+		).rejects.toThrow(/no incident yet/);
+		expect(rows).toHaveLength(0);
+	});
+
 	it("hands a draft's file to exactly one of two racing starts", async () => {
 		const made = await service().uploadDraft(DRAFT, text("once"));
 		const results = await Promise.allSettled([

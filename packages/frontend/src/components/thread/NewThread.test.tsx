@@ -11,6 +11,7 @@ import { NewThread } from "./NewThread";
 let send: ((s: ComposerSend) => Promise<void>) | null = null;
 const createIncident = vi.fn();
 const investigate = vi.fn();
+const updateIncident = vi.fn(async () => ({}));
 const navigate = vi.fn(async () => {});
 
 vi.mock("./Composer", () => ({
@@ -35,6 +36,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 vi.mock("@/lib/api/hooks", () => ({
 	useCreateIncident: () => ({ mutateAsync: createIncident }),
 	useInvestigateIncident: () => ({ mutateAsync: investigate }),
+	useUpdateIncident: () => ({ mutateAsync: updateIncident }),
 }));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useStartThread: () => ({ mutateAsync: vi.fn() }),
@@ -51,6 +53,7 @@ beforeEach(() => {
 	send = null;
 	createIncident.mockReset();
 	investigate.mockReset();
+	updateIncident.mockClear();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -79,21 +82,60 @@ describe("NewThread with Incident on (#1020)", () => {
 			expect.objectContaining({ id: "inc-1" }),
 		);
 
-		// An edited retry is a different incident, not the first one's stale text.
-		createIncident.mockResolvedValue({ id: "inc-edit" });
-		investigate.mockRejectedValueOnce(new Error("agent not ready"));
-		await expect(
-			send?.({ text: "payments is down", files: [] } as ComposerSend),
-		).rejects.toThrow("agent not ready");
-		createIncident.mockResolvedValue({ id: "inc-edited" });
-		await send?.({ text: "payments is down hard", files: [] } as ComposerSend);
-		expect(investigate).toHaveBeenLastCalledWith(
-			expect.objectContaining({ id: "inc-edited" }),
-		);
-
 		// After a success, the next message makes a new incident.
 		createIncident.mockResolvedValue({ id: "inc-2" });
 		await send?.(message);
-		expect(createIncident).toHaveBeenCalledTimes(4);
+		expect(createIncident).toHaveBeenCalledTimes(2);
+	});
+
+	it("a retry with edited words or severity writes them onto the incident it reuses", async () => {
+		createIncident.mockResolvedValue({ id: "inc-1" });
+		investigate
+			.mockRejectedValueOnce(new Error("agent not ready"))
+			.mockResolvedValue({ investigationId: "run-1" });
+		await act(async () =>
+			root.render(
+				<NewThread subject={{ kind: "none" }} branch={null} incident="high" />,
+			),
+		);
+		await expect(
+			send?.({ text: "checkout is down", files: [] } as ComposerSend),
+		).rejects.toThrow("agent not ready");
+		await act(async () =>
+			root.render(
+				<NewThread
+					subject={{ kind: "none" }}
+					branch={null}
+					incident="critical"
+				/>,
+			),
+		);
+		await send?.({ text: "payments are down", files: [] } as ComposerSend);
+		expect(createIncident).toHaveBeenCalledTimes(1);
+		expect(updateIncident).toHaveBeenCalledWith({
+			id: "inc-1",
+			title: "payments are down",
+			description: "payments are down",
+			severity: "critical",
+		});
+		expect(investigate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ id: "inc-1", brief: "payments are down" }),
+		);
+	});
+
+	it("an unchanged retry writes nothing onto the incident", async () => {
+		createIncident.mockResolvedValue({ id: "inc-1" });
+		investigate
+			.mockRejectedValueOnce(new Error("agent not ready"))
+			.mockResolvedValue({ investigationId: "run-1" });
+		await act(async () =>
+			root.render(
+				<NewThread subject={{ kind: "none" }} branch={null} incident="high" />,
+			),
+		);
+		const message = { text: "checkout is down", files: [] } as ComposerSend;
+		await expect(send?.(message)).rejects.toThrow("agent not ready");
+		await send?.(message);
+		expect(updateIncident).not.toHaveBeenCalled();
 	});
 });
