@@ -181,6 +181,9 @@ describe("ThreadPanel (#1020)", () => {
 		expect(q("surface-diff")).not.toBeNull();
 		expect(q("surface-browser")).not.toBeNull();
 		expect(q("surface-suspects")).toBeNull();
+		// The empty panel is still named for assistive technology.
+		const panelEl = container.querySelector('[role="tabpanel"]');
+		expect(panelEl?.getAttribute("aria-label")).toBe("Surfaces");
 	});
 
 	it("a plain folder's thread has no Diff: there is no base to diff against", async () => {
