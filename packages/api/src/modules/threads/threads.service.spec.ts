@@ -9,6 +9,7 @@ const REPO = "11111111-1111-4111-8111-111111111111";
 const SERVICE = "22222222-2222-4222-8222-222222222222";
 const DRAFT = "33333333-3333-4333-8333-333333333333";
 const RUN = "44444444-4444-4444-8444-444444444444";
+const TX = { tx: true };
 
 const row = (over: Record<string, unknown> = {}) => ({
 	id: RUN,
@@ -78,10 +79,12 @@ describe("ThreadsService (#1020)", () => {
 			investigation: { findMany: vi.fn(async () => [row()]) },
 		};
 		investigations = {
-			startOrGet: vi.fn(async () => ({
-				investigation: { id: RUN },
-				created: true,
-			})),
+			startOrGet: vi.fn(
+				async (dto: { onCreate?: (tx: unknown, id: string) => Promise<void> }) => {
+					await dto.onCreate?.(TX, RUN);
+					return { investigation: { id: RUN }, created: true };
+				},
+			),
 		};
 		dispatch = {
 			threadRunOf: vi.fn(async () => thread),
@@ -125,7 +128,7 @@ describe("ThreadsService (#1020)", () => {
 			}),
 		);
 		expect(attachments.checkDraft).toHaveBeenCalledWith(DRAFT, ["f1"]);
-		expect(attachments.claimDraft).toHaveBeenCalledWith(DRAFT, ["f1"], RUN);
+		expect(attachments.claimDraft).toHaveBeenCalledWith(DRAFT, ["f1"], RUN, TX);
 		const job = dispatch.addInvestigationJob.mock.calls[0]?.[0];
 		expect(job).toMatchObject({
 			incidentId: null,
@@ -198,6 +201,19 @@ describe("ThreadsService (#1020)", () => {
 			service().start({ subject: { kind: "none" }, text: "x" }),
 		).rejects.toThrow(/Sign in first/);
 		expect(investigations.startOrGet).not.toHaveBeenCalled();
+	});
+
+	it("claims the draft inside the run's create, so a lost race leaves no run and no job", async () => {
+		attachments.claimDraft.mockRejectedValueOnce(new Error("not on this thread"));
+		await expect(
+			service().start({
+				subject: { kind: "none" },
+				text: "x",
+				draftKey: DRAFT,
+				attachments: ["f1"],
+			}),
+		).rejects.toThrow(/not on this thread/);
+		expect(dispatch.addInvestigationJob).not.toHaveBeenCalled();
 	});
 
 	it("says queued is false when the job could not be stored", async () => {

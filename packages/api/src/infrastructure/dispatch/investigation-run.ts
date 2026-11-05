@@ -173,6 +173,14 @@ async function assembled<T>(
 }
 
 /** A service check names its service in the values it was admitted with; an incident run in its incident (#979). */
+/** A project thread takes the global workspace policy, never a same-named service's (#1020). */
+function policyService(
+	data: InvestigationJobData,
+	name: string | undefined,
+): string | null {
+	return data.thread?.subject === "project" ? null : (name ?? null);
+}
+
 function serviceIdOf(
 	incident: Record<string, unknown> | null,
 	data?: InvestigationJobData,
@@ -874,9 +882,20 @@ async function runFollowUp(
 		const existed = new Map(
 			recorded.repos.map((r) => [r.dir, existsSync(r.dir)]),
 		);
+		const incident = data.incidentId
+			? await assembled(
+					"the incident",
+					() => ports.getIncident(data.incidentId as string),
+					null,
+				)
+			: null;
+		// The recorded service name goes stale on a rename; the id does not.
+		const serviceId =
+			data.thread?.subject === "project" ? null : serviceIdOf(incident, data);
 		await bindRun(id, {
 			incidentId: data.incidentId,
-			serviceName: recorded.repos[0]?.services[0] ?? null,
+			serviceName: policyService(data, recorded.repos[0]?.services[0]),
+			...(serviceId !== undefined ? { serviceId } : {}),
 			recorded: recorded.cwd,
 			project: data.thread?.name ?? null,
 		});
@@ -901,13 +920,6 @@ async function runFollowUp(
 		};
 		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
-		const incident = data.incidentId
-			? await assembled(
-					"the incident",
-					() => ports.getIncident(data.incidentId as string),
-					null,
-				)
-			: null;
 		const connectors = await assembled(
 			"the connectors",
 			() => ports.resolveConnectors(serviceIdOf(incident, data)),
@@ -1830,7 +1842,7 @@ export async function resolveWorkspace(
 		);
 	await bindRun(runId, {
 		incidentId: data.incidentId,
-		serviceName: repos[0]?.services[0] ?? null,
+		serviceName: policyService(data, repos[0]?.services[0]),
 		project: data.thread?.name ?? null,
 	});
 	const multi = repos.length > 1;

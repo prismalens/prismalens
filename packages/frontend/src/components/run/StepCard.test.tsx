@@ -108,3 +108,23 @@ describe("A step's command (#931)", () => {
 		expect(q("run-in-terminal")).toBeNull();
 	});
 });
+
+describe("A step's node on the spine (#1020)", () => {
+	it("draws its node kind, and a PrismaLens tool's outcome line as plain text", () => {
+		render(
+			step({ node: "knowledge", outcome: "INC-7 <i>retry</i> storm" }),
+			false,
+		);
+		expect(q("step")?.getAttribute("data-node")).toBe("knowledge");
+		expect(q("step-outcome")?.textContent).toBe("INC-7 <i>retry</i> storm");
+		expect(q("step-outcome")?.querySelector("i")).toBeNull();
+	});
+
+	it("falls back to its file or command kind when no node was derived", () => {
+		render(step({ kind: "file" }), false);
+		expect(q("step")?.getAttribute("data-node")).toBe("read");
+		render(step(), false);
+		expect(q("step")?.getAttribute("data-node")).toBe("command");
+		expect(q("step-outcome")).toBeNull();
+	});
+});

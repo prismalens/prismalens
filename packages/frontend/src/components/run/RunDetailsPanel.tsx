@@ -740,7 +740,7 @@ export function RunToolsSection({
  * The Files tab (#973): the tree beside the open file when the panel is wide
  * enough, else the tree, and the file in its place with Back.
  */
-function FilesPane({
+export function FilesPane({
 	files,
 	onJump,
 }: {

@@ -27,6 +27,8 @@ import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
 function renderSurfaces(
 	context: InvestigationContext,
 	online: boolean,
+	/** Names a fence that lists the folders instead, so no project-supplied name sits outside it. */
+	reposIn?: string,
 ): string[] {
 	const t = context.telemetry;
 	const surfaces: string[] = [];
@@ -70,7 +72,11 @@ function renderSurfaces(
 		);
 	}
 	const repos = context.workspace?.repos ?? [];
-	if (repos.length) {
+	if (repos.length && reposIn) {
+		surfaces.push(
+			`  - Application SOURCE CODE: ${repos.length} repositories, one folder each, listed in ${reposIn} below.`,
+		);
+	} else if (repos.length) {
 		surfaces.push(
 			`  - Application SOURCE CODE: ${repos.length} repositories, one folder each:`,
 			...repos.map(
@@ -193,19 +199,18 @@ function buildThreadPrompt(
 	options: InvestigationPromptOptions,
 ): string {
 	const t = context.thread;
-	const name = t?.name ? sanitizeUntrustedLine(t.name) : "";
 	const where =
-		t?.subject === "project" && name
-			? ` in the project ${name}`
-			: t?.subject === "service" && name
-				? ` on the service ${name}`
+		t?.subject === "project" && t.name
+			? " in the project named in THREAD_SUBJECT below"
+			: t?.subject === "service" && t.name
+				? " on the service named in THREAD_SUBJECT below"
 				: "";
 	const surfaces =
 		t?.subject === "none"
 			? [
 					"  - No project is linked: your working directory is an empty scratch folder.",
 				]
-			: renderSurfaces(context, !options.noNetwork);
+			: renderSurfaces(context, !options.noNetwork, "THREAD_SUBJECT");
 	const runLines = [
 		...(options.noNetwork ? [NO_NETWORK] : []),
 		accessLine(
@@ -216,7 +221,7 @@ function buildThreadPrompt(
 	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed.
 
 SURFACES
-${surfaces.join("\n")}${renderPreRun(context)}
+${surfaces.join("\n")}${renderThreadSubject(context)}${renderPreRun(context)}
 
 THIS RUN
 ${runLines.map((l) => `  - ${l}`).join("\n")}
@@ -224,6 +229,46 @@ ${runLines.map((l) => `  - ${l}`).join("\n")}
 ${UNTRUSTED_DATA_METHOD_GUARD}
 
 ${text}`;
+}
+
+/** The thread's project or service name and its folders: user-chosen names, so fenced as data (#1020). */
+function renderThreadSubject(context: InvestigationContext): string {
+	const t = context.thread;
+	const repos = context.workspace?.repos ?? [];
+	const lines = [
+		...(t?.name && t.subject !== "none"
+			? [
+					sanitizeUntrustedLine(
+						`${t.subject === "project" ? "Project" : "Service"}: ${t.name}`,
+					),
+				]
+			: []),
+		...repos.map(
+			(r) =>
+				`Folder ${quotedPath(r.path)}  services: ${sanitizeUntrustedLine(r.services.join(", "))}  (at ${sanitizeUntrustedLine(r.head.slice(0, 12))})${
+					r.subPath ? `  sub-path: ${quotedPath(r.subPath)}` : ""
+				}`,
+		),
+	];
+	if (!lines.length) return "";
+	return `\n\n${fenceUntrusted(
+		"THREAD_SUBJECT",
+		"Names the user gave this thread's project, service and folders in PrismaLens. A folder or sub-path is a JSON string, not a shell-safe one: parse it, then shell-quote the result before putting it in a command.",
+		lines.join("\n"),
+	)}`;
+}
+
+const BACKSLASH = String.fromCharCode(92);
+
+/**
+ * A path as a JSON string, exact and reversible (the line sanitizer folds runs of spaces);
+ * anything outside printable ASCII, and < >, is escaped so no path can close the fence (#1020).
+ */
+function quotedPath(path: string): string {
+	return JSON.stringify(path).replace(
+		/[^ -~]|[<>]/g,
+		(c) => `${BACKSLASH}u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+	);
 }
 
 /** The operator's notes on a service: guidance they wrote, fenced only so no line can close the block (#809). */

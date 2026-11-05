@@ -335,8 +335,9 @@ Then(
 			/waits for the next pause/i,
 		);
 		release(inc(page).title);
+		// Delivered, then answered once the agent replies (#1020); the reply can land first.
 		await expect(mine.getByTestId("transcript-delivery")).toHaveText(
-			/delivered at the next pause/i,
+			/delivered at the next pause|answered/i,
 		);
 		const text = await mine.locator("p").first().innerText();
 		await expect(
@@ -344,6 +345,9 @@ Then(
 				.getByTestId("transcript-prose")
 				.filter({ hasText: `On your question (${text})` }),
 		).toBeVisible();
+		await expect(mine.getByTestId("transcript-delivery")).toHaveText(
+			"answered",
+		);
 	},
 );
 
@@ -364,7 +368,7 @@ Then(
 	async ({ page }) => {
 		const mine = page.getByTestId("transcript-operator").last();
 		await expect(mine.getByTestId("transcript-delivery")).toHaveText(
-			/sent now/i,
+			/sent now|answered/i,
 		);
 		await expect(
 			page

@@ -636,10 +636,12 @@ export function RunPage() {
 					: null
 			}
 			trailing={
-				inv && !draft ? (
+				// Its slot is there from the first paint, so the header never shifts when the run loads (#1020).
+				!draft ? (
 					<DetailsToggle
 						ref={toggleRef}
-						open={panel}
+						disabled={!inv}
+						open={panel && !!inv}
 						onToggle={() => (panel ? closePanel() : setPanel(true))}
 						title={chat ? "Question details" : "Run details"}
 						flagged={flaggedCount}
@@ -722,6 +724,7 @@ export function RunPage() {
 							worked={worked}
 							afterReport={afterReport}
 							steps={transcriptSteps}
+							runId={live ? inv.id : undefined}
 						/>
 					)}
 				</div>
@@ -820,6 +823,7 @@ export function RunPage() {
 /** The header's details toggle: a red dot while something is flagged and the panel is shut. */
 function DetailsToggle({
 	ref,
+	disabled = false,
 	open,
 	onToggle,
 	title,
@@ -827,6 +831,7 @@ function DetailsToggle({
 	warns,
 }: {
 	ref: React.Ref<HTMLButtonElement>;
+	disabled?: boolean;
 	open: boolean;
 	onToggle: () => void;
 	title: string;
@@ -850,9 +855,10 @@ function DetailsToggle({
 				aria-pressed={open}
 				id="details-toggle"
 				aria-controls="run-details"
+				disabled={disabled}
 				onClick={onToggle}
 				className={cn(
-					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3",
+					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3 disabled:opacity-50",
 					open ? "bg-surface-3 text-text-1" : "bg-surface-2 text-text-2",
 				)}
 				data-testid="details-toggle"

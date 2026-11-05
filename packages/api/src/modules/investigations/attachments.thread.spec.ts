@@ -134,6 +134,26 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 		).rejects.toThrow(/on its incident/);
 	});
 
+	it("hands a draft's file to exactly one of two racing starts", async () => {
+		const made = await service().uploadDraft(DRAFT, text("once"));
+		const results = await Promise.allSettled([
+			service().claimDraft(DRAFT, [made.id], RUN),
+			service().claimDraft(DRAFT, [made.id], OTHER_RUN),
+		]);
+		expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+		expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+		const winner = results[0]?.status === "fulfilled" ? RUN : OTHER_RUN;
+		expect(rows[0]).toMatchObject({ investigationId: winner });
+	});
+
+	it("claims through the transaction client it is given", async () => {
+		const made = await service().uploadDraft(DRAFT, text("tx"));
+		const tx = { attachment: prisma.attachment };
+		prisma.attachment.updateMany.mockClear();
+		await service().claimDraft(DRAFT, [made.id], RUN, tx as never);
+		expect(prisma.attachment.updateMany).toHaveBeenCalledTimes(1);
+	});
+
 	it("refuses a scheduled check with no incident yet, whose message route takes no files", async () => {
 		await expect(
 			service().uploadForRun(SCHEDULED_RUN, text("x")),

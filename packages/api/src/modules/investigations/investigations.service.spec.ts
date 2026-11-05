@@ -315,6 +315,26 @@ describe("admission per subject (#1020)", () => {
 		});
 	});
 
+	it("runs onCreate inside the create's transaction, and a throw there leaves no run behind", async () => {
+		const { service, tx, timeline } = admitting(null);
+		const onCreate = vi.fn(async () => {});
+		await service.startOrGet({ incidentId: null, repositoryId: "repo-1", kind: "chat", onCreate });
+		expect(onCreate).toHaveBeenCalledWith(tx, "new");
+
+		const failing = admitting(null);
+		await expect(
+			failing.service.startOrGet({
+				incidentId: null,
+				kind: "chat",
+				onCreate: async () => {
+					throw new Error("claimed elsewhere");
+				},
+			}),
+		).rejects.toThrow(/claimed elsewhere/);
+		expect(failing.timeline.create).not.toHaveBeenCalled();
+		expect(timeline.create).toHaveBeenCalled();
+	});
+
 	it("an incident still admits one live run", async () => {
 		const { service, tx } = admitting({ id: "busy" });
 
