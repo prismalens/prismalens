@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
-import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
+import type {
+	HelperPlace,
+	Severity,
+	ThreadStartSubject,
+} from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useRef, useState } from "react";
 import {
@@ -33,6 +37,9 @@ export function NewThread({
 	note = false,
 	top,
 	slash,
+	place,
+	placeholder,
+	autoFocus = true,
 }: {
 	subject: ThreadStartSubject;
 	branch: string | null;
@@ -42,6 +49,10 @@ export function NewThread({
 	note?: boolean;
 	top?: ReactNode;
 	slash?: SlashCommand[];
+	/** A no-subject helper's empty page; the server words its context, never the page's data. */
+	place?: HelperPlace;
+	placeholder?: string;
+	autoFocus?: boolean;
 }) {
 	const choice = useAgentChoice();
 	const start = useStartThread();
@@ -130,6 +141,7 @@ export function NewThread({
 		const started = await start.mutateAsync({
 			subject,
 			text,
+			...(place ? { place } : {}),
 			...run,
 			...(uploaded.length
 				? { draftKey, attachments: uploaded.map((a) => a.id) }
@@ -145,7 +157,9 @@ export function NewThread({
 		<Composer
 			state="ready"
 			onSend={onSend}
-			placeholder={incident ? "What's wrong?" : "Ask or describe a change"}
+			placeholder={
+				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
+			}
 			choice={{ harness, model, effort, accessLevel }}
 			onChoice={(next) =>
 				setPicked((p) => ({
@@ -160,7 +174,7 @@ export function NewThread({
 			}
 			branch={branch}
 			blockedReason={choice.isLoading || (incident && note) ? null : unready}
-			autoFocus
+			autoFocus={autoFocus}
 			top={top}
 			slash={slash}
 		/>

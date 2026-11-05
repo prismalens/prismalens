@@ -183,6 +183,14 @@ export class ScenarioApp {
 		return (text ? JSON.parse(text) : undefined) as T;
 	}
 
+	/** A GET as this paired device, answered raw: for a stream or an error body. */
+	async fetchRaw(path: string, signal?: AbortSignal): Promise<Response> {
+		return fetch(`${this.url}/api${path}`, {
+			headers: { origin: this.url, cookie: this.cookie },
+			...(signal ? { signal } : {}),
+		});
+	}
+
 	private async pair(): Promise<void> {
 		const { createPairingLink, OPERATOR_SCOPES, prismaPairingStore } =
 			await import("@prismalens/auth");

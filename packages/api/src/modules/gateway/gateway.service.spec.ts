@@ -279,6 +279,21 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
 	});
 
+	it("a no-subject thread's lease lists only the title and publish tools, and asks for no evidence (#1020)", async () => {
+		const g = gateway();
+		const none = await g.lease(RUN_A, NAME, undefined, undefined, "none");
+		expect([...(none?.tools ?? [])].sort()).toEqual(["artifact_publish", "thread_title"]);
+		expect(none?.promptLine).not.toContain("evidence_record");
+		expect(none?.promptLine).not.toContain("tools_search");
+		const project = await g.lease(RUN_B, NAME, undefined, undefined, "project");
+		expect(project?.tools).not.toContain("incident_get");
+		expect(project?.tools).not.toContain("thread_list");
+		expect(project?.tools).not.toContain("thread_read");
+		expect(project?.tools).toContain("service_get");
+		const incident = await g.lease(RUN_A, NAME, undefined, undefined, "incident");
+		expect([...(incident?.tools ?? [])].sort()).toEqual(ALL_TOOLS);
+	});
+
 	it("toolsServer: lease carries the given serverName in the prompt line and entry", async () => {
 		const entry = await gateway().lease(RUN_A, "prismalens-customname12");
 		expect(entry?.serverName).toBe("prismalens-customname12");

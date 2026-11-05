@@ -19,6 +19,7 @@ import {
 	RunUsageSchema,
 	type RunWorkspace,
 	RunWorkspaceSchema,
+	type ThreadSubjectKind,
 } from "@prismalens/contracts/schemas";
 import {
 	type Findings,
@@ -49,6 +50,7 @@ import {
 	type RunbookRepo,
 	readRunbook,
 } from "./runbooks.js";
+import { subjectTools } from "./subject-tools.js";
 import {
 	type AttachmentItem,
 	type ChangeItem,
@@ -201,6 +203,7 @@ export class GatewayService {
 		serverName: string,
 		harness?: string,
 		turnStartedAt?: Date,
+		subject?: ThreadSubjectKind,
 	): Promise<GatewayEntry | null> {
 		const base = this.baseUrl();
 		if (!base) return null;
@@ -216,7 +219,9 @@ export class GatewayService {
 			artifacts: [],
 			published: new Set(),
 			recording: true,
-			view: runView(this.tools, { search: this.toolSearch(harness) }),
+			view: runView(subjectTools(this.tools, subject), {
+				search: this.toolSearch(harness),
+			}),
 			turnStartedAt,
 		};
 		this.runs.set(runId, state);

@@ -21,6 +21,7 @@ import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Empty, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -341,10 +342,13 @@ function ServicesPage() {
 						searchParams.search || teamFilter !== "all" ? (
 							<Empty text="No service matches." testId="services-empty" />
 						) : (
-							<Empty
-								text="No services yet. A service names the code the agent reads."
-								testId="services-empty"
-							/>
+							<>
+								<Empty
+									text="No services yet. A service names the code the agent reads."
+									testId="services-empty"
+								/>
+								<HelperThread place="services" className="mt-4" />
+							</>
 						)
 					) : (
 						<h2

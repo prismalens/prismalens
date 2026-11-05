@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
 	gatewayNode,
@@ -62,6 +62,14 @@ describe("outcomeLine (#1020)", () => {
 		expect(outcomeLine({ output: "x".repeat(200) })?.length).toBe(120);
 		expect(outcomeLine({ output: "", isError: true })).toBe("Failed");
 		expect(outcomeLine({})).toBeNull();
+	});
+
+	it("skips the data note every result leads with, and shows no raw JSON", () => {
+		const lines = (...l: string[]) => l.join(String.fromCharCode(10));
+		expect(outcomeLine({ output: lines(HARNESS_DATA_NOTE, "No incident") })).toBe("No incident");
+		expect(outcomeLine({ output: lines(HARNESS_DATA_NOTE, "{", '  "title": "x"', "}") })).toBeNull();
+		expect(outcomeLine({ output: lines(HARNESS_DATA_NOTE, "[]"), isError: true })).toBe("Failed");
+		expect(outcomeLine({ output: HARNESS_DATA_NOTE })).toBeNull();
 	});
 });
 

@@ -12,8 +12,9 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { LinkToProject } from "@/components/alerts/LinkToProject";
+import { WebhookCopy } from "@/components/alerts/WebhookCopy";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -35,6 +36,8 @@ export interface AlertListPaneProps {
 	className?: string;
 	/** In the sidebar one line a row; as a page, the state, incident and age under it. */
 	variant?: "sidebar" | "page";
+	/** As a page with no alerts and no filter: shown under the empty line. A prop, so the sidebar never loads it. */
+	whenEmpty?: ReactNode;
 }
 
 /** The list query from the frame's search. `unassigned` filters server-side (limit caps at 100). */
@@ -131,6 +134,7 @@ export function AlertListPane({
 	selectedId,
 	className,
 	variant = "page",
+	whenEmpty,
 }: AlertListPaneProps) {
 	const navigate = useNavigate();
 	const sidebar = variant === "sidebar";
@@ -147,6 +151,9 @@ export function AlertListPane({
 	});
 	const alerts = data?.data ?? [];
 	const rows = useMemo(() => orderAlerts(alerts), [alerts]);
+	const empty = !isLoading && !(error && !data) && rows.length === 0;
+	const unfiltered =
+		!search.status && !search.severity && search.tab !== "unmapped";
 
 	const open = (alert: AlertWithRelations) =>
 		navigate({ to: "/alerts/$id", params: { id: alert.id }, search: keep });
@@ -260,22 +267,26 @@ export function AlertListPane({
 						onRetry={() => void refetch()}
 					/>
 				)}
-				{!isLoading && !(error && !data) && rows.length === 0 && (
+				{empty && (
 					<Empty
 						className="px-4"
 						text="No alerts found."
 						testId="alerts-empty-state"
 						action={
 							sidebar ? undefined : (
-								<Button variant="text" size="sm" asChild>
-									<Link to="/settings" search={{ tab: "alert-intake" }}>
-										Add an alert source
-									</Link>
-								</Button>
+								<>
+									<Button variant="text" size="sm" asChild>
+										<Link to="/settings" search={{ tab: "alert-intake" }}>
+											Add an alert source
+										</Link>
+									</Button>
+									{unfiltered && <WebhookCopy testIdPrefix="alerts" />}
+								</>
 							)
 						}
 					/>
 				)}
+				{!sidebar && unfiltered && empty && whenEmpty}
 				{lanes.map((lane) => (
 					<section
 						key={lane.id}

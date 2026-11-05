@@ -1007,7 +1007,8 @@ export async function* runInvestigation(
 						noNetwork,
 						level,
 						modeName,
-					}) + toolsLine,
+						tools: toolsLine,
+					}),
 					opts.attachments,
 				),
 			);

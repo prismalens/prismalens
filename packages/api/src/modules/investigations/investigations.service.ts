@@ -6,6 +6,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	FollowUpKind,
+	HelperPlace,
 	InvestigationKind,
 	LiveTurn,
 	RunEndReason,
@@ -152,6 +153,8 @@ export class InvestigationsService {
 			serviceId?: string;
 			/** A project thread's repository (#1020). */
 			repositoryId?: string;
+			/** A no-subject helper's empty page (#1020). */
+			helperPlace?: HelperPlace;
 			triggerType?: string;
 			triggerReason?: string;
 			/** The incident was already resolved or closed; it stays so (#743). */
@@ -193,6 +196,7 @@ export class InvestigationsService {
 						...(dto.scheduleId ? { scheduleId: dto.scheduleId } : {}),
 						...(dto.serviceId ? { serviceId: dto.serviceId } : {}),
 						...(dto.repositoryId ? { repositoryId: dto.repositoryId } : {}),
+						...(dto.helperPlace ? { helperPlace: dto.helperPlace } : {}),
 						status: "pending",
 						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),

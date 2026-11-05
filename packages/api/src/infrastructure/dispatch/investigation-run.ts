@@ -51,6 +51,7 @@ import {
 	recordedFindings,
 	ServiceInvestigationMetadataSchema,
 	serviceCheckContext,
+	type ThreadSubjectKind,
 	type TurnOutcome,
 	threadChatContext,
 	toFiringAlert,
@@ -191,6 +192,13 @@ function serviceIdOf(
 	return typeof incident?.serviceId === "string"
 		? incident.serviceId
 		: undefined;
+}
+
+/** A thread with no incident: its subject picks the PrismaLens tools it is offered (#1020). */
+function toolSubject(
+	data: InvestigationJobData,
+): ThreadSubjectKind | undefined {
+	return data.thread && !data.incidentId ? data.thread.subject : undefined;
 }
 
 /** What the pre-run reads are keyed by: the incident, else the service a check is about (#979). */
@@ -417,7 +425,13 @@ async function runJobInternal(
 		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
 		const gateway = await ports.gateway
-			?.lease(runId, workspace.toolsServer, harness)
+			?.lease(
+				runId,
+				workspace.toolsServer,
+				harness,
+				undefined,
+				toolSubject(data),
+			)
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the run has no PrismaLens tools",
@@ -982,7 +996,7 @@ async function runFollowUp(
 			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
 		const gateway = await ports.gateway
-			?.lease(id, workspace.toolsServer, harness, new Date())
+			?.lease(id, workspace.toolsServer, harness, new Date(), toolSubject(data))
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",
@@ -2307,8 +2321,13 @@ async function assembleInvestigationContext(
 		// A coding chat: never an alert made up from nothing (#1020, OBJ-003).
 		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
 		const name = data.thread.name ?? undefined;
+		const place = data.thread.place ?? undefined;
 		return threadChatContext(
-			{ subject: data.thread.subject, ...(name ? { name } : {}) },
+			{
+				subject: data.thread.subject,
+				...(name ? { name } : {}),
+				...(place ? { place } : {}),
+			},
 			{
 				...(data.thread.subject === "service" && name
 					? { service: { name } }

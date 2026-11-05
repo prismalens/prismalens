@@ -6,7 +6,7 @@
  * ordinary tool call by what it names, and a PrismaLens tool by its name, whose
  * recorded output gives the outcome line. Anything else is an honest "tool".
  */
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import {
 	ChartLine,
 	CircleAlert,
@@ -104,7 +104,10 @@ export function stepNode(call: {
 
 type HarnessCall = Extract<CanonicalEvent, { kind: "harness_tool_call" }>;
 
-/** The first line of what a PrismaLens tool returned, as plain text, at most 120 characters. */
+/**
+ * The first line of what a PrismaLens tool returned, as plain text, at most 120 characters.
+ * The data note leads every result, so it is skipped (the transcript shows it once), and so is raw JSON.
+ */
 export function outcomeLine(
 	call: Pick<HarnessCall, "output" | "isError">,
 ): string | null {
@@ -118,8 +121,8 @@ export function outcomeLine(
 				.join("")
 				.trim(),
 		)
-		.find(Boolean);
-	if (!line) return call.isError ? "Failed" : null;
+		.find((l) => l && l !== HARNESS_DATA_NOTE);
+	if (!line || /^[[{]/.test(line)) return call.isError ? "Failed" : null;
 	return line.length > 120 ? `${line.slice(0, 119)}…` : line;
 }
 

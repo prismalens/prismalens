@@ -301,6 +301,7 @@ model Investigation {
   agentMode String? // the agent's own ACP mode id PrismaLens set
   title     String? // investigation: the brief's first line; chat: the message's first 120 chars
   titleSetBy String? // agent | user; once user, the agent's thread_title leaves it (#1020)
+  helperPlace String? // alerts | services | schedules: the empty page a no-subject helper started on (#1020)
   accessLevel String? // supervised | auto-edits | auto | full-access; null before #673 w21
 
   // A thread's turns (#673 w59): what the live turn owes, how the last message ended

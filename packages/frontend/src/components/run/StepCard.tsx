@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
@@ -94,6 +95,14 @@ export function StepCard({
 						)}
 					/>
 				</button>
+				{step.dataNote && (
+					<p
+						className="px-3 pb-2 pl-9 text-meta text-text-3"
+						data-testid="step-data-note"
+					>
+						{HARNESS_DATA_NOTE}
+					</p>
+				)}
 				{step.outcome && (
 					<p
 						className="truncate px-3 pb-2 pl-9 text-meta text-text-2"
