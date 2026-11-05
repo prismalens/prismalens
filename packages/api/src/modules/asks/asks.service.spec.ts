@@ -133,4 +133,21 @@ describe("AsksService (#1024)", () => {
 		expect(await lookup.get(legacy)).toMatchObject({ ask: { title: "Run kubectl" }, closed: null });
 		expect(await lookup.get("0b3c2f1e-1111-4222-8333-444455556666")).toBeNull();
 	});
+
+	it("close() ends a cancelled caller's tool ask once: handlers run, a late answer is refused, a second close returns the first", async () => {
+		const { svc, dispatch } = setup();
+		(dispatch as Record<string, unknown>).closeToolAsk = vi.fn(() => true);
+		const askId = await svc.open(THREAD, toolAsk);
+		const heard: unknown[] = [];
+		svc.onClosed(askId, (c) => heard.push(c));
+		const closed = await svc.close(askId, "stopped");
+		expect(closed).toMatchObject({ outcome: "stopped", ask: { askId } });
+		expect(closed).not.toHaveProperty("answer");
+		expect((dispatch as unknown as { closeToolAsk: ReturnType<typeof vi.fn> }).closeToolAsk).toHaveBeenCalledWith(THREAD, askId, "stopped");
+		expect(await svc.close(askId, "expired")).toBe(closed);
+		expect(heard).toHaveLength(1);
+		dispatch.answerAsk.mockReturnValueOnce(null as never);
+		await expect(svc.answer(THREAD, askId, approve, HOST)).rejects.toBeInstanceOf(AskConflict);
+		expect(await svc.close("0b3c2f1e-1111-4222-8333-444455556666", "stopped")).toBeNull();
+	});
 });

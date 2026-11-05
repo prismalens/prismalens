@@ -113,6 +113,18 @@ export interface RunQueueRequest {
 	reply(state: "edited" | "withdrawn" | null): void;
 }
 
+export function runAskCloseTopic(investigationId: string): string {
+	return `investigation:ask-close:${investigationId}`;
+}
+
+/** Close a PrismaLens tool's ask unanswered: its caller cancelled (#1024). */
+export interface RunAskCloseRequest {
+	askId: string;
+	outcome: "stopped" | "expired";
+	/** false: the run holds no such ask. */
+	reply(closed: boolean): void;
+}
+
 export function runToolAskTopic(investigationId: string): string {
 	return `investigation:tool-ask:${investigationId}`;
 }

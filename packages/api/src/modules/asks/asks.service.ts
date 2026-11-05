@@ -152,6 +152,21 @@ export class AsksService implements AsksPort {
 		};
 	}
 
+	async close(
+		askId: string,
+		outcome: "stopped" | "expired",
+	): Promise<ClosedAsk | null> {
+		const done = this.closed.get(askId);
+		if (done) return done;
+		const ask = this.toolAsks.get(askId);
+		if (!ask) return null;
+		// The run settles its hold, which settles here; a run already gone is settled directly.
+		this.dispatch.closeToolAsk(ask.threadId, askId, outcome);
+		this.toolAsks.delete(askId);
+		this.settle({ ask, outcome, closedAt: new Date().toISOString() });
+		return this.closed.get(askId) ?? null;
+	}
+
 	onClosed(askId: string, handler: (closed: ClosedAsk) => void): () => void {
 		const done = this.closed.get(askId);
 		if (done) {

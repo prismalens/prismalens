@@ -914,4 +914,14 @@ describe("AskChannel answers (#1024)", () => {
 		expect(await stopping).toEqual({ outcome: "stopped" });
 		vi.useRealTimers();
 	});
+
+	it("cancel() closes a held ask unanswered, once", async () => {
+		const channel = createAskChannel();
+		const held = channel.hold("t", { kind: "permission", accepts: () => true }, { timeoutMs: 0 });
+		expect(channel.cancel("t", "stopped")).toBe(true);
+		expect(await held).toEqual({ outcome: "stopped" });
+		expect(channel.cancel("t", "stopped")).toBe(false);
+		expect(channel.answer("t", APPROVE)).toBeNull();
+	});
 });
+

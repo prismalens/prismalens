@@ -380,6 +380,8 @@ export interface AskChannel {
 		ask: HeldAsk,
 		ctx: { signal?: AbortSignal; timeoutMs: number },
 	): Promise<HeldOutcome>;
+	/** Close a held ask unanswered (#1024): its caller cancelled. False when it no longer waits. */
+	cancel(askId: string, outcome: "stopped" | "expired"): boolean;
 	/** The asks still waiting, oldest first. */
 	pending(): PendingAsk[];
 	/** The run ended: every waiting ask is refused as `stopped`. */
@@ -550,6 +552,12 @@ export function createAskChannel(
 				if (ctx.signal?.aborted) onAbort();
 				else ctx.signal?.addEventListener("abort", onAbort, { once: true });
 			});
+		},
+		cancel(askId, outcome) {
+			const kept = held.get(askId);
+			if (!kept) return false;
+			kept.settle({ outcome });
+			return true;
 		},
 		pending: () =>
 			[...waiting.values(), ...held.values()]

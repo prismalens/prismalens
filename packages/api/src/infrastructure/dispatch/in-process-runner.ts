@@ -146,6 +146,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 			},
 			change: (messageId, text) => steer.change(messageId, text),
 			openAsk: (ask) => toolAsks.open(ask, controller.signal),
+			closeAsk: (askId, outcome) => asks.cancel(askId, outcome),
 		};
 	};
 }

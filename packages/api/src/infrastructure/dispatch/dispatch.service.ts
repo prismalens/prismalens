@@ -103,10 +103,12 @@ import {
 	EVENT_BUS,
 	type EventBus,
 	type MessageState,
+	type RunAskCloseRequest,
 	type RunAskRequest,
 	type RunMessageRequest,
 	type RunQueueRequest,
 	type RunToolAskRequest,
+	runAskCloseTopic,
 	runAskTopic,
 	runCancelTopic,
 	runMessageTopic,
@@ -1540,6 +1542,23 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 		});
 		return state;
+	}
+
+	/** Close a tool ask the live run holds, unanswered; false when it holds none (#1024). */
+	closeToolAsk(
+		investigationId: string,
+		askId: string,
+		outcome: "stopped" | "expired",
+	): boolean {
+		let closed = false;
+		this.bus.publish<RunAskCloseRequest>(runAskCloseTopic(investigationId), {
+			askId,
+			outcome,
+			reply: (c) => {
+				closed = c;
+			},
+		});
+		return closed;
 	}
 
 	/** Hand a PrismaLens tool's ask to the live run; null when no run holds the thread (#1024). */
