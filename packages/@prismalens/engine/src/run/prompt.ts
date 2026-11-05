@@ -144,6 +144,7 @@ export function renderPreRun(
 							`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
 					)
 					.join("\n"),
+				owes,
 			),
 		);
 	if (p.runbooksSkipped)
@@ -187,9 +188,9 @@ export function buildChatPrompt(
 	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
-${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}${toolsBlock(options)}
+${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context, "answer")}${toolsBlock(options)}
 
-${UNTRUSTED_DATA_METHOD_GUARD}
+${UNTRUSTED_DATA_CHAT_GUARD}
 
 ${text}`;
 }
