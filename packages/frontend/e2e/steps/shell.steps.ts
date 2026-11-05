@@ -446,6 +446,10 @@ Then("I am on the thread list", async ({ page }) => {
 	await expect.poll(() => pathOf(here(page))).toBe("/threads");
 });
 
+Then("I am on the inbox", async ({ page }) => {
+	await expect.poll(() => pathOf(here(page))).toBe("/incidents");
+});
+
 When("I open an alert that opened INC-1", async ({ page }) => {
 	await visit(page, `/alerts/${world(page).incident?.alertId}`);
 	await expect(page.getByTestId("alert-detail")).toBeVisible();
