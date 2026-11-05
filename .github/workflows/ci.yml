@@ -702,10 +702,23 @@ jobs:
             | join(", ")')
           if [ -n "$bad" ]; then
             echo "::error::CI gate is red — these jobs did not succeed: $bad"
-            # Name each failed job, its failed step and its log, so nobody digs for them (#885).
-            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
-              --jq '.jobs[] | select(.conclusion == "failure") | "  failed: \(.name) / \(first(.steps[]? | select(.conclusion == "failure") | .name) // "-") -> \(.html_url)"' \
-              || echo "(could not list the failed jobs)"
+            # Say what kind of red each job is, so nobody digs through a log for a runner shortage (#885, #1052).
+            report=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" --jq '
+              .jobs[]
+              | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")
+              | (first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name) // "-") as $step
+              | if .conclusion == "failure" then "  failed: \(.name) / \($step) -> \(.html_url)"
+                elif .conclusion == "timed_out" then "  timed out: \(.name) / \($step) -> \(.html_url)"
+                elif (.steps | length) == 0 then "  never started: \(.name) was cancelled before a runner took it (no runner free, or the run was cancelled), not a code failure -> \(.html_url)"
+                else "  cancelled mid-run: \(.name) / \($step) -> \(.html_url)" end') \
+              || report="(could not list the failed jobs)"
+            echo "$report"
+            if echo "$bad" | grep -q "=skipped"; then
+              echo "A job shown as skipped did not run because a job it needs did not succeed, or the plan did not allow the skip."
+            fi
+            if echo "$report" | grep -q "never started\|cancelled mid-run" && ! echo "$report" | grep -q "failed:\|timed out:"; then
+              echo "::notice::Only cancelled jobs, no failed step. Rerun just them: gh run rerun $GITHUB_RUN_ID --failed"
+            fi
             exit 1
           fi
           reason=$(echo "$NEEDS_JSON" | jq -r '.changes.outputs.reason // empty')

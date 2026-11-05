@@ -18,7 +18,7 @@ live ruleset, are what to trust.
 
 | Required check                             | Published by                                                                                       | Kind      |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------- | --------- |
-| `CI gate`                                  | `ci.yml` → job `ci-gate`; when red it lists each failed job, its failed step and a link to the log | check run |
+| `CI gate`                                  | `ci.yml` → job `ci-gate`; when red it labels each job `failed`, `timed out`, `never started` (cancelled before a runner took it) or `cancelled mid-run`, with the step and a link, and says when `gh run rerun --failed` is enough | check run |
 | `Validate PR title (conventional commits)` | `pr-title.yml` → job `validate` (single check run; step-level event split)                         | check run |
 
 There is no merge queue: it left the ruleset in #1023 after flakes kept ejecting PRs from it (#989, #1018).
