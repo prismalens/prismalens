@@ -566,6 +566,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The UI gates read the lines a pull request adds against its base.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -582,6 +585,11 @@ jobs:
       # Biome reads source only — no build or Prisma generate required.
       - name: Biome check (format + lint)
         run: pnpm format-and-lint
+
+      # The look gates on added lines: spinners, raw colours, AI tells, long empty-state copy.
+      - name: UI gates
+        if: github.event_name == 'pull_request'
+        run: bash packages/frontend/scripts/ui-gates.sh "origin/${{ github.base_ref }}"
 
   # The `gate-scripts` job that stood here tested `.github/scripts/` — the
   # merge-gate publisher, the high-risk path matcher, and their producer-transport

@@ -460,6 +460,29 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    commit — a required check enforces it (the repo squash-merges, so the PR
    title becomes the trunk commit subject).
 
+## UI changes
+
+The app's look is held by checks first and review second; the rules live in
+`packages/frontend/design/GUIDELINES.md`.
+
+- **Always:** `pnpm --filter @prismalens/frontend ui:check:static` (the look lint
+  and the diff gates, seconds). CI runs both in its lint job.
+- **When a screen changes:** `pnpm --filter @prismalens/frontend ui:check`. It
+  runs the design matrix (`ui:shots`: every screen and state at three widths in
+  both themes) and holds it to `packages/frontend/ui-budget.json`. A rise fails;
+  raise a budget only by editing the file, with the reason in the PR.
+- **Review:** a visual change gets one fast-model pass over the changed states;
+  a structural change (navigation, the composer, a whole screen) also gets the
+  adversarial review in `packages/frontend/design/JUDGE.md`.
+
+The PR checklist for a UI change:
+
+- before and after shots from `ui:shots`;
+- the `ui-budget.json` diff, if any, with reasons;
+- every user-facing string added or changed;
+- `packages/frontend/design/CAPABILITIES.md` unchanged, or updated with why;
+- the docs-surface line (`Docs: none, not on the contract` for look-only work).
+
 ## Code style
 
 - Formatting and linting are handled by **Biome** — run `pnpm format-and-lint`.

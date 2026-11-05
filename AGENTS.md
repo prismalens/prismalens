@@ -30,6 +30,9 @@ These are easy for an agent to break and expensive to undo.
 - Don't name other products without need. The supported agents (Claude Code, Codex, OpenCode, Gemini CLI) may be named where a doc identifies an integration or its mode.
 - Commits and PR titles follow Conventional Commits; a required check enforces the PR title.
 
+## UI changes
+Any change under `packages/frontend` follows `packages/frontend/design/GUIDELINES.md`. Run `pnpm --filter @prismalens/frontend ui:check:static` always and `ui:check` when a screen changes; `CONTRIBUTING.md` → *UI changes* says which review a PR needs and what its body lists.
+
 ## Docs
 docs.prismalens.io documents a short contract, not every feature: install and upgrade, the basic use of `pl up`, `pl doctor` and `pl upgrade`, the alert webhook contract, the report's structure, and the trust and data guarantees. The list lives in `docs/POLICY.md` in `prismalens/prismalens.io`. A PR that changes an item on it links the website PR or a docs issue. Anything else is described by `--help`, the UI and the release notes, and needs no docs change; a spec says "Docs: none, not on the contract".
 

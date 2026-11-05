@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as DesignRouteImport } from './routes/[_]design'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAlertsRouteRouteImport } from './routes/_authenticated/alerts/route'
@@ -40,6 +41,11 @@ import { Route as AuthenticatedSchedulesIdRunsRunIdRouteImport } from './routes/
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesignRoute = DesignRouteImport.update({
+  id: '/_design',
+  path: '/_design',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PairRoute = PairRouteImport.update({
@@ -201,6 +207,7 @@ const AuthenticatedSchedulesIdRunsRunIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/_design': typeof DesignRoute
   '/pair': typeof PairRoute
   '/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
@@ -229,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/schedules/$id/runs/$runId': typeof AuthenticatedSchedulesIdRunsRunIdRoute
 }
 export interface FileRoutesByTo {
+  '/_design': typeof DesignRoute
   '/pair': typeof PairRoute
   '/automation': typeof AuthenticatedAutomationRoute
   '/new': typeof AuthenticatedNewRoute
@@ -256,6 +264,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/_design': typeof DesignRoute
   '/pair': typeof PairRoute
   '/_authenticated/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
@@ -288,6 +297,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/_design'
     | '/pair'
     | '/alerts'
     | '/incidents'
@@ -316,6 +326,7 @@ export interface FileRouteTypes {
     | '/schedules/$id/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/_design'
     | '/pair'
     | '/automation'
     | '/new'
@@ -342,6 +353,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/_design'
     | '/pair'
     | '/_authenticated/alerts'
     | '/_authenticated/incidents'
@@ -373,6 +385,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  DesignRoute: typeof DesignRoute
   PairRoute: typeof PairRoute
 }
 
@@ -383,6 +396,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_design': {
+      id: '/_design'
+      path: '/_design'
+      fullPath: '/_design'
+      preLoaderRoute: typeof DesignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pair': {
@@ -695,6 +715,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  DesignRoute: DesignRoute,
   PairRoute: PairRoute,
 }
 export const routeTree = rootRouteImport

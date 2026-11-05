@@ -13,4 +13,17 @@ gate "$(echo "$files" | xargs -r grep -nHE '\b(border(-[trblxy])?(-hairline)?|ri
 gate "$(echo "$files" | xargs -r grep -nHE '<[a-z][a-z0-9-]*[^>]*[[:space:]]title[[:space:]]*=')" "DOM title tooltip:"
 gate "$(echo "$files" | xargs -r grep -nH '<select')" "native select:"
 gate "$(echo "$files" | xargs -r grep -nHE 'raised-edge|hairline-strong|inset 0 0 0 1px')" "deleted token:"
+# Shared-component contracts (GUIDELINES.md): one spinner (shared/Ring), colours from tokens,
+# one page header (PageHeader, IncidentHeader). Existing exceptions are listed in look-contracts.allow.
+allow() { grep -qxF "$1 $2" scripts/look-contracts.allow; }
+contract() {
+	local rule="$1" pattern="$2" own="$3" hits=""
+	for f in $(echo "$files" | grep -E '\.tsx$' | grep -vE "$own|\.test\.tsx$"); do
+		grep -qE "$pattern" "$f" 2>/dev/null && ! allow "$rule" "$f" && hits+="$f"$'\n'
+	done
+	gate "${hits%$'\n'}" "$rule outside its shared component:"
+}
+contract spinner 'animate-spin|Loader2' 'components/shared/Ring\.tsx|components/ui/'
+contract raw-colour '#[0-9a-fA-F]{6}\b|"#[0-9a-fA-F]{3}"|\brgb\(' 'components/ui/'
+contract header 'h-\(--header-h\)' 'shell/PageHeader\.tsx|run/IncidentHeader\.tsx|components/Sidebar\.tsx|run/RunDetailsPanel\.tsx'
 exit $fail

@@ -1,0 +1,20 @@
+# Files allowed to break a contract rule, one 'rule path' per line. The list only shrinks:
+# a new file that needs an exception names its reason in the PR (GUIDELINES.md, Shared components).
+spinner src/components/ai/prompt-input.tsx
+spinner src/components/incidents/CreateIncidentDialog.tsx
+spinner src/components/services/ServiceFormDialog.tsx
+spinner src/components/settings/ConnectionFormDialog.tsx
+spinner src/components/settings/SourceConnectDialog.tsx
+spinner src/components/settings/SourceDetail.tsx
+spinner src/components/shared/DestructiveConfirm.tsx
+spinner src/routes/pair.tsx
+raw-colour src/components/icons/prismalens-mark.tsx
+raw-colour src/components/run/ArtifactCard.tsx
+header src/components/alerts/AlertDetail.tsx
+header src/components/projects/ProjectList.tsx
+header src/components/projects/ProjectPage.tsx
+header src/components/thread/ThreadPage.tsx
+header src/routes/_authenticated/incidents/$id/route.tsx
+header src/routes/_authenticated/schedules/$id.tsx
+header src/routes/_authenticated/schedules/$id_.runs.$runId.tsx
+header src/routes/_authenticated/services/$id/index.tsx
