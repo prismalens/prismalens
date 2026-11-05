@@ -62,30 +62,37 @@ describe("AttachmentsService (R4.3)", () => {
 		expect(rows).toHaveLength(1);
 	});
 
-	it("refuses an image over 4 MB with 413 and a PDF with 415", async () => {
-		const big = new File([new Uint8Array(4 * 1024 * 1024 + 1)], "panel.png", { type: "image/png" });
-		await expect(service().upload(INCIDENT, big)).rejects.toMatchObject({
-			code: "PAYLOAD_TOO_LARGE",
-			message: "Images up to 4 MB",
-		});
-		await expect(
-			service().upload(INCIDENT, new File(["%PDF"], "report.pdf", { type: "application/pdf" })),
-		).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE" });
-		expect(rows).toHaveLength(0);
-	});
-
 	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
 
-	it("types an image by its bytes, and refuses bytes that are not the image or text they claim (R4.3)", async () => {
+	it("takes any file up to 25 MB, a large image and a PDF included, and refuses one over it (#1024)", async () => {
+		const big = new File([new Uint8Array(25 * 1024 * 1024 + 1)], "dump.bin", { type: "application/octet-stream" });
+		await expect(service().upload(INCIDENT, big)).rejects.toMatchObject({
+			code: "PAYLOAD_TOO_LARGE",
+			message: "Files up to 25 MB",
+		});
+		expect(rows).toHaveLength(0);
+		const pdf = await service().upload(
+			INCIDENT,
+			new File(["%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"], "report.pdf", { type: "application/pdf" }),
+		);
+		expect(pdf.mimeType).toBe("application/pdf");
+		const large = await service().upload(
+			INCIDENT,
+			new File([PNG, new Uint8Array(4 * 1024 * 1024)], "panel.png", { type: "image/png" }),
+		);
+		expect(large.mimeType).toBe("image/png");
+	});
+
+	it("types a file by its bytes, never by what the client claims (R4.3, #1024)", async () => {
 		const shot = await service().upload(INCIDENT, new File([PNG], "panel.jpg", { type: "image/jpeg" }));
 		expect(shot.mimeType).toBe("image/png");
-		await expect(
-			service().upload(INCIDENT, new File(["<script>x</script>"], "panel.png", { type: "image/png" })),
-		).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE", message: "That file is not a PNG, JPEG, WebP or GIF image." });
-		await expect(
-			service().upload(INCIDENT, new File([new Uint8Array([0xff, 0xfe, 0x00, 0xc3])], "page.html", { type: "text/html" })),
-		).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE", message: "That file is not UTF-8 text." });
-		expect(rows).toHaveLength(1);
+		const fake = await service().upload(INCIDENT, new File(["<script>x</script>"], "panel.png", { type: "image/png" }));
+		expect(fake.mimeType).toBe("text/plain");
+		const binary = await service().upload(
+			INCIDENT,
+			new File([new Uint8Array([0xff, 0xfe, 0x00, 0xc3])], "page.html", { type: "text/html" }),
+		);
+		expect(binary.mimeType).toBe("application/octet-stream");
 	});
 
 	it("keeps no row when the file cannot be written, and the same bytes upload once the disk is back", async () => {

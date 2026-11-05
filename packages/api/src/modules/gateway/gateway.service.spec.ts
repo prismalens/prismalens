@@ -1859,7 +1859,9 @@ describe("read tools for the coding agent (#848)", () => {
 				name: "app.log",
 				mimeType: "text/plain",
 				size: 20,
+				offset: 0,
 				text: "ERROR pool exhausted\n",
+				total: 21,
 				truncated: false,
 			});
 			expect(m.attachment.findFirst).toHaveBeenCalledWith(
@@ -1887,7 +1889,7 @@ describe("read tools for the coding agent (#848)", () => {
 			expect(out.value).toEqual({
 				...failure("invalid_input"),
 				message: expect.stringContaining("image/png"),
-				next: expect.stringContaining("not text"),
+				next: expect.stringContaining("not text or PDF"),
 			});
 		});
 
@@ -1899,7 +1901,28 @@ describe("read tools for the coding agent (#848)", () => {
 			expect(shown).toBeGreaterThan(31_000);
 			expect(out.value.text).not.toContain("TAIL");
 			expect(out.value.truncated).toBe(true);
-			expect(out.value.note).toBe(`Cut at ${shown} of 32004 characters.`);
+			expect(out.value.note).toBe(
+				`Characters 0 to ${shown} of 32004; call again with offset ${shown} for more.`,
+			);
+		});
+
+		it("reads the next chunk from an offset, so a long file is read whole (#1024)", async () => {
+			const out = await use(mocks(), "attachment_read", {
+				id: "att-big",
+				offset: 31_990,
+			});
+			expect(out.isError).toBe(false);
+			expect(out.value.offset).toBe(31_990);
+			expect(out.value.text).toContain("TAIL");
+			expect(out.value.truncated).toBe(false);
+		});
+
+		it("takes the prismalens://attachment/<id> link the prompt carried as the id (#1024)", async () => {
+			const out = await use(mocks(), "attachment_read", {
+				id: "prismalens://attachment/att-1",
+			});
+			expect(out.isError).toBe(false);
+			expect(out.value.text).toBe("ERROR pool exhausted\n");
 		});
 
 		it("cuts sooner when escaping makes the result longer than the text", async () => {

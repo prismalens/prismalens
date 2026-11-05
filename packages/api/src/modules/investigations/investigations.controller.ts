@@ -558,6 +558,8 @@ export class InvestigationsController {
 					const messageContext = await this.references.compose(input, {
 						threadId: investigation.id,
 					});
+					// Only a message with quotes or references passes one on.
+					const withContext = messageContext ? [messageContext] : [];
 					if (TERMINAL_STATUSES.has(investigation.status)) {
 						const reason = followUpBlockedReason(investigation);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
@@ -580,7 +582,7 @@ export class InvestigationsController {
 										? { effort: input.effort }
 										: {}),
 								},
-								messageContext,
+								...withContext,
 							)
 							.catch((e: unknown) => {
 								if (e instanceof FollowUpRefused)
@@ -611,7 +613,7 @@ export class InvestigationsController {
 						attachments,
 						input.kind,
 						messageId,
-						messageContext,
+						...withContext,
 					);
 					for (let attempt = 0; state === null && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
@@ -622,7 +624,7 @@ export class InvestigationsController {
 							attachments,
 							input.kind,
 							messageId,
-							messageContext,
+							...withContext,
 						);
 					}
 					if (state === "conflict") {

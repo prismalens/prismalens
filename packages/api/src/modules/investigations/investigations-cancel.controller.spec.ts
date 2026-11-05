@@ -19,7 +19,7 @@ import { InvestigationsService } from "./investigations.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
+import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 
 const mockInvestigationsService = {
 	findById: vi.fn(),
@@ -63,6 +63,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },

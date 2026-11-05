@@ -16,7 +16,7 @@ import { InvestigationsService } from "./investigations.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
+import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,6 +68,7 @@ describe("InvestigationsController.message (#743)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
@@ -256,6 +257,7 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
@@ -323,6 +325,7 @@ describe("InvestigationsController.handoff (#849)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },

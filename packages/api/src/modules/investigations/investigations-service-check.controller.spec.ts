@@ -8,7 +8,7 @@ import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.gua
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
+import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
@@ -58,6 +58,7 @@ describe("InvestigationsController on a service check with no incident (#979)", 
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: service },
 				{ provide: DispatchService, useValue: {} },
 				{ provide: TelemetryService, useValue: telemetryStub() },

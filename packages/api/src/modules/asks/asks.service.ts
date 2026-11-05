@@ -77,27 +77,30 @@ export class AsksService implements AsksPort {
 		answer: AskAnswer,
 		by: AskAnswerer,
 	): Promise<ClosedAsk> {
+		// Only a tool ask can need the host, and only this process holds those (see the class note).
 		const tool = this.toolAsks.get(askId);
-		const ask =
-			tool ?? (await this.pending(threadId)).find((a) => a.askId === askId);
-		if (!ask) throw new AskConflict("This ask is no longer waiting.");
-		if (ask.kind === "secret")
+		if (tool?.kind === "secret")
 			throw new AskInvalid("A secret is answered through its own endpoint.");
-		if (
-			answer.kind === "permission" &&
-			answer.scope === "tree" &&
-			ask.source.kind !== "tool"
-		)
+		if (answer.kind === "permission" && answer.scope === "tree" && !tool)
 			throw new AskInvalid(
 				"Allow for the tree is for a PrismaLens tool's ask.",
 			);
 		// A run's bearer token never answers; a device or a push link only what needs no host.
-		if (by.via === "run" || (answerRequiresHost(ask, answer) && !by.host))
+		if (
+			by.via === "run" ||
+			(tool && answerRequiresHost(tool, answer) && !by.host)
+		)
 			throw new AskForbidden(
 				"Only this machine's own session can answer this.",
 			);
 		const result = this.dispatch.answerAsk(threadId, askId, answer);
 		if (!result) throw new AskConflict("This ask is no longer waiting.");
+		const ask =
+			tool ??
+			(await this.pending(threadId).catch((): PendingAsk[] => [])).find(
+				(a) => a.askId === askId,
+			) ??
+			agentAsk(threadId, askId, answer);
 		const closed: ClosedAsk = {
 			ask,
 			outcome: result.outcome,
@@ -173,4 +176,21 @@ export class AsksService implements AsksPort {
 		for (const h of this.handlers.get(id) ?? []) h(closed);
 		this.handlers.delete(id);
 	}
+}
+
+/** An engine ask not flushed to the log yet: enough to tell an `onClosed` handler what closed. */
+function agentAsk(
+	threadId: string,
+	askId: string,
+	answer: AskAnswer,
+): PendingAsk {
+	return {
+		askId,
+		threadId,
+		kind: answer.kind === "decline" ? "question" : answer.kind,
+		requiresHost: false,
+		source: { kind: "agent" },
+		title: "",
+		openedAt: new Date().toISOString(),
+	};
 }

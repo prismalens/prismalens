@@ -5,7 +5,7 @@
 
 import { Test, type TestingModule } from "@nestjs/testing";
 import { ORPCError } from "@orpc/nest";
-import { telemetryStub } from "../../../test/factories/index.js";
+import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
@@ -32,6 +32,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(mockDispatchService),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
@@ -65,7 +66,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 	}
 
 	it("answers { outcome: 'approved' } when approved", async () => {
-		mockDispatchService.answerAsk.mockReturnValue("approved");
+		mockDispatchService.answerAsk.mockReturnValue({ outcome: "approved" });
 
 		const result = await answerAskHandler()({
 			input: { id: "inv-1", askId: "ask-1", decision: "approve" },
@@ -74,13 +75,13 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 		expect(mockDispatchService.answerAsk).toHaveBeenCalledWith(
 			"inv-1",
 			"ask-1",
-			true,
+			{ kind: "permission", decision: "approve" },
 		);
 		expect(result).toEqual({ outcome: "approved" });
 	});
 
 	it("answers { outcome: 'denied' } when denied", async () => {
-		mockDispatchService.answerAsk.mockReturnValue("denied");
+		mockDispatchService.answerAsk.mockReturnValue({ outcome: "denied" });
 
 		const result = await answerAskHandler()({
 			input: { id: "inv-1", askId: "ask-1", decision: "deny" },
@@ -89,7 +90,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 		expect(mockDispatchService.answerAsk).toHaveBeenCalledWith(
 			"inv-1",
 			"ask-1",
-			false,
+			{ kind: "permission", decision: "deny" },
 		);
 		expect(result).toEqual({ outcome: "denied" });
 	});
@@ -104,7 +105,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 		const ask = { id: "inv-1", askId: "ask-1", decision: "approve" as const };
 
 		it("only the host answers a schedule's or an alert's run; a paired device may answer its own thread's", async () => {
-			mockDispatchService.answerAsk.mockReturnValue("approved");
+			mockDispatchService.answerAsk.mockReturnValue({ outcome: "approved" });
 			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: "sch-1", triggerType: "scheduled" });
 			await expect(call(ask, false)).rejects.toMatchObject({ code: "FORBIDDEN" });
 			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: null, triggerType: "auto_critical" });
@@ -116,7 +117,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 		});
 
 		it("Always allow is remembered only for an approved ask on a schedule's run", async () => {
-			mockDispatchService.answerAsk.mockReturnValue("approved");
+			mockDispatchService.answerAsk.mockReturnValue({ outcome: "approved" });
 			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: null, triggerType: "manual" });
 			await expect(call({ ...ask, always: true }, true)).rejects.toMatchObject({ code: "BAD_REQUEST" });
 			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: "sch-1", triggerType: "scheduled" });
@@ -142,7 +143,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 		expect(mockDispatchService.answerAsk).toHaveBeenCalledWith(
 			"inv-1",
 			"ask-1",
-			true,
+			{ kind: "permission", decision: "approve" },
 		);
 	});
 });

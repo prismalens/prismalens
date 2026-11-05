@@ -2,5 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 export { AlertFactory } from "./alert.factory.js";
+export { composerStubs } from "./composer.factory.js";
 export { RecommendationFactory } from "./recommendation.factory.js";
 export { telemetryStub } from "./telemetry.factory.js";

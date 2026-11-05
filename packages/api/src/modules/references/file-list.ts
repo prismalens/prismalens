@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
+import { gitEnv } from "../../core/harness/git-env.js";
 
 // `ignore` ships CommonJS whose default export NodeNext types cannot call.
 interface Ignore {
@@ -31,7 +32,12 @@ async function gitFiles(root: string): Promise<string[] | null> {
 		const { stdout } = await run(
 			"git",
 			["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-			{ cwd: root, maxBuffer: 64 * 1024 * 1024, timeout: 10_000 },
+			{
+				cwd: root,
+				env: gitEnv({ source: "machine", coreSshCommand: null }),
+				maxBuffer: 64 * 1024 * 1024,
+				timeout: 10_000,
+			},
 		);
 		return stdout.split("\0").filter(Boolean);
 	} catch {

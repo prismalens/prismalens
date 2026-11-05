@@ -6,7 +6,7 @@
  * server recorded for the run, never a path from the request (#1020).
  */
 import { Test, type TestingModule } from "@nestjs/testing";
-import { telemetryStub } from "../../../test/factories/index.js";
+import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
@@ -47,6 +47,7 @@ describe("InvestigationsController.getChanges (#1020)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: { findById } },
 				{ provide: DispatchService, useValue: {} },
 				{ provide: TelemetryService, useValue: telemetryStub() },
