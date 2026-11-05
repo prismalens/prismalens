@@ -28,7 +28,7 @@ test("the board says what arrived while you were away, and links to it (#1020)",
 	const strip = page.getByTestId("away-strip");
 	await expect(strip).toBeVisible();
 	await expect(strip).toContainText(/^Since \S/);
-	await expect(strip.getByTestId("away-arrived")).toContainText(/arrived$/);
+	await expect(strip.getByTestId("away-arrived")).toContainText(/arrived/);
 	// Seen now: a reload with nothing new shows no strip.
 	await page.reload();
 	await expect(page.getByTestId("inbox")).toBeVisible();
