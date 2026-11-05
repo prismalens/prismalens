@@ -78,6 +78,8 @@ export function ThreadPanel({
 						<button
 							type="button"
 							role="tab"
+							id={`surface-tab-${id}`}
+							aria-controls="surface-panel"
 							aria-selected={surface === id}
 							aria-label={label}
 							onClick={() => onSurface(id)}
@@ -103,7 +105,12 @@ export function ThreadPanel({
 					<X className="size-3.5" />
 				</Button>
 			</div>
-			<div role="tabpanel" className="flex min-h-0 flex-1 flex-col">
+			<div
+				role="tabpanel"
+				id="surface-panel"
+				aria-labelledby={surface ? `surface-tab-${surface}` : undefined}
+				className="flex min-h-0 flex-1 flex-col"
+			>
 				{surface === null ||
 				(surface === "diff" && !diff) ||
 				(surface === "suspects" && !investigation) ? (

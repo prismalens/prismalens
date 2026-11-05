@@ -24,6 +24,10 @@ import {
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import {
+	FOLDER_BUSY,
+	folderBusy,
+} from "../../infrastructure/dispatch/folder-lock.js";
+import {
 	GitCredentialService,
 	pickOf,
 } from "../integrations/git-credential.service.js";
@@ -195,6 +199,8 @@ export class RepositoriesService {
 		if (!repo) throw new NotFoundException("Repository not found");
 		if (!repo.plain || repo.sourceKind !== "folder")
 			throw new BadRequestException("Only a plain folder project starts git.");
+		if (await this.prisma.$transaction((tx) => folderBusy(tx, id)))
+			throw new ConflictException(FOLDER_BUSY);
 		try {
 			await startGit(repo.url);
 		} catch (err) {
