@@ -58,7 +58,7 @@ export function SchedulesSection() {
 	const { data, isLoading, error, refetch } = useSchedules();
 	const canEdit = data?.canEdit ?? false;
 	return (
-		<div className="@container mx-auto grid w-full gap-5 pt-1">
+		<div className="@container mx-auto grid w-full grid-cols-[minmax(0,1fr)] gap-5 pt-1">
 			{data && !canEdit && <HostOnlyNote hostName={data.hostName} />}
 			{isLoading ? (
 				<Loading />

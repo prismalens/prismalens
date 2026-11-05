@@ -540,7 +540,7 @@ Given(
 		await tab.setViewportSize(
 			page.viewportSize() ?? { width: 390, height: 844 },
 		);
-		await visit(tab, `/incidents/${incident.id}/report`);
+		await visit(tab, `/incidents/${incident.id}`);
 		world(page).page = tab;
 	},
 );
