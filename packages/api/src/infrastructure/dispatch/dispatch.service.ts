@@ -89,6 +89,7 @@ import {
 	sharesAdmission,
 } from "../../modules/investigations/run-scope.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import { agentCommandsKey } from "../../modules/references/references.service.js";
 import { shownFullName } from "../../modules/repositories/serialize-repository.js";
 import {
 	interruptedRunIds,
@@ -113,6 +114,10 @@ import {
 	runToolAskTopic,
 } from "./event-bus.js";
 import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
+
+/** Settings → Agent → "Questions from agents wait for", in minutes (#1024). */
+export const QUESTION_TIMEOUT_SETTING = "agents.questionTimeoutMinutes";
+
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
@@ -423,6 +428,33 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					where: { id },
 					data: { awaitingApprovalAt: since },
 				});
+			},
+			recordAgentCommands: async (id, harness, commands) => {
+				const value = JSON.stringify(commands);
+				await this.prisma.investigation.updateMany({
+					where: { id },
+					data: { agentCommands: value },
+				});
+				// New thread offers this list before a session exists, marked "from the last run".
+				await this.prisma.setting.upsert({
+					where: { key: agentCommandsKey(harness) },
+					create: {
+						key: agentCommandsKey(harness),
+						value,
+						type: "json",
+						category: "ai",
+					},
+					update: { value },
+				});
+			},
+			questionTimeoutMs: async () => {
+				const row = await this.prisma.setting.findUnique({
+					where: { key: QUESTION_TIMEOUT_SETTING },
+				});
+				const minutes = row ? Number(JSON.parse(row.value)) : Number.NaN;
+				return Number.isFinite(minutes) && minutes > 0
+					? Math.min(minutes, 24 * 60) * 60_000
+					: undefined;
 			},
 			newerRun: async (id) => {
 				const self = await this.prisma.investigation.findUnique({

@@ -16,8 +16,12 @@ import type {
 } from "@prismalens/contracts";
 import {
 	AccessLevelSchema,
+	type AskKind,
+	type CanonicalEvent,
+	CanonicalEventSchema,
 	DEFAULT_SETTLE_AFTER_DAYS,
 	IncidentStatusSchema,
+	pendingAsks,
 	SeveritySchema,
 	ThreadSettingsSchema,
 } from "@prismalens/contracts";
@@ -32,11 +36,13 @@ import {
 	folderBusy,
 } from "../../infrastructure/dispatch/folder-lock.js";
 import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
+import { DraftsService } from "../composer/drafts.service.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { threadSubject } from "../investigations/run-scope.js";
+import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { renameThread } from "./thread-titles.js";
@@ -117,6 +123,8 @@ export class ThreadsService {
 		private readonly harness: HarnessService,
 		private readonly attachments: AttachmentsService,
 		private readonly integrations: IntegrationsService,
+		private readonly drafts: DraftsService,
+		private readonly references: ReferencesService,
 	) {}
 
 	async start(input: StartThreadInput): Promise<{
@@ -155,6 +163,10 @@ export class ThreadsService {
 			await this.attachments.checkDraft(input.draftKey, files);
 		const choice = runChoice(input);
 		await requireReadyHarness(this.harness, choice);
+		const context = await this.references.compose(input, {
+			threadId: null,
+			scope: input.draftScope ?? null,
+		});
 
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;
@@ -171,6 +183,8 @@ export class ThreadsService {
 			onCreate: async (tx, id) => {
 				if (repositoryId && (await folderBusy(tx, repositoryId, id)))
 					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
+				// The send and the draft's tombstone commit together (#1024).
+				await this.drafts.consume(input.draftScope, input.draftRev, tx);
 				if (draftKey && files.length)
 					attachments = await this.attachments.claimDraft(
 						draftKey,
@@ -200,6 +214,7 @@ export class ThreadsService {
 			chat: {
 				text: input.text,
 				...(attachments.length ? { attachments } : {}),
+				...(context ? { context } : {}),
 			},
 		});
 		return {
@@ -298,8 +313,15 @@ export class ThreadsService {
 			? units.filter((u) => u.section === q.section)
 			: units;
 		const page = listed.slice(q.cursor, q.cursor + q.limit);
-		const texts = await this.latestTexts(
-			page.flatMap((u) => u.threads.map((t) => t.id)),
+		const pageIds = page.flatMap((u) => u.threads.map((t) => t.id));
+		const texts = await this.latestTexts(pageIds);
+		const asks = await this.waitingAsks(
+			page.flatMap((u) =>
+				u.threads.filter((t) => t.row.awaitingApprovalAt).map((t) => t.id),
+			),
+		);
+		const drafts = await this.drafts.withDrafts(
+			pageIds.map((id) => `thread:${id}`),
 		);
 		return {
 			units: page.map((u) => {
@@ -336,6 +358,8 @@ export class ThreadsService {
 								t.row.titleSetBy === "user" || t.row.titleSetBy === "agent"
 									? t.row.titleSetBy
 									: null,
+							waitingAsk: asks.get(t.id) ?? null,
+							hasDraft: drafts.has(`thread:${t.id}`),
 						}),
 					),
 				};
@@ -344,6 +368,38 @@ export class ThreadsService {
 				q.cursor + q.limit < listed.length ? q.cursor + q.limit : null,
 			counts,
 		};
+	}
+
+	/** Each thread's newest waiting ask, from its ask events, legacy and new (#1024). */
+	private async waitingAsks(
+		ids: string[],
+	): Promise<Map<string, { kind: AskKind; title: string }>> {
+		const out = new Map<string, { kind: AskKind; title: string }>();
+		if (ids.length === 0) return out;
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: {
+				investigationId: { in: ids },
+				OR: [
+					{ event: { contains: '"kind":"permission_' } },
+					{ event: { contains: '"kind":"ask_' } },
+				],
+			},
+			orderBy: { seq: "asc" },
+			select: { investigationId: true, event: true },
+		});
+		const byThread = new Map<string, CanonicalEvent[]>();
+		for (const r of rows) {
+			const parsed = CanonicalEventSchema.safeParse(JSON.parse(r.event));
+			if (!parsed.success) continue;
+			const list = byThread.get(r.investigationId) ?? [];
+			list.push(parsed.data);
+			byThread.set(r.investigationId, list);
+		}
+		for (const [id, events] of byThread) {
+			const newest = pendingAsks(id, events).at(-1);
+			if (newest) out.set(id, { kind: newest.kind, title: newest.title });
+		}
+		return out;
 	}
 
 	/** The newest threads holding `search` as typed, `%` and `_` included, before the cap (#1020). */

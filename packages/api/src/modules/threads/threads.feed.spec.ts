@@ -64,6 +64,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		investigationEvent: {
 			groupBy: ReturnType<typeof vi.fn>;
 			findFirst: ReturnType<typeof vi.fn>;
+			findMany: ReturnType<typeof vi.fn>;
 		};
 		setting: {
 			findUnique: ReturnType<typeof vi.fn>;
@@ -78,6 +79,8 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{} as never,
 			{} as never,
 			{} as never,
+			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
+			{ compose: async () => undefined } as never,
 		);
 	const query = (over: Record<string, unknown> = {}) =>
 		ThreadFeedQuerySchema.parse(over);
@@ -93,6 +96,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			investigationEvent: {
 				groupBy: vi.fn(async () => []),
 				findFirst: vi.fn(async () => null),
+				findMany: vi.fn(async () => []),
 			},
 			setting: {
 				findUnique: vi.fn(async () => null),
@@ -133,6 +137,54 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		});
 		expect(feed.units[0]?.threads[0]?.serviceName).toBe("checkout-api");
 		expect(feed.units[1]?.threads[0]?.projectName).toBe("acme/shop");
+	});
+
+	it("a row says what its thread waits on, new and legacy asks alike, and whether it keeps a draft (#1024)", async () => {
+		const waiting = run({
+			status: "running",
+			awaitingApprovalAt: new Date("2026-11-10T11:30:00Z"),
+		});
+		const quiet = run({});
+		prisma.investigation.findMany.mockResolvedValue([waiting, quiet]);
+		const base = { runId: waiting.id, branchId: "run", path: [], label: null, ts: "2026-11-10T11:30:00.000Z" };
+		const askId = "3f0c9a52-6f42-4c55-9c1a-1d6bb0f4f2a1";
+		prisma.investigationEvent.findMany.mockResolvedValue([
+			{
+				investigationId: waiting.id,
+				event: JSON.stringify({ ...base, kind: "permission_ask", seq: 1, askId: "8c8b1c0e-0d55-4f27-9f0a-3e7d1d1b6b11", title: "Run kubectl", detail: null, toolKind: "execute", expiresAt: base.ts }),
+			},
+			{
+				investigationId: waiting.id,
+				event: JSON.stringify({ ...base, kind: "permission_answer", seq: 2, askId: "8c8b1c0e-0d55-4f27-9f0a-3e7d1d1b6b11", outcome: "approved" }),
+			},
+			{
+				investigationId: waiting.id,
+				event: JSON.stringify({
+					...base,
+					kind: "ask_opened",
+					seq: 3,
+					ask: { askId, threadId: waiting.id, kind: "question", requiresHost: false, source: { kind: "agent" }, title: "Which environment?", openedAt: base.ts },
+				}),
+			},
+		]);
+		const drafts = new Set([`thread:${quiet.id}`]);
+		const svc = new ThreadsService(
+			prisma as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
+			{ withDrafts: async () => drafts } as never,
+			{} as never,
+		);
+		const feed = await svc.feed(query(), NOW);
+		const rows = feed.units.flatMap((u) => u.threads);
+		const byId = new Map(rows.map((r) => [r.id, r]));
+		expect(byId.get(waiting.id)?.waitingAsk).toEqual({ kind: "question", title: "Which environment?" });
+		expect(byId.get(waiting.id)?.hasDraft).toBe(false);
+		expect(byId.get(quiet.id)?.waitingAsk).toBeNull();
+		expect(byId.get(quiet.id)?.hasDraft).toBe(true);
 	});
 
 	it("pages an incident's threads as one unit", async () => {

@@ -6,6 +6,7 @@
  * an incident's. Incident and schedule threads keep their own routes.
  */
 import { z } from "zod";
+import { AskKindSchema } from "./asks.js";
 import {
 	CoerceDateSchema,
 	DateStringSchema,
@@ -106,6 +107,13 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	/** Who named the thread last; once `user`, the agent's titles are ignored. */
 	titleSetBy: z.enum(["agent", "user"]).nullable(),
 	serviceName: z.string().nullable(),
+	/** The newest ask the thread waits on, for the row's approval preview (#1024). */
+	waitingAsk: z
+		.object({ kind: AskKindSchema, title: z.string() })
+		.nullable()
+		.optional(),
+	/** The thread's composer keeps unsent words or files (#1024). */
+	hasDraft: z.boolean().optional(),
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
 

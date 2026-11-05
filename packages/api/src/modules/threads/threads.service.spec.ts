@@ -82,6 +82,8 @@ describe("ThreadsService (#1020)", () => {
 			harness as never,
 			attachments as never,
 			integrations as never,
+			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 	beforeEach(() => {
@@ -461,6 +463,8 @@ describe("ThreadsService.settle (#1020)", () => {
 				{} as never,
 				{} as never,
 				{} as never,
+				{ consume: async () => "none", withDrafts: async () => new Set() } as never,
+				{ compose: async () => undefined } as never,
 			),
 		};
 	}
