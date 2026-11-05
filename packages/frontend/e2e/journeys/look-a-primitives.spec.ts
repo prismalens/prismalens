@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { hideQueryDevtools, setTheme } from "./live-stream-fixtures";
 
 /**
@@ -162,10 +162,14 @@ test.describe("Tabs", () => {
 		await expect(unmapped).toHaveAttribute("aria-selected", "false");
 		await expect(unmapped).toHaveAttribute("tabindex", "-1");
 
+		// The underline slides to its tab, and the tabs shift as the page settles: measure it against its tab.
 		const underline = page.getByTestId("tab-underline");
-		const under = async () => (await underline.boundingBox())?.x ?? -1;
-		const x0 = await under();
-		expect(x0).toBeGreaterThan(0);
+		const offBy = (tab: Locator) => async () =>
+			Math.abs(
+				((await underline.boundingBox())?.x ?? -1) -
+					((await tab.boundingBox())?.x ?? -2),
+			);
+		await expect.poll(offBy(all)).toBeLessThan(1);
 
 		await all.focus();
 		await expect(all).toHaveAttribute("tabindex", "0");
@@ -176,13 +180,13 @@ test.describe("Tabs", () => {
 		await expect(all).toHaveAttribute("aria-selected", "false");
 		await expect(unmapped).toHaveAttribute("tabindex", "0");
 		await expect(all).toHaveAttribute("tabindex", "-1");
-		await expect.poll(under).toBeGreaterThan(x0);
+		await expect.poll(offBy(unmapped)).toBeLessThan(1);
 		expect(await underline.count()).toBe(1);
 
 		await page.keyboard.press("ArrowLeft");
 		await expect(all).toBeFocused();
 		await expect(all).toHaveAttribute("aria-selected", "true");
-		await expect.poll(under).toBeCloseTo(x0, 0);
+		await expect.poll(offBy(all)).toBeLessThan(1);
 
 		await page.keyboard.press("End");
 		await expect(unmapped).toHaveAttribute("aria-selected", "true");
