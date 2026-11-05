@@ -170,7 +170,14 @@ function MainBar({
 					</Hint>
 				</span>
 			</div>
-			{signedIn && <SidebarHead compact={!full} />}
+			{signedIn && (
+				<SidebarHead
+					compact={!full}
+					filterable={
+						full && !isOn(pathname, "/alerts") && !isOn(pathname, "/services")
+					}
+				/>
+			)}
 			<div className="mt-1.5 min-h-0 flex-1 overflow-y-auto pb-2">
 				{signedIn && full && <AreaList pathname={pathname} />}
 			</div>

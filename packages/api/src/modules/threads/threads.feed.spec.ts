@@ -291,7 +291,12 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{ id: uuid(), incidentId: inc, settledAt: earlier },
 			{ id: uuid(), incidentId: inc, settledAt: null as Date | null },
 		];
-		prisma.investigation.findUnique.mockResolvedValue({ incidentId: inc });
+		prisma.investigation.findUnique.mockImplementation(
+			async ({ where }: { where: { id: string } }) => ({
+				incidentId: inc,
+				settledAt: rows.find((r) => r.id === where.id)?.settledAt ?? null,
+			}),
+		);
 		prisma.investigation.findMany.mockImplementation(async () =>
 			rows.map((r) => ({ id: r.id, settledAt: r.settledAt })),
 		);
@@ -322,10 +327,13 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{ id: uuid(), settledAt: null as Date | null },
 		];
 		const stamp = new Date("2026-01-01T00:00:00Z");
-		prisma.investigation.findUnique.mockResolvedValue({
-			incidentId: inc,
-			updatedAt: stamp,
-		});
+		prisma.investigation.findUnique.mockImplementation(
+			async ({ where }: { where: { id: string } }) => ({
+				incidentId: inc,
+				updatedAt: stamp,
+				settledAt: rows.find((r) => r.id === where.id)?.settledAt ?? null,
+			}),
+		);
 		prisma.investigation.findMany.mockImplementation(async () =>
 			rows.map((r) => ({ ...r })),
 		);
@@ -349,10 +357,13 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{ id: uuid(), settledAt: null as Date | null },
 			{ id: uuid(), settledAt: null as Date | null },
 		];
-		prisma.investigation.findUnique.mockResolvedValue({
-			incidentId: inc,
-			updatedAt: new Date("2026-01-01T00:00:00Z"),
-		});
+		prisma.investigation.findUnique.mockImplementation(
+			async ({ where }: { where: { id: string } }) => ({
+				incidentId: inc,
+				updatedAt: new Date("2026-01-01T00:00:00Z"),
+				settledAt: rows.find((r) => r.id === where.id)?.settledAt ?? null,
+			}),
+		);
 		prisma.investigation.findMany.mockImplementation(async () =>
 			rows.map((r) => ({ ...r })),
 		);

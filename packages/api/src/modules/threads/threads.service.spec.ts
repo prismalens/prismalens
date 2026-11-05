@@ -423,7 +423,11 @@ describe("ThreadsService.settle (#1020)", () => {
 			investigation: {
 				findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
 					settledAt.has(where.id)
-						? { incidentId: "inc", updatedAt: stamp }
+						? {
+								incidentId: "inc",
+								updatedAt: stamp,
+								settledAt: settledAt.get(where.id),
+							}
 						: null,
 				),
 				findMany: vi.fn(async () =>
@@ -467,6 +471,20 @@ describe("ThreadsService.settle (#1020)", () => {
 		expect(settledAt.get(A)).toBeNull();
 		expect(other.get("write")).toBe("kept");
 		expect(db.$transaction).not.toHaveBeenCalled();
+	});
+
+	it("leaves a thread another request settled since, when putting the earlier ones back", async () => {
+		const { svc, settledAt, db } = build();
+		const newer = new Date("2026-11-04T00:00:00Z");
+		const real = db.investigation.updateMany.getMockImplementation() as (
+			args: { where: { id: string }; data: { settledAt?: Date | null } },
+		) => Promise<{ count: number }>;
+		db.investigation.updateMany.mockImplementation(async (args) => {
+			if (args.where.id === B) settledAt.set(A, newer);
+			return real(args);
+		});
+		await expect(svc.settle(A, true)).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(settledAt.get(A)).toEqual(newer);
 	});
 
 	it("writes back an undo that restores several threads when one conflicts", async () => {

@@ -970,6 +970,40 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 		expect(unlink).not.toHaveBeenCalled();
 	});
 
+	it("keeps a service link a second request relied on when the first request's update fails (#1020, review of #1040)", async () => {
+		const svc = "223e4567-e89b-12d3-a456-426614174000";
+		const h = handlersFor("triggered");
+		let linkedTo: string | null = null;
+		let failFirst: () => void = () => {};
+		Object.assign(h.incidentsService, {
+			linkService: vi.fn(async (_id: string, s: string) => {
+				if (linkedTo === null) {
+					linkedTo = s;
+					return "linked";
+				}
+				return linkedTo === s ? "same" : "taken";
+			}),
+			unlinkService: vi.fn(async (_id: string, s: string) => {
+				if (linkedTo === s) linkedTo = null;
+			}),
+		});
+		h.incidentsService.update
+			.mockImplementationOnce(
+				() =>
+					new Promise((_, reject) => {
+						failFirst = () => reject(new Error("relation"));
+					}),
+			)
+			.mockResolvedValueOnce({ ...base, status: "triggered" });
+		const first = h.call("update", { serviceId: svc, title: "A" });
+		const second = h.call("update", { serviceId: svc, title: "B" });
+		await new Promise((r) => setTimeout(r, 0));
+		failFirst();
+		await expect(first).rejects.toThrow("relation");
+		await expect(second).resolves.toBeDefined();
+		expect(linkedTo).toBe(svc);
+	});
+
 	it("resolves from Triggered, Acknowledged and Alerts cleared, never twice", async () => {
 		for (const status of ["triggered", "investigating", "resolved"]) {
 			const { call, incidentsService } = handlersFor(status);

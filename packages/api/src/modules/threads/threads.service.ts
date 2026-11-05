@@ -408,13 +408,21 @@ export class ThreadsService {
 	private async readState(
 		id: string,
 		data: { lastVisitedAt?: Date; settledAt?: Date | null },
+		/** A put-back writes only while the row still holds what this request wrote there. */
+		onlyIfSettledAt?: { value: Date | null },
 	): Promise<boolean> {
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const row = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { updatedAt: true },
+				select: { updatedAt: true, settledAt: true },
 			});
 			if (!row) return false;
+			if (
+				onlyIfSettledAt &&
+				(row.settledAt?.getTime() ?? null) !==
+					(onlyIfSettledAt.value?.getTime() ?? null)
+			)
+				return true;
 			const { count } = await this.prisma.investigation.updateMany({
 				where: { id, updatedAt: row.updatedAt },
 				data: { ...data, updatedAt: row.updatedAt },
@@ -433,6 +441,7 @@ export class ThreadsService {
 		prior: Map<string, Date | null>,
 	): Promise<void> {
 		const done: string[] = [];
+		const wrote = new Map(writes.map((w) => [w.id, w.settledAt]));
 		try {
 			for (const w of writes) {
 				await this.readState(w.id, { settledAt: w.settledAt });
@@ -441,11 +450,13 @@ export class ThreadsService {
 		} catch (e) {
 			let unrestored = 0;
 			for (const id of done.reverse())
-				await this.readState(id, { settledAt: prior.get(id) ?? null }).catch(
-					() => {
-						unrestored++;
-					},
-				);
+				await this.readState(
+					id,
+					{ settledAt: prior.get(id) ?? null },
+					{ value: wrote.get(id) ?? null },
+				).catch(() => {
+					unrestored++;
+				});
 			if (unrestored)
 				throw new ORPCError("CONFLICT", {
 					message: `Thread changed, and ${unrestored} already written could not be put back: reload before trying again`,

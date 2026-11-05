@@ -79,6 +79,17 @@ export function useThreadFilters() {
 
 const ANY = "any";
 
+/** The Project choices; a picked project past the loaded page stays visible, labelled. */
+export function projectOptions(
+	repos: readonly { id: string; fullName: string }[],
+	selected: string | undefined,
+): Array<[string, string]> {
+	const options = repos.map((r): [string, string] => [r.id, r.fullName]);
+	return selected && !repos.some((r) => r.id === selected)
+		? [[selected, "Selected project"], ...options]
+		: options;
+}
+
 /** The Filter icon beside Search (#1020, redesign §2): Kind, State, Project and Time narrow the list. */
 export function ThreadFilterButton({ className }: { className?: string }) {
 	const { filters, setFilters } = useContext(Filters);
@@ -135,7 +146,7 @@ export function ThreadFilterButton({ className }: { className?: string }) {
 					label="Project"
 					value={filters.repositoryId}
 					onChange={(v) => set({ repositoryId: v })}
-					options={(repos.data?.data ?? []).map((r) => [r.id, r.fullName])}
+					options={projectOptions(repos.data?.data ?? [], filters.repositoryId)}
 				/>
 				<Filter
 					label="Time"

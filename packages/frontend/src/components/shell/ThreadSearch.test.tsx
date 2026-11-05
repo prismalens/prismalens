@@ -5,9 +5,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { feedInput } from "./ThreadFilters";
+import { feedInput, projectOptions } from "./ThreadFilters";
 
-const h = vi.hoisted(() => ({ phone: false }));
+const h = vi.hoisted(() => ({
+	phone: false,
+	repoArgs: [] as Array<Record<string, unknown>>,
+}));
 
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => vi.fn(),
@@ -21,9 +24,10 @@ vi.mock("@/hooks/use-media-query", () => ({
 	useMediaQuery: () => h.phone,
 }));
 vi.mock("@/lib/api/hooks", () => ({
-	useRepositories: () => ({
-		data: { data: [{ id: "r1", fullName: "shop" }], total: 1 },
-	}),
+	useRepositories: (args: Record<string, unknown>) => {
+		h.repoArgs.push(args);
+		return { data: { data: [{ id: "r1", fullName: "shop" }], total: 1 } };
+	},
 }));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useThreadFeed: () => ({
@@ -94,6 +98,38 @@ describe("the search palette (#1020)", () => {
 				'[data-testid="thread-search-action-add-project"]',
 			),
 		).not.toBeNull();
+	});
+});
+
+describe("the palette project search (#1020)", () => {
+	it("sends the typed text to the server, so a project past the first page is found", async () => {
+		const { ThreadSearch } = await import("./SidebarHead");
+		await act(async () =>
+			root.render(<ThreadSearch open onOpenChange={() => {}} />),
+		);
+		const input = document.querySelector("[cmdk-input]") as HTMLInputElement;
+		const set = Object.getOwnPropertyDescriptor(
+			HTMLInputElement.prototype,
+			"value",
+		)?.set;
+		h.repoArgs.length = 0;
+		await act(async () => {
+			set?.call(input, " sho ");
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		expect(h.repoArgs.at(-1)).toMatchObject({ search: "sho", enabled: true });
+	});
+});
+
+describe("projectOptions (#1020)", () => {
+	it("keeps a picked project the loaded page does not hold", () => {
+		const repos = [{ id: "r1", fullName: "shop" }];
+		expect(projectOptions(repos, undefined)).toEqual([["r1", "shop"]]);
+		expect(projectOptions(repos, "r1")).toEqual([["r1", "shop"]]);
+		expect(projectOptions(repos, "r9")).toEqual([
+			["r9", "Selected project"],
+			["r1", "shop"],
+		]);
 	});
 });
 

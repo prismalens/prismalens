@@ -16,6 +16,7 @@ import {
 	createContext,
 	type ReactNode,
 	useContext,
+	useDeferredValue,
 	useEffect,
 	useState,
 } from "react";
@@ -91,7 +92,14 @@ export function SearchHost({
 }
 
 /** The sidebar's head (#1020): Search, Filter for the list, Add project, and New thread. */
-export function SidebarHead({ compact = false }: { compact?: boolean }) {
+export function SidebarHead({
+	compact = false,
+	filterable = true,
+}: {
+	compact?: boolean;
+	/** False where the list beside it is not the thread list: the filters would change nothing. */
+	filterable?: boolean;
+}) {
 	const openSearch = useOpenSearch();
 	return (
 		<div
@@ -117,7 +125,7 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 					{!compact && <span>Search</span>}
 				</button>
 			</Hint>
-			<ThreadFilterButton className={BUTTON} />
+			{filterable && <ThreadFilterButton className={BUTTON} />}
 			<Hint label="Add project" side="bottom">
 				<Link
 					to="/projects"
@@ -163,7 +171,13 @@ export function ThreadSearch({
 	const phone = useMediaQuery(PHONE);
 	const [query, setQuery] = useState("");
 	const q = query.trim().toLowerCase();
-	const repos = useRepositories({ limit: 100, enabled: open && !!q });
+	// The server finds the project: the first 100 would miss one past them.
+	const typed = useDeferredValue(query.trim());
+	const repos = useRepositories({
+		...(typed ? { search: typed } : {}),
+		limit: 100,
+		enabled: open && !!q,
+	});
 	const feed = useThreadFeed(
 		{ ...(q ? { search: query.trim() } : {}), limit: 20 },
 		open,
