@@ -706,3 +706,4 @@ One follow-up worth filing, not blocking:
   when `/rules` gave C8 a surface at all.
 - **Coverage is audited at each milestone.** The matrix is the audit's input.
 
+
