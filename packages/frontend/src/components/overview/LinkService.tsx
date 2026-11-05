@@ -25,14 +25,22 @@ export function serviceLabel(s: { name: string; displayName?: string | null }) {
 		: s.name;
 }
 
+const PAGE = 100;
+
 /**
  * A blank incident's service, picked from the ones PrismaLens knows. Past one page of
- * the catalog it searches the server; a failed link says so and clears the pick (#1020).
+ * the catalog it searches the server and pages through the matches; a failed link says
+ * so and clears the pick (#1020).
  */
 export function LinkService({ incidentId }: { incidentId: string }) {
 	const [find, setFind] = useState("");
 	const search = useDeferredValue(find.trim());
-	const services = useServices({ limit: 100, ...(search ? { search } : {}) });
+	const [offset, setOffset] = useState(0);
+	const services = useServices({
+		limit: PAGE,
+		...(search ? { search } : {}),
+		...(offset ? { offset } : {}),
+	});
 	const [picked, setPicked] = useState("");
 	// Once the catalog has needed a search, the field stays mounted while the query catches up.
 	const [paged, setPaged] = useState(false);
@@ -55,7 +63,9 @@ export function LinkService({ incidentId }: { incidentId: string }) {
 	const needed = needsFind(services.data, find);
 	if (needed && !paged) setPaged(true);
 	const finding = needed || paged;
-	const truncated = !!services.data && services.data.total > list.length;
+	const total = services.data?.total ?? 0;
+	const truncated = total > list.length;
+	const hasNext = offset + list.length < total;
 	if (services.isError)
 		return (
 			<p
@@ -80,16 +90,41 @@ export function LinkService({ incidentId }: { incidentId: string }) {
 			{finding && (
 				<Input
 					value={find}
-					onChange={(e) => setFind(e.target.value)}
+					onChange={(e) => {
+						setFind(e.target.value);
+						setOffset(0);
+					}}
 					placeholder={
 						truncated
-							? `${list.length} of ${services.data?.total}: narrow the search`
+							? `${offset + 1}-${offset + list.length} of ${total}: narrow the search`
 							: "Find a service"
 					}
 					aria-label="Find a service"
 					className="w-44"
 					data-testid="incident-link-service-find"
 				/>
+			)}
+			{finding && (offset > 0 || hasNext) && (
+				<>
+					<Button
+						variant="text"
+						size="sm"
+						disabled={offset === 0}
+						onClick={() => setOffset(Math.max(0, offset - PAGE))}
+						data-testid="incident-link-service-prev"
+					>
+						Previous
+					</Button>
+					<Button
+						variant="text"
+						size="sm"
+						disabled={!hasNext}
+						onClick={() => setOffset(offset + PAGE)}
+						data-testid="incident-link-service-next"
+					>
+						Next
+					</Button>
+				</>
 			)}
 			<Select
 				value={picked}
