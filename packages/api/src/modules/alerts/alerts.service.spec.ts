@@ -181,6 +181,16 @@ describe("AlertsService (BDD)", () => {
 			).not.toBe(same);
 		});
 
+		it("a labelled alert resolved to different services is two alerts", () => {
+			const base = labelled({ alertname: "HighErrorRate" });
+			expect(
+				service.generateDedupKey({ ...base, serviceId: "svc-1" }),
+			).not.toBe(service.generateDedupKey({ ...base, serviceId: "svc-2" }));
+			expect(
+				service.generateDedupKey({ ...base, serviceId: "svc-1" }),
+			).toBe(service.generateDedupKey({ ...base, serviceId: "svc-1" }));
+		});
+
 		it("without labels the identity is source, title, severity and service", () => {
 			const dto: CreateAlertDto = {
 				source: "api",

@@ -89,13 +89,15 @@ export class AlertsService {
 	 * differ in any label (`instance`, `pod`) are two alerts, and resolving one
 	 * leaves the other firing. Grouping them is correlation's job (ADR 0006
 	 * §3), not dedup's. Without labels the identity is source, title, severity
-	 * and service.
+	 * and service. A labelled alert that resolved to a service adds it, so two
+	 * services sharing one label set stay two alerts; one with no service keeps
+	 * its label-only key.
 	 */
 	generateDedupKey(dto: CreateAlertDto): string {
 		const labels = dto.labels ? Object.entries(dto.labels).sort() : [];
 		const input =
 			labels.length > 0
-				? `${dto.source ?? "unknown"}:labels:${JSON.stringify(labels)}`
+				? `${dto.source ?? "unknown"}:labels:${JSON.stringify(labels)}${dto.serviceId ? `:service:${dto.serviceId}` : ""}`
 				: `${dto.source ?? "unknown"}:${dto.title}:${dto.severity ?? "medium"}:${dto.serviceId ?? ""}`;
 		return crypto
 			.createHash("sha256")
