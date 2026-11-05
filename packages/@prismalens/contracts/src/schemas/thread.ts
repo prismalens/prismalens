@@ -12,6 +12,7 @@ import {
 	IncidentStatusSchema,
 	SeveritySchema,
 } from "./common.js";
+import { MessageContextShape } from "./composer.js";
 import {
 	AttachmentIdsSchema,
 	HelperPlaceSchema,
@@ -40,6 +41,7 @@ export const StartThreadSchema = z
 		draftKey: z.string().uuid().optional(),
 		/** A helper started from an empty page; only on a no-subject thread. */
 		place: HelperPlaceSchema.optional(),
+		...MessageContextShape,
 	})
 	.refine((v) => !v.place || v.subject.kind === "none", {
 		message: "Only a thread with no subject starts from a page.",

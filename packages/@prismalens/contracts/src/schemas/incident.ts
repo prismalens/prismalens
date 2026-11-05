@@ -19,6 +19,7 @@ import {
 	RootCauseCategorySchema,
 	SeveritySchema,
 } from "./common.js";
+import { MessageContextShape } from "./composer.js";
 import {
 	AttachmentIdsSchema,
 	AttachmentRefSchema,
@@ -269,6 +270,7 @@ export const ChatIncidentSchema = z.object({
 	accessLevel: AccessLevelSchema.optional(),
 	...RunChoiceSchema.shape,
 	attachments: AttachmentIdsSchema.optional(),
+	...MessageContextShape,
 });
 
 /** What the box accepts (R4.3): images to 4 MB, text files to 256 KB. */

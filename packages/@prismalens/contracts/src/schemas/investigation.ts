@@ -7,6 +7,12 @@
 import { type AccessLevel, HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import {
+	ASK_CLOSED_OUTCOMES,
+	AskAnswerSchema,
+	PERMISSION_ASK_OUTCOMES,
+	PendingAskSchema,
+} from "./asks.js";
+import {
 	DateStringSchema,
 	EvidenceDirectionSchema,
 	EvidenceStatusSchema,
@@ -16,8 +22,14 @@ import {
 	ToolCategorySchema,
 	WorkflowStatusSchema,
 } from "./common.js";
+import {
+	MessageContextShape,
+	QuoteSchema,
+	ReferenceRefSchema,
+} from "./composer.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
+import { AgentCommandsSchema } from "./references.js";
 import { RunCredentialSchema } from "./repository.js";
 import { RunComparisonSchema } from "./run-views.js";
 import { AccessLevelSchema } from "./settings.js";
@@ -627,6 +639,8 @@ export const InvestigationSchema = z.object({
 	agentModeName: z.string().nullable().optional(),
 	/** Set while the agent waits on the operator's Approve or Deny (#673 w21). */
 	awaitingApprovalAt: DateStringSchema.nullable().optional(),
+	/** The agent's last `available_commands_update`, validated (#1024). */
+	agentCommands: AgentCommandsSchema.nullable().optional(),
 	/** The incident's number, on list rows: a notification names `INC-n`. */
 	incidentNumber: z.number().int().nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
@@ -840,7 +854,7 @@ export const OperatorMessageModeSchema = z.enum(["queue", "now"]);
 export type OperatorMessageMode = z.infer<typeof OperatorMessageModeSchema>;
 
 /** At most this many files ride on one message (R4.3). */
-export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 export const AttachmentIdsSchema = z
 	.array(z.string().uuid())
 	.max(MAX_ATTACHMENTS_PER_MESSAGE);
@@ -881,6 +895,7 @@ export const SendInvestigationMessageSchema = z.object({
 	attachments: AttachmentIdsSchema.optional(),
 	/** A finished run's follow-up may go to another agent or model; absent fields keep the run's. */
 	...RunChoiceSchema.shape,
+	...MessageContextShape,
 });
 export type SendInvestigationMessageInput = z.infer<
 	typeof SendInvestigationMessageSchema
@@ -922,41 +937,13 @@ export type SendInvestigationMessageResult = z.infer<
 	typeof SendInvestigationMessageResultSchema
 >;
 
-/**
- * How an agent's permission ask ended (#673 w21): the operator answered, nobody
- * did within {@link ASK_TIMEOUT_MS}, the run stopped, or PrismaLens restarted;
- * or the run's level answered it: `allowed`, or an agent's request to switch
- * its own mode refused (`mode_kept`).
- */
-export const PERMISSION_ASK_OUTCOMES = [
-	"approved",
-	"denied",
-	"timed_out",
-	"stopped",
-	"restarted",
-	"allowed",
-	"mode_kept",
-	// An alert-started run refused it: nobody was there to answer (#818 w5-29).
-	"unattended",
-] as const;
-export type PermissionAskOutcome = (typeof PERMISSION_ASK_OUTCOMES)[number];
+export {
+	PERMISSION_ASK_OUTCOMES,
+	type PermissionAskOutcome,
+} from "./asks.js";
 
 /** An unanswered ask is denied after this long, so an unattended run still reaches its report (#673 w21). */
 export const ASK_TIMEOUT_MS = 10 * 60 * 1000;
-
-/** Body of `POST /investigations/{id}/asks/{askId}`. */
-export const AnswerAskSchema = z.object({
-	askId: z.string().uuid(),
-	decision: z.enum(["approve", "deny"]),
-	/** With approve on a scheduled run: its next runs allow this exact ask (#1020). Host only. */
-	always: z.boolean().optional(),
-});
-export type AnswerAskInput = z.infer<typeof AnswerAskSchema>;
-
-export const AnswerAskResultSchema = z.object({
-	outcome: z.enum(["approved", "denied"]),
-});
-export type AnswerAskResult = z.infer<typeof AnswerAskResultSchema>;
 
 export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 	z.object({
@@ -1022,6 +1009,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		followUp: FollowUpKindSchema.optional(),
 		/** Files that went with the message (R4.3). */
 		attachments: z.array(AttachmentRefSchema).optional(),
+		quotes: z.array(QuoteSchema).optional(),
+		references: z.array(ReferenceRefSchema).optional(),
 		/** The `message_queued` this delivers or gives up on; absent before #820. */
 		messageId: z.string().uuid().optional(),
 		/** A follow-up's first message: the agent, model and level that took it, and what a handoff carried. */
@@ -1059,6 +1048,35 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		messageId: z.string().uuid(),
 		text: z.string(),
 		attachments: z.array(AttachmentRefSchema).optional(),
+		quotes: z.array(QuoteSchema).optional(),
+		references: z.array(ReferenceRefSchema).optional(),
+	}),
+	z.object({
+		/** A queued message's text changed before the agent claimed it (#1024). */
+		kind: z.literal("message_edited"),
+		...StreamBaseShape,
+		messageId: z.string().uuid(),
+		text: z.string(),
+	}),
+	z.object({
+		/** A queued message was taken back before the agent claimed it (#1024). */
+		kind: z.literal("message_withdrawn"),
+		...StreamBaseShape,
+		messageId: z.string().uuid(),
+	}),
+	z.object({
+		/** Any ask the run waits on: permission, question, input or secret (#1024). */
+		kind: z.literal("ask_opened"),
+		...StreamBaseShape,
+		ask: PendingAskSchema,
+	}),
+	z.object({
+		kind: z.literal("ask_closed"),
+		...StreamBaseShape,
+		askId: z.string().uuid(),
+		outcome: z.enum(ASK_CLOSED_OUTCOMES),
+		/** Never set on a `secret` ask: its value is not recorded. */
+		answer: AskAnswerSchema.optional(),
 	}),
 	z.object({
 		/** The harness answered `session/set_config_option` before the first prompt (R4.2). */

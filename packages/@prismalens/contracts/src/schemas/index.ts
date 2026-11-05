@@ -7,9 +7,11 @@
  */
 
 export * from "./alert.js";
+export * from "./asks.js";
 export * from "./change-event.js";
 // Common schemas (enums, pagination, utilities)
 export * from "./common.js";
+export * from "./composer.js";
 // The PRE-dispatch context pack (ADR-0016 §5) — not ./overlay.js's post-report object.
 export * from "./context-pack.js";
 export * from "./event.js";
@@ -21,6 +23,7 @@ export * from "./integration.js";
 export * from "./investigation.js";
 export * from "./overlay.js";
 export * from "./recommendation.js";
+export * from "./references.js";
 export * from "./repository.js";
 export * from "./run-views.js";
 export * from "./run-workspace.js";
