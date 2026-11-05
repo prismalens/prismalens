@@ -203,7 +203,7 @@ ${tools}`
 /** A helper's page in fixed words: no page data, never the webhook token (#1020, OBJ-001). */
 const PLACE_LINES: Record<HelperPlace, string> = {
 	alerts:
-		"The user started this chat from the Alerts page in PrismaLens, which has no alerts yet. Alerts arrive by webhook: the webhook URL and token are shown on this page under Copy URL / Copy token, and the user copies them from there. In any example, write them as <webhook-url> and <webhook-token>; never ask the user to paste the token here.",
+		"The user started this chat from the Alerts page in PrismaLens, which has no alerts yet. Alerts arrive by webhook: the webhook URL is shown on this page under Copy URL, and the token under Copy token on the host machine only; a paired device cannot copy it, so the host copies it. In any example, write them as <webhook-url> and <webhook-token>; never ask the user to paste the token here.",
 	services:
 		"The user started this chat from the Services page in PrismaLens, which has no services yet. A service is something that runs and alerts: it names the code the agent reads, and alerts map to it by their service label. The user adds one with New service on that page.",
 	schedules:
