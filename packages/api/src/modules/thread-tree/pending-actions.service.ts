@@ -145,7 +145,7 @@ export class PendingActionsService {
 				return null;
 			});
 		if (!askId) {
-			// The card lives on the caller's run; with no run holding the thread there is none to show.
+			// The asks seat refuses only a thread that no longer exists.
 			await this.prisma.pendingAction.update({
 				where: { id: row.id },
 				data: {
@@ -156,8 +156,8 @@ export class PendingActionsService {
 			});
 			return fail(
 				"run_ended",
-				"No run holds this thread, so no approval card can open.",
-				"Stop; ask again from a live turn.",
+				"This thread no longer exists, so no approval card can open.",
+				"Stop; nothing more can be done here.",
 			);
 		}
 		await this.prisma.pendingAction.update({
@@ -373,7 +373,7 @@ export class PendingActionsService {
 			const f = (value as Failure | null)?.failure;
 			return `${head} was approved but did not run: ${f?.message ?? row.error ?? "it failed"}${f?.next ? ` Next: ${f.next}` : ""}`;
 		}
-		return `${head} was ${row.state} before the user answered: its card closes when your turn ends. Ask again only if you still need it.`;
+		return `${head} was ${row.state} before the user answered. Ask again only if you still need it.`;
 	}
 
 	/** At boot: approved rows run, and asks closed while PrismaLens was down are read again. */

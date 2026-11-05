@@ -11,7 +11,6 @@ import {
 } from "@prismalens/integrations/harness";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { releaseRun } from "../../../../scripts/fakes/fake-acp-agent.mjs";
 import { ASKS_PORT } from "../../src/modules/asks/asks.contract.js";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
@@ -156,10 +155,10 @@ describe("Threads that start threads (#1024 spec F)", () => {
 		await setTree("allow");
 	});
 
-	it("Given Ask each time, Then a start waits on a host-only card, and the host's approval through the API starts the child", async () => {
+	it("Given Ask each time, Then a start's host-only card outlives the caller's turn, and a later approval starts the child and reopens the caller", async () => {
 		expect(pl.resolve(ASKS_PORT)).toBeDefined();
 		await setTree("ask");
-		const hold = `tree-ask-hold-${randomUUID()}`;
+		const hold = `tree-ask-${randomUUID()}`;
 		const { investigationId: asker } = await pl.api<{ investigationId: string }>("/threads", {
 			method: "POST",
 			body: { subject: { kind: "none" }, text: `fake-session:tree-ask ${hold}` },
@@ -172,6 +171,14 @@ describe("Threads that start threads (#1024 spec F)", () => {
 			60_000,
 		);
 		expect(action?.state).toBe("pending");
+		// The caller's turn ends with the card still open.
+		await eventually(
+			() => pl.api<{ status: string }>(`/investigations/${asker}`),
+			(i) => finished(i.status),
+			"the caller's turn to end",
+			60_000,
+		);
+		expect((await db.pendingAction.findUniqueOrThrow({ where: { id: action?.id } })).state).toBe("pending");
 		const opened = await eventually(
 			async () => (await eventsOf(asker)).find((e) => e.kind === "ask_opened"),
 			(e) => !!e,
@@ -191,14 +198,14 @@ describe("Threads that start threads (#1024 spec F)", () => {
 		);
 		const child = JSON.parse(done.result as string).childId as string;
 		expect((await db.investigation.findUniqueOrThrow({ where: { id: child } })).parentId).toBe(asker);
-		// The caller hears the outcome as a message at its next pause.
+		// The ended caller is reopened with the outcome.
 		await eventually(
-			async () => (await db.pendingAction.findUniqueOrThrow({ where: { id: action?.id } })).deliveredAt,
-			(at) => !!at,
-			"the outcome delivered to the caller",
-			30_000,
+			async () =>
+				(await eventsOf(asker)).flatMap((e) => (e.kind === "operator_message" ? [e.text] : [])),
+			(t) => t.some((x) => x.includes('thread_start call (requestId "ask-cache") was approved')),
+			"the outcome delivered to the reopened caller",
+			60_000,
 		);
-		releaseRun(hold);
 		await setTree("allow");
 	}, 120_000);
 });
