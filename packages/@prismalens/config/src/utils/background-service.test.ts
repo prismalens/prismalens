@@ -25,6 +25,17 @@ describe("background service paths", () => {
 		expect(serviceUnitPath("linux", { XDG_CONFIG_HOME: "/c" }, "/h")).toBe("/c/systemd/user/prismalens.service");
 		expect(serviceUnitPath("darwin", {}, "/h")).toBe("/h/Library/LaunchAgents/io.prismalens.server.plist");
 	});
+	it("keeps a backslash in a POSIX path", () => {
+		const host = Object.getOwnPropertyDescriptor(process, "platform");
+		Object.defineProperty(process, "platform", { value: "linux" });
+		try {
+			expect(
+				serviceUnitPath("linux", { XDG_CONFIG_HOME: "/tmp/pl\\config" }, "/h"),
+			).toBe("/tmp/pl\\config/systemd/user/prismalens.service");
+		} finally {
+			if (host) Object.defineProperty(process, "platform", host);
+		}
+	});
 });
 
 describe("installedService", () => {
