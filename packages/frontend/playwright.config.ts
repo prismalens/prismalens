@@ -178,9 +178,11 @@ export default defineConfig({
 	// one stack per worker, so it parallelises.
 	workers: WORKERS,
 	// The json report feeds the CI job summary (flaky and failed lists); only CI names a file.
+	// The html report never opens itself: on a failure it served and waited, so a local
+	// run never exited. `pnpm exec playwright show-report` opens it.
 	reporter: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME
-		? [["html"], ["json"]]
-		: "html",
+		? [["html", { open: "never" }], ["json"]]
+		: [["html", { open: "never" }]],
 	use: { baseURL },
 	webServer: PL_UP
 		? [

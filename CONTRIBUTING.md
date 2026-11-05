@@ -83,6 +83,8 @@ Two things to know before running it locally:
 - The servers get a PATH holding only node, pnpm, git and the fake agents, so a real `claude` or
   `opencode` on your machine never answers. See
   [Agents on PATH](packages/frontend/e2e/README.md#agents-on-path).
+- A local run writes `packages/frontend/playwright-report/` and never opens it, so the run
+  always exits; `pnpm --filter @prismalens/frontend exec playwright show-report` opens it.
 - On failure, CI uploads the `playwright-report` artifact (7-day retention); read that rather than
   re-running blind.
 
