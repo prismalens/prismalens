@@ -16,7 +16,7 @@ Feature: Phone
     Given a fresh tab opens INC-1's Report from a Slack link
     Then the incident opens on its Overview
     When I press the chevron at the left of the band
-    Then I am on Operations after the chevron
+    Then I am on the thread list after the chevron
 
   Scenario: Log incident from the phone
     When I press "Log incident" in the header
