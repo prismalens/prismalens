@@ -305,6 +305,12 @@ function run() {
 				});
 			}
 			if (step.update) notify(sessionId, step.update);
+			// A file the agent writes in its cwd, as an edit tool would (#1024).
+			if (step.write)
+				writeFileSync(
+					join(cwd, step.write.path),
+					fill(step.write.content, prompt),
+				);
 			if (step.tool) await tool(sessionId, step.tool, meta);
 			if (step.subagent) await subagent(sessionId, step.subagent, prompt);
 			if (step.elicit) {

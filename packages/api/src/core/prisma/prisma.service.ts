@@ -190,6 +190,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.repository;
 	}
 
+	get checkoutLease() {
+		return db.checkoutLease;
+	}
+
 	get serviceRepository() {
 		return db.serviceRepository;
 	}

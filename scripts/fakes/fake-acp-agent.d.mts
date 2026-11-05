@@ -50,6 +50,8 @@ export interface Step {
 	update?: Record<string, unknown>;
 	tool?: ToolStep;
 	call?: CallStep;
+	/** Writes `content` to `path`, relative to the agent's cwd. */
+	write?: { path: string; content: string };
 	report?: Record<string, unknown>;
 	stderr?: string;
 	exit?: number;

@@ -8,7 +8,10 @@ import type { Prisma } from "@prismalens/database";
 
 export const FOLDER_BUSY = "A thread is already working in this folder.";
 
-type Db = Pick<Prisma.TransactionClient, "repository" | "investigation">;
+type Db = Pick<
+	Prisma.TransactionClient,
+	"repository" | "investigation" | "checkoutLease"
+>;
 
 const fold = (p: string) =>
 	process.platform === "win32" || process.platform === "darwin"
@@ -131,8 +134,20 @@ export async function folderBusy(
 		select: { plain: true, url: true },
 	});
 	if (!repo?.plain) return false;
+	return busyAt(db, repo.url, selfId);
+}
+
+/**
+ * Another live run works in `folder` or a folder nested with it: a plain folder's run, a
+ * borrowed checkout's lease (#1024), or a folder turning into a repo.
+ */
+export async function busyAt(
+	db: Pick<Db, "investigation" | "checkoutLease">,
+	folder: string,
+	selfId?: string,
+): Promise<boolean> {
 	try {
-		const at = await named(repo.url);
+		const at = await named(folder);
 		for (const c of converting.values())
 			if (overlaps(await named(c), at)) return true;
 	} catch (e) {
@@ -140,7 +155,33 @@ export async function folderBusy(
 		if (e instanceof CanonicalBusy) return true;
 		throw e;
 	}
-	return liveIn(db, repo.url, selfId);
+	return (
+		(await liveIn(db, folder, selfId)) || (await leaseNear(db, folder, selfId))
+	);
+}
+
+/** A live run's checkout lease (#1024) nested with `folder`, or on it, other than `selfId`'s. */
+export async function leaseNear(
+	db: Pick<Db, "checkoutLease">,
+	folder: string,
+	selfId?: string,
+): Promise<boolean> {
+	const held = await db.checkoutLease.findMany({
+		where: {
+			...(selfId ? { investigationId: { not: selfId } } : {}),
+			investigation: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
+		},
+		select: { canonicalPath: true },
+	});
+	if (!held.length) return false;
+	try {
+		// Lease paths are stored as the disk names them.
+		const at = await named(folder);
+		return held.some((l) => overlaps(l.canonicalPath, at));
+	} catch (e) {
+		if (e instanceof CanonicalBusy) return true;
+		throw e;
+	}
 }
 
 /** A live run of any plain folder nested with `folder`, or the same one, other than `selfId`. */

@@ -52,6 +52,7 @@ import {
 	parseEventRows,
 	questionTimeoutFrom,
 	queuedLeftWaiting,
+	type RunWorkspace,
 	RunWorkspaceSchema,
 	ScheduledRunSchema,
 } from "@prismalens/contracts";
@@ -97,6 +98,15 @@ import {
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import {
+	CHECKOUT_BUSY,
+	checkoutBusy,
+	checkoutRoot,
+	leasedBy,
+	releaseEndedLeases,
+	sameCheckout,
+	takeLease,
+} from "./checkout-lease.js";
 import { Dispatcher } from "./dispatcher.js";
 import {
 	EVENT_BUS,
@@ -120,6 +130,7 @@ export const QUESTION_TIMEOUT_SETTING = "agents.questionTimeoutMinutes";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
+	checkoutGoneReason,
 	followUpNotDelivered,
 	runDirFor,
 	sweepRunWorkspaces,
@@ -844,6 +855,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			),
 		);
 		const checked = boot ? await this.checkRecoveries(boot) : true;
+		// After every boot write: a lease whose run is no longer live frees its checkout (#1024).
+		await releaseEndedLeases(this.prisma)
+			.then((n) => {
+				if (n > 0)
+					this.logger.log(`Released ${n} checkout lease(s) of ended runs`);
+			})
+			.catch((e) =>
+				this.logger.warn(
+					`Could not release ended checkout leases: ${(e as Error).message}`,
+				),
+			);
 		// The boot sweep applies each workspace's own retention rule, so the settings load first.
 		await this.runWorkspaces?.ready();
 		try {
@@ -1290,6 +1312,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					"Only a stopped or failed run can be continued.",
 				);
 		}
+		const checkout = await this.borrowedCheckout(id, row.repositoryId);
 		const accessLevel = await this.followUpLevel(row);
 		const sawEvidence = kind === "continue" && (await this.hasToolResult(id));
 		const restore = {
@@ -1351,6 +1374,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					: null;
 				if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
 					throw new FollowUpRefused(FOLDER_BUSY);
+				if (checkout) await this.leaseIn(tx, checkout, id);
 				if (other) {
 					const n = await tx.investigation.count({
 						where: {
@@ -1400,6 +1424,58 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	}
 
 	/** A project, service or no-subject thread's subject and code as they stand now (#1020). */
+	/**
+	 * The user's checkout this thread works in (#1024), or null for any other thread. Throws
+	 * CheckoutGone when it no longer resolves to the path the thread borrowed.
+	 */
+	async borrowedCheckout(
+		id: string,
+		repositoryId: string | null,
+	): Promise<string | null> {
+		const recorded = await this.recordedCheckout(id);
+		if (!recorded) return null;
+		const repo = repositoryId
+			? await this.prisma.repository.findUnique({
+					where: { id: repositoryId },
+					select: { url: true },
+				})
+			: null;
+		const now = repo ? await checkoutRoot(repo.url) : null;
+		if (!now || !sameCheckout(now, recorded))
+			throw new CheckoutGone(checkoutGoneReason(recorded));
+		return recorded;
+	}
+
+	/** The checkout path the thread borrowed (#1024): from its workspace, else its first turn's lease. */
+	async recordedCheckout(id: string): Promise<string | null> {
+		const inv = await this.prisma.investigation.findUnique({
+			where: { id },
+			select: { workspace: true },
+		});
+		let ws: RunWorkspace | undefined;
+		try {
+			ws = inv?.workspace
+				? RunWorkspaceSchema.safeParse(JSON.parse(inv.workspace)).data
+				: undefined;
+		} catch {
+			ws = undefined;
+		}
+		if (ws)
+			return ws.layout === "in_place" ? (ws.borrowed?.path ?? null) : null;
+		return leasedBy(this.prisma, id);
+	}
+
+	/** Takes the checkout's lease again for this thread, or refuses while another run holds it. */
+	private async leaseIn(
+		tx: Parameters<typeof checkoutBusy>[0],
+		checkout: string,
+		id: string,
+	): Promise<void> {
+		if (await checkoutBusy(tx, checkout, id))
+			throw new FollowUpRefused(CHECKOUT_BUSY);
+		await takeLease(tx, checkout, id);
+	}
+
 	async threadRunOf(row: {
 		repositoryId: string | null;
 		serviceId: string | null;
@@ -1883,6 +1959,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		runAt: Date,
 		from: "live" | "interrupted",
 	): Promise<boolean> {
+		const repositoryId =
+			(
+				await this.prisma.investigation.findUnique({
+					where: { id },
+					select: { repositoryId: true },
+				})
+			)?.repositoryId ?? null;
+		const checkout = await this.borrowedCheckout(id, repositoryId);
 		return this.prisma.$transaction(async (tx) => {
 			const own = await tx.investigation.findUnique({
 				where: { id },
@@ -1890,6 +1974,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			});
 			if (own?.repositoryId && (await folderBusy(tx, own.repositoryId, id)))
 				throw new FollowUpRefused(FOLDER_BUSY);
+			if (checkout) await this.leaseIn(tx, checkout, id);
 			const { count } = await tx.investigation.updateMany({
 				where:
 					from === "live"

@@ -21,6 +21,7 @@ function db(
 	return {
 		repository: { findUnique: vi.fn(async () => repo) },
 		investigation: { findMany: vi.fn(async () => live) },
+		checkoutLease: { findMany: vi.fn(async () => []) },
 	};
 }
 
