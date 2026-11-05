@@ -181,6 +181,22 @@ describe("needOf", () => {
 		});
 	});
 
+	it("a plain chat that failed opens that chat run instead of retrying an investigation", () => {
+		const failed = run({ kind: "chat", status: "failed", error: "model refused" });
+		const chat = incident({
+			tags: ["chat"],
+			alertCount: 0,
+			alerts: [],
+			investigations: [failed],
+		});
+		expect(needOf(chat)).toBe("failed");
+		expect(actionsOf(chat, "failed", "none").primary).toEqual({
+			kind: "open",
+			label: "Open",
+			runId: failed.id,
+		});
+	});
+
 	it("calls a never-run incident Not investigated with Investigate", () => {
 		const i = incident({});
 		expect(needOf(i)).toBe("uninvestigated");

@@ -377,14 +377,19 @@ export function actionsOf(
 						: undefined,
 			};
 		}
-		case "failed":
+		case "failed": {
+			// A chat that failed is reopened, not turned into an investigation.
+			const chatRun = isPlainChat(incident) ? concluded(incident).ended : null;
 			return {
-				primary: { kind: "investigate", label: "Retry run" },
+				primary: chatRun
+					? { kind: "open", label: "Open", runId: chatRun.id }
+					: { kind: "investigate", label: "Retry run" },
 				secondary:
 					firing === "clear" || firing === "none"
 						? { kind: "resolve", label: "Resolve" }
 						: undefined,
 			};
+		}
 		case "uninvestigated":
 		case "nocause":
 			return {
