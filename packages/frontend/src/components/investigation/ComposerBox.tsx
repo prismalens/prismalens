@@ -349,7 +349,7 @@ export function ComposerBox({
 						/>
 					</PromptInputBody>
 					<PromptInputFooter className="-ml-1.5">
-						{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (cp6; #673 QA-06). */}
+						{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020; #673 QA-06). */}
 						<PromptInputTools
 							className="min-w-0 flex-1 gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>*]:shrink-0 sm:flex-wrap sm:gap-y-1"
 							data-testid="composer-chips"

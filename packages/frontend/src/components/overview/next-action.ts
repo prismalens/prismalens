@@ -16,7 +16,7 @@ export interface NextPageActions {
 	commandRef: RefObject<HTMLElement | null>;
 }
 
-/** The Next strip's buttons, the same on the overview and beside a transcript (D19). */
+/** The Next strip's buttons, the same on the overview and beside a transcript (#1020). */
 export function nextHandler(o: Overview, page: NextPageActions) {
 	return (id: NextActionId) => {
 		const opt = o.current;

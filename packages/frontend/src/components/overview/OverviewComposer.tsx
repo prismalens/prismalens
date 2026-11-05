@@ -83,7 +83,7 @@ export function overviewActions(t: {
 			note,
 		],
 		hint: {
-			// The overview is for a thread with no run; the first run opens on its transcript (D19).
+			// The overview is for a thread with no run; the first run opens on its transcript (#1020).
 			ask: "Opens the conversation; the agent answers there.",
 			investigate: `Starts ${t.nextName} and opens it.`,
 			note: "Goes on the timeline. The agent never reads it.",

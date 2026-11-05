@@ -210,7 +210,7 @@ describe("the box: one chip row, one Send (#811)", () => {
 		expect(document.querySelector('[data-testid="action-chip"]')).toBeNull();
 	});
 
-	it("wraps chips from sm up; on a phone one row scrolls and no chip shrinks (cp6, #673 QA-06)", async () => {
+	it("wraps chips from sm up; on a phone one row scrolls and no chip shrinks (#1020, #673 QA-06)", async () => {
 		await render({});
 		const chips = q("composer-chips");
 		expect(chips.classList.contains("sm:flex-wrap")).toBe(true);

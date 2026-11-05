@@ -218,7 +218,7 @@ export function IncidentHeader({
 			{resolvable && !chat && (
 				<Button
 					variant="secondary"
-					// A phone gives the title this room; Resolve waits in More there (cp12).
+					// A phone gives the title this room; Resolve waits in More there (#1020).
 					className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3 max-sm:hidden"
 					onClick={() => (firing?.firing ? setConfirmOpen(true) : onResolve())}
 					data-testid="header-resolve"

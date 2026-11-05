@@ -125,7 +125,7 @@ export function RunStrip({
 			>
 				{detail}
 			</span>
-			{/* The box names the model; the strip speaks only when something is off (cp8). */}
+			{/* The box names the model; the strip speaks only when something is off (#1020). */}
 			{model?.warn && <Chip chip={model} testId="run-strip-model" />}
 			{code && <Chip chip={code} testId="run-strip-code" />}
 			{tools && <Chip chip={tools} testId="run-strip-tools" />}

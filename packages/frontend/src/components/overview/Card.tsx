@@ -64,7 +64,7 @@ interface Overflow {
 	overflows: boolean;
 	/** Rows not yet in view below; a row cut at the bottom counts. */
 	rows: number;
-	/** The first hidden row's name (`data-row="Lasting fix"`), said instead of a count (cp7). */
+	/** The first hidden row's name (`data-row="Lasting fix"`), said instead of a count (#1020). */
 	next: string;
 	atEnd: boolean;
 }

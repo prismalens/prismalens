@@ -242,7 +242,7 @@ function Drawing({ report, cites, onCite, scope }: Shared) {
 			aria-label="Hypotheses from the report"
 			data-testid="hypotheses-drawing"
 		>
-			{/* With one hypothesis its row already says the cause; a second block only repeats it (cp8). */}
+			{/* With one hypothesis its row already says the cause; a second block only repeats it (#1020). */}
 			{roots.length > 1 && <Conclusion text={report.rootCause} />}
 			<Level
 				nodes={roots}

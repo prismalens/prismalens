@@ -188,7 +188,7 @@ describe("deriveStreamView", () => {
 	 * strictly looser than the contract. This pins the other direction shut, so
 	 * a later tightening cannot start printing reports raw.
 	 */
-	it("shows a chat's drafted report as its answer, by the report's summary (cp8)", () => {
+	it("shows a chat's drafted report as its answer, by the report's summary (#1020)", () => {
 		const json = JSON.stringify(VALID_REPORT);
 		const chat = { status: "completed", live: false, kind: "chat" } as const;
 		const items = deriveTranscript([agentStep("main", 1, json)], { run: chat });

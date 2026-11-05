@@ -217,7 +217,7 @@ export function RunPage() {
 	const [workOpen, setWorkOpen] = useState(false);
 	const [preview, setPreview] = useState(false);
 	const phone = useMediaQuery(PHONE);
-	// Below 1024 px the strip drops its chips so the run status keeps its room (cp6).
+	// Below 1024 px the strip drops its chips so the run status keeps its room (#1020).
 	const chipless = useMediaQuery("(max-width: 1023px)");
 	const panel = phone ? sheetOpen : rightPanel;
 	// Crossing the phone breakpoint carries the panel's state over (#974 OBJ-012).
@@ -453,7 +453,7 @@ export function RunPage() {
 	}, [setPanel, setTab]);
 
 	const report = inv?.report;
-	// A chat's answer is its drafted report's summary, in the transcript itself (cp8).
+	// A chat's answer is its drafted report's summary, in the transcript itself (#1020).
 	const reportTitle =
 		report && inv && !chat
 			? `${name} concluded: ${reportOutcome(report.rootCause)}`
@@ -644,7 +644,7 @@ export function RunPage() {
 	const toolsChip: StripChip | null =
 		tools.state === "not-reached"
 			? {
-					// Said as what the answer lacks, not as the mechanism (cp9).
+					// Said as what the answer lacks, not as the mechanism (#1020).
 					text: "Could not read alerts or metrics",
 					title:
 						"The agent could not reach PrismaLens's tools, so it did not read alerts, metrics or the timeline. Open the details for the fix.",
@@ -656,7 +656,7 @@ export function RunPage() {
 		? [modelChip, code, toolsChip].flatMap((c) => (c?.warn ? [c.text] : []))
 		: [];
 	const recheck = useRecheck();
-	// An incident thread keeps its summary in view above the transcript (D19).
+	// An incident thread keeps its summary in view above the transcript (#1020).
 	const o = useOverview();
 	const commandRef = useRef<HTMLElement>(null);
 	const incidentThread = !isPlainChat(incident);
@@ -1055,7 +1055,7 @@ export function stripWords(
 				};
 			return {
 				label: chat ? "Ask, failed" : `${who} failed`,
-				// The strip says what went wrong; the summary's Next carries the fix (cp12).
+				// The strip says what went wrong; the summary's Next carries the fix (#1020).
 				detail: chat
 					? failureStatusLine(agent, inv.error, loginHint)
 					: failureSentence(agent, inv.error, loginHint).said,

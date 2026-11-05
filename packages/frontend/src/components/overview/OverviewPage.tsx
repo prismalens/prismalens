@@ -127,7 +127,7 @@ export function OverviewPage() {
 						</div>
 						{/* A webhook event has no impact to measure, only what changed around it. */}
 						{!event && <ImpactCard view={o.impact} />}
-						{/* Before any run, Why and Stop the impact only repeat "no run yet" (cp7). */}
+						{/* Before any run, Why and Stop the impact only repeat "no run yet" (#1020). */}
 						{o.latest && <StopImpactCard o={o} commandRef={commandRef} />}
 						{o.latest && (
 							<WhyCard o={o} onInvestigate={() => focusBox("investigate")} />

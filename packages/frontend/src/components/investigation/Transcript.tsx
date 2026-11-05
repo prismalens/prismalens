@@ -175,7 +175,7 @@ export const Transcript = memo(function Transcript({
 	empty?: boolean;
 	/** The agent's sign-in line, so a signed-out failure names its command. */
 	loginHint?: string;
-	/** What the run could not read, said beside its conclusion (cp10). */
+	/** What the run could not read, said beside its conclusion (#1020). */
 	limits?: string | null;
 	/** An incident summary above already states the cause and the next action. */
 	summaryAbove?: boolean;
@@ -497,7 +497,7 @@ const TranscriptRow = memo(function TranscriptRow({
 								{limits}
 							</span>
 						)}
-						{/* The result reads here, so a follow-up never needs the overview (D19). */}
+						{/* The result reads here, so a follow-up never needs the overview (#1020). */}
 						{reportStop !== undefined && (
 							<div className="flex flex-col gap-1" data-testid="report-stop">
 								<span className="text-meta text-text-3">Stop the impact</span>

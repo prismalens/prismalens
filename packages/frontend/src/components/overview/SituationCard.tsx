@@ -68,7 +68,7 @@ export function SituationCard({
 	limited?: boolean;
 	/** The page already shows the live run, so Watch would go nowhere. */
 	watching?: boolean;
-	/** Above a transcript: two lines of brief and no dependencies line (D19). */
+	/** Above a transcript: two lines of brief and no dependencies line (#1020). */
 	compact?: boolean;
 	o: Overview;
 	onAction: (id: NextActionId) => void;
@@ -165,7 +165,7 @@ export function SituationCard({
 		strip.primary = undefined;
 	if (strip.secondary && dropped.includes(strip.secondary.id))
 		strip.secondary = undefined;
-	// Beside the live run itself, a Next with nothing to press only repeats the strip above (cp11).
+	// Beside the live run itself, a Next with nothing to press only repeats the strip above (#1020).
 	const quiet = watching && !strip.primary && !strip.secondary;
 
 	return (

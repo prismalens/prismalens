@@ -109,7 +109,7 @@ export function RunDetailsPanel({
 	contextTop,
 	incident,
 }: {
-	/** An incident thread's impact, fixes, finding and changes, beside the transcript (D19). */
+	/** An incident thread's impact, fixes, finding and changes, beside the transcript (#1020). */
 	incident?: ReactNode;
 	/** Above the Context sections: the runbooks the run found (#848). */
 	contextTop?: ReactNode;

@@ -824,7 +824,7 @@ export function deriveTranscript(
 			case "agent_step": {
 				sawAgent = true;
 				const { text, draft } = splitAgentText(event.text.trim());
-				// A chat shows its drafted report's summary as the answer, not "Report drafted" (cp8).
+				// A chat shows its drafted report's summary as the answer, not "Report drafted" (#1020).
 				const answer =
 					run?.kind === "chat" && text === REPORT_DRAFTED
 						? draftedSummary(event.text)

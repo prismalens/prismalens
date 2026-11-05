@@ -1,6 +1,6 @@
 /**
  * An incident thread's address. With a run it opens on the latest run's
- * transcript, the summary above it (D19); with none, the overview. Redirecting
+ * transcript, the summary above it (#1020); with none, the overview. Redirecting
  * in beforeLoad: a rendered redirect here can lose a race and leave a blank page (#814).
  */
 import { createFileRoute, redirect } from "@tanstack/react-router";

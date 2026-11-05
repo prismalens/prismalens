@@ -240,7 +240,7 @@ export function endedRun(
  * from the top fix option's stage, else the run's state.
  */
 export function nextStrip(input: {
-	/** The report's lasting fix, named in the strip rather than pointed at (cp7). */
+	/** The report's lasting fix, named in the strip rather than pointed at (#1020). */
 	lastingFix?: string | null;
 	/** The operator resolved it (stored `closed`); Alerts cleared is `cleared`, not this. */
 	ended: boolean;
@@ -255,7 +255,7 @@ export function nextStrip(input: {
 	/** Stored `resolved`: the source ended it; it reads Alerts cleared before any fix step. */
 	alertsCleared?: boolean;
 	runs: number;
-	/** No service is attached, so a run has no code to read (cp12). */
+	/** No service is attached, so a run has no code to read (#1020). */
 	noService?: boolean;
 	/** `waiting`: its agent waits on your Approve or Deny (#673 w5-14). */
 	live: { name: string; waiting?: boolean } | null;
