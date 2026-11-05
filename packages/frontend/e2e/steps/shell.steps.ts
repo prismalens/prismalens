@@ -234,11 +234,19 @@ When(
 			.getByTestId("page-header")
 			.getByTestId("create-incident-button")
 			.click();
-		const dialog = page.getByTestId("create-incident-dialog");
-		await dialog.getByTestId("create-incident-title").fill(unique(title));
-		await dialog.locator("#incident-service").click();
-		await page.getByRole("option", { name: service }).click();
-		await dialog.getByTestId("create-incident-submit").click();
+		// Log incident opens Home with Incident on (#1020); /note makes it by hand, no run.
+		await expect(page.getByTestId("composer-incident")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		await page.getByTestId("composer-subject").click();
+		await page.getByRole("menuitemradio", { name: service }).click();
+		const box = page.getByTestId("composer-input");
+		await box.fill("/");
+		await page.getByTestId("composer-slash-note").click();
+		await expect(page.getByTestId("composer-note")).toBeVisible();
+		await box.fill(unique(title));
+		await box.press("Enter");
 		world(page).incident = {
 			id: "",
 			number: 0,
@@ -567,11 +575,13 @@ When("I press {string} in the header", async ({ page }, _label: string) => {
 });
 
 Then(
-	"the create dialog opens and fits the screen without sideways scrolling",
+	"Home opens with Incident on and fits the screen without sideways scrolling",
 	async ({ page }) => {
-		const dialog = page.getByTestId("create-incident-dialog");
-		await expect(dialog).toBeVisible();
-		const box = await dialog.boundingBox();
+		await expect(page.getByTestId("composer-incident")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		const box = await page.getByTestId("home").boundingBox();
 		const width = page.viewportSize()?.width ?? 0;
 		expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
 		expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
