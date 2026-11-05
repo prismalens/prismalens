@@ -11,12 +11,16 @@ import {
 	webhookUrl,
 } from "@/lib/api/hooks/use-webhooks-orpc";
 
-/** Alerts before the first one: the webhook to point a receiver at, or a source to pull. */
-export function AlertsBlank() {
+/** Alerts before the first one: the webhook to point a receiver at, or a source to pull. `compact` drops the page-level centring when embedded. */
+export function AlertsBlank({ compact = false }: { compact?: boolean }) {
 	const { data: token } = useWebhookToken();
 	const url = webhookUrl("prometheus");
 	return (
-		<Blank title="Connect your alerts" testId="alerts-none">
+		<Blank
+			title="Connect your alerts"
+			testId="alerts-none"
+			className={compact ? "pt-4 pb-4" : undefined}
+		>
 			<p className="-mt-2 text-body text-text-2">
 				Add as an Alertmanager webhook
 			</p>

@@ -9,8 +9,9 @@ import type { IncidentWithRelations } from "@prismalens/contracts";
  */
 export type TriggerKind = "you" | "alert" | "webhook" | "schedule";
 
-/** Sources that send monitoring alerts; any other webhook source is a plain event. */
+/** Sources that send monitoring alerts, `api` for alerts made through the alerts API; any other webhook source is a plain event. */
 const ALERT_SOURCES = new Set([
+	"api",
 	"prometheus",
 	"alertmanager",
 	"alertmanager-pull",

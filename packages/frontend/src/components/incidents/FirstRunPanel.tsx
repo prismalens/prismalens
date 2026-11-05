@@ -58,6 +58,8 @@ export function useSetupProgress() {
 export function SetupLine() {
 	const p = useSetupProgress();
 	if (!p.loaded || p.done === 4) return null;
+	const left =
+		(p.steps.agent ? 0 : 1) + (p.alertsIn ? 0 : 1) + (p.steps.code ? 0 : 1);
 	const [why, action] = !p.steps.agent
 		? [
 				!p.agent
@@ -88,10 +90,7 @@ export function SetupLine() {
 			data-testid="setup-line"
 		>
 			<span>
-				{4 - p.done === 1
-					? "One setup step left"
-					: `${4 - p.done} setup steps left`}
-				: {why}
+				{left === 1 ? "One setup step left" : `${left} setup steps left`}: {why}
 			</span>
 			{action}
 		</p>

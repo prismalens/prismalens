@@ -254,7 +254,7 @@ function MainBar({
 						<DoorLink
 							key={door.label}
 							door={door}
-							on={isOn(pathname, door.to)}
+							on={!door.narrowOnly && isOn(pathname, door.to)}
 							labelled={full}
 						/>
 					))}

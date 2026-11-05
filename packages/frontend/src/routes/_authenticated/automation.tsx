@@ -80,11 +80,11 @@ function Automation() {
 										/>
 										Show the webhook address and token
 									</summary>
-									<AlertsBlank />
+									<AlertsBlank compact />
 								</details>
 							</div>
 						) : (
-							<AlertsBlank />
+							<AlertsBlank compact />
 						)}
 					</section>
 				</div>
