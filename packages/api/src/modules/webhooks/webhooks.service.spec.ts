@@ -8,6 +8,7 @@ import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import { AlertsService } from "../alerts/alerts.service.js";
 import { IncidentCorrelationService } from "../alerts/incident-correlation.service.js";
 import { EventsService } from "../events/events.service.js";
+import { ServicesService } from "../services/services.service.js";
 import {
 	EARLY_RESOLUTION_EVENT,
 	EARLY_RESOLUTION_TTL_MS,
@@ -23,6 +24,7 @@ describe("WebhooksService", () => {
 	let alertsService: AlertsService;
 	let incidentCorrelationService: IncidentCorrelationService;
 	let alertMappingService: AlertMappingService;
+	let servicesService: ServicesService;
 
 	const mockEvent = {
 		id: "evt-123",
@@ -119,6 +121,13 @@ describe("WebhooksService", () => {
 						resolveServiceForAlert: vi.fn().mockResolvedValue(null),
 					},
 				},
+				{
+					provide: ServicesService,
+					useValue: {
+						findById: vi.fn().mockResolvedValue(null),
+						findByName: vi.fn().mockResolvedValue(null),
+					},
+				},
 			],
 		}).compile();
 
@@ -129,6 +138,7 @@ describe("WebhooksService", () => {
 			IncidentCorrelationService,
 		);
 		alertMappingService = module.get<AlertMappingService>(AlertMappingService);
+		servicesService = module.get<ServicesService>(ServicesService);
 	});
 
 	it("processes generic webhook without idempotency key", async () => {
@@ -420,6 +430,72 @@ describe("WebhooksService", () => {
 		});
 	});
 
+
+	describe("service resolution (#1008 N4)", () => {
+		const byId = { id: "11111111-1111-4111-8111-111111111111", name: "by-id" };
+		const byName = { id: "22222222-2222-4222-8222-222222222222", name: "checkout" };
+		const byRule = { id: "33333333-3333-4333-8333-333333333333", name: "by-rule" };
+
+		it("an existing serviceId wins over serviceName and the mapping rules", async () => {
+			vi.mocked(servicesService.findById).mockResolvedValue(byId as never);
+			vi.mocked(servicesService.findByName).mockResolvedValue(byName as never);
+			vi.mocked(alertMappingService.resolveServiceForAlert).mockResolvedValue(byRule as never);
+
+			const result = await service.processGenericWebhook({
+				title: "Test Alert",
+				serviceId: byId.id,
+				serviceName: byName.name,
+			});
+
+			expect(alertsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ serviceId: byId.id }),
+			);
+			expect(result.mappedServiceId).toBe(byId.id);
+		});
+
+		it("matches serviceName to a service by name", async () => {
+			vi.mocked(servicesService.findByName).mockResolvedValue(byName as never);
+			vi.mocked(alertMappingService.resolveServiceForAlert).mockResolvedValue(byRule as never);
+
+			const result = await service.processGenericWebhook({
+				title: "Test Alert",
+				serviceName: byName.name,
+			});
+
+			expect(servicesService.findByName).toHaveBeenCalledWith(byName.name);
+			expect(alertsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ serviceId: byName.id }),
+			);
+			expect(result.mappedServiceId).toBe(byName.id);
+		});
+
+		it("falls back to the mapping rules when serviceName and serviceId match nothing", async () => {
+			vi.mocked(alertMappingService.resolveServiceForAlert).mockResolvedValue(byRule as never);
+
+			const result = await service.processGenericWebhook({
+				title: "Test Alert",
+				serviceId: byId.id,
+				serviceName: "no-such-service",
+				labels: { service: byRule.name },
+			});
+
+			expect(alertMappingService.resolveServiceForAlert).toHaveBeenCalledTimes(1);
+			expect(alertsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ serviceId: byRule.id }),
+			);
+			expect(result.mappedServiceId).toBe(byRule.id);
+		});
+
+		it("uses the mapping rules alone when neither field is sent", async () => {
+			vi.mocked(alertMappingService.resolveServiceForAlert).mockResolvedValue(byRule as never);
+
+			const result = await service.processGenericWebhook({ title: "Test Alert" });
+
+			expect(servicesService.findById).not.toHaveBeenCalled();
+			expect(servicesService.findByName).not.toHaveBeenCalled();
+			expect(result.mappedServiceId).toBe(byRule.id);
+		});
+	});
 
 	describe("sender text caps (#633 edge 13)", () => {
 		it("caps title, description and label values before anything is stored", async () => {
