@@ -289,7 +289,7 @@ function renderThreadSubject(context: InvestigationContext): string {
 	if (!lines.length) return "";
 	return `\n\n${fenceUntrusted(
 		"THREAD_SUBJECT",
-		"Names the user gave this thread's project, service and folders in PrismaLens.",
+		"Names the user gave this thread's project, service and folders in PrismaLens. A folder or sub-path is a JSON string, not a shell-safe one: parse it, then shell-quote the result before putting it in a command.",
 		lines.join("\n"),
 		"answer",
 	)}`;

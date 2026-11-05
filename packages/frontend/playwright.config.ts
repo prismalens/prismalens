@@ -169,9 +169,10 @@ export default defineConfig({
 	fullyParallel: !PL_UP,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
-	// CI runs one API, Vite and browser per vCPU; on a busy runner a first paint
-	// alone took 4-5 s, so the default 5 s assertion wait failed on load (#1020).
-	expect: { timeout: process.env.CI ? 10_000 : 5_000 },
+	// A navigation boots the app from ~320 unbundled module requests: up to 6.7 s with a stack per
+	// core. An assertion after one needs 15 s, and a twelve-step scenario took 73 s. #1048
+	expect: { timeout: 15_000 },
+	timeout: 120_000,
 	// One worker against `pl up`: it is a single process with one SQLite file,
 	// and the first-run journey mutates global setup state. The dev stack runs
 	// one stack per worker, so it parallelises.
