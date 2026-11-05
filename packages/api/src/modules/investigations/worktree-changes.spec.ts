@@ -28,6 +28,7 @@ import { readWorktreeChanges } from "./worktree-changes.js";
 const fsHooks = vi.hoisted(() => ({
 	beforeOpen: null as null | ((path: string) => void),
 	opened: 0,
+	failRead: false,
 }));
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const real = await importOriginal<typeof import("node:fs/promises")>();
@@ -38,7 +39,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 			const hook = fsHooks.beforeOpen;
 			fsHooks.beforeOpen = null;
 			hook?.(String(args[0]));
-			return real.open(...args);
+			return real.open(...args).then((handle) => {
+				if (fsHooks.failRead)
+					handle.read = () => Promise.reject(new Error("EIO"));
+				return handle;
+			});
 		},
 	};
 });
@@ -115,6 +120,7 @@ beforeEach(() => {
 afterEach(() => {
 	fsHooks.beforeOpen = null;
 	fsHooks.opened = 0;
+	fsHooks.failRead = false;
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -292,6 +298,16 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo.patch).toBeNull();
 		expect(repo.omitted).toBe("too-large");
 		expect(repo.additions).toBeGreaterThan(0);
+	});
+
+	it("keeps a read error in one untracked file to that file", async () => {
+		write(run, { "new.txt": "fine\n", "src/retry.ts": "export const retries = 4;\n" });
+		fsHooks.failRead = true;
+
+		const repo = await changes();
+
+		expect(repo.files.find((f) => f.path === "new.txt")).toMatchObject({ status: "added" });
+		expect(repo.patch ?? "").not.toContain("+fine");
 	});
 
 	it("binds an untracked file's read to the file it checked: a hard link swapped in before open", async () => {

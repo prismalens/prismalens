@@ -419,11 +419,9 @@ export class ThreadsService {
 		const ids = (
 			await this.prisma.investigation.findMany({ where, select: { id: true } })
 		).map((r) => r.id);
-		await this.prisma.investigation.updateMany({
-			where: { id: { in: ids } },
-			// Only settledAt changes, so Undo restores exactly what Settle hid.
-			data: { settledAt: settled ? new Date() : null },
-		});
+		// readState keeps each row's updatedAt, so settling or undoing never reorders the feed.
+		const at = settled ? new Date() : null;
+		for (const target of ids) await this.readState(target, { settledAt: at });
 		return { ids };
 	}
 
