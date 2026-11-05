@@ -243,25 +243,68 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			updatedAt: stamp,
 		});
 		prisma.investigation.findMany.mockResolvedValue(ids.map((id) => ({ id })));
-		expect(await service().settle(ids[0] as string, true)).toEqual({ ids });
+		expect(await service().settle(ids[0] as string, true)).toMatchObject({ ids });
 		expect(prisma.investigation.findMany).toHaveBeenCalledWith({
 			where: { incidentId: inc },
-			select: { id: true },
+			select: { id: true, settledAt: true },
 		});
 		// Each row is written on its own, keeping its updatedAt.
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
 			where: { id: ids[1], updatedAt: stamp },
 			data: { settledAt: expect.any(Date), updatedAt: stamp },
 		});
+		// A bare Undo clears only the thread it names, never its siblings (#1020).
 		await service().settle(ids[0] as string, false);
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
-			where: { id: ids[1], updatedAt: stamp },
+			where: { id: ids[0], updatedAt: stamp },
 			data: { settledAt: null, updatedAt: stamp },
 		});
 		prisma.investigation.findUnique.mockResolvedValue(null);
 		await expect(service().settle(uuid(), true)).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});
+	});
+
+	it("Undo puts each thread of an incident block back as it was, an earlier Settle included", async () => {
+		const inc = uuid();
+		const earlier = new Date("2020-01-01T08:00:00Z");
+		const rows = [
+			{ id: uuid(), incidentId: inc, settledAt: earlier },
+			{ id: uuid(), incidentId: inc, settledAt: null as Date | null },
+		];
+		prisma.investigation.findUnique.mockResolvedValue({ incidentId: inc });
+		prisma.investigation.findMany.mockImplementation(async () =>
+			rows.map((r) => ({ id: r.id, settledAt: r.settledAt })),
+		);
+		prisma.investigation.updateMany.mockImplementation(
+			async ({ where, data }: { where: { id: string | { in: string[] } }; data: { settledAt: Date | null } }) => {
+				const ids = typeof where.id === "string" ? [where.id] : where.id.in;
+				for (const r of rows) if (ids.includes(r.id)) r.settledAt = data.settledAt;
+				return { count: ids.length };
+			},
+		);
+
+		const done = await service().settle(rows[1]?.id as string, true);
+		expect(rows.every((r) => r.settledAt && r.settledAt > earlier)).toBe(true);
+		expect(done.previous).toEqual([
+			{ id: rows[0]?.id, settledAt: earlier.toISOString() },
+			{ id: rows[1]?.id, settledAt: null },
+		]);
+
+		await service().settle(rows[1]?.id as string, false, done.previous);
+		expect(rows.map((r) => r.settledAt)).toEqual([earlier, null]);
+	});
+
+	it("restores only threads of the block it was asked about", async () => {
+		const inc = uuid();
+		const own = uuid();
+		prisma.investigation.findUnique.mockResolvedValue({ incidentId: inc });
+		prisma.investigation.findMany.mockResolvedValue([{ id: own, settledAt: null }]);
+		await service().settle(own, false, [
+			{ id: uuid(), settledAt: "2026-11-01T00:00:00.000Z" },
+		]);
+		const calls = prisma.investigation.updateMany.mock.calls.map((c) => c[0]);
+		expect(calls).toEqual([]);
 	});
 
 	it("shows the agent's latest sentence as the row's third line", async () => {

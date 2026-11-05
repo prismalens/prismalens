@@ -24,11 +24,12 @@ import type { RunWorkspace } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readWorktreeChanges } from "./worktree-changes.js";
 
-// Lets a test act between the reader's checks and its open, as a racing agent would.
+// Counts every content read Node could make, and every git env the reader passes.
 const fsHooks = vi.hoisted(() => ({
-	beforeOpen: null as null | ((path: string) => void),
 	opened: 0,
-	failRead: false,
+	envs: [] as Record<string, string>[],
+	slowLstat: null as null | { match: string; ms: number },
+	beforeSpawn: null as null | ((args: string[]) => void),
 }));
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const real = await importOriginal<typeof import("node:fs/promises")>();
@@ -36,14 +37,28 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 		...real,
 		open: (...args: Parameters<typeof real.open>) => {
 			fsHooks.opened++;
-			const hook = fsHooks.beforeOpen;
-			fsHooks.beforeOpen = null;
-			hook?.(String(args[0]));
-			return real.open(...args).then((handle) => {
-				if (fsHooks.failRead)
-					handle.read = () => Promise.reject(new Error("EIO"));
-				return handle;
-			});
+			return real.open(...args);
+		},
+		readFile: (...args: Parameters<typeof real.readFile>) => {
+			fsHooks.opened++;
+			return real.readFile(...args);
+		},
+		lstat: async (...args: Parameters<typeof real.lstat>) => {
+			const slow = fsHooks.slowLstat;
+			if (slow && String(args[0]).includes(slow.match))
+				await new Promise((r) => setTimeout(r, slow.ms));
+			return real.lstat(...args);
+		},
+	};
+});
+vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../../core/harness/git-spawn.js")>();
+	return {
+		...real,
+		spawnGit: (args: string[], opts: Parameters<typeof real.spawnGit>[1]) => {
+			fsHooks.envs.push((opts?.env ?? {}) as Record<string, string>);
+			fsHooks.beforeSpawn?.(args);
+			return real.spawnGit(args, opts);
 		},
 	};
 });
@@ -118,9 +133,9 @@ beforeEach(() => {
 }, 30_000);
 
 afterEach(() => {
-	fsHooks.beforeOpen = null;
 	fsHooks.opened = 0;
-	fsHooks.failRead = false;
+	fsHooks.slowLstat = null;
+	fsHooks.beforeSpawn = null;
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -156,10 +171,11 @@ describe("readWorktreeChanges (#1020)", () => {
 		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 		expect(byPath["src/retry.ts"]).toMatchObject({ status: "modified", additions: 2, deletions: 1 });
 		expect(byPath["README.md"]).toMatchObject({ status: "deleted", additions: 0, deletions: 1 });
-		expect(byPath["src/staged.ts"]).toMatchObject({ status: "added", additions: 1 });
-		expect(byPath["src/committed.ts"]).toMatchObject({ status: "added", additions: 1 });
+		// New files are entries only: their content is never read (#1020).
+		expect(byPath["src/staged.ts"]).toMatchObject({ status: "added", additions: null });
+		expect(byPath["src/committed.ts"]).toMatchObject({ status: "added", additions: null });
 		expect(repo.patch).toContain("+export const backoff = 2;");
-		expect(repo.patch).toContain("+++ b/src/staged.ts");
+		expect(repo.patch).not.toContain("staged");
 		expect(readFileSync(indexFile).equals(before)).toBe(true);
 		expect(statSync(indexFile).mtimeMs).toBe(mtime);
 	});
@@ -183,7 +199,7 @@ describe("readWorktreeChanges (#1020)", () => {
 		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 		expect(byPath["logo.bin"]).toMatchObject({ status: "modified", additions: null, deletions: null });
 		expect(byPath["new.bin"]).toMatchObject({ status: "added", additions: null });
-		expect(repo.patch).toContain("Binary files /dev/null and b/new.bin differ");
+		expect(repo.patch ?? "").not.toContain("new.bin");
 	});
 
 	it("never runs a program the repo's config or attributes name", async () => {
@@ -300,62 +316,25 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo.additions).toBeGreaterThan(0);
 	});
 
-	it("keeps a read error in one untracked file to that file", async () => {
-		write(run, { "new.txt": "fine\n", "src/retry.ts": "export const retries = 4;\n" });
-		fsHooks.failRead = true;
-
-		const repo = await changes();
-
-		expect(repo.files.find((f) => f.path === "new.txt")).toMatchObject({ status: "added" });
-		expect(repo.patch ?? "").not.toContain("+fine");
-	});
-
-	it("binds an untracked file's read to the file it checked: a hard link swapped in before open", async () => {
+	it("never reads an untracked file: links, junctions and new files are names only", async () => {
 		write(root, { "outside/secret.txt": "TOP-SECRET\n" });
-		write(run, { "new.txt": "fine\n" });
-		fsHooks.beforeOpen = () => {
-			rmSync(join(run, "new.txt"));
-			linkSync(join(root, "outside", "secret.txt"), join(run, "new.txt"));
-		};
+		write(run, { "new.txt": "TOP-SECRET-TOO\n", "sub/inner.txt": "inner\n" });
+		linkSync(join(root, "outside", "secret.txt"), join(run, "hard.txt"));
+		symlinkSync(join(root, "outside"), join(run, "jumped"), "junction");
+		fsHooks.opened = 0;
 
 		const repo = await changes();
 
-		expect(repo.patch ?? "").not.toContain("TOP-SECRET");
-		expect(repo.files.find((f) => f.path === "new.txt")).toMatchObject({ status: "link" });
-	});
-
-	it("binds an untracked file's read to the file it checked: a symlink swapped in before open", async () => {
-		write(root, { "outside/secret.txt": "TOP-SECRET\n" });
-		write(run, { "new.txt": "fine\n" });
-		// A file symlink needs a privilege Windows rarely grants; the hard link case covers it there.
-		try {
-			symlinkSync(join(root, "outside", "secret.txt"), join(root, "probe"), "file");
-		} catch {
-			return;
-		}
-		fsHooks.beforeOpen = () => {
-			rmSync(join(run, "new.txt"));
-			symlinkSync(join(root, "outside", "secret.txt"), join(run, "new.txt"), "file");
-		};
-
-		const repo = await changes();
-
-		expect(repo.patch ?? "").not.toContain("TOP-SECRET");
-		expect(repo.files.find((f) => f.path === "new.txt")).toMatchObject({ status: "link" });
-	});
-
-	it("binds an untracked file's read to the file it checked: its folder swapped for a junction before open", async () => {
-		write(root, { "outside/new.txt": "TOP-SECRET\n" });
-		write(run, { "sub/new.txt": "fine\n" });
-		fsHooks.beforeOpen = () => {
-			renameSync(join(run, "sub"), join(run, "sub-moved"));
-			symlinkSync(join(root, "outside"), join(run, "sub"), "junction");
-		};
-
-		const repo = await changes();
-
-		expect(repo.patch ?? "").not.toContain("TOP-SECRET");
-		expect(repo.files.find((f) => f.path === "sub/new.txt")).toMatchObject({ status: "link" });
+		expect(fsHooks.opened).toBe(0);
+		expect(JSON.stringify(repo)).not.toContain("TOP-SECRET");
+		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
+		for (const p of ["new.txt", "sub/inner.txt"])
+			expect(byPath[p]).toMatchObject({ status: "added", additions: null, deletions: null });
+		// A second hard link is shown as linked, as a tracked one is.
+		expect(byPath["hard.txt"]).toMatchObject({ status: "link", additions: null });
+		const jumped = repo.files.filter((f) => f.path.startsWith("jumped"));
+		expect(jumped.length).toBeGreaterThan(0);
+		for (const f of jumped) expect(f.status).toBe("link");
 	});
 
 	it("says not a workspace when a folder above the recorded workspace became a junction", async () => {
@@ -363,7 +342,6 @@ describe("readWorktreeChanges (#1020)", () => {
 		mkdirSync(loc);
 		const deep = join(loc, "pl-deep");
 		git(["worktree", "add", "-q", "--detach", deep, base], src);
-		// Somewhere else holding a repository with the same layout and a secret in it.
 		const evil = join(root, "evil");
 		git(["init", "-q", "-b", "main", join(evil, "pl-deep")], root);
 		write(join(evil, "pl-deep"), { "secret.txt": "TOP-SECRET\n" });
@@ -373,50 +351,126 @@ describe("readWorktreeChanges (#1020)", () => {
 		const out = await read(ws(deep));
 
 		expect(out.repos[0]).toMatchObject({ state: "unavailable", reason: "not-a-workspace" });
-		expect(JSON.stringify(out)).not.toContain("TOP-SECRET");
+		expect(JSON.stringify(out)).not.toContain("secret.txt");
 	});
 
-	it("never reads outside when a folder above the workspace is swapped while a read is paused", async () => {
+	it("says not a workspace when the configured location itself became a link", async () => {
 		const loc = join(root, "loc");
 		mkdirSync(loc);
 		const deep = join(loc, "pl-deep");
 		git(["worktree", "add", "-q", "--detach", deep, base], src);
-		write(deep, { "a.txt": "fine\n" });
-		write(root, { "evil/pl-deep/a.txt": "TOP-SECRET\n" });
-		fsHooks.beforeOpen = () => {
+		const evil = join(root, "evil");
+		git(["init", "-q", "-b", "main", join(evil, "pl-deep")], root);
+		write(join(evil, "pl-deep"), { "secret.txt": "TOP-SECRET\n" });
+		renameSync(loc, join(root, "loc-moved"));
+		symlinkSync(evil, loc, "junction");
+
+		const out = await readWorktreeChanges(ws(deep), { roots: [loc] });
+
+		expect(out.repos[0]).toMatchObject({ state: "unavailable", reason: "not-a-workspace" });
+		expect(JSON.stringify(out)).not.toContain("secret.txt");
+	});
+
+	it("lists untracked files up to the cap without reading one", async () => {
+		const many: Record<string, string> = {};
+		for (let i = 0; i < 1005; i++) many[`gen/f${i}.txt`] = "x\n";
+		write(run, many);
+		fsHooks.opened = 0;
+
+		const repo = await changes();
+
+		expect(fsHooks.opened).toBe(0);
+		expect(repo.truncated).toBe(true);
+		expect(repo.files.filter((f) => f.path.startsWith("gen/"))).toHaveLength(1000);
+		expect(repo.patch).toBe("");
+	});
+
+	it("stops listing untracked files at the deadline", async () => {
+		write(run, { "late.txt": "late\n", "src/retry.ts": "changed\n" });
+
+		const out = await read(ws(), { deadlineMs: 1 });
+		const repo = out.repos[0];
+
+		expect(repo).toMatchObject({ state: "ok", truncated: true });
+		if (repo?.state === "ok")
+			expect(repo.files.some((f) => f.path === "late.txt")).toBe(false);
+	});
+
+	it("stops the untracked metadata pass at the deadline and says truncated", async () => {
+		const many: Record<string, string> = {};
+		for (let i = 0; i < 20; i++) many[`slowgen/f${i}.txt`] = "x\n";
+		write(run, many);
+		fsHooks.slowLstat = { match: "slowgen", ms: 250 };
+		const started = Date.now();
+		try {
+			const out = await read(ws(), { deadlineMs: 3_000 });
+			const repo = out.repos[0];
+			expect(Date.now() - started).toBeLessThan(4_500);
+			expect(repo).toMatchObject({ state: "ok", truncated: true });
+			if (repo?.state === "ok")
+				expect(repo.files.filter((f) => f.path.startsWith("slowgen/")).length).toBeLessThan(20);
+		} finally {
+			fsHooks.slowLstat = null;
+		}
+	});
+
+	it("never diffs a tracked file swapped for a hard link: it shows as a link", async () => {
+		write(root, { "outside/secret.txt": "TOP-SECRET\n" });
+		rmSync(join(run, "src", "retry.ts"));
+		linkSync(join(root, "outside", "secret.txt"), join(run, "src", "retry.ts"));
+		write(run, { "README.md": "shop, edited\n" });
+
+		const repo = await changes();
+
+		expect(JSON.stringify(repo)).not.toContain("TOP-SECRET");
+		const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
+		expect(byPath["src/retry.ts"]).toMatchObject({ status: "link", additions: null });
+		expect(byPath["README.md"]).toMatchObject({ status: "modified", additions: 1 });
+		expect(repo.patch).toContain("+shop, edited");
+	});
+
+	it("never diffs a tracked file reached through a junction: it shows as a link", async () => {
+		write(root, { "outside/retry.ts": "TOP-SECRET\n" });
+		renameSync(join(run, "src"), join(root, "src-moved"));
+		symlinkSync(join(root, "outside"), join(run, "src"), "junction");
+
+		const out = await read(ws());
+
+		expect(JSON.stringify(out)).not.toContain("TOP-SECRET");
+	});
+
+	it("fails closed when the workspace is swapped before the content diff runs", async () => {
+		const loc = join(root, "loc");
+		mkdirSync(loc);
+		const deep = join(loc, "pl-deep");
+		git(["worktree", "add", "-q", "--detach", deep, base], src);
+		write(deep, { "src/retry.ts": "changed\n" });
+		const evil = join(root, "evil", "pl-deep");
+		git(["worktree", "add", "-q", "--detach", evil, base], src);
+		write(evil, { "src/retry.ts": "TOP-SECRET\n" });
+		fsHooks.beforeSpawn = (args) => {
+			if (!args.includes("--name-status")) return;
+			fsHooks.beforeSpawn = null;
 			renameSync(loc, join(root, "loc-moved"));
 			symlinkSync(join(root, "evil"), loc, "junction");
 		};
 
 		const out = await read(ws(deep));
 
+		expect(out.repos[0]).toMatchObject({ state: "unavailable", reason: "not-a-workspace" });
 		expect(JSON.stringify(out)).not.toContain("TOP-SECRET");
 	});
 
-	it("stops reading untracked files at the patch budget, before building the oversized patch", async () => {
-		const body = "x\n".repeat(128 * 1024);
-		for (let i = 0; i < 12; i++) write(run, { [`gen/f${String(i).padStart(2, "0")}.txt`]: body });
-
-		const repo = await changes();
-
-		expect(repo.patch).toBeNull();
-		expect(repo.omitted).toBe("too-large");
-		expect(repo.files.filter((f) => f.path.startsWith("gen/"))).toHaveLength(12);
-		// Each patch is about 384 KiB, so the 2 MiB budget holds five; the rest stay unread.
-		expect(fsHooks.opened).toBeLessThanOrEqual(6);
-		expect(repo.files.filter((f) => f.additions === null).length).toBeGreaterThanOrEqual(6);
-	});
-
-	it("stops reading untracked files at the deadline", async () => {
-		write(run, { "late.txt": "late\n" });
-
-		const out = await read(ws(), { deadlineMs: 0 });
-		const repo = out.repos[0];
-
-		expect(fsHooks.opened).toBe(0);
-		expect(repo).toMatchObject({ state: "ok", patch: null, omitted: "too-large" });
-		if (repo?.state === "ok")
-			expect(repo.files).toContainEqual({ path: "late.txt", status: "added", additions: null, deletions: null });
+	it("runs every git call with no system or global config or attributes", async () => {
+		fsHooks.envs = [];
+		await changes();
+		expect(fsHooks.envs.length).toBeGreaterThan(3);
+		for (const env of fsHooks.envs)
+			expect(env).toMatchObject({
+				GIT_CONFIG_NOSYSTEM: "1",
+				GIT_ATTR_NOSYSTEM: "1",
+				GIT_CONFIG_GLOBAL: "/dev/null",
+			});
 	});
 
 	it("ignores the host's global config, attributes and ignore files", async () => {
@@ -437,7 +491,7 @@ describe("readWorktreeChanges (#1020)", () => {
 			const repo = await changes();
 			const byPath = Object.fromEntries(repo.files.map((f) => [f.path, f]));
 			expect(byPath["src/retry.ts"]).toMatchObject({ status: "modified", additions: 1, deletions: 1 });
-			expect(byPath["hidden.txt"]).toMatchObject({ status: "added", additions: 1 });
+			expect(byPath["hidden.txt"]).toMatchObject({ status: "added" });
 		} finally {
 			for (const k of ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL"])
 				if (saved[k] === undefined) delete process.env[k];

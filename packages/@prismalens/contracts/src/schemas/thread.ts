@@ -122,9 +122,18 @@ export type ThreadFeed = z.infer<typeof ThreadFeedSchema>;
 export const ThreadIdSchema = z.object({ id: z.string().uuid() });
 
 /** Settle or unsettle; on an incident's thread it covers the incident's block. */
+export const SettledStateSchema = z.object({
+	id: z.string().uuid(),
+	settledAt: DateStringSchema.nullable(),
+});
+
+export type SettledState = z.infer<typeof SettledStateSchema>;
+
 export const SettleThreadSchema = z.object({
 	id: z.string().uuid(),
 	settled: z.boolean(),
+	/** On Undo: each thread's state from Settle's `previous`, restored exactly. */
+	restore: z.array(SettledStateSchema).max(500).optional(),
 });
 
 /** A thread title: one line of plain text (#1020). */

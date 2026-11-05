@@ -5,17 +5,11 @@
  * A run's live worktree against the commit recorded at workspace creation (#1020).
  * Git runs on a throwaway GIT_DIR, index and config of ours, so nothing the agent writes in
  * the repo's config or attributes can name a program, and the repo's index is never written.
+ * Untracked files are listed by name only: Node cannot open a path race-free inside a
+ * folder the agent controls, so their content is never read (#1020).
  */
-import { type BigIntStats, constants, mkdirSync } from "node:fs";
-import {
-	type FileHandle,
-	lstat,
-	mkdtemp,
-	open,
-	realpath,
-	rm,
-	writeFile,
-} from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { lstat, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
@@ -23,7 +17,6 @@ import {
 	isSafeRepoPath,
 	RUN_DIFF_MAX_BYTES,
 	type RunWorkspace,
-	WORKTREE_FILE_MAX_BYTES,
 	WORKTREE_MAX_FILES,
 	type WorktreeChanges,
 	type WorktreeFile,
@@ -38,14 +31,6 @@ import { worktreeRoots } from "../../core/harness/run-worktree.js";
 
 const READ_TIMEOUT_MS = 30_000;
 const NULL_FILE = "/dev/null";
-/**
- * Where the platform lacks O_NOFOLLOW, the identity check after open stands alone.
- * O_NONBLOCK keeps a FIFO swapped in after the lstat from blocking the open.
- */
-const OPEN_FLAGS =
-	constants.O_RDONLY |
-	(constants.O_NOFOLLOW ?? 0) |
-	(constants.O_NONBLOCK ?? 0);
 /** Config keys copied from the repo so line endings and modes compare as checked out. */
 const MIRRORED: Record<string, RegExp> = {
 	"core.autocrlf": /^(true|false|input)$/,
@@ -62,6 +47,7 @@ function baseEnv(): Record<string, string> {
 	return {
 		...gitEnv({ source: "none" }),
 		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_ATTR_NOSYSTEM: "1",
 		GIT_CONFIG_GLOBAL: NULL_FILE,
 		GIT_LITERAL_PATHSPECS: "1",
 		GIT_OPTIONAL_LOCKS: "0",
@@ -153,15 +139,10 @@ function nameStatus(out: string): { path: string; code: string }[] {
 
 const samePath = (a: string, b: string) =>
 	process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
-const within = (root: string, path: string) =>
-	path.length > root.length + 1 &&
-	samePath(path.slice(0, root.length + 1), root + sep);
-const sameFile = (a: BigIntStats, b: BigIntStats) =>
-	a.dev === b.dev && a.ino === b.ino;
 
 /**
  * The workspace's real path, only when it is the path the server recorded under one of its
- * locations: a link in place of the workspace or of any folder below the location refuses it.
+ * locations and neither the location nor any folder below it down to the workspace is a link.
  */
 async function recordedRoot(
 	dir: string,
@@ -173,6 +154,12 @@ async function recordedRoot(
 		const rel = relative(base, want);
 		if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel))
 			continue;
+		let at = base;
+		for (const part of ["", ...rel.split(sep)]) {
+			at = part ? join(at, part) : at;
+			const st = await lstat(at).catch(() => null);
+			if (!st || st.isSymbolicLink() || !st.isDirectory()) return null;
+		}
 		const [realBase, real] = await Promise.all([
 			realpath(base).catch(() => null),
 			realpath(want).catch(() => null),
@@ -184,118 +171,61 @@ async function recordedRoot(
 	return null;
 }
 
-/** What the untracked reads of one request may still spend. */
-interface Budget {
-	bytes: number;
-	until: number;
-	over: boolean;
-}
-
-async function readUpTo(
-	handle: FileHandle,
-	cap: number,
-): Promise<Buffer | null> {
-	const buf = Buffer.alloc(cap + 1);
-	let got = 0;
-	while (got <= cap) {
-		const { bytesRead } = await handle.read(buf, got, cap + 1 - got, got);
-		if (bytesRead === 0) break;
-		got += bytesRead;
-	}
-	return got > cap ? null : buf.subarray(0, got);
-}
+/** More refused paths than this and no content is diffed at all. */
+const MAX_REFUSED = 200;
 
 /**
- * Reads the file only if the object opened is the one checked: the same identity as before
- * the open, one link, and a path still inside the workspace once it is open.
+ * Whether git must not open this changed path: a link on its way, a special file (device,
+ * fifo, socket) at the end, or a regular file with another hard link. A path gone from disk is a deletion, diffed from the object store.
  */
-async function readChecked(
-	root: string,
-	full: string,
-	checked: BigIntStats,
-	cap: number,
-): Promise<Buffer | "link" | "large"> {
-	const handle = await open(full, OPEN_FLAGS).catch(() => null);
-	if (!handle) return "link";
-	try {
-		const opened = await handle.stat({ bigint: true });
-		const real = await realpath(full).catch(() => null);
-		const there = real
-			? await lstat(real, { bigint: true }).catch(() => null)
-			: null;
-		if (
-			!opened.isFile() ||
-			opened.nlink !== 1n ||
-			!sameFile(opened, checked) ||
-			!real ||
-			!within(root, real) ||
-			!there ||
-			!sameFile(opened, there)
-		)
-			return "link";
-		if (opened.size > BigInt(cap)) return "large";
-		return (await readUpTo(handle, cap)) ?? "large";
-	} finally {
-		await handle.close();
+async function linkedPath(root: string, path: string): Promise<boolean> {
+	if (!isSafeRepoPath(path)) return true;
+	let at = root;
+	const parts = path.split("/");
+	for (const [i, part] of parts.entries()) {
+		at = join(at, part);
+		const st = await lstat(at).catch(() => null);
+		if (!st) return false;
+		if (st.isSymbolicLink()) return true;
+		if (i === parts.length - 1 && !st.isFile() && !st.isDirectory())
+			return true;
+		if (i === parts.length - 1 && st.isFile() && st.nlink > 1) return true;
 	}
+	return false;
 }
 
-function spend(
-	budget: Budget,
-	one: { file: WorktreeFile; patch: string },
-): { file: WorktreeFile; patch: string } {
-	budget.bytes -= Buffer.byteLength(one.patch);
-	if (budget.bytes < 0) budget.over = true;
-	return one;
+/** The work's result, or null once the request's deadline passes first. */
+function beforeDeadline<T>(work: Promise<T>, until: number): Promise<T | null> {
+	const left = until - Date.now();
+	if (left <= 0) return Promise.resolve(null);
+	let timer: NodeJS.Timeout | undefined;
+	const late = new Promise<null>((resolve) => {
+		timer = setTimeout(() => resolve(null), left);
+	});
+	return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
-/** An untracked file as its own patch, read here so git never opens it. */
-async function untrackedFile(
+/** An untracked entry by name; a link on its path is told apart by metadata, never followed. */
+async function untrackedEntry(
 	root: string,
 	path: string,
-	budget: Budget,
-): Promise<{ file: WorktreeFile; patch: string }> {
-	const entry = (status: WorktreeFile["status"]) => ({
-		file: { path, status, additions: null, deletions: null },
-		patch: "",
+): Promise<WorktreeFile> {
+	const entry = (status: WorktreeFile["status"]): WorktreeFile => ({
+		path,
+		status,
+		additions: null,
+		deletions: null,
 	});
 	if (!isSafeRepoPath(path)) return entry("link");
-	const full = join(root, path);
-	const stat = await lstat(full, { bigint: true }).catch(() => null);
-	if (!stat || stat.isSymbolicLink() || !stat.isFile()) return entry("link");
-	if (stat.size > BigInt(WORKTREE_FILE_MAX_BYTES)) return entry("added");
-	if (Date.now() >= budget.until || stat.size > BigInt(budget.bytes))
-		budget.over = true;
-	if (budget.over) return entry("added");
-	const bytes = await readChecked(
-		root,
-		full,
-		stat,
-		Math.min(WORKTREE_FILE_MAX_BYTES, budget.bytes),
-	).catch(() => "unreadable" as const);
-	if (bytes === "unreadable") return entry("added");
-	if (bytes === "link") return entry("link");
-	if (bytes === "large") {
-		budget.over = true;
-		return entry("added");
+	let at = root;
+	for (const part of path.split("/")) {
+		at = join(at, part);
+		const st = await lstat(at).catch(() => null);
+		if (!st || st.isSymbolicLink()) return entry("link");
+		if (at === join(root, path) && st.isFile() && st.nlink > 1)
+			return entry("link");
 	}
-	const head = `diff --git a/${path} b/${path}\nnew file mode 100644\n`;
-	if (bytes.subarray(0, 8000).includes(0))
-		return spend(budget, {
-			file: { path, status: "added", additions: null, deletions: null },
-			patch: `${head}Binary files /dev/null and b/${path} differ\n`,
-		});
-	const text = bytes.toString("utf8");
-	const lines = text.length === 0 ? [] : text.replace(/\n$/, "").split("\n");
-	const body = lines.map((l) => `+${l}`).join("\n");
-	return spend(budget, {
-		file: { path, status: "added", additions: lines.length, deletions: 0 },
-		patch: lines.length
-			? `${head}--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n${body}\n${
-					text.endsWith("\n") ? "" : "\\ No newline at end of file\n"
-				}`
-			: head,
-	});
+	return entry("added");
 }
 
 /** Gitlinks of the base tree: listed by path, never opened. */
@@ -311,6 +241,7 @@ async function repoChanges(
 	roots: readonly string[],
 	deadlineMs: number,
 ): Promise<WorktreeRepoChanges> {
+	const until = Date.now() + deadlineMs;
 	const gone = (reason: "removed" | "not-a-workspace" | "commit-gone") =>
 		({ state: "unavailable", repo: repo.name, reason }) as const;
 	if (!isAbsolute(repo.dir)) return gone("not-a-workspace");
@@ -322,21 +253,20 @@ async function repoChanges(
 	if (!CommitShaSchema.safeParse(repo.head).success) return gone("commit-gone");
 	const root = await recordedRoot(repo.dir, roots);
 	if (!root) return gone("not-a-workspace");
-	const until = Date.now() + deadlineMs;
 	const objects = await objectsOf(root);
 	if (!objects) return gone("not-a-workspace");
 	const gitDir = await scratchRepo(root, objects);
-	const env = {
+	const env: Record<string, string> = {
 		...baseEnv(),
 		GIT_DIR: gitDir,
 		GIT_WORK_TREE: root,
 		GIT_INDEX_FILE: join(gitDir, "index"),
 	};
-	const git = (args: string[]) =>
+	const git = (args: string[], timeoutMs = READ_TIMEOUT_MS, over = env) =>
 		spawnGit(["--no-replace-objects", ...args], {
 			cwd: root,
-			timeoutMs: READ_TIMEOUT_MS,
-			env,
+			timeoutMs,
+			env: over,
 		});
 	try {
 		try {
@@ -353,17 +283,48 @@ async function repoChanges(
 			"--src-prefix=a/",
 			"--dst-prefix=b/",
 		];
-		const [counts, statuses, links, others] = await Promise.all([
-			git(["diff", "--numstat", "-z", ...diff]).then((r) => numstat(r.stdout)),
+		const [statuses, links] = await Promise.all([
 			git(["diff", "--name-status", "-z", ...diff]).then((r) =>
 				nameStatus(r.stdout),
 			),
 			git(["ls-files", "-z", "-s"]).then((r) => submodules(r.stdout)),
-			git(["ls-files", "-z", "--others", "--exclude-standard"]).then((r) =>
-				r.stdout.split("\0").filter(Boolean),
-			),
 		]);
+		const refused = new Set<string>();
+		for (const { path } of statuses)
+			if (await linkedPath(root, path)) refused.add(path);
+		// Checked again right before git reads content. A swap in the moment between this
+		// check and git's own open cannot be closed with path-based Node APIs (#1020).
+		const again = await recordedRoot(repo.dir, roots);
+		if (!again || !samePath(again, root)) return gone("not-a-workspace");
+		const blocked = refused.size > MAX_REFUSED;
+		const content = (args: string[]) =>
+			refused.size === 0
+				? git(args)
+				: git(
+						[
+							...args,
+							"--",
+							":(top)",
+							...[...refused].map((p) => `:(exclude,top,literal)${p}`),
+						],
+						READ_TIMEOUT_MS,
+						{ ...env, GIT_LITERAL_PATHSPECS: "0" },
+					);
+		const counts = blocked
+			? new Map<string, [number | null, number | null]>()
+			: await content(["diff", "--numstat", "-z", ...diff]).then((r) =>
+					numstat(r.stdout),
+				);
+		// Names only, within what is left of the deadline; a late listing says truncated.
+		const others = await git(
+			["ls-files", "-z", "--others", "--exclude-standard"],
+			Math.max(1, until - Date.now()),
+		)
+			.then((r) => r.stdout.split("\0").filter(Boolean))
+			.catch(() => null);
 		const files: WorktreeFile[] = statuses.map(({ path, code }) => {
+			if (refused.has(path))
+				return { path, status: "link", additions: null, deletions: null };
 			const [additions, deletions] = counts.get(path) ?? [null, null];
 			return {
 				path,
@@ -379,21 +340,16 @@ async function repoChanges(
 				additions: null,
 				deletions: null,
 			});
-		const patches: string[] = [];
 		let tracked = "";
 		try {
-			tracked = (await git(["diff", ...diff])).stdout;
+			tracked = blocked
+				? "\0too-large"
+				: (await content(["diff", ...diff])).stdout;
 		} catch {
 			tracked = "\0too-large";
 		}
-		patches.push(tracked);
-		const left = RUN_DIFF_MAX_BYTES - Buffer.byteLength(tracked);
-		const budget: Budget = {
-			bytes: left,
-			until,
-			over: tracked === "\0too-large" || left < 0,
-		};
-		for (const path of others.slice(0, WORKTREE_MAX_FILES)) {
+		let late = others === null;
+		for (const path of (others ?? []).slice(0, WORKTREE_MAX_FILES)) {
 			// A nested repository shows as its folder with a slash; it is never descended into.
 			if (path.endsWith("/")) {
 				files.push({
@@ -404,12 +360,16 @@ async function repoChanges(
 				});
 				continue;
 			}
-			const one = await untrackedFile(root, path, budget);
-			files.push(one.file);
-			if (!budget.over) patches.push(one.patch);
+			const one = await beforeDeadline(untrackedEntry(root, path), until);
+			if (!one) {
+				late = true;
+				break;
+			}
+			files.push(one);
 		}
-		const tooLarge = budget.over;
-		const patch = tooLarge ? "" : patches.join("");
+		const tooLarge =
+			tracked === "\0too-large" ||
+			Buffer.byteLength(tracked) > RUN_DIFF_MAX_BYTES;
 		const sum = (k: "additions" | "deletions") =>
 			files.reduce((n, f) => n + (f[k] ?? 0), 0);
 		return {
@@ -420,9 +380,9 @@ async function repoChanges(
 			files,
 			additions: sum("additions"),
 			deletions: sum("deletions"),
-			patch: tooLarge ? null : patch,
+			patch: tooLarge ? null : tracked,
 			omitted: tooLarge ? "too-large" : null,
-			truncated: others.length > WORKTREE_MAX_FILES,
+			truncated: late || (others?.length ?? 0) > WORKTREE_MAX_FILES,
 		};
 	} finally {
 		await rm(gitDir, { recursive: true, force: true }).catch(() => {});

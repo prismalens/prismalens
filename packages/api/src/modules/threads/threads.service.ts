@@ -7,6 +7,7 @@ import type {
 	Investigation as InvestigationView,
 	JobAttachment,
 	RunChoice,
+	SettledState,
 	StartThreadInput,
 	ThreadFeed,
 	ThreadFeedQuery,
@@ -417,20 +418,45 @@ export class ThreadsService {
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
-	async settle(id: string, settled: boolean): Promise<{ ids: string[] }> {
+	async settle(
+		id: string,
+		settled: boolean,
+		restore?: SettledState[],
+	): Promise<{ ids: string[]; previous: SettledState[] }> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
 			select: { incidentId: true },
 		});
 		if (!row) throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
 		const where = row.incidentId ? { incidentId: row.incidentId } : { id };
-		const ids = (
-			await this.prisma.investigation.findMany({ where, select: { id: true } })
-		).map((r) => r.id);
+		const rows = await this.prisma.investigation.findMany({
+			where,
+			select: { id: true, settledAt: true },
+		});
+		const ids = rows.map((r) => r.id);
 		// readState keeps each row's updatedAt, so settling or undoing never reorders the feed.
+		if (!settled && restore) {
+			// Undo writes back each thread's own state, an earlier Settle included (#1020).
+			const inBlock = new Set(ids);
+			for (const r of restore.filter((r) => inBlock.has(r.id)))
+				await this.readState(r.id, {
+					settledAt: r.settledAt ? new Date(r.settledAt) : null,
+				});
+			return { ids, previous: [] };
+		}
+		// Undo with no states to restore clears only the thread named, never its block.
 		const at = settled ? new Date() : null;
-		for (const target of ids) await this.readState(target, { settledAt: at });
-		return { ids };
+		for (const target of settled ? ids : [id])
+			await this.readState(target, { settledAt: at });
+		return {
+			ids,
+			previous: settled
+				? rows.map((r) => ({
+						id: r.id,
+						settledAt: r.settledAt?.toISOString() ?? null,
+					}))
+				: [],
+		};
 	}
 
 	rename(id: string, title: string): Promise<{ id: string; title: string }> {

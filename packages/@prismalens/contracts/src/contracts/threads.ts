@@ -11,6 +11,7 @@ import {
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
 	RenameThreadSchema,
+	SettledStateSchema,
 	SettleThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
@@ -99,7 +100,12 @@ export const threadsContract = {
 			tags: ["threads"],
 		})
 		.input(SettleThreadSchema)
-		.output(z.object({ ids: z.array(z.string()) })),
+		.output(
+			z.object({
+				ids: z.array(z.string()),
+				previous: z.array(SettledStateSchema),
+			}),
+		),
 
 	/**
 	 * Name a thread; the agent never renames it after this

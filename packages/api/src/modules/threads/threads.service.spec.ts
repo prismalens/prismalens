@@ -285,7 +285,7 @@ describe("ThreadsService (#1020)", () => {
 			findMany: vi.fn(async () => [{ id: "a" }, { id: "b" }]),
 		});
 
-		await expect(service().settle("a", true)).resolves.toEqual({
+		await expect(service().settle("a", true)).resolves.toMatchObject({
 			ids: ["a", "b"],
 		});
 

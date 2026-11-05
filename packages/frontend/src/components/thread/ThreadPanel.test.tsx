@@ -280,6 +280,44 @@ describe("WorktreeDiff (#1020)", () => {
 		expect(q("patch")?.textContent).toContain("+z");
 	});
 
+	it("says New file for an untracked file, whose content is never read", async () => {
+		state.changes = {
+			repos: [
+				ok({
+					files: [
+						{
+							path: "notes.md",
+							status: "added",
+							additions: null,
+							deletions: null,
+						},
+					],
+				}),
+			],
+		};
+		await render(panel({ surface: "diff" }));
+		expect(q("diff-new-file")?.textContent).toBe("New file");
+	});
+
+	it("says Linked file for a path git was not allowed to open", async () => {
+		state.changes = {
+			repos: [
+				ok({
+					files: [
+						{
+							path: "src/retry.ts",
+							status: "link",
+							additions: null,
+							deletions: null,
+						},
+					],
+				}),
+			],
+		};
+		await render(panel({ surface: "diff" }));
+		expect(q("diff-linked-file")?.textContent).toBe("Linked file");
+	});
+
 	it("falls back to the first file when the picked one leaves the list, and says when the list is cut short", async () => {
 		const file = (path: string) => ({
 			path,
