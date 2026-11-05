@@ -42,6 +42,11 @@ export class ThreadsController {
 				this.threads.settle(input.id, input.settled),
 			),
 
+			// POST /threads/:id/title - The user names it; the agent never renames it after
+			rename: implement(threadsContract.rename).handler(({ input }) =>
+				this.threads.rename(input.id, input.title),
+			),
+
 			// GET /threads/settings
 			getSettings: implement(threadsContract.getSettings).handler(() =>
 				this.threads.getSettings(),

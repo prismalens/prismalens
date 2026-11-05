@@ -10,6 +10,7 @@ import {
 	AttachmentSchema,
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
+	RenameThreadSchema,
 	SettleThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
@@ -99,6 +100,20 @@ export const threadsContract = {
 		})
 		.input(SettleThreadSchema)
 		.output(z.object({ ids: z.array(z.string()) })),
+
+	/**
+	 * Name a thread; the agent never renames it after this
+	 * POST /threads/:id/title
+	 */
+	rename: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/title",
+			summary: "Rename a thread",
+			tags: ["threads"],
+		})
+		.input(RenameThreadSchema)
+		.output(z.object({ id: z.string(), title: z.string() })),
 
 	/**
 	 * When quiet threads settle on their own

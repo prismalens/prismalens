@@ -362,6 +362,61 @@ test.describe("#1020 — thread list and New thread", () => {
 		await expect(page.getByTestId("general-settle-days")).toHaveText(/3 days/);
 	});
 
+	test("i. Rename from a row keeps the typed name as plain text", async ({
+		page,
+	}) => {
+		let title = "Why does checkout cache miss";
+		const sent: unknown[] = [];
+		await page.route(
+			(url) => url.pathname === "/api/threads/feed",
+			async (route) => {
+				const row = threadRow({ section: "active", title, unseen: false });
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						units: [{ section: "active", incident: null, threads: [row] }],
+						nextCursor: null,
+						counts: { needs: 0, active: 1, settled: 0 },
+					}),
+				});
+			},
+		);
+		await page.route(
+			(url) => url.pathname === `/api/threads/${RUN_ID}/title`,
+			async (route) => {
+				const body = route.request().postDataJSON() as { title: string };
+				sent.push(body);
+				title = body.title;
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ id: RUN_ID, title }),
+				});
+			},
+		);
+		await page.goto("/incidents");
+		const row = page.getByTestId("thread-row-wrap").first();
+		await row.hover();
+		await row.getByTestId("thread-rename").click();
+		const input = page.getByTestId("thread-rename-input");
+		await expect(input).toBeFocused();
+		await input.fill("<b>Cache</b> misses");
+		await input.press("Enter");
+		await expect(page.getByTestId("thread-row-title").first()).toHaveText(
+			"<b>Cache</b> misses",
+		);
+		expect(sent).toEqual([{ title: "<b>Cache</b> misses" }]);
+		await page.getByTestId("thread-row-wrap").first().hover();
+		await page.getByTestId("thread-rename").first().click();
+		await page.getByTestId("thread-rename-input").fill("dropped");
+		await page.getByTestId("thread-rename-input").press("Escape");
+		await expect(page.getByTestId("thread-row-title").first()).toHaveText(
+			"<b>Cache</b> misses",
+		);
+		expect(sent).toHaveLength(1);
+	});
+
 	test.describe("on a phone", () => {
 		test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
@@ -377,9 +432,12 @@ test.describe("#1020 — thread list and New thread", () => {
 			await page.getByTestId("thread-search-input").fill("sched");
 			await page
 				.getByTestId("thread-search-place")
-				.filter({ hasText: "Schedules" })
+				.filter({ hasText: "Scheduled prompts" })
 				.tap();
-			await expect(page).toHaveURL(/\/schedules/);
+			await expect(page).toHaveURL(/\/settings\?tab=schedules/);
+			await expect(
+				page.getByRole("heading", { name: "Scheduled prompts", level: 2 }),
+			).toBeVisible();
 		});
 	});
 });

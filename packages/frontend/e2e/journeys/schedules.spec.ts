@@ -49,12 +49,12 @@ test.describe("#979 - schedules", () => {
 		await page.getByTestId("sidebar").getByTestId("sidebar-search").click();
 		await page
 			.getByTestId("thread-search-place")
-			.filter({ hasText: "Schedules" })
+			.filter({ hasText: "Scheduled prompts" })
 			.click();
-		await expect(page).toHaveURL(/\/schedules$/);
-		await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible({
-			timeout: 15_000,
-		});
+		await expect(page).toHaveURL(/\/settings\?tab=schedules$/);
+		await expect(
+			page.getByRole("heading", { name: "Scheduled prompts", level: 2 }),
+		).toBeVisible({ timeout: 15_000 });
 
 		await page.getByRole("link", { name }).first().click();
 		await expect(page).toHaveURL(new RegExp(`/schedules/${id}$`));

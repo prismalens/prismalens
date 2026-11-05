@@ -160,8 +160,11 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			"No run yet",
 			{ timeout: 15_000 },
 		);
-		await expect(page.getByTestId("why-none")).toBeVisible();
-		await expect(page.getByTestId("fix-none")).toBeVisible();
+		// A blank incident earns no card yet (#1020).
+		await expect(page.getByTestId("incident-blank")).toContainText(
+			"Nothing yet",
+		);
+		await expect(page.getByTestId("why-card")).toHaveCount(0);
 		await setTheme(page, "light");
 
 		// Navigating to Conversation opens on the draft

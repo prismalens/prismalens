@@ -77,6 +77,16 @@ export function useUpdateThreadSettings() {
 	});
 }
 
+/** The user's name for a thread; the agent never renames it after this. */
+export function useRenameThread() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.rename.mutationOptions(),
+		onSettled: () =>
+			queryClient.invalidateQueries({ queryKey: threadKeys.all() }),
+	});
+}
+
 export function useSettleThread() {
 	const queryClient = useQueryClient();
 	return useMutation({

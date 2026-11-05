@@ -7621,6 +7621,10 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "serviceId": {
+                    "type": "string",
+                    "format": "uuid"
                   }
                 }
               }
@@ -51648,6 +51652,20 @@
                                     }
                                   ]
                                 },
+                                "titleSetBy": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "agent",
+                                        "user"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "serviceName": {
                                   "anyOf": [
                                     {
@@ -51678,6 +51696,7 @@
                                 "unseen",
                                 "latestText",
                                 "projectName",
+                                "titleSetBy",
                                 "serviceName"
                               ]
                             }
@@ -51833,6 +51852,70 @@
                   },
                   "required": [
                     "ids"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/threads/{id}/title": {
+      "post": {
+        "operationId": "threads.rename",
+        "summary": "Rename a thread",
+        "tags": [
+          "threads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
                   ]
                 }
               }

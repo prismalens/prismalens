@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { LinkToProject } from "@/components/alerts/LinkToProject";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -182,7 +183,7 @@ export function AlertListPane({
 			alert.status === "resolved" && alert.resolvedAt
 				? `cleared ${dayOrClock(alertSince(alert))}`
 				: dayOrClock(alertSince(alert));
-		return (
+		const row = (
 			<Link
 				key={alert.id}
 				to="/alerts/$id"
@@ -224,6 +225,16 @@ export function AlertListPane({
 					</span>
 				</span>
 			</Link>
+		);
+		if (alert.service) return row;
+		return (
+			<div key={alert.id} className="group/alert relative">
+				{row}
+				<LinkToProject
+					labels={alert.labels}
+					className="absolute top-1.5 right-2 hidden group-focus-within/alert:flex group-hover/alert:flex max-md:flex"
+				/>
+			</div>
 		);
 	};
 

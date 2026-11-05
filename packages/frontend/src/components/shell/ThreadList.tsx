@@ -14,16 +14,19 @@ import {
 	Check,
 	ChevronRight,
 	FolderGit2,
+	Pencil,
 	Server,
 	Square,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
+import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useCancelInvestigation } from "@/lib/api/hooks";
 import {
 	type ThreadFeedInput,
+	useRenameThread,
 	useSettleThread,
 	useThreadFeed,
 } from "@/lib/api/hooks/use-threads-orpc";
@@ -254,6 +257,7 @@ function Row({
 	const line = rowLine(t);
 	const context = rowContext(t);
 	const live = isWorkflowLive(t.status);
+	const [renaming, setRenaming] = useState(false);
 	const here =
 		pathname === `/threads/${t.id}` ||
 		pathname.endsWith(`/runs/${t.id}`) ||
@@ -263,6 +267,10 @@ function Row({
 		t.title?.trim() ||
 		incident?.title ||
 		(t.kind === "chat" ? "Thread" : "Investigation");
+	if (renaming)
+		return (
+			<RenameRow id={t.id} title={title} onDone={() => setRenaming(false)} />
+		);
 	return (
 		<div className="group/row relative" data-testid="thread-row-wrap">
 			<Hint
@@ -360,6 +368,13 @@ function Row({
 			</Hint>
 			{onSettle && (
 				<div className="absolute top-1 right-1 hidden items-center gap-0.5 group-focus-within/row:flex group-hover/row:flex">
+					<RowAction
+						label="Rename"
+						onClick={() => setRenaming(true)}
+						testId="thread-rename"
+					>
+						<Pencil className="size-3" />
+					</RowAction>
 					{live ? (
 						<RowAction
 							label="Stop"
@@ -380,6 +395,53 @@ function Row({
 				</div>
 			)}
 		</div>
+	);
+}
+
+/** The row as a field: Enter keeps the name, Esc or leaving it drops the edit. */
+function RenameRow({
+	id,
+	title,
+	onDone,
+}: {
+	id: string;
+	title: string;
+	onDone: () => void;
+}) {
+	const rename = useRenameThread();
+	const [value, setValue] = useState(title);
+	const save = () => {
+		const next = value.trim();
+		if (next && next !== title) rename.mutate({ id, title: next });
+		onDone();
+	};
+	return (
+		<form
+			className="px-1 py-1"
+			onSubmit={(e) => {
+				e.preventDefault();
+				save();
+			}}
+		>
+			<Input
+				// biome-ignore lint/a11y/noAutofocus: the field opens only from its own Rename button.
+				autoFocus
+				value={value}
+				maxLength={80}
+				onChange={(e) => setValue(e.target.value)}
+				onBlur={onDone}
+				onKeyDown={(e) => {
+					if (e.key === "Escape") {
+						e.preventDefault();
+						onDone();
+					}
+				}}
+				aria-label="Thread name"
+				dir="auto"
+				className="h-8"
+				data-testid="thread-rename-input"
+			/>
+		</form>
 	);
 }
 

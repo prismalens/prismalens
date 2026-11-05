@@ -116,6 +116,8 @@ export const UpdateIncidentSchema = z.object({
 	/** Editable after Resolve (R1a d3); an empty string clears it. */
 	actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
 	actualCauseCategory: RootCauseCategorySchema.nullable().optional(),
+	/** Link service, on an incident that has none yet (#1020). */
+	serviceId: z.string().uuid().optional(),
 });
 
 // =============================================================================

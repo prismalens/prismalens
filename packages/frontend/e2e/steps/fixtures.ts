@@ -44,6 +44,8 @@ export const test = base.extend<Fixtures>({
 	page: async ({ page }, use) => {
 		await hideQueryDevtools(page);
 		await use(page);
+		// A route handler still fetching when the scenario ends would fail it outside any test.
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 		// A release names a title; later prompts quote past titles, so none outlive the scenario.
 		rmSync(releaseDir(fakeAgentStateDir()), { recursive: true, force: true });
 		// A held run never ends on its own; left running it would take a slot of the

@@ -34,6 +34,7 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
+import { renameThread } from "./thread-titles.js";
 
 const SETTINGS_KEY = "threads.list";
 /** The newest threads the list ranks; older ones stay reachable by search. */
@@ -321,6 +322,10 @@ export class ThreadsService {
 								? shownFullName(t.row.repository)
 								: null,
 							serviceName: serviceNameOf(t.row),
+							titleSetBy:
+								t.row.titleSetBy === "user" || t.row.titleSetBy === "agent"
+									? t.row.titleSetBy
+									: null,
 						}),
 					),
 				};
@@ -426,6 +431,10 @@ export class ThreadsService {
 		const at = settled ? new Date() : null;
 		for (const target of ids) await this.readState(target, { settledAt: at });
 		return { ids };
+	}
+
+	rename(id: string, title: string): Promise<{ id: string; title: string }> {
+		return renameThread(this.prisma, id, title);
 	}
 
 	async getSettings(): Promise<ThreadSettings> {
