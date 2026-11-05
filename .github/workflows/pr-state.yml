@@ -15,8 +15,15 @@ permissions:
   # The callee proves its repository to the telemetry Worker with an OIDC token (gh-workflows#176).
   id-token: write
 
+# A newer event for the same PR supersedes a queued one (#1052).
+concurrency:
+  group: pr-state-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   pr-state:
+    # The callee records title, base, head and state: a body-only edit changes none of them.
+    if: github.event.action != 'edited' || github.event.changes.title || github.event.changes.base
     uses: prismalens/gh-workflows/.github/workflows/pr-state.yml@main
     # explicit mapping: `inherit` does not cross ownership boundaries.
     secrets:
