@@ -1020,7 +1020,7 @@ Then(
 Then(
 	'the Overview shows "Cause" with the text and an "Edit" control',
 	async ({ page }) => {
-		await visit(page, `/incidents/${inc(page).id}/conversation?panel=incident`);
+		await visit(page, `/incidents/${inc(page).id}`);
 		await expect(page.getByTestId("why-cause")).toContainText("d37d888");
 		await page.getByTestId("header-more").click();
 		await expect(page.getByTestId("header-edit-cause")).toHaveText(
