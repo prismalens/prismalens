@@ -13,6 +13,7 @@ import {
 	visit,
 	waitForRun,
 } from "../steps/product";
+import { pickAction } from "./verb";
 
 const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
 const MIN = 60_000;
@@ -894,17 +895,15 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await visit(page, `/incidents/${inc.id}`);
 
 		const composerInput = page.getByTestId("composer-input");
-		const actionChip = page.getByTestId("action-chip");
-		await expect(actionChip).toBeVisible();
+		await expect(page.getByTestId("composer-mode")).toBeVisible();
 
-		// 1. Actions menu lists Ask, Investigate, Note
-		await actionChip.click();
-		await expect(page.getByTestId("action-ask")).toBeVisible();
-		await expect(page.getByTestId("action-investigate")).toBeVisible();
-		await expect(page.getByTestId("action-note")).toBeVisible();
+		// 1. The / menu lists Ask, Investigate and Note
+		await composerInput.fill("/");
+		await expect(page.getByTestId("composer-slash-investigate")).toBeVisible();
+		await expect(page.getByTestId("composer-slash-note")).toBeVisible();
 
 		// 2. Note action adds a timeline row
-		await page.getByTestId("action-note").click();
+		await page.getByTestId("composer-slash-note").click();
 		await composerInput.fill("Operator manually verified DB connections");
 		await composerInput.press("Enter");
 
@@ -915,9 +914,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await page.waitForTimeout(500);
 
 		// 3. Investigate starts a run
-		await actionChip.click();
-		await expect(page.getByTestId("action-investigate")).toBeVisible();
-		await page.getByTestId("action-investigate").click();
+		await pickAction(page, "investigate");
 		await composerInput.fill("Recheck latency with 100 notes");
 		await composerInput.press("Enter");
 
