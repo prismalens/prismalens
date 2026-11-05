@@ -297,7 +297,7 @@ export function MakeService({
 				<Input
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					readOnly={!!made}
+					readOnly={create.isPending || !!made}
 					aria-label="Service name"
 					data-testid="make-service-name"
 				/>
