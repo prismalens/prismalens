@@ -104,16 +104,16 @@
 							"level": "error",
 							"options": {
 								"paths": {
-									"@prismalens/database": "the engine must not depend on @prismalens/database — it stays db-clean per ADR-0011.",
-									"@prismalens/integrations": "the engine must not depend on @prismalens/integrations — that couples it to app-side external services.",
-									"@prismalens/auth": "the engine must not depend on @prismalens/auth — that couples it to the app's auth layer.",
-									"@prismalens/api": "the engine must not depend on @prismalens/api — that couples it to the app.",
-									"@prismalens/frontend": "the engine must not depend on @prismalens/frontend — that couples it to the app."
+									"@prismalens/database": "the engine must not depend on @prismalens/database \u00e2\u20ac\u201d it stays db-clean per ADR-0011.",
+									"@prismalens/integrations": "the engine must not depend on @prismalens/integrations \u00e2\u20ac\u201d that couples it to app-side external services.",
+									"@prismalens/auth": "the engine must not depend on @prismalens/auth \u00e2\u20ac\u201d that couples it to the app's auth layer.",
+									"@prismalens/api": "the engine must not depend on @prismalens/api \u00e2\u20ac\u201d that couples it to the app.",
+									"@prismalens/frontend": "the engine must not depend on @prismalens/frontend \u00e2\u20ac\u201d that couples it to the app."
 								},
 								"patterns": [
 									{
 										"group": ["../**/api/**", "../**/frontend/**"],
-										"message": "the engine must not reach into packages/api or packages/frontend via relative import — that breaks the extraction seam."
+										"message": "the engine must not reach into packages/api or packages/frontend via relative import \u00e2\u20ac\u201d that breaks the extraction seam."
 									}
 								]
 							}
@@ -131,15 +131,15 @@
 							"level": "error",
 							"options": {
 								"paths": {
-									"@prismalens/database": "the CLI must not depend on @prismalens/database — that couples it to the app's persistence layer.",
-									"@prismalens/integrations": "the CLI must not depend on @prismalens/integrations — that couples it to app-side external services.",
-									"@prismalens/api": "the CLI must not depend on @prismalens/api — that couples it to the app.",
-									"@prismalens/frontend": "the CLI must not depend on @prismalens/frontend — that couples it to the app."
+									"@prismalens/database": "the CLI must not depend on @prismalens/database \u00e2\u20ac\u201d that couples it to the app's persistence layer.",
+									"@prismalens/integrations": "the CLI must not depend on @prismalens/integrations \u00e2\u20ac\u201d that couples it to app-side external services.",
+									"@prismalens/api": "the CLI must not depend on @prismalens/api \u00e2\u20ac\u201d that couples it to the app.",
+									"@prismalens/frontend": "the CLI must not depend on @prismalens/frontend \u00e2\u20ac\u201d that couples it to the app."
 								},
 								"patterns": [
 									{
 										"group": ["../**/api/**", "../**/frontend/**"],
-										"message": "the CLI must not reach into packages/api or packages/frontend via relative import — that breaks the extraction seam."
+										"message": "the CLI must not reach into packages/api or packages/frontend via relative import \u00e2\u20ac\u201d that breaks the extraction seam."
 									}
 								]
 							}
@@ -147,6 +147,129 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": [
+				"packages/frontend/src/**",
+				"!packages/frontend/src/components/ui/**"
+			],
+			"linter": {
+				"rules": {
+					"nursery": {
+						"noTailwindRawColors": "error",
+						"useTailwindStaticClassStrings": "error",
+						"noTailwindRestyledComponents": {
+							"level": "warn",
+							"options": {
+								"allow": [
+									{
+										"components": [
+											"Link",
+											"Hint",
+											"AlertTriangle",
+											"Boxes",
+											"Check",
+											"ChevronDown",
+											"ChevronRight",
+											"FileText",
+											"FolderGit2",
+											"GitBranch",
+											"GitCommitHorizontal",
+											"Globe",
+											"Link2",
+											"Lock",
+											"Menu",
+											"MessageSquare",
+											"Play",
+											"Plug",
+											"RefreshCw",
+											"Search",
+											"Server",
+											"ServerOff",
+											"Square",
+											"SquareTerminal",
+											"Star",
+											"TriangleAlert"
+										],
+										"categories": [
+											"color",
+											"typography",
+											"spacing",
+											"shape",
+											"effects",
+											"motion"
+										],
+										"advice": "Links, hints and icons pass their classes through; only the design system's own components keep their look."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		}
+	],
+	"tailwind": {
+		"stylesheet": "packages/frontend/src/app.css"
+	},
+	"plugins": [
+		{
+			"path": "./packages/frontend/biome-plugins/one-spinner.grit",
+			"includes": [
+				"packages/frontend/src/**/*.tsx",
+				"!packages/frontend/src/components/ui/**",
+				"!packages/frontend/src/components/shared/Ring.tsx",
+				"!packages/frontend/src/components/ai/prompt-input.tsx",
+				"!packages/frontend/src/components/incidents/CreateIncidentDialog.tsx",
+				"!packages/frontend/src/components/services/ServiceFormDialog.tsx",
+				"!packages/frontend/src/components/settings/ConnectionFormDialog.tsx",
+				"!packages/frontend/src/components/settings/SourceConnectDialog.tsx",
+				"!packages/frontend/src/components/shared/DestructiveConfirm.tsx",
+				"!packages/frontend/src/routes/pair.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/token-colours.grit",
+			"includes": [
+				"packages/frontend/src/**/*.tsx",
+				"!packages/frontend/src/components/ui/**",
+				"!packages/frontend/src/components/icons/prismalens-mark.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/one-page-header.grit",
+			"includes": [
+				"packages/frontend/src/**/*.tsx",
+				"!packages/frontend/src/components/ui/**",
+				"!packages/frontend/src/components/shell/PageHeader.tsx",
+				"!packages/frontend/src/components/run/IncidentHeader.tsx",
+				"!packages/frontend/src/components/Sidebar.tsx",
+				"!packages/frontend/src/components/run/RunDetailsPanel.tsx",
+				"!packages/frontend/src/components/alerts/AlertDetail.tsx",
+				"!packages/frontend/src/components/projects/ProjectList.tsx",
+				"!packages/frontend/src/components/projects/ProjectPage.tsx",
+				"!packages/frontend/src/components/thread/ThreadPage.tsx",
+				"!packages/frontend/src/routes/_authenticated/incidents/$id/route.tsx",
+				"!packages/frontend/src/routes/_authenticated/schedules/$id.tsx",
+				"!packages/frontend/src/routes/_authenticated/schedules/$id_.runs.$runId.tsx",
+				"!packages/frontend/src/routes/_authenticated/services/$id/index.tsx"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/native-elements.grit",
+			"includes": [
+				"packages/frontend/src/**/*.tsx",
+				"!packages/frontend/src/components/ui/**"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/hairline-edges.grit",
+			"includes": [
+				"packages/frontend/src/**/*.tsx",
+				"!packages/frontend/src/components/ui/**",
+				"!packages/frontend/src/components/shared/Row.tsx",
+				"!packages/frontend/src/components/shared/SettingRow.tsx"
+			]
 		}
 	]
 }

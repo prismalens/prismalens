@@ -1,0 +1,22 @@
+// Colours come from styles/tokens.css (design/GUIDELINES.md, rule 13); the brand mark, the
+// one file with its own colours, is excluded in biome.json. Grit regexes take no groups.
+language js
+
+or {
+	JsxString() as $s where {
+		$s <: r".*#[0-9a-fA-F]{6}\b.*",
+		register_diagnostic(span=$s, message="A raw colour; use a token from styles/tokens.css.")
+	},
+	JsxString() as $s where {
+		$s <: r".*\[#[0-9a-fA-F]{3,8}\].*",
+		register_diagnostic(span=$s, message="A raw colour; use a token from styles/tokens.css.")
+	},
+	JsxString() as $s where {
+		$s <: r".*\brgba?\x28.*",
+		register_diagnostic(span=$s, message="A raw colour; use a token from styles/tokens.css.")
+	},
+	JsStringLiteralExpression() as $s where {
+		$s <: r".*\[#[0-9a-fA-F]{3,8}\].*",
+		register_diagnostic(span=$s, message="A raw colour; use a token from styles/tokens.css.")
+	}
+}

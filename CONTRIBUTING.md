@@ -465,8 +465,9 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
 The app's look is held by checks first and review second; the rules live in
 `packages/frontend/design/GUIDELINES.md`.
 
-- **Always:** `pnpm --filter @prismalens/frontend ui:check:static` (the look lint
-  and the diff gates, seconds). CI runs both in its lint job.
+- **Always:** `pnpm --filter @prismalens/frontend ui:check:static` (Biome on the
+  frontend with its look rules, the stylesheet lint and the copy gates on added
+  lines, seconds). CI runs all three in its lint job.
 - **When a screen changes:** `pnpm --filter @prismalens/frontend ui:check`. It
   runs the design matrix (`ui:shots`: every screen and state at three widths in
   both themes) and holds it to `packages/frontend/ui-budget.json`. A rise fails;
@@ -486,8 +487,10 @@ The PR checklist for a UI change:
 ## Code style
 
 - Formatting and linting are handled by **Biome** — run `pnpm format-and-lint`.
-  It also runs `packages/frontend/scripts/lint-look.sh`: no border as structure,
-  no DOM `title` tooltip (use `Hint`), no native `<select>`, no deleted look tokens.
+  Biome also holds the frontend's look: its Tailwind rules and the plugins in
+  `packages/frontend/biome-plugins/` (one spinner, colours from tokens, one page
+  header, hairlines not borders, no native `<select>` or DOM `title`).
+  `packages/frontend/scripts/lint-look.sh` covers the stylesheets Biome skips.
 - **Never convert tabs to spaces or vice-versa.** Preserve the existing
   indentation of each file exactly.
 - Small, cohesive files; explicit error handling at boundaries; no stray

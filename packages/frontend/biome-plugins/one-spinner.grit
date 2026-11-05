@@ -1,0 +1,14 @@
+// A working indicator is shared/Ring (design/GUIDELINES.md, rule 15). Files that still
+// draw their own spinner are excluded in biome.json until they move to the ring.
+language js
+
+or {
+	JsxString() as $str where {
+		$str <: r".*animate-spin.*",
+		register_diagnostic(span=$str, message="A spinner is shared/Ring; a one-off spin drifts from it.")
+	},
+	JsxReferenceIdentifier() as $id where {
+		$id <: `Loader2`,
+		register_diagnostic(span=$id, message="A spinner is shared/Ring, not a rotating icon.")
+	}
+}

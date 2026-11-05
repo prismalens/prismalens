@@ -21,15 +21,15 @@ Run before a UI PR: `pnpm ui:check:static` (seconds), and `pnpm ui:check` when y
 ## Shell
 
 9. **Layout contract.** The sidebar: New and Search, then the doors (Threads, Automation, Services, and Operations once alerts have arrived), Waiting for you, Recents, Settings at the foot. It never changes per page; Settings keeps it and lists its sections inside the page. Below 1280 px it folds to a labelled rail; on a phone it is a Menu drawer. [check: `Sidebar.test.tsx`, design matrix]
-10. **One page header** (`shell/PageHeader`, or `run/IncidentHeader` on a thread). Pages do not build their own top bar. [check: `lint-look.sh` contract `header`]
+10. **One page header** (`shell/PageHeader`, or `run/IncidentHeader` on a thread). Pages do not build their own top bar. [check: Biome plugin `one-page-header`]
 11. **The thread page is transcript first.** A thread with a run opens on its transcript; an incident thread keeps a compact summary above it (service, whether the alert still fires, the brief, Next). Detail lives in the right panel's Incident tab, which never opens by itself. Completion never moves a reader, steals focus or opens a panel. [check: e2e `overview.spec.ts`, `incident-record.spec.ts`; the rest judgement]
 12. **The agent's words lead.** Tool calls fold to one quiet line per group and open on click, on a waiting approval, or on a link; once opened they stay open. [check: `Transcript.test.tsx`]
 
 ## Look, motion and accessibility
 
-13. **Tokens only** (site rule 8). Colours come from `styles/tokens.css`; the site syncs from it. [check: `lint-look.sh` contract `raw-colour`, `scripts/ui-gates.sh`]
-14. **Edges are hairlines, not borders.** Structure comes from surface steps and a one-pixel `after:` hairline. [check: `lint-look.sh` "border as structure"]
-15. **One spinner: the ring** (`shared/Ring`, site rules 11 and 12), and every async surface has a loading, content and empty or failed state. [check: `lint-look.sh` contract `spinner`]
+13. **Tokens only** (site rule 8). Colours come from `styles/tokens.css`; the site syncs from it. [check: Biome plugin `token-colours` and `nursery/noTailwindRawColors`]
+14. **Edges are hairlines, not borders.** Structure comes from surface steps and a one-pixel `after:` hairline. [check: Biome plugin `hairline-edges`; `lint-look.sh` for stylesheets]
+15. **One spinner: the ring** (`shared/Ring`, site rules 11 and 12), and every async surface has a loading, content and empty or failed state. [check: Biome plugin `one-spinner`]
 16. **Reduced motion shows the final state** (site rule 14). [check: design matrix frame `frames-live-reduced`]
 17. **Accessibility floor** (site rule 15, plus): AA contrast, a visible focus ring on every control, targets at least 24 px (48 px on the phone strip), no sideways scroll at 390 px except a row marked `data-scroll-x`. [check: design matrix via `ui-budget.json`]
 
@@ -42,13 +42,15 @@ Use these instead of building a variant; their file headers state their one cons
 | Need | Component | Enforced by |
 | :- | :- | :- |
 | Empty, loading or failed state | `shared/State` (`Empty`, `Loading`, `Problem`, `Blank`) | judgement |
-| Page top bar | `shell/PageHeader`, `run/IncidentHeader` | `lint-look.sh` header |
+| Page top bar | `shell/PageHeader`, `run/IncidentHeader` | Biome plugin `one-page-header` |
 | Thread row and its mark | `shell/ThreadList` (`ThreadRowView`, `RowMark`) | `ThreadList.test.ts` |
 | What started a thread | `run/TriggerCard` | `trigger-card.spec.ts` |
-| Working indicator | `shared/Ring` | `lint-look.sh` spinner |
+| Working indicator | `shared/Ring` | Biome plugin `one-spinner` |
 | Composer | `investigation/ComposerBox` | judgement |
 
-`scripts/look-contracts.allow` lists today's exceptions. It only shrinks; a new entry names its reason in the PR.
+The plugins live in `biome-plugins/`, one rule each with its reason in the file header; Biome reports them with its own rules. Each plugin's `includes` in `biome.json` excludes the files that still break it. That list only shrinks; a new exclusion names its reason in the PR.
+
+**Shared components keep their look** [check: `nursery/noTailwindRestyledComponents`, a warning until today's 288 restyles are cleared, then an error]: classes on a design-system component change its layout only; links, hints and icons pass classes through. `nursery/useTailwindStaticClassStrings` keeps every class string static so Tailwind and the rules can read it.
 
 ## Recipes
 
