@@ -251,11 +251,13 @@ test.describe("#1020 — project thread journeys", () => {
 		);
 
 		// No subject: New thread starts on "No project"
-		await page.goto("/threads/new");
+		await page.goto("/new?none=true");
 		await expect(page.getByTestId("new-thread-page")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("composer-subject")).toHaveText("No project");
+		await expect(page.getByTestId("composer-subject")).toHaveText(
+			/no project/i,
+		);
 		await page.getByTestId("composer-input").fill("Thread with no subject");
 		await page.getByTestId("composer-input").press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
