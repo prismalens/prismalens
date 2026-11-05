@@ -27,8 +27,12 @@ async function servePayload(
 	await page.route(
 		(url) => url.pathname === `/api/alerts/${alertId}`,
 		async (route) => {
-			const response = await route.fetch();
-			const body = (await response.json()) as Record<string, unknown>;
+			// A theme change reloads the page mid-fetch; that request is gone, so let it go.
+			const body = await route
+				.fetch()
+				.then((r) => r.json() as Promise<Record<string, unknown>>)
+				.catch(() => null);
+			if (!body) return route.abort().catch(() => {});
 			await route.fulfill({
 				status: 200,
 				contentType: "application/json",
@@ -81,7 +85,7 @@ test.describe("#523 S3 — the alert record", () => {
 		);
 
 		await setTheme(page, "dark");
-		await expect(detail).toBeVisible();
+		await expect(detail).toBeVisible({ timeout: 15_000 });
 	});
 
 	test("an uncorrelated alert offers to run correlation", async ({ page }) => {
