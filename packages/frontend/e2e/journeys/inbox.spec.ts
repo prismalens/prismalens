@@ -497,7 +497,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			trigger: "never",
 		});
 
-		// Nine quiet incidents and one with a finding: Recents shows twelve, View all has them all (#1020).
+		// Nine quiet incidents and one with a finding: the finding is a thread in Recents; Search finds the quiet ones (#1020).
 		const prefix = unique("TreeItem");
 		const treeIncidents: { id: string; number: number; title: string }[] = [];
 		for (let i = 0; i < 9; i++) {
@@ -529,13 +529,13 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		const tree = page.getByTestId("thread-list");
 		await expect(tree).toBeVisible({ timeout: 15_000 });
 		const recents = tree.getByTestId("thread-section-recents");
-		// The worker's stack holds other threads too; Recents stops at twelve.
-		await expect
-			.poll(() => recents.locator("a[href^='/incidents/']").count())
-			.toBeGreaterThanOrEqual(10);
-		expect(
-			await recents.locator("a[href^='/incidents/']").count(),
-		).toBeLessThanOrEqual(12);
+		// Recents stops at twelve rows, whatever else the worker's stack holds.
+		await expect(
+			recents.locator(`a[href="/incidents/${liveRunInc.id}"]`),
+		).toBeVisible();
+		expect(await recents.getByTestId("thread-row").count()).toBeLessThanOrEqual(
+			12,
+		);
 
 		// The finding's row ends in one mark that says so; nothing nests under it.
 		const liveRow = recents.locator(`a[href="/incidents/${liveRunInc.id}"]`);
@@ -549,13 +549,17 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			0,
 		);
 
-		// View all opens the Threads page, where search finds all nine quiet ones.
+		// View all opens the Threads page, which lists the incident with a run.
 		await recents.getByTestId("threads-view-all").click();
 		await expect(page).toHaveURL(/\/threads$/);
-		await page.getByTestId("threads-search").fill(prefix);
 		await expect(
-			page.getByRole("main").locator("a[href^='/incidents/']"),
-		).toHaveCount(9);
+			page.getByRole("main").locator(`a[href="/incidents/${liveRunInc.id}"]`),
+		).toBeVisible();
+		// A quiet incident has no run, so it is no thread: Search finds it by name (#1020).
+		await page.getByTestId("nav-search").click();
+		await page.getByTestId("thread-search-input").fill(prefix);
+		await expect(page.getByTestId("thread-search-incident")).toHaveCount(8);
+		await page.keyboard.press("Escape");
 
 		// nav-settings at the foot of sidebar
 		await expect(page.getByTestId("nav-settings")).toBeVisible();

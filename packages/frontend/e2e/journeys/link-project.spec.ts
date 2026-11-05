@@ -174,12 +174,12 @@ test.describe("#1020 — services for projects", () => {
 		await expect(dialog.getByTestId("link-project-pick")).toHaveText("Project");
 	});
 
-	test("a blank incident says Nothing yet, links a service and keeps the composer", async ({
+	test("a blank incident says What do you know so far?, links a service and keeps the composer", async ({
 		page,
 	}) => {
 		await createIncidentByHand(page, `Blank incident ${Date.now()}`);
 		const blank = page.getByTestId("incident-blank");
-		await expect(blank).toContainText("Nothing yet");
+		await expect(blank).toContainText("What do you know so far?");
 		await expect(blank.getByTestId("overview-composer")).toBeVisible();
 		await expect(page.getByTestId("impact-card")).toHaveCount(0);
 		await expect(page.getByTestId("why-card")).toHaveCount(0);

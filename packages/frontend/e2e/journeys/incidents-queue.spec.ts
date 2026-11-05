@@ -6,7 +6,7 @@ import { setTheme } from "./live-stream-fixtures";
 
 /**
  * #523 S2/final, #811 — the incident sidebar tree and keyboard surface.
- * Open incidents appear grouped by service in IncidentTree; closed ones are omitted.
+ * Incidents with no run are found through Search; the sidebar lists threads.
  */
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -25,9 +25,11 @@ function headerHeading(page: Page) {
 		.getByRole("heading", { name: "Operations", exact: true });
 }
 
-/** A thread on the Threads page; the sidebar shows only the latest twelve (#1020). */
-function treeRow(page: Page, id: string) {
-	return page.getByRole("main").locator(`a[href*="${id}"]`);
+/** An incident with no run is no thread; Search finds it by title (#1020). */
+async function searchIncidents(page: Page, text: string) {
+	await page.getByTestId("nav-search").click();
+	await page.getByTestId("thread-search-input").fill(text);
+	return page.getByTestId("thread-search-incident");
 }
 
 test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
@@ -61,18 +63,6 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await expect(page.getByTestId("thread-list")).toBeVisible({
 			timeout: 15_000,
 		});
-		await page.goto(`/threads?q=${stamp}`);
-
-		const triggeredRow = treeRow(page, triggeredId);
-		const failedRow = treeRow(page, failedRunId);
-		const resolvedRow = treeRow(page, resolvedId);
-		const closedRow = treeRow(page, closedId);
-		await expect(triggeredRow).toBeVisible();
-		await expect(failedRow).toBeVisible();
-		await expect(resolvedRow).toBeVisible();
-		// A closed incident stays one search away on the Threads page (#1020).
-		await expect(closedRow).toHaveCount(1);
-
 		// `?` opens the shortcut sheet.
 		await page.keyboard.press("?");
 		await expect(page.getByTestId("shortcut-sheet")).toBeVisible();
@@ -96,12 +86,24 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await page.keyboard.press("a");
 		await expect(page).toHaveURL(/\/alerts(\/|\?|$)/);
 
-		// Clicking a thread on the Threads page opens the incident overview
-		await page.goto(`/threads?q=${stamp}`);
-		await treeRow(page, resolvedId).click();
-		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}(\?|$)/, {
-			timeout: 15_000,
-		});
+		// Open, failed, resolved and closed alike stay one search away (#1020).
+		const hits = await searchIncidents(page, String(stamp));
+		for (const title of [
+			triggeredTitle,
+			failedRunTitle,
+			resolvedTitle,
+			closedTitle,
+		])
+			await expect(hits.filter({ hasText: title })).toHaveCount(1);
+
+		// Picking one opens its incident
+		await hits.filter({ hasText: resolvedTitle }).click();
+		await expect(page).toHaveURL(
+			new RegExp(`/incidents/${resolvedId}(\\?|$)`),
+			{
+				timeout: 15_000,
+			},
+		);
 	});
 
 	test("All incidents keeps a 90-day range from Analytics (#673 w6-35)", async ({
