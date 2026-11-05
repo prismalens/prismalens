@@ -369,6 +369,7 @@ describe("ThreadsService.settle (#1020)", () => {
 			[A, null],
 			[B, null],
 		]);
+		const other = new Map<string, string>();
 		const db = {
 			investigation: {
 				findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
@@ -388,23 +389,18 @@ describe("ThreadsService.settle (#1020)", () => {
 						data: { settledAt?: Date | null };
 					}) => {
 						if (where.id === B) return { count: 0 };
+						other.set("write", "kept");
 						settledAt.set(where.id, data.settledAt ?? null);
 						return { count: 1 };
 					},
 				),
 			},
-			$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-				const before = new Map(settledAt);
-				try {
-					return await fn(db);
-				} catch (e) {
-					for (const [k, v] of before) settledAt.set(k, v);
-					throw e;
-				}
-			}),
+			$transaction: vi.fn(),
 		};
 		return {
 			settledAt,
+			other,
+			db,
 			svc: new ThreadsService(
 				db as never,
 				{} as never,
@@ -416,13 +412,15 @@ describe("ThreadsService.settle (#1020)", () => {
 		};
 	}
 
-	it("rolls back the earlier threads when a later one keeps conflicting", async () => {
-		const { svc, settledAt } = build();
+	it("writes the earlier threads back when a later one keeps conflicting, without a transaction", async () => {
+		const { svc, settledAt, other, db } = build();
 		await expect(svc.settle(A, true)).rejects.toMatchObject({ code: "CONFLICT" });
 		expect(settledAt.get(A)).toBeNull();
+		expect(other.get("write")).toBe("kept");
+		expect(db.$transaction).not.toHaveBeenCalled();
 	});
 
-	it("rolls back an undo that restores several threads when one conflicts", async () => {
+	it("writes back an undo that restores several threads when one conflicts", async () => {
 		const { svc, settledAt } = build();
 		settledAt.set(A, stamp);
 		await expect(
