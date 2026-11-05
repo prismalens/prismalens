@@ -89,13 +89,17 @@ export class AlertsService {
 	 * differ in any label (`instance`, `pod`) are two alerts, and resolving one
 	 * leaves the other firing. Grouping them is correlation's job (ADR 0006
 	 * §3), not dedup's. Without labels the identity is source, title, severity
-	 * and service.
+	 * and service. A labelled alert that resolved to a service adds it, so two
+	 * services sharing one label set stay two alerts; one with no service keeps
+	 * its label-only key.
 	 */
-	generateDedupKey(dto: CreateAlertDto): string {
+	generateDedupKey(dto: CreateAlertDto, withService = true): string {
 		const labels = dto.labels ? Object.entries(dto.labels).sort() : [];
+		const service =
+			withService && dto.serviceId ? `:service:${dto.serviceId}` : "";
 		const input =
 			labels.length > 0
-				? `${dto.source ?? "unknown"}:labels:${JSON.stringify(labels)}`
+				? `${dto.source ?? "unknown"}:labels:${JSON.stringify(labels)}${service}`
 				: `${dto.source ?? "unknown"}:${dto.title}:${dto.severity ?? "medium"}:${dto.serviceId ?? ""}`;
 		return crypto
 			.createHash("sha256")
@@ -163,8 +167,19 @@ export class AlertsService {
 
 		// Newest episode wins: dedupKey is no longer unique (#231 R2b), so a
 		// findUnique read here would throw once a second episode row exists.
+		// A labelled alert stored before the key carried its service is still
+		// found under the label-only key, when it belongs to the same service.
+		const labelOnlyKey = this.generateDedupKey(dto, false);
 		const existing = await this.prisma.alert.findFirst({
-			where: { dedupKey },
+			where:
+				labelOnlyKey === dedupKey
+					? { dedupKey }
+					: {
+							OR: [
+								{ dedupKey },
+								{ dedupKey: labelOnlyKey, serviceId: dto.serviceId ?? null },
+							],
+						},
 			orderBy: { triggeredAt: "desc" },
 			include: { incident: { select: { status: true } } },
 		});

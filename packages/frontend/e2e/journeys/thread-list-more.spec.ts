@@ -159,11 +159,12 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await expect(rows.nth(0)).toHaveAttribute("data-id", id(101));
 		await expect(rows.nth(0)).toHaveAttribute("data-state", "working");
 		await expect(rows.nth(1)).toHaveAttribute("data-state", "failed");
-		await expect(rows.nth(2)).toHaveAttribute("data-id", id(103));
+		// A settled thread leaves Recents; the Threads page still lists it.
+		await expect(recents.locator(`[data-id="${id(103)}"]`)).toHaveCount(0);
+		await expect(rows.nth(2)).toHaveAttribute("data-id", id(0));
 		await expect(rows.nth(2)).toHaveAttribute("data-state", "quiet");
-		await expect(rows.nth(3)).toHaveAttribute("data-id", id(0));
 		await expect(
-			recents.getByTestId("thread-row").filter({ hasText: "Older thread 9" }),
+			recents.getByTestId("thread-row").filter({ hasText: "Older thread 10" }),
 		).toHaveCount(0);
 		await expect(rows.nth(0)).toHaveAttribute("href", `/threads/${id(101)}`);
 
@@ -193,9 +194,12 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await recents.getByTestId("threads-view-all").click();
 		await expect(page).toHaveURL(/\/threads$/);
 		await expect(page.getByTestId("threads-page")).toBeVisible();
+		await expect(
+			page.getByRole("main").locator(`[data-id="${id(103)}"]`),
+		).toHaveCount(1);
 	});
 
-	test("2. A settled thread that gets new activity rises to the top of Recents as working", async ({
+	test("2. A settled thread is off Recents, and new activity brings it back at the top as working", async ({
 		page,
 	}) => {
 		let hasNewActivity = false;
@@ -223,9 +227,9 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		const rows = page
 			.getByTestId("thread-section-recents")
 			.getByTestId("thread-row");
-		await expect(rows).toHaveCount(2);
-		await expect(rows.nth(1)).toHaveAttribute("data-id", threadId);
-		await expect(rows.nth(1)).toHaveAttribute("data-state", "quiet");
+		// Settled, it is off Recents.
+		await expect(rows).toHaveCount(1);
+		await expect(rows.nth(0)).toHaveAttribute("data-id", id(201));
 
 		hasNewActivity = true;
 		await page.reload();
@@ -468,8 +472,9 @@ test.describe("#1020 — thread list journeys (more)", () => {
 			["nav-new", /\/new$/],
 			["nav-threads", /\/threads$/],
 			["nav-automation", /\/automation$/],
-			["nav-services", /\/services/],
 			["nav-settings", /\/settings/],
+			// Last: Services opens its first service by itself, which would race a next click.
+			["nav-services", /\/services/],
 		];
 		for (const [door] of doors)
 			await expect(sidebar.getByTestId(door)).toBeVisible();
