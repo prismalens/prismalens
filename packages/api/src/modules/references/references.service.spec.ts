@@ -134,4 +134,63 @@ describe("ReferencesService (#1024)", () => {
 			["acme/shop#12", "GitHub · acme/shop"],
 		]);
 	});
+
+	it("ranks a file the agent touched in this thread first, and a new project thread lists its folder", async () => {
+		const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const root = mkdtempSync(join(tmpdir(), "pl-refs-"));
+		writeFileSync(join(root, "pool.ts"), "");
+		writeFileSync(join(root, "pool.test.ts"), "");
+		try {
+			const db = prisma();
+			(db.investigation.findUnique as ReturnType<typeof vi.fn>).mockImplementation(
+				async () => ({
+					id: RUN,
+					incidentId: null,
+					repositoryId: null,
+					workspace: JSON.stringify({ layout: "folder", cwd: root, repos: [] }),
+					harness: "codex",
+					agentCommands: null,
+				}),
+			);
+			db.investigationEvent.findMany.mockResolvedValue([
+				{
+					event: JSON.stringify({
+						kind: "agent_step",
+						runId: RUN,
+						branchId: "run",
+						path: [],
+						seq: 1,
+						label: null,
+						ts: "2026-11-07T10:00:00.000Z",
+						text: "",
+						toolCalls: [{ toolCallId: "t", name: "read", args: { path: join(root, "pool.test.ts") } }],
+					}),
+				},
+			] as never);
+			db.setting.findUnique.mockResolvedValue({
+				value: JSON.stringify([{ name: "plan", description: "Plan" }]),
+			} as never);
+			const svc = new ReferencesService(db as never);
+			const { hits } = await svc.search({ q: "pool", trigger: "@", threadId: RUN, limit: 5 });
+			expect(hits[0]).toMatchObject({ ref: { kind: "file", id: "pool.test.ts" }, why: "agent" });
+			const cmds = await svc.search({ q: "", trigger: "/", threadId: RUN, limit: 20 });
+			expect(cmds.hits.find((h) => h.source === "agent")?.detail).toContain("from the last run");
+
+			const repo = prisma({
+				repository: {
+					findMany: vi.fn(async () => []),
+					findUnique: vi.fn(async () => ({ id: RUN, sourceKind: "folder", url: root })),
+				},
+			});
+			const fresh = new ReferencesService(repo as never);
+			const files = await fresh.search({ q: "pool", trigger: "@", scope: `new:project:${RUN}`, limit: 5 });
+			expect(files.hits.map((h) => h.ref.id)).toContain("pool.ts");
+			await fresh.use([{ kind: "file", id: "pool.ts" }]);
+			expect(repo.referenceUse.upsert).toHaveBeenCalled();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
 });

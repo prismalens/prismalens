@@ -205,6 +205,24 @@ export class ScenarioApp {
 		return JSON.parse(out) as { id: string };
 	}
 
+	/** Uploads any file as this paired device (#1024: not only text). */
+	async uploadFile(
+		path: string,
+		file: File,
+	): Promise<{ id: string; mimeType: string }> {
+		const body = new FormData();
+		body.append("file", file);
+		const res = await fetch(`${this.url}/api${path}`, {
+			method: "POST",
+			headers: { origin: this.url, cookie: this.cookie },
+			body,
+		});
+		const out = await res.text();
+		if (!res.ok)
+			throw new Error(`POST ${path} → ${res.status}: ${out.slice(0, 300)}`);
+		return JSON.parse(out) as { id: string; mimeType: string };
+	}
+
 	/** The running app's gateway: a scenario reads what a run's tools answer. */
 	async gateway() {
 		if (!this.app) throw new Error("PrismaLens is not running");

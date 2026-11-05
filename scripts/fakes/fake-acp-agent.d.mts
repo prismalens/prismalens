@@ -26,6 +26,10 @@ export interface Step {
 	/** Hold until `releaseRun(key)` names a key the first prompt contains. */
 	waitForRelease?: boolean;
 	stop?: string;
+	/** Sends `elicitation/create` (form mode) and says the answer back (#1024). */
+	elicit?: { message: string; requestedSchema: Record<string, unknown> };
+	/** Says each linked file's first bytes: a file:// one read from disk, any other named (#1024). */
+	readLinks?: boolean;
 }
 
 export interface FakeSession {
@@ -50,6 +54,8 @@ export interface FakeSession {
 	images?: boolean;
 	/** `session/set_config_option` keeps the old value. */
 	refuseConfig?: boolean;
+	/** Advertised as `sessionCapabilities.additionalDirectories` at initialize (#1024). */
+	additionalDirectories?: boolean;
 }
 
 export const SESSIONS_DIR: string;

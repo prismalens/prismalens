@@ -1,4 +1,5 @@
 {
+	"description": "A permission ask mid-run. Deny with a reason: the reason reaches the session as the next message, and followUp says it back (#673 w21, #1024).",
 	"agent": {
 		"name": "claude-agent-acp",
 		"version": "0.85.1-fake"

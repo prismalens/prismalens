@@ -115,4 +115,22 @@ describe("AsksService (#1024)", () => {
 			svc.answer(THREAD, askId, { kind: "decline" }, HOST),
 		).rejects.toBeInstanceOf(AskConflict);
 	});
+
+	it("pending() and get() read stored asks, legacy and new", async () => {
+		const ts = "2026-11-07T10:00:00.000Z";
+		const b = { runId: THREAD, branchId: "run", path: [], label: null, ts };
+		const legacy = "8c8b1c0e-0d55-4f27-9f0a-3e7d1d1b6b11";
+		const events = [
+			{ ...b, kind: "permission_ask", seq: 1, askId: legacy, title: "Run kubectl", detail: null, toolKind: "execute", expiresAt: ts },
+		] as CanonicalEvent[];
+		const { svc } = setup(events);
+		expect((await svc.pending(THREAD)).map((a) => a.askId)).toEqual([legacy]);
+		const lookup = new AsksService(
+			{ investigationEvent: { findFirst: vi.fn(async () => ({ investigationId: THREAD })) } } as never,
+			{} as never,
+			{ allEvents: vi.fn(async () => events) } as never,
+		);
+		expect(await lookup.get(legacy)).toMatchObject({ ask: { title: "Run kubectl" }, closed: null });
+		expect(await lookup.get("0b3c2f1e-1111-4222-8333-444455556666")).toBeNull();
+	});
 });

@@ -954,3 +954,20 @@ describe("elicitation/create (#1024)", () => {
 		expect(said(items)).toContain('"action":"not-declared"');
 	});
 });
+
+describe("run-scoped attachment folder (#1024)", () => {
+	it("an agent that advertises additionalDirectories is marked, so a big file is copied and linked as file://", async () => {
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: "/tmp",
+			roots: { cwd: "/tmp", additional: ["/tmp/runs/r1/attachments"] },
+			env: { ...process.env, FAKE_ADDITIONAL_DIRS: "1" },
+			permission: () => ({ allow: true, optionId: "once", outcome: "approved" }),
+			initTimeoutMs: 5_000,
+		});
+		await session.open();
+		expect(session.takesDirectories).toBe(true);
+		await session.close();
+	});
+});

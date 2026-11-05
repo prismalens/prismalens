@@ -32,6 +32,14 @@ const NEW_CODE_THRESHOLD = {
 	lines: 80,
 };
 
+/** Branchy seams whose remaining branches a scenario walks (#1024); raise as unit cases land. */
+const COMPOSER_SEAM_THRESHOLD = {
+	statements: 80,
+	branches: 70,
+	functions: 75,
+	lines: 80,
+};
+
 // NestJS relies on `emitDecoratorMetadata` for constructor injection. Vitest's
 // default esbuild transform does not emit decorator metadata, so transform the
 // TypeScript with SWC (the same toolchain Nest's own build uses).
@@ -75,6 +83,12 @@ export default defineConfig({
 				"src/modules/impact/series-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/fixes/fixes.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/*.ts": NEW_CODE_THRESHOLD,
+				"src/modules/composer/drafts.service.ts": NEW_CODE_THRESHOLD,
+				"src/modules/references/ranking.ts": NEW_CODE_THRESHOLD,
+				"src/modules/references/file-list.ts": NEW_CODE_THRESHOLD,
+				"src/modules/references/records.provider.ts": COMPOSER_SEAM_THRESHOLD,
+				"src/modules/references/references.service.ts": COMPOSER_SEAM_THRESHOLD,
+				"src/modules/asks/asks.service.ts": COMPOSER_SEAM_THRESHOLD,
 				"src/modules/investigations/run-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/attachments.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/harness/ready-harness.ts": NEW_CODE_THRESHOLD,

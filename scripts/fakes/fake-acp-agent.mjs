@@ -120,6 +120,10 @@ function run() {
 	let onCancel = null;
 	/** @type {string | null} */
 	let currentMode = null;
+	/** The client declared form elicitation at initialize (#1024). */
+	let clientElicits = false;
+	/** @type {{ type?: string, uri?: string, name?: string }[]} The prompt's resource links. */
+	let links = [];
 	/** The script's modes, or the default set, with the mode a switch took as current. */
 	const sessionModes = () => {
 		const modes = script.modes ?? DEFAULT_MODES;
@@ -151,6 +155,28 @@ function run() {
 				).join(", ") || "nothing",
 			);
 	const text = (/** @type {string} */ t) => ({ type: "text", text: t });
+
+	/** `elicitation/create`: a form question or input, answered by the host (#1024). */
+	function elicit(/** @type {Record<string, unknown>} */ params) {
+		return new Promise((resolveElicit) => {
+			const id = nextId++;
+			pending.set(id, resolveElicit);
+			send({ jsonrpc: "2.0", id, method: "elicitation/create", params });
+		});
+	}
+
+	/** Each linked file's bytes, read the way the agent would: a file:// path it may read, else the link itself. */
+	function readLinks() {
+		return links.map((l) => {
+			const uri = String(l.uri ?? "");
+			if (!uri.startsWith("file://")) return `Link ${l.name}: ${uri}`;
+			try {
+				return `Read ${l.name}: ${readFileSync(fileURLToPath(uri), "utf8").slice(0, 200)}`;
+			} catch (e) {
+				return `Could not read ${l.name}: ${e instanceof Error ? e.message : String(e)}`;
+			}
+		});
+	}
 
 	/** @param {Record<string, unknown>} params */
 	function askPermission(params) {
@@ -189,6 +215,20 @@ function run() {
 			}
 			if (step.update) notify(sessionId, step.update);
 			if (step.tool) await tool(sessionId, step.tool);
+			if (step.elicit) {
+				const answer = clientElicits
+					? await elicit({ mode: "form", sessionId, ...step.elicit })
+					: { action: "not-declared" };
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(`You answered: ${JSON.stringify(answer)}\n`),
+				});
+			}
+			if (step.readLinks)
+				notify(sessionId, {
+					sessionUpdate: "agent_message_chunk",
+					content: text(`${readLinks().join("\n") || "No linked files."}\n`),
+				});
 			if (step.report) {
 				const body = JSON.stringify(step.report, null, 2);
 				notify(sessionId, {
@@ -336,12 +376,20 @@ function run() {
 			send({ jsonrpc: "2.0", id: msg.id, result });
 		switch (msg.method) {
 			case "initialize":
+				clientElicits = !!(
+					/** @type {{ clientCapabilities?: { elicitation?: { form?: unknown } } }} */ (
+						msg.params ?? {}
+					).clientCapabilities?.elicitation?.form
+				);
 				return reply({
 					protocolVersion: 1,
 					agentInfo: script.agent ?? { name: "fake-acp-agent", version: "0" },
 					agentCapabilities: {
 						loadSession: script.loadSession !== false,
 						promptCapabilities: { image: script.images === true },
+						...(script.additionalDirectories
+							? { sessionCapabilities: { additionalDirectories: {} } }
+							: {}),
 					},
 					authMethods: [],
 				});
@@ -406,6 +454,9 @@ function run() {
 			}
 			case "session/prompt": {
 				const blocks = msg.params?.prompt ?? [];
+				links = blocks.filter(
+					(/** @type {{ type?: string }} */ b) => b.type === "resource_link",
+				);
 				const images = blocks.filter(
 					(/** @type {{ type?: string }} */ b) => b.type === "image",
 				).length;
