@@ -126,9 +126,11 @@ test.describe("the services filter follows the URL (#781 review)", () => {
 		const input = page.getByTestId("services-search");
 		await expect(input).toHaveValue("gate", { timeout: 15_000 });
 
+		// Services from Search: a plain link to /services, with no search (#1020).
+		await page.getByTestId("sidebar").getByTestId("sidebar-search").click();
 		await page
-			.getByTestId("sidebar")
-			.getByRole("link", { name: "Services", exact: true })
+			.getByTestId("thread-search-place")
+			.filter({ hasText: "Services" })
 			.click();
 		await expect(input).toHaveValue("");
 		// The debounce would have written the stale value back by now.

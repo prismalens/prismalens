@@ -9,7 +9,7 @@ Feature: First run
     When I open the board
     Then I see four numbered steps, a done step reading "Done" in green, and no column headings, filter, time window or counts
     And step 1 offers "Copy URL" and "Copy token" separately
-    And the only way to create an incident by hand is "New" in the header
+    And the only way to create an incident by hand is "New thread" in the header
 
   Scenario: A blocked clipboard never reads "Copied"
     When I open the board in a browser that blocks the clipboard

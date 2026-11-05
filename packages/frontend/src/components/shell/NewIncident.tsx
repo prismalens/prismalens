@@ -1,61 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useNavigate } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
-import {
-	createContext,
-	type ReactNode,
-	useCallback,
-	useContext,
-	useMemo,
-	useState,
-} from "react";
-import { CreateIncidentDialog } from "@/components/incidents/CreateIncidentDialog";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { SquarePen } from "lucide-react";
+import { useCallback } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** The shortcut that opens it, shown in the tooltip and the ? sheet. */
+/** `c`: New thread with Incident on (#1020). */
 export const NEW_INCIDENT_KEY = "c";
 
-const NewIncidentContext = createContext<() => void>(() => {});
-
-/** The one manual entry (decision 4): every New in the app opens this dialog. */
-export function NewIncidentProvider({ children }: { children: ReactNode }) {
+/** Opens New thread with Incident on; the composer's text becomes the brief. */
+export function useNewIncident() {
 	const navigate = useNavigate();
-	const [open, setOpen] = useState(false);
-	const show = useCallback(() => setOpen(true), []);
-	const value = useMemo(() => show, [show]);
-	return (
-		<NewIncidentContext.Provider value={value}>
-			{children}
-			<CreateIncidentDialog
-				open={open}
-				onOpenChange={setOpen}
-				onCreated={(id) => navigate({ to: "/incidents/$id", params: { id } })}
-			/>
-		</NewIncidentContext.Provider>
+	return useCallback(
+		() => void navigate({ to: "/threads/new", search: { incident: true } }),
+		[navigate],
 	);
 }
 
-export function useNewIncident() {
-	return useContext(NewIncidentContext);
-}
-
-/** The header's primary on every list screen, the phone's included (#673 w11). */
-export function NewIncidentButton({ className }: { className?: string }) {
-	const open = useNewIncident();
+/** The header's primary on every list screen, the phone's included (#1020). */
+export function NewThreadButton({ className }: { className?: string }) {
 	return (
-		<Hint label="New incident" keys={[NEW_INCIDENT_KEY.toUpperCase()]}>
-			<Button
-				variant="secondary"
-				className={cn("pl-2.5", className)}
-				onClick={open}
-				data-testid="create-incident-button"
-			>
-				<Plus />
-				New incident
+		<Hint label="New thread" keys={["Ctrl", "Shift", "O"]}>
+			<Button variant="secondary" className={cn("pl-2.5", className)} asChild>
+				<Link to="/threads/new" data-testid="new-thread-button">
+					<SquarePen />
+					New thread
+				</Link>
 			</Button>
 		</Hint>
 	);

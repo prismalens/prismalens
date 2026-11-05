@@ -47,6 +47,7 @@ import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
+import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { desktopBridge } from "@/lib/desktop";
 import {
 	citedFile,
@@ -140,6 +141,7 @@ export function RunPage() {
 	const { harnesses } = useAgentChoice();
 	const inv = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);
+	useVisitThread(inv?.id ?? null, !live);
 	// The transcript's own counter has its clock; the strip and panel need a second only while live.
 	const now = useNow(live ? 1000 : 30_000);
 	useRenderProbe("RunPage", { now, run });

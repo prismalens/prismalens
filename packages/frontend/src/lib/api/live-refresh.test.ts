@@ -21,6 +21,7 @@ describe("invalidateTopics (walk f27)", () => {
 			JSON.stringify(orpc.webhooks.lastDelivery.key()),
 			JSON.stringify(orpc.investigations.key()),
 			JSON.stringify(orpc.schedules.key()),
+			JSON.stringify(orpc.threads.key()),
 		]);
 	});
 
@@ -46,6 +47,7 @@ describe("invalidateTopics (walk f27)", () => {
 			JSON.stringify(orpc.setup.key()),
 			JSON.stringify(orpc.recommendations.key()),
 			JSON.stringify(orpc.timeline.key()),
+			JSON.stringify(orpc.threads.key()),
 		]);
 	});
 });

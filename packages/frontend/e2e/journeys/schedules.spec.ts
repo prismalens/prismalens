@@ -18,9 +18,9 @@ async function emptyWorkspace(page: Page) {
 		});
 }
 
-/** #979 - the Schedules door opens the list, and a schedule opens its history. */
+/** #979 - Search opens the schedules list (#1020), and a schedule opens its history. */
 test.describe("#979 - schedules", () => {
-	test("the sidebar's Schedules door opens the list, and a row opens that schedule's history", async ({
+	test("Search opens the Schedules list, and a row opens that schedule's history", async ({
 		page,
 	}) => {
 		const services = await page.request.get("/api/services");
@@ -46,9 +46,10 @@ test.describe("#979 - schedules", () => {
 		const { id } = (await created.json()) as { id: string };
 
 		await page.goto("/incidents");
+		await page.getByTestId("sidebar").getByTestId("sidebar-search").click();
 		await page
-			.getByTestId("sidebar")
-			.getByRole("link", { name: "Schedules", exact: true })
+			.getByTestId("thread-search-place")
+			.filter({ hasText: "Schedules" })
 			.click();
 		await expect(page).toHaveURL(/\/schedules$/);
 		await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible({
@@ -87,5 +88,7 @@ test.describe("#979 - schedules", () => {
 		await expect(
 			page.getByRole("dialog").getByText("Add a service"),
 		).toBeVisible();
+		// A services read still in flight must not outlive the test's routes.
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 	});
 });

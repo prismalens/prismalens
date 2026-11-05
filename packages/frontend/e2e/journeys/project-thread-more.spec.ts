@@ -221,11 +221,68 @@ test.describe("#1020 — project thread journeys", () => {
 		).toBeVisible();
 	});
 
-	test.skip("3. start a thread with no subject (none) and one on a service; both open on the standalone thread page", async () => {
-		// Skipped: The frontend UI does not expose starting a thread with no subject
-		// (none) or on a service. NewThread is only mounted on ProjectPage with
-		// subject={{ kind: "project", repositoryId }}. Neither /services/$id nor
-		// any global composer renders an affordance to initiate non-project threads.
+	test("3. start a thread with no subject (none) and one on a service; both open on the standalone thread page", async ({
+		page,
+	}) => {
+		const state: ThreadState = {
+			status: "running",
+			repositoryId: null,
+			title: "Thread with no subject",
+			events: [],
+		};
+		await installStreamDouble(page);
+		await serveThread(page, state, THREAD_ID);
+		const started: Array<Record<string, unknown>> = [];
+		await page.route(
+			(url) => url.pathname === "/api/threads",
+			async (route) => {
+				if (route.request().method() !== "POST") return route.fallback();
+				started.push(route.request().postDataJSON() as Record<string, unknown>);
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						investigationId: THREAD_ID,
+						jobId: "job-more-3",
+						queued: true,
+					}),
+				});
+			},
+		);
+
+		// No subject: New thread starts on "No project"
+		await page.goto("/threads/new");
+		await expect(page.getByTestId("new-thread-page")).toBeVisible({
+			timeout: 15_000,
+		});
+		await expect(page.getByTestId("composer-subject")).toHaveText("No project");
+		await page.getByTestId("composer-input").fill("Thread with no subject");
+		await page.getByTestId("composer-input").press("Enter");
+		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
+		await expect(page.getByTestId("thread-page")).toBeVisible();
+		expect(started[0]).toMatchObject({ subject: { kind: "none" } });
+
+		// A service: picked in the same subject picker
+		const name = `svc-${Date.now()}`;
+		const created = await page.request.post("/api/services", {
+			data: { name },
+		});
+		expect(created.ok()).toBe(true);
+		const serviceId = ((await created.json()) as { id: string }).id;
+		await page.goto("/threads/new");
+		await expect(page.getByTestId("new-thread-page")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.getByTestId("composer-subject").click();
+		await page.getByTestId(`subject-service-${serviceId}`).click();
+		await page.getByTestId("composer-input").fill("Thread on a service");
+		await page.getByTestId("composer-input").press("Enter");
+		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
+		await expect(page.getByTestId("thread-page")).toBeVisible();
+		expect(started[1]).toMatchObject({
+			subject: { kind: "service", serviceId },
+			text: "Thread on a service",
+		});
 	});
 
 	test("4. an attachment added to a thread draft is not visible from a different thread", async ({

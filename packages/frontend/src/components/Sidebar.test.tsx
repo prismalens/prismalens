@@ -15,6 +15,7 @@ const state = {
 	pathname: "/incidents",
 	sidebarHidden: false,
 	toggleSidebar: vi.fn(),
+	openSearch: vi.fn(),
 };
 
 vi.mock("@tanstack/react-router", () => ({
@@ -68,8 +69,14 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-vi.mock("@/components/shell/IncidentTree", () => ({
-	IncidentTree: () => null,
+vi.mock("@/components/shell/ThreadList", () => ({
+	ThreadList: () => null,
+}));
+
+vi.mock("@/components/shell/SidebarHead", () => ({
+	SearchHost: ({ children }: { children?: React.ReactNode }) => children,
+	SidebarHead: () => null,
+	useOpenSearch: () => state.openSearch,
 }));
 
 vi.mock("@/components/alerts/AlertListPane", () => ({
@@ -83,6 +90,7 @@ beforeEach(() => {
 	state.pathname = "/incidents";
 	state.sidebarHidden = false;
 	state.toggleSidebar = vi.fn();
+	state.openSearch = vi.fn();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -127,6 +135,16 @@ describe("Sidebar (case 2)", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
 		});
 		expect(state.toggleSidebar).toHaveBeenCalledTimes(2);
+	});
+
+	it("opens Search from the phone strip", async () => {
+		await act(async () => root.render(createElement(Sidebar)));
+		const search = container.querySelector(
+			'[data-testid="topbar"] [data-testid="strip-search"]',
+		) as HTMLButtonElement;
+		expect(search).not.toBeNull();
+		await act(async () => search.click());
+		expect(state.openSearch).toHaveBeenCalledTimes(1);
 	});
 
 	it("never hides in Settings, and places settings-back below settings-sections", async () => {

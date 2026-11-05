@@ -309,6 +309,10 @@ model Investigation {
   preRun          String? // JSON PreRunSnapshot: what PrismaLens read before the run; its follow-ups read it again (#848)
   awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
 
+  // The thread list (#1020): when the operator last opened it, and when they settled it
+  lastVisitedAt DateTime?
+  settledAt     DateTime?
+
   incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: SetNull)
   repository      Repository?          @relation("ProjectThreads", fields: [repositoryId], references: [id], onDelete: SetNull)

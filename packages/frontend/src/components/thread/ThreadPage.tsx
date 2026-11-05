@@ -21,6 +21,7 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
+import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -115,6 +116,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const [viewing, setViewing] = useState<FileAt | null>(null);
 	const [openSteps, setOpenSteps] = useState<ReadonlySet<number>>(new Set());
 	const inv = run.investigation;
+	useVisitThread(inv?.id ?? null, !run.isActive);
 	usePageTitle(inv?.title ?? "Thread");
 	const harness = harnesses.find((h) => h.id === inv?.harness);
 	const repo = useRepository(inv?.repositoryId ?? "");

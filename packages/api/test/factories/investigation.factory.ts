@@ -42,6 +42,8 @@ export class InvestigationFactory {
 			usage: null,
 			stopRequestedAt: null,
 			awaitingApprovalAt: null,
+			lastVisitedAt: null,
+			settledAt: null,
 			acpSessionId: null,
 			workspace: null,
 			startedAt: null,

@@ -6,7 +6,7 @@ import { Test } from "@nestjs/testing";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { TimelineService } from "../timeline/timeline.service.js";
-import { IncidentsService } from "./incidents.service.js";
+import { IncidentsService, incidentSearch } from "./incidents.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 
@@ -1045,5 +1045,16 @@ describe("IncidentsService", () => {
 			expect(mockTx.incident.update).not.toHaveBeenCalled();
 			expect(mockTx.timelineEntry.create).not.toHaveBeenCalled();
 		});
+	});
+});
+
+describe("incidentSearch (#1020)", () => {
+	it("matches the title, and the number as 42, #42 or INC-42", () => {
+		expect(incidentSearch("  ")).toBeNull();
+		expect(incidentSearch("slow")).toEqual({
+			OR: [{ title: { contains: "slow" } }],
+		});
+		for (const q of ["42", "#42", "inc-42", "INC42"])
+			expect(incidentSearch(q)?.OR).toContainEqual({ number: 42 });
 	});
 });

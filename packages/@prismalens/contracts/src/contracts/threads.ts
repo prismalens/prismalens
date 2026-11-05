@@ -10,10 +10,15 @@ import {
 	AttachmentSchema,
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
+	SettleThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
+	ThreadFeedQuerySchema,
+	ThreadFeedSchema,
+	ThreadIdSchema,
 	ThreadListQuerySchema,
 	ThreadListSchema,
+	ThreadSettingsSchema,
 	UploadDraftAttachmentSchema,
 	UploadThreadAttachmentSchema,
 } from "../schemas/index.js";
@@ -52,6 +57,74 @@ export const threadsContract = {
 		})
 		.input(ThreadListQuerySchema)
 		.output(ThreadListSchema),
+
+	/**
+	 * Every thread in sections, an incident's threads paged as one unit
+	 * GET /threads/feed
+	 */
+	feed: oc
+		.route({
+			method: "GET",
+			path: "/threads/feed",
+			summary: "List every thread in its section",
+			tags: ["threads"],
+		})
+		.input(ThreadFeedQuerySchema)
+		.output(ThreadFeedSchema),
+
+	/**
+	 * The operator opened the thread: its outcome counts as seen
+	 * POST /threads/:id/visit
+	 */
+	visit: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/visit",
+			summary: "Mark a thread seen",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(z.object({ lastVisitedAt: z.string() })),
+
+	/**
+	 * Settle a thread, or undo it; an incident's thread settles its block
+	 * POST /threads/:id/settle
+	 */
+	settle: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/settle",
+			summary: "Settle or unsettle a thread",
+			tags: ["threads"],
+		})
+		.input(SettleThreadSchema)
+		.output(z.object({ ids: z.array(z.string()) })),
+
+	/**
+	 * When quiet threads settle on their own
+	 * GET /threads/settings
+	 */
+	getSettings: oc
+		.route({
+			method: "GET",
+			path: "/threads/settings",
+			summary: "Read the thread list settings",
+			tags: ["threads"],
+		})
+		.output(ThreadSettingsSchema),
+
+	/**
+	 * PUT /threads/settings
+	 */
+	updateSettings: oc
+		.route({
+			method: "PUT",
+			path: "/threads/settings",
+			summary: "Change the thread list settings",
+			tags: ["threads"],
+		})
+		.input(ThreadSettingsSchema)
+		.output(ThreadSettingsSchema),
 
 	/**
 	 * A file for a thread that does not exist yet; its start claims it

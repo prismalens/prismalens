@@ -122,6 +122,7 @@ export class IncidentsController {
 					serviceId: input.serviceId,
 					fromDate: input.fromDate,
 					toDate: input.toDate,
+					search: input.search,
 					limit: input.limit,
 					offset: input.offset,
 				});
