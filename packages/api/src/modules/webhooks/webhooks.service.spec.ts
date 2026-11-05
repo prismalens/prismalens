@@ -765,6 +765,26 @@ describe("WebhooksService", () => {
 			);
 		});
 
+		it("fails the delivery when the early-resolution claim does not stick", async () => {
+			vi.mocked(eventsService.findUnclaimed).mockResolvedValueOnce(earlyEvent);
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(mockAlert);
+			vi.mocked(alertsService.resolveSourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+			});
+			vi.mocked(eventsService.markProcessed)
+				.mockResolvedValueOnce(mockEvent)
+				.mockResolvedValueOnce(mockEvent)
+				.mockResolvedValueOnce(null);
+
+			await expect(
+				service.processPrometheusAlert(firing, {
+					source: "prometheus",
+					autoInvestigate: true,
+				}),
+			).rejects.toThrow("Could not claim early resolution evt-early");
+		});
+
 		it("passes a resolution's episode so an unknown fingerprint can be remembered", async () => {
 			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
 			const resolvedAlert = {
