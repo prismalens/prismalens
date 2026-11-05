@@ -112,6 +112,8 @@ export async function bindRun(
 	runId: string,
 	opts: {
 		serviceName?: string | null;
+		/** The service's stable id when known (a rename breaks the name lookup); null is the global policy. */
+		serviceId?: string | null;
 		/** Null for a scheduled check with no incident (#979). */
 		incidentId: string | null;
 		/** A follow-up's recorded workspace path: its folder stays the run's even after the location changed. */
@@ -120,9 +122,12 @@ export async function bindRun(
 		project?: string | null;
 	},
 ): Promise<RunBinding> {
-	const serviceId = opts.serviceName
-		? await source.serviceIdOf(opts.serviceName).catch(() => null)
-		: null;
+	const serviceId =
+		opts.serviceId !== undefined
+			? opts.serviceId
+			: opts.serviceName
+				? await source.serviceIdOf(opts.serviceName).catch(() => null)
+				: null;
 	const settings = settingsFor(serviceId);
 	const binding: RunBinding = {
 		serviceId,
