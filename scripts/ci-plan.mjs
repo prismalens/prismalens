@@ -6,6 +6,7 @@
 //   skip    "true": the PR head tree already passed `CI`, or the PR changes only docs.
 //   full    "true": the release-only proofs (the release side checks on all three OSes, the systemd service) run.
 //   agents  "true": the five agent qualification legs run.
+//   defer   "true": a draft release PR; nothing runs and `CI gate` stays red until it is marked ready.
 // A tier runs unless every changed path is on its safe list, so an unlisted path costs minutes, not a missed check.
 // Anything that is not a pull request (main, the nightly) plans everything.
 // ci.yml's `CI gate` reads these three and lets exactly the matching jobs be skipped.
@@ -49,8 +50,9 @@ const needs = (/** @type {RegExp[]} */ safe, /** @type {string[]} */ files) =>
  *   labels?: string[],
  *   headRef?: string,
  *   sameTreeAs?: string | null,
+ *   draft?: boolean,
  * }} input
- * @returns {{ skip: boolean, full: boolean, agents: boolean, reason: string }}
+ * @returns {{ skip: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean }}
  */
 export function plan({
 	event,
@@ -58,6 +60,7 @@ export function plan({
 	labels = [],
 	headRef = "",
 	sameTreeAs = null,
+	draft = false,
 }) {
 	if (event !== "pull_request")
 		return {
@@ -65,6 +68,15 @@ export function plan({
 			full: true,
 			agents: true,
 			reason: `${event}: everything runs`,
+		};
+	// release-please rebuilds this PR on every push to main; CI runs once, when it is marked ready.
+	if (draft && headRef.startsWith("release-please--"))
+		return {
+			skip: true,
+			full: false,
+			agents: false,
+			defer: true,
+			reason: "draft release PR: CI waits until it is marked ready for review",
 		};
 	if (sameTreeAs)
 		return {
@@ -153,11 +165,13 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 		labels: JSON.parse(env.LABELS || "[]"),
 		headRef: env.HEAD_REF || "",
 		sameTreeAs,
+		draft: env.DRAFT === "true",
 	});
 	const lines = [
 		`skip=${result.skip}`,
 		`full=${result.full}`,
 		`agents=${result.agents}`,
+		`defer=${Boolean(result.defer)}`,
 		`reason=${result.reason}`,
 	];
 	console.log(lines.join("\n"));

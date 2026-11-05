@@ -10,6 +10,7 @@ This file says what the release gate is and what a patch and a minor release do 
 
 ## How the gate works
 - Anything merged to `main` moves the base SHA. Redo the CI lines under **Before the walk** on the new base.
+- The release PR is a draft, rebuilt on every push to `main`, and its own CI waits until you mark it ready for review (#1052). The gate is read on the base SHA's `main` run; the run on the PR's head, started by "ready for review", is what lets it merge.
 - The manual steps install the `npm-tarballs` artifact of `Pack npm tarball` on the base SHA, never a version from npm. They run in a fresh `mktemp -d` workspace on a port other than 6473.
 - `CI gate` is the set of jobs below. A step the walk used to do by hand is gone once one of them proves it; the list of what stays manual is under **Before the walk**.
 - `Standalone CLI` is green on every OS on the base SHA. Its `smoke-installer` job installs each release npm lists from 0.5.0 on, then upgrades it to the candidate with its data, and covers PATH, reinstall, the downgrade guard, a second `pl` on PATH and uninstall.

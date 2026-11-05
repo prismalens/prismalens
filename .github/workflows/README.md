@@ -63,8 +63,10 @@ required context and accepts a skipped job only when that plan skipped it:
 | `skip` | the PR head tree equals the tree of an earlier passing `CI` run on that branch (a `git merge -s ours`), or the PR changes only root `*.md` files | no job but `changes` and `CI gate` runs |
 | `full` | not a PR (main, nightly); a release-please PR; the `full-ci` label; or a PR touching any path not on `SAFE_FOR_FULL` in `scripts/ci-plan.mjs` (Markdown, test files, `docs/`, `packages/frontend/`, `packages/desktop/`, repo metadata) | `packed-service` and the release side checks on Linux, macOS and Windows run |
 | `agents` | a release PR or the `full-ci` label, or a PR touching any path not on `SAFE_FOR_AGENTS` (the safe-for-full paths plus `packages/api/`, `packages/cli/`, `auth`, `database`, `logger` and every workflow but `ci.yml`) | the five `Agent qualification` legs run |
+| `defer` | a release-please PR that is a draft | nothing runs; `CI gate` is red on purpose until the PR is marked ready, which starts the run |
 
-`Cross-OS CLI smoke` runs on main, nightly and releases, and on a PR only when the PR changes the smoke itself or the release manifest.
+
+`Cross-OS CLI smoke` runs on main, nightly and releases, and on a PR only when the PR changes the smoke itself or the release manifest. `Desktop app build` and `Cross-OS CLI smoke` also wait for "ready for review" on a draft PR.
 A path on no list turns both tiers on, so a new package runs them until it is listed.
 The `full-ci` label is read at the next push or re-run; adding it does not start a run.
 

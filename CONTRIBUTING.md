@@ -492,7 +492,9 @@ Versioning and publishing run through
 1. Every commit to `main` needs a conventional-commit title (`fix:`, `feat:`,
    `chore:`, …); release-please reads these to compute the next version.
 2. On push to `main`, release-please opens or updates a release PR proposing
-   the next version and a changelog.
+   the next version and a changelog. It opens it as a draft (`draft-pull-request`),
+   and CI on the PR waits until you mark it ready for review: `CI gate` is red on
+   purpose while it is a draft, so it cannot merge before a run on its own head.
 3. Merging that PR runs the release draft-first, in one `release.yml` run,
    because the repository has immutable releases on and GitHub refuses any
    upload to a published release (#717):

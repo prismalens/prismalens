@@ -39,6 +39,7 @@ on:
   # A PR runs it only when it changes this smoke itself or is a release PR (#1052): the
   # packaged CLI on three OSes is proved on every merge to main and nightly instead.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/workflows/cli-smoke-cross-os.yml"
       - "scripts/cross-os-smoke.sh"
@@ -86,8 +87,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_VERSION: ${{ github.event.inputs.version }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           case "$EVENT_NAME" in
+          pull_request)
+            # A draft release PR is rebuilt on every push to main; it is smoked once it is ready (#1052).
+            if [ "$DRAFT" = "true" ]; then echo "mode=skip" >> "$GITHUB_OUTPUT"; else echo "mode=tarball" >> "$GITHUB_OUTPUT"; fi
+            echo "version=" >> "$GITHUB_OUTPUT"
+            ;;
           release)
             # `prismalens` is the only published package. Releases are tagged
             # `vX.Y.Z` from 0.5.0 on and `prismalens@X.Y.Z` before it; any other
