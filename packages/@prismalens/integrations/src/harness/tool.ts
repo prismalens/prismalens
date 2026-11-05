@@ -17,9 +17,10 @@ export const HARNESS_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 
 /**
  * What a tool may do. `read`: PrismaLens's own records. `record`: append to this run's
- * own record, nothing outside it. Later levels (`ask`, `act`) join this union additively.
+ * own record, nothing outside it. `act`: change something beyond the run, behind
+ * PrismaLens's own approval, never the agent's permission prompt (#1024 spec F).
  */
-export type HarnessEffect = "read" | "record";
+export type HarnessEffect = "read" | "record" | "act";
 
 export type HarnessGroup = "core" | "knowledge" | "record";
 
@@ -61,6 +62,8 @@ export const FAILURE_CODES = [
 	"run_ended",
 	"timeout",
 	"internal",
+	// A configured cap refused it; `next` names the cap and its Settings row (#1024).
+	"limit_reached",
 ] as const;
 export type FailureCode = (typeof FAILURE_CODES)[number];
 
@@ -104,6 +107,8 @@ export interface HarnessTool<
 	serves: HarnessServes;
 	/** `z.object({})` for no arguments; never a run id, which comes from the bearer. */
 	input: S;
+	/** How long one call may run; the registry's default when absent. */
+	timeoutMs?: number;
 	run(input: z.output<S>, ctx: ToolContext): Promise<ToolOutcome>;
 }
 
@@ -120,9 +125,20 @@ export class HarnessToolRefused extends Error {}
 /**
  * MCP annotations follow from the level; a tool never sets its own. A `record` tool writes
  * only PrismaLens's record of this run, never the user's systems, so it is read-only too and
- * agents that approve by the hint let a read-only run record (#930).
+ * agents that approve by the hint let a read-only run record (#930). An `act` tool changes
+ * PrismaLens's threads, never the user's systems, and only once the user approves.
  */
-export function annotationsFor(_effect: HarnessEffect) {
+export function annotationsFor(effect: HarnessEffect): {
+	readOnlyHint: boolean;
+	destructiveHint?: boolean;
+	openWorldHint: boolean;
+} {
+	if (effect === "act")
+		return {
+			readOnlyHint: false,
+			destructiveHint: false,
+			openWorldHint: false,
+		};
 	return { readOnlyHint: true, openWorldHint: false };
 }
 

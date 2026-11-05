@@ -36,11 +36,12 @@ export function runView(
 	};
 }
 
-/** Tools the agent may run without a card: every level here only reads or writes the run's own record. */
+/**
+ * Tools the agent may run without its own card: `read` and `record` touch only PrismaLens's
+ * records, and an `act` tool is gated by PrismaLens's card, which a bypassed prompt cannot skip.
+ */
 export const autoAllowed = (view: RunView): string[] =>
-	[...view.direct, ...view.deferred]
-		.filter((t) => t.effect === "read" || t.effect === "record")
-		.map((t) => t.name);
+	[...view.direct, ...view.deferred].map((t) => t.name);
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
