@@ -23,6 +23,7 @@ import {
 	WorkflowStatusSchema,
 } from "./common.js";
 import {
+	JobMessageContextSchema,
 	MessageContextShape,
 	QuoteSchema,
 	ReferenceRefSchema,
@@ -1662,6 +1663,7 @@ export const InvestigationJobDataSchema = z.object({
 		.object({
 			text: z.string().min(1).max(4000),
 			attachments: z.array(JobAttachmentSchema).optional(),
+			context: JobMessageContextSchema.optional(),
 		})
 		.optional(),
 	/** A follow-up on a finished run: reopen its session and send this (#747). */
@@ -1672,6 +1674,7 @@ export const InvestigationJobDataSchema = z.object({
 			/** `continue` takes a stopped run on to its report (R4.4); `chat` when absent. */
 			kind: FollowUpKindSchema.optional(),
 			attachments: z.array(JobAttachmentSchema).optional(),
+			context: JobMessageContextSchema.optional(),
 			/** A continued run already ran a tool before it was stopped. */
 			sawEvidence: z.boolean().optional(),
 			/** The composer's chips for this follow-up; absent fields keep the run's. */

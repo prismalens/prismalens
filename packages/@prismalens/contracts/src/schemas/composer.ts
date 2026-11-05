@@ -81,6 +81,20 @@ export const MessageContextShape = {
 	draftRev: z.number().int().min(0).optional(),
 };
 
+/** Bound on the agent-facing text a message's quotes and references add. */
+export const MESSAGE_ADDENDUM_MAX_CHARS = 100_000;
+
+/**
+ * What a message carries to the run beside its text: the quotes and references the
+ * transcript shows, and `addendum`, the text the agent receives after the message.
+ */
+export const JobMessageContextSchema = z.object({
+	quotes: z.array(QuoteSchema).optional(),
+	references: z.array(ReferenceRefSchema).optional(),
+	addendum: z.string().max(MESSAGE_ADDENDUM_MAX_CHARS).optional(),
+});
+export type JobMessageContext = z.infer<typeof JobMessageContextSchema>;
+
 export const DraftChoiceSchema = z.object({
 	harness: z.enum(HARNESS_IDS).optional(),
 	model: z.string().min(1).max(256).nullable().optional(),

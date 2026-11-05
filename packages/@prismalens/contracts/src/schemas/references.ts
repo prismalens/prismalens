@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * One reference search behind `/`, `@`, `#` and Ctrl K (#1024). `/` is something
- * to do, `@` something the agent can read, `#` something PrismaLens made.
+ * One reference search behind `/`, `@`, `#` and Ctrl K (#1024): `/` to do,
+ * `@` to mention anything, `#N` to jump by number.
  */
 import { z } from "zod";
 import {
@@ -16,21 +16,34 @@ export const REFERENCE_TRIGGERS = ["/", "@", "#"] as const;
 export const ReferenceTriggerSchema = z.enum(REFERENCE_TRIGGERS);
 export type ReferenceTrigger = z.infer<typeof ReferenceTriggerSchema>;
 
-/** The kinds each trigger searches; no trigger searches them all. */
+/**
+ * The kinds each trigger searches; no trigger searches them all. `@` mentions
+ * anything; `#` is the number shortcut, words after it search these kinds only.
+ */
 export const TRIGGER_KINDS: Record<ReferenceTrigger, readonly ReferenceKind[]> =
 	{
 		"/": ["command"],
 		"@": [
 			"file",
 			"folder",
+			"thread",
+			"incident",
 			"service",
 			"project",
+			"schedule",
 			"attachment",
 			"artifact",
 			"runbook",
+			"pull_request",
 		],
-		"#": ["thread", "incident", "schedule", "pull_request"],
+		"#": ["thread", "incident", "pull_request"],
 	};
+
+/** `#123`: a bare number after `#` matches records by number, not by text. */
+export function referenceNumber(q: string): number | null {
+	const m = /^#?(\d{1,9})$/.exec(q.trim());
+	return m ? Number(m[1]) : null;
+}
 
 /** Why a hit ranks where it does, strongest boost first. */
 export const REFERENCE_WHYS = ["used", "agent", "open", "match"] as const;

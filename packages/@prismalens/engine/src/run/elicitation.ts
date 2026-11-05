@@ -1,0 +1,225 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+/**
+ * ACP form elicitation ↔ PendingAsk (#1024). A form whose fields are all 2..4-option
+ * selects is a `question` ask; another flat primitive form is an `input` ask; any
+ * other form is declined, since nobody could answer it faithfully.
+ */
+import {
+	type AskAnswer,
+	type AskQuestion,
+	type ElicitForm,
+	ElicitFormSchema,
+} from "@prismalens/contracts/schemas";
+
+/** The `elicitation/create` params PrismaLens reads; url mode is not declared (#1024). */
+export interface ElicitationParams {
+	mode?: string;
+	message?: string;
+	requestedSchema?: {
+		properties?: Record<string, Record<string, unknown>>;
+		required?: string[] | null;
+	};
+}
+
+export type ElicitationAsk =
+	| { kind: "question"; title: string; questions: AskQuestion[] }
+	| { kind: "input"; title: string; schema: ElicitForm };
+
+interface SelectOption {
+	value: string;
+	label: string;
+	description?: string;
+	preview?: string;
+}
+
+const CUSTOM_SUFFIX = "_custom";
+
+function str(v: unknown): string | undefined {
+	return typeof v === "string" && v.trim() ? v : undefined;
+}
+
+/** A preview string under any `_meta` key, where agents put what EnumOption has no slot for. */
+function metaPreview(meta: unknown): string | undefined {
+	if (!meta || typeof meta !== "object") return undefined;
+	for (const v of Object.values(meta as Record<string, unknown>)) {
+		const p =
+			v && typeof v === "object"
+				? (v as { preview?: unknown }).preview
+				: undefined;
+		if (typeof p === "string" && p) return p.slice(0, 8000);
+	}
+	return undefined;
+}
+
+function options(list: unknown): SelectOption[] | null {
+	if (!Array.isArray(list)) return null;
+	const out: SelectOption[] = [];
+	for (const o of list) {
+		if (typeof o === "string") out.push({ value: o, label: o });
+		else if (
+			o &&
+			typeof o === "object" &&
+			typeof (o as { const?: unknown }).const === "string"
+		) {
+			const e = o as Record<string, unknown>;
+			const value = e.const as string;
+			out.push({
+				value,
+				label: str(e.title) ?? value,
+				...(str(e.description) ? { description: str(e.description) } : {}),
+				...(metaPreview(e._meta) ? { preview: metaPreview(e._meta) } : {}),
+			});
+		} else return null;
+	}
+	return out;
+}
+
+/** A field's choices and whether several may be picked; null when it is not a select. */
+function select(
+	field: Record<string, unknown>,
+): { multi: boolean; options: SelectOption[] } | null {
+	if (field.type === "string") {
+		const o = options(field.oneOf) ?? options(field.enum);
+		if (!o) return null;
+		const names = Array.isArray(field.enumNames) ? field.enumNames : null;
+		return {
+			multi: false,
+			options: names
+				? o.map((x, i) => ({ ...x, label: str(names[i]) ?? x.label }))
+				: o,
+		};
+	}
+	if (
+		field.type === "array" &&
+		field.items &&
+		typeof field.items === "object"
+	) {
+		const items = field.items as Record<string, unknown>;
+		const o = options(items.anyOf) ?? options(items.enum);
+		return o ? { multi: true, options: o } : null;
+	}
+	return null;
+}
+
+function selects(params: ElicitationParams) {
+	const props = params.requestedSchema?.properties ?? {};
+	const fields: {
+		key: string;
+		multi: boolean;
+		options: SelectOption[];
+		field: Record<string, unknown>;
+	}[] = [];
+	const customs = new Set<string>();
+	for (const [key, field] of Object.entries(props)) {
+		const s = select(field);
+		if (s) fields.push({ key, ...s, field });
+		else if (
+			field.type === "string" &&
+			key.endsWith(CUSTOM_SUFFIX) &&
+			props[key.slice(0, -CUSTOM_SUFFIX.length)]
+		)
+			customs.add(key.slice(0, -CUSTOM_SUFFIX.length));
+		else return null;
+	}
+	return { fields, customs };
+}
+
+const TITLE_MAX = 500;
+
+/** What PrismaLens asks the user for an elicitation; null declines it. */
+export function elicitationAsk(
+	params: ElicitationParams,
+): ElicitationAsk | null {
+	if (params.mode !== undefined && params.mode !== "form") return null;
+	const title = (str(params.message) ?? "The agent has a question").slice(
+		0,
+		TITLE_MAX,
+	);
+	const s = selects(params);
+	if (
+		s &&
+		s.fields.length >= 1 &&
+		s.fields.length <= 4 &&
+		s.fields.every((f) => f.options.length >= 2 && f.options.length <= 4)
+	) {
+		const single = s.fields.length === 1;
+		return {
+			kind: "question",
+			title,
+			questions: s.fields.map((f) => {
+				const header = str(f.field.title)?.slice(0, 40);
+				return {
+					id: f.key.slice(0, 100),
+					prompt: (single
+						? title
+						: (str(f.field.description) ?? str(f.field.title) ?? title)
+					).slice(0, 2000),
+					...(header ? { header } : {}),
+					multiSelect: f.multi,
+					allowOther: s.customs.has(f.key),
+					options: f.options.map((o) => ({
+						id: o.value.slice(0, 100),
+						label: o.label.slice(0, 200),
+						...(o.description
+							? { description: o.description.slice(0, 1000) }
+							: {}),
+						...(o.preview ? { preview: o.preview } : {}),
+					})),
+				};
+			}),
+		};
+	}
+	const form = ElicitFormSchema.safeParse({
+		type: "object",
+		properties: params.requestedSchema?.properties ?? {},
+		...(params.requestedSchema?.required
+			? { required: params.requestedSchema.required }
+			: {}),
+	});
+	if (!form.success || Object.keys(form.data.properties).length === 0)
+		return null;
+	return { kind: "input", title, schema: form.data };
+}
+
+/** The `accept` content for an answer; null when the answer does not fit the ask, so it is declined. */
+export function elicitationContent(
+	ask: ElicitationAsk,
+	answer: AskAnswer,
+): Record<string, string | number | boolean | string[]> | null {
+	if (ask.kind === "question" && answer.kind === "question") {
+		const content: Record<string, string | string[]> = {};
+		for (const q of ask.questions) {
+			const a = answer.answers[q.id];
+			if (!a) continue;
+			const known = new Set(q.options.map((o) => o.id));
+			const picks = a.options.filter((o) => known.has(o));
+			if (q.multiSelect) content[q.id] = picks;
+			else if (picks[0]) content[q.id] = picks[0];
+			if (a.other && q.allowOther) content[`${q.id}${CUSTOM_SUFFIX}`] = a.other;
+		}
+		return content;
+	}
+	if (ask.kind === "input" && answer.kind === "input") {
+		const content: Record<string, string | number | boolean> = {};
+		for (const [key, field] of Object.entries(ask.schema.properties)) {
+			const v = answer.values[key];
+			if (v === undefined) {
+				if (ask.schema.required?.includes(key)) return null;
+				continue;
+			}
+			const ok =
+				field.type === "boolean"
+					? typeof v === "boolean"
+					: field.type === "string"
+						? typeof v === "string" && (!field.enum || field.enum.includes(v))
+						: typeof v === "number" &&
+							(field.type === "number" || Number.isInteger(v));
+			if (!ok) return null;
+			content[key] = v;
+		}
+		return content;
+	}
+	return null;
+}

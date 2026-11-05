@@ -240,6 +240,8 @@ export interface SteerPort {
 	queued?(): SteerLine[];
 	/** Told when a line is queued, so a turn waiting on an ask records it at once (#820). */
 	onQueued?(listener: () => void): () => void;
+	/** Queued lines edited (`text`) or withdrawn (`null`) since the last call (#1024). */
+	changes?(): { id: string; text: string | null }[];
 }
 
 /** One operator message and the files that go with it (R4.3). */
@@ -248,6 +250,8 @@ export interface SteerLine {
 	attachments?: JobAttachment[];
 	/** The id the API gave a queued line; its events carry it (#820). */
 	id?: string;
+	/** Its quotes and references, and the text they add for the agent (#1024). */
+	context?: JobMessageContext;
 }
 
 /**
@@ -261,10 +265,17 @@ export function createSteerChannel(): {
 		mode: OperatorMessageMode,
 		attachments?: JobAttachment[],
 		id?: string,
+		context?: JobMessageContext,
 	): "queued" | "sent" | null;
+	/**
+	 * Edit (`text`) or withdraw (`null`) a queued line before the run claims it (#1024);
+	 * null once it was claimed or never queued. Claiming is `next`, on the same tick.
+	 */
+	change(id: string, text: string | null): "edited" | "withdrawn" | null;
 } {
 	const queue: SteerLine[] = [];
 	const unrecorded = new Set<SteerLine>();
+	const changed: { id: string; text: string | null }[] = [];
 	let deliverNow: ((line: SteerLine) => void) | null = null;
 	let onQueued: (() => void) | null = null;
 	let open = true;
@@ -293,13 +304,30 @@ export function createSteerChannel(): {
 					onQueued = null;
 				};
 			},
+			changes: () => changed.splice(0),
 		},
-		send(text, mode, attachments, id) {
+		change(id, text) {
+			const at = queue.findIndex((l) => l.id === id);
+			if (!open || at < 0) return null;
+			const line = queue[at] as SteerLine;
+			if (text === null) queue.splice(at, 1);
+			else line.text = text;
+			// A line not yet recorded as queued is recorded as it now stands, or not at all.
+			if (unrecorded.has(line)) {
+				if (text === null) unrecorded.delete(line);
+			} else {
+				changed.push({ id, text });
+				onQueued?.();
+			}
+			return text === null ? "withdrawn" : "edited";
+		},
+		send(text, mode, attachments, id, context) {
 			if (!open) return null;
 			const line: SteerLine = {
 				text,
 				...(attachments?.length ? { attachments } : {}),
 				...(id ? { id } : {}),
+				...(context ? { context } : {}),
 			};
 			if (mode === "now" && deliverNow) {
 				deliverNow(line);
@@ -737,7 +765,10 @@ export async function* runInvestigation(
 					line.id,
 					line.text,
 					refsOf(line.attachments),
+					line.context,
 				);
+		for (const c of opts.steer?.changes?.() ?? [])
+			yield adapter.messageChanged(c.id, c.text);
 	};
 	/**
 	 * What the run leaves behind on any end (#820): an ask it never heard back on
@@ -803,6 +834,8 @@ export async function* runInvestigation(
 				refsOf(line.attachments),
 				undefined,
 				line.id,
+				undefined,
+				line.context,
 			);
 	};
 	const unsubscribe = opts.steer?.onNow((line) => {
@@ -1067,13 +1100,16 @@ export async function* runInvestigation(
 					refsOf(line.attachments),
 					undefined,
 					line.id,
+					undefined,
+					line.context,
 				);
 			}
 			text = "";
 			outcome = yield* turn(
 				promptParts(
-					lines.map((l) => l.text).join("\n\n"),
+					lines.map((l) => withAddendum(l.text, l.context)).join("\n\n"),
 					lines.flatMap((l) => l.attachments ?? []),
+					linkOpts(),
 				),
 			);
 		}
