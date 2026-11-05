@@ -11,6 +11,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import {
 	Injectable,
 	Logger,
@@ -379,7 +380,7 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 			let last = "";
 			const read = (chunk: Buffer) => {
 				for (const line of chunk.toString("utf8").split(/\r?\n/)) {
-					const text = line.replace(/\x1b\[[0-9;]*m/g, "").trim();
+					const text = stripVTControlCharacters(line).trim();
 					if (!text) continue;
 					last = text;
 					if (/verifying/i.test(text) && this.status.phase === "downloading")
