@@ -222,7 +222,7 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
 
       - name: Pack script tests
-        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-adapter-sdk.test.mjs
+        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-adapter-sdk.test.mjs
 
       - name: Agent adapters tarball
         run: |
@@ -675,10 +675,18 @@ jobs:
       contents: read
       actions: read
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci-gate-report.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Assert every required job succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           echo "Needed job results:"
           echo "$NEEDS_JSON"
@@ -702,27 +710,16 @@ jobs:
             | join(", ")')
           if [ -n "$bad" ]; then
             echo "::error::CI gate is red — these jobs did not succeed: $bad"
-            # Say what kind of red each job is, so nobody digs through a log for a runner shortage (#885, #1052).
-            report=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" --jq '
-              .jobs[]
-              | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")
-              | (first(.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name) // "-") as $step
-              | if .conclusion == "failure" then "  failed: \(.name) / \($step) -> \(.html_url)"
-                elif .conclusion == "timed_out" then "  timed out: \(.name) / \($step) -> \(.html_url)"
-                elif (.steps | length) == 0 then "  never started: \(.name) was cancelled before a runner took it (no runner free, or the run was cancelled), not a code failure -> \(.html_url)"
-                else "  cancelled mid-run: \(.name) / \($step) -> \(.html_url)" end') \
-              || report="(could not list the failed jobs)"
-            echo "$report"
+            # Say what kind of red each job is, so nobody reads a log for a runner shortage (#1052).
             if echo "$bad" | grep -q "=skipped"; then
               echo "A job shown as skipped did not run because a job it needs did not succeed, or the plan did not allow the skip."
             fi
-            if echo "$report" | grep -q "never started\|cancelled mid-run" && ! echo "$report" | grep -q "failed:\|timed out:"; then
-              echo "::notice::Only cancelled jobs, no failed step. Rerun just them: gh run rerun $GITHUB_RUN_ID --failed"
-            fi
+            node scripts/ci-gate-report.mjs || echo "(could not list the failed jobs)"
             exit 1
           fi
           reason=$(echo "$NEEDS_JSON" | jq -r '.changes.outputs.reason // empty')
           echo "All required jobs succeeded or were skipped by the plan${reason:+: $reason}"
+          node scripts/ci-gate-report.mjs || true
 
   # The live agent check (#884): the real pinned agent on the free model, on dispatch
   # only; advisory, and not in `ci-gate`'s `needs`. Release gate: dispatch with
