@@ -218,14 +218,7 @@
 			"includes": [
 				"packages/frontend/src/**/*.tsx",
 				"!packages/frontend/src/components/ui/**",
-				"!packages/frontend/src/components/shared/Ring.tsx",
-				"!packages/frontend/src/components/ai/prompt-input.tsx",
-				"!packages/frontend/src/components/incidents/CreateIncidentDialog.tsx",
-				"!packages/frontend/src/components/services/ServiceFormDialog.tsx",
-				"!packages/frontend/src/components/settings/ConnectionFormDialog.tsx",
-				"!packages/frontend/src/components/settings/SourceConnectDialog.tsx",
-				"!packages/frontend/src/components/shared/DestructiveConfirm.tsx",
-				"!packages/frontend/src/routes/pair.tsx"
+				"!packages/frontend/src/components/shared/Ring.tsx"
 			]
 		},
 		{
