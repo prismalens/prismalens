@@ -53,6 +53,10 @@ export const REFERENCE_KINDS = [
 	"incident",
 	"schedule",
 	"pull_request",
+	"issue",
+	"alert",
+	"silence",
+	"alert_rule",
 	"command",
 ] as const;
 export const ReferenceKindSchema = z.enum(REFERENCE_KINDS);

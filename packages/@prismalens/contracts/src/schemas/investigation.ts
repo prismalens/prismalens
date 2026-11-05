@@ -928,6 +928,21 @@ export const HandoffPreviewSchema = z.object({
 });
 export type HandoffPreview = z.infer<typeof HandoffPreviewSchema>;
 
+/** Body of `PATCH /investigations/{id}/messages/{messageId}`: a queued message's new text (#1024). */
+export const EditQueuedMessageSchema = z.object({
+	messageId: z.string().uuid(),
+	text: z.string().trim().min(1).max(4000),
+});
+
+/** `DELETE /investigations/{id}/messages/{messageId}` (#1024). */
+export const WithdrawQueuedMessageSchema = z.object({
+	messageId: z.string().uuid(),
+});
+
+export const QueuedMessageChangeResultSchema = z.object({
+	state: z.enum(["edited", "withdrawn"]),
+});
+
 export const SendInvestigationMessageResultSchema = z.object({
 	/** `resumed`: the run had finished and a follow-up reopened its session (#747). */
 	state: z.enum(["queued", "sent", "resumed"]),

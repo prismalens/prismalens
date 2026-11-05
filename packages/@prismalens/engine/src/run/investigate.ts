@@ -7,8 +7,9 @@
  * permission asks by the run's level, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
 	AGENT_REGISTRY,
 	type LaunchPolicy,
@@ -34,15 +35,25 @@ import {
 	resolveOnPath,
 } from "@prismalens/config/harness-selection";
 import {
+	type AgentCommand,
+	AgentCommandsSchema,
 	ASK_TIMEOUT_MS,
+	type AskAnswer,
+	type AskClosedOutcome,
+	ATTACHMENT_IMAGE_MAX_BYTES,
+	ATTACHMENT_TEXT_MAX_BYTES,
 	type AttachmentRef,
+	attachmentKind,
 	type CanonicalEvent,
 	type FollowUpKind,
 	type InvestigationContext,
 	type InvestigationKind,
 	type JobAttachment,
+	type JobMessageContext,
 	type OperatorMessageMode,
+	type PendingAsk,
 	type PreRunSource,
+	QUESTION_ASK_TIMEOUT_MS,
 	type RecordedFinding,
 	type RunFidelity,
 	type RunRuntimeNote,
@@ -63,6 +74,7 @@ import {
 	type PromptPart,
 	type ReopenPath,
 } from "../runner/acp-client.js";
+import type { ElicitationAsk } from "./elicitation.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { withFindings } from "./findings.js";
 import { type GatewayEntry, gatewayOffer } from "./gateway.js";
@@ -72,6 +84,7 @@ import {
 	abortOutcome,
 	askWindow,
 	denyAllPolicy,
+	type HeldOutcome,
 	levelPolicy,
 	newAskId,
 	type PermissionPolicy,
@@ -174,6 +187,28 @@ export interface RunInvestigationOptions {
 	sandboxCheck?: typeof checkSandbox;
 	/** Operator messages to the live session (#743). */
 	steer?: SteerPort;
+	/**
+	 * Holds an elicitation for the person (#1024); absent, the run declares no
+	 * elicitation and every request is declined. An unattended run declines at once.
+	 */
+	elicit?: (
+		askId: string,
+		ask: ElicitationAsk,
+		ctx: { signal: AbortSignal; timeoutMs: number },
+	) => Promise<HeldOutcome>;
+	/** How long a question waits (Settings → Agent); QUESTION_ASK_TIMEOUT_MS when absent. */
+	questionTimeoutMs?: number;
+	/** Asks PrismaLens's own tools opened on this run, recorded as they open and close (#1024). */
+	toolAsks?: ToolAskPort;
+	/** The agent's advertised commands, validated, each time it sends them (#1024). */
+	onCommands?: (commands: AgentCommand[]) => void;
+	/**
+	 * A folder only this run may read, added as an extra directory for an agent that
+	 * takes them; a file too big to inline is copied there and linked (#1024).
+	 */
+	attachmentsDir?: string;
+	/** The first message's quotes and references, and the text they add (#1024). */
+	messageContext?: JobMessageContext;
 	/** The operator's brief: appended to the first prompt and recorded as its first message. */
 	brief?: string;
 	/** `chat`: `brief` is a person's message, the whole first turn; the run ends with no report (#673). */
@@ -212,6 +247,8 @@ export interface RunInvestigationOptions {
 		attachments?: JobAttachment[];
 		/** The stopped run already ran a tool, so its report has evidence behind it. */
 		sawEvidence?: boolean;
+		/** Its quotes and references, and the text they add (#1024). */
+		context?: JobMessageContext;
 		/** A newer run on the incident saw other commits; the prompt says so (#673 w27). */
 		newer?: NewerRun;
 	};
@@ -252,6 +289,50 @@ export interface SteerLine {
 	id?: string;
 	/** Its quotes and references, and the text they add for the agent (#1024). */
 	context?: JobMessageContext;
+}
+
+/** What PrismaLens's tools asked on this run, drained by the run so its events keep their order (#1024). */
+export interface ToolAskPort {
+	drain(): ToolAskEvent[];
+	onActivity(listener: () => void): () => void;
+}
+export type ToolAskEvent =
+	| { type: "opened"; ask: PendingAsk }
+	| {
+			type: "closed";
+			askId: string;
+			outcome: AskClosedOutcome;
+			answer?: AskAnswer;
+	  };
+
+/** A message's text as the agent receives it: the quotes and references it carries after it. */
+export function withAddendum(
+	text: string,
+	context: JobMessageContext | undefined,
+): string {
+	return context?.addendum ? `${text}\n\n${context.addendum}` : text;
+}
+
+/** The agent's `available_commands_update`, validated; null when it does not fit (#1024). */
+export function parseAgentCommands(update: unknown): AgentCommand[] | null {
+	const list = (update as { availableCommands?: unknown })?.availableCommands;
+	if (!Array.isArray(list)) return null;
+	const mapped = list.slice(0, 200).map((c) => {
+		const o = (c ?? {}) as Record<string, unknown>;
+		const hint = (o.input as { hint?: unknown } | null | undefined)?.hint;
+		return {
+			name: typeof o.name === "string" ? o.name : "",
+			description:
+				typeof o.description === "string" ? o.description.slice(0, 200) : "",
+			...(typeof hint === "string" && hint
+				? { inputHint: hint.slice(0, 200) }
+				: {}),
+		};
+	});
+	const parsed = AgentCommandsSchema.safeParse(
+		mapped.filter((c) => c.name && c.name.length <= 64),
+	);
+	return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -365,10 +446,16 @@ function refsOf(attachments: JobAttachment[] | undefined): AttachmentRef[] {
 export function promptParts(
 	text: string,
 	attachments: JobAttachment[] = [],
+	link: { dir: string | null } = { dir: null },
 ): PromptPart[] {
 	const fenced: string[] = [];
 	const images: PromptPart[] = [];
+	const links: PromptPart[] = [];
 	for (const a of attachments) {
+		if (!inlines(a)) {
+			links.push(attachmentLink(a, link.dir));
+			continue;
+		}
 		const bytes = readFileSync(a.path);
 		if (a.mimeType.startsWith("image/"))
 			images.push({
@@ -379,8 +466,36 @@ export function promptParts(
 		else fenced.push(renderAttachment(a.name, bytes.toString("utf8")));
 	}
 	if (images.length) fenced.push(ATTACHED_IMAGE_GUARD);
+	if (links.length) fenced.push(LINKED_FILES_NOTE);
 	const body = [text, ...fenced].filter(Boolean).join("\n\n");
-	return [{ type: "text", text: body }, ...images];
+	return [{ type: "text", text: body }, ...images, ...links];
+}
+
+const LINKED_FILES_NOTE =
+	"Some attached files are linked below instead of inlined. A file:// link is in a folder you may read; a prismalens://attachment/<id> link is read with the attachment_read tool, in chunks.";
+
+/** An image to 4 MB or a text file to 256 KB goes inline; anything else is linked (#1024). */
+function inlines(a: JobAttachment): boolean {
+	const kind = attachmentKind({ name: a.name, type: a.mimeType });
+	if (kind === "image") return a.size <= ATTACHMENT_IMAGE_MAX_BYTES;
+	if (kind === "text") return a.size <= ATTACHMENT_TEXT_MAX_BYTES;
+	return false;
+}
+
+/** The run-scoped folder's copy when the agent reads extra directories, else the tool's URI. */
+function attachmentLink(a: JobAttachment, dir: string | null): PromptPart {
+	const head = { name: a.name, mimeType: a.mimeType, size: a.size };
+	if (!dir) {
+		return {
+			type: "resource_link",
+			uri: `prismalens://attachment/${a.id}`,
+			...head,
+		};
+	}
+	mkdirSync(dir, { recursive: true });
+	const target = join(dir, `${a.id}-${a.name.replace(/[^\w.-]+/g, "_")}`);
+	copyFileSync(a.path, target);
+	return { type: "resource_link", uri: pathToFileURL(target).href, ...head };
 }
 
 /** `mode` is the id the agent reported as current, else the one asked for (#673 w21); `cooperative` until its sandbox is checked. */
@@ -568,13 +683,47 @@ export async function* runInvestigation(
 		brief
 			? investigationPromptParts(opts.context, o).turn
 			: buildInvestigationPrompt(opts.context, o);
+	// The run's ask policy decides: an unattended run declines at once (#1024).
+	const elicit = (
+		ask: ElicitationAsk,
+		ctx: { askId: string; signal: AbortSignal },
+	): { timeoutMs: number; outcome: Promise<HeldOutcome> } | HeldOutcome => {
+		if ((opts.unattended && !opts.waitForAsks) || !opts.elicit)
+			return { outcome: "unattended" };
+		const timeoutMs = askWindow(
+			opts.questionTimeoutMs ?? QUESTION_ASK_TIMEOUT_MS,
+			opts.limits?.wallClockMs,
+			Date.now() - spawnedAt,
+		).timeoutMs;
+		return {
+			timeoutMs,
+			outcome: opts.elicit(ctx.askId, ask, { signal: ctx.signal, timeoutMs }),
+		};
+	};
+	const linkOpts = () => ({
+		dir:
+			opts.attachmentsDir && session.takesDirectories
+				? opts.attachmentsDir
+				: null,
+	});
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
 		command: launch.command,
 		args,
 		cwd: opts.cwd,
-		...(opts.roots ? { roots: opts.roots } : {}),
+		...(opts.roots || opts.attachmentsDir
+			? {
+					roots: {
+						cwd: opts.roots?.cwd ?? opts.cwd,
+						additional: [
+							...(opts.roots?.additional ?? []),
+							...(opts.attachmentsDir ? [opts.attachmentsDir] : []),
+						],
+					},
+				}
+			: {}),
+		...(opts.elicit ? { elicit } : {}),
 		env,
 		limits: opts.limits,
 		...(opts.onSpawn ? { onSpawn: opts.onSpawn } : {}),
@@ -676,6 +825,13 @@ export async function* runInvestigation(
 					if (out && !ownCalls.has(u.toolCallId))
 						opts.gateway.sawOutput(u.toolCallId, out);
 				}
+				if (
+					u.sessionUpdate === "available_commands_update" &&
+					opts.onCommands
+				) {
+					const commands = parseAgentCommands(u);
+					if (commands) opts.onCommands(commands);
+				}
 				for (const ev of adapter.events(u)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
@@ -726,6 +882,16 @@ export async function* runInvestigation(
 					item.outcome,
 					item.sync ? item.request.toolCall : undefined,
 				);
+			} else if (item.kind === "elicit_asked") {
+				const flushed = adapter.flushText();
+				if (flushed) yield flushed;
+				yield adapter.askOpened(elicitedAsk(item));
+			} else if (item.kind === "elicit_closed") {
+				yield adapter.askClosed(
+					item.askId,
+					item.closed.outcome,
+					"answer" in item.closed ? item.closed.answer : undefined,
+				);
 			} else if (item.kind === "nudge") {
 				yield* recordQueued();
 			} else if (item.kind === "harness_tool_call") {
@@ -769,7 +935,26 @@ export async function* runInvestigation(
 				);
 		for (const c of opts.steer?.changes?.() ?? [])
 			yield adapter.messageChanged(c.id, c.text);
+		for (const e of opts.toolAsks?.drain() ?? [])
+			yield e.type === "opened"
+				? adapter.askOpened(e.ask)
+				: adapter.askClosed(e.askId, e.outcome, e.answer);
 	};
+	const elicitedAsk = (
+		item: Extract<AcpStreamItem, { kind: "elicit_asked" }>,
+	): PendingAsk => ({
+		askId: item.askId,
+		threadId: opts.runId,
+		kind: item.ask.kind,
+		requiresHost: false,
+		source: { kind: "agent" },
+		title: item.ask.title,
+		openedAt: new Date().toISOString(),
+		...(item.expiresAt ? { expiresAt: item.expiresAt.toISOString() } : {}),
+		...(item.ask.kind === "question"
+			? { questions: item.ask.questions }
+			: { input: { schema: item.ask.schema } }),
+	});
 	/**
 	 * What the run leaves behind on any end (#820): an ask it never heard back on
 	 * reads stopped, and a message it never read, not delivered.
@@ -824,6 +1009,7 @@ export async function* runInvestigation(
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
+		unToolAsks?.();
 		if (tools) yield* toolsSummary();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)])
 			yield adapter.operatorMessage(
@@ -843,6 +1029,7 @@ export async function* runInvestigation(
 		session.cancel();
 	});
 	const unQueued = opts.steer?.onQueued?.(() => session.nudge());
+	const unToolAsks = opts.toolAsks?.onActivity(() => session.nudge());
 	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
 	let summarized = false;
 	const unCalled = opts.gateway?.onCall((c) =>
@@ -1009,10 +1196,11 @@ export async function* runInvestigation(
 							},
 						}
 					: via,
+				opts.resume.context,
 			);
 			const said = [
 				...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
-				line,
+				withAddendum(line, opts.resume.context),
 				...(newer ? [newerRunNote(newer)] : []),
 			].join("\n\n");
 			const seeded = handoff
@@ -1024,7 +1212,7 @@ export async function* runInvestigation(
 							modeName,
 						})
 				: said;
-			outcome = yield* turn(promptParts(seeded, attachments));
+			outcome = yield* turn(promptParts(seeded, attachments, linkOpts()));
 			// After the turn, so history an agent streams late is counted too.
 			if (session.reopen) {
 				const reopen = {
@@ -1043,16 +1231,25 @@ export async function* runInvestigation(
 				true,
 				undefined,
 				refsOf(opts.attachments),
+				undefined,
+				undefined,
+				undefined,
+				opts.messageContext,
 			);
 			outcome = yield* turn(
 				promptParts(
-					buildChatPrompt(opts.context, message, {
-						noNetwork,
-						level,
-						modeName,
-						tools: toolsLine,
-					}),
+					buildChatPrompt(
+						opts.context,
+						withAddendum(message, opts.messageContext),
+						{
+							noNetwork,
+							level,
+							modeName,
+							tools: toolsLine,
+						},
+					),
 					opts.attachments,
+					linkOpts(),
 				),
 			);
 		} else {
@@ -1079,6 +1276,7 @@ export async function* runInvestigation(
 							: "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
+					linkOpts(),
 				),
 			);
 		}
@@ -1192,6 +1390,7 @@ export async function* runInvestigation(
 	} finally {
 		unsubscribe?.();
 		unQueued?.();
+		unToolAsks?.();
 		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}

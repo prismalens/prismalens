@@ -26,12 +26,15 @@ import {
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import type {
+	AskAnswer,
 	CanonicalEvent,
 	FollowUpKind,
 	FollowUpRoute,
 	InvestigationJobData,
 	JobAttachment,
+	JobMessageContext,
 	OperatorMessageMode,
+	PendingAsk,
 	RestartRecovery,
 	RestartSummary,
 	RunChoice,
@@ -51,7 +54,11 @@ import {
 	RunWorkspaceSchema,
 	ScheduledRunSchema,
 } from "@prismalens/contracts";
-import { reapLiveHarnesses } from "@prismalens/engine";
+import {
+	type AskResult,
+	type HeldOutcome,
+	reapLiveHarnesses,
+} from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
@@ -97,9 +104,13 @@ import {
 	type MessageState,
 	type RunAskRequest,
 	type RunMessageRequest,
+	type RunQueueRequest,
+	type RunToolAskRequest,
 	runAskTopic,
 	runCancelTopic,
 	runMessageTopic,
+	runQueueTopic,
+	runToolAskTopic,
 } from "./event-bus.js";
 import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
@@ -1149,6 +1160,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		kind: FollowUpKind = "chat",
 		attachments: JobAttachment[] = [],
 		to: RunChoice = {},
+		context?: JobMessageContext,
 	): Promise<boolean> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -1222,6 +1234,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				kind,
 				...(kind === "continue" ? { sawEvidence } : {}),
 				...(attachments.length ? { attachments } : {}),
+				...(context ? { context } : {}),
 				to: { ...to, harness: plan.harness },
 				...(plan.route === "handoff" ? { handoff: true } : {}),
 				...((await this.afterRestart(id, row.endReason))
@@ -1446,12 +1459,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		attachments: JobAttachment[] = [],
 		kind?: FollowUpKind,
 		id?: string,
+		context?: JobMessageContext,
 	): MessageState {
 		let state: MessageState = null;
 		this.bus.publish<RunMessageRequest>(runMessageTopic(investigationId), {
 			text,
 			mode,
 			attachments,
+			...(context ? { context } : {}),
 			...(kind ? { kind } : {}),
 			...(id ? { id } : {}),
 			reply: (s) => {
@@ -1461,21 +1476,50 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		return state;
 	}
 
-	/** The operator's Approve or Deny for a live run's ask (#673 w21); null when it no longer waits. */
+	/** The operator's answer to a live run's ask (#673 w21, #1024); null when it no longer waits. */
 	answerAsk(
 		investigationId: string,
 		askId: string,
-		approve: boolean,
-	): "approved" | "denied" | null {
-		let outcome: "approved" | "denied" | null = null;
+		answer: AskAnswer,
+	): AskResult | null {
+		let result: AskResult | null = null;
 		this.bus.publish<RunAskRequest>(runAskTopic(investigationId), {
 			askId,
-			approve,
-			reply: (o) => {
-				outcome = o;
+			answer,
+			reply: (r) => {
+				result = r;
 			},
 		});
-		return outcome;
+		return result;
+	}
+
+	/** Edit (`text`) or withdraw (`null`) a queued message; null once the run claimed it (#1024). */
+	changeQueued(
+		investigationId: string,
+		messageId: string,
+		text: string | null,
+	): "edited" | "withdrawn" | null {
+		let state: "edited" | "withdrawn" | null = null;
+		this.bus.publish<RunQueueRequest>(runQueueTopic(investigationId), {
+			messageId,
+			text,
+			reply: (s) => {
+				state = s;
+			},
+		});
+		return state;
+	}
+
+	/** Hand a PrismaLens tool's ask to the live run; null when no run holds the thread (#1024). */
+	openToolAsk(ask: PendingAsk): Promise<HeldOutcome> | null {
+		let held: Promise<HeldOutcome> | null = null;
+		this.bus.publish<RunToolAskRequest>(runToolAskTopic(ask.threadId), {
+			ask,
+			reply: (h) => {
+				held = h;
+			},
+		});
+		return held;
 	}
 
 	async requestCancel(investigationId: string): Promise<number> {

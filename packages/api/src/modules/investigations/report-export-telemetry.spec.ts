@@ -69,6 +69,9 @@ function exportHandler(investigation: unknown) {
 		telemetry,
 		{} as never,
 		{} as never,
+		{} as never,
+		{} as never,
+		{} as never,
 	);
 	const procs = controller.investigations() as unknown as Record<
 		string,

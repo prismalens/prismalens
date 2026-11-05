@@ -189,10 +189,11 @@ describe("createInProcessRunner", () => {
 			);
 		});
 
-		expect(running.answer?.("unknown-ask", true)).toBeNull();
+		const approve = { kind: "permission", decision: "approve" } as const;
+		expect(running.answer?.("unknown-ask", approve)).toBeNull();
 
-		const answerResult = running.answer?.("ask-1", true);
-		expect(answerResult).toBe("approved");
+		const answerResult = running.answer?.("ask-1", approve);
+		expect(answerResult).toEqual({ outcome: "approved" });
 
 		const decision = await decisionPromise!;
 		expect(decision).toMatchObject({

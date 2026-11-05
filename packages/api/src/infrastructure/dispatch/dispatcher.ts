@@ -19,17 +19,27 @@ import type { FollowUpKind, JobAttachment } from "@prismalens/contracts";
  */
 
 import { randomUUID } from "node:crypto";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type {
+	AskAnswer,
+	CanonicalEvent,
+	JobMessageContext,
+	PendingAsk,
+} from "@prismalens/contracts";
+import type { AskResult, HeldOutcome } from "@prismalens/engine";
 import {
 	type EventBus,
 	type MessageState,
 	type RelayMessage,
 	type RunAskRequest,
 	type RunMessageRequest,
+	type RunQueueRequest,
+	type RunToolAskRequest,
 	runAskTopic,
 	runCancelTopic,
 	runEventsTopic,
 	runMessageTopic,
+	runQueueTopic,
+	runToolAskTopic,
 } from "./event-bus.js";
 import type { ClaimedJob, JobStore } from "./job-store.js";
 
@@ -58,9 +68,17 @@ export interface RunningJob {
 		attachments?: JobAttachment[],
 		kind?: FollowUpKind,
 		id?: string,
+		context?: JobMessageContext,
 	): MessageState;
-	/** The operator's answer to one of the agent's asks (#673 w21); null when it no longer waits. */
-	answer?(askId: string, approve: boolean): "approved" | "denied" | null;
+	/** The operator's answer to one of the run's asks (#673 w21, #1024); null when it no longer waits. */
+	answer?(askId: string, answer: AskAnswer): AskResult | null;
+	/** Edit or withdraw a queued message before it is claimed (#1024). */
+	change?(
+		messageId: string,
+		text: string | null,
+	): "edited" | "withdrawn" | null;
+	/** Record and hold a PrismaLens tool's ask (#1024). */
+	openAsk?(ask: PendingAsk): Promise<HeldOutcome>;
 }
 
 export type JobRunner = (job: ClaimedJob, sink: RunSink) => RunningJob;
@@ -231,13 +249,27 @@ export class Dispatcher {
 			runMessageTopic(job.investigationId),
 			(m) =>
 				m.reply(
-					running.message?.(m.text, m.mode, m.attachments, m.kind, m.id) ??
-						null,
+					running.message?.(
+						m.text,
+						m.mode,
+						m.attachments,
+						m.kind,
+						m.id,
+						m.context,
+					) ?? null,
 				),
 		);
 		const askSub = this.bus.subscribe<RunAskRequest>(
 			runAskTopic(job.investigationId),
-			(a) => a.reply(running.answer?.(a.askId, a.approve) ?? null),
+			(a) => a.reply(running.answer?.(a.askId, a.answer) ?? null),
+		);
+		const queueSub = this.bus.subscribe<RunQueueRequest>(
+			runQueueTopic(job.investigationId),
+			(q) => q.reply(running.change?.(q.messageId, q.text) ?? null),
+		);
+		const toolAskSub = this.bus.subscribe<RunToolAskRequest>(
+			runToolAskTopic(job.investigationId),
+			(t) => t.reply(running.openAsk?.(t.ask) ?? null),
 		);
 
 		void running.done
@@ -260,6 +292,8 @@ export class Dispatcher {
 				cancelSub.unsubscribe();
 				messageSub.unsubscribe();
 				askSub.unsubscribe();
+				queueSub.unsubscribe();
+				toolAskSub.unsubscribe();
 				this.inFlight.delete(job.id);
 				// A freed slot is worth claiming into immediately rather than waiting for
 				// the next enqueue — but not from inside this callback's stack.

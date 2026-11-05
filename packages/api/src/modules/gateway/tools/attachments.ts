@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 	RESULT_CHARS,
 } from "@prismalens/integrations/harness";
+import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
 export interface AttachmentItem {
@@ -32,6 +33,8 @@ export interface AttachmentsData {
 		mimeType: string;
 		size: number;
 		text(): Promise<string | null>;
+		/** The raw bytes, for a PDF's text; null when the file is gone. */
+		bytes?(): Promise<Uint8Array | null>;
 	} | null>;
 }
 
@@ -40,19 +43,35 @@ export const ATTACHMENT_READ_CHARS = 32_000;
 
 type FileHead = { id: string; name: string; mimeType: string; size: number };
 
-/** The text cut at ATTACHMENT_READ_CHARS, and shorter if the whole result would pass RESULT_CHARS and be cut mid-JSON. */
-function fitted(head: FileHead, text: string) {
-	const shown = (n: number) => ({
-		...head,
-		text: text.slice(0, n),
-		truncated: n < text.length,
-		...(n < text.length
-			? { note: `Cut at ${n} of ${text.length} characters.` }
-			: {}),
-	});
+/**
+ * The chunk from `offset`, at most `length` (and ATTACHMENT_READ_CHARS) long, shorter if
+ * the whole result would pass RESULT_CHARS and be cut mid-JSON (#1024).
+ */
+function fitted(
+	head: FileHead,
+	whole: string,
+	offset = 0,
+	length = ATTACHMENT_READ_CHARS,
+) {
+	const text = whole.slice(offset);
+	const shown = (n: number) => {
+		const end = offset + n;
+		return {
+			...head,
+			offset,
+			text: text.slice(0, n),
+			total: whole.length,
+			truncated: end < whole.length,
+			...(end < whole.length
+				? {
+						note: `Characters ${offset} to ${end} of ${whole.length}; call again with offset ${end} for more.`,
+					}
+				: {}),
+		};
+	};
 	const fits = (n: number) =>
 		JSON.stringify(shown(n), null, 1).length <= RESULT_CHARS;
-	let hi = Math.min(text.length, ATTACHMENT_READ_CHARS);
+	let hi = Math.min(text.length, length, ATTACHMENT_READ_CHARS);
 	if (fits(hi)) return shown(hi);
 	let lo = 0;
 	while (lo < hi) {
@@ -65,6 +84,15 @@ function fitted(head: FileHead, text: string) {
 
 const isText = (mime: string) =>
 	mime.startsWith("text/") || /[/+-](json|ya?ml|xml|csv)$/.test(mime);
+
+const PDF = "application/pdf";
+
+/** A PDF's text, page by page, through a maintained parser; null when it has none. */
+export async function pdfText(bytes: Uint8Array): Promise<string | null> {
+	const pdf = await getDocumentProxy(new Uint8Array(bytes));
+	const { text } = await extractText(pdf, { mergePages: true });
+	return text.trim() ? text : null;
+}
 
 export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 	return [
@@ -90,13 +118,18 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 		}),
 		defineHarnessTool({
 			name: "attachment_read",
-			title: "Read an attached text file",
-			description: `The text of one file attachments_list returned, by id. Text, JSON, YAML, XML and CSV only, cut at ${ATTACHMENT_READ_CHARS} characters. Images are not readable here; the operator's prompt carries them.`,
+			title: "Read an attached file",
+			description: `The text of one file attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML, CSV and PDF (its text). At most ${ATTACHMENT_READ_CHARS} characters per call: pass offset (and length) to read the next chunk. Images are not readable here; the operator's prompt carries them.`,
 			group: "knowledge",
 			effect: "read",
 			serves: { subjects: ["incident", "project", "service"] },
-			input: z.object({ id: z.string().trim().min(1).max(100) }),
-			run: async ({ id }, ctx) => {
+			input: z.object({
+				id: z.string().trim().min(1).max(200),
+				offset: z.number().int().min(0).optional(),
+				length: z.number().int().min(1).max(ATTACHMENT_READ_CHARS).optional(),
+			}),
+			run: async ({ id: given, offset, length }, ctx) => {
+				const id = given.replace(/^prismalens:\/\/attachment\//, "");
 				const found = await data.read(ctx.runId, id);
 				if (!found)
 					return fail(
@@ -104,14 +137,19 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 						`No attachment "${id}" on this thread.`,
 						"Call attachments_list and pass an id exactly as it returned it.",
 					);
-				if (!isText(found.mimeType))
+				const pdf = found.mimeType === PDF && !!found.bytes;
+				if (!isText(found.mimeType) && !pdf)
 					return fail(
 						"invalid_input",
 						`"${found.name}" is ${found.mimeType}, not text.`,
-						"This file is not text, so it cannot be read here; choose a text attachment from attachments_list.",
+						"This file is not text or PDF, so it cannot be read here; choose another attachment from attachments_list.",
 					);
-				const text = await found.text();
-				if (text === null)
+				const text = pdf
+					? await found
+							.bytes?.()
+							.then((b) => (b ? pdfText(b).catch(() => null) : null))
+					: await found.text();
+				if (text == null)
 					return fail(
 						"not_found",
 						`The file for "${found.name}" is no longer stored.`,
@@ -125,7 +163,9 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 							mimeType: found.mimeType,
 							size: found.size,
 						},
-						text,
+						text ?? "",
+						offset,
+						length,
 					),
 				};
 			},

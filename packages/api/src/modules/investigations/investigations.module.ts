@@ -5,6 +5,9 @@ import { forwardRef, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { HarnessModule } from "../../core/harness/harness.module.js";
 import { SettingsModule } from "../../core/settings/settings.module.js";
+import { ASKS_PORT } from "../asks/asks.contract.js";
+import { AsksService } from "../asks/asks.service.js";
+import { ComposerModule } from "../composer/composer.module.js";
 import { ReportDeliveryModule } from "../delivery/report-delivery.module.js";
 import { IncidentsModule } from "../incidents/incidents.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
@@ -29,6 +32,7 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		SettingsModule,
 		IntegrationsModule,
 		ReportDeliveryModule,
+		ComposerModule,
 	],
 	controllers: [InvestigationsController, InvestigationStreamController],
 	providers: [
@@ -38,8 +42,13 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		StreamRelayService,
 		ContextPackService,
 		AttachmentsService,
+		AsksService,
+		{ provide: ASKS_PORT, useExisting: AsksService },
 	],
 	exports: [
+		AsksService,
+		ASKS_PORT,
+		ComposerModule,
 		AttachmentsService,
 		InvestigationsService,
 		InvestigationTriggerService,

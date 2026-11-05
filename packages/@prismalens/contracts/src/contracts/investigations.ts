@@ -10,6 +10,7 @@ import {
 	AnswerAskResultSchema,
 	AnswerAskSchema,
 	CreateInvestigationSchema,
+	EditQueuedMessageSchema,
 	EvidenceBlobQuerySchema,
 	EvidenceBlobSchema,
 	GetInvestigationEventsSchema,
@@ -23,6 +24,7 @@ import {
 	InvestigationStatusSchema,
 	InvestigationWithRelationsSchema,
 	paginatedResponseSchema,
+	QueuedMessageChangeResultSchema,
 	RestartSummarySchema,
 	RunDiffQuerySchema,
 	RunDiffSchema,
@@ -31,6 +33,7 @@ import {
 	SendInvestigationMessageResultSchema,
 	SendInvestigationMessageSchema,
 	UpdateInvestigationStatusSchema,
+	WithdrawQueuedMessageSchema,
 	WorktreeChangesQuerySchema,
 	WorktreeChangesSchema,
 	WriteInvestigationResultSchema,
@@ -145,6 +148,46 @@ export const investigationsContract = {
 		}),
 
 	/**
+	 * Change a queued message's text before the agent claims it (#1024)
+	 * PATCH /investigations/:id/messages/:messageId
+	 */
+	editMessage: oc
+		.route({
+			method: "PATCH",
+			path: "/investigations/{id}/messages/{messageId}",
+			summary: "Edit a queued message before the agent reads it",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema.merge(EditQueuedMessageSchema))
+		.output(QueuedMessageChangeResultSchema)
+		.errors({
+			ALREADY_DELIVERED: {
+				status: 409,
+				message: "The agent already read the message, or it was never queued",
+			},
+		}),
+
+	/**
+	 * Take back a queued message before the agent claims it (#1024)
+	 * DELETE /investigations/:id/messages/:messageId
+	 */
+	withdrawMessage: oc
+		.route({
+			method: "DELETE",
+			path: "/investigations/{id}/messages/{messageId}",
+			summary: "Withdraw a queued message before the agent reads it",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema.merge(WithdrawQueuedMessageSchema))
+		.output(QueuedMessageChangeResultSchema)
+		.errors({
+			ALREADY_DELIVERED: {
+				status: 409,
+				message: "The agent already read the message, or it was never queued",
+			},
+		}),
+
+	/**
 	 * What a finished run's follow-up would carry to the chosen agent, and whether it can take it
 	 * GET /investigations/:id/handoff
 	 */
@@ -172,7 +215,7 @@ export const investigationsContract = {
 		.route({
 			method: "POST",
 			path: "/investigations/{id}/asks/{askId}",
-			summary: "Answer the agent's permission ask",
+			summary: "Answer one of the run's asks: permission, question or input",
 			tags: ["investigations"],
 		})
 		.input(IdParamSchema.merge(AnswerAskSchema))
@@ -181,6 +224,9 @@ export const investigationsContract = {
 			CONFLICT: {
 				message:
 					"The ask is no longer waiting: it was answered, timed out, or the run ended",
+			},
+			FORBIDDEN: {
+				message: "Only this machine's own session can answer this ask",
 			},
 		}),
 

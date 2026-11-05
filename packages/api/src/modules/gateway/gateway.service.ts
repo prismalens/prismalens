@@ -1035,6 +1035,7 @@ export class GatewayService {
 			// The bytes sit under the attachments directory by row id, as AttachmentsService writes them.
 			text: () =>
 				readFile(join(attachmentsDir(), row.id), "utf8").catch(() => null),
+			bytes: () => readFile(join(attachmentsDir(), row.id)).catch(() => null),
 		};
 	}
 

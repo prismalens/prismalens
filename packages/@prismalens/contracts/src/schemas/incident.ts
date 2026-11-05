@@ -273,7 +273,12 @@ export const ChatIncidentSchema = z.object({
 	...MessageContextShape,
 });
 
-/** What the box accepts (R4.3): images to 4 MB, text files to 256 KB. */
+/**
+ * What goes inline (R4.3): images to 4 MB, text files to 256 KB. Any file to
+ * ATTACHMENT_MAX_BYTES is accepted; the rest reach the agent as a link (#1024).
+ */
+export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+
 export const ATTACHMENT_IMAGE_TYPES = [
 	"image/png",
 	"image/jpeg",

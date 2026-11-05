@@ -8,6 +8,7 @@ import { Implement, implement, ORPCError } from "@orpc/nest";
 import { ACCESS_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
+	AnswerAskResult,
 	InvestigationReport,
 	LiveTurn,
 	RootCauseCategory,
@@ -25,6 +26,7 @@ import {
 	type RunWorkspace,
 	RunWorkspaceSchema,
 	SCHEDULE_HOST_ONLY,
+	toAskAnswer,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
@@ -44,6 +46,10 @@ import {
 } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { AskConflict, AskForbidden } from "../asks/asks.contract.js";
+import { AskInvalid, AsksService } from "../asks/asks.service.js";
+import { DraftsService } from "../composer/drafts.service.js";
+import { ReferencesService } from "../references/references.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import type {
 	InternalInvestigationResultDto,
@@ -104,7 +110,21 @@ export class InvestigationsController {
 		private readonly telemetry: TelemetryService,
 		private readonly attachments: AttachmentsService,
 		private readonly harnessService: HarnessService,
+		private readonly asks: AsksService,
+		private readonly drafts: DraftsService,
+		private readonly references: ReferencesService,
 	) {}
+
+	/** A queued message is the session's to change: a schedule's only on the host (#1024). */
+	private async queuedOwner(id: string, request: Request | undefined) {
+		const run = await this.investigationsService.findById(id);
+		if (!run)
+			throw new ORPCError("NOT_FOUND", {
+				message: `Investigation ${id} not found`,
+			});
+		scheduledRunHostOnly(run, request);
+		return run;
+	}
 
 	@Implement(investigationsContract)
 	investigations() {
@@ -417,34 +437,84 @@ export class InvestigationsController {
 				},
 			),
 
-			// POST /investigations/:id/asks/:askId - The operator's Approve or Deny (#673 w21).
+			// POST /investigations/:id/asks/:askId - Answer a permission, question or input ask (#673 w21, #1024).
 			answerAsk: implement(investigationsContract.answerAsk).handler(
 				async ({ input, context }) => {
+					const request = context?.request as Request | undefined;
+					const answer = toAskAnswer(input);
+					if (!answer)
+						throw new ORPCError("BAD_REQUEST", {
+							message: "Send an answer, or a decision.",
+						});
 					const run = await this.investigationsService.findById(input.id);
-					if (run)
-						unattendedRunHostOnly(run, context?.request as Request | undefined);
+					if (run) unattendedRunHostOnly(run, request);
+					const always =
+						answer.kind === "permission" && answer.scope === "always";
 					if (
-						input.always &&
-						(input.decision !== "approve" || !run?.scheduleId)
+						always &&
+						(answer.kind !== "permission" ||
+							answer.decision !== "approve" ||
+							!run?.scheduleId)
 					)
 						throw new ORPCError("BAD_REQUEST", {
 							message: "Always allow is for a schedule's runs.",
 						});
-					const outcome = this.dispatchService.answerAsk(
-						input.id,
-						input.askId,
-						input.decision === "approve",
-					);
-					if (!outcome)
-						throw new ORPCError("CONFLICT", {
-							message:
-								"This ask is no longer waiting: it was answered, timed out, or the run ended.",
+					const host =
+						!!request?.operator?.device.scopes.includes(ACCESS_SCOPE);
+					const closed = await this.asks
+						.answer(input.id, input.askId, answer, { host, via: "device" })
+						.catch((e: unknown) => {
+							if (e instanceof AskForbidden)
+								throw new ORPCError("FORBIDDEN", { message: e.message });
+							if (e instanceof AskInvalid)
+								throw new ORPCError("BAD_REQUEST", { message: e.message });
+							if (e instanceof AskConflict)
+								throw new ORPCError("CONFLICT", {
+									message:
+										"This ask is no longer waiting: it was answered, timed out, or the run ended.",
+								});
+							throw e;
 						});
-					if (input.always && outcome === "approved")
+					const outcome = closed.outcome as AnswerAskResult["outcome"];
+					if (always && outcome === "approved")
 						await this.investigationsService.rememberAsk(input.id, input.askId);
 					return { outcome };
 				},
 			),
+
+			// PATCH /investigations/:id/messages/:messageId - Edit a queued message (#1024).
+			editMessage: implement(investigationsContract.editMessage).handler(
+				async ({ input, context, errors }) => {
+					await this.queuedOwner(
+						input.id,
+						context?.request as Request | undefined,
+					);
+					const state = this.dispatchService.changeQueued(
+						input.id,
+						input.messageId,
+						input.text,
+					);
+					if (!state) throw errors.ALREADY_DELIVERED();
+					return { state };
+				},
+			),
+
+			// DELETE /investigations/:id/messages/:messageId - Withdraw a queued message (#1024).
+			withdrawMessage: implement(
+				investigationsContract.withdrawMessage,
+			).handler(async ({ input, context, errors }) => {
+				await this.queuedOwner(
+					input.id,
+					context?.request as Request | undefined,
+				);
+				const state = this.dispatchService.changeQueued(
+					input.id,
+					input.messageId,
+					null,
+				);
+				if (!state) throw errors.ALREADY_DELIVERED();
+				return { state };
+			}),
 
 			message: implement(investigationsContract.message).handler(
 				async ({ input, context }) => {
@@ -485,6 +555,9 @@ export class InvestigationsController {
 									investigation.id,
 									input.attachments,
 								);
+					const messageContext = await this.references.compose(input, {
+						threadId: investigation.id,
+					});
 					if (TERMINAL_STATUSES.has(investigation.status)) {
 						const reason = followUpBlockedReason(investigation);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
@@ -507,6 +580,7 @@ export class InvestigationsController {
 										? { effort: input.effort }
 										: {}),
 								},
+								messageContext,
 							)
 							.catch((e: unknown) => {
 								if (e instanceof FollowUpRefused)
@@ -517,6 +591,7 @@ export class InvestigationsController {
 							throw new ORPCError("CONFLICT", {
 								message: "A follow-up is already running.",
 							});
+						await this.drafts.consume(input.draftScope, input.draftRev);
 						return { state: "resumed" as const };
 					}
 					// A message that says what it asks for must match the live turn (#673 w59, OBJ-004).
@@ -536,6 +611,7 @@ export class InvestigationsController {
 						attachments,
 						input.kind,
 						messageId,
+						messageContext,
 					);
 					for (let attempt = 0; state === null && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
@@ -546,6 +622,7 @@ export class InvestigationsController {
 							attachments,
 							input.kind,
 							messageId,
+							messageContext,
 						);
 					}
 					if (state === "conflict") {
@@ -570,6 +647,7 @@ export class InvestigationsController {
 						}
 						throw refuse();
 					}
+					await this.drafts.consume(input.draftScope, input.draftRev);
 					return state === "queued" ? { state, messageId } : { state };
 				},
 			),

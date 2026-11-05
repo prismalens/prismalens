@@ -35,7 +35,12 @@ export function pushOwedBy(
 ): OwedPush | null {
 	if (event.kind === "permission_ask")
 		return { kind: "ask_waiting", investigationId, askId: event.askId };
-	if (event.kind === "permission_answer" && event.outcome === "unattended")
+	if (event.kind === "ask_opened")
+		return { kind: "ask_waiting", investigationId, askId: event.ask.askId };
+	if (
+		(event.kind === "permission_answer" || event.kind === "ask_closed") &&
+		event.outcome === "unattended"
+	)
 		return { kind: "ask_refused", investigationId, askId: event.askId };
 	return null;
 }

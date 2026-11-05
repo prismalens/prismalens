@@ -3,7 +3,7 @@
 
 /**
  * One reference search behind `/`, `@`, `#` and Ctrl K (#1024): `/` to do,
- * `@` to mention anything, `#N` to jump by number.
+ * `@` to mention anything, `#` to find work items by number, key or title.
  */
 import { z } from "zod";
 import {
@@ -18,7 +18,7 @@ export type ReferenceTrigger = z.infer<typeof ReferenceTriggerSchema>;
 
 /**
  * The kinds each trigger searches; no trigger searches them all. `@` mentions
- * anything; `#` is the number shortcut, words after it search these kinds only.
+ * anything, monitoring items included; `#` finds work items by number, key or title.
  */
 export const TRIGGER_KINDS: Record<ReferenceTrigger, readonly ReferenceKind[]> =
 	{
@@ -35,14 +35,25 @@ export const TRIGGER_KINDS: Record<ReferenceTrigger, readonly ReferenceKind[]> =
 			"artifact",
 			"runbook",
 			"pull_request",
+			"alert",
+			"silence",
+			"alert_rule",
 		],
-		"#": ["thread", "incident", "pull_request"],
+		"#": ["thread", "incident", "pull_request", "issue"],
 	};
 
-/** `#123`: a bare number after `#` matches records by number, not by text. */
-export function referenceNumber(q: string): number | null {
-	const m = /^#?(\d{1,9})$/.exec(q.trim());
-	return m ? Number(m[1]) : null;
+/** `#123`, `!123` (a merge request) or a bare `123` after the trigger; null when the query is words. */
+export function referenceNumber(
+	q: string,
+): { n: number; mergeRequest: boolean } | null {
+	const m = /^([#!]?)(\d{1,9})$/.exec(q.trim());
+	return m ? { n: Number(m[2]), mergeRequest: m[1] === "!" } : null;
+}
+
+/** A tracker key such as `PROJ-123` (with or without `#`); null otherwise. */
+export function referenceKey(q: string): string | null {
+	const m = /^#?([A-Z][A-Z0-9_]{1,19}-\d{1,9})$/.exec(q.trim());
+	return m ? (m[1] as string) : null;
 }
 
 /** Why a hit ranks where it does, strongest boost first. */
@@ -58,6 +69,8 @@ export const ReferenceHitSchema = z.object({
 	source: z.enum(["app", "agent"]).optional(),
 	/** A state tone the row may carry (surface D). */
 	tone: z.string().max(40).optional(),
+	/** The menu group: a source such as "GitHub · org/repo", or PrismaLens. */
+	group: z.string().max(120).optional(),
 	why: ReferenceWhySchema,
 	score: z.number(),
 });
@@ -79,6 +92,10 @@ export const ReferenceSearchResultSchema = z.object({
 	hits: z.array(ReferenceHitSchema),
 	/** The file list was cut at the cap. */
 	truncated: z.boolean(),
+	/** A source that could not answer: one line each, e.g. "GitLab: no token for gitlab.example.com". */
+	unavailable: z.array(
+		z.object({ source: z.string().max(120), message: z.string().max(300) }),
+	),
 });
 export type ReferenceSearchResult = z.infer<typeof ReferenceSearchResultSchema>;
 

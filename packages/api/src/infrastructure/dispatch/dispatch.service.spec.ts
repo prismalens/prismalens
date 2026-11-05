@@ -1160,7 +1160,10 @@ describe("denyAsksLeftWaiting and answerAsk (#673 w21)", () => {
 
 	it("answerAsk returns null with no receiver", () => {
 		const { service } = realDispatch();
-		expect(service.answerAsk("inv-unknown", "ask-1", true)).toBeNull();
+		expect(service.answerAsk("inv-unknown", "ask-1", {
+				kind: "permission",
+				decision: "approve",
+			})).toBeNull();
 	});
 });
 
