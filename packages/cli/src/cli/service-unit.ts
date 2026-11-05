@@ -7,7 +7,7 @@
  * the I/O.
  */
 
-import { dirname, join } from "node:path";
+import { dirname, join } from "node:path/posix";
 import {
 	LAUNCHD_LABEL,
 	type ServiceManagerKind,

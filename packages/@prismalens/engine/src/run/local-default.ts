@@ -37,10 +37,18 @@ type Permission = LocalDefault["permission"];
 const NONE: LocalDefault = { permission: null };
 
 /** `~/x` for a path under the home directory, so the line reads as the user wrote it. */
-function shown(path: string, home: string): string {
-	return path === home || path.startsWith(`${home}/`)
-		? `~${path.slice(home.length)}`
-		: path;
+export function shown(path: string, home: string): string {
+	const isWin = process.platform === "win32";
+	const norm = (s: string) => (isWin ? s.replaceAll("\\", "/") : s);
+	const normPath = norm(path);
+	const normHome = norm(home).replace(/\/+$/, "");
+	const cmpPath = isWin ? normPath.toLowerCase() : normPath;
+	const cmpHome = isWin ? normHome.toLowerCase() : normHome;
+	if (cmpPath === cmpHome) return "~";
+	if (cmpPath.startsWith(`${cmpHome}/`)) {
+		return `~${normPath.slice(normHome.length)}`;
+	}
+	return path;
 }
 
 function readText(path: string): string | null {

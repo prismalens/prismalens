@@ -74,7 +74,10 @@ describe("probeCodexSandbox", () => {
 });
 
 describe("locateCodex", () => {
-	it("prefers the codex bundled with codex-acp over the one on PATH", () => {
+	// #937: Unprivileged symlink creation requires Developer Mode or elevation on Windows.
+	it.skipIf(process.platform === "win32")(
+		"prefers the codex bundled with codex-acp over the one on PATH",
+		() => {
 		const root = tmp("pkg");
 		const pkg = join(root, "lib", "codex-acp");
 		mkdirSync(join(pkg, "dist"), { recursive: true });

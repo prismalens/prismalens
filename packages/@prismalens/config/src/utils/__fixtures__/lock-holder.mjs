@@ -14,16 +14,18 @@
  *   and watch the forced exit pre-empt it.
  */
 import { argv, exit, kill, pid, stdout } from "node:process";
+import { pathToFileURL } from "node:url";
 
 const [, , entry, workspaceDir, ...flags] = argv;
 const hang = flags.includes("--hang");
 
+const entryUrl = entry.startsWith("file:") ? entry : pathToFileURL(entry).href;
 const {
 	acquireWorkspaceLock,
 	armForcedExitOnSecondSignal,
 	disarmForcedExit,
 	releaseWorkspaceLock,
-} = await import(entry);
+} = await import(entryUrl);
 
 acquireWorkspaceLock(workspaceDir, { port: 3999 });
 

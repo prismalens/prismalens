@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { type GitEnvInput, gitEnv } from "./git-env.js";
 import { scrubGitStderr } from "./git-failure.js";
@@ -64,8 +64,21 @@ export function spawnGit(
 	});
 	const kill = () => {
 		try {
-			if (group && child.pid) process.kill(-child.pid, "SIGKILL");
-			else child.kill("SIGKILL");
+			// #937: taskkill /T /F terminates git's child processes so pipes close on timeout.
+			if (process.platform === "win32" && child.pid) {
+				// Once git has exited its pid may be reused; taskkill /T would hit a stranger.
+				if (child.exitCode !== null || child.signalCode !== null) return;
+				const res = spawnSync(
+					"taskkill",
+					["/pid", String(child.pid), "/T", "/F"],
+					{ stdio: "ignore", windowsHide: true, timeout: 5000 },
+				);
+				if (res.error || res.status !== 0) child.kill("SIGKILL");
+			} else if (group && child.pid) {
+				process.kill(-child.pid, "SIGKILL");
+			} else {
+				child.kill("SIGKILL");
+			}
 		} catch {
 			child.kill("SIGKILL");
 		}
