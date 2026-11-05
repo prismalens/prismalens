@@ -5,13 +5,14 @@
  * AI Elements PromptInput (registry.ai-sdk.dev/prompt-input.json, ai-elements 1.9.0), owned:
  * the parts the box uses; `ai` types are local unions and `nanoid` is gone (#673).
  */
-import { ArrowUp, Loader2, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import type {
 	ComponentProps,
 	FormEvent,
 	HTMLAttributes,
 	KeyboardEvent,
 } from "react";
+import { RingTick } from "@/components/shared/RingTick";
 import {
 	InputGroup,
 	InputGroupAddon,
@@ -140,7 +141,7 @@ export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
 	status?: PromptInputStatus;
 };
 
-/** The round send: an arrow, a spinner while it goes, a square while it streams. */
+/** The round send: an arrow, a ring while it goes, a square while it streams. */
 export function PromptInputSubmit({
 	className,
 	variant = "primary",
@@ -150,7 +151,7 @@ export function PromptInputSubmit({
 }: PromptInputSubmitProps) {
 	const icon =
 		status === "submitted" ? (
-			<Loader2 className="size-4 animate-spin" />
+			<RingTick state="busy" className="size-4" />
 		) : status === "streaming" ? (
 			<Square className="size-3.5 fill-current" />
 		) : (

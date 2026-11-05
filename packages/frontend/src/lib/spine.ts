@@ -6,7 +6,7 @@
  * ordinary tool call by what it names, and a PrismaLens tool by its name, whose
  * recorded output gives the outcome line. Anything else is an honest "tool".
  */
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import {
 	ChartLine,
 	CircleAlert,
@@ -104,7 +104,10 @@ export function stepNode(call: {
 
 type HarnessCall = Extract<CanonicalEvent, { kind: "harness_tool_call" }>;
 
-/** The first line of what a PrismaLens tool returned, as plain text, at most 120 characters. */
+/**
+ * The first line of what a PrismaLens tool returned, as plain text, at most 120 characters.
+ * The data note leads every result, so it is skipped (the transcript shows it once), and so is raw JSON.
+ */
 export function outcomeLine(
 	call: Pick<HarnessCall, "output" | "isError">,
 ): string | null {
@@ -118,8 +121,8 @@ export function outcomeLine(
 				.join("")
 				.trim(),
 		)
-		.find(Boolean);
-	if (!line) return call.isError ? "Failed" : null;
+		.find((l) => l && l !== HARNESS_DATA_NOTE);
+	if (!line || /^[[{]/.test(line)) return call.isError ? "Failed" : null;
 	return line.length > 120 ? `${line.slice(0, 119)}…` : line;
 }
 
@@ -144,9 +147,23 @@ export function matchGateway(events: readonly CanonicalEvent[]): GatewayMatch {
 			if (byCall.has(c.toolCallId)) continue;
 			const mcp = mcpTool(c.name.replace(/^`([\s\S]*)`$/, "$1"));
 			if (!mcp || !servers.has(mcp.server)) continue;
-			const call = calls.find(
-				(h) => !used.has(h) && h.server === mcp.server && h.name === mcp.tool,
-			);
+			// A deferred call is recorded under its target, marked `via: "tools_call"`.
+			const target =
+				mcp.tool === "tools_call" && typeof c.args.name === "string"
+					? c.args.name
+					: null;
+			const open = calls.filter((h) => !used.has(h) && h.server === mcp.server);
+			// A refused wrapper is recorded as `tools_call` itself, with no `via` and the target in its input.
+			const refused = (h: HarnessCall) => h.name === "tools_call" && !h.via;
+			const call = target
+				? (open.find(
+						(h) =>
+							refused(h) &&
+							(h.input as { name?: unknown } | undefined)?.name === target,
+					) ??
+					open.find((h) => h.via === "tools_call" && h.name === target) ??
+					open.find(refused))
+				: open.find((h) => h.name === mcp.tool);
 			if (!call) continue;
 			used.add(call);
 			byCall.set(c.toolCallId, call);

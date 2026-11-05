@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
 	gatewayNode,
@@ -63,6 +63,14 @@ describe("outcomeLine (#1020)", () => {
 		expect(outcomeLine({ output: "", isError: true })).toBe("Failed");
 		expect(outcomeLine({})).toBeNull();
 	});
+
+	it("skips the data note every result leads with, and shows no raw JSON", () => {
+		const lines = (...l: string[]) => l.join(String.fromCharCode(10));
+		expect(outcomeLine({ output: lines(HARNESS_DATA_NOTE, "No incident") })).toBe("No incident");
+		expect(outcomeLine({ output: lines(HARNESS_DATA_NOTE, "{", '  "title": "x"', "}") })).toBeNull();
+		expect(outcomeLine({ output: lines(HARNESS_DATA_NOTE, "[]"), isError: true })).toBe("Failed");
+		expect(outcomeLine({ output: HARNESS_DATA_NOTE })).toBeNull();
+	});
 });
 
 describe("matchGateway (#1020)", () => {
@@ -95,6 +103,73 @@ describe("matchGateway (#1020)", () => {
 		expect(out.byCall.get("c2")?.output).toBe("INC-9");
 		expect(out.byCall.has("c3")).toBe(false);
 		expect(Array.from(out.unmatched)).toEqual(["main-4"]);
+	});
+
+	it("pairs a deferred call through tools_call with the target it recorded", () => {
+		const viaCall = (seq: number, name: string, output: string): CanonicalEvent => ({
+			...(call(seq, name, output) as Extract<CanonicalEvent, { kind: "harness_tool_call" }>),
+			via: "tools_call",
+		});
+		const deferred = (seq: number, id: string, target: string): CanonicalEvent => ({
+			kind: "agent_step",
+			...base(seq),
+			text: "",
+			toolCalls: [{ toolCallId: id, name: "mcp__prismalens-1__tools_call", args: { name: target, arguments: {} } }],
+		});
+		const out = matchGateway([
+			deferred(0, "d1", "fixes_list"),
+			viaCall(1, "fixes_list", "2 fixes"),
+			deferred(2, "d2", "runbooks_list"),
+			viaCall(3, "changes_list", "1 change"),
+		]);
+		expect(out.byCall.get("d1")?.name).toBe("fixes_list");
+		expect(out.byCall.has("d2")).toBe(false);
+		expect(Array.from(out.unmatched)).toEqual(["main-3"]);
+	});
+
+	it("pairs a wrapper call that never resolved, recorded as tools_call with no via", () => {
+		const out = matchGateway([
+			{
+				kind: "agent_step",
+				...base(0),
+				text: "",
+				toolCalls: [
+					{ toolCallId: "d1", name: "mcp__prismalens-1__tools_call", args: { name: "nope", arguments: {} } },
+				],
+			},
+			call(1, "tools_call", "Unknown tool"),
+		]);
+		expect(out.byCall.get("d1")?.output).toBe("Unknown tool");
+		expect(Array.from(out.unmatched)).toEqual([]);
+	});
+
+	it("pairs a refused tools_call wrapper by its recorded input, not a later call of the same target", () => {
+		type Recorded = Extract<CanonicalEvent, { kind: "harness_tool_call" }>;
+		const refused: CanonicalEvent = {
+			...(call(1, "tools_call", "invalid arguments") as Recorded),
+			input: { name: "fixes_list", arguments: "x" },
+			isError: true,
+		};
+		const later: CanonicalEvent = {
+			...(call(3, "fixes_list", "2 fixes") as Recorded),
+			via: "tools_call",
+		};
+		const deferred = (seq: number, id: string): CanonicalEvent => ({
+			kind: "agent_step",
+			...base(seq),
+			text: "",
+			toolCalls: [
+				{
+					toolCallId: id,
+					name: "mcp__prismalens-1__tools_call",
+					args: { name: "fixes_list" },
+				},
+			],
+		});
+		const out = matchGateway([deferred(0, "d1"), refused, deferred(2, "d2"), later]);
+		expect(out.byCall.get("d1")?.output).toBe("invalid arguments");
+		expect(out.byCall.get("d2")?.output).toBe("2 fixes");
+		expect(out.unmatched.size).toBe(0);
 	});
 });
 

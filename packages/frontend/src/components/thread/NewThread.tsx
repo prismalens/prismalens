@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
-import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
+import type {
+	HelperPlace,
+	Severity,
+	ThreadStartSubject,
+} from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useRef, useState } from "react";
 import {
@@ -10,7 +14,12 @@ import {
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { useCreateIncident, useInvestigateIncident } from "@/lib/api/hooks";
+import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
+import {
+	useCreateIncident,
+	useInvestigateIncident,
+	useUpdateIncident,
+} from "@/lib/api/hooks";
 import { useStartThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadAttachment, uploadThreadAttachment } from "@/lib/attachments";
 import { Composer, type ComposerSend, type SlashCommand } from "./Composer";
@@ -33,6 +42,10 @@ export function NewThread({
 	note = false,
 	top,
 	slash,
+	place,
+	placeholder,
+	autoFocus = true,
+	onRepeat,
 }: {
 	subject: ThreadStartSubject;
 	branch: string | null;
@@ -42,16 +55,30 @@ export function NewThread({
 	note?: boolean;
 	top?: ReactNode;
 	slash?: SlashCommand[];
+	/** A no-subject helper's empty page; the server words its context, never the page's data. */
+	place?: HelperPlace;
+	placeholder?: string;
+	autoFocus?: boolean;
+	/** Repeat… beside Send: this box, as a new schedule's form (#1020). */
+	onRepeat?: (draft: SchedulePrefill) => void;
 }) {
 	const choice = useAgentChoice();
 	const start = useStartThread();
 	const createIncident = useCreateIncident();
 	const investigate = useInvestigateIncident();
+	const updateIncident = useUpdateIncident();
 	const navigate = useNavigate();
 	const [picked, setPicked] = useState<Picked>({});
-	// The incident a failed send made: a retry of the same text, severity and service
-	// investigates it, never makes another; an edited retry makes its own.
-	const madeIncident = useRef<{ id: string; sent: string } | null>(null);
+	// The incident a failed send already made: a retry investigates it, never makes another.
+	const madeIncident = useRef<{
+		id: string;
+		fields: {
+			title: string;
+			description: string;
+			severity: Severity;
+			serviceId?: string;
+		};
+	} | null>(null);
 	const harness =
 		choice.harnesses.find((h) => h.id === picked.harness) ?? choice.effective;
 	const hid = harness?.id as HarnessId | undefined;
@@ -79,25 +106,34 @@ export function NewThread({
 		severity: Severity,
 		{ text, files }: ComposerSend,
 	) => {
-		const sent = JSON.stringify([
-			text,
+		const fields = {
+			title: (text.split("\n")[0] ?? text).slice(0, 120),
+			description: text,
 			severity,
-			subject.kind === "service" ? subject.serviceId : null,
-		]);
-		const id =
-			madeIncident.current?.sent === sent
-				? madeIncident.current.id
-				: (
-						await createIncident.mutateAsync({
-							title: (text.split("\n")[0] ?? text).slice(0, 120),
-							description: text,
-							severity,
-							...(subject.kind === "service"
-								? { serviceId: subject.serviceId }
-								: {}),
-						})
-					).id;
-		madeIncident.current = { id, sent };
+			...(subject.kind === "service" ? { serviceId: subject.serviceId } : {}),
+		};
+		// A retry may carry edited words: they go onto the incident it reuses (#1020).
+		// A service can be set on an incident, never moved: another service makes a new one,
+		// and the kept one stays until that create succeeds, so a retry for the first still reuses it.
+		const kept =
+			madeIncident.current &&
+			!(
+				madeIncident.current.fields.serviceId &&
+				madeIncident.current.fields.serviceId !== fields.serviceId
+			)
+				? madeIncident.current
+				: null;
+		if (kept) {
+			const changed = Object.fromEntries(
+				Object.entries(fields).filter(
+					([k, v]) => kept.fields[k as keyof typeof fields] !== v,
+				),
+			);
+			if (Object.keys(changed).length)
+				await updateIncident.mutateAsync({ id: kept.id, ...changed });
+		}
+		const id = kept?.id ?? (await createIncident.mutateAsync(fields)).id;
+		madeIncident.current = { id, fields };
 		const uploaded = await Promise.all(
 			files.map((f) => uploadAttachment(id, f)),
 		);
@@ -130,6 +166,7 @@ export function NewThread({
 		const started = await start.mutateAsync({
 			subject,
 			text,
+			...(place ? { place } : {}),
 			...run,
 			...(uploaded.length
 				? { draftKey, attachments: uploaded.map((a) => a.id) }
@@ -145,7 +182,9 @@ export function NewThread({
 		<Composer
 			state="ready"
 			onSend={onSend}
-			placeholder={incident ? "What's wrong?" : "Ask or describe a change"}
+			placeholder={
+				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
+			}
 			choice={{ harness, model, effort, accessLevel }}
 			onChoice={(next) =>
 				setPicked((p) => ({
@@ -160,9 +199,22 @@ export function NewThread({
 			}
 			branch={branch}
 			blockedReason={choice.isLoading || (incident && note) ? null : unready}
-			autoFocus
+			autoFocus={autoFocus}
 			top={top}
 			slash={slash}
+			{...(onRepeat && !incident
+				? {
+						onRepeat: (text: string) =>
+							onRepeat({
+								brief: text,
+								subject,
+								...(hid ? { harness: hid } : {}),
+								model,
+								effort,
+								accessLevel,
+							}),
+					}
+				: {})}
 		/>
 	);
 }

@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ThreadSection } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { FolderPlus, Search, SquarePen } from "lucide-react";
+import {
+	ChevronsDown,
+	FileText,
+	FolderGit2,
+	FolderPlus,
+	MessageSquare,
+	Search,
+	SquarePen,
+	SquareTerminal,
+} from "lucide-react";
 import {
 	createContext,
 	type ReactNode,
 	useContext,
+	useDeferredValue,
 	useEffect,
 	useState,
 } from "react";
@@ -26,19 +35,14 @@ import {
 	DialogContent,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useRepositories } from "@/lib/api/hooks";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
+import { PLACES } from "@/lib/places";
 import { rowContext, threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
+import { ThreadFilterButton, ThreadFiltersHost } from "./ThreadFilters";
 
 const ICON = "size-4 shrink-0 stroke-[1.5]";
 const BUTTON =
@@ -79,14 +83,23 @@ export function SearchHost({
 	}, [navigate, enabled]);
 	return (
 		<OpenSearch.Provider value={() => setOpen(true)}>
-			{children}
-			{enabled && <ThreadSearch open={open} onOpenChange={setOpen} />}
+			<ThreadFiltersHost>
+				{children}
+				{enabled && <ThreadSearch open={open} onOpenChange={setOpen} />}
+			</ThreadFiltersHost>
 		</OpenSearch.Provider>
 	);
 }
 
-/** The sidebar's head (#1020): Search over threads with filters, Add project, and New thread. */
-export function SidebarHead({ compact = false }: { compact?: boolean }) {
+/** The sidebar's head (#1020): Search, Filter for the list, Add project, and New thread. */
+export function SidebarHead({
+	compact = false,
+	filterable = true,
+}: {
+	compact?: boolean;
+	/** False where the list beside it is not the thread list: the filters would change nothing. */
+	filterable?: boolean;
+}) {
 	const openSearch = useOpenSearch();
 	return (
 		<div
@@ -112,9 +125,11 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 					{!compact && <span>Search</span>}
 				</button>
 			</Hint>
+			{filterable && <ThreadFilterButton className={BUTTON} />}
 			<Hint label="Add project" side="bottom">
 				<Link
 					to="/projects"
+					search={{ add: true }}
 					aria-label="Add project"
 					className={BUTTON}
 					data-testid="sidebar-add-project"
@@ -136,24 +151,13 @@ export function SidebarHead({ compact = false }: { compact?: boolean }) {
 	);
 }
 
-type Kind = "chat" | "investigation" | undefined;
-type Since = "1d" | "7d" | "30d" | undefined;
-const SINCE_MS: Record<Exclude<Since, undefined>, number> = {
-	"1d": 86_400_000,
-	"7d": 7 * 86_400_000,
-	"30d": 30 * 86_400_000,
-};
+const RECENT = 5;
+const TERMINAL_KEYS = ["Ctrl", "`"];
 
-const PLACES = [
-	{ to: "/incidents", label: "Incidents" },
-	{ to: "/alerts", label: "Alerts" },
-	{ to: "/services", label: "Services" },
-	{ to: "/projects", label: "Projects" },
-	{ to: "/settings", label: "Scheduled prompts", search: { tab: "schedules" } },
-	{ to: "/settings", label: "Settings" },
-] as const;
-
-/** The Ctrl K palette: the server searches threads; places match by name. */
+/**
+ * The Ctrl K palette (#1020): at rest, actions, recent threads and places; typing
+ * searches threads on the server and matches projects, places and actions by name.
+ */
 export function ThreadSearch({
 	open,
 	onOpenChange,
@@ -163,36 +167,61 @@ export function ThreadSearch({
 }) {
 	const navigate = useNavigate();
 	const { setBottomPanel } = useLayoutPrefs();
-	// A phone has no bottom panel (#931), so Terminal is not a place there.
+	// A phone has no bottom panel (#931), so Terminal is not an action there.
 	const phone = useMediaQuery(PHONE);
 	const [query, setQuery] = useState("");
-	const [kind, setKind] = useState<Kind>();
-	const [section, setSection] = useState<ThreadSection>();
-	const [repositoryId, setRepositoryId] = useState<string>();
-	const [since, setSince] = useState<Since>();
-	const [sinceAt, setSinceAt] = useState<string>();
-	useEffect(() => {
-		setSinceAt(
-			since ? new Date(Date.now() - SINCE_MS[since]).toISOString() : undefined,
-		);
-	}, [since]);
-	const repos = useRepositories({ limit: 100, enabled: open });
+	const q = query.trim().toLowerCase();
+	// The server finds the project: the first 100 would miss one past them.
+	const typed = useDeferredValue(query.trim());
+	const repos = useRepositories({
+		...(typed ? { search: typed } : {}),
+		limit: 100,
+		enabled: open && !!q,
+	});
 	const feed = useThreadFeed(
-		{
-			...(query.trim() ? { search: query.trim() } : {}),
-			...(kind ? { kind } : {}),
-			...(section ? { section } : {}),
-			...(repositoryId ? { repositoryId } : {}),
-			...(sinceAt ? { since: new Date(sinceAt) } : {}),
-			limit: 20,
-		},
+		{ ...(q ? { search: query.trim() } : {}), limit: 20 },
 		open,
 	);
-	const threads =
+	const found =
 		feed.data?.pages.flatMap((p) => p.units.flatMap((u) => u.threads)) ?? [];
-	const q = query.trim().toLowerCase();
-	const places = PLACES.filter((p) => !q || p.label.toLowerCase().includes(q));
-	const terminal = !phone && (!q || "terminal".includes(q));
+	const threads = q ? found : found.slice(0, RECENT);
+	const named = (label: string) => !q || label.toLowerCase().includes(q);
+	const actions: {
+		id: string;
+		label: string;
+		icon: typeof SquarePen;
+		keys?: string[];
+		run: () => void;
+	}[] = [
+		{
+			id: "new-thread",
+			label: "New thread",
+			icon: SquarePen,
+			keys: ["Ctrl", "Shift", "O"],
+			run: () => void navigate({ to: "/threads/new" }),
+		},
+		{
+			id: "add-project",
+			label: "Add project",
+			icon: FolderPlus,
+			run: () => void navigate({ to: "/projects", search: { add: true } }),
+		},
+		...(phone
+			? []
+			: [
+					{
+						id: "terminal",
+						label: "Terminal",
+						icon: SquareTerminal,
+						keys: TERMINAL_KEYS,
+						run: () => setBottomPanel(true),
+					},
+				]),
+	].filter((a) => named(a.label));
+	const places = PLACES.filter((p) => named(p.label));
+	const projects = q
+		? (repos.data?.data ?? []).filter((r) => named(r.fullName))
+		: [];
 	const go = (fn: () => void) => {
 		onOpenChange(false);
 		fn();
@@ -208,69 +237,50 @@ export function ThreadSearch({
 					<CommandInput
 						value={query}
 						onValueChange={setQuery}
-						placeholder="Search threads"
+						placeholder="Search threads, projects, places"
 						data-testid="thread-search-input"
 					/>
-					<div
-						className="flex flex-wrap gap-1 px-3 py-2"
-						data-testid="thread-search-filters"
-					>
-						<Filter
-							label="Kind"
-							value={kind}
-							onChange={(v) => setKind(v as Kind)}
-							options={[
-								["chat", "Chats"],
-								["investigation", "Investigations"],
-							]}
-						/>
-						<Filter
-							label="State"
-							value={section}
-							onChange={(v) => setSection(v as ThreadSection | undefined)}
-							options={[
-								["needs", "Needs you"],
-								["active", "Active"],
-								["settled", "Settled"],
-							]}
-						/>
-						<Filter
-							label="Project"
-							value={repositoryId}
-							onChange={setRepositoryId}
-							options={(repos.data?.data ?? []).map((r) => [r.id, r.fullName])}
-						/>
-						<Filter
-							label="Time"
-							value={since}
-							onChange={(v) => setSince(v as Since)}
-							options={[
-								["1d", "Past day"],
-								["7d", "Past week"],
-								["30d", "Past month"],
-							]}
-						/>
-					</div>
-					<CommandList className="max-h-80">
+					<CommandList className="max-h-[min(60vh,420px)]">
 						<CommandEmpty>Nothing found</CommandEmpty>
-						{threads.length > 0 && (
-							<CommandGroup heading="Threads">
-								{threads.map((t) => (
+						{actions.length > 0 && (
+							<CommandGroup heading="Actions">
+								{actions.map((a) => (
 									<CommandItem
-										key={t.id}
-										value={t.id}
-										onSelect={() => go(() => void navigate(threadLink(t)))}
-										data-testid="thread-search-result"
+										key={a.id}
+										value={`action-${a.id}`}
+										onSelect={() => go(a.run)}
+										data-testid={`thread-search-action-${a.id}`}
 									>
-										<span dir="auto" className="min-w-0 flex-1 truncate">
-											{t.title?.trim() || "Thread"}
-										</span>
-										<span className="shrink-0 truncate text-meta text-text-3">
-											{rowContext(t) ?? ""}
-										</span>
+										<a.icon aria-hidden />
+										<span className="min-w-0 flex-1 truncate">{a.label}</span>
+										{a.keys && <Keys keys={a.keys} />}
 									</CommandItem>
 								))}
-								{feed.hasNextPage && (
+							</CommandGroup>
+						)}
+						{threads.length > 0 && (
+							<CommandGroup heading={q ? "Threads" : "Recent threads"}>
+								{threads.map((t) => {
+									const Icon =
+										t.kind === "investigation" ? FileText : MessageSquare;
+									return (
+										<CommandItem
+											key={t.id}
+											value={t.id}
+											onSelect={() => go(() => void navigate(threadLink(t)))}
+											data-testid="thread-search-result"
+										>
+											<Icon aria-hidden />
+											<span dir="auto" className="min-w-0 flex-1 truncate">
+												{t.title?.trim() || "Thread"}
+											</span>
+											<span className="max-w-[40%] shrink-0 truncate text-meta text-text-3">
+												{rowContext(t) ?? ""}
+											</span>
+										</CommandItem>
+									);
+								})}
+								{q && feed.hasNextPage && (
 									<CommandItem
 										value="more-results"
 										disabled={feed.isFetching || feed.isPlaceholderData}
@@ -278,40 +288,59 @@ export function ThreadSearch({
 										className="text-text-3"
 										data-testid="thread-search-more"
 									>
+										<ChevronsDown aria-hidden />
 										More results
 									</CommandItem>
 								)}
 							</CommandGroup>
 						)}
-						{(places.length > 0 || terminal) && (
+						{projects.length > 0 && (
+							<CommandGroup heading="Projects">
+								{projects.map((r) => (
+									<CommandItem
+										key={r.id}
+										value={`project-${r.id}`}
+										onSelect={() =>
+											go(
+												() =>
+													void navigate({
+														to: "/projects/$id",
+														params: { id: r.id },
+													}),
+											)
+										}
+										data-testid="thread-search-project"
+									>
+										<FolderGit2 aria-hidden />
+										<span className="min-w-0 flex-1 truncate">
+											{r.fullName}
+										</span>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+						{places.length > 0 && (
 							<CommandGroup heading="Go to">
 								{places.map((p) => (
 									<CommandItem
-										key={p.label}
-										value={p.label}
+										key={p.id}
+										value={`place-${p.id}`}
 										onSelect={() =>
 											go(
 												() =>
 													void navigate({
 														to: p.to,
-														...("search" in p ? { search: p.search } : {}),
+														...(p.search ? { search: p.search } : {}),
 													}),
 											)
 										}
 										data-testid="thread-search-place"
 									>
-										{p.label}
+										<p.icon aria-hidden />
+										<span className="min-w-0 flex-1 truncate">{p.label}</span>
+										{p.goKey && <Keys keys={["G", p.goKey.toUpperCase()]} />}
 									</CommandItem>
 								))}
-								{terminal && (
-									<CommandItem
-										value="terminal"
-										onSelect={() => go(() => setBottomPanel(true))}
-										data-testid="thread-search-place"
-									>
-										Terminal
-									</CommandItem>
-								)}
 							</CommandGroup>
 						)}
 					</CommandList>
@@ -321,45 +350,17 @@ export function ThreadSearch({
 	);
 }
 
-const ANY = "any";
-
-function Filter({
-	label,
-	value,
-	onChange,
-	options,
-}: {
-	label: string;
-	value: string | undefined;
-	onChange: (v: string | undefined) => void;
-	options: Array<[string, string]>;
-}) {
-	const id = label.toLowerCase();
+function Keys({ keys }: { keys: string[] }) {
 	return (
-		<Select
-			value={value ?? ANY}
-			onValueChange={(v) => onChange(v === ANY ? undefined : v)}
-		>
-			<SelectTrigger
-				aria-label={label}
-				className="text-meta"
-				data-testid={`thread-filter-${id}`}
-			>
-				<span className="text-text-3">{label}</span>
-				<SelectValue />
-			</SelectTrigger>
-			<SelectContent>
-				<SelectItem value={ANY}>Any</SelectItem>
-				{options.map(([v, l]) => (
-					<SelectItem
-						key={v}
-						value={v}
-						data-testid={`thread-filter-${id}-${v}`}
-					>
-						{l}
-					</SelectItem>
-				))}
-			</SelectContent>
-		</Select>
+		<span className="flex shrink-0 gap-0.5" aria-hidden>
+			{keys.map((k) => (
+				<kbd
+					key={k}
+					className="min-w-5 rounded-[4px] bg-surface-3 px-1 text-center font-sans text-meta text-text-3"
+				>
+					{k}
+				</kbd>
+			))}
+		</span>
 	);
 }

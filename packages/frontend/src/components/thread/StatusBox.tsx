@@ -76,6 +76,16 @@ export function StatusBox({
 						</Button>
 					)}
 				</Row>
+				{workspace?.layout === "folder" && (
+					<Row icon={<span className="size-3.5" aria-hidden />}>
+						<Mono
+							className="min-w-0 truncate text-text-3"
+							data-testid="status-folder"
+						>
+							{workspace.cwd}
+						</Mono>
+					</Row>
+				)}
 				{repo?.branch && (
 					<Row icon={<GitBranch className="size-3.5" aria-hidden />}>
 						<Mono

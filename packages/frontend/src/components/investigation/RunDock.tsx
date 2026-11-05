@@ -26,7 +26,10 @@ export function RunDock({
 	agent,
 	cwd,
 	onStep,
+	always = false,
 }: {
+	/** A schedule's run: its asks offer Always allow (#1020). */
+	always?: boolean;
 	/** Asks still waiting, oldest first. */
 	asks: readonly AskRecord[];
 	queued: readonly {
@@ -56,6 +59,7 @@ export function RunDock({
 					onStep={onStep}
 					focus={answered}
 					onAnswer={() => setAnswered(true)}
+					always={always}
 				/>
 			)}
 			{queued.length > 0 && (
@@ -104,7 +108,10 @@ export function AskCard({
 	focus = false,
 	onAnswer,
 	inline = false,
+	always = false,
 }: {
+	/** Offer Always allow: the schedule's next runs allow this exact ask (#1020). */
+	always?: boolean;
 	ask: AskRecord;
 	count?: number;
 	runId?: string;
@@ -125,10 +132,15 @@ export function AskCard({
 		const t = window.setTimeout(() => setArmed(true), SWAP_GUARD_MS);
 		return () => window.clearTimeout(t);
 	}, []);
-	const send = (decision: "approve" | "deny") => {
+	const send = (decision: "approve" | "deny", forever = false) => {
 		if (!runId || !armed) return;
 		onAnswer?.();
-		answer.mutate({ id: runId, askId: ask.askId, decision });
+		answer.mutate({
+			id: runId,
+			askId: ask.askId,
+			decision,
+			...(forever ? { always: true } : {}),
+		});
 	};
 	const mcp = mcpTool(ask.title);
 	// `Write /tmp/x` keeps its verb; a title that is not the command gives way to the command.
@@ -200,6 +212,16 @@ export function AskCard({
 				>
 					Approve
 				</Button>
+				{always && ask.identity && (
+					<Button
+						variant="secondary"
+						disabled={!runId || !armed || answer.isPending || answer.isSuccess}
+						onClick={() => send("approve", true)}
+						data-testid={id("ask-always")}
+					>
+						Always allow
+					</Button>
+				)}
 				<Button
 					variant="secondary"
 					disabled={!runId || !armed || answer.isPending || answer.isSuccess}

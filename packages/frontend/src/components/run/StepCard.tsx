@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_DATA_NOTE } from "@prismalens/contracts";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
@@ -69,19 +70,22 @@ export function StepCard({
 				>
 					<Icon className="size-3.5 shrink-0" aria-hidden />
 					<span className="shrink-0 text-meta text-text-3">Step {step.n}</span>
-					<span
-						className={cn(
-							"shrink-0",
-							waiting && "text-warn",
-							!waiting && step.ok === false && !denied && "text-danger",
-							!waiting && step.ok === null && !step.unfinished && "text-live",
-						)}
-						data-testid="step-verb"
-					>
-						{waiting ? "Waiting" : (denied ?? step.verb)}
-					</span>
+					{/* A finished gateway step's title already opens with a verb. */}
+					{(waiting || denied || !step.gateway || step.ok !== true) && (
+						<span
+							className={cn(
+								"shrink-0",
+								waiting && "text-warn",
+								!waiting && step.ok === false && !denied && "text-danger",
+								!waiting && step.ok === null && !step.unfinished && "text-live",
+							)}
+							data-testid="step-verb"
+						>
+							{waiting ? "Waiting" : (denied ?? step.verb)}
+						</span>
+					)}
 					<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
-						{step.command}
+						{step.gateway ? step.title : step.command}
 					</span>
 					<span className="shrink-0 text-meta text-text-3 tabular-nums">
 						{waiting ? "" : stepTook(step.took)}
@@ -94,6 +98,14 @@ export function StepCard({
 						)}
 					/>
 				</button>
+				{step.dataNote && (
+					<p
+						className="px-3 pb-2 pl-9 text-meta text-text-3"
+						data-testid="step-data-note"
+					>
+						{HARNESS_DATA_NOTE}
+					</p>
+				)}
 				{step.outcome && (
 					<p
 						className="truncate px-3 pb-2 pl-9 text-meta text-text-2"

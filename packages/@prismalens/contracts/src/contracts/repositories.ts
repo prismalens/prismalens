@@ -8,6 +8,8 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AddRepositorySourceSchema,
+	BrowseFoldersResultSchema,
+	BrowseFoldersSchema,
 	IdParamSchema,
 	LinkRepositorySchema,
 	PaginationSchema,
@@ -31,6 +33,34 @@ export const repositoriesContract = {
 			tags: ["repositories"],
 		})
 		.input(AddRepositorySourceSchema)
+		.output(RepositorySchema),
+
+	/**
+	 * List the folders in a folder on the host, for the Add project browser (#1020). Host only.
+	 * POST /fs/folders
+	 */
+	browseFolders: oc
+		.route({
+			method: "POST",
+			path: "/fs/folders",
+			summary: "List the folders inside a folder on this computer",
+			tags: ["repositories"],
+		})
+		.input(BrowseFoldersSchema)
+		.output(BrowseFoldersResultSchema),
+
+	/**
+	 * Start git in a plain folder project: init plus a first commit of what git does not ignore (#1020). Host only.
+	 * POST /repositories/:id/git
+	 */
+	startGit: oc
+		.route({
+			method: "POST",
+			path: "/repositories/{id}/git",
+			summary: "Start git in a plain folder project",
+			tags: ["repositories"],
+		})
+		.input(IdParamSchema)
 		.output(RepositorySchema),
 
 	/**

@@ -32,15 +32,22 @@ export function Hint({
 	children: ReactNode;
 }) {
 	const [hovered, setHovered] = useState(false);
+	// Escape dismisses a hint the parent holds open, until `open` is let go.
+	const [dismissed, setDismissed] = useState(false);
+	if (!open && dismissed) setDismissed(false);
 	if (!when) return children;
 	return (
 		<Tooltip
 			disableHoverableContent
-			open={hovered || open}
+			open={hovered || (open && !dismissed)}
 			onOpenChange={setHovered}
 		>
 			<TooltipTrigger asChild>{children}</TooltipTrigger>
-			<TooltipContent side={side} data-testid="hint">
+			<TooltipContent
+				side={side}
+				data-testid="hint"
+				onEscapeKeyDown={() => open && setDismissed(true)}
+			>
 				<span className="flex items-center gap-2">
 					<span className="min-w-0">{label}</span>
 					{keys?.map((k) => (

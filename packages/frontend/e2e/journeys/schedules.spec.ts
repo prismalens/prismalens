@@ -63,7 +63,7 @@ test.describe("#979 - schedules", () => {
 		await page.request.delete(`/api/schedules/${id}`);
 	});
 
-	test("with no schedule of its own the page has one New schedule, and with no service the dialog sends you to Services", async ({
+	test("with no schedule of its own the page has one New schedule, and with no service a schedule is about no project", async ({
 		page,
 	}) => {
 		await emptyWorkspace(page);
@@ -73,22 +73,66 @@ test.describe("#979 - schedules", () => {
 		await expect(
 			page.getByRole("button", { name: "New schedule" }),
 		).toHaveCount(1);
-		await expect(empty.locator("xpath=following-sibling::*[1]")).toContainText(
+		await expect(
+			empty.locator("xpath=following-sibling::*[1]"),
+		).toHaveAttribute("data-testid", "helper-thread");
+		await expect(empty.locator("xpath=following-sibling::*[2]")).toContainText(
 			"Built into PrismaLens",
 		);
 
 		await page.getByTestId("new-schedule").click();
 		const dialog = page.getByTestId("schedule-dialog");
-		await expect(dialog.getByText("No services yet.")).toBeVisible();
+		await expect(dialog.getByTestId("schedule-subject")).toHaveText(
+			"No project",
+		);
 		await expect(
 			dialog.getByRole("button", { name: "Create schedule" }),
 		).toBeDisabled();
-		await dialog.getByRole("link", { name: "Add a service" }).click();
-		await expect(page).toHaveURL(/\/services\?/);
-		await expect(
-			page.getByRole("dialog").getByText("Add a service"),
-		).toBeVisible();
 		// A services read still in flight must not outlive the test's routes.
 		await page.unrouteAll({ behavior: "ignoreErrors" });
+	});
+
+	test("a schedule is a saved composer: no project, Report off, Wait for me (#1020)", async ({
+		page,
+	}) => {
+		await page.goto("/settings?tab=schedules");
+		await page.getByTestId("new-schedule").click({ timeout: 15_000 });
+		const dialog = page.getByTestId("schedule-dialog");
+		const name = `Saved composer ${Date.now()}`;
+		await dialog.getByLabel("Name").fill(name);
+		const box = dialog.getByTestId("composer-input");
+		await expect(dialog.getByTestId("composer-attach")).toHaveCount(0);
+		await expect(
+			box.locator("xpath=ancestor::form").getByTestId("access-chip"),
+		).toBeVisible();
+		await box.fill("Summarise what changed this week");
+		await dialog.getByTestId("schedule-report").click();
+		await expect(dialog.getByTestId("schedule-report")).toHaveAttribute(
+			"aria-pressed",
+			"false",
+		);
+		await dialog.getByTestId("schedule-asks-wait").click();
+		await dialog.getByRole("button", { name: "Create schedule" }).click();
+		await expect(dialog).toBeHidden();
+
+		const list = await (await page.request.get("/api/schedules")).json();
+		const made = (
+			list.schedules as Array<{
+				id: string;
+				name: string;
+				subject: string;
+				report: boolean;
+				whenAsks: string;
+				serviceId: string | null;
+			}>
+		).find((s) => s.name === name);
+		expect(made).toMatchObject({
+			subject: "none",
+			report: false,
+			whenAsks: "wait",
+			serviceId: null,
+		});
+		await expect(page.getByText("No project").first()).toBeVisible();
+		await page.request.delete(`/api/schedules/${made?.id}`);
 	});
 });

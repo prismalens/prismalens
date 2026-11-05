@@ -1,17 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Investigation } from "@prismalens/contracts";
+import { type Investigation, projectKindOf } from "@prismalens/contracts";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronLeft, FolderGit2, MessageSquare, Server } from "lucide-react";
+import {
+	ChevronLeft,
+	GitBranchPlus,
+	MessageSquare,
+	Server,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { TickDot } from "@/components/schedules/TickDot";
 import { Empty, Loading, NotFound, Problem } from "@/components/shared/State";
 import { NewThread } from "@/components/thread/NewThread";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
+	repositoryKeys,
 	useLinkRepository,
 	useRepository,
 } from "@/lib/api/hooks/use-repositories-orpc";
@@ -20,7 +28,10 @@ import {
 	useService,
 } from "@/lib/api/hooks/use-services-orpc";
 import { useThreads } from "@/lib/api/hooks/use-threads-orpc";
+import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { KIND_ICON } from "@/lib/project-source";
+import { KindMark } from "./ProjectList";
 
 const TONE = {
 	pending: "live",
@@ -58,11 +69,16 @@ export function ProjectPage({ id }: { id: string }) {
 		);
 	}
 	const p = repo.data;
+	const kind = projectKindOf(p);
+	const KindIcon = KIND_ICON[kind];
 	const linked = p.services ?? [];
 	const rows = threads.data?.data ?? [];
 	return (
 		<div className="flex h-full flex-col bg-canvas" data-testid="project-page">
-			<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2">
+			<header
+				data-title-row
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
+			>
 				<Button
 					variant="ghost"
 					size="icon-lg"
@@ -73,7 +89,7 @@ export function ProjectPage({ id }: { id: string }) {
 						<ChevronLeft />
 					</Link>
 				</Button>
-				<FolderGit2 className="size-4 shrink-0 text-text-3" aria-hidden />
+				<KindIcon className="size-4 shrink-0 text-text-3" aria-hidden />
 				<h1
 					className="min-w-0 flex-1 truncate text-title"
 					data-testid="project-name"
@@ -88,22 +104,24 @@ export function ProjectPage({ id }: { id: string }) {
 						className="grid gap-1 rounded-pool bg-surface-2 px-3.5 py-3 text-body"
 						data-testid="project-code"
 					>
-						<span className="truncate text-text-1">{p.url}</span>
-						<span className="text-meta text-text-3">
+						<span className="truncate text-text-1">
+							{p.subPath ? `${p.url}/${p.subPath}` : p.url}
+						</span>
+						<span className="flex flex-wrap items-center gap-2 text-meta text-text-3">
+							<KindMark kind={kind} className="flex items-center gap-1.5" />
 							{p.syncError
 								? p.syncError
-								: [
-										p.sourceKind === "folder" ? "Folder" : "Git URL",
-										p.syncBranch,
-										p.syncHead?.slice(0, 7),
-									]
+								: [p.syncBranch, p.syncHead?.slice(0, 7)]
 										.filter(Boolean)
 										.join(" ")}
 						</span>
+						{kind === "folder" && <StartGit id={id} />}
 					</section>
 					<NewThread
 						subject={{ kind: "project", repositoryId: id }}
-						branch={p.syncBranch ?? p.defaultBranch}
+						branch={
+							kind === "folder" ? null : (p.syncBranch ?? p.defaultBranch)
+						}
 					/>
 					<section aria-label="Threads" data-testid="project-threads">
 						<h2 className="mb-1.5 ml-1 text-heading text-text-2">Threads</h2>
@@ -124,13 +142,61 @@ export function ProjectPage({ id }: { id: string }) {
 							</ul>
 						)}
 					</section>
-					<MakeService
-						repositoryId={id}
-						defaultName={p.fullName}
-						linked={linked.map((s) => s.serviceId)}
-					/>
+					{kind === "folder" ? (
+						<p
+							className="ml-1 text-meta text-text-3"
+							data-testid="make-service-needs-git"
+						>
+							Services need git
+						</p>
+					) : (
+						<MakeService
+							repositoryId={id}
+							defaultName={p.fullName}
+							linked={linked.map((s) => s.serviceId)}
+						/>
+					)}
 				</div>
 			</div>
+		</div>
+	);
+}
+
+/** Start git here (#1020): host only; the project becomes a Repo after the first commit. */
+function StartGit({ id }: { id: string }) {
+	const { managesPairing: host } = useOperator();
+	const queryClient = useQueryClient();
+	const start = useMutation({
+		...orpc.repositories.startGit.mutationOptions(),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: repositoryKeys.detail(id),
+			});
+			void queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+		},
+	});
+	if (!host) return null;
+	return (
+		<div className="flex flex-wrap items-center gap-2 pt-1">
+			<Button
+				size="sm"
+				variant="secondary"
+				disabled={start.isPending}
+				onClick={() => start.mutate({ id })}
+				data-testid="project-start-git"
+			>
+				<GitBranchPlus />
+				Start git here
+			</Button>
+			{start.error && (
+				<span
+					className="text-meta text-danger"
+					role="alert"
+					data-testid="project-start-git-error"
+				>
+					{getErrorMessage(start.error)}
+				</span>
+			)}
 		</div>
 	);
 }
@@ -231,7 +297,7 @@ export function MakeService({
 				<Input
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					readOnly={!!made}
+					readOnly={create.isPending || !!made}
 					aria-label="Service name"
 					data-testid="make-service-name"
 				/>

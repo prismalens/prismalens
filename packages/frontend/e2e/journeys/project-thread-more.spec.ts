@@ -109,7 +109,7 @@ test.describe("#1020 — project thread journeys", () => {
 		page,
 	}) => {
 		// Add a project from the Projects page: a real folder, no service
-		await page.goto("/projects");
+		await page.goto("/projects?add=1");
 		await expect(page.getByTestId("projects-page")).toBeVisible();
 		await page.getByTestId("add-project-source").fill(process.cwd());
 		await page.getByTestId("add-project-submit").click();
@@ -168,7 +168,7 @@ test.describe("#1020 — project thread journeys", () => {
 			},
 		);
 
-		await page.goto("/projects");
+		await page.goto("/projects?add=1");
 		await page.getByTestId("add-project-source").fill(process.cwd());
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();

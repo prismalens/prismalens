@@ -186,6 +186,20 @@ describe("ThreadPanel (#1020)", () => {
 		expect(panelEl?.getAttribute("aria-label")).toBe("Surfaces");
 	});
 
+	it("a plain folder's thread has no Diff: there is no base to diff against", async () => {
+		await render(panel({ diff: false, surface: "diff" }));
+		expect(q("surface-diff")).toBeNull();
+		expect(q("surface-files")).not.toBeNull();
+		expect(q("surface-empty")?.textContent).toBe("Open a surface");
+		expect(q("browser-tab")).toBeNull();
+	});
+
+	it("a chat that was on Suspects shows the empty pane, not the Browser", async () => {
+		await render(panel({ surface: "suspects" }));
+		expect(q("surface-empty")?.textContent).toBe("Open a surface");
+		expect(q("browser-tab")).toBeNull();
+	});
+
 	it("lists an investigation's suspects in the agent's order with its status words", async () => {
 		const onSurface = vi.fn();
 		await render(

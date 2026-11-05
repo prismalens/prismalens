@@ -27,6 +27,10 @@ import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import {
+	FOLDER_BUSY,
+	folderBusy,
+} from "../../infrastructure/dispatch/folder-lock.js";
 import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
@@ -125,6 +129,7 @@ export class ThreadsService {
 			repositoryId: subject.kind === "project" ? subject.repositoryId : null,
 			serviceId: subject.kind === "service" ? subject.serviceId : null,
 		};
+		const helperPlace = subject.kind === "none" ? input.place : undefined;
 		if (ids.repositoryId) {
 			const found = await this.prisma.repository.findUnique({
 				where: { id: ids.repositoryId },
@@ -153,28 +158,32 @@ export class ThreadsService {
 
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;
+		const repositoryId = ids.repositoryId;
 		const { investigation } = await this.investigations.startOrGet({
 			incidentId: null,
 			...(ids.repositoryId ? { repositoryId: ids.repositoryId } : {}),
 			...(ids.serviceId ? { serviceId: ids.serviceId } : {}),
+			...(helperPlace ? { helperPlace } : {}),
 			triggerType: "manual",
 			kind: "chat",
 			title: input.text.slice(0, 120),
 			accessLevel: input.accessLevel ?? null,
-			...(draftKey && files.length
-				? {
-						onCreate: async (tx, id) => {
-							attachments = await this.attachments.claimDraft(
-								draftKey,
-								files,
-								id,
-								tx,
-							);
-						},
-					}
-				: {}),
+			onCreate: async (tx, id) => {
+				if (repositoryId && (await folderBusy(tx, repositoryId, id)))
+					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
+				if (draftKey && files.length)
+					attachments = await this.attachments.claimDraft(
+						draftKey,
+						files,
+						id,
+						tx,
+					);
+			},
 		});
-		const thread = await this.dispatch.threadRunOf(ids);
+		const thread = await this.dispatch.threadRunOf({
+			...ids,
+			helperPlace: helperPlace ?? null,
+		});
 		const connections = ids.serviceId
 			? await this.integrations.getIntegrationsForService(ids.serviceId)
 			: [];
@@ -394,27 +403,67 @@ export class ThreadsService {
 	/**
 	 * Writes seen or settled state with the row's own updatedAt, which orders the feed (#1020).
 	 * A row that changed in between is read again; false when the thread is gone,
-	 * CONFLICT when every attempt lost the race.
+	 * CONFLICT when three writes in a row lose the race.
 	 */
 	private async readState(
 		id: string,
 		data: { lastVisitedAt?: Date; settledAt?: Date | null },
+		/** A put-back writes only while the row still holds what this request wrote there. */
+		onlyIfSettledAt?: { value: Date | null },
 	): Promise<boolean> {
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const row = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { updatedAt: true },
+				select: { updatedAt: true, settledAt: true },
 			});
 			if (!row) return false;
+			if (
+				onlyIfSettledAt &&
+				(row.settledAt?.getTime() ?? null) !==
+					(onlyIfSettledAt.value?.getTime() ?? null)
+			)
+				return true;
 			const { count } = await this.prisma.investigation.updateMany({
 				where: { id, updatedAt: row.updatedAt },
 				data: { ...data, updatedAt: row.updatedAt },
 			});
 			if (count) return true;
 		}
-		throw new ORPCError("CONFLICT", {
-			message: "Thread changed while saving; try again",
-		});
+		throw new ORPCError("CONFLICT", { message: "Thread changed, try again" });
+	}
+
+	/**
+	 * All or nothing, by writing the earlier threads back, not by a transaction: on the SQLite adapter
+	 * a rollback would also undo other requests' writes made on the shared connection meanwhile.
+	 */
+	private async writeSettled(
+		writes: Array<{ id: string; settledAt: Date | null }>,
+		prior: Map<string, Date | null>,
+	): Promise<void> {
+		const done: string[] = [];
+		const wrote = new Map(writes.map((w) => [w.id, w.settledAt]));
+		try {
+			for (const w of writes) {
+				await this.readState(w.id, { settledAt: w.settledAt });
+				done.push(w.id);
+			}
+		} catch (e) {
+			let unrestored = 0;
+			for (const id of done.reverse())
+				await this.readState(
+					id,
+					{ settledAt: prior.get(id) ?? null },
+					{ value: wrote.get(id) ?? null },
+				).catch(() => {
+					unrestored++;
+				});
+			if (unrestored)
+				throw new ORPCError("CONFLICT", {
+					message: `Thread changed, and ${unrestored} already written could not be put back: reload before trying again`,
+					cause: e,
+				});
+			throw e;
+		}
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
@@ -434,20 +483,27 @@ export class ThreadsService {
 			select: { id: true, settledAt: true },
 		});
 		const ids = rows.map((r) => r.id);
-		// readState keeps each row's updatedAt, so settling or undoing never reorders the feed.
+		const prior = new Map(rows.map((r) => [r.id, r.settledAt]));
 		if (!settled && restore) {
 			// Undo writes back each thread's own state, an earlier Settle included (#1020).
 			const inBlock = new Set(ids);
-			for (const r of restore.filter((r) => inBlock.has(r.id)))
-				await this.readState(r.id, {
-					settledAt: r.settledAt ? new Date(r.settledAt) : null,
-				});
+			await this.writeSettled(
+				restore
+					.filter((r) => inBlock.has(r.id))
+					.map((r) => ({
+						id: r.id,
+						settledAt: r.settledAt ? new Date(r.settledAt) : null,
+					})),
+				prior,
+			);
 			return { ids, previous: [] };
 		}
 		// Undo with no states to restore clears only the thread named, never its block.
 		const at = settled ? new Date() : null;
-		for (const target of settled ? ids : [id])
-			await this.readState(target, { settledAt: at });
+		await this.writeSettled(
+			(settled ? ids : [id]).map((target) => ({ id: target, settledAt: at })),
+			prior,
+		);
 		return {
 			ids,
 			previous: settled

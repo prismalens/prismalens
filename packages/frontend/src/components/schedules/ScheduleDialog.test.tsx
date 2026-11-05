@@ -3,25 +3,56 @@
 // Copyright 2026 Sumit Patel
 
 import type { Schedule } from "@prismalens/contracts";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ScheduleDialog } from "./ScheduleDialog";
+import { aboutOf, nameFrom, ScheduleDialog } from "./ScheduleDialog";
 
 type Agent = { id: string; label: string };
-let agents: { harnesses: Agent[]; effective: Agent | undefined; model: string };
+let agents: {
+	harnesses: Agent[];
+	effective: Agent | undefined;
+	model: string;
+};
 const create = vi.fn();
+const SERVICE = "11111111-1111-4111-8111-111111111111";
+const PROJECT = "22222222-2222-4222-8222-222222222222";
+const FOLDER = "33333333-3333-4333-8333-333333333333";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
 	useAgentChoice: () => agents,
 	ModelChip: ({ harness, model }: { harness?: Agent; model: string }) => (
 		<span data-testid="chip">{`${harness?.id ?? "none"}:${model}`}</span>
 	),
+	EffortChip: () => null,
+	AccessChip: ({ level }: { level: string }) => (
+		<span data-testid="access-chip">{level}</span>
+	),
+	effortLevels: () => [],
+}));
+vi.mock("@/components/shared/Hint", () => ({
+	Hint: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@/lib/api/hooks", () => ({
-	useServices: () => ({
+	useServices: () => ({ data: { data: [{ id: SERVICE, name: "checkout" }] } }),
+	useRepositories: () => ({
 		data: {
-			data: [{ id: "11111111-1111-4111-8111-111111111111", name: "checkout" }],
+			data: [
+				{
+					id: PROJECT,
+					fullName: "acme/shop",
+					sourceKind: "url",
+					url: "https://x/shop.git",
+					plain: false,
+				},
+				{
+					id: FOLDER,
+					fullName: "notes",
+					sourceKind: "folder",
+					url: "/notes",
+					plain: true,
+				},
+			],
 		},
 	}),
 }));
@@ -40,7 +71,8 @@ const claude: Agent = { id: "claude-code", label: "Claude Code" };
 const source = {
 	id: "s1",
 	name: "Morning check",
-	serviceId: "11111111-1111-4111-8111-111111111111",
+	serviceId: SERVICE,
+	repositoryId: null,
 	serviceName: "checkout",
 	runbook: null,
 	brief: "Look at the pool",
@@ -48,6 +80,9 @@ const source = {
 	harness: "claude-code",
 	model: "opus",
 	effort: "high",
+	accessLevel: null,
+	report: true,
+	whenAsks: "decide",
 	missedPolicy: "skip",
 	catchUpMinutes: 90,
 } as unknown as Schedule;
@@ -60,6 +95,25 @@ const render = (props: Partial<Parameters<typeof ScheduleDialog>[0]> = {}) =>
 		),
 	);
 const chip = () => document.querySelector("[data-testid=chip]")?.textContent;
+const q = (id: string) => document.querySelector(`[data-testid="${id}"]`);
+const send = () =>
+	act(async () =>
+		(
+			document.querySelector(
+				'[aria-label="Create schedule"]',
+			) as HTMLButtonElement
+		)?.click(),
+	);
+async function typeIn(el: Element | null, text: string) {
+	await act(async () => {
+		const proto =
+			el instanceof HTMLTextAreaElement
+				? HTMLTextAreaElement.prototype
+				: HTMLInputElement.prototype;
+		Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, text);
+		el?.dispatchEvent(new Event("input", { bubbles: true }));
+	});
+}
 
 beforeEach(() => {
 	agents = { harnesses: [claude], effective: undefined, model: "" };
@@ -110,12 +164,7 @@ describe("ScheduleDialog (#979)", () => {
 			copyOf: { ...source, harness: "codex", model: null } as Schedule,
 		});
 		expect(chip()).toBe("codex:");
-
-		const button = Array.from(document.querySelectorAll("button")).find(
-			(b) => b.textContent === "Create schedule",
-		);
-		await act(async () => button?.click());
-
+		await send();
 		expect(create).toHaveBeenCalledWith(
 			expect.objectContaining({ harness: "codex", model: null }),
 		);
@@ -135,20 +184,108 @@ describe("ScheduleDialog (#979)", () => {
 		expect(document.body.textContent).toContain("back within 1 hour.");
 	});
 
-	it("Duplicate keeps the source's effort and catch-up window", async () => {
-		await render({ copyOf: source });
-
-		const button = Array.from(document.querySelectorAll("button")).find(
-			(b) => b.textContent === "Create schedule",
-		);
-		await act(async () => button?.click());
-
+	it("Duplicate keeps the source's effort, catch-up window, subject, Report and When it asks", async () => {
+		await render({
+			copyOf: { ...source, report: false, whenAsks: "wait" } as Schedule,
+		});
+		await send();
 		expect(create).toHaveBeenCalledWith(
 			expect.objectContaining({
 				name: "Morning check (copy)",
 				effort: "high",
 				catchUpMinutes: 90,
+				serviceId: SERVICE,
+				repositoryId: null,
+				report: false,
+				whenAsks: "wait",
 			}),
 		);
+	});
+});
+
+describe("a schedule is a saved composer (#1020)", () => {
+	it("puts the subject and Report above the box, the agent chips inside it, and no attach", async () => {
+		await render();
+		const box = q("composer-input")?.closest("form");
+		expect(box?.contains(q("chip"))).toBe(true);
+		expect(box?.contains(q("access-chip"))).toBe(true);
+		expect(q("access-chip")?.textContent).toBe("auto");
+		expect(box?.contains(q("schedule-subject"))).toBe(false);
+		expect(q("schedule-report")?.getAttribute("aria-pressed")).toBe("true");
+		expect(q("composer-attach")).toBeNull();
+		expect(q("schedule-asks-decide")?.getAttribute("data-state")).toBe(
+			"checked",
+		);
+	});
+
+	it("saves a schedule with no code, Report off, as a chat that waits for you", async () => {
+		agents = { ...agents, effective: claude, model: "sonnet" };
+		await render();
+		await typeIn(document.getElementById("sch-name"), "Weekly summary");
+		await typeIn(q("composer-input"), "Summarise the week");
+		await act(async () => (q("schedule-report") as HTMLButtonElement).click());
+		await act(async () =>
+			(q("schedule-asks-wait") as HTMLButtonElement).click(),
+		);
+		await send();
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				name: "Weekly summary",
+				brief: "Summarise the week",
+				serviceId: null,
+				repositoryId: null,
+				report: false,
+				whenAsks: "wait",
+				runbook: null,
+				accessLevel: null,
+			}),
+		);
+	});
+
+	it("starts from New thread's box for Repeat…, on its project", async () => {
+		agents = { ...agents, effective: claude, model: "sonnet" };
+		await render({
+			prefill: {
+				brief: "Run the tests\nand say what broke",
+				subject: { kind: "project", repositoryId: PROJECT },
+				accessLevel: "supervised",
+			},
+		});
+		expect(
+			(document.getElementById("sch-name") as HTMLInputElement).value,
+		).toBe("Run the tests");
+		expect(q("access-chip")?.textContent).toBe("supervised");
+		await send();
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				repositoryId: PROJECT,
+				serviceId: null,
+				accessLevel: "supervised",
+			}),
+		);
+	});
+
+	it("never saves on a Folder project, and says why", async () => {
+		agents = { ...agents, effective: claude, model: "sonnet" };
+		await render({
+			prefill: {
+				brief: "Tidy notes",
+				subject: { kind: "project", repositoryId: FOLDER },
+			},
+		});
+		await send();
+		expect(create).not.toHaveBeenCalled();
+		expect(document.body.textContent).toContain("Folder needs git first");
+	});
+
+	it("reads the subject and names a schedule from its first line", () => {
+		expect(aboutOf({ serviceId: SERVICE, repositoryId: null })).toBe(
+			`service:${SERVICE}`,
+		);
+		expect(aboutOf({ serviceId: null, repositoryId: PROJECT })).toBe(
+			`project:${PROJECT}`,
+		);
+		expect(aboutOf({})).toBe("none");
+		expect(nameFrom("x".repeat(80))).toHaveLength(60);
 	});
 });

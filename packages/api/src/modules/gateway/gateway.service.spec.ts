@@ -6,10 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type CanonicalEvent,
+	HARNESS_TOOL_STEPS,
 	type RecordedFinding,
 	recordedFindings,
 } from "@prismalens/contracts/schemas";
-import { resultValue } from "@prismalens/integrations/harness";
+import { resultValue, TOOLS_CALL, TOOLS_SEARCH } from "@prismalens/integrations/harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import runInvestigationJob from "../../infrastructure/dispatch/investigation-run.js";
 import type { RunPorts } from "../../infrastructure/dispatch/run-ports.js";
@@ -277,6 +278,45 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(entry?.promptLine).toContain("use the tools your own setup gives you");
 		expect(entry?.promptLine).toContain("`evidence_record`, quoting the output exactly");
 		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
+	});
+
+	it("a no-subject thread's lease lists only the title and publish tools, and asks for no evidence (#1020)", async () => {
+		const g = gateway();
+		const none = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "none", owes: "answer" });
+		expect([...(none?.tools ?? [])].sort()).toEqual(["artifact_publish", "thread_title"]);
+		expect(none?.promptLine).not.toContain("evidence_record");
+		expect(none?.promptLine).not.toContain("tools_search");
+		const incident = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "incident", owes: "report" });
+		expect([...(incident?.tools ?? [])].sort()).toEqual(ALL_TOOLS);
+	});
+
+	it("a project or service thread is offered its own records, never an incident's (#1020)", async () => {
+		const g = gateway();
+		const project = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "project", owes: "answer" });
+		expect(project?.tools).toEqual(expect.arrayContaining(["thread_list", "thread_read", "fixes_list", "runbooks_read", "attachments_list"]));
+		for (const n of ["incident_get", "timeline_read", "incidents_similar", "changes_list"])
+			expect(project?.tools).not.toContain(n);
+		const service = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "service", owes: "answer" });
+		expect(service?.tools).toContain("changes_list");
+		expect(service?.tools).not.toContain("incidents_similar");
+	});
+
+	it("every PrismaLens tool, search and call included, has a plain step name (#1020)", () => {
+		const names = [...gateway().tools.map((t) => t.name), TOOLS_SEARCH, TOOLS_CALL];
+		for (const n of names) expect(HARNESS_TOOL_STEPS[n], n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
+		expect(Object.keys(HARNESS_TOOL_STEPS).sort()).toEqual([...names].sort());
+		// A search can come back empty: its step line never claims a find.
+		expect(HARNESS_TOOL_STEPS.incidents_similar).toBe("Searched for similar incidents");
+	});
+
+	it("a report's tools go by what the run owes, not by its subject (#1020)", async () => {
+		const g = gateway();
+		const report = ["evidence_record", "hypothesis_record", "report_validate"];
+		const chat = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "incident", owes: "answer" });
+		for (const n of report) expect(chat?.tools).not.toContain(n);
+		const check = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "service", owes: "report" });
+		expect(check?.tools).toEqual(expect.arrayContaining(report));
+		expect(check?.tools).not.toContain("timeline_read");
 	});
 
 	it("toolsServer: lease carries the given serverName in the prompt line and entry", async () => {
@@ -1473,11 +1513,12 @@ describe("read tools for the coding agent (#848)", () => {
 			});
 		});
 
-		it("an unknown service is not_found and points to incident_get", async () => {
+		it("an unknown service is not_found and points to tools every scoped thread has", async () => {
 			const out = await use(mocks(), "service_get", { name: "nope" });
 			expect(out.isError).toBe(true);
 			expect(out.value).toEqual(failure("not_found"));
-			expect(out.value.next).toContain("incident_get");
+			expect(out.value.next).not.toContain("incident_get");
+			expect(out.value.next).toContain("thread_list");
 			expect(JSON.stringify(out.value)).not.toContain("payments");
 		});
 

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	CanonicalEvent,
-	InvestigationReport,
-	StreamToolResult,
+import {
+	type CanonicalEvent,
+	HARNESS_TOOL_STEPS,
+	type InvestigationReport,
+	type StreamToolResult,
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
 import { commandText, mcpTool, shortPath } from "@/lib/report-view";
@@ -32,6 +33,10 @@ export interface RunStep {
 	node?: NodeKind;
 	/** A PrismaLens tool's outcome, the first line it returned; null for any other call. */
 	outcome?: string | null;
+	/** A PrismaLens tool call: the header names it by `title`, never the raw call. */
+	gateway?: boolean;
+	/** The run's first PrismaLens step: it shows the data note every result carries, once (#1020). */
+	dataNote?: boolean;
 	/** The call named a shell command, so it can be copied or staged in the terminal. */
 	shell?: boolean;
 	/** The shell command as it ran, for Copy and Run in terminal; `command` is display text. */
@@ -122,6 +127,7 @@ export function deriveSteps(
 			}
 		}
 	}
+	const noted = order.find((id) => gateway.byCall.has(id));
 	return order.map((callId, i) => {
 		const call = calls.get(callId) as {
 			name: string;
@@ -147,6 +153,7 @@ export function deriveSteps(
 				)
 			: null;
 		const recorded = gateway.byCall.get(callId);
+		const plain = recorded ? HARNESS_TOOL_STEPS[recorded.name] : undefined;
 		return {
 			n: i + 1,
 			callId,
@@ -157,9 +164,11 @@ export function deriveSteps(
 				gateway: recorded?.name,
 			}),
 			outcome: recorded ? outcomeLine(recorded) : null,
+			...(recorded ? { gateway: true } : {}),
+			...(callId === noted ? { dataNote: true } : {}),
 			input: inputOf(call.name, call.args),
 			...fileOf(call.args),
-			title: describe(call.args) ?? command,
+			title: plain ?? describe(call.args) ?? command,
 			command,
 			kind:
 				result?.toolCategory === "file" || result?.toolCategory === "search"

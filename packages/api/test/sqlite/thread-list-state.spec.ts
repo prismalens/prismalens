@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setAgentTitle } from "../../src/modules/threads/thread-titles.js";
 import { ScenarioApp } from "../scenarios/support/scenario-app.js";
 
+// Not a lifecycle scenario: these pin SQL behaviour (quiet days, the 501-row cap) on real
+// SQLite, which needs rows at exact past times that no product path writes (#1020).
 const pl = new ScenarioApp();
 const DAY_MS = 86_400_000;
 
@@ -68,6 +70,25 @@ describe("Thread list state on SQLite (#1020)", () => {
 			});
 			expect(await rowOf(id)).toMatchObject({ section: "needs", unseen: true });
 		}
+	});
+
+	it("Given an old thread, When it is visited, settled and undone, Then its updatedAt and feed place stay put", async () => {
+		const id = await thread("Old read state", new Date(Date.now() - 5 * DAY_MS));
+		const prisma = await pl.prisma();
+		const before = (await prisma.investigation.findUniqueOrThrow({ where: { id } }))
+			.updatedAt;
+		await pl.api(`/threads/${id}/visit`, { method: "POST", body: {} });
+		await pl.api(`/threads/${id}/settle`, {
+			method: "POST",
+			body: { settled: true },
+		});
+		await pl.api(`/threads/${id}/settle`, {
+			method: "POST",
+			body: { settled: false },
+		});
+		const after = await prisma.investigation.findUniqueOrThrow({ where: { id } });
+		expect(after.lastVisitedAt).not.toBeNull();
+		expect(after.updatedAt.getTime()).toBe(before.getTime());
 	});
 
 	it("Given titles without wildcards, When the search is % or _, Then nothing matches, and a literal one still does", async () => {

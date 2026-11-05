@@ -37,7 +37,7 @@ import {
 	TEARDOWN_CAP_MS,
 } from "./hooks.js";
 
-export { type FetchCredential, gitEnv } from "./git.js";
+export { type FetchCredential, gitChildEnv, gitEnv } from "./git.js";
 export {
 	commandFor,
 	type HookResult,
@@ -208,6 +208,24 @@ function lockOf(dir: string, side: Sidecar | null): string | null {
 }
 
 /** Uncommitted tracked changes or untracked non-ignored files; ignored files never count (#925). */
+/** Worktree adds still running, by repository; each waits for the one before it. */
+const adding = new Map<string, Promise<unknown>>();
+
+async function oneAddAtATime<T>(
+	repo: string,
+	work: () => Promise<T>,
+): Promise<T> {
+	const before = adding.get(repo) ?? Promise.resolve();
+	const run = before.catch(() => {}).then(work);
+	const settled = run.catch(() => {});
+	adding.set(repo, settled);
+	try {
+		return await run;
+	} finally {
+		if (adding.get(repo) === settled) adding.delete(repo);
+	}
+}
+
 export async function isChanged(
 	dir: string,
 	env: Record<string, string>,
@@ -457,18 +475,21 @@ export async function createWorkspace(
 					: ["--detach"];
 			// --no-checkout then reset keeps the user's post-checkout hook from firing; the path is
 			// ours, so double force re-adds one a crash left registered, even locked (#918).
-			await git(
-				[
-					"worktree",
-					"add",
-					...branchArgs,
-					"--no-checkout",
-					"-f",
-					"-f",
-					dir,
-					source.commit,
-				],
-				{ cwd: source.repo, env, ...sig },
+			// One add per repository at a time: concurrent adds race on .git/worktrees/<name>.
+			await oneAddAtATime(source.repo, () =>
+				git(
+					[
+						"worktree",
+						"add",
+						...branchArgs,
+						"--no-checkout",
+						"-f",
+						"-f",
+						dir,
+						source.commit,
+					],
+					{ cwd: source.repo, env, ...sig },
+				),
 			);
 			await git(
 				[

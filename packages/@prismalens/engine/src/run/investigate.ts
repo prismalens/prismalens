@@ -75,6 +75,7 @@ import {
 	levelPolicy,
 	newAskId,
 	type PermissionPolicy,
+	type RememberedAsk,
 } from "./permission.js";
 import {
 	buildChatPrompt,
@@ -83,6 +84,7 @@ import {
 	type NewerRun,
 	newerRunNote,
 } from "./prompt.js";
+import { injectedSecrets } from "./redact.js";
 import {
 	parseReport,
 	retryBudgetKey,
@@ -164,6 +166,10 @@ export interface RunInvestigationOptions {
 	askTimeoutMs?: number;
 	/** An alert started the run: past reads, every ask is refused at once (#818 w5-29). */
 	unattended?: boolean;
+	/** Wait for me: a run nobody watches whose asks still wait for a person (#1020). */
+	waitForAsks?: boolean;
+	/** A schedule's asks a person allowed always; allowed again without a card (#1020). */
+	alwaysAllow?: readonly RememberedAsk[];
 	/** Whether the agent's own sandbox holds the run's mode here; the report's `enforced` rests on it (#673 w51). */
 	sandboxCheck?: typeof checkSandbox;
 	/** Operator messages to the live session (#743). */
@@ -503,9 +509,11 @@ export async function* runInvestigation(
 	});
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
-	const bearer = opts.gateway?.token;
+	// Nor the GitHub token values the agent's env holds (#1020).
+	const hidden = injectedSecrets(env, [opts.gateway?.token]);
 	const wire = (direction: "in" | "out", line: string): void => {
-		const m = bearer ? line.replaceAll(bearer, "[redacted]") : line;
+		let m = line;
+		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
 		try {
 			appendFileSync(
 				transcript,
@@ -547,7 +555,9 @@ export async function* runInvestigation(
 			{ policy: opts.permission ?? denyAllPolicy },
 			{
 				unattended: !!opts.unattended,
+				...(opts.waitForAsks ? { waitForAsks: true } : {}),
 				...(opts.gateway ? { gateway: opts.gateway } : {}),
+				...(opts.alwaysAllow?.length ? { remembered: opts.alwaysAllow } : {}),
 			},
 		),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
@@ -1007,7 +1017,8 @@ export async function* runInvestigation(
 						noNetwork,
 						level,
 						modeName,
-					}) + toolsLine,
+						tools: toolsLine,
+					}),
 					opts.attachments,
 				),
 			);

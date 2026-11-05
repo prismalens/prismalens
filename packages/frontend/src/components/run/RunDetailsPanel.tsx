@@ -209,7 +209,10 @@ export function RunDetailsPanel({
 			className="flex h-full min-h-0 flex-col"
 			data-testid="run-details"
 		>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
+			<div
+				data-title-row
+				className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2"
+			>
 				<Button
 					variant="text"
 					size="icon"

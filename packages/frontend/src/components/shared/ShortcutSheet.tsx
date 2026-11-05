@@ -20,9 +20,8 @@ const ROWS: { keys: string[]; label: string }[] = [
 		keys: ["G", s.key.toUpperCase()],
 		label: `Go to ${s.label}`,
 	})),
-	{ keys: ["J", "K"], label: "Move down or up a row" },
+	{ keys: ["J", "K"], label: "Next or previous item in the active list" },
 	{ keys: ["Enter"], label: "Open the highlighted row" },
-	{ keys: ["1", "4"], label: "Jump to a column on the board" },
 	{ keys: ["["], label: "Fold the sidebar to its icons" },
 	{ keys: ["Ctrl", "`"], label: "Show or hide the terminal" },
 	{ keys: ["Esc"], label: "Go back" },
@@ -47,7 +46,8 @@ export function ShortcutSheet({
 				<DialogHeader>
 					<DialogTitle>Keyboard</DialogTitle>
 					<DialogDescription>
-						Keys work anywhere you are not typing.
+						Keys work anywhere you are not typing. J/K works in the active
+						thread or alert list.
 					</DialogDescription>
 				</DialogHeader>
 				<div>

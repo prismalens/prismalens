@@ -44,6 +44,7 @@ import {
 	CanonicalEventSchema,
 	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
+	HelperPlaceSchema,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
@@ -100,6 +101,7 @@ import {
 	runCancelTopic,
 	runMessageTopic,
 } from "./event-bus.js";
+import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
@@ -1200,6 +1202,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const data: InvestigationJobData = {
 			incidentId: row.incidentId,
 			investigationId: id,
+			// A person's message on an alert's or a schedule's thread: still no GitHub token (#1020 R41).
+			startedBy:
+				row.triggerType === "scheduled"
+					? "schedule"
+					: startedByAlert(row.triggerType)
+						? "alert"
+						: "person",
 			...(row.incidentId ? {} : serviceCheckOf(row.configSnapshot)),
 			...(row.incidentId || row.scheduleId
 				? {}
@@ -1232,6 +1241,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						select: { createdAt: true },
 					})
 				: null;
+			if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
+				throw new FollowUpRefused(FOLDER_BUSY);
 			if (other) {
 				const n = await tx.investigation.count({
 					where: {
@@ -1261,7 +1272,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				priority: PRIORITY_ORDER.normal ?? 3,
 			});
 			return true;
-		});
+		}, FOLDER_TX);
 		if (!admitted) return false;
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();
@@ -1272,6 +1283,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	async threadRunOf(row: {
 		repositoryId: string | null;
 		serviceId: string | null;
+		helperPlace?: string | null;
 	}): Promise<ThreadRun> {
 		const repoFields = {
 			sourceKind: true,
@@ -1279,6 +1291,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			defaultBranch: true,
 			connectionId: true,
 			fullName: true,
+			subPath: true,
+			plain: true,
 		} as const;
 		const ref = (
 			r: {
@@ -1311,7 +1325,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					repositoryId: row.repositoryId,
 					serviceId: null,
 					name,
-					repos: [ref(repo, null, name)],
+					repos: [
+						{
+							...ref(repo, repo.subPath, name),
+							...(repo.plain ? { plain: true } : {}),
+						},
+					],
 				};
 			}
 		}
@@ -1337,12 +1356,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					),
 				};
 		}
+		const place = HelperPlaceSchema.safeParse(row.helperPlace).data;
 		return {
 			subject: "none",
 			repositoryId: null,
 			serviceId: null,
 			name: null,
 			repos: [],
+			...(place ? { place } : {}),
 		};
 	}
 
@@ -1712,6 +1733,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		from: "live" | "interrupted",
 	): Promise<boolean> {
 		return this.prisma.$transaction(async (tx) => {
+			const own = await tx.investigation.findUnique({
+				where: { id },
+				select: { repositoryId: true },
+			});
+			if (own?.repositoryId && (await folderBusy(tx, own.repositoryId, id)))
+				throw new FollowUpRefused(FOLDER_BUSY);
 			const { count } = await tx.investigation.updateMany({
 				where:
 					from === "live"
@@ -1735,7 +1762,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				runAt,
 			});
 			return true;
-		});
+		}, FOLDER_TX);
 	}
 
 	/**

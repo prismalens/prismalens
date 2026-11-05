@@ -30,11 +30,13 @@ import {
 } from "@prismalens/engine";
 import {
 	autoAllowed,
+	type HarnessScope,
 	type HarnessTool,
 	harnessMcpServer,
 	harnessPromptLine,
 	type RunView,
 	runView,
+	servedTo,
 } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -114,6 +116,49 @@ function changeFacts(metadata: string | null): {
 		version: typeof meta.version === "string" ? meta.version : null,
 	};
 }
+
+/** A run's records: its incident, else its project, and the services in play (#1020). */
+interface RecordScope {
+	incident: {
+		id: string;
+		number: number;
+		triggeredAt: Date;
+		serviceId: string | null;
+	} | null;
+	repositoryId: string | null;
+	serviceIds: string[];
+}
+
+/** The runs a project or service thread may read: the project's, its services' and their incidents'. */
+function ownedBy(scope: RecordScope): Record<string, unknown>[] {
+	const ids = scope.serviceIds;
+	return [
+		...(scope.repositoryId ? [{ repositoryId: scope.repositoryId }] : []),
+		...(ids.length
+			? [{ serviceId: { in: ids } }, { incident: { serviceId: { in: ids } } }]
+			: []),
+	];
+}
+
+function inScope(
+	scope: RecordScope,
+	row: {
+		repositoryId: string | null;
+		serviceId: string | null;
+		incident: { serviceId: string | null } | null;
+	},
+): boolean {
+	const ids = scope.serviceIds;
+	return (
+		(!!scope.repositoryId && row.repositoryId === scope.repositoryId) ||
+		(!!row.serviceId && ids.includes(row.serviceId)) ||
+		(!!row.incident?.serviceId && ids.includes(row.incident.serviceId))
+	);
+}
+
+/** An incident's files, or a thread's own when it has no incident. */
+const filesOf = (runId: string, incident: { id: string } | null) =>
+	incident ? { incidentId: incident.id } : { investigationId: runId };
 
 export interface RunbookIndex {
 	entries: RunbookEntry[];
@@ -201,6 +246,7 @@ export class GatewayService {
 		serverName: string,
 		harness?: string,
 		turnStartedAt?: Date,
+		scope: HarnessScope = {},
 	): Promise<GatewayEntry | null> {
 		const base = this.baseUrl();
 		if (!base) return null;
@@ -216,7 +262,9 @@ export class GatewayService {
 			artifacts: [],
 			published: new Set(),
 			recording: true,
-			view: runView(this.tools, { search: this.toolSearch(harness) }),
+			view: runView(servedTo(this.tools, scope), {
+				search: this.toolSearch(harness),
+			}),
 			turnStartedAt,
 		};
 		this.runs.set(runId, state);
@@ -507,15 +555,22 @@ export class GatewayService {
 	/** The repos the run recorded, each at the commit it saw. */
 	private async runbookRepos(runId: string): Promise<RunbookRepo[]> {
 		const ws = await this.workspaceOf(runId);
-		return (ws?.repos ?? [])
-			.filter((r) => r.services.length)
-			.map((r) => ({
-				name: r.name,
-				dir: r.dir,
-				head: r.head,
-				subPath: r.subPath,
-				services: r.services,
-			}));
+		const project = !!(await this.scopeOf(runId))?.repositoryId;
+		return (ws?.repos ?? []).flatMap((r) => {
+			// A project thread's repos name no service (#1020): its runbooks go by the repo's name.
+			const services = r.services.length ? r.services : project ? [r.name] : [];
+			return services.length
+				? [
+						{
+							name: r.name,
+							dir: r.dir,
+							head: r.head,
+							subPath: r.subPath,
+							services,
+						},
+					]
+				: [];
+		});
 	}
 
 	private async workspaceOf(runId: string): Promise<RunWorkspace | null> {
@@ -563,17 +618,66 @@ export class GatewayService {
 		];
 	}
 
+	/**
+	 * What a run's records are about (#1020): its incident, else its project or service and
+	 * the services in play. Null for a run with nothing to read (no row, or no subject).
+	 */
+	private async scopeOf(runId: string): Promise<RecordScope | null> {
+		const row = await this.prisma.investigation.findUnique({
+			where: { id: runId },
+			select: {
+				serviceId: true,
+				repositoryId: true,
+				incident: {
+					select: {
+						id: true,
+						number: true,
+						triggeredAt: true,
+						serviceId: true,
+					},
+				},
+			},
+		});
+		if (!row) return null;
+		if (row.incident)
+			return {
+				incident: row.incident,
+				repositoryId: null,
+				serviceIds: await this.serviceIdsOf(
+					row.incident.id,
+					row.incident.serviceId,
+				),
+			};
+		if (row.serviceId)
+			return {
+				incident: null,
+				repositoryId: null,
+				serviceIds: [row.serviceId],
+			};
+		if (!row.repositoryId) return null;
+		const linked = await this.prisma.serviceRepository.findMany({
+			where: { repositoryId: row.repositoryId },
+			select: { serviceId: true },
+		});
+		return {
+			incident: null,
+			repositoryId: row.repositoryId,
+			serviceIds: [...new Set(linked.map((l) => l.serviceId))],
+		};
+	}
+
 	private async listThreads(q: {
 		runId: string;
 		service?: string;
 		limit: number;
 	}): Promise<{ threads: ThreadSummary[] } | { error: string }> {
-		const incident = await this.runIncident(q.runId);
-		if (!incident) return { error: "This run has no incident recorded." };
-		let where: Record<string, unknown> = {
-			id: { not: q.runId },
-			incidentId: incident.id,
-		};
+		const scope = await this.scopeOf(q.runId);
+		if (!scope)
+			return { error: "This thread has no records to list threads from." };
+		const { incident } = scope;
+		let where: Record<string, unknown> = incident
+			? { id: { not: q.runId }, incidentId: incident.id }
+			: { id: { not: q.runId }, OR: ownedBy(scope) };
 		if (q.service) {
 			const service = await this.prisma.service.findUnique({
 				where: { name: q.service },
@@ -582,12 +686,17 @@ export class GatewayService {
 			if (!service)
 				return { error: `PrismaLens has no service named "${q.service}".` };
 			// The scope thread_read enforces, so every id listed can be read.
-			const mine = await this.serviceIdsOf(incident.id, incident.serviceId);
-			if (!mine.includes(service.id))
-				return {
-					error: `"${q.service}" is not a service of this run's incident.`,
-				};
-			where = { id: { not: q.runId }, incident: { serviceId: service.id } };
+			if (!scope.serviceIds.includes(service.id))
+				return { error: `"${q.service}" is not a service of this thread.` };
+			where = incident
+				? { id: { not: q.runId }, incident: { serviceId: service.id } }
+				: {
+						id: { not: q.runId },
+						OR: [
+							{ serviceId: service.id },
+							{ incident: { serviceId: service.id } },
+						],
+					};
 		}
 		const rows = await this.prisma.investigation.findMany({
 			where,
@@ -624,8 +733,8 @@ export class GatewayService {
 		runId: string,
 		threadId: string,
 	): Promise<ThreadView | null> {
-		const own = await this.runIncident(runId);
-		if (!own) return null;
+		const scope = await this.scopeOf(runId);
+		if (!scope) return null;
 		const row = await this.prisma.investigation.findUnique({
 			where: { id: threadId },
 			select: {
@@ -636,17 +745,24 @@ export class GatewayService {
 				rootCause: true,
 				report: true,
 				error: true,
+				serviceId: true,
+				repositoryId: true,
 				incident: { select: { id: true, serviceId: true } },
 			},
 		});
-		// A scheduled check's run has no incident (#984), so no incident makes it readable.
-		if (!row?.incident) return null;
-		// Readable on this run's incident, or on another incident of one of its services.
-		if (row.incident.id !== own.id) {
-			const mine = await this.serviceIdsOf(own.id, own.serviceId);
-			if (!row.incident.serviceId || !mine.includes(row.incident.serviceId))
+		if (!row) return null;
+		const own = scope.incident;
+		if (own) {
+			// A scheduled check's run has no incident (#984), so no incident makes it readable.
+			if (!row.incident) return null;
+			// Readable on this run's incident, or on another incident of one of its services.
+			if (
+				row.incident.id !== own.id &&
+				(!row.incident.serviceId ||
+					!scope.serviceIds.includes(row.incident.serviceId))
+			)
 				return null;
-		}
+		} else if (!inScope(scope, row)) return null;
 		const head = { id: row.id, kind: row.kind, status: row.status };
 		if (row.status === "completed") {
 			const report = parseWith(InvestigationReportSchema, row.report);
@@ -742,13 +858,13 @@ export class GatewayService {
 	}
 
 	private async changeScope(runId: string): Promise<{
-		number: number;
-		triggeredAt: string;
+		number?: number;
+		triggeredAt?: string;
 		services: string[];
 	} | null> {
-		const incident = await this.runIncident(runId);
-		if (!incident) return null;
-		const ids = await this.serviceIdsOf(incident.id, incident.serviceId);
+		const scope = await this.scopeOf(runId);
+		if (!scope) return null;
+		const { incident, serviceIds: ids } = scope;
 		const services = ids.length
 			? await this.prisma.service.findMany({
 					where: { id: { in: ids } },
@@ -756,11 +872,14 @@ export class GatewayService {
 					orderBy: { name: "asc" },
 				})
 			: [];
-		return {
-			number: incident.number,
-			triggeredAt: incident.triggeredAt.toISOString(),
-			services: services.map((s) => s.name),
-		};
+		const names = services.map((s) => s.name);
+		return incident
+			? {
+					number: incident.number,
+					triggeredAt: incident.triggeredAt.toISOString(),
+					services: names,
+				}
+			: { services: names };
 	}
 
 	private async changesIn(q: {
@@ -873,11 +992,12 @@ export class GatewayService {
 
 	private async attachmentsOf(
 		runId: string,
-	): Promise<{ incident: number; attachments: AttachmentItem[] } | null> {
-		const incident = await this.runIncident(runId);
-		if (!incident) return null;
+	): Promise<{ incident?: number; attachments: AttachmentItem[] } | null> {
+		const scope = await this.scopeOf(runId);
+		if (!scope) return null;
+		const { incident } = scope;
 		const rows = await this.prisma.attachment.findMany({
-			where: { incidentId: incident.id },
+			where: filesOf(runId, incident),
 			orderBy: { createdAt: "desc" },
 			take: ATTACHMENTS_LISTED,
 			select: {
@@ -889,7 +1009,7 @@ export class GatewayService {
 			},
 		});
 		return {
-			incident: incident.number,
+			...(incident ? { incident: incident.number } : {}),
 			attachments: rows.map((r) => ({
 				id: r.id,
 				name: r.name,
@@ -901,10 +1021,10 @@ export class GatewayService {
 	}
 
 	private async attachmentOf(runId: string, id: string) {
-		const incident = await this.runIncident(runId);
-		if (!incident) return null;
+		const scope = await this.scopeOf(runId);
+		if (!scope) return null;
 		const row = await this.prisma.attachment.findFirst({
-			where: { id, incidentId: incident.id },
+			where: { id, ...filesOf(runId, scope.incident) },
 			select: { id: true, name: true, mimeType: true, size: true },
 		});
 		if (!row) return null;
@@ -979,18 +1099,20 @@ export class GatewayService {
 	private async pastFixes(
 		runId: string,
 		limit: number,
-	): Promise<{ incident: number; fixes: PastFix[] } | null> {
-		const incident = await this.runIncident(runId);
-		if (!incident) return null;
-		const serviceIds = await this.serviceIdsOf(incident.id, incident.serviceId);
-		const rows = serviceIds.length
+	): Promise<{ incident?: number; fixes: PastFix[] } | null> {
+		const scope = await this.scopeOf(runId);
+		if (!scope) return null;
+		const { incident, serviceIds } = scope;
+		const owned = incident
+			? serviceIds.length
+				? { incident: { serviceId: { in: serviceIds } } }
+				: null
+			: ownedBy(scope).length
+				? { OR: ownedBy(scope) }
+				: null;
+		const rows = owned
 			? await this.prisma.recommendation.findMany({
-					where: {
-						investigation: {
-							id: { not: runId },
-							incident: { serviceId: { in: serviceIds } },
-						},
-					},
+					where: { investigation: { id: { not: runId }, ...owned } },
 					orderBy: { createdAt: "desc" },
 					take: limit,
 					select: {
@@ -1008,16 +1130,20 @@ export class GatewayService {
 					},
 				})
 			: [];
-		// A scheduled check's run has no incident (#984), so its fixes have no incident to cite.
-		const recs = rows.flatMap(({ investigation: { incident }, ...r }) =>
-			incident ? [{ ...r, incident }] : [],
+		// A scheduled check's run has no incident (#984): an incident run leaves its fixes out.
+		const recs = rows.flatMap(({ investigation: { incident: cited }, ...r }) =>
+			cited || !incident ? [{ ...r, incident: cited }] : [],
 		);
 		// A check is on the timeline of the incident whose run it was, in FixesService's own metadata.
 		const checks = recs.length
 			? await this.prisma.timelineEntry.findMany({
 					where: {
 						incidentId: {
-							in: [...new Set(recs.map((r) => r.incident.id))],
+							in: [
+								...new Set(
+									recs.flatMap((r) => (r.incident ? [r.incident.id] : [])),
+								),
+							],
 						},
 						type: "custom",
 						metadata: { contains: '"event":"fix_check"' },
@@ -1035,7 +1161,7 @@ export class GatewayService {
 				: [];
 		});
 		return {
-			incident: incident.number,
+			...(incident ? { incident: incident.number } : {}),
 			fixes: recs.map((r) => {
 				// Newest first, so the first check since it was applied is the latest.
 				const last = checked.find(
@@ -1046,7 +1172,7 @@ export class GatewayService {
 					id: r.id,
 					title: r.title,
 					detail: r.description,
-					incident: r.incident.number,
+					incident: r.incident?.number ?? null,
 					investigationId: r.investigationId,
 					status: r.status === "completed" ? "applied" : r.status,
 					priority: r.priority,

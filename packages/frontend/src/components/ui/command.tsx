@@ -53,7 +53,7 @@ function CommandList({
 		<CommandPrimitive.List
 			data-slot="command-list"
 			className={cn(
-				"min-h-0 flex-1 scroll-py-1 overflow-x-hidden overflow-y-auto",
+				"min-h-0 flex-1 scroll-py-2 overflow-x-hidden overflow-y-auto p-2",
 				className,
 			)}
 			{...props}
@@ -82,7 +82,7 @@ function CommandGroup({
 		<CommandPrimitive.Group
 			data-slot="command-group"
 			className={cn(
-				"overflow-hidden py-1 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-meta [&_[cmdk-group-heading]]:text-text-3",
+				"overflow-hidden py-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-meta [&_[cmdk-group-heading]]:text-text-3",
 				className,
 			)}
 			{...props}
@@ -111,7 +111,7 @@ function CommandItem({
 		<CommandPrimitive.Item
 			data-slot="command-item"
 			className={cn(
-				"relative flex cursor-default items-center gap-2 outline-none select-none transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[disabled=true]:pointer-events-none data-[disabled=true]:text-text-3 data-[selected=true]:bg-surface-3",
+				"relative flex min-h-8 cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-body outline-none [&>svg:first-child]:size-4 [&>svg:first-child]:shrink-0 [&>svg:first-child]:text-text-3 select-none transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[disabled=true]:pointer-events-none data-[disabled=true]:text-text-3 data-[selected=true]:bg-surface-3",
 				className,
 			)}
 			{...props}

@@ -10848,7 +10848,8 @@
                               "enum": [
                                 "unmapped",
                                 "single",
-                                "multi"
+                                "multi",
+                                "folder"
                               ],
                               "type": "string"
                             },
@@ -12358,7 +12359,8 @@
                                     "enum": [
                                       "unmapped",
                                       "single",
-                                      "multi"
+                                      "multi",
+                                      "folder"
                                     ],
                                     "type": "string"
                                   },
@@ -14496,7 +14498,8 @@
                               "enum": [
                                 "unmapped",
                                 "single",
-                                "multi"
+                                "multi",
+                                "folder"
                               ],
                               "type": "string"
                             },
@@ -16601,7 +16604,8 @@
                                   "enum": [
                                     "unmapped",
                                     "single",
-                                    "multi"
+                                    "multi",
+                                    "folder"
                                   ],
                                   "type": "string"
                                 },
@@ -18163,7 +18167,8 @@
                               "enum": [
                                 "unmapped",
                                 "single",
-                                "multi"
+                                "multi",
+                                "folder"
                               ],
                               "type": "string"
                             },
@@ -19785,6 +19790,9 @@
                                 "type": "string"
                               },
                               "server": {
+                                "type": "string"
+                              },
+                              "identity": {
                                 "type": "string"
                               }
                             },
@@ -21630,7 +21638,8 @@
                               "enum": [
                                 "unmapped",
                                 "single",
-                                "multi"
+                                "multi",
+                                "folder"
                               ],
                               "type": "string"
                             },
@@ -22390,6 +22399,9 @@
                       "deny"
                     ],
                     "type": "string"
+                  },
+                  "always": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -24306,7 +24318,8 @@
                               "enum": [
                                 "unmapped",
                                 "single",
-                                "multi"
+                                "multi",
+                                "folder"
                               ],
                               "type": "string"
                             },
@@ -27276,7 +27289,8 @@
                               "enum": [
                                 "unmapped",
                                 "single",
-                                "multi"
+                                "multi",
+                                "folder"
                               ],
                               "type": "string"
                             },
@@ -29034,6 +29048,19 @@
                     "url": {
                       "type": "string"
                     },
+                    "subPath": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plain": {
+                      "type": "boolean"
+                    },
                     "description": {
                       "anyOf": [
                         {
@@ -29235,6 +29262,435 @@
                     "sourceKind",
                     "fullName",
                     "url",
+                    "subPath",
+                    "plain",
+                    "description",
+                    "language",
+                    "defaultBranch",
+                    "isPrivate",
+                    "metadata",
+                    "syncBranch",
+                    "syncHead",
+                    "syncError",
+                    "syncedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fs/folders": {
+      "post": {
+        "operationId": "repositories.browseFolders",
+        "summary": "List the folders inside a folder on this computer",
+        "tags": [
+          "repositories"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "const": true
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "parent": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "git": {
+                          "type": "boolean"
+                        },
+                        "entries": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "hidden": {
+                                "type": "boolean"
+                              },
+                              "git": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "path",
+                              "hidden",
+                              "git"
+                            ]
+                          }
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "path",
+                        "parent",
+                        "git",
+                        "entries",
+                        "truncated"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "const": false
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "enum": [
+                            "denied",
+                            "missing",
+                            "timeout",
+                            "not-folder",
+                            "not-absolute",
+                            "link",
+                            "busy"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "path",
+                        "error"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repositories/{id}/git": {
+      "post": {
+        "operationId": "repositories.startGit",
+        "summary": "Start git in a plain folder project",
+        "tags": [
+          "repositories"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "connectionId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceKind": {
+                      "enum": [
+                        "folder",
+                        "url"
+                      ],
+                      "type": "string"
+                    },
+                    "fullName": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "subPath": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plain": {
+                      "type": "boolean"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "defaultBranch": {
+                      "type": "string"
+                    },
+                    "isPrivate": {
+                      "type": "boolean"
+                    },
+                    "metadata": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncBranch": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncHead": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncError": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "credential": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "connection",
+                            "env",
+                            "machine",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "via": {
+                          "type": "string"
+                        },
+                        "connectionId": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "envVar": {
+                          "type": "string"
+                        },
+                        "fallback": {
+                          "const": true
+                        },
+                        "fallbackFrom": {
+                          "type": "object",
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "connection",
+                                "env",
+                                "machine",
+                                "none"
+                              ],
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "label",
+                            "code"
+                          ]
+                        },
+                        "problem": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "ambiguous",
+                                "pinned-unusable",
+                                "probe-timeout",
+                                "legacy-link"
+                              ],
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "candidates": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "fingerprint": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "connectionId",
+                                  "label",
+                                  "fingerprint"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "label",
+                        "via"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "connectionId",
+                    "sourceKind",
+                    "fullName",
+                    "url",
+                    "subPath",
+                    "plain",
                     "description",
                     "language",
                     "defaultBranch",
@@ -29334,6 +29790,19 @@
                     "url": {
                       "type": "string"
                     },
+                    "subPath": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plain": {
+                      "type": "boolean"
+                    },
                     "description": {
                       "anyOf": [
                         {
@@ -29535,6 +30004,8 @@
                     "sourceKind",
                     "fullName",
                     "url",
+                    "subPath",
+                    "plain",
                     "description",
                     "language",
                     "defaultBranch",
@@ -29646,6 +30117,19 @@
                           },
                           "url": {
                             "type": "string"
+                          },
+                          "subPath": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "plain": {
+                            "type": "boolean"
                           },
                           "description": {
                             "anyOf": [
@@ -29893,6 +30377,8 @@
                           "sourceKind",
                           "fullName",
                           "url",
+                          "subPath",
+                          "plain",
                           "description",
                           "language",
                           "defaultBranch",
@@ -30009,6 +30495,19 @@
                     },
                     "url": {
                       "type": "string"
+                    },
+                    "subPath": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plain": {
+                      "type": "boolean"
                     },
                     "description": {
                       "anyOf": [
@@ -30256,6 +30755,8 @@
                     "sourceKind",
                     "fullName",
                     "url",
+                    "subPath",
+                    "plain",
                     "description",
                     "language",
                     "defaultBranch",
@@ -32432,8 +32933,27 @@
                             "maxLength": 120
                           },
                           "serviceId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "repositoryId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
                           },
                           "runbook": {
                             "anyOf": [
@@ -32536,6 +33056,35 @@
                               }
                             ]
                           },
+                          "accessLevel": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "supervised",
+                                  "auto-edits",
+                                  "auto",
+                                  "full-access"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
+                          "report": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "whenAsks": {
+                            "enum": [
+                              "decide",
+                              "wait"
+                            ],
+                            "type": "string",
+                            "default": "decide"
+                          },
                           "missedPolicy": {
                             "enum": [
                               "run_once",
@@ -32551,8 +33100,53 @@
                           "id": {
                             "type": "string"
                           },
+                          "subject": {
+                            "enum": [
+                              "service",
+                              "project",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
                           "serviceName": {
                             "type": "string"
+                          },
+                          "repositoryName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "alwaysAllow": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 64
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "identity": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-f]{64}$"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "identity"
+                              ]
+                            }
                           },
                           "description": {
                             "type": "string"
@@ -32790,7 +33384,10 @@
                           "missedPolicy",
                           "catchUpMinutes",
                           "id",
+                          "subject",
                           "serviceName",
+                          "repositoryName",
+                          "alwaysAllow",
                           "description",
                           "shape",
                           "enabled",
@@ -32908,8 +33505,27 @@
                     "maxLength": 120
                   },
                   "serviceId": {
-                    "type": "string",
-                    "format": "uuid"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "repositoryId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
                   },
                   "runbook": {
                     "anyOf": [
@@ -33012,6 +33628,35 @@
                       }
                     ]
                   },
+                  "accessLevel": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "supervised",
+                          "auto-edits",
+                          "auto",
+                          "full-access"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "report": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "whenAsks": {
+                    "enum": [
+                      "decide",
+                      "wait"
+                    ],
+                    "type": "string",
+                    "default": "decide"
+                  },
                   "missedPolicy": {
                     "enum": [
                       "run_once",
@@ -33055,8 +33700,27 @@
                       "maxLength": 120
                     },
                     "serviceId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     },
                     "runbook": {
                       "anyOf": [
@@ -33159,6 +33823,35 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "report": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "whenAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string",
+                      "default": "decide"
+                    },
                     "missedPolicy": {
                       "enum": [
                         "run_once",
@@ -33174,8 +33867,53 @@
                     "id": {
                       "type": "string"
                     },
+                    "subject": {
+                      "enum": [
+                        "service",
+                        "project",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "serviceName": {
                       "type": "string"
+                    },
+                    "repositoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alwaysAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "identity": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "identity"
+                        ]
+                      }
                     },
                     "description": {
                       "type": "string"
@@ -33413,7 +34151,10 @@
                     "missedPolicy",
                     "catchUpMinutes",
                     "id",
+                    "subject",
                     "serviceName",
+                    "repositoryName",
+                    "alwaysAllow",
                     "description",
                     "shape",
                     "enabled",
@@ -33493,8 +34234,27 @@
                           "maxLength": 120
                         },
                         "serviceId": {
-                          "type": "string",
-                          "format": "uuid"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "repositoryId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
                         },
                         "runbook": {
                           "anyOf": [
@@ -33597,6 +34357,35 @@
                             }
                           ]
                         },
+                        "accessLevel": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "supervised",
+                                "auto-edits",
+                                "auto",
+                                "full-access"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
+                        },
+                        "report": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "whenAsks": {
+                          "enum": [
+                            "decide",
+                            "wait"
+                          ],
+                          "type": "string",
+                          "default": "decide"
+                        },
                         "missedPolicy": {
                           "enum": [
                             "run_once",
@@ -33612,8 +34401,53 @@
                         "id": {
                           "type": "string"
                         },
+                        "subject": {
+                          "enum": [
+                            "service",
+                            "project",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
                         "serviceName": {
                           "type": "string"
+                        },
+                        "repositoryName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "alwaysAllow": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 64
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "identity": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{64}$"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "identity"
+                            ]
+                          }
                         },
                         "description": {
                           "type": "string"
@@ -33851,7 +34685,10 @@
                         "missedPolicy",
                         "catchUpMinutes",
                         "id",
+                        "subject",
                         "serviceName",
+                        "repositoryName",
+                        "alwaysAllow",
                         "description",
                         "shape",
                         "enabled",
@@ -34086,8 +34923,27 @@
                         "maxLength": 120
                       },
                       "serviceId": {
-                        "type": "string",
-                        "format": "uuid"
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "repositoryId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
                       },
                       "runbook": {
                         "anyOf": [
@@ -34190,6 +35046,35 @@
                           }
                         ]
                       },
+                      "accessLevel": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "supervised",
+                              "auto-edits",
+                              "auto",
+                              "full-access"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      },
+                      "report": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "whenAsks": {
+                        "enum": [
+                          "decide",
+                          "wait"
+                        ],
+                        "type": "string",
+                        "default": "decide"
+                      },
                       "missedPolicy": {
                         "enum": [
                           "run_once",
@@ -34239,8 +35124,27 @@
                       "maxLength": 120
                     },
                     "serviceId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     },
                     "runbook": {
                       "anyOf": [
@@ -34343,6 +35247,35 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "report": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "whenAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string",
+                      "default": "decide"
+                    },
                     "missedPolicy": {
                       "enum": [
                         "run_once",
@@ -34358,8 +35291,53 @@
                     "id": {
                       "type": "string"
                     },
+                    "subject": {
+                      "enum": [
+                        "service",
+                        "project",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "serviceName": {
                       "type": "string"
+                    },
+                    "repositoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alwaysAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "identity": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "identity"
+                        ]
+                      }
                     },
                     "description": {
                       "type": "string"
@@ -34597,7 +35575,10 @@
                     "missedPolicy",
                     "catchUpMinutes",
                     "id",
+                    "subject",
                     "serviceName",
+                    "repositoryName",
+                    "alwaysAllow",
                     "description",
                     "shape",
                     "enabled",
@@ -34848,8 +35829,27 @@
                       "maxLength": 120
                     },
                     "serviceId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "repositoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     },
                     "runbook": {
                       "anyOf": [
@@ -34952,6 +35952,35 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "report": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "whenAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string",
+                      "default": "decide"
+                    },
                     "missedPolicy": {
                       "enum": [
                         "run_once",
@@ -34967,8 +35996,53 @@
                     "id": {
                       "type": "string"
                     },
+                    "subject": {
+                      "enum": [
+                        "service",
+                        "project",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
                     "serviceName": {
                       "type": "string"
+                    },
+                    "repositoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alwaysAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "identity": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "identity"
+                        ]
+                      }
                     },
                     "description": {
                       "type": "string"
@@ -35206,7 +36280,10 @@
                     "missedPolicy",
                     "catchUpMinutes",
                     "id",
+                    "subject",
                     "serviceName",
+                    "repositoryName",
+                    "alwaysAllow",
                     "description",
                     "shape",
                     "enabled",
@@ -35977,6 +37054,19 @@
                                     "url": {
                                       "type": "string"
                                     },
+                                    "subPath": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "plain": {
+                                      "type": "boolean"
+                                    },
                                     "description": {
                                       "anyOf": [
                                         {
@@ -36178,6 +37268,8 @@
                                     "sourceKind",
                                     "fullName",
                                     "url",
+                                    "subPath",
+                                    "plain",
                                     "description",
                                     "language",
                                     "defaultBranch",
@@ -36571,6 +37663,19 @@
                               "url": {
                                 "type": "string"
                               },
+                              "subPath": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "plain": {
+                                "type": "boolean"
+                              },
                               "description": {
                                 "anyOf": [
                                   {
@@ -36772,6 +37877,8 @@
                               "sourceKind",
                               "fullName",
                               "url",
+                              "subPath",
+                              "plain",
                               "description",
                               "language",
                               "defaultBranch",
@@ -37638,6 +38745,19 @@
                                   "url": {
                                     "type": "string"
                                   },
+                                  "subPath": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "plain": {
+                                    "type": "boolean"
+                                  },
                                   "description": {
                                     "anyOf": [
                                       {
@@ -37839,6 +38959,8 @@
                                   "sourceKind",
                                   "fullName",
                                   "url",
+                                  "subPath",
+                                  "plain",
                                   "description",
                                   "language",
                                   "defaultBranch",
@@ -45091,6 +46213,16 @@
                     "strictEnv": {
                       "type": "boolean"
                     },
+                    "unattendedGithub": {
+                      "type": "boolean"
+                    },
+                    "alertAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string"
+                    },
                     "resumeAfterRestart": {
                       "type": "boolean"
                     },
@@ -45470,6 +46602,16 @@
                   "strictEnv": {
                     "type": "boolean"
                   },
+                  "unattendedGithub": {
+                    "type": "boolean"
+                  },
+                  "alertAsks": {
+                    "enum": [
+                      "decide",
+                      "wait"
+                    ],
+                    "type": "string"
+                  },
                   "resumeAfterRestart": {
                     "type": "boolean"
                   }
@@ -45719,6 +46861,16 @@
                     },
                     "strictEnv": {
                       "type": "boolean"
+                    },
+                    "unattendedGithub": {
+                      "type": "boolean"
+                    },
+                    "alertAsks": {
+                      "enum": [
+                        "decide",
+                        "wait"
+                      ],
+                      "type": "string"
                     },
                     "resumeAfterRestart": {
                       "type": "boolean"
@@ -48447,6 +49599,14 @@
                   "draftKey": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "place": {
+                    "enum": [
+                      "alerts",
+                      "services",
+                      "schedules"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -49761,7 +50921,8 @@
                                     "enum": [
                                       "unmapped",
                                       "single",
-                                      "multi"
+                                      "multi",
+                                      "folder"
                                     ],
                                     "type": "string"
                                   },
@@ -51297,7 +52458,8 @@
                                           "enum": [
                                             "unmapped",
                                             "single",
-                                            "multi"
+                                            "multi",
+                                            "folder"
                                           ],
                                           "type": "string"
                                         },
