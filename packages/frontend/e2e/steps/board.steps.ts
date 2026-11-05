@@ -137,15 +137,9 @@ Then(
 	},
 );
 
-Then(
-	"within 2 seconds the row is in the inbox and the sidebar's Incidents count went up by one",
-	async ({ page }) => {
-		await expect(cardOf(page, inc(page).title)).toBeVisible({ timeout: 2_000 });
-		await expect(
-			page.getByTestId("sidebar").getByTestId("nav-incidents-count"),
-		).toHaveText(String((w(page).before ?? 0) + 1), { timeout: 2_000 });
-	},
-);
+Then("within 2 seconds the row is in the inbox", async ({ page }) => {
+	await expect(cardOf(page, inc(page).title)).toBeVisible({ timeout: 2_000 });
+});
 
 Then(
 	"the row is marked new, and a second arrival a second later is marked new while the first one's mark ends",

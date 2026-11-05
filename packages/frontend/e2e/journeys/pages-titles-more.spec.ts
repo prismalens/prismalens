@@ -2,14 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Pages, titles and scheduled prompts journeys (#1020).
+ * Pages, titles and schedules journeys (#1020).
  *
  * Verifies:
  * 1. Blank incident page shows Nothing yet, Link service and centered composer with no empty cards,
  *    and shows content cards only once content is added.
  * 2. Renaming a thread from its row updates the list, the thread page, survives reload, and renders
  *    untrusted input containing HTML/XSS as plain text.
- * 3. Settings -> Scheduled prompts lists schedules, /schedules redirects there, and a schedule opens.
+ * 3. Automation lists schedules, /schedules redirects there, and a schedule opens.
  * 4. An unmapped alert row offers Link to a project, shows the read-only service=<name> rule, and
  *    leaves the unmapped state.
  * 5. Project page Make it a service takes name only and shows the read-only service=<name> rule.
@@ -72,7 +72,7 @@ const threadRow = (over: Record<string, unknown> = {}) => ({
 	...over,
 });
 
-test.describe("#1020 — pages, titles, scheduled prompts", () => {
+test.describe("#1020 — pages, titles, schedules", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
 	test("1. Blank incident page shows Nothing yet, Link service and composer, and shows content cards only when they have content after a first message", async ({
@@ -230,9 +230,9 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 		await input.press("Enter");
 
 		// New title shows in thread list
-		await expect(page.getByTestId("thread-row-title").first()).toHaveText(
-			attackTitle,
-		);
+		await expect(
+			page.getByTestId("thread-row").locator("span[dir=auto]").first(),
+		).toHaveText(attackTitle);
 
 		// Opens thread page and title shows there
 		await page.goto(`/threads/${THREAD_ID}`);
@@ -241,16 +241,16 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 		// Survives reload
 		await page.reload();
 		await expect(page.getByTestId("thread-title")).toHaveText(attackTitle);
-		await expect(page.getByTestId("thread-row-title").first()).toHaveText(
-			attackTitle,
-		);
+		await expect(
+			page.getByTestId("thread-row").locator("span[dir=auto]").first(),
+		).toHaveText(attackTitle);
 
 		// Plain text rendering: no dialog triggered and no img element injected
 		expect(dialogTriggered).toBe(false);
 		await expect(page.locator("img[src='x']")).toHaveCount(0);
 	});
 
-	test("3. Settings -> Scheduled prompts lists schedules; visiting /schedules redirects there; a schedule can be opened from it", async ({
+	test("3. Automation lists schedules; /schedules redirects there; a schedule can be opened from it", async ({
 		page,
 	}) => {
 		const services = await page.request.get("/api/services");
@@ -277,15 +277,16 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 		const { id: scheduleId } = (await created.json()) as { id: string };
 
 		try {
-			// Visiting /schedules redirects to /settings?tab=schedules
+			// /schedules leads to Automation
 			await page.goto("/schedules");
-			await expect(page).toHaveURL(/\/settings\?tab=schedules$/);
+			await expect(page).toHaveURL(/\/automation$/);
 
-			// Settings -> Scheduled prompts lists schedules
-			await expect(
-				page.getByRole("heading", { name: "Scheduled prompts", level: 2 }),
-			).toBeVisible({ timeout: 15_000 });
+			// Automation lists schedules
+			await expect(page.getByTestId("automation-page")).toBeVisible({
+				timeout: 15_000,
+			});
 			const scheduleLink = page
+				.getByTestId("schedule-list")
 				.getByRole("link", { name: scheduleName })
 				.first();
 			await expect(scheduleLink).toBeVisible();
