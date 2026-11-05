@@ -803,7 +803,7 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	service_get: "Read a service",
 	thread_list: "Listed threads",
 	thread_read: "Read a thread",
-	thread_title: "Named the thread",
+	thread_title: "Set the thread name",
 	timeline_read: "Read the timeline",
 	tools_call: "Ran a PrismaLens tool",
 	tools_search: "Searched PrismaLens tools",
