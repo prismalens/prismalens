@@ -19,6 +19,12 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/hooks/use-layout-prefs", () => ({
 	useLayoutPrefs: () => ({ bottomPanel: false, setBottomPanel: vi.fn() }),
 }));
+vi.mock("@tanstack/react-query", () => ({
+	useQuery: () => ({ data: undefined }),
+}));
+vi.mock("@/lib/api/orpc-client", () => ({
+	orpc: { incidents: { list: { queryOptions: () => ({}) } } },
+}));
 vi.mock("@/lib/providers/theme-provider", () => ({
 	useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
 }));
