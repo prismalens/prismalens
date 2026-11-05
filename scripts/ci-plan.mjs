@@ -4,8 +4,9 @@
 
 // Decides what a `CI` run has to run (#1052), so a push that needs nothing starts no runner:
 //   skip    "true": the PR head tree already passed `CI`, or the PR changes only docs.
-//   full    "true": the release-only proofs (macOS and Windows side checks, systemd service) run.
+//   full    "true": the release-only proofs (the release side checks on all three OSes, the systemd service) run.
 //   agents  "true": the five agent qualification legs run.
+// A tier runs unless every changed path is on its safe list, so an unlisted path costs minutes, not a missed check.
 // Anything that is not a pull request (main, the nightly) plans everything.
 // ci.yml's `CI gate` reads these three and lets exactly the matching jobs be skipped.
 import { execFileSync } from "node:child_process";
@@ -19,26 +20,27 @@ const DOCS = [
 	/^\.github\/[^/]+\.md$/,
 ];
 
-/** Files whose change can move what the tarball does on macOS, Windows or under systemd. */
-const FULL = [
-	/^\.github\/workflows\//,
-	/^scripts\//,
-	/^packages\/cli\//,
-	/^packages\/@prismalens\/database\/prisma\//,
-	/^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.nvmrc)$/,
-	/^(\.release-please-manifest\.json|release-please-config\.json)$/,
+/** Paths that cannot change what the tarball does on another OS or under systemd. Any other path turns `full` on. */
+const SAFE_FOR_FULL = [
+	/\.md$/,
+	/\.(spec|test)\.[cm]?[jt]sx?$/,
+	/^docs\//,
+	/^packages\/(frontend|desktop)\//,
+	/^\.github\/(ISSUE_TEMPLATE\/|assets\/|CODEOWNERS$|dependabot\.yml$)/,
+	/^(\.coderabbit\.yaml|\.worktreeinclude|biome\.json|\.editorconfig|\.gitignore|\.gitattributes|LICENSE)$/,
 ];
 
-/** The agent qualification's inputs: the engine's workspace closure, the script, its fakes and pins. */
-const AGENTS = [
-	/^\.github\/workflows\/ci\.yml$/,
-	/^packages\/@prismalens\/(engine|agent-host|agent-adapters|config|contracts|integrations)\//,
-	/^scripts\/(admission-fake\.|fakes\/|agent-)/,
-	/^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|\.nvmrc)$/,
+/** Paths outside the agent qualification's inputs (the engine's workspace closure, the script, its fakes, the pins). */
+const SAFE_FOR_AGENTS = [
+	...SAFE_FOR_FULL,
+	/^packages\/(api|cli)\//,
+	/^packages\/@prismalens\/(auth|database|logger)\//,
+	/^\.github\/workflows\/(?!ci\.yml$)/,
 ];
 
-const any = (/** @type {RegExp[]} */ patterns, /** @type {string[]} */ files) =>
-	files.some((f) => patterns.some((p) => p.test(f)));
+/** An unlisted path counts as unsafe, so a new package runs the tier until someone lists it. */
+const needs = (/** @type {RegExp[]} */ safe, /** @type {string[]} */ files) =>
+	files.length === 0 || files.some((f) => !safe.some((p) => p.test(f)));
 
 /**
  * @param {{
@@ -82,8 +84,8 @@ export function plan({
 	const forced = labels.includes("full-ci");
 	return {
 		skip: false,
-		full: release || forced || any(FULL, files),
-		agents: release || forced || any(AGENTS, files),
+		full: release || forced || needs(SAFE_FOR_FULL, files),
+		agents: release || forced || needs(SAFE_FOR_AGENTS, files),
 		reason: release
 			? "release PR: everything runs"
 			: forced

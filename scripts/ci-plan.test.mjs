@@ -38,6 +38,7 @@ test("a UI-only PR skips the release-only proofs and the agent legs", () => {
 test("a change that moves the tarball or an agent's launch turns that tier on", () => {
 	assert.equal(pr({ files: ["packages/cli/src/service.ts"] }).full, true);
 	assert.equal(pr({ files: ["scripts/gate-side-checks.mjs"] }).full, true);
+	assert.equal(pr({ files: ["packages/api/src/a.ts"] }).full, true);
 	assert.equal(
 		pr({ files: ["packages/@prismalens/engine/src/run/a.ts"] }).agents,
 		true,
@@ -45,6 +46,17 @@ test("a change that moves the tarball or an agent's launch turns that tier on", 
 	assert.equal(pr({ files: ["scripts/admission-fake.mjs"] }).agents, true);
 	assert.equal(pr({ files: ["packages/api/src/a.ts"] }).agents, false);
 	assert.equal(pr({ files: ["pnpm-lock.yaml"] }).agents, true);
+});
+
+test("a path on no list turns both tiers on, so a new package is never skipped", () => {
+	const p = pr({ files: ["packages/@prismalens/newpkg/src/a.ts"] });
+	assert.deepEqual([p.full, p.agents], [true, true]);
+	assert.equal(pr({ files: ["packages/api/src/a.spec.ts"] }).full, false);
+	assert.equal(
+		pr({ files: ["packages/frontend/src/a.tsx", "packages/api/src/a.ts"] })
+			.full,
+		true,
+	);
 });
 
 test("a release PR and the full-ci label run everything", () => {
@@ -57,6 +69,7 @@ test("a release PR and the full-ci label run everything", () => {
 	}
 });
 
-test("a PR with no listed files is not mistaken for docs-only", () => {
-	assert.equal(pr({ files: [] }).skip, false);
+test("a PR with no listed files is not mistaken for docs-only and runs every tier", () => {
+	const p = pr({ files: [] });
+	assert.deepEqual([p.skip, p.full, p.agents], [false, true, true]);
 });

@@ -633,8 +633,8 @@ under `--no-skip`, which CI passes. `rollback` is N/A off Linux (the trial runs 
 systemd) and is skipped on Linux when there is no systemd user manager or a
 `prismalens.service` already exists. On Windows there is no SIGTERM: the lock check ends the holder
 outright and expects the next boot to take the stale lock. CI's `Gate side checks`
-job runs them on Linux on every PR, and on Linux, macOS and Windows on every push to `main`, nightly, and a PR that
-touches the CLI, `scripts/` or the workflows (or carries the `full-ci` label); its run on the release PR's base
+job runs them on Linux, macOS and Windows on every push to `main`, nightly, and on a PR that touches anything beyond docs,
+tests, the frontend and repo metadata (or carries the `full-ci` label); its run on the release PR's base
 SHA is the gate's record.
 
 `pnpm gate:upgrade-chain <dir-with-tarball>` is the chain behind `Packed upgrade smoke`: it reads the stable
