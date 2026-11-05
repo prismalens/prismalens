@@ -49,6 +49,26 @@ describe("one live run per plain folder (#1020)", () => {
 		);
 	});
 
+	it("busy when the other run reaches the same folder through a symlinked parent", async () => {
+		const root = mkdtempSync(join(tmpdir(), "folder-lock-"));
+		try {
+			const real = join(root, "real");
+			mkdirSync(join(real, "notes"), { recursive: true });
+			const alias = join(root, "alias");
+			try {
+				symlinkSync(real, alias, "junction");
+			} catch {
+				return; // symlinks not permitted here
+			}
+			const d = db({ plain: true, url: join(real, "notes") }, [
+				{ repository: { url: join(alias, "notes") } },
+			]);
+			expect(await folderBusy(d as never, "repo-1")).toBe(true);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("free when the other live runs are elsewhere, or the project is not a plain folder", async () => {
 		expect(
 			await folderBusy(

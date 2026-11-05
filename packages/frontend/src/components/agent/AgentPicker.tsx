@@ -909,12 +909,22 @@ export function AccessChip({
 	const Icon = locked ? Lock : above ? ShieldAlert : Shield;
 	const named = `Permission: ${text}${above ? ", above the default" : ""}`;
 	const mark = (
-		<Icon
-			className={cn("size-3.5 shrink-0", above && "text-warn")}
-			aria-hidden
-			data-testid="access-chip-icon"
-			data-tone={above ? "warn" : undefined}
-		/>
+		<>
+			{/* The lock replaces the warning shape, so colour alone must not carry it. */}
+			{locked && above && (
+				<ShieldAlert
+					className="size-3.5 shrink-0 text-warn"
+					aria-hidden
+					data-testid="access-chip-warning"
+				/>
+			)}
+			<Icon
+				className={cn("size-3.5 shrink-0", above && "text-warn")}
+				aria-hidden
+				data-testid="access-chip-icon"
+				data-tone={above ? "warn" : undefined}
+			/>
+		</>
 	);
 	if (lockedHint)
 		return (

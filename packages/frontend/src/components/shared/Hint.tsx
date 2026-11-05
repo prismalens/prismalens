@@ -40,13 +40,14 @@ export function Hint({
 		<Tooltip
 			disableHoverableContent
 			open={hovered || (open && !dismissed)}
-			onOpenChange={(next) => {
-				setHovered(next);
-				if (!next && open) setDismissed(true);
-			}}
+			onOpenChange={setHovered}
 		>
 			<TooltipTrigger asChild>{children}</TooltipTrigger>
-			<TooltipContent side={side} data-testid="hint">
+			<TooltipContent
+				side={side}
+				data-testid="hint"
+				onEscapeKeyDown={() => setDismissed(true)}
+			>
 				<span className="flex items-center gap-2">
 					<span className="min-w-0">{label}</span>
 					{keys?.map((k) => (

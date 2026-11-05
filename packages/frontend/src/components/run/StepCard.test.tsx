@@ -157,4 +157,12 @@ describe("A PrismaLens tool's step header (#1020)", () => {
 		expect(header?.textContent).not.toContain("incidents_similar");
 		expect(q("step-body")?.textContent).toContain("incidents_similar");
 	});
+
+	it("leaves out the verb on a finished gateway step and keeps a failed one", () => {
+		const gw = { title: "Read the incident", gateway: true, shell: false };
+		render(step(gw), false);
+		expect(q("step-verb")).toBeNull();
+		render(step({ ...gw, ok: false, verb: "Failed" }), false);
+		expect(q("step-verb")?.textContent).toBe("Failed");
+	});
 });

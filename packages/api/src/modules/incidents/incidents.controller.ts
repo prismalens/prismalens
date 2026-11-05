@@ -198,13 +198,11 @@ export class IncidentsController {
 				}
 				const { serviceId, ...rest } = updateData;
 				const others = fields.some((f) => f !== "serviceId");
-				// A link this request makes is taken back if the rest of it fails (#1020).
-				const fresh =
-					!!serviceId &&
-					others &&
-					!(await this.incidentsService.findById(id))?.serviceId;
+				// Only the request whose link write set the service takes it back on failure (#1020).
+				let fresh = false;
 				if (serviceId) {
 					const linked = await this.incidentsService.linkService(id, serviceId);
+					fresh = linked === "linked" && others;
 					if (linked === "missing")
 						throw new ORPCError("NOT_FOUND", {
 							message: `Incident ${id} not found`,

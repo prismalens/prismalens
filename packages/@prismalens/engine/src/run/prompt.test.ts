@@ -831,7 +831,7 @@ describe("buildChatPrompt on a project, service or no-subject thread (#1020, OBJ
 			"How do I send alerts here?",
 		);
 		expect(alerts).toMatch(/THIS PAGE\n {2}The user started this chat from the Alerts page/);
-		expect(alerts).toContain("the webhook URL and token are shown on this page under Copy URL / Copy token");
+		expect(alerts).toContain("the token under Copy token on the host machine only; a paired device cannot copy it, so the host copies it");
 		expect(alerts).toContain("<webhook-token>");
 		expect(alerts.trimEnd().endsWith("How do I send alerts here?")).toBe(true);
 		for (const place of ["services", "schedules"] as const) {
