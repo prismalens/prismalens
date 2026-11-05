@@ -260,7 +260,7 @@ export interface JobIo {
 	/** Answers the agent's asks; the operator's Approve or Deny (#673 w21). */
 	permission?: PermissionPolicy;
 	/** Questions, inputs and PrismaLens tools' asks, and the agent's commands (#1024). */
-	asks?: Pick<RunInvestigationOptions, "elicit" | "toolAsks">;
+	asks?: Pick<RunInvestigationOptions, "elicit">;
 }
 
 /** The question window from Settings, and where the agent's advertised commands are kept (#1024). */

@@ -15,11 +15,12 @@ export function composerStubs(dispatch: unknown = {}): Provider[] {
 		{
 			provide: AsksService,
 			useValue: new AsksService(
-				{} as never,
+				{ toolAsk: { findUnique: async () => null } } as never,
 				dispatch as never,
 				{
 					allEvents: async () => [],
 				} as never,
+				{ publish: () => 0 } as never,
 			),
 		},
 		{ provide: DraftsService, useValue: { consume: async () => "none" } },

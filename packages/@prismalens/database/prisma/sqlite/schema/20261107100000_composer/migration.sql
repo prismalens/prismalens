@@ -1,4 +1,4 @@
--- Composer drafts, reference frecency and the agent's advertised commands (#1024); additive.
+-- Composer drafts, reference frecency, PrismaLens tools' asks and the agent's advertised commands (#1024); additive.
 -- AlterTable
 ALTER TABLE "investigations" ADD COLUMN "agentCommands" TEXT;
 
@@ -23,3 +23,18 @@ CREATE TABLE "reference_uses" (
 
 -- CreateIndex
 CREATE INDEX "composer_drafts_updatedAt_idx" ON "composer_drafts"("updatedAt");
+
+-- CreateTable
+CREATE TABLE "tool_asks" (
+    "askId" TEXT NOT NULL PRIMARY KEY,
+    "threadId" TEXT NOT NULL,
+    "ask" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'open',
+    "outcome" TEXT,
+    "answer" TEXT,
+    "openedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "closedAt" DATETIME
+);
+
+-- CreateIndex
+CREATE INDEX "tool_asks_threadId_status_idx" ON "tool_asks"("threadId", "status");

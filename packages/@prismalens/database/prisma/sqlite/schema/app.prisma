@@ -494,6 +494,22 @@ model ComposerDraft {
   @@map("composer_drafts")
 }
 
+/// A PrismaLens tool's ask (#1024): held here, not by a run, so it outlives the turn
+/// that opened it and a restart. `status` open|closed; closing is a compare-and-set on it.
+model ToolAsk {
+  askId    String    @id
+  threadId String
+  ask      String // JSON PendingAsk
+  status   String    @default("open")
+  outcome  String?
+  answer   String? // JSON AskAnswer; never set for a secret
+  openedAt DateTime  @default(now())
+  closedAt DateTime?
+
+  @@index([threadId, status])
+  @@map("tool_asks")
+}
+
 /// How often the user picked a reference, for the search's frecency boost (#1024).
 model ReferenceUse {
   kind       String

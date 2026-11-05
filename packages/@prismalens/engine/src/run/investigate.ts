@@ -38,8 +38,6 @@ import {
 	type AgentCommand,
 	AgentCommandsSchema,
 	ASK_TIMEOUT_MS,
-	type AskAnswer,
-	type AskClosedOutcome,
 	ATTACHMENT_IMAGE_MAX_BYTES,
 	ATTACHMENT_TEXT_MAX_BYTES,
 	type AttachmentRef,
@@ -198,8 +196,6 @@ export interface RunInvestigationOptions {
 	) => Promise<HeldOutcome>;
 	/** How long a question waits (Settings → Agent); QUESTION_ASK_TIMEOUT_MS when absent. */
 	questionTimeoutMs?: number;
-	/** Asks PrismaLens's own tools opened on this run, recorded as they open and close (#1024). */
-	toolAsks?: ToolAskPort;
 	/** The agent's advertised commands, validated, each time it sends them (#1024). */
 	onCommands?: (commands: AgentCommand[]) => void;
 	/**
@@ -290,20 +286,6 @@ export interface SteerLine {
 	/** Its quotes and references, and the text they add for the agent (#1024). */
 	context?: JobMessageContext;
 }
-
-/** What PrismaLens's tools asked on this run, drained by the run so its events keep their order (#1024). */
-export interface ToolAskPort {
-	drain(): ToolAskEvent[];
-	onActivity(listener: () => void): () => void;
-}
-export type ToolAskEvent =
-	| { type: "opened"; ask: PendingAsk }
-	| {
-			type: "closed";
-			askId: string;
-			outcome: AskClosedOutcome;
-			answer?: AskAnswer;
-	  };
 
 /** A message's text as the agent receives it: the quotes and references it carries after it. */
 export function withAddendum(
@@ -935,10 +917,6 @@ export async function* runInvestigation(
 				);
 		for (const c of opts.steer?.changes?.() ?? [])
 			yield adapter.messageChanged(c.id, c.text);
-		for (const e of opts.toolAsks?.drain() ?? [])
-			yield e.type === "opened"
-				? adapter.askOpened(e.ask)
-				: adapter.askClosed(e.askId, e.outcome, e.answer);
 	};
 	const elicitedAsk = (
 		item: Extract<AcpStreamItem, { kind: "elicit_asked" }>,
@@ -1009,7 +987,6 @@ export async function* runInvestigation(
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
-		unToolAsks?.();
 		if (tools) yield* toolsSummary();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)])
 			yield adapter.operatorMessage(
@@ -1029,7 +1006,6 @@ export async function* runInvestigation(
 		session.cancel();
 	});
 	const unQueued = opts.steer?.onQueued?.(() => session.nudge());
-	const unToolAsks = opts.toolAsks?.onActivity(() => session.nudge());
 	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
 	let summarized = false;
 	const unCalled = opts.gateway?.onCall((c) =>
@@ -1390,7 +1366,6 @@ export async function* runInvestigation(
 	} finally {
 		unsubscribe?.();
 		unQueued?.();
-		unToolAsks?.();
 		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}

@@ -15,14 +15,7 @@ import type {
 	InvestigationJobData,
 	PendingAsk,
 } from "@prismalens/contracts";
-import {
-	type AskChannel,
-	createAskChannel,
-	createSteerChannel,
-	type HeldOutcome,
-	type ToolAskEvent,
-	type ToolAskPort,
-} from "@prismalens/engine";
+import { createAskChannel, createSteerChannel } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
 import type { JobRunner, RunningJob, RunSink } from "./dispatcher.js";
 import runInvestigationJob, {
@@ -51,7 +44,6 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 
 		const controller = new AbortController();
 		const steer = createSteerChannel();
-		let toolAsks: ReturnType<typeof toolAskHolder>;
 		// Every ask waits on the operator; the row shows it so the board, the band and a notification can (#673 w21).
 		const asks = createAskChannel({
 			onChange: (since) => {
@@ -60,7 +52,6 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 					.catch((e) => logger.warn("Could not record the waiting ask", e));
 			},
 		});
-		toolAsks = toolAskHolder(asks);
 		const owes =
 			payloadTurn({
 				chat: !!payload.chat,
@@ -103,7 +94,6 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				asks: {
 					elicit: (askId, ask, ctx) =>
 						asks.hold(askId, { kind: ask.kind, accepts: fits(ask.kind) }, ctx),
-					toolAsks: toolAsks.port,
 				},
 			},
 			ports,
@@ -145,8 +135,6 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				return result;
 			},
 			change: (messageId, text) => steer.change(messageId, text),
-			openAsk: (ask) => toolAsks.open(ask, controller.signal),
-			closeAsk: (askId, outcome) => asks.cancel(askId, outcome),
 		};
 	};
 }
@@ -154,51 +142,4 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 /** An answer of the ask's own kind, or a decline, settles it. */
 function fits(kind: PendingAsk["kind"]): (answer: AskAnswer) => boolean {
 	return (answer) => answer.kind === "decline" || answer.kind === kind;
-}
-
-/** Holds PrismaLens tools' asks on the run's channel and queues their events for the run (#1024). */
-function toolAskHolder(asks: AskChannel): {
-	port: ToolAskPort;
-	open(ask: PendingAsk, signal: AbortSignal): Promise<HeldOutcome>;
-} {
-	const queued: ToolAskEvent[] = [];
-	let listener: (() => void) | null = null;
-	const push = (e: ToolAskEvent) => {
-		queued.push(e);
-		listener?.();
-	};
-	return {
-		port: {
-			drain: () => queued.splice(0),
-			onActivity(l) {
-				listener = l;
-				return () => {
-					listener = null;
-				};
-			},
-		},
-		open(ask, signal) {
-			push({ type: "opened", ask });
-			const timeoutMs = ask.expiresAt
-				? Math.max(1, Date.parse(ask.expiresAt) - Date.now())
-				: 0;
-			const held = asks.hold(
-				ask.askId,
-				{ kind: ask.kind, accepts: fits(ask.kind) },
-				{ signal, timeoutMs },
-			);
-			void held.then((closed) =>
-				push({
-					type: "closed",
-					askId: ask.askId,
-					outcome: closed.outcome,
-					// A secret's value is never recorded (#1024).
-					...("answer" in closed && ask.kind !== "secret"
-						? { answer: closed.answer }
-						: {}),
-				}),
-			);
-			return held;
-		},
-	};
 }

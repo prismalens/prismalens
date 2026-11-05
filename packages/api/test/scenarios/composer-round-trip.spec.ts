@@ -224,4 +224,35 @@ describe("Walk: the composer keeps every word, and what it carries reaches the a
 		});
 		expect(JSON.stringify(other)).toContain("not_found");
 	}, 60_000);
+
+	it("Given a tool's ask on a finished thread, When PrismaLens restarts, Then it still waits and the host answers it with no run live", async () => {
+		const { run } = await personRun("held", "success");
+		await eventually(
+			() => pl.investigation(run.id),
+			(i) => i.status === "completed" || i.status === "failed",
+			"the run ends",
+			30_000,
+		);
+		const askId = await (await pl.asks()).open(run.id, {
+			kind: "permission",
+			requiresHost: true,
+			source: { kind: "tool", tool: "act", requestId: "req-1" },
+			title: "Restart checkout-api",
+			permission: { toolKind: "execute", options: [] },
+		});
+		await pl.stop();
+		await pl.boot();
+		const after = await (await pl.asks()).get(askId);
+		expect(after?.closed).toBeNull();
+		const out = await pl.api<{ outcome: string }>(
+			`/investigations/${run.id}/asks/${askId}`,
+			{ method: "POST", body: { answer: { kind: "permission", decision: "approve" } } },
+		);
+		expect(out).toEqual({ outcome: "approved" });
+		const kinds = (await events(run.id))
+			.filter((e) => (e.kind === "ask_opened" ? e.ask.askId : "askId" in e ? e.askId : null) === askId)
+			.map((e) => e.kind);
+		expect(kinds).toEqual(["ask_opened", "ask_closed"]);
+	}, 120_000);
 });
+

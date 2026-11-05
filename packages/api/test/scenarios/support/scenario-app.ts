@@ -223,6 +223,15 @@ export class ScenarioApp {
 		return JSON.parse(out) as { id: string; mimeType: string };
 	}
 
+	/** The running app's ask seat (#1024): a scenario opens a tool's ask as surface F does. */
+	async asks() {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { AsksService } = await import(
+			"../../../src/modules/asks/asks.service.js"
+		);
+		return this.app.get(AsksService);
+	}
+
 	/** The running app's gateway: a scenario reads what a run's tools answer. */
 	async gateway() {
 		if (!this.app) throw new Error("PrismaLens is not running");

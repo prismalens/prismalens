@@ -2,10 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { randomUUID } from "node:crypto";
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import {
 	type AskAnswer,
-	answerRequiresHost,
+	AskAnswerSchema,
+	type AskClosedOutcome,
+	type CanonicalEvent,
 	type PendingAsk,
 	PendingAskSchema,
 	pendingAsks,
@@ -13,6 +15,12 @@ import {
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import {
+	EVENT_BUS,
+	type EventBus,
+	type RelayMessage,
+	runEventsTopic,
+} from "../../infrastructure/dispatch/event-bus.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import {
 	type AskAnswerer,
@@ -26,22 +34,48 @@ import {
 /** A `tree` answer only exists for a PrismaLens tool's ask (surface F). */
 export class AskInvalid extends Error {}
 
+/** Tool asks' events live on their own branch, so they never race a live run's `seq` (#1024). */
+export const TOOL_ASK_BRANCH = "asks";
+
+type Row = {
+	askId: string;
+	threadId: string;
+	ask: string;
+	status: string;
+	outcome: string | null;
+	answer: string | null;
+	closedAt: Date | null;
+};
+
+function closedOf(row: Row): ClosedAsk | null {
+	if (row.status !== "closed" || !row.outcome) return null;
+	const answer = row.answer
+		? AskAnswerSchema.safeParse(JSON.parse(row.answer))
+		: null;
+	return {
+		ask: PendingAskSchema.parse(JSON.parse(row.ask)),
+		outcome: row.outcome as AskClosedOutcome,
+		...(answer?.success ? { answer: answer.data } : {}),
+		closedAt: (row.closedAt ?? new Date()).toISOString(),
+	};
+}
+
 /**
- * The one seat for every ask (#1024). Engine asks live in the run's channel and
- * its events; PrismaLens tools' asks are opened here and held by the live run.
- * Only a tool ask sets `requiresHost`, and only this process can open one, so
- * the open map is the authority for who may answer while the run lives.
+ * The one seat for every ask (#1024). An engine ask (permission, elicitation) lives
+ * in its run, and the run answers it. A PrismaLens tool's ask (`source.kind = "tool"`)
+ * is held here in `tool_asks`, not by a run: it outlives the turn that opened it and
+ * a restart, and is answerable with no run live. Its events go to the thread's log on
+ * TOOL_ASK_BRANCH. `onClosed` handlers are in-process; after a restart, re-read with `get`.
  */
 @Injectable()
 export class AsksService implements AsksPort {
-	private readonly toolAsks = new Map<string, PendingAsk>();
 	private readonly handlers = new Map<string, Set<(c: ClosedAsk) => void>>();
-	private readonly closed = new Map<string, ClosedAsk>();
 
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly dispatch: DispatchService,
 		private readonly investigations: InvestigationsService,
+		@Inject(EVENT_BUS) private readonly bus: EventBus,
 	) {}
 
 	async open(threadId: string, input: OpenAsk): Promise<string> {
@@ -54,20 +88,15 @@ export class AsksService implements AsksPort {
 			// ADR 0004 §6: what a PrismaLens tool would do is the host's to allow.
 			requiresHost: input.requiresHost || input.source.kind === "tool",
 		});
-		const held = this.dispatch.openToolAsk(ask);
-		if (!held) throw new AskConflict("No run holds this thread.");
-		this.toolAsks.set(askId, ask);
-		void held.then((outcome) => {
-			this.toolAsks.delete(askId);
-			this.settle({
-				ask,
-				outcome: outcome.outcome,
-				...("answer" in outcome && ask.kind !== "secret"
-					? { answer: outcome.answer }
-					: {}),
-				closedAt: new Date().toISOString(),
-			});
+		const thread = await this.prisma.investigation.findUnique({
+			where: { id: threadId },
+			select: { id: true },
 		});
+		if (!thread) throw new AskConflict("No such thread.");
+		await this.prisma.toolAsk.create({
+			data: { askId, threadId, ask: JSON.stringify(ask), status: "open" },
+		});
+		await this.record(threadId, { kind: "ask_opened", ask });
 		return askId;
 	}
 
@@ -77,66 +106,74 @@ export class AsksService implements AsksPort {
 		answer: AskAnswer,
 		by: AskAnswerer,
 	): Promise<ClosedAsk> {
-		// Only a tool ask can need the host, and only this process holds those (see the class note).
-		const tool = this.toolAsks.get(askId);
-		if (tool?.kind === "secret")
-			throw new AskInvalid("A secret is answered through its own endpoint.");
-		if (answer.kind === "permission" && answer.scope === "tree" && !tool)
+		const row = await this.prisma.toolAsk.findUnique({ where: { askId } });
+		if (row && row.threadId === threadId)
+			return this.answerTool(row, answer, by);
+		if (answer.kind === "permission" && answer.scope === "tree")
 			throw new AskInvalid(
 				"Allow for the tree is for a PrismaLens tool's ask.",
 			);
-		// A run's bearer token never answers; a device or a push link only what needs no host.
-		if (
-			by.via === "run" ||
-			(tool && answerRequiresHost(tool, answer) && !by.host)
-		)
+		// A run's bearer token never answers anything.
+		if (by.via === "run")
 			throw new AskForbidden(
 				"Only this machine's own session can answer this.",
 			);
 		const result = this.dispatch.answerAsk(threadId, askId, answer);
 		if (!result) throw new AskConflict("This ask is no longer waiting.");
 		const ask =
-			tool ??
 			(await this.pending(threadId).catch((): PendingAsk[] => [])).find(
 				(a) => a.askId === askId,
-			) ??
-			agentAsk(threadId, askId, answer);
+			) ?? agentAsk(threadId, askId, answer);
 		const closed: ClosedAsk = {
 			ask,
 			outcome: result.outcome,
 			answer,
 			closedAt: new Date().toISOString(),
 		};
-		if (!tool) this.settle(closed);
+		this.notify(closed);
 		return closed;
+	}
+
+	async close(
+		askId: string,
+		outcome: "stopped" | "expired",
+	): Promise<ClosedAsk | null> {
+		const row = await this.prisma.toolAsk.findUnique({ where: { askId } });
+		if (!row) return null;
+		const closed = await this.settle(row, outcome);
+		if (closed) return closed;
+		const now = await this.prisma.toolAsk.findUnique({ where: { askId } });
+		return now ? closedOf(now) : null;
 	}
 
 	async pending(threadId: string): Promise<PendingAsk[]> {
 		const events = await this.investigations.allEvents(threadId);
-		const stored = pendingAsks(threadId, events);
-		const seen = new Set(stored.map((a) => a.askId));
-		// A tool ask the run has not flushed yet still waits.
-		const live = [...this.toolAsks.values()].filter(
-			(a) => a.threadId === threadId && !seen.has(a.askId),
+		// The table is the authority for a tool's ask; the log only shows it.
+		const stored = pendingAsks(threadId, events).filter(
+			(a) => a.source.kind !== "tool",
 		);
-		return [...stored, ...live];
+		return [...stored, ...(await this.openToolAsks(threadId))];
 	}
 
 	async get(
 		askId: string,
 	): Promise<{ ask: PendingAsk; closed: ClosedAsk | null } | null> {
-		const live = this.toolAsks.get(askId);
-		if (live) return { ask: live, closed: null };
-		const kept = this.closed.get(askId);
-		if (kept) return { ask: kept.ask, closed: kept };
-		const row = await this.prisma.investigationEvent.findFirst({
+		const row = await this.prisma.toolAsk.findUnique({ where: { askId } });
+		if (row) {
+			const fresh = (await this.expireIfDue(row)) ?? row;
+			return {
+				ask: PendingAskSchema.parse(JSON.parse(fresh.ask)),
+				closed: closedOf(fresh),
+			};
+		}
+		const ev = await this.prisma.investigationEvent.findFirst({
 			where: { event: { contains: askId } },
 			select: { investigationId: true },
 		});
-		if (!row) return null;
+		if (!ev) return null;
 		const found = projectAsks(
-			row.investigationId,
-			await this.investigations.allEvents(row.investigationId),
+			ev.investigationId,
+			await this.investigations.allEvents(ev.investigationId),
 		).find((a) => a.ask.askId === askId);
 		if (!found) return null;
 		return {
@@ -152,42 +189,139 @@ export class AsksService implements AsksPort {
 		};
 	}
 
-	async close(
-		askId: string,
-		outcome: "stopped" | "expired",
-	): Promise<ClosedAsk | null> {
-		const done = this.closed.get(askId);
-		if (done) return done;
-		const ask = this.toolAsks.get(askId);
-		if (!ask) return null;
-		// The run settles its hold, which settles here; a run already gone is settled directly.
-		this.dispatch.closeToolAsk(ask.threadId, askId, outcome);
-		this.toolAsks.delete(askId);
-		this.settle({ ask, outcome, closedAt: new Date().toISOString() });
-		return this.closed.get(askId) ?? null;
-	}
-
 	onClosed(askId: string, handler: (closed: ClosedAsk) => void): () => void {
-		const done = this.closed.get(askId);
-		if (done) {
-			handler(done);
-			return () => {};
-		}
 		const set = this.handlers.get(askId) ?? new Set();
 		set.add(handler);
 		this.handlers.set(askId, set);
+		// Already closed: the handler hears it once, now.
+		void this.prisma.toolAsk
+			.findUnique({ where: { askId } })
+			.then((row) => {
+				const done = row ? closedOf(row) : null;
+				if (done && set.delete(handler)) handler(done);
+			})
+			.catch(() => {});
 		return () => set.delete(handler);
 	}
 
-	private settle(closed: ClosedAsk): void {
+	private async answerTool(
+		row: Row,
+		answer: AskAnswer,
+		by: AskAnswerer,
+	): Promise<ClosedAsk> {
+		const ask = PendingAskSchema.parse(JSON.parse(row.ask));
+		if (ask.kind === "secret")
+			throw new AskInvalid("A secret is answered through its own endpoint.");
+		// A tool's ask always needs the host (ADR 0004 §6); a run's bearer never answers.
+		if (by.via === "run" || !by.host)
+			throw new AskForbidden(
+				"Only this machine's own session can answer this.",
+			);
+		if (answer.kind !== "decline" && answer.kind !== ask.kind)
+			throw new AskInvalid(`This ask takes a ${ask.kind} answer.`);
+		if (await this.expireIfDue(row))
+			throw new AskConflict("This ask is no longer waiting.");
+		const outcome: AskClosedOutcome =
+			answer.kind === "decline"
+				? "declined"
+				: answer.kind === "permission"
+					? answer.decision === "approve"
+						? "approved"
+						: "denied"
+					: "answered";
+		const closed = await this.settle(row, outcome, answer);
+		if (!closed) throw new AskConflict("This ask is no longer waiting.");
+		return closed;
+	}
+
+	/** Close an open tool ask once (compare-and-set on `status`); null when it was already closed. */
+	private async settle(
+		row: Row,
+		outcome: AskClosedOutcome,
+		answer?: AskAnswer,
+	): Promise<ClosedAsk | null> {
+		const ask = PendingAskSchema.parse(JSON.parse(row.ask));
+		// A secret's value is never kept (#1024).
+		const kept = answer && ask.kind !== "secret" ? answer : undefined;
+		const closedAt = new Date();
+		const won = await this.prisma.toolAsk.updateMany({
+			where: { askId: row.askId, status: "open" },
+			data: {
+				status: "closed",
+				outcome,
+				answer: kept ? JSON.stringify(kept) : null,
+				closedAt,
+			},
+		});
+		if (won.count !== 1) return null;
+		await this.record(row.threadId, {
+			kind: "ask_closed",
+			askId: row.askId,
+			outcome,
+			...(kept ? { answer: kept } : {}),
+		});
+		const closed: ClosedAsk = {
+			ask,
+			outcome,
+			...(kept ? { answer: kept } : {}),
+			closedAt: closedAt.toISOString(),
+		};
+		this.notify(closed);
+		return closed;
+	}
+
+	/** A tool ask past its `expiresAt` closes as `expired` on the next read; returns the closed row. */
+	private async expireIfDue(row: Row): Promise<Row | null> {
+		if (row.status !== "open") return null;
+		const ask = PendingAskSchema.parse(JSON.parse(row.ask));
+		if (!ask.expiresAt || Date.parse(ask.expiresAt) > Date.now()) return null;
+		await this.settle(row, "expired");
+		return this.prisma.toolAsk.findUnique({ where: { askId: row.askId } });
+	}
+
+	private async openToolAsks(threadId: string): Promise<PendingAsk[]> {
+		const rows = await this.prisma.toolAsk.findMany({
+			where: { threadId, status: "open" },
+			orderBy: { openedAt: "asc" },
+		});
+		const out: PendingAsk[] = [];
+		for (const row of rows)
+			if (!(await this.expireIfDue(row)))
+				out.push(PendingAskSchema.parse(JSON.parse(row.ask)));
+		return out;
+	}
+
+	/** Append to the thread's log on the asks branch, and tell a live stream. */
+	private async record(
+		threadId: string,
+		body:
+			| { kind: "ask_opened"; ask: PendingAsk }
+			| {
+					kind: "ask_closed";
+					askId: string;
+					outcome: AskClosedOutcome;
+					answer?: AskAnswer;
+			  },
+	): Promise<void> {
+		const seq = (await this.investigations.lastEventSeq(threadId)) + 1;
+		const event = {
+			...body,
+			runId: threadId,
+			branchId: TOOL_ASK_BRANCH,
+			path: [],
+			seq,
+			label: null,
+			ts: new Date().toISOString(),
+		} as CanonicalEvent;
+		await this.investigations.appendEvents(threadId, [event]);
+		this.bus.publish<RelayMessage>(runEventsTopic(threadId), {
+			kind: "event",
+			event,
+		});
+	}
+
+	private notify(closed: ClosedAsk): void {
 		const id = closed.ask.askId;
-		if (this.closed.has(id)) return;
-		this.closed.set(id, closed);
-		// Kept only to answer a late `onClosed`; the event log holds the record.
-		if (this.closed.size > 500) {
-			const oldest = this.closed.keys().next().value;
-			if (oldest) this.closed.delete(oldest);
-		}
 		for (const h of this.handlers.get(id) ?? []) h(closed);
 		this.handlers.delete(id);
 	}

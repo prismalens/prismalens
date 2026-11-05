@@ -48,8 +48,9 @@ export interface AsksPort {
 	): Promise<{ ask: PendingAsk; closed: ClosedAsk | null } | null>;
 	onClosed(askId: string, handler: (closed: ClosedAsk) => void): () => void;
 	/**
-	 * Close a PrismaLens tool's ask unanswered, because its caller cancelled: `onClosed`
-	 * handlers run once. Idempotent: a closed ask returns how it closed; null for an unknown id.
+	 * Close a PrismaLens tool's ask unanswered, because its caller cancelled or gave up:
+	 * `onClosed` handlers run once. Idempotent: a closed ask returns how it closed; null
+	 * for an id that is not a tool's ask.
 	 */
 	close(
 		askId: string,

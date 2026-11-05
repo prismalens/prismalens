@@ -23,25 +23,20 @@ import type {
 	AskAnswer,
 	CanonicalEvent,
 	JobMessageContext,
-	PendingAsk,
 } from "@prismalens/contracts";
-import type { AskResult, HeldOutcome } from "@prismalens/engine";
+import type { AskResult } from "@prismalens/engine";
 import {
 	type EventBus,
 	type MessageState,
 	type RelayMessage,
-	type RunAskCloseRequest,
 	type RunAskRequest,
 	type RunMessageRequest,
 	type RunQueueRequest,
-	type RunToolAskRequest,
-	runAskCloseTopic,
 	runAskTopic,
 	runCancelTopic,
 	runEventsTopic,
 	runMessageTopic,
 	runQueueTopic,
-	runToolAskTopic,
 } from "./event-bus.js";
 import type { ClaimedJob, JobStore } from "./job-store.js";
 
@@ -79,10 +74,6 @@ export interface RunningJob {
 		messageId: string,
 		text: string | null,
 	): "edited" | "withdrawn" | null;
-	/** Record and hold a PrismaLens tool's ask (#1024). */
-	openAsk?(ask: PendingAsk): Promise<HeldOutcome>;
-	/** Close a held tool ask unanswered (#1024). */
-	closeAsk?(askId: string, outcome: "stopped" | "expired"): boolean;
 }
 
 export type JobRunner = (job: ClaimedJob, sink: RunSink) => RunningJob;
@@ -271,14 +262,6 @@ export class Dispatcher {
 			runQueueTopic(job.investigationId),
 			(q) => q.reply(running.change?.(q.messageId, q.text) ?? null),
 		);
-		const askCloseSub = this.bus.subscribe<RunAskCloseRequest>(
-			runAskCloseTopic(job.investigationId),
-			(c) => c.reply(running.closeAsk?.(c.askId, c.outcome) ?? false),
-		);
-		const toolAskSub = this.bus.subscribe<RunToolAskRequest>(
-			runToolAskTopic(job.investigationId),
-			(t) => t.reply(running.openAsk?.(t.ask) ?? null),
-		);
 
 		void running.done
 			.then(async (outcome) => {
@@ -301,8 +284,6 @@ export class Dispatcher {
 				messageSub.unsubscribe();
 				askSub.unsubscribe();
 				queueSub.unsubscribe();
-				toolAskSub.unsubscribe();
-				askCloseSub.unsubscribe();
 				this.inFlight.delete(job.id);
 				// A freed slot is worth claiming into immediately rather than waiting for
 				// the next enqueue — but not from inside this callback's stack.

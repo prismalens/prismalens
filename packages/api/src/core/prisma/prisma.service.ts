@@ -65,6 +65,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.referenceUse;
 	}
 
+	get toolAsk() {
+		return db.toolAsk;
+	}
+
 	get alertSourceAlert() {
 		return db.alertSourceAlert;
 	}
