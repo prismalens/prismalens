@@ -16,6 +16,7 @@ const state = {
 	sidebarHidden: false,
 	toggleSidebar: vi.fn(),
 	openSearch: vi.fn(),
+	head: {} as { compact?: boolean; filterable?: boolean },
 };
 
 vi.mock("@tanstack/react-router", () => ({
@@ -74,7 +75,10 @@ vi.mock("@/components/shell/ThreadList", () => ({
 }));
 
 vi.mock("@/components/shell/SidebarHead", () => ({
-	SidebarHead: () => null,
+	SidebarHead: (props: { compact?: boolean; filterable?: boolean }) => {
+		state.head = props;
+		return null;
+	},
 	SearchHost: ({ children }: { children: ReactNode }) => children,
 	useOpenSearch: () => state.openSearch,
 }));
@@ -135,6 +139,18 @@ describe("Sidebar (case 2)", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
 		});
 		expect(state.toggleSidebar).toHaveBeenCalledTimes(2);
+	});
+
+	it("offers the thread filters only beside the thread list", async () => {
+		for (const [pathname, filterable] of [
+			["/incidents", true],
+			["/alerts", false],
+			["/services/abc", false],
+		] as const) {
+			state.pathname = pathname;
+			await act(async () => root.render(createElement(Sidebar)));
+			expect(state.head.filterable, pathname).toBe(filterable);
+		}
 	});
 
 	it("opens Search from the phone strip", async () => {

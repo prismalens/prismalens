@@ -55,6 +55,8 @@ model Repository {
   sourceKind    String   @default("url")   // "folder" | "url"
   fullName      String               // "org/repo"
   url           String               // "https://github.com/org/repo" or an absolute folder path
+  subPath       String?              // a project rooted below its repository's top folder (#1020)
+  plain         Boolean  @default(false) // a folder with no git: threads you start run in it (#1020)
   description   String?
   language      String?
   defaultBranch String   @default("main")
@@ -70,6 +72,7 @@ model Repository {
   connection    Connection?         @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   services      ServiceRepository[]
   threads       Investigation[]     @relation("ProjectThreads")
+  schedules     Schedule[]
 
   @@unique([connectionId, fullName])
   @@map("repositories")
@@ -570,13 +573,21 @@ model Schedule {
   id             String  @id @default(uuid())
   name           String
   kind           String  @default("service_check")
-  serviceId      String
+  /// What it is about (#1020): a service, a project (repositoryId), or neither.
+  serviceId      String?
+  repositoryId   String?
   runbook        String? // a runbook path in the service's repo
   brief          String
   recurrence     String // JSON Recurrence: cron in a time zone, or an elapsed interval
   harness        String
   model          String?
   effort         String?
+  accessLevel    String? // null: the level alert runs use
+  /// false: each run is a chat that owes an answer, not a report (#1020).
+  report         Boolean @default(true)
+  whenAsks       String  @default("decide") // decide | wait
+  /// JSON [{kind, identity}]: asks a person answered "Always allow" on, matched by identity hash (#1020).
+  alwaysAllow    String?
   missedPolicy   String  @default("run_once") // run_once | skip
   catchUpMinutes Int     @default(360)
   enabled        Boolean @default(true)
@@ -590,10 +601,12 @@ model Schedule {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  service Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  ticks   ScheduleTick[]
+  service    Service?       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  repository Repository?    @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  ticks      ScheduleTick[]
 
   @@index([enabled, nextRunAt])
+  @@index([repositoryId])
   @@map("schedules")
 }
 

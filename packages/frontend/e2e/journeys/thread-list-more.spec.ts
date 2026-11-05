@@ -219,7 +219,7 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await expect(page.getByTestId("threads-settled")).toHaveCount(0);
 	});
 
-	test("3. Search (Ctrl K palette): typing narrows results; filters Kind, State, Project, Time each narrow the list; clearing restores it", async ({
+	test("3. Search (Ctrl K palette) narrows by typing; the Filter popover's Kind, State, Project and Time each narrow the sidebar list; Clear restores it", async ({
 		page,
 	}) => {
 		const REPO_1_ID = "11111111-2222-4333-8444-555555555551";
@@ -328,6 +328,8 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await expect(page.getByTestId("thread-search")).toBeVisible();
 		const results = page.getByTestId("thread-search-result");
 		await expect(results).toHaveCount(3);
+		// The palette holds no filters any more; they narrow the sidebar list (#1020).
+		await expect(page.getByTestId("thread-search-filters")).toHaveCount(0);
 
 		// Typing narrows results
 		await page.getByTestId("thread-search-input").fill("Alpha");
@@ -337,50 +339,50 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		// Clearing restores it
 		await page.getByTestId("thread-search-input").fill("");
 		await expect(results).toHaveCount(3);
+		await page.keyboard.press("Escape");
 
-		// Kind filter narrows list
-		await page.getByTestId("thread-filter-kind").click();
-		await page.getByTestId("thread-filter-kind-investigation").click();
-		await expect(results).toHaveCount(1);
-		await expect(results).toHaveText(/Beta investigation/);
+		const list = page.getByTestId("thread-list");
+		const titles = list.getByTestId("thread-row-title");
+		const settled = page.getByTestId("threads-settled-toggle");
+		await expect(titles).toHaveText([/Beta investigation/, /Alpha chat/]);
+		await expect(settled).toContainText("1");
+		const filter = page.getByTestId("sidebar-filter");
+		const pick = async (id: string, option: string) => {
+			if (!(await page.getByTestId("thread-filters").isVisible()))
+				await filter.click();
+			await page.getByTestId(`thread-filter-${id}`).click();
+			if (option === "any")
+				await page.getByRole("option", { name: "Any" }).click();
+			else await page.getByTestId(`thread-filter-${id}-${option}`).click();
+		};
 
-		// Clearing Kind restores it
-		await page.getByTestId("thread-filter-kind").click();
-		await page.getByRole("option", { name: "Any" }).click();
-		await expect(results).toHaveCount(3);
+		// Kind filter narrows the list
+		await pick("kind", "investigation");
+		await expect(filter).toHaveAttribute("data-count", "1");
+		await expect(titles).toHaveText([/Beta investigation/]);
+		await expect(settled).toHaveCount(0);
+		await pick("kind", "any");
+		await expect(titles).toHaveCount(2);
 
-		// State filter narrows list
-		await page.getByTestId("thread-filter-state").click();
-		await page.getByTestId("thread-filter-state-settled").click();
-		await expect(results).toHaveCount(1);
-		await expect(results).toHaveText(/Gamma settled/);
+		// State filter narrows the list
+		await pick("state", "settled");
+		await expect(titles).toHaveCount(0);
+		await expect(settled).toContainText("1");
+		await pick("state", "any");
+		await expect(titles).toHaveCount(2);
 
-		// Clearing State restores it
-		await page.getByTestId("thread-filter-state").click();
-		await page.getByRole("option", { name: "Any" }).click();
-		await expect(results).toHaveCount(3);
+		// Project filter narrows the list
+		await pick("project", REPO_2_ID);
+		await expect(titles).toHaveText([/Beta investigation/]);
+		await pick("project", "any");
+		await expect(titles).toHaveCount(2);
 
-		// Project filter narrows list
-		await page.getByTestId("thread-filter-project").click();
-		await page.getByTestId(`thread-filter-project-${REPO_2_ID}`).click();
-		await expect(results).toHaveCount(1);
-		await expect(results).toHaveText(/Beta investigation/);
-
-		// Clearing Project restores it
-		await page.getByTestId("thread-filter-project").click();
-		await page.getByRole("option", { name: "Any" }).click();
-		await expect(results).toHaveCount(3);
-
-		// Time filter narrows list
-		await page.getByTestId("thread-filter-time").click();
-		await page.getByTestId("thread-filter-time-1d").click();
-		await expect(results).toHaveCount(1);
-		await expect(results).toHaveText(/Alpha chat/);
-
-		// Clearing Time restores it
-		await page.getByTestId("thread-filter-time").click();
-		await page.getByRole("option", { name: "Any" }).click();
-		await expect(results).toHaveCount(3);
+		// Time filter narrows the list; Clear restores it
+		await pick("time", "1d");
+		await expect(titles).toHaveText([/Alpha chat/]);
+		await page.getByTestId("thread-filters-clear").click();
+		await expect(titles).toHaveCount(2);
+		await expect(filter).not.toHaveAttribute("data-count", /.+/);
 	});
 
 	test("4. An incident's threads move as one block sharing a severity stripe; only the first shows the incident chip", async ({

@@ -13,6 +13,7 @@ import {
 	visit,
 	waitForRun,
 } from "../steps/product";
+import { pickAction } from "./verb";
 
 const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
 const MIN = 60_000;
@@ -892,8 +893,12 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await visit(page, `/incidents/${inc.id}`);
 
 		const composerInput = page.getByTestId("composer-input");
-		const actionChip = page.getByTestId("action-chip");
-		await expect(actionChip).toBeVisible();
+		const mode = page.getByTestId("composer-mode");
+		await expect(mode).toHaveAttribute("data-mode", "ask");
+		// Access sits inside the box, beside the model (#1020).
+		await expect(
+			page.getByTestId("composer-chips").getByTestId("access-chip"),
+		).toBeVisible();
 
 		// 1. Ask action stays on the page and fills you-asked (Ask is default initial action)
 		await composerInput.fill("What is the current sort mechanism?");
@@ -909,8 +914,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		hold(inc.title);
 
 		// 2. Investigate again starts a live run, page stays
-		await actionChip.click();
-		await page.getByTestId("action-investigate").click();
+		await pickAction(page, "investigate");
 		await composerInput.fill("Recheck latency with 100 notes");
 		await composerInput.press("Enter");
 
@@ -919,14 +923,15 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await expect(stripStop).toBeVisible({ timeout: 15_000 });
 
 		// 3. Live run offers only Message and Note actions
-		await actionChip.click();
-		await expect(page.getByTestId("action-message")).toBeVisible();
-		await expect(page.getByTestId("action-note")).toBeVisible();
-		await expect(page.getByTestId("action-ask")).toHaveCount(0);
-		await expect(page.getByTestId("action-investigate")).toHaveCount(0);
+		await expect(mode).toHaveAttribute("data-mode", "message");
+		await composerInput.fill("/");
+		await expect(page.getByTestId("composer-slash-note")).toBeVisible();
+		await expect(page.getByTestId("composer-slash-ask")).toHaveCount(0);
+		await expect(page.getByTestId("composer-slash-investigate")).toHaveCount(0);
 
 		// 4. Note action adds a timeline row
-		await page.getByTestId("action-note").click();
+		await page.getByTestId("composer-slash-note").click();
+		await expect(mode).toHaveAttribute("data-mode", "note");
 		await composerInput.fill("Operator manually verified DB connections");
 		await composerInput.press("Enter");
 

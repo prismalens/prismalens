@@ -41,6 +41,7 @@ import {
 	useCreateService,
 	useUpdateService,
 } from "@/lib/api/hooks";
+import { BrowseButton } from "../projects/AddProjectDialog";
 import { tierWord } from "./service-detail.utils";
 
 export interface ServiceFormDialogProps {
@@ -238,13 +239,20 @@ export function ServiceFormDialog({
 						htmlFor="repository"
 						hint="A folder on this machine or a git URL; a run reads its last commit"
 					>
-						<Input
-							id="repository"
-							value={repository}
-							onChange={(e) => setRepository(e.target.value)}
-							placeholder="~/code/payments-api"
-							data-testid="service-repository-input"
-						/>
+						<div className="flex items-center gap-2">
+							<Input
+								id="repository"
+								value={repository}
+								onChange={(e) => setRepository(e.target.value)}
+								placeholder="~/code/payments-api"
+								className="min-w-0 flex-1"
+								data-testid="service-repository-input"
+							/>
+							<BrowseButton
+								onPick={setRepository}
+								testId="service-repository-browse"
+							/>
+						</div>
 					</Field>
 
 					<Field label="Description" htmlFor="description">

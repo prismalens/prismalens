@@ -36,6 +36,7 @@ export function ThreadPanel({
 	runId,
 	live,
 	investigation,
+	diff = true,
 	files,
 	suspects,
 }: {
@@ -45,11 +46,15 @@ export function ThreadPanel({
 	runId: string;
 	live: boolean;
 	investigation: boolean;
+	/** False for a plain folder's thread: no diff base, so no Diff (#1020). */
+	diff?: boolean;
 	files: EvidenceFiles;
 	/** In the order the agent first recorded them; each at its latest status. */
 	suspects: RecordedHypothesis[];
 }) {
-	const shown = SURFACES.filter((s) => investigation || s.id !== "suspects");
+	const shown = SURFACES.filter(
+		(s) => (investigation || s.id !== "suspects") && (diff || s.id !== "diff"),
+	);
 	const onKeyDown = (e: KeyboardEvent) => {
 		if (e.key !== "Escape" || e.defaultPrevented) return;
 		e.stopPropagation();
@@ -65,6 +70,7 @@ export function ThreadPanel({
 			<div
 				role="tablist"
 				aria-label="Surfaces"
+				data-title-row
 				className="flex h-(--header-h) shrink-0 items-center gap-1 px-2 shadow-[0_1px_0_var(--hairline)]"
 			>
 				{shown.map(({ id, label, Icon }) => (
@@ -106,7 +112,9 @@ export function ThreadPanel({
 				aria-label={surface ? undefined : "Surfaces"}
 				className="flex min-h-0 flex-1 flex-col"
 			>
-				{surface === null ? (
+				{surface === null ||
+				(surface === "diff" && !diff) ||
+				(surface === "suspects" && !investigation) ? (
 					<Empty
 						className="justify-center px-3 pt-8"
 						text="Open a surface"
@@ -116,7 +124,7 @@ export function ThreadPanel({
 					<FilesPane files={files} onJump={() => {}} />
 				) : surface === "diff" ? (
 					<WorktreeDiff runId={runId} live={live} />
-				) : surface === "suspects" && investigation ? (
+				) : surface === "suspects" ? (
 					<Suspects suspects={suspects} />
 				) : (
 					<BrowserTab links={files.links} />

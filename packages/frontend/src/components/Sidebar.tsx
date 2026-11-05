@@ -11,15 +11,7 @@
  * Back at the foot. Hidden on pairing, where nothing leads away.
  */
 import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
-import {
-	Bell,
-	Boxes,
-	ChevronLeft,
-	Inbox,
-	PanelLeft,
-	Search,
-	SlidersHorizontal,
-} from "lucide-react";
+import { ChevronLeft, PanelLeft, Search } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
@@ -37,6 +29,7 @@ import {
 	SidebarHead,
 	useOpenSearch,
 } from "@/components/shell/SidebarHead";
+import { useThreadFilters } from "@/components/shell/ThreadFilters";
 import { ThreadList } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { inSettings, useBack } from "@/hooks/use-back";
@@ -46,6 +39,7 @@ import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useServices } from "@/lib/api/hooks";
+import { PLACES } from "@/lib/places";
 import { cn } from "@/lib/utils";
 
 type DoorTo = "/incidents" | "/alerts" | "/services" | "/settings";
@@ -66,23 +60,17 @@ const ICON = "size-4 shrink-0 stroke-[1.5]";
 function useDoors(signedIn: boolean): Door[] {
 	const needs = useNeedsYouCount(signedIn);
 	const about = useAbout(signedIn);
-	return [
-		{
-			to: "/incidents",
-			label: "Incidents",
-			icon: <Inbox className={ICON} />,
-			count: needs || undefined,
-			countLabel: needs ? `${needs} need you` : undefined,
-		},
-		{ to: "/alerts", label: "Alerts", icon: <Bell className={ICON} /> },
-		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
-		{
-			to: "/settings",
-			label: "Settings",
-			icon: <SlidersHorizontal className={ICON} />,
-			dot: about.data?.update.available === true,
-		},
-	];
+	return PLACES.filter((p) => p.door).map((p) => ({
+		to: p.to as DoorTo,
+		label: p.label,
+		icon: <p.icon className={ICON} />,
+		...(p.id === "incidents" && needs
+			? { count: needs, countLabel: `${needs} need you` }
+			: {}),
+		...(p.id === "settings"
+			? { dot: about.data?.update.available === true }
+			: {}),
+	}));
 }
 
 const goKey = (label: string) =>
@@ -114,7 +102,7 @@ function Shell({ pathname }: { pathname: string }) {
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
 				<aside
-					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
+					className="fixed bottom-0 left-0 top-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
 					data-testid="sidebar"
 				>
 					{settings ? (
@@ -156,7 +144,10 @@ function MainBar({
 	const settingsDoor = doors.find((d) => d.to === "/settings");
 	return (
 		<>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0">
+			<div
+				data-title-row
+				className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0"
+			>
 				<Link
 					to="/incidents"
 					className="flex items-center gap-2.5 rounded-control text-body font-semibold"
@@ -179,7 +170,14 @@ function MainBar({
 					</Hint>
 				</span>
 			</div>
-			{signedIn && <SidebarHead compact={!full} />}
+			{signedIn && (
+				<SidebarHead
+					compact={!full}
+					filterable={
+						full && !isOn(pathname, "/alerts") && !isOn(pathname, "/services")
+					}
+				/>
+			)}
 			<div className="mt-1.5 min-h-0 flex-1 overflow-y-auto pb-2">
 				{signedIn && full && <AreaList pathname={pathname} />}
 			</div>
@@ -223,7 +221,7 @@ function ShowSidebar({ onShow }: { onShow: () => void }) {
 				type="button"
 				onClick={onShow}
 				aria-label="Show the sidebar"
-				className="fixed top-(--frame-top) left-1 z-40 hidden size-(--header-h) items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 md:flex"
+				className="fixed top-(--frame-top) left-[calc(var(--controls-left)+0.25rem)] z-40 hidden size-(--header-h) items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 md:flex"
 				data-testid="sidebar-show"
 			>
 				<PanelLeft className={ICON} />
@@ -244,7 +242,11 @@ function AreaList({ pathname }: { pathname: string }) {
 		);
 	}
 	if (isOn(pathname, "/services")) return <ServiceList />;
-	return <ThreadList />;
+	return <FilteredThreadList />;
+}
+
+function FilteredThreadList() {
+	return <ThreadList filters={useThreadFilters()} />;
 }
 
 /** Settings at the foot, an icon beside the theme toggle (spec §1). */
@@ -349,7 +351,10 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 	useEscape(onBack, !phone);
 	return (
 		<>
-			<div className="flex h-(--header-h) shrink-0 items-center px-4 text-heading text-text-1">
+			<div
+				data-title-row
+				className="flex h-(--header-h) shrink-0 items-center px-4 text-heading text-text-1"
+			>
 				Settings
 			</div>
 			<nav

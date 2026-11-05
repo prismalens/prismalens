@@ -10,9 +10,11 @@ const ASK = "fake-session:echo How do I send alerts here?";
 let token: string;
 let runId: string;
 let streamed: { status: number; text: string; done: boolean };
+// An SSE frame ends at a blank line; a read can stop inside the done frame.
+const DONE_FRAME = /"type":"done"[^\n]*\n\n/;
 
 /**
- * Reads the run's live stream until its done marker. A refused stream throws, a read error
+ * Reads the run's live stream until its whole done frame. A refused stream throws, a read error
  * propagates, and a deadline leaves `done` false, so a partial stream never passes for a whole one.
  */
 async function readStream(
@@ -33,7 +35,7 @@ async function readStream(
 			const { done, value } = await reader.read();
 			if (done) break;
 			text += decoder.decode(value, { stream: true });
-			if (text.includes('"type":"done"')) return { status, text, done: true };
+			if (DONE_FRAME.test(text)) return { status, text, done: true };
 		}
 		return { status, text, done: false };
 	} catch (e) {

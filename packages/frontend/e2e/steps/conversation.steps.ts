@@ -182,7 +182,7 @@ When(
 		await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
 		// The script name rides in the brief so the run holds for the Then.
 		await box(page).fill(`${text} fake-session:live`);
-		await expect(page.getByTestId("action-chip")).toHaveText(button);
+		await expect(page.getByTestId("composer-mode")).toHaveText(button);
 		await page.getByTestId("composer-send").click();
 		await waitForRun(page, made.id, (r) => r.status === "running", "the run");
 	},
@@ -1038,8 +1038,8 @@ Then(
 			new RegExp(`^${text}\n\n${quote}\\d+\\. It found: `),
 		);
 		await expect(page.getByTestId("composer-file")).toContainText(file);
-		await expect(page.getByTestId("action-chip")).toHaveAttribute(
-			"data-action",
+		await expect(page.getByTestId("composer-mode")).toHaveAttribute(
+			"data-mode",
 			"investigate",
 		);
 	},
@@ -1056,11 +1056,11 @@ Then("the report is unchanged", async ({ page }) => {
 });
 
 Then(
-	'the status line reads "Stopped by you" and the box continues it to a report, with no verb chip',
+	'the status line reads "Stopped by you" and the box continues it to a report, with no action to pick',
 	async ({ page }) => {
 		await expect(strip(page)).toHaveText(/^Stopped by you/);
 		// No continue control (rulings 2, 3): typing and sending continues it.
-		await expect(page.getByTestId("action-chip")).toHaveCount(0);
+		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 		await expect(box(page)).toHaveAttribute("placeholder", /^Message /);
 		await expect(page.getByTestId("composer-hint")).toContainText(
 			"own session and ends in a report on the overview.",

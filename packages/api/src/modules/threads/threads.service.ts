@@ -27,6 +27,10 @@ import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import {
+	FOLDER_BUSY,
+	folderBusy,
+} from "../../infrastructure/dispatch/folder-lock.js";
 import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
@@ -154,6 +158,7 @@ export class ThreadsService {
 
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;
+		const repositoryId = ids.repositoryId;
 		const { investigation } = await this.investigations.startOrGet({
 			incidentId: null,
 			...(ids.repositoryId ? { repositoryId: ids.repositoryId } : {}),
@@ -163,18 +168,17 @@ export class ThreadsService {
 			kind: "chat",
 			title: input.text.slice(0, 120),
 			accessLevel: input.accessLevel ?? null,
-			...(draftKey && files.length
-				? {
-						onCreate: async (tx, id) => {
-							attachments = await this.attachments.claimDraft(
-								draftKey,
-								files,
-								id,
-								tx,
-							);
-						},
-					}
-				: {}),
+			onCreate: async (tx, id) => {
+				if (repositoryId && (await folderBusy(tx, repositoryId, id)))
+					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
+				if (draftKey && files.length)
+					attachments = await this.attachments.claimDraft(
+						draftKey,
+						files,
+						id,
+						tx,
+					);
+			},
 		});
 		const thread = await this.dispatch.threadRunOf({
 			...ids,
@@ -404,13 +408,21 @@ export class ThreadsService {
 	private async readState(
 		id: string,
 		data: { lastVisitedAt?: Date; settledAt?: Date | null },
+		/** A put-back writes only while the row still holds what this request wrote there. */
+		onlyIfSettledAt?: { value: Date | null },
 	): Promise<boolean> {
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const row = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { updatedAt: true },
+				select: { updatedAt: true, settledAt: true },
 			});
 			if (!row) return false;
+			if (
+				onlyIfSettledAt &&
+				(row.settledAt?.getTime() ?? null) !==
+					(onlyIfSettledAt.value?.getTime() ?? null)
+			)
+				return true;
 			const { count } = await this.prisma.investigation.updateMany({
 				where: { id, updatedAt: row.updatedAt },
 				data: { ...data, updatedAt: row.updatedAt },
@@ -420,34 +432,37 @@ export class ThreadsService {
 		throw new ORPCError("CONFLICT", { message: "Thread changed, try again" });
 	}
 
-	/** Writes each settled state in turn; a failure puts the ones already written back as they were. */
-	private async writeBlock(
-		writes: { id: string; settledAt: Date | null }[],
-		before: { id: string; settledAt: Date | null }[],
+	/**
+	 * All or nothing, by writing the earlier threads back, not by a transaction: on the SQLite adapter
+	 * a rollback would also undo other requests' writes made on the shared connection meanwhile.
+	 */
+	private async writeSettled(
+		writes: Array<{ id: string; settledAt: Date | null }>,
+		prior: Map<string, Date | null>,
 	): Promise<void> {
 		const done: string[] = [];
+		const wrote = new Map(writes.map((w) => [w.id, w.settledAt]));
 		try {
 			for (const w of writes) {
 				await this.readState(w.id, { settledAt: w.settledAt });
 				done.push(w.id);
 			}
-		} catch (err) {
+		} catch (e) {
 			let unrestored = 0;
-			for (const doneId of done) {
-				const was = before.find((r) => r.id === doneId);
-				if (was)
-					await this.readState(doneId, { settledAt: was.settledAt }).catch(
-						() => {
-							unrestored++;
-						},
-					);
-			}
+			for (const id of done.reverse())
+				await this.readState(
+					id,
+					{ settledAt: prior.get(id) ?? null },
+					{ value: wrote.get(id) ?? null },
+				).catch(() => {
+					unrestored++;
+				});
 			if (unrestored)
 				throw new ORPCError("CONFLICT", {
 					message: `Thread changed, and ${unrestored} already written could not be put back: reload before trying again`,
-					cause: err,
+					cause: e,
 				});
-			throw err;
+			throw e;
 		}
 	}
 
@@ -468,25 +483,26 @@ export class ThreadsService {
 			select: { id: true, settledAt: true },
 		});
 		const ids = rows.map((r) => r.id);
+		const prior = new Map(rows.map((r) => [r.id, r.settledAt]));
 		if (!settled && restore) {
 			// Undo writes back each thread's own state, an earlier Settle included (#1020).
 			const inBlock = new Set(ids);
-			await this.writeBlock(
+			await this.writeSettled(
 				restore
 					.filter((r) => inBlock.has(r.id))
 					.map((r) => ({
 						id: r.id,
 						settledAt: r.settledAt ? new Date(r.settledAt) : null,
 					})),
-				rows,
+				prior,
 			);
 			return { ids, previous: [] };
 		}
 		// Undo with no states to restore clears only the thread named, never its block.
 		const at = settled ? new Date() : null;
-		await this.writeBlock(
+		await this.writeSettled(
 			(settled ? ids : [id]).map((target) => ({ id: target, settledAt: at })),
-			rows,
+			prior,
 		);
 		return {
 			ids,

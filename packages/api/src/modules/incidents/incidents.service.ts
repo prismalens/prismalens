@@ -556,19 +556,29 @@ export class IncidentsService {
 	 */
 	/**
 	 * Link service on an incident with none (#1020): the write itself carries the rule, so
-	 * two links racing cannot replace each other. The same service again is a no-op link.
+	 * two links racing cannot replace each other. "linked" means this call set it, so only
+	 * its caller may take it back; the same service again is "same".
 	 */
 	async linkService(
 		id: string,
 		serviceId: string,
-	): Promise<"linked" | "taken" | "missing"> {
+	): Promise<"linked" | "same" | "taken" | "missing"> {
 		const { count } = await this.prisma.incident.updateMany({
-			where: { id, OR: [{ serviceId: null }, { serviceId }] },
+			where: { id, serviceId: null },
 			data: { serviceId, updatedAt: new Date() },
 		});
 		if (count > 0) return "linked";
 		const row = await this.prisma.incident.findUnique({ where: { id } });
-		return row ? "taken" : "missing";
+		if (!row) return "missing";
+		return row.serviceId === serviceId ? "same" : "taken";
+	}
+
+	/** Takes back a link this request made; never one another request set since. */
+	async unlinkService(id: string, serviceId: string): Promise<void> {
+		await this.prisma.incident.updateMany({
+			where: { id, serviceId },
+			data: { serviceId: null, updatedAt: new Date() },
+		});
 	}
 
 	async update(

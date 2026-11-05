@@ -38,6 +38,14 @@ export function linkPlan(
 	return found ? { serviceId: found.id } : { create: name };
 }
 
+/** The pick, only while the filtered list shows it: a stale id is never linked (#1020). */
+export function shownPick(
+	shown: readonly { id: string }[],
+	id: string | undefined,
+): string | undefined {
+	return id && shown.some((p) => p.id === id) ? id : undefined;
+}
+
 /** The service an alert reaches by the `service=<name>` rule; without that label, linking maps nothing. */
 export function linkName(
 	labels: Record<string, string> | null | undefined,
@@ -96,11 +104,12 @@ function LinkDialog({
 	const create = useCreateService();
 	const link = useLinkRepository();
 	const queryClient = useQueryClient();
-	const [repositoryId, setRepositoryId] = useState<string>();
+	const [picked, setRepositoryId] = useState<string>();
 	const [error, setError] = useState<string | null>(null);
 	// The service a failed link left behind: a retry links it again, never makes a second.
 	const [made, setMade] = useState<string>();
 	const projects = repos.data?.data ?? [];
+	const repositoryId = shownPick(projects, picked);
 	const shown = name;
 	// A ref, not state: a second submit lands before a state update would show.
 	const inFlight = useRef(false);
@@ -165,7 +174,11 @@ function LinkDialog({
 				) : repos.data && projects.length === 0 && !search ? (
 					<p className="text-body text-text-2">
 						No projects yet.{" "}
-						<Link to="/projects" className="text-text-1 underline">
+						<Link
+							to="/projects"
+							search={{ add: true }}
+							className="text-text-1 underline"
+						>
 							Add project
 						</Link>
 					</p>
@@ -174,13 +187,16 @@ function LinkDialog({
 						{needsFind(repos.data, find) && (
 							<Input
 								value={find}
-								onChange={(e) => setFind(e.target.value)}
+								onChange={(e) => {
+									setFind(e.target.value);
+									setRepositoryId(undefined);
+								}}
 								placeholder="Find a project"
 								aria-label="Find a project"
 								data-testid="link-project-find"
 							/>
 						)}
-						<Select value={repositoryId} onValueChange={setRepositoryId}>
+						<Select value={repositoryId ?? ""} onValueChange={setRepositoryId}>
 							<SelectTrigger
 								aria-label="Project"
 								data-testid="link-project-pick"

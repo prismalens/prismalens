@@ -73,16 +73,19 @@ export class ServicesService {
 				mergedIntoId: null,
 				status: { not: IncidentStatus.closed },
 				alerts: {
-					some: { serviceId: null, labels: { contains: service.name } },
+					some: { serviceId: null, labels: { contains: service.name.trim() } },
 				},
 			},
 			select: { id: true, alerts: { select: { id: true, labels: true } } },
 		});
 		let claimed = 0;
+		// The label is read trimmed, and the contract lets a name carry spaces: match either form.
+		const names = new Set([service.name, service.name.trim()]);
+		const mine = (n: string | null) => n !== null && names.has(n);
 		for (const incident of incidents) {
 			const named = incident.alerts.map((a) => serviceLabel(a.labels));
-			if (!named.includes(service.name)) continue;
-			if (named.some((n) => n !== null && n !== service.name)) continue;
+			if (!named.some(mine)) continue;
+			if (named.some((n) => n !== null && !names.has(n))) continue;
 			// Conditional on still waiting: a concurrent claim or correlation may have won since the read.
 			const won = await this.prisma.$transaction(async (tx) => {
 				const { count } = await tx.incident.updateMany({
@@ -99,7 +102,7 @@ export class ServicesService {
 					where: {
 						id: {
 							in: incident.alerts
-								.filter((_, i) => named[i] === service.name)
+								.filter((_, i) => mine(named[i]))
 								.map((a) => a.id),
 						},
 						serviceId: null,

@@ -449,6 +449,21 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 		expect(JSON.parse(rearmed.payload)).not.toHaveProperty("unattended");
 	});
 
+	it("keeps an alert-started thread's follow-up an alert's run for its GitHub token; a person's stays a person's (#1020 R41)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const ran = await thread(inc.id, { triggerType: "auto_critical", accessLevel: "auto", agentMode: "build" });
+		await service.resumeInvestigation(ran.id, "and now?", "queue");
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
+		expect(JSON.parse(rearmed.payload)).toMatchObject({ startedBy: "alert" });
+
+		const inc2 = await incident();
+		const mine = await thread(inc2.id, { triggerType: "manual", accessLevel: "auto" });
+		await service.resumeInvestigation(mine.id, "and now?", "queue");
+		const own = await prisma.job.findUniqueOrThrow({ where: { investigationId: mine.id } });
+		expect(JSON.parse(own.payload)).toMatchObject({ startedBy: "person" });
+	});
+
 	describe("a follow-up in another agent, or after a restart (never a dead end)", () => {
 		it("hands off to a fresh session of the agent the chips name, at the run's own level", async () => {
 			const { service } = realDispatch();
@@ -573,6 +588,36 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 				restore: { status: "failed", error: "report did not validate" },
 			});
 		});
+	});
+
+	it("refuses a follow-up in a plain folder while another thread works in it or a folder inside it (#1020)", async () => {
+		const { service } = realDispatch();
+		const stamp = Date.now();
+		const outer = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `notes-${stamp}`, url: `/plain-${stamp}/notes`, plain: true },
+		});
+		const inner = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `sub-${stamp}`, url: `/plain-${stamp}/notes/sub`, plain: true },
+		});
+		const done = await prisma.investigation.create({
+			data: {
+				incidentId: null,
+				repositoryId: outer.id,
+				kind: "chat",
+				status: "completed",
+				harness: "opencode",
+				acpSessionId: "ses_1",
+				workspace: JSON.stringify({ layout: "folder", cwd: outer.url, repos: [] }),
+			},
+		});
+		await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: inner.id, kind: "chat", status: "running" },
+		});
+
+		await expect(service.resumeInvestigation(done.id, "tidy up", "queue")).rejects.toThrow(
+			"A thread is already working in this folder.",
+		);
+		expect((await read(done.id)).status).toBe("completed");
 	});
 
 	describe("one live thread per incident (T17, OBJ-007)", () => {
@@ -1778,6 +1823,28 @@ describe("boot takes up the runs a restart cut off (#981)", () => {
 		const done = await thread(inc2.id, { status: "completed" });
 		await job(done.id, inc2.id, {}, "succeeded");
 		await expect(service.resumeInterrupted(done.id)).rejects.toBeInstanceOf(FollowUpRefused);
+	});
+
+	it("Resume on an interrupted run in a busy plain folder says so, and the run stays interrupted (#1020)", async () => {
+		const stamp = Date.now();
+		const repo = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `busy-${stamp}`, url: `/plain-${stamp}/busy`, plain: true },
+		});
+		const inc = await incident();
+		const row = await thread(inc.id, {
+			status: "failed",
+			endReason: "interrupted",
+			error: "Not resumed: x",
+			repositoryId: repo.id,
+		});
+		await job(row.id, inc.id, {}, "failed");
+		await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: repo.id, kind: "chat", status: "running" },
+		});
+		const { service } = recovering();
+
+		await expect(service.resumeInterrupted(row.id)).rejects.toThrow("A thread is already working in this folder.");
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
 	});
 
 	it("Resume on a run with a session but no pid receipt is refused, the same rule boot applies (OBJ-010)", async () => {

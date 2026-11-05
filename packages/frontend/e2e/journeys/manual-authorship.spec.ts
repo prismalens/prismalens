@@ -4,7 +4,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { createIncidentByHand } from "./by-hand";
 import { hideQueryDevtools } from "./live-stream-fixtures";
-import { investigateButton } from "./verb";
+import { investigateButton, pickAction } from "./verb";
 
 /**
  * J17 / C10 — manual authorship.
@@ -76,8 +76,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// A note from the composer lands in changes-timeline
 		const note = "Authored by hand from the composer";
-		await page.getByTestId("action-chip").click();
-		await page.getByTestId("action-note").click();
+		await pickAction(page, "note");
 		await page.getByTestId("composer-input").fill(note);
 		await page.getByTestId("composer-send").click();
 		await expect(page.getByTestId("changes-timeline")).toContainText(note);

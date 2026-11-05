@@ -15,6 +15,7 @@
  * 5. Project page Make it a service takes name only and shows the read-only service=<name> rule.
  * 6. After a user rename, an agent title update cannot overwrite the user's title.
  */
+import { execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,9 +23,15 @@ import { expect, test } from "@playwright/test";
 import { createIncidentByHand } from "./by-hand";
 
 /** A folder no other journey adds: a folder inside this checkout resolves to the same project. */
-const ownFolder = () => mkdtempSync(join(tmpdir(), "pl-e2e-project-"));
+const ownFolder = () => {
+	const dir = mkdtempSync(join(tmpdir(), "pl-e2e-project-"));
+	// A git folder: a plain one is a Folder project, which cannot be a service (#1020).
+	execFileSync("git", ["init", "-q"], { cwd: dir });
+	return dir;
+};
 
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { pickAction } from "./verb";
 
 const THREAD_ID = "e1020000-0000-4000-8000-000000000001";
 const ALERT_ID = "a1020000-0000-4000-8000-000000000002";
@@ -86,9 +93,7 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 		await expect(page.getByTestId("changes-card")).toHaveCount(0);
 
 		// Post a first message (a timeline note) from the composer
-		const actionChip = blank.getByTestId("action-chip");
-		await actionChip.click();
-		await page.getByRole("menuitemradio", { name: "Note" }).click();
+		await pickAction(blank, "note");
 
 		const noteContent = `First incident note ${Date.now()}`;
 		const input = blank.getByTestId("composer-input");
@@ -300,7 +305,7 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 		page,
 	}) => {
 		const serviceName = `cart-api-${Date.now()}`;
-		await page.goto("/projects");
+		await page.goto("/projects?add=1");
 		await page.getByTestId("add-project-source").fill(ownFolder());
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();
@@ -397,7 +402,7 @@ test.describe("#1020 — pages, titles, scheduled prompts", () => {
 		page,
 	}) => {
 		const serviceName = `service-make-${Date.now()}`;
-		await page.goto("/projects");
+		await page.goto("/projects?add=1");
 		await page.getByTestId("add-project-source").fill(ownFolder());
 		await page.getByTestId("add-project-submit").click();
 		await expect(page.getByTestId("project-page")).toBeVisible();

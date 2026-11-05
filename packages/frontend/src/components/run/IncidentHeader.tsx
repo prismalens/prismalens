@@ -127,6 +127,7 @@ export function IncidentHeader({
 		<header
 			className="flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap"
 			data-testid="incident-header"
+			data-title-row
 		>
 			<Hint label="Back to the inbox">
 				<Button variant="text" size="icon" className="shrink-0" asChild>

@@ -385,7 +385,8 @@ export type RunWorkspaceRepo = z.infer<typeof RunWorkspaceRepoSchema>;
 
 /** Where a run's harness worked, recorded so a follow-up can rebuild it (#747). */
 export const RunWorkspaceSchema = z.object({
-	layout: z.enum(["unmapped", "single", "multi"]),
+	/** `folder`: a plain folder's thread runs in the folder itself, with no snapshot (#1020). */
+	layout: z.enum(["unmapped", "single", "multi", "folder"]),
 	cwd: z.string(),
 	repos: z.array(RunWorkspaceRepoSchema),
 	/** The run's MCP server name, reused by its follow-ups; absent on a run from before (#848). */
@@ -947,6 +948,8 @@ export const ASK_TIMEOUT_MS = 10 * 60 * 1000;
 export const AnswerAskSchema = z.object({
 	askId: z.string().uuid(),
 	decision: z.enum(["approve", "deny"]),
+	/** With approve on a scheduled run: its next runs allow this exact ask (#1020). Host only. */
+	always: z.boolean().optional(),
 });
 export type AnswerAskInput = z.infer<typeof AnswerAskSchema>;
 
@@ -1131,6 +1134,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		input: z.string().optional(),
 		/** The MCP server the tool comes from, when the agent says (#820). */
 		server: z.string().optional(),
+		/** A hash of what the call would do, for Always allow; absent when nothing stable names it (#1020). */
+		identity: z.string().optional(),
 	}),
 	z.object({
 		kind: z.literal("permission_answer"),
@@ -1368,6 +1373,8 @@ export const InvestigationContextSchema = z
 				brief: z.string().optional(),
 				/** The runbook path the schedule names, if any. */
 				runbook: z.string().nullable().optional(),
+				/** A project schedule's project name, in the service's place (#1020). */
+				project: z.string().optional(),
 			})
 			.optional(),
 		/** Read-only telemetry surfaces, only when the host has them configured (ADR 0002 §2). */
@@ -1458,8 +1465,9 @@ export function correlatedAlertsContext(
 
 /** A scheduled check of one service: no alert, the schedule's brief and runbook instead (#979). */
 export function serviceCheckContext(
-	service: ServiceContext,
-	check: { brief?: string; runbook?: string | null },
+	/** Null on a project's or a no-code schedule's check (#1020). */
+	service: ServiceContext | null,
+	check: { brief?: string; runbook?: string | null; project?: string },
 	extras: Omit<InvestigationContextExtras, "service"> & {
 		telemetry?: TelemetryEndpoints;
 	} = {},
@@ -1468,7 +1476,7 @@ export function serviceCheckContext(
 		mode: "service-check",
 		alerts: [],
 		check,
-		service,
+		...(service ? { service } : {}),
 		...(extras.telemetry ? { telemetry: extras.telemetry } : {}),
 		...(extras.repos ? { repos: extras.repos } : {}),
 		...(extras.logs ? { logs: extras.logs } : {}),
@@ -1524,8 +1532,18 @@ export type JobAttachment = z.infer<typeof JobAttachmentSchema>;
 export const ScheduledRunSchema = z.object({
 	scheduleId: z.string(),
 	revision: z.number().int(),
-	serviceId: z.string(),
+	/** What the schedule is about (#1020); absent on a job from before, which is a service's. */
+	subject: z.enum(["service", "project", "none"]).optional(),
+	/** Null on a project's or a no-code schedule's run. */
+	serviceId: z.string().nullable(),
 	serviceName: z.string(),
+	/** The project a project schedule runs on, and its name. */
+	repositoryId: z.string().nullable().optional(),
+	projectName: z.string().nullable().optional(),
+	/** Asks answered "Always allow" before this run was admitted; matched exactly (#1020). */
+	alwaysAllow: z
+		.array(z.object({ kind: z.string().nullable(), identity: z.string() }))
+		.optional(),
 	serviceNotes: z.string().nullable(),
 	runbook: z.string().nullable(),
 	repos: z.array(
@@ -1536,6 +1554,8 @@ export const ScheduledRunSchema = z.object({
 			subPath: z.string().nullable(),
 			connectionId: z.string().nullable(),
 			serviceName: z.string(),
+			/** A folder with no git; only a thread a person starts may run in it (#1020). */
+			plain: z.boolean().optional(),
 		}),
 	),
 });
@@ -1604,6 +1624,13 @@ export const InvestigationJobDataSchema = z.object({
 	accessLevel: AccessLevelSchema.optional(),
 	/** An alert started the run: nobody is there to answer an ask (#818 w5-29). */
 	unattended: z.boolean().optional(),
+	/**
+	 * Wait for me (#1020): nobody watches, yet every ask past reads waits for a person, whatever
+	 * the level, and lapses after ASK_TIMEOUT_MS; set with `unattended` false.
+	 */
+	waitForAsks: z.boolean().optional(),
+	/** Who started the thread (#1020): an alert's or a schedule's run gets no GitHub token unless the host allows it. */
+	startedBy: z.enum(["person", "alert", "schedule"]).optional(),
 	...RunChoiceSchema.shape,
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),

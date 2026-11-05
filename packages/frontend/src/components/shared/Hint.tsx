@@ -46,7 +46,7 @@ export function Hint({
 			<TooltipContent
 				side={side}
 				data-testid="hint"
-				onEscapeKeyDown={() => setDismissed(true)}
+				onEscapeKeyDown={() => open && setDismissed(true)}
 			>
 				<span className="flex items-center gap-2">
 					<span className="min-w-0">{label}</span>

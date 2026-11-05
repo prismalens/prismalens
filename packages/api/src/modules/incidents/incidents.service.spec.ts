@@ -89,17 +89,14 @@ describe("IncidentsService", () => {
 	});
 
 	describe("linkService: link-only (#1020, review of #1031)", () => {
-		it("writes the service only where the incident has none or the same one", async () => {
+		it("writes the service only where the incident has none", async () => {
 			mockPrisma.incident.updateMany.mockResolvedValue({ count: 1 });
 			await expect(service.linkService("inc-1", "svc-1")).resolves.toBe(
 				"linked",
 			);
 			expect(mockPrisma.incident.updateMany).toHaveBeenCalledWith(
 				expect.objectContaining({
-					where: {
-						id: "inc-1",
-						OR: [{ serviceId: null }, { serviceId: "svc-1" }],
-					},
+					where: { id: "inc-1", serviceId: null },
 					data: expect.objectContaining({ serviceId: "svc-1" }),
 				}),
 			);
@@ -118,6 +115,12 @@ describe("IncidentsService", () => {
 			await expect(service.linkService("inc-2", "svc-1")).resolves.toBe(
 				"missing",
 			);
+			// Not "linked": the caller did not make this link, so it must not take it back.
+			mockPrisma.incident.findUnique.mockResolvedValueOnce({
+				id: "inc-1",
+				serviceId: "svc-1",
+			});
+			await expect(service.linkService("inc-1", "svc-1")).resolves.toBe("same");
 		});
 	});
 

@@ -50,7 +50,7 @@ describe("joiners stay inside words (review of #1031)", () => {
 	});
 });
 
-describe("joiner-only text is no title (review of #1031)", () => {
+describe("joiner-only text is no title (review of #1040)", () => {
 	it("drops words made only of joiners, so nothing invisible is kept or counted", async () => {
 		const zwj = String.fromCodePoint(0x200d);
 		const zwnj = String.fromCodePoint(0x200c);

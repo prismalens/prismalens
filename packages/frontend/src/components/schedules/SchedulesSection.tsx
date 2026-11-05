@@ -9,7 +9,7 @@ import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
 import { clock, whenText } from "@/components/schedules/schedule-time";
 import { TickDot } from "@/components/schedules/TickDot";
-import { tickLine } from "@/components/schedules/tick-copy";
+import { aboutText, tickLine } from "@/components/schedules/tick-copy";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
@@ -141,9 +141,7 @@ function ScheduleRow({
 				>
 					{s.name}
 				</div>
-				<div className="truncate text-meta text-text-3">
-					Check {s.serviceName}
-				</div>
+				<div className="truncate text-meta text-text-3">{aboutText(s)}</div>
 			</Link>
 			<span className={cn(CELL, "text-text-2")}>{s.description}</span>
 			<span className={cn(CELL, "text-text-3")}>

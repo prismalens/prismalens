@@ -70,6 +70,24 @@ export interface Snapshot {
 	setup?: HookResult;
 }
 
+/** git found no repository at or above the folder: it adds as a plain Folder project (#1020). */
+export class PlainFolderError extends Error {
+	constructor(folder: string) {
+		super(`Not in a git repository: ${folder}`);
+	}
+}
+
+/** A repo git found but could not read a commit in (none yet, say); where it sits is still known. */
+export class NoHeadError extends Error {
+	constructor(
+		message: string,
+		readonly root: string,
+		readonly prefix: string,
+	) {
+		super(message);
+	}
+}
+
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
 
 /** Folder or URL; anything else is refused before git sees it. */
@@ -81,9 +99,12 @@ export function classifySource(input: string): {
 	// A leading dash would reach git as an option: `-uCMD@host:x` passes the URL test.
 	if (trimmed.startsWith("-"))
 		throw new Error("Repository must not start with '-'");
-	const expanded = trimmed.startsWith("~/")
-		? join(homedir(), trimmed.slice(2))
-		: trimmed;
+	const expanded =
+		trimmed === "~"
+			? homedir()
+			: trimmed.startsWith("~/")
+				? join(homedir(), trimmed.slice(2))
+				: trimmed;
 	if (isAbsolute(expanded))
 		return { kind: "folder", source: resolve(expanded) };
 	if (URL_LIKE.test(trimmed)) {
@@ -185,13 +206,34 @@ export class RepoSourceService {
 	/** A folder may sit inside a repo; git clones only a top level, so the rest becomes the sub-path. */
 	async checkFolder(folder: string): Promise<FolderCheck> {
 		if (!existsSync(folder)) throw new Error(`No such folder: ${folder}`);
-		const { stdout } = await this.git(
-			["rev-parse", "--show-toplevel", "--show-prefix"],
-			folder,
-		);
-		const [root = folder, prefix = ""] = stdout.split("\n");
-		const check = await this.headOf(root);
-		return { ...check, root, prefix: prefix.replace(/\/$/, "") };
+		if (!statSync(folder).isDirectory())
+			throw new Error(`Not a folder: ${folder}`);
+		let stdout: string;
+		try {
+			({ stdout } = await spawnGit(
+				["rev-parse", "--show-toplevel", "--show-prefix"],
+				{
+					cwd: folder,
+					env: gitEnv({ source: "machine" }),
+					timeoutMs: GIT_TIMEOUT_MS,
+				},
+			));
+		} catch (err) {
+			if (
+				err instanceof GitSpawnError &&
+				err.exitCode === 128 &&
+				/not a git repository/i.test(err.stderr)
+			)
+				throw new PlainFolderError(folder);
+			throw err instanceof Error ? new Error(err.message) : err;
+		}
+		const [root = folder, rawPrefix = ""] = stdout.split("\n");
+		const prefix = rawPrefix.replace(/\/$/, "");
+		try {
+			return { ...(await this.headOf(root)), root, prefix };
+		} catch (err) {
+			throw new NoHeadError((err as Error).message, root, prefix);
+		}
 	}
 
 	/**

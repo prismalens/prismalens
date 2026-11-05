@@ -50,6 +50,8 @@ export interface IncidentRepo {
 	connectionId: string | null;
 	/** The service that links it; one repo may come back once per service (#747). */
 	serviceName: string;
+	/** A folder with no git: only a thread a person starts runs in it, in place (#1020). */
+	plain?: boolean;
 }
 
 export interface RunPorts {

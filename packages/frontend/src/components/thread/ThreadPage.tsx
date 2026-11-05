@@ -243,7 +243,10 @@ export function ThreadPage({ id }: { id: string }) {
 			? (["live", "Stopping"] as const)
 			: STATE[inv.status];
 	const header = (
-		<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2">
+		<header
+			data-title-row
+			className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
+		>
 			<Button variant="ghost" size="icon-lg" aria-label={back.label} asChild>
 				<Link to={back.to} params={back.params}>
 					<ChevronLeft />
@@ -255,6 +258,16 @@ export function ThreadPage({ id }: { id: string }) {
 			>
 				{inv?.title ?? "Thread"}
 			</h1>
+			{workspace?.layout === "folder" && (
+				// A plain folder's thread works in the folder itself (#1020).
+				<span
+					className="inline-flex shrink-0 items-center gap-1 text-meta text-warn"
+					data-testid="thread-no-undo"
+				>
+					<TriangleAlert className="size-3.5" aria-hidden />
+					No undo
+				</span>
+			)}
 			{inv && (
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
@@ -332,7 +345,6 @@ export function ThreadPage({ id }: { id: string }) {
 				cwd={workspace?.cwd}
 			/>
 		) : null;
-	const branch = workspace?.repos[0]?.branch ?? null;
 	const blocked =
 		run.ended && !run.resumable && state !== "interrupted"
 			? (run.resumeBlockedReason ?? "Can't continue")
@@ -408,7 +420,6 @@ export function ThreadPage({ id }: { id: string }) {
 						}}
 						onChoice={() => {}}
 						locked
-						branch={branch}
 						dock={dock}
 						blockedReason={blocked}
 					/>
@@ -427,6 +438,7 @@ export function ThreadPage({ id }: { id: string }) {
 					runId={inv.id}
 					live={run.isActive}
 					investigation={inv.kind === "investigation"}
+					diff={workspace?.layout !== "folder"}
 					files={files}
 					suspects={suspects}
 				/>
