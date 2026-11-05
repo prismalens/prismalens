@@ -17,6 +17,7 @@ import {
 	unreadyLine,
 	unreadyReason,
 } from "./AgentPicker";
+import { levelModeId } from "@/lib/access-levels";
 
 vi.mock("@/components/ui/popover", () => ({
 	Popover: ({ children }: { children: React.ReactNode }) => children,
@@ -263,6 +264,25 @@ describe("the box's chips (#673)", () => {
 			}),
 		);
 		expect(withoutLock).not.toContain("lucide-lock");
+		expect(withLock).not.toContain('data-testid="access-chip-warning"');
+
+		// Above the default and sandboxed: the lock stays and the warning shape is kept beside it.
+		const fullMode = levelModeId(enforcedClaude, "full-access");
+		const loudHarness = claude({
+			checked: {
+				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+				sandbox: { [fullMode]: { state: "enforced", reason: "sandbox active" } },
+			},
+		});
+		const loudLock = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: loudHarness,
+				level: "full-access",
+				onLevel: () => {},
+			}),
+		).split("</button>")[0];
+		expect(loudLock).toContain("lucide-lock");
+		expect(loudLock).toContain('data-testid="access-chip-warning"');
 	});
 });
 

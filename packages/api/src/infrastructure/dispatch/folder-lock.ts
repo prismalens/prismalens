@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, sep } from "node:path";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
@@ -24,6 +25,9 @@ export function overlaps(a: string, b: string): boolean {
 	return within(a, b) || within(b, a);
 }
 
+/** The physical location, so two symlinked routes to one folder compare equal. */
+const physical = (p: string) => realpath(p).catch(() => p);
+
 /**
  * A plain folder runs in place, so at most one live run may work in it or in a folder
  * nested with it (#1020). Run inside the transaction that admits the run.
@@ -46,5 +50,11 @@ export async function folderBusy(
 		},
 		select: { repository: { select: { url: true } } },
 	});
-	return live.some((r) => r.repository && overlaps(r.repository.url, repo.url));
+	const mine = await physical(repo.url);
+	for (const r of live) {
+		if (r.repository && overlaps(await physical(r.repository.url), mine)) {
+			return true;
+		}
+	}
+	return false;
 }

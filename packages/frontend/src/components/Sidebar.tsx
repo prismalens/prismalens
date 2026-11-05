@@ -415,6 +415,7 @@ function useEscape(handler: () => void, enabled: boolean) {
 /**
  * The phone's doors: four icons across the top, the one you are in on
  * `surface-2` with the accent bar; the page header below carries New (#673).
+ * Schedules is reached through Search's "Go to" list.
  * It stays on Settings; its Settings door returns a section to the list.
  */
 function PhoneStrip({

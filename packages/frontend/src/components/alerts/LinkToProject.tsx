@@ -4,7 +4,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Link2 } from "lucide-react";
-import { type FormEvent, useDeferredValue, useState } from "react";
+import { type FormEvent, useDeferredValue, useRef, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import {
@@ -111,10 +111,15 @@ function LinkDialog({
 	const projects = repos.data?.data ?? [];
 	const repositoryId = shownPick(projects, picked);
 	const shown = name;
-	const busy = create.isPending || link.isPending;
+	// A ref, not state: a second submit lands before a state update would show.
+	const inFlight = useRef(false);
+	const [submitting, setSubmitting] = useState(false);
+	const busy = submitting || create.isPending || link.isPending;
 	const onLink = async (e: FormEvent) => {
 		e.preventDefault();
-		if (!repositoryId || !shown) return;
+		if (!repositoryId || !shown || inFlight.current) return;
+		inFlight.current = true;
+		setSubmitting(true);
 		setError(null);
 		try {
 			let serviceId = made;
@@ -138,6 +143,9 @@ function LinkDialog({
 			onOpenChange(false);
 		} catch (err) {
 			setError(getErrorMessage(err));
+		} finally {
+			inFlight.current = false;
+			setSubmitting(false);
 		}
 	};
 	return (
