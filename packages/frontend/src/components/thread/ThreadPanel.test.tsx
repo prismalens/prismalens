@@ -127,8 +127,10 @@ let container: HTMLDivElement;
 let root: Root;
 const q = (id: string) => container.querySelector(`[data-testid="${id}"]`);
 
+let client: QueryClient;
+
 async function render(node: ReactNode) {
-	const client = new QueryClient({
+	client = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
 	await act(async () => root.unmount());
@@ -311,6 +313,44 @@ describe("WorktreeDiff (#1020)", () => {
 		};
 		await render(panel({ surface: "diff" }));
 		expect(q("diff-linked-file")?.textContent).toBe("Linked file");
+	});
+
+	it("falls back to the first file when the picked one leaves the list, and says when the list is cut short", async () => {
+		const file = (path: string) => ({
+			path,
+			status: "modified" as const,
+			additions: 1,
+			deletions: 0,
+		});
+		const patch = (path: string) =>
+			`diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-x\n+in ${path}\n`;
+		state.changes = {
+			repos: [
+				ok({
+					files: [file("a.ts"), file("b.ts")],
+					patch: patch("a.ts") + patch("b.ts"),
+				}),
+			],
+		};
+		await render(panel({ surface: "diff" }));
+		const rows = () =>
+			Array.from(container.querySelectorAll('[data-testid="diff-file"]'));
+		await act(async () => (rows()[1] as HTMLButtonElement).click());
+		expect(q("patch")?.textContent).toContain("in b.ts");
+		expect(q("diff-truncated")).toBeNull();
+
+		state.changes = {
+			repos: [
+				ok({ files: [file("a.ts")], patch: patch("a.ts"), truncated: true }),
+			],
+		};
+		await act(async () => {
+			await client.invalidateQueries();
+		});
+		await act(async () => new Promise((r) => setTimeout(r, 20)));
+		expect(rows()[0]?.getAttribute("aria-current")).toBe("true");
+		expect(q("patch")?.textContent).toContain("in a.ts");
+		expect(q("diff-truncated")?.textContent).toContain("1000");
 	});
 
 	it("has a state for no code, no changes, a removed workspace, too large and a failed read", async () => {
