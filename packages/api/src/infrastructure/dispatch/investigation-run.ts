@@ -921,9 +921,20 @@ async function runFollowUp(
 		const existed = new Map(
 			recorded.repos.map((r) => [r.dir, existsSync(r.dir)]),
 		);
+		const incident = data.incidentId
+			? await assembled(
+					"the incident",
+					() => ports.getIncident(data.incidentId as string),
+					null,
+				)
+			: null;
+		// The recorded service name goes stale on a rename; the id does not.
+		const serviceId =
+			data.thread?.subject === "project" ? null : serviceIdOf(incident, data);
 		await bindRun(id, {
 			incidentId: data.incidentId,
 			serviceName: policyService(data, recorded.repos[0]?.services[0]),
+			...(serviceId !== undefined ? { serviceId } : {}),
 			recorded: recorded.cwd,
 			project: data.thread?.name ?? null,
 		});
@@ -949,13 +960,6 @@ async function runFollowUp(
 		};
 		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
-		const incident = data.incidentId
-			? await assembled(
-					"the incident",
-					() => ports.getIncident(data.incidentId as string),
-					null,
-				)
-			: null;
 		const connectors = await assembled(
 			"the connectors",
 			() => ports.resolveConnectors(serviceIdOf(incident, data)),

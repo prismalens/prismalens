@@ -800,6 +800,7 @@ describe("buildChatPrompt on a project, service or no-subject thread (#1020, OBJ
 		);
 		expect(prompt).toContain('Folder "my  repo"');
 		expect(prompt).toContain('sub-path: "services/order  worker"');
+		expect(prompt).toContain("JSON string, not a shell-safe one");
 	});
 
 	it("keeps a name from closing a line with a newline inside it", () => {
