@@ -82,6 +82,10 @@ function state(over: Partial<Parameters<typeof decide>[0]> = {}) {
 		nextRunAt: slot,
 		missedPolicy: "run_once" as const,
 		catchUpMinutes: 360,
+		repositoryId: null,
+		accessLevel: null,
+		report: true,
+		whenAsks: "decide" as const,
 		...over,
 	};
 }

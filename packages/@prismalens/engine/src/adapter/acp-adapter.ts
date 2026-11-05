@@ -43,6 +43,7 @@ import type {
 	ToolCategory,
 } from "@prismalens/contracts/schemas";
 import type { GatewayCall } from "../run/gateway.js";
+import { askIdentity } from "../run/permission.js";
 
 /**
  * The structural subset of an ACP `session/update` payload's `update` object the
@@ -290,6 +291,8 @@ export class AcpAdapter {
 		// An MCP tool's arguments are what it does, whatever command or path one names (#820).
 		const shown = detail && !title.startsWith("mcp__") ? null : askInput(input);
 		const server = mcpServerOf(toolCall?._meta);
+		// From the request alone, as the run's policy sees it, so a remembered ask matches it (#1020).
+		const identity = askIdentity(toolCall);
 		return {
 			kind: "permission_ask",
 			...this.base(),
@@ -302,6 +305,7 @@ export class AcpAdapter {
 			...(toolCall?.toolCallId ? { toolCallId: toolCall.toolCallId } : {}),
 			...(shown ? { input: shown } : {}),
 			...(server ? { server } : {}),
+			...(identity ? { identity } : {}),
 		};
 	}
 

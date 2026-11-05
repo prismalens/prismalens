@@ -31,6 +31,8 @@ import {
 	SendInvestigationMessageResultSchema,
 	SendInvestigationMessageSchema,
 	UpdateInvestigationStatusSchema,
+	WorktreeChangesQuerySchema,
+	WorktreeChangesSchema,
 	WriteInvestigationResultSchema,
 } from "../schemas/index.js";
 
@@ -265,6 +267,20 @@ export const investigationsContract = {
 		})
 		.input(RunDiffQuerySchema)
 		.output(RunDiffSchema),
+
+	/**
+	 * The run's live workspace against the commit it started at (#1020)
+	 * GET /investigations/:id/changes
+	 */
+	getChanges: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/changes",
+			summary: "Diff a run's live workspace against the commit it started at",
+			tags: ["investigations"],
+		})
+		.input(WorktreeChangesQuerySchema)
+		.output(WorktreeChangesSchema),
 
 	/**
 	 * Take up a run a restart cut off and PrismaLens did not resume itself (#981)

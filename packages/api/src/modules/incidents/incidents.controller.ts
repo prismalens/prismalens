@@ -26,6 +26,7 @@ import type {
 	Incident as PrismaIncident,
 } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
@@ -89,6 +90,22 @@ const EDITABLE_AFTER_RESOLVE: ReadonlySet<string> = new Set([
 	"severity",
 ]);
 
+const tails = new Map<string, Promise<unknown>>();
+
+/** Service-linking PATCHes of one incident run in turn, so a rollback never meets a request that relied on its link. */
+function oneAtATime<T>(key: string, run: () => Promise<T>): Promise<T> {
+	const result = (tails.get(key) ?? Promise.resolve()).then(run);
+	const tail = result.then(
+		() => undefined,
+		() => undefined,
+	);
+	tails.set(key, tail);
+	void tail.then(() => {
+		if (tails.get(key) === tail) tails.delete(key);
+	});
+	return result;
+}
+
 @Controller()
 export class IncidentsController {
 	constructor(
@@ -121,6 +138,7 @@ export class IncidentsController {
 					serviceId: input.serviceId,
 					fromDate: input.fromDate,
 					toDate: input.toDate,
+					search: input.search,
 					limit: input.limit,
 					offset: input.offset,
 				});
@@ -194,16 +212,51 @@ export class IncidentsController {
 						});
 					}
 				}
-				const incident = await this.incidentsService.update(
-					id,
-					updateData as UpdateIncidentDto,
-				);
-				if (!incident) {
-					throw new ORPCError("NOT_FOUND", {
-						message: `Incident ${id} not found`,
-					});
-				}
-				return this.serializeIncident(incident);
+				const { serviceId, ...rest } = updateData;
+				const others = fields.some((f) => f !== "serviceId");
+				const apply = async () => {
+					// Only the request whose link write set the service takes it back on failure (#1020).
+					let fresh = false;
+					if (serviceId) {
+						const linked = await this.incidentsService.linkService(
+							id,
+							serviceId,
+						);
+						fresh = linked === "linked" && others;
+						if (linked === "missing")
+							throw new ORPCError("NOT_FOUND", {
+								message: `Incident ${id} not found`,
+							});
+						if (linked === "taken")
+							throw new ORPCError("CONFLICT", {
+								message: "This incident already has a service.",
+							});
+					}
+					let incident:
+						| Awaited<ReturnType<IncidentsService["findById"]>>
+						| Awaited<ReturnType<IncidentsService["update"]>>;
+					try {
+						incident = others
+							? await this.incidentsService.update(
+									id,
+									rest as UpdateIncidentDto,
+								)
+							: await this.incidentsService.findById(id);
+					} catch (error) {
+						if (fresh && serviceId)
+							await this.incidentsService.unlinkService(id, serviceId);
+						throw error;
+					}
+					if (!incident && fresh && serviceId)
+						await this.incidentsService.unlinkService(id, serviceId);
+					if (!incident) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Incident ${id} not found`,
+						});
+					}
+					return this.serializeIncident(incident);
+				};
+				return serviceId ? oneAtATime(id, apply) : apply();
 			}),
 
 			// POST /incidents/:id/investigate - Start investigation
@@ -381,29 +434,8 @@ export class IncidentsController {
 	}
 
 	/** No run starts on an agent that is missing or not signed in (#520, #673 w9); the run's own agent when it names one (w52). */
-	private async requireReadyHarness(requested: RunChoice = {}): Promise<void> {
-		const selection = await this.harnessService.resolveSelection(requested);
-		if (!selection.runnable) {
-			throw new ORPCError("PRECONDITION_FAILED", {
-				message: selection.reason,
-				data: {
-					failure: selection.failure,
-					reason: selection.reason,
-					harness: selection.harness,
-				},
-			});
-		}
-		const readiness = await this.harnessService.ensureReady(selection.harness);
-		if (!readiness.ready) {
-			throw new ORPCError("PRECONDITION_FAILED", {
-				message: readiness.reason,
-				data: {
-					failure: "not-ready",
-					reason: readiness.reason,
-					harness: selection.harness,
-				},
-			});
-		}
+	private requireReadyHarness(requested: RunChoice = {}): Promise<void> {
+		return requireReadyHarness(this.harnessService, requested);
 	}
 
 	/** The job for a new run; only connectionIds ride in it, credentials are fetched on demand. */

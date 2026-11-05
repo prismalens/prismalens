@@ -6,7 +6,7 @@ import { Test } from "@nestjs/testing";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { TimelineService } from "../timeline/timeline.service.js";
-import { IncidentsService } from "./incidents.service.js";
+import { IncidentsService, incidentSearch } from "./incidents.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 
@@ -51,6 +51,7 @@ describe("IncidentsService", () => {
 		},
 		incident: {
 			update: vi.fn(),
+			updateMany: vi.fn(),
 			findFirst: vi.fn(),
 			findUnique: vi.fn(),
 			findMany: vi.fn(),
@@ -85,6 +86,42 @@ describe("IncidentsService", () => {
 		}).compile();
 
 		service = moduleRef.get(IncidentsService);
+	});
+
+	describe("linkService: link-only (#1020, review of #1031)", () => {
+		it("writes the service only where the incident has none", async () => {
+			mockPrisma.incident.updateMany.mockResolvedValue({ count: 1 });
+			await expect(service.linkService("inc-1", "svc-1")).resolves.toBe(
+				"linked",
+			);
+			expect(mockPrisma.incident.updateMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "inc-1", serviceId: null },
+					data: expect.objectContaining({ serviceId: "svc-1" }),
+				}),
+			);
+		});
+
+		it("says taken when another service holds it, missing when there is no incident", async () => {
+			mockPrisma.incident.updateMany.mockResolvedValue({ count: 0 });
+			mockPrisma.incident.findUnique.mockResolvedValueOnce({
+				id: "inc-1",
+				serviceId: "svc-other",
+			});
+			await expect(service.linkService("inc-1", "svc-1")).resolves.toBe(
+				"taken",
+			);
+			mockPrisma.incident.findUnique.mockResolvedValueOnce(null);
+			await expect(service.linkService("inc-2", "svc-1")).resolves.toBe(
+				"missing",
+			);
+			// Not "linked": the caller did not make this link, so it must not take it back.
+			mockPrisma.incident.findUnique.mockResolvedValueOnce({
+				id: "inc-1",
+				serviceId: "svc-1",
+			});
+			await expect(service.linkService("inc-1", "svc-1")).resolves.toBe("same");
+		});
 	});
 
 	describe("addAlert idempotency", () => {
@@ -1045,5 +1082,16 @@ describe("IncidentsService", () => {
 			expect(mockTx.incident.update).not.toHaveBeenCalled();
 			expect(mockTx.timelineEntry.create).not.toHaveBeenCalled();
 		});
+	});
+});
+
+describe("incidentSearch (#1020)", () => {
+	it("matches the title, and the number as 42, #42 or INC-42", () => {
+		expect(incidentSearch("  ")).toBeNull();
+		expect(incidentSearch("slow")).toEqual({
+			OR: [{ title: { contains: "slow" } }],
+		});
+		for (const q of ["42", "#42", "inc-42", "INC42"])
+			expect(incidentSearch(q)?.OR).toContainEqual({ number: 42 });
 	});
 });

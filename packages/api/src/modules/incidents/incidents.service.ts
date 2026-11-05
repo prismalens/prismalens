@@ -23,6 +23,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 
@@ -263,10 +264,17 @@ export class IncidentsService {
 		serviceId?: string;
 		fromDate?: Date;
 		toDate?: Date;
+		search?: string;
 		limit?: number;
 		offset?: number;
 	}): Promise<{ data: IncidentWithRelations[]; total: number }> {
+		const raw = options?.search?.trim();
+		const search =
+			raw && hasWildcard(raw)
+				? { id: { in: await literalIncidentIds(this.prisma, raw) } }
+				: incidentSearch(raw);
 		const where = {
+			...(search && { AND: [search] }),
 			...(options?.status
 				? { status: options.status }
 				: options?.open
@@ -546,6 +554,33 @@ export class IncidentsService {
 	/**
 	 * Update incident
 	 */
+	/**
+	 * Link service on an incident with none (#1020): the write itself carries the rule, so
+	 * two links racing cannot replace each other. "linked" means this call set it, so only
+	 * its caller may take it back; the same service again is "same".
+	 */
+	async linkService(
+		id: string,
+		serviceId: string,
+	): Promise<"linked" | "same" | "taken" | "missing"> {
+		const { count } = await this.prisma.incident.updateMany({
+			where: { id, serviceId: null },
+			data: { serviceId, updatedAt: new Date() },
+		});
+		if (count > 0) return "linked";
+		const row = await this.prisma.incident.findUnique({ where: { id } });
+		if (!row) return "missing";
+		return row.serviceId === serviceId ? "same" : "taken";
+	}
+
+	/** Takes back a link this request made; never one another request set since. */
+	async unlinkService(id: string, serviceId: string): Promise<void> {
+		await this.prisma.incident.updateMany({
+			where: { id, serviceId },
+			data: { serviceId: null, updatedAt: new Date() },
+		});
+	}
+
 	async update(
 		id: string,
 		dto: UpdateIncidentDto,
@@ -1192,7 +1227,30 @@ function repoName(url: string): string {
 	return last.replace(/\.git$/, "") || url;
 }
 
-function stepText(raw: string): string | null {
+/** `INC-42`, `#42` or `42` matches the number; anything else the title (#1020). */
+export function incidentSearch(
+	raw: string | undefined,
+): Prisma.IncidentWhereInput | null {
+	const q = raw?.trim();
+	if (!q) return null;
+	const n = /^(?:inc-?|#)?(\d{1,9})$/i.exec(q)?.[1];
+	return {
+		OR: [{ title: { contains: q } }, ...(n ? [{ number: Number(n) }] : [])],
+	};
+}
+
+/** Incidents whose title holds `q` as typed, `%` and `_` included (#1020). */
+export async function literalIncidentIds(
+	prisma: Pick<PrismaService, "$queryRaw">,
+	q: string,
+): Promise<string[]> {
+	const like = likePattern(q);
+	const rows = await prisma.$queryRaw<{ id: string }[]>`
+		SELECT id FROM incidents WHERE title LIKE ${like} ESCAPE '\\'`;
+	return rows.map((r) => r.id);
+}
+
+export function stepText(raw: string): string | null {
 	const parsed = safeParseJsonObject(raw) as { text?: unknown } | null;
 	const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
 	return text ? text.slice(0, 280) : null;

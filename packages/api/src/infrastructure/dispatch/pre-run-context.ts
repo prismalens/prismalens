@@ -31,6 +31,7 @@ import {
 } from "@prismalens/contracts/schemas";
 import { sourceOrigin } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
+import { gitEnv } from "../../core/harness/git-env.js";
 import type { RunbookEntry } from "../../modules/gateway/runbooks.js";
 import {
 	boundSnapshot,
@@ -429,7 +430,12 @@ async function writeOne(
 			const { stdout } = await run(
 				"git",
 				["-C", target.checkout, "ls-files", "-z", "--", pathspec],
-				{ timeout: 5_000, killSignal: "SIGKILL", windowsHide: true },
+				{
+					env: gitEnv({ source: "none" }),
+					timeout: 5_000,
+					killSignal: "SIGKILL",
+					windowsHide: true,
+				},
 			);
 			if (stdout.length) return refuse("the repository tracks .prismalens");
 		} catch {

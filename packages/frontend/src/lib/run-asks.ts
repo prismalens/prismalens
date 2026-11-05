@@ -21,6 +21,8 @@ export interface AskRecord {
 	input: string | null;
 	/** The MCP server the tool comes from. */
 	server: string | null;
+	/** What the call would do, hashed; Always allow is offered only with one (#1020). */
+	identity?: string;
 	at: string;
 	expiresAt: string;
 	clamped: boolean;
@@ -93,6 +95,7 @@ export function deriveAsks(
 				detail: e.detail,
 				input: e.input ?? null,
 				server: e.server ?? null,
+				...(e.identity ? { identity: e.identity } : {}),
 				at: e.ts,
 				expiresAt: e.expiresAt,
 				clamped: e.clamped === true,

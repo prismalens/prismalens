@@ -37,7 +37,7 @@ import {
 	TEARDOWN_CAP_MS,
 } from "./hooks.js";
 
-export { type FetchCredential, gitEnv } from "./git.js";
+export { type FetchCredential, gitChildEnv, gitEnv } from "./git.js";
 export {
 	commandFor,
 	type HookResult,
@@ -208,6 +208,24 @@ function lockOf(dir: string, side: Sidecar | null): string | null {
 }
 
 /** Uncommitted tracked changes or untracked non-ignored files; ignored files never count (#925). */
+/** Worktree adds still running, by repository; each waits for the one before it. */
+const adding = new Map<string, Promise<unknown>>();
+
+async function oneAddAtATime<T>(
+	repo: string,
+	work: () => Promise<T>,
+): Promise<T> {
+	const before = adding.get(repo) ?? Promise.resolve();
+	const run = before.catch(() => {}).then(work);
+	const settled = run.catch(() => {});
+	adding.set(repo, settled);
+	try {
+		return await run;
+	} finally {
+		if (adding.get(repo) === settled) adding.delete(repo);
+	}
+}
+
 export async function isChanged(
 	dir: string,
 	env: Record<string, string>,
@@ -457,18 +475,21 @@ export async function createWorkspace(
 					: ["--detach"];
 			// --no-checkout then reset keeps the user's post-checkout hook from firing; the path is
 			// ours, so double force re-adds one a crash left registered, even locked (#918).
-			await git(
-				[
-					"worktree",
-					"add",
-					...branchArgs,
-					"--no-checkout",
-					"-f",
-					"-f",
-					dir,
-					source.commit,
-				],
-				{ cwd: source.repo, env, ...sig },
+			// One add per repository at a time: concurrent adds race on .git/worktrees/<name>.
+			await oneAddAtATime(source.repo, () =>
+				git(
+					[
+						"worktree",
+						"add",
+						...branchArgs,
+						"--no-checkout",
+						"-f",
+						"-f",
+						dir,
+						source.commit,
+					],
+					{ cwd: source.repo, env, ...sig },
+				),
 			);
 			await git(
 				[
@@ -963,6 +984,8 @@ export async function resumeWorkspace(
 		id: string;
 		lockLabel?: string;
 		env?: Readonly<Record<string, string | undefined>>;
+		/** The project whose policy now governs it; null clears an older one. Left as is when absent. */
+		project?: string | null;
 	},
 ): Promise<{ lock: string } | null> {
 	const dir = workspaceDir(input, input.id);
@@ -972,7 +995,14 @@ export async function resumeWorkspace(
 	const current = lockOf(dir, side);
 	if (current !== null && !current.startsWith(input.lockPrefix)) return null;
 	const lock = `${input.lockPrefix}${input.lockLabel ?? input.id} ${randomUUID().slice(0, 8)}`;
-	const { keptAt: _kept, lock: _old, ...rest } = side;
+	const { keptAt: _kept, lock: _old, ...kept } = side;
+	const { project: _project, ...bare } = kept;
+	const rest: Sidecar =
+		input.project === undefined
+			? kept
+			: input.project === null
+				? bare
+				: { ...bare, project: input.project };
 	const admin = linkedGitDir(dir);
 	const common = admin ? commonDirOf(admin) : null;
 	if (admin && common) {

@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parse } from "yaml";
 import { z } from "zod";
+import { gitEnv } from "../../core/harness/git-env.js";
 
 const run = promisify(execFile);
 
@@ -69,6 +70,7 @@ async function git(
 	if (!SHA.test(repo.head)) throw new Error("the run recorded no commit");
 	signal?.throwIfAborted();
 	const child = run("git", ["-C", repo.dir, ...args], {
+		env: gitEnv({ source: "none" }),
 		maxBuffer: GIT_BYTES,
 		windowsHide: true,
 		timeout: RUNBOOK_GIT_MS,

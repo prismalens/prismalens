@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createElement } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
@@ -15,6 +15,8 @@ const state = {
 	pathname: "/incidents",
 	sidebarHidden: false,
 	toggleSidebar: vi.fn(),
+	openSearch: vi.fn(),
+	head: {} as { compact?: boolean; filterable?: boolean },
 };
 
 vi.mock("@tanstack/react-router", () => ({
@@ -68,8 +70,17 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-vi.mock("@/components/shell/IncidentTree", () => ({
-	IncidentTree: () => null,
+vi.mock("@/components/shell/ThreadList", () => ({
+	ThreadList: () => null,
+}));
+
+vi.mock("@/components/shell/SidebarHead", () => ({
+	SidebarHead: (props: { compact?: boolean; filterable?: boolean }) => {
+		state.head = props;
+		return null;
+	},
+	SearchHost: ({ children }: { children: ReactNode }) => children,
+	useOpenSearch: () => state.openSearch,
 }));
 
 vi.mock("@/components/alerts/AlertListPane", () => ({
@@ -83,6 +94,7 @@ beforeEach(() => {
 	state.pathname = "/incidents";
 	state.sidebarHidden = false;
 	state.toggleSidebar = vi.fn();
+	state.openSearch = vi.fn();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -127,6 +139,28 @@ describe("Sidebar (case 2)", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
 		});
 		expect(state.toggleSidebar).toHaveBeenCalledTimes(2);
+	});
+
+	it("offers the thread filters only beside the thread list", async () => {
+		for (const [pathname, filterable] of [
+			["/incidents", true],
+			["/alerts", false],
+			["/services/abc", false],
+		] as const) {
+			state.pathname = pathname;
+			await act(async () => root.render(createElement(Sidebar)));
+			expect(state.head.filterable, pathname).toBe(filterable);
+		}
+	});
+
+	it("opens Search from the phone strip", async () => {
+		await act(async () => root.render(createElement(Sidebar)));
+		const search = container.querySelector(
+			'[data-testid="topbar"] [data-testid="strip-search"]',
+		) as HTMLButtonElement;
+		expect(search).not.toBeNull();
+		await act(async () => search.click());
+		expect(state.openSearch).toHaveBeenCalledTimes(1);
 	});
 
 	it("never hides in Settings, and places settings-back below settings-sections", async () => {

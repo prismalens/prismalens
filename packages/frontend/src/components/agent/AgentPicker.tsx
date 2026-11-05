@@ -14,7 +14,15 @@ import {
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
-import { Check, ChevronDown, Lock, Plus, Star } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	Lock,
+	Plus,
+	Shield,
+	ShieldAlert,
+	Star,
+} from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import {
 	ModelSelector,
@@ -700,13 +708,13 @@ function RailTile({
 
 /**
  * An agent's effort levels by its own names, its current one marked. A
- * `default` pseudo-level names no level, so it reads "Set by <agent>" (#907).
+ * `default` pseudo-level names no level, so it reads "Default" (#1020).
  */
 export function effortLevels(
 	h: HarnessStatus | undefined,
 ): { id: string; name: string; default: boolean }[] {
 	const named = (l: { id: string; name: string; default: boolean }) =>
-		h && isAgentDefault(l) ? { ...l, name: `Set by ${h.label}` } : l;
+		h && isAgentDefault(l) ? { ...l, name: "Default" } : l;
 	const listed = h?.checked?.efforts;
 	if (listed?.length) return listed.map(named);
 	const offered = h?.checked?.effort;
@@ -895,6 +903,29 @@ export function AccessChip({
 	];
 	const text = ACCESS_LEVEL_LABEL[level];
 	const locked = levelIcon(levelSandbox(harness, level)) === "lock";
+	// Icon plus word always; a level above the agent's default reads as a warning (#1020).
+	const above =
+		ACCESS_LEVELS.indexOf(level) > ACCESS_LEVELS.indexOf(fallback.level);
+	const Icon = locked ? Lock : above ? ShieldAlert : Shield;
+	const named = `Permission: ${text}${above ? ", above the default" : ""}`;
+	const mark = (
+		<>
+			{/* The lock replaces the warning shape, so colour alone must not carry it. */}
+			{locked && above && (
+				<ShieldAlert
+					className="size-3.5 shrink-0 text-warn"
+					aria-hidden
+					data-testid="access-chip-warning"
+				/>
+			)}
+			<Icon
+				className={cn("size-3.5 shrink-0", above && "text-warn")}
+				aria-hidden
+				data-testid="access-chip-icon"
+				data-tone={above ? "warn" : undefined}
+			/>
+		</>
+	);
 	if (lockedHint)
 		return (
 			<Hint label={lockedHint} side={side}>
@@ -904,9 +935,9 @@ export function AccessChip({
 						disabled
 						className={cn(CHIP, "max-w-48")}
 						data-testid={testId}
-						aria-label={`Permission: ${text}. ${lockedHint}`}
+						aria-label={`${named}. ${lockedHint}`}
 					>
-						{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
+						{mark}
 						<span className="truncate">{text}</span>
 					</button>
 				</span>
@@ -920,9 +951,9 @@ export function AccessChip({
 					disabled={disabled}
 					className={cn(CHIP, "max-w-48")}
 					data-testid={testId}
-					aria-label={`Permission: ${text}`}
+					aria-label={named}
 				>
-					{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
+					{mark}
 					<span className="truncate">{text}</span>
 					<Caret />
 				</button>

@@ -6,7 +6,12 @@
 /**
  * Repository hooks using oRPC client
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	type QueryClient,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 import { serviceKeys } from "./use-services-orpc";
 
@@ -85,9 +90,10 @@ export function useAddRepositorySource() {
 		...orpc.repositories.addSource.mutationOptions(),
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
-			queryClient.invalidateQueries({
-				queryKey: serviceKeys.detail(variables.serviceId),
-			});
+			if (variables.serviceId)
+				queryClient.invalidateQueries({
+					queryKey: serviceKeys.detail(variables.serviceId),
+				});
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
 			// A service that names its code is the board's fourth setup step.
 			queryClient.invalidateQueries({ queryKey: orpc.setup.key() });
@@ -103,14 +109,25 @@ export function useLinkRepository() {
 
 	return useMutation({
 		...orpc.repositories.link.mutationOptions(),
-		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
-			queryClient.invalidateQueries({
-				queryKey: serviceKeys.detail(variables.serviceId),
-			});
-			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
-		},
+		onSuccess: (_, variables) => afterRepositoryLink(queryClient, variables),
 	});
+}
+
+/** After a link: the project's own detail carries `services`, so its page refetches too (#1020). */
+export function afterRepositoryLink(
+	queryClient: QueryClient,
+	variables: { id: string; serviceId: string },
+) {
+	return Promise.all([
+		queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() }),
+		queryClient.invalidateQueries({
+			queryKey: repositoryKeys.detail(variables.id),
+		}),
+		queryClient.invalidateQueries({
+			queryKey: serviceKeys.detail(variables.serviceId),
+		}),
+		queryClient.invalidateQueries({ queryKey: serviceKeys.lists() }),
+	]);
 }
 
 /**
@@ -123,6 +140,9 @@ export function useUnlinkRepository() {
 		...orpc.repositories.unlink.mutationOptions(),
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+			queryClient.invalidateQueries({
+				queryKey: repositoryKeys.detail(variables.id),
+			});
 			queryClient.invalidateQueries({
 				queryKey: serviceKeys.detail(variables.serviceId),
 			});

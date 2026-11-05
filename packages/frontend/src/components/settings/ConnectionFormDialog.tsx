@@ -12,9 +12,9 @@ import {
 	SOURCE_CREDENTIAL_KINDS,
 	type SourceCredentialKind,
 } from "@prismalens/contracts/schemas";
-import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
+import { RingTick, useRingTick } from "@/components/shared/RingTick";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -350,6 +350,7 @@ export function ConnectionFormDialog({
 		mode === "create"
 			? createConnection.isPending || createIntegration.isPending
 			: updateConnection.isPending;
+	const ring = useRingTick(isSaving, !!error);
 
 	const blankKeeps =
 		mode === "edit" ? "blank keeps the saved value" : undefined;
@@ -525,9 +526,7 @@ export function ConnectionFormDialog({
 						Cancel
 					</Button>
 					<Button variant="primary" onClick={handleSave} disabled={isSaving}>
-						{isSaving && (
-							<Loader2 className="size-3.5 motion-safe:animate-spin" />
-						)}
+						{ring && <RingTick state={ring} />}
 						{oauth
 							? mode === "edit"
 								? "Sign in again"

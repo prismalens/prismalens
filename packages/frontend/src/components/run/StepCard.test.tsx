@@ -108,3 +108,61 @@ describe("A step's command (#931)", () => {
 		expect(q("run-in-terminal")).toBeNull();
 	});
 });
+
+describe("A step's node on the spine (#1020)", () => {
+	it("draws its node kind, and a PrismaLens tool's outcome line as plain text", () => {
+		render(
+			step({ node: "knowledge", outcome: "INC-7 <i>retry</i> storm" }),
+			false,
+		);
+		expect(q("step")?.getAttribute("data-node")).toBe("knowledge");
+		expect(q("step-outcome")?.textContent).toBe("INC-7 <i>retry</i> storm");
+		expect(q("step-outcome")?.querySelector("i")).toBeNull();
+	});
+
+	it("falls back to its file or command kind when no node was derived", () => {
+		render(step({ kind: "file" }), false);
+		expect(q("step")?.getAttribute("data-node")).toBe("read");
+		render(step(), false);
+		expect(q("step")?.getAttribute("data-node")).toBe("command");
+		expect(q("step-outcome")).toBeNull();
+	});
+});
+
+describe("The PrismaLens data note (#1020)", () => {
+	it("shows on the step that carries it, as plain text, and not on the others", () => {
+		availability = undefined;
+		render(step({ dataNote: true, outcome: "<b>No page</b>" }), false);
+		expect(q("step-data-note")?.textContent).toMatch(/^PrismaLens data\./);
+		expect(q("step-outcome")?.innerHTML).toBe("&lt;b&gt;No page&lt;/b&gt;");
+		render(step({ outcome: "Done" }), false);
+		expect(q("step-data-note")).toBeNull();
+	});
+});
+
+describe("A PrismaLens tool's step header (#1020)", () => {
+	it("names the tool in plain words and keeps the raw call in the details", () => {
+		availability = undefined;
+		render(
+			step({
+				title: "Searched for similar incidents",
+				command: 'incidents_similar (prismalens-1)({"q":"x"})',
+				gateway: true,
+				shell: false,
+			}),
+			true,
+		);
+		const header = q("step")?.querySelector("button");
+		expect(header?.textContent).toContain("Searched for similar incidents");
+		expect(header?.textContent).not.toContain("incidents_similar");
+		expect(q("step-body")?.textContent).toContain("incidents_similar");
+	});
+
+	it("leaves out the verb on a finished gateway step and keeps a failed one", () => {
+		const gw = { title: "Read the incident", gateway: true, shell: false };
+		render(step(gw), false);
+		expect(q("step-verb")).toBeNull();
+		render(step({ ...gw, ok: false, verb: "Failed" }), false);
+		expect(q("step-verb")?.textContent).toBe("Failed");
+	});
+});

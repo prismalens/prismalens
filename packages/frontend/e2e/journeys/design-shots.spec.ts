@@ -132,7 +132,7 @@ test("design shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 			await visit(page, `/incidents/${done.id}/conversation`);
 			await expect(page.getByTestId("transcript-end")).toBeVisible();
 			await shot(page, `conversation-done-${tag}`);
-			await visit(page, `/incidents/${done.id}/report`);
+			await visit(page, `/incidents/${done.id}`);
 			await expect(page.getByTestId("report-answer")).toBeVisible();
 			await shot(page, `report-${tag}`);
 			await visit(page, `/incidents/${done.id}/conversation?investigation=new`);
@@ -141,22 +141,24 @@ test("design shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 				"",
 			);
 			// This incident has a report, so the draft opens on Ask.
-			await expect(page.getByTestId("action-chip")).toHaveAttribute(
-				"data-action",
+			await expect(page.getByTestId("composer-mode")).toHaveAttribute(
+				"data-mode",
 				"ask",
 			);
 			await shot(page, `conversation-draft-ask-${tag}`);
-			await page.getByTestId("action-chip").click();
-			await expect(page.getByTestId("action-menu")).toBeVisible();
+			await page.getByTestId("composer-input").fill("/");
+			await expect(page.getByTestId("composer-slash")).toBeVisible();
 			await shot(page, `picker-verbs-${tag}`);
-			await page.getByTestId("action-investigate").click();
+			await page.getByTestId("composer-slash-investigate").click();
 			await expect(page.getByTestId("composer-send")).toBeVisible();
 			await shot(page, `conversation-draft-investigate-${tag}`);
 			await visit(page, `/incidents/${stopped.id}/conversation`);
-			await expect(page.getByTestId("action-chip")).toHaveAttribute(
-				"data-action",
-				"continue",
+			// One way to send: no mode above the box, the placeholder says it.
+			await expect(page.getByTestId("composer-input")).toHaveAttribute(
+				"placeholder",
+				/^Message /,
 			);
+			await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 			await shot(page, `conversation-stopped-${tag}`);
 			await visit(page, `/incidents/${done.id}/conversation?investigation=new`);
 			await expect(page.getByTestId("run-page")).toHaveAttribute(

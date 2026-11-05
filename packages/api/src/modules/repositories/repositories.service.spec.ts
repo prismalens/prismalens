@@ -10,10 +10,15 @@
  * exercised through the same interactive-tx double as
  * `incidents.service.spec.ts` uses.
  */
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { GitSpawnError } from "../../core/harness/git-spawn.js";
 import {
+	NoHeadError,
+	PlainFolderError,
 	RepoSourceService,
 	remoteFailure,
 } from "../../core/harness/repo-source.service.js";
@@ -46,6 +51,7 @@ describe("RepositoriesService.addSource", () => {
 	const mockPrisma = {
 		service: { findUnique: vi.fn() },
 		repository: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+		investigation: { findMany: vi.fn() },
 		$transaction: vi.fn(),
 	};
 
@@ -117,6 +123,44 @@ describe("RepositoriesService.addSource", () => {
 		);
 	});
 
+	it("adds a project with no service: the repository only, no link and no service lookup (#1020)", async () => {
+		mockRepoSource.checkFolder.mockResolvedValue({
+			root: "/code/shop",
+			prefix: "",
+			branch: "main",
+			head: "abc123",
+		});
+
+		const repo = await service.addSource({ source: "/code/shop" });
+
+		expect(repo).toMatchObject({ id: "repo-1", syncBranch: "main" });
+		expect(mockPrisma.service.findUnique).not.toHaveBeenCalled();
+		expect(mockTx.serviceRepository.updateMany).not.toHaveBeenCalled();
+		expect(mockTx.serviceRepository.create).not.toHaveBeenCalled();
+	});
+
+	it("refuses to start git in a folder a live run is working in (#1020)", async () => {
+		const plain = { id: "repo-1", plain: true, sourceKind: "folder", url: "/code/shop" };
+		mockPrisma.repository.findUnique.mockResolvedValue(plain);
+		mockPrisma.$transaction.mockImplementation(
+			async (fn: (tx: typeof mockPrisma) => unknown) => fn(mockPrisma),
+		);
+		mockPrisma.investigation.findMany.mockResolvedValue([
+			{ repository: { url: "/code/shop" } },
+		]);
+		await expect(service.startGit("repo-1")).rejects.toThrow(
+			/already working in this folder/,
+		);
+		expect(mockPrisma.repository.update).not.toHaveBeenCalled();
+	});
+
+	it("refuses a service that does not exist", async () => {
+		mockPrisma.service.findUnique.mockResolvedValue(null);
+		await expect(
+			service.addSource({ serviceId: "svc-x", source: "/code/shop" }),
+		).rejects.toThrow(/Service not found/);
+	});
+
 	it("stores fixed text as syncError when a URL's git call fails with its query in stderr (#848)", async () => {
 		const source = "https://127.0.0.1:1/org/repo.git?api_key=sentinel";
 		mockGitCredentials.withCredential.mockRejectedValue(
@@ -175,6 +219,133 @@ describe("RepositoriesService.addSource", () => {
 
 		expect(mockTx.serviceRepository.create).toHaveBeenCalledWith({
 			data: expect.objectContaining({ subPath: "packages/api/src" }),
+		});
+	});
+
+	it("two picks inside one repo make two projects, each keeping its sub-path (#1020)", async () => {
+		for (const prefix of ["packages/api", "packages/web"]) {
+			mockRepoSource.checkFolder.mockResolvedValueOnce({
+				root: "/repo",
+				prefix,
+				branch: "main",
+				head: "abc123",
+			});
+			await service.addSource({ source: `/repo/${prefix}` });
+		}
+		expect(mockTx.repository.findFirst.mock.calls.map((c) => c[0])).toEqual([
+			{ where: { url: "/repo", subPath: "packages/api" } },
+			{ where: { url: "/repo", subPath: "packages/web" } },
+		]);
+		expect(
+			mockTx.repository.create.mock.calls.map(
+				(c) => [c[0].data.fullName, c[0].data.subPath],
+			),
+		).toEqual([
+			["repo/packages/api", "packages/api"],
+			["repo/packages/web", "packages/web"],
+		]);
+	});
+
+	it("a pick in a repo with no commit yet still keeps its root and sub-path (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(
+			new NoHeadError("git rev-parse failed (exit 128)", "/repo", "packages/api"),
+		);
+		await service.addSource({ source: "/repo/packages/api" });
+		expect(mockTx.repository.create).toHaveBeenCalledWith({
+			data: expect.objectContaining({
+				url: "/repo",
+				subPath: "packages/api",
+				fullName: "repo/packages/api",
+				plain: false,
+				syncError: "git rev-parse failed (exit 128)",
+			}),
+		});
+	});
+
+	it("saves a folder with no git as a plain Folder project, with no sync error (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(
+			new PlainFolderError("/notes"),
+		);
+		await service.addSource({ source: "/notes" });
+		expect(mockTx.repository.create).toHaveBeenCalledWith({
+			data: expect.objectContaining({
+				plain: true,
+				syncError: null,
+				subPath: null,
+			}),
+		});
+	});
+
+	it("saves a plain folder by its real path, so an alias through a linked parent is the same project (#1020)", async () => {
+		const base = mkdtempSync(join(tmpdir(), "pl-add-alias-"));
+		try {
+			mkdirSync(join(base, "real", "notes"), { recursive: true });
+			symlinkSync(join(base, "real"), join(base, "alias"), process.platform === "win32" ? "junction" : "dir");
+			mockRepoSource.checkFolder.mockRejectedValue(new PlainFolderError("x"));
+			await service.addSource({ source: join(base, "alias", "notes") });
+			const where = mockTx.repository.findFirst.mock.calls[0]?.[0];
+			expect(where).toEqual({
+				where: { url: realpathSync.native(join(base, "real", "notes")), subPath: null },
+			});
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+	});
+
+	it("Start git here is refused while a thread works in the folder, and git never runs (#1020)", async () => {
+		const live = vi.fn(async () => [{ repository: { url: "/code/notes/sub" } }]);
+		mockPrisma.repository.findUnique.mockResolvedValue({
+			id: "repo-1",
+			plain: true,
+			sourceKind: "folder",
+			url: "/code/notes",
+		});
+		mockPrisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => unknown) =>
+			fn({ investigation: { findMany: live } }),
+		);
+		await expect(service.startGit("repo-1")).rejects.toThrow(
+			"A thread is already working in this folder.",
+		);
+		expect(mockPrisma.repository.update).not.toHaveBeenCalled();
+	});
+
+	it("refuses a sub-path on a folder with no git: its runs work in the folder itself (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(new PlainFolderError("/notes"));
+		await expect(
+			service.addSource({ source: "/notes", subPath: "drafts" }),
+		).rejects.toThrow(/no sub-path/);
+		expect(mockTx.repository.create).not.toHaveBeenCalled();
+	});
+
+	it("refuses a plain folder as a service's code: a service runs unattended (#1020)", async () => {
+		mockRepoSource.checkFolder.mockRejectedValue(
+			new PlainFolderError("/notes"),
+		);
+		await expect(
+			service.addSource({ serviceId: "svc-1", source: "/notes" }),
+		).rejects.toThrow(/has no git/);
+		expect(mockTx.repository.create).not.toHaveBeenCalled();
+	});
+
+	it("Make it a service refuses a plain folder and keeps a subfolder project's sub-path (#1020)", async () => {
+		const create = vi.fn(async ({ data }) => ({ ...data, createdAt: new Date() }));
+		(mockPrisma as Record<string, unknown>).serviceRepository = { create };
+		mockPrisma.repository.findUnique.mockResolvedValueOnce({
+			id: "repo-1",
+			plain: true,
+			subPath: null,
+		});
+		await expect(
+			service.linkToService("repo-1", { serviceId: "svc-1" }),
+		).rejects.toThrow(/has no git/);
+		mockPrisma.repository.findUnique.mockResolvedValueOnce({
+			id: "repo-2",
+			plain: false,
+			subPath: "packages/api",
+		});
+		await service.linkToService("repo-2", { serviceId: "svc-1" });
+		expect(create).toHaveBeenCalledWith({
+			data: expect.objectContaining({ subPath: "packages/api" }),
 		});
 	});
 

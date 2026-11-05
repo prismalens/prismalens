@@ -161,6 +161,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 		<div
 			className="flex h-(--header-h) shrink-0 items-center gap-2.5 bg-surface-1 pr-4 pl-3"
 			data-testid="alert-band"
+			data-title-row
 		>
 			<Hint label={backLabel} keys={["Esc"]}>
 				<Button variant="text" size="icon" asChild>

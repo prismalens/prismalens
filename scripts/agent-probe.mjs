@@ -22,6 +22,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
@@ -43,6 +44,16 @@ const PROBE_ENV = {
 		OPENAI_API_KEY: "probe-no-model",
 		DEEPAGENTS_HOME: home,
 	}),
+};
+
+/**
+ * Files a row needs in its empty profile to start. deepagents-code 0.2.4 stops at "No model
+ * configured" without a default model; a placeholder is enough, nothing ever prompts (#1035).
+ */
+export const PROBE_FILES = {
+	deepagents: {
+		"config.toml": '[models]\ndefault = "openai:probe-no-model"\n',
+	},
 };
 
 /** A row the probe hands no key, so asking for a sign-in is how it answers when it works. */
@@ -242,6 +253,8 @@ async function probeOne(built, probe) {
 			return { ok: false, text: `not found after install in ${installed.bin}` };
 		const home = join(dir, "home");
 		mkdirSync(home);
+		for (const [name, text] of Object.entries(PROBE_FILES[row.id] ?? {}))
+			writeFileSync(join(home, name), text);
 		const runDir = join(dir, "run");
 		const cwd = join(dir, "workspace");
 		mkdirSync(cwd);

@@ -2,21 +2,22 @@
 // Copyright 2026 Sumit Patel
 
 import { SquareTerminal, Star } from "lucide-react";
-import { siClaude, siGooglegemini } from "simple-icons";
+import { siClaude, siGooglegemini, siOpencode } from "simple-icons";
 import { cn } from "@/lib/utils";
 
 /**
  * Each agent's own mark (decision 20), from simple-icons (CC0 paths; the marks
- * stay their owners' trademarks, shown only to name the agent). Agents with no
- * mark that reads at 20 px get a two-letter tile until one is sourced.
+ * stay their owners' trademarks, shown only to name the agent). Codex and
+ * deepagents have no mark we may bundle (#1020), so they keep a two-letter tile.
+ * A null color paints in the theme text color: the brand color is black.
  */
-const MARKS: Record<string, { path: string; color: string }> = {
+const MARKS: Record<string, { path: string; color: string | null }> = {
+	opencode: { path: siOpencode.path, color: null },
 	"claude-code": { path: siClaude.path, color: `#${siClaude.hex}` },
 	gemini: { path: siGooglegemini.path, color: `#${siGooglegemini.hex}` },
 };
 
 const LETTERS: Record<string, string> = {
-	opencode: "OC",
 	codex: "CX",
 	deepagents: "DA",
 };
@@ -54,8 +55,8 @@ export function AgentMark({
 		<svg
 			aria-hidden
 			viewBox="0 0 24 24"
-			className={cn("size-4 shrink-0", className)}
-			fill={mark.color}
+			className={cn("size-4 shrink-0", !mark.color && "text-text-1", className)}
+			fill={mark.color ?? "currentColor"}
 		>
 			<path d={mark.path} />
 		</svg>

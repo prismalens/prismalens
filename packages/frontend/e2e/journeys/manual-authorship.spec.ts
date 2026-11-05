@@ -2,8 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
+import { createIncidentByHand } from "./by-hand";
 import { hideQueryDevtools } from "./live-stream-fixtures";
-import { investigateButton } from "./verb";
+import { investigateButton, pickAction } from "./verb";
 
 /**
  * J17 / C10 — manual authorship.
@@ -61,35 +62,21 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		// 0. Precondition: the gate reports a runnable harness (#520).
 		await serveRunnableSelection(page);
 
-		// 1. The incidents page offers the authorship affordance.
+		// 1. Every list screen offers New thread; Incident on with /note authors one by hand.
 		await page.goto("/incidents");
 		await expect(
-			page
-				.getByTestId("page-header")
-				.getByRole("heading", { name: "Incidents", exact: true }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
-		await page.getByTestId("create-incident-button").click();
+			page.getByTestId("page-header").getByTestId("new-thread-button"),
+		).toBeVisible({ timeout: 15_000 });
 
-		// 2. The form calls incidents.create and lands on the new incident.
-		const dialog = page.getByTestId("create-incident-dialog");
-		await expect(dialog).toBeVisible();
-		await dialog.getByTestId("create-incident-title").fill(title);
-		await dialog
-			.getByTestId("create-incident-description")
-			.fill("Authored by hand — no alert source is wired up.");
-		await dialog.getByTestId("create-incident-submit").click();
-
-		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
-			timeout: 15_000,
+		// 2. The note calls incidents.create and lands on the new incident.
+		await createIncidentByHand(page, title, {
+			description: "Authored by hand — no alert source is wired up.",
 		});
 		await expect(page.getByTestId("crumb-incident")).toHaveText(title);
 
 		// A note from the composer lands in changes-timeline
 		const note = "Authored by hand from the composer";
-		await page.getByTestId("action-chip").click();
-		await page.getByTestId("action-note").click();
+		await pickAction(page, "note");
 		await page.getByTestId("composer-input").fill(note);
 		await page.getByTestId("composer-send").click();
 		await expect(page.getByTestId("changes-timeline")).toContainText(note);
@@ -197,27 +184,25 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	test("design evidence: both themes, the empty state, and the error state", async ({
 		page,
 	}) => {
-		// The dialog, light.
-		await page.goto("/incidents");
+		// New thread with Incident on, light.
+		await page.goto("/threads/new?incident=true&note=true");
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/light/);
-		await page.getByTestId("create-incident-button").click();
-		await expect(page.getByTestId("create-incident-dialog")).toBeVisible();
+		await expect(page.getByTestId("new-thread-page")).toBeVisible();
 
-		// The same dialog, dark.
+		// The same page, dark.
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=dark; path=/; max-age=31536000";
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
-		await page.getByTestId("create-incident-button").click();
-		await expect(page.getByTestId("create-incident-dialog")).toBeVisible();
+		await expect(page.getByTestId("new-thread-page")).toBeVisible();
 
-		// The error state: a create the API refuses is reported inside the
-		// dialog, and the draft is left intact so it can be retried.
+		// The error state: a create the API refuses is reported under the box,
+		// and the draft is left intact so it can be retried.
 		await page.route("**/api/incidents", async (route) => {
 			if (route.request().method() === "POST") {
 				await route.fulfill({
@@ -229,14 +214,13 @@ test.describe("C10 — manual authorship without an alert source", () => {
 			}
 			await route.fallback();
 		});
-		await page
-			.getByTestId("create-incident-title")
-			.fill("An incident the server refuses");
-		await page.getByTestId("create-incident-submit").click();
-		await expect(page.getByTestId("create-incident-error")).toBeVisible({
+		const box = page.getByTestId("composer-input");
+		await box.fill("An incident the server refuses");
+		await box.press("Enter");
+		await expect(page.getByTestId("composer-refusal")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("create-incident-dialog")).toBeVisible();
+		await expect(box).toHaveValue("An incident the server refuses");
 		await page.unroute("**/api/incidents");
 
 		// The empty state — what a fresh install sees. The seeded database has
@@ -297,27 +281,16 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {
-		await page.goto("/incidents");
-		await expect(
-			page
-				.getByTestId("page-header")
-				.getByRole("heading", { name: "Incidents", exact: true }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
-		await page.getByTestId("create-incident-button").click();
+		await page.goto("/threads/new?incident=true&note=true");
+		const send = page.getByTestId("composer-send");
+		await expect(send).toBeDisabled({ timeout: 15_000 });
 
-		const dialog = page.getByTestId("create-incident-dialog");
-		await expect(dialog).toBeVisible();
+		// Send stays disabled until the box holds real text, so the page cannot
+		// POST an incident the API would reject.
+		await page.getByTestId("composer-input").fill("   ");
+		await expect(send).toBeDisabled();
 
-		// Submit stays disabled until the one required field holds real text, so
-		// the dialog cannot POST an incident the API would reject.
-		await expect(dialog.getByTestId("create-incident-submit")).toBeDisabled();
-
-		await dialog.getByTestId("create-incident-title").fill("   ");
-		await expect(dialog.getByTestId("create-incident-submit")).toBeDisabled();
-
-		await dialog.getByTestId("create-incident-title").fill("Has a title now");
-		await expect(dialog.getByTestId("create-incident-submit")).toBeEnabled();
+		await page.getByTestId("composer-input").fill("Has a title now");
+		await expect(send).toBeEnabled();
 	});
 });

@@ -127,6 +127,13 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 
+			<SettingGroup title="Runs nobody started">
+				<Pool>
+					<AlertAsksRow />
+					<UnattendedGithubRow />
+				</Pool>
+			</SettingGroup>
+
 			<SettingGroup title="Restarts">
 				<Pool>
 					<ResumeAfterRestartRow />
@@ -239,6 +246,7 @@ const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
 function AccessRows() {
 	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
+	const { data: settings } = useHarnessSettings();
 	if (!effective) return null;
 	const id = effective.id as HarnessId;
 	const note = agentNote(effective);
@@ -253,7 +261,10 @@ function AccessRows() {
 						data-testid="harness-alert-runs"
 					>
 						Runs an alert starts don't use this: nobody is there to answer, so
-						they run at Auto and refuse anything they would ask you.
+						they run at Auto and{" "}
+						{settings?.alertAsks === "wait"
+							? "wait in their thread for you to answer anything they would ask."
+							: "refuse anything they would ask you."}
 					</span>
 					{note && (
 						<span
@@ -333,6 +344,67 @@ function ResumeAfterRestartRow() {
 					update.mutate({ resumeAfterRestart })
 				}
 				data-testid="harness-resume-after-restart"
+			/>
+		</SettingRow>
+	);
+}
+
+/** When an alert-started run asks (#1020 R33): refuse at once, or wait in its thread and notify. */
+function AlertAsksRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	return (
+		<SettingRow
+			label={<span id="harness-alert-asks-label">When an alert run asks</span>}
+			description="Schedules choose their own"
+			testId="harness-alert-asks-row"
+		>
+			<Select
+				value={settings?.alertAsks ?? "decide"}
+				onValueChange={(v) =>
+					update.mutate({ alertAsks: v as "decide" | "wait" })
+				}
+				disabled={update.isPending || settings?.canEditRuntime === false}
+			>
+				<SelectTrigger
+					aria-labelledby="harness-alert-asks-label"
+					className="w-40"
+					data-testid="harness-alert-asks"
+				>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="decide">Decide for me</SelectItem>
+					<SelectItem value="wait">Wait for me</SelectItem>
+				</SelectContent>
+			</Select>
+		</SettingRow>
+	);
+}
+
+/** R41 (#1020): alert and schedule runs get no GitHub token unless the host turns this on. */
+function UnattendedGithubRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const on = settings?.unattendedGithub === true;
+	return (
+		<SettingRow
+			label={
+				<label htmlFor="harness-unattended-github">Keep the GitHub token</label>
+			}
+			description={
+				on ? "Alert and schedule runs keep it" : "Only threads you start"
+			}
+			testId="harness-unattended-github-row"
+		>
+			<Switch
+				id="harness-unattended-github"
+				checked={on}
+				disabled={update.isPending || settings?.canEditRuntime === false}
+				onCheckedChange={(unattendedGithub) =>
+					update.mutate({ unattendedGithub })
+				}
+				data-testid="harness-unattended-github"
 			/>
 		</SettingRow>
 	);
