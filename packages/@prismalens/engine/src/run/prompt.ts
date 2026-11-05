@@ -389,8 +389,11 @@ function renderCheck(context: InvestigationContext): string {
 		? `
   Service: ${sanitizeUntrustedLine(context.service.name)}`
 		: c?.project
-			? `
-  Project: ${sanitizeUntrustedLine(c.project)}`
+			? `\n${fenceUntrusted(
+					"CHECK_PROJECT",
+					"The project's name, taken from its folder or git address.",
+					`Project: ${sanitizeUntrustedLine(c.project)}`,
+				)}`
 			: "";
 	return `SCHEDULED CHECK${about}${
 		c?.runbook

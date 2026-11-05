@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { withAsk } from "./allowed-asks.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = await vi.hoisted(async () => {
@@ -190,8 +191,7 @@ describe("SchedulesService (#979)", () => {
 			const s = scheduler();
 			const created = await s.create(input(), "host", new Date("2026-07-06T08:00:00Z"));
 			const other = await s.create(input({ name: "Other" }), "host", new Date("2026-07-06T08:00:00Z"));
-			await s.remember(created.id, { kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
-			await s.remember(created.id, { kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+			await prisma.schedule.update({ where: { id: created.id }, data: { alwaysAllow: withAsk(null, { kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }) } });
 			expect((await s.get(created.id, undefined, 10)).schedule.alwaysAllow).toEqual([{ kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]);
 			await s.evaluate(new Date("2026-07-06T09:00:05Z"));
 			const mine = (await ticks(created.id))[0];

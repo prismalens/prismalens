@@ -478,6 +478,22 @@ describe("HarnessSettings signed-out row (w8-9)", () => {
 });
 
 describe("HarnessSettings Permission rows (#673 w21)", () => {
+	it("says an alert run waits for an answer when that is the setting", async () => {
+		mockSettings.alertAsks = "wait";
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			const line = container.querySelector(
+				'[data-testid="harness-alert-runs"]',
+			);
+			expect(line?.textContent).toContain("wait in their thread");
+			expect(line?.textContent).not.toContain("refuse");
+		} finally {
+			delete mockSettings.alertAsks;
+		}
+	});
+
 	it("renders the Next run Permission select and no Mode row", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);

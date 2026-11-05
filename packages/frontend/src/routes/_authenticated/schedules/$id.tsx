@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Schedule, ScheduleTick } from "@prismalens/contracts";
+import {
+	ACCESS_LEVEL_LABEL,
+	AUTO_START_ACCESS_LEVEL,
+	type Schedule,
+	type ScheduleTick,
+} from "@prismalens/contracts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeft,
@@ -321,7 +326,11 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 			s.description,
 			s.enabled ? `Next ${whenText(s.nextRunAt)}` : "Paused",
 		],
-		["Agent", [s.harness, s.model].filter(Boolean).join(", "), "Auto access"],
+		[
+			"Agent",
+			[s.harness, s.model].filter(Boolean).join(", "),
+			`${ACCESS_LEVEL_LABEL[s.accessLevel ?? AUTO_START_ACCESS_LEVEL]} access`,
+		],
 		[
 			"If missed",
 			s.missedPolicy === "run_once" ? "Run once when back" : "Skip it",

@@ -246,6 +246,7 @@ const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
 function AccessRows() {
 	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
+	const { data: settings } = useHarnessSettings();
 	if (!effective) return null;
 	const id = effective.id as HarnessId;
 	const note = agentNote(effective);
@@ -260,7 +261,10 @@ function AccessRows() {
 						data-testid="harness-alert-runs"
 					>
 						Runs an alert starts don't use this: nobody is there to answer, so
-						they run at Auto and refuse anything they would ask you.
+						they run at Auto and{" "}
+						{settings?.alertAsks === "wait"
+							? "wait in their thread for you to answer anything they would ask."
+							: "refuse anything they would ask you."}
 					</span>
 					{note && (
 						<span

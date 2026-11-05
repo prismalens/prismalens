@@ -14,7 +14,6 @@ import {
 import type { HarnessId } from "@prismalens/config/harness";
 import {
 	AccessLevelSchema,
-	type AllowedAsk,
 	AUTO_START_ACCESS_LEVEL,
 	type BuiltInJob,
 	type InvestigationJobData,
@@ -43,7 +42,7 @@ import {
 	SCHEDULED_KIND,
 } from "../../infrastructure/dispatch/job-store.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
-import { allowedAsks, withAsk } from "./allowed-asks.js";
+import { allowedAsks } from "./allowed-asks.js";
 import { type Decision, decide } from "./decide.js";
 import {
 	cronShape,
@@ -851,24 +850,6 @@ export class SchedulesService
 				}),
 			]);
 			return { ok: true as const };
-		});
-	}
-
-	/**
-	 * An "Always allow" a host gave on one of this schedule's runs: its later runs allow that
-	 * exact ask (#1020 R33). Not part of the bindings hash; capped, oldest dropped.
-	 */
-	remember(scheduleId: string, ask: AllowedAsk): Promise<void> {
-		return this.serial(async () => {
-			const s = await this.prisma.schedule.findUnique({
-				where: { id: scheduleId },
-				select: { alwaysAllow: true },
-			});
-			if (!s) return;
-			await this.prisma.schedule.update({
-				where: { id: scheduleId },
-				data: { alwaysAllow: withAsk(s.alwaysAllow, ask) },
-			});
 		});
 	}
 
