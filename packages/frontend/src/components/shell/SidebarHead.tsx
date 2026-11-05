@@ -220,8 +220,8 @@ export function ThreadSearch({
 							value={kind}
 							onChange={(v) => setKind(v as Kind)}
 							options={[
-								["chat", "Chats"],
-								["investigation", "Investigations"],
+								["chat", "Threads"],
+								["investigation", "Reports"],
 							]}
 						/>
 						<Filter

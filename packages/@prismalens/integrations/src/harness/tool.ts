@@ -6,6 +6,10 @@
  * (#848, ADR 0007 §5). Data-access tools are the user's own, never declared here.
  */
 import { createHash } from "node:crypto";
+import {
+	THREAD_SUBJECTS,
+	type ThreadSubjectKind,
+} from "@prismalens/contracts/schemas";
 import { z } from "zod";
 
 /** At most 46 characters and never `__`, which agents use to join server and tool names. */
@@ -18,6 +22,36 @@ export const HARNESS_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 export type HarnessEffect = "read" | "record";
 
 export type HarnessGroup = "core" | "knowledge" | "record";
+
+/**
+ * Where a tool works (#1020): the thread subjects whose data it reads, and `owes: "report"`
+ * for a report's own tools. A run's view is derived from this, so no offered tool always fails.
+ */
+export interface HarnessServes {
+	subjects: readonly ThreadSubjectKind[];
+	owes?: "report";
+}
+
+/** Every subject: tools that need nothing but the run itself. */
+export const EVERY_SUBJECT: readonly ThreadSubjectKind[] = THREAD_SUBJECTS;
+
+/** What a run is: its subject and what it owes; unknown keeps every tool. */
+export interface HarnessScope {
+	subject?: ThreadSubjectKind;
+	owes?: "answer" | "report";
+}
+
+/** The tools a run's scope can use; replay reads recorded events, not this. */
+export function servedTo(
+	tools: readonly HarnessTool[],
+	{ subject, owes }: HarnessScope,
+): readonly HarnessTool[] {
+	return tools.filter(
+		(t) =>
+			(!subject || t.serves.subjects.includes(subject)) &&
+			(!owes || !t.serves.owes || t.serves.owes === owes),
+	);
+}
 
 /** The fixed failure codes every tool answers with; the agent reads `next`. */
 export const FAILURE_CODES = [
@@ -67,6 +101,7 @@ export interface HarnessTool<
 	description: string;
 	group: HarnessGroup;
 	effect: E;
+	serves: HarnessServes;
 	/** `z.object({})` for no arguments; never a run id, which comes from the bearer. */
 	input: S;
 	run(input: z.output<S>, ctx: ToolContext): Promise<ToolOutcome>;

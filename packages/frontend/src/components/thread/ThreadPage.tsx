@@ -361,6 +361,7 @@ export function ThreadPage({ id }: { id: string }) {
 						cwd={workspace?.cwd}
 						agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
 						runName={inv.title ?? "Thread"}
+						chat={inv.kind === "chat"}
 						steps={steps}
 						runId={inv.id}
 						foldTurns={{ live: run.isActive }}

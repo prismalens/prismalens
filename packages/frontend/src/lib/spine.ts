@@ -147,9 +147,21 @@ export function matchGateway(events: readonly CanonicalEvent[]): GatewayMatch {
 			if (byCall.has(c.toolCallId)) continue;
 			const mcp = mcpTool(c.name.replace(/^`([\s\S]*)`$/, "$1"));
 			if (!mcp || !servers.has(mcp.server)) continue;
-			const call = calls.find(
-				(h) => !used.has(h) && h.server === mcp.server && h.name === mcp.tool,
-			);
+			// A deferred call is recorded under its target, marked `via: "tools_call"`.
+			const target =
+				mcp.tool === "tools_call" && typeof c.args.name === "string"
+					? c.args.name
+					: null;
+			const open = calls.filter((h) => !used.has(h) && h.server === mcp.server);
+			// A refused wrapper is recorded as `tools_call` itself, with the target in its input.
+			const call = target
+				? (open.find(
+						(h) =>
+							h.name === "tools_call" &&
+							!h.via &&
+							(h.input as { name?: unknown } | undefined)?.name === target,
+					) ?? open.find((h) => h.via === "tools_call" && h.name === target))
+				: open.find((h) => h.name === mcp.tool);
 			if (!call) continue;
 			used.add(call);
 			byCall.set(c.toolCallId, call);

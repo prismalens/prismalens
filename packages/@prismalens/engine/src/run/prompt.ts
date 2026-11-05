@@ -100,7 +100,10 @@ function renderSurfaces(
  * What PrismaLens read before the run (#848): the read-copy folder when it was written,
  * each source's result, the runbooks, then the start of each telemetry file fenced as data.
  */
-export function renderPreRun(context: InvestigationContext): string {
+export function renderPreRun(
+	context: InvestigationContext,
+	owes: "report" | "answer" = "report",
+): string {
 	const p = context.preRun;
 	if (!p) return "";
 	if (p.state === "unavailable")
@@ -141,6 +144,7 @@ export function renderPreRun(context: InvestigationContext): string {
 							`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
 					)
 					.join("\n"),
+				owes,
 			),
 		);
 	if (p.runbooksSkipped)
@@ -164,6 +168,7 @@ export function renderPreRun(context: InvestigationContext): string {
 				"PRE_RUN_TELEMETRY",
 				"Read by PrismaLens from the user's telemetry sources before the run.",
 				sanitizeUntrustedBlock(excerpts.join("\n")),
+				owes,
 			),
 		);
 	return `\n\n${lines.join("\n")}`;
@@ -183,9 +188,9 @@ export function buildChatPrompt(
 	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
-${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}${toolsBlock(options)}
+${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context, "answer")}${toolsBlock(options)}
 
-${UNTRUSTED_DATA_METHOD_GUARD}
+${UNTRUSTED_DATA_CHAT_GUARD}
 
 ${text}`;
 }
@@ -212,7 +217,7 @@ const PLACE_LINES: Record<HelperPlace, string> = {
 
 /** A plain greeting gets a plain answer: no tool is probed to look busy (#1020). */
 const ANSWER_FIRST =
-	"Answer the message directly. Use a tool only when the message needs one: a greeting, or a question you can answer from what you know, gets a short reply and no tool calls.";
+	"Answer the message directly. Use a tool only when the message needs one: a greeting, or a question you can answer from what you know, gets a short reply and no tool calls, except naming the thread once the user's task is clear.";
 
 /**
  * A project, service or no-subject thread's first turn (#1020, OBJ-003): a coding
@@ -252,7 +257,7 @@ THIS PAGE
 	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed. ${ANSWER_FIRST}
 
 SURFACES
-${surfaces.join("\n")}${renderThreadSubject(context)}${renderPreRun(context)}${toolsBlock(options)}${page}
+${surfaces.join("\n")}${renderThreadSubject(context)}${renderPreRun(context, "answer")}${toolsBlock(options)}${page}
 
 THIS RUN
 ${runLines.map((l) => `  - ${l}`).join("\n")}
@@ -286,6 +291,7 @@ function renderThreadSubject(context: InvestigationContext): string {
 		"THREAD_SUBJECT",
 		"Names the user gave this thread's project, service and folders in PrismaLens. A folder or sub-path is a JSON string, not a shell-safe one: parse it, then shell-quote the result before putting it in a command.",
 		lines.join("\n"),
+		"answer",
 	)}`;
 }
 

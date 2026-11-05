@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_TOOL_STEPS } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, FileText } from "lucide-react";
 import {
@@ -155,6 +156,7 @@ export const Transcript = memo(function Transcript({
 	afterReport,
 	runId,
 	foldTurns,
+	chat = false,
 }: {
 	items: TranscriptItem[];
 	/** Null on a scheduled check no finding has linked yet (#979). */
@@ -178,6 +180,8 @@ export const Transcript = memo(function Transcript({
 	runId?: string;
 	/** Each finished turn's work folds behind `Worked for …`; the answer stays out (#1020). */
 	foldTurns?: { live: boolean };
+	/** A thread that owes an answer: its first message is a message, never a brief (#1020). */
+	chat?: boolean;
 }) {
 	useRenderProbe("Transcript", { items, steps, worked, report });
 	const groups = useGroupSteps(items, steps);
@@ -243,6 +247,7 @@ export const Transcript = memo(function Transcript({
 											agent={agent}
 											runName={runName}
 											briefBy={briefBy}
+											chat={chat}
 											reportTitle={report?.title}
 											reportSummary={report?.summary}
 											hasSteps={!!steps}
@@ -371,6 +376,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	reportSummary,
 	ask,
 	runId,
+	chat,
 	...steps
 }: RowSteps & {
 	item: TranscriptItem;
@@ -383,6 +389,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	reportSummary?: string;
 	ask?: AskRecord;
 	runId?: string;
+	chat?: boolean;
 }) {
 	useRenderProbe("TranscriptRow", { item, ask, ...steps });
 	switch (item.kind) {
@@ -489,8 +496,8 @@ const TranscriptRow = memo(function TranscriptRow({
 						)}
 						aria-hidden
 					/>
-					<span className="shrink-0 font-mono text-mono text-text-2">
-						{item.name}
+					<span className="shrink-0 text-text-2">
+						{HARNESS_TOOL_STEPS[item.name] ?? item.name}
 					</span>
 					{item.outcome && (
 						<span className="min-w-0 flex-1 truncate text-text-2">
@@ -509,7 +516,7 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "thinking":
 			return <ThinkingLine since={item.since} />;
 		case "operator": {
-			const brief = item.state === "started";
+			const brief = item.state === "started" && !chat;
 			const who = brief ? briefBy : "You";
 			return (
 				<li
@@ -538,7 +545,9 @@ const TranscriptRow = memo(function TranscriptRow({
 										? runName === "Ask"
 											? "asked"
 											: `brief for ${runName ?? "this run"}`
-										: deliveryWord(item.state, item.mode)}
+										: chat && item.state === "started"
+											? "sent"
+											: deliveryWord(item.state, item.mode)}
 								</span>
 							</>
 						)}

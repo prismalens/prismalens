@@ -104,6 +104,57 @@ describe("matchGateway (#1020)", () => {
 		expect(out.byCall.has("c3")).toBe(false);
 		expect(Array.from(out.unmatched)).toEqual(["main-4"]);
 	});
+
+	it("pairs a deferred call through tools_call with the target it recorded", () => {
+		const viaCall = (seq: number, name: string, output: string): CanonicalEvent => ({
+			...(call(seq, name, output) as Extract<CanonicalEvent, { kind: "harness_tool_call" }>),
+			via: "tools_call",
+		});
+		const deferred = (seq: number, id: string, target: string): CanonicalEvent => ({
+			kind: "agent_step",
+			...base(seq),
+			text: "",
+			toolCalls: [{ toolCallId: id, name: "mcp__prismalens-1__tools_call", args: { name: target, arguments: {} } }],
+		});
+		const out = matchGateway([
+			deferred(0, "d1", "fixes_list"),
+			viaCall(1, "fixes_list", "2 fixes"),
+			deferred(2, "d2", "runbooks_list"),
+			viaCall(3, "changes_list", "1 change"),
+		]);
+		expect(out.byCall.get("d1")?.name).toBe("fixes_list");
+		expect(out.byCall.has("d2")).toBe(false);
+		expect(Array.from(out.unmatched)).toEqual(["main-3"]);
+	});
+
+	it("pairs a refused tools_call wrapper by its recorded input, not a later call of the same target", () => {
+		type Recorded = Extract<CanonicalEvent, { kind: "harness_tool_call" }>;
+		const refused: CanonicalEvent = {
+			...(call(1, "tools_call", "invalid arguments") as Recorded),
+			input: { name: "fixes_list", arguments: "x" },
+			isError: true,
+		};
+		const later: CanonicalEvent = {
+			...(call(3, "fixes_list", "2 fixes") as Recorded),
+			via: "tools_call",
+		};
+		const deferred = (seq: number, id: string): CanonicalEvent => ({
+			kind: "agent_step",
+			...base(seq),
+			text: "",
+			toolCalls: [
+				{
+					toolCallId: id,
+					name: "mcp__prismalens-1__tools_call",
+					args: { name: "fixes_list" },
+				},
+			],
+		});
+		const out = matchGateway([deferred(0, "d1"), refused, deferred(2, "d2"), later]);
+		expect(out.byCall.get("d1")?.output).toBe("invalid arguments");
+		expect(out.byCall.get("d2")?.output).toBe("2 fixes");
+		expect(out.unmatched.size).toBe(0);
+	});
 });
 
 describe("turnFolds (#1020)", () => {

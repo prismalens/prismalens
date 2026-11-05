@@ -78,6 +78,7 @@ import {
 	type SteerPort,
 	telemetryEndpointsFrom,
 } from "@prismalens/engine";
+import type { HarnessScope } from "@prismalens/integrations/harness";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
@@ -195,10 +196,14 @@ function serviceIdOf(
 }
 
 /** A thread with no incident: its subject picks the PrismaLens tools it is offered (#1020). */
-function toolSubject(
-	data: InvestigationJobData,
-): ThreadSubjectKind | undefined {
-	return data.thread && !data.incidentId ? data.thread.subject : undefined;
+/** What a run is about and owes, for its gateway tools (#1020); a legacy run keeps them all. */
+function toolScope(data: InvestigationJobData, kind: ThreadKind): HarnessScope {
+	const subject: ThreadSubjectKind | undefined = data.incidentId
+		? "incident"
+		: data.scheduled
+			? "schedule"
+			: data.thread?.subject;
+	return { subject, owes: kind === "chat" ? "answer" : "report" };
 }
 
 /** What the pre-run reads are keyed by: the incident, else the service a check is about (#979). */
@@ -430,7 +435,7 @@ async function runJobInternal(
 				workspace.toolsServer,
 				harness,
 				undefined,
-				toolSubject(data),
+				toolScope(data, kind),
 			)
 			.catch((e) => {
 				logger.warn(
@@ -996,7 +1001,13 @@ async function runFollowUp(
 			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
 		const gateway = await ports.gateway
-			?.lease(id, workspace.toolsServer, harness, new Date(), toolSubject(data))
+			?.lease(
+				id,
+				workspace.toolsServer,
+				harness,
+				new Date(),
+				toolScope(data, kind),
+			)
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",

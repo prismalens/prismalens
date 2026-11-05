@@ -81,7 +81,7 @@ export default defineConfig({
 				"src/modules/investigations/worktree-changes.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/thread-titles.ts": NEW_CODE_THRESHOLD,
 				"src/shared/utils/literal-like.ts": NEW_CODE_THRESHOLD,
-				"src/modules/gateway/subject-tools.ts": NEW_CODE_THRESHOLD,
+				"src/modules/gateway/tools/serves.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},
