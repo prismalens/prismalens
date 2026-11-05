@@ -6,6 +6,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	FollowUpKind,
+	HelperPlace,
 	InvestigationKind,
 	LiveTurn,
 	RunEndReason,
@@ -13,6 +14,7 @@ import type {
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
+	AllowedAskSchema,
 	CanonicalEventSchema,
 	effectiveLiveTurn,
 	INVESTIGATION_REPORT_BRANCH,
@@ -40,13 +42,14 @@ import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { IncidentsService } from "../incidents/incidents.service.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { owePush, pushOwedBy } from "../push/push-outbox.js";
+import { withAsk } from "../schedules/allowed-asks.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import {
 	CreateInvestigationDto,
 	type InternalInvestigationResultDto,
 } from "./dto/index.js";
 import { meetsPromotionRule } from "./promotion.js";
-import { runScope } from "./run-scope.js";
+import { runScope, sharesAdmission } from "./run-scope.js";
 
 export type { Investigation };
 
@@ -150,6 +153,10 @@ export class InvestigationsService {
 			incidentId: string | null;
 			scheduleId?: string;
 			serviceId?: string;
+			/** A project thread's repository (#1020). */
+			repositoryId?: string;
+			/** A no-subject helper's empty page (#1020). */
+			helperPlace?: HelperPlace;
 			triggerType?: string;
 			triggerReason?: string;
 			/** The incident was already resolved or closed; it stays so (#743). */
@@ -158,6 +165,8 @@ export class InvestigationsService {
 			kind?: InvestigationKind;
 			title?: string | null;
 			accessLevel?: AccessLevel | null;
+			/** Runs in the create's transaction; a throw leaves no run behind (#1020). */
+			onCreate?: (tx: Prisma.TransactionClient, id: string) => Promise<void>;
 		},
 	): Promise<{ investigation: Investigation; created: boolean }> {
 		// Every run starts here — the manual button, a webhook trigger and the
@@ -173,19 +182,23 @@ export class InvestigationsService {
 		let result: { investigation: Investigation; created: boolean };
 		try {
 			result = await this.prisma.$transaction(async (tx) => {
-				const running = await tx.investigation.findFirst({
-					where: {
-						...runScope(dto),
-						status: { in: [...LIVE_WORKFLOW_STATUSES] },
-					},
-					orderBy: { createdAt: "desc" },
-				});
+				const running = sharesAdmission(dto)
+					? await tx.investigation.findFirst({
+							where: {
+								...runScope(dto),
+								status: { in: [...LIVE_WORKFLOW_STATUSES] },
+							},
+							orderBy: { createdAt: "desc" },
+						})
+					: null;
 				if (running) return { investigation: running, created: false };
 				const investigation = await tx.investigation.create({
 					data: {
 						incidentId: dto.incidentId,
 						...(dto.scheduleId ? { scheduleId: dto.scheduleId } : {}),
 						...(dto.serviceId ? { serviceId: dto.serviceId } : {}),
+						...(dto.repositoryId ? { repositoryId: dto.repositoryId } : {}),
+						...(dto.helperPlace ? { helperPlace: dto.helperPlace } : {}),
 						status: "pending",
 						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
@@ -195,6 +208,7 @@ export class InvestigationsService {
 						...(dto.accessLevel ? { accessLevel: dto.accessLevel } : {}),
 					},
 				});
+				await dto.onCreate?.(tx, investigation.id);
 				return { investigation, created: true };
 			});
 		} catch (error) {
@@ -223,7 +237,6 @@ export class InvestigationsService {
 		this.logger.log(
 			`Created investigation ${investigation.id} for incident ${dto.incidentId}`,
 		);
-
 		// Create timeline entry
 		await this.timelineService.create({
 			incidentId: dto.incidentId,
@@ -484,7 +497,9 @@ export class InvestigationsService {
 
 	/** `Run #N` as the sidebar counts it: every thread on the incident, oldest first. */
 	async runNumber(
-		inv: Pick<Investigation, "incidentId" | "scheduleId" | "createdAt">,
+		inv: Pick<Investigation, "incidentId" | "scheduleId" | "createdAt"> & {
+			id?: string;
+		},
 	): Promise<number> {
 		return this.prisma.investigation.count({
 			where: { ...runScope(inv), createdAt: { lte: inv.createdAt } },
@@ -499,7 +514,7 @@ export class InvestigationsService {
 		inv: Pick<
 			Investigation,
 			"incidentId" | "scheduleId" | "createdAt" | "kind" | "liveTurn"
-		>,
+		> & { id?: string },
 		kind: FollowUpKind,
 	): Promise<string | null> {
 		const wants: LiveTurn = kind === "continue" ? "report" : "answer";
@@ -897,6 +912,45 @@ export class InvestigationsService {
 			);
 		}
 		return count;
+	}
+
+	/**
+	 * "Always allow" on a scheduled run's ask (#1020 R33): its schedule's next runs allow the
+	 * same kind and title. The ask is read from the run's own events, never from the request.
+	 */
+	async rememberAsk(
+		investigationId: string,
+		askId: string,
+	): Promise<"remembered" | "unknown"> {
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: investigationId },
+			select: { scheduleId: true },
+		});
+		const scheduleId = run?.scheduleId;
+		if (!scheduleId) return "unknown";
+		const ask = (await this.allEvents(investigationId)).find(
+			(e) => e.kind === "permission_ask" && e.askId === askId,
+		);
+		// No identity: nothing stable names the operation, so it is never remembered.
+		if (ask?.kind !== "permission_ask" || !ask.identity) return "unknown";
+		const parsed = AllowedAskSchema.safeParse({
+			kind: ask.toolKind?.slice(0, 64) ?? null,
+			identity: ask.identity,
+		});
+		if (!parsed.success) return "unknown";
+		const remembered = parsed.data;
+		await this.prisma.$transaction(async (tx) => {
+			const s = await tx.schedule.findUnique({
+				where: { id: scheduleId },
+				select: { alwaysAllow: true },
+			});
+			if (s)
+				await tx.schedule.update({
+					where: { id: scheduleId },
+					data: { alwaysAllow: withAsk(s.alwaysAllow, remembered) },
+				});
+		});
+		return "remembered";
 	}
 
 	/** Every stored event of a run, in order. */

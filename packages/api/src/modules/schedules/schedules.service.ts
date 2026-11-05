@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { createHash } from "node:crypto";
+import { resolve } from "node:path";
 import {
 	Inject,
 	Injectable,
@@ -12,6 +13,7 @@ import {
 } from "@nestjs/common";
 import type { HarnessId } from "@prismalens/config/harness";
 import {
+	AccessLevelSchema,
 	AUTO_START_ACCESS_LEVEL,
 	type BuiltInJob,
 	type InvestigationJobData,
@@ -19,6 +21,7 @@ import {
 	type Schedule as ScheduleDto,
 	type ScheduledRun,
 	type ScheduleInput,
+	type ScheduleSubject,
 	type ScheduleTick as ScheduleTickDto,
 	type TickOutcome,
 } from "@prismalens/contracts";
@@ -27,12 +30,19 @@ import { HarnessService } from "../../core/harness/harness.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import {
+	CanonicalBusy,
+	canonical,
+	sameAsDisk,
+} from "../../infrastructure/dispatch/folder-lock.js";
 import { serviceNotes } from "../../infrastructure/dispatch/investigation-run.js";
 import {
 	type JobDelegate,
 	PrismaJobStore,
 	SCHEDULED_KIND,
 } from "../../infrastructure/dispatch/job-store.js";
+import { shownFullName } from "../repositories/serialize-repository.js";
+import { allowedAsks } from "./allowed-asks.js";
 import { type Decision, decide } from "./decide.js";
 import {
 	cronShape,
@@ -72,6 +82,28 @@ type Row = NonNullable<
 type Tx = Prisma.TransactionClient;
 
 const STARTING = new Set<TickOutcome>(["started", "late_started", "run_now"]);
+
+/** A Folder project runs only in a thread a person starts (#1020 R26). */
+export const FOLDER_REFUSED =
+	"A Folder project can't run on a schedule. Start git here first.";
+
+function subjectOf(s: {
+	serviceId: string | null;
+	repositoryId: string | null;
+}): ScheduleSubject {
+	return s.repositoryId ? "project" : s.serviceId ? "service" : "none";
+}
+
+/** A project folder that now resolves elsewhere, through a link, or cannot be read in time (#1020). */
+export const FOLDER_MOVED =
+	"The project's folder is not where it was saved. Review it and resume.";
+
+/** What changed, worded for what the schedule is about; the run stays paused until a host resumes it. */
+function bindingsChanged(subject: ScheduleSubject, fix: string): string {
+	return subject === "project"
+		? `The project's code location changed since this schedule was saved. ${fix}`
+		: `The service's repositories or notes changed since this schedule was saved. ${fix}`;
+}
 
 export function parseRecurrence(json: string): Recurrence {
 	const r = JSON.parse(json) as Recurrence & { anchorAt?: string | Date };
@@ -189,6 +221,8 @@ export class SchedulesService
 		},
 		mode: "tick" | "run_now",
 	): Promise<ScheduleTickDto | null> {
+		// Read outside the transaction: a stalled drive never holds the database (CP4 OBJ-014).
+		const moved = STARTING.has(d.outcome) && (await this.folderMoved(s));
 		const admitted = await this.prisma.$transaction(async (tx) => {
 			if (mode === "tick") {
 				const { count } = await tx.schedule.updateMany({
@@ -232,11 +266,16 @@ export class SchedulesService
 					outcome = "skipped_overlap";
 				} else {
 					frozen = await this.freeze(tx, s);
-					if (frozen.hash !== s.bindingsHash) {
+					const subject = subjectOf(s);
+					if (frozen.hash !== s.bindingsHash || frozen.folder || moved) {
 						if (mode === "run_now")
 							throw new ScheduleError(
 								"CONFLICT",
-								"The service's repositories or notes changed since this schedule was saved. Save it again to confirm.",
+								frozen.folder
+									? FOLDER_REFUSED
+									: moved
+										? FOLDER_MOVED
+										: bindingsChanged(subject, "Save it again to confirm."),
 							);
 						outcome = "skipped_bindings_changed";
 						frozen = null;
@@ -244,8 +283,9 @@ export class SchedulesService
 							where: { id: s.id, revision: s.revision },
 							data: {
 								enabled: false,
-								pausedReason:
-									"The service's repositories or notes changed since this schedule was saved. Review it and resume.",
+								pausedReason: moved
+									? FOLDER_MOVED
+									: bindingsChanged(subject, "Review it and resume."),
 							},
 						});
 						await tx.scheduleEvent.create({
@@ -296,10 +336,16 @@ export class SchedulesService
 		outcome: TickOutcome,
 		startBy: Date | null,
 	): Promise<string> {
+		const accessLevel =
+			AccessLevelSchema.safeParse(s.accessLevel).data ??
+			AUTO_START_ACCESS_LEVEL;
+		// Report off: the saved text is the first message of a chat that owes an answer (#1020).
+		const chat = !s.report;
 		const run = await tx.investigation.create({
 			data: {
 				incidentId: null,
 				serviceId: s.serviceId,
+				repositoryId: s.repositoryId,
 				scheduleId: s.id,
 				scheduleRevision: s.revision,
 				configSnapshot: JSON.stringify({
@@ -310,7 +356,7 @@ export class SchedulesService
 					effort: s.effort,
 				}),
 				status: "pending",
-				kind: "investigation",
+				kind: chat ? "chat" : "investigation",
 				title: s.name,
 				triggerType: "scheduled",
 				triggerReason:
@@ -318,7 +364,7 @@ export class SchedulesService
 				harness: s.harness,
 				model: s.model,
 				effort: s.effort,
-				accessLevel: AUTO_START_ACCESS_LEVEL,
+				accessLevel,
 			},
 			select: { id: true },
 		});
@@ -326,9 +372,14 @@ export class SchedulesService
 			incidentId: null,
 			investigationId: run.id,
 			scheduled,
-			brief: s.brief,
-			unattended: true,
-			accessLevel: AUTO_START_ACCESS_LEVEL,
+			...(chat
+				? { kind: "chat" as const, chat: { text: s.brief } }
+				: { brief: s.brief }),
+			// Wait for me: an ask waits in its thread and notifies, lapsing after ASK_TIMEOUT_MS (#1020).
+			unattended: s.whenAsks !== "wait",
+			...(s.whenAsks === "wait" ? { waitForAsks: true } : {}),
+			startedBy: "schedule",
+			accessLevel,
 			harness: s.harness as HarnessId,
 			...(s.model ? { model: s.model } : {}),
 			...(s.effort ? { effort: s.effort } : {}),
@@ -344,11 +395,88 @@ export class SchedulesService
 		return run.id;
 	}
 
-	/** The service's bindings and notes as values the run uses, and their hash (adversary OBJ-003). */
+	/**
+	 * What the run may read, as values it uses, and their hash (adversary OBJ-003): a service's
+	 * bindings and notes, a project's code location (#1020), or nothing for a schedule with no code.
+	 */
 	private async freeze(
 		db: Tx | PrismaService,
-		s: Pick<Row, "id" | "serviceId" | "runbook" | "revision">,
-	) {
+		s: Pick<
+			Row,
+			| "id"
+			| "serviceId"
+			| "repositoryId"
+			| "runbook"
+			| "revision"
+			| "alwaysAllow"
+		>,
+	): Promise<{ hash: string; run: ScheduledRun; folder: boolean }> {
+		const remembered = allowedAsks(s.alwaysAllow);
+		const common = {
+			scheduleId: s.id,
+			revision: s.revision,
+			runbook: s.runbook,
+			...(remembered.length ? { alwaysAllow: remembered } : {}),
+		};
+		if (s.repositoryId) {
+			const repo = await db.repository.findUnique({
+				where: { id: s.repositoryId },
+				select: {
+					sourceKind: true,
+					url: true,
+					fullName: true,
+					defaultBranch: true,
+					connectionId: true,
+					subPath: true,
+					plain: true,
+				},
+			});
+			if (!repo)
+				throw new ScheduleError("NOT_FOUND", "That project no longer exists.");
+			// Agent-facing: a legacy name may hold its address's credential (#1020).
+			const name = shownFullName(repo);
+			const ref = {
+				sourceKind:
+					repo.sourceKind === "folder" ? ("folder" as const) : ("url" as const),
+				url: repo.url,
+				defaultBranch: repo.defaultBranch ?? null,
+				subPath: repo.subPath ?? null,
+				connectionId: repo.connectionId ?? null,
+				serviceName: name,
+				...(repo.plain ? { plain: true } : {}),
+			};
+			return {
+				hash: createHash("sha256")
+					.update(JSON.stringify({ subject: "project", repos: [ref] }))
+					.digest("hex"),
+				folder: repo.plain,
+				run: {
+					...common,
+					subject: "project",
+					serviceId: null,
+					serviceName: "",
+					repositoryId: s.repositoryId,
+					projectName: name,
+					serviceNotes: null,
+					repos: [ref],
+				},
+			};
+		}
+		if (!s.serviceId)
+			return {
+				hash: createHash("sha256")
+					.update(JSON.stringify({ subject: "none" }))
+					.digest("hex"),
+				folder: false,
+				run: {
+					...common,
+					subject: "none",
+					serviceId: null,
+					serviceName: "",
+					serviceNotes: null,
+					repos: [],
+				},
+			};
 		const service = await db.service.findUnique({
 			where: { id: s.serviceId },
 			select: {
@@ -396,15 +524,14 @@ export class SchedulesService
 			)
 			.digest("hex");
 		const run: ScheduledRun = {
-			scheduleId: s.id,
-			revision: s.revision,
+			...common,
+			subject: "service",
 			serviceId: service.id,
 			serviceName: service.name,
 			serviceNotes: notes,
-			runbook: s.runbook,
 			repos,
 		};
-		return { hash, run, serviceName: service.name };
+		return { hash, run, folder: false };
 	}
 
 	/** Scheduled jobs no slot took in time end as host-busy, and their tick says so (adversary OBJ-009). */
@@ -551,12 +678,7 @@ export class SchedulesService
 					"BAD_REQUEST",
 					`PrismaLens keeps at most ${MAX_SCHEDULES} schedules.`,
 				);
-			const frozen = await this.freeze(this.prisma, {
-				id: "",
-				serviceId: input.serviceId,
-				runbook: input.runbook,
-				revision: 1,
-			});
+			const frozen = await this.saveable(input, "", 1, null);
 			const row = await this.prisma.$transaction(async (tx) => {
 				const created = await tx.schedule.create({
 					data: {
@@ -590,12 +712,12 @@ export class SchedulesService
 			const r = this.validRecurrence(input);
 			const before = await this.prisma.schedule.findUnique({ where: { id } });
 			if (!before) throw new ScheduleError("NOT_FOUND", "No such schedule.");
-			const frozen = await this.freeze(this.prisma, {
+			const frozen = await this.saveable(
+				input,
 				id,
-				serviceId: input.serviceId,
-				runbook: input.runbook,
-				revision: before.revision + 1,
-			});
+				before.revision + 1,
+				before.alwaysAllow,
+			);
 			const row = await this.prisma.$transaction(async (tx) => {
 				const { count } = await tx.schedule.updateMany({
 					where: { id, revision },
@@ -638,6 +760,10 @@ export class SchedulesService
 			const s = await this.prisma.schedule.findUnique({ where: { id } });
 			if (!s) throw new ScheduleError("NOT_FOUND", "No such schedule.");
 			const frozen = enabled ? await this.freeze(this.prisma, s) : null;
+			if (frozen?.folder)
+				throw new ScheduleError("BAD_REQUEST", FOLDER_REFUSED);
+			if (enabled && (await this.folderMoved(s)))
+				throw new ScheduleError("BAD_REQUEST", FOLDER_MOVED);
 			const row = await this.prisma.$transaction(async (tx) => {
 				await tx.schedule.update({
 					where: { id },
@@ -729,6 +855,51 @@ export class SchedulesService
 
 	// --- helpers -------------------------------------------------------------
 
+	/**
+	 * A project schedule on a local folder: true unless the disk still names the saved path
+	 * as written (no link, junction or swap), read under the folder-read cap (CP4 OBJ-014).
+	 */
+	private async folderMoved(s: Pick<Row, "repositoryId">): Promise<boolean> {
+		if (!s.repositoryId) return false;
+		const repo = await this.prisma.repository.findUnique({
+			where: { id: s.repositoryId },
+			select: { sourceKind: true, url: true },
+		});
+		if (repo?.sourceKind !== "folder") return false;
+		try {
+			const real = await canonical(repo.url);
+			return real === null || !sameAsDisk(resolve(repo.url), real);
+		} catch (e) {
+			// A busy read says nothing about the folder: do not pause on it; the next tick retries.
+			if (e instanceof CanonicalBusy) return false;
+			throw e;
+		}
+	}
+
+	/** One subject at most, and never a Folder project; the values a save confirms. */
+	private async saveable(
+		input: ScheduleInput,
+		id: string,
+		revision: number,
+		alwaysAllow: string | null,
+	) {
+		if (input.serviceId && input.repositoryId)
+			throw new ScheduleError(
+				"BAD_REQUEST",
+				"Pick a project or a service, not both.",
+			);
+		const frozen = await this.freeze(this.prisma, {
+			id,
+			serviceId: input.serviceId,
+			repositoryId: input.repositoryId,
+			runbook: input.runbook,
+			revision,
+			alwaysAllow,
+		});
+		if (frozen.folder) throw new ScheduleError("BAD_REQUEST", FOLDER_REFUSED);
+		return frozen;
+	}
+
 	/** A second Run now at the same instant hits the tick's unique slot; it is a conflict, not a fault. */
 	private async oneRunPerInstant<T>(work: () => Promise<T>): Promise<T> {
 		try {
@@ -754,12 +925,16 @@ export class SchedulesService
 		return {
 			name: input.name,
 			serviceId: input.serviceId,
+			repositoryId: input.repositoryId,
 			runbook: input.runbook,
 			brief: input.brief,
 			recurrence: JSON.stringify(input.recurrence),
 			harness: input.harness,
 			model: input.model,
 			effort: input.effort,
+			accessLevel: input.accessLevel,
+			report: input.report,
+			whenAsks: input.whenAsks,
 			missedPolicy: input.missedPolicy,
 			catchUpMinutes: input.catchUpMinutes,
 		};
@@ -769,12 +944,16 @@ export class SchedulesService
 		return {
 			name: row.name,
 			serviceId: row.serviceId,
+			repositoryId: row.repositoryId,
 			runbook: row.runbook,
 			brief: row.brief,
 			recurrence: JSON.parse(row.recurrence),
 			harness: row.harness as ScheduleInput["harness"],
 			model: row.model,
 			effort: row.effort,
+			accessLevel: AccessLevelSchema.safeParse(row.accessLevel).data ?? null,
+			report: row.report,
+			whenAsks: row.whenAsks === "wait" ? "wait" : "decide",
 			missedPolicy: row.missedPolicy as ScheduleInput["missedPolicy"],
 			catchUpMinutes: row.catchUpMinutes,
 		};
@@ -782,11 +961,19 @@ export class SchedulesService
 
 	private async toDto(row: Row): Promise<ScheduleDto> {
 		const r = parseRecurrence(row.recurrence);
-		const [service, last, live] = await Promise.all([
-			this.prisma.service.findUnique({
-				where: { id: row.serviceId },
-				select: { name: true },
-			}),
+		const [service, repository, last, live] = await Promise.all([
+			row.serviceId
+				? this.prisma.service.findUnique({
+						where: { id: row.serviceId },
+						select: { name: true },
+					})
+				: null,
+			row.repositoryId
+				? this.prisma.repository.findUnique({
+						where: { id: row.repositoryId },
+						select: { sourceKind: true, url: true, fullName: true },
+					})
+				: null,
 			this.prisma.scheduleTick.findFirst({
 				where: { scheduleId: row.id },
 				orderBy: [{ decidedAt: "desc" }, { id: "desc" }],
@@ -803,7 +990,10 @@ export class SchedulesService
 		return {
 			...this.inputOf(row),
 			id: row.id,
+			subject: subjectOf(row),
 			serviceName: service?.name ?? "",
+			repositoryName: repository ? shownFullName(repository) : null,
+			alwaysAllow: allowedAsks(row.alwaysAllow),
 			description: describeRecurrence(r),
 			shape: r.type === "interval" ? "interval" : cronShape(r.expr),
 			enabled: row.enabled,

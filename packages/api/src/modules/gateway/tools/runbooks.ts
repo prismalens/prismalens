@@ -8,6 +8,7 @@ import {
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
 import { RUNBOOK_CHARS, type RunbooksData } from "../runbooks.js";
+import { SCOPED } from "./serves.js";
 
 export function runbookTools(data: RunbooksData): HarnessTool[] {
 	return [
@@ -18,6 +19,7 @@ export function runbookTools(data: RunbooksData): HarnessTool[] {
 				"Runbooks found in the repositories bound to services, read at the commit this run saw: markdown under runbooks/ and docs/runbooks/, RUNBOOK*.md, and runbook links in catalog-info.yaml (links are returned as links, never fetched). Optionally for one service.",
 			group: "knowledge",
 			effect: "read",
+			serves: SCOPED,
 			input: z.object({
 				service: z.string().trim().min(1).max(200).optional(),
 			}),
@@ -36,6 +38,7 @@ export function runbookTools(data: RunbooksData): HarnessTool[] {
 			description: `The markdown of a runbook runbooks_list returned, cut at ${RUNBOOK_CHARS} characters. Pass its path and service exactly as listed.`,
 			group: "core",
 			effect: "read",
+			serves: SCOPED,
 			input: z.object({
 				path: z.string().trim().min(1).max(1_000),
 				service: z.string().trim().min(1).max(200),

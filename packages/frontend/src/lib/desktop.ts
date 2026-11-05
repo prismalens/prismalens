@@ -33,6 +33,10 @@ interface DesktopBridge {
 	setTheme: (theme: "light" | "dark") => void;
 	/** Absent in a desktop build from before the panel's browser. */
 	browser?: DesktopBrowser;
+	/** A native folder pick (#1020); `unavailable` when the server does not read this disk. */
+	pickFolder?: () => Promise<
+		{ path: string } | { path: null } | { unavailable: true }
+	>;
 	/** The terminal key the launcher got when it paired (#931); absent in older builds. */
 	terminalKey?: () => string | undefined;
 	/** Main stored a key it claimed after boot; the listener reads `terminalKey` again. */
@@ -45,9 +49,12 @@ declare global {
 	}
 }
 
-/** `--titlebar-h` in the desktop window (#819): floating menus keep below the window controls. */
+/**
+ * The desktop title row, `--header-h` and TITLEBAR_HEIGHT in packages/desktop (#1020):
+ * floating menus keep below the window controls.
+ */
 export function titleRowHeight(): number {
-	return desktopBridge() ? 32 : 0;
+	return desktopBridge() ? 44 : 0;
 }
 
 export function desktopBridge(): DesktopBridge | undefined {

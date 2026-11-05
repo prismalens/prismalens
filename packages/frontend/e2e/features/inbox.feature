@@ -20,11 +20,12 @@ Feature: Inbox
   @quarantine
   Scenario: A new alert's row appears without a reload
     When an Alertmanager delivery for a new alert arrives
-    Then within 2 seconds the row is in the inbox and the sidebar's Incidents count went up by one
+    Then within 2 seconds the row is in the inbox
     And the row is marked new, and a second arrival a second later is marked new while the first one's mark ends
 
   Scenario: Widths
-    Given the viewport is 1024 px wide
+    Given the agent is ready and INC-1 is under "Finding ready"
+    And the viewport is 1024 px wide
     Then every row's title is readable, none cut to one letter
     Given the viewport is 390 px wide
     Then nothing scrolls sideways

@@ -140,3 +140,56 @@ export function comparisonLabel(c: RunComparison): string {
 	const n = c.between === 1 ? "1 commit" : `${c.between} commits`;
 	return `${head} against ${base.charAt(0).toLowerCase()}${base.slice(1)}, ${n}`;
 }
+
+export const WorktreeChangesQuerySchema = z.object({
+	id: z.string().uuid(),
+});
+export type WorktreeChangesQuery = z.infer<typeof WorktreeChangesQuerySchema>;
+
+/** Untracked files past this many are neither listed nor counted in the totals. */
+export const WORKTREE_MAX_FILES = 1000;
+/** An untracked file over this many bytes is listed without its lines. */
+export const WORKTREE_FILE_MAX_BYTES = 512 * 1024;
+
+/**
+ * One change in a run's live worktree (#1020): `link` is a symlink, junction or a
+ * path that leaves the workspace, and `submodule` a nested repository; neither is read.
+ */
+export const WorktreeFileSchema = z.object({
+	path: z.string(),
+	status: z.enum(["added", "modified", "deleted", "submodule", "link"]),
+	/** null for a binary, a too-large, a link or a submodule entry. */
+	additions: z.number().int().nonnegative().nullable(),
+	deletions: z.number().int().nonnegative().nullable(),
+});
+export type WorktreeFile = z.infer<typeof WorktreeFileSchema>;
+
+export const WorktreeRepoChangesSchema = z.discriminatedUnion("state", [
+	z.object({
+		state: z.literal("ok"),
+		repo: z.string(),
+		/** The commit the server recorded when it made the workspace. */
+		base: CommitShaSchema,
+		branch: z.string().nullable(),
+		files: z.array(WorktreeFileSchema),
+		additions: z.number().int().nonnegative(),
+		deletions: z.number().int().nonnegative(),
+		/** The unified patch; null when `omitted` says why. */
+		patch: z.string().nullable(),
+		omitted: z.enum(["too-large"]).nullable(),
+		/** More untracked files than WORKTREE_MAX_FILES. */
+		truncated: z.boolean(),
+	}),
+	z.object({
+		state: z.literal("unavailable"),
+		repo: z.string(),
+		reason: z.enum(["removed", "not-a-workspace", "commit-gone"]),
+	}),
+]);
+export type WorktreeRepoChanges = z.infer<typeof WorktreeRepoChangesSchema>;
+
+/** The run's workspace against the commit it started at; no repos when it recorded no code. */
+export const WorktreeChangesSchema = z.object({
+	repos: z.array(WorktreeRepoChangesSchema),
+});
+export type WorktreeChanges = z.infer<typeof WorktreeChangesSchema>;

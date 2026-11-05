@@ -21,6 +21,7 @@ import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Empty, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -288,6 +289,11 @@ function ServicesPage() {
 				}
 			>
 				<div className="flex basis-full items-center gap-2 md:basis-auto">
+					<Button variant="text" size="sm" asChild>
+						<Link to="/projects" data-testid="services-projects-link">
+							Projects
+						</Link>
+					</Button>
 					<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
 						<Search className="size-3.5 shrink-0 text-text-3" />
 						<input
@@ -336,10 +342,13 @@ function ServicesPage() {
 						searchParams.search || teamFilter !== "all" ? (
 							<Empty text="No service matches." testId="services-empty" />
 						) : (
-							<Empty
-								text="No services yet. A service names the code the agent reads."
-								testId="services-empty"
-							/>
+							<>
+								<Empty
+									text="No services yet. A service names the code the agent reads."
+									testId="services-empty"
+								/>
+								<HelperThread place="services" className="mt-4" />
+							</>
 						)
 					) : (
 						<h2

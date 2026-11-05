@@ -245,6 +245,32 @@ describe('github: "exclude"', () => {
 	});
 });
 
+describe('github: "exclude" on a case-insensitive environment (#1020, CP4 OBJ-012, OBJ-013)', () => {
+	const exclude = (hostEnv: Record<string, string | undefined>, github: "include" | "exclude" = "exclude") =>
+		plan({
+			runDir: "/run",
+			policy: { ...POLICY, github, floor: { mode: "inherit-minus-own-secrets", ownSecrets: {} } },
+			hostEnv,
+		}).env;
+
+	it("drops a token whatever the letter case of its name", () => {
+		const env = exclude({ PATH: "/bin", gh_token: "ghp_low", Github_Token: "ghs_mixed", gh_Enterprise_Token: "ghe" });
+		expect(Object.keys(env).map((k) => k.toUpperCase())).not.toEqual(
+			expect.arrayContaining(["GH_TOKEN"]),
+		);
+		expect(JSON.stringify(env)).not.toMatch(/ghp_low|ghs_mixed|"ghe"/);
+	});
+
+	it("drops the SSH agent and askpass programs too; include keeps them", () => {
+		const host = { PATH: "/bin", SSH_AUTH_SOCK: "/tmp/agent.sock", ssh_askpass: "/usr/bin/ask", GIT_ASKPASS: "/usr/bin/gask" };
+		const env = exclude(host);
+		for (const k of Object.keys(env)) expect(["SSH_AUTH_SOCK", "SSH_ASKPASS", "GIT_ASKPASS"]).not.toContain(k.toUpperCase());
+		const kept = exclude(host, "include");
+		expect(kept.SSH_AUTH_SOCK).toBe("/tmp/agent.sock");
+		expect(kept.GIT_ASKPASS).toBe("/usr/bin/gask");
+	});
+});
+
 describe("launch files", () => {
 	it("puts OpenCode's config inline with the level's overlay, and leaves the user's OPENCODE_CONFIG_DIR alone", () => {
 		const runDir = mkdtempSync(join(tmpdir(), "ah-launch-"));

@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { SCOPED } from "./serves.js";
 
 /** The run's own state; a field the run never recorded is null, never zero. */
 export interface RunStatusView {
@@ -40,6 +41,7 @@ export function runTools(status: RunStatusLookup): HarnessTool[] {
 				"This run's state: context used and its size (and cost when the agent reports it), seconds left on the run's wall clock, the access level, and the workspace repositories with the commit each was checked out at. Use it to pace the work or to say which commit you read.",
 			group: "knowledge",
 			effect: "read",
+			serves: SCOPED,
 			input: z.object({}),
 			run: async (_input, ctx) => {
 				const s = await status(ctx.runId);

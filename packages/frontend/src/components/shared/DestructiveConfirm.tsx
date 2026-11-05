@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Loader2 } from "lucide-react";
 import { type MouseEvent, type ReactNode, useId, useState } from "react";
 import {
 	AlertDialog,
@@ -17,6 +16,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MutationError } from "./MutationError";
+import { RingTick, useRingTick } from "./RingTick";
 
 export interface DestructiveConfirmProps {
 	open: boolean;
@@ -95,6 +95,7 @@ export function DestructiveConfirm({
 	const pending = isPending || settling;
 	const shownError =
 		(typeof error === "string" ? new Error(error) : error) ?? failure;
+	const ring = useRingTick(pending, !!shownError);
 
 	const handleOpenChange = (next: boolean) => {
 		if (!next && settling) return;
@@ -172,9 +173,7 @@ export function DestructiveConfirm({
 						className={buttonVariants({ variant: "danger-fill" })}
 						disabled={!armed || pending || isLoading}
 					>
-						{pending && (
-							<Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
-						)}
+						{ring && <RingTick state={ring} />}
 						{confirmLabel}
 					</AlertDialogAction>
 				</AlertDialogFooter>

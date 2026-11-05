@@ -17,6 +17,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { FOR_A_REPORT } from "./serves.js";
 
 /** What the recording tools write to: the run's ledger, and its workspace for file quotes. */
 export interface FindingsData {
@@ -65,7 +66,11 @@ function refused(error: string): Failure {
  * repeats the quote: it would be a tool output the quote resolves against.
  */
 export function recordTools(data: FindingsData): HarnessTool[] {
-	const base = { group: "record", effect: "record" } as const;
+	const base = {
+		group: "record",
+		effect: "record",
+		serves: FOR_A_REPORT,
+	} as const;
 	return [
 		defineHarnessTool({
 			...base,

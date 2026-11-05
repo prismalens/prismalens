@@ -1,24 +1,23 @@
 # flows-v3.feature, @pr1: Shell and Back, and the alert page without Acknowledge.
 @pr1
 Feature: Shell and Back
-  Four doors in the sidebar, always lit where you are; one way back from every
-  leaf, and it goes to where you came from.
+  The sidebar is Search, Add project, New thread and the threads; one way back
+  from every leaf, and it goes to where you came from.
 
   Background:
     Given a paired browser at 1440 px
     And incident INC-1 "BooklogrApiLatencyP99High" on service "Booklogr API" with one alert
 
-  Scenario: The sidebar lights the area I am in
+  Scenario: The sidebar is the thread list
     When I open the board
-    Then the sidebar shows Incidents, Alerts, Services and Settings with Incidents current
-    And the sidebar lists INC-1 under "Booklogr API"
+    Then the sidebar shows Search, Add project and New thread over the threads, and no area rows
     When I open Alerts
-    Then Alerts is current and the sidebar lists the alert, with no incident rows anywhere on the screen
+    Then the sidebar lists the alert
 
   Scenario: One primary on every list screen, none in Settings
     When I open the board, then Alerts, then Services, then Settings
-    Then the board and Alerts show one "New incident", Services one "New service", Settings none, and nothing else creates
-    When I press "New incident" from Alerts and create "Checkout slow" on "Booklogr API"
+    Then the board and Alerts show one "New thread", Services one "New service", Settings none, and nothing else creates
+    When I press "New thread" from Alerts and note "Checkout slow" on "Booklogr API" with Incident on
     Then I am on the new incident's Overview
 
   Scenario: Back from an alert goes to where I came from
@@ -36,7 +35,7 @@ Feature: Shell and Back
     Then I am on INC-1's Overview
 
   Scenario: Shortcuts live in tooltips and the help sheet
-    When I hover "New incident" in the header
+    When I hover "New thread" in the header
     Then the tooltip shows its shortcut
     When I press "?"
     Then a sheet lists the shortcuts

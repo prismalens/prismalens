@@ -4,7 +4,7 @@
 "use client";
 
 import { Link2 } from "lucide-react";
-import { GithubIcon } from "@/components/icons/github-icon";
+import { BrandMark, brandMarkId } from "@/components/icons/brand-marks";
 import { type StateTone, StateWord } from "@/components/shared/StateWord";
 
 /**
@@ -13,8 +13,8 @@ import { type StateTone, StateWord } from "@/components/shared/StateWord";
 
 // A provider's icon, by template id.
 export function getTemplateIcon(templateId: string) {
-	if (templateId.startsWith("github"))
-		return <GithubIcon className="h-5 w-5" />;
+	if (brandMarkId(templateId))
+		return <BrandMark id={templateId} className="h-5 w-5" />;
 	return <Link2 className="h-5 w-5" />;
 }
 
