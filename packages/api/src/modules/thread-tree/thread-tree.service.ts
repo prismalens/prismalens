@@ -33,8 +33,8 @@ import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { actionReason, ThreadsService } from "../threads/threads.service.js";
 import { PendingActionsService } from "./pending-actions.service.js";
-import { isDuplicate, TreeIo } from "./tree-io.js";
-import { TreeSettings } from "./tree-settings.js";
+import { isDuplicate, TreeIo } from "./tree-io.service.js";
+import { TreeSettings } from "./tree-settings.service.js";
 
 const git = promisify(execFile);
 const logger = new Logger({ context: "ThreadTree" });

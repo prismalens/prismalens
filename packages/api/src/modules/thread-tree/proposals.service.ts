@@ -14,8 +14,8 @@ import type { Proposal as ProposalRow } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { RepositoriesService } from "../repositories/repositories.service.js";
 import { SchedulesService } from "../schedules/schedules.service.js";
-import { TreeIo } from "./tree-io.js";
-import { TreeSettings } from "./tree-settings.js";
+import { TreeIo } from "./tree-io.service.js";
+import { TreeSettings } from "./tree-settings.service.js";
 
 /** Open cards one thread may hold; more would be noise the user has to clear. */
 const OPEN_PER_THREAD = 10;

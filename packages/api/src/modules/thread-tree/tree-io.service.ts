@@ -6,13 +6,13 @@ import { Injectable } from "@nestjs/common";
 import { type CanonicalEvent, isWorkflowTerminal } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
 import { Logger } from "@prismalens/logger";
-import type { PrismaService } from "../../core/prisma/prisma.service.js";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
-	type DispatchService,
+	DispatchService,
 	FollowUpRefused,
 } from "../../infrastructure/dispatch/dispatch.service.js";
-import type { InvestigationsService } from "../investigations/investigations.service.js";
-import type { StreamRelayService } from "../investigations/stream-relay.service.js";
+import { InvestigationsService } from "../investigations/investigations.service.js";
+import { StreamRelayService } from "../investigations/stream-relay.service.js";
 
 /** The branch tree events are stored under, apart from the run's own numbering. */
 export const TREE_BRANCH = "tree";

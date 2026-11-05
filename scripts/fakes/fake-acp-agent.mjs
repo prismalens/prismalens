@@ -94,12 +94,12 @@ function releasedFor(prompt) {
 /**
  * Puts the fake on PATH under the harness binaries the registry looks for.
  * @param {string} binDir
- * @param {{ session?: string, binaries?: string[], stateDir?: string }} [opts]
+ * @param {{ session?: string, binaries?: string[], stateDir?: string, mcp?: boolean }} [opts]
  */
 export function installFakeAgent(binDir, opts = {}) {
 	const session = opts.session ?? "success";
 	const binaries = opts.binaries ?? ["opencode", "claude-agent-acp"];
-	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}`;
+	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}${opts.mcp ? " --mcp" : ""}`;
 	for (const bin of binaries) {
 		const target = join(binDir, bin);
 		writeFileSync(
@@ -140,6 +140,60 @@ function run() {
 	let clientElicits = false;
 	/** @type {{ type?: string, uri?: string, name?: string }[]} The prompt's resource links. */
 	let links = [];
+	// `--mcp` takes HTTP MCP servers, so a run offers it PrismaLens's gateway (#1024).
+	const mcp = process.argv.includes("--mcp");
+	/** @type {{ url: string, headers: Record<string, string> } | null} */
+	let gateway = null;
+	/** @type {string | undefined} */
+	let mcpSession;
+	let rpcId = 1;
+	/** The text of the last `call` step's result, for `{{result}}`. */
+	let lastResult = "";
+
+	/** @param {string} method @param {Record<string, unknown>} params */
+	async function mcpRequest(method, params) {
+		if (!gateway) throw new Error("fake-acp-agent: no gateway was offered");
+		const res = await fetch(gateway.url, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				accept: "application/json, text/event-stream",
+				...gateway.headers,
+				...(mcpSession ? { "mcp-session-id": mcpSession } : {}),
+			},
+			body: JSON.stringify({ jsonrpc: "2.0", id: rpcId++, method, params }),
+		});
+		mcpSession = res.headers.get("mcp-session-id") ?? mcpSession;
+		const body = await res.text();
+		// A streamable-HTTP server may answer as one SSE event instead of plain JSON.
+		const json = body.startsWith("event:")
+			? (
+					body.split(/\r?\n/).find((l) => l.startsWith("data:")) ?? "data:{}"
+				).slice(5)
+			: body;
+		return /** @type {{ result?: { content?: { text?: string }[] }, error?: { message: string } }} */ (
+			JSON.parse(json || "{}")
+		);
+	}
+
+	/** Connects as an agent does when its session opens; the engine counts it as taken. */
+	async function connect(/** @type {unknown} */ servers) {
+		const http = Array.isArray(servers)
+			? servers.find((s) => s?.type === "http")
+			: undefined;
+		if (!mcp || !http) return;
+		gateway = {
+			url: http.url,
+			headers: Object.fromEntries(
+				(http.headers ?? []).map((h) => [h.name, h.value]),
+			),
+		};
+		await mcpRequest("initialize", {
+			protocolVersion: "2025-06-18",
+			capabilities: {},
+			clientInfo: { name: "fake-acp-agent", version: "0" },
+		}).catch(() => {});
+	}
 	/** The script's modes, or the default set, with the mode a switch took as current. */
 	const sessionModes = () => {
 		const modes = script.modes ?? DEFAULT_MODES;
@@ -163,6 +217,11 @@ function run() {
 		text
 			.replaceAll("{{cwd}}", cwd)
 			.replaceAll("{{prompt}}", prompt)
+			.replaceAll("{{result}}", lastResult)
+			.replaceAll(
+				"{{send-to}}",
+				[...prompt.matchAll(/send-to:([a-z0-9-]+)/g)].at(-1)?.[1] ?? "parent",
+			)
 			.replaceAll(
 				"{{attached}}",
 				Array.from(
@@ -245,6 +304,18 @@ function run() {
 					sessionUpdate: "agent_message_chunk",
 					content: text(`${readLinks().join("\n") || "No linked files."}\n`),
 				});
+			if (step.call) {
+				const args = JSON.parse(
+					fill(JSON.stringify(step.call.arguments ?? {}), prompt),
+				);
+				const out = await mcpRequest("tools/call", {
+					name: step.call.tool,
+					arguments: args,
+				}).catch((e) => ({ error: { message: String(e) } }));
+				lastResult =
+					out.error?.message ??
+					(out.result?.content ?? []).map((c) => c.text ?? "").join("");
+			}
 			if (step.report) {
 				const body = JSON.stringify(step.report, null, 2);
 				notify(sessionId, {
@@ -419,11 +490,13 @@ function run() {
 						existsSync(join(CAPS_DIR, "additionalDirectories"))
 							? { sessionCapabilities: { additionalDirectories: {} } }
 							: {}),
+						...(mcp ? { mcpCapabilities: { http: true } } : {}),
 					},
 					authMethods: [],
 				});
 			case "session/new":
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
+				await connect(msg.params?.mcpServers);
 				return reply({
 					sessionId,
 					modes: sessionModes(),
@@ -467,6 +540,7 @@ function run() {
 			}
 			case "session/load": {
 				sessionId = String(msg.params?.sessionId ?? "");
+				await connect(msg.params?.mcpServers);
 				const pickedFile = join(PICKED_DIR, sessionId);
 				const named = existsSync(pickedFile)
 					? readFileSync(pickedFile, "utf8")
@@ -494,7 +568,10 @@ function run() {
 						.map((/** @type {{ text?: string }} */ b) => b.text ?? "")
 						.join("") + (images ? `\n[${images} image(s) attached]` : "");
 				if (turns === 0) {
-					const picked = prompt.match(/fake-session:([a-z0-9-]+)/)?.[1];
+					// The last one wins: a child's roster may quote its root's title, pick and all (#1024).
+					const picked = [...prompt.matchAll(/fake-session:([a-z0-9-]+)/g)].at(
+						-1,
+					)?.[1];
 					if (picked && picked !== scriptName) {
 						script = loadSession(picked);
 						scriptName = picked;

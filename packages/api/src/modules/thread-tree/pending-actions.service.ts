@@ -17,8 +17,8 @@ import {
 	type AsksPort,
 	type ClosedAsk,
 } from "../asks/asks.contract.js";
-import { isDuplicate, TreeIo } from "./tree-io.js";
-import { TreeSettings } from "./tree-settings.js";
+import { isDuplicate, TreeIo } from "./tree-io.service.js";
+import { TreeSettings } from "./tree-settings.service.js";
 
 /** What one `act` tool does once allowed; `check` runs at the call and again at approval. */
 export interface ActExecutor {

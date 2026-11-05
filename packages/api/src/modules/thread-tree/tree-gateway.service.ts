@@ -3,11 +3,11 @@
 
 import { Injectable, type OnModuleInit } from "@nestjs/common";
 import { fail } from "@prismalens/integrations/harness";
-import type { GatewayService } from "../gateway/gateway.service.js";
-import type { PendingActionsService } from "./pending-actions.service.js";
-import type { ProposalsService } from "./proposals.service.js";
-import type { ThreadTreeService } from "./thread-tree.service.js";
-import type { TreeSettings } from "./tree-settings.js";
+import { GatewayService } from "../gateway/gateway.service.js";
+import { PendingActionsService } from "./pending-actions.service.js";
+import { ProposalsService } from "./proposals.service.js";
+import { ThreadTreeService } from "./thread-tree.service.js";
+import { TreeSettings } from "./tree-settings.service.js";
 
 const GONE = () =>
 	fail(

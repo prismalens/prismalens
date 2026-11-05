@@ -7,7 +7,7 @@ import {
 	type ThreadTreeSettings,
 	ThreadTreeSettingsSchema,
 } from "@prismalens/contracts";
-import type { PrismaService } from "../../core/prisma/prisma.service.js";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
 
 const KEY = "threads.tree";
 

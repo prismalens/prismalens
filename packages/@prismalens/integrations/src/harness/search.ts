@@ -60,7 +60,7 @@ function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
 		name: TOOLS_SEARCH,
 		title: "Find more PrismaLens tools",
-		description: `Find PrismaLens tools that are not listed up front, by what you want to do (e.g. "past incidents", "runbooks"). Returns each match's name, description and input schema; run one with ${TOOLS_CALL}.`,
+		description: `Find PrismaLens tools that are not listed up front, by what you want to do (e.g. "past incidents", "runbooks"). Use it before guessing a tool name. Returns each match's name, description and input schema; run one with ${TOOLS_CALL}. Not for tools already listed. Show the user links, not ids. On failure, follow \`next\`.`,
 		group: "core",
 		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },
@@ -100,7 +100,7 @@ function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
 		name: TOOLS_CALL,
 		title: "Run a PrismaLens tool found by search",
-		description: `Run a tool ${TOOLS_SEARCH} returned: pass its exact \`name\` and its \`arguments\` as its input schema describes.`,
+		description: `Run a tool ${TOOLS_SEARCH} returned: pass its exact \`name\` and its \`arguments\` as its input schema describes. Use it only for a name ${TOOLS_SEARCH} gave you. Not for listed tools: call those directly. Show the user links, not ids. On failure, follow \`next\`.`,
 		group: "core",
 		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },

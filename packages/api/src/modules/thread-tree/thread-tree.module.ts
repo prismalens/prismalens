@@ -12,9 +12,9 @@ import { PendingActionsService } from "./pending-actions.service.js";
 import { ProposalsService } from "./proposals.service.js";
 import { ThreadTreeController } from "./thread-tree.controller.js";
 import { ThreadTreeService } from "./thread-tree.service.js";
-import { TreeGateway } from "./tree-gateway.js";
-import { TreeIo } from "./tree-io.js";
-import { TreeSettings } from "./tree-settings.js";
+import { TreeGateway } from "./tree-gateway.service.js";
+import { TreeIo } from "./tree-io.service.js";
+import { TreeSettings } from "./tree-settings.service.js";
 
 /** Threads that start threads (#1024 spec F); DispatchModule is global. */
 @Module({

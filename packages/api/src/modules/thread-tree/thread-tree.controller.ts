@@ -8,7 +8,7 @@ import type { Request } from "express";
 import { isHost } from "../../core/settings/settings.controller.js";
 import { ProposalsService } from "./proposals.service.js";
 import { ThreadTreeService } from "./thread-tree.service.js";
-import { TreeSettings } from "./tree-settings.js";
+import { TreeSettings } from "./tree-settings.service.js";
 
 const HOST_ONLY =
 	"Only this machine's own session can change what agents may run.";
@@ -45,7 +45,7 @@ export class ThreadTreeController {
 
 			// POST /threads/:id/proposals/:pid/apply - Host only, through the normal service
 			applyProposal: implement(threadTreeContract.applyProposal).handler(
-				({ input, context }) => {
+				async ({ input, context }) => {
 					const device = hostOnly(context?.request);
 					return this.proposals.apply(input.id, input.pid, device);
 				},
@@ -73,7 +73,7 @@ export class ThreadTreeController {
 
 			// PUT /threads/tree-settings - Host only
 			updateSettings: implement(threadTreeContract.updateSettings).handler(
-				({ input, context }) => {
+				async ({ input, context }) => {
 					hostOnly(context?.request);
 					return this.settings.set(input);
 				},

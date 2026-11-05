@@ -93,7 +93,7 @@ export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 			name: "thread_send",
 			title: "Message a thread in this tree",
 			description: withRules(
-				"Send a typed message (handoff, blocker, fact, question, reply) to a member of this thread's tree, by its role, `parent` or `root`. Use it only for what changes the receiver's work; never acknowledge, and reply only to a question. Asynchronous: it is delivered at the receiver's next pause; `steer` delivers now and is only for a parent's blocker to its own child. `requestId` is your key: a retry with it is not sent twice.",
+				"Send a typed message (handoff, blocker, fact, question, reply) to a member of this thread's tree, by its role, `parent` or `root`. Use it only for what changes the receiver's work; never acknowledge, and reply only to a question. Asynchronous: it is delivered at the receiver's next pause; do not poll for a reply. `steer` delivers now and is only for a parent's blocker to its own child. `requestId` is your key: a retry with it is not sent twice.",
 				"threads outside this tree, or status updates.",
 			),
 			group: "core",
@@ -109,7 +109,7 @@ export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 				"Register a wake on your children, by role, link or the `requestId` of a thread_start still waiting for approval. It never blocks: end your turn, and each result arrives as a message at your next pause; if you have ended, your thread reopens for it (`all`: once every one has finished). Use it before you end a turn that needs a child's result. Do not poll thread_roster or thread_read instead.",
 				"threads you did not start.",
 			),
-			group: "knowledge",
+			group: "core",
 			effect: "read",
 			serves: ANYWHERE,
 			input: z.object({
