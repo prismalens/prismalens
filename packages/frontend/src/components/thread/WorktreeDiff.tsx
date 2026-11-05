@@ -2,9 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import { PatchDiff, WorkerPoolContextProvider } from "@pierre/diffs/react";
-import type {
-	WorktreeChanges,
-	WorktreeRepoChanges,
+import {
+	WORKTREE_MAX_FILES,
+	type WorktreeChanges,
+	type WorktreeRepoChanges,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -132,7 +133,10 @@ function RepoDiff({ repo }: { repo: WorktreeRepoChanges }) {
 		);
 	if (repo.files.length === 0)
 		return <Empty className="px-3" text="No changes yet" testId="diff-empty" />;
-	const shown = file ?? repo.files[0]?.path ?? null;
+	const shown =
+		(file && repo.files.some((f) => f.path === file) ? file : null) ??
+		repo.files[0]?.path ??
+		null;
 	const patch = patches.find((p) => p.path === shown);
 	const note = patch ? changeNote(patch.text) : null;
 	return (
@@ -173,6 +177,12 @@ function RepoDiff({ repo }: { repo: WorktreeRepoChanges }) {
 					</li>
 				))}
 			</ul>
+			{repo.truncated && (
+				<p className="px-3 text-meta text-text-3" data-testid="diff-truncated">
+					Only the first {WORKTREE_MAX_FILES} new files are listed; the totals
+					cover those.
+				</p>
+			)}
 			{repo.omitted === "too-large" ? (
 				<Empty
 					className="px-3"

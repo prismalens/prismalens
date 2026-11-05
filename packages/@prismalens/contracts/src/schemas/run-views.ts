@@ -146,7 +146,7 @@ export const WorktreeChangesQuerySchema = z.object({
 });
 export type WorktreeChangesQuery = z.infer<typeof WorktreeChangesQuerySchema>;
 
-/** Untracked files past this many are counted, not listed. */
+/** Untracked files past this many are neither listed nor counted in the totals. */
 export const WORKTREE_MAX_FILES = 1000;
 /** An untracked file over this many bytes is listed without its lines. */
 export const WORKTREE_FILE_MAX_BYTES = 512 * 1024;
