@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-const DAY = 86_400_000;
-
-function startOfDay(t: number): number {
+/** Local midnight `daysBack` calendar days before `t`; a DST day is 23 or 25 hours, so never subtract 24h. */
+function startOfDay(t: number, daysBack = 0): number {
 	const d = new Date(t);
 	d.setHours(0, 0, 0, 0);
+	d.setDate(d.getDate() - daysBack);
 	return d.getTime();
 }
 
@@ -16,10 +16,9 @@ const MONTH = new Intl.DateTimeFormat("en-GB", {
 
 /** The heading a thread's last activity falls under: Today, Yesterday, This week, then its month. */
 export function dayGroup(at: number, now: number): string {
-	const today = startOfDay(now);
-	if (at >= today) return "Today";
-	if (at >= today - DAY) return "Yesterday";
-	if (at >= today - 6 * DAY) return "Earlier this week";
+	if (at >= startOfDay(now)) return "Today";
+	if (at >= startOfDay(now, 1)) return "Yesterday";
+	if (at >= startOfDay(now, 6)) return "Earlier this week";
 	return MONTH.format(new Date(at));
 }
 
@@ -51,8 +50,7 @@ const DATE = new Intl.DateTimeFormat(undefined, {
 
 /** A row's time at the right: the clock today, the weekday this week, else the date. */
 export function rowWhen(at: number, now: number): string {
-	const today = startOfDay(now);
-	if (at >= today) return CLOCK.format(new Date(at));
-	if (at >= today - 6 * DAY) return WEEKDAY.format(new Date(at));
+	if (at >= startOfDay(now)) return CLOCK.format(new Date(at));
+	if (at >= startOfDay(now, 6)) return WEEKDAY.format(new Date(at));
 	return DATE.format(new Date(at));
 }

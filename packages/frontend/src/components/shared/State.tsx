@@ -42,14 +42,19 @@ export function Blank({
 	title,
 	children,
 	testId = "state-blank",
+	className,
 }: {
 	title: string;
 	children?: ReactNode;
 	testId?: string;
+	className?: string;
 }) {
 	return (
 		<div
-			className="mx-auto flex w-full max-w-[600px] flex-col items-center gap-4 px-4 pt-[18vh] pb-12 text-center"
+			className={cn(
+				"mx-auto flex w-full max-w-[600px] flex-col items-center gap-4 px-4 pt-[18vh] pb-12 text-center",
+				className,
+			)}
 			data-testid={testId}
 		>
 			<h2 className="text-display text-text-1">{title}</h2>

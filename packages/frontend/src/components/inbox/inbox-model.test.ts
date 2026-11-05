@@ -159,6 +159,28 @@ describe("needOf", () => {
 		});
 	});
 
+	it("a plain chat's interrupted run reads interrupted and resumes that chat run", () => {
+		const cut = run({
+			kind: "chat",
+			status: "failed",
+			endReason: "interrupted",
+			error: "PrismaLens restarted",
+		});
+		const chat = incident({
+			tags: ["chat"],
+			alertCount: 0,
+			alerts: [],
+			investigations: [cut],
+		});
+		expect(needOf(chat)).toBe("interrupted");
+		expect(reasonOf(chat, "interrupted", NOW).tag).toBe("Interrupted:");
+		expect(actionsOf(chat, "interrupted", "none").primary).toEqual({
+			kind: "resume",
+			label: "Resume",
+			runId: cut.id,
+		});
+	});
+
 	it("calls a never-run incident Not investigated with Investigate", () => {
 		const i = incident({});
 		expect(needOf(i)).toBe("uninvestigated");
@@ -268,6 +290,23 @@ describe("firingOf", () => {
 			),
 		).toBe("clear");
 		expect(firingOf(incident({ alertCount: 0, alerts: [] }), NOW)).toBe("none");
+	});
+
+	it("counts an alert made through the alerts API as firing", () => {
+		const i = incident({ alerts: [alert({ source: "api" })] });
+		expect(firingOf(i, NOW)).toBe("steady");
+	});
+
+	it("leaves events out of the trend and the sparkline", () => {
+		const i = incident({
+			alertCount: 2,
+			alerts: [
+				alert({ source: "prometheus", triggeredAt: at(5) }),
+				alert({ source: "webhook", triggeredAt: at(0.2) }),
+			],
+		});
+		expect(firingOf(i, NOW)).toBe("steady");
+		expect(firingSeries(i, NOW).at(-1)).toBe(1);
 	});
 
 	it("draws the last 24 hours, ending at now", () => {

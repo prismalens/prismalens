@@ -210,7 +210,8 @@ function Threads() {
 							className="py-6 text-body text-text-2"
 							data-testid="threads-none"
 						>
-							No threads match.{" "}
+							No threads match
+							{feed.hasNextPage ? " in those loaded so far" : ""}.{" "}
 							<button
 								type="button"
 								onClick={() => navigate({ search: {}, replace: true })}
