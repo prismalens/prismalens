@@ -530,13 +530,16 @@ export class WebhooksService {
 					: `${opts.idempotencyKey}:resolved`,
 			);
 			if (resolved) {
-				const claimed = await this.eventsService.markProcessed(
-					earlyResolution.id,
-					resolved.id,
-					withClaimedStartsAt(earlyResolution.payload, alert.startsAt),
-				);
-				// Unclaimed, a keyless retry would reopen the alert: fail the
-				// delivery so the sender retries it instead.
+				const claim = () =>
+					this.eventsService.markProcessed(
+						earlyResolution.id,
+						resolved.id,
+						withClaimedStartsAt(earlyResolution.payload, alert.startsAt),
+					);
+				// A second try rides out a transient write failure. Still
+				// unclaimed, a keyless retry would reopen the alert (and the
+				// resolve step closes it again): fail the delivery instead.
+				const claimed = (await claim()) ?? (await claim());
 				if (!claimed) {
 					throw new Error(
 						`Could not claim early resolution ${earlyResolution.id}`,

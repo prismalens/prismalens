@@ -765,6 +765,27 @@ describe("WebhooksService", () => {
 			);
 		});
 
+		it("claims the early resolution on a second try after a transient write failure", async () => {
+			vi.mocked(eventsService.findUnclaimed).mockResolvedValueOnce(earlyEvent);
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(mockAlert);
+			vi.mocked(alertsService.resolveSourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+			});
+			vi.mocked(eventsService.markProcessed)
+				.mockResolvedValueOnce(mockEvent)
+				.mockResolvedValueOnce(mockEvent)
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(mockEvent);
+
+			await expect(
+				service.processPrometheusAlert(firing, {
+					source: "prometheus",
+					autoInvestigate: true,
+				}),
+			).resolves.toMatchObject({ alertId: "alt-123" });
+		});
+
 		it("fails the delivery when the early-resolution claim does not stick", async () => {
 			vi.mocked(eventsService.findUnclaimed).mockResolvedValueOnce(earlyEvent);
 			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(mockAlert);
@@ -775,6 +796,7 @@ describe("WebhooksService", () => {
 			vi.mocked(eventsService.markProcessed)
 				.mockResolvedValueOnce(mockEvent)
 				.mockResolvedValueOnce(mockEvent)
+				.mockResolvedValueOnce(null)
 				.mockResolvedValueOnce(null);
 
 			await expect(
