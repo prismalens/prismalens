@@ -217,7 +217,7 @@ const PLACE_LINES: Record<HelperPlace, string> = {
 
 /** A plain greeting gets a plain answer: no tool is probed to look busy (#1020). */
 const ANSWER_FIRST =
-	"Answer the message directly. Use a tool only when the message needs one: a greeting, or a question you can answer from what you know, gets a short reply and no tool calls.";
+	"Answer the message directly. Use a tool only when the message needs one: a greeting, or a question you can answer from what you know, gets a short reply and no tool calls, except naming the thread once the user's task is clear.";
 
 /**
  * A project, service or no-subject thread's first turn (#1020, OBJ-003): a coding
