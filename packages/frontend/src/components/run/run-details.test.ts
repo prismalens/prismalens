@@ -408,6 +408,25 @@ describe("filterSteps", () => {
 });
 
 describe("run-details sections and citations", () => {
+	it("says which model a failed reportless run asked for, not which answered", () => {
+		const facts = {
+			status: { text: "Failed", tone: "danger" as const },
+			started: { text: "Today 03:39 by PrismaLens" },
+			agent: "Claude Code",
+			model: { text: "Its default model", warn: false },
+			took: null,
+			effort: null,
+			access: null,
+			chat: false,
+		};
+		const used = summarySections(inv({ status: "failed" }), facts).find(
+			(s) => s.title === "What this run used",
+		);
+		const model = used?.rows.find((r) => r.label?.startsWith("Model"));
+		expect(model?.label).toBe("Model asked for");
+		expect(model?.sub).toBe("The run failed before a model answered.");
+	});
+
 	it("adds usage and cost rows to what this run used when usage facts are provided", () => {
 		const baseFacts = {
 			status: { text: "Concluded: likely cause", tone: "ok" as const },

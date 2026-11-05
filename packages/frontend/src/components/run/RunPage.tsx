@@ -38,6 +38,13 @@ import {
 	useRecheck,
 } from "@/components/investigation/DockedComposer";
 import { Transcript } from "@/components/investigation/Transcript";
+import { ChangesCard } from "@/components/overview/ChangesCard";
+import { ImpactCard } from "@/components/overview/ImpactCard";
+import { nextHandler } from "@/components/overview/next-action";
+import { SituationCard } from "@/components/overview/SituationCard";
+import { StopImpactCard } from "@/components/overview/StopImpactCard";
+import { useOverview } from "@/components/overview/use-overview";
+import { WhyCard } from "@/components/overview/WhyCard";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
@@ -47,6 +54,7 @@ import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
+import { compose } from "@/lib/compose";
 import { desktopBridge } from "@/lib/desktop";
 import {
 	citedFile,
@@ -55,7 +63,7 @@ import {
 	readsOf,
 	stepFile,
 } from "@/lib/evidence-files";
-import { failureStatusLine } from "@/lib/failure-sentence";
+import { failureSentence, failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handedOff } from "@/lib/handoff-line";
@@ -76,6 +84,7 @@ import {
 import { askTitle } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
+import { isPlainChat } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 import {
 	type CiteTarget,
@@ -119,6 +128,7 @@ import {
 	stepOfCall,
 } from "./run-steps";
 import { usageView } from "./run-usage";
+import { TriggerCard } from "./TriggerCard";
 
 const HIGHLIGHT_MS = 2400;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -207,6 +217,8 @@ export function RunPage() {
 	const [workOpen, setWorkOpen] = useState(false);
 	const [preview, setPreview] = useState(false);
 	const phone = useMediaQuery(PHONE);
+	// Below 1024 px the strip drops its chips so the run status keeps its room (cp6).
+	const chipless = useMediaQuery("(max-width: 1023px)");
 	const panel = phone ? sheetOpen : rightPanel;
 	// Crossing the phone breakpoint carries the panel's state over (#974 OBJ-012).
 	const wasPhone = useRef(phone);
@@ -441,6 +453,7 @@ export function RunPage() {
 	}, [setPanel, setTab]);
 
 	const report = inv?.report;
+	// A chat's answer is its drafted report's summary, in the transcript itself (cp8).
 	const reportTitle =
 		report && inv && !chat
 			? `${name} concluded: ${reportOutcome(report.rootCause)}`
@@ -448,7 +461,14 @@ export function RunPage() {
 	const transcriptReport = useMemo(
 		() =>
 			reportTitle && report
-				? { title: reportTitle, summary: report.summary }
+				? {
+						title: reportTitle,
+						summary: report.summary,
+						stop:
+							report.nextSteps.find((s) => s.kind === "stop-impact") ?? null,
+						lasting:
+							report.nextSteps.find((s) => s.kind === "lasting")?.title ?? null,
+					}
 				: null,
 		[reportTitle, report],
 	);
@@ -541,6 +561,26 @@ export function RunPage() {
 	const invId = inv?.id;
 	const interrupted =
 		!live && run.state === "failed" && inv?.endReason === "interrupted";
+	const [retrying, setRetrying] = useState(false);
+	const retryable =
+		!live &&
+		!interrupted &&
+		!record.liveRun &&
+		inv?.kind !== "chat" &&
+		(run.state === "failed" || run.state === "stopped");
+	const retryNow = () => {
+		setRetrying(true);
+		record
+			.investigate()
+			.catch((error: unknown) =>
+				toast({
+					title: "Run not started",
+					description: getErrorMessage(error),
+					variant: "destructive",
+				}),
+			)
+			.finally(() => setRetrying(false));
+	};
 	const resumeNow = useCallback(() => {
 		if (!invId) return;
 		resumeMutate({ id: invId }, { onError: resumeFailed(toast) });
@@ -604,17 +644,48 @@ export function RunPage() {
 	const toolsChip: StripChip | null =
 		tools.state === "not-reached"
 			? {
-					text: "Tools: not connected",
+					// Said as what the answer lacks, not as the mechanism (cp9).
+					text: "Could not read alerts or metrics",
 					title:
-						"PrismaLens's tools did not reach the agent; the details say what to do.",
+						"The agent could not reach PrismaLens's tools, so it did not read alerts, metrics or the timeline. Open the details for the fix.",
 					warn: true,
 				}
 			: null;
-	// A phone hides the strip's chips; a warning among them rides on the details toggle.
-	const hiddenWarns = phone
+	// Where the strip hides its chips, a warning among them rides on the details toggle.
+	const hiddenWarns = chipless
 		? [modelChip, code, toolsChip].flatMap((c) => (c?.warn ? [c.text] : []))
 		: [];
 	const recheck = useRecheck();
+	// An incident thread keeps its summary in view above the transcript (D19).
+	const o = useOverview();
+	const commandRef = useRef<HTMLElement>(null);
+	const incidentThread = !isPlainChat(incident);
+	const onNext = nextHandler(o, {
+		commandRef,
+		// The strip speaks of the latest run, which may not be the one in view (#1010).
+		resume: () => {
+			if (o.latest)
+				resumeMutate({ id: o.latest.id }, { onError: resumeFailed(toast) });
+		},
+		investigate: retryNow,
+		ask: () => compose(""),
+		watch: () => {
+			if (o.live)
+				void navigate({
+					to: "/incidents/$id/conversation",
+					params: { id: incident.id },
+					search: { investigation: o.live.id },
+				});
+		},
+	});
+	const incidentPanel = incidentThread ? (
+		<div className="flex flex-col gap-3 [&>*]:h-auto [&>*]:max-h-[420px] [&>*]:shrink-0">
+			<ImpactCard view={o.impact} />
+			{o.latest && <StopImpactCard o={o} commandRef={commandRef} />}
+			{o.latest && <WhyCard o={o} onInvestigate={() => compose("")} />}
+			<ChangesCard o={o} />
+		</div>
+	) : undefined;
 	const header = (
 		<IncidentHeader
 			incident={incident}
@@ -668,6 +739,7 @@ export function RunPage() {
 			: null,
 		live ? latestRestart(run.events) : null,
 		run.events,
+		harness?.loginHint,
 	);
 
 	const viewingRepo = viewing
@@ -695,10 +767,40 @@ export function RunPage() {
 					stopping={run.stopRequested}
 					onResume={interrupted ? resumeNow : undefined}
 					resuming={resuming}
+					onRetry={retryable ? retryNow : undefined}
+					retrying={retrying}
 					incidentId={incident.id}
 					runs={runs}
 					current={inv?.id ?? null}
 				/>
+				{/* Where the strip hides its chips, a chat still says in words what its answer could not read. */}
+				{chipless && toolsChip && chat && (
+					<p
+						className="shrink-0 px-4 pt-2 text-meta text-warn"
+						data-testid="run-limits"
+					>
+						Could not read alerts or metrics; this answer rests on the code
+						alone.
+					</p>
+				)}
+				{incidentThread && (
+					// A full-width edge under the summary, so scrolled text reads as passing beneath it.
+					<div className="shrink-0 border-b border-hairline px-4 pt-3 pb-3">
+						<div className="mx-auto w-full max-w-[760px]">
+							<SituationCard
+								o={o}
+								onAction={onNext}
+								compact
+								watching={!!o.live && o.live.id === inv?.id}
+								omit={[
+									...(retryable ? (["retry"] as const) : []),
+									...(interrupted ? (["resume"] as const) : []),
+								]}
+								limited={!!toolsChip && !chat && !!report}
+							/>
+						</div>
+					</div>
+				)}
 				<div className="min-h-0 flex-1">
 					{run.isLoading ? (
 						<div className="mx-auto max-w-[760px] px-4 pt-5">
@@ -722,6 +824,14 @@ export function RunPage() {
 							worked={worked}
 							afterReport={afterReport}
 							steps={transcriptSteps}
+							lead={<TriggerCard incident={incident} />}
+							loginHint={harness?.loginHint}
+							limits={
+								toolsChip
+									? "The agent could not read alerts or metrics, so this rests on the code alone."
+									: null
+							}
+							summaryAbove={incidentThread}
 						/>
 					)}
 				</div>
@@ -741,6 +851,7 @@ export function RunPage() {
 						tab={tab}
 						onTab={setTab}
 						onClose={closePanel}
+						incident={incidentPanel}
 						incidentId={incident.id}
 						summaryTop={
 							<>
@@ -765,6 +876,7 @@ export function RunPage() {
 								model: modelChip,
 								asked,
 								harness,
+								loginHint: harness?.loginHint,
 							}),
 						)}
 						evidence={evidenceSections(inv, (e) => evidenceStep(e, steps), {
@@ -849,7 +961,8 @@ function DetailsToggle({
 				aria-label={label}
 				aria-pressed={open}
 				id="details-toggle"
-				aria-controls="run-details"
+				// Points only at a panel that exists; a closed one has no id to name.
+				aria-controls={open ? "run-details" : undefined}
 				onClick={onToggle}
 				className={cn(
 					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3",
@@ -893,6 +1006,8 @@ export function stripWords(
 	/** The restart its newest message carries, while the run is live (#981). */
 	restart: RestartVia | null = null,
 	events: readonly CanonicalEvent[] = [],
+	/** The agent's sign-in line, so a signed-out failure names its command. */
+	loginHint?: string,
 ): { label: string; detail: string } {
 	if (!inv || !state) return { label: name, detail: "" };
 	const chat = inv.kind === "chat";
@@ -919,7 +1034,8 @@ export function stripWords(
 				label: chat
 					? `Ask, ${state === "stopping" ? "stopping" : "answering"}`
 					: `${who} ${state === "stopping" ? "stopping" : "investigating"}`,
-				detail: restart ? resumedDetail(restart) : (activity ?? "Working"),
+				// The transcript already says what it is doing; the strip keeps time (#1020).
+				detail: restart ? resumedDetail(restart) : (took ?? "Working"),
 			};
 		case "failed": {
 			const ago = when(inv.completedAt ?? inv.updatedAt);
@@ -939,7 +1055,10 @@ export function stripWords(
 				};
 			return {
 				label: chat ? "Ask, failed" : `${who} failed`,
-				detail: failureStatusLine(agent, inv.error),
+				// The strip says what went wrong; the summary's Next carries the fix (cp12).
+				detail: chat
+					? failureStatusLine(agent, inv.error, loginHint)
+					: failureSentence(agent, inv.error, loginHint).said,
 			};
 		}
 		case "stopped":
@@ -984,6 +1103,7 @@ function summaryFacts(
 		model: StripChip | null;
 		asked: string | null;
 		harness: Parameters<typeof levelSandbox>[0];
+		loginHint?: string;
 	},
 ): SummaryFacts {
 	const state = run.state;
@@ -997,7 +1117,7 @@ function summaryFacts(
 			? {
 					text: "Failed",
 					tone: "danger",
-					sub: failureStatusLine(ctx.agent, inv.error),
+					sub: failureStatusLine(ctx.agent, inv.error, ctx.loginHint),
 				}
 			: state === "stopped"
 				? { text: "Stopped by you" }

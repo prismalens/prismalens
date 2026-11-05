@@ -79,6 +79,27 @@ function isReportJson(body: string): boolean {
 	}
 }
 
+/** The summary of the report a step drafted, for a chat to show as its answer. */
+function draftedSummary(text: string): string | null {
+	const bodies = [
+		...Array.from(
+			text.matchAll(/```(?:json)?[ \t]*\r?\n([\s\S]*?)^```/gim),
+			(m) => m[1] ?? "",
+		),
+		...Array.from(
+			text.matchAll(/^[ \t]*(\{[\s\S]*\})[ \t]*$/gm),
+			(m) => m[1] ?? "",
+		),
+	];
+	for (const body of bodies) {
+		try {
+			const parsed = ModelReportSchema.safeParse(JSON.parse(body.trim()));
+			if (parsed.success) return parsed.data.summary;
+		} catch {}
+	}
+	return null;
+}
+
 /**
  * The agent's last text is the report itself, as JSON: bare, fenced, or after
  * a line of prose (#659). The panel names that step instead of printing the
@@ -803,7 +824,16 @@ export function deriveTranscript(
 			case "agent_step": {
 				sawAgent = true;
 				const { text, draft } = splitAgentText(event.text.trim());
-				if (text === REPORT_DRAFTED || text === REPORT_CUT) {
+				// A chat shows its drafted report's summary as the answer, not "Report drafted" (cp8).
+				const answer =
+					run?.kind === "chat" && text === REPORT_DRAFTED
+						? draftedSummary(event.text)
+						: null;
+				if (answer) {
+					closeGroup();
+					items.push({ kind: "prose", key, text: answer, at: event.ts });
+					answerPending();
+				} else if (text === REPORT_DRAFTED || text === REPORT_CUT) {
 					closeGroup();
 					items.push({ kind: "line", key, text });
 				} else if (text || draft) {

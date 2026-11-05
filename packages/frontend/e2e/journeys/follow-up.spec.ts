@@ -81,7 +81,9 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			},
 		);
 
-		await page.goto(`/incidents/${INCIDENT_ID}`);
+		await page.goto(
+			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}&panel=incident`,
+		);
 		const why = page.getByTestId("why-card");
 		await expect(why).toBeVisible({ timeout: 15_000 });
 		const cause = why.getByTestId("why-cause");
@@ -146,7 +148,11 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			window.__liveStream.deliver(JSON.stringify({ type: "done" })),
 		);
 
-		await page.goto(`/incidents/${INCIDENT_ID}`);
+		const tab = page.getByTestId("run-details-tab-incident");
+		if (!(await tab.isVisible())) {
+			await page.getByTestId("details-toggle").click();
+		}
+		await tab.click();
 		await expect(why).toBeVisible({ timeout: 15_000 });
 		await expect.poll(() => cause.innerText()).toBe(before);
 	});

@@ -242,7 +242,8 @@ function Drawing({ report, cites, onCite, scope }: Shared) {
 			aria-label="Hypotheses from the report"
 			data-testid="hypotheses-drawing"
 		>
-			<Conclusion text={report.rootCause} />
+			{/* With one hypothesis its row already says the cause; a second block only repeats it (cp8). */}
+			{roots.length > 1 && <Conclusion text={report.rootCause} />}
 			<Level
 				nodes={roots}
 				depth={0}
@@ -262,7 +263,7 @@ function Drawing({ report, cites, onCite, scope }: Shared) {
 										type="button"
 										id={`${citeId(scope, c)}-list`}
 										onClick={() => onCite(c, `${citeId(scope, c)}-list`)}
-										className="min-w-0 rounded-control text-left font-mono text-mono text-accent underline underline-offset-[3px] [overflow-wrap:anywhere]"
+										className="min-h-6 min-w-0 rounded-control text-left font-mono text-mono text-accent underline underline-offset-[3px] [overflow-wrap:anywhere]"
 										data-testid="hypotheses-cite"
 									>
 										{c.label}
@@ -287,8 +288,8 @@ function Drawing({ report, cites, onCite, scope }: Shared) {
 function Conclusion({ text }: { text: string | null | undefined }) {
 	if (!text) return null;
 	return (
-		<div className="flex flex-col rounded-control bg-[oklch(from_var(--ok)_l_c_h/0.12)] px-2.5 py-2">
-			<span className="font-semibold text-ok">Conclusion</span>
+		<div className="flex flex-col rounded-control bg-surface-2 px-2.5 py-2">
+			<span className="font-medium text-text-2">Likely cause</span>
 			<span dir="auto" className="text-body text-text-1">
 				{text}
 			</span>
@@ -358,7 +359,7 @@ function Level({
 											id={citeId(scope, c)}
 											aria-label={`Citation ${c.n}: ${c.label}`}
 											onClick={() => onCite(c, citeId(scope, c))}
-											className="ml-1 rounded-control px-0.5 text-meta text-accent underline"
+											className="ml-0.5 inline-flex min-h-6 min-w-6 items-center justify-center rounded-control text-meta text-accent underline"
 										>
 											{c.n}
 										</button>

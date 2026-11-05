@@ -101,12 +101,16 @@ export function summarySections(
 	}
 	const used: DetailRow[] = [];
 	if (facts.agent) used.push({ label: "Agent", text: facts.agent });
+	// A run that failed before any report never showed which model answered; say what it asked for.
+	const unreached = inv.status === "failed" && !inv.report;
 	if (facts.model)
 		used.push({
-			label: "Model",
+			label: unreached ? "Model asked for" : "Model",
 			text: facts.model.text,
 			tone: facts.model.warn ? "warn" : undefined,
-			sub: facts.model.sub,
+			sub: unreached
+				? "The run failed before a model answered."
+				: facts.model.sub,
 		});
 	if (facts.effort) used.push({ label: "Effort", text: facts.effort });
 	if (facts.usage) {

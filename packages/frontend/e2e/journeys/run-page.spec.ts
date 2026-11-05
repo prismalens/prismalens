@@ -190,6 +190,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		const flag = page.getByTestId("details-flag");
 		await expect(flag).toBeVisible({ timeout: 15_000 });
 
+		await page.getByTestId("tools-expand").first().click();
 		const stepFlag = page.getByTestId("step-flag");
 		await expect(stepFlag).toBeVisible();
 		await page.getByTestId("step-flag-details").click();
@@ -286,11 +287,11 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step2.getByTestId("step-body")).toBeVisible();
 
 		// Arrow keys move between run-details-tab-*
-		await page.getByTestId("run-details-tab-summary").click();
-		await expect(page.getByTestId("run-details-tab-summary")).toHaveAttribute(
-			"data-state",
-			"active",
-		);
+		const summaryTab = page.getByTestId("run-details-tab-summary");
+		await summaryTab.click();
+		await expect(summaryTab).toHaveAttribute("data-state", "active");
+		await summaryTab.focus();
+		await expect(summaryTab).toBeFocused();
 
 		// Summary, Files, Changes, Steps, Context (#973).
 		for (const id of ["files", "changes", "steps", "context"]) {
@@ -425,7 +426,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	test("crumb-incident goes to /incidents/$id; incident-back goes to /incidents", async ({
+	test("crumb-incident goes to /incidents/$id; incident-back goes to /threads", async ({
 		page,
 	}) => {
 		await page.goto(
@@ -434,7 +435,9 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		const crumb = page.getByTestId("crumb-incident");
 		await expect(crumb).toBeVisible({ timeout: 15_000 });
 		await crumb.click();
-		await expect(page).toHaveURL(new RegExp(`/incidents/${INCIDENT_ID}$`));
+		await expect(page).toHaveURL(
+			new RegExp(`/incidents/${INCIDENT_ID}/conversation\\?investigation=`),
+		);
 
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
@@ -444,7 +447,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			.getByTestId("incident-back");
 		await expect(back).toBeVisible({ timeout: 15_000 });
 		await back.click();
-		await expect(page).toHaveURL(/\/incidents$/);
+		await expect(page).toHaveURL(/\/threads$/);
 	});
 
 	test("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
@@ -493,9 +496,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			{ timeout: 15_000 },
 		);
 		await expect(page.getByTestId("action-chip")).toHaveCount(0);
-		await expect(page.getByTestId("composer-hint")).toContainText(
-			"own session.",
-		);
+		await expect(page.getByTestId("composer-hint")).toContainText("session.");
 		await page.getByTestId("header-more").click();
 		await expect(page.getByTestId("header-investigate-again")).toBeVisible();
 		await page.keyboard.press("Escape");
@@ -583,6 +584,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
+		await page.getByTestId("tools-expand").first().click();
 		const unfold = page.getByTestId("steps-unfold");
 		await expect(unfold).toBeVisible({ timeout: 15_000 });
 

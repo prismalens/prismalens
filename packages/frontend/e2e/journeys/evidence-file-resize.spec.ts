@@ -199,6 +199,8 @@ test.describe("Evidence file view resize (#874)", () => {
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
 
+		await page.getByTestId("tools-expand").first().click();
+
 		const step1 = page.locator('[data-testid="step"][data-step="1"]');
 		await expect(step1).toBeVisible({ timeout: 15_000 });
 
@@ -226,6 +228,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		await page.waitForTimeout(500);
 
 		// Step 2 opens from the transcript beside the panel: the same code view, its heights cached at the old width.
+		await page.getByTestId("tools-expand").last().click();
 		const step2 = page.locator('[data-testid="step"][data-step="2"]');
 		await expect(step2).toBeVisible();
 
@@ -249,6 +252,8 @@ test.describe("Evidence file view resize (#874)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
+
+		await page.getByTestId("tools-expand").first().click();
 
 		const step1 = page.locator('[data-testid="step"][data-step="1"]');
 		await expect(step1).toBeVisible({ timeout: 15_000 });
@@ -275,6 +280,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		await page.getByTestId("evidence-file-back").click();
 		await expect(page.getByTestId("evidence-file")).toBeHidden();
 
+		await page.getByTestId("tools-expand").last().click();
 		const step2 = page.locator('[data-testid="step"][data-step="2"]');
 		await expect(step2).toBeVisible();
 
@@ -527,7 +533,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		await expect(page.getByTestId("details-warn")).toBeVisible();
 		await expect(page.getByTestId("details-toggle")).toHaveAttribute(
 			"aria-label",
-			/1 flagged item, Tools: not connected/,
+			/1 flagged item, Could not read alerts or metrics/,
 		);
 	});
 });

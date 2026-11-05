@@ -23,7 +23,9 @@ import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
+import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
+import { compose } from "@/lib/compose";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import {
@@ -144,6 +146,10 @@ export const Transcript = memo(function Transcript({
 	empty,
 	worked,
 	afterReport,
+	lead,
+	loginHint,
+	limits,
+	summaryAbove,
 }: {
 	items: TranscriptItem[];
 	/** Null on a scheduled check no finding has linked yet (#979). */
@@ -157,12 +163,27 @@ export const Transcript = memo(function Transcript({
 	/** Who wrote the brief: you, or PrismaLens when the alert started the run. */
 	briefBy?: string;
 	/** The report card's title and summary, when the run reported. */
-	report?: { title: string; summary: string } | null;
+	report?: {
+		title: string;
+		summary: string;
+		/** The first way to stop the impact, with its command; null says it named none. */
+		stop?: { title: string; command?: string } | null;
+		/** The report's lasting fix; null says it named none. */
+		lasting?: string | null;
+	} | null;
 	/** What shows before anything is sent: the new conversation's box. */
 	empty?: boolean;
+	/** The agent's sign-in line, so a signed-out failure names its command. */
+	loginHint?: string;
+	/** What the run could not read, said beside its conclusion (cp10). */
+	limits?: string | null;
+	/** An incident summary above already states the cause and the next action. */
+	summaryAbove?: boolean;
 	worked?: WorkedFold | null;
 	/** Drawn right under the report card, outside the fold: the hypotheses card. */
 	afterReport?: ReactNode;
+	/** The first node: what started the thread, when it came from the world (#1020). */
+	lead?: ReactNode;
 }) {
 	useRenderProbe("Transcript", { items, steps, worked, report });
 	const groups = useGroupSteps(items, steps);
@@ -179,6 +200,7 @@ export const Transcript = memo(function Transcript({
 					data-testid="transcript"
 					data-empty={empty ? "" : undefined}
 				>
+					{lead}
 					{folds && worked && brief === -1 && <WorkedToggle worked={worked} />}
 					{items.map((item, i) => {
 						const group = groups.get(item.key);
@@ -201,6 +223,11 @@ export const Transcript = memo(function Transcript({
 										briefBy={briefBy}
 										reportTitle={report?.title}
 										reportSummary={report?.summary}
+										reportStop={report?.stop}
+										reportLasting={report?.lasting}
+										loginHint={loginHint}
+										limits={limits}
+										summaryAbove={summaryAbove}
 										hasSteps={!!steps}
 										group={group}
 										open={has(steps?.open)}
@@ -232,6 +259,8 @@ export const Transcript = memo(function Transcript({
 			</ConversationContent>
 			<ConversationScrollButton />
 			<ReleaseOnUnfold open={!!worked?.open} />
+			{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
+			<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
 		</Conversation>
 	);
 });
@@ -292,6 +321,11 @@ const TranscriptRow = memo(function TranscriptRow({
 	briefBy,
 	reportTitle,
 	reportSummary,
+	reportStop,
+	reportLasting,
+	loginHint,
+	limits,
+	summaryAbove,
 	ask,
 	...steps
 }: RowSteps & {
@@ -303,6 +337,12 @@ const TranscriptRow = memo(function TranscriptRow({
 	briefBy: string;
 	reportTitle?: string;
 	reportSummary?: string;
+	reportStop?: { title: string; command?: string } | null;
+	reportLasting?: string | null;
+	loginHint?: string;
+	limits?: string | null;
+	summaryAbove?: boolean;
+
 	ask?: AskRecord;
 }) {
 	useRenderProbe("TranscriptRow", { item, ask, ...steps });
@@ -447,17 +487,67 @@ const TranscriptRow = memo(function TranscriptRow({
 						<span id="report" className="font-semibold">
 							{reportTitle}
 						</span>
-						<span dir="auto" className="text-text-2">
-							{reportSummary}
-						</span>
+						{!summaryAbove && (
+							<span dir="auto" className="text-text-2">
+								{reportSummary}
+							</span>
+						)}
+						{limits && (
+							<span className="text-meta text-warn" data-testid="report-limits">
+								{limits}
+							</span>
+						)}
+						{/* The result reads here, so a follow-up never needs the overview (D19). */}
+						{reportStop !== undefined && (
+							<div className="flex flex-col gap-1" data-testid="report-stop">
+								<span className="text-meta text-text-3">Stop the impact</span>
+								{reportStop ? (
+									<>
+										<span dir="auto">{reportStop.title}</span>
+										{reportStop.command && (
+											<CommandChip command={reportStop.command} />
+										)}
+									</>
+								) : (
+									<span className="text-text-2">None suggested.</span>
+								)}
+							</div>
+						)}
+						{reportLasting !== undefined && (
+							<div className="flex flex-col gap-1" data-testid="report-lasting">
+								<span className="text-meta text-text-3">Lasting fix</span>
+								{reportLasting ? (
+									<span dir="auto">{reportLasting}</span>
+								) : (
+									<span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+										<span className="text-text-2">None named yet.</span>
+										{/* The summary's Next already offers it above an incident. */}
+										{!summaryAbove && (
+											<button
+												type="button"
+												onClick={() =>
+													compose(
+														"What lasting fix would stop this from happening again?",
+													)
+												}
+												className="inline-flex min-h-6 items-center text-accent hover:underline"
+												data-testid="report-ask-lasting"
+											>
+												Ask for a lasting fix
+											</button>
+										)}
+									</span>
+								)}
+							</div>
+						)}
 						{incidentId && (
 							<Link
-								to="/incidents/$id"
-								params={{ id: incidentId }}
-								className="self-start text-accent underline-offset-[3px] hover:underline"
+								to="."
+								search={(s) => ({ ...s, panel: "incident" as const })}
+								className="inline-flex min-h-6 items-center self-start text-accent underline-offset-[3px] hover:underline"
 								data-testid="transcript-report-overview"
 							>
-								See it on the overview
+								Impact, evidence and changes
 							</Link>
 						)}
 						{item.hint && (
@@ -489,7 +579,9 @@ const TranscriptRow = memo(function TranscriptRow({
 					</li>
 				);
 			const failure =
-				item.tone === "failed" ? failureSentence(agent, item.error) : null;
+				item.tone === "failed"
+					? failureSentence(agent, item.error, loginHint)
+					: null;
 			return (
 				<li className={cn("space-y-1", ENTER)} data-testid="transcript-end">
 					<p className="flex flex-wrap items-baseline gap-x-2 text-text-2">
@@ -514,12 +606,18 @@ const TranscriptRow = memo(function TranscriptRow({
 						)}
 					</p>
 					{failure?.detail && (
-						<p
-							className="text-meta text-text-3 [overflow-wrap:anywhere]"
-							data-testid="transcript-end-detail"
-						>
-							{failure.detail}
-						</p>
+						// The agent's raw words stay one click away, under the sentence that explains them.
+						<details className="text-meta text-text-3">
+							<summary className="inline-flex min-h-6 cursor-pointer items-center hover:text-text-1">
+								The agent's error
+							</summary>
+							<p
+								className="[overflow-wrap:anywhere]"
+								data-testid="transcript-end-detail"
+							>
+								{failure.detail}
+							</p>
+						</details>
 					)}
 				</li>
 			);
@@ -551,11 +649,53 @@ function StepGroup({
 }) {
 	useRenderProbe("StepGroup", { item, group: steps.group });
 	const [unfolded, setUnfolded] = useState(false);
+	const [expanded, setExpanded] = useState(false);
 	const own = steps.group?.own ?? [];
+	const words = item.summary || `ran ${item.count} tools`;
+	const summary = words.charAt(0).toUpperCase() + words.slice(1);
+	// The agent's words lead; its steps fold to one line unless one needs you or was linked to.
+	const needs =
+		own.some((s) => steps.open.has(s.n) || steps.highlight === s.n) ||
+		(steps.group?.asks ?? []).some((a) => a?.state === "waiting");
+	// Once an ask or a link opened the group, it stays open: answering must not fold it away under the click.
+	const held = useRef(false);
+	if (needs) held.current = true;
+	const open = expanded || held.current;
 	if (!steps.hasSteps || own.length === 0)
 		return (
 			<li className="text-meta text-text-3" data-testid="transcript-tools">
-				{item.summary || `Ran ${item.count} tools`}
+				{summary}
+			</li>
+		);
+	const live = own.findLast((s) => s.ok === null && !s.unfinished);
+	const denied = (steps.group?.asks ?? []).filter(
+		(a) => a?.state === "denied",
+	).length;
+	const failed = Math.max(0, item.failed - denied);
+	if (!open && !needs)
+		return (
+			<li data-testid="transcript-tools" data-folded="">
+				<button
+					type="button"
+					onClick={() => setExpanded(true)}
+					className="group flex min-h-6 max-w-full items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
+					aria-expanded={false}
+					data-testid="tools-expand"
+				>
+					<ChevronRight aria-hidden className="size-3.5 shrink-0" />
+					<span className="truncate">{summary}</span>
+					{failed > 0 && (
+						<span className="shrink-0 text-danger">{failed} failed</span>
+					)}
+					{denied > 0 && (
+						<span className="shrink-0 text-text-2">{denied} denied by you</span>
+					)}
+				</button>
+				{live && (
+					<p className="truncate pl-5 font-mono text-meta text-text-3">
+						{shortPath(live.command, cwd)}
+					</p>
+				)}
 			</li>
 		);
 	const hidden =
@@ -569,6 +709,23 @@ function StepGroup({
 		: own;
 	return (
 		<>
+			{open && !needs && (
+				<li>
+					<button
+						type="button"
+						onClick={() => {
+							held.current = false;
+							setExpanded(false);
+						}}
+						className="flex min-h-6 items-center gap-1.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-1"
+						aria-expanded
+						data-testid="tools-collapse"
+					>
+						<ChevronRight aria-hidden className="size-3.5 shrink-0 rotate-90" />
+						{summary}
+					</button>
+				</li>
+			)}
 			{shown.map((s, i) => (
 				<Fragment key={s.callId}>
 					{fold && i === FOLD_KEEP && (

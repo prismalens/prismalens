@@ -14,7 +14,7 @@ describe("end-line sentences (#673 w59, DESIGN §3)", () => {
 
 	it("a failed reportless investigation: try again when continuable, else a new run", () => {
 		expect(endHint({ kind: "investigation", status: "failed", continuable: true })).toBe(
-			"Investigate to try the report again, or ask about what it found.",
+			"Retry the run, or ask about the failure.",
 		);
 		expect(endHint({ kind: "investigation", status: "failed" })).toBe("Start a new run.");
 	});

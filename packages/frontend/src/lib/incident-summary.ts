@@ -8,10 +8,11 @@ import {
 } from "@prismalens/contracts";
 import { failureWords } from "./failure-words";
 import { notResumedReason } from "./restart";
+import { isEvent } from "./trigger";
 
 export interface SummaryInput {
 	now: number;
-	alerts: { status: string; triggeredAt: string }[];
+	alerts: { status: string; triggeredAt: string; source?: string | null }[];
 	services: string[];
 	/** Newest first. */
 	runs: {
@@ -64,10 +65,15 @@ export function incidentSummary(i: SummaryInput): {
 	else {
 		const first = Math.min(...i.alerts.map((a) => Date.parse(a.triggeredAt)));
 		const since = roughly((i.now - first) / 1000);
+		const n = i.alerts.length;
 		lines.push(
-			firing > 0
-				? `${firing} of ${plural(i.alerts.length, "alert")} firing${where}, the first ${since} ago.`
-				: `${plural(i.alerts.length, "alert")}${where}, none firing now.`,
+			i.alerts.every(isEvent)
+				? n === 1
+					? `A webhook event arrived${where} ${since} ago.`
+					: `${n} webhook events arrived${where}, the first ${since} ago.`
+				: firing > 0
+					? `${firing} of ${plural(i.alerts.length, "alert")} firing${where}, the first ${since} ago.`
+					: `${plural(i.alerts.length, "alert")}${where}, none firing now.`,
 		);
 	}
 

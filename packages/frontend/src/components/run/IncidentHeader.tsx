@@ -17,7 +17,6 @@ import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { Hint } from "@/components/shared/Hint";
-import { Mono } from "@/components/shared/Mono";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -48,7 +47,10 @@ import { incidentKeys, timelineKeys } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { download } from "@/lib/download";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { readableTitle } from "@/lib/title";
+import { isPlainChat } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
+import { NoteDialog } from "./NoteDialog";
 import { firingWord } from "./run-labels";
 import { StatusUpdateDialog } from "./StatusUpdateDialog";
 
@@ -56,7 +58,7 @@ const SEVERITIES = Object.keys(SEVERITY_LABEL) as Severity[];
 
 /**
  * The breadcrumb header (#811): back to the inbox, `INC-1 WalkGrouped / Run 2`,
- * service, severity, firing; then the page's own control, Resolve and the menu.
+ * severity, firing; then the page's own control, Resolve and the menu.
  * The incident name is the way up to the overview. The overview can reuse it with `view="Overview"`.
  */
 export function IncidentHeader({
@@ -81,10 +83,15 @@ export function IncidentHeader({
 	/** The page's own control before Resolve, e.g. the details toggle. */
 	trailing?: ReactNode;
 }) {
-	usePageTitle(`INC-${incident.number} ${incident.title} / ${view}`);
+	// A chat carries no incident number, in the tab title or for screen readers (#1020 D10).
+	usePageTitle(
+		isPlainChat(incident)
+			? `${incident.title} / ${view}`
+			: `INC-${incident.number} ${readableTitle(incident.title)} / ${view}`,
+	);
 	const navigate = useNavigate();
 	useEscapeBack(
-		useCallback(() => void navigate({ to: "/incidents" }), [navigate]),
+		useCallback(() => void navigate({ to: "/threads" }), [navigate]),
 	);
 	const now = useNow(30_000);
 	const { toast } = useToast();
@@ -92,8 +99,10 @@ export function IncidentHeader({
 	const [mergeOpen, setMergeOpen] = useState(false);
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const [updateOpen, setUpdateOpen] = useState(false);
+	const [noteOpen, setNoteOpen] = useState(false);
 	const firing = firingWord(incident.alerts ?? [], now);
-	const service = incident.service;
+	// A chat started from Home is not an incident: no severity, firing or Resolve button (#1020 D10).
+	const chat = isPlainChat(incident);
 	const merged = incident.mergedInto;
 	const canMerge = !incident.mergedIntoId && isIncidentOpen(incident.status);
 	const resolvable = !merged && canIncidentAction("close", incident.status);
@@ -128,30 +137,28 @@ export function IncidentHeader({
 			className="flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap"
 			data-testid="incident-header"
 		>
-			<Hint label="Back to the inbox">
+			<Hint label="Back to threads">
 				<Button variant="text" size="icon" className="shrink-0" asChild>
 					<Link
-						to="/incidents"
-						aria-label="Back to the inbox"
+						to="/threads"
+						aria-label="Back to threads"
 						data-testid="incident-back"
 					>
 						<ChevronLeft className="size-4" />
 					</Link>
 				</Button>
 			</Hint>
-			<Mono className="shrink-0 text-meta text-text-3">
-				INC-{incident.number}
-			</Mono>
 			<h1 className="min-w-[104px] shrink truncate text-title">
-				<Hint label="Back to the incident overview">
+				{!chat && <span className="sr-only">INC-{incident.number} </span>}
+				<Hint label="The incident's latest run">
 					<Link
 						to="/incidents/$id"
 						params={{ id: incident.id }}
-						className="underline-offset-[3px] hover:underline"
+						className="inline-flex min-h-6 max-w-full items-center underline-offset-[3px] hover:underline"
 						data-testid="crumb-incident"
 						dir="auto"
 					>
-						{incident.title}
+						{chat ? incident.title : readableTitle(incident.title)}
 					</Link>
 				</Hint>
 			</h1>
@@ -165,19 +172,16 @@ export function IncidentHeader({
 			>
 				{view}
 			</span>
-			{service && (
-				<span className="min-w-0 shrink truncate text-text-3 max-lg:hidden">
-					{service.displayName || service.name}
+			{!chat && (
+				<span
+					className="shrink-0 rounded-control bg-surface-2 px-2 text-meta font-medium"
+					style={{ color: `var(--sev-${incident.severity})` }}
+					data-testid="header-severity"
+				>
+					{SEVERITY_LABEL[incident.severity]}
 				</span>
 			)}
-			<span
-				className="shrink-0 rounded-control bg-surface-2 px-2 text-meta font-medium"
-				style={{ color: `var(--sev-${incident.severity})` }}
-				data-testid="header-severity"
-			>
-				{SEVERITY_LABEL[incident.severity]}
-			</span>
-			{merged ? (
+			{chat ? null : merged ? (
 				<Link
 					to="/incidents/$id"
 					params={{ id: merged.id }}
@@ -211,10 +215,11 @@ export function IncidentHeader({
 			)}
 			<span className="flex-1" />
 			{trailing}
-			{resolvable && (
+			{resolvable && !chat && (
 				<Button
 					variant="secondary"
-					className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3"
+					// A phone gives the title this room; Resolve waits in More there (cp12).
+					className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3 max-sm:hidden"
 					onClick={() => (firing?.firing ? setConfirmOpen(true) : onResolve())}
 					data-testid="header-resolve"
 				>
@@ -231,7 +236,7 @@ export function IncidentHeader({
 					Reopen
 				</Button>
 			)}
-			<DropdownMenu>
+			<DropdownMenu modal={false}>
 				<DropdownMenuTrigger asChild>
 					<Button
 						variant="secondary"
@@ -244,6 +249,23 @@ export function IncidentHeader({
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="w-60">
+					{resolvable && !chat && (
+						<DropdownMenuItem
+							className="sm:hidden"
+							onClick={() =>
+								firing?.firing ? setConfirmOpen(true) : onResolve()
+							}
+							data-testid="header-resolve-menu"
+						>
+							Resolve
+						</DropdownMenuItem>
+					)}
+					<DropdownMenuItem
+						onClick={() => setNoteOpen(true)}
+						data-testid="header-note"
+					>
+						Add a note
+					</DropdownMenuItem>
 					<DropdownMenuItem
 						onClick={() => setUpdateOpen(true)}
 						data-testid="header-status-update"
@@ -322,6 +344,7 @@ export function IncidentHeader({
 					)}
 				</DropdownMenuContent>
 			</DropdownMenu>
+			<NoteDialog open={noteOpen} onOpenChange={setNoteOpen} />
 			<StatusUpdateDialog
 				open={updateOpen}
 				onOpenChange={setUpdateOpen}

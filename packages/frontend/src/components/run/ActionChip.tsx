@@ -41,7 +41,8 @@ export function ActionChip({
 	const current = actions.find((a) => a.id === value) ?? actions[0];
 	if (!current || actions.length < 2) return null;
 	return (
-		<DropdownMenu>
+		// Non-modal: a modal menu hides the sidebar from assistive tech while it stays focusable.
+		<DropdownMenu modal={false}>
 			<DropdownMenuTrigger asChild>
 				<button
 					type="button"

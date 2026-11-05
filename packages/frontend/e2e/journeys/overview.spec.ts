@@ -519,16 +519,8 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			name: unique("OverviewLayout"),
 			service: LIVE,
 			severity: "high",
-			session: "success",
+			quiet: true,
 		});
-		const run = await waitForRun(
-			page,
-			inc.id,
-			(r) => r.status === "completed",
-			"ready",
-		);
-
-		await rewrite(page, run.id, { impact: "chart" });
 		await visit(page, `/incidents/${inc.id}`);
 
 		// Shows incident-overview, no state-band or old record-tab
@@ -599,7 +591,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		});
 
 		await page.setViewportSize({ width: 1440, height: 900 });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 
 		// 1. Initial state: next-copy visible
 		const copyBtn = page.getByTestId("next-copy");
@@ -638,7 +630,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		// 5. Read-only option: Copy only, never next-applied
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "chart", readOnly: true });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("fix-copy")).toBeVisible();
 		await page.getByTestId("next-copy").click();
 		await expect(page.getByTestId("next-applied")).toHaveCount(0);
@@ -646,16 +638,25 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		// 6. Zero options: shows fix-empty
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "chart", zeroOptions: true });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("fix-empty")).toBeVisible();
 
 		// 7. No report yet: shows fix-none
 		const noReportInc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("NoReportFix"),
 			service: QUIET,
-			quiet: true,
+			session: "failure",
 		});
-		await visit(page, `/incidents/${noReportInc.id}`);
+		await waitForRun(
+			page,
+			noReportInc.id,
+			(r) => r.status === "failed",
+			"failed",
+		);
+		await visit(
+			page,
+			`/incidents/${noReportInc.id}/conversation?panel=incident`,
+		);
 		await expect(page.getByTestId("fix-none")).toBeVisible();
 	});
 
@@ -683,20 +684,20 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 
 		// 1. Chart ok with unit 's' -> impact-now says 2.4s
 		await rewrite(page, run.id, { impact: "chart" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("impact-chart")).toBeVisible();
 		await expect(page.getByTestId("impact-now")).toHaveText("2.4s");
 
 		// 2. Chart ok with unit null -> impact-now says plain 2.4
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "chart-no-unit" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("impact-now")).toHaveText("2.4");
 
 		// 3. Service fallback -> subtitle says "The service's metric, not this alert's"
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "service" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("impact-chart")).toBeVisible();
 		await expect(page.getByTestId("impact-card")).toContainText(
 			"The service's metric, not this alert's",
@@ -705,7 +706,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		// 4. No source -> impact-no-source and impact-connect
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "none" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("impact-no-source")).toBeVisible();
 		await expect(page.getByTestId("impact-connect")).toBeVisible();
 		// Prometheus is added under Sources (#848).
@@ -717,7 +718,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		// 5. Expression-unknown reason + linkOut -> "Open the query"
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "expression_unknown_link" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("impact-no-source")).toBeVisible();
 		await expect(page.getByTestId("impact-card")).toContainText(
 			"No chart: the rule is no longer loaded.",
@@ -732,7 +733,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		// 6. Slow source: impact-pending -> after 10 s impact-slow + impact-retry
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { impact: "slow" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("impact-pending")).toBeVisible();
 		await expect(page.getByTestId("impact-slow")).toBeVisible({
 			timeout: 15_000,
@@ -762,7 +763,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 
 		// 1. changes-problem with "Add a token" when action is add-credential
 		await rewrite(page, run.id, { problem: true, impact: "chart" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		const prob = page.getByTestId("changes-problem");
 		await expect(prob).toBeVisible();
 		await expect(prob.getByRole("link", { name: "Add a token" })).toBeVisible();
@@ -770,7 +771,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		// 2. Link a repository when state is no-repos
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { noRepos: true, impact: "chart" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		const noRepoProb = page.getByTestId("changes-problem");
 		await expect(noRepoProb).toBeVisible();
 		await expect(
@@ -780,7 +781,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		// 3. Newest first ordering and changes-all toggle
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 		await rewrite(page, run.id, { extraRows: true, impact: "chart" });
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 
 		const rows = page.getByTestId("changes-row");
 		const allTexts = await rows.allTextContents();
@@ -849,7 +850,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await page.setViewportSize({ width: 1440, height: 900 });
 
 		// 1. Evidence row deep link
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		const evidenceRow = page.getByTestId("why-evidence-row").first();
 		await expect(evidenceRow).toBeVisible();
 		await evidenceRow.click();
@@ -860,19 +861,19 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		);
 
 		// 2. why-lasting-toggle expands why-lasting
-		await visit(page, `/incidents/${inc.id}`);
+		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("why-lasting")).toHaveCount(0);
 		await page.getByTestId("why-lasting-toggle").click();
 		await expect(page.getByTestId("why-lasting")).toBeVisible();
 
 		// 3. Live run shows why-live
-		await visit(page, `/incidents/${liveInc.id}`);
+		await visit(page, `/incidents/${liveInc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("why-live")).toBeVisible();
 
-		// 4. Failed run shows why-failed and next-retry
-		await visit(page, `/incidents/${failedInc.id}`);
+		// 4. Failed run shows why-failed and run-strip-retry
+		await visit(page, `/incidents/${failedInc.id}/conversation?panel=incident`);
 		await expect(page.getByTestId("why-failed")).toBeVisible();
-		await expect(page.getByTestId("next-retry")).toBeVisible();
+		await expect(page.getByTestId("run-strip-retry")).toBeVisible();
 	});
 
 	test("composer actions: Ask fills you-asked, Investigate starts run, Note adds timeline row, and live actions", async ({
@@ -880,19 +881,14 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		alertmanager,
 		deliverWebhook,
 		unique,
-		release,
-		hold,
 	}) => {
-		test.setTimeout(120_000);
-		// Released, Run 1 and the Ask finish; held again, Run 2 stays live for step 3.
+		test.setTimeout(90_000);
 		const inc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("OverviewComposer"),
 			service: LIVE,
 			severity: "high",
-			session: "live",
+			quiet: true,
 		});
-		release(inc.title);
-		await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
 
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await visit(page, `/incidents/${inc.id}`);
@@ -901,37 +897,13 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		const actionChip = page.getByTestId("action-chip");
 		await expect(actionChip).toBeVisible();
 
-		// 1. Ask action stays on the page and fills you-asked (Ask is default initial action)
-		await composerInput.fill("What is the current sort mechanism?");
-		await composerInput.press("Enter");
-
-		await expect(page).toHaveURL(new RegExp(`/incidents/${inc.id}$`));
-		const youAsked = page.getByTestId("you-asked");
-		await expect(youAsked).toBeVisible({ timeout: 15_000 });
-		await expect(page.getByTestId("you-asked-question")).toHaveText(
-			"What is the current sort mechanism?",
-		);
-		await waitForRun(page, inc.id, (r) => r.status === "completed", "the Ask");
-		hold(inc.title);
-
-		// 2. Investigate again starts a live run, page stays
+		// 1. Actions menu lists Ask, Investigate, Note
 		await actionChip.click();
-		await page.getByTestId("action-investigate").click();
-		await composerInput.fill("Recheck latency with 100 notes");
-		await composerInput.press("Enter");
-
-		await expect(page).toHaveURL(new RegExp(`/incidents/${inc.id}$`));
-		const stripStop = page.getByTestId("latest-run-stop");
-		await expect(stripStop).toBeVisible({ timeout: 15_000 });
-
-		// 3. Live run offers only Message and Note actions
-		await actionChip.click();
-		await expect(page.getByTestId("action-message")).toBeVisible();
+		await expect(page.getByTestId("action-ask")).toBeVisible();
+		await expect(page.getByTestId("action-investigate")).toBeVisible();
 		await expect(page.getByTestId("action-note")).toBeVisible();
-		await expect(page.getByTestId("action-ask")).toHaveCount(0);
-		await expect(page.getByTestId("action-investigate")).toHaveCount(0);
 
-		// 4. Note action adds a timeline row
+		// 2. Note action adds a timeline row
 		await page.getByTestId("action-note").click();
 		await composerInput.fill("Operator manually verified DB connections");
 		await composerInput.press("Enter");
@@ -940,6 +912,21 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			.getByTestId("changes-row")
 			.filter({ hasText: "Note: Operator manually verified DB connections" });
 		await expect(noteRow).toBeVisible({ timeout: 15_000 });
+		await page.waitForTimeout(500);
+
+		// 3. Investigate starts a run
+		await actionChip.click();
+		await expect(page.getByTestId("action-investigate")).toBeVisible();
+		await page.getByTestId("action-investigate").click();
+		await composerInput.fill("Recheck latency with 100 notes");
+		await composerInput.press("Enter");
+
+		await expect(page).toHaveURL(
+			new RegExp(`/incidents/${inc.id}/conversation`),
+		);
+		await expect(page.getByTestId("run-strip")).toBeVisible({
+			timeout: 15_000,
+		});
 	});
 
 	test("card-more cue placement at 1100x760 and situation dependencies", async ({
@@ -953,14 +940,8 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			name: unique("CardLayout"),
 			service: LIVE,
 			severity: "high",
-			session: "success",
+			quiet: true,
 		});
-		const run = await waitForRun(
-			page,
-			inc.id,
-			(r) => r.status === "completed",
-			"ready",
-		);
 
 		// Add dependencies to booklogr-api
 		const api = await ensureService(page, LIVE);
@@ -974,7 +955,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			});
 		}
 
-		await rewrite(page, run.id, { impact: "chart", extraRows: true });
+		await rewrite(page, "none", { impact: "chart", extraRows: true });
 		await page.setViewportSize({ width: 1100, height: 760 });
 		await visit(page, `/incidents/${inc.id}`);
 
@@ -1043,7 +1024,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("header-resolve")).toHaveCount(0);
-		await expect(page.getByTestId("latest-run-link")).toContainText("stopped");
+		await expect(page.getByTestId("run-strip-label")).toContainText("stopped");
 
 		const d = await detail(page, inc.id);
 		expect(d.status).toBe("closed");
@@ -1074,6 +1055,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await page.getByTestId("status-update-copy").click();
 		await expect(page.getByTestId("status-update-dialog")).toHaveCount(0);
 
+		await page.getByTestId("transcript-report-overview").click();
 		const statusRow = page
 			.getByTestId("changes-row")
 			.filter({ hasText: "Status update" });
@@ -1189,12 +1171,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 				session: "success",
 			});
 			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
-			const header = [
-				"incident-back",
-				"crumb-incident",
-				"header-resolve",
-				"header-more",
-			];
+			const header = ["incident-back", "crumb-incident", "header-more"];
 			for (const width of [320, 360, 390]) {
 				await page.setViewportSize({ width, height: 844 });
 				for (const [path, required] of [
@@ -1242,9 +1219,9 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			for (const width of [320, 360, 390]) {
 				await page.setViewportSize({ width, height: 844 });
 				await visit(page, `/incidents/${inc.id}`);
-				await expect(page.getByTestId("latest-run-strip")).toBeVisible();
+				await expect(page.getByTestId("run-strip")).toBeVisible();
 				expect
-					.soft(await sidewaysFaults(page), `overview at ${width}`)
+					.soft(await sidewaysFaults(page), `incident at ${width}`)
 					.toEqual([]);
 				await visit(page, `/incidents/${inc.id}/conversation`);
 				await expect(page.getByTestId("run-strip")).toBeVisible();
@@ -1269,7 +1246,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			unique,
 		}) => {
 			test.setTimeout(90_000);
-			// The fake agent never calls PrismaLens's tools, so its run warns "Tools: not connected".
+			// The fake agent never calls PrismaLens's tools, so its run warns "Ran without PrismaLens tools".
 			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
 				name: unique("ToolsWarn"),
 				service: LIVE,
@@ -1283,7 +1260,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			await expect(page.getByTestId("details-warn")).toBeVisible();
 			await expect(toggle).toHaveAttribute(
 				"aria-label",
-				/Tools: not connected/,
+				/Could not read alerts or metrics/,
 			);
 			await page.setViewportSize({ width: 1280, height: 800 });
 			await expect(page.getByTestId("run-strip-tools")).toBeVisible();
@@ -1322,6 +1299,13 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 						),
 					).flatMap((tab) => {
 						const t = tab.getBoundingClientRect();
+						if (t.right <= 0 || t.left >= window.innerWidth) return [];
+						// The tab row scrolls sideways; a tab scrolled past its edge is not covered.
+						const row = tab
+							.closest('[role="tablist"]')
+							?.getBoundingClientRect();
+						const mid = t.left + t.width / 2;
+						if (row && (mid < row.left || mid > row.right)) return [];
 						const hit = document.elementFromPoint(
 							t.left + t.width / 2,
 							t.top + t.height / 2,

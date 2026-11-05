@@ -193,11 +193,11 @@ export function agentModelLabel(
 ): { agent: string; model: string } {
 	if (!effective) return { agent: "No agent", model: "" };
 	if (effective.modelVia === "unsupported") {
-		return { agent: effective.label, model: "its own model" };
+		return { agent: effective.label, model: "its default model" };
 	}
 	return {
 		agent: effective.label,
-		model: defaultModel(effective, model)?.name ?? "its own model",
+		model: defaultModel(effective, model)?.name ?? "its default model",
 	};
 }
 

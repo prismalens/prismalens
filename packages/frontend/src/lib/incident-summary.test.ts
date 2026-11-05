@@ -11,6 +11,18 @@ const alert = (status: string, at = "2026-09-29T12:00:00Z") => ({
 });
 
 describe("incidentSummary", () => {
+	it("says a webhook event arrived, never that it fires", () => {
+		const s = incidentSummary({
+			now,
+			alerts: [{ ...alert("triggered"), source: "github" }],
+			services: [],
+			runs: [],
+			noRepo: false,
+			attention: null,
+		});
+		expect(s.lines[0]).toBe("A webhook event arrived 1 day ago.");
+	});
+
 	it("says what fires, that the agent keeps failing, and that it read no code", () => {
 		const s = incidentSummary({
 			now,

@@ -71,6 +71,7 @@ const TONE = {
 } as const;
 
 const ORDER: DetailsTab[] = [
+	"incident",
 	"summary",
 	"files",
 	"changes",
@@ -106,7 +107,10 @@ export function RunDetailsPanel({
 	files,
 	summaryTop,
 	contextTop,
+	incident,
 }: {
+	/** An incident thread's impact, fixes, finding and changes, beside the transcript (D19). */
+	incident?: ReactNode;
 	/** Above the Context sections: the runbooks the run found (#848). */
 	contextTop?: ReactNode;
 	/** Above the Summary sections: the run's five steps and its tools (#848). */
@@ -137,6 +141,9 @@ export function RunDetailsPanel({
 		aside?: ReactNode;
 		aria: string;
 	}[] = [
+		...(incident
+			? [{ id: "incident" as const, label: "Incident", aria: "Incident" }]
+			: []),
 		{ id: "summary", label: "Summary", aria: "Summary" },
 		{
 			id: "files",
@@ -211,6 +218,7 @@ export function RunDetailsPanel({
 				<div className="relative flex h-9 shrink-0 items-center px-2 max-[359px]:px-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
 					<TabsPrimitive.List
 						aria-label={title}
+						data-scroll-x
 						className="flex min-w-0 gap-0.5 max-[359px]:gap-0 self-end overflow-x-auto [scrollbar-width:none]"
 					>
 						{tabs.map((t) => (
@@ -252,6 +260,15 @@ export function RunDetailsPanel({
 						workspace={files.workspace}
 					/>
 				</TabsPrimitive.Content>
+				{incident && (
+					<TabsPrimitive.Content
+						value="incident"
+						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
+						data-testid="run-details-incident"
+					>
+						{incident}
+					</TabsPrimitive.Content>
+				)}
 				{(["summary", "context"] as const).map((id) => (
 					<TabsPrimitive.Content
 						key={id}
@@ -525,7 +542,7 @@ function LeaveLink({
 	children: ReactNode;
 }) {
 	const cls =
-		"self-start text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current";
+		"inline-flex min-h-6 items-center self-start text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current";
 	if (link.kind === "overview")
 		return (
 			<Link

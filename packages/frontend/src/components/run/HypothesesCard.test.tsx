@@ -156,7 +156,7 @@ describe("HypothesesCard", () => {
 		expect(rows[5]?.textContent).toContain("Unconfirmed");
 	});
 
-	it("shows the Conclusion block when rootCause is present and omits it when null", async () => {
+	it("shows the Likely cause block over several hypotheses when rootCause is present, and omits it when null", async () => {
 		await act(async () => {
 			root.render(
 				<HypothesesCard
@@ -174,7 +174,7 @@ describe("HypothesesCard", () => {
 			);
 		});
 
-		expect(container.textContent).toContain("Conclusion");
+		expect(container.textContent).toContain("Likely cause");
 		expect(container.textContent).toContain(
 			"DB pool exhaustion caused timeout cascading",
 		);

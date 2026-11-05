@@ -16,7 +16,7 @@ export interface FailureWords {
 
 const KNOWN: {
 	test: RegExp;
-	words: FailureWords | ((agent: string) => FailureWords);
+	words: FailureWords | ((agent: string, hint?: string) => FailureWords);
 }[] = [
 	{
 		test: /\b529\b|overloaded/i,
@@ -42,7 +42,7 @@ const KNOWN: {
 	},
 	{
 		test: /not logged in|auth(entication)?[ _]required|unauthori[sz]ed|\b401\b|\b403\b|api key|sign(ed)? in/i,
-		words: (agent) => notSignedIn(agent),
+		words: (agent, hint) => notSignedIn(agent, hint),
 	},
 	{
 		test: /timed? ?out/i,
@@ -72,10 +72,14 @@ const KNOWN: {
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** A signed-out agent, the same words in the agent picker and a failed run (#831 v5-39, w7-3). */
-export function notSignedIn(agent: string): FailureWords {
+export function notSignedIn(agent: string, hint?: string): FailureWords {
+	// The agent's own sign-in command, e.g. `codex login`, when its settings name one.
+	const command = hint?.match(/`([^`]+)`/)?.[1];
 	return {
 		what: `${cap(agent)} is not signed in to its model provider.`,
-		next: "Sign in with its own CLI, then retry.",
+		next: command
+			? `Run ${command} in a terminal, then retry.`
+			: "Sign in with its own CLI, then retry.",
 		plain: true,
 	};
 }
@@ -89,11 +93,12 @@ export function failureLine(words: FailureWords): string {
 export function failureWords(
 	error: string | null | undefined,
 	agent = "the agent",
+	hint?: string,
 ): FailureWords {
 	if (!error) return { what: "No error was recorded." };
 	for (const k of KNOWN)
 		if (k.test.test(error))
-			return typeof k.words === "function" ? k.words(agent) : k.words;
+			return typeof k.words === "function" ? k.words(agent, hint) : k.words;
 	const clause = firstClause(error);
 	return { what: /[.!?]$/.test(clause) ? clause : `${clause}.` };
 }

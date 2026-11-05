@@ -83,10 +83,9 @@ export function overviewActions(t: {
 			note,
 		],
 		hint: {
-			ask: "The answer appears under Stop the impact and as a conversation in the sidebar.",
-			investigate: t.reported
-				? `Starts ${t.nextName}. You stay here; this finding stands until ${t.nextName} reports.`
-				: `Starts ${t.nextName}. You stay here; its finding lands on this page.`,
+			// The overview is for a thread with no run; the first run opens on its transcript (D19).
+			ask: "Opens the conversation; the agent answers there.",
+			investigate: `Starts ${t.nextName} and opens it.`,
 			note: "Goes on the timeline. The agent never reads it.",
 		},
 		placeholder,
@@ -229,7 +228,6 @@ export function OverviewComposer({
 				text,
 				...sent,
 				attachments: ids,
-				stay: true,
 			});
 		const report = o.report;
 		return record.investigate({
@@ -239,11 +237,9 @@ export function OverviewComposer({
 					: text || undefined,
 			...sent,
 			attachments: ids,
-			stay: true,
 		});
 	};
 
-	const hint = t.hint[current];
 	// The live run's asks open here too: the box that messages it is where it waits on you (#820).
 	const latest = o.latestRun;
 	const asks = latest.isActive
@@ -284,16 +280,6 @@ export function OverviewComposer({
 					dock={dock}
 					isPending={record.isStarting || record.isSavingNote}
 					blockedReason={agentBlocked}
-					above={
-						hint ? (
-							<p
-								className="px-3 text-meta text-text-3"
-								data-testid="composer-hint"
-							>
-								{hint}
-							</p>
-						) : null
-					}
 				/>
 			</div>
 		</div>

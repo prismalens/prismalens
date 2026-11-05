@@ -254,9 +254,114 @@ describe("a step you denied (#673 w8-18)", () => {
 				/>,
 			);
 		});
+		const folded = container.querySelector('[data-testid="tools-expand"]');
+		expect(folded?.textContent).toContain("1 denied by you");
+		expect(folded?.textContent).not.toContain("failed");
+		await act(async () => {
+			(folded as HTMLButtonElement).click();
+		});
 		expect(
 			container.querySelector('[data-testid="step-verb"]')?.textContent,
 		).toBe("Denied by you");
+	});
+});
+
+describe("a tool group", () => {
+	it("folds to one quiet line that opens to its steps", async () => {
+		const step = {
+			n: 1,
+			callId: "c1",
+			title: "git log",
+			command: "git log --oneline -5",
+			kind: "command" as const,
+			verb: "Ran",
+			ok: true,
+			unfinished: false,
+			output: "",
+			at: "2026-10-13T04:30:00Z",
+			took: 1,
+			input: null,
+		};
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[
+						{
+							kind: "tools",
+							key: "t",
+							count: 1,
+							summary: "ran 1 command",
+							failed: 0,
+							running: 0,
+							rows: [],
+							callIds: ["c1"],
+						},
+					]}
+					incidentId="inc-1"
+					agent="Claude Code"
+					steps={{
+						all: [step],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [],
+					}}
+				/>,
+			);
+		});
+		const folded = container.querySelector('[data-testid="tools-expand"]');
+		expect(folded?.textContent).toBe("Ran 1 command");
+		expect(container.querySelector('[data-testid="step-verb"]')).toBeNull();
+		await act(async () => {
+			(folded as HTMLButtonElement).click();
+		});
+		expect(container.querySelector('[data-testid="step-verb"]')).not.toBeNull();
+	});
+});
+
+describe("the report card", () => {
+	it("reads the stop, says no lasting fix yet and offers to ask for one", async () => {
+		const asked = vi.fn();
+		window.addEventListener("pl:compose", asked);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[
+						{
+							kind: "end",
+							key: "end",
+							tone: "done",
+							text: "Report ready",
+							report: true,
+						},
+					]}
+					incidentId={null}
+					agent="Claude Code"
+					report={{
+						title: "Run 1 report",
+						summary: "d37d888 dropped the index.",
+						stop: { title: "Revert d37d888" },
+						lasting: null,
+					}}
+				/>,
+			);
+		});
+		expect(
+			container.querySelector('[data-testid="report-stop"]')?.textContent,
+		).toContain("Revert d37d888");
+		expect(
+			container.querySelector('[data-testid="report-lasting"]')?.textContent,
+		).toContain("None named yet.");
+		await act(async () => {
+			(
+				container.querySelector(
+					'[data-testid="report-ask-lasting"]',
+				) as HTMLButtonElement
+			).click();
+		});
+		window.removeEventListener("pl:compose", asked);
+		expect(asked).toHaveBeenCalledTimes(1);
 	});
 });
 

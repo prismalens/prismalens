@@ -29,7 +29,7 @@ describe("handoff-line helpers", () => {
 			name: "Run 1",
 		});
 		expect(resContinues.where).toBe(
-			"Continues in Claude's own session and ends in a report on the overview.",
+			"Answers here, in the same Claude session; ends in a report here.",
 		);
 		expect(resContinues.what).toBeNull();
 		expect(resContinues.problem).toBeNull();
@@ -40,7 +40,7 @@ describe("handoff-line helpers", () => {
 			reported: true,
 			name: "Run 1",
 		});
-		expect(resNotContinues.where).toBe("Continues in Claude's own session.");
+		expect(resNotContinues.where).toBe("Answers here, in the same Claude session.");
 		expect(resNotContinues.what).toBeNull();
 		expect(resNotContinues.problem).toBeNull();
 	});

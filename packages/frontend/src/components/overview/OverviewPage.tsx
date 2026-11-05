@@ -9,10 +9,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useResumeInvestigation } from "@/lib/api/hooks";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { resumeFailed } from "@/lib/restart";
+import { triggerOf } from "@/lib/trigger";
 import { ChangesCard } from "./ChangesCard";
-import type { NextActionId } from "./fixes";
 import { ImpactCard } from "./ImpactCard";
 import { LatestRunStrip } from "./LatestRunStrip";
+import { nextHandler } from "./next-action";
 import {
 	type OverviewAction,
 	OverviewComposer,
@@ -51,57 +52,45 @@ export function OverviewPage() {
 	const box = useBoxChoice(o.record);
 	const resume = useResumeInvestigation();
 	const start = () =>
-		void o.record
-			.investigate({ ...box.sent, stay: true })
-			.catch((error: unknown) =>
-				toast({
-					title: "The run did not start",
-					description: getErrorMessage(error),
-					variant: "destructive",
-				}),
-			);
+		void o.record.investigate({ ...box.sent }).catch((error: unknown) =>
+			toast({
+				title: "The run did not start",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			}),
+		);
 
-	const onNext = (id: NextActionId) => {
-		const opt = o.current;
-		switch (id) {
-			case "copy":
-				if (opt) void o.copy(opt, commandRef.current);
-				return;
-			case "applied":
-				if (opt) o.apply(opt);
-				return;
-			case "check":
-				if (opt) void o.check(opt);
-				return;
-			case "next-option":
-				o.nextOption();
-				return;
-			case "resolve":
-				o.record.openClose();
-				return;
-			case "resume":
-				// The run a restart cut off, by its own id; Retry would start a new one (#1010).
-				if (o.latest)
-					resume.mutate({ id: o.latest.id }, { onError: resumeFailed(toast) });
-				return;
-			case "retry":
-			case "investigate":
-				// An agent the box can't run says why there instead of failing a start.
-				if (!box.harness) return;
-				if (unreadyReason(box.harness)) focusBox("investigate");
-				else start();
-				return;
-			case "watch":
-				if (o.live)
-					void navigate({
-						to: "/incidents/$id/conversation",
-						params: { id: incident.id },
-						search: { investigation: o.live.id },
-					});
-				return;
-		}
-	};
+	const onNext = nextHandler(o, {
+		commandRef,
+		// The run a restart cut off, by its own id; Retry would start a new one (#1010).
+		resume: () => {
+			if (o.latest)
+				resume.mutate({ id: o.latest.id }, { onError: resumeFailed(toast) });
+		},
+		investigate: () => {
+			// An agent the box can't run says why there instead of failing a start.
+			if (!box.harness) return;
+			if (unreadyReason(box.harness)) focusBox("investigate");
+			else start();
+		},
+		ask: () => focusBox("ask"),
+		services: () => void navigate({ to: "/services", search: { add: "1" } }),
+		watch: () => {
+			if (o.live)
+				void navigate({
+					to: "/incidents/$id/conversation",
+					params: { id: incident.id },
+					search: { investigation: o.live.id },
+				});
+		},
+	});
 
+	const event = triggerOf(incident).kind === "webhook";
+	// Cards are earned: no run, alert or note means nothing to put in one.
+	const blank =
+		!o.latest &&
+		(incident.alerts ?? []).length === 0 &&
+		!(o.record.timeline ?? []).some((e) => e.type === "comment");
 	return (
 		<div
 			className="flex h-full min-h-0 flex-col"
@@ -115,21 +104,39 @@ export function OverviewPage() {
 				onReopen={o.record.openReopen}
 				onEditCause={o.record.openEditCause}
 			/>
-			<LatestRunStrip o={o} />
-			{/* A card row never shrinks below its header and foot; past that the grid scrolls, under 768 px in one column (#673 w5-19). */}
-			<main
-				className="grid min-h-0 flex-1 auto-rows-[280px] grid-cols-1 grid-rows-[auto] gap-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-1 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:grid-rows-[auto_minmax(120px,1fr)_minmax(120px,1fr)]"
-				data-testid="overview-grid"
-			>
-				<div className="min-w-0 md:col-span-2">
-					<SituationCard o={o} onAction={onNext} canStart={!!box.harness} />
-				</div>
-				<ImpactCard view={o.impact} />
-				<StopImpactCard o={o} commandRef={commandRef} />
-				<WhyCard o={o} onInvestigate={() => focusBox("investigate")} />
-				<ChangesCard o={o} />
-			</main>
-			<OverviewComposer o={o} action={action} onAction={setAction} />
+			{blank ? (
+				<main
+					className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto pb-[12vh]"
+					data-testid="overview-blank"
+				>
+					<h2 className="mb-4 text-center text-display text-text-1">
+						What do you know so far?
+					</h2>
+					<OverviewComposer o={o} action={action} onAction={setAction} />
+				</main>
+			) : (
+				<>
+					<LatestRunStrip o={o} />
+					{/* A card row never shrinks below its header and foot; past that the grid scrolls, under 768 px in one column (#673 w5-19). */}
+					<main
+						className="grid min-h-0 flex-1 auto-rows-[280px] grid-cols-1 grid-rows-[auto] gap-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-1 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:grid-rows-[auto_minmax(120px,1fr)_minmax(120px,1fr)]"
+						data-testid="overview-grid"
+					>
+						<div className="min-w-0 md:col-span-2">
+							<SituationCard o={o} onAction={onNext} canStart={!!box.harness} />
+						</div>
+						{/* A webhook event has no impact to measure, only what changed around it. */}
+						{!event && <ImpactCard view={o.impact} />}
+						{/* Before any run, Why and Stop the impact only repeat "no run yet" (cp7). */}
+						{o.latest && <StopImpactCard o={o} commandRef={commandRef} />}
+						{o.latest && (
+							<WhyCard o={o} onInvestigate={() => focusBox("investigate")} />
+						)}
+						<ChangesCard o={o} wide={event && !o.latest} />
+					</main>
+					<OverviewComposer o={o} action={action} onAction={setAction} />
+				</>
+			)}
 		</div>
 	);
 }

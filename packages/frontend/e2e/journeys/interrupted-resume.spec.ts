@@ -13,11 +13,17 @@ import { fireIncident, LIVE, visit, waitForRun } from "../steps/product";
 /** This stack can't restart mid-test, so the failed run reads as one a restart left for you (the API scenarios make the real one, #981). */
 async function readAsInterrupted(page: Page, runId: string) {
 	await page.route(
-		(url) => url.pathname.startsWith("/api/incidents"),
+		(url) =>
+			url.pathname.startsWith("/api/incidents") ||
+			url.pathname.startsWith("/api/investigations"),
 		async (route) => {
 			if (route.request().method() !== "GET") return route.fallback();
 			const res = await route.fetch();
 			const body = await res.json().catch(() => null);
+			if (body?.id === runId) {
+				body.endReason = "interrupted";
+				body.error = "Not resumed: Resume after a restart is off.";
+			}
 			const incidents = Array.isArray(body?.data) ? body.data : [body];
 			for (const i of incidents)
 				for (const r of i?.investigations ?? [])
@@ -77,16 +83,18 @@ test("Resume on an interrupted run keeps its id, from the inbox and the overview
 		.toEqual([`/api/investigations/${run.id}/resume`]);
 
 	await visit(page, `/incidents/${made.id}`);
-	await expect(page.getByTestId("latest-run-strip")).toContainText(
-		"interrupted",
-	);
+	await expect(page.getByTestId("run-strip-label")).toHaveText(/interrupted$/, {
+		timeout: 15_000,
+	});
 	await expect(page.getByTestId("situation-brief")).toContainText(
 		"was interrupted when PrismaLens restarted",
 	);
+	await page.getByTestId("details-toggle").click();
+	await page.getByTestId("run-details-tab-incident").click();
 	await expect(page.getByTestId("why-failed")).toContainText(
 		"was interrupted when PrismaLens restarted",
 	);
-	await page.getByTestId("next-resume").click();
+	await page.getByTestId("run-strip-resume").click();
 	await expect
 		.poll(() => resumed)
 		.toEqual([

@@ -6,6 +6,7 @@ import { Square } from "lucide-react";
 import { RunDot } from "@/components/incidents/RunTree";
 import type { RunRef } from "@/components/incidents/record-context";
 import { Hint } from "@/components/shared/Hint";
+import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -41,6 +42,8 @@ export function RunStrip({
 	stopping,
 	onResume,
 	resuming,
+	onRetry,
+	retrying,
 	incidentId,
 	runs,
 	current,
@@ -63,6 +66,9 @@ export function RunStrip({
 	/** An interrupted run PrismaLens did not resume (#981). */
 	onResume?: () => void;
 	resuming?: boolean;
+	/** A failed or stopped investigation: a new run, as the board's Retry run. */
+	onRetry?: () => void;
+	retrying?: boolean;
 	incidentId: string;
 	runs: RunRef[];
 	current: string | null;
@@ -72,7 +78,9 @@ export function RunStrip({
 			className="relative flex h-9 min-w-0 shrink-0 items-center gap-2 px-4 whitespace-nowrap md:gap-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline"
 			data-testid="run-strip"
 		>
-			{state ? (
+			{(state === "starting" || state === "working") && !waiting ? (
+				<Ring />
+			) : state ? (
 				<RunDot state={state} waiting={waiting} className="size-[7px]" />
 			) : (
 				<span
@@ -117,7 +125,8 @@ export function RunStrip({
 			>
 				{detail}
 			</span>
-			{model && <Chip chip={model} testId="run-strip-model" />}
+			{/* The box names the model; the strip speaks only when something is off (cp8). */}
+			{model?.warn && <Chip chip={model} testId="run-strip-model" />}
 			{code && <Chip chip={code} testId="run-strip-code" />}
 			{tools && <Chip chip={tools} testId="run-strip-tools" />}
 			{onStop && (
@@ -143,6 +152,17 @@ export function RunStrip({
 					Resume
 				</Button>
 			)}
+			{onRetry && (
+				<Button
+					variant="primary"
+					className="h-[26px] shrink-0"
+					disabled={retrying}
+					onClick={onRetry}
+					data-testid="run-strip-retry"
+				>
+					{retrying ? "Starting" : "Retry run"}
+				</Button>
+			)}
 			<RunsMenu incidentId={incidentId} runs={runs} current={current} />
 		</div>
 	);
@@ -155,7 +175,7 @@ function Chip({ chip, testId }: { chip: StripChip; testId: string }) {
 				// biome-ignore lint/a11y/noNoninteractiveTabindex: the chip's full source is in its hint, which keyboard users reach by focus.
 				tabIndex={0}
 				className={cn(
-					"h-[22px] max-w-64 shrink-0 truncate rounded-[4px] bg-surface-2 px-2 text-meta leading-[22px] max-md:hidden",
+					"h-[22px] max-w-64 shrink-0 truncate rounded-[4px] bg-surface-2 px-2 text-meta leading-[22px] max-lg:hidden",
 					chip.warn ? "text-warn" : "text-text-3",
 				)}
 				data-testid={testId}

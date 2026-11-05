@@ -43,9 +43,9 @@ async function openInbox(page: Page, width: number) {
 // The sidebar draws before the layout's key listener is attached; the page's heading is after it.
 async function inboxLoaded(page: Page) {
 	await expect(
-		page.getByRole("heading", { name: "Incidents", level: 1 }),
+		page.getByRole("heading", { name: "Operations", level: 1 }),
 	).toBeVisible({ timeout: 15_000 });
-	await expect(page.getByTestId("nav-terminal")).toBeVisible();
+	await expect(page.getByTestId("nav-search")).toBeVisible();
 }
 
 async function openRegistryChip(page: Page) {
@@ -60,7 +60,7 @@ async function openRegistryChip(page: Page) {
 }
 
 test.describe("Terminal panel (#931)", () => {
-	test("Ctrl+` and the sidebar's Terminal door show and hide it, and it stays open across a reload", async ({
+	test("Ctrl+`, the sidebar's Terminal button and the palette show and hide it, and it stays open across a reload", async ({
 		page,
 	}) => {
 		await openInbox(page, 1440);
@@ -76,6 +76,11 @@ test.describe("Terminal panel (#931)", () => {
 		await door.click();
 		await expect(panel.getByTestId("terminal-panel")).toBeVisible();
 		await expect(door).toHaveAttribute("aria-expanded", "true");
+		await door.click();
+		await expect(panel).toHaveCount(0);
+		await page.getByTestId("nav-search").click();
+		await page.getByTestId("search-terminal").click();
+		await expect(panel.getByTestId("terminal-panel")).toBeVisible();
 
 		await page.reload();
 		await inboxLoaded(page);
@@ -143,6 +148,8 @@ test.describe("Terminal panel (#931)", () => {
 		await asHost(page);
 		await visit(page, `/incidents/${inc.id}/conversation`);
 		await openWork(page);
+		if (await page.getByTestId("tools-expand").first().isVisible())
+			await page.getByTestId("tools-expand").first().click();
 		const step = page.getByTestId("step").first();
 		await expect(step.getByTestId("run-in-terminal")).toHaveCount(0);
 		await step.getByTestId("step-toggle").click();

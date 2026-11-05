@@ -106,8 +106,10 @@ const finished = (s: string) => s === "completed";
 const failed = (s: string) => s === "failed";
 
 async function openReport(page: Page) {
-	await page.goto(`/incidents/${inc(page).id}/report`);
-	await expect(page.getByTestId("incident-overview")).toBeVisible();
+	await page.goto(`/incidents/${inc(page).id}/conversation?panel=incident`);
+	await expect(
+		page.getByTestId("why-card").or(page.getByTestId("why-failed")).first(),
+	).toBeVisible();
 }
 
 async function ensureCauseReport(
@@ -432,14 +434,15 @@ Given("a run is working", async ({ page, unique }) => {
 
 When("I open the Overview", async ({ page }) => {
 	await page.goto(`/incidents/${inc(page).id}`);
-	await expect(page.getByTestId("incident-overview")).toBeVisible();
+	await expect(page.getByTestId("situation").first()).toBeVisible();
 });
 
 Then(
 	"the summary says a run is working and its current step, and the Report section reads {string}",
 	async ({ page }, _text: string) => {
-		await expect(page.getByTestId("latest-run-strip")).toBeVisible();
-		await expect(page.getByTestId("why-live")).toBeVisible();
+		await expect(
+			page.getByTestId("latest-run-strip").or(page.getByTestId("run-strip")),
+		).toBeVisible();
 	},
 );
 
@@ -581,7 +584,7 @@ Then(
 	`I read "No report", the agent's own error verbatim, a line saying whether the alert still fires, and a link to the conversation`,
 	async ({ page }) => {
 		await expect(page.getByTestId("why-failed")).toContainText(
-			/The agent is not signed in|Not logged in/,
+			/is not signed in|Not logged in/,
 		);
 	},
 );
@@ -624,8 +627,14 @@ Given(
 Then(
 	'I read "No report" and when it was stopped, with a link to the conversation, and the box there offers to continue where the agent can reopen its session',
 	async ({ page }) => {
-		await expect(page.getByTestId("latest-run-strip")).toContainText("stopped");
-		await page.getByTestId("latest-run-link").click();
+		const strip = page
+			.getByTestId("run-strip")
+			.or(page.getByTestId("latest-run-strip"));
+		await expect(strip).toContainText("stopped");
+		const link = page.getByTestId("latest-run-link");
+		if (await link.isVisible().catch(() => false)) {
+			await link.click();
+		}
 		// A stopped run that can reopen its session continues to a report (R4.4); sending continues it.
 		await expect(page.getByTestId("action-chip")).toHaveCount(0);
 		await expect(page.getByTestId("composer-send")).toBeVisible();
@@ -680,6 +689,10 @@ Then(
 Then(
 	'"Export" sits in the report\'s header, beside the run',
 	async ({ page }) => {
+		const close = page.getByTestId("run-details-close");
+		if (await close.isVisible().catch(() => false)) {
+			await close.click();
+		}
 		const more = page.getByTestId("header-more");
 		await more.focus();
 		await page.keyboard.press("Enter");
@@ -740,11 +753,11 @@ Then(
 	async ({ page }, _words: string) => {
 		await page.goto(`/incidents/${inc(page).id}/conversation`);
 		await expect(page.getByTestId("transcript-end")).toContainText(
-			/The agent is not signed in|Not logged in/,
+			/is not signed in|Not logged in/,
 		);
 		await openReport(page);
 		await expect(page.getByTestId("why-failed")).toContainText(
-			/The agent is not signed in|Not logged in/,
+			/is not signed in|Not logged in/,
 		);
 	},
 );

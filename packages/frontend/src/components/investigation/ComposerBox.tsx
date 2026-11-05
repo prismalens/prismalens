@@ -278,7 +278,7 @@ export function ComposerBox({
 			{above}
 			<div
 				className={cn(
-					"overflow-hidden rounded-[10px] bg-surface-2",
+					"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
 					floating && "shadow-float",
 				)}
 			>
@@ -348,11 +348,12 @@ export function ComposerBox({
 							data-testid="composer-input"
 						/>
 					</PromptInputBody>
-					<PromptInputFooter className="-ml-1.5 max-sm:flex-wrap">
-						{/* Narrow, the chips wrap: a hidden-scrollbar row clipped a chip's label (#673 walk 4, QA-06). */}
+					<PromptInputFooter className="-ml-1.5">
+						{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (cp6; #673 QA-06). */}
 						<PromptInputTools
-							className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1"
+							className="min-w-0 flex-1 gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>*]:shrink-0 sm:flex-wrap sm:gap-y-1"
 							data-testid="composer-chips"
+							data-scroll-x
 						>
 							<ActionChip
 								actions={actions}

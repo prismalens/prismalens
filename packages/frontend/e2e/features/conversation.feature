@@ -12,7 +12,7 @@ Feature: The conversation and the box
 
     Scenario: Starting a run from the box
       When I type "Start with the 14:02 deploy" in the draft's box and press "Investigate"
-      Then the status line reads "Reading worker/consumer.py to see how the queue is drained." and the chips name the agent and model
+      Then the status line shows what the agent is doing and the chips name the agent and model
       And the box reads "Message the agent" with one Stop button
 
   Rule: Conversation
@@ -45,7 +45,7 @@ Feature: The conversation and the box
       Then the status line reads "Stopped by you" and I am still on the Conversation
       Given the box has no focus
       When I press Escape
-      Then I am on the inbox
+      Then I am on the thread list
 
     Scenario: The conversation is the whole record, with no event log
       Then the Conversation header shows no "Transcript / Ledger" control

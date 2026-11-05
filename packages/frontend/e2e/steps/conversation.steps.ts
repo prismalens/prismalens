@@ -194,7 +194,9 @@ Then(
 		if (sentence && sentence !== "Working") {
 			await expect(strip(page)).toHaveText(sentence);
 		} else {
-			await expect(strip(page)).toHaveText(
+			// While working the strip keeps time; what the agent is doing is the transcript's.
+			await expect(strip(page)).toHaveText(/^(\d+s|\d+m \d{2}s|Working)$/);
+			await expect(page.getByTestId("transcript")).toContainText(
 				"Reading worker/consumer.py to see how the queue is drained.",
 			);
 		}
@@ -234,6 +236,10 @@ Given(
 );
 
 When("I expand {string}", async ({ page }, _label: string) => {
+	const expand = page.getByTestId("tools-expand");
+	if (await expand.isVisible().catch(() => false)) {
+		await expand.click();
+	}
 	await expect(page.getByTestId("step-toggle").first()).toBeVisible();
 	if (await page.getByTestId("steps-unfold").isVisible()) {
 		await page.getByTestId("steps-unfold").click();
@@ -439,7 +445,9 @@ Then(
 			.or(page.getByTestId("transcript-end"));
 		await expect(end).toBeVisible();
 		await expect(
-			end.getByRole("link", { name: /See it on the overview|Read the report/ }),
+			end.getByRole("link", {
+				name: /See it on the overview|Read the report|Impact, evidence and changes/,
+			}),
 		).toBeVisible();
 		await expect(page.getByRole("link", { name: "Event log" })).toHaveCount(0);
 	},
@@ -547,7 +555,7 @@ When("the run finishes", async ({ page }) => {
 });
 
 Then("the Report tab shows a report", async ({ page }) => {
-	await visit(page, `/incidents/${inc(page).id}`);
+	await visit(page, `/incidents/${inc(page).id}/conversation?panel=incident`);
 	await expect(page.getByTestId("why-cause")).toBeVisible();
 });
 
@@ -845,7 +853,7 @@ Then(
 				.getByTestId("transcript-prose")
 				.filter({ hasText: "Reading what you attached: app.log." }),
 		).toBeVisible();
-		await visit(page, `/incidents/${inc(page).id}`);
+		await visit(page, `/incidents/${inc(page).id}/conversation?panel=incident`);
 		await expect(page.getByTestId("why-card")).toContainText(
 			"attachment: app.log",
 		);
@@ -973,7 +981,7 @@ Given("an answer to a question is running on it", async ({ page }) => {
 Then(
 	"the Report tab shows the report and the Overview's report pool shows it, the answer working under it",
 	async ({ page }) => {
-		await visit(page, `/incidents/${inc(page).id}`);
+		await visit(page, `/incidents/${inc(page).id}/conversation?panel=incident`);
 		await expect(page.getByTestId("why-card")).toBeVisible();
 		await expect(page.getByTestId("why-tag")).toHaveText("Likely");
 		await expect(page.getByTestId("why-live")).toBeVisible();
@@ -1043,7 +1051,7 @@ Then(
 		await expect(page.getByTestId("action-chip")).toHaveCount(0);
 		await expect(box(page)).toHaveAttribute("placeholder", /^Message /);
 		await expect(page.getByTestId("composer-hint")).toContainText(
-			"own session and ends in a report on the overview.",
+			/ends in a report (here|on the overview)\./,
 		);
 		await expect(page.getByTestId("composer-send")).toBeVisible();
 	},
@@ -1219,6 +1227,10 @@ When(
 Then(
 	/^(?:the )?(?:ask )?card reads "(You approved it|You denied it)"$/,
 	async ({ page }, text: string) => {
+		const expand = page.getByTestId("tools-expand");
+		if (await expand.isVisible().catch(() => false)) {
+			await expand.click();
+		}
 		const line = page.getByTestId("step-ask");
 		const expectedState = text === "You approved it" ? "approved" : "denied";
 		await expect(line).toHaveAttribute("data-state", expectedState);

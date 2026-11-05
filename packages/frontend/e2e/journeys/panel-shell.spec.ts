@@ -104,10 +104,8 @@ test.describe("Shared panel layout (#973)", () => {
 		const box = await sheet.boundingBox();
 		expect(box?.width).toBe(390);
 		expect(box?.height).toBe(844);
-		const hidden = page.locator(
-			"[aria-hidden=true]:has([data-testid=shell-frame])",
-		);
-		await expect(hidden).toHaveCount(1);
+		const header = page.getByTestId("incident-header");
+		await expect(header).toHaveAttribute("aria-hidden", "true");
 		await lastLineReachable(page);
 		// Tab never leaves the sheet (#974 OBJ-014).
 		for (let i = 0; i < 25; i++) {
@@ -118,7 +116,7 @@ test.describe("Shared panel layout (#973)", () => {
 		}
 		await page.getByTestId("run-details-close").click();
 		await expect(sheet).toHaveCount(0);
-		await expect(hidden).toHaveCount(0);
+		await expect(header).not.toHaveAttribute("aria-hidden", "true");
 	});
 
 	for (const path of ["/incidents", "/alerts", "/services", "/settings"]) {

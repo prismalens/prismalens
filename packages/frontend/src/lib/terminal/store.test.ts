@@ -46,6 +46,17 @@ describe("terminal store", () => {
 		expect(store.get().tabs[1].draft).toBe("pwd");
 	});
 
+	it("keeps a line already waiting and stages the new command in its own shell", () => {
+		const first = store.newTab();
+		store.stage("kubectl get pods");
+		store.stage("git log -5");
+		expect(store.get().tabs.find((t) => t.id === first)?.draft).toBe(
+			"kubectl get pods",
+		);
+		expect(store.get().tabs).toHaveLength(2);
+		expect(store.get().tabs[1].draft).toBe("git log -5");
+	});
+
 	it("never stages text with control characters", () => {
 		store.stage("ls\u000f");
 		expect(store.get().tabs).toHaveLength(0);

@@ -149,7 +149,9 @@ export type NextActionId =
 	| "retry"
 	| "resume"
 	| "investigate"
-	| "watch";
+	| "ask"
+	| "watch"
+	| "services";
 
 /** A Next action that starts a run, so it waits for the box's agent to load. */
 export function startsRun(id: NextActionId): boolean {
@@ -202,8 +204,9 @@ export function failedStrip(
 	name: string,
 	error: string | null | undefined,
 	agent: string | undefined,
+	hint?: string,
 ): { name: string; reason: string; next?: string } {
-	const words = failureWords(error, agent ?? "the agent");
+	const words = failureWords(error, agent ?? "the agent", hint);
 	return words.plain && words.next
 		? { name, reason: words.what, next: words.next }
 		: { name, reason: words.what };
@@ -215,6 +218,7 @@ export function endedRun(
 	state: RunState | null,
 	name: string,
 	agent: string | undefined,
+	hint?: string,
 ): {
 	failed: { name: string; reason: string; next?: string } | null;
 	interrupted: { name: string; reason: string | null } | null;
@@ -225,7 +229,10 @@ export function endedRun(
 			failed: null,
 			interrupted: { name, reason: notResumedReason(latest.error) },
 		};
-	return { failed: failedStrip(name, latest.error, agent), interrupted: null };
+	return {
+		failed: failedStrip(name, latest.error, agent, hint),
+		interrupted: null,
+	};
 }
 
 /**
@@ -233,6 +240,8 @@ export function endedRun(
  * from the top fix option's stage, else the run's state.
  */
 export function nextStrip(input: {
+	/** The report's lasting fix, named in the strip rather than pointed at (cp7). */
+	lastingFix?: string | null;
 	/** The operator resolved it (stored `closed`); Alerts cleared is `cleared`, not this. */
 	ended: boolean;
 	/** The cause you recorded at Resolve, shown once it ended (#673 w8-21). */
@@ -246,6 +255,8 @@ export function nextStrip(input: {
 	/** Stored `resolved`: the source ended it; it reads Alerts cleared before any fix step. */
 	alertsCleared?: boolean;
 	runs: number;
+	/** No service is attached, so a run has no code to read (cp12). */
+	noService?: boolean;
 	/** `waiting`: its agent waits on your Approve or Deny (#673 w5-14). */
 	live: { name: string; waiting?: boolean } | null;
 	/** `next`: what to do first, when the failure has a known fix (#831 v5-39). */
@@ -434,6 +445,13 @@ export function nextStrip(input: {
 				: `Retry the investigation. ${input.failed.name} stopped before a finding: ${lowerFirst(input.failed.reason)}`,
 			primary: { id: "retry", label: "Retry run" },
 		};
+	if (input.runs === 0 && input.noService)
+		return {
+			tone: "accent",
+			text: "No run yet, and no service is attached, so the agent has no code to read. Investigate from the event alone, or add the service it belongs to.",
+			primary: { id: "investigate", label: "Investigate" },
+			secondary: { id: "services", label: "Add a service" },
+		};
 	if (input.runs === 0)
 		return {
 			tone: "accent",
@@ -443,7 +461,12 @@ export function nextStrip(input: {
 	if (input.reported)
 		return {
 			tone: "plain",
-			text: "The agent found nothing to undo or switch off right away. The cause and the lasting fix are under Why.",
+			text: input.lastingFix
+				? `Lasting fix: ${input.lastingFix.replace(/\.$/, "")}.`
+				: "The report names a cause but no lasting fix yet.",
+			...(input.lastingFix
+				? {}
+				: { primary: { id: "ask" as const, label: "Ask for a lasting fix" } }),
 		};
 	return {
 		tone: "plain",

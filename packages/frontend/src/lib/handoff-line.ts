@@ -22,10 +22,10 @@ export function handoffHint(
 	const problem = p.preflight
 		? `${p.preflight.problem} ${p.preflight.fix}`
 		: null;
-	const report = o.continues ? " and ends in a report on the overview" : "";
+	const report = o.continues ? " and ends in a report here" : "";
 	if (p.route === "load")
 		return {
-			where: `Continues in ${o.agent}'s own session${report}.`,
+			where: `Answers here, in the same ${o.agent} session${o.continues ? "; ends in a report here" : ""}.`,
 			what: null,
 			problem,
 		};
