@@ -270,6 +270,11 @@ test.describe("#1020 S2 — watch a thread work", () => {
 		});
 
 		// The spine: each step drawn by what it is; a PrismaLens tool says what came back.
+		await expect(page.getByTestId("transcript-tools")).toHaveAttribute(
+			"data-folded",
+			"",
+		);
+		await page.getByTestId("tools-expand").first().click();
 		await expect(
 			page.locator('[data-testid="step"][data-node="command"]'),
 		).toBeVisible();
@@ -363,6 +368,11 @@ test.describe("#1020 S2 — watch a thread work", () => {
 			"answered",
 		);
 		await fold.click();
+		await expect(page.getByTestId("transcript-tools")).toHaveAttribute(
+			"data-folded",
+			"",
+		);
+		await page.getByTestId("tools-expand").first().click();
 		await expect(page.getByTestId("step")).toHaveCount(3);
 
 		await page.getByTestId("status-box-toggle").click();
