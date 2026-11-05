@@ -21,19 +21,11 @@ on:
       - reopened
       - edited
       - synchronize
-  # Merge-queue support (#403). A required check must report on the queue's
-  # speculative merge commit or the queue can never merge anything. There is no
-  # PR title to validate in a `merge_group` event — the title was already
-  # validated (and is immutable to the queue) on the pull_request_target events
-  # above, and a PR with a red title check cannot enter the queue in the first
-  # place — so the queue leg passes by construction rather than re-checking.
-  merge_group:
 
 permissions:
   pull-requests: read
 
 # Only the newest event per PR matters: a queued run for an old head is dead weight (#1052).
-# A merge_group run has its own group.
 concurrency:
   group: pr-title-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true

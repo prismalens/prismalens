@@ -20,12 +20,6 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Merge-queue support (#403): the queue builds a speculative merge of the
-  # queued PR(s) onto main and requires `CI gate` to pass on THAT commit, which
-  # is what lets the ruleset drop "branch must be up to date" without letting
-  # two individually-green PRs break main together. Every job in this file is
-  # event-agnostic, so no job-level changes are needed — the trigger is enough.
-  merge_group:
   # Nightly on main: the release-only proofs a PR skips, and the npm registry's upgrade chain (#1052).
   schedule:
     - cron: "47 3 * * *"
@@ -635,7 +629,7 @@ jobs:
   # guards. All of it was deleted with the `review-evidence` gate in #415, so the
   # directory is gone and there is nothing left for this job to run.
 
-  # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it and the merge queue runs it).
+  # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it).
   e2e:
     name: E2E
     needs: build

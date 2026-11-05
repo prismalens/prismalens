@@ -9,8 +9,8 @@ import { plan } from "./ci-plan.mjs";
 const pr = (/** @type {Parameters<typeof plan>[0]} */ over) =>
 	plan({ event: "pull_request", files: [], ...over });
 
-test("main, the nightly and the merge queue run everything", () => {
-	for (const event of ["push", "schedule", "merge_group"]) {
+test("main and the nightly run everything", () => {
+	for (const event of ["push", "schedule"]) {
 		const p = plan({ event, files: ["README.md"] });
 		assert.deepEqual([p.skip, p.full, p.agents], [false, true, true], event);
 	}

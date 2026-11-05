@@ -6,7 +6,7 @@
 //   skip    "true": the PR head tree already passed `CI`, or the PR changes only docs.
 //   full    "true": the release-only proofs (macOS and Windows side checks, systemd service) run.
 //   agents  "true": the five agent qualification legs run.
-// Anything that is not a pull request (main, the nightly, the merge queue) plans everything.
+// Anything that is not a pull request (main, the nightly) plans everything.
 // ci.yml's `CI gate` reads these three and lets exactly the matching jobs be skipped.
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
