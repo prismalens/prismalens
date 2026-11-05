@@ -136,6 +136,14 @@ function outcomeOf(row: { status: string; endReason: string | null }) {
 		: ("failed" as const);
 }
 
+/** A thread with no children and no parent has nobody to message, wait on or stop. */
+const NO_TREE = () =>
+	fail(
+		"invalid_input",
+		"This thread is not in a tree yet: it has started no threads and none started it.",
+		"Start a child with thread_start first, or do the work here.",
+	);
+
 const cap = (text: string, n = THREAD_MESSAGE_CHARS) =>
 	text.length > n ? `${text.slice(0, n - 1)}…` : text;
 
@@ -643,6 +651,7 @@ export class ThreadTreeService
 		const self = await this.row(callerId);
 		if (!self)
 			return fail("run_ended", "This thread is gone.", "Stop messaging.");
+		if (!self.rootId) return NO_TREE();
 		const rootId = this.rootOf(self);
 		const to = await this.resolveMember(callerId, args.to);
 		if (!to || to.id === callerId)
@@ -896,6 +905,12 @@ export class ThreadTreeService
 		const self = await this.row(callerId);
 		if (!self)
 			return fail("run_ended", "This thread is gone.", "Stop waiting.");
+		// A first start still waiting for approval is worth a wait before any tree exists.
+		if (
+			!self.rootId &&
+			!(await this.prisma.pendingAction.count({ where: { callerId } }))
+		)
+			return NO_TREE();
 		const targets: {
 			key: string;
 			targetId: string;
@@ -985,6 +1000,7 @@ export class ThreadTreeService
 		callerId: string,
 		id: string,
 	): Promise<Failure | null> {
+		if (!(await this.row(callerId))?.rootId) return NO_TREE();
 		const target = await this.resolveMember(callerId, id);
 		if (!target || !(await this.isDescendant(target, callerId)))
 			return fail(

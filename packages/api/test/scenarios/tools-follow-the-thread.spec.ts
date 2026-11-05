@@ -159,6 +159,17 @@ function inputFor(tool: string, run: Seeded) {
 			return { statement: "A bad deploy", status: "speculative" };
 		case "report_validate":
 			return { report: "{}" };
+		// Outside a tree these answer "not in a tree yet", and Ask each time with no asks seat refuses a start.
+		case "thread_start":
+			return { title: "Check the cart", role: "cart", brief: "Find why the cart fails and return the cause.", requestId: "cov-start" };
+		case "thread_send":
+			return { to: "parent", type: "fact", text: "x", requestId: "cov-send" };
+		case "thread_wait":
+			return { ids: ["parent"] };
+		case "thread_cancel":
+			return { id: "parent", reason: "coverage", requestId: "cov-cancel" };
+		case "propose_action":
+			return { change: { kind: "setting", key: "children", value: 3 }, why: "coverage" };
 		default:
 			return {};
 	}

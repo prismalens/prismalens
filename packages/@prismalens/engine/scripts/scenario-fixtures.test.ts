@@ -162,6 +162,12 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"gateway-attachment-read",
 				"gateway-incidents-similar",
 				"gateway-fixes-list",
+				"gateway-thread-start",
+				"gateway-thread-send",
+				"gateway-thread-wait",
+				"gateway-thread-cancel",
+				"gateway-thread-roster",
+				"gateway-propose-action",
 			].sort(),
 		);
 	});

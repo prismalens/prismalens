@@ -210,7 +210,7 @@ export class PendingActionsService {
 		const row = await this.prisma.pendingAction.findFirst({
 			where: { askId: closed.ask.askId },
 		});
-		if (!row || row.state !== "pending") return;
+		if (row?.state !== "pending") return;
 		const answer: AskAnswer | undefined = closed.answer;
 		const approved =
 			answer?.kind === "permission" && answer.decision === "approve";

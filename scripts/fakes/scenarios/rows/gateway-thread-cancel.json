@@ -1,0 +1,46 @@
+{
+	"row": "gateway-thread-cancel",
+	"kind": "happy",
+	"title": "Stops a child through PrismaLens's tree tool, always listed",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "thread_cancel",
+				"ok": true,
+				"outputHas": "ScenarioTreeChild"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-cancel]",
+				"toolName": "$gw:thread_cancel",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:thread_cancel",
+						"arguments": {
+							"id": "db",
+							"reason": "Replaced by a narrower thread.",
+							"requestId": "row-cancel"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-cancel]",
+				"resultContains": "ScenarioTreeChild"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

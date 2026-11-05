@@ -49,10 +49,13 @@ export const STUB_FACTS = {
 	attachmentText: "ScenarioAttachmentText",
 	similar: "ScenarioSimilarTitle",
 	fix: "ScenarioFixTitle",
+	tree: "ScenarioTreeChild",
+	proposal: "ScenarioProposal",
 } as const;
 
 const STUB_THREAD = "00000000-0000-4000-8000-0000000000c1";
 const STUB_ATTACHMENT = "00000000-0000-4000-8000-0000000000d1";
+const STUB_CHILD = "00000000-0000-4000-8000-0000000000e1";
 
 /** The API's `gatewayTools`, loaded by path: the engine's build cannot import the api package. */
 type GatewayTools = (data: unknown) => readonly HarnessTool[];
@@ -255,6 +258,66 @@ export async function startStubGateway(
 							text: async () => STUB_FACTS.attachmentText,
 						}
 					: null,
+		},
+		tree: {
+			start: async (_runId: string, input: { role: string }) => ({
+				value: {
+					status: "started",
+					childId: STUB_CHILD,
+					number: 2,
+					role: input.role,
+					link: `/threads/${STUB_CHILD}`,
+					title: STUB_FACTS.tree,
+				},
+			}),
+			send: async () => ({
+				value: {
+					status: "delivered",
+					link: `/threads/${STUB_CHILD}`,
+					note: STUB_FACTS.tree,
+				},
+			}),
+			wait: async () => ({
+				value: {
+					waiting: [
+						{ id: "db", state: "running", link: `/threads/${STUB_CHILD}` },
+					],
+					next: STUB_FACTS.tree,
+				},
+			}),
+			cancel: async () => ({
+				value: {
+					status: "stopping",
+					link: `/threads/${STUB_CHILD}`,
+					note: STUB_FACTS.tree,
+				},
+			}),
+			roster: async () => ({
+				value: {
+					self: { number: 1 },
+					members: [
+						{
+							number: 2,
+							role: "db",
+							relation: "child",
+							title: STUB_FACTS.tree,
+							state: "running",
+							link: `/threads/${STUB_CHILD}`,
+						},
+					],
+				},
+			}),
+		},
+		proposals: {
+			propose: async (_runId: string, change: unknown, why: string) => ({
+				id: STUB_FACTS.proposal,
+				threadId: "stub",
+				kind: "setting",
+				change,
+				why,
+				state: "open",
+				createdAt: "2026-01-01T00:00:00.000Z",
+			}),
 		},
 		history: {
 			similar: async () => ({
