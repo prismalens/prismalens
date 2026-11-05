@@ -484,7 +484,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("all-severity")).toBeVisible();
 	});
 
-	test("sidebar thread list: one flat Recents with a trailing mark, no nesting, View all opens every thread (D18)", async ({
+	test("sidebar thread list: one flat Recents with a trailing mark, no nesting, View all opens every thread (#1020)", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -497,7 +497,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			trigger: "never",
 		});
 
-		// Nine quiet incidents and one with a finding: Recents shows twelve, View all has them all (D18).
+		// Nine quiet incidents and one with a finding: Recents shows twelve, View all has them all (#1020).
 		const prefix = unique("TreeItem");
 		const treeIncidents: { id: string; number: number; title: string }[] = [];
 		for (let i = 0; i < 9; i++) {

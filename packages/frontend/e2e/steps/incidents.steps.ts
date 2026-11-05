@@ -38,7 +38,7 @@ Then(
 	async ({ page, unique }, name: string) => {
 		// Needs you shows five rows a group and the sidebar elides titles (#811), so narrow to it.
 		await page.getByTestId("incidents-filter").fill(unique(name));
-		// The board reads alert names as words (D18).
+		// The board reads alert names as words (#1020).
 		await expect(
 			page.getByText(readableTitle(unique(name))).first(),
 		).toBeVisible({

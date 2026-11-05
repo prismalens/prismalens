@@ -802,7 +802,7 @@ Then(
 Then(
 	/^the box still reads "(.+)" and "(.+)" after I open Alerts and come back$/,
 	async ({ page }, model, level) => {
-		// Alerts sits behind Automation (D18): two steps there, two back.
+		// Alerts sits behind Automation (#1020): two steps there, two back.
 		await page.getByTestId("nav-automation").click();
 		await page.getByTestId("automation-alerts").click();
 		await expect.poll(() => new URL(page.url()).pathname).toMatch(/\/alerts$/);

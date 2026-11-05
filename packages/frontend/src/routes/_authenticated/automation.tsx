@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/automation")({
 	component: Automation,
 });
 
-/** What starts threads without you (D18): schedules, webhooks and alert sources, before any is set up. */
+/** What starts threads without you (#1020): schedules, webhooks and alert sources, before any is set up. */
 function Automation() {
 	usePageTitle("Automation");
 	const { data } = useQuery(orpc.schedules.list.queryOptions({ input: {} }));

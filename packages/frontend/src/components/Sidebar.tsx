@@ -64,7 +64,7 @@ interface Door {
 	countLabel?: string;
 	/** A newer release is out (#717). */
 	dot?: boolean;
-	/** Only where the list is folded away: the rail and the phone strip (D18). */
+	/** Only where the list is folded away: the rail and the phone strip (#1020). */
 	narrowOnly?: boolean;
 	search?: { state: "waiting" };
 }
@@ -75,7 +75,7 @@ function useDoors(signedIn: boolean): Door[] {
 	const about = useAbout(signedIn);
 	const { incidents } = useActiveIncidents();
 	const { data: delivery } = useLastDelivery();
-	// Operations is earned: it stays once alerts have ever arrived, not only while one is open (D18, cp5).
+	// Operations is earned: it stays once alerts have ever arrived, not only while one is open (#1020).
 	const operations =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
 	const waiting = incidents.filter((i) => rowStateOf(i) === "asks").length;
@@ -439,7 +439,7 @@ function SettingsIcon({ door }: { door: Door }) {
 					)}
 				</span>
 				<span className={FULL_ONLY}>Settings</span>
-				{/* The rail names Settings as it names the doors above (cp12). */}
+				{/* The rail names Settings as it names the doors above (#1020). */}
 				<span aria-hidden className={RAIL_LABEL}>
 					Settings
 				</span>

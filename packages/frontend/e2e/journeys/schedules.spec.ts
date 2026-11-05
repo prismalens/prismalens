@@ -45,7 +45,7 @@ test.describe("#979 - schedules", () => {
 		expect(created.ok(), await created.text()).toBe(true);
 		const { id } = (await created.json()) as { id: string };
 
-		// Schedules live under Automation (#1020, D18).
+		// Schedules live under Automation (#1020).
 		await page.goto("/incidents");
 		await page.getByTestId("sidebar").getByTestId("nav-automation").click();
 		await expect(page).toHaveURL(/\/automation$/);

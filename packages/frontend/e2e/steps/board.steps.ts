@@ -1137,7 +1137,7 @@ Then(
 Then(
 	"the new incident's Overview reads {string} as {string}",
 	async ({ page }, term: string, value: string) => {
-		// With no run the overview holds the impact; with one it is the run page's Incident tab (D19).
+		// With no run the overview holds the impact; with one it is the run page's Incident tab (#1020).
 		await visit(page, `/incidents/${w(page).refire?.id}`);
 		await expect(page.getByTestId("situation").first()).toBeVisible();
 		if (!(await page.getByTestId("incident-overview").isVisible())) {

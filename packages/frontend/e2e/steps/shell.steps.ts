@@ -124,7 +124,7 @@ Then(
 	"the sidebar shows Threads, Automation, Services, Operations and Settings with Operations current",
 	async ({ page }) => {
 		const sidebar = page.getByTestId("sidebar");
-		// Operations keeps the test id `incidents`: it is the board at /incidents (D18).
+		// Operations keeps the test id `incidents`: it is the board at /incidents (#1020).
 		for (const door of [
 			"threads",
 			"automation",
@@ -143,7 +143,7 @@ Then(
 
 Then("the sidebar lists INC-1", async ({ page }) => {
 	const incident = world(page).incident;
-	// One flat list of threads; a row is found by where it goes (D18).
+	// One flat list of threads; a row is found by where it goes (#1020).
 	await expect(
 		page
 			.getByTestId("sidebar")
@@ -153,7 +153,7 @@ Then("the sidebar lists INC-1", async ({ page }) => {
 });
 
 When("I open Alerts", async ({ page }) => {
-	// Alerts sits behind Automation (D18).
+	// Alerts sits behind Automation (#1020).
 	await page.getByTestId("sidebar").getByTestId("nav-automation").click();
 	await page.getByTestId("automation-alerts").click();
 	await expect(page).toHaveURL(/\/alerts$/);
@@ -172,7 +172,7 @@ Then(
 			"aria-current",
 			"page",
 		);
-		// One list of threads in the sidebar on every page (D18).
+		// One list of threads in the sidebar on every page (#1020).
 		await expect(
 			page.getByRole("heading", { name: "Schedules", level: 2 }),
 		).toBeVisible();
@@ -279,7 +279,7 @@ Given("I am on INC-1's Alerts tab", async ({ page }) => {
 });
 
 Given("I am on INC-1's Overview", async ({ page }) => {
-	// A thread with a run opens on its transcript with the summary above (D19).
+	// A thread with a run opens on its transcript with the summary above (#1020).
 	const path = `/incidents/${world(page).incident?.id}`;
 	if (page.url() === "about:blank") await visit(page, path);
 	await expect
@@ -302,7 +302,7 @@ Given("I open the same alert from the Alerts door", async ({ page }) => {
 	if (page.url() === "about:blank") {
 		await visit(page, "/incidents");
 	}
-	// Alerts sits behind Automation (D18).
+	// Alerts sits behind Automation (#1020).
 	await page.getByTestId("sidebar").getByTestId("nav-automation").click();
 	await page.getByTestId("automation-alerts").click();
 	// Back's trail records resolved pages; a row clicked while /alerts still loads skips it.
@@ -499,7 +499,7 @@ Then(
 	},
 );
 
-// On the phone Home is the page; the sidebar folds into the strip (D18).
+// On the phone Home is the page; the sidebar folds into the strip (#1020).
 Then("Home is the page", async ({ page }) => {
 	await expect(page.getByTestId("home")).toBeVisible();
 	await expect(page.getByTestId("sidebar")).toBeHidden();

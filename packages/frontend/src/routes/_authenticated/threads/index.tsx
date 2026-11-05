@@ -76,7 +76,7 @@ function matches(r: ThreadRow, origin: Origin, state: StateFilter, q: string) {
 	return !q || text.includes(q.toLowerCase());
 }
 
-/** Resolved threads, fifty at a time, so the whole history can be reached (D19). */
+/** Resolved threads, fifty at a time, so the whole history can be reached (#1020). */
 function useResolvedThreads() {
 	return useInfiniteQuery({
 		queryKey: ["threads-page", "closed"],
@@ -95,7 +95,7 @@ function useResolvedThreads() {
 }
 
 /**
- * Every thread, newest first by day (D19): filter by who started it and its
+ * Every thread, newest first by day (#1020): filter by who started it and its
  * status, search titles. The sidebar is for switching; this is for finding.
  */
 function Threads() {

@@ -141,7 +141,7 @@ describe("plain chats started from Home (#1020 D10)", () => {
 	});
 });
 
-describe("generic-first rows (D18)", () => {
+describe("generic-first rows (#1020)", () => {
 	it("names an alert thread readably and keeps the alert's own state apart", () => {
 		const row = incidentRow(
 			incident({

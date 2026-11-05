@@ -43,7 +43,7 @@ export interface ThreadRow {
 	state: State;
 	section: "needs" | "active" | "settled";
 	hint: string;
-	/** The alert's own state, apart from the agent's: firing until it clears (D18). */
+	/** The alert's own state, apart from the agent's: firing until it clears (#1020). */
 	firing?: boolean;
 	at: number;
 	incident?: IncidentWithRelations;
@@ -155,14 +155,14 @@ export function sortRows(rows: ThreadRow[]): ThreadRow[] {
 	);
 }
 
-/** What started a thread, in a word; a thread you started needs none (D18). */
+/** What started a thread, in a word; a thread you started needs none (#1020). */
 export const ORIGIN_WORD: Record<TriggerKind, string | null> = {
 	you: null,
 	alert: "Alert",
 	webhook: "Webhook",
 	schedule: "Scheduled",
 };
-/** What a thread's agent work is doing, in words, never a lone glyph (D18). */
+/** What a thread's agent work is doing, in words, never a lone glyph (#1020). */
 export const STATE_WORD: Record<NonNullable<State>, string> = {
 	asks: "Approval needed",
 	failed: "Failed",
@@ -199,7 +199,7 @@ export function useThreadRows(resolvedLimit = 5) {
 }
 
 /**
- * The sidebar's list (D18): Waiting for you (approvals and questions, any
+ * The sidebar's list (#1020): Waiting for you (approvals and questions, any
  * origin), then Recents by last activity. A waiting thread shows once, above.
  */
 export function ThreadList() {
@@ -412,7 +412,7 @@ export function ThreadRowView({
 }
 
 /**
- * The sidebar row's one trailing mark, in a fixed 16 px slot (cp5 look): a
+ * The sidebar row's one trailing mark, in a fixed 16 px slot (#1020): a
  * status dot, a small ring while working, else a muted origin glyph. The words
  * live in the hint and for screen readers.
  */

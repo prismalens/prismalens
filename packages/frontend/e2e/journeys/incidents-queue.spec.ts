@@ -25,7 +25,7 @@ function headerHeading(page: Page) {
 		.getByRole("heading", { name: "Operations", exact: true });
 }
 
-/** A thread on the Threads page; the sidebar shows only the latest twelve (D18). */
+/** A thread on the Threads page; the sidebar shows only the latest twelve (#1020). */
 function treeRow(page: Page, id: string) {
 	return page.getByRole("main").locator(`a[href*="${id}"]`);
 }
@@ -70,7 +70,7 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await expect(triggeredRow).toBeVisible();
 		await expect(failedRow).toBeVisible();
 		await expect(resolvedRow).toBeVisible();
-		// A closed incident stays one search away on the Threads page (D18).
+		// A closed incident stays one search away on the Threads page (#1020).
 		await expect(closedRow).toHaveCount(1);
 
 		// `?` opens the shortcut sheet.

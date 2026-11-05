@@ -34,19 +34,19 @@ export function awayItems(
 	const finished = incidents.filter((i) =>
 		(i.investigations ?? []).some((r) => t(r.completedAt) > since),
 	);
-	// One count unit in the shell: threads waiting on an approval or answer (D18).
+	// One count unit in the shell: threads waiting on an approval or answer (#1020).
 	const needs = incidents.filter((i) => rowStateOf(i) === "asks");
 	const items: AwayItem[] = [];
 	const one = (list: IncidentWithRelations[]) =>
 		list.length === 1 ? (list[0]?.id ?? null) : null;
-	// The newest thread is named; the rest are counted (cp8: counts alone say nothing).
+	// The newest thread is named; the rest are counted (#1020: counts alone say nothing).
 	const named = (list: IncidentWithRelations[], verb: string, noun: string) => {
 		const [first] = [...list].sort(
 			(a, b) => t(b.updatedAt ?? b.createdAt) - t(a.updatedAt ?? a.createdAt),
 		);
 		if (!first?.title) return null;
 		const title = readableTitle(first.title);
-		// What happened comes first, so a cut line loses the title, never the verb (cp10).
+		// What happened comes first, so a cut line loses the title, never the verb (#1020).
 		return list.length === 1
 			? `${title} ${verb}`
 			: `${list.length} ${noun} ${verb}, newest ${title}`;
