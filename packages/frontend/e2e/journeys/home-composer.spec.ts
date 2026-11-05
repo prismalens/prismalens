@@ -17,14 +17,20 @@ async function looksNew(page: Page, services: "keep" | "none") {
 			json: { ...(await res.json()), total: 0 },
 		});
 	});
-	if (services === "none")
-		await page.route("**/api/services?*", async (route) => {
-			const res = await route.fetch();
+	if (services === "none") {
+		await page.route("**/api/services*", async (route) => {
 			await route.fulfill({
-				response: res,
-				json: { ...(await res.json()), data: [], total: 0 },
+				contentType: "application/json",
+				json: { data: [], total: 0 },
 			});
 		});
+		await page.route("**/api/repositories*", async (route) => {
+			await route.fulfill({
+				contentType: "application/json",
+				json: { data: [], total: 0 },
+			});
+		});
+	}
 }
 
 test.describe("Home on a new workspace", () => {
@@ -47,13 +53,11 @@ test.describe("Home on a new workspace", () => {
 			.getByTestId("composer-input")
 			.fill("Checkout returns 502 since noon\nMostly EU traffic");
 		await home.getByTestId("composer-send").click();
-		await expect(page).toHaveURL(
-			/\/incidents\/[^/]+\/conversation\?investigation=/,
-		);
+		await expect(page).toHaveURL(/\/threads\/[^/]+$/);
 		await expect(page.getByTestId("transcript")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("crumb-incident")).toContainText(
+		await expect(page.getByTestId("thread-title")).toContainText(
 			"Checkout returns 502 since noon",
 		);
 		// A chat is not an incident: no severity, firing or Resolve button (#1020 D10).

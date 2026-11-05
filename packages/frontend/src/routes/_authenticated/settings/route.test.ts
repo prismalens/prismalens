@@ -63,6 +63,48 @@ describe("Settings tab search (w8-2)", () => {
 	});
 });
 
+describe("Old tabs on a page load (#1020)", () => {
+	type Ctx = {
+		location: { searchStr: string };
+		search?: { legacy?: string; legacyAgent?: string };
+	};
+	const beforeLoad = () => Route.options.beforeLoad as (ctx: Ctx) => void;
+	const target = (ctx: Ctx) => {
+		try {
+			beforeLoad()(ctx);
+		} catch (e) {
+			return (e as { options?: { to?: string; search?: unknown } }).options;
+		}
+		return undefined;
+	};
+
+	it("keeps an old tab under its own key, and nothing for an unknown one", () => {
+		expect(merged({ tab: "schedules" }).legacy).toBe("schedules");
+		expect(merged({ tab: "harness", agent: "codex" })).toMatchObject({
+			legacy: "harness",
+			legacyAgent: "codex",
+		});
+		expect("legacy" in validateSettingsSearch({ tab: "nope" })).toBe(false);
+		expect("legacy" in validateSettingsSearch({ tab: "general" })).toBe(false);
+	});
+
+	it("moves an old tab when the URL itself no longer carries it", () => {
+		expect(
+			target({ location: { searchStr: "" }, search: { legacy: "schedules" } })
+				?.to,
+		).toBe("/automation");
+		expect(
+			target({
+				location: { searchStr: "" },
+				search: { legacy: "harness", legacyAgent: "codex" },
+			})?.search,
+		).toEqual({ tab: "agent", agent: "codex" });
+		expect(target({ location: { searchStr: "?tab=schedules" } })?.to).toBe(
+			"/automation",
+		);
+	});
+});
+
 describe("Settings agent page search (#907)", () => {
 	it("keeps a known agent only under the Agent tab", () => {
 		expect(merged({ tab: "agent", agent: "codex" }).agent).toBe("codex");
