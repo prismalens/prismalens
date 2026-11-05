@@ -14,6 +14,7 @@ import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	ASKS_PORT,
+	AskConflict,
 	type AsksPort,
 	type ClosedAsk,
 } from "../asks/asks.contract.js";
@@ -118,26 +119,47 @@ export class PendingActionsService {
 		}
 		const card = executor.describe(call.args);
 		const asks = this.asks as AsksPort;
-		const askId = await asks.open(call.callerId, {
-			kind: "permission",
-			requiresHost: true,
-			source: { kind: "tool", tool: call.tool, requestId: call.requestId },
-			title: card.title,
-			detail: card.detail,
-			permission: {
-				toolKind: "act",
-				input: JSON.stringify(call.args).slice(0, 4000),
-				options: [
-					{ optionId: "allow", name: "Allow once", kind: "allow_once" },
-					{
-						optionId: "allow_tree",
-						name: "Allow for this thread tree",
-						kind: "allow_always",
-					},
-					{ optionId: "deny", name: "Deny", kind: "reject_once" },
-				],
-			},
-		});
+		const askId = await asks
+			.open(call.callerId, {
+				kind: "permission",
+				requiresHost: true,
+				source: { kind: "tool", tool: call.tool, requestId: call.requestId },
+				title: card.title,
+				detail: card.detail,
+				permission: {
+					toolKind: "act",
+					input: JSON.stringify(call.args).slice(0, 4000),
+					options: [
+						{ optionId: "allow", name: "Allow once", kind: "allow_once" },
+						{
+							optionId: "allow_tree",
+							name: "Allow for this thread tree",
+							kind: "allow_always",
+						},
+						{ optionId: "deny", name: "Deny", kind: "reject_once" },
+					],
+				},
+			})
+			.catch(async (e: unknown) => {
+				if (!(e instanceof AskConflict)) throw e;
+				return null;
+			});
+		if (!askId) {
+			// The card lives on the caller's run; with no run holding the thread there is none to show.
+			await this.prisma.pendingAction.update({
+				where: { id: row.id },
+				data: {
+					state: "expired",
+					decidedAt: new Date(),
+					deliveredAt: new Date(),
+				},
+			});
+			return fail(
+				"run_ended",
+				"No run holds this thread, so no approval card can open.",
+				"Stop; ask again from a live turn.",
+			);
+		}
 		await this.prisma.pendingAction.update({
 			where: { id: row.id },
 			data: { askId },
@@ -330,7 +352,9 @@ export class PendingActionsService {
 		});
 		for (const row of rows) {
 			const text = this.outcomeText(row);
-			const got = await this.io.deliver(row.callerId, text, { reopen: true });
+			// Only an action that ran, or a decision, is worth reopening an ended caller for.
+			const reopen = ["done", "failed", "denied"].includes(row.state);
+			const got = await this.io.deliver(row.callerId, text, { reopen });
 			if (got.state === "later") continue;
 			await this.prisma.pendingAction.update({
 				where: { id: row.id },
@@ -352,7 +376,7 @@ export class PendingActionsService {
 			const f = (value as Failure | null)?.failure;
 			return `${head} was approved but did not run: ${f?.message ?? row.error ?? "it failed"}${f?.next ? ` Next: ${f.next}` : ""}`;
 		}
-		return `${head} was ${row.state} before the user answered.`;
+		return `${head} was ${row.state} before the user answered: its card closes when your turn ends. Ask again only if you still need it.`;
 	}
 
 	/** At boot: approved rows run, and asks closed while PrismaLens was down are read again. */

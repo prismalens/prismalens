@@ -1,0 +1,25 @@
+{
+	"description": "A parent that asks to start a child under Ask each time, and holds its turn until the test releases it, so the card is answered while the run lives (#1024 spec F).",
+	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "thread_start",
+					"arguments": {
+						"title": "Check the cache hit rate",
+						"role": "cache",
+						"brief": "Find whether the cache misses, and return the hit rate. fake-session:echo",
+						"workspace": { "kind": "same_project_fresh" },
+						"requestId": "ask-cache"
+					}
+				}
+			},
+			{ "say": "Asked: {{result}}\n" },
+			{ "waitForRelease": true },
+			{ "say": "Done asking." }
+		]
+	],
+	"followUp": [{ "say": "Heard: {{prompt}}" }],
+	"steer": [{ "say": "Heard: {{prompt}}" }]
+}

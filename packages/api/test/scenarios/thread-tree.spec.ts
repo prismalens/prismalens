@@ -9,7 +9,9 @@ import {
 	runView,
 	servedTo,
 } from "@prismalens/integrations/harness";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { releaseRun } from "../../../../scripts/fakes/fake-acp-agent.mjs";
 import { ASKS_PORT } from "../../src/modules/asks/asks.contract.js";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
@@ -154,24 +156,49 @@ describe("Threads that start threads (#1024 spec F)", () => {
 		await setTree("allow");
 	});
 
-	it.skipIf(!pl.resolve)("Given Ask each time and the asks seat, Then a start waits for the host's approval through the API", async () => {
-		const asks = pl.resolve(ASKS_PORT);
-		// Surface A's asks seat lands separately; until it does, Ask each time refuses (thread-tree.service.spec).
-		if (!asks) return;
+	it("Given Ask each time, Then a start waits on a host-only card, and the host's approval through the API starts the child", async () => {
+		expect(pl.resolve(ASKS_PORT)).toBeDefined();
 		await setTree("ask");
-		const g = await pl.gateway();
-		const start = g.tools.find((t) => t.name === "thread_start");
-		const out = await start?.run(
-			start.input.parse({
-				title: "Check the cache",
-				role: "cache",
-				brief: "Find whether the cache misses, and return the hit rate. fake-session:echo",
-				workspace: { kind: "same_project_fresh" },
-				requestId: "ask-1",
-			}),
-			{ runId: root, signal: new AbortController().signal },
+		const hold = `tree-ask-hold-${randomUUID()}`;
+		const { investigationId: asker } = await pl.api<{ investigationId: string }>("/threads", {
+			method: "POST",
+			body: { subject: { kind: "none" }, text: `fake-session:tree-ask ${hold}` },
+		});
+		const db = await pl.prisma();
+		const action = await eventually(
+			() => db.pendingAction.findFirst({ where: { callerId: asker } }),
+			(a) => !!a?.askId,
+			"the start's card to open",
+			60_000,
 		);
-		expect(out).toMatchObject({ value: { status: "pending_approval" } });
+		expect(action?.state).toBe("pending");
+		const opened = await eventually(
+			async () => (await eventsOf(asker)).find((e) => e.kind === "ask_opened"),
+			(e) => !!e,
+			"the card recorded on the caller",
+			30_000,
+		);
+		expect(opened).toMatchObject({ ask: { requiresHost: true, source: { kind: "tool", tool: "thread_start", requestId: "ask-cache" } } });
+		await pl.api(`/investigations/${asker}/asks/${action?.askId}`, {
+			method: "POST",
+			body: { askId: action?.askId, answer: { kind: "permission", decision: "approve" } },
+		});
+		const done = await eventually(
+			() => db.pendingAction.findFirstOrThrow({ where: { id: action?.id } }),
+			(a) => a.state === "done",
+			"the approved start to run",
+			30_000,
+		);
+		const child = JSON.parse(done.result as string).childId as string;
+		expect((await db.investigation.findUniqueOrThrow({ where: { id: child } })).parentId).toBe(asker);
+		// The caller hears the outcome as a message at its next pause.
+		await eventually(
+			async () => (await db.pendingAction.findUniqueOrThrow({ where: { id: action?.id } })).deliveredAt,
+			(at) => !!at,
+			"the outcome delivered to the caller",
+			30_000,
+		);
+		releaseRun(hold);
 		await setTree("allow");
-	});
+	}, 120_000);
 });
