@@ -18,6 +18,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   # Nightly on main: the release-only proofs a PR skips, and the npm registry's upgrade chain (#1052).
@@ -67,6 +68,7 @@ jobs:
       skip: ${{ steps.plan.outputs.skip }}
       full: ${{ steps.plan.outputs.full }}
       agents: ${{ steps.plan.outputs.agents }}
+      defer: ${{ steps.plan.outputs.defer }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       - uses: actions/checkout@v7
@@ -86,6 +88,8 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          ACTION: ${{ github.event.action }}
         run: node scripts/ci-plan.mjs
 
   build:
@@ -219,7 +223,7 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
 
       - name: Pack script tests
-        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-adapter-sdk.test.mjs
+        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-adapter-sdk.test.mjs
 
       - name: Agent adapters tarball
         run: |
@@ -672,13 +676,26 @@ jobs:
       contents: read
       actions: read
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci-gate-report.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Assert every required job succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           echo "Needed job results:"
           echo "$NEEDS_JSON"
+          # A draft release PR runs nothing (#1052); the gate stays red until it is marked ready.
+          if [ "$(echo "$NEEDS_JSON" | jq -r '.changes.outputs.defer // empty')" = "true" ]; then
+            echo "::error::CI gate is red on purpose: $(echo "$NEEDS_JSON" | jq -r '.changes.outputs.reason')"
+            exit 1
+          fi
           # A job may be skipped only when `changes` says so (#1052): everything on `skip`,
           # `packed-service` and `gate-side-checks` unless `full`, `harness-admission` unless `agents`. Any other
           # skipped job is red, and so is a `changes` that did not succeed.
@@ -694,14 +711,16 @@ jobs:
             | join(", ")')
           if [ -n "$bad" ]; then
             echo "::error::CI gate is red — these jobs did not succeed: $bad"
-            # Name each failed job, its failed step and its log, so nobody digs for them (#885).
-            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
-              --jq '.jobs[] | select(.conclusion == "failure") | "  failed: \(.name) / \(first(.steps[]? | select(.conclusion == "failure") | .name) // "-") -> \(.html_url)"' \
-              || echo "(could not list the failed jobs)"
+            # Say what kind of red each job is, so nobody reads a log for a runner shortage (#1052).
+            if echo "$bad" | grep -q "=skipped"; then
+              echo "A job shown as skipped did not run because a job it needs did not succeed, or the plan did not allow the skip."
+            fi
+            node scripts/ci-gate-report.mjs || echo "(could not list the failed jobs)"
             exit 1
           fi
           reason=$(echo "$NEEDS_JSON" | jq -r '.changes.outputs.reason // empty')
           echo "All required jobs succeeded or were skipped by the plan${reason:+: $reason}"
+          node scripts/ci-gate-report.mjs || true
 
   # The live agent check (#884): the real pinned agent on the free model, on dispatch
   # only; advisory, and not in `ci-gate`'s `needs`. Release gate: dispatch with
