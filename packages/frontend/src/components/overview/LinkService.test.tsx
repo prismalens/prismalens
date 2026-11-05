@@ -75,6 +75,27 @@ describe("LinkService (#1020, review of #1031)", () => {
 		expect(h.asked).toContainEqual({ limit: 100, search: "billing" });
 	});
 
+	it("pages through matches so a service past the first 100 is reachable", async () => {
+		h.page = { data: [{ id: "s1", name: "cart" }], total: 201 };
+		await act(async () => root.render(<LinkService incidentId="inc-4" />));
+		const click = async (id: string) =>
+			act(async () => {
+				(q(id) as HTMLButtonElement).click();
+			});
+		expect(
+			(q("incident-link-service-prev") as HTMLButtonElement).disabled,
+		).toBe(true);
+		await click("incident-link-service-next");
+		expect(h.asked.at(-1)).toEqual({ limit: 100, offset: 100 });
+		await click("incident-link-service-next");
+		expect(h.asked.at(-1)).toEqual({ limit: 100, offset: 200 });
+		expect(
+			(q("incident-link-service-next") as HTMLButtonElement).disabled,
+		).toBe(true);
+		await click("incident-link-service-prev");
+		expect(h.asked.at(-1)).toEqual({ limit: 100, offset: 100 });
+	});
+
 	it("keeps the search field mounted when the search is cleared", async () => {
 		h.page = { data: [{ id: "s1", name: "cart" }], total: 120 };
 		await act(async () => root.render(<LinkService incidentId="inc-3" />));
