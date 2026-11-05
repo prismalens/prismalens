@@ -938,6 +938,10 @@ export type SendInvestigationMessageResult = z.infer<
 >;
 
 export {
+	type AnswerAskInput,
+	type AnswerAskResult,
+	AnswerAskResultSchema,
+	AnswerAskSchema,
 	PERMISSION_ASK_OUTCOMES,
 	type PermissionAskOutcome,
 } from "./asks.js";
