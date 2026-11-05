@@ -69,7 +69,7 @@ describe("A helper thread started from the empty Alerts page (#1020, OBJ-001)", 
 		expect(token.length).toBeGreaterThan(8);
 		const replay = JSON.stringify(await pl.api(`/investigations/${runId}/events`));
 		expect(replay).toContain("How do I send alerts here?");
-		expect(replay).toContain("Copy URL / Copy token");
+		expect(replay).toContain("under Copy URL, and the token under Copy token");
 		expect(replay).toContain("<webhook-token>");
 		expect(replay).not.toContain(token);
 		const run = JSON.stringify(await pl.api(`/investigations/${runId}`));
