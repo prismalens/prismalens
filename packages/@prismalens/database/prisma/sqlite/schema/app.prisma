@@ -66,6 +66,8 @@ model Repository {
   syncHead      String?
   syncError     String?
   syncedAt      DateTime?
+  iconKey       String?              // the logo the scan found: "file:<path>", "avatar", or "none" (#1024 E)
+  iconCheckedAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

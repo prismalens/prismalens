@@ -93,6 +93,8 @@ export const RepositorySchema = z.object({
 	updatedAt: DateStringSchema,
 	/** The credential the next git call would use, worked out when the row is read (#673). */
 	credential: GitCredentialDisplaySchema.optional(),
+	/** `GET /repositories/{id}/icon` when a logo was found; absent means the monogram (#1024 E). */
+	iconUrl: z.string().optional(),
 });
 
 /** What a project is (#1020): a plain folder, a git repo on this computer, or a git URL. */

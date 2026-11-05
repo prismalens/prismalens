@@ -10,6 +10,9 @@ import { z } from "zod";
 import {
 	ConnectSourceResponseSchema,
 	GitHostViewSchema,
+	HostRepositoriesInputSchema,
+	HostRepositoriesSchema,
+	OwnerAvatarsToggleSchema,
 	ProbeReportSchema,
 	RunbooksToggleSchema,
 	SourceDraftSchema,
@@ -80,6 +83,28 @@ export const sourcesContract = {
 		})
 		.input(z.object({}))
 		.output(z.array(GitHostViewSchema)),
+
+	hostRepositories: oc
+		.route({
+			method: "GET",
+			path: "/sources/git-hosts/{host}/repositories",
+			summary:
+				"The repositories a git host's resolved credential can see, most recently pushed first",
+			tags: ["sources"],
+		})
+		.input(HostRepositoriesInputSchema)
+		.output(HostRepositoriesSchema),
+
+	setOwnerAvatars: oc
+		.route({
+			method: "PUT",
+			path: "/sources/owner-avatars",
+			summary:
+				"Turn the git host owner avatar fallback for project logos on or off",
+			tags: ["sources"],
+		})
+		.input(OwnerAvatarsToggleSchema)
+		.output(OwnerAvatarsToggleSchema),
 
 	preRun: oc
 		.route({

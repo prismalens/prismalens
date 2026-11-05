@@ -84,6 +84,10 @@ export {
 	readInstanceFile,
 	resolvePort,
 } from "./utils/instance-file.js";
+export {
+	NODE_PATCH_FLOORS,
+	nodeVersionProblem,
+} from "./utils/node-version.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
@@ -100,6 +104,21 @@ export {
 	updateCheckDisabledBy,
 	writeCache,
 } from "./utils/update-check.js";
+export {
+	AUTO_INSTALL_QUIET_MS,
+	type AutoInstallFacts,
+	AWAIT_PID_ENV,
+	autoInstallBlockedBy,
+	installerArgv,
+	installerEnv,
+	RESTART_EXIT_CODE,
+	type ReleaseNotes,
+	readReleaseNotes,
+	releaseNotesFor,
+	sanitiseReleaseNotes,
+	underServiceManager,
+	waitForPidExit,
+} from "./utils/update-install.js";
 export {
 	acquireWorkspaceLock,
 	armForcedExitOnSecondSignal,

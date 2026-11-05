@@ -6,13 +6,15 @@ import { IntegrationsModule } from "../../modules/integrations/integrations.modu
 import { HarnessModule } from "../harness/harness.module.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
 import { AboutService } from "./about.service.js";
+import { DiagnosticsService } from "./diagnostics.service.js";
 import { SettingsController } from "./settings.controller.js";
 import { SettingsService } from "./settings.service.js";
+import { UpdateService } from "./update.service.js";
 
 @Module({
 	imports: [PrismaModule, HarnessModule, forwardRef(() => IntegrationsModule)],
 	controllers: [SettingsController],
-	providers: [SettingsService, AboutService],
+	providers: [SettingsService, AboutService, UpdateService, DiagnosticsService],
 	exports: [SettingsService],
 })
 export class SettingsModule {}

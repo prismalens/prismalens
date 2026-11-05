@@ -32,6 +32,8 @@ export const ServiceSchema = z.object({
 	metadata: z.record(z.string(), z.unknown()).nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
+	/** Its primary project's logo; absent means the monogram (#1024 E). */
+	iconUrl: z.string().optional(),
 });
 
 /** The longest investigation notes a service keeps. */

@@ -3,6 +3,7 @@
 
 import { Injectable, Logger, type OnApplicationShutdown } from "@nestjs/common";
 import { disarmForcedExit, releaseWorkspaceLock } from "@prismalens/config";
+import { restartExitCode } from "./restart-exit.js";
 
 /**
  * Releases the workspace lock as the last step of an ordinary shutdown
@@ -34,5 +35,7 @@ export class WorkspaceLockShutdownService implements OnApplicationShutdown {
 				`Workspace lock released${signal ? ` on ${signal}` : ""}`,
 			);
 		}
+		const code = restartExitCode();
+		if (code !== null) process.exit(code);
 	}
 }

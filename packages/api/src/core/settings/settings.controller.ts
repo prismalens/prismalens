@@ -13,8 +13,9 @@ import {
 } from "../harness/harness.service.js";
 import { TelemetryService } from "../telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
-import { AboutService } from "./about.service.js";
+import { DiagnosticsService } from "./diagnostics.service.js";
 import { ActiveRunsError, SettingsService } from "./settings.service.js";
+import { UpdateRefused, UpdateService } from "./update.service.js";
 
 @UseGuards(MutationThrottleGuard)
 @Controller()
@@ -23,15 +24,65 @@ export class SettingsController {
 		private readonly settingsService: SettingsService,
 		private readonly harnessService: HarnessService,
 		private readonly telemetryService: TelemetryService,
-		private readonly aboutService: AboutService,
+		private readonly updateService: UpdateService,
+		private readonly diagnosticsService: DiagnosticsService,
 	) {}
 
-	/** Settings → About (#717) */
+	/** Settings → About (#717), with the update verdict for this caller (#724) */
 	@Implement(settingsContract.about)
 	about() {
 		return {
-			get: implement(settingsContract.about.get).handler(() =>
-				this.aboutService.get(),
+			get: implement(settingsContract.about.get).handler(({ context }) =>
+				this.updateService.aboutFor(isHost(context.request as Request)),
+			),
+			diagnostics: implement(settingsContract.about.diagnostics).handler(
+				async ({ context }) => {
+					if (!isHost(context.request as Request))
+						throw new ORPCError("FORBIDDEN", {
+							message: "Only this machine's own browser can run diagnostics.",
+						});
+					return this.diagnosticsService.run();
+				},
+			),
+		};
+	}
+
+	/** Check now, Install and restart, and the update preferences (#724, #1024 E) */
+	@Implement(settingsContract.update)
+	update() {
+		const refusals = async <T>(work: () => Promise<T>): Promise<T> => {
+			try {
+				return await work();
+			} catch (error) {
+				if (error instanceof UpdateRefused)
+					throw new ORPCError(error.code, { message: error.message });
+				throw error;
+			}
+		};
+		return {
+			check: implement(settingsContract.update.check).handler(({ context }) =>
+				this.updateService.aboutFor(isHost(context.request as Request), true),
+			),
+			install: implement(settingsContract.update.install).handler(
+				({ input, context }) =>
+					refusals(() =>
+						this.updateService.install(
+							input.version,
+							isHost(context.request as Request),
+						),
+					),
+			),
+			status: implement(settingsContract.update.status).handler(() =>
+				this.updateService.getStatus(),
+			),
+			prefs: implement(settingsContract.update.prefs).handler(
+				({ input, context }) =>
+					refusals(() =>
+						this.updateService.setPrefs(
+							input,
+							isHost(context.request as Request),
+						),
+					),
 			),
 		};
 	}
