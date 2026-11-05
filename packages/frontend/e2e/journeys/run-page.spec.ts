@@ -495,7 +495,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			/^Message /,
 			{ timeout: 15_000 },
 		);
-		await expect(page.getByTestId("action-chip")).toHaveCount(0);
+		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 		await expect(page.getByTestId("composer-hint")).toContainText("session.");
 		await page.getByTestId("header-more").click();
 		await expect(page.getByTestId("header-investigate-again")).toBeVisible();
@@ -524,7 +524,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(input).toBeVisible({ timeout: 15_000 });
 		// The one-option Message chip is gone on live runs too (ruling 17).
 		await expect(input).toHaveAttribute("placeholder", "Message the agent");
-		await expect(page.getByTestId("action-chip")).toHaveCount(0);
+		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 
 		// Enter queues
 		await input.fill("Message queued for pause");

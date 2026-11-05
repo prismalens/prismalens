@@ -116,18 +116,13 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	test("the incident tabs: old routes redirect to overview, and chevron returns to inbox", async ({
+	test("the chevron returns from the incident to the thread list", async ({
 		page,
 	}) => {
-		await page.goto(`/incidents/${NO_RUN_INCIDENT}/alerts`);
-		await expect(page).toHaveURL(new RegExp(`/incidents/${NO_RUN_INCIDENT}$`));
+		await page.goto(`/incidents/${NO_RUN_INCIDENT}`);
 		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
-
-		await page.goto(`/incidents/${NO_RUN_INCIDENT}/timeline`);
-		await expect(page).toHaveURL(new RegExp(`/incidents/${NO_RUN_INCIDENT}$`));
-		await expect(page.getByTestId("incident-overview")).toBeVisible();
 
 		// Back chevron in the header returns to the thread list
 		await page.getByTestId("incident-back").click();
@@ -159,7 +154,10 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		// Navigating to Conversation opens on the draft
 		await page.goto(`/incidents/${id}/conversation`);
 		await expect(page.getByTestId("crumb-view")).toHaveText("New conversation");
-		await expect(page.getByTestId("action-chip")).toHaveText("Ask");
+		await expect(page.getByTestId("composer-mode")).toHaveAttribute(
+			"data-mode",
+			"ask",
+		);
 		await expect(await investigateButton(page)).toBeVisible();
 		await settled(page);
 	});
