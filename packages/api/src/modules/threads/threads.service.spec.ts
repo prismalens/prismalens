@@ -46,7 +46,11 @@ describe("ThreadsService (#1020)", () => {
 	let prisma: {
 		repository: { findUnique: ReturnType<typeof vi.fn> };
 		service: { findUnique: ReturnType<typeof vi.fn> };
-		investigation: { findMany: ReturnType<typeof vi.fn> };
+		investigation: {
+			findMany: ReturnType<typeof vi.fn>;
+			findUnique: ReturnType<typeof vi.fn>;
+			updateMany: ReturnType<typeof vi.fn>;
+		};
 	};
 	let investigations: { startOrGet: ReturnType<typeof vi.fn> };
 	let dispatch: {
@@ -76,7 +80,11 @@ describe("ThreadsService (#1020)", () => {
 		prisma = {
 			repository: { findUnique: vi.fn(async () => ({ id: REPO })) },
 			service: { findUnique: vi.fn(async () => ({ id: SERVICE })) },
-			investigation: { findMany: vi.fn(async () => [row()]) },
+			investigation: {
+				findMany: vi.fn(async () => [row()]),
+				findUnique: vi.fn(async () => ({ updatedAt: row().updatedAt })),
+				updateMany: vi.fn(async () => ({ count: 1 })),
+			},
 		};
 		investigations = {
 			startOrGet: vi.fn(
@@ -220,6 +228,21 @@ describe("ThreadsService (#1020)", () => {
 		dispatch.addInvestigationJob.mockResolvedValueOnce(null);
 		const out = await service().start({ subject: { kind: "none" }, text: "x" });
 		expect(out.queued).toBe(false);
+	});
+
+	it("visit retries a lost race, then refuses with CONFLICT rather than report an unwritten visit", async () => {
+		prisma.investigation.updateMany
+			.mockResolvedValueOnce({ count: 0 })
+			.mockResolvedValueOnce({ count: 1 });
+		await expect(service().visit(RUN)).resolves.toHaveProperty("lastVisitedAt");
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(2);
+
+		prisma.investigation.updateMany.mockReset();
+		prisma.investigation.updateMany.mockResolvedValue({ count: 0 });
+		await expect(service().visit(RUN)).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(3);
 	});
 
 	it("lists a project's or a service's own threads, never its incidents' or schedules'", async () => {

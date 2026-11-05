@@ -50,7 +50,7 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 	usePageTitle("New thread");
 	const navigate = useNavigate();
 	const repos = useRepositories({ limit: 100 });
-	const services = useServices();
+	const services = useServices({ limit: 100 });
 	const set = (next: Partial<NewThreadSearch>) =>
 		void navigate({
 			to: "/threads/new",
@@ -194,20 +194,22 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 						incident={incident}
 						note={!!search.note}
 						top={top}
-						slash={[
-							{
-								id: "investigate",
-								label: "Investigate",
-								run: () =>
-									set(incidentOff ? {} : { incident: true, note: undefined }),
-							},
-							{
-								id: "note",
-								label: "Note",
-								run: () =>
-									set(incidentOff ? {} : { incident: true, note: true }),
-							},
-						]}
+						slash={
+							incidentOff
+								? []
+								: [
+										{
+											id: "investigate",
+											label: "Investigate",
+											run: () => set({ incident: true, note: undefined }),
+										},
+										{
+											id: "note",
+											label: "Note",
+											run: () => set({ incident: true, note: true }),
+										},
+									]
+						}
 					/>
 				</div>
 			</div>

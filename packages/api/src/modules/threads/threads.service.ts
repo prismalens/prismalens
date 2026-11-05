@@ -387,7 +387,8 @@ export class ThreadsService {
 
 	/**
 	 * Writes seen or settled state with the row's own updatedAt, which orders the feed (#1020).
-	 * A row that changed in between is read again; false when the thread is gone.
+	 * A row that changed in between is read again; false when the thread is gone,
+	 * CONFLICT when every attempt lost the race.
 	 */
 	private async readState(
 		id: string,
@@ -405,7 +406,9 @@ export class ThreadsService {
 			});
 			if (count) return true;
 		}
-		return true;
+		throw new ORPCError("CONFLICT", {
+			message: "Thread changed while saving; try again",
+		});
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
