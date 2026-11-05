@@ -37,7 +37,7 @@ describe("threadSection (#1020)", () => {
 	it("puts an unseen answer or failure in Needs you, over a settle", () => {
 		const answer = facts({
 			lastVisitedAt: at("10T09:00:00"),
-			settledAt: at("10T11:00:00"),
+			settledAt: at("10T09:30:00"),
 		});
 		expect(threadSection(answer, NOW, 3)).toBe("needs");
 		const failed = facts({ status: "failed", lastVisitedAt: null });
@@ -66,6 +66,18 @@ describe("threadSection (#1020)", () => {
 			lastVisitedAt: at("10T11:45:00"),
 		});
 		expect(threadSection(woke, NOW, 3)).toBe("active");
+	});
+
+	it("puts an unseen thread back where it was after Settle and Undo, recent or old", () => {
+		for (const lastActivityAt of [at("10T11:30:00"), at("01T10:00:00")]) {
+			const before = facts({ lastVisitedAt: null, lastActivityAt });
+			expect(threadSection(before, NOW, 3)).toBe("needs");
+			const settled = { ...before, settledAt: at("10T11:59:00") };
+			expect(isUnseen(settled)).toBe(false);
+			expect(threadSection(settled, NOW, 3)).toBe("settled");
+			const undone = { ...settled, settledAt: null };
+			expect(threadSection(undone, NOW, 3)).toBe("needs");
+		}
 	});
 
 	it("settles an incident's thread once the incident is resolved", () => {

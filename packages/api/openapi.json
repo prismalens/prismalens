@@ -27821,7 +27821,8 @@
                                   "incidents",
                                   "alerts",
                                   "investigations",
-                                  "schedules"
+                                  "schedules",
+                                  "threads"
                                 ],
                                 "type": "string"
                               }

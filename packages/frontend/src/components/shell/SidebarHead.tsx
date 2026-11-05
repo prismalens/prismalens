@@ -33,6 +33,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useRepositories } from "@/lib/api/hooks";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
 import { rowContext, threadLink } from "@/lib/thread-rows";
@@ -160,6 +162,9 @@ export function ThreadSearch({
 	onOpenChange: (open: boolean) => void;
 }) {
 	const navigate = useNavigate();
+	const { setBottomPanel } = useLayoutPrefs();
+	// A phone has no bottom panel (#931), so Terminal is not a place there.
+	const phone = useMediaQuery(PHONE);
 	const [query, setQuery] = useState("");
 	const [kind, setKind] = useState<Kind>();
 	const [section, setSection] = useState<ThreadSection>();
@@ -187,6 +192,7 @@ export function ThreadSearch({
 		feed.data?.pages.flatMap((p) => p.units.flatMap((u) => u.threads)) ?? [];
 	const q = query.trim().toLowerCase();
 	const places = PLACES.filter((p) => !q || p.label.toLowerCase().includes(q));
+	const terminal = !phone && (!q || "terminal".includes(q));
 	const go = (fn: () => void) => {
 		onOpenChange(false);
 		fn();
@@ -264,9 +270,20 @@ export function ThreadSearch({
 										</span>
 									</CommandItem>
 								))}
+								{feed.hasNextPage && (
+									<CommandItem
+										value="more-results"
+										disabled={feed.isFetching || feed.isPlaceholderData}
+										onSelect={() => void feed.fetchNextPage()}
+										className="text-text-3"
+										data-testid="thread-search-more"
+									>
+										More results
+									</CommandItem>
+								)}
 							</CommandGroup>
 						)}
-						{places.length > 0 && (
+						{(places.length > 0 || terminal) && (
 							<CommandGroup heading="Go to">
 								{places.map((p) => (
 									<CommandItem
@@ -278,6 +295,15 @@ export function ThreadSearch({
 										{p.label}
 									</CommandItem>
 								))}
+								{terminal && (
+									<CommandItem
+										value="terminal"
+										onSelect={() => go(() => setBottomPanel(true))}
+										data-testid="thread-search-place"
+									>
+										Terminal
+									</CommandItem>
+								)}
 							</CommandGroup>
 						)}
 					</CommandList>

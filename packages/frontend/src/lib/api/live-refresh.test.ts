@@ -35,6 +35,16 @@ describe("invalidateTopics (walk f27)", () => {
 		expect(keys).toEqual([JSON.stringify(orpc.schedules.key())]);
 	});
 
+	it("re-reads only the thread lists when an agent's event lands (#1020)", () => {
+		const queryClient = new QueryClient();
+		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+		invalidateTopics(queryClient, ["threads"]);
+
+		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
+		expect(keys).toEqual([JSON.stringify(orpc.threads.key())]);
+	});
+
 	it("invalidates incidents, setup, recommendations and timeline keys in order (#673 walk 4)", () => {
 		const queryClient = new QueryClient();
 		const invalidate = vi.spyOn(queryClient, "invalidateQueries");

@@ -273,6 +273,32 @@ describe("ThreadsService (#1020)", () => {
 		await expect(service().list({ limit: 5 })).resolves.toEqual([]);
 	});
 
+	it("settles every thread of an incident without moving their updatedAt", async () => {
+		const updatedAt = new Date("2026-11-03T00:00:00Z");
+		const findUnique = vi.fn(async (args: { select: object }) =>
+			"updatedAt" in args.select ? { updatedAt } : { incidentId: "inc-1" },
+		);
+		const updateMany = vi.fn(async () => ({ count: 1 }));
+		Object.assign(prisma.investigation, {
+			findUnique,
+			updateMany,
+			findMany: vi.fn(async () => [{ id: "a" }, { id: "b" }]),
+		});
+
+		await expect(service().settle("a", true)).resolves.toEqual({
+			ids: ["a", "b"],
+		});
+
+		expect(updateMany).toHaveBeenCalledTimes(2);
+		for (const [arg] of updateMany.mock.calls as unknown as [
+			{ where: object; data: { settledAt: Date; updatedAt: Date } },
+		][]) {
+			expect(arg.where).toMatchObject({ updatedAt });
+			expect(arg.data.updatedAt).toBe(updatedAt);
+			expect(arg.data.settledAt).toBeInstanceOf(Date);
+		}
+	});
+
 	it("shows a row with an unknown level as none, and an investigation kind as such", () => {
 		const view = threadView(
 			row({

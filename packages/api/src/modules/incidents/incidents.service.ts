@@ -23,6 +23,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 
@@ -267,7 +268,11 @@ export class IncidentsService {
 		limit?: number;
 		offset?: number;
 	}): Promise<{ data: IncidentWithRelations[]; total: number }> {
-		const search = incidentSearch(options?.search);
+		const raw = options?.search?.trim();
+		const search =
+			raw && hasWildcard(raw)
+				? { id: { in: await literalIncidentIds(this.prisma, raw) } }
+				: incidentSearch(raw);
 		const where = {
 			...(search && { AND: [search] }),
 			...(options?.status
@@ -1205,6 +1210,17 @@ export function incidentSearch(
 	return {
 		OR: [{ title: { contains: q } }, ...(n ? [{ number: Number(n) }] : [])],
 	};
+}
+
+/** Incidents whose title holds `q` as typed, `%` and `_` included (#1020). */
+export async function literalIncidentIds(
+	prisma: Pick<PrismaService, "$queryRaw">,
+	q: string,
+): Promise<string[]> {
+	const like = likePattern(q);
+	const rows = await prisma.$queryRaw<{ id: string }[]>`
+		SELECT id FROM incidents WHERE title LIKE ${like} ESCAPE '\\'`;
+	return rows.map((r) => r.id);
 }
 
 export function stepText(raw: string): string | null {

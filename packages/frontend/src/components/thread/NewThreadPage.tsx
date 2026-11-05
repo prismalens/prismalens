@@ -26,7 +26,7 @@ export interface NewThreadSearch {
 	note?: boolean;
 }
 
-const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
+const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 const SEVERITY_WORD: Record<Severity, string> = {
 	critical: "Critical",
 	high: "High",

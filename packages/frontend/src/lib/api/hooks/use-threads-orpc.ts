@@ -58,6 +58,25 @@ export function useThreadFeed(input: ThreadFeedInput, enabled = true) {
 	});
 }
 
+/** When quiet threads with no incident settle on their own. */
+export function useThreadSettings() {
+	return useQuery(orpc.threads.getSettings.queryOptions({ input: {} }));
+}
+
+export function useUpdateThreadSettings() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.updateSettings.mutationOptions(),
+		onSuccess: (next) => {
+			queryClient.setQueryData(
+				orpc.threads.getSettings.queryKey({ input: {} }),
+				next,
+			);
+			void queryClient.invalidateQueries({ queryKey: orpc.threads.feed.key() });
+		},
+	});
+}
+
 export function useSettleThread() {
 	const queryClient = useQueryClient();
 	return useMutation({

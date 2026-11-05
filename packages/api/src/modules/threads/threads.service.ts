@@ -23,8 +23,10 @@ import {
 import type { Investigation, Prisma } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
+import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
@@ -225,21 +227,31 @@ export class ThreadsService {
 		const { settleAfterDays } = await this.getSettings();
 		const search = q.search?.trim();
 		const incidentMatch = incidentSearch(search);
+		const literal =
+			search && hasWildcard(search)
+				? await this.literalThreadIds(search, q)
+				: null;
 		const rows = await this.prisma.investigation.findMany({
-			where: {
-				...(q.kind ? { kind: q.kind } : {}),
-				...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
-				...(search
-					? {
-							OR: [
-								{ title: { contains: search } },
-								{ service: { is: { name: { contains: search } } } },
-								{ repository: { is: { fullName: { contains: search } } } },
-								...(incidentMatch ? [{ incident: { is: incidentMatch } }] : []),
-							],
-						}
-					: {}),
-			},
+			where: literal
+				? { id: { in: literal } }
+				: {
+						...(q.kind ? { kind: q.kind } : {}),
+						...(q.repositoryId ? { repositoryId: q.repositoryId } : {}),
+						...(search
+							? {
+									OR: [
+										{ title: { contains: search } },
+										{ service: { is: { name: { contains: search } } } },
+										{
+											repository: { is: { fullName: { contains: search } } },
+										},
+										...(incidentMatch
+											? [{ incident: { is: incidentMatch } }]
+											: []),
+									],
+								}
+							: {}),
+					},
 			include: FEED_INCLUDE,
 			orderBy: { updatedAt: "desc" },
 			take: FEED_CAP,
@@ -319,6 +331,28 @@ export class ThreadsService {
 		};
 	}
 
+	/** The newest threads holding `search` as typed, `%` and `_` included, before the cap (#1020). */
+	private async literalThreadIds(
+		search: string,
+		q: ThreadFeedQuery,
+	): Promise<string[]> {
+		const like = likePattern(search);
+		const kind = q.kind ?? null;
+		const repositoryId = q.repositoryId ?? null;
+		const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+			SELECT i.id FROM investigations i
+			LEFT JOIN services s ON s.id = i.serviceId
+			LEFT JOIN repositories r ON r.id = i.repositoryId
+			LEFT JOIN incidents n ON n.id = i.incidentId
+			WHERE (${kind} IS NULL OR i.kind = ${kind})
+				AND (${repositoryId} IS NULL OR i.repositoryId = ${repositoryId})
+				AND (i.title LIKE ${like} ESCAPE '\\' OR s.name LIKE ${like} ESCAPE '\\'
+					OR r.fullName LIKE ${like} ESCAPE '\\' OR n.title LIKE ${like} ESCAPE '\\')
+			ORDER BY i.updatedAt DESC
+			LIMIT ${FEED_CAP}`;
+		return rows.map((r) => r.id);
+	}
+
 	/** The agent's latest sentence per thread, plain text, capped. */
 	private async latestTexts(ids: string[]): Promise<Map<string, string>> {
 		const found = await Promise.all(
@@ -388,13 +422,9 @@ export class ThreadsService {
 		const ids = (
 			await this.prisma.investigation.findMany({ where, select: { id: true } })
 		).map((r) => r.id);
-		// Settling is reading too: an unseen outcome would hold it in Needs you.
-		const at = new Date();
-		for (const target of ids)
-			await this.readState(
-				target,
-				settled ? { settledAt: at, lastVisitedAt: at } : { settledAt: null },
-			);
+		// readState keeps each row's updatedAt, so settling or undoing never reorders the feed.
+		const at = settled ? new Date() : null;
+		for (const target of ids) await this.readState(target, { settledAt: at });
 		return { ids };
 	}
 
@@ -422,6 +452,7 @@ export class ThreadsService {
 			create: { key: SETTINGS_KEY, value, type: "json", category: "general" },
 			update: { value },
 		});
+		liveChanges.noteTopic("threads");
 		return next;
 	}
 }

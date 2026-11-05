@@ -129,7 +129,7 @@ function Shell({ pathname }: { pathname: string }) {
 					)}
 				</aside>
 			)}
-			<PhoneStrip pathname={pathname} doors={doors} />
+			<PhoneStrip pathname={pathname} doors={doors} signedIn={signedIn} />
 		</SearchHost>
 	);
 }
@@ -415,12 +415,20 @@ function useEscape(handler: () => void, enabled: boolean) {
 }
 
 /**
- * The phone's strip: Search, then four doors across the top, the one you are in on
+ * The phone's doors: four icons across the top, the one you are in on
  * `surface-2` with the accent bar; the page header below carries New (#673).
  * Schedules is reached through Search's "Go to" list.
  * It stays on Settings; its Settings door returns a section to the list.
  */
-function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
+function PhoneStrip({
+	pathname,
+	doors,
+	signedIn,
+}: {
+	pathname: string;
+	doors: Door[];
+	signedIn: boolean;
+}) {
 	const openSearch = useOpenSearch();
 	return (
 		<nav
@@ -428,15 +436,6 @@ function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
 			aria-label="Areas"
 			data-testid="topbar"
 		>
-			<button
-				type="button"
-				onClick={openSearch}
-				aria-label="Search"
-				data-testid="strip-search"
-				className="flex h-8 min-w-12 items-center justify-center rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
-			>
-				<Search className={ICON} />
-			</button>
 			{doors.map((door) => {
 				const on = isOn(pathname, door.to);
 				return (
@@ -475,6 +474,17 @@ function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
 					</Link>
 				);
 			})}
+			{signedIn && (
+				<button
+					type="button"
+					onClick={openSearch}
+					aria-label="Search"
+					data-testid="strip-search"
+					className="ml-auto flex h-8 min-w-12 items-center justify-center rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				>
+					<Search className={ICON} />
+				</button>
+			)}
 		</nav>
 	);
 }

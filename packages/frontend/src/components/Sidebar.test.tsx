@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createElement } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
@@ -74,8 +74,8 @@ vi.mock("@/components/shell/ThreadList", () => ({
 }));
 
 vi.mock("@/components/shell/SidebarHead", () => ({
-	SearchHost: ({ children }: { children?: React.ReactNode }) => children,
 	SidebarHead: () => null,
+	SearchHost: ({ children }: { children: ReactNode }) => children,
 	useOpenSearch: () => state.openSearch,
 }));
 

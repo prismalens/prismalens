@@ -3,6 +3,7 @@
 
 import { ThreadFeedQuerySchema } from "@prismalens/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { liveChanges } from "../../core/live/live-changes.js";
 import { ThreadsService } from "./threads.service.js";
 
 const NOW = new Date("2026-11-10T12:00:00Z");
@@ -207,10 +208,14 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		);
 		prisma.setting.findUnique.mockResolvedValue({ value: "not json" });
 		expect(await service().getSettings()).toEqual({ settleAfterDays: 3 });
+		const note = vi.spyOn(liveChanges, "noteTopic");
 		await service().updateSettings({ settleAfterDays: 5 });
 		expect(prisma.setting.upsert).toHaveBeenCalledWith(
 			expect.objectContaining({ where: { key: "threads.list" } }),
 		);
+		// Other browsers' thread lists re-read the new quiet days.
+		expect(note).toHaveBeenCalledWith("threads");
+		note.mockRestore();
 	});
 
 	it("marks one thread seen, and refuses an unknown one", async () => {
@@ -243,21 +248,16 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			where: { incidentId: inc },
 			select: { id: true },
 		});
-		for (const id of ids)
-			expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
-				where: { id, updatedAt: stamp },
-				data: {
-					settledAt: expect.any(Date),
-					lastVisitedAt: expect.any(Date),
-					updatedAt: stamp,
-				},
-			});
+		// Each row is written on its own, keeping its updatedAt.
+		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
+			where: { id: ids[1], updatedAt: stamp },
+			data: { settledAt: expect.any(Date), updatedAt: stamp },
+		});
 		await service().settle(ids[0] as string, false);
-		for (const id of ids)
-			expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
-				where: { id, updatedAt: stamp },
-				data: { settledAt: null, updatedAt: stamp },
-			});
+		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
+			where: { id: ids[1], updatedAt: stamp },
+			data: { settledAt: null, updatedAt: stamp },
+		});
 		prisma.investigation.findUnique.mockResolvedValue(null);
 		await expect(service().settle(uuid(), true)).rejects.toMatchObject({
 			code: "NOT_FOUND",
