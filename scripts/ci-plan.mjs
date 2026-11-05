@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+// Decides what a `CI` run has to run (#1052), so a push that needs nothing starts no runner:
+//   skip    "true": the PR head tree already passed `CI`, or the PR changes only docs.
+//   full    "true": the release-only proofs (macOS and Windows side checks, systemd service) run.
+//   agents  "true": the five agent qualification legs run.
+// Anything that is not a pull request (main, the nightly, the merge queue) plans everything.
+// ci.yml's `CI gate` reads these three and lets exactly the matching jobs be skipped.
+import { execFileSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+/** Root-level Markdown and issue templates: nothing a build, a test or the tarball reads. */
+const DOCS = [
+	/^[^/]+\.md$/,
+	/^\.github\/ISSUE_TEMPLATE\//,
+	/^\.github\/[^/]+\.md$/,
+];
+
+/** Files whose change can move what the tarball does on macOS, Windows or under systemd. */
+const FULL = [
+	/^\.github\/workflows\//,
+	/^scripts\//,
+	/^packages\/cli\//,
+	/^packages\/@prismalens\/database\/prisma\//,
+	/^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.nvmrc)$/,
+	/^(\.release-please-manifest\.json|release-please-config\.json)$/,
+];
+
+/** The agent qualification's inputs: the engine's workspace closure, the script, its fakes and pins. */
+const AGENTS = [
+	/^\.github\/workflows\/ci\.yml$/,
+	/^packages\/@prismalens\/(engine|agent-host|agent-adapters|config|contracts|integrations)\//,
+	/^scripts\/(admission-fake\.|fakes\/|agent-)/,
+	/^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|\.nvmrc)$/,
+];
+
+const any = (/** @type {RegExp[]} */ patterns, /** @type {string[]} */ files) =>
+	files.some((f) => patterns.some((p) => p.test(f)));
+
+/**
+ * @param {{
+ *   event: string,
+ *   files: string[],
+ *   labels?: string[],
+ *   headRef?: string,
+ *   sameTreeAs?: string | null,
+ * }} input
+ * @returns {{ skip: boolean, full: boolean, agents: boolean, reason: string }}
+ */
+export function plan({
+	event,
+	files,
+	labels = [],
+	headRef = "",
+	sameTreeAs = null,
+}) {
+	if (event !== "pull_request")
+		return {
+			skip: false,
+			full: true,
+			agents: true,
+			reason: `${event}: everything runs`,
+		};
+	if (sameTreeAs)
+		return {
+			skip: true,
+			full: false,
+			agents: false,
+			reason: `tree identical to ${sameTreeAs}, which already passed CI: nothing re-run`,
+		};
+	if (files.length > 0 && files.every((f) => DOCS.some((p) => p.test(f))))
+		return {
+			skip: true,
+			full: false,
+			agents: false,
+			reason: "docs only: nothing to build or test",
+		};
+	const release = headRef.startsWith("release-please--");
+	const forced = labels.includes("full-ci");
+	return {
+		skip: false,
+		full: release || forced || any(FULL, files),
+		agents: release || forced || any(AGENTS, files),
+		reason: release
+			? "release PR: everything runs"
+			: forced
+				? "label full-ci: everything runs"
+				: "path filters",
+	};
+}
+
+/** @param {string[]} args */
+const gh = (args) =>
+	execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+
+/** The newest earlier passing `CI` run on this PR branch whose head commit has the same tree, if any. */
+function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
+	const { REPO, HEAD_SHA, HEAD_REF, HEAD_REPO } = env;
+	const tree = (/** @type {string} */ sha) =>
+		gh(["api", `repos/${REPO}/git/commits/${sha}`, "--jq", ".tree.sha"]).trim();
+	const mine = tree(String(HEAD_SHA));
+	const runs = JSON.parse(
+		gh([
+			"api",
+			`repos/${REPO}/actions/workflows/ci.yml/runs?event=pull_request&status=success&per_page=30&branch=${encodeURIComponent(String(HEAD_REF))}`,
+			"--jq",
+			`[.workflow_runs[] | select(.head_repository.full_name == "${HEAD_REPO}") | .head_sha] | unique`,
+		]),
+	);
+	for (const sha of runs) {
+		if (sha !== HEAD_SHA && tree(sha) === mine) return sha;
+	}
+	return null;
+}
+
+function main(/** @type {NodeJS.ProcessEnv} */ env) {
+	const event = String(env.EVENT_NAME);
+	/** @type {string[]} */
+	let files = [];
+	/** @type {string | null} */
+	let sameTreeAs = null;
+	if (event === "pull_request") {
+		files = gh([
+			"api",
+			"--paginate",
+			`repos/${env.REPO}/pulls/${env.PR_NUMBER}/files`,
+			"--jq",
+			".[].filename",
+		])
+			.split("\n")
+			.filter(Boolean);
+		try {
+			sameTreeAs = earlierPassWithSameTree(env);
+		} catch (error) {
+			// A failed lookup must cost a full run, never a skipped one.
+			console.log(`tree lookup failed, running everything: ${error}`);
+		}
+	}
+	const result = plan({
+		event,
+		files,
+		labels: JSON.parse(env.LABELS || "[]"),
+		headRef: env.HEAD_REF || "",
+		sameTreeAs,
+	});
+	const lines = [
+		`skip=${result.skip}`,
+		`full=${result.full}`,
+		`agents=${result.agents}`,
+		`reason=${result.reason}`,
+	];
+	console.log(lines.join("\n"));
+	if (env.GITHUB_OUTPUT)
+		appendFileSync(env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
+	if (env.GITHUB_STEP_SUMMARY)
+		appendFileSync(
+			env.GITHUB_STEP_SUMMARY,
+			`**CI plan:** ${result.reason} (full=${result.full}, agents=${result.agents})\n`,
+		);
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href)
+	main(process.env);
