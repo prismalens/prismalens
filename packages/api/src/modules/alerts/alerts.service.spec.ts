@@ -138,6 +138,30 @@ describe("AlertsService (BDD)", () => {
 			});
 		});
 
+		it("finds a labelled alert stored under the label-only key when it has the same service", async () => {
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockPrismaService.alert.create.mockResolvedValue(AlertFactory.create({}));
+			const dto: CreateAlertDto = {
+				source: "prometheus",
+				title: "HighErrorRate",
+				labels: { alertname: "HighErrorRate" },
+				serviceId: "svc-1",
+			};
+
+			await service.create(dto);
+
+			expect(mockPrismaService.alert.findFirst).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						OR: [
+							{ dedupKey: service.generateDedupKey(dto) },
+							{ dedupKey: service.generateDedupKey(dto, false), serviceId: "svc-1" },
+						],
+					},
+				}),
+			);
+		});
+
 		it("should deduplicate alerts with same dedupKey", async () => {
 			const createDto: CreateAlertDto = {
 				source: "prometheus",
