@@ -2937,9 +2937,9 @@ export function observeWorkspace(
 }
 
 function gitIn(dir: string, args: string[]): string {
-	return execFileSync("git", ["-C", dir, ...args], {
-		// A status never refreshes the index: an in-place run's is the user's own (#1024).
-		env: { ...gitEnv({ source: "none" }), GIT_OPTIONAL_LOCKS: "0" },
+	// A status never refreshes the index: an in-place run's is the user's own (#1024).
+	return execFileSync("git", ["--no-optional-locks", "-C", dir, ...args], {
+		env: gitEnv({ source: "none" }),
 		encoding: "utf8",
 		windowsHide: true,
 		timeout: 15_000,
