@@ -392,7 +392,8 @@ export class ThreadsService {
 
 	/**
 	 * Writes seen or settled state with the row's own updatedAt, which orders the feed (#1020).
-	 * A row that changed in between is read again; false when the thread is gone.
+	 * A row that changed in between is read again; false when the thread is gone,
+	 * CONFLICT when every attempt lost the race.
 	 */
 	private async readState(
 		id: string,
@@ -410,7 +411,9 @@ export class ThreadsService {
 			});
 			if (count) return true;
 		}
-		return true;
+		throw new ORPCError("CONFLICT", {
+			message: "Thread changed while saving; try again",
+		});
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
@@ -424,11 +427,9 @@ export class ThreadsService {
 		const ids = (
 			await this.prisma.investigation.findMany({ where, select: { id: true } })
 		).map((r) => r.id);
-		await this.prisma.investigation.updateMany({
-			where: { id: { in: ids } },
-			// Only settledAt changes, so Undo restores exactly what Settle hid.
-			data: { settledAt: settled ? new Date() : null },
-		});
+		// readState keeps each row's updatedAt, so settling or undoing never reorders the feed.
+		const at = settled ? new Date() : null;
+		for (const target of ids) await this.readState(target, { settledAt: at });
 		return { ids };
 	}
 

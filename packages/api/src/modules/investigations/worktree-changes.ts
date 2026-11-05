@@ -272,7 +272,8 @@ async function untrackedFile(
 		full,
 		stat,
 		Math.min(WORKTREE_FILE_MAX_BYTES, budget.bytes),
-	);
+	).catch(() => "unreadable" as const);
+	if (bytes === "unreadable") return entry("added");
 	if (bytes === "link") return entry("link");
 	if (bytes === "large") {
 		budget.over = true;
