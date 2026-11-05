@@ -20,7 +20,7 @@ Feature: Phone
 
   Scenario: Log incident from the phone
     When I press "Log incident" in the header
-    Then the create dialog opens and fits the screen without sideways scrolling
+    Then Home opens with Incident on and fits the screen without sideways scrolling
 
   Scenario: Settings on the phone lands on its sections
     When I press Settings in the strip
