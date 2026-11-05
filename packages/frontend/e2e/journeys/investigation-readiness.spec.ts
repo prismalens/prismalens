@@ -238,7 +238,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await page.goto(`/incidents/${id}`);
 		await setTheme(page, "light");
 		await expect(page.getByTestId("incident-blank")).toContainText(
-			"What do you know so far?",
+			"Nothing yet",
 			{
 				timeout: 15_000,
 			},
