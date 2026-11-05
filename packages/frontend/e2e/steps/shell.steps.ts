@@ -553,7 +553,8 @@ Then("the incident opens on its Overview", async ({ page }) => {
 	await expect(
 		here(page)
 			.getByTestId("incident-overview")
-			.or(here(page).getByTestId("situation")),
+			.or(here(page).getByTestId("situation"))
+			.first(),
 	).toBeVisible();
 });
 
@@ -561,12 +562,10 @@ When("I press the chevron at the left of the band", async ({ page }) => {
 	await here(page).getByTestId("incident-back").click();
 });
 
-Then("I am on the thread list after the chevron", async ({ page }) => {
+Then("I am on Operations after the chevron", async ({ page }) => {
 	const p = here(page);
-	await expect.poll(() => pathOf(p)).toBe("/threads");
-	await expect(
-		p.getByRole("heading", { name: "Threads", level: 1 }),
-	).toBeVisible();
+	await expect.poll(() => pathOf(p)).toBe("/incidents");
+	await expect(p.locator('[data-testid="inbox"]').first()).toBeVisible();
 });
 
 When("I press {string} in the header", async ({ page }, _label: string) => {
