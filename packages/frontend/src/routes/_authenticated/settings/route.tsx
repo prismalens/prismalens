@@ -28,7 +28,13 @@ export const LEGACY_SETTINGS_TABS: Readonly<
  */
 export const validateSettingsSearch = (
 	search: Record<string, unknown>,
-): { tab?: SettingsTab; agent?: HarnessId; source?: string } => {
+): {
+	tab?: SettingsTab;
+	agent?: HarnessId;
+	source?: string;
+	legacy?: string;
+	legacyAgent?: string;
+} => {
 	const tab = TABS.includes(search.tab as SettingsTab)
 		? (search.tab as SettingsTab)
 		: undefined;
@@ -40,7 +46,19 @@ export const validateSettingsSearch = (
 		tab === "sources" && typeof search.source === "string" && search.source
 			? search.source
 			: undefined;
-	return { tab, agent, source };
+	// An old tab survives validation under its own key, so beforeLoad can still move it.
+	const old =
+		typeof search.tab === "string" ? search.tab.replace(/"/g, "") : "";
+	const legacy = !tab && (old === "schedules" || old in LEGACY_SETTINGS_TABS);
+	return {
+		tab,
+		agent,
+		source,
+		...(legacy ? { legacy: old } : {}),
+		...(legacy && typeof search.agent === "string"
+			? { legacyAgent: search.agent }
+			: {}),
+	};
 };
 
 /** The new home of an old `?tab=`, read from the raw query (validation drops it); `?tab=harness&agent=` keeps its agent. */
@@ -59,22 +77,16 @@ export function legacySettingsTarget(
 	return agent ? { ...to, agent } : to;
 }
 
-/**
- * The query as typed. A first page load hands beforeLoad a search that validation has
- * already stripped of an unknown tab, so the browser's own URL is read then (#1020).
- */
-function rawSearch(location: { pathname: string; searchStr: string }): string {
-	if (location.searchStr) return location.searchStr;
-	if (typeof window === "undefined") return "";
-	return window.location.pathname === location.pathname
-		? window.location.search
-		: "";
-}
-
 export const Route = createFileRoute("/_authenticated/settings")({
 	validateSearch: validateSettingsSearch,
-	beforeLoad: ({ location }) => {
-		const raw = rawSearch(location);
+	beforeLoad: ({ location, search }) => {
+		// A page load has already stripped the old tab from the URL; validation kept it (#1020).
+		const raw = search?.legacy
+			? `?${new URLSearchParams({
+					tab: search.legacy,
+					...(search.legacyAgent ? { agent: search.legacyAgent } : {}),
+				})}`
+			: location.searchStr;
 		// Schedules moved to Automation (#1020); old links still land there.
 		if (new URLSearchParams(raw).get("tab")?.replace(/"/g, "") === "schedules")
 			throw redirect({ to: "/automation", replace: true });
