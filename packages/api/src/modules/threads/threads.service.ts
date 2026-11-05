@@ -393,7 +393,8 @@ export class ThreadsService {
 
 	/**
 	 * Writes seen or settled state with the row's own updatedAt, which orders the feed (#1020).
-	 * A row that changed in between is read again; false when the thread is gone.
+	 * A row that changed in between is read again; false when the thread is gone,
+	 * CONFLICT when every attempt lost the race.
 	 */
 	private async readState(
 		id: string,
@@ -411,7 +412,9 @@ export class ThreadsService {
 			});
 			if (count) return true;
 		}
-		return true;
+		throw new ORPCError("CONFLICT", {
+			message: "Thread changed while saving; try again",
+		});
 	}
 
 	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
@@ -431,21 +434,20 @@ export class ThreadsService {
 			select: { id: true, settledAt: true },
 		});
 		const ids = rows.map((r) => r.id);
+		// readState keeps each row's updatedAt, so settling or undoing never reorders the feed.
 		if (!settled && restore) {
 			// Undo writes back each thread's own state, an earlier Settle included (#1020).
 			const inBlock = new Set(ids);
 			for (const r of restore.filter((r) => inBlock.has(r.id)))
-				await this.prisma.investigation.updateMany({
-					where: { id: r.id },
-					data: { settledAt: r.settledAt ? new Date(r.settledAt) : null },
+				await this.readState(r.id, {
+					settledAt: r.settledAt ? new Date(r.settledAt) : null,
 				});
 			return { ids, previous: [] };
 		}
-		await this.prisma.investigation.updateMany({
-			// Undo with no states to restore clears only the thread named, never its block.
-			where: settled ? { id: { in: ids } } : { id },
-			data: { settledAt: settled ? new Date() : null },
-		});
+		// Undo with no states to restore clears only the thread named, never its block.
+		const at = settled ? new Date() : null;
+		for (const target of settled ? ids : [id])
+			await this.readState(target, { settledAt: at });
 		return {
 			ids,
 			previous: settled

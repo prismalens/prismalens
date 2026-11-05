@@ -5,7 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LinkService } from "./LinkService";
+import { LinkService, serviceLabel } from "./LinkService";
 
 const h = vi.hoisted(() => ({
 	page: { data: [] as { id: string; name: string }[], total: 0 },
@@ -72,7 +72,25 @@ describe("LinkService (#1020, review of #1031)", () => {
 			)?.set?.call(find, "billing");
 			find.dispatchEvent(new Event("input", { bubbles: true }));
 		});
-		expect(h.asked).toContainEqual({ search: "billing" });
+		expect(h.asked).toContainEqual({ limit: 100, search: "billing" });
+	});
+
+	it("keeps the search field mounted when the search is cleared", async () => {
+		h.page = { data: [{ id: "s1", name: "cart" }], total: 120 };
+		await act(async () => root.render(<LinkService incidentId="inc-3" />));
+		const type = async (v: string) =>
+			act(async () => {
+				const el = q("incident-link-service-find") as HTMLInputElement;
+				Object.getOwnPropertyDescriptor(
+					HTMLInputElement.prototype,
+					"value",
+				)?.set?.call(el, v);
+				el.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+		await type("b");
+		h.page = { data: [{ id: "s2", name: "billing" }], total: 1 };
+		await type("");
+		expect(q("incident-link-service-find")).not.toBeNull();
 	});
 
 	it("says a failed link failed", async () => {
@@ -86,5 +104,19 @@ describe("LinkService (#1020, review of #1031)", () => {
 			}),
 		);
 		expect(q("incident-link-service")?.textContent).toContain("Link service");
+	});
+});
+
+describe("serviceLabel (review of #1031)", () => {
+	it("shows the unique name beside a display name that differs from it", () => {
+		expect(serviceLabel({ name: "cart-api", displayName: "Cart" })).toBe(
+			"Cart (cart-api)",
+		);
+		expect(serviceLabel({ name: "cart-api", displayName: "cart-api" })).toBe(
+			"cart-api",
+		);
+		expect(serviceLabel({ name: "cart-api", displayName: null })).toBe(
+			"cart-api",
+		);
 	});
 });
