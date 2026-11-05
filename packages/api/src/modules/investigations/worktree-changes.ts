@@ -6,7 +6,7 @@
  * Git runs on a throwaway GIT_DIR, index and config of ours, so nothing the agent writes in
  * the repo's config or attributes can name a program, and the repo's index is never written.
  */
-import { mkdirSync } from "node:fs";
+import { constants, mkdirSync } from "node:fs";
 import {
 	lstat,
 	mkdtemp,
@@ -151,10 +151,18 @@ async function untrackedFile(
 	if (!real?.startsWith(root + sep)) return entry("link");
 	if (stat.size > WORKTREE_FILE_MAX_BYTES) return entry("added");
 	// The agent may delete or lock the file between the listing and here; list it without lines.
-	const handle = await open(real, "r").catch(() => null);
+	// The agent can swap the path for a link after the checks above: judge the opened handle, not the name.
+	const handle = await open(
+		real,
+		constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+	).catch(() => null);
 	if (!handle) return entry("added");
 	let bytes: Buffer;
 	try {
+		const opened = await handle.stat();
+		if (!opened.isFile() || opened.dev !== stat.dev || opened.ino !== stat.ino)
+			return entry("link");
+		if (opened.size > WORKTREE_FILE_MAX_BYTES) return entry("added");
 		bytes = await handle.readFile();
 	} catch {
 		return entry("added");

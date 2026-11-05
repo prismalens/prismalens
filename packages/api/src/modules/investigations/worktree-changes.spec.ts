@@ -317,6 +317,37 @@ describe("readWorktreeChanges (#1020)", () => {
 		expect(repo.patch).not.toContain("+a");
 	});
 
+	it("reads no untracked file whose opened handle is not the file it listed", async () => {
+		write(run, { "swapped.txt": "secret\n", "grown.txt": "big\n", "ok.txt": "fine\n" });
+		const real = await vi.importActual<typeof import("node:fs/promises")>(
+			"node:fs/promises",
+		);
+		fsHooks.open = async (path) => {
+			const handle = await real.open(path, "r");
+			if (path.endsWith("ok.txt")) return handle;
+			const stat = await handle.stat();
+			await handle.close();
+			return {
+				stat: async () => ({
+					isFile: () => true,
+					dev: stat.dev,
+					ino: path.endsWith("swapped.txt") ? -1 : stat.ino,
+					size: path.endsWith("grown.txt") ? Number.MAX_SAFE_INTEGER : stat.size,
+				}),
+				readFile: async () => Buffer.from("+leaked"),
+				close: async () => {},
+			};
+		};
+
+		const repo = await changes();
+
+		const by = (p: string) => repo.files.find((f) => f.path === p);
+		expect(by("swapped.txt")).toMatchObject({ status: "link", additions: null });
+		expect(by("grown.txt")).toMatchObject({ status: "added", additions: null });
+		expect(by("ok.txt")).toMatchObject({ additions: 1 });
+		expect(repo.patch).not.toContain("leaked");
+	});
+
 	it("drops the held patch once untracked text passes the cap, and still lists every file", async () => {
 		const chunk = `${"y".repeat(79)}\n`.repeat(5_500);
 		const names = Array.from({ length: 6 }, (_, i) => `big${i}.txt`);

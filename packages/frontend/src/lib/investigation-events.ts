@@ -1002,9 +1002,8 @@ export function deriveTranscript(
 				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
 				if (
 					!gateway.unmatched.has(key) ||
-					node === "evidence" ||
-					node === "suspect" ||
-					node === "artifact"
+					(!event.isError &&
+						(node === "evidence" || node === "suspect" || node === "artifact"))
 				)
 					break;
 				closeGroup();
