@@ -405,7 +405,16 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 
 	test("no agent ready: inbox-tile-agent and inbox-setup show, linking to /settings?tab=agent", async ({
 		page,
+		alertmanager,
+		deliverWebhook,
+		unique,
 	}) => {
+		// The tiles belong to a board with an open incident; another test may have closed them all.
+		await fireIncident(page, alertmanager, deliverWebhook, {
+			name: unique("NoAgent"),
+			service: QUIET,
+			quiet: true,
+		});
 		// Stub harnesses endpoint to simulate no agent checked/ready
 		await page.route("**/api/settings/harnesses*", async (route) => {
 			const res = await route.fetch();

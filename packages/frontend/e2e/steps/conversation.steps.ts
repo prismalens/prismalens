@@ -725,6 +725,10 @@ When(
 		w(page).inc = { ...made, labels: {} };
 		await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
 		await box(page).fill("The panel at 14:02");
+		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+			"aria-label",
+			/^Agent and model: Claude Code, /,
+		);
 		await pasteFile(page, PNG);
 	},
 );
@@ -769,6 +773,10 @@ When(
 		const { id } = (await fresh.json()) as { id: string };
 		w(page).inc = { ...made, id, labels: {} };
 		await visit(page, `/incidents/${id}/conversation`);
+		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+			"aria-label",
+			/^Agent and model: Codex, /,
+		);
 		await pasteFile(page, PNG);
 	},
 );
@@ -812,6 +820,14 @@ Then(
 );
 
 When("I attach a 20-line log file", async ({ page }) => {
+	// Not on gemini: a run there records its check, and the next attempt on this stack finds it checked.
+	await pick(page, "claude-code");
+	await page.reload();
+	await firstPaint(page);
+	await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+		"aria-label",
+		/^Agent and model: Claude Code, /,
+	);
 	const log = Array.from(
 		{ length: 20 },
 		(_, i) =>
