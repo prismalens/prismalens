@@ -219,7 +219,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 								aria-modal="false"
 								aria-label={right.label}
 								tabIndex={-1}
-								className="absolute top-2 right-2 bottom-2 z-20 flex w-[min(30rem,calc(100%-4rem))] flex-col overflow-hidden rounded-pool bg-surface-1 shadow-float outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
+								className="absolute top-2 right-2 bottom-2 z-20 flex desktop:top-[calc(var(--header-h)+0.5rem)] w-[min(30rem,calc(100%-4rem))] flex-col overflow-hidden rounded-pool bg-surface-1 shadow-float outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
 								data-testid="panel-right"
 							/>
 						)}
@@ -265,7 +265,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
 						ref={setRightHost}
 						aria-describedby={undefined}
 						onCloseAutoFocus={(e) => e.preventDefault()}
-						className="fixed inset-0 z-50 flex flex-col bg-surface-1 pt-(--titlebar-h) outline-none"
+						className="fixed inset-0 z-50 flex flex-col bg-surface-1 outline-none"
 						data-testid="panel-right"
 					>
 						<DialogPrimitive.Title className="sr-only">

@@ -1,20 +1,56 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { createFileRoute } from "@tanstack/react-router";
-import { HomeComposer } from "@/components/home/HomeComposer";
+import { SeveritySchema } from "@prismalens/contracts";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+	HomeComposer,
+	type NewThreadSearch,
+} from "@/components/home/HomeComposer";
 import { usePageTitle } from "@/hooks/use-page-title";
+
+const id = (v: unknown) =>
+	typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : undefined;
+const yes = (v: unknown) => v === true || v === "true" || undefined;
+
+/** Home's choices from the URL (#1020); `?incident=true` opens it with Incident on. */
+export function validateNewSearch(
+	search: Record<string, unknown>,
+): NewThreadSearch {
+	return {
+		project: id(search.project),
+		service: id(search.service),
+		none: yes(search.none),
+		incident: yes(search.incident),
+		severity: SeveritySchema.safeParse(search.severity).data,
+		note: yes(search.note),
+	};
+}
 
 /** New: the Home box at any time, not only on a workspace with no incidents. */
 export const Route = createFileRoute("/_authenticated/new")({
+	validateSearch: validateNewSearch,
 	component: NewThread,
 });
 
 function NewThread() {
 	usePageTitle("New");
+	const navigate = useNavigate();
 	return (
-		<div className="flex h-full min-h-0 flex-col overflow-y-auto">
-			<HomeComposer />
+		<div
+			className="flex h-full min-h-0 flex-col overflow-y-auto"
+			data-testid="new-thread-page"
+		>
+			<HomeComposer
+				search={Route.useSearch()}
+				onSearch={(next) =>
+					void navigate({
+						to: "/new",
+						search: (prev: NewThreadSearch) => ({ ...prev, ...next }),
+						replace: true,
+					})
+				}
+			/>
 		</div>
 	);
 }

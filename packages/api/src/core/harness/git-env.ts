@@ -7,6 +7,7 @@
  * credential config that says who authenticates. Pure: no spawn, no Nest.
  */
 import { basename } from "node:path";
+import { gitChildEnv } from "@prismalens/agent-host";
 import { isWsl } from "@prismalens/config";
 
 /** Who authenticates a git call: a saved token, the machine's own git, or nobody. */
@@ -44,24 +45,8 @@ export const GIT_LOCAL_ENV_VARS = [
 	"GIT_NAMESPACE",
 ] as const;
 
-const STRIP_EXACT = new Set<string>([
-	...GIT_LOCAL_ENV_VARS,
-	"GIT_CURL_VERBOSE",
-	"GIT_ASKPASS",
-	"SSH_ASKPASS",
-	"LANGUAGE",
-]);
-const STRIP_PREFIX = ["GIT_TRACE", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"];
-
-function stripped(parent: NodeJS.ProcessEnv): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const [key, value] of Object.entries(parent)) {
-		if (value === undefined || STRIP_EXACT.has(key)) continue;
-		if (STRIP_PREFIX.some((p) => key.startsWith(p))) continue;
-		env[key] = value;
-	}
-	return env;
-}
+/** The shared filter (agent-host `gitChildEnv`), so every git child drops the same names. */
+const stripped = gitChildEnv;
 
 /** `GIT_SSH_COMMAND` with BatchMode for OpenSSH; any other client is left as it is. */
 export function sshCommandFor(
@@ -110,7 +95,8 @@ export function gitEnv(input: GitEnvInput): Record<string, string> {
 		env.WSLENV = parent.WSLENV
 			? `${parent.WSLENV}:GCM_INTERACTIVE`
 			: "GCM_INTERACTIVE";
-	const ssh = sshCommandFor(parent, input.coreSshCommand);
+	// The filtered env, so a name the filter dropped is never restored here (#1020).
+	const ssh = sshCommandFor(stripped(parent), input.coreSshCommand);
 	if (ssh === undefined) delete env.GIT_SSH_COMMAND;
 	else env.GIT_SSH_COMMAND = ssh;
 	const pairs = gitConfigPairs(input);

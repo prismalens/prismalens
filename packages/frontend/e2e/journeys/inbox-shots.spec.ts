@@ -56,8 +56,8 @@ async function fakeControls(page: Page, platform: "win32" | "darwin") {
 		const el = document.createElement("div");
 		el.style.cssText =
 			p === "win32"
-				? "position:fixed;top:0;right:0;width:138px;height:32px;z-index:9999;display:flex;align-items:center;justify-content:space-around;color:var(--text-2);font:12px sans-serif;pointer-events:none;outline:1px dashed oklch(0.7 0.19 25 / .5)"
-				: "position:fixed;top:10px;left:14px;z-index:9999;display:flex;gap:8px;pointer-events:none";
+				? "position:fixed;top:0;right:0;width:138px;height:44px;z-index:9999;display:flex;align-items:center;justify-content:space-around;color:var(--text-2);font:12px sans-serif;pointer-events:none;outline:1px dashed oklch(0.7 0.19 25 / .5)"
+				: "position:fixed;top:16px;left:14px;z-index:9999;display:flex;gap:8px;pointer-events:none";
 		el.innerHTML =
 			p === "win32"
 				? "<span>&#8212;</span><span>&#9633;</span><span>&#10005;</span>"
@@ -227,10 +227,7 @@ test("inbox shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await theme(page, "dark");
 	await visit(page, "/incidents");
-	await page
-		.getByRole("button", { name: `Runs and questions in INC-${ready.number}` })
-		.click();
-	await expect(page.getByTestId("tree-run").first()).toBeVisible();
+	await expect(page.getByTestId("thread-list")).toBeVisible();
 	await shot(page, "inbox-1440-dark-expanded");
 	await visit(page, `/incidents/${ready.id}`);
 	await shot(page, "overview-sidebar-1440-dark");

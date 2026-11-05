@@ -468,3 +468,17 @@ export function matches(incident: IncidentWithRelations, needle: string) {
 		)
 	);
 }
+
+/**
+ * A thread's one fact, the most urgent only (#1020): an ask waiting, then a
+ * failed run, then a run working, then a finding ready.
+ */
+export function rowStateOf(
+	incident: IncidentWithRelations,
+): "asks" | "failed" | "working" | "ready" | null {
+	const need = needOf(incident);
+	if (need === "approval") return "asks";
+	if (need === "failed" || need === "interrupted") return "failed";
+	if (liveOf(incident)) return "working";
+	return need === "ready" ? "ready" : null;
+}

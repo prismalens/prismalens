@@ -4,29 +4,33 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
+ * Picks what the box's Send does (#1020): the current action reads above the box
+ * and the others are under `/`. The typed text is kept across the pick.
+ */
+export async function pickAction(
+	scope: Page | Locator,
+	id: string,
+): Promise<void> {
+	const mode = scope.getByTestId("composer-mode");
+	await mode.waitFor({ timeout: 15_000 });
+	if ((await mode.getAttribute("data-mode")) === id) return;
+	const input = scope.getByTestId("composer-input");
+	const kept = await input.inputValue();
+	await input.fill("/");
+	await scope.getByTestId(`composer-slash-${id}`).click();
+	await expect(mode).toHaveAttribute("data-mode", id);
+	if (kept) await input.fill(kept);
+}
+
+/**
  * A draft's Investigate button. A draft on an incident with no alerts, or
- * with a report already, opens on Ask (#673 w59), so the verb is picked first.
+ * with a report already, opens on Ask (#673 w59), so the action is picked first.
  */
 export async function investigateButton(page: Page): Promise<Locator> {
-	const chip = page.getByTestId("action-chip");
-	await chip.waitFor({ timeout: 15_000 });
-	const canOpen = await chip.evaluate(
-		(el) =>
-			el.tagName.toLowerCase() === "button" &&
-			!(el as HTMLButtonElement).disabled,
-	);
-	if (canOpen && (await chip.getAttribute("data-action")) !== "investigate") {
-		// A menu that just closed can swallow the first click; retry until the popover opens.
-		await expect(async () => {
-			if (!(await page.getByTestId("action-menu").isVisible()))
-				await chip.click();
-			await expect(page.getByTestId("action-menu")).toBeVisible({
-				timeout: 1_000,
-			});
-		}).toPass({ timeout: 10_000 });
-		// The popover can still be settling; the option is pressed, not hunted for.
-		await page.getByTestId("action-investigate").dispatchEvent("click");
-		await expect(chip).toHaveAttribute("data-action", "investigate");
-	}
+	await page.getByTestId("composer-input").waitFor({ timeout: 15_000 });
+	const mode = page.getByTestId("composer-mode");
+	// A blocked box takes no text, so there is nothing to pick until it opens.
+	const open = await page.getByTestId("composer-input").isEnabled();
+	if (open && (await mode.count())) await pickAction(page, "investigate");
 	return page.getByTestId("composer-send");
 }

@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { RunView } from "./registry.js";
 import {
 	defineHarnessTool,
+	EVERY_SUBJECT,
 	fail,
 	type HarnessTool,
 	inputSchemaOf,
@@ -61,6 +62,7 @@ function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 		description: `Find PrismaLens tools that are not listed up front, by what you want to do (e.g. "past incidents", "runbooks"). Returns each match's name, description and input schema; run one with ${TOOLS_CALL}.`,
 		group: "core",
 		effect: "read",
+		serves: { subjects: EVERY_SUBJECT },
 		input: z.object({
 			query: z.string().trim().min(1).max(200),
 			limit: z.number().int().min(1).max(8).default(5),
@@ -100,6 +102,7 @@ function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 		description: `Run a tool ${TOOLS_SEARCH} returned: pass its exact \`name\` and its \`arguments\` as its input schema describes.`,
 		group: "core",
 		effect: "read",
+		serves: { subjects: EVERY_SUBJECT },
 		input: z.object({
 			name: z.string().trim().min(1).max(64),
 			arguments: z.record(z.string(), z.unknown()).default({}),

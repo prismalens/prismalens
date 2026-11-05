@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
-import { rowStateOf } from "@/components/shell/IncidentTree";
+import { rowStateOf } from "@/components/inbox/inbox-model";
 import { readableTitle } from "@/lib/title";
 import { triggerOf } from "@/lib/trigger";
 

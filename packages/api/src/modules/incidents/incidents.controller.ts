@@ -90,6 +90,22 @@ const EDITABLE_AFTER_RESOLVE: ReadonlySet<string> = new Set([
 	"severity",
 ]);
 
+const tails = new Map<string, Promise<unknown>>();
+
+/** Service-linking PATCHes of one incident run in turn, so a rollback never meets a request that relied on its link. */
+function oneAtATime<T>(key: string, run: () => Promise<T>): Promise<T> {
+	const result = (tails.get(key) ?? Promise.resolve()).then(run);
+	const tail = result.then(
+		() => undefined,
+		() => undefined,
+	);
+	tails.set(key, tail);
+	void tail.then(() => {
+		if (tails.get(key) === tail) tails.delete(key);
+	});
+	return result;
+}
+
 @Controller()
 export class IncidentsController {
 	constructor(
@@ -122,6 +138,7 @@ export class IncidentsController {
 					serviceId: input.serviceId,
 					fromDate: input.fromDate,
 					toDate: input.toDate,
+					search: input.search,
 					limit: input.limit,
 					offset: input.offset,
 				});
@@ -195,16 +212,51 @@ export class IncidentsController {
 						});
 					}
 				}
-				const incident = await this.incidentsService.update(
-					id,
-					updateData as UpdateIncidentDto,
-				);
-				if (!incident) {
-					throw new ORPCError("NOT_FOUND", {
-						message: `Incident ${id} not found`,
-					});
-				}
-				return this.serializeIncident(incident);
+				const { serviceId, ...rest } = updateData;
+				const others = fields.some((f) => f !== "serviceId");
+				const apply = async () => {
+					// Only the request whose link write set the service takes it back on failure (#1020).
+					let fresh = false;
+					if (serviceId) {
+						const linked = await this.incidentsService.linkService(
+							id,
+							serviceId,
+						);
+						fresh = linked === "linked" && others;
+						if (linked === "missing")
+							throw new ORPCError("NOT_FOUND", {
+								message: `Incident ${id} not found`,
+							});
+						if (linked === "taken")
+							throw new ORPCError("CONFLICT", {
+								message: "This incident already has a service.",
+							});
+					}
+					let incident:
+						| Awaited<ReturnType<IncidentsService["findById"]>>
+						| Awaited<ReturnType<IncidentsService["update"]>>;
+					try {
+						incident = others
+							? await this.incidentsService.update(
+									id,
+									rest as UpdateIncidentDto,
+								)
+							: await this.incidentsService.findById(id);
+					} catch (error) {
+						if (fresh && serviceId)
+							await this.incidentsService.unlinkService(id, serviceId);
+						throw error;
+					}
+					if (!incident && fresh && serviceId)
+						await this.incidentsService.unlinkService(id, serviceId);
+					if (!incident) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Incident ${id} not found`,
+						});
+					}
+					return this.serializeIncident(incident);
+				};
+				return serviceId ? oneAtATime(id, apply) : apply();
 			}),
 
 			// POST /incidents/:id/investigate - Start investigation

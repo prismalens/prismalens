@@ -36,6 +36,10 @@ describe("Walk #979: scheduled checks run end to end", () => {
 			effort: null,
 			missedPolicy: "run_once",
 			catchUpMinutes: 60,
+			repositoryId: null,
+			accessLevel: null,
+			report: true,
+			whenAsks: "decide",
 		};
 
 		const schedule = await pl.api<Schedule>("/schedules", {

@@ -1,35 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { projectKindOf } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { FolderGit2, Plus } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
 	useAddRepositorySource,
 	useRepositories,
 } from "@/lib/api/hooks/use-repositories-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { KIND_ICON, KIND_WORD } from "@/lib/project-source";
+import { AddProjectDialog } from "./AddProjectDialog";
 
 /** Every project: a folder or git URL, with or without a service (#1020). */
-export function ProjectList() {
+export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 	usePageTitle("Projects");
 	const repos = useRepositories({ limit: 100 });
 	const add = useAddRepositorySource();
 	const navigate = useNavigate();
-	const [source, setSource] = useState("");
+	const [open, setOpen] = useState(openAtStart);
+	useEffect(() => {
+		if (openAtStart) setOpen(true);
+	}, [openAtStart]);
 	const [error, setError] = useState<string | null>(null);
 
-	const onAdd = async (e: FormEvent) => {
-		e.preventDefault();
-		if (!source.trim()) return;
+	const onAdd = async (source: string) => {
 		setError(null);
 		try {
-			const repo = await add.mutateAsync({ source: source.trim() });
-			setSource("");
+			const repo = await add.mutateAsync({ source });
+			setOpen(false);
 			await navigate({ to: "/projects/$id", params: { id: repo.id } });
 		} catch (err) {
 			setError(getErrorMessage(err));
@@ -39,37 +42,32 @@ export function ProjectList() {
 	const rows = repos.data?.data ?? [];
 	return (
 		<div className="flex h-full flex-col bg-canvas" data-testid="projects-page">
-			<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-4">
+			<header
+				data-title-row
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-4"
+			>
 				<h1 className="flex-1 text-title">Projects</h1>
+				<Button onClick={() => setOpen(true)} data-testid="add-project">
+					<Plus />
+					Add project
+				</Button>
 			</header>
+			{open && (
+				<AddProjectDialog
+					open
+					onOpenChange={(o) => {
+						setOpen(o);
+						setError(null);
+						if (!o && openAtStart)
+							void navigate({ to: "/projects", search: {}, replace: true });
+					}}
+					onChoose={(s) => void onAdd(s)}
+					pending={add.isPending}
+					error={error}
+				/>
+			)}
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
 				<div className="mx-auto grid max-w-(--reading-w) gap-4 pt-4">
-					<form
-						onSubmit={(e) => void onAdd(e)}
-						className="flex items-center gap-2"
-						data-testid="add-project"
-					>
-						<Input
-							value={source}
-							onChange={(e) => setSource(e.target.value)}
-							placeholder="Folder or git URL"
-							aria-label="Folder or git URL"
-							data-testid="add-project-source"
-						/>
-						<Button
-							type="submit"
-							disabled={!source.trim() || add.isPending}
-							data-testid="add-project-submit"
-						>
-							<Plus />
-							Add project
-						</Button>
-					</form>
-					{error && (
-						<p className="text-meta text-danger" role="alert">
-							{error}
-						</p>
-					)}
 					{repos.isLoading ? (
 						<Loading rows={3} />
 					) : repos.error ? (
@@ -89,7 +87,6 @@ export function ProjectList() {
 										className="flex h-10 items-center gap-2 rounded-control px-2 text-body text-text-1 hover:bg-surface-2"
 										data-testid="project-row"
 									>
-										<FolderGit2 className="size-4 shrink-0 text-text-3" />
 										<span className="min-w-0 flex-1 truncate">
 											{r.fullName}
 										</span>
@@ -98,6 +95,7 @@ export function ProjectList() {
 												{r.syncBranch}
 											</span>
 										)}
+										<KindMark kind={projectKindOf(r)} />
 									</Link>
 								</li>
 							))}
@@ -106,5 +104,28 @@ export function ProjectList() {
 				</div>
 			</div>
 		</div>
+	);
+}
+
+/** A project's kind as its icon and word (#1020). */
+export function KindMark({
+	kind,
+	className,
+}: {
+	kind: ReturnType<typeof projectKindOf>;
+	className?: string;
+}) {
+	const Icon = KIND_ICON[kind];
+	return (
+		<span
+			className={
+				className ?? "flex shrink-0 items-center gap-1.5 text-meta text-text-3"
+			}
+			data-testid="project-kind"
+			data-kind={kind}
+		>
+			<Icon className="size-4 shrink-0" aria-hidden />
+			<span>{KIND_WORD[kind]}</span>
+		</span>
 	);
 }

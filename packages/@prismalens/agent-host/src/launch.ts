@@ -96,6 +96,13 @@ export const GITHUB_TOKEN_VARS = [
 	"GITHUB_ENTERPRISE_TOKEN",
 ] as const;
 
+/** Other ways to authenticate a push: the SSH agent and askpass programs; dropped with the tokens (#1020). */
+export const GIT_AUTH_VARS = [
+	"SSH_AUTH_SOCK",
+	"SSH_ASKPASS",
+	"GIT_ASKPASS",
+] as const;
+
 /** Which host variables reach the child before the row's keys. Products default to the denylist (#817); `allowlist` is the strict mode. */
 export type EnvFloor =
 	| { mode: "allowlist"; extraAllow?: readonly string[] }
@@ -107,7 +114,7 @@ export type EnvFloor =
 
 export interface LaunchPolicy {
 	userSetup: UserSetup;
-	/** `exclude` drops the GitHub token vars, empties GH_CONFIG_DIR and blanks git's credential.helper. It does not stop a read from disk. */
+	/** `exclude` drops the GitHub token vars, the SSH agent and askpass programs, empties GH_CONFIG_DIR and blanks git's credential.helper. It does not stop a read from disk. */
 	github: "include" | "exclude";
 	floor?: EnvFloor;
 	/** Names with these prefixes never reach the child, from any layer. */
@@ -320,7 +327,9 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 
 	const dirs = [runEnv.configDir, runEnv.dataDir];
 	if (policy.github === "exclude") {
-		for (const key of GITHUB_TOKEN_VARS) delete env[key];
+		// Windows env names are case-insensitive: `gh_token` reaches the child as GH_TOKEN (#1020).
+		const token = refusal([...GITHUB_TOKEN_VARS, ...GIT_AUTH_VARS]);
+		for (const key of Object.keys(env)) if (token(key)) delete env[key];
 		const ghDir = join(input.runDir, "gh");
 		env.GH_CONFIG_DIR = ghDir;
 		dirs.push(ghDir);

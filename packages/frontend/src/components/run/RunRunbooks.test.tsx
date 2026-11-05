@@ -6,6 +6,7 @@ import type { PreRunDetail } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { RunDetailsPanel } from "./RunDetailsPanel";
 import { RunRunbooks } from "./RunRunbooks";
 
@@ -336,36 +337,38 @@ describe("RunRunbooks (#848)", () => {
 	it("renders contextTop inside the context tab of RunDetailsPanel", async () => {
 		await act(async () => {
 			root?.render(
-				<RunDetailsPanel
-					title="Run Details"
-					tab="context"
-					onTab={vi.fn()}
-					onClose={vi.fn()}
-					incidentId="inc-1"
-					summary={[]}
-					evidence={[]}
-					context={[]}
-					flaggedCount={0}
-					steps={[]}
-					onJump={vi.fn()}
-					files={{
-						workspace: null,
-						touched: [],
-						links: [],
-						runId: "run-1",
-						viewing: null,
-						onOpen: vi.fn(),
-						onClose: vi.fn(),
-						backLabel: "Back",
-						reads: [],
-						codeHost: null,
-						stepFile: () => null,
-						onOpenHypotheses: vi.fn(),
-					}}
-					contextTop={
-						<div data-testid="test-context-top">Top Context Runbooks</div>
-					}
-				/>,
+				<TooltipProvider>
+					<RunDetailsPanel
+						title="Run Details"
+						tab="context"
+						onTab={vi.fn()}
+						onClose={vi.fn()}
+						incidentId="inc-1"
+						summary={[]}
+						evidence={[]}
+						context={[]}
+						flaggedCount={0}
+						steps={[]}
+						onJump={vi.fn()}
+						files={{
+							workspace: null,
+							touched: [],
+							links: [],
+							runId: "run-1",
+							viewing: null,
+							onOpen: vi.fn(),
+							onClose: vi.fn(),
+							backLabel: "Back",
+							reads: [],
+							codeHost: null,
+							stepFile: () => null,
+							onOpenHypotheses: vi.fn(),
+						}}
+						contextTop={
+							<div data-testid="test-context-top">Top Context Runbooks</div>
+						}
+					/>
+				</TooltipProvider>,
 			);
 		});
 		const contextPanel = container?.querySelector(

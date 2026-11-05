@@ -6,7 +6,7 @@
  * answers it (#673 w21 ruling 2026-10-10). At Ask always every ask waits on
  * the operator's Approve or Deny, and nobody answering denies it.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ASK_TIMEOUT_MS,
@@ -147,6 +147,104 @@ function allowed(
 	return { allow: true, optionId: allow.optionId, outcome: "allowed" };
 }
 
+/** An ask a person answered "Always allow" on: its kind and the operation's identity. */
+export interface RememberedAsk {
+	kind: string | null;
+	identity: string;
+}
+
+const FILE_KINDS = new Set(["edit", "delete", "move"]);
+
+class Unserializable extends Error {}
+
+/**
+ * JSON with keys sorted, so the same input always names the same operation. Arrays keep
+ * their elements as they are; a cycle or a value JSON cannot hold throws Unserializable.
+ */
+function stable(v: unknown, seen = new Set<unknown>()): string {
+	if (v === null) return "null";
+	switch (typeof v) {
+		case "string":
+		case "boolean":
+			return JSON.stringify(v);
+		case "number":
+			if (!Number.isFinite(v)) throw new Unserializable();
+			return JSON.stringify(v);
+		case "object": {
+			if (seen.has(v)) throw new Unserializable();
+			seen.add(v);
+			const out = Array.isArray(v)
+				? `[${v.map((x) => stable(x, seen)).join(",")}]`
+				: `{${Object.keys(v as object)
+						.filter((k) => (v as Record<string, unknown>)[k] !== undefined)
+						.sort()
+						.map(
+							(k) =>
+								`${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k], seen)}`,
+						)
+						.join(",")}}`;
+			seen.delete(v);
+			return out;
+		}
+		default:
+			throw new Unserializable();
+	}
+}
+
+/**
+ * What an ask would do, as a hash of its whole input as given (an argv stays an array), every
+ * location in order, and, for a tool that is not a command or file change, its name; never
+ * the title alone. Null when nothing names it or it cannot be serialized (#1020, CP4 OBJ-011).
+ */
+export function askIdentity(
+	tc: PermissionRequest["toolCall"] | undefined,
+): string | null {
+	if (!tc) return null;
+	const kind = tc.kind ?? null;
+	const raw =
+		tc.rawInput && typeof tc.rawInput === "object"
+			? (tc.rawInput as Record<string, unknown>)
+			: {};
+	const locations = (tc.locations ?? []).map((l) => l.path ?? null);
+	if (kind === "execute") {
+		const cmd = raw.command;
+		const named =
+			(typeof cmd === "string" && cmd.trim() !== "") ||
+			(Array.isArray(cmd) && cmd.length > 0);
+		if (!named) return null;
+	} else if (kind && FILE_KINDS.has(kind)) {
+		const path = raw.file_path ?? raw.path ?? raw.abs_path;
+		if (typeof path !== "string" && !locations.some(Boolean)) return null;
+	} else if (Object.keys(raw).length === 0) return null;
+	const command = kind === "execute" || (kind !== null && FILE_KINDS.has(kind));
+	try {
+		return createHash("sha256")
+			.update(
+				stable({
+					kind,
+					raw,
+					locations,
+					...(command ? {} : { tool: tc.title ?? null }),
+				}),
+			)
+			.digest("hex");
+	} catch (e) {
+		if (e instanceof Unserializable) return null;
+		throw e;
+	}
+}
+
+function isRemembered(
+	req: PermissionRequest,
+	remembered: readonly RememberedAsk[] | undefined,
+): boolean {
+	if (!remembered?.length) return false;
+	const identity = askIdentity(req.toolCall);
+	if (!identity) return false;
+	const kind = req.toolCall?.kind ?? null;
+	return remembered.some((a) => a.identity === identity && a.kind === kind);
+}
+
 /** The run's gateway as the policy sees it: connected, its server name, and PrismaLens's own tool names. */
 export interface GatewayAsks {
 	connected(): boolean;
@@ -212,7 +310,14 @@ export function isGatewayToolCall(
 export function levelPolicy(
 	level: AccessLevel,
 	channel: { policy: PermissionPolicy },
-	opts: { unattended?: boolean; gateway?: GatewayAsks } = {},
+	opts: {
+		unattended?: boolean;
+		/** Wait for me: every ask past reads goes to a person, never answered by the level (#1020). */
+		waitForAsks?: boolean;
+		gateway?: GatewayAsks;
+		/** Asks a person allowed always on this schedule; matched on kind and title exactly (#1020). */
+		remembered?: readonly RememberedAsk[];
+	} = {},
 ): PermissionPolicy {
 	const card = opts.unattended ? unattendedPolicy : channel.policy;
 	return (req, ctx) => {
@@ -221,7 +326,10 @@ export function levelPolicy(
 			return deny(req, "mode_kept", "the run stays in its mode");
 		if (isGatewayToolCall(req, opts.gateway)) return allowed(req, ctx, card);
 		if (kind && READS.has(kind)) return allowed(req, ctx, card);
-		if (opts.unattended || level === "supervised") return card(req, ctx);
+		// Only the exact operation a person allowed; anything else goes on to the card below.
+		if (isRemembered(req, opts.remembered)) return allowed(req, ctx, card);
+		if (opts.unattended || opts.waitForAsks || level === "supervised")
+			return card(req, ctx);
 		if (level === "auto-edits")
 			return kind && FILE_CHANGES.has(kind)
 				? allowed(req, ctx, card)

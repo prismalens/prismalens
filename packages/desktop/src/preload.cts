@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("prismalensDesktop", {
 	platform: process.platform,
 	setTheme: (theme: "light" | "dark") =>
 		ipcRenderer.send("prismalens:theme", theme),
+	pickFolder: (): Promise<unknown> =>
+		ipcRenderer.invoke("prismalens:pick-folder"),
 	terminalKey: (): string | undefined =>
 		ipcRenderer.sendSync("prismalens:terminal-key") ?? undefined,
 	onTerminalKey: (listener: () => void) => {

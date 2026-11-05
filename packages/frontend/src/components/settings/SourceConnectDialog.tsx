@@ -9,9 +9,10 @@ import {
 	type SourceDraft,
 } from "@prismalens/contracts/schemas";
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
+import { RingTick, useRingTick } from "@/components/shared/RingTick";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -190,6 +191,14 @@ export function probeWord(r: ProbeReport): Word {
 	return { text: "Failed", tone: "danger" };
 }
 
+/** A save that answered without a connection stored nothing: the mark reads failed. */
+export function saveFailed(m: {
+	error: unknown;
+	data: { connectionId?: string | null } | undefined;
+}): boolean {
+	return !!m.error || (!!m.data && !m.data.connectionId);
+}
+
 const STEPS = ["Kind", "Details", "Test and save"] as const;
 
 /**
@@ -216,6 +225,7 @@ export function SourceConnectDialog({
 	const [report, setReport] = useState<ProbeReport | null>(null);
 	const test = useTestSource();
 	const connect = useConnectSource();
+	const saveRing = useRingTick(connect.isPending, saveFailed(connect));
 	const { toast } = useToast();
 	const nameId = useId();
 	const urlId = useId();
@@ -298,7 +308,7 @@ export function SourceConnectDialog({
 									className="flex min-h-14 items-center gap-3 rounded-pool bg-surface-1 px-3 py-2.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=checked]:bg-accent/8 data-[state=checked]:outline-2 data-[state=checked]:-outline-offset-2 data-[state=checked]:outline-accent"
 									data-testid={`source-kind-${k.id}`}
 								>
-									<KindIcon kind={k.git ? "git" : k.id} />
+									<KindIcon kind={k.id} />
 									<span className="min-w-0">
 										<strong className="block font-semibold">{k.label}</strong>
 										<small className="block text-meta text-text-2">
@@ -414,7 +424,7 @@ export function SourceConnectDialog({
 					<div aria-live="polite" data-testid="source-test-result">
 						{test.isPending ? (
 							<p className="flex items-center gap-2 text-text-2">
-								<Loader2 className="size-4 motion-safe:animate-spin" />
+								<RingTick state="busy" className="size-4" />
 								Testing {host}…
 							</p>
 						) : report && word ? (
@@ -491,9 +501,7 @@ export function SourceConnectDialog({
 							onClick={() => save(!report?.ok)}
 							data-testid="source-save"
 						>
-							{connect.isPending && (
-								<Loader2 className="size-3.5 motion-safe:animate-spin" />
-							)}
+							{saveRing && <RingTick state={saveRing} />}
 							{report?.untested ? "Save, not tested yet" : "Save source"}
 						</Button>
 					)}

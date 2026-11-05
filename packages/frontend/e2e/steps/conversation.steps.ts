@@ -182,7 +182,7 @@ When(
 		await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
 		// The script name rides in the brief so the run holds for the Then.
 		await box(page).fill(`${text} fake-session:live`);
-		await expect(page.getByTestId("action-chip")).toHaveText(button);
+		await expect(page.getByTestId("composer-mode")).toHaveText(button);
 		await page.getByTestId("composer-send").click();
 		await waitForRun(page, made.id, (r) => r.status === "running", "the run");
 	},
@@ -335,8 +335,9 @@ Then(
 			/waits for the next pause/i,
 		);
 		release(inc(page).title);
+		// Delivered, then answered once the agent replies (#1020); the reply can land first.
 		await expect(mine.getByTestId("transcript-delivery")).toHaveText(
-			/delivered at the next pause/i,
+			/delivered at the next pause|answered/i,
 		);
 		const text = await mine.locator("p").first().innerText();
 		await expect(
@@ -344,6 +345,9 @@ Then(
 				.getByTestId("transcript-prose")
 				.filter({ hasText: `On your question (${text})` }),
 		).toBeVisible();
+		await expect(mine.getByTestId("transcript-delivery")).toHaveText(
+			"answered",
+		);
 	},
 );
 
@@ -364,7 +368,7 @@ Then(
 	async ({ page }) => {
 		const mine = page.getByTestId("transcript-operator").last();
 		await expect(mine.getByTestId("transcript-delivery")).toHaveText(
-			/sent now/i,
+			/sent now|answered/i,
 		);
 		await expect(
 			page
@@ -725,6 +729,10 @@ When(
 		w(page).inc = { ...made, labels: {} };
 		await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
 		await box(page).fill("The panel at 14:02");
+		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+			"aria-label",
+			/^Agent and model: Claude Code, /,
+		);
 		await pasteFile(page, PNG);
 	},
 );
@@ -769,6 +777,10 @@ When(
 		const { id } = (await fresh.json()) as { id: string };
 		w(page).inc = { ...made, id, labels: {} };
 		await visit(page, `/incidents/${id}/conversation`);
+		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+			"aria-label",
+			/^Agent and model: Codex, /,
+		);
 		await pasteFile(page, PNG);
 	},
 );
@@ -812,6 +824,14 @@ Then(
 );
 
 When("I attach a 20-line log file", async ({ page }) => {
+	// Not on gemini: a run there records its check, and the next attempt on this stack finds it checked.
+	await pick(page, "claude-code");
+	await page.reload();
+	await firstPaint(page);
+	await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+		"aria-label",
+		/^Agent and model: Claude Code, /,
+	);
 	const log = Array.from(
 		{ length: 20 },
 		(_, i) =>
@@ -1018,8 +1038,8 @@ Then(
 			new RegExp(`^${text}\n\n${quote}\\d+\\. It found: `),
 		);
 		await expect(page.getByTestId("composer-file")).toContainText(file);
-		await expect(page.getByTestId("action-chip")).toHaveAttribute(
-			"data-action",
+		await expect(page.getByTestId("composer-mode")).toHaveAttribute(
+			"data-mode",
 			"investigate",
 		);
 	},
@@ -1036,11 +1056,11 @@ Then("the report is unchanged", async ({ page }) => {
 });
 
 Then(
-	'the status line reads "Stopped by you" and the box continues it to a report, with no verb chip',
+	'the status line reads "Stopped by you" and the box continues it to a report, with no action to pick',
 	async ({ page }) => {
 		await expect(strip(page)).toHaveText(/^Stopped by you/);
 		// No continue control (rulings 2, 3): typing and sending continues it.
-		await expect(page.getByTestId("action-chip")).toHaveCount(0);
+		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 		await expect(box(page)).toHaveAttribute("placeholder", /^Message /);
 		await expect(page.getByTestId("composer-hint")).toContainText(
 			"own session and ends in a report on the overview.",

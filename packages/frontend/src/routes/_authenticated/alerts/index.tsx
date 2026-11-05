@@ -21,11 +21,13 @@ import {
 	usePullAlerts,
 } from "@/components/alerts/AlertListPane";
 import { AlertsBlank } from "@/components/alerts/AlertsBlank";
+import { WebhookCopy } from "@/components/alerts/WebhookCopy";
 import { Hint } from "@/components/shared/Hint";
 import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -77,6 +79,10 @@ function AlertsPage() {
 				/>
 				<div className="min-h-0 flex-1 overflow-y-auto">
 					<AlertsBlank />
+					<HelperThread
+						place="alerts"
+						className="mx-auto max-w-(--reading-w) px-4 pb-8"
+					/>
 				</div>
 			</>
 		);
@@ -171,7 +177,13 @@ function AlertsPage() {
 			{showNumbers ? (
 				<AlertNumbers />
 			) : (
-				<AlertListPane selectedId={null} className="min-h-0 flex-1 pt-1" />
+				<AlertListPane
+					selectedId={null}
+					className="min-h-0 flex-1 pt-1"
+					whenEmpty={
+						<HelperThread place="alerts" className="mx-auto mt-4 px-4" />
+					}
+				/>
 			)}
 		</>
 	);
@@ -198,17 +210,23 @@ function AlertNumbers() {
 				) : !s ? (
 					<Loading rows={3} />
 				) : s.total === 0 ? (
-					<Empty
-						text="Nothing has fired yet."
-						testId="alerts-none"
-						action={
-							<Button variant="text" size="sm" asChild>
-								<Link to="/settings" search={{ tab: "sources" }}>
-									Add an alert source
-								</Link>
-							</Button>
-						}
-					/>
+					<>
+						<Empty
+							text="Nothing has fired yet."
+							testId="alerts-none"
+							action={
+								<>
+									<Button variant="text" size="sm" asChild>
+										<Link to="/settings" search={{ tab: "sources" }}>
+											Add an alert source
+										</Link>
+									</Button>
+									<WebhookCopy testIdPrefix="alerts" />
+								</>
+							}
+						/>
+						<HelperThread place="alerts" className="mt-4" />
+					</>
 				) : (
 					<>
 						<p

@@ -5,7 +5,7 @@ import type { RunState } from "@prismalens/contracts";
 import { cn } from "@/lib/utils";
 import { runDot } from "./run-facts";
 
-/** A run's state as a dot: breathing while live (#811). The sidebar's tree is IncidentTree now. */
+/** A run's state as a dot: breathing while live (#811). The sidebar lists threads in ThreadList. */
 export function RunDot({
 	state,
 	draft,

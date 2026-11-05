@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { AlertsBlank } from "@/components/alerts/AlertsBlank";
+import {
+	NewScheduleAction,
+	SchedulesSection,
+} from "@/components/schedules/SchedulesSection";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
-import { orpc } from "@/lib/api/orpc-client";
-import { formatDayClock, scheduleWhen } from "@/lib/format-time";
+import { formatDayClock } from "@/lib/format-time";
 
 export const Route = createFileRoute("/_authenticated/automation")({
 	component: Automation,
@@ -18,8 +20,6 @@ export const Route = createFileRoute("/_authenticated/automation")({
 /** What starts threads without you (#1020): schedules, webhooks and alert sources, before any is set up. */
 function Automation() {
 	usePageTitle("Automation");
-	const { data } = useQuery(orpc.schedules.list.queryOptions({ input: {} }));
-	const schedules = data?.schedules ?? [];
 	const { data: last } = useLastDelivery();
 	const now = Date.now();
 	return (
@@ -38,40 +38,11 @@ function Automation() {
 							<span className="text-meta text-text-3">
 								The agent runs a prompt on a timetable.
 							</span>
-							<Link
-								to="/schedules"
-								className="ml-auto inline-flex h-8 items-center rounded-control bg-surface-2 px-3 text-body text-text-1 hover:bg-surface-3"
-							>
-								New schedule
-							</Link>
+							<span className="ml-auto">
+								<NewScheduleAction />
+							</span>
 						</div>
-						{schedules.length === 0 ? (
-							<p className="text-body text-text-3">No schedules yet.</p>
-						) : (
-							<ul className="flex flex-col gap-px">
-								{schedules.map((s) => (
-									<li key={s.id}>
-										<Link
-											to="/schedules/$id"
-											params={{ id: s.id }}
-											className="flex min-h-10 items-center gap-3 rounded-control px-3 hover:bg-surface-3"
-										>
-											<span className="min-w-0 flex-1 truncate text-body text-text-1">
-												{s.name}
-											</span>
-											<span className="text-meta text-text-3">
-												{scheduleWhen(s)}
-											</span>
-											<span className="w-32 text-right text-meta text-text-3">
-												{s.lastTick?.decidedAt
-													? `Ran ${formatDayClock(s.lastTick.decidedAt, now)}`
-													: "Not run yet"}
-											</span>
-										</Link>
-									</li>
-								))}
-							</ul>
-						)}
+						<SchedulesSection />
 					</section>
 					<section
 						aria-labelledby="auto-alerts"

@@ -106,7 +106,7 @@ const finished = (s: string) => s === "completed";
 const failed = (s: string) => s === "failed";
 
 async function openReport(page: Page) {
-	await page.goto(`/incidents/${inc(page).id}/report`);
+	await page.goto(`/incidents/${inc(page).id}`);
 	await expect(page.getByTestId("incident-overview")).toBeVisible();
 }
 
@@ -627,7 +627,7 @@ Then(
 		await expect(page.getByTestId("latest-run-strip")).toContainText("stopped");
 		await page.getByTestId("latest-run-link").click();
 		// A stopped run that can reopen its session continues to a report (R4.4); sending continues it.
-		await expect(page.getByTestId("action-chip")).toHaveCount(0);
+		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 		await expect(page.getByTestId("composer-send")).toBeVisible();
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
@@ -751,7 +751,7 @@ Then(
 
 Then("no screen says PrismaLens will sign in for me", async ({ page }) => {
 	const promise = /PrismaLens (will|can) sign|sign you in|we('| wi)ll sign/i;
-	for (const tab of ["", "/conversation", "/report"]) {
+	for (const tab of ["", "/conversation"]) {
 		await page.goto(`/incidents/${inc(page).id}${tab}`);
 		await expect(page.getByTestId("incident-header")).toBeVisible();
 		expect(await page.locator("main, body").first().innerText()).not.toMatch(

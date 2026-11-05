@@ -342,11 +342,15 @@ export class InvestigationTriggerService {
 				? await this.harnessService.effectiveChoice(selection.harness, true)
 				: null;
 
+			// Wait for me (Settings, host only): its asks wait in the thread and notify (#1020).
+			const asks = (await this.harnessService.getSettings()).alertAsks;
 			jobId = await this.dispatchService.addInvestigationJob({
 				incidentId: incident.id,
 				investigationId: investigation.id,
 				...(choice ?? {}),
-				unattended: true,
+				unattended: asks !== "wait",
+				...(asks === "wait" ? { waitForAsks: true } : {}),
+				startedBy: "alert",
 				priority: this.mapSeverityToPriority(incident.severity),
 				context: {
 					title: incident.title,
