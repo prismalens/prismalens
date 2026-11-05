@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller } from "@nestjs/common";
+import { Controller, Optional } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	SERVICE_NOTES_MAX,
@@ -19,6 +19,7 @@ import {
 	GitCredentialService,
 	pickOf,
 } from "../integrations/git-credential.service.js";
+import { RepositoryIconService } from "../repositories/repository-icon.service.js";
 import { serializeRepository } from "../repositories/serialize-repository.js";
 import type {
 	AddDependencyDto,
@@ -51,6 +52,7 @@ export class ServicesController {
 	constructor(
 		private readonly servicesService: ServicesService,
 		private readonly gitCredentials: GitCredentialService,
+		@Optional() private readonly icons?: RepositoryIconService,
 	) {}
 
 	@Implement(servicesContract)
@@ -287,6 +289,9 @@ export class ServicesController {
 												connectionId: r.connectionId,
 												pick: pickOf(r.metadata),
 											}),
+										this.icons &&
+											((r) =>
+												this.icons?.view(r) ?? { iconSource: "monogram" }),
 									)
 								: undefined,
 						}),
@@ -294,8 +299,17 @@ export class ServicesController {
 				)
 			: [];
 
+		// A service shows its primary project's logo, else the monogram (#1024 E).
+		const primary = (
+			repositories.find((r) => (r as { isPrimary?: boolean }).isPrimary) ??
+			repositories[0]
+		)?.repository as
+			| { iconUrl?: string; iconSource?: Service["iconSource"] }
+			| undefined;
 		return {
 			...serialized,
+			iconSource: primary?.iconSource ?? "monogram",
+			...(primary?.iconUrl ? { iconUrl: primary.iconUrl } : {}),
 			dependencies:
 				withDeps.dependencies?.map((d) => this.serializeServiceDependency(d)) ??
 				[],

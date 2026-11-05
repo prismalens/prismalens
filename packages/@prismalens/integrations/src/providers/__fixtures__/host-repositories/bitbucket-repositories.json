@@ -1,0 +1,31 @@
+{
+	"pagelen": 30,
+	"page": 1,
+	"next": "https://api.bitbucket.org/2.0/repositories?role=member&page=2",
+	"values": [
+		{
+			"type": "repository",
+			"full_name": "acme-team/billing",
+			"is_private": true,
+			"description": "Invoices",
+			"updated_on": "2026-11-03T08:30:00.000000+00:00",
+			"links": {
+				"clone": [
+					{
+						"name": "https",
+						"href": "https://jdoe@bitbucket.org/acme-team/billing.git"
+					},
+					{ "name": "ssh", "href": "git@bitbucket.org:acme-team/billing.git" }
+				]
+			},
+			"owner": {
+				"type": "team",
+				"links": {
+					"avatar": {
+						"href": "https://bitbucket.org/account/acme-team/avatar/"
+					}
+				}
+			}
+		}
+	]
+}

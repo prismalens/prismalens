@@ -626,11 +626,11 @@ export type GitHostView = z.infer<typeof GitHostViewSchema>;
 export const SourcesOverviewSchema = z.object({
 	sources: z.array(SourceRowSchema),
 	gitHosts: z.array(GitHostViewSchema),
-	/** "Show owner avatars from the git host" (#1024 E); on by default. */
-	ownerAvatars: z.boolean().optional(),
+	/** "Images from the git host" (#1024 E): logos, avatars and previews; on by default. */
+	hostImages: z.boolean().optional(),
 });
 
-export const OwnerAvatarsToggleSchema = z.object({ enabled: z.boolean() });
+export const HostImagesToggleSchema = z.object({ enabled: z.boolean() });
 
 /** Add project → From GitHub, GitLab or Bitbucket (#1024 E): what the resolved credential can see. */
 export const HostRepositoriesInputSchema = z.object({

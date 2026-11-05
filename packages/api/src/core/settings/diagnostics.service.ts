@@ -19,6 +19,7 @@ import {
 	serviceOwnsWorkspace,
 } from "@prismalens/config";
 import type { Diagnostics, DoctorCheck } from "@prismalens/contracts";
+import { gitEnv } from "../harness/git-env.js";
 
 export type GitRun = (args: string[]) => {
 	status: number | null;
@@ -27,11 +28,12 @@ export type GitRun = (args: string[]) => {
 };
 
 const runGit: GitRun = (args) => {
+	// The machine source keeps the user's own credential helpers, which this check reports.
 	const r = spawnSync("git", args, {
 		encoding: "utf8",
 		timeout: 5_000,
 		windowsHide: true,
-		env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+		env: gitEnv({ source: "machine" }),
 	});
 	return { status: r.status, stdout: r.stdout ?? "", error: r.error };
 };

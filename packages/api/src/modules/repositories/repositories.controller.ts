@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { join } from "node:path";
-import { Controller } from "@nestjs/common";
+import { Controller, Get, Param, ParseUUIDPipe, Res } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { repositoriesContract } from "@prismalens/contracts";
 import type {
@@ -11,11 +11,13 @@ import type {
 	ServiceRepository,
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { isHost } from "../../core/settings/settings.controller.js";
+import { sendImage } from "../images/images.controller.js";
 import { browseFolders } from "./folder-browser.js";
 import { detectScripts } from "./project-scripts.js";
 import { RepositoriesService } from "./repositories.service.js";
+import { RepositoryIconService } from "./repository-icon.service.js";
 import { serializeRepository } from "./serialize-repository.js";
 
 /** The host's folders and git calls in them are for the host's own session only (#1020). */
@@ -28,12 +30,31 @@ function hostOnly(request: unknown): void {
 
 @Controller()
 export class RepositoriesController {
-	constructor(private readonly repositoriesService: RepositoriesService) {}
+	constructor(
+		private readonly repositoriesService: RepositoriesService,
+		private readonly icons: RepositoryIconService,
+	) {}
 
 	private serialize(repo: PrismaRepository): Promise<Repository> {
-		return serializeRepository(repo, (r) =>
-			this.repositoriesService.credentialFor(r),
+		return serializeRepository(
+			repo,
+			(r) => this.repositoriesService.credentialFor(r),
+			(r) => this.icons.view(r),
 		);
+	}
+
+	/** `GET /repositories/{id}/icon`: the repo's own icon file, never any other path (#1024 E). */
+	@Get("repositories/:id/icon")
+	async icon(
+		@Param("id", ParseUUIDPipe) id: string,
+		@Res() res: Response,
+	): Promise<void> {
+		const found = await this.icons.file(id);
+		if (!found) {
+			res.status(404).end();
+			return;
+		}
+		sendImage(res, found.bytes, found.type, 3600);
 	}
 
 	private async serializeWithServices(

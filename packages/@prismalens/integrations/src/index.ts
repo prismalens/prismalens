@@ -46,6 +46,18 @@ export type {
 	GitProvider,
 	GitProviderContext,
 } from "./providers/git.interface.js";
+// Add project from a git host (#1024 E)
+export {
+	type GitHostKind,
+	gitHostKind,
+	HOST_PAGE_SIZE,
+	type HostGet,
+	type HostRepositoryPage,
+	type HostRepositoryRow,
+	hostApiBase,
+	hostRepositoriesUrl,
+	listHostRepositories,
+} from "./providers/host-repositories.js";
 // Providers — adapters & registry (#446, #633)
 export {
 	adapterSegments,

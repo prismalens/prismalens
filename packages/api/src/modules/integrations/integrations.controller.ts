@@ -23,7 +23,12 @@ import {
 	isLegacyTemplateId,
 } from "@prismalens/integrations";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
+import { ImagesService } from "../images/images.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
+import {
+	HostListingError,
+	HostRepositoriesService,
+} from "./host-repositories.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
 import { redactAddress, shownError, withShownAddress } from "./source-query.js";
@@ -40,6 +45,8 @@ export class IntegrationsController {
 		private readonly moduleRef: ModuleRef,
 		@Optional() private readonly telemetrySnapshot?: TelemetrySnapshotService,
 		@Optional() private readonly sources?: SourcesService,
+		@Optional() private readonly hostRepositories?: HostRepositoriesService,
+		@Optional() private readonly images?: ImagesService,
 	) {}
 
 	private sourcesOrThrow(): SourcesService {
@@ -52,9 +59,10 @@ export class IntegrationsController {
 
 	@Implement(sourcesContract.overview)
 	sourcesOverview() {
-		return implement(sourcesContract.overview).handler(() =>
-			this.sourcesOrThrow().overview(),
-		);
+		return implement(sourcesContract.overview).handler(async () => ({
+			...(await this.sourcesOrThrow().overview()),
+			hostImages: this.images?.enabled ?? true,
+		}));
 	}
 
 	@Implement(sourcesContract.test)
@@ -77,6 +85,40 @@ export class IntegrationsController {
 	sourcesGitHosts() {
 		return implement(sourcesContract.gitHosts).handler(() =>
 			this.gitCredentials.hosts(),
+		);
+	}
+
+	/** Add project → From a git host (#1024 E). */
+	@Implement(sourcesContract.hostRepositories)
+	sourcesHostRepositories() {
+		return implement(sourcesContract.hostRepositories).handler(
+			async ({ input }) => {
+				if (!this.hostRepositories)
+					throw new ORPCError("SERVICE_UNAVAILABLE", {
+						message: "Listing a git host's repositories is not available here",
+					});
+				try {
+					return await this.hostRepositories.list(input);
+				} catch (error) {
+					if (error instanceof HostListingError)
+						throw new ORPCError("BAD_GATEWAY", { message: error.message });
+					throw error;
+				}
+			},
+		);
+	}
+
+	/** Sources → "Images from the git host" (#1024 E). */
+	@Implement(sourcesContract.setHostImages)
+	sourcesSetHostImages() {
+		return implement(sourcesContract.setHostImages).handler(
+			async ({ input }) => {
+				if (!this.images)
+					throw new ORPCError("SERVICE_UNAVAILABLE", {
+						message: "Images are not available here",
+					});
+				return { enabled: await this.images.setEnabled(input.enabled) };
+			},
 		);
 	}
 

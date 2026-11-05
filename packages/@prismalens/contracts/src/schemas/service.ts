@@ -13,7 +13,11 @@ import {
 	ServiceTierSchema,
 	ServiceTypeSchema,
 } from "./common.js";
-import { RepositorySchema, ServiceRepositorySchema } from "./repository.js";
+import {
+	IconSourceSchema,
+	RepositorySchema,
+	ServiceRepositorySchema,
+} from "./repository.js";
 
 // =============================================================================
 // SERVICE SCHEMAS
@@ -34,6 +38,7 @@ export const ServiceSchema = z.object({
 	updatedAt: DateStringSchema,
 	/** Its primary project's logo; absent means the monogram (#1024 E). */
 	iconUrl: z.string().optional(),
+	iconSource: IconSourceSchema.optional(),
 });
 
 /** The longest investigation notes a service keeps. */

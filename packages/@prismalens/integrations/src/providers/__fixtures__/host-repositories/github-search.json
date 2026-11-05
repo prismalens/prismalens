@@ -1,0 +1,17 @@
+{
+	"total_count": 1,
+	"incomplete_results": false,
+	"items": [
+		{
+			"full_name": "acme/checkout-web",
+			"private": false,
+			"owner": {
+				"login": "acme",
+				"avatar_url": "https://avatars.githubusercontent.com/u/9919?v=4"
+			},
+			"description": "Storefront",
+			"clone_url": "https://github.com/acme/checkout-web.git",
+			"pushed_at": "2026-11-01T10:00:00Z"
+		}
+	]
+}
