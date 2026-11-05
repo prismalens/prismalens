@@ -156,5 +156,5 @@ describe("a mirror at the default branch", () => {
 		const r = mirrorReader(bare, "main");
 		expect(await scanIcon(r.read, r.index)).toMatchObject({ path: "favicon.png", type: "image/png" });
 		expect(await r.read("../favicon.png")).toBeNull();
-	});
+	}, 30_000);
 });

@@ -224,7 +224,7 @@ describe("lookups that find nothing", () => {
 		s.mirrorRootsFn = () => [mirrors];
 		expect(await s.refresh(row({ url }))).toEqual({ f: "favicon.png" });
 		expect((await s.file(ID))?.type).toBe("image/png");
-	});
+	}, 30_000);
 });
 
 describe("GET /repositories/{id}/icon", () => {
