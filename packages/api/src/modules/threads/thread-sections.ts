@@ -59,6 +59,8 @@ export function threadSection(
 export interface Sectioned {
 	id: string;
 	incidentId: string | null;
+	/** A thread tree's root (#1024): the tree pages as one block. */
+	rootId?: string | null;
 	section: ThreadSection;
 	lastActivityAt: Date;
 }
@@ -71,29 +73,47 @@ export interface Unit<T extends Sectioned> {
 }
 
 /**
- * One unit per thread with no incident, one per incident for the rest. A unit
- * takes its best section, so one thread needing you lifts its whole block.
+ * One unit per thread with no incident, one per incident, and one per thread tree (#1024),
+ * an incident's tree joining its incident's block. A unit takes its best section, so one
+ * thread needing you lifts its whole block.
  */
 export function unitsOf<T extends Sectioned>(rows: T[]): Unit<T>[] {
 	const blocks = new Map<string, Unit<T>>();
-	const units: Unit<T>[] = [];
+	let units: Unit<T>[] = [];
+	const keysOf = (row: T) => [
+		...(row.rootId ? [`t:${row.rootId}`] : []),
+		...(row.incidentId ? [`i:${row.incidentId}`] : []),
+	];
 	for (const row of rows) {
-		const block = row.incidentId ? blocks.get(row.incidentId) : undefined;
-		if (block) {
-			block.threads.push(row);
-			if (RANK[row.section] < RANK[block.section]) block.section = row.section;
-			if (row.lastActivityAt > block.lastActivityAt)
-				block.lastActivityAt = row.lastActivityAt;
-			continue;
+		const keys = keysOf(row);
+		const found = [...new Set(keys.flatMap((k) => blocks.get(k) ?? []))];
+		let unit = found[0];
+		if (!unit) {
+			unit = {
+				section: row.section,
+				incidentId: row.incidentId,
+				threads: [],
+				lastActivityAt: row.lastActivityAt,
+			};
+			units.push(unit);
 		}
-		const unit: Unit<T> = {
-			section: row.section,
-			incidentId: row.incidentId,
-			threads: [row],
-			lastActivityAt: row.lastActivityAt,
-		};
-		units.push(unit);
-		if (row.incidentId) blocks.set(row.incidentId, unit);
+		// A row can join two blocks met apart (a tree's child before its incident's other threads).
+		for (const other of found.slice(1)) {
+			unit.threads.push(...other.threads);
+			if (RANK[other.section] < RANK[unit.section])
+				unit.section = other.section;
+			if (other.lastActivityAt > unit.lastActivityAt)
+				unit.lastActivityAt = other.lastActivityAt;
+			unit.incidentId ??= other.incidentId;
+			for (const [k, b] of blocks) if (b === other) blocks.set(k, unit);
+			units = units.filter((u) => u !== other);
+		}
+		unit.threads.push(row);
+		unit.incidentId ??= row.incidentId;
+		if (RANK[row.section] < RANK[unit.section]) unit.section = row.section;
+		if (row.lastActivityAt > unit.lastActivityAt)
+			unit.lastActivityAt = row.lastActivityAt;
+		for (const k of keys) blocks.set(k, unit);
 	}
 	for (const u of units)
 		u.threads.sort(

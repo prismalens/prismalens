@@ -344,6 +344,7 @@ export class ThreadsService {
 					row,
 					id: row.id,
 					incidentId: row.incidentId,
+					rootId: row.rootId,
 					lastActivityAt,
 					unseen: isUnseen(facts),
 					section: threadSection(facts, now, settleAfterDays),
@@ -399,6 +400,14 @@ export class ThreadsService {
 								? shownFullName(t.row.repository)
 								: null,
 							serviceName: serviceNameOf(t.row),
+							tree: t.row.rootId
+								? {
+										rootId: t.row.rootId,
+										parentId: t.row.parentId,
+										role: t.row.role,
+										depth: t.row.depth,
+									}
+								: null,
 							titleSetBy:
 								t.row.titleSetBy === "user" || t.row.titleSetBy === "agent"
 									? t.row.titleSetBy
