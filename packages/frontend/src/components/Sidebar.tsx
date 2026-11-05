@@ -142,7 +142,7 @@ function Shell({ pathname }: { pathname: string }) {
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
 				<aside
-					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline md:flex"
+					className="fixed bottom-0 left-0 top-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline md:flex"
 					data-testid="sidebar"
 				>
 					<MainBar
@@ -191,7 +191,10 @@ function MainBar({
 	const settingsDoor = doors.find((d) => d.to === "/settings");
 	return (
 		<>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0">
+			<div
+				data-title-row
+				className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0"
+			>
 				{/* The mark only names the app; Incidents is the way home. */}
 				<span className="flex items-center gap-2.5 text-body font-semibold">
 					<PrismaLensMark className="size-[18px] shrink-0" aria-hidden />
