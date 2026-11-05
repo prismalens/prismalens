@@ -42,25 +42,16 @@ import {
 	useServiceTeams,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
+import {
+	parseServicesSearch,
+	type ServicesSearch,
+} from "@/lib/services-search";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
 
-type ServicesSearch = {
-	team?: string;
-	search?: string;
-	page?: number;
-	/** `1` opens the add dialog: the board's setup line links here. */
-	add?: "1";
-};
-
 export const Route = createFileRoute("/_authenticated/services/")({
-	validateSearch: (raw: Record<string, unknown>): ServicesSearch => ({
-		team: typeof raw.team === "string" ? raw.team : undefined,
-		search: typeof raw.search === "string" ? raw.search : undefined,
-		page: typeof raw.page === "number" ? raw.page : undefined,
-		add: raw.add === "1" ? "1" : undefined,
-	}),
+	validateSearch: parseServicesSearch,
 	component: ServicesPage,
 });
 

@@ -43,8 +43,9 @@ describe("allowedImageUrl", () => {
 		expect(allowedImageUrl(url, ctx)).toBeNull();
 	});
 
-	it("lets Gravatar through only for a URL a host's API returned", () => {
-		expect(allowedImageUrl("https://secure.gravatar.com/avatar/abc", { ...ctx, gravatar: true })).not.toBeNull();
+	it("never lets an email-hash avatar service through, even from a host's API", () => {
+		expect(allowedImageUrl("https://secure.gravatar.com/avatar/abc", { ...ctx, gravatar: true })).toBeNull();
+		expect(allowedImageUrl("https://seccdn.libravatar.org/avatar/abc", { ...ctx, gravatar: true })).toBeNull();
 	});
 });
 

@@ -69,10 +69,14 @@ export function workerCount(argv: string[], ci: boolean): number {
 export function agentFreePath(toolsDir: string): string {
 	mkdirSync(toolsDir, { recursive: true });
 	const inherited = process.env.PATH ?? "";
+	const direct: string[] = [];
 	for (const tool of ["node", "pnpm", "git"]) {
 		const target =
 			tool === "node" ? process.execPath : resolveOnPath(tool, inherited);
 		if (!target) throw new Error(`e2e needs ${tool} on PATH`);
+		// Windows spawn finds only .exe, never a .cmd shim, so git's own folder goes on PATH (#1024).
+		if (tool === "git" && process.platform === "win32")
+			direct.push(dirname(target));
 		const shim = join(toolsDir, tool);
 		writeFileSync(shim, `#!/bin/sh\nexec "${target}" "$@"\n`);
 		chmodSync(shim, 0o755);
@@ -87,7 +91,7 @@ export function agentFreePath(toolsDir: string): string {
 					...(git ? [dirname(git)] : []),
 				]
 			: ["/usr/bin", "/bin"];
-	const path = [toolsDir, ...system].join(delimiter);
+	const path = [toolsDir, ...direct, ...system].join(delimiter);
 	const leaked = Object.values(HARNESS_REGISTRY)
 		.flatMap((h) => [h.binary, h.companionBinary])
 		.filter((bin): bin is string => !!bin && !!resolveOnPath(bin, path));

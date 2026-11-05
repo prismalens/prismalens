@@ -20,7 +20,7 @@ const MAX_REDIRECTS = 3;
 export interface OriginContext {
 	/** GitLab origins this install clones from, gitlab.com included. */
 	gitlabHosts: string[];
-	/** The URL came from a host's own API, so Gravatar may serve it. */
+	/** The URL came from a host's own API; kept for callers, email-hash services stay refused. */
 	gravatar: boolean;
 }
 
@@ -62,12 +62,7 @@ export function allowedImageUrl(raw: string, ctx: OriginContext): URL | null {
 	if (fixed) return url;
 	if (ctx.gitlabHosts.includes(host) && url.pathname.startsWith("/uploads/"))
 		return url;
-	if (
-		ctx.gravatar &&
-		host === "secure.gravatar.com" &&
-		url.pathname.startsWith("/avatar/")
-	)
-		return url;
+	// Email-hash avatar services (Gravatar, Libravatar) are never fetched, even from a host's API (#1024).
 	return null;
 }
 

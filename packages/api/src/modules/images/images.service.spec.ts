@@ -66,7 +66,7 @@ describe("ImagesService", () => {
 		const { s } = await service();
 		expect(s.urlFor("https://evil.example/x.png", "avatar")).toBeUndefined();
 		expect(s.urlFor("https://secure.gravatar.com/avatar/x", "avatar")).toBeUndefined();
-		expect(s.urlFor("https://secure.gravatar.com/avatar/x", "avatar", { fromHostApi: true })).toBeDefined();
+		expect(s.urlFor("https://secure.gravatar.com/avatar/x", "avatar", { fromHostApi: true })).toBeUndefined();
 	});
 
 	it("serves through the cache, and a GitLab origin only when this install clones from it", async () => {
