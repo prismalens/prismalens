@@ -149,7 +149,7 @@ export function SettingsFrame({
 function SectionList({ current }: { current: SettingsSection }) {
 	return (
 		<nav
-			className="grid w-48 shrink-0 content-start gap-0.5 overflow-y-auto border-r border-hairline px-2 pt-4"
+			className="relative grid w-48 shrink-0 content-start gap-0.5 overflow-y-auto px-2 pt-4 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline"
 			aria-label="Settings sections"
 			data-testid="settings-sections"
 		>

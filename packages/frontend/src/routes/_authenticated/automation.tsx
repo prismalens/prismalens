@@ -102,7 +102,7 @@ function Automation() {
 									, {last.accepted} accepted.
 								</p>
 								<details className="text-body text-text-2">
-									<summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-control border border-hairline bg-surface-2 px-3 text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
+									<summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-control bg-surface-2 px-3 text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
 										<ChevronRight
 											aria-hidden
 											className="size-3.5 transition-transform duration-150 [details[open]_&]:rotate-90"

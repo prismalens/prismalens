@@ -18,6 +18,13 @@ import {
 	useThreadRows,
 } from "@/components/shell/ThreadList";
 import { Button } from "@/components/ui/button";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
@@ -248,18 +255,21 @@ function Pick<T extends string>({
 	onPick: (v: T) => void;
 }) {
 	return (
-		<select
-			aria-label={label}
-			value={value}
-			onChange={(e) => onPick(e.target.value as T)}
-			className="h-8 min-w-0 rounded-control bg-surface-2 px-2 text-body text-text-1 max-sm:flex-1"
-			data-testid={`threads-filter-${label.toLowerCase().replace(/\s+/g, "-")}`}
-		>
-			{options.map((o) => (
-				<option key={o} value={o}>
-					{labels[o]}
-				</option>
-			))}
-		</select>
+		<Select value={value} onValueChange={(v) => onPick(v as T)}>
+			<SelectTrigger
+				className="h-8 w-auto min-w-36 max-sm:flex-1"
+				aria-label={label}
+				data-testid={`threads-filter-${label.toLowerCase().replace(/\s+/g, "-")}`}
+			>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				{options.map((o) => (
+					<SelectItem key={o} value={o}>
+						{labels[o]}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
 	);
 }

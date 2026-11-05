@@ -142,7 +142,7 @@ function Shell({ pathname }: { pathname: string }) {
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
 				<aside
-					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col border-r border-hairline bg-surface-1 md:flex"
+					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline md:flex"
 					data-testid="sidebar"
 				>
 					<MainBar
@@ -376,7 +376,7 @@ function DoorLink({
 					{door.dot && (
 						<span
 							aria-hidden
-							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent outline-2 outline-surface-1 outline-solid"
 							data-testid={`nav-${door.slug ?? door.label.toLowerCase()}-dot`}
 						/>
 					)}
@@ -433,7 +433,7 @@ function SettingsIcon({ door }: { door: Door }) {
 					{door.dot && (
 						<span
 							aria-hidden
-							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent outline-2 outline-surface-1 outline-solid"
 							data-testid="nav-settings-dot"
 						/>
 					)}
