@@ -448,6 +448,11 @@ test.describe("helper threads more journeys (#1020)", () => {
 		await expect(turnFold).toBeVisible({ timeout: 20_000 });
 		await turnFold.click();
 
+		const toolsExpand = page.getByTestId("tools-expand");
+		if (await toolsExpand.isVisible().catch(() => false)) {
+			await toolsExpand.click();
+		}
+
 		// Steps render for the tools
 		await expect(page.getByTestId("step")).toHaveCount(2, {
 			timeout: 20_000,

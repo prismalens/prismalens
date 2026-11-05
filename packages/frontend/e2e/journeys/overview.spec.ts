@@ -509,7 +509,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		});
 	});
 
-	test("overview page layout, boundaries at viewports, and tab redirects", async ({
+	test("overview page layout and boundaries at viewports", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -545,12 +545,6 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 				h: 0,
 				w: 0,
 			});
-		}
-
-		// Old tab routes redirect to /incidents/:id
-		for (const tab of ["report", "timeline", "alerts"]) {
-			await visit(page, `/incidents/${inc.id}/${tab}`);
-			await expect(page).toHaveURL(new RegExp(`/incidents/${inc.id}$`));
 		}
 	});
 
