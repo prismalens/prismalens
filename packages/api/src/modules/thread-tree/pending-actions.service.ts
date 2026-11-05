@@ -334,11 +334,8 @@ export class PendingActionsService {
 			if (row.askId) {
 				this.listening.get(row.askId)?.();
 				this.listening.delete(row.askId);
-				// `close` joins the port additively (lane A); until then a late answer is ignored.
-				const port = this.asks as
-					| (AsksPort & { close?: (id: string, o: string) => Promise<unknown> })
-					| undefined;
-				await port?.close?.(row.askId, "stopped")?.catch?.(() => {});
+				// The card goes too; a late answer then gets the asks seat's conflict.
+				await this.asks?.close(row.askId, "stopped");
 			}
 		}
 	}

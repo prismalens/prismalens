@@ -58,6 +58,14 @@ class FakeAsks implements AsksPort {
 		got.closed = closed;
 		return closed;
 	}
+	async close(askId: string, outcome: "stopped" | "expired"): Promise<ClosedAsk | null> {
+		const got = this.asks.get(askId);
+		if (!got) return null;
+		if (got.closed) return got.closed;
+		got.closed = { ask: got.ask, outcome, closedAt: new Date().toISOString() };
+		this.handlers.get(askId)?.(got.closed);
+		return got.closed;
+	}
 	async pending(threadId: string) {
 		return [...this.asks.values()].filter((a) => !a.closed && a.ask.threadId === threadId).map((a) => a.ask);
 	}
@@ -395,7 +403,9 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 		await prisma.investigation.update({ where: { id: root.id }, data: { status: "cancelled" } });
 		await tree.tick();
 		expect((await prisma.pendingAction.findFirstOrThrow()).state).toBe("cancelled");
-		await asks.decide(open?.askId as string, "approve");
+		// Its card is closed too, so nobody can approve it late.
+		expect((await asks.get(open?.askId as string))?.closed?.outcome).toBe("stopped");
+		await expect(asks.decide(open?.askId as string, "approve")).rejects.toThrow(/conflict/);
 		expect(starts).toHaveLength(0);
 	});
 

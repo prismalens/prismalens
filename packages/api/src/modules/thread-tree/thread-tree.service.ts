@@ -908,7 +908,13 @@ export class ThreadTreeService
 		// A first start still waiting for approval is worth a wait before any tree exists.
 		if (
 			!self.rootId &&
-			!(await this.prisma.pendingAction.count({ where: { callerId } }))
+			!(await this.prisma.pendingAction.count({
+				where: {
+					callerId,
+					tool: "thread_start",
+					state: { in: ["pending", "approved", "executing"] },
+				},
+			}))
 		)
 			return NO_TREE();
 		const targets: {
