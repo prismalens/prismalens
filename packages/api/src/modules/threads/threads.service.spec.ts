@@ -54,7 +54,11 @@ describe("ThreadsService (#1020)", () => {
 	let prisma: {
 		repository: { findUnique: ReturnType<typeof vi.fn> };
 		service: { findUnique: ReturnType<typeof vi.fn> };
-		investigation: { findMany: ReturnType<typeof vi.fn> };
+		investigation: {
+			findMany: ReturnType<typeof vi.fn>;
+			findUnique: ReturnType<typeof vi.fn>;
+			updateMany: ReturnType<typeof vi.fn>;
+		};
 	};
 	let investigations: { startOrGet: ReturnType<typeof vi.fn> };
 	let dispatch: {
@@ -84,7 +88,11 @@ describe("ThreadsService (#1020)", () => {
 		prisma = {
 			repository: { findUnique: vi.fn(async () => ({ id: REPO })) },
 			service: { findUnique: vi.fn(async () => ({ id: SERVICE })) },
-			investigation: { findMany: vi.fn(async () => [row()]) },
+			investigation: {
+				findMany: vi.fn(async () => [row()]),
+				findUnique: vi.fn(async () => ({ updatedAt: row().updatedAt })),
+				updateMany: vi.fn(async () => ({ count: 1 })),
+			},
 		};
 		investigations = {
 			startOrGet: vi.fn(
@@ -280,6 +288,21 @@ describe("ThreadsService (#1020)", () => {
 		expect(out.queued).toBe(false);
 	});
 
+	it("visit retries a lost race, then refuses with CONFLICT rather than report an unwritten visit", async () => {
+		prisma.investigation.updateMany
+			.mockResolvedValueOnce({ count: 0 })
+			.mockResolvedValueOnce({ count: 1 });
+		await expect(service().visit(RUN)).resolves.toHaveProperty("lastVisitedAt");
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(2);
+
+		prisma.investigation.updateMany.mockReset();
+		prisma.investigation.updateMany.mockResolvedValue({ count: 0 });
+		await expect(service().visit(RUN)).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(3);
+	});
+
 	it("lists a project's or a service's own threads, never its incidents' or schedules'", async () => {
 		const rows = await service().list({ repositoryId: REPO, limit: 10 });
 		expect(prisma.investigation.findMany).toHaveBeenCalledWith(
@@ -306,6 +329,32 @@ describe("ThreadsService (#1020)", () => {
 			}),
 		);
 		await expect(service().list({ limit: 5 })).resolves.toEqual([]);
+	});
+
+	it("settles every thread of an incident without moving their updatedAt", async () => {
+		const updatedAt = new Date("2026-11-03T00:00:00Z");
+		const findUnique = vi.fn(async (args: { select: object }) =>
+			"updatedAt" in args.select ? { updatedAt } : { incidentId: "inc-1" },
+		);
+		const updateMany = vi.fn(async () => ({ count: 1 }));
+		Object.assign(prisma.investigation, {
+			findUnique,
+			updateMany,
+			findMany: vi.fn(async () => [{ id: "a" }, { id: "b" }]),
+		});
+
+		await expect(service().settle("a", true)).resolves.toMatchObject({
+			ids: ["a", "b"],
+		});
+
+		expect(updateMany).toHaveBeenCalledTimes(2);
+		for (const [arg] of updateMany.mock.calls as unknown as [
+			{ where: object; data: { settledAt: Date; updatedAt: Date } },
+		][]) {
+			expect(arg.where).toMatchObject({ updatedAt });
+			expect(arg.data.updatedAt).toBe(updatedAt);
+			expect(arg.data.settledAt).toBeInstanceOf(Date);
+		}
 	});
 
 	it("shows a row with an unknown level as none, and an investigation kind as such", () => {
@@ -369,6 +418,7 @@ describe("ThreadsService.settle (#1020)", () => {
 			[A, null],
 			[B, null],
 		]);
+		const other = new Map<string, string>();
 		const db = {
 			investigation: {
 				findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
@@ -388,23 +438,18 @@ describe("ThreadsService.settle (#1020)", () => {
 						data: { settledAt?: Date | null };
 					}) => {
 						if (where.id === B) return { count: 0 };
+						other.set("write", "kept");
 						settledAt.set(where.id, data.settledAt ?? null);
 						return { count: 1 };
 					},
 				),
 			},
-			$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-				const before = new Map(settledAt);
-				try {
-					return await fn(db);
-				} catch (e) {
-					for (const [k, v] of before) settledAt.set(k, v);
-					throw e;
-				}
-			}),
+			$transaction: vi.fn(),
 		};
 		return {
 			settledAt,
+			other,
+			db,
 			svc: new ThreadsService(
 				db as never,
 				{} as never,
@@ -416,13 +461,15 @@ describe("ThreadsService.settle (#1020)", () => {
 		};
 	}
 
-	it("rolls back the earlier threads when a later one keeps conflicting", async () => {
-		const { svc, settledAt } = build();
+	it("writes the earlier threads back when a later one keeps conflicting, without a transaction", async () => {
+		const { svc, settledAt, other, db } = build();
 		await expect(svc.settle(A, true)).rejects.toMatchObject({ code: "CONFLICT" });
 		expect(settledAt.get(A)).toBeNull();
+		expect(other.get("write")).toBe("kept");
+		expect(db.$transaction).not.toHaveBeenCalled();
 	});
 
-	it("rolls back an undo that restores several threads when one conflicts", async () => {
+	it("writes back an undo that restores several threads when one conflicts", async () => {
 		const { svc, settledAt } = build();
 		settledAt.set(A, stamp);
 		await expect(

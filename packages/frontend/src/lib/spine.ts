@@ -152,19 +152,18 @@ export function matchGateway(events: readonly CanonicalEvent[]): GatewayMatch {
 				mcp.tool === "tools_call" && typeof c.args.name === "string"
 					? c.args.name
 					: null;
-			const free = (h: HarnessCall) => !used.has(h) && h.server === mcp.server;
-			// A wrapper call that failed to resolve is recorded as `tools_call`, with no `via`.
-			const call =
-				calls.find(
-					(h) =>
-						free(h) &&
-						(target
-							? h.via === "tools_call" && h.name === target
-							: h.name === mcp.tool),
-				) ??
-				(target
-					? calls.find((h) => free(h) && h.name === "tools_call" && !h.via)
-					: undefined);
+			const open = calls.filter((h) => !used.has(h) && h.server === mcp.server);
+			// A refused wrapper is recorded as `tools_call` itself, with no `via` and the target in its input.
+			const refused = (h: HarnessCall) => h.name === "tools_call" && !h.via;
+			const call = target
+				? (open.find(
+						(h) =>
+							refused(h) &&
+							(h.input as { name?: unknown } | undefined)?.name === target,
+					) ??
+					open.find((h) => h.via === "tools_call" && h.name === target) ??
+					open.find(refused))
+				: open.find((h) => h.name === mcp.tool);
 			if (!call) continue;
 			used.add(call);
 			byCall.set(c.toolCallId, call);

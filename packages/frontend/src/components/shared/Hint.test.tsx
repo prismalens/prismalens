@@ -113,3 +113,28 @@ describe("Hint on Escape (#1020)", () => {
 		host.remove();
 	});
 });
+
+describe("Hint on pointer leave (#1020)", () => {
+	it("keeps a hint its parent holds open when the pointer leaves the trigger", () => {
+		const host = document.createElement("div");
+		document.body.appendChild(host);
+		const root = createRoot(host);
+		act(() =>
+			root.render(
+				<TooltipProvider>
+					<Hint label="Files" open>
+						<button type="button">icon</button>
+					</Hint>
+				</TooltipProvider>,
+			),
+		);
+		const trigger = host.querySelector("button") as HTMLButtonElement;
+		act(() => {
+			trigger.dispatchEvent(new Event("pointermove", { bubbles: true }));
+			trigger.dispatchEvent(new Event("pointerout", { bubbles: true }));
+		});
+		expect(document.querySelector('[data-testid="hint"]')).not.toBeNull();
+		act(() => root.unmount());
+		host.remove();
+	});
+});

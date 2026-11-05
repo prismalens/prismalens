@@ -56,7 +56,7 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 	usePageTitle("New thread");
 	const navigate = useNavigate();
 	const repos = useRepositories({ limit: 100 });
-	const services = useServices();
+	const services = useServices({ limit: 100 });
 	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
@@ -207,20 +207,22 @@ export function NewThreadPage({ search }: { search: NewThreadSearch }) {
 						note={!!search.note}
 						top={top}
 						{...(canSchedule ? { onRepeat: setRepeat } : {})}
-						slash={[
-							{
-								id: "investigate",
-								label: "Investigate",
-								run: () =>
-									set(incidentOff ? {} : { incident: true, note: undefined }),
-							},
-							{
-								id: "note",
-								label: "Note",
-								run: () =>
-									set(incidentOff ? {} : { incident: true, note: true }),
-							},
-						]}
+						slash={
+							incidentOff
+								? []
+								: [
+										{
+											id: "investigate",
+											label: "Investigate",
+											run: () => set({ incident: true, note: undefined }),
+										},
+										{
+											id: "note",
+											label: "Note",
+											run: () => set({ incident: true, note: true }),
+										},
+									]
+						}
 					/>
 				</div>
 			</div>
