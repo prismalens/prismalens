@@ -8,6 +8,7 @@ import { AlertsModule } from "../alerts/alerts.module.js";
 import { ChangesModule } from "../changes/changes.module.js";
 import { EventsModule } from "../events/events.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
+import { ServicesModule } from "../services/services.module.js";
 import { DeployWebhookController } from "./deploy-webhook.controller.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
@@ -22,6 +23,7 @@ import { WebhooksService } from "./webhooks.service.js";
 		AlertMappingModule,
 		IntegrationsModule,
 		ChangesModule,
+		ServicesModule,
 	],
 	controllers: [WebhooksController, DeployWebhookController],
 	providers: [

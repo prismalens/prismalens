@@ -67,6 +67,16 @@ export class GenericWebhookDto {
 	@IsOptional()
 	@IsObject()
 	rawPayload?: Record<string, unknown>;
+
+	/** Id of an existing service; wins over `serviceName` */
+	@IsOptional()
+	@IsString()
+	serviceId?: string;
+
+	/** Exact `Service.name`, used when `serviceId` is absent or unknown */
+	@IsOptional()
+	@IsString()
+	serviceName?: string;
 }
 
 // Nested DTOs for Render webhook structure

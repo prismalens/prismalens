@@ -69,6 +69,37 @@ test("a release PR and the full-ci label run everything", () => {
 	}
 });
 
+test("a draft release PR defers everything; the same PR ready, or a draft feature PR, does not", () => {
+	const release = {
+		headRef: "release-please--branches--main",
+		files: ["package.json"],
+	};
+	const d = pr({ ...release, draft: true });
+	assert.deepEqual(
+		[d.skip, d.defer, d.full, d.agents],
+		[true, true, false, false],
+	);
+	const ready = pr({ ...release, draft: false });
+	assert.deepEqual(
+		[ready.skip, ready.defer, ready.full, ready.agents],
+		[false, undefined, true, true],
+	);
+	const feature = pr({
+		headRef: "feat/x",
+		files: ["packages/api/src/a.ts"],
+		draft: true,
+	});
+	assert.deepEqual([feature.skip, feature.defer], [false, undefined]);
+});
+
+test("marking a PR ready after its head passed CI runs nothing; without that pass it plans as usual", () => {
+	const files = ["packages/api/src/a.ts"];
+	const passed = pr({ files, readyOnPassedHead: true });
+	assert.deepEqual([passed.skip, passed.full], [true, false]);
+	assert.match(passed.reason, /already passed CI/);
+	assert.equal(pr({ files, readyOnPassedHead: false }).skip, false);
+});
+
 test("a PR with no listed files is not mistaken for docs-only and runs every tier", () => {
 	const p = pr({ files: [] });
 	assert.deepEqual([p.skip, p.full, p.agents], [false, true, true]);
