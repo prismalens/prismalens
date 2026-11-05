@@ -69,7 +69,7 @@ export function plan({
 			agents: true,
 			reason: `${event}: everything runs`,
 		};
-	// release-please rebuilds this PR on every push to main; CI runs once, when it is marked ready.
+	// release-please rebuilds this PR on every push to main; CI waits until it is marked ready.
 	if (draft && headRef.startsWith("release-please--"))
 		return {
 			skip: true,

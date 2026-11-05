@@ -91,7 +91,7 @@ jobs:
         run: |
           case "$EVENT_NAME" in
           pull_request)
-            # A draft release PR is rebuilt on every push to main; it is smoked once it is ready (#1052).
+            # A draft release PR is rebuilt on every push to main; it is smoked only after it is marked ready (#1052).
             if [ "$DRAFT" = "true" ]; then echo "mode=skip" >> "$GITHUB_OUTPUT"; else echo "mode=tarball" >> "$GITHUB_OUTPUT"; fi
             echo "version=" >> "$GITHUB_OUTPUT"
             ;;
