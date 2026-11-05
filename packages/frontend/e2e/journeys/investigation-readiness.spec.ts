@@ -237,8 +237,8 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const id = await createIncident(page, `Readiness empty ${Date.now()}`);
 		await page.goto(`/incidents/${id}`);
 		await setTheme(page, "light");
-		await expect(page.getByTestId("latest-run-strip")).toContainText(
-			"No run yet",
+		await expect(page.getByTestId("overview-blank")).toContainText(
+			"What do you know so far?",
 			{
 				timeout: 15_000,
 			},

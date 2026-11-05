@@ -12,6 +12,7 @@ import type { RunRef } from "@/components/incidents/record-context";
 import { runNumber } from "@/components/incidents/run-facts";
 import { ago } from "@/hooks/use-now";
 import { formatClock, formatDate, formatElapsed } from "@/lib/format-time";
+import { isEvent } from "@/lib/trigger";
 
 /** `Run 2` for an investigation, `Ask` for a chat: the breadcrumb's last part (#811). */
 export function viewName(
@@ -153,9 +154,14 @@ export function codeChip(
 
 /** The header's firing word: `Firing for 12h 48m`, `Not firing`, or nothing without alerts. */
 export function firingWord(
-	alerts: readonly { status: string; triggeredAt?: string | Date | null }[],
+	all: readonly {
+		status: string;
+		triggeredAt?: string | Date | null;
+		source?: string | null;
+	}[],
 	now: number | null,
 ): { text: string; firing: boolean } | null {
+	const alerts = all.filter((a) => !isEvent(a));
 	if (alerts.length === 0) return null;
 	const firing = alerts.filter((a) => isAlertFiring(a.status));
 	if (firing.length === 0) return { text: "Not firing", firing: false };

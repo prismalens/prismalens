@@ -28,7 +28,7 @@
 	/* text-3, danger, live, ok and warn (and dark text-3) moved 0.02 to 0.06 L for AA on surface-3 (#848). */
 	--text-1: oklch(0.18 0.004 285);
 	--text-2: oklch(0.45 0.01 285);
-	--text-3: oklch(0.5 0.012 285);
+	--text-3: oklch(0.48 0.012 285);
 
 	--accent: oklch(0.5 0.2 277);
 	--accent-solid: oklch(0.52 0.2 277);
@@ -44,8 +44,8 @@
 	--sev-low: oklch(0.5 0.13 250);
 	--sev-info: var(--text-3);
 
-	--sidebar-w: 240px;
-	--rail-w: 56px;
+	--sidebar-w: 260px;
+	--rail-w: 64px;
 	--header-h: 44px;
 	--reading-w: 52rem;
 	/* The desktop window's title row; equals TITLEBAR_HEIGHT in packages/desktop. */
@@ -81,7 +81,7 @@
 	:root[data-sidebar-hidden] {
 		--sidebar-w: 0px;
 	}
-	:root[data-sidebar-hidden]:not([data-settings])
+	:root[data-sidebar-hidden]
 		:is(
 			[data-testid="page-header"],
 			[data-testid="incident-header"],
@@ -89,13 +89,6 @@
 			[data-testid="service-band"]
 		) {
 		padding-left: calc(var(--header-h) + 0.5rem);
-	}
-}
-
-/* Settings' bar keeps its labels at every width beside the page (the mock's `.side.full`). */
-@media (min-width: 768px) {
-	:root[data-settings] {
-		--sidebar-w: 240px;
 	}
 }
 

@@ -7,6 +7,7 @@ import { ChevronLeft, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { Transcript } from "@/components/investigation/Transcript";
 import { HypothesesCard } from "@/components/run/HypothesesCard";
+import { ScheduleTriggerCard } from "@/components/run/TriggerCard";
 import { TickDot } from "@/components/schedules/TickDot";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
@@ -121,14 +122,21 @@ function ScheduledRunPage() {
 						</section>
 					)}
 					{run.report && (
-						<HypothesesCard
-							report={run.report}
-							at={run.completedAt}
-							targetOf={() => null}
-							onOpenFile={() => {}}
-							onJump={() => {}}
-						/>
+						// The card is a list item, as it is inside the run page's transcript.
+						<ul className="m-0 list-none p-0">
+							<HypothesesCard
+								report={run.report}
+								at={run.completedAt}
+								targetOf={() => null}
+								onOpenFile={() => {}}
+								onJump={() => {}}
+							/>
+						</ul>
 					)}
+					<ScheduleTriggerCard
+						scheduleId={id}
+						ranAt={run.startedAt ?? run.createdAt}
+					/>
 					<section aria-label="Transcript">
 						<h2 className="mb-1.5 ml-1 text-heading text-text-2">
 							What the agent did

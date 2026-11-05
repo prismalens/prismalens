@@ -149,10 +149,10 @@ export function InboxTiles({
 			: {
 					key: "worse",
 					label: "Getting worse",
-					value: "Nothing",
+					value: firing > 0 ? "None worsening" : "All quiet",
 					sub:
 						firing > 0
-							? "Firing alerts are holding steady"
+							? `${firing} firing, none worsening`
 							: "Nothing is firing",
 					dot: "ok",
 					link: { to: "/incidents" },

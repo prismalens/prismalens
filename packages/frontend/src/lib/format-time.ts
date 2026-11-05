@@ -53,3 +53,23 @@ export function formatDayClock(
 		return `${weekday.format(when)} ${clockText}`;
 	return `${formatDate(when)} ${clockText}`;
 }
+
+/** A schedule's timetable with its zone, "Every day at 02:00 UTC", so a reader abroad can place it. */
+export function scheduleWhen(s: {
+	description: string;
+	recurrence: { type: string; timezone?: string };
+}): string {
+	const tz = s.recurrence.type === "cron" ? s.recurrence.timezone : undefined;
+	if (!tz) return s.description;
+	try {
+		const zone = new Intl.DateTimeFormat("en-US", {
+			timeZone: tz,
+			timeZoneName: "short",
+		})
+			.formatToParts(new Date())
+			.find((p) => p.type === "timeZoneName")?.value;
+		return zone ? `${s.description} ${zone}` : s.description;
+	} catch {
+		return s.description;
+	}
+}

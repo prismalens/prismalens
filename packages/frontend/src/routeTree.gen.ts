@@ -13,7 +13,9 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAlertsRouteRouteImport } from './routes/_authenticated/alerts/route'
+import { Route as AuthenticatedAutomationRouteImport } from './routes/_authenticated/automation'
 import { Route as AuthenticatedIncidentsRouteRouteImport } from './routes/_authenticated/incidents/route'
+import { Route as AuthenticatedNewRouteImport } from './routes/_authenticated/new'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
 import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
@@ -24,6 +26,7 @@ import { Route as AuthenticatedSchedulesIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedSchedulesIdRouteImport } from './routes/_authenticated/schedules/$id'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
+import { Route as AuthenticatedThreadsIndexRouteImport } from './routes/_authenticated/threads/index'
 import { Route as AuthenticatedThreadsIdRouteImport } from './routes/_authenticated/threads/$id'
 import { Route as AuthenticatedAlertsIdIndexRouteImport } from './routes/_authenticated/alerts/$id/index'
 import { Route as AuthenticatedIncidentsIdIndexRouteImport } from './routes/_authenticated/incidents/$id/index'
@@ -55,12 +58,22 @@ const AuthenticatedAlertsRouteRoute =
     path: '/alerts',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAutomationRoute = AuthenticatedAutomationRouteImport.update({
+  id: '/automation',
+  path: '/automation',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedIncidentsRouteRoute =
   AuthenticatedIncidentsRouteRouteImport.update({
     id: '/incidents',
     path: '/incidents',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedNewRoute = AuthenticatedNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedSettingsRouteRoute =
   AuthenticatedSettingsRouteRouteImport.update({
     id: '/settings',
@@ -119,6 +132,12 @@ const AuthenticatedSettingsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+const AuthenticatedThreadsIndexRoute =
+  AuthenticatedThreadsIndexRouteImport.update({
+    id: '/threads/',
+    path: '/threads/',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedThreadsIdRoute = AuthenticatedThreadsIdRouteImport.update({
   id: '/threads/$id',
@@ -186,6 +205,8 @@ export interface FileRoutesByFullPath {
   '/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
+  '/automation': typeof AuthenticatedAutomationRoute
+  '/new': typeof AuthenticatedNewRoute
   '/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
   '/schedules/$id': typeof AuthenticatedSchedulesIdRoute
@@ -196,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/schedules/': typeof AuthenticatedSchedulesIndexRoute
   '/services/': typeof AuthenticatedServicesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/threads/': typeof AuthenticatedThreadsIndexRoute
   '/incidents/$id/alerts': typeof AuthenticatedIncidentsIdAlertsRoute
   '/incidents/$id/conversation': typeof AuthenticatedIncidentsIdConversationRoute
   '/incidents/$id/report': typeof AuthenticatedIncidentsIdReportRoute
@@ -208,6 +230,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/pair': typeof PairRoute
+  '/automation': typeof AuthenticatedAutomationRoute
+  '/new': typeof AuthenticatedNewRoute
   '/': typeof AuthenticatedIndexRoute
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
   '/schedules/$id': typeof AuthenticatedSchedulesIdRoute
@@ -218,6 +242,7 @@ export interface FileRoutesByTo {
   '/schedules': typeof AuthenticatedSchedulesIndexRoute
   '/services': typeof AuthenticatedServicesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/threads': typeof AuthenticatedThreadsIndexRoute
   '/incidents/$id/alerts': typeof AuthenticatedIncidentsIdAlertsRoute
   '/incidents/$id/conversation': typeof AuthenticatedIncidentsIdConversationRoute
   '/incidents/$id/report': typeof AuthenticatedIncidentsIdReportRoute
@@ -235,6 +260,8 @@ export interface FileRoutesById {
   '/_authenticated/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
+  '/_authenticated/automation': typeof AuthenticatedAutomationRoute
+  '/_authenticated/new': typeof AuthenticatedNewRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
   '/_authenticated/projects/$id': typeof AuthenticatedProjectsIdRoute
@@ -246,6 +273,7 @@ export interface FileRoutesById {
   '/_authenticated/schedules/': typeof AuthenticatedSchedulesIndexRoute
   '/_authenticated/services/': typeof AuthenticatedServicesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/_authenticated/threads/': typeof AuthenticatedThreadsIndexRoute
   '/_authenticated/incidents/$id/alerts': typeof AuthenticatedIncidentsIdAlertsRoute
   '/_authenticated/incidents/$id/conversation': typeof AuthenticatedIncidentsIdConversationRoute
   '/_authenticated/incidents/$id/report': typeof AuthenticatedIncidentsIdReportRoute
@@ -264,6 +292,8 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/incidents'
     | '/settings'
+    | '/automation'
+    | '/new'
     | '/incidents/$id'
     | '/projects/$id'
     | '/schedules/$id'
@@ -274,6 +304,7 @@ export interface FileRouteTypes {
     | '/schedules/'
     | '/services/'
     | '/settings/'
+    | '/threads/'
     | '/incidents/$id/alerts'
     | '/incidents/$id/conversation'
     | '/incidents/$id/report'
@@ -286,6 +317,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/pair'
+    | '/automation'
+    | '/new'
     | '/'
     | '/projects/$id'
     | '/schedules/$id'
@@ -296,6 +329,7 @@ export interface FileRouteTypes {
     | '/schedules'
     | '/services'
     | '/settings'
+    | '/threads'
     | '/incidents/$id/alerts'
     | '/incidents/$id/conversation'
     | '/incidents/$id/report'
@@ -312,6 +346,8 @@ export interface FileRouteTypes {
     | '/_authenticated/alerts'
     | '/_authenticated/incidents'
     | '/_authenticated/settings'
+    | '/_authenticated/automation'
+    | '/_authenticated/new'
     | '/_authenticated/'
     | '/_authenticated/incidents/$id'
     | '/_authenticated/projects/$id'
@@ -323,6 +359,7 @@ export interface FileRouteTypes {
     | '/_authenticated/schedules/'
     | '/_authenticated/services/'
     | '/_authenticated/settings/'
+    | '/_authenticated/threads/'
     | '/_authenticated/incidents/$id/alerts'
     | '/_authenticated/incidents/$id/conversation'
     | '/_authenticated/incidents/$id/report'
@@ -369,11 +406,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAlertsRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/automation': {
+      id: '/_authenticated/automation'
+      path: '/automation'
+      fullPath: '/automation'
+      preLoaderRoute: typeof AuthenticatedAutomationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/incidents': {
       id: '/_authenticated/incidents'
       path: '/incidents'
       fullPath: '/incidents'
       preLoaderRoute: typeof AuthenticatedIncidentsRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/new': {
+      id: '/_authenticated/new'
+      path: '/new'
+      fullPath: '/new'
+      preLoaderRoute: typeof AuthenticatedNewRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/settings': {
@@ -445,6 +496,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
+    '/_authenticated/threads/': {
+      id: '/_authenticated/threads/'
+      path: '/threads'
+      fullPath: '/threads/'
+      preLoaderRoute: typeof AuthenticatedThreadsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/threads/$id': {
       id: '/_authenticated/threads/$id'
@@ -594,6 +652,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAlertsRouteRoute: typeof AuthenticatedAlertsRouteRouteWithChildren
   AuthenticatedIncidentsRouteRoute: typeof AuthenticatedIncidentsRouteRouteWithChildren
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
+  AuthenticatedAutomationRoute: typeof AuthenticatedAutomationRoute
+  AuthenticatedNewRoute: typeof AuthenticatedNewRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedProjectsIdRoute: typeof AuthenticatedProjectsIdRoute
   AuthenticatedSchedulesIdRoute: typeof AuthenticatedSchedulesIdRoute
@@ -601,6 +661,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute
   AuthenticatedSchedulesIndexRoute: typeof AuthenticatedSchedulesIndexRoute
   AuthenticatedServicesIndexRoute: typeof AuthenticatedServicesIndexRoute
+  AuthenticatedThreadsIndexRoute: typeof AuthenticatedThreadsIndexRoute
   AuthenticatedInvestigationsIdIndexRoute: typeof AuthenticatedInvestigationsIdIndexRoute
   AuthenticatedServicesIdIndexRoute: typeof AuthenticatedServicesIdIndexRoute
   AuthenticatedSchedulesIdRunsRunIdRoute: typeof AuthenticatedSchedulesIdRunsRunIdRoute
@@ -611,6 +672,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedIncidentsRouteRoute:
     AuthenticatedIncidentsRouteRouteWithChildren,
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
+  AuthenticatedAutomationRoute: AuthenticatedAutomationRoute,
+  AuthenticatedNewRoute: AuthenticatedNewRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedProjectsIdRoute: AuthenticatedProjectsIdRoute,
   AuthenticatedSchedulesIdRoute: AuthenticatedSchedulesIdRoute,
@@ -618,6 +681,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,
   AuthenticatedSchedulesIndexRoute: AuthenticatedSchedulesIndexRoute,
   AuthenticatedServicesIndexRoute: AuthenticatedServicesIndexRoute,
+  AuthenticatedThreadsIndexRoute: AuthenticatedThreadsIndexRoute,
   AuthenticatedInvestigationsIdIndexRoute:
     AuthenticatedInvestigationsIdIndexRoute,
   AuthenticatedServicesIdIndexRoute: AuthenticatedServicesIdIndexRoute,

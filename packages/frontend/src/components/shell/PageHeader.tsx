@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useLocation } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { inSettings } from "@/hooks/use-back";
 import { cn } from "@/lib/utils";
-import { NewIncidentButton } from "./NewIncident";
 
 /**
  * A list screen's top row (study-v2 §2.5 rule 2): the area's title, its
- * controls, and New incident at the right; Settings has none.
+ * controls, and the screen's own primary at the right, if it has one.
  */
 export function PageHeader({
 	title,
@@ -19,11 +16,10 @@ export function PageHeader({
 }: {
 	title: ReactNode;
 	children?: ReactNode;
-	/** The screen's one primary; `+ New incident` unless given (#673 w11). */
+	/** The screen's one primary, if any. */
 	primary?: ReactNode;
 	className?: string;
 }) {
-	const { pathname } = useLocation();
 	return (
 		<header
 			className={cn(
@@ -35,7 +31,7 @@ export function PageHeader({
 			<h1 className="mr-1 text-title">{title}</h1>
 			{children}
 			<span className="flex-1" />
-			{!inSettings(pathname) && (primary ?? <NewIncidentButton />)}
+			{primary}
 		</header>
 	);
 }

@@ -144,6 +144,11 @@ export function AlertListPane({
 		...orpc.alerts.list.queryOptions({ input: listInput }),
 		refetchInterval: interval,
 	});
+	const stats = useQuery({
+		...orpc.alerts.getStats.queryOptions({ input: {} }),
+		enabled: sidebar,
+	});
+	const none = stats.data?.total === 0;
 	const alerts = data?.data ?? [];
 	const rows = useMemo(() => orderAlerts(alerts), [alerts]);
 
@@ -249,22 +254,26 @@ export function AlertListPane({
 						onRetry={() => void refetch()}
 					/>
 				)}
-				{!isLoading && !(error && !data) && rows.length === 0 && (
-					<Empty
-						className="px-4"
-						text="No alerts found."
-						testId="alerts-empty-state"
-						action={
-							sidebar ? undefined : (
-								<Button variant="text" size="sm" asChild>
-									<Link to="/settings" search={{ tab: "alert-intake" }}>
-										Add an alert source
-									</Link>
-								</Button>
-							)
-						}
-					/>
-				)}
+				{/* No alert at all: the page's own empty state says it once. */}
+				{!isLoading &&
+					!(error && !data) &&
+					rows.length === 0 &&
+					!(sidebar && none) && (
+						<Empty
+							className="px-4"
+							text="No alerts found."
+							testId="alerts-empty-state"
+							action={
+								sidebar ? undefined : (
+									<Button variant="text" size="sm" asChild>
+										<Link to="/settings" search={{ tab: "alert-intake" }}>
+											Add an alert source
+										</Link>
+									</Button>
+								)
+							}
+						/>
+					)}
 				{lanes.map((lane) => (
 					<section
 						key={lane.id}

@@ -4,6 +4,7 @@
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Mono } from "@/components/shared/Mono";
+import { readableTitle } from "@/lib/title";
 import { ago } from "./inbox-model";
 
 /** Recently resolved under Needs you: ID, title, how it ended, when. */
@@ -43,7 +44,7 @@ export function RecentlyResolved({
 				>
 					<Mono className="w-[52px] shrink-0 text-text-3">INC-{i.number}</Mono>
 					<span dir="auto" className="min-w-0 flex-1 truncate text-text-1">
-						{i.title}
+						{readableTitle(i.title)}
 					</span>
 					<span className="shrink-0">
 						{i.mergedInto

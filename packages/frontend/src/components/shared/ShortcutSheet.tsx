@@ -13,7 +13,8 @@ import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
 import { Row } from "./Row";
 
 const ROWS: { keys: string[]; label: string }[] = [
-	{ keys: [NEW_INCIDENT_KEY.toUpperCase()], label: "New incident" },
+	{ keys: ["Ctrl", "K"], label: "Search" },
+	{ keys: [NEW_INCIDENT_KEY.toUpperCase()], label: "Log incident" },
 	...GO_SHORTCUTS.map((s) => ({
 		keys: ["G", s.key.toUpperCase()],
 		label: `Go to ${s.label}`,

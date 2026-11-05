@@ -12,7 +12,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { SlidersHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertFilters } from "@/components/alerts/AlertFilters";
 import {
 	AlertListPane,
@@ -20,6 +20,7 @@ import {
 	useAlertWindow,
 	usePullAlerts,
 } from "@/components/alerts/AlertListPane";
+import { AlertsBlank } from "@/components/alerts/AlertsBlank";
 import { Hint } from "@/components/shared/Hint";
 import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -27,14 +28,10 @@ import { StateWord } from "@/components/shared/StateWord";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { markFirstOpened, useFirstOpen } from "@/hooks/use-first-open";
-import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
-import { SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { alertStatusTone } from "@/lib/state-tone";
-import type { AlertsSearch } from "./route";
 
 export const Route = createFileRoute("/_authenticated/alerts/")({
 	component: AlertsPage,
@@ -45,13 +42,12 @@ function AlertsPage() {
 	const navigate = useNavigate();
 	const { search } = useAlertWindow();
 	const pull = usePullAlerts();
-	const { sidebar } = useLayoutPrefs();
-	const listInSidebar = useMediaQuery(SIDEBAR_FULL) && sidebar === "full";
+	// The list lives on this page at every width; the sidebar keeps the threads (#1020 D1).
+	const showNumbers = search.view === "stats";
 	const stats = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),
 		refetchInterval: useLiveRefreshInterval(),
 	});
-	useOpenFirstFiring(search);
 	const [filtersOpen, setFiltersOpen] = useState(
 		!!(search.status || search.severity),
 	);
@@ -63,6 +59,27 @@ function AlertsPage() {
 		});
 	const firing = stats.data ? firingCount(stats.data.byStatus) : 0;
 
+	if (stats.data?.total === 0)
+		return (
+			<>
+				<PageHeader
+					title="Alerts"
+					primary={
+						<Button
+							variant="text"
+							onClick={() => pull.mutate({})}
+							disabled={pull.isPending}
+							data-testid="alerts-pull"
+						>
+							Pull now
+						</Button>
+					}
+				/>
+				<div className="min-h-0 flex-1 overflow-y-auto">
+					<AlertsBlank />
+				</div>
+			</>
+		);
 	return (
 		<>
 			<PageHeader
@@ -104,6 +121,26 @@ function AlertsPage() {
 							<SlidersHorizontal />
 						</Button>
 					</Hint>
+					{/* Where sources are configured, reachable from the list as well as from Settings. */}
+					<Button variant="text" asChild>
+						<Link
+							to="/settings"
+							search={{ tab: "alert-intake" }}
+							data-testid="alerts-connect"
+						>
+							Connect
+						</Link>
+					</Button>
+					<Button
+						variant="text"
+						onClick={() =>
+							setFilter({ view: showNumbers ? undefined : "stats" })
+						}
+						aria-pressed={showNumbers}
+						data-testid="alerts-view-numbers"
+					>
+						{showNumbers ? "List" : "Numbers"}
+					</Button>
 					<Button
 						variant="text"
 						onClick={() => pull.mutate({})}
@@ -131,39 +168,13 @@ function AlertsPage() {
 					/>
 				</div>
 			)}
-			{listInSidebar ? (
+			{showNumbers ? (
 				<AlertNumbers />
 			) : (
 				<AlertListPane selectedId={null} className="min-h-0 flex-1 pt-1" />
 			)}
 		</>
 	);
-}
-
-/** From the door at ≥ 1024, the first firing alert opens in place of a bare page (L26). */
-function useOpenFirstFiring(search: AlertsSearch) {
-	const navigate = useNavigate();
-	const want = useFirstOpen(
-		"/alerts",
-		!search.tab && !search.status && !search.severity && !search.view,
-	);
-	const first = useQuery({
-		...orpc.alerts.list.queryOptions({
-			input: { status: "triggered", limit: 1 },
-		}),
-		enabled: want,
-	});
-	const id = first.data?.data[0]?.id;
-	useEffect(() => {
-		if (!want || !id) return;
-		markFirstOpened("/alerts");
-		void navigate({
-			to: "/alerts/$id",
-			params: { id },
-			search: {},
-			replace: true,
-		});
-	}, [want, id, navigate]);
 }
 
 function AlertNumbers() {

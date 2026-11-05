@@ -68,6 +68,21 @@ const SERVICE_TIERS: { value: ServiceTier; label: string }[] = Object.keys(
 	SERVICE_TIER_METADATA,
 ).map((value) => ({ value: value as ServiceTier, label: tierWord(value) }));
 
+/** A service name from a folder path or git URL: its last segment, lower-case. */
+export function nameFromSource(source: string): string {
+	const last =
+		source
+			.trim()
+			.replace(/\.git\/?$/, "")
+			.split(/[\\/:]/)
+			.filter(Boolean)
+			.pop() ?? "";
+	return last
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+}
+
 export function ServiceFormDialog({
 	open,
 	onOpenChange,
@@ -87,6 +102,8 @@ export function ServiceFormDialog({
 	const [repository, setRepository] = useState("");
 	const [notes, setNotes] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	const [named, setNamed] = useState(false);
+	const [more, setMore] = useState(false);
 	// Set once create succeeds, so a retry after a repository error updates instead of creating twice.
 	const [createdId, setCreatedId] = useState<string | null>(null);
 
@@ -130,6 +147,8 @@ export function ServiceFormDialog({
 			}
 			setError(null);
 			setCreatedId(null);
+			setNamed(!!service);
+			setMore(!!service);
 		}
 	}, [service, open, currentRepository]);
 
@@ -206,118 +225,132 @@ export function ServiceFormDialog({
 					</DialogTitle>
 				</DialogHeader>
 
-				<div className="space-y-4">
-					<div className="grid grid-cols-2 gap-3">
-						<Field label="Name" htmlFor="name">
-							<Input
-								id="name"
-								value={name}
-								onChange={(e) => setName(e.target.value)}
-								placeholder="payments-api"
-								disabled={isEditing}
-							/>
-						</Field>
-						<Field label="Display name" htmlFor="displayName">
-							<Input
-								id="displayName"
-								value={displayName}
-								onChange={(e) => setDisplayName(e.target.value)}
-								placeholder="Payments API"
-							/>
-						</Field>
-					</div>
-
-					<Field
-						label="Code"
-						htmlFor="repository"
-						hint="A folder on this machine or a git URL; a run reads its last commit"
-					>
+				{/* The fields scroll; the footer with Create stays in view. */}
+				<div className="-mx-1 max-h-[55dvh] space-y-4 overflow-y-auto px-1">
+					<Field label="Code" htmlFor="repository">
 						<Input
 							id="repository"
 							value={repository}
-							onChange={(e) => setRepository(e.target.value)}
-							placeholder="~/code/payments-api"
+							onChange={(e) => {
+								setRepository(e.target.value);
+								if (!named) setName(nameFromSource(e.target.value));
+							}}
+							placeholder="~/code/payments-api or a git URL"
+							autoFocus={!isEditing}
 							data-testid="service-repository-input"
 						/>
 					</Field>
-
-					<Field label="Description" htmlFor="description">
-						<Textarea
-							id="description"
-							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							placeholder="Takes card payments for checkout"
-							rows={2}
-							className="min-h-14 resize-none"
+					<Field label="Name" htmlFor="name">
+						<Input
+							id="name"
+							value={name}
+							onChange={(e) => {
+								setName(e.target.value);
+								setNamed(true);
+							}}
+							placeholder="payments-api"
+							disabled={isEditing}
 						/>
 					</Field>
+					{!more ? (
+						<Button
+							variant="text"
+							size="sm"
+							className="-ml-2"
+							onClick={() => setMore(true)}
+							data-testid="service-more"
+						>
+							More
+						</Button>
+					) : (
+						<>
+							<Field label="Display name" htmlFor="displayName">
+								<Input
+									id="displayName"
+									value={displayName}
+									onChange={(e) => setDisplayName(e.target.value)}
+									placeholder="Payments API"
+								/>
+							</Field>
+							<Field label="Description" htmlFor="description">
+								<Textarea
+									id="description"
+									value={description}
+									onChange={(e) => setDescription(e.target.value)}
+									placeholder="Takes card payments for checkout"
+									rows={2}
+									className="min-h-14 resize-none"
+								/>
+							</Field>
 
-					<div className="grid grid-cols-2 gap-3">
-						<Field label="Kind" htmlFor="service-kind">
-							<Select
-								value={type}
-								onValueChange={(v) => setType(v as ServiceType)}
+							<div className="grid grid-cols-2 gap-3">
+								<Field label="Kind" htmlFor="service-kind">
+									<Select
+										value={type}
+										onValueChange={(v) => setType(v as ServiceType)}
+									>
+										<SelectTrigger id="service-kind" className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{SERVICE_TYPES.map((t) => (
+												<SelectItem key={t.value} value={t.value}>
+													{t.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</Field>
+								<Field label="Tier" htmlFor="service-tier">
+									<Select
+										value={tier}
+										onValueChange={(v) => setTier(v as ServiceTier)}
+									>
+										<SelectTrigger id="service-tier" className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{SERVICE_TIERS.map((t) => (
+												<SelectItem key={t.value} value={t.value}>
+													{t.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</Field>
+							</div>
+
+							<div className="grid grid-cols-2 gap-3">
+								<Field label="Team" htmlFor="service-team">
+									<Input
+										id="service-team"
+										value={team}
+										onChange={(e) => setTeam(e.target.value)}
+										placeholder="Payments"
+									/>
+								</Field>
+								<Field label="Tags">
+									<TagInput tags={tags} onChange={setTags} />
+								</Field>
+							</div>
+
+							<Field
+								label="Investigation notes"
+								htmlFor="service-investigation-notes"
+								hint="What the agent should know first about this service: dashboards, usual causes, what not to touch."
 							>
-								<SelectTrigger id="service-kind" className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{SERVICE_TYPES.map((t) => (
-										<SelectItem key={t.value} value={t.value}>
-											{t.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-						<Field label="Tier" htmlFor="service-tier">
-							<Select
-								value={tier}
-								onValueChange={(v) => setTier(v as ServiceTier)}
-							>
-								<SelectTrigger id="service-tier" className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{SERVICE_TIERS.map((t) => (
-										<SelectItem key={t.value} value={t.value}>
-											{t.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-					</div>
-
-					<div className="grid grid-cols-2 gap-3">
-						<Field label="Team" htmlFor="service-team">
-							<Input
-								id="service-team"
-								value={team}
-								onChange={(e) => setTeam(e.target.value)}
-								placeholder="Payments"
-							/>
-						</Field>
-						<Field label="Tags">
-							<TagInput tags={tags} onChange={setTags} />
-						</Field>
-					</div>
-
-					<Field
-						label="Investigation notes"
-						htmlFor="service-investigation-notes"
-						hint="What the agent should know first about this service: dashboards, usual causes, what not to touch."
-					>
-						<Textarea
-							id="service-investigation-notes"
-							value={notes}
-							onChange={(e) => setNotes(e.target.value)}
-							maxLength={SERVICE_NOTES_MAX}
-							rows={3}
-							className="min-h-20 resize-y"
-							data-testid="service-investigation-notes"
-						/>
-					</Field>
+								<Textarea
+									id="service-investigation-notes"
+									value={notes}
+									onChange={(e) => setNotes(e.target.value)}
+									maxLength={SERVICE_NOTES_MAX}
+									rows={3}
+									className="min-h-20 resize-y"
+									data-testid="service-investigation-notes"
+								/>
+							</Field>
+						</>
+					)}
 				</div>
 
 				<DialogFooter className="items-center">

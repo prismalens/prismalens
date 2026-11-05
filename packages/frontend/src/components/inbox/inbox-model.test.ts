@@ -3,7 +3,7 @@
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { middle, runLabel } from "../shell/IncidentTree";
+import { middle, rowStateOf, runLabel } from "../shell/IncidentTree";
 import {
 	actionsOf,
 	firingOf,
@@ -159,11 +159,11 @@ describe("needOf", () => {
 		});
 	});
 
-	it("calls a never-run incident No cause found with Investigate", () => {
+	it("calls a never-run incident Not investigated with Investigate", () => {
 		const i = incident({});
-		expect(needOf(i)).toBe("nocause");
-		expect(reasonOf(i, "nocause", NOW).text).toBe("Not investigated yet");
-		expect(actionsOf(i, "nocause", "steady").primary.label).toBe(
+		expect(needOf(i)).toBe("uninvestigated");
+		expect(reasonOf(i, "uninvestigated", NOW).text).toBe("Not investigated yet");
+		expect(actionsOf(i, "uninvestigated", "steady").primary.label).toBe(
 			"Investigate",
 		);
 	});
@@ -310,4 +310,30 @@ describe("sidebar labels", () => {
 		];
 		expect(runs.map((r) => runLabel(runs, r))).toEqual(["Run 2, interrupted", "Run 1, failed"]);
 	});
+});
+
+describe("rowStateOf: the sidebar row's one fact (#1020)", () => {
+	it("is empty for a quiet incident with no run", () => {
+		expect(rowStateOf(incident({}))).toBe(null);
+	});
+	it("shows a working run", () => {
+		const live = run({ status: "running", completedAt: null });
+		expect(rowStateOf(incident({ investigations: [live] }))).toBe("working");
+	});
+	it("shows a failed run over nothing", () => {
+		const failed = run({ status: "failed" });
+		expect(rowStateOf(incident({ investigations: [failed] }))).toBe("failed");
+	});
+	it("shows a finding ready", () => {
+		const found = run({ rootCause: "Index dropped" });
+		expect(rowStateOf(incident({ investigations: [found] }))).toBe("ready");
+	});
+	it("puts a working follow-up above the finding it checks", () => {
+		const live = run({ status: "running", createdAt: at(0.1), completedAt: null });
+		const found = run({ rootCause: "Index dropped" });
+		expect(rowStateOf(incident({ investigations: [live, found] }))).toBe(
+			"working",
+		);
+	});
+
 });

@@ -42,7 +42,7 @@ for (const stack of stacks) {
 			expect(token, `no pairing link in:\n${out}`).toBeTruthy();
 
 			await page.goto(`/pair#${token}`);
-			await page.waitForURL(/\/incidents/);
+			await page.waitForURL(/\/(new|incidents)/);
 			// The usage strip sits above the board and lands after it, moving every
 			// card under a drag; telemetry-consent.spec serves its own flags (#673 w45).
 			const seen = await page.request.put("/api/settings/telemetry", {

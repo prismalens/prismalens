@@ -28,6 +28,11 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/components/inbox/use-inbox-data", () => ({
 	useNeedsYouCount: () => 0,
+	useActiveIncidents: () => ({ incidents: [], isLoading: false }),
+}));
+
+vi.mock("@/lib/api/hooks/use-webhooks-orpc", () => ({
+	useLastDelivery: () => ({ data: null }),
 }));
 
 vi.mock("@/components/settings", () => ({
@@ -68,8 +73,8 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-vi.mock("@/components/shell/IncidentTree", () => ({
-	IncidentTree: () => null,
+vi.mock("@/components/shell/ThreadList", () => ({
+	ThreadList: () => null,
 }));
 
 vi.mock("@/components/alerts/AlertListPane", () => ({
@@ -129,29 +134,14 @@ describe("Sidebar (case 2)", () => {
 		expect(state.toggleSidebar).toHaveBeenCalledTimes(2);
 	});
 
-	it("never hides in Settings, and places settings-back below settings-sections", async () => {
+	it("keeps the app's own bar in Settings; the sections live in the page", async () => {
 		state.pathname = "/settings";
-		state.sidebarHidden = true;
 		await act(async () => root.render(createElement(Sidebar)));
 
-		const sidebar = container.querySelector('[data-testid="sidebar"]');
-		expect(sidebar).not.toBeNull();
-		expect(container.querySelector('[data-testid="sidebar-show"]')).toBeNull();
-
-		const sections = container.querySelector(
-			'[data-testid="settings-sections"]',
-		);
-		const backBtn = container.querySelector('[data-testid="settings-back"]');
-		expect(sections).not.toBeNull();
-		expect(backBtn).not.toBeNull();
-
-		if (sections && backBtn) {
-			expect(
-				Boolean(
-					sections.compareDocumentPosition(backBtn) &
-						Node.DOCUMENT_POSITION_FOLLOWING,
-				),
-			).toBe(true);
-		}
+		expect(container.querySelector('[data-testid="sidebar"]')).not.toBeNull();
+		expect(container.querySelector('[data-testid="nav-new"]')).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="settings-sections"]'),
+		).toBeNull();
 	});
 });

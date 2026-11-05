@@ -41,7 +41,8 @@ export function alertBackLabel(
 	if (incident && inIncident(incident.id)(path))
 		return `Back to INC-${incident.number}`;
 	if (path.startsWith("/incidents/")) return "Back to the incident";
-	if (path === "/incidents") return "Back to the board";
+	if (path === "/incidents") return "Back to Operations";
+	if (path === "/threads") return "Back to threads";
 	if (path.startsWith("/alerts")) return "Back to alerts";
 	return "Back";
 }

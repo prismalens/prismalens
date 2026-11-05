@@ -4,21 +4,29 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("#523 — the alerts frame", () => {
-	test("one alert list, in the sidebar; the page holds the window's controls", async ({
+	test("one alert list, on the page; the sidebar keeps the threads", async ({
 		page,
 	}) => {
-		// 1. /alerts stays the list's area; at this width the sidebar holds the list (study-v3 §8)
+		// 1. /alerts holds its own list at every width; the sidebar keeps the threads (#1020 D1)
 		await page.goto("/alerts");
 		const frame = page.getByTestId("alerts-frame");
 		await expect(frame).toBeVisible({ timeout: 15_000 });
 		await expect(page).toHaveURL(/\/alerts$/);
-		const pane = page.getByTestId("sidebar").getByTestId("alert-list-pane");
+		const pane = page.getByTestId("alert-list-pane");
 		await expect(pane).toBeVisible();
-		await expect(page.getByTestId("alert-list-pane")).toHaveCount(1);
+		await expect(pane).toHaveCount(1);
+		await expect(
+			page.getByTestId("sidebar").getByTestId("alert-list-pane"),
+		).toHaveCount(0);
 
 		// Header controls
 		await expect(page.getByTestId("alert-list-filters-toggle")).toBeVisible();
 		await expect(page.getByTestId("alerts-pull")).toBeVisible();
+		// Sources are configured from here too, not only from Settings (#1020 cold-start 2).
+		await expect(page.getByTestId("alerts-connect")).toHaveAttribute(
+			"href",
+			/\/settings\?tab=alert-intake/,
+		);
 		await expect(page.getByTestId("alerts-total-count")).toBeVisible();
 		await expect(page.getByRole("tab", { name: "All alerts" })).toBeVisible();
 		await expect(page.getByRole("tab", { name: "Unmapped" })).toBeVisible();
@@ -56,7 +64,7 @@ test.describe("#523 — the alerts frame", () => {
 		page,
 	}) => {
 		await page.goto("/alerts");
-		const pane = page.getByTestId("sidebar").getByTestId("alert-list-pane");
+		const pane = page.getByTestId("alert-list-pane");
 		await pane
 			.getByTestId("alert-row-link")
 			.filter({ hasText: "Storm alert #1:" })
@@ -91,7 +99,7 @@ test.describe("#523 — the alerts frame", () => {
 			await route.fallback();
 		});
 
-		await page.goto("/alerts?view=stats");
+		await page.goto("/alerts");
 		await expect(page.getByTestId("alerts-empty-state")).toBeVisible({
 			timeout: 20_000,
 		});

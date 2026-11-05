@@ -19,6 +19,7 @@ import {
 	useSchedules,
 	useSetScheduleEnabled,
 } from "@/lib/api/hooks/use-schedules-orpc";
+import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -153,7 +154,7 @@ function ScheduleRow({
 					Check {s.serviceName}
 				</div>
 			</Link>
-			<span className={cn(CELL, "text-text-2")}>{s.description}</span>
+			<span className={cn(CELL, "text-text-2")}>{scheduleWhen(s)}</span>
 			<span className={cn(CELL, "text-text-3")}>
 				{s.enabled
 					? `Next ${whenText(s.nextRunAt)}`

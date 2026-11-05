@@ -41,6 +41,7 @@ import {
 	useRunScheduleNow,
 	useSchedule,
 } from "@/lib/api/hooks/use-schedules-orpc";
+import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -311,7 +312,7 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 		["Runs", `Check ${s.serviceName}`, s.runbook ? `Runbook ${s.runbook}` : ""],
 		[
 			"When",
-			s.description,
+			scheduleWhen(s),
 			s.enabled ? `Next ${whenText(s.nextRunAt)}` : "Paused",
 		],
 		["Agent", [s.harness, s.model].filter(Boolean).join(", "), "Auto access"],

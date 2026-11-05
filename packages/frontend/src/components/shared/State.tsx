@@ -37,6 +37,27 @@ export function Empty({
 	);
 }
 
+/** A whole page with nothing yet: a short title, centred, and what fills it. */
+export function Blank({
+	title,
+	children,
+	testId = "state-blank",
+}: {
+	title: string;
+	children?: ReactNode;
+	testId?: string;
+}) {
+	return (
+		<div
+			className="mx-auto flex w-full max-w-[600px] flex-col items-center gap-4 px-4 pt-[18vh] pb-12 text-center"
+			data-testid={testId}
+		>
+			<h2 className="text-display text-text-1">{title}</h2>
+			{children}
+		</div>
+	);
+}
+
 /** Loading inside the shell: skeleton rows; the header above stays. */
 export function Loading({
 	rows = 4,

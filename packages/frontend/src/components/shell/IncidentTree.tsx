@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
 import {
 	ChevronRight,
+	CircleX,
 	Cloud,
 	Database,
 	Globe,
@@ -16,17 +17,20 @@ import {
 	MemoryStick,
 	Network,
 	Server,
+	ShieldAlert,
 } from "lucide-react";
 import { useState } from "react";
-import { firingOf } from "@/components/inbox/inbox-model";
+import { firingOf, liveOf, needOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { DRAFT } from "@/components/incidents/record-context";
+import { runElapsed } from "@/components/incidents/run-facts";
 import { Hint } from "@/components/shared/Hint";
-import { Mono } from "@/components/shared/Mono";
+import { Ring } from "@/components/shared/Ring";
 import { useNow } from "@/hooks/use-now";
 import { useServices } from "@/lib/api/hooks";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
+import { formatElapsed } from "@/lib/format-time";
 import { shortAge } from "@/lib/incident-board";
 import { incidentGroups } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
@@ -158,7 +162,10 @@ export function IncidentTree() {
 											onClick={() =>
 												setOpen((o) => ({ ...o, [incident.id]: !expanded }))
 											}
-											className="flex size-5 shrink-0 items-center justify-center rounded-[4px] text-text-3 hover:text-text-1"
+											className={cn(
+												"flex size-6 shrink-0 items-center justify-center rounded-[4px] text-text-3 opacity-0 hover:text-text-1 focus-visible:opacity-100 group-hover/row:opacity-100",
+												expanded && "opacity-100",
+											)}
 											data-testid="tree-toggle"
 										>
 											<ChevronRight
@@ -170,30 +177,23 @@ export function IncidentTree() {
 											/>
 										</button>
 										<Hint
-											label={incident.title}
+											label={`INC-${incident.number}, ${incident.title}`}
 											side="right"
-											when={incident.title.length > TITLE_CHARS}
 										>
 											<Link
 												to="/incidents/$id"
 												params={{ id: incident.id }}
 												aria-current={on ? "page" : undefined}
-												className="flex min-w-0 flex-1 gap-1.5"
+												className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5"
 												data-testid="tree-incident-link"
 											>
-												<Mono
-													className={cn(
-														"shrink-0 leading-5 text-text-3 group-hover/row:text-text-2",
-														on && "text-text-2",
-													)}
-												>
-													INC-{incident.number}
-												</Mono>
+												<span className="sr-only">INC-{incident.number}</span>
 												<span dir="auto" className="min-w-0 truncate">
-													{middle(incident.title)}
+													{incident.title}
 												</span>
 											</Link>
 										</Hint>
+										<RowState incident={incident} now={now} />
 									</div>
 									{expanded && (
 										<RunList
@@ -252,7 +252,7 @@ export function runLabel(runs: Run[], run: Run): string {
 	return `Run ${n}, ${word}`;
 }
 
-function RunList({
+export function RunList({
 	incidentId,
 	runId,
 	now,
@@ -322,15 +322,77 @@ function RunList({
 					</Link>
 				);
 			})}
-			<Link
-				to="/incidents/$id/conversation"
-				params={{ id: incidentId }}
-				search={{ investigation: DRAFT }}
-				className={cn(row, "text-text-3")}
-				data-testid="tree-new-conversation"
-			>
-				New conversation
-			</Link>
 		</div>
 	);
+}
+
+/**
+ * The row's one fact, the most urgent only (#1020): an ask waiting, then a
+ * failed run, then a run working, then a finding ready.
+ */
+export function rowStateOf(
+	incident: IncidentWithRelations,
+): "asks" | "failed" | "working" | "ready" | null {
+	const need = needOf(incident);
+	if (need === "approval") return "asks";
+	if (need === "failed" || need === "interrupted") return "failed";
+	if (liveOf(incident)) return "working";
+	return need === "ready" ? "ready" : null;
+}
+
+function RowState({
+	incident,
+	now,
+}: {
+	incident: IncidentWithRelations;
+	now: number;
+}) {
+	const state = rowStateOf(incident);
+	const live = liveOf(incident);
+	if (state === "asks")
+		return (
+			<span
+				className="ml-auto shrink-0 text-warn"
+				data-testid="tree-state"
+				data-state="asks"
+			>
+				<ShieldAlert aria-hidden className="size-3.5" />
+				<span className="sr-only">, waiting for you</span>
+			</span>
+		);
+	if (state === "failed")
+		return (
+			<span
+				className="ml-auto shrink-0 text-danger"
+				data-testid="tree-state"
+				data-state="failed"
+			>
+				<CircleX aria-hidden className="size-3.5" />
+				<span className="sr-only">, run failed</span>
+			</span>
+		);
+	if (state === "working" && live)
+		return (
+			<span
+				className="ml-auto flex shrink-0 items-center gap-1.5 text-meta text-text-3 tabular-nums"
+				data-testid="tree-state"
+				data-state="working"
+			>
+				<Ring />
+				{now ? formatElapsed(runElapsed(live, now)) : null}
+				<span className="sr-only">, working</span>
+			</span>
+		);
+	if (state === "ready")
+		return (
+			<span
+				className="ml-auto shrink-0"
+				data-testid="tree-state"
+				data-state="ready"
+			>
+				<span aria-hidden className="block size-1.5 rounded-full bg-accent" />
+				<span className="sr-only">, finding ready</span>
+			</span>
+		);
+	return null;
 }

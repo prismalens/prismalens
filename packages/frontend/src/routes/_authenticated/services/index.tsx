@@ -19,7 +19,7 @@ import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
-import { Empty, Loading } from "@/components/shared/State";
+import { Blank, Empty, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
@@ -271,202 +271,226 @@ function ServicesPage() {
 		await refetchRepos();
 	};
 
+	// Repositories waiting for a service keep the list page, so they stay reachable.
+	const none =
+		!isLoading &&
+		total === 0 &&
+		reviewItems.length === 0 &&
+		!searchParams.search &&
+		teamFilter === "all";
 	return (
 		<div className="flex h-full flex-col bg-canvas" data-testid="services-page">
 			<PageHeader
 				title="Services"
 				primary={
-					<Button
-						size="sm"
-						className="pl-2"
-						onClick={() => setShowAddDialog(true)}
-						data-testid="add-service"
-					>
-						<Plus />
-						New service
-					</Button>
+					!none && (
+						<Button
+							size="sm"
+							className="pl-2"
+							onClick={() => setShowAddDialog(true)}
+							data-testid="add-service"
+						>
+							<Plus />
+							New service
+						</Button>
+					)
 				}
 			>
-				<div className="flex basis-full items-center gap-2 md:basis-auto">
-					<Button variant="text" size="sm" asChild>
-						<Link to="/projects" data-testid="services-projects-link">
-							Projects
-						</Link>
-					</Button>
-					<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
-						<Search className="size-3.5 shrink-0 text-text-3" />
-						<input
-							value={q}
-							onChange={(e) => setQ(e.target.value)}
-							placeholder="Filter"
-							aria-label="Filter services"
-							className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
-							data-testid="services-search"
-						/>
-					</label>
-					{teamOptions.length > 0 && (
-						<Select
-							value={teamFilter}
-							onValueChange={(v) =>
-								updateSearch({
-									team: v === "all" ? undefined : v,
-									page: undefined,
-								})
-							}
-						>
-							<SelectTrigger
-								className="h-7 w-auto min-w-28"
-								aria-label="Team"
-								data-testid="services-team-filter"
+				{!none && (
+					<div className="flex basis-full items-center gap-2 md:basis-auto">
+						<Button variant="text" size="sm" asChild>
+							<Link to="/projects" data-testid="services-projects-link">
+								Projects
+							</Link>
+						</Button>
+						<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
+							<Search className="size-3.5 shrink-0 text-text-3" />
+							<input
+								value={q}
+								onChange={(e) => setQ(e.target.value)}
+								placeholder="Filter"
+								aria-label="Filter services"
+								className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
+								data-testid="services-search"
+							/>
+						</label>
+						{teamOptions.length > 0 && (
+							<Select
+								value={teamFilter}
+								onValueChange={(v) =>
+									updateSearch({
+										team: v === "all" ? undefined : v,
+										page: undefined,
+									})
+								}
 							>
-								<SelectValue placeholder="Every team" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="all">Every team</SelectItem>
-								{teamOptions.map((t) => (
-									<SelectItem key={t} value={t}>
-										{t}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					)}
-				</div>
+								<SelectTrigger
+									className="h-7 w-auto min-w-28"
+									aria-label="Team"
+									data-testid="services-team-filter"
+								>
+									<SelectValue placeholder="Every team" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">Every team</SelectItem>
+									{teamOptions.map((t) => (
+										<SelectItem key={t} value={t}>
+											{t}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						)}
+					</div>
+				)}
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 pb-12">
-					{isLoading ? (
-						<Loading />
-					) : services.length === 0 ? (
-						searchParams.search || teamFilter !== "all" ? (
-							<Empty text="No service matches." testId="services-empty" />
+				{none ? (
+					<Blank title="Add your first service" testId="services-empty">
+						<p className="-mt-2 text-body text-text-2">
+							A service is a repository the agent can read, and the alerts that
+							belong to it. Chats work without one.
+						</p>
+						<Button
+							onClick={() => setShowAddDialog(true)}
+							data-testid="add-service"
+						>
+							<Plus />
+							Add a service
+						</Button>
+					</Blank>
+				) : (
+					<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 pb-12">
+						{isLoading ? (
+							<Loading />
+						) : services.length === 0 ? (
+							searchParams.search || teamFilter !== "all" ? (
+								<Empty text="No service matches." testId="services-empty" />
+							) : (
+								<Empty text="No services yet." testId="services-empty" />
+							)
 						) : (
-							<Empty
-								text="No services yet. A service names the code the agent reads."
-								testId="services-empty"
-							/>
-						)
-					) : (
-						<h2
-							className="mb-3 text-body font-medium text-text-2"
-							data-testid="services-count"
-						>
-							{`${total} service${total === 1 ? "" : "s"}`}
-						</h2>
-					)}
-					<ul
-						className={cn(
-							"divide-y divide-hairline",
-							services.length > 0 && "pool px-4 py-1",
+							<h2
+								className="mb-3 text-body font-medium text-text-2"
+								data-testid="services-count"
+							>
+								{`${total} service${total === 1 ? "" : "s"}`}
+							</h2>
 						)}
-						data-testid="services-list"
-					>
-						{services.map((s) => (
-							<ServiceRow
-								key={s.id}
-								service={s}
-								open={openBy.get(s.id) ?? 0}
-								telemetry={telemetry}
-								nameOf={nameOf}
-							/>
-						))}
-					</ul>
-					{totalPages > 1 && (
-						<div className="mt-3 flex items-center gap-3 text-meta text-text-3">
-							<Button
-								variant="text"
-								size="sm"
-								disabled={currentPage <= 1}
-								onClick={() => updateSearch({ page: currentPage - 1 })}
-							>
-								Previous
-							</Button>
-							<span>
-								Page {currentPage} of {totalPages}
-							</span>
-							<Button
-								variant="text"
-								size="sm"
-								disabled={currentPage >= totalPages}
-								onClick={() => updateSearch({ page: currentPage + 1 })}
-							>
-								Next
-							</Button>
-						</div>
-					)}
-
-					{reviewItems.length > 0 && (
-						<RecordSection
-							id="review-queue"
-							className="mt-10"
-							title="Repositories no service names"
-							count={reviewItems.length}
+						<ul
+							className={cn(
+								"divide-y divide-hairline",
+								services.length > 0 && "pool px-4 py-1",
+							)}
+							data-testid="services-list"
 						>
-							<ul className="divide-y divide-hairline">
-								{reviewItems.map((item) => {
-									const selected = selectedServiceForRepo[item.key] ?? "";
-									return (
-										<li
-											key={item.key}
-											className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center"
-										>
-											<div className="min-w-0 flex-1">
-												<Mono className="block truncate text-text-1">
-													{item.fullName}
-												</Mono>
-												{item.description && (
-													<p className="truncate text-meta text-text-3">
-														{item.description}
-													</p>
-												)}
-											</div>
-											<div className="flex flex-wrap items-center gap-2">
-												<Button
-													variant="secondary"
-													size="sm"
-													onClick={() => handleImportAsService(item)}
-												>
-													Make it a service
-												</Button>
-												<Select
-													value={selected}
-													onValueChange={(v) => {
-														setSelectedServiceForRepo((prev) => ({
-															...prev,
-															[item.key]: v,
-														}));
-														void handleLinkToService(item, v);
-													}}
-												>
-													<SelectTrigger
-														className="h-7 w-auto min-w-32"
-														aria-label={`Give ${item.fullName} to a service`}
+							{services.map((s) => (
+								<ServiceRow
+									key={s.id}
+									service={s}
+									open={openBy.get(s.id) ?? 0}
+									telemetry={telemetry}
+									nameOf={nameOf}
+								/>
+							))}
+						</ul>
+						{totalPages > 1 && (
+							<div className="mt-3 flex items-center gap-3 text-meta text-text-3">
+								<Button
+									variant="text"
+									size="sm"
+									disabled={currentPage <= 1}
+									onClick={() => updateSearch({ page: currentPage - 1 })}
+								>
+									Previous
+								</Button>
+								<span>
+									Page {currentPage} of {totalPages}
+								</span>
+								<Button
+									variant="text"
+									size="sm"
+									disabled={currentPage >= totalPages}
+									onClick={() => updateSearch({ page: currentPage + 1 })}
+								>
+									Next
+								</Button>
+							</div>
+						)}
+
+						{reviewItems.length > 0 && (
+							<RecordSection
+								id="review-queue"
+								className="mt-10"
+								title="Repositories no service names"
+								count={reviewItems.length}
+							>
+								<ul className="divide-y divide-hairline">
+									{reviewItems.map((item) => {
+										const selected = selectedServiceForRepo[item.key] ?? "";
+										return (
+											<li
+												key={item.key}
+												className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center"
+											>
+												<div className="min-w-0 flex-1">
+													<Mono className="block truncate text-text-1">
+														{item.fullName}
+													</Mono>
+													{item.description && (
+														<p className="truncate text-meta text-text-3">
+															{item.description}
+														</p>
+													)}
+												</div>
+												<div className="flex flex-wrap items-center gap-2">
+													<Button
+														variant="secondary"
+														size="sm"
+														onClick={() => handleImportAsService(item)}
 													>
-														<SelectValue placeholder="Give it to" />
-													</SelectTrigger>
-													<SelectContent>
-														{allServices.map((svc) => (
-															<SelectItem key={svc.id} value={svc.id}>
-																{svc.name}
-															</SelectItem>
-														))}
-													</SelectContent>
-												</Select>
-												<Button
-													variant="danger"
-													size="sm"
-													onClick={() => setItemToDelete(item)}
-												>
-													Remove
-												</Button>
-											</div>
-										</li>
-									);
-								})}
-							</ul>
-						</RecordSection>
-					)}
-				</div>
+														Make it a service
+													</Button>
+													<Select
+														value={selected}
+														onValueChange={(v) => {
+															setSelectedServiceForRepo((prev) => ({
+																...prev,
+																[item.key]: v,
+															}));
+															void handleLinkToService(item, v);
+														}}
+													>
+														<SelectTrigger
+															className="h-7 w-auto min-w-32"
+															aria-label={`Give ${item.fullName} to a service`}
+														>
+															<SelectValue placeholder="Give it to" />
+														</SelectTrigger>
+														<SelectContent>
+															{allServices.map((svc) => (
+																<SelectItem key={svc.id} value={svc.id}>
+																	{svc.name}
+																</SelectItem>
+															))}
+														</SelectContent>
+													</Select>
+													<Button
+														variant="danger"
+														size="sm"
+														onClick={() => setItemToDelete(item)}
+													>
+														Remove
+													</Button>
+												</div>
+											</li>
+										);
+									})}
+								</ul>
+							</RecordSection>
+						)}
+					</div>
+				)}
 			</div>
 
 			<ServiceFormDialog

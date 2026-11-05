@@ -7,7 +7,8 @@ import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
 
 /** The `g` chords: where each second key goes. Rendered by the `?` sheet too. */
 export const GO_SHORTCUTS = [
-	{ key: "i", to: "/incidents", label: "Incidents" },
+	{ key: "t", to: "/threads", label: "Threads" },
+	{ key: "o", to: "/incidents", label: "Operations" },
 	{ key: "a", to: "/alerts", label: "Alerts" },
 	{ key: "s", to: "/settings", label: "Settings" },
 ] as const;

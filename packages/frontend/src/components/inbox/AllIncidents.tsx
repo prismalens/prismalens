@@ -24,6 +24,7 @@ import {
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { incidentServices } from "@/lib/service-lanes";
+import { readableTitle } from "@/lib/title";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
 import { ago, liveOf, matches, NEED_GROUPS, needOf } from "./inbox-model";
 
@@ -155,7 +156,7 @@ export function AllIncidents({
 								INC-{i.number}
 							</Mono>
 							<span dir="auto" className="min-w-0 flex-1 truncate text-text-1">
-								{i.title}
+								{readableTitle(i.title)}
 							</span>
 							<span
 								dir="auto"

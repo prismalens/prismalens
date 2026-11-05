@@ -45,15 +45,15 @@ test.describe("#979 - schedules", () => {
 		expect(created.ok(), await created.text()).toBe(true);
 		const { id } = (await created.json()) as { id: string };
 
+		// Schedules live under Automation (#1020, D18).
 		await page.goto("/incidents");
-		await page
-			.getByTestId("sidebar")
-			.getByRole("link", { name: "Schedules", exact: true })
-			.click();
-		await expect(page).toHaveURL(/\/schedules$/);
-		await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible({
-			timeout: 15_000,
-		});
+		await page.getByTestId("sidebar").getByTestId("nav-automation").click();
+		await expect(page).toHaveURL(/\/automation$/);
+		await expect(page.getByRole("heading", { name: "Automation" })).toBeVisible(
+			{
+				timeout: 15_000,
+			},
+		);
 
 		await page.getByRole("link", { name }).first().click();
 		await expect(page).toHaveURL(new RegExp(`/schedules/${id}$`));

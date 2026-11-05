@@ -2,50 +2,51 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The shell's left bar, one for every page (#811): three doors, the incidents
- * under their services (the Alerts and Services areas keep their own lists),
- * and Settings beside the theme toggle at the foot. Below 1280 it folds to an
- * icon rail; `[` or its fold button hides it completely, and a button in the
- * page bar brings it back (#848). On the phone the doors are a strip of icons
- * across the top. Settings swaps the bar for its pages with Back at the foot.
- * Under the doors, Terminal shows or hides the terminal panel (#931).
- * Hidden on pairing, where nothing leads away.
+ * The shell's left bar, the same on every page (#1020): New and Search, the
+ * doors, Waiting for you and Recents, Settings at the foot. Below 1280 it folds
+ * to a labelled rail; `[` hides it. On the phone the doors are a strip across the top.
  */
-import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
-	Bell,
+	Activity,
 	Boxes,
-	CalendarClock,
-	ChevronLeft,
-	Inbox,
+	Hourglass,
+	Menu,
+	MessagesSquare,
 	PanelLeft,
+	Search,
 	SlidersHorizontal,
+	SquarePen,
 	SquareTerminal,
+	Zap,
 } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
-import { AlertListPane } from "@/components/alerts/AlertListPane";
+import { type ReactNode, useEffect, useState } from "react";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
-import { useNeedsYouCount } from "@/components/inbox/use-inbox-data";
-import { tierWord } from "@/components/services/service-detail.utils";
+import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useAbout } from "@/components/settings";
-import {
-	FIRST_SETTINGS_TAB,
-	SETTINGS_SECTIONS,
-	type SettingsTab,
-} from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
-import { IncidentTree } from "@/components/shell/IncidentTree";
+import { rowStateOf } from "@/components/shell/IncidentTree";
+import { openSearch } from "@/components/shell/SearchPalette";
+import { ThreadList } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { inSettings, useBack } from "@/hooks/use-back";
+import {
+	Sheet,
+	SheetContent,
+	SheetTitle,
+	SheetTrigger,
+} from "@/components/ui/sheet";
 import { useBreathePhase } from "@/hooks/use-breathe-phase";
 import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
-import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
+import { SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
-import { useServices } from "@/lib/api/hooks";
+import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
+import { triggerOf } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
 type DoorTo =
+	| "/threads"
+	| "/automation"
 	| "/incidents"
 	| "/alerts"
 	| "/services"
@@ -55,34 +56,61 @@ type DoorTo =
 interface Door {
 	to: DoorTo;
 	label: string;
+	/** Test id stem when it differs from the label: the Threads door keeps `incidents`. */
+	slug?: string;
 	icon: ReactNode;
 	count?: number;
 	/** Read with the count by assistive tech: `Incidents, 7 need you`. */
 	countLabel?: string;
 	/** A newer release is out (#717). */
 	dot?: boolean;
+	/** Only where the list is folded away: the rail and the phone strip (D18). */
+	narrowOnly?: boolean;
+	search?: { state: "waiting" };
 }
 
 const ICON = "size-4 shrink-0 stroke-[1.5]";
 
 function useDoors(signedIn: boolean): Door[] {
-	const needs = useNeedsYouCount(signedIn);
 	const about = useAbout(signedIn);
+	const { incidents } = useActiveIncidents();
+	const { data: delivery } = useLastDelivery();
+	// Operations is earned: it stays once alerts have ever arrived, not only while one is open (D18, cp5).
+	const operations =
+		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
+	const waiting = incidents.filter((i) => rowStateOf(i) === "asks").length;
 	return [
+		...(waiting
+			? [
+					{
+						to: "/threads" as const,
+						label: "Waiting",
+						slug: "waiting",
+						icon: <Hourglass className={ICON} />,
+						count: waiting,
+						countLabel: `${waiting} waiting for you`,
+						narrowOnly: true,
+						search: { state: "waiting" as const },
+					},
+				]
+			: []),
 		{
-			to: "/incidents",
-			label: "Incidents",
-			icon: <Inbox className={ICON} />,
-			count: needs || undefined,
-			countLabel: needs ? `${needs} need you` : undefined,
+			to: "/threads",
+			label: "Threads",
+			icon: <MessagesSquare className={ICON} />,
 		},
-		{ to: "/alerts", label: "Alerts", icon: <Bell className={ICON} /> },
+		{ to: "/automation", label: "Automation", icon: <Zap className={ICON} /> },
 		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
-		{
-			to: "/schedules",
-			label: "Schedules",
-			icon: <CalendarClock className={ICON} />,
-		},
+		...(operations
+			? [
+					{
+						to: "/incidents" as const,
+						label: "Operations",
+						slug: "incidents",
+						icon: <Activity className={ICON} />,
+					},
+				]
+			: []),
 		{
 			to: "/settings",
 			label: "Settings",
@@ -105,44 +133,43 @@ function Shell({ pathname }: { pathname: string }) {
 	const { via } = useOperator();
 	const signedIn = via !== null;
 	const doors = useDoors(signedIn);
-	const settings = inSettings(pathname);
-	const back = useBack(inSettings, "/incidents");
-	const { sidebarHidden, toggleSidebar } = useLayoutPrefs();
-	// Settings' bar is its navigation, so it never hides.
-	const hidden = sidebarHidden && !settings;
+	const { sidebarHidden: hidden, toggleSidebar } = useLayoutPrefs();
 	useBreathePhase();
-	useFoldKey(toggleSidebar, !settings);
-	useEffect(() => {
-		document.documentElement.toggleAttribute("data-settings", settings);
-	}, [settings]);
+	useFoldKey(toggleSidebar, true);
 	return (
 		<>
 			{hidden ? (
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
 				<aside
-					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
+					className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col border-r border-hairline bg-surface-1 md:flex"
 					data-testid="sidebar"
 				>
-					{settings ? (
-						<SettingsBar onBack={back} />
-					) : (
-						<MainBar
-							pathname={pathname}
-							doors={doors}
-							signedIn={signedIn}
-							onHide={toggleSidebar}
-						/>
-					)}
+					<MainBar
+						pathname={pathname}
+						doors={doors}
+						signedIn={signedIn}
+						onHide={toggleSidebar}
+					/>
 				</aside>
 			)}
-			<PhoneStrip pathname={pathname} doors={doors} />
+			<PhoneStrip pathname={pathname} doors={doors} signedIn={signedIn} />
 		</>
 	);
 }
 
-const isOn = (pathname: string, to: DoorTo) =>
-	pathname === to || pathname.startsWith(`${to}/`);
+// A thread's own page sits under /incidents, so only the board itself lights Operations.
+const isOn = (pathname: string, to: DoorTo) => {
+	if (to === "/incidents") return pathname === to;
+	// An open thread or schedule run belongs to Threads, so the folded rail still shows where you are.
+	if (to === "/threads")
+		return (
+			pathname === to ||
+			pathname.startsWith("/incidents/") ||
+			/^\/schedules\/[^/]+\/runs\//.test(pathname)
+		);
+	return pathname === to || pathname.startsWith(`${to}/`);
+};
 
 /** The labels and the list show only at full width; the rail keeps icons. */
 const FULL_ONLY = "max-xl:hidden [[data-sidebar-folded]_&]:hidden";
@@ -164,14 +191,11 @@ function MainBar({
 	return (
 		<>
 			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 pr-2 pl-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0">
-				<Link
-					to="/incidents"
-					className="flex items-center gap-2.5 rounded-control text-body font-semibold"
-					aria-label="PrismaLens"
-				>
-					<PrismaLensMark className="size-[18px] shrink-0" />
+				{/* The mark only names the app; Incidents is the way home. */}
+				<span className="flex items-center gap-2.5 text-body font-semibold">
+					<PrismaLensMark className="size-[18px] shrink-0" aria-hidden />
 					<span className={FULL_ONLY}>PrismaLens</span>
-				</Link>
+				</span>
 				<span className={cn("ml-auto", FULL_ONLY)}>
 					<Hint label="Hide the sidebar" keys={["["]} side="right">
 						<button
@@ -186,27 +210,82 @@ function MainBar({
 					</Hint>
 				</span>
 			</div>
+			<div className="grid gap-0.5 px-2 pb-2">
+				<Link
+					to="/new"
+					aria-current={pathname === "/new" ? "page" : undefined}
+					aria-label="New"
+					className={cn(
+						DOOR,
+						pathname === "/new" && "bg-surface-3 font-medium text-text-1",
+					)}
+					data-testid="nav-new"
+				>
+					<SquarePen className={ICON} />
+					<span className={FULL_ONLY}>New</span>
+					<span aria-hidden className={RAIL_LABEL}>
+						New
+					</span>
+				</Link>
+				<button
+					type="button"
+					onClick={openSearch}
+					className={DOOR}
+					data-testid="nav-search"
+				>
+					<Search className={ICON} aria-hidden />
+					{/* The name stays visible: inline at full width, small under the icon on the rail. */}
+					<span className="max-xl:text-[10px] max-xl:leading-none [[data-sidebar-folded]_&]:text-[10px] [[data-sidebar-folded]_&]:leading-none">
+						Search
+					</span>
+					<span className={cn("ml-auto text-meta text-text-3", FULL_ONLY)}>
+						Ctrl K
+					</span>
+				</button>
+			</div>
 			<nav className="grid gap-0.5 px-2" aria-label="Areas">
 				{doors
-					.filter((d) => d.to !== "/settings")
+					.filter((d) => d.to !== "/settings" && !(full && d.narrowOnly))
 					.map((door) => (
 						<DoorLink
-							key={door.to}
+							key={door.label}
 							door={door}
 							on={isOn(pathname, door.to)}
 							labelled={full}
 						/>
 					))}
-				<TerminalDoor labelled={full} />
 			</nav>
 			<div className="mt-3.5 min-h-0 flex-1 overflow-y-auto pb-2">
-				{signedIn && full && <AreaList pathname={pathname} />}
+				{signedIn && full && <AreaList />}
 			</div>
 			<div className="flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
 				{settingsDoor && <SettingsIcon door={settingsDoor} />}
+				<TerminalDoor />
 				<ThemeToggle />
 			</div>
 		</>
+	);
+}
+
+/** At the foot beside Settings: shows or hides the terminal panel. */
+function TerminalDoor() {
+	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
+	return (
+		<Hint label="Terminal" keys={["Ctrl", "`"]} side="right">
+			<button
+				type="button"
+				aria-label="Terminal"
+				aria-expanded={bottomPanel}
+				onClick={() => setBottomPanel(!bottomPanel)}
+				className={cn(
+					"flex size-8 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
+					bottomPanel && "bg-surface-3 text-text-1",
+				)}
+				data-testid="nav-terminal"
+			>
+				<SquareTerminal className={ICON} />
+			</button>
+		</Hint>
 	);
 }
 
@@ -252,26 +331,10 @@ function ShowSidebar({ onShow }: { onShow: () => void }) {
 }
 
 const DOOR =
-	"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0";
-
-function TerminalDoor({ labelled }: { labelled: boolean }) {
-	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
-	return (
-		<Hint label="Terminal" keys={["Ctrl", "`"]} side="right" when={!labelled}>
-			<button
-				type="button"
-				aria-label="Terminal"
-				aria-expanded={bottomPanel}
-				onClick={() => setBottomPanel(!bottomPanel)}
-				className={cn(DOOR, bottomPanel && "bg-surface-3 text-text-1")}
-				data-testid="nav-terminal"
-			>
-				<SquareTerminal className={ICON} />
-				<span className={FULL_ONLY}>Terminal</span>
-			</button>
-		</Hint>
-	);
-}
+	"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:h-12 max-xl:flex-col max-xl:justify-center max-xl:gap-1 max-xl:px-0 [[data-sidebar-folded]_&]:h-12 [[data-sidebar-folded]_&]:flex-col [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:gap-1 [[data-sidebar-folded]_&]:px-0";
+/** The rail's label under each icon; at full width the inline label shows instead. */
+const RAIL_LABEL =
+	"hidden max-w-full truncate text-[10px] leading-none max-xl:block [[data-sidebar-folded]_&]:block";
 
 function DoorLink({
 	door,
@@ -292,24 +355,36 @@ function DoorLink({
 		>
 			<Link
 				to={door.to}
+				search={door.search}
 				aria-current={on ? "page" : undefined}
 				aria-label={
 					door.countLabel ? `${door.label}, ${door.countLabel}` : door.label
 				}
-				data-testid={`nav-${door.label.toLowerCase()}`}
+				data-testid={`nav-${door.slug ?? door.label.toLowerCase()}`}
 				className={cn(DOOR, on && "bg-surface-3 font-medium text-text-1")}
 			>
 				<span className="relative">
 					{door.icon}
+					{door.narrowOnly && door.count !== undefined && (
+						<span
+							aria-hidden
+							className="absolute -top-2 -right-2.5 min-w-4 rounded-full bg-warn px-1 text-center text-[10px] leading-4 font-semibold text-canvas tabular-nums"
+						>
+							{door.count}
+						</span>
+					)}
 					{door.dot && (
 						<span
 							aria-hidden
-							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent"
-							data-testid={`nav-${door.label.toLowerCase()}-dot`}
+							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+							data-testid={`nav-${door.slug ?? door.label.toLowerCase()}-dot`}
 						/>
 					)}
 				</span>
 				<span className={FULL_ONLY}>{door.label}</span>
+				<span aria-hidden className={RAIL_LABEL}>
+					{door.narrowOnly ? `${door.count} waiting` : door.label}
+				</span>
 				{door.dot && <span className="sr-only">, update available</span>}
 				{door.count !== undefined && " "}
 				{door.count !== undefined && (
@@ -318,7 +393,7 @@ function DoorLink({
 							"ml-auto text-meta font-normal text-warn tabular-nums",
 							FULL_ONLY,
 						)}
-						data-testid={`nav-${door.label.toLowerCase()}-count`}
+						data-testid={`nav-${door.slug ?? door.label.toLowerCase()}-count`}
 					>
 						{door.count}
 					</span>
@@ -329,18 +404,10 @@ function DoorLink({
 }
 
 /** Under the doors, the list of the area you are in. */
-function AreaList({ pathname }: { pathname: string }) {
-	const alert = useMatch({
-		from: "/_authenticated/alerts/$id/",
-		shouldThrow: false,
-	});
-	if (isOn(pathname, "/alerts")) {
-		return (
-			<AlertListPane variant="sidebar" selectedId={alert?.params.id ?? null} />
-		);
-	}
-	if (isOn(pathname, "/services")) return <ServiceList />;
-	return <IncidentTree />;
+/** Under the doors: the threads, on every page. */
+function AreaList() {
+	// One list of threads on every page; alerts and services list on their own pages (#1020 D1).
+	return <ThreadList />;
 }
 
 /** Settings at the foot, an icon beside the theme toggle (spec §1). */
@@ -358,208 +425,145 @@ function SettingsIcon({ door }: { door: Door }) {
 			<Link
 				to="/settings"
 				aria-label={door.dot ? "Settings, update available" : "Settings"}
-				className="relative flex size-8 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+				className="relative flex h-8 min-w-8 items-center justify-center gap-2.5 rounded-control text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:h-12 max-xl:w-full max-xl:flex-col max-xl:gap-1 xl:flex-1 xl:justify-start xl:px-2.5 [[data-sidebar-folded]_&]:h-12 [[data-sidebar-folded]_&]:w-full [[data-sidebar-folded]_&]:flex-none [[data-sidebar-folded]_&]:flex-col [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:gap-1 [[data-sidebar-folded]_&]:px-0"
 				data-testid="nav-settings"
 			>
-				{door.icon}
-				{door.dot && (
-					<span
-						aria-hidden
-						className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent"
-						data-testid="nav-settings-dot"
-					/>
-				)}
+				<span className="relative">
+					{door.icon}
+					{door.dot && (
+						<span
+							aria-hidden
+							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+							data-testid="nav-settings-dot"
+						/>
+					)}
+				</span>
+				<span className={FULL_ONLY}>Settings</span>
+				{/* The rail names Settings as it names the doors above (cp12). */}
+				<span aria-hidden className={RAIL_LABEL}>
+					Settings
+				</span>
 			</Link>
 		</Hint>
 	);
 }
 
-function ServiceList() {
-	const { data } = useServices();
-	const services = data?.data ?? [];
-	const service = useMatch({
-		from: "/_authenticated/services/$id/",
-		shouldThrow: false,
-	});
-	if (services.length === 0) return null;
-	return (
-		<div className="pool mx-2 mt-2.5 p-1.5" data-testid="sidebar-services">
-			<SideLane label="Services" count={services.length} />
-			{services.map((s) => {
-				const on = service?.params.id === s.id;
-				return (
-					<Link
-						key={s.id}
-						to="/services/$id"
-						params={{ id: s.id }}
-						className={cn(
-							"group/row flex h-7 min-w-0 items-center gap-2.5 rounded-control px-2 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
-							on && "bg-surface-4 text-text-1 hover:bg-surface-4",
-						)}
-					>
-						<span className="min-w-0 truncate">
-							{s.name}
-							<span
-								className={cn(
-									"ml-1.5 text-meta text-text-3 group-hover/row:text-text-2",
-									on && "text-text-2",
-								)}
-							>
-								{tierWord(s.tier)}
-							</span>
-						</span>
-					</Link>
-				);
-			})}
-		</div>
-	);
-}
-
-/** A group heading in the sidebar list: a name and a count, in the tertiary colour. */
-export function SideLane({
-	label,
-	count,
-	children,
-}: {
-	label: ReactNode;
-	count?: number;
-	children?: ReactNode;
-}) {
-	return (
-		<div className="flex h-6 items-center gap-1.5 px-2 text-meta text-text-3">
-			<span className="truncate">{label}</span>
-			{children}
-			{count !== undefined && (
-				<span className="ml-auto tabular-nums">{count}</span>
-			)}
-		</div>
-	);
-}
-
-/** Settings' bar: its pages, flat, with Back at the foot (#848); Esc is Back too. */
-function SettingsBar({ onBack }: { onBack: () => void }) {
-	// The bar renders before the settings route matches, so read the search loosely.
-	const { tab } = useSearch({ strict: false }) as { tab?: SettingsTab };
-	const phone = useMediaQuery(PHONE);
-	const current: SettingsTab = tab ?? FIRST_SETTINGS_TAB;
-	useEscape(onBack, !phone);
-	return (
-		<>
-			<div className="flex h-(--header-h) shrink-0 items-center px-4 text-heading text-text-1">
-				Settings
-			</div>
-			<nav
-				className="grid min-h-0 flex-1 content-start gap-0.5 overflow-y-auto px-2 pt-1"
-				aria-label="Settings sections"
-				data-testid="settings-sections"
-			>
-				{SETTINGS_SECTIONS.map((s) => {
-					const on = s.tab === current;
-					return (
-						<Link
-							key={s.tab}
-							to="/settings"
-							search={{ tab: s.tab }}
-							aria-current={on ? "page" : undefined}
-							data-testid={`settings-nav-${s.tab}`}
-							className={cn(
-								"relative flex min-h-9 min-w-0 items-center rounded-control px-3 text-body text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3",
-								on &&
-									"raised font-medium hover:bg-surface-2 before:absolute before:top-2.5 before:bottom-2.5 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
-							)}
-						>
-							<span className="truncate">{s.label}</span>
-						</Link>
-					);
-				})}
-			</nav>
-			<div className="flex shrink-0 items-center gap-1 px-2 py-2">
-				<button
-					type="button"
-					onClick={onBack}
-					className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-control px-3 text-body font-medium text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3"
-					data-testid="settings-back"
-				>
-					<ChevronLeft className="size-4 text-text-2" />
-					Back
-				</button>
-				<ThemeToggle />
-			</div>
-		</>
-	);
-}
-
-function useEscape(handler: () => void, enabled: boolean) {
-	useEffect(() => {
-		if (!enabled) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || e.defaultPrevented) return;
-			const t = e.target as HTMLElement | null;
-			if (
-				t?.tagName === "INPUT" ||
-				t?.tagName === "TEXTAREA" ||
-				t?.tagName === "SELECT" ||
-				t?.isContentEditable
-			)
-				return;
-			if (document.querySelector("[role=dialog], [role=alertdialog]")) return;
-			handler();
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [handler, enabled]);
-}
-
 /**
- * The phone's doors: four icons across the top, the one you are in on
- * `surface-2` with the accent bar; the page header below carries New (#673).
- * It stays on Settings; its Settings door returns a section to the list.
+ * The phone's bar: Menu opens the sidebar as a labelled drawer with Search
+ * and Recents; the page header beside it names the page (#1020).
  */
-function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
+function PhoneStrip({
+	pathname,
+	doors,
+	signedIn,
+}: {
+	pathname: string;
+	doors: Door[];
+	signedIn: boolean;
+}) {
+	const [open, setOpen] = useState(false);
+	const waiting = doors.find((d) => d.narrowOnly);
 	return (
 		<nav
 			className="sticky top-0 z-40 flex h-(--header-h) items-center gap-1 bg-canvas px-2 md:hidden"
 			aria-label="Areas"
 			data-testid="topbar"
 		>
-			{doors.map((door) => {
-				const on = isOn(pathname, door.to);
-				return (
-					<Link
-						key={door.to}
-						to={door.to}
-						aria-current={on ? "page" : undefined}
-						aria-label={
-							door.count !== undefined
-								? `${door.label}, ${door.count}`
-								: door.label
-						}
-						data-testid={`strip-${door.label.toLowerCase()}`}
-						className={cn(
-							"relative flex h-8 min-w-12 items-center justify-center gap-1 rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
-							on &&
-								"bg-surface-2 text-text-1 before:absolute before:top-2 before:bottom-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
-						)}
+			<Sheet open={open} onOpenChange={setOpen}>
+				<SheetTrigger asChild>
+					<button
+						type="button"
+						aria-label="Menu"
+						className="flex size-12 items-center justify-center rounded-control text-text-1 hover:bg-surface-2"
+						data-testid="strip-menu"
 					>
-						{door.icon}
-						{door.count !== undefined && (
-							<span
-								aria-hidden
-								className="text-meta text-text-3 tabular-nums"
-								data-testid={`strip-${door.label.toLowerCase()}-count`}
-							>
-								{door.count}
-							</span>
-						)}
-						{door.dot && (
-							<span
-								aria-hidden
-								className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent"
-							/>
-						)}
-					</Link>
-				);
-			})}
+						<Menu className="size-5 shrink-0 stroke-[1.5]" aria-hidden />
+					</button>
+				</SheetTrigger>
+				<SheetContent
+					side="left"
+					className="flex w-[280px] flex-col gap-0 bg-surface-1 p-0"
+					onClickCapture={(e) => {
+						if ((e.target as HTMLElement).closest("a")) setOpen(false);
+					}}
+					data-testid="phone-menu"
+				>
+					<SheetTitle className="flex h-(--header-h) shrink-0 items-center gap-2.5 px-4 text-body font-semibold">
+						<PrismaLensMark className="size-[18px] shrink-0" aria-hidden />
+						PrismaLens
+					</SheetTitle>
+					<div className="grid gap-0.5 px-2 pb-2">
+						<Link
+							to="/new"
+							className={cn(MENU_ROW, pathname === "/new" && MENU_ON)}
+							data-testid="menu-new"
+						>
+							<SquarePen className={ICON} aria-hidden />
+							New
+						</Link>
+						<button
+							type="button"
+							onClick={() => {
+								setOpen(false);
+								openSearch();
+							}}
+							className={MENU_ROW}
+							data-testid="menu-search"
+						>
+							<Search className={ICON} aria-hidden />
+							Search
+						</button>
+						{doors
+							.filter((d) => !d.narrowOnly)
+							.map((door) => (
+								<Link
+									key={door.label}
+									to={door.to}
+									search={door.search}
+									aria-current={isOn(pathname, door.to) ? "page" : undefined}
+									className={cn(MENU_ROW, isOn(pathname, door.to) && MENU_ON)}
+									data-testid={`menu-${door.slug ?? door.label.toLowerCase()}`}
+								>
+									{door.icon}
+									{door.label}
+									{door.count !== undefined && (
+										<span className="ml-auto text-meta text-text-3 tabular-nums">
+											{door.count}
+										</span>
+									)}
+								</Link>
+							))}
+					</div>
+					<div className="min-h-0 flex-1 overflow-y-auto pb-2">
+						{signedIn && <ThreadList />}
+					</div>
+				</SheetContent>
+			</Sheet>
+			<span className="flex-1" />
+			{waiting && (
+				<Link
+					to={waiting.to}
+					search={waiting.search}
+					className="flex h-8 items-center rounded-control px-1"
+					data-testid="strip-waiting"
+				>
+					<span className="rounded-full bg-warn/15 px-2 text-meta font-medium text-warn tabular-nums">
+						{waiting.count} waiting
+					</span>
+				</Link>
+			)}
+			<Link
+				to="/new"
+				aria-label="New"
+				data-testid="strip-new"
+				className="flex size-12 items-center justify-center rounded-control text-text-2 hover:bg-surface-2 hover:text-text-1"
+			>
+				<SquarePen className={ICON} />
+			</Link>
 		</nav>
 	);
 }
+
+const MENU_ROW =
+	"flex h-10 min-w-0 items-center gap-3 rounded-control px-3 text-body text-text-2 hover:bg-surface-3 hover:text-text-1";
+const MENU_ON = "bg-surface-3 font-medium text-text-1";

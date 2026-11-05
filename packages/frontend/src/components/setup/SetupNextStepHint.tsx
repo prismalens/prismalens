@@ -75,7 +75,7 @@ export function SetupNextStepHint({
 			actions: (
 				<>
 					<Button variant="secondary" size="sm" asChild>
-						<Link to="/incidents">Go to incidents</Link>
+						<Link to="/threads">Go to threads</Link>
 					</Button>
 					<Button variant="text" size="sm" asChild>
 						<Link to="/settings" search={{ tab: "sources" }}>

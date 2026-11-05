@@ -13,6 +13,7 @@ import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { firstClause } from "@/lib/incident-board";
 import { notResumedReason } from "@/lib/restart";
+import { isEvent, isPlainChat } from "@/lib/trigger";
 
 /** What an incident needs from you, the inbox's groups in their order (spec §1). */
 export type NeedKey =
@@ -20,6 +21,7 @@ export type NeedKey =
 	| "ready"
 	| "interrupted"
 	| "failed"
+	| "uninvestigated"
 	| "nocause"
 	| "cleared";
 
@@ -34,37 +36,43 @@ export const NEED_GROUPS: {
 	{
 		key: "approval",
 		label: "Waiting for your approval",
-		hint: "A run is paused until you approve or deny a step.",
+		hint: "Paused until you decide.",
 		tone: "danger",
 	},
 	{
 		key: "ready",
-		label: "Finding ready",
-		hint: "A run found a cause worth reading.",
+		label: "Likely cause",
+		hint: "Not resolved yet.",
 		tone: "accent",
 	},
 	{
 		key: "interrupted",
 		label: "Run interrupted",
-		hint: "PrismaLens restarted mid-run. Resume picks it up where it stopped.",
+		hint: "Resume continues it.",
 		tone: "warn",
 	},
 	{
 		key: "failed",
 		label: "Run failed or stopped",
-		hint: "No finding yet. Retry, or resolve it if it is noise.",
+		hint: "Retry, or resolve if noise.",
 		tone: "danger",
+	},
+	{
+		key: "uninvestigated",
+		label: "Not investigated",
+		hint: "No run yet.",
+		tone: "warn",
 	},
 	{
 		key: "nocause",
 		label: "No cause found",
-		hint: "No run has named a cause yet.",
+		hint: "A run found nothing.",
 		tone: "warn",
 	},
 	{
 		key: "cleared",
 		label: "Alerts cleared",
-		hint: "Nothing is firing. Resolve them, or find out why they fired.",
+		hint: "Nothing firing now.",
 		tone: "ok",
 	},
 ];
@@ -122,10 +130,19 @@ export function needOf(incident: IncidentWithRelations): NeedKey | null {
 	if (incident.status === "closed") return null;
 	if (awaitingApproval(incident)) return "approval";
 	if (incident.status === "resolved") return "cleared";
+	// A chat asks nothing of you once answered; only its failure does (#1020 D10).
+	if (isPlainChat(incident)) {
+		const last = (incident.investigations ?? [])
+			.filter((r) => !isWorkflowLive(r.status))
+			.sort((a, b) => time(b.createdAt) - time(a.createdAt))[0];
+		if (last?.status !== "failed") return null;
+		return interrupted(last) ? "interrupted" : "failed";
+	}
 	const { ended, finding } = concluded(incident);
 	if (finding) return "ready";
 	if (liveInvestigation(incident)) return null;
-	if (!ended || ended.status === "completed") return "nocause";
+	if (!ended) return "uninvestigated";
+	if (ended.status === "completed") return "nocause";
 	return interrupted(ended) ? "interrupted" : "failed";
 }
 
@@ -163,8 +180,10 @@ export function firingSeries(
  * incident's first alert is not a trend.
  */
 export function firingOf(incident: IncidentWithRelations, now: number): Firing {
-	const alerts = incident.alerts ?? [];
-	if (incident.alertCount === 0 && alerts.length === 0) return "none";
+	const all = incident.alerts ?? [];
+	if (incident.alertCount === 0 && all.length === 0) return "none";
+	const alerts = all.filter((a) => !isEvent(a));
+	if (all.length > 0 && alerts.length === 0) return "none";
 	if (!alerts.some((a) => isAlertFiring(a.status))) return "clear";
 	const before = firingAt(incident, now - HOUR);
 	const current = firingAt(incident, now);
@@ -264,6 +283,7 @@ export function reasonOf(
 							: "PrismaLens restarted",
 					};
 		}
+		case "uninvestigated":
 		case "nocause":
 			return {
 				tagTone: "warn",
@@ -364,6 +384,7 @@ export function actionsOf(
 						? { kind: "resolve", label: "Resolve" }
 						: undefined,
 			};
+		case "uninvestigated":
 		case "nocause":
 			return {
 				primary: {

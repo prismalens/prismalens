@@ -131,7 +131,7 @@ export function CreateIncidentDialog({
 			<DialogContent data-testid="create-incident-dialog">
 				<form onSubmit={handleSubmit} className="grid gap-4">
 					<DialogHeader>
-						<DialogTitle>New incident</DialogTitle>
+						<DialogTitle>Log an incident</DialogTitle>
 						<DialogDescription>
 							By hand, to try a run before an alert source is wired up.
 						</DialogDescription>

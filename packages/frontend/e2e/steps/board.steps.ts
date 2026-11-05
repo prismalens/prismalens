@@ -62,6 +62,7 @@ const NEED: Record<string, string> = {
 	"Waiting for your approval": "approval",
 	"Finding ready": "ready",
 	"Run failed or stopped": "failed",
+	"Not investigated": "uninvestigated",
 	"No cause found": "nocause",
 	"Alerts cleared": "cleared",
 };
@@ -243,11 +244,11 @@ When(
 );
 
 Then(
-	`INC-1 is under "No cause found", a chat is not a run working on it`,
+	`INC-1 is under "Not investigated", a chat is not a run working on it`,
 	async ({ page }) => {
 		await openBoard(page);
 		await expect(
-			cardOf(group(page, "No cause found"), inc(page).title),
+			cardOf(group(page, "Not investigated"), inc(page).title),
 		).toBeVisible();
 	},
 );
@@ -375,7 +376,8 @@ Then(
 		const p = here(page);
 		await expect(p.getByTestId("band-status")).toHaveText("Acknowledged");
 		await p.getByTestId("incident-back").click();
-		await expect.poll(() => new URL(p.url()).pathname).toBe("/incidents");
+		await expect.poll(() => new URL(p.url()).pathname).toBe("/threads");
+		await visit(p, "/incidents");
 		await expect(p.getByTestId("needs-you")).toBeVisible();
 		await expect(
 			cardOf(p.getByTestId("needs-you"), inc(page).title),
@@ -440,25 +442,14 @@ Given("a paired browser on a workspace with no incidents", async ({ page }) => {
 });
 
 Then(
-	'I see four numbered steps, a done step reading "Done" in green, and no column headings, filter, time window or counts',
+	"I see one question and the box, and no column headings, filter, time window or counts",
 	async ({ page }) => {
-		const panel = page.getByTestId("first-run");
-		await expect(panel).toBeVisible();
-		for (const n of [1, 2, 3, 4])
-			await expect(panel.getByTestId(`first-run-step-${n}`)).toContainText(
-				String(n),
-			);
-		const done = panel.getByTestId("step-done").first();
-		await expect(done).toHaveText("Done");
-		const [color, ok] = await done.evaluate((el) => {
-			const probe = document.createElement("span");
-			probe.style.color = "var(--ok)";
-			document.body.append(probe);
-			const c = getComputedStyle(probe).color;
-			probe.remove();
-			return [getComputedStyle(el).color, c];
-		});
-		expect(color).toBe(ok);
+		const home = page.getByTestId("home");
+		await expect(home).toBeVisible();
+		await expect(home.getByRole("heading")).toContainText(
+			"What should we look into",
+		);
+		await expect(home.getByTestId("composer-input")).toBeVisible();
 		await expect(page.getByTestId("board-column-heading")).toHaveCount(0);
 		await expect(page.getByTestId("board-search")).toHaveCount(0);
 		await expect(page.getByTestId("board-window")).toHaveCount(0);
@@ -466,19 +457,22 @@ Then(
 	},
 );
 
+Then('no header offers "Log incident"', async ({ page }) => {
+	await expect(page.getByTestId("create-incident-button")).toHaveCount(0);
+});
+
 Then(
-	'step 1 offers "Copy URL" and "Copy token" separately',
+	"it offers the webhook URL and the token to copy separately",
 	async ({ page }) => {
-		const step = page.getByTestId("first-run-step-1");
-		await expect(step.getByRole("button", { name: "Copy URL" })).toBeVisible();
-		await expect(
-			step.getByRole("button", { name: "Copy token" }),
-		).toBeVisible();
+		const none = page.getByTestId("alerts-none");
+		await expect(none).toBeVisible();
+		await expect(none.getByTestId("alerts-copy-url")).toBeVisible();
+		await expect(none.getByTestId("alerts-copy-token")).toBeVisible();
 	},
 );
 
 When(
-	"I open the board in a browser that blocks the clipboard",
+	"I open Alerts in a browser that blocks the clipboard",
 	async ({ page }) => {
 		await page.addInitScript(() => {
 			Object.defineProperty(navigator, "clipboard", {
@@ -486,13 +480,13 @@ When(
 				configurable: true,
 			});
 		});
-		await visit(page, "/incidents");
-		await expect(page.getByTestId("first-run")).toBeVisible();
+		await visit(page, "/alerts");
+		await expect(page.getByTestId("alerts-none")).toBeVisible();
 	},
 );
 
-When('I press "Copy URL" in step 1', async ({ page }) => {
-	await page.getByTestId("first-run-copy-url").click();
+When("I press Copy on the webhook URL", async ({ page }) => {
+	await page.getByTestId("alerts-copy-url").click();
 });
 
 Then(
@@ -553,14 +547,12 @@ When(
 );
 
 Then(
-	'the inbox shows the row and one line above Needs you reading "Setup, 3 of 4 done" with "Add a service"',
+	'the inbox shows the row and one line above Needs you reading "One setup step left" with "Link code"',
 	async ({ page }) => {
 		await expect(cardOf(page, inc(page).title)).toBeVisible();
 		const line = page.getByTestId("setup-line");
-		await expect(line).toContainText("Setup, 3 of 4 done");
-		await expect(
-			line.getByRole("link", { name: "Add a service" }),
-		).toBeVisible();
+		await expect(line).toContainText("One setup step left");
+		await expect(line.getByRole("link", { name: "Link code" })).toBeVisible();
 		const lineBox = await line.boundingBox();
 		const board = await page.getByTestId("needs-you").boundingBox();
 		expect(lineBox?.y ?? 0).toBeLessThan(board?.y ?? 0);
@@ -570,9 +562,14 @@ Then(
 When("I add a service with a folder", async ({ page, unique }) => {
 	await page
 		.getByTestId("setup-line")
-		.getByRole("link", { name: "Add a service" })
+		.getByRole("link", { name: /Link code|Add a service/ })
 		.click();
 	const dialog = page.getByRole("dialog");
+	// "Link code" opens the service that lacks code; a new service with a folder also ends the step.
+	if (!(await dialog.isVisible().catch(() => false))) {
+		await visit(page, "/services");
+		await page.getByRole("button", { name: "New service" }).click();
+	}
 	await dialog.locator("#name").fill(unique("pr2-folder-service"));
 	await dialog
 		.getByTestId("service-repository-input")
@@ -601,13 +598,12 @@ Given("no coding agent is on PATH", async ({ page, agents, $test }) => {
 	await openBoard(page).catch(() => page.goto("/incidents"));
 });
 
-Then("step 3 opens Add agent", async ({ page }) => {
+Then("Home's setup line opens Settings, Agent", async ({ page }) => {
 	await visit(page, "/incidents");
-	const step = page.getByTestId("first-run-step-3");
-	await expect(step).toContainText("No agent can run yet");
-	await step.getByTestId("first-run-add-agent").click();
-	await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
-	await expect(page.getByTestId("add-agent-tile-opencode")).toBeVisible();
+	const line = page.getByTestId("setup-line");
+	await expect(line).toContainText("No agent ready.");
+	await line.getByRole("link", { name: "Set up" }).click();
+	await expect(page).toHaveURL(/tab=agent/);
 });
 
 When(
@@ -1030,7 +1026,7 @@ Then(
 Then(
 	'the Overview shows "Cause" with the text and an "Edit" control',
 	async ({ page }) => {
-		await visit(page, `/incidents/${inc(page).id}`);
+		await visit(page, `/incidents/${inc(page).id}/conversation?panel=incident`);
 		await expect(page.getByTestId("why-cause")).toContainText("d37d888");
 		await page.getByTestId("header-more").click();
 		await expect(page.getByTestId("header-edit-cause")).toHaveText(
@@ -1141,7 +1137,13 @@ Then(
 Then(
 	"the new incident's Overview reads {string} as {string}",
 	async ({ page }, term: string, value: string) => {
+		// With no run the overview holds the impact; with one it is the run page's Incident tab (D19).
 		await visit(page, `/incidents/${w(page).refire?.id}`);
+		await expect(page.getByTestId("situation").first()).toBeVisible();
+		if (!(await page.getByTestId("incident-overview").isVisible())) {
+			await page.getByTestId("details-toggle").click();
+			await page.getByTestId("run-details-tab-incident").click();
+		}
 		const impact = page.getByTestId("impact-no-source");
 		await expect(impact.locator("dt", { hasText: term })).toBeVisible();
 		await expect(
@@ -1223,12 +1225,12 @@ When('I press "Reopen" and confirm', async ({ page }) => {
 });
 
 Then(
-	'the band reads "Acknowledged", the Overview shows "Previous cause", and INC-1 is under "No cause found"',
+	'the band reads "Acknowledged", the Overview shows "Previous cause", and INC-1 is under "Not investigated"',
 	async ({ page }) => {
 		await expect(page.getByTestId("header-resolve")).toBeVisible();
 		await openBoard(page);
 		await expect(
-			cardOf(group(page, "No cause found"), inc(page).title),
+			cardOf(group(page, "Not investigated"), inc(page).title),
 		).toBeVisible();
 	},
 );
@@ -1255,8 +1257,8 @@ Then("INC-1 leaves Needs you while the run works", async ({ page }) => {
 	await expect(rowOf(page)).toHaveCount(0);
 	await expect(
 		page
-			.getByTestId("tree-incident")
-			.filter({ hasText: `INC-${inc(page).number}` }),
+			.getByTestId("thread-list")
+			.locator(`a[href="/incidents/${inc(page).id}"]`),
 	).toBeVisible();
 });
 

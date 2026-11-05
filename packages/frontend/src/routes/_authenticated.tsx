@@ -18,6 +18,7 @@ import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
 import { useNewIncident } from "@/components/shell/NewIncident";
 import { PanelShell } from "@/components/shell/PanelShell";
 import { RestartNotice } from "@/components/shell/RestartNotice";
+import { SearchPalette } from "@/components/shell/SearchPalette";
 import { TerminalDock } from "@/components/terminal/TerminalDock";
 import { useVisitTrail } from "@/hooks/use-back";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
@@ -51,6 +52,7 @@ function AuthenticatedLayout() {
 				<TerminalDock />
 			</PanelShell>
 			<ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} />
+			<SearchPalette />
 		</>
 	);
 }

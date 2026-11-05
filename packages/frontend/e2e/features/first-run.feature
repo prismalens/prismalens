@@ -5,26 +5,30 @@ Feature: First run
   Background:
     Given a paired browser on a workspace with no incidents
 
-  Scenario: Only the panel
+  Scenario: Only the box
     When I open the board
-    Then I see four numbered steps, a done step reading "Done" in green, and no column headings, filter, time window or counts
-    And step 1 offers "Copy URL" and "Copy token" separately
-    And the only way to create an incident by hand is "New" in the header
+    Then I see one question and the box, and no column headings, filter, time window or counts
+    And no header offers "Log incident"
+
+  Scenario: Alerts with none yet offers the webhook
+    When I open the board
+    And I open Alerts
+    Then it offers the webhook URL and the token to copy separately
 
   Scenario: A blocked clipboard never reads "Copied"
-    When I open the board in a browser that blocks the clipboard
-    And I press "Copy URL" in step 1
+    When I open Alerts in a browser that blocks the clipboard
+    And I press Copy on the webhook URL
     Then a toast reads "Not copied" and none reads "Copied URL"
 
   Scenario: Unfinished steps stay visible after the first incident
     Given a coding agent is on PATH and no service names its code
     When the first alert arrives
-    Then the inbox shows the row and one line above Needs you reading "Setup, 3 of 4 done" with "Add a service"
+    Then the inbox shows the row and one line above Needs you reading "One setup step left" with "Link code"
     When I add a service with a folder
     Then the line goes
 
   Scenario: No agent on this machine
     Given no coding agent is on PATH
-    Then step 3 opens Add agent
+    Then Home's setup line opens Settings, Agent
     When I open an incident's Conversation
     Then the box reads "No coding agent on this machine" with the install line, and "Investigate" is withheld

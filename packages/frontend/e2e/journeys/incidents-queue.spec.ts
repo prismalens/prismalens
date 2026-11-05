@@ -22,13 +22,12 @@ async function createIncident(page: Page, title: string): Promise<string> {
 function headerHeading(page: Page) {
 	return page
 		.getByTestId("page-header")
-		.getByRole("heading", { name: "Incidents", exact: true });
+		.getByRole("heading", { name: "Operations", exact: true });
 }
 
+/** A thread on the Threads page; the sidebar shows only the latest twelve (D18). */
 function treeRow(page: Page, id: string) {
-	return page
-		.getByTestId("tree-incident")
-		.filter({ has: page.locator(`a[href*="${id}"]`) });
+	return page.getByRole("main").locator(`a[href*="${id}"]`);
 }
 
 test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
@@ -59,12 +58,10 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await expect(headerHeading(page)).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
 
-		const tree = page.getByTestId("incident-tree");
-		await expect(tree).toBeVisible({ timeout: 15_000 });
-
-		for (const more of await tree.getByTestId("tree-more").all()) {
-			if (await more.isVisible()) await more.click();
-		}
+		await expect(page.getByTestId("thread-list")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.goto(`/threads?q=${stamp}`);
 
 		const triggeredRow = treeRow(page, triggeredId);
 		const failedRow = treeRow(page, failedRunId);
@@ -73,7 +70,8 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await expect(triggeredRow).toBeVisible();
 		await expect(failedRow).toBeVisible();
 		await expect(resolvedRow).toBeVisible();
-		await expect(closedRow).toHaveCount(0);
+		// A closed incident stays one search away on the Threads page (D18).
+		await expect(closedRow).toHaveCount(1);
 
 		// `?` opens the shortcut sheet.
 		await page.keyboard.press("?");
@@ -85,26 +83,22 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar).toBeVisible();
 		const width = async () => (await sidebar.boundingBox())?.width;
-		expect(await width()).toBe(240);
+		expect(await width()).toBe(260);
 		await page.keyboard.press("[");
 		await expect(sidebar).toHaveCount(0);
 		await expect(page.getByTestId("sidebar-show")).toBeVisible();
 		await page.keyboard.press("[");
-		await expect.poll(width).toBe(240);
-		await expect(sidebar.getByTestId("nav-alerts")).toBeVisible();
+		await expect.poll(width).toBe(260);
+		await expect(sidebar.getByTestId("nav-automation")).toBeVisible();
 
 		// `g` then `a` goes to the alerts front door.
 		await page.keyboard.press("g");
 		await page.keyboard.press("a");
 		await expect(page).toHaveURL(/\/alerts(\/|\?|$)/);
 
-		// Clicking a row in the tree navigates to the incident overview
-		await page.goto("/incidents?view=analytics");
-		await expect(headerHeading(page)).toBeVisible({ timeout: 15_000 });
-		for (const more of await tree.getByTestId("tree-more").all()) {
-			if (await more.isVisible()) await more.click();
-		}
-		await treeRow(page, resolvedId).getByTestId("tree-incident-link").click();
+		// Clicking a thread on the Threads page opens the incident overview
+		await page.goto(`/threads?q=${stamp}`);
+		await treeRow(page, resolvedId).click();
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}(\?|$)/, {
 			timeout: 15_000,
 		});

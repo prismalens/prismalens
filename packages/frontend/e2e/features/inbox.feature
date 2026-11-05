@@ -42,6 +42,6 @@ Feature: Inbox
 
   Scenario: Resolve stops whichever turn is live: a live chat
     Given INC-1's live run is a chat answering a question
-    Then INC-1 is under "No cause found", a chat is not a run working on it
+    Then INC-1 is under "Not investigated", a chat is not a run working on it
     When I resolve INC-1 from its row menu and confirm a cause
     Then the Stop went to the live run, not the newest, and INC-1 is Resolved

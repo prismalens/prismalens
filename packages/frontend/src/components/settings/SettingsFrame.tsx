@@ -113,31 +113,64 @@ export function SettingsFrame({
 					</Link>
 				)}
 			</PageHeader>
-			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div
-					className={cn(
-						"mx-auto w-full px-4 pt-6 pb-12",
-						wide ? "max-w-[64rem]" : "max-w-[42rem]",
-					)}
-				>
-					<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-						<div className="min-w-0">
-							{!services && (
-								<h2 className="text-display" data-testid="settings-title">
-									{title}
-								</h2>
-							)}
-							{intro && (
-								<p className="mt-1 min-w-0 text-body text-text-2">{intro}</p>
+			<div className="flex min-h-0 flex-1">
+				{!services && !phone && <SectionList current={section} />}
+				<div className="min-h-0 flex-1 overflow-y-auto">
+					<div
+						className={cn(
+							"mx-auto w-full px-4 pt-6 pb-12",
+							wide ? "max-w-[64rem]" : "max-w-[42rem]",
+						)}
+					>
+						<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+							<div className="min-w-0">
+								{!services && (
+									<h2 className="text-display" data-testid="settings-title">
+										{title}
+									</h2>
+								)}
+								{intro && (
+									<p className="mt-1 min-w-0 text-body text-text-2">{intro}</p>
+								)}
+							</div>
+							{actions && (
+								<div className="flex items-center gap-2">{actions}</div>
 							)}
 						</div>
-						{actions && (
-							<div className="flex items-center gap-2">{actions}</div>
-						)}
+						{children}
 					</div>
-					{children}
 				</div>
 			</div>
 		</div>
+	);
+}
+
+/** The sections beside the page, so the app's own sidebar stays put in Settings. */
+function SectionList({ current }: { current: SettingsSection }) {
+	return (
+		<nav
+			className="grid w-48 shrink-0 content-start gap-0.5 overflow-y-auto border-r border-hairline px-2 pt-4"
+			aria-label="Settings sections"
+			data-testid="settings-sections"
+		>
+			{SETTINGS_SECTIONS.map((s) => {
+				const on = s.tab === current;
+				return (
+					<Link
+						key={s.tab}
+						to="/settings"
+						search={{ tab: s.tab }}
+						aria-current={on ? "page" : undefined}
+						data-testid={`settings-nav-${s.tab}`}
+						className={cn(
+							"flex min-h-8 min-w-0 items-center rounded-control px-3 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+							on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
+						)}
+					>
+						<span className="truncate">{s.label}</span>
+					</Link>
+				);
+			})}
+		</nav>
 	);
 }

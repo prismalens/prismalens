@@ -66,7 +66,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(
 			page
 				.getByTestId("page-header")
-				.getByRole("heading", { name: "Incidents", exact: true }),
+				.getByRole("heading", { name: "Operations", exact: true }),
 		).toBeVisible({
 			timeout: 15_000,
 		});
@@ -301,7 +301,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(
 			page
 				.getByTestId("page-header")
-				.getByRole("heading", { name: "Incidents", exact: true }),
+				.getByRole("heading", { name: "Operations", exact: true }),
 		).toBeVisible({
 			timeout: 15_000,
 		});

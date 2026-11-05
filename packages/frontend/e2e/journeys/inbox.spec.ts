@@ -10,6 +10,7 @@ import {
 	fireIncident,
 	LIVE,
 	QUIET,
+	readableTitle,
 	resolveIncident,
 	visit,
 	waitFor,
@@ -169,7 +170,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(firstGroup).toHaveAttribute("data-need", "approval");
 		const approvalRow = firstGroup
 			.getByTestId("inbox-row")
-			.filter({ hasText: approvalInc.title });
+			.filter({ hasText: readableTitle(approvalInc.title) });
 		await expect(approvalRow).toBeVisible();
 		const approvalAction = approvalRow.getByTestId("inbox-row-action");
 		await expect(approvalAction).toHaveText("Open");
@@ -188,7 +189,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(readyGroup).toBeVisible();
 		const readyRow = readyGroup
 			.getByTestId("inbox-row")
-			.filter({ hasText: readyInc.title });
+			.filter({ hasText: readableTitle(readyInc.title) });
 		await expect(readyRow.getByTestId("inbox-row-reason")).toContainText(
 			"Likely:",
 		);
@@ -200,7 +201,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(failedGroup).toBeVisible();
 		const failedRow = failedGroup
 			.getByTestId("inbox-row")
-			.filter({ hasText: failedInc.title });
+			.filter({ hasText: readableTitle(failedInc.title) });
 		await expect(failedRow.getByTestId("inbox-row-reason")).toContainText(
 			"Failed:",
 		);
@@ -214,7 +215,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		// Stopped row shows "Stopped by you"
 		const stoppedRow = failedGroup
 			.getByTestId("inbox-row")
-			.filter({ hasText: stoppedInc.title });
+			.filter({ hasText: readableTitle(stoppedInc.title) });
 		await expect(stoppedRow.getByTestId("inbox-row-reason")).toContainText(
 			"Stopped by you",
 		);
@@ -227,14 +228,15 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(nocauseGroup).toBeVisible();
 		const nocauseRow = nocauseGroup
 			.getByTestId("inbox-row")
-			.filter({ hasText: nocauseInc.title });
+			.filter({ hasText: readableTitle(nocauseInc.title) });
 		await expect(nocauseRow.getByTestId("inbox-row-action")).toHaveText(
 			"Investigate again",
 		);
 
-		const uninvRow = nocauseGroup
+		const uninvRow = page
+			.locator('[data-testid="needs-group"][data-need="uninvestigated"]')
 			.getByTestId("inbox-row")
-			.filter({ hasText: uninvestigatedInc.title });
+			.filter({ hasText: readableTitle(uninvestigatedInc.title) });
 		await expect(uninvRow.getByTestId("inbox-row-action")).toHaveText(
 			"Investigate",
 		);
@@ -246,7 +248,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(clearedGroup).toBeVisible();
 		const clearedRow = clearedGroup
 			.getByTestId("inbox-row")
-			.filter({ hasText: clearedInc.title });
+			.filter({ hasText: readableTitle(clearedInc.title) });
 		await expect(clearedRow.getByTestId("inbox-row-action")).toHaveText(
 			"Resolve",
 		);
@@ -274,7 +276,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 
 		await visit(page, "/incidents");
 		const nocauseGroup = page.locator(
-			'[data-testid="needs-group"][data-need="nocause"]',
+			'[data-testid="needs-group"][data-need="uninvestigated"]',
 		);
 		await expect(nocauseGroup).toBeVisible({ timeout: 15_000 });
 
@@ -330,11 +332,11 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 				page.locator('[data-testid="needs-group"][data-need="ready"]'),
 			).toBeVisible();
 			await expect(
-				page.locator('[data-testid="needs-group"][data-need="nocause"]'),
+				page.locator('[data-testid="needs-group"][data-need="uninvestigated"]'),
 			).toHaveCount(0);
 			await page.getByTestId("needs-filter-all").click();
 			await expect(
-				page.locator('[data-testid="needs-group"][data-need="nocause"]'),
+				page.locator('[data-testid="needs-group"][data-need="uninvestigated"]'),
 			).toBeVisible();
 		}
 
@@ -342,7 +344,9 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		const filterInput = page.getByTestId("incidents-filter");
 		await filterInput.fill("AlphaQuery");
 		await expect(
-			page.getByTestId("inbox-row").filter({ hasText: incA.title }),
+			page
+				.getByTestId("inbox-row")
+				.filter({ hasText: readableTitle(incA.title) }),
 		).toBeVisible();
 		await expect(
 			page.getByTestId("inbox-row").filter({ hasText: incB.title }),
@@ -351,7 +355,9 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		// Recently resolved also filtered
 		await filterInput.fill("GammaClosed");
 		const recentRow = page.getByTestId("recent-row");
-		await expect(recentRow.filter({ hasText: closedInc.title })).toBeVisible();
+		await expect(
+			recentRow.filter({ hasText: readableTitle(closedInc.title) }),
+		).toBeVisible();
 		await filterInput.fill("NonExistentIncidentQuery");
 		await expect(page.getByTestId("needs-empty")).toBeVisible();
 		await expect(page.getByTestId("recent-row")).toHaveCount(0);
@@ -457,8 +463,10 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(recentSection).toBeVisible({ timeout: 15_000 });
 
 		const recentRows = recentSection.getByTestId("recent-row");
-		await expect(recentRows.first()).toContainText(closedB.title);
-		await expect(recentRows.nth(1)).toContainText(closedA.title);
+		await expect(recentRows.first()).toContainText(
+			readableTitle(closedB.title),
+		);
+		await expect(recentRows.nth(1)).toContainText(readableTitle(closedA.title));
 
 		// "All incidents" link inside Recently resolved
 		const allLink = recentSection.getByRole("link", { name: "All incidents" });
@@ -476,7 +484,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("all-severity")).toBeVisible();
 	});
 
-	test("sidebar IncidentTree: data-health, tree-toggle, tree-run, tree-more, nav-incidents-count, nav-settings", async ({
+	test("sidebar thread list: one flat Recents with a trailing mark, no nesting, View all opens every thread (D18)", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -489,7 +497,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			trigger: "never",
 		});
 
-		// Seed 9 incidents on the same service to exercise tree-more (cap is 8)
+		// Nine quiet incidents and one with a finding: Recents shows twelve, View all has them all (D18).
 		const prefix = unique("TreeItem");
 		const treeIncidents: { id: string; number: number; title: string }[] = [];
 		for (let i = 0; i < 9; i++) {
@@ -517,55 +525,37 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			"completed run",
 		);
 
-		await visit(page, "/incidents");
-		const tree = page.getByTestId("incident-tree");
+		await visit(page, "/new");
+		const tree = page.getByTestId("thread-list");
 		await expect(tree).toBeVisible({ timeout: 15_000 });
+		const recents = tree.getByTestId("thread-section-recents");
+		// The worker's stack holds other threads too; Recents stops at twelve.
+		await expect
+			.poll(() => recents.locator("a[href^='/incidents/']").count())
+			.toBeGreaterThanOrEqual(10);
+		expect(
+			await recents.locator("a[href^='/incidents/']").count(),
+		).toBeLessThanOrEqual(12);
 
-		// Service item with data-health
-		const serviceSection = page
-			.getByTestId("tree-service")
-			.filter({ hasText: "Tree Test Service" });
-		await expect(serviceSection).toBeVisible();
-		await expect(serviceSection.locator("[data-health]")).toBeVisible();
-
-		// tree-more appears after 8 incidents
-		const moreBtn = serviceSection.getByTestId("tree-more");
-		await expect(moreBtn).toBeVisible();
-		await expect(moreBtn).toContainText("1 more");
-		await moreBtn.click();
-		await expect(moreBtn).toHaveCount(0);
-
-		// tree-toggle toggles aria-expanded and displays runs
-		const liveServiceSection = page
-			.getByTestId("tree-service")
-			.filter({ hasText: LIVE.displayName });
-		await expect(liveServiceSection).toBeVisible();
-		const liveRow = liveServiceSection
-			.getByTestId("tree-incident")
-			.filter({ has: page.locator(`a[href*="${liveRunInc.id}"]`) });
+		// The finding's row ends in one mark that says so; nothing nests under it.
+		const liveRow = recents.locator(`a[href="/incidents/${liveRunInc.id}"]`);
 		await expect(liveRow).toBeVisible();
-
-		const toggleBtn = liveRow.getByTestId("tree-toggle");
-		await expect(toggleBtn).toHaveAttribute("aria-expanded", "false");
-		await toggleBtn.click();
-		await expect(toggleBtn).toHaveAttribute("aria-expanded", "true");
-
-		const treeRun = liveServiceSection.locator(
-			`[data-testid="tree-run"][data-run="${completedRun.id}"]`,
+		await expect(liveRow.getByTestId("tree-state")).toHaveAttribute(
+			"data-state",
+			"ready",
 		);
-		await expect(treeRun).toBeVisible();
-		await expect(treeRun).toHaveAttribute(
-			"href",
-			`/incidents/${liveRunInc.id}/conversation?investigation=${completedRun.id}`,
+		await expect(tree.getByTestId("tree-toggle")).toHaveCount(0);
+		await expect(tree.locator(`[data-run="${completedRun.id}"]`)).toHaveCount(
+			0,
 		);
 
-		// nav-incidents-count in sidebar equals Needs-you total
-		const countBadge = page
-			.getByTestId("sidebar")
-			.getByTestId("nav-incidents-count");
-		await expect(countBadge).toBeVisible();
-		const countText = await countBadge.innerText();
-		expect(Number.parseInt(countText, 10)).toBeGreaterThanOrEqual(10);
+		// View all opens the Threads page, where search finds all nine quiet ones.
+		await recents.getByTestId("threads-view-all").click();
+		await expect(page).toHaveURL(/\/threads$/);
+		await page.getByTestId("threads-search").fill(prefix);
+		await expect(
+			page.getByRole("main").locator("a[href^='/incidents/']"),
+		).toHaveCount(9);
 
 		// nav-settings at the foot of sidebar
 		await expect(page.getByTestId("nav-settings")).toBeVisible();
@@ -643,7 +633,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(failedGroup).toBeVisible({ timeout: 15_000 });
 		const row = failedGroup
 			.getByTestId("inbox-row")
-			.filter({ hasText: inc.title });
+			.filter({ hasText: readableTitle(inc.title) });
 		await row.getByTestId("inbox-row-action").click();
 
 		await expect(page.getByText("Investigation refused").first()).toBeVisible();

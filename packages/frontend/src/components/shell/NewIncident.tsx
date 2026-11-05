@@ -47,7 +47,7 @@ export function useNewIncident() {
 export function NewIncidentButton({ className }: { className?: string }) {
 	const open = useNewIncident();
 	return (
-		<Hint label="New incident" keys={[NEW_INCIDENT_KEY.toUpperCase()]}>
+		<Hint label="Log incident" keys={[NEW_INCIDENT_KEY.toUpperCase()]}>
 			<Button
 				variant="secondary"
 				className={cn("pl-2.5", className)}
@@ -55,7 +55,7 @@ export function NewIncidentButton({ className }: { className?: string }) {
 				data-testid="create-incident-button"
 			>
 				<Plus />
-				New incident
+				Log incident
 			</Button>
 		</Hint>
 	);
