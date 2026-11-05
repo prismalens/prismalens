@@ -439,10 +439,18 @@ export class ThreadsService {
 				done.push(w.id);
 			}
 		} catch (e) {
+			let unrestored = 0;
 			for (const id of done.reverse())
 				await this.readState(id, { settledAt: prior.get(id) ?? null }).catch(
-					() => false,
+					() => {
+						unrestored++;
+					},
 				);
+			if (unrestored)
+				throw new ORPCError("CONFLICT", {
+					message: `Thread changed, and ${unrestored} already written could not be put back: reload before trying again`,
+					cause: e,
+				});
 			throw e;
 		}
 	}
