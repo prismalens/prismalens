@@ -14,7 +14,10 @@ import {
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 
 /** A legacy row's fullName was derived from its address and may hold the same credential (#938). */
-function shownFullName(repo: PrismaRepository, url: string): string {
+export function shownFullName(
+	repo: Pick<PrismaRepository, "sourceKind" | "url" | "fullName">,
+	url = shownRepoUrl(repo.sourceKind, repo.url),
+): string {
 	if (url === repo.url) return shownRepoName(repo.sourceKind, repo.fullName);
 	if (url === UNSHOWN_REPO) return UNSHOWN_REPO;
 	try {

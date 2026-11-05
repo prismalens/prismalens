@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { INCIDENT_ONLY, SCOPED } from "./serves.js";
 
 export interface SimilarIncident {
 	number: number;
@@ -25,8 +26,8 @@ export interface PastFix {
 	id: string;
 	title: string;
 	detail: string | null;
-	/** The number of the incident the investigation ran on. */
-	incident: number;
+	/** The number of the incident the investigation ran on; null for a check with none. */
+	incident: number | null;
 	investigationId: string;
 	/** `applied` for a completed recommendation; otherwise as stored. */
 	status: string;
@@ -37,7 +38,7 @@ export interface PastFix {
 	lastCheck: { verdict: string; at: string } | null;
 }
 
-/** What PrismaLens remembers of other incidents; null when the run has no incident. */
+/** What PrismaLens remembers of other incidents; null when the run has nothing to read. */
 export interface HistoryData {
 	similar(
 		runId: string,
@@ -46,7 +47,7 @@ export interface HistoryData {
 	fixes(
 		runId: string,
 		limit: number,
-	): Promise<{ incident: number; fixes: PastFix[] } | null>;
+	): Promise<{ incident?: number; fixes: PastFix[] } | null>;
 }
 
 const noIncident = () =>
@@ -65,6 +66,7 @@ export function historyTools(data: HistoryData): HarnessTool[] {
 				"The past incidents PrismaLens scored most like this run's incident, best first: number, title, service, status, when resolved, the cause the operator recorded if any, the stored similarity score (0 to 100) and what it matched on. Use it to find a precedent, then read its threads with thread_list.",
 			group: "knowledge",
 			effect: "read",
+			serves: INCIDENT_ONLY,
 			input: z.object({
 				limit: z.number().int().min(1).max(20).default(5),
 			}),
@@ -77,15 +79,22 @@ export function historyTools(data: HistoryData): HarnessTool[] {
 			name: "fixes_list",
 			title: "Fixes proposed on past investigations",
 			description:
-				"Fixes and recommendations from past investigations on this incident's services, newest first: title, detail, incident, status (applied, rejected, deferred, pending), priority, when applied and the latest fix-check verdict if any. Use it to see what was proposed and whether it worked.",
+				"Fixes and recommendations from past investigations on this thread's incident services, or its project or service, newest first: title, detail, incident, status (applied, rejected, deferred, pending), priority, when applied and the latest fix-check verdict if any. Use it to see what was proposed and whether it worked.",
 			group: "knowledge",
 			effect: "read",
+			serves: SCOPED,
 			input: z.object({
 				limit: z.number().int().min(1).max(50).default(10),
 			}),
 			run: async ({ limit }, ctx) => {
 				const r = await data.fixes(ctx.runId, limit);
-				return r ? { value: r } : noIncident();
+				return r
+					? { value: r }
+					: fail(
+							"not_found",
+							"This thread has no project, service or incident to read fixes for.",
+							"Answer without past fixes.",
+						);
 			},
 		}),
 	];

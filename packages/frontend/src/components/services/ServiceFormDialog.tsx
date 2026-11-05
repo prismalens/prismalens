@@ -15,9 +15,9 @@ import {
 	ServiceTypeSchema,
 	type ServiceWithRelations,
 } from "@prismalens/contracts";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Field } from "@/components/settings/Field";
+import { RingTick, useRingTick } from "@/components/shared/RingTick";
 import { TagInput } from "@/components/shared/TagInput";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +41,7 @@ import {
 	useCreateService,
 	useUpdateService,
 } from "@/lib/api/hooks";
+import { BrowseButton } from "../projects/AddProjectDialog";
 import { tierWord } from "./service-detail.utils";
 
 export interface ServiceFormDialogProps {
@@ -96,6 +97,9 @@ export function ServiceFormDialog({
 	const addSource = useAddRepositorySource();
 	const isPending =
 		createService.isPending || updateService.isPending || addSource.isPending;
+	// One flag for the whole save, so a git sync error after the request resolved still reads as failed.
+	const [saving, setSaving] = useState(false);
+	const ring = useRingTick(saving, !!error);
 	const primaryRepo = service?.repositories?.find((r) => r.isPrimary);
 	const currentRepository = !primaryRepo
 		? ""
@@ -140,6 +144,7 @@ export function ServiceFormDialog({
 		}
 
 		setError(null);
+		setSaving(true);
 
 		// The rest of `metadata` (the trigger policy) is kept as stored (#673).
 		const investigation = investigationOf(service?.metadata);
@@ -194,6 +199,8 @@ export function ServiceFormDialog({
 			const message =
 				err instanceof Error ? err.message : "The service was not saved.";
 			setError(message);
+		} finally {
+			setSaving(false);
 		}
 	};
 
@@ -232,13 +239,20 @@ export function ServiceFormDialog({
 						htmlFor="repository"
 						hint="A folder on this machine or a git URL; a run reads its last commit"
 					>
-						<Input
-							id="repository"
-							value={repository}
-							onChange={(e) => setRepository(e.target.value)}
-							placeholder="~/code/payments-api"
-							data-testid="service-repository-input"
-						/>
+						<div className="flex items-center gap-2">
+							<Input
+								id="repository"
+								value={repository}
+								onChange={(e) => setRepository(e.target.value)}
+								placeholder="~/code/payments-api"
+								className="min-w-0 flex-1"
+								data-testid="service-repository-input"
+							/>
+							<BrowseButton
+								onPick={setRepository}
+								testId="service-repository-browse"
+							/>
+						</div>
 					</Field>
 
 					<Field label="Description" htmlFor="description">
@@ -336,9 +350,7 @@ export function ServiceFormDialog({
 						onClick={handleSubmit}
 						disabled={isPending || !name.trim()}
 					>
-						{isPending && (
-							<Loader2 className="size-3.5 motion-safe:animate-spin" />
-						)}
+						{ring && <RingTick state={ring} />}
 						{isEditing ? "Save" : "Create service"}
 					</Button>
 				</DialogFooter>

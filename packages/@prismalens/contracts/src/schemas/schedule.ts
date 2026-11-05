@@ -7,6 +7,7 @@
 import { HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import { DateStringSchema } from "./common.js";
+import { AccessLevelSchema } from "./settings.js";
 
 export const RecurrenceSchema = z.discriminatedUnion("type", [
 	z.object({
@@ -68,15 +69,46 @@ export const ScheduleTickSchema = z.object({
 });
 export type ScheduleTick = z.infer<typeof ScheduleTickSchema>;
 
+/**
+ * When a run nobody watches asks (#1020): `decide` refuses the ask at once and the run goes on;
+ * `wait` keeps it waiting in its thread, notifies, and lapses after ASK_TIMEOUT_MS.
+ */
+export const WHEN_ASKS = ["decide", "wait"] as const;
+export const WhenAsksSchema = z.enum(WHEN_ASKS);
+export type WhenAsks = z.infer<typeof WhenAsksSchema>;
+
+/**
+ * An ask a person answered "Always allow" on, matched exactly on the schedule's next runs: its
+ * kind and the hash of what it does (the engine's `askIdentity`), never its title (#1020).
+ */
+export const AllowedAskSchema = z.object({
+	kind: z.string().max(64).nullable(),
+	identity: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type AllowedAsk = z.infer<typeof AllowedAskSchema>;
+export const ALWAYS_ALLOW_MAX = 50;
+
+/** What a schedule is about (#1020): a service, a project, or nothing (no code). */
+export const ScheduleSubjectSchema = z.enum(["service", "project", "none"]);
+export type ScheduleSubject = z.infer<typeof ScheduleSubjectSchema>;
+
+/** A saved composer (#1020): the subject, the text, the agent chips, plus when it runs. */
 export const ScheduleInputSchema = z.object({
 	name: z.string().trim().min(1).max(120),
-	serviceId: z.string().uuid(),
+	/** At most one of service and project; neither is a schedule with no code. */
+	serviceId: z.string().uuid().nullable(),
+	repositoryId: z.string().uuid().nullable().default(null),
 	runbook: z.string().trim().min(1).max(500).nullable(),
 	brief: z.string().trim().min(1).max(4000),
 	recurrence: RecurrenceSchema,
 	harness: z.enum(HARNESS_IDS),
 	model: z.string().min(1).max(200).nullable(),
 	effort: z.string().min(1).max(64).nullable(),
+	/** Null: the level alert-started runs use. */
+	accessLevel: AccessLevelSchema.nullable().default(null),
+	/** Off: each run is a chat that owes an answer, not a report. */
+	report: z.boolean().default(true),
+	whenAsks: WhenAsksSchema.default("decide"),
 	missedPolicy: MissedPolicySchema,
 	catchUpMinutes: z.number().int().min(15).max(1440),
 });
@@ -84,7 +116,12 @@ export type ScheduleInput = z.infer<typeof ScheduleInputSchema>;
 
 export const ScheduleSchema = ScheduleInputSchema.extend({
 	id: z.string(),
+	subject: ScheduleSubjectSchema,
+	/** "" when the schedule is not about a service. */
 	serviceName: z.string(),
+	/** The project's name; null when it is not about a project. */
+	repositoryName: z.string().nullable(),
+	alwaysAllow: z.array(AllowedAskSchema),
 	/** "Every weekday at 09:00", in the schedule's time zone. */
 	description: z.string(),
 	shape: RecurrenceShapeSchema,

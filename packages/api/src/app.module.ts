@@ -92,6 +92,7 @@ import { RepositoriesModule } from "./modules/repositories/repositories.module.j
 import { SchedulesModule } from "./modules/schedules/schedules.module.js";
 import { ServicesModule } from "./modules/services/services.module.js";
 import { TerminalModule } from "./modules/terminal/terminal.module.js";
+import { ThreadsModule } from "./modules/threads/threads.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 import { resolveServiceVersion } from "./shared/utils/service-version.js";
@@ -192,6 +193,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		InvestigationsModule, // AI investigation (replaces AnalysisModule)
 		TimelineModule, // Incident timeline
 		TerminalModule, // host-only shells (#931)
+		ThreadsModule, // project, service and no-subject threads (#1020)
 		ChangesModule, // What changed around an incident, from its git hosts (#811)
 		ImpactModule, // The Impact chart, live from the alert's own expression (#811)
 		FixesModule, // Stop-the-impact options: applied, undo, check (#811)

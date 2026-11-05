@@ -294,6 +294,10 @@ export const HarnessSettingsSchema = z.object({
 	localAgent: LocalAgentSchema.optional(),
 	/** Only pass named variables: the agent gets an allowlist, not the user's environment (#817). */
 	strictEnv: z.boolean().optional(),
+	/** Alert and schedule runs keep the user's GitHub token (#1020, R41); absent is off. */
+	unattendedGithub: z.boolean().optional(),
+	/** When an alert-started run asks (#1020): absent is `decide`, refuse at once. */
+	alertAsks: z.enum(["decide", "wait"]).optional(),
 	/** Runs a restart cut off carry on when PrismaLens starts again (#981); absent is on. */
 	resumeAfterRestart: z.boolean().optional(),
 	/** Names of the variables set per agent; values are never read back. */
@@ -351,6 +355,10 @@ export const UpdateHarnessSettingsSchema = z
 		localAgent: LocalAgentSchema.nullable().optional(),
 		/** Only pass named variables (#817). Host only. */
 		strictEnv: z.boolean().optional(),
+		/** Alert and schedule runs keep the GitHub token (#1020). Host only. */
+		unattendedGithub: z.boolean().optional(),
+		/** When an alert-started run asks (#1020). Host only. */
+		alertAsks: z.enum(["decide", "wait"]).optional(),
 		/** Resume runs a restart cut off (#981). Host only. */
 		resumeAfterRestart: z.boolean().optional(),
 	})

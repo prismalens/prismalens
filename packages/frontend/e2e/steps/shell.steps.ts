@@ -121,59 +121,46 @@ When("I open the board", async ({ page }) => {
 });
 
 Then(
-	"the sidebar shows Incidents, Alerts, Services and Settings with Incidents current",
+	"the sidebar shows Search, Add project and New thread over the threads, and no area rows",
 	async ({ page }) => {
 		const sidebar = page.getByTestId("sidebar");
-		for (const door of ["incidents", "alerts", "services", "settings"]) {
-			await expect(sidebar.getByTestId(`nav-${door}`)).toBeVisible();
+		for (const id of [
+			"sidebar-search",
+			"sidebar-add-project",
+			"sidebar-new-thread",
+			"thread-list",
+		]) {
+			await expect(sidebar.getByTestId(id)).toBeVisible();
 		}
-		await expect(sidebar.getByTestId("nav-incidents")).toHaveAttribute(
-			"aria-current",
-			"page",
-		);
+		for (const door of ["incidents", "alerts", "services", "schedules"]) {
+			await expect(sidebar.getByTestId(`nav-${door}`)).toHaveCount(0);
+		}
+		await expect(sidebar.getByTestId("nav-terminal")).toHaveCount(0);
 	},
 );
 
-Then(
-	"the sidebar lists INC-1 under {string}",
-	async ({ page }, lane: string) => {
-		const incident = world(page).incident;
-		const group = page
-			.getByTestId("sidebar")
-			.getByTestId("tree-service")
-			.filter({ hasText: lane });
-		// The tree shortens titles and shows 8 per service (#811): find the row by its ID.
-		const more = group.getByTestId("tree-more");
-		if (await more.isVisible()) await more.click();
-		await expect(
-			group.getByTestId("tree-incident").filter({
-				has: page.getByText(`INC-${incident?.number}`, { exact: true }),
-			}),
-		).toBeVisible();
-	},
-);
+/** The areas are reached from Search now (#1020). */
+async function openPlace(page: Page, place: string) {
+	await page.getByTestId("sidebar").getByTestId("sidebar-search").click();
+	await page
+		.getByTestId("thread-search-place")
+		.filter({ hasText: place })
+		.click();
+}
 
 When("I open Alerts", async ({ page }) => {
-	await page.getByTestId("sidebar").getByTestId("nav-alerts").click();
+	await openPlace(page, "Alerts");
 	await expect(page).toHaveURL(/\/alerts$/);
 });
 
-Then(
-	"Alerts is current and the sidebar lists the alert, with no incident rows anywhere on the screen",
-	async ({ page }) => {
-		const sidebar = page.getByTestId("sidebar");
-		await expect(sidebar.getByTestId("nav-alerts")).toHaveAttribute(
-			"aria-current",
-			"page",
-		);
-		await expect(
-			sidebar
-				.getByTestId("alert-row-link")
-				.filter({ hasText: world(page).incident?.title }),
-		).toBeVisible();
-		await expect(page.locator('[data-testid="tree-incident"]')).toHaveCount(0);
-	},
-);
+Then("the sidebar lists the alert", async ({ page }) => {
+	await expect(
+		page
+			.getByTestId("sidebar")
+			.getByTestId("alert-row-link")
+			.filter({ hasText: world(page).incident?.title }),
+	).toBeVisible();
+});
 
 When(
 	"I open the board, then Alerts, then Services, then Settings",
@@ -187,14 +174,17 @@ When(
 			const header = page.getByTestId("page-header");
 			await expect(header).toBeVisible();
 			await expect(header.getByRole("heading").first()).toBeVisible();
-			const label = door === "services" ? "New service" : "New incident";
+			const label = door === "services" ? "New service" : "New thread";
+			const role = door === "services" ? "button" : "link";
 			counts.push({
 				screen: door,
 				header: await header
-					.getByRole("button", { name: label, exact: true })
+					.getByRole(role, { name: label, exact: true })
 					.count(),
+				// The sidebar's own New thread is the shell's, not the screen's.
 				creators: await page
-					.getByRole("button", { name: /^(\+ )?new|create incident/i })
+					.locator("main")
+					.getByRole(role, { name: /^(\+ )?new (thread|service|incident)/i })
 					.count(),
 			});
 		}
@@ -203,7 +193,7 @@ When(
 );
 
 Then(
-	'the board and Alerts show one "New incident", Services one "New service", Settings none, and nothing else creates',
+	'the board and Alerts show one "New thread", Services one "New service", Settings none, and nothing else creates',
 	async ({ page }) => {
 		expect(world(page).newCounts).toEqual(
 			["incidents", "alerts", "services", "settings"].map((screen) => {
@@ -215,20 +205,25 @@ Then(
 );
 
 When(
-	"I press {string} from Alerts and create {string} on {string}",
+	"I press {string} from Alerts and note {string} on {string} with Incident on",
 	async ({ page, unique }, _button: string, title: string, service: string) => {
 		if (pathOf(page) !== "/alerts") {
 			await visit(page, "/alerts");
 		}
 		await page
 			.getByTestId("page-header")
-			.getByTestId("create-incident-button")
+			.getByTestId("new-thread-button")
 			.click();
-		const dialog = page.getByTestId("create-incident-dialog");
-		await dialog.getByTestId("create-incident-title").fill(unique(title));
-		await dialog.locator("#incident-service").click();
-		await page.getByRole("option", { name: service }).click();
-		await dialog.getByTestId("create-incident-submit").click();
+		await expect(page.getByTestId("new-thread-page")).toBeVisible();
+		await page.getByTestId("composer-incident").click();
+		await page.getByTestId("composer-subject").click();
+		await page.getByRole("option", { name: service, exact: true }).click();
+		const box = page.getByTestId("composer-input");
+		await box.fill("/note");
+		await box.press("Enter");
+		await expect(page.getByTestId("composer-note")).toBeVisible();
+		await box.fill(unique(title));
+		await box.press("Enter");
 		world(page).incident = {
 			id: "",
 			number: 0,
@@ -259,15 +254,6 @@ async function amOn(page: Page, path: string, ready: () => Promise<void>) {
 	await expect.poll(() => pathOf(page)).toBe(path);
 }
 
-Given("I am on INC-1's Alerts tab", async ({ page }) => {
-	await amOn(page, `/incidents/${world(page).incident?.id}/alerts`, () =>
-		expect(page.getByTestId("tab-alerts")).toHaveAttribute(
-			"aria-current",
-			"page",
-		),
-	);
-});
-
 Given("I am on INC-1's Overview", async ({ page }) => {
 	await amOn(page, `/incidents/${world(page).incident?.id}`, () =>
 		expect(page.getByTestId("incident-overview")).toBeVisible(),
@@ -288,7 +274,7 @@ Given("I open the same alert from the Alerts door", async ({ page }) => {
 	if (page.url() === "about:blank") {
 		await visit(page, "/incidents");
 	}
-	await page.getByTestId("sidebar").getByTestId("nav-alerts").click();
+	await openPlace(page, "Alerts");
 	// Back's trail records resolved pages; a row clicked while /alerts still loads skips it.
 	await expect(page.getByTestId("alerts-frame")).toBeVisible();
 	await page
@@ -365,14 +351,14 @@ When("I hover {string} in the header", async ({ page }, _label: string) => {
 	await expect(page.getByTestId("page-header")).toBeVisible();
 	await page
 		.getByTestId("page-header")
-		.getByTestId("create-incident-button")
+		.getByTestId("new-thread-button")
 		.hover();
 });
 
 Then("the tooltip shows its shortcut", async ({ page }) => {
 	const hint = page.getByTestId("hint");
 	await expect(hint).toBeVisible();
-	await expect(hint.getByTestId("hint-key")).toHaveText("C");
+	await expect(hint.getByTestId("hint-key")).toHaveText(["Ctrl", "Shift", "O"]);
 });
 
 Then("a sheet lists the shortcuts", async ({ page }) => {
@@ -435,7 +421,7 @@ When("I open the app", async ({ page }) => {
 });
 
 Then(
-	'the top strip shows Incidents, Alerts, Services and Settings as icons, with Incidents current, and the header carries "New incident"',
+	'the top strip shows Incidents, Alerts, Services and Settings as icons, with Incidents current, and the header carries "New thread"',
 	async ({ page }) => {
 		const strip = page.getByTestId("topbar");
 		for (const door of ["Incidents", "Alerts", "Services", "Settings"]) {
@@ -444,8 +430,8 @@ Then(
 			).toHaveAccessibleName(new RegExp(`^${door}(, \\d+)?$`));
 		}
 		await expect(
-			page.getByTestId("page-header").getByTestId("create-incident-button"),
-		).toHaveText("New incident");
+			page.getByTestId("page-header").getByTestId("new-thread-button"),
+		).toHaveText("New thread");
 		await expect(strip.getByTestId("strip-incidents")).toHaveAttribute(
 			"aria-current",
 			"page",
@@ -489,7 +475,7 @@ Given(
 		await tab.setViewportSize(
 			page.viewportSize() ?? { width: 390, height: 844 },
 		);
-		await visit(tab, `/incidents/${incident.id}/report`);
+		await visit(tab, `/incidents/${incident.id}`);
 		world(page).page = tab;
 	},
 );
@@ -513,14 +499,14 @@ When("I press {string} in the header", async ({ page }, _label: string) => {
 	await expect(page.locator('[data-testid="inbox"]')).toBeVisible();
 	await page
 		.getByTestId("page-header")
-		.getByTestId("create-incident-button")
+		.getByTestId("new-thread-button")
 		.click();
 });
 
 Then(
-	"the create dialog opens and fits the screen without sideways scrolling",
+	"New thread opens and fits the screen without sideways scrolling",
 	async ({ page }) => {
-		const dialog = page.getByTestId("create-incident-dialog");
+		const dialog = page.getByTestId("thread-composer");
 		await expect(dialog).toBeVisible();
 		const box = await dialog.boundingBox();
 		const width = page.viewportSize()?.width ?? 0;

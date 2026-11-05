@@ -34,7 +34,13 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 				params: { id: run.scheduleId, runId: params.id },
 				replace: true,
 			});
-		if (!run.incidentId) throw notFound();
+		// A project, service or no-subject thread has its own page (#1020).
+		if (!run.incidentId)
+			throw redirect({
+				to: "/threads/$id",
+				params: { id: params.id },
+				replace: true,
+			});
 		throw redirect({
 			to: "/incidents/$id/conversation",
 			params: { id: run.incidentId },

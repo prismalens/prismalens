@@ -8,6 +8,7 @@
 import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
+	type HelperPlace,
 	type InvestigationContext,
 	telemetrySources,
 } from "@prismalens/contracts/schemas";
@@ -19,6 +20,7 @@ import {
 	renderContextPack,
 	sanitizeUntrustedBlock,
 	sanitizeUntrustedLine,
+	UNTRUSTED_DATA_CHAT_GUARD,
 	UNTRUSTED_DATA_METHOD_GUARD,
 } from "./fence.js";
 import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
@@ -27,6 +29,8 @@ import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
 function renderSurfaces(
 	context: InvestigationContext,
 	online: boolean,
+	/** Names a fence that lists the folders instead, so no project-supplied name sits outside it. */
+	reposIn?: string,
 ): string[] {
 	const t = context.telemetry;
 	const surfaces: string[] = [];
@@ -70,7 +74,11 @@ function renderSurfaces(
 		);
 	}
 	const repos = context.workspace?.repos ?? [];
-	if (repos.length) {
+	if (repos.length && reposIn) {
+		surfaces.push(
+			`  - Application SOURCE CODE: ${repos.length} repositories, one folder each, listed in ${reposIn} below.`,
+		);
+	} else if (repos.length) {
 		surfaces.push(
 			`  - Application SOURCE CODE: ${repos.length} repositories, one folder each:`,
 			...repos.map(
@@ -92,7 +100,10 @@ function renderSurfaces(
  * What PrismaLens read before the run (#848): the read-copy folder when it was written,
  * each source's result, the runbooks, then the start of each telemetry file fenced as data.
  */
-export function renderPreRun(context: InvestigationContext): string {
+export function renderPreRun(
+	context: InvestigationContext,
+	owes: "report" | "answer" = "report",
+): string {
 	const p = context.preRun;
 	if (!p) return "";
 	if (p.state === "unavailable")
@@ -124,9 +135,16 @@ export function renderPreRun(context: InvestigationContext): string {
 	if (p.runbooks.length)
 		lines.push(
 			"  Runbooks found (read one with runbooks_read):",
-			...p.runbooks.map(
-				(r) =>
-					`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+			fenceUntrusted(
+				"PRE_RUN_RUNBOOKS",
+				"Runbook titles and paths read from the service's repository.",
+				p.runbooks
+					.map(
+						(r) =>
+							`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+					)
+					.join("\n"),
+				owes,
 			),
 		);
 	if (p.runbooksSkipped)
@@ -150,6 +168,7 @@ export function renderPreRun(context: InvestigationContext): string {
 				"PRE_RUN_TELEMETRY",
 				"Read by PrismaLens from the user's telemetry sources before the run.",
 				sanitizeUntrustedBlock(excerpts.join("\n")),
+				owes,
 			),
 		);
 	return `\n\n${lines.join("\n")}`;
@@ -162,16 +181,131 @@ export function renderPreRun(context: InvestigationContext): string {
 export function buildChatPrompt(
 	context: InvestigationContext,
 	text: string,
-	options: { noNetwork?: boolean } = {},
+	options: InvestigationPromptOptions = {},
 ): string {
+	if (context.mode === "project-chat")
+		return buildThreadPrompt(context, text, options);
 	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
-${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}
+${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context, "answer")}${toolsBlock(options)}
 
-${UNTRUSTED_DATA_METHOD_GUARD}
+${UNTRUSTED_DATA_CHAT_GUARD}
 
 ${text}`;
+}
+
+/** The PrismaLens tools paragraph, ahead of the message so the message is read last (#1020). */
+function toolsBlock(options: InvestigationPromptOptions): string {
+	const tools = options.tools?.trim();
+	return tools
+		? `
+
+${tools}`
+		: "";
+}
+
+/** A helper's page in fixed words: no page data, never the webhook token (#1020, OBJ-001). */
+const PLACE_LINES: Record<HelperPlace, string> = {
+	alerts:
+		"The user started this chat from the Alerts page in PrismaLens, which has no alerts yet. Alerts arrive by webhook: the webhook URL is shown on this page under Copy URL, and the token under Copy token on the host machine only; a paired device cannot copy it, so the host copies it. In any example, write them as <webhook-url> and <webhook-token>; never ask the user to paste the token here.",
+	services:
+		"The user started this chat from the Services page in PrismaLens, which has no services yet. A service is something that runs and alerts: it names the code the agent reads, and alerts map to it by their service label. The user adds one with New service on that page.",
+	schedules:
+		"The user started this chat from Settings, Scheduled prompts in PrismaLens, which has no schedules yet. A schedule runs a prompt on a service at the times the user picks; only the host machine adds one, with New schedule on that page.",
+};
+
+/** A plain greeting gets a plain answer: no tool is probed to look busy (#1020). */
+const ANSWER_FIRST =
+	"Answer the message directly. Use a tool only when the message needs one: a greeting, or a question you can answer from what you know, gets a short reply and no tool calls, except naming the thread once the user's task is clear.";
+
+/**
+ * A project, service or no-subject thread's first turn (#1020, OBJ-003): a coding
+ * assistant that may change files within the level the user picked. No alert block:
+ * none fired, and none is made up.
+ */
+function buildThreadPrompt(
+	context: InvestigationContext,
+	text: string,
+	options: InvestigationPromptOptions,
+): string {
+	const t = context.thread;
+	const where =
+		t?.subject === "project" && t.name
+			? " in the project named in THREAD_SUBJECT below"
+			: t?.subject === "service" && t.name
+				? " on the service named in THREAD_SUBJECT below"
+				: "";
+	const surfaces =
+		t?.subject === "none"
+			? ["  - No project is linked: there is no code here to read."]
+			: renderSurfaces(context, !options.noNetwork, "THREAD_SUBJECT");
+	const place = t?.subject === "none" && t.place ? PLACE_LINES[t.place] : null;
+	const page = place
+		? `
+
+THIS PAGE
+  ${place}`
+		: "";
+	const runLines = [
+		...(options.noNetwork ? [NO_NETWORK] : []),
+		accessLine(
+			options.level ?? "supervised",
+			options.modeName ?? "the agent's default",
+		),
+	];
+	return `You are a coding assistant working${where}. No alert fired and this is not an incident. Do what the user's message below asks: read, run and change files in your working directory as the task needs, within the permission level below. Say what you changed. ${ANSWER_FIRST}
+
+SURFACES
+${surfaces.join("\n")}${renderThreadSubject(context)}${renderPreRun(context, "answer")}${toolsBlock(options)}${page}
+
+THIS RUN
+${runLines.map((l) => `  - ${l}`).join("\n")}
+
+${UNTRUSTED_DATA_CHAT_GUARD}
+
+${text}`;
+}
+
+/** The thread's project or service name and its folders: user-chosen names, so fenced as data (#1020). */
+function renderThreadSubject(context: InvestigationContext): string {
+	const t = context.thread;
+	const repos = context.workspace?.repos ?? [];
+	const lines = [
+		...(t?.name && t.subject !== "none"
+			? [
+					sanitizeUntrustedLine(
+						`${t.subject === "project" ? "Project" : "Service"}: ${t.name}`,
+					),
+				]
+			: []),
+		...repos.map(
+			(r) =>
+				`Folder ${quotedPath(r.path)}  services: ${sanitizeUntrustedLine(r.services.join(", "))}  (at ${sanitizeUntrustedLine(r.head.slice(0, 12))})${
+					r.subPath ? `  sub-path: ${quotedPath(r.subPath)}` : ""
+				}`,
+		),
+	];
+	if (!lines.length) return "";
+	return `\n\n${fenceUntrusted(
+		"THREAD_SUBJECT",
+		"Names the user gave this thread's project, service and folders in PrismaLens. A folder or sub-path is a JSON string, not a shell-safe one: parse it, then shell-quote the result before putting it in a command.",
+		lines.join("\n"),
+		"answer",
+	)}`;
+}
+
+const BACKSLASH = String.fromCharCode(92);
+
+/**
+ * A path as a JSON string, exact and reversible (the line sanitizer folds runs of spaces);
+ * anything outside printable ASCII, and < >, is escaped so no path can close the fence (#1020).
+ */
+function quotedPath(path: string): string {
+	return JSON.stringify(path).replace(
+		/[^ -~]|[<>]/g,
+		(c) => `${BACKSLASH}u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+	);
 }
 
 /** The operator's notes on a service: guidance they wrote, fenced only so no line can close the block (#809). */
@@ -211,6 +345,8 @@ export interface InvestigationPromptOptions {
 	modeName?: string;
 	noNetwork?: boolean;
 	level?: AccessLevel;
+	/** A chat's PrismaLens tools paragraph; it goes before the message. */
+	tools?: string;
 }
 
 /** One prompt, whole: the role, this run's facts, then the standing method and output. */
@@ -248,8 +384,18 @@ ${p.standing}`,
 function renderCheck(context: InvestigationContext): string {
 	const c = context.check;
 	const brief = c?.brief?.trim();
-	return `SCHEDULED CHECK
-  Service: ${sanitizeUntrustedLine(context.service?.name ?? "unknown")}${
+	// A project's or a no-code schedule's check names its project, or nothing (#1020).
+	const about = context.service
+		? `
+  Service: ${sanitizeUntrustedLine(context.service.name)}`
+		: c?.project
+			? `\n${fenceUntrusted(
+					"CHECK_PROJECT",
+					"The project's name, taken from its folder or git address.",
+					`Project: ${sanitizeUntrustedLine(c.project)}`,
+				)}`
+			: "";
+	return `SCHEDULED CHECK${about}${
 		c?.runbook
 			? `
   Runbook: ${sanitizeUntrustedLine(c.runbook)}`
@@ -337,7 +483,7 @@ function promptPieces(
 		.join("\n");
 
 	const role = check
-		? `You are an on-call Site Reliability Engineer running a SCHEDULED CHECK of the service ${s?.name ?? "named below"}. No alert fired: the operator asked for this look. Report what the evidence shows, a problem you can name or none; a clean check is a valid result.`
+		? `You are an on-call Site Reliability Engineer running a SCHEDULED CHECK${s?.name ? ` of the service ${s.name}` : context.check?.project ? " of the project named below" : ""}. No alert fired: the operator asked for this look. Report what the evidence shows, a problem you can name or none; a clean check is a valid result.`
 		: "You are an on-call Site Reliability Engineer running a LIVE investigation of a firing production alert. Your job is to find the ROOT CAUSE — the specific code path, configuration, dependency, or resource that produced this alert — not merely the symptom.";
 	const opening =
 		check || !primary

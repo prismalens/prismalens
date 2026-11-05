@@ -183,6 +183,45 @@ export class ScenarioApp {
 		return (text ? JSON.parse(text) : undefined) as T;
 	}
 
+	/** Uploads a text file as this paired device, the way the browser does. */
+	async upload(
+		path: string,
+		text: string,
+		name: string,
+	): Promise<{ id: string }> {
+		const body = new FormData();
+		body.append(
+			"file",
+			new File([text], `${name}.txt`, { type: "text/plain" }),
+		);
+		const res = await fetch(`${this.url}/api${path}`, {
+			method: "POST",
+			headers: { origin: this.url, cookie: this.cookie },
+			body,
+		});
+		const out = await res.text();
+		if (!res.ok)
+			throw new Error(`POST ${path} → ${res.status}: ${out.slice(0, 300)}`);
+		return JSON.parse(out) as { id: string };
+	}
+
+	/** The running app's gateway: a scenario reads what a run's tools answer. */
+	async gateway() {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { GatewayService } = await import(
+			"../../../src/modules/gateway/gateway.service.js"
+		);
+		return this.app.get(GatewayService);
+	}
+
+	/** A GET as this paired device, answered raw: for a stream or an error body. */
+	async fetchRaw(path: string, signal?: AbortSignal): Promise<Response> {
+		return fetch(`${this.url}/api${path}`, {
+			headers: { origin: this.url, cookie: this.cookie },
+			...(signal ? { signal } : {}),
+		});
+	}
+
 	private async pair(): Promise<void> {
 		const { createPairingLink, OPERATOR_SCOPES, prismaPairingStore } =
 			await import("@prismalens/auth");

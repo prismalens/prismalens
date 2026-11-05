@@ -55,6 +55,8 @@ model Repository {
   sourceKind    String   @default("url")   // "folder" | "url"
   fullName      String               // "org/repo"
   url           String               // "https://github.com/org/repo" or an absolute folder path
+  subPath       String?              // a project rooted below its repository's top folder (#1020)
+  plain         Boolean  @default(false) // a folder with no git: threads you start run in it (#1020)
   description   String?
   language      String?
   defaultBranch String   @default("main")
@@ -69,6 +71,8 @@ model Repository {
 
   connection    Connection?         @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   services      ServiceRepository[]
+  threads       Investigation[]     @relation("ProjectThreads")
+  schedules     Schedule[]
 
   @@unique([connectionId, fullName])
   @@map("repositories")
@@ -238,17 +242,20 @@ model Incident {
 /// <workspace>/attachments/<id>, outside every run's snapshot.
 model Attachment {
   id              String   @id @default(uuid())
-  incidentId      String
+  incidentId      String? // null on a project, service or no-subject thread's file (#1020)
   investigationId String? // the run whose message carried it, once one did
+  draftKey        String? // a thread's file before its run exists; the run claims it (#1020)
   name            String
   mimeType        String
   size            Int
   sha256          String
   createdAt       DateTime @default(now())
 
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident Incident? @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
   @@index([incidentId])
+  @@index([investigationId])
+  @@index([draftKey])
   @@map("attachments")
 }
 
@@ -262,6 +269,7 @@ model Investigation {
   tenantId          String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   incidentId        String? // null for a scheduled service check until a finding links it (#979)
   serviceId         String? // a scheduled service check's subject (#979)
+  repositoryId      String? // a project thread's subject (#1020)
   scheduleId        String?
   scheduleRevision  Int?
   configSnapshot    String? // JSON: the schedule values the run was admitted with (#979)
@@ -295,6 +303,8 @@ model Investigation {
   kind      String  @default("investigation") // investigation | chat
   agentMode String? // the agent's own ACP mode id PrismaLens set
   title     String? // investigation: the brief's first line; chat: the message's first 120 chars
+  titleSetBy String? // agent | user; once user, the agent's thread_title leaves it (#1020)
+  helperPlace String? // alerts | services | schedules: the empty page a no-subject helper started on (#1020)
   accessLevel String? // supervised | auto-edits | auto | full-access; null before #673 w21
 
   // A thread's turns (#673 w59): what the live turn owes, how the last message ended
@@ -304,14 +314,20 @@ model Investigation {
   preRun          String? // JSON PreRunSnapshot: what PrismaLens read before the run; its follow-ups read it again (#848)
   awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
 
+  // The thread list (#1020): when the operator last opened it, and when they settled it
+  lastVisitedAt DateTime?
+  settledAt     DateTime?
+
   incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: SetNull)
+  repository      Repository?          @relation("ProjectThreads", fields: [repositoryId], references: [id], onDelete: SetNull)
   recommendations Recommendation[]
   events          InvestigationEvent[]
 
   @@index([incidentId])
   @@index([scheduleId, createdAt])
   @@index([serviceId])
+  @@index([repositoryId, createdAt])
   @@index([incidentId, createdAt])
   @@index([status])
   @@map("investigations")
@@ -557,13 +573,21 @@ model Schedule {
   id             String  @id @default(uuid())
   name           String
   kind           String  @default("service_check")
-  serviceId      String
+  /// What it is about (#1020): a service, a project (repositoryId), or neither.
+  serviceId      String?
+  repositoryId   String?
   runbook        String? // a runbook path in the service's repo
   brief          String
   recurrence     String // JSON Recurrence: cron in a time zone, or an elapsed interval
   harness        String
   model          String?
   effort         String?
+  accessLevel    String? // null: the level alert runs use
+  /// false: each run is a chat that owes an answer, not a report (#1020).
+  report         Boolean @default(true)
+  whenAsks       String  @default("decide") // decide | wait
+  /// JSON [{kind, identity}]: asks a person answered "Always allow" on, matched by identity hash (#1020).
+  alwaysAllow    String?
   missedPolicy   String  @default("run_once") // run_once | skip
   catchUpMinutes Int     @default(360)
   enabled        Boolean @default(true)
@@ -577,10 +601,12 @@ model Schedule {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  service Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  ticks   ScheduleTick[]
+  service    Service?       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  repository Repository?    @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  ticks      ScheduleTick[]
 
   @@index([enabled, nextRunAt])
+  @@index([repositoryId])
   @@map("schedules")
 }
 

@@ -92,6 +92,20 @@
 		transform: translateY(8px);
 	}
 }
+@keyframes pl-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@keyframes pl-tick-pop {
+	from {
+		opacity: 0;
+		scale: 0.5;
+	}
+	60% {
+		scale: 1.1;
+	}
+}
 @keyframes pl-shimmer {
 	from {
 		background-position: 200% 0;
@@ -180,6 +194,14 @@
 	animation: pl-fade-out 150ms var(--ease-in) both;
 }
 
+/* Work in flight rings; when it ends a still tick or cross pops once (RingTick). */
+.ring-spin {
+	animation: pl-spin 900ms linear infinite;
+}
+.tick-pop {
+	animation: pl-tick-pop 220ms var(--ease-out) both;
+}
+
 /* Loading: a shimmer across the skeleton. */
 .shimmer {
 	background: linear-gradient(
@@ -210,7 +232,9 @@
 	}
 	[data-pulse],
 	.breathe,
-	.live-glow::after {
+	.live-glow::after,
+	.ring-spin,
+	.tick-pop {
 		animation: none !important;
 	}
 	[data-float]:not([data-state="closed"]) {

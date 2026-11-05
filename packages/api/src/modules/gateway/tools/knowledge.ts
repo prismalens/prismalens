@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { INCIDENT_ONLY, SCOPED } from "./serves.js";
 
 export interface PastInvestigation {
 	investigationId: string;
@@ -75,6 +76,7 @@ export function knowledgeTools(
 				"An incident PrismaLens recorded: title, status, severity and service, with the alerts, deploy and change events PrismaLens recorded for its services from a day before it started. Without `number`, the incident this run investigates.",
 			group: "core",
 			effect: "read",
+			serves: INCIDENT_ONLY,
 			input: z.object({
 				number: z.number().int().min(1).optional(),
 			}),
@@ -103,6 +105,7 @@ export function knowledgeTools(
 				"Past PrismaLens investigations matching a text query, newest first. `agentFinding` is what the agent concluded; `operatorRecordedCause` is what the operator recorded as the real cause, and wins where they differ.",
 			group: "knowledge",
 			effect: "read",
+			serves: SCOPED,
 			input: z.object({
 				query: z.string().trim().min(1).max(200),
 				service: z.string().trim().min(1).max(200).optional(),

@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ScheduleTick } from "@prismalens/contracts";
+import type { Schedule, ScheduleTick } from "@prismalens/contracts";
+
+/** What a schedule is about, in the list and on its page (#1020). */
+export function aboutText(
+	s: Pick<Schedule, "subject" | "serviceName" | "repositoryName">,
+): string {
+	if (s.subject === "service") return `Check ${s.serviceName}`;
+	if (s.subject === "project") return s.repositoryName ?? "A project";
+	return "No project";
+}
 
 export type Tone = "ok" | "bad" | "warn" | "live" | "muted";
 

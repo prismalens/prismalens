@@ -45,7 +45,7 @@ async function inboxLoaded(page: Page) {
 	await expect(
 		page.getByRole("heading", { name: "Incidents", level: 1 }),
 	).toBeVisible({ timeout: 15_000 });
-	await expect(page.getByTestId("nav-terminal")).toBeVisible();
+	await expect(page.getByTestId("sidebar-search")).toBeVisible();
 }
 
 async function openRegistryChip(page: Page) {
@@ -60,7 +60,7 @@ async function openRegistryChip(page: Page) {
 }
 
 test.describe("Terminal panel (#931)", () => {
-	test("Ctrl+` and the sidebar's Terminal door show and hide it, and it stays open across a reload", async ({
+	test("Ctrl+` shows and hides it, and it stays open across a reload", async ({
 		page,
 	}) => {
 		await openInbox(page, 1440);
@@ -72,10 +72,8 @@ test.describe("Terminal panel (#931)", () => {
 		await page.keyboard.press("Control+Backquote");
 		await expect(panel).toHaveCount(0);
 
-		const door = page.getByTestId("nav-terminal");
-		await door.click();
+		await page.keyboard.press("Control+Backquote");
 		await expect(panel.getByTestId("terminal-panel")).toBeVisible();
-		await expect(door).toHaveAttribute("aria-expanded", "true");
 
 		await page.reload();
 		await inboxLoaded(page);

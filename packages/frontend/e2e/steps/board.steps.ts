@@ -136,15 +136,9 @@ Then(
 	},
 );
 
-Then(
-	"within 2 seconds the row is in the inbox and the sidebar's Incidents count went up by one",
-	async ({ page }) => {
-		await expect(cardOf(page, inc(page).title)).toBeVisible({ timeout: 2_000 });
-		await expect(
-			page.getByTestId("sidebar").getByTestId("nav-incidents-count"),
-		).toHaveText(String((w(page).before ?? 0) + 1), { timeout: 2_000 });
-	},
-);
+Then("within 2 seconds the row is in the inbox", async ({ page }) => {
+	await expect(cardOf(page, inc(page).title)).toBeVisible({ timeout: 2_000 });
+});
 
 Then(
 	"the row is marked new, and a second arrival a second later is marked new while the first one's mark ends",
@@ -318,11 +312,6 @@ When(
 	"an Alertmanager delivery for a new alert arrives",
 	async ({ page, alertmanager, deliverWebhook, unique }) => {
 		await openBoard(page);
-		const count = page
-			.getByTestId("sidebar")
-			.getByTestId("nav-incidents-count");
-		await expect(count).toHaveText(/\d+/);
-		w(page).before = Number(await count.innerText());
 		await page
 			.waitForResponse((r) => r.url().includes("/api/live/changes"), {
 				timeout: 15_000,
@@ -504,13 +493,13 @@ Then(
 );
 
 Then(
-	'the only way to create an incident by hand is "New" in the header',
+	'the only way to create an incident by hand is "New thread" in the header',
 	async ({ page }) => {
 		await expect(
 			page.getByRole("button", { name: /^(\+ )?new|create incident/i }),
-		).toHaveCount(1);
+		).toHaveCount(0);
 		await expect(
-			page.getByTestId("page-header").getByTestId("create-incident-button"),
+			page.getByTestId("page-header").getByTestId("new-thread-button"),
 		).toBeVisible();
 	},
 );
@@ -895,7 +884,7 @@ Given(
 	},
 );
 
-const TABS = ["", "/conversation", "/report", "/alerts", "/timeline"];
+const TABS = ["", "/conversation"];
 
 When("I view INC-1's Overview", async ({ page }) => {
 	await visit(page, `/incidents/${inc(page).id}`);
@@ -1255,8 +1244,10 @@ Then("INC-1 leaves Needs you while the run works", async ({ page }) => {
 	await expect(rowOf(page)).toHaveCount(0);
 	await expect(
 		page
-			.getByTestId("tree-incident")
-			.filter({ hasText: `INC-${inc(page).number}` }),
+			.getByTestId("sidebar")
+			.locator(
+				`[data-testid="thread-unit"][data-incident="${inc(page).number}"]`,
+			),
 	).toBeVisible();
 });
 

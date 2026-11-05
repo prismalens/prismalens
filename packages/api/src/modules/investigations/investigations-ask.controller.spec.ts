@@ -16,6 +16,7 @@ import { InvestigationsService } from "./investigations.service.js";
 
 const mockInvestigationsService = {
 	findById: vi.fn(),
+	rememberAsk: vi.fn(async () => "remembered"),
 };
 
 const mockDispatchService = {
@@ -27,6 +28,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockInvestigationsService.findById.mockResolvedValue(null);
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
@@ -90,6 +92,39 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 			false,
 		);
 		expect(result).toEqual({ outcome: "denied" });
+	});
+
+	describe("a run PrismaLens started (#1020 R33)", () => {
+		type Full = { input: Input & { always?: boolean }; context: { request: unknown } };
+		const call = (input: Input & { always?: boolean }, host: boolean) =>
+			(answerAskHandler() as unknown as (a: Full) => Promise<unknown>)({
+				input,
+				context: { request: { operator: { device: { id: "d", scopes: host ? ["admin:access"] : [] } } } },
+			});
+		const ask = { id: "inv-1", askId: "ask-1", decision: "approve" as const };
+
+		it("only the host answers a schedule's or an alert's run; a paired device may answer its own thread's", async () => {
+			mockDispatchService.answerAsk.mockReturnValue("approved");
+			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: "sch-1", triggerType: "scheduled" });
+			await expect(call(ask, false)).rejects.toMatchObject({ code: "FORBIDDEN" });
+			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: null, triggerType: "auto_critical" });
+			await expect(call(ask, false)).rejects.toMatchObject({ code: "FORBIDDEN" });
+			expect(mockDispatchService.answerAsk).not.toHaveBeenCalled();
+			await expect(call(ask, true)).resolves.toEqual({ outcome: "approved" });
+			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: null, triggerType: "manual" });
+			await expect(call(ask, false)).resolves.toEqual({ outcome: "approved" });
+		});
+
+		it("Always allow is remembered only for an approved ask on a schedule's run", async () => {
+			mockDispatchService.answerAsk.mockReturnValue("approved");
+			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: null, triggerType: "manual" });
+			await expect(call({ ...ask, always: true }, true)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+			mockInvestigationsService.findById.mockResolvedValue({ id: "inv-1", scheduleId: "sch-1", triggerType: "scheduled" });
+			await expect(call({ ...ask, decision: "deny", always: true }, true)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+			expect(mockInvestigationsService.rememberAsk).not.toHaveBeenCalled();
+			await expect(call({ ...ask, always: true }, true)).resolves.toEqual({ outcome: "approved" });
+			expect(mockInvestigationsService.rememberAsk).toHaveBeenCalledWith("inv-1", "ask-1");
+		});
 	});
 
 	it("throws CONFLICT when dispatchService.answerAsk returns null", async () => {

@@ -21,6 +21,7 @@ describe("invalidateTopics (walk f27)", () => {
 			JSON.stringify(orpc.webhooks.lastDelivery.key()),
 			JSON.stringify(orpc.investigations.key()),
 			JSON.stringify(orpc.schedules.key()),
+			JSON.stringify(orpc.threads.key()),
 		]);
 	});
 
@@ -32,6 +33,16 @@ describe("invalidateTopics (walk f27)", () => {
 
 		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
 		expect(keys).toEqual([JSON.stringify(orpc.schedules.key())]);
+	});
+
+	it("re-reads only the thread lists when an agent's event lands (#1020)", () => {
+		const queryClient = new QueryClient();
+		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+		invalidateTopics(queryClient, ["threads"]);
+
+		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
+		expect(keys).toEqual([JSON.stringify(orpc.threads.key())]);
 	});
 
 	it("invalidates incidents, setup, recommendations and timeline keys in order (#673 walk 4)", () => {
@@ -46,6 +57,7 @@ describe("invalidateTopics (walk f27)", () => {
 			JSON.stringify(orpc.setup.key()),
 			JSON.stringify(orpc.recommendations.key()),
 			JSON.stringify(orpc.timeline.key()),
+			JSON.stringify(orpc.threads.key()),
 		]);
 	});
 });

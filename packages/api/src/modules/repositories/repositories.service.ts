@@ -17,15 +17,26 @@ import { repoLabel, shownRepoName } from "../../core/harness/git-credential.js";
 import {
 	classifySource,
 	displayNameFor,
+	NoHeadError,
+	PlainFolderError,
 	RepoSourceService,
 } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import {
+	CanonicalBusy,
+	canonical,
+	FOLDER_BUSY,
+	FOLDER_TX,
+	holdConversion,
+	liveIn,
+} from "../../infrastructure/dispatch/folder-lock.js";
+import {
 	GitCredentialService,
 	pickOf,
 } from "../integrations/git-credential.service.js";
 import type { LinkRepositoryDto } from "./dto/index.js";
+import { StartGitRefused, startGit } from "./start-git.js";
 
 export type { Repository, ServiceRepository };
 
@@ -66,11 +77,14 @@ export class RepositoriesService {
 	 * failed validation still saves, so the card can show why.
 	 */
 	async addSource(input: AddRepositorySourceInput): Promise<Repository> {
-		const service = await this.prisma.service.findUnique({
-			where: { id: input.serviceId },
-			select: { id: true },
-		});
-		if (!service) throw new NotFoundException("Service not found");
+		const serviceId = input.serviceId;
+		if (serviceId) {
+			const service = await this.prisma.service.findUnique({
+				where: { id: serviceId },
+				select: { id: true },
+			});
+			if (!service) throw new NotFoundException("Service not found");
+		}
 
 		let classified: ReturnType<typeof classifySource>;
 		try {
@@ -79,6 +93,15 @@ export class RepositoriesService {
 			throw new BadRequestException((err as Error).message);
 		}
 		let { kind, source } = classified;
+		// A folder is saved as the disk names it, so an alias is the same project (#1020).
+		if (kind === "folder")
+			try {
+				source = (await canonical(source)) ?? source;
+			} catch (e) {
+				if (e instanceof CanonicalBusy)
+					throw new BadRequestException(e.message);
+				throw e;
+			}
 		let subPath = input.subPath ?? null;
 
 		const existing =
@@ -87,6 +110,7 @@ export class RepositoriesService {
 				: null;
 
 		let sync: SyncFields;
+		let plain = false;
 		if (kind === "folder") {
 			sync = { syncBranch: null, syncHead: null, syncError: null };
 			try {
@@ -95,7 +119,12 @@ export class RepositoriesService {
 				subPath = [check.prefix, subPath].filter(Boolean).join("/") || null;
 				Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
 			} catch (err) {
-				sync.syncError = (err as Error).message;
+				if (err instanceof PlainFolderError) plain = true;
+				else sync.syncError = (err as Error).message;
+				if (err instanceof NoHeadError) {
+					source = err.root;
+					subPath = [err.prefix, subPath].filter(Boolean).join("/") || null;
+				}
 			}
 		} else {
 			sync = await this.validateUrl(
@@ -105,30 +134,47 @@ export class RepositoriesService {
 			);
 		}
 
+		// A plain folder's runs work in the folder itself, so a sub-path would be ignored (#1020).
+		if (plain && input.subPath)
+			throw new BadRequestException(
+				"A folder with no git takes no sub-path. Add the folder you mean.",
+			);
+		// A service runs a plain folder unattended, so it needs git first (#1020).
+		if (plain && serviceId)
+			throw new BadRequestException(
+				"This folder has no git. Add it as a project and start git there first.",
+			);
+		// A service links the top folder and keeps its sub-path on the link; a project is the folder picked.
+		const own = serviceId ? null : subPath;
 		const fields = {
 			sourceKind: kind,
 			url: source,
+			subPath: own,
+			plain,
 			...sync,
 			syncedAt: new Date(),
 		};
 		const repository = await this.prisma.$transaction(async (tx) => {
 			const sameRoot = await tx.repository.findFirst({
-				where: { url: source },
+				where: { url: source, subPath: own },
 			});
+			const name = displayNameFor(kind, source);
 			const repo = sameRoot
 				? await tx.repository.update({
 						where: { id: sameRoot.id },
 						data: fields,
 					})
 				: await tx.repository.create({
-						data: { ...fields, fullName: displayNameFor(kind, source) },
+						data: { ...fields, fullName: own ? `${name}/${own}` : name },
 					});
+			// A project on its own has no service to link (#1020).
+			if (!serviceId) return repo;
 			await tx.serviceRepository.updateMany({
-				where: { serviceId: input.serviceId },
+				where: { serviceId },
 				data: { isPrimary: false },
 			});
 			const link = await tx.serviceRepository.findFirst({
-				where: { serviceId: input.serviceId, repositoryId: repo.id, subPath },
+				where: { serviceId, repositoryId: repo.id, subPath },
 			});
 			if (link) {
 				await tx.serviceRepository.update({
@@ -138,7 +184,7 @@ export class RepositoriesService {
 			} else {
 				await tx.serviceRepository.create({
 					data: {
-						serviceId: input.serviceId,
+						serviceId,
 						repositoryId: repo.id,
 						subPath,
 						isPrimary: true,
@@ -148,8 +194,9 @@ export class RepositoriesService {
 			return repo;
 		});
 		this.logger.log(
-			`Service ${input.serviceId} repository → ${kind} ${repoLabel(source)}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
+			`${serviceId ? `Service ${serviceId}` : "Project"} repository → ${kind} ${repoLabel(source)}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
 		);
+		if (!serviceId) return repository;
 		// A service only becomes investigable once it has code behind it, so this
 		// is where "a service was added" is true. `folder`/`url` is the whole of
 		// what is sent — never the path or the repository name.
@@ -157,6 +204,48 @@ export class RepositoriesService {
 			source: kind === "folder" ? "local" : "git",
 		});
 		return repository;
+	}
+
+	/** Start git here (#1020): a plain folder project becomes a Repo once its first commit lands. */
+	async startGit(id: string): Promise<Repository> {
+		const repo = await this.prisma.repository.findUnique({ where: { id } });
+		if (!repo) throw new NotFoundException("Repository not found");
+		if (!repo.plain || repo.sourceKind !== "folder")
+			throw new BadRequestException("Only a plain folder project starts git.");
+		// Held first, then checked, released only once the row says Repo: a run in place
+		// keeps its folder plain until it ends, and none starts while it changes (#1020).
+		const release = holdConversion(repo.url);
+		try {
+			if (
+				await this.prisma.$transaction((tx) => liveIn(tx, repo.url), FOLDER_TX)
+			)
+				throw new ConflictException(FOLDER_BUSY);
+			try {
+				await startGit(repo.url);
+			} catch (err) {
+				if (err instanceof StartGitRefused)
+					throw new BadRequestException(err.message);
+				throw err;
+			}
+			const sync: SyncFields = {
+				syncBranch: null,
+				syncHead: null,
+				syncError: null,
+			};
+			try {
+				const check = await this.repoSource.checkFolder(repo.url);
+				Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
+			} catch (err) {
+				sync.syncError = (err as Error).message;
+			}
+			this.logger.log(`Started git in project ${id}`);
+			return await this.prisma.repository.update({
+				where: { id },
+				data: { plain: false, ...sync, syncedAt: new Date() },
+			});
+		} finally {
+			release();
+		}
 	}
 
 	/**
@@ -307,12 +396,17 @@ export class RepositoriesService {
 			where: { id: repositoryId },
 		});
 		if (!repo) throw new NotFoundException("Repository not found");
+		if (repo.plain)
+			throw new BadRequestException(
+				"This folder has no git. Start git here first.",
+			);
 
 		return this.prisma.serviceRepository.create({
 			data: {
 				serviceId: dto.serviceId,
 				repositoryId,
-				subPath: dto.subPath ?? null,
+				// A subfolder project's service runs in the same subfolder (#1020).
+				subPath: dto.subPath ?? repo.subPath ?? null,
 				isPrimary: dto.isPrimary ?? true,
 			},
 		});

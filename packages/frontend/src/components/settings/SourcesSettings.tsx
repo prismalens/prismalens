@@ -43,6 +43,7 @@ import {
 	CredentialChip,
 	credentialWord,
 	hostCredentialWord,
+	hostKind,
 	hostOf,
 	hostState,
 	hostVendor,
@@ -363,7 +364,9 @@ function SourceLine({
 			aria-controls={`more-${item.id}`}
 			className="flex min-h-16 w-full items-start gap-3 py-3 text-left"
 		>
-			<KindIcon kind={item.type === "host" ? "git" : item.row.kind} />
+			<KindIcon
+				kind={item.type === "host" ? hostKind(item.host.host) : item.row.kind}
+			/>
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
 					<span className="text-heading" data-testid="source-name">
@@ -491,7 +494,13 @@ function ManySources({
 	const detail = current && (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start gap-3">
-				<KindIcon kind={current.type === "host" ? "git" : current.row.kind} />
+				<KindIcon
+					kind={
+						current.type === "host"
+							? hostKind(current.host.host)
+							: current.row.kind
+					}
+				/>
 				<div className="min-w-0">
 					<div className="text-title [overflow-wrap:anywhere]">
 						{current.name}
@@ -711,7 +720,9 @@ function SourceTable({
 							<td className="py-2.5 pl-4">
 								<span className="flex min-w-0 items-center gap-2.5">
 									<KindIcon
-										kind={i.type === "host" ? "git" : i.row.kind}
+										kind={
+											i.type === "host" ? hostKind(i.host.host) : i.row.kind
+										}
 										small
 									/>
 									<span className="min-w-0">
@@ -765,7 +776,9 @@ function SourceCards({
 						data-source={i.name}
 					>
 						<span className="flex items-start gap-3">
-							<KindIcon kind={i.type === "host" ? "git" : i.row.kind} />
+							<KindIcon
+								kind={i.type === "host" ? hostKind(i.host.host) : i.row.kind}
+							/>
 							<span className="min-w-0 flex-1">
 								<b className="block font-semibold [overflow-wrap:anywhere]">
 									{i.name}

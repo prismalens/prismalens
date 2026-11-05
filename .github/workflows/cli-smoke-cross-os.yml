@@ -7,9 +7,9 @@
 # testing ground; this workflow only proves the packaged CLI artifact.
 #
 # Two modes, chosen by the `mode` job from the triggering event:
-#   - tarball  (pull_request touching packages/** or this workflow, and push
-#     to main): build + `node scripts/pack-cli.mjs`, cold-install the tarballs into a clean
-#     dir, drive the installed bin. Fast feedback on every PR.
+#   - tarball  (pull_request touching this smoke or the release manifest, push
+#     to main, and nightly): build + `node scripts/pack-cli.mjs`, cold-install the tarballs into a clean
+#     dir, drive the installed bin.
 #   - registry (workflow_dispatch, and `release: published` for the
 #     unscoped `prismalens` package tag): `npm install prismalens@<version>`
 #     from the real npm registry into a clean dir, drive the installed bin.
@@ -36,13 +36,15 @@
 name: Cross-OS CLI smoke
 
 on:
+  # A PR runs it only when it changes this smoke itself or is a release PR (#1052): the
+  # packaged CLI on three OSes is proved on every merge to main and nightly instead.
   pull_request:
     paths:
-      - "packages/**"
       - ".github/workflows/cli-smoke-cross-os.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
       - "scripts/lib/app-boot-retry.mjs"
+      - ".release-please-manifest.json"
   push:
     branches: [main]
     paths:
@@ -51,6 +53,8 @@ on:
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
       - "scripts/lib/app-boot-retry.mjs"
+  schedule:
+    - cron: "11 4 * * *"
   release:
     types: [published]
   workflow_dispatch:

@@ -15,7 +15,6 @@ import {
 } from "@tanstack/react-router";
 import { AlertTriangle, ServerOff } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
-import { NewIncidentProvider } from "@/components/shell/NewIncident";
 import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
@@ -23,9 +22,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { FONT_COOKIE, SYSTEM_FONT_STACK } from "@/lib/appearance";
+import { EARLY_KEYS_SCRIPT } from "@/lib/early-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
+import { useTitleRowEdges } from "@/lib/title-row";
 import { queryClient, type RouterContext } from "@/router";
 import appCss from "../app.css?url";
 
@@ -71,7 +72,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 		// written into the JSX <head> is not an option: TanStack Start renders
 		// the head through `HeadContent` and silently drops anything else there,
 		// which is exactly how the first attempt vanished from the shell.
-		scripts: [{ children: PRE_PAINT }],
+		scripts: [{ children: PRE_PAINT }, { children: EARLY_KEYS_SCRIPT }],
 	}),
 	component: RootLayout,
 	errorComponent: RootError,
@@ -79,27 +80,25 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
+	useTitleRowEdges();
 	return (
 		<html lang="en" className={DEFAULT_THEME} suppressHydrationWarning>
 			<head>
 				<HeadContent />
 			</head>
 			<body className="font-sans">
-				<TitleBarStrip />
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
 						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
-							<NewIncidentProvider>
-								<div className="min-h-dvh bg-canvas text-text-1">
-									<Sidebar />
-									<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
-										<ReconnectLine />
-										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-											<Outlet />
-										</div>
-									</main>
-								</div>
-							</NewIncidentProvider>
+							<div className="min-h-dvh bg-canvas text-text-1">
+								<Sidebar />
+								<main className="min-w-0 md:pl-(--sidebar-w)">
+									<ReconnectLine />
+									<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+										<Outlet />
+									</div>
+								</main>
+							</div>
 						</TooltipProvider>
 						<Toaster />
 						<ReactQueryDevtools initialIsOpen={false} />

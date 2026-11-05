@@ -28,8 +28,19 @@ permissions:
   # The sweep proves its repository to the telemetry Worker with an OIDC token (gh-workflows#176).
   id-token: write
 
+# One sweep per PR at a time; a newer review supersedes a queued one (#1052).
+concurrency:
+  group: review-sweep-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   sweep:
+    # The sweep reads claude[bot] threads. A review by any other bot (CodeRabbit posts dozens
+    # an hour) cannot change them, so it takes no runner (#1052). Humans may be replying in one.
+    if: >-
+      github.event_name != 'pull_request_review' ||
+      github.event.review.user.type != 'Bot' ||
+      github.event.review.user.login == 'claude[bot]'
     uses: prismalens/gh-workflows/.github/workflows/review-findings-sweep.yml@main
     with:
       full_history: ${{ inputs.full_history || false }}
