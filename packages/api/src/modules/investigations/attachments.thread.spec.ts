@@ -155,10 +155,19 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 
 	it("claims through the transaction client it is given", async () => {
 		const made = await service().uploadDraft(DRAFT, text("tx"));
-		const tx = { attachment: prisma.attachment };
+		const tx = {
+			attachment: {
+				updateMany: vi.fn(prisma.attachment.updateMany.getMockImplementation()),
+				findMany: vi.fn(prisma.attachment.findMany.getMockImplementation()),
+			},
+		};
 		prisma.attachment.updateMany.mockClear();
+		prisma.attachment.findMany.mockClear();
 		await service().claimDraft(DRAFT, [made.id], RUN, tx as never);
-		expect(prisma.attachment.updateMany).toHaveBeenCalledTimes(1);
+		expect(tx.attachment.updateMany).toHaveBeenCalledTimes(1);
+		expect(tx.attachment.findMany).toHaveBeenCalledTimes(1);
+		expect(prisma.attachment.updateMany).not.toHaveBeenCalled();
+		expect(prisma.attachment.findMany).not.toHaveBeenCalled();
 	});
 
 	it("refuses a scheduled check with no incident yet, whose message route takes no files", async () => {
