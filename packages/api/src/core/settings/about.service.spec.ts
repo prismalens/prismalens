@@ -72,7 +72,9 @@ describe("AboutService", () => {
 	it("names the installer's commands for an installer copy", async () => {
 		const a = await about({ PRISMALENS_INSTALL: "standalone", PRISMALENS_UPDATE_CHECK: "off" }, github(true));
 		expect(a.channel).toBe("installer");
-		expect(a.uninstallCommand).toContain("--uninstall");
+		expect(a.uninstallCommand).toContain(
+			process.platform === "win32" ? "-Uninstall" : "--uninstall",
+		);
 	});
 
 	it("exposes the build commit sha or null on the about endpoint", async () => {

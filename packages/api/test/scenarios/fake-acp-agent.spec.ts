@@ -32,7 +32,10 @@ async function run(
 		harness: "claude-code",
 		descriptor: {
 			...HARNESS_REGISTRY["claude-code"],
-			binary: join(binDir, "claude-agent-acp"),
+			binary: join(
+				binDir,
+				process.platform === "win32" ? "claude-agent-acp.cmd" : "claude-agent-acp",
+			),
 		},
 		cwd: mkdtempSync(join(root, "clone-")),
 		runDir: mkdtempSync(join(root, "run-")),
