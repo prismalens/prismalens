@@ -79,7 +79,7 @@ test.describe("Terminal panel (#931)", () => {
 		await door.click();
 		await expect(panel).toHaveCount(0);
 		await page.getByTestId("nav-search").click();
-		await page.getByTestId("search-terminal").click();
+		await page.getByTestId("thread-search-action-terminal").click();
 		await expect(panel.getByTestId("terminal-panel")).toBeVisible();
 
 		await page.reload();
