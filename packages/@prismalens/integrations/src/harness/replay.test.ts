@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { executeTool } from "./registry.js";
 import { type RecordedCall, fixturesFrom, replayCalls } from "./replay.js";
-import { defineHarnessTool } from "./tool.js";
+import { defineHarnessTool, EVERY_SUBJECT } from "./tool.js";
 
 describe("replayCalls", () => {
 	it("replays recorded calls and returns same for matching outputs", async () => {
@@ -15,6 +15,7 @@ describe("replayCalls", () => {
 				title: "Echo",
 				description: "desc",
 				group: "core",
+				serves: { subjects: EVERY_SUBJECT },
 				effect: "read",
 				input: z.object({ msg: z.string() }),
 				run: async ({ msg }) => ({ value: { echo: msg } }),
@@ -52,6 +53,7 @@ describe("replayCalls", () => {
 			title: "Read runbook",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ path: z.string(), service: z.string().optional() }),
 			run: async ({ path }) => ({
@@ -98,6 +100,7 @@ describe("replayCalls", () => {
 				title: "Test",
 				description: "desc",
 				group: "core",
+				serves: { subjects: EVERY_SUBJECT },
 				effect: "read",
 				input: z.object({}),
 				run: async () => ({ value: "ok" }),
@@ -150,6 +153,7 @@ describe("replayCalls", () => {
 				title: "Test",
 				description: "desc",
 				group: "core",
+				serves: { subjects: EVERY_SUBJECT },
 				effect: "read",
 				input: z.object({}),
 				run: async () => ({ value: "ok" }),
@@ -184,6 +188,7 @@ describe("replayCalls", () => {
 				title: "Record evidence",
 				description: "desc",
 				group: "record",
+				serves: { subjects: EVERY_SUBJECT },
 				effect: "record",
 				input: z.object({
 					id: z.string(),

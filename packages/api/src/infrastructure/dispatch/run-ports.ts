@@ -25,6 +25,7 @@ import type {
 	RunUsage,
 } from "@prismalens/contracts/schemas";
 import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
+import type { HarnessScope } from "@prismalens/integrations/harness";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import type {
 	RepoSource,
@@ -49,6 +50,8 @@ export interface IncidentRepo {
 	connectionId: string | null;
 	/** The service that links it; one repo may come back once per service (#747). */
 	serviceName: string;
+	/** A folder with no git: only a thread a person starts runs in it, in place (#1020). */
+	plain?: boolean;
 }
 
 export interface RunPorts {
@@ -231,6 +234,8 @@ export interface RunPorts {
 			harness?: string,
 			/** A follow-up's start, so `run_status` counts its own wall clock. */
 			turnStartedAt?: Date,
+			/** What the run is about and owes; its tools follow (#1020). */
+			scope?: HarnessScope,
 		): Promise<GatewayEntry | null>;
 		revoke(runId: string): void;
 	};

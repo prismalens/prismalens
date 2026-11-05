@@ -17,7 +17,7 @@ Feature: Agent and model picker
     Then the effort chip reads Codex's default "Medium", and its menu tags it "Codex's pick"
     And the model chip's list is the one Codex offers, with no "Run a check to list models"
     When I pick Claude Code and open a new run's draft
-    Then the effort chip is disabled, reading "Fixed"
+    Then the box shows no effort chip
     And every agent offers the same four permission levels, "Ask always" first, the level a run takes tagged "From your settings file", "PrismaLens's pick" or "Set in Settings", and a lock only where a sandbox was proven
 
   Scenario: The access chip shows four levels with Ask always as the default
@@ -28,11 +28,11 @@ Feature: Agent and model picker
     And "Ask always" is tagged "PrismaLens's pick"
 
 
-  # #673 w59: the verb chip, first in a draft's footer, and its popover.
-  Scenario: The verb chip says what the next message asks for
+  # #1020: what Send does reads above the box; the other actions are under "/".
+  Scenario: The box says what the next message asks for
     When I pick Codex and open a new run's draft
-    Then the verb chip reads "Investigate" and its menu explains "Investigate" and "Ask" with "Enter does what the chip says."
-    When I pick "Ask" in the verb menu
+    Then the box's action reads "Investigate" and "/" offers "Ask" with "No new report"
+    When I pick "Ask" under "/"
     Then the box's one send control is the arrow and its placeholder reads "Ask about this incident"
 
   # Quarantined: #893 - the picker's 'A chip changes only this run' journey passes on its first attempt

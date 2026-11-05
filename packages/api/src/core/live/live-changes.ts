@@ -12,11 +12,15 @@ const TOPIC_BY_MODEL: Readonly<Record<string, LiveTopic>> = {
 	Alert: "alerts",
 	AlertSourceAlert: "alerts",
 	Investigation: "investigations",
+	InvestigationEvent: "threads",
 	Schedule: "schedules",
 	ScheduleTick: "schedules",
 	// A ticked Do now step is shared across browsers (study-v3 §3.2).
 	Recommendation: "incidents",
 };
+
+/** An agent's events come fast; the thread list re-reads for them at most once per slower window. */
+const SLOW_TOPICS: ReadonlySet<LiveTopic> = new Set(["threads"]);
 
 const WRITE_OPERATIONS = new Set([
 	"create",
@@ -38,10 +42,12 @@ const WRITE_OPERATIONS = new Set([
 export class LiveChanges {
 	private readonly emitter = new EventEmitter();
 	private readonly transaction = new AsyncLocalStorage<[string, string][]>();
-	private pending = new Set<LiveTopic>();
-	private timer: NodeJS.Timeout | null = null;
+	private readonly batches = new Map<number, Set<LiveTopic>>();
 
-	constructor(private readonly windowMs = 250) {
+	constructor(
+		private readonly windowMs = 250,
+		private readonly slowMs = 1_000,
+	) {
 		this.emitter.setMaxListeners(0);
 	}
 
@@ -53,9 +59,19 @@ export class LiveChanges {
 		}
 		const topic = model ? TOPIC_BY_MODEL[model] : undefined;
 		if (!topic || !WRITE_OPERATIONS.has(operation)) return;
-		this.pending.add(topic);
-		this.timer ??= setTimeout(() => this.flush(), this.windowMs);
-		this.timer.unref?.();
+		this.noteTopic(topic);
+	}
+
+	/** For a write to a shared model (Setting) that only one list reads. */
+	noteTopic(topic: LiveTopic): void {
+		const ms = SLOW_TOPICS.has(topic) ? this.slowMs : this.windowMs;
+		let batch = this.batches.get(ms);
+		if (!batch) {
+			batch = new Set();
+			this.batches.set(ms, batch);
+			setTimeout(() => this.flush(ms), ms).unref?.();
+		}
+		batch.add(topic);
 	}
 
 	/**
@@ -99,12 +115,11 @@ export class LiveChanges {
 		}
 	}
 
-	private flush(): void {
-		this.timer = null;
-		if (this.pending.size === 0) return;
-		const topics = [...this.pending];
-		this.pending = new Set();
-		this.emitter.emit("change", { topics } satisfies LiveChange);
+	private flush(ms: number): void {
+		const batch = this.batches.get(ms);
+		this.batches.delete(ms);
+		if (!batch?.size) return;
+		this.emitter.emit("change", { topics: [...batch] } satisfies LiveChange);
 	}
 }
 

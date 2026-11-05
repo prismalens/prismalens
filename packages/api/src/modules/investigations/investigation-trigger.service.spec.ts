@@ -62,6 +62,7 @@ describe("InvestigationTriggerService", () => {
 		resolveSelection: vi.fn(),
 		ensureReady: vi.fn(),
 		effectiveChoice: vi.fn(async () => ({ accessLevel: "auto" })),
+		getSettings: vi.fn(async () => ({ harness: "auto" }) as Record<string, unknown>),
 	};
 
 	beforeEach(async () => {
@@ -73,6 +74,7 @@ describe("InvestigationTriggerService", () => {
 		});
 		mockHarnessService.ensureReady.mockResolvedValue({ ready: true });
 		mockHarnessService.effectiveChoice.mockResolvedValue({ accessLevel: "auto" });
+		mockHarnessService.getSettings.mockResolvedValue({ harness: "auto" });
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "debug").mockImplementation(() => {});
@@ -407,7 +409,22 @@ describe("InvestigationTriggerService", () => {
 					investigationId: "inv-auto",
 					accessLevel: "auto",
 					unattended: true,
+					startedBy: "alert",
 				}),
+			);
+		});
+
+		it("Wait for me in Settings leaves an alert run's asks to a person; it is still an alert's run (#1020 R33)", async () => {
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-wait" }, created: true });
+			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
+			mockPrisma.alert.findMany.mockResolvedValue([]);
+			mockDispatchService.addInvestigationJob.mockResolvedValue("job-wait");
+			mockHarnessService.getSettings.mockResolvedValue({ harness: "auto", alertAsks: "wait" });
+
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
+				expect.objectContaining({ investigationId: "inv-wait", unattended: false, waitForAsks: true, startedBy: "alert" }),
 			);
 		});
 

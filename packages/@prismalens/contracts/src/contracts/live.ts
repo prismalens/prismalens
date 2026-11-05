@@ -14,6 +14,8 @@ export const LIVE_TOPICS = [
 	"alerts",
 	"investigations",
 	"schedules",
+	/** An agent's event: the thread list's previews and activity moved (#1020). */
+	"threads",
 ] as const;
 export const LiveTopicSchema = z.enum(LIVE_TOPICS);
 export type LiveTopic = z.infer<typeof LiveTopicSchema>;

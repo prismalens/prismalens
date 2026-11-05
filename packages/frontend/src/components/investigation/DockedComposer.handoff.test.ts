@@ -51,6 +51,7 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				button("pick-model", () => p.onPick(h.opencode, "vendor/b")),
 				button("pick-agent", () => p.onPick(h.codex, "")),
 			),
+		effortLevels: () => [{ id: "low", name: "Low", default: true }],
 		EffortChip: (p: { onEffort: (e: string) => void; effort: string | null }) =>
 			el(
 				"span",

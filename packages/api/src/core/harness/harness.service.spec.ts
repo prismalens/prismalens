@@ -733,6 +733,8 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		["a paired device", { binaryPaths: { codex: "/usr/bin/codex" } }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
 		["strict mode from a paired device", { strictEnv: false }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
 		["resume after a restart from a paired device", { resumeAfterRestart: false }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
+		["the unattended GitHub token from a paired device", { unattendedGithub: true }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
+		["When an alert run asks from a paired device", { alertAsks: "wait" }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
 		["a relative path", { binaryPaths: { codex: "bin/codex" } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a bare name not on PATH", { localAgent: { command: "nowhere-on-path", args: [] } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a config dir on an agent with none", { configDirs: { opencode: "/tmp" } }, "BAD_REQUEST", "OpenCode has no config directory setting.", true],
@@ -817,6 +819,20 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect((await svc.runtimeFor("codex")).policy?.floor).toEqual({ mode: "allowlist" });
 		await svc.updateSettings({ strictEnv: false });
 		expect((await svc.getSettings()).strictEnv).toBeUndefined();
+	});
+
+	it("unattended runs' GitHub token and When an alert run asks are off and Decide by default, and saved when changed (#1020)", async () => {
+		const { svc } = runtimeService();
+		expect((await svc.getSettings()).unattendedGithub).toBeUndefined();
+		expect((await svc.getSettings()).alertAsks).toBeUndefined();
+		expect((await svc.runtimeFor("codex")).unattendedGithub).toBeUndefined();
+		await svc.updateSettings({ unattendedGithub: true, alertAsks: "wait" });
+		expect(JSON.parse(store.HARNESS?.value ?? "{}")).toMatchObject({ unattendedGithub: true, alertAsks: "wait" });
+		expect((await svc.runtimeFor("codex")).unattendedGithub).toBe(true);
+		await svc.updateSettings({ unattendedGithub: false, alertAsks: "decide" });
+		const after = JSON.parse(store.HARNESS?.value ?? "{}");
+		expect(after.unattendedGithub).toBeUndefined();
+		expect(after.alertAsks).toBeUndefined();
 	});
 
 	it("an unsafe host gateway fails only that agent, and a saved https one fixes it (#911)", async () => {

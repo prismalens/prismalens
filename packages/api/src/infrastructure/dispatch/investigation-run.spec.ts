@@ -9,7 +9,7 @@
  * needs `conductRun` to run at all.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
@@ -1151,6 +1151,34 @@ describe("harness child env (trust floor, #628)", () => {
 		const [opts] = mocks.conductRun.mock.calls[0] as [{ env: Record<string, string>; policy?: unknown }];
 		expect(opts.env).toEqual({ MY_KEY: "v" });
 		expect(opts.policy).toEqual(policy);
+	});
+
+	it("launches an alert's or a schedule's run with no GitHub token, a person's with it, unless the host allows it (#1020 R41)", async () => {
+		const githubOf = async (job: Partial<InvestigationJobData>, unattendedGithub?: boolean) => {
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockResolvedValue({ report: { summary: "done", rootCause: null, nextSteps: [] } });
+			const policy = prismalensLaunchPolicy();
+			const ports = fakePorts({
+				agentRuntime: vi.fn(async () => ({ env: {}, policy, note: null, ...(unattendedGithub ? { unattendedGithub } : {}) })),
+			});
+			await runInvestigationJob(
+				{ id: "job-gh", investigationId: "inv-gh", attempts: 1 },
+				{ investigationId: "inv-gh", incidentId: "inc-gh", ...job },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ policy?: { github: string } }];
+			return opts.policy?.github;
+		};
+		expect(await githubOf({})).toBe("include");
+		expect(await githubOf({ startedBy: "person" })).toBe("include");
+		expect(await githubOf({ startedBy: "alert" })).toBe("exclude");
+		// A Wait for me alert run is attended for asks, still not a person's thread.
+		expect(await githubOf({ startedBy: "alert", unattended: false })).toBe("exclude");
+		expect(await githubOf({ unattended: true })).toBe("exclude");
+		expect(await githubOf({ startedBy: "schedule" })).toBe("exclude");
+		expect(await githubOf({ startedBy: "schedule" }, true)).toBe("include");
+		expect(await githubOf({ startedBy: "alert" }, true)).toBe("include");
 	});
 
 	it("spawns with the agent's Settings runtime: env, command and arguments (#907)", async () => {
@@ -2669,7 +2697,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 			ports,
 		);
-		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String));
+		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), undefined, { subject: "incident", owes: "report" });
 		const leasedName = lease.mock.calls[0]?.[1];
 		const updateCall = findWorkspaceCall(updateStatus);
 		const parsed = JSON.parse(updateCall[1].workspace ?? "{}");
@@ -2751,7 +2779,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date));
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date), { subject: "incident", owes: "report" });
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe("prismalens-reused1234");
@@ -2831,7 +2859,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date));
+		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date), { subject: "incident", owes: "report" });
 		const leasedName = lease.mock.calls[0]?.[1];
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
@@ -3400,5 +3428,354 @@ describe("a service check with no incident (#979)", () => {
 		expect(calls.length).toBeGreaterThan(0);
 		expect(calls.every((id) => id === null)).toBe(true);
 		expect(ports.writeResult).not.toHaveBeenCalledWith("inv-check", expect.objectContaining({ incidentId: expect.any(String) }));
+	});
+});
+
+describe("a schedule on a project, a service or nothing (#1020)", () => {
+	let tmp: string;
+	const projectRepo = {
+		sourceKind: "url" as const,
+		url: "https://github.com/acme/shop",
+		defaultBranch: "main",
+		subPath: "apps/web",
+		connectionId: null,
+		serviceName: "shop-monorepo",
+	};
+	const onProject = {
+		scheduleId: "sch-p",
+		revision: 1,
+		subject: "project" as const,
+		serviceId: null,
+		serviceName: "",
+		repositoryId: "repo-1",
+		projectName: "shop-monorepo",
+		serviceNotes: null,
+		runbook: null,
+		repos: [projectRepo],
+	};
+	const onNothing = { ...onProject, scheduleId: "sch-n", subject: "none" as const, repositoryId: null, projectName: null, repos: [] };
+	const data = (over: Partial<InvestigationJobData> = {}): InvestigationJobData => ({
+		investigationId: "inv-sched",
+		incidentId: null,
+		scheduled: onProject,
+		brief: "Run the tests and say what broke.",
+		unattended: true,
+		startedBy: "schedule",
+		...over,
+	});
+	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+	const leased = () => fakePorts({ gateway: { lease: vi.fn(async () => null), revoke: vi.fn() } });
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-sched-run-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ failureKind: null, report: { summary: "ok", rootCause: null, nextSteps: [] } });
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("a project schedule checks out the project it froze, starts in its sub-path and never takes a same-named service's policy", async () => {
+		const serviceIdOf = vi.fn(async (_name: string) => "svc-same-name");
+		setRunWorkspaceSource({
+			global: () => DEFAULT_RUN_WORKSPACE_SETTINGS,
+			override: () => ({ setup: { command: "touch pwned" } }) as never,
+			locations: () => [],
+			serviceIdOf,
+			record: () => {},
+		});
+		const ports = fakePorts({
+			incidentRepos: vi.fn(async () => {
+				throw new Error("a schedule reads no live bindings");
+			}),
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => {
+				mkdirSync(join(dest, "apps", "web"), { recursive: true });
+				return { path: dest, head: "abc123def456789", branch: "main" as const };
+			}),
+		});
+		const ws = await resolveWorkspace(data(), ports);
+		expect(vi.mocked(ports.snapshotWith).mock.calls[0]?.[0]).toMatchObject({ url: "https://github.com/acme/shop" });
+		expect(ws.cwd.replaceAll("\\", "/")).toMatch(/apps\/web$/);
+		expect(ws.repos[0]?.services).toEqual([]);
+		expect(serviceIdOf).not.toHaveBeenCalled();
+	});
+
+	it("a schedule with no code runs without code and says the schedule has no project", async () => {
+		const ws = await resolveWorkspace(data({ scheduled: onNothing }), fakePorts());
+		expect(ws.layout).toBe("unmapped");
+		expect(ws.note).toBe("Ran without code: this schedule has no project.");
+	});
+
+	it("Report on: a project's check names the project, owes a report, and its tools follow the project", async () => {
+		const ports = leased();
+		await runInvestigationJob({ id: "job-sched", investigationId: "inv-sched", attempts: 1 }, data(), io(), ports);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; kind?: string }];
+		expect(opts.kind).toBeUndefined();
+		expect(opts.context).toMatchObject({
+			mode: "service-check",
+			alerts: [],
+			check: { brief: "Run the tests and say what broke.", project: "shop-monorepo" },
+		});
+		expect(opts.context.service).toBeUndefined();
+		expect(vi.mocked(ports.resolveConnectors)).toHaveBeenCalledWith(undefined);
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "schedule", owes: "report" });
+	});
+
+	it("Report off: the saved text opens a chat about the subject, which owes an answer", async () => {
+		const ports = leased();
+		await runInvestigationJob(
+			{ id: "job-sched", investigationId: "inv-sched", attempts: 1 },
+			data({ brief: undefined, kind: "chat", chat: { text: "Run the tests and say what broke." } }),
+			io(),
+			ports,
+		);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; kind?: string; brief?: string }];
+		expect(opts.kind).toBe("chat");
+		expect(opts.brief).toBe("Run the tests and say what broke.");
+		expect(opts.context).toMatchObject({ mode: "project-chat", thread: { subject: "project", name: "shop-monorepo" } });
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "schedule", owes: "answer" });
+	});
+
+	it("a no-code schedule's run is offered only the tools a no-subject thread gets", async () => {
+		const ports = leased();
+		await runInvestigationJob({ id: "job-sched", investigationId: "inv-sched", attempts: 1 }, data({ scheduled: onNothing }), io(), ports);
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "none", owes: "report" });
+	});
+
+	it("hands the schedule's remembered asks to the run, and none when it has none", async () => {
+		const remembered = [{ kind: "execute", identity: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }];
+		await runInvestigationJob(
+			{ id: "job-sched", investigationId: "inv-sched", attempts: 1 },
+			data({ scheduled: { ...onProject, alwaysAllow: remembered } }),
+			io(),
+			fakePorts(),
+		);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ alwaysAllow?: unknown; unattended?: boolean }];
+		expect(opts.alwaysAllow).toEqual(remembered);
+		mocks.conductRun.mockClear();
+		await runInvestigationJob(
+			{ id: "job-sched", investigationId: "inv-sched", attempts: 1 },
+			data({ unattended: false, waitForAsks: true }),
+			io(),
+			fakePorts(),
+		);
+		const [waiting] = mocks.conductRun.mock.calls[0] as [{ alwaysAllow?: unknown; unattended?: boolean; waitForAsks?: boolean }];
+		expect(waiting.alwaysAllow).toBeUndefined();
+		// Wait for me: the run's asks go to a person, not refused at once and not answered by the level.
+		expect(waiting.unattended).toBeUndefined();
+		expect(waiting.waitForAsks).toBe(true);
+	});
+});
+
+describe("a project, service or no-subject thread (#1020)", () => {
+	let tmp: string;
+	const thread = {
+		subject: "project" as const,
+		repositoryId: "repo-1",
+		serviceId: null,
+		name: "shop-monorepo",
+		repos: [
+			{ sourceKind: "url" as const, url: "https://github.com/acme/shop", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "shop-monorepo" },
+		],
+	};
+	const data = (over: Partial<InvestigationJobData> = {}): InvestigationJobData => ({
+		investigationId: "inv-thread",
+		incidentId: null,
+		thread,
+		kind: "chat",
+		chat: { text: "Rename the retry helper" },
+		...over,
+	});
+	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-thread-run-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ failureKind: null, report: null, error: null });
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("checks out the project's own code and never asks for an incident's repositories", async () => {
+		const incidentRepos = vi.fn(async () => []);
+		const ports = fakePorts({
+			incidentRepos,
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const ws = await resolveWorkspace(data(), ports);
+
+		expect(incidentRepos).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.snapshotWith).mock.calls[0]?.[0]).toMatchObject({ url: "https://github.com/acme/shop" });
+		expect(ws.layout).toBe("single");
+	});
+
+	it("a project named like a service never takes that service's workspace policy", async () => {
+		const serviceIdOf = vi.fn(async (name: string) => (name === "shop-monorepo" ? "svc-same-name" : null));
+		setRunWorkspaceSource({
+			global: () => DEFAULT_RUN_WORKSPACE_SETTINGS,
+			override: () => ({ setup: { command: "touch pwned" } }) as never,
+			locations: () => [],
+			serviceIdOf,
+			record: () => {},
+		});
+		const ports = fakePorts({
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		await resolveWorkspace(data(), ports);
+		expect(serviceIdOf).not.toHaveBeenCalled();
+
+		const service = { ...thread, subject: "service" as const, repositoryId: null, serviceId: "svc-1", name: "checkout", repos: [{ ...thread.repos[0], serviceName: "checkout" }] };
+		await resolveWorkspace(data({ thread: service as never }), ports);
+		expect(serviceIdOf).toHaveBeenCalledWith("checkout");
+	});
+
+	it("a project named like a service never reads that service's deployments", async () => {
+		const deployments = vi.fn(async () => []);
+		const ports = fakePorts({
+			deployments,
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const ws = await resolveWorkspace(data(), ports);
+		expect(ws.repos[0]?.services).toEqual([]);
+
+		await runInvestigationJob({ id: "job-deploys", investigationId: "inv-thread", attempts: 1 }, data(), io(), ports);
+		for (const [names] of deployments.mock.calls as unknown as [string[]][])
+			expect(names).not.toContain("shop-monorepo");
+	});
+
+	it("a thread with no project runs without code and says so, naming no incident", async () => {
+		const ws = await resolveWorkspace(data({ thread: { ...thread, subject: "none", repositoryId: null, name: null, repos: [] } }), fakePorts());
+
+		expect(ws.layout).toBe("unmapped");
+		expect(ws.note).toBe("Ran without code: this thread has no project linked.");
+	});
+
+	it("frames a coding chat: no incident read, no made-up alert, the project's name", async () => {
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => {
+				throw new Error("a project thread reads no incident");
+			}),
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => ({ path: dest, head: "abc123def456789", branch: "main" as const })),
+		});
+
+		const result = await runInvestigationJob({ id: "job-thread", investigationId: "inv-thread", attempts: 1 }, data(), io(), ports);
+
+		expect(result).toMatchObject({ success: true, incidentId: null });
+		expect(ports.getIncident).not.toHaveBeenCalled();
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown>; kind?: string; brief?: string }];
+		expect(opts.context).toMatchObject({ mode: "project-chat", alerts: [], thread: { subject: "project", name: "shop-monorepo" } });
+		expect(opts.context.incident).toBeUndefined();
+		expect(opts.kind).toBe("chat");
+		expect(opts.brief).toBe("Rename the retry helper");
+	});
+
+	describe("a plain folder project runs in place (#1020)", () => {
+		let folder: string;
+		const plainThread = () => ({
+			...thread,
+			name: "notes",
+			repos: [{ sourceKind: "folder" as const, url: folder, defaultBranch: null, subPath: null, connectionId: null, serviceName: "notes", plain: true }],
+		});
+		beforeEach(() => {
+			folder = realpathSync.native(mkdtempSync(join(os.tmpdir(), "pl-plain-")));
+		});
+		afterEach(() => rmSync(folder, { recursive: true, force: true }));
+
+		it("a thread you start works in the folder itself: no snapshot, no branch, nothing to diff", async () => {
+			const ports = fakePorts();
+			const ws = await resolveWorkspace(data({ thread: plainThread() }), ports);
+			expect(ws).toMatchObject({ layout: "folder", cwd: folder, repos: [] });
+			expect(ports.snapshotWith).not.toHaveBeenCalled();
+			expect(ws.note).toContain("not undone");
+		});
+
+		it("an alert or schedule run on a plain folder never touches it", async () => {
+			const ports = fakePorts({ incidentRepos: vi.fn(async () => [plainThread().repos[0] as IncidentRepo]) });
+			const alert = await resolveWorkspace(data({ thread: undefined, incidentId: "inc-1" }), ports);
+			expect(alert.layout).toBe("unmapped");
+			expect(alert.note).toContain("runs only in a thread you start");
+			const unattended = await resolveWorkspace(data({ thread: plainThread(), unattended: true }), ports);
+			expect(unattended.layout).toBe("unmapped");
+			expect(ports.snapshotWith).not.toHaveBeenCalled();
+		});
+
+		it("a folder swapped for a link is not run in", async () => {
+			const target = mkdtempSync(join(os.tmpdir(), "pl-plain-target-"));
+			const link = join(folder, "door");
+			symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+			const t = plainThread();
+			const ws = await resolveWorkspace(data({ thread: { ...t, repos: [{ ...t.repos[0], url: link }] } as never }), fakePorts());
+			expect(ws.layout).toBe("unmapped");
+			rmSync(target, { recursive: true, force: true });
+		});
+
+		it("a folder reached through a linked parent is not run in (#1020)", async () => {
+			mkdirSync(join(folder, "real", "notes"), { recursive: true });
+			symlinkSync(join(folder, "real"), join(folder, "alias"), process.platform === "win32" ? "junction" : "dir");
+			const t = plainThread();
+			const ws = await resolveWorkspace(data({ thread: { ...t, repos: [{ ...t.repos[0], url: join(folder, "alias", "notes") }] } as never }), fakePorts());
+			expect(ws.layout).toBe("unmapped");
+		});
+
+		it("a follow-up keeps the folder only while the project still names it as a plain folder", async () => {
+			const ws: RunWorkspace = { layout: "folder", cwd: folder, repos: [] };
+			const again = await rebuildWorkspace(ws, "inv-thread", "OpenCode", fakePorts(), undefined, false, folder);
+			expect(again).toMatchObject({ layout: "folder", cwd: folder });
+			await expect(rebuildWorkspace(ws, "inv-thread", "OpenCode", fakePorts(), undefined, false, null)).rejects.toThrow(/changed/);
+		});
+
+		it("a handoff never deletes a folder of the user's that holds the transcript's name", () => {
+			const mine = join(folder, ".prismalens-handoff");
+			mkdirSync(mine);
+			writeFileSync(join(mine, "keep.txt"), "mine");
+			writeHandoffTranscript({ layout: "folder", cwd: folder, repos: [] }, "t");
+			expect(readFileSync(join(mine, "keep.txt"), "utf8")).toBe("mine");
+			expect(existsSync(join(mine, "transcript.md"))).toBe(false);
+		});
+	});
+
+	it("a subfolder project starts the agent in its sub-path, and a link on the way is refused", async () => {
+		const sub = { ...thread, repos: [{ ...thread.repos[0], subPath: "packages/api" }] };
+		const ports = fakePorts({
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => {
+				mkdirSync(join(dest, "packages", "api"), { recursive: true });
+				return { path: dest, head: "abc123def456789", branch: "main" as const };
+			}),
+		});
+		const ws = await resolveWorkspace(data({ thread: sub as never }), ports);
+		expect(ws.cwd).toBe(join(runWorktreeDir("inv-thread"), "packages", "api"));
+
+		const outside = mkdtempSync(join(os.tmpdir(), "pl-sub-out-"));
+		const linked = fakePorts({
+			snapshotWith: cloneAs(async (_ref: unknown, dest: string) => {
+				mkdirSync(join(dest, "packages"), { recursive: true });
+				mkdirSync(join(dest, "real"), { recursive: true });
+				symlinkSync(join(dest, "real"), join(dest, "packages", "api"), process.platform === "win32" ? "junction" : "dir");
+				return { path: dest, head: "abc123def456789", branch: "main" as const };
+			}),
+		});
+		const refused = await resolveWorkspace(data({ thread: sub as never, investigationId: "inv-thread2" }), linked);
+		expect(refused.layout).toBe("unmapped");
+		expect(refused.note).toContain("goes through a link");
+		rmSync(outside, { recursive: true, force: true });
+	});
+
+	it("a service thread reads the service's connectors and names the service", async () => {
+		const ports = fakePorts();
+		const service = { ...thread, subject: "service" as const, repositoryId: null, serviceId: "svc-1", name: "checkout", repos: [] };
+
+		await runInvestigationJob({ id: "job-svc", investigationId: "inv-thread", attempts: 1 }, data({ thread: service }), io(), ports);
+
+		expect(ports.resolveConnectors).toHaveBeenCalledWith("svc-1");
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: Record<string, unknown> }];
+		expect(opts.context).toMatchObject({ mode: "project-chat", service: { name: "checkout" }, thread: { subject: "service" } });
 	});
 });

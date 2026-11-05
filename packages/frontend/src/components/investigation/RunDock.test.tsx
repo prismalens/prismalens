@@ -155,3 +155,43 @@ describe("RunDock asks (#820, #673 w5-43)", () => {
 		expect(onStep).toHaveBeenCalledWith(4);
 	});
 });
+
+describe("Always allow on a schedule's run (#1020)", () => {
+	it("is offered only on a schedule's run, and remembers the ask for its next runs", async () => {
+		await render([ask(1)]);
+		expect(button("ask-always")).toBeNull();
+		await act(async () => {
+			root.render(
+				<RunDock
+					asks={[ask(4)]}
+					queued={[]}
+					runId="run-1"
+					agent="Claude Code"
+					always
+				/>,
+			);
+		});
+		await settle();
+		// An ask nothing stable names cannot be remembered, so it offers no Always allow (CP4 OBJ-011).
+		expect(button("ask-always")).toBeNull();
+		await act(async () => {
+			root.render(
+				<RunDock
+					asks={[{ ...ask(3), identity: "a".repeat(64) }]}
+					queued={[]}
+					runId="run-1"
+					agent="Claude Code"
+					always
+				/>,
+			);
+		});
+		await settle();
+		await act(async () => button("ask-always")?.click());
+		expect(mutateSpy).toHaveBeenLastCalledWith({
+			id: "run-1",
+			askId: ask(3).askId,
+			decision: "approve",
+			always: true,
+		});
+	});
+});

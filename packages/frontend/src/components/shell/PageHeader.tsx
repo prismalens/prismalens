@@ -5,11 +5,11 @@ import { useLocation } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { inSettings } from "@/hooks/use-back";
 import { cn } from "@/lib/utils";
-import { NewIncidentButton } from "./NewIncident";
+import { NewThreadButton } from "./NewIncident";
 
 /**
  * A list screen's top row (study-v2 §2.5 rule 2): the area's title, its
- * controls, and New incident at the right; Settings has none.
+ * controls, and New thread at the right; Settings has none.
  */
 export function PageHeader({
 	title,
@@ -19,7 +19,7 @@ export function PageHeader({
 }: {
 	title: ReactNode;
 	children?: ReactNode;
-	/** The screen's one primary; `+ New incident` unless given (#673 w11). */
+	/** The screen's one primary; New thread unless given (#1020). */
 	primary?: ReactNode;
 	className?: string;
 }) {
@@ -31,11 +31,12 @@ export function PageHeader({
 				className,
 			)}
 			data-testid="page-header"
+			data-title-row
 		>
 			<h1 className="mr-1 text-title">{title}</h1>
 			{children}
 			<span className="flex-1" />
-			{!inSettings(pathname) && (primary ?? <NewIncidentButton />)}
+			{!inSettings(pathname) && (primary ?? <NewThreadButton />)}
 		</header>
 	);
 }

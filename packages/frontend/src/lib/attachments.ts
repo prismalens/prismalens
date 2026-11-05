@@ -35,13 +35,30 @@ export function attachRefusal(
 }
 
 /** Multipart, so the shared client's JSON content type stays off this one call. */
-export async function uploadAttachment(
+export function uploadAttachment(
 	incidentId: string,
 	file: File,
 ): Promise<Attachment> {
+	return uploadTo(`/api/incidents/${incidentId}/attachments`, file);
+}
+
+/** A thread's file: owned by its run, or by the draft key before the run exists (#1020). */
+export function uploadThreadAttachment(
+	owner: { runId: string } | { draftKey: string },
+	file: File,
+): Promise<Attachment> {
+	return uploadTo(
+		"runId" in owner
+			? `/api/threads/${owner.runId}/attachments`
+			: `/api/threads/drafts/${owner.draftKey}/attachments`,
+		file,
+	);
+}
+
+async function uploadTo(url: string, file: File): Promise<Attachment> {
 	const body = new FormData();
 	body.append("file", file, file.name);
-	const res = await fetch(`/api/incidents/${incidentId}/attachments`, {
+	const res = await fetch(url, {
 		method: "POST",
 		body,
 		credentials: "include",

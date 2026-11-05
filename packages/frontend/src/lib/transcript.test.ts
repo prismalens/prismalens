@@ -805,3 +805,59 @@ describe("Send now carries the queued message (#673 walk 4)", () => {
 	});
 });
 
+
+describe("the spine's findings and PrismaLens calls (#1020)", () => {
+	const finding = (
+		s: number,
+		f: Extract<CanonicalEvent, { kind: "finding_recorded" }>["finding"],
+	): CanonicalEvent => ({ kind: "finding_recorded", ...base(s), finding: f });
+	const gateway = (s: number, name: string, output: string, isError = false): CanonicalEvent => ({
+		kind: "harness_tool_call",
+		...base(s),
+		server: "prismalens-1",
+		name,
+		at: at(s),
+		turn: "first",
+		output,
+		isError,
+	});
+
+	it("draws each finding once where it was first recorded, at its latest", () => {
+		const items = deriveTranscript([
+			step(0, "Looking"),
+			finding(1, { type: "hypothesis", id: "h1", statement: "Retry storm", status: "speculative", evidenceIds: [], at: at(1) }),
+			finding(2, { type: "evidence", id: "e1", observation: "No backoff", source: "retry.ts", quote: "x", direction: "supports", anchor: null, at: at(2) }),
+			finding(3, { type: "hypothesis", id: "h1", statement: "Retry storm", status: "supported", evidenceIds: ["e1"], at: at(3) }),
+		]);
+		const found = items.filter((i) => i.kind === "finding");
+		expect(found).toHaveLength(2);
+		expect(found[0]).toMatchObject({ finding: { id: "h1", status: "supported" } });
+		expect(found[1]).toMatchObject({ finding: { id: "e1", anchor: null } });
+	});
+
+	it("gives a PrismaLens call no step carries its own row with its outcome; a carried one stays the step", () => {
+		const items = deriveTranscript([
+			step(0, "", [{ id: "c1", name: "mcp__prismalens-1__incidents_similar" }]),
+			gateway(1, "incidents_similar", "INC-7 retry storm"),
+			gateway(2, "timeline_read", "3 entries\nmore"),
+			gateway(3, "service_get", "", true),
+			gateway(4, "evidence_record", "ok"),
+		]);
+		const rows = items.filter((i) => i.kind === "gateway");
+		expect(rows).toEqual([
+			expect.objectContaining({ name: "timeline_read", node: "knowledge", outcome: "3 entries" }),
+			expect.objectContaining({ name: "service_get", node: "failed", failed: true, outcome: "Failed" }),
+		]);
+		expect(items.find((i) => i.kind === "tools")).toMatchObject({ at: at(0), until: at(0) });
+	});
+
+	it("keeps a failed record call as a failed row, since no finding or page came of it", () => {
+		const rows = deriveTranscript([
+			gateway(1, "evidence_record", "refused", true),
+			gateway(2, "hypothesis_record", "refused", true),
+			gateway(3, "artifact_publish", "refused", true),
+		]).filter((i) => i.kind === "gateway");
+		expect(rows).toHaveLength(3);
+		expect(rows.every((r) => r.node === "failed" && r.failed)).toBe(true);
+	});
+});

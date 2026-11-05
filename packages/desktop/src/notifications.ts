@@ -23,6 +23,8 @@ export interface InvestigationSummary {
 	incidentNumber?: number;
 	/** Set while the agent waits on an Approve or Deny (#673 w21). */
 	awaitingApprovalAt?: string | null;
+	/** What the thread owes: a chat an answer, an investigation a report (#1020). */
+	kind?: "chat" | "investigation";
 }
 
 export const FINISHED: ReadonlySet<InvestigationStatus> = new Set([
@@ -35,6 +37,7 @@ export interface FinishedInvestigation {
 	summary: string | null;
 	status: "completed" | "failed";
 	incidentId?: string;
+	kind?: "chat" | "investigation";
 }
 
 /**
@@ -56,6 +59,7 @@ export function newlyFinished(
 			summary: inv.summary,
 			status: inv.status as "completed" | "failed",
 			incidentId: inv.incidentId,
+			...(inv.kind ? { kind: inv.kind } : {}),
 		});
 	}
 	return out;
@@ -71,9 +75,15 @@ export function notificationText(inv: FinishedInvestigation): {
 	title: string;
 	body: string;
 } {
+	const body = inv.summary ?? "";
+	// Worded by what the thread owes; an older backend sends no kind, and only reports then.
+	if (inv.kind === "chat")
+		return inv.status === "completed"
+			? { title: "Thread answered", body }
+			: { title: "Thread failed", body };
 	return inv.status === "completed"
-		? { title: "Investigation finished", body: inv.summary ?? "" }
-		: { title: "Investigation failed", body: inv.summary ?? "" };
+		? { title: "Report ready", body }
+		: { title: "Report failed", body };
 }
 
 export interface Ask {

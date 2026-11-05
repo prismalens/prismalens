@@ -3,6 +3,7 @@
 
 import { CanonicalEventSchema } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
+import { askIdentity } from "../run/permission.js";
 import {
 	AcpAdapter,
 	type AcpUpdate,
@@ -445,6 +446,18 @@ describe("AcpAdapter.normalize", () => {
 			expiresAt: "2026-06-29T00:05:00.000Z",
 		});
 		expect(CanonicalEventSchema.safeParse(event).success).toBe(true);
+	});
+});
+
+describe("an ask's identity for Always allow (#1020, CP4 OBJ-011)", () => {
+	it("is the policy's hash of what the request would do, absent when the request names nothing", () => {
+		const adapter = new AcpAdapter(ctx);
+		const call = { toolCallId: "c1", title: "Run command", kind: "execute", rawInput: { command: "npm test", cwd: "/w" } };
+		const named = adapter.permissionAsk("33333333-3333-4333-8333-333333333333", call, new Date("2026-06-29T00:05:00.000Z"));
+		expect(named).toMatchObject({ identity: askIdentity(call) });
+		expect(CanonicalEventSchema.safeParse(named).success).toBe(true);
+		const bare = adapter.permissionAsk("44444444-4444-4444-8444-444444444444", { title: "Run command", kind: "execute" }, new Date("2026-06-29T00:05:00.000Z"));
+		expect(bare).not.toHaveProperty("identity");
 	});
 });
 

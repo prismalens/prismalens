@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Schedule, ScheduleTick } from "@prismalens/contracts";
+import {
+	ACCESS_LEVEL_LABEL,
+	AUTO_START_ACCESS_LEVEL,
+	type Schedule,
+	type ScheduleTick,
+} from "@prismalens/contracts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeft,
@@ -23,7 +28,7 @@ import {
 	whenText,
 } from "@/components/schedules/schedule-time";
 import { TickDot } from "@/components/schedules/TickDot";
-import { tickLine } from "@/components/schedules/tick-copy";
+import { aboutText, tickLine } from "@/components/schedules/tick-copy";
 import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
@@ -74,7 +79,11 @@ function ScheduleHistoryPage() {
 		return missing ? (
 			<NotFound
 				text="This schedule no longer exists."
-				back={<Link to="/schedules">Schedules</Link>}
+				back={
+					<Link to="/settings" search={{ tab: "schedules" }}>
+						Scheduled prompts
+					</Link>
+				}
 			/>
 		) : (
 			<Problem text={getErrorMessage(error)} onRetry={() => void refetch()} />
@@ -98,7 +107,10 @@ function ScheduleHistoryPage() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<header className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2">
+			<header
+				data-title-row
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
+			>
 				<Button
 					variant="ghost"
 					size="icon-lg"
@@ -308,13 +320,17 @@ function LatestNote({
 
 function Facts({ schedule: s }: { schedule: Schedule }) {
 	const items: Array<[string, string, string]> = [
-		["Runs", `Check ${s.serviceName}`, s.runbook ? `Runbook ${s.runbook}` : ""],
+		["Runs", aboutText(s), s.runbook ? `Runbook ${s.runbook}` : ""],
 		[
 			"When",
 			s.description,
 			s.enabled ? `Next ${whenText(s.nextRunAt)}` : "Paused",
 		],
-		["Agent", [s.harness, s.model].filter(Boolean).join(", "), "Auto access"],
+		[
+			"Agent",
+			[s.harness, s.model].filter(Boolean).join(", "),
+			`${ACCESS_LEVEL_LABEL[s.accessLevel ?? AUTO_START_ACCESS_LEVEL]} access`,
+		],
 		[
 			"If missed",
 			s.missedPolicy === "run_once" ? "Run once when back" : "Skip it",

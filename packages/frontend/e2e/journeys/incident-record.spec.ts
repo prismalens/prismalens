@@ -14,7 +14,7 @@ import {
 	setTheme,
 } from "./live-stream-fixtures";
 import { settled } from "./settled";
-import { investigateButton } from "./verb";
+import { investigateButton, pickAction } from "./verb";
 
 /**
  * #743, #673 — the incident: a band that never scrolls, one reading column
@@ -90,8 +90,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 
 		// A note from the composer lands in changes-timeline
 		const note = `Design evidence note ${Date.now()}`;
-		await page.getByTestId("action-chip").click();
-		await page.getByTestId("action-note").click();
+		await pickAction(page, "note");
 		await page.getByTestId("composer-input").fill(note);
 		await page.getByTestId("composer-send").click();
 		await expect(page.getByTestId("changes-timeline")).toContainText(note);
@@ -123,18 +122,13 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	test("the incident tabs: old routes redirect to overview, and chevron returns to inbox", async ({
+	test("the chevron returns from the incident to the inbox", async ({
 		page,
 	}) => {
-		await page.goto(`/incidents/${INCIDENT_ID}/alerts`);
-		await expect(page).toHaveURL(new RegExp(`/incidents/${INCIDENT_ID}$`));
+		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
-
-		await page.goto(`/incidents/${INCIDENT_ID}/timeline`);
-		await expect(page).toHaveURL(new RegExp(`/incidents/${INCIDENT_ID}$`));
-		await expect(page.getByTestId("incident-overview")).toBeVisible();
 
 		// Back chevron in the header returns to the inbox
 		await page.getByTestId("incident-back").click();
@@ -160,14 +154,20 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			"No run yet",
 			{ timeout: 15_000 },
 		);
-		await expect(page.getByTestId("why-none")).toBeVisible();
-		await expect(page.getByTestId("fix-none")).toBeVisible();
+		// A blank incident earns no card yet (#1020).
+		await expect(page.getByTestId("incident-blank")).toContainText(
+			"Nothing yet",
+		);
+		await expect(page.getByTestId("why-card")).toHaveCount(0);
 		await setTheme(page, "light");
 
 		// Navigating to Conversation opens on the draft
 		await page.goto(`/incidents/${id}/conversation`);
 		await expect(page.getByTestId("crumb-view")).toHaveText("New conversation");
-		await expect(page.getByTestId("action-chip")).toHaveText("Ask");
+		await expect(page.getByTestId("composer-mode")).toHaveAttribute(
+			"data-mode",
+			"ask",
+		);
 		await expect(await investigateButton(page)).toBeVisible();
 		await settled(page);
 	});

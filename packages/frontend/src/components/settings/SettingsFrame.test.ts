@@ -9,12 +9,13 @@ const prom = { id: "i2", templateId: "prometheus", label: "lab" };
 const slackish = { id: "i3", templateId: "other", label: "Other" };
 
 describe("SETTINGS_SECTIONS (case 1)", () => {
-	it("lists the ten pages in exact order with no line under any", () => {
+	it("lists the eleven pages in exact order with no line under any", () => {
 		expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual([
 			"General",
 			"Appearance",
 			"Agent",
 			"Runs",
+			"Scheduled prompts",
 			"Alert intake",
 			"Sources",
 			"Notifications",
@@ -27,6 +28,7 @@ describe("SETTINGS_SECTIONS (case 1)", () => {
 			"appearance",
 			"agent",
 			"runs",
+			"schedules",
 			"alert-intake",
 			"sources",
 			"notifications",

@@ -12,11 +12,12 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { MutationError } from "@/components/shared/MutationError";
+import { RingTick } from "@/components/shared/RingTick";
 import { Row } from "@/components/shared/Row";
+import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { client, orpc } from "@/lib/api/orpc-client";
@@ -164,7 +165,7 @@ export function PairView({
 	return (
 		<Shell title="Pairing this device">
 			<p className="mt-2 flex items-center gap-2 text-body text-text-2">
-				<Loader2 className="size-3.5 motion-safe:animate-spin" />
+				<RingTick state="busy" />
 				Pairing
 			</p>
 		</Shell>
@@ -199,7 +200,8 @@ function Shell({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="fixed inset-x-0 bottom-0 top-(--titlebar-h) overflow-y-auto bg-canvas px-6">
+		<div className="fixed inset-0 overflow-y-auto bg-canvas px-6 desktop:pt-(--header-h)">
+			<TitleBarStrip />
 			<div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center py-8">
 				<div className="mb-6 flex items-center gap-2.5 text-body font-semibold">
 					<PrismaLensMark className="size-[18px]" />

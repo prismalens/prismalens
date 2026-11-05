@@ -35,6 +35,7 @@ import type {
 	RestartRecovery,
 	RestartSummary,
 	RunChoice,
+	ThreadRun,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -43,6 +44,7 @@ import {
 	CanonicalEventSchema,
 	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
+	HelperPlaceSchema,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
@@ -77,8 +79,10 @@ import { InvestigationsService } from "../../modules/investigations/investigatio
 import {
 	runScope,
 	runScopeKey,
+	sharesAdmission,
 } from "../../modules/investigations/run-scope.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import { shownFullName } from "../../modules/repositories/serialize-repository.js";
 import {
 	interruptedRunIds,
 	RunWorkspacesService,
@@ -97,6 +101,7 @@ import {
 	runCancelTopic,
 	runMessageTopic,
 } from "./event-bus.js";
+import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
@@ -411,7 +416,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			newerRun: async (id) => {
 				const self = await this.prisma.investigation.findUnique({
 					where: { id },
-					select: { incidentId: true, scheduleId: true, createdAt: true },
+					select: {
+						id: true,
+						incidentId: true,
+						scheduleId: true,
+						createdAt: true,
+					},
 				});
 				if (!self) return null;
 				const newer = await this.prisma.investigation.findFirst({
@@ -1145,6 +1155,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			select: {
 				incidentId: true,
 				scheduleId: true,
+				serviceId: true,
+				repositoryId: true,
 				configSnapshot: true,
 				status: true,
 				completedAt: true,
@@ -1190,7 +1202,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const data: InvestigationJobData = {
 			incidentId: row.incidentId,
 			investigationId: id,
+			// A person's message on an alert's or a schedule's thread: still no GitHub token (#1020 R41).
+			startedBy:
+				row.triggerType === "scheduled"
+					? "schedule"
+					: startedByAlert(row.triggerType)
+						? "alert"
+						: "person",
 			...(row.incidentId ? {} : serviceCheckOf(row.configSnapshot)),
+			...(row.incidentId || row.scheduleId
+				? {}
+				: { thread: await this.threadRunOf(row) }),
 			...(accessLevel ? { accessLevel } : {}),
 			resume: {
 				text,
@@ -1208,15 +1230,19 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 		};
 		const admitted = await this.prisma.$transaction(async (tx) => {
-			const other = await tx.investigation.findFirst({
-				where: {
-					...runScope(row),
-					id: { not: id },
-					status: { in: [...LIVE_WORKFLOW_STATUSES] },
-				},
-				orderBy: { createdAt: "desc" },
-				select: { createdAt: true },
-			});
+			const other = sharesAdmission(row)
+				? await tx.investigation.findFirst({
+						where: {
+							...runScope(row),
+							id: { not: id },
+							status: { in: [...LIVE_WORKFLOW_STATUSES] },
+						},
+						orderBy: { createdAt: "desc" },
+						select: { createdAt: true },
+					})
+				: null;
+			if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
+				throw new FollowUpRefused(FOLDER_BUSY);
 			if (other) {
 				const n = await tx.investigation.count({
 					where: {
@@ -1246,11 +1272,99 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				priority: PRIORITY_ORDER.normal ?? 3,
 			});
 			return true;
-		});
+		}, FOLDER_TX);
 		if (!admitted) return false;
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();
 		return true;
+	}
+
+	/** A project, service or no-subject thread's subject and code as they stand now (#1020). */
+	async threadRunOf(row: {
+		repositoryId: string | null;
+		serviceId: string | null;
+		helperPlace?: string | null;
+	}): Promise<ThreadRun> {
+		const repoFields = {
+			sourceKind: true,
+			url: true,
+			defaultBranch: true,
+			connectionId: true,
+			fullName: true,
+			subPath: true,
+			plain: true,
+		} as const;
+		const ref = (
+			r: {
+				sourceKind: string;
+				url: string;
+				defaultBranch: string;
+				connectionId: string | null;
+			},
+			subPath: string | null,
+			serviceName: string,
+		) => ({
+			sourceKind:
+				r.sourceKind === "folder" ? ("folder" as const) : ("url" as const),
+			url: r.url,
+			defaultBranch: r.defaultBranch,
+			subPath,
+			connectionId: r.connectionId,
+			serviceName,
+		});
+		if (row.repositoryId) {
+			const repo = await this.prisma.repository.findUnique({
+				where: { id: row.repositoryId },
+				select: repoFields,
+			});
+			if (repo) {
+				// Agent-facing: a legacy name may hold its address's credential (#1020).
+				const name = shownFullName(repo);
+				return {
+					subject: "project",
+					repositoryId: row.repositoryId,
+					serviceId: null,
+					name,
+					repos: [
+						{
+							...ref(repo, repo.subPath, name),
+							...(repo.plain ? { plain: true } : {}),
+						},
+					],
+				};
+			}
+		}
+		if (row.serviceId) {
+			const service = await this.prisma.service.findUnique({
+				where: { id: row.serviceId },
+				select: {
+					name: true,
+					repositories: {
+						orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+						select: { subPath: true, repository: { select: repoFields } },
+					},
+				},
+			});
+			if (service)
+				return {
+					subject: "service",
+					repositoryId: null,
+					serviceId: row.serviceId,
+					name: service.name,
+					repos: service.repositories.map((r) =>
+						ref(r.repository, r.subPath, service.name),
+					),
+				};
+		}
+		const place = HelperPlaceSchema.safeParse(row.helperPlace).data;
+		return {
+			subject: "none",
+			repositoryId: null,
+			serviceId: null,
+			name: null,
+			repos: [],
+			...(place ? { place } : {}),
+		};
 	}
 
 	/**
@@ -1619,6 +1733,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		from: "live" | "interrupted",
 	): Promise<boolean> {
 		return this.prisma.$transaction(async (tx) => {
+			const own = await tx.investigation.findUnique({
+				where: { id },
+				select: { repositoryId: true },
+			});
+			if (own?.repositoryId && (await folderBusy(tx, own.repositoryId, id)))
+				throw new FollowUpRefused(FOLDER_BUSY);
 			const { count } = await tx.investigation.updateMany({
 				where:
 					from === "live"
@@ -1642,7 +1762,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				runAt,
 			});
 			return true;
-		});
+		}, FOLDER_TX);
 	}
 
 	/**

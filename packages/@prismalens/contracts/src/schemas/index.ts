@@ -34,5 +34,6 @@ export * from "./source-type.js";
 export * from "./state-labels.js";
 export * from "./state-semantics.js";
 export * from "./terminal.js";
+export * from "./thread.js";
 export * from "./timeline.js";
 export * from "./webhook.js";

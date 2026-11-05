@@ -15,6 +15,7 @@ import {
 	type RunInvestigationOptions,
 	runInvestigation,
 } from "./investigate.js";
+import { injectedSecrets, redactEvent } from "./redact.js";
 
 export type InvestigationSink = (event: CanonicalEvent) => void | Promise<void>;
 
@@ -43,8 +44,14 @@ export async function conductRun(
 	let report: InvestigationReport | null = null;
 	let lastError: string | null = null;
 	let cancelled = false;
+	// What the agent may echo of its own credentials never reaches the stream or the record (#1020).
+	const secrets = injectedSecrets(
+		{ ...(opts.hostEnv ?? process.env), ...(opts.env ?? {}) },
+		[opts.gateway?.token],
+	);
 	try {
-		for await (const event of runInvestigation(opts)) {
+		for await (const raw of runInvestigation(opts)) {
+			const event = redactEvent(raw, secrets);
 			await io.sink(event);
 			await io.store.append(event);
 			if (event.kind === "report") report = event.report;
