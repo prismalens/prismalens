@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	ChevronsDown,
@@ -10,6 +11,7 @@ import {
 	MessageSquare,
 	Moon,
 	Server,
+	Siren,
 	SquarePen,
 	SquareTerminal,
 	Sun,
@@ -40,6 +42,7 @@ import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
+import { orpc } from "@/lib/api/orpc-client";
 import { PLACES } from "@/lib/places";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { rowContext, threadLink } from "@/lib/thread-rows";
@@ -119,9 +122,21 @@ export function ThreadSearch({
 		{ ...(q ? { search: query.trim() } : {}), limit: 20 },
 		open,
 	);
+	// An incident with no run has no thread; it is found by title or number here (#1020).
+	const incidents = useQuery({
+		...orpc.incidents.list.queryOptions({
+			input: { search: typed, limit: 8 },
+		}),
+		enabled: open && !!typed,
+	});
+	const threadIncidents = new Set<string>();
 	const found =
 		feed.data?.pages.flatMap((p) => p.units.flatMap((u) => u.threads)) ?? [];
 	const threads = q ? found : found.slice(0, RECENT);
+	for (const t of threads) if (t.incidentId) threadIncidents.add(t.incidentId);
+	const incidentHits = q
+		? (incidents.data?.data ?? []).filter((i) => !threadIncidents.has(i.id))
+		: [];
 	const named = (label: string) => !q || label.toLowerCase().includes(q);
 	const actions: {
 		id: string;
@@ -262,6 +277,34 @@ export function ThreadSearch({
 										<FolderGit2 aria-hidden />
 										<span className="min-w-0 flex-1 truncate">
 											{r.fullName}
+										</span>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+						{incidentHits.length > 0 && (
+							<CommandGroup heading="Incidents">
+								{incidentHits.map((i) => (
+									<CommandItem
+										key={i.id}
+										value={`incident-${i.id}`}
+										onSelect={() =>
+											go(
+												() =>
+													void navigate({
+														to: "/incidents/$id",
+														params: { id: i.id },
+													}),
+											)
+										}
+										data-testid="thread-search-incident"
+									>
+										<Siren aria-hidden />
+										<span dir="auto" className="min-w-0 flex-1 truncate">
+											{i.title}
+										</span>
+										<span className="shrink-0 text-meta text-text-3">
+											INC-{i.number}
 										</span>
 									</CommandItem>
 								))}
