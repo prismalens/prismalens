@@ -23,7 +23,17 @@
 		},
 		"dev": {
 			"cache": false,
-			"persistent": true
+			"persistent": true,
+			"passThroughEnv": [
+				"PRISMALENS_*",
+				"NODE_ENV",
+				"DO_NOT_TRACK",
+				"ANTHROPIC_*",
+				"OPENAI_*",
+				"GEMINI_*",
+				"GOOGLE_*",
+				"OPENROUTER_*"
+			]
 		},
 		"typecheck": {
 			"dependsOn": ["^build"]

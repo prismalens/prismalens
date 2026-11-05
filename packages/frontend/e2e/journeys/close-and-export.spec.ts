@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, test } from "@playwright/test";
+import { createIncidentByHand } from "./by-hand";
 import { investigateButton } from "./verb";
 
 /**
@@ -18,17 +19,7 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 	test("resolves a hand-authored incident in one step", async ({ page }) => {
 		const title = `Pool exhaustion ${Date.now()}`;
 
-		await page.goto("/incidents");
-		await page.getByTestId("create-incident-button").click({ timeout: 15_000 });
-
-		const dialog = page.getByTestId("create-incident-dialog");
-		await expect(dialog).toBeVisible();
-		await dialog.getByTestId("create-incident-title").fill(title);
-		await dialog.getByTestId("create-incident-submit").click();
-
-		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
-			timeout: 15_000,
-		});
+		await createIncidentByHand(page, title);
 		await expect(page.getByTestId("crumb-incident")).toHaveText(title);
 
 		// The header's action: Resolve
@@ -52,14 +43,7 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 	}) => {
 		const title = `No report yet ${Date.now()}`;
 
-		await page.goto("/incidents");
-		await page.getByTestId("create-incident-button").click();
-		const dialog = page.getByTestId("create-incident-dialog");
-		await dialog.getByTestId("create-incident-title").fill(title);
-		await dialog.getByTestId("create-incident-submit").click();
-		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
-			timeout: 15_000,
-		});
+		await createIncidentByHand(page, title);
 
 		// Export as Markdown is in the header menu (header-more → header-export); absent without a report
 		await page.getByTestId("header-more").click();

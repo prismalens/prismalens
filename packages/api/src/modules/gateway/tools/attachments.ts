@@ -17,13 +17,13 @@ export interface AttachmentItem {
 	at: string;
 }
 
-/** The files the operator attached to the run's incident. */
+/** The files on the run's incident, or on the thread itself when it has none (#1020). */
 export interface AttachmentsData {
-	/** Null when the run has no incident. */
+	/** Null when the run has nothing to read. */
 	list(
 		runId: string,
-	): Promise<{ incident: number; attachments: AttachmentItem[] } | null>;
-	/** Null unless the attachment is on the run's incident; `text` is null when its file is gone. */
+	): Promise<{ incident?: number; attachments: AttachmentItem[] } | null>;
+	/** Null unless the attachment is the run's to read; `text` is null when its file is gone. */
 	read(
 		runId: string,
 		id: string,
@@ -70,11 +70,12 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 	return [
 		defineHarnessTool({
 			name: "attachments_list",
-			title: "Files attached to this incident",
+			title: "Files attached to this thread",
 			description:
-				"The files the operator attached to this run's incident, newest first: id, name, mime type, size in bytes and when. Read a text one with attachment_read.",
+				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with attachment_read.",
 			group: "knowledge",
 			effect: "read",
+			serves: { subjects: ["incident", "project", "service"] },
 			input: z.object({}),
 			run: async (_input, ctx) => {
 				const r = await data.list(ctx.runId);
@@ -82,8 +83,8 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 					? { value: r }
 					: fail(
 							"not_found",
-							"This run has no incident recorded, so no files are attached.",
-							"Continue from the alerts in your prompt.",
+							"This thread has no files to list.",
+							"Answer from the message and its files.",
 						);
 			},
 		}),
@@ -93,13 +94,14 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 			description: `The text of one file attachments_list returned, by id. Text, JSON, YAML, XML and CSV only, cut at ${ATTACHMENT_READ_CHARS} characters. Images are not readable here; the operator's prompt carries them.`,
 			group: "knowledge",
 			effect: "read",
+			serves: { subjects: ["incident", "project", "service"] },
 			input: z.object({ id: z.string().trim().min(1).max(100) }),
 			run: async ({ id }, ctx) => {
 				const found = await data.read(ctx.runId, id);
 				if (!found)
 					return fail(
 						"not_found",
-						`No attachment "${id}" on this run's incident.`,
+						`No attachment "${id}" on this thread.`,
 						"Call attachments_list and pass an id exactly as it returned it.",
 					);
 				if (!isText(found.mimeType))

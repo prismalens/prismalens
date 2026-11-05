@@ -25,7 +25,7 @@ import {
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Logger } from "@nestjs/common";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -39,6 +39,8 @@ import {
 	classifySource,
 	displayNameFor,
 	mirrorPathFor,
+	NoHeadError,
+	PlainFolderError,
 	tokenUsernameFor,
 	RepoSourceService,
 } from "./repo-source.service.js";
@@ -124,6 +126,13 @@ describe("repo-source.service", () => {
 			expect(classifySource("~/x")).toEqual({
 				kind: "folder",
 				source: join(homedir(), "x"),
+			});
+		});
+
+		it("expands a bare ~ to the home directory", () => {
+			expect(classifySource(" ~ ")).toEqual({
+				kind: "folder",
+				source: resolve(homedir()),
 			});
 		});
 
@@ -570,6 +579,21 @@ describe("repo-source.service", () => {
 
 			expect(realpathSync(check.root)).toBe(realpathSync(src));
 			expect(check.prefix).toBe("sub/dir");
+		});
+
+		it("checkFolder() tells a plain folder, a file and a repo with no commit apart (#1020)", async () => {
+			const service = new RepoSourceService();
+			const plain = tmp("pl-plain-");
+			await expect(service.checkFolder(plain)).rejects.toBeInstanceOf(PlainFolderError);
+			writeFileSync(join(plain, "f.txt"), "x");
+			await expect(service.checkFolder(join(plain, "f.txt"))).rejects.toThrow(/Not a folder/);
+			const empty = tmp("pl-empty-");
+			git(["init", "-q"], empty);
+			execFileSync("mkdir", ["-p", join(empty, "api")]);
+			const err = await service.checkFolder(join(empty, "api")).catch((e: unknown) => e);
+			expect(err).toBeInstanceOf(NoHeadError);
+			expect(realpathSync((err as NoHeadError).root)).toBe(realpathSync(empty));
+			expect((err as NoHeadError).prefix).toBe("api");
 		});
 
 		it("a bad folder path surfaces our own verbatim message", async () => {

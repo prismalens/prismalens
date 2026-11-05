@@ -160,7 +160,7 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
   recommendations — and launch an investigation from it (`incidents.investigate`).
 - **States**: loading (`IncidentListSkeleton`, `IncidentDetailSkeleton`); **empty**
   (`DashboardEmptyState`); **LLM not configured** (`LLMWarningBanner`, driven by
-  `llmSettings.activeProvider`); **API down** (`ApiStatusCheck`); incident selected → detail panel;
+  `llmSettings.activeProvider`); incident selected → detail panel;
   investigate-in-flight.
 - **Coverage**: none. The empty state and the
   LLM-warning banner — the two states a brand-new `pl up` install renders — are untested.

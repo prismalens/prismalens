@@ -112,6 +112,8 @@ export async function bindRun(
 	runId: string,
 	opts: {
 		serviceName?: string | null;
+		/** The service's stable id when known (a rename breaks the name lookup); null is the global policy. */
+		serviceId?: string | null;
 		/** Null for a scheduled check with no incident (#979). */
 		incidentId: string | null;
 		/** A follow-up's recorded workspace path: its folder stays the run's even after the location changed. */
@@ -120,9 +122,12 @@ export async function bindRun(
 		project?: string | null;
 	},
 ): Promise<RunBinding> {
-	const serviceId = opts.serviceName
-		? await source.serviceIdOf(opts.serviceName).catch(() => null)
-		: null;
+	const serviceId =
+		opts.serviceId !== undefined
+			? opts.serviceId
+			: opts.serviceName
+				? await source.serviceIdOf(opts.serviceName).catch(() => null)
+				: null;
 	const settings = settingsFor(serviceId);
 	const binding: RunBinding = {
 		serviceId,
@@ -319,13 +324,15 @@ export async function addRunWorktree(
 	// A Remove or sweep already deciding on this folder finishes first; a follow-up never resumes mid-removal.
 	await removing.get(dest);
 	await sweeping;
+	const binding = runs.get(runId);
+	// The run's binding names the policy now; an older sidecar may name a same-named service (#1020).
 	const resumed = await resumeWorkspace({
 		...asWorkspace(dest),
 		lockLabel: runId,
+		...(binding ? { project: binding.serviceId } : {}),
 	});
 	if (resumed) return resumed;
 	await releaseWorktree(dest, undefined, true);
-	const binding = runs.get(runId);
 	const settings = binding?.settings ?? settingsFor(null);
 	const workspace = await createWorkspace({
 		...asWorkspace(dest),

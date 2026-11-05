@@ -3,7 +3,6 @@
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { middle, rowStateOf, runLabel } from "../shell/IncidentTree";
 import {
 	actionsOf,
 	firingOf,
@@ -12,6 +11,7 @@ import {
 	NEED_GROUPS,
 	needOf,
 	reasonOf,
+	rowStateOf,
 	sparkPoints,
 	workingOf,
 } from "./inbox-model";
@@ -279,36 +279,6 @@ describe("firingOf", () => {
 		expect(series.at(-1)).toBe(1);
 		expect(series[0]).toBe(0);
 		expect(sparkPoints([0, 0]).split(" ")).toEqual(["0.0,22.0", "72.0,22.0"]);
-	});
-});
-
-describe("sidebar labels", () => {
-	it("keeps both ends of a long title", () => {
-		expect(middle("BooklogrApiLatencyP99High")).toBe("BooklogrA…ncyP99High");
-		expect(middle("WalkGrouped")).toBe("WalkGrouped");
-	});
-
-	it("numbers investigations on their own and names questions", () => {
-		const runs = [
-			run({ id: "r3", status: "running", createdAt: at(0.1) }),
-			run({ id: "a1", kind: "chat", title: "did v1.41 run it?", createdAt: at(1) }),
-			run({ id: "r2", rootCause: "sort", createdAt: at(2) }),
-			run({ id: "r1", createdAt: at(3) }),
-		];
-		expect(runs.map((r) => runLabel(runs, r))).toEqual([
-			"Run 3, working",
-			"Ask: did v1.41 run it?",
-			"Run 2, likely cause",
-			"Run 1, no cause named",
-		]);
-	});
-
-	it("names an interrupted run interrupted, not failed (#1010)", () => {
-		const runs = [
-			run({ id: "r2", status: "failed", endReason: "interrupted", createdAt: at(1) }),
-			run({ id: "r1", status: "failed", createdAt: at(2) }),
-		];
-		expect(runs.map((r) => runLabel(runs, r))).toEqual(["Run 2, interrupted", "Run 1, failed"]);
 	});
 });
 

@@ -75,7 +75,8 @@ vi.mock("./use-overview", () => ({
 			incident: { id: "inc-1", alerts: [{ source: "prometheus" }] },
 			draftChoice: { harness: "claude-code" },
 			investigate,
-			runs: [],
+			// A run makes the incident earn its cards (#1020).
+			runs: [{ id: "run-7" }],
 		},
 		latest: null,
 	}),

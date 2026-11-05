@@ -21,6 +21,7 @@ import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Blank, Empty, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -346,19 +347,25 @@ function ServicesPage() {
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{none ? (
-					<Blank title="Add your first service" testId="services-empty">
-						<p className="-mt-2 text-body text-text-2">
-							A service is a repository the agent can read, and the alerts that
-							belong to it. Chats work without one.
-						</p>
-						<Button
-							onClick={() => setShowAddDialog(true)}
-							data-testid="add-service"
-						>
-							<Plus />
-							Add a service
-						</Button>
-					</Blank>
+					<>
+						<Blank title="Add your first service" testId="services-empty">
+							<p className="-mt-2 text-body text-text-2">
+								A service is a repository the agent can read, and the alerts
+								that belong to it. Chats work without one.
+							</p>
+							<Button
+								onClick={() => setShowAddDialog(true)}
+								data-testid="add-service"
+							>
+								<Plus />
+								Add a service
+							</Button>
+						</Blank>
+						<HelperThread
+							place="services"
+							className="mx-auto max-w-(--reading-w) px-4 pb-8"
+						/>
+					</>
 				) : (
 					<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 pb-12">
 						{isLoading ? (

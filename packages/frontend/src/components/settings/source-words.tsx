@@ -26,6 +26,10 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import {
+	BrandMark,
+	brandMarkId as brandMarkOf,
+} from "@/components/icons/brand-marks";
 import { cn } from "@/lib/utils";
 
 export type WordTone = "ok" | "warn" | "danger" | "neutral";
@@ -117,6 +121,12 @@ export function hostVendor(host: string): string {
 	if (h === "gitlab.com") return "GitLab";
 	if (h === "bitbucket.org") return "Bitbucket";
 	return "Git host";
+}
+
+/** The kind a git host's icon is drawn for: its vendor, else the generic git kind. */
+export function hostKind(host: string): string {
+	const v = hostVendor(host).toLowerCase();
+	return v === "git host" ? "git" : v;
 }
 
 /** `host[:port]` of an address, for display. */
@@ -248,6 +258,8 @@ export function KindIcon({
 	className?: string;
 }): ReactNode {
 	const Icon = KIND_ICON[kind] ?? GitBranch;
+	const size = small ? "size-3.5" : "size-4";
+	const brand = <BrandMark id={kind} className={size} />;
 	return (
 		<span
 			aria-hidden
@@ -257,7 +269,7 @@ export function KindIcon({
 				className,
 			)}
 		>
-			<Icon className={small ? "size-3.5" : "size-4"} />
+			{brandMarkOf(kind) ? brand : <Icon className={size} />}
 		</span>
 	);
 }

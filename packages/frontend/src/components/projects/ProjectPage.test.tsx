@@ -15,12 +15,16 @@ import { MakeService } from "./ProjectPage";
 
 const create = vi.fn();
 const link = vi.fn();
+const pending = vi.hoisted(() => ({ create: false }));
 
 vi.mock("@/lib/api/hooks/use-services-orpc", async (importOriginal) => ({
 	...(await importOriginal<
 		typeof import("@/lib/api/hooks/use-services-orpc")
 	>()),
-	useCreateService: () => ({ mutateAsync: create, isPending: false }),
+	useCreateService: () => ({
+		mutateAsync: create,
+		isPending: pending.create,
+	}),
 	useService: () => ({ data: undefined }),
 }));
 vi.mock("@/lib/api/hooks/use-repositories-orpc", async (importOriginal) => ({
@@ -39,6 +43,7 @@ describe("MakeService (#1020)", () => {
 	beforeEach(() => {
 		create.mockReset();
 		link.mockReset();
+		pending.create = false;
 		host = document.createElement("div");
 		document.body.append(host);
 		root = createRoot(host);
@@ -89,6 +94,27 @@ describe("MakeService (#1020)", () => {
 		);
 		expect(input?.readOnly).toBe(true);
 		expect(host.textContent).toContain("service=shop");
+	});
+});
+
+describe("MakeService name while creating (#1020)", () => {
+	it("is read-only while the service is being created", () => {
+		pending.create = true;
+		const host = document.createElement("div");
+		document.body.append(host);
+		const root = createRoot(host);
+		act(() =>
+			root.render(
+				<MakeService repositoryId={REPO} defaultName="shop" linked={[]} />,
+			),
+		);
+		expect(
+			host.querySelector<HTMLInputElement>('[data-testid="make-service-name"]')
+				?.readOnly,
+		).toBe(true);
+		act(() => root.unmount());
+		host.remove();
+		pending.create = false;
 	});
 });
 

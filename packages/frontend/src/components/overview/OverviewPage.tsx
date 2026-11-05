@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { unreadyReason } from "@/components/agent/AgentPicker";
 import { IncidentHeader } from "@/components/run/IncidentHeader";
 import { useToast } from "@/hooks/use-toast";
 import { useResumeInvestigation } from "@/lib/api/hooks";
+import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { resumeFailed } from "@/lib/restart";
 import { triggerOf } from "@/lib/trigger";
+import { isBlankIncident } from "./blank";
 import { ChangesCard } from "./ChangesCard";
 import { ImpactCard } from "./ImpactCard";
 import { LatestRunStrip } from "./LatestRunStrip";
+import { LinkService } from "./LinkService";
 import { nextHandler } from "./next-action";
 import {
 	type OverviewAction,
@@ -50,6 +54,16 @@ export function OverviewPage() {
 		);
 	};
 	const box = useBoxChoice(o.record);
+	// Cards are earned: no alert, run, note or change means nothing to put in one.
+	const blank = isBlankIncident({
+		alerts: incident.alerts?.length ?? 0,
+		runs: o.record.runs.length,
+		changes: o.changes?.total ?? 0,
+		deploy: !!o.changes?.deploy,
+		entries: (o.record.timeline ?? []).filter(
+			(e) => e.type !== "incident_created",
+		).length,
+	});
 	const resume = useResumeInvestigation();
 	const start = () =>
 		void o.record.investigate({ ...box.sent }).catch((error: unknown) =>
@@ -86,11 +100,6 @@ export function OverviewPage() {
 	});
 
 	const event = triggerOf(incident).kind === "webhook";
-	// Cards are earned: no run, alert or note means nothing to put in one.
-	const blank =
-		!o.latest &&
-		(incident.alerts ?? []).length === 0 &&
-		!(o.record.timeline ?? []).some((e) => e.type === "comment");
 	return (
 		<div
 			className="flex h-full min-h-0 flex-col"
@@ -107,11 +116,16 @@ export function OverviewPage() {
 			{blank ? (
 				<main
 					className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto pb-[12vh]"
-					data-testid="overview-blank"
+					data-testid="incident-blank"
 				>
 					<h2 className="mb-4 text-center text-display text-text-1">
 						What do you know so far?
 					</h2>
+					{!incident.service && (
+						<div className="mb-4 flex justify-center">
+							<LinkService incidentId={incident.id} />
+						</div>
+					)}
 					<OverviewComposer o={o} action={action} onAction={setAction} />
 				</main>
 			) : (

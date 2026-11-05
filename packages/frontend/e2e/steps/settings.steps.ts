@@ -670,14 +670,11 @@ When(
 	},
 );
 
-Then(
-	/^the effort chip is disabled, reading "(.+)"$/,
-	async ({ page }, word: string) => {
-		const effort = page.getByTestId("effort-chip");
-		await expect(effort).toBeDisabled();
-		await expect(effort).toHaveText(word);
-	},
-);
+// The one composer hides effort for an agent with no levels (#1020).
+Then("the box shows no effort chip", async ({ page }) => {
+	await expect(page.getByTestId("agent-picker")).toBeVisible();
+	await expect(page.getByTestId("effort-chip")).toHaveCount(0);
+});
 
 Then(
 	'every agent offers the same four permission levels, "Ask always" first, the level a run takes tagged "From your settings file", "PrismaLens\'s pick" or "Set in Settings", and a lock only where a sandbox was proven',
@@ -994,31 +991,40 @@ Then(
 	},
 );
 
-// --- The verb chip (#673 w59) ---------------------------------------------------------
+// --- What Send does (#673 w59, #1020) ----------------------------------------------
 
 Then(
-	"the verb chip reads {string} and its menu explains {string} and {string} with {string}",
-	async ({ page }, verb: string, a: string, b: string, _foot: string) => {
-		const chip = page.getByTestId("action-chip");
-		await expect(chip).toHaveText(verb);
+	"the box's action reads {string} and {string} offers {string} with {string}",
+	async (
+		{ page },
+		verb: string,
+		slash: string,
+		other: string,
+		detail: string,
+	) => {
+		const mode = page.getByTestId("composer-mode");
+		await expect(mode).toHaveText(verb);
+		await page.getByTestId("composer-input").fill(slash);
+		const row = page.getByTestId(`composer-slash-${other.toLowerCase()}`);
+		await expect(row).toContainText(other);
+		await expect(row).toContainText(detail);
 		await expect(
-			page.getByTestId("composer-chips").locator("button").first(),
-		).toHaveAttribute("data-testid", "action-chip");
-		await chip.click();
-		const menu = page.getByTestId("action-menu");
-		await expect(menu.getByTestId("action-investigate")).toContainText(a);
-		await expect(menu.getByTestId("action-investigate")).toContainText(
-			"ends in a report",
-		);
-		await expect(menu.getByTestId("action-ask")).toContainText(b);
-		await expect(menu.getByTestId("action-ask")).toContainText("No new report");
+			page.getByTestId(`composer-slash-${verb.toLowerCase()}`),
+		).toHaveCount(0);
 	},
 );
 
-When("I pick {string} in the verb menu", async ({ page }, verb: string) => {
-	await page.getByTestId(`action-${verb.toLowerCase()}`).click();
-	await expect(page.getByTestId("action-menu")).toBeHidden();
-});
+When(
+	"I pick {string} under {string}",
+	async ({ page }, verb: string, _slash: string) => {
+		await page.getByTestId(`composer-slash-${verb.toLowerCase()}`).click();
+		await expect(page.getByTestId("composer-slash")).toBeHidden();
+		await expect(page.getByTestId("composer-mode")).toHaveAttribute(
+			"data-mode",
+			verb.toLowerCase(),
+		);
+	},
+);
 
 Then(
 	"the box's one send control is the arrow and its placeholder reads {string}",

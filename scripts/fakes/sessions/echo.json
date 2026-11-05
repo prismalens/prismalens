@@ -1,0 +1,4 @@
+{
+	"agent": { "name": "claude-agent-acp", "version": "0.85.1-fake" },
+	"turns": [[{ "say": "{{prompt}}" }]]
+}

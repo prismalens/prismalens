@@ -141,6 +141,7 @@ function ServicePage() {
 			<header
 				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-3 md:px-4"
 				data-testid="service-band"
+				data-title-row
 			>
 				<Button variant="text" size="icon" className="shrink-0" asChild>
 					<a

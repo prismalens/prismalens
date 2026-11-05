@@ -11,6 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
+import { BrowseButton } from "@/components/projects/AddProjectDialog";
 import { KeptWorkspaceRows } from "@/components/run/KeptWorkspaces";
 import {
 	FIELDS,
@@ -223,6 +224,13 @@ function CopiesGroup({
 								disabled={!canEdit}
 								className="min-w-0 flex-1 basis-64 font-mono"
 							/>
+							{canEdit && (
+								<BrowseButton
+									folderOnly
+									onPick={setDraft}
+									testId="run-workspace-copies-browse"
+								/>
+							)}
 							{canEdit && (
 								<Button
 									size="sm"

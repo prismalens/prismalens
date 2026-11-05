@@ -5,15 +5,24 @@ import type { RunWorkspace } from "@prismalens/contracts";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { Link } from "@tanstack/react-router";
 import {
+	BookOpenText,
 	Bot,
 	Camera,
 	CircleCheck,
+	FileCheck2,
+	FileDiff,
+	FolderTree,
 	GitBranch,
+	Globe,
+	ListTree,
+	type LucideIcon,
 	Plug,
+	Siren,
 	TriangleAlert,
 	X,
 } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { CommandChip } from "@/components/ui/command-chip";
 import { citationText, type FileAt } from "@/lib/evidence-files";
@@ -80,6 +89,17 @@ const ORDER: DetailsTab[] = [
 	"browser",
 ];
 
+/** The same icons as a thread's surfaces where they show the same thing (#1020). */
+const TAB_ICON: Record<DetailsTab, LucideIcon> = {
+	incident: Siren,
+	summary: FileCheck2,
+	files: FolderTree,
+	changes: FileDiff,
+	steps: ListTree,
+	context: BookOpenText,
+	browser: Globe,
+};
+
 const FILTERS: { id: StepFilter; label: string }[] = [
 	{ id: "all", label: "All" },
 	{ id: "command", label: "Commands" },
@@ -129,6 +149,7 @@ export function RunDetailsPanel({
 	files: EvidenceFiles;
 }) {
 	const [filter, setFilter] = useState<StepFilter>("all");
+	const [focused, setFocused] = useState<string | null>(null);
 	const onKeyDown = (e: KeyboardEvent) => {
 		if (e.key !== "Escape" || e.defaultPrevented) return;
 		e.stopPropagation();
@@ -197,7 +218,10 @@ export function RunDetailsPanel({
 			className="flex h-full min-h-0 flex-col"
 			data-testid="run-details"
 		>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
+			<div
+				data-title-row
+				className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2"
+			>
 				<Button
 					variant="text"
 					size="icon"
@@ -221,18 +245,38 @@ export function RunDetailsPanel({
 						data-scroll-x
 						className="flex min-w-0 gap-0.5 max-[359px]:gap-0 self-end overflow-x-auto [scrollbar-width:none]"
 					>
-						{tabs.map((t) => (
-							<TabsPrimitive.Trigger
-								key={t.id}
-								value={t.id}
-								aria-label={t.aria}
-								className="relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
-								data-testid={`run-details-tab-${t.id}`}
-							>
-								{t.label}
-								{t.aside}
-							</TabsPrimitive.Trigger>
-						))}
+						{tabs.map((t) => {
+							const Icon = TAB_ICON[t.id];
+							// The hint sits on the icon: on the trigger it would take over the tab's data-state.
+							return (
+								<TabsPrimitive.Trigger
+									key={t.id}
+									value={t.id}
+									aria-label={t.aria}
+									className="group relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+									data-testid={`run-details-tab-${t.id}`}
+									onFocus={(e) =>
+										e.currentTarget.matches(":focus-visible") &&
+										setFocused(t.id)
+									}
+									onBlur={() => setFocused(null)}
+								>
+									<Hint label={t.label} open={focused === t.id}>
+										<span className="flex">
+											<Icon className="size-4" aria-hidden />
+										</span>
+									</Hint>
+									{/* No hover, no hint: a touch screen names the open tab (all six would not fit 320 px). */}
+									<span
+										className="ml-1 hidden text-meta [@media(hover:none)]:group-data-[state=active]:inline"
+										data-testid={`run-details-label-${t.id}`}
+									>
+										{t.label}
+									</span>
+									{t.aside}
+								</TabsPrimitive.Trigger>
+							);
+						})}
 					</TabsPrimitive.List>
 				</div>
 				<TabsPrimitive.Content
@@ -757,7 +801,7 @@ export function RunToolsSection({
  * The Files tab (#973): the tree beside the open file when the panel is wide
  * enough, else the tree, and the file in its place with Back.
  */
-function FilesPane({
+export function FilesPane({
 	files,
 	onJump,
 }: {

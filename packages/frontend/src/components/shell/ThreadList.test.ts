@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { IncidentWithRelations, Schedule } from "@prismalens/contracts";
+import type {
+	ThreadRow as FeedRow,
+	IncidentWithRelations,
+	ThreadUnit,
+} from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { needOf } from "@/components/inbox/inbox-model";
 import { isPlainChat, triggerOf } from "@/lib/trigger";
-import { incidentRow,
-	ORIGIN_WORD,
-	STATE_WORD, scheduleRow, sortRows } from "./ThreadList";
+import { ORIGIN_WORD, STATE_WORD, unitRow, unitState } from "./ThreadList";
 
 const at = (m: number) => new Date(Date.UTC(2026, 10, 4, 12, m)).toISOString();
 type Run = NonNullable<IncidentWithRelations["investigations"]>[number];
@@ -39,6 +41,46 @@ const incident = (p: Partial<IncidentWithRelations>) =>
 		...p,
 	}) as IncidentWithRelations;
 
+const thread = (p: Partial<FeedRow>) =>
+	({
+		id: crypto.randomUUID(),
+		incidentId: null,
+		scheduleId: null,
+		repositoryId: null,
+		kind: "chat",
+		status: "completed",
+		title: "Why is the cart slow?",
+		rootCause: null,
+		triggerType: "manual",
+		section: "settled",
+		lastActivityAt: at(5),
+		lastVisitedAt: null,
+		settledAt: null,
+		unseen: false,
+		latestText: null,
+		projectName: null,
+		titleSetBy: null,
+		serviceName: null,
+		createdAt: at(1),
+		startedAt: at(1),
+		awaitingApprovalAt: null,
+		...p,
+	}) as FeedRow;
+const unit = (threads: FeedRow[], chip?: ThreadUnit["incident"]) =>
+	({
+		section: threads[0]?.section ?? "settled",
+		incident: chip ?? null,
+		threads,
+	}) as ThreadUnit;
+const chipOf = (inc: IncidentWithRelations, number: number) =>
+	({
+		id: inc.id,
+		number,
+		title: inc.title,
+		severity: "high",
+		status: "investigating",
+	}) as ThreadUnit["incident"];
+
 describe("triggerOf", () => {
 	it("reads a thread with no alert as started by you", () => {
 		expect(triggerOf(incident({})).kind).toBe("you");
@@ -55,55 +97,103 @@ describe("triggerOf", () => {
 	});
 });
 
-describe("thread rows", () => {
-	it("puts a working thread in Active and a failed one in Needs you", () => {
-		const working = incidentRow(
-			incident({ investigations: [run({ status: "running", completedAt: null })] }),
-		);
-		const failed = incidentRow(
-			incident({ investigations: [run({ status: "failed" })] }),
-		);
-		expect([working.section, working.state]).toEqual(["active", "working"]);
-		expect([failed.section, failed.state]).toEqual(["needs", "failed"]);
+describe("one state per row (#1020)", () => {
+	it("ranks an ask above a failure above a run above a finding", () => {
+		const ask = thread({ status: "running", awaitingApprovalAt: at(4) });
+		const failed = thread({ status: "failed", unseen: true });
+		const live = thread({ status: "running" });
+		const found = thread({ unseen: true, rootCause: "Index dropped" });
+		expect(unitState([found, live, failed, ask])).toBe("asks");
+		expect(unitState([found, live, failed])).toBe("failed");
+		expect(unitState([found, live])).toBe("working");
+		expect(unitState([found])).toBe("ready");
 	});
-	it("settles a resolved thread with no state", () => {
-		const row = incidentRow(incident({ status: "closed" }), true);
-		expect([row.section, row.state]).toEqual(["settled", null]);
+	it("marks an unread answer new and a read one quiet", () => {
+		expect(unitState([thread({ unseen: true })])).toBe("new");
+		expect(unitState([thread({})])).toBe(null);
 	});
-	it("ranks an ask above a failure above a finding", () => {
-		const rows = sortRows([
-			{ ...incidentRow(incident({})), key: "r", state: "ready" },
-			{ ...incidentRow(incident({})), key: "f", state: "failed" },
-			{ ...incidentRow(incident({})), key: "a", state: "asks" },
+	it("says what each state is in words", () => {
+		expect(STATE_WORD).toEqual({
+			asks: "Approval needed",
+			failed: "Failed",
+			working: "Working",
+			ready: "Likely cause",
+			new: "New",
+		});
+	});
+});
+
+describe("feed rows (#1020)", () => {
+	it("opens a project thread on its own page, named by its project", () => {
+		const t = thread({ repositoryId: "r1", projectName: "payments-api" });
+		const row = unitRow(unit([t]));
+		expect(row.link).toEqual({ to: "/threads/$id", params: { id: t.id } });
+		expect([row.origin, row.service, row.title]).toEqual([
+			"you",
+			"payments-api",
+			"Why is the cart slow?",
 		]);
-		expect(rows.map((r) => r.key)).toEqual(["a", "f", "r"]);
 	});
-	it("shows a schedule by its latest run, and nothing before its first", () => {
-		const base = {
-			id: "s1",
-			name: "Nightly check",
-			serviceName: "checkout",
-			description: "Every day at 02:00",
-			liveRunId: null,
-		};
-		expect(scheduleRow({ ...base, lastTick: null } as unknown as Schedule)).toBe(
-			null,
-		);
-		const done = scheduleRow({
-			...base,
-			lastTick: { decidedAt: at(3), run: { id: "r1", status: "completed" } },
-		} as unknown as Schedule);
-		expect([done?.origin, done?.section, done?.schedule?.runId]).toEqual([
-			"schedule",
-			"settled",
-			"r1",
+	it("opens a schedule's run under its schedule", () => {
+		const t = thread({ scheduleId: "s1", kind: "investigation" });
+		const row = unitRow(unit([t]));
+		expect(ORIGIN_WORD[row.origin]).toBe("Scheduled");
+		expect(row.link).toEqual({
+			to: "/schedules/$id/runs/$runId",
+			params: { id: "s1", runId: t.id },
+		});
+	});
+	it("makes an incident's threads one row on the incident", () => {
+		const inc = incident({
+			title: "DiskAlmostFull",
+			alertCount: 1,
+			alerts: [alert("prometheus")],
+		});
+		const a = thread({ incidentId: inc.id, kind: "investigation" });
+		const b = thread({
+			incidentId: inc.id,
+			kind: "investigation",
+			status: "running",
+		});
+		const row = unitRow(unit([a, b], chipOf(inc, 7)), inc);
+		expect(row.title).toBe("Disk almost full");
+		expect(row.key).toBe(`i-${inc.id}`);
+		expect(row.link).toEqual({ to: "/incidents/$id", params: { id: inc.id } });
+		expect([ORIGIN_WORD[row.origin], row.firing, row.state]).toEqual([
+			"Alert",
+			true,
+			"working",
 		]);
-		const live = scheduleRow({
-			...base,
-			liveRunId: "r2",
-			lastTick: null,
-		} as unknown as Schedule);
-		expect([live?.section, live?.state]).toEqual(["active", "working"]);
+		expect(row.hint).toContain("INC-7");
+	});
+	it("tells a webhook event from an alert, and never says it fires", () => {
+		const inc = incident({
+			title: "CI failed on main",
+			alertCount: 1,
+			alerts: [alert("ci")],
+		});
+		const row = unitRow(
+			unit(
+				[thread({ incidentId: inc.id, triggerType: "webhook" })],
+				chipOf(inc, 2),
+			),
+			inc,
+		);
+		expect([ORIGIN_WORD[row.origin], row.firing]).toEqual(["Webhook", false]);
+	});
+	it("opens a plain chat on its conversation, without an incident number", () => {
+		const inc = incident({ tags: ["chat"], title: "Why is CheckoutSlow?" });
+		const row = unitRow(
+			unit([thread({ incidentId: inc.id })], chipOf(inc, 3)),
+			inc,
+		);
+		expect(row.title).toBe("Why is CheckoutSlow?");
+		expect(ORIGIN_WORD[row.origin]).toBeNull();
+		expect(row.link).toEqual({
+			to: "/incidents/$id/conversation",
+			params: { id: inc.id },
+		});
+		expect(row.hint).not.toContain("INC-");
 	});
 });
 
@@ -117,55 +207,16 @@ describe("plain chats started from Home (#1020 D10)", () => {
 			isPlainChat(chat({ alertCount: 1, alerts: [alert("prometheus")] })),
 		).toBe(false);
 	});
-	it("asks nothing of you once answered, and settles", () => {
-		const answered = chat({
-			investigations: [run({ kind: "chat", status: "completed" })],
-		});
-		expect(needOf(answered)).toBe(null);
-		expect(incidentRow(answered).section).toBe("settled");
-	});
-	it("stays active while it answers", () => {
-		const live = chat({
-			investigations: [
-				run({ kind: "chat", status: "running", completedAt: null }),
-			],
-		});
-		expect(incidentRow(live).section).toBe("active");
-	});
-	it("needs you when its run failed", () => {
-		const failed = chat({
-			investigations: [run({ kind: "chat", status: "failed" })],
-		});
-		expect(needOf(failed)).toBe("failed");
-		expect(incidentRow(failed).section).toBe("needs");
-	});
-});
-
-describe("generic-first rows (#1020)", () => {
-	it("names an alert thread readably and keeps the alert's own state apart", () => {
-		const row = incidentRow(
-			incident({
-				title: "DiskAlmostFull",
-				alertCount: 1,
-				alerts: [alert("prometheus")],
-			}),
-		);
-		expect(row.title).toBe("Disk almost full");
-		expect(ORIGIN_WORD[row.origin]).toBe("Alert");
-		expect(row.firing).toBe(true);
-	});
-	it("keeps a chat's own title and gives it no origin word", () => {
-		const row = incidentRow(incident({ title: "Why is CheckoutSlow?" }));
-		expect(row.title).toBe("Why is CheckoutSlow?");
-		expect(ORIGIN_WORD[row.origin]).toBeNull();
-		expect(row.firing).toBe(false);
-	});
-	it("says what each state is in words", () => {
-		expect(STATE_WORD).toEqual({
-			asks: "Approval needed",
-			failed: "Failed",
-			working: "Working",
-			ready: "Likely cause",
-		});
+	it("needs you when its run failed, and nothing once answered", () => {
+		expect(
+			needOf(
+				chat({ investigations: [run({ kind: "chat", status: "failed" })] }),
+			),
+		).toBe("failed");
+		expect(
+			needOf(
+				chat({ investigations: [run({ kind: "chat", status: "completed" })] }),
+			),
+		).toBe(null);
 	});
 });

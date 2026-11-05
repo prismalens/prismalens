@@ -53,6 +53,21 @@ describe("threads on a project, a service or nothing (#1020)", () => {
 		expect(ThreadListQuerySchema.parse({ repositoryId: REPO }).limit).toBe(50);
 	});
 
+	it("starts a helper from an empty page only with no subject (#1020)", () => {
+		expect(StartThreadSchema.parse({ subject: { kind: "none" }, text: "hi", place: "alerts" }).place).toBe("alerts");
+		expect(
+			StartThreadSchema.safeParse({ subject: { kind: "project", repositoryId: REPO }, text: "hi", place: "alerts" })
+				.success,
+		).toBe(false);
+		expect(StartThreadSchema.safeParse({ subject: { kind: "none" }, text: "hi", place: "settings" }).success).toBe(
+			false,
+		);
+		expect(threadChatContext({ subject: "none", place: "services" }).thread).toEqual({
+			subject: "none",
+			place: "services",
+		});
+	});
+
 	it("adds a project with no service", () => {
 		expect(AddRepositorySourceSchema.parse({ source: "/code/shop" })).toEqual({ source: "/code/shop" });
 	});

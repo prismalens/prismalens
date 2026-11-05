@@ -4,8 +4,8 @@
 import type { HarnessStatus } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
+import { WebhookCopy } from "@/components/alerts/WebhookCopy";
 import { AddAgentDialog } from "@/components/settings/AddAgentDialog";
-import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { Button } from "@/components/ui/button";
 import { useConnections, useHarnesses, useSetupStatus } from "@/lib/api/hooks";
@@ -175,22 +175,7 @@ export function FirstRunPanel() {
 					testId="first-run-step-1"
 					keepAction
 					action={
-						<>
-							<CopyButton
-								value={url}
-								label="Copy URL"
-								testId="first-run-copy-url"
-								className="sm:w-full"
-							/>
-							{token && (
-								<CopyButton
-									value={token.token}
-									label="Copy token"
-									testId="first-run-copy-token"
-									className="sm:w-full"
-								/>
-							)}
-						</>
+						<WebhookCopy testIdPrefix="first-run" buttonClassName="sm:w-full" />
 					}
 				>
 					Add a receiver with this URL and the token as the bearer token.

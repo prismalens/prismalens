@@ -62,6 +62,12 @@ export function legacySettingsTarget(
 export const Route = createFileRoute("/_authenticated/settings")({
 	validateSearch: validateSettingsSearch,
 	beforeLoad: ({ location }) => {
+		// Schedules moved to Automation (#1020); old links still land there.
+		if (
+			new URLSearchParams(location.searchStr).get("tab")?.replace(/"/g, "") ===
+			"schedules"
+		)
+			throw redirect({ to: "/automation", replace: true });
 		const to = legacySettingsTarget(location.searchStr);
 		if (to)
 			throw redirect({

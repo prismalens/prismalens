@@ -221,41 +221,66 @@ describe("notifications", () => {
 		});
 	});
 
-	describe("notificationText", () => {
-		it("picks 'Investigation finished' with the summary as body for completed status", () => {
+	describe("notificationText (#1020): worded by what the thread owes", () => {
+		it("a finished report reads 'Report ready', with the summary as body", () => {
 			const inv: FinishedInvestigation = {
 				id: "inv-1",
 				summary: "High CPU usage across nodes",
 				status: "completed",
+				kind: "investigation",
 			};
 			expect(notificationText(inv)).toEqual({
-				title: "Investigation finished",
+				title: "Report ready",
 				body: "High CPU usage across nodes",
 			});
 		});
 
-		it("picks 'Investigation failed' with the summary as body for failed status", () => {
+		it("a failed report reads 'Report failed'", () => {
 			const inv: FinishedInvestigation = {
 				id: "inv-2",
 				summary: "OOM killer invoked on cluster",
 				status: "failed",
+				kind: "investigation",
 			};
 			expect(notificationText(inv)).toEqual({
-				title: "Investigation failed",
+				title: "Report failed",
 				body: "OOM killer invoked on cluster",
 			});
 		});
 
-		it("an investigation with no summary yet gets an empty body", () => {
+		it("a chat reads 'Thread answered' or 'Thread failed', never an investigation", () => {
+			const chat: FinishedInvestigation = {
+				id: "inv-4",
+				summary: "Use the retry helper",
+				status: "completed",
+				kind: "chat",
+			};
+			expect(notificationText(chat)).toEqual({
+				title: "Thread answered",
+				body: "Use the retry helper",
+			});
+			expect(notificationText({ ...chat, status: "failed" }).title).toBe(
+				"Thread failed",
+			);
+		});
+
+		it("an older backend's run with no kind and no summary reads as a report, with an empty body", () => {
 			const inv: FinishedInvestigation = {
 				id: "inv-3",
 				summary: null,
 				status: "failed",
 			};
 			expect(notificationText(inv)).toEqual({
-				title: "Investigation failed",
+				title: "Report failed",
 				body: "",
 			});
+		});
+
+		it("newlyFinished carries the kind through", () => {
+			const done = newlyFinished(new Map([["c", "running"]]), [
+				{ id: "c", summary: null, status: "completed", kind: "chat" },
+			]);
+			expect(done[0]?.kind).toBe("chat");
 		});
 	});
 
