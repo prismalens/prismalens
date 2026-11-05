@@ -19,6 +19,7 @@ import { isUsageLimitError, parseReset } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
+	CheckoutGone,
 	DispatchService,
 	FollowUpRefused,
 	type FollowUpSession,
@@ -354,7 +355,11 @@ export class SessionLifecycleService implements OnModuleInit {
 				await this.wakes.finish(wake.id, "done", wake.payload, this.now());
 		} catch (e) {
 			if (!(e instanceof FollowUpRefused)) throw e;
-			if (now.getTime() - wake.at.getTime() >= REFUSED_FOR_MS)
+			// A held lease or a busy folder clears; a checkout that is gone never does.
+			if (
+				e instanceof CheckoutGone ||
+				now.getTime() - wake.at.getTime() >= REFUSED_FOR_MS
+			)
 				await this.wakes.finish(
 					wake.id,
 					"skipped",

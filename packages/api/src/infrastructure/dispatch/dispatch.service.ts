@@ -172,6 +172,9 @@ const AGENT_KINDS = [
 /** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
 export class FollowUpRefused extends Error {}
 
+/** The thread's checkout is gone or moved (#1024): retrying never admits it, unlike a held lease. */
+export class CheckoutGone extends FollowUpRefused {}
+
 /** How a follow-up treats the session (#1024): compact it first, or start fresh from a summary. */
 export interface FollowUpSession {
 	compact?: { command: string; instructions?: string; only?: boolean };

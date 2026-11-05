@@ -18,7 +18,7 @@ const env = await vi.hoisted(async () => {
 });
 
 const { PrismaService } = await import("../../core/prisma/prisma.service.js");
-const { FollowUpRefused } = await import("../../infrastructure/dispatch/dispatch.service.js");
+const { CheckoutGone, FollowUpRefused } = await import("../../infrastructure/dispatch/dispatch.service.js");
 const { WakesService } = await import("./wakes.service.js");
 const { SessionLifecycleService } = await import("./session-lifecycle.service.js");
 const { LIMIT_RESET_NOTE } = await import("./session.js");
@@ -331,6 +331,18 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			await s.onSettled(t.id, { outcome: "succeeded" });
 			expect((await wakes.latest(t.id, "limit"))?.state).toBe("cancelled");
 			expect((await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } })).limitResetsAt).toBeNull();
+		});
+
+		it("a checkout that is gone drops the wake at once instead of retrying", async () => {
+			const t = await thread();
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
+			refuse = new CheckoutGone("The checkout moved.");
+			await s.process(new Date(RESET.getTime() + 3 * 60_000));
+			expect(await wakes.latest(t.id, "limit")).toMatchObject({
+				state: "skipped",
+				payload: { skipped: "The checkout moved." },
+			});
 		});
 
 		it("a refused resume waits for the next pass, records its resume once, and gives up after a day", async () => {
