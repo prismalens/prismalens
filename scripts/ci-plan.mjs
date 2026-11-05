@@ -96,24 +96,30 @@ export function plan({
 const gh = (args) =>
 	execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 
-/** The newest earlier passing `CI` run on this PR branch whose head commit has the same tree, if any. */
+/**
+ * An earlier passing `CI` run on this PR branch whose head commit has the same tree, if any.
+ * The run list carries each head commit's tree, as Git's own skip-if-redundant job reads it.
+ */
 function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
 	const { REPO, HEAD_SHA, HEAD_REF, HEAD_REPO } = env;
-	const tree = (/** @type {string} */ sha) =>
-		gh(["api", `repos/${REPO}/git/commits/${sha}`, "--jq", ".tree.sha"]).trim();
-	const mine = tree(String(HEAD_SHA));
+	const mine = gh([
+		"api",
+		`repos/${REPO}/git/commits/${HEAD_SHA}`,
+		"--jq",
+		".tree.sha",
+	]).trim();
 	const runs = JSON.parse(
 		gh([
 			"api",
-			`repos/${REPO}/actions/workflows/ci.yml/runs?event=pull_request&status=success&per_page=30&branch=${encodeURIComponent(String(HEAD_REF))}`,
+			`repos/${REPO}/actions/workflows/ci.yml/runs?event=pull_request&status=success&per_page=50&branch=${encodeURIComponent(String(HEAD_REF))}`,
 			"--jq",
-			`[.workflow_runs[] | select(.head_repository.full_name == "${HEAD_REPO}") | .head_sha] | unique`,
+			"[.workflow_runs[] | {sha: .head_sha, tree: .head_commit.tree_id, repo: .head_repository.full_name}]",
 		]),
 	);
-	for (const sha of runs) {
-		if (sha !== HEAD_SHA && tree(sha) === mine) return sha;
-	}
-	return null;
+	const hit = runs.find(
+		(r) => r.repo === HEAD_REPO && r.sha !== HEAD_SHA && r.tree === mine,
+	);
+	return hit ? hit.sha : null;
 }
 
 function main(/** @type {NodeJS.ProcessEnv} */ env) {
