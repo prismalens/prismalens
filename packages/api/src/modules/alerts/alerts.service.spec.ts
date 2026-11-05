@@ -138,6 +138,30 @@ describe("AlertsService (BDD)", () => {
 			});
 		});
 
+		it("finds a labelled alert stored under the label-only key when it has the same service", async () => {
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockPrismaService.alert.create.mockResolvedValue(AlertFactory.create({}));
+			const dto: CreateAlertDto = {
+				source: "prometheus",
+				title: "HighErrorRate",
+				labels: { alertname: "HighErrorRate" },
+				serviceId: "svc-1",
+			};
+
+			await service.create(dto);
+
+			expect(mockPrismaService.alert.findFirst).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						OR: [
+							{ dedupKey: service.generateDedupKey(dto) },
+							{ dedupKey: service.generateDedupKey(dto, false), serviceId: "svc-1" },
+						],
+					},
+				}),
+			);
+		});
+
 		it("should deduplicate alerts with same dedupKey", async () => {
 			const createDto: CreateAlertDto = {
 				source: "prometheus",
@@ -179,6 +203,16 @@ describe("AlertsService (BDD)", () => {
 			expect(
 				service.generateDedupKey(labelled({ ...base, instance: "web-2" })),
 			).not.toBe(same);
+		});
+
+		it("a labelled alert resolved to different services is two alerts", () => {
+			const base = labelled({ alertname: "HighErrorRate" });
+			expect(
+				service.generateDedupKey({ ...base, serviceId: "svc-1" }),
+			).not.toBe(service.generateDedupKey({ ...base, serviceId: "svc-2" }));
+			expect(
+				service.generateDedupKey({ ...base, serviceId: "svc-1" }),
+			).toBe(service.generateDedupKey({ ...base, serviceId: "svc-1" }));
 		});
 
 		it("without labels the identity is source, title, severity and service", () => {
