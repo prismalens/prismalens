@@ -705,3 +705,4 @@ lightweight **Contributor License Agreement (CLA)** in addition to DCO
 sign-off. The CLA exists for IP hygiene — keeping the project's copyright in
 one clean place, as is standard for open-core projects (Grafana, Sentry) — and
 contributions remain licensed to everyone under Apache-2.0, inbound=outbound.
+
