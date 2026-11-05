@@ -103,6 +103,7 @@ export function ThreadPanel({
 				role="tabpanel"
 				id="surface-panel"
 				aria-labelledby={surface ? `surface-tab-${surface}` : undefined}
+				aria-label={surface ? undefined : "Surfaces"}
 				className="flex min-h-0 flex-1 flex-col"
 			>
 				{surface === null ? (
