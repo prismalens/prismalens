@@ -13,6 +13,7 @@ import { IncidentCorrelationService } from "../alerts/incident-correlation.servi
 import type { Event } from "../events/events.service.js";
 import { EventsService } from "../events/events.service.js";
 import type { StatusNote } from "../incidents/incidents.service.js";
+import { ServicesService } from "../services/services.service.js";
 import type { MappedAlert } from "./alert-sources/types.js";
 import { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 
@@ -137,6 +138,7 @@ export class WebhooksService {
 		@Inject(forwardRef(() => IncidentCorrelationService))
 		private readonly incidentCorrelation: IncidentCorrelationService,
 		private readonly alertMappingService: AlertMappingService,
+		private readonly servicesService: ServicesService,
 	) {}
 
 	/**
@@ -518,16 +520,22 @@ export class WebhooksService {
 
 		this.logger.log(`Created event ${event.id} from generic webhook`);
 
-		// 3. Resolve service using alert mapping rules
-		const mappedService = await this.alertMappingService.resolveServiceForAlert(
-			{
+		// 3. Resolve the service: an explicit serviceId, then serviceName, then
+		// the mapping rules. An id or name that matches nothing falls through.
+		const mappedService =
+			(dto.serviceId
+				? await this.servicesService.findById(dto.serviceId)
+				: null) ??
+			(dto.serviceName
+				? await this.servicesService.findByName(dto.serviceName)
+				: null) ??
+			(await this.alertMappingService.resolveServiceForAlert({
 				source: dto.source ?? "generic",
 				labels: dto.labels,
 				tags: dto.tags,
 				title: dto.title,
 				description: dto.description,
-			},
-		);
+			}));
 
 		// 4. Create alert with resolved serviceId
 		const alert = await this.alertsService.create({
