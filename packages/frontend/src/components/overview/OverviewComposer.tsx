@@ -5,22 +5,21 @@ import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type { FollowUpKind } from "@prismalens/contracts";
 import { useState } from "react";
 import {
-	AccessChip,
 	defaultAccessOf,
-	EffortChip,
-	ModelChip,
 	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import type { DraftChoice } from "@/components/incidents/record-context";
 import { runNumber } from "@/components/incidents/run-facts";
-import {
-	type ComposerAction,
-	ComposerBox,
-	type ComposerSend,
-} from "@/components/investigation/ComposerBox";
 import { RunDock } from "@/components/investigation/RunDock";
 import { viewName } from "@/components/run/run-labels";
+import {
+	actionProps,
+	Composer,
+	type ComposerAction,
+	type ComposerChoice,
+	type ComposerSend,
+} from "@/components/thread/Composer";
 import { uploadAttachment } from "@/lib/attachments";
 import { recheckBrief } from "@/lib/run-verb";
 import type { Overview } from "./use-overview";
@@ -168,37 +167,20 @@ export function OverviewComposer({
 				? unready
 				: record.investigateBlocked;
 
-	const chips =
-		current === "note" || current === "message" ? null : (
-			<>
-				<ModelChip
-					harness={harness}
-					model={model}
-					disabled={!!agentBlocked}
-					onPick={(h, m) =>
-						record.setDraftChoice(
-							h.id === hid
-								? { ...now, model: m }
-								: { harness: h.id as HarnessId, model: m },
-						)
-					}
-				/>
-				<EffortChip
-					harness={harness}
-					model={model}
-					effort={effort}
-					disabled={!!agentBlocked}
-					onEffort={(e) => record.setDraftChoice({ ...now, effort: e })}
-					onModel={(m) => record.setDraftChoice({ ...now, model: m })}
-				/>
-				<AccessChip
-					harness={harness}
-					level={accessLevel}
-					disabled={!!agentBlocked}
-					onLevel={(l) => record.setDraftChoice({ ...now, accessLevel: l })}
-				/>
-			</>
-		);
+	const agentless = current === "note" || current === "message";
+	const onChoice = (n: Partial<ComposerChoice> & { harnessId?: HarnessId }) => {
+		if (n.harnessId)
+			record.setDraftChoice(
+				n.harnessId === hid
+					? { ...now, model: n.model ?? "" }
+					: { harness: n.harnessId, model: n.model ?? "" },
+			);
+		else if (n.model !== undefined)
+			record.setDraftChoice({ ...now, model: n.model });
+		else if (n.effort) record.setDraftChoice({ ...now, effort: n.effort });
+		else if (n.accessLevel)
+			record.setDraftChoice({ ...now, accessLevel: n.accessLevel });
+	};
 
 	const onSend = async ({ text, files }: ComposerSend) => {
 		if (current === "note")
@@ -261,24 +243,20 @@ export function OverviewComposer({
 	return (
 		<div className="shrink-0 px-4 pt-2 pb-3" data-testid="overview-composer">
 			<div className="mx-auto w-full max-w-[760px]">
-				<ComposerBox
-					actions={t.actions}
-					action={current}
-					onAction={(id) => onAction(id as OverviewAction)}
-					chips={chips}
+				<Composer
+					state="ready"
+					{...actionProps(t.actions, current, (id) =>
+						onAction(id as OverviewAction),
+					)}
+					choice={{ harness, model, effort, accessLevel }}
+					onChoice={onChoice}
+					agentless={agentless}
 					onSend={onSend}
 					placeholder={t.placeholder[current] ?? ""}
 					text={text}
-					setText={setText}
-					agent={{
-						label: harness?.label ?? "The agent",
-						images:
-							harness?.checked?.outcome === "answers-acp"
-								? harness.checked.images
-								: null,
-					}}
+					onText={setText}
 					dock={dock}
-					isPending={record.isStarting || record.isSavingNote}
+					pending={record.isStarting || record.isSavingNote}
 					blockedReason={agentBlocked}
 				/>
 			</div>

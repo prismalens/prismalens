@@ -18,7 +18,10 @@ import {
 	HarnessToolRefused,
 	annotationsFor,
 	defineHarnessTool,
+	EVERY_SUBJECT,
 	fail,
+	type HarnessServes,
+	servedTo,
 } from "./tool.js";
 
 const makeCtx = (overrides?: Partial<Parameters<typeof executeTool>[2]>) => ({
@@ -35,6 +38,7 @@ describe("HarnessRegistry", () => {
 			title: "Bad",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => ({ value: "ok" }),
@@ -46,6 +50,7 @@ describe("HarnessRegistry", () => {
 			title: "Double",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => ({ value: "ok" }),
@@ -62,6 +67,7 @@ describe("HarnessRegistry", () => {
 			title: "My Tool",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => ({ value: "ok" }),
@@ -71,6 +77,7 @@ describe("HarnessRegistry", () => {
 			title: "Another Tool",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => ({ value: "ok" }),
@@ -86,6 +93,7 @@ describe("HarnessRegistry", () => {
 			title: "Run ID Tool",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ runId: z.string() }),
 			run: async () => ({ value: "ok" }),
@@ -101,6 +109,7 @@ describe("executeTool failure contract", () => {
 			title: "Strict",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ count: z.number() }),
 			run: async () => ({ value: "ok" }),
@@ -121,6 +130,7 @@ describe("executeTool failure contract", () => {
 			title: "Throwing",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => {
@@ -146,6 +156,7 @@ describe("executeTool failure contract", () => {
 			title: "Hanging",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => new Promise(() => {}),
@@ -164,6 +175,7 @@ describe("executeTool failure contract", () => {
 			title: "Failing",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => fail("not_found", "m", "n"),
@@ -184,6 +196,7 @@ describe("secrets redaction", () => {
 			title: "Secret Tool",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => ({
@@ -205,6 +218,7 @@ describe("recording and limits", () => {
 			title: "Large Input",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ data: z.string() }),
 			run: async () => ({ value: "ok" }),
@@ -222,6 +236,7 @@ describe("recording and limits", () => {
 			title: "Normal",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ query: z.string() }),
 			run: async () => ({ value: "result" }),
@@ -241,6 +256,7 @@ describe("recording and limits", () => {
 			title: "Huge Output",
 			description: "desc",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => ({ value: "x".repeat(RESULT_CHARS + 500) }),
@@ -285,6 +301,7 @@ describe("round-3 guarantees (#848)", () => {
 			title: "t",
 			description: "d",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ q: z.string() }),
 			run: async ({ q }) => ({ value: { q } }),
@@ -304,6 +321,7 @@ describe("round-3 guarantees (#848)", () => {
 			title: "t",
 			description: "d",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: async () => ({ value: { a: 1 } }),
@@ -326,6 +344,7 @@ describe("round-3 guarantees (#848)", () => {
 			title: "t",
 			description: "d",
 			group: "record",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "record",
 			input: z.object({}),
 			run: async () => {
@@ -346,6 +365,7 @@ describe("round-3 guarantees (#848)", () => {
 			title: "t",
 			description: "d",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: (_i, c) =>
@@ -371,6 +391,7 @@ describe("round-4 guarantees (#848)", () => {
 			title: "t",
 			description: "d",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ q: z.string() }),
 			run: async ({ q }) => ({ value: { q }, secrets: ["secret-1234"] }),
@@ -386,6 +407,7 @@ describe("round-4 guarantees (#848)", () => {
 			title: "t",
 			description: "d",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({}),
 			run: () => {
@@ -405,6 +427,7 @@ describe("round-5 guarantees (#848)", () => {
 			title: "t",
 			description: "d",
 			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
 			effect: "read",
 			input: z.object({ q: z.string(), port: z.number() }),
 			run: async () => ({ value: { ok: true }, secrets: ["1234"] }),
@@ -415,5 +438,43 @@ describe("round-5 guarantees (#848)", () => {
 			{ runId: "r1", signal: new AbortController().signal },
 		);
 		expect(call.input).toEqual({ q: "pw [redacted]", port: 1234 });
+	});
+});
+
+describe("servedTo (#1020): a run sees the tools its subject and debt can use", () => {
+	const tool = (name: string, serves: HarnessServes) =>
+		defineHarnessTool({
+			name,
+			title: name,
+			description: "desc",
+			group: "core",
+			effect: "read",
+			serves,
+			input: z.object({}),
+			run: async () => ({ value: "ok" }),
+		});
+	const tools = [
+		tool("anywhere", { subjects: EVERY_SUBJECT }),
+		tool("incident_only", { subjects: ["incident"] }),
+		tool("report_only", { subjects: EVERY_SUBJECT, owes: "report" }),
+	];
+	const names = (subject?: "incident" | "project", owes?: "answer" | "report") =>
+		servedTo(tools, { subject, owes }).map((t) => t.name);
+
+	it("keeps a subject's tools and drops the rest", () => {
+		expect(names("project", "report")).toEqual(["anywhere", "report_only"]);
+		expect(names("incident", "report")).toEqual([
+			"anywhere",
+			"incident_only",
+			"report_only",
+		]);
+	});
+
+	it("drops a report's tools from a run that owes an answer", () => {
+		expect(names("incident", "answer")).toEqual(["anywhere", "incident_only"]);
+	});
+
+	it("keeps every tool when the scope is unknown", () => {
+		expect(names()).toEqual(["anywhere", "incident_only", "report_only"]);
 	});
 });

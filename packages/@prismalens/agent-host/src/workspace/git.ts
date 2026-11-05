@@ -43,17 +43,31 @@ export interface FetchCredential {
 	scope: string;
 }
 
+/**
+ * The one filter every git child's env goes through, in agent-host and the API (#1020):
+ * repo-local, trace and config-override variables are dropped whatever their case, since
+ * Windows reads `git_dir` as GIT_DIR, and so is any git name not written in upper case.
+ */
+export function gitChildEnv(
+	parent: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const [key, value] of Object.entries(parent)) {
+		const name = key.toUpperCase();
+		if (value === undefined || STRIP_EXACT.has(name)) continue;
+		if (STRIP_PREFIX.some((p) => name.startsWith(p))) continue;
+		if (name.startsWith("GIT_") && name !== key) continue;
+		env[key] = value;
+	}
+	return env;
+}
+
 /** The env of a git child: no prompt, English messages, and the credential only when one is passed. */
 export function gitEnv(
 	parent: Readonly<Record<string, string | undefined>>,
 	credential?: FetchCredential,
 ): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const [key, value] of Object.entries(parent)) {
-		if (value === undefined || STRIP_EXACT.has(key)) continue;
-		if (STRIP_PREFIX.some((p) => key.startsWith(p))) continue;
-		env[key] = value;
-	}
+	const env = gitChildEnv(parent);
 	Object.assign(env, {
 		GIT_TERMINAL_PROMPT: "0",
 		// Set but empty: git sees an askpass and runs nothing.

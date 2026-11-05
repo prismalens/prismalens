@@ -31,7 +31,7 @@ export function ModelSelectorList({
 	className,
 	...props
 }: ComponentProps<typeof CommandList>) {
-	return <CommandList className={cn("py-1", className)} {...props} />;
+	return <CommandList className={cn("p-0 py-1", className)} {...props} />;
 }
 
 export function ModelSelectorEmpty(props: ComponentProps<typeof CommandEmpty>) {
@@ -42,7 +42,12 @@ export function ModelSelectorGroup({
 	className,
 	...props
 }: ComponentProps<typeof CommandGroup>) {
-	return <CommandGroup className={cn("py-0", className)} {...props} />;
+	return (
+		<CommandGroup
+			className={cn("py-0 [&_[cmdk-group-heading]]:px-3", className)}
+			{...props}
+		/>
+	);
 }
 
 export function ModelSelectorItem({
@@ -51,7 +56,7 @@ export function ModelSelectorItem({
 }: ComponentProps<typeof CommandItem>) {
 	return (
 		<CommandItem
-			className={cn("h-[52px] gap-2.5 px-3 py-2", className)}
+			className={cn("h-[52px] gap-2.5 rounded-none px-3 py-2", className)}
 			{...props}
 		/>
 	);

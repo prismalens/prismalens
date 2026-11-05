@@ -245,6 +245,8 @@
 				"!packages/frontend/src/components/run/IncidentHeader.tsx",
 				"!packages/frontend/src/components/Sidebar.tsx",
 				"!packages/frontend/src/components/run/RunDetailsPanel.tsx",
+				"!packages/frontend/src/components/thread/ThreadPanel.tsx",
+				"!packages/frontend/src/components/TitleBarStrip.tsx",
 				"!packages/frontend/src/components/alerts/AlertDetail.tsx",
 				"!packages/frontend/src/components/projects/ProjectList.tsx",
 				"!packages/frontend/src/components/projects/ProjectPage.tsx",

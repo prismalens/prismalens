@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
 	channelPackage,
 	keyless,
+	PROBE_FILES,
 	plan,
 	shown,
 	verdict,
@@ -137,4 +138,11 @@ test("sign-in-needed counts as started only on a row the probe hands no key", ()
 	);
 	assert.equal(flag.ok, false);
 	assert.match(flag.text, /failed-to-start: ERROR Unrecognized flag/);
+});
+
+test("the deepagents profile names a default model, which deepagents-code 0.2.4 needs to start (#1035)", () => {
+	assert.match(
+		PROBE_FILES.deepagents["config.toml"],
+		/^\[models\]\ndefault = "[a-z]+:[^"]+"\n$/,
+	);
 });

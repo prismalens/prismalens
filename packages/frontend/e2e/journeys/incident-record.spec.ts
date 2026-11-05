@@ -149,7 +149,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 
 		await page.goto(`/incidents/${id}`);
 		// No run and no alert: no cards, only the box (cards are earned).
-		await expect(page.getByTestId("overview-blank")).toContainText(
+		await expect(page.getByTestId("incident-blank")).toContainText(
 			"What do you know so far?",
 			{ timeout: 15_000 },
 		);

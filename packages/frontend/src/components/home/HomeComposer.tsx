@@ -1,65 +1,90 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { HarnessId } from "@prismalens/config/harness";
-import { useMutation } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
+import { ChevronDown, Siren } from "lucide-react";
 import { useState } from "react";
-import {
-	AccessChip,
-	ModelChip,
-	unreadyLine,
-	useAgentChoice,
-} from "@/components/agent/AgentPicker";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useSetupProgress } from "@/components/incidents/FirstRunPanel";
-import type { DraftChoice } from "@/components/incidents/record-context";
 import {
-	type ComposerAction,
-	ComposerBox,
-	type ComposerSend,
-} from "@/components/investigation/ComposerBox";
-import { boxChoice } from "@/components/overview/OverviewComposer";
+	ScheduleDialog,
+	type SchedulePrefill,
+} from "@/components/schedules/ScheduleDialog";
 import { codeWhere } from "@/components/services/service-detail.utils";
+import { NewThread } from "@/components/thread/NewThread";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useCreateIncident, useServices } from "@/lib/api/hooks";
-import { orpc } from "@/lib/api/orpc-client";
-import { uploadAttachment } from "@/lib/attachments";
-import { CHAT_TAG } from "@/lib/trigger";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { useRepositories, useServices } from "@/lib/api/hooks";
+import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
+import { cn } from "@/lib/utils";
 import { AwayStrip } from "./AwayStrip";
 
-const SEND: ComposerAction[] = [
-	{ id: "ask", label: "Send", detail: "", needsText: true },
-];
+/** Home's choices; on `/new` they live in the URL, so `c` opens it with Incident on. */
+export interface NewThreadSearch {
+	project?: string;
+	service?: string;
+	/** No subject, picked on purpose: the recent service is not assumed. */
+	none?: boolean;
+	incident?: boolean;
+	severity?: Severity;
+	note?: boolean;
+}
 
-/** The thread's title: its first line, cut at a word near 80 characters. */
-export function titleOf(text: string): string {
-	const line = text.trim().split("\n")[0]?.trim() ?? "";
-	if (line.length <= 80) return line;
-	const cut = line.slice(0, 80);
-	return `${cut.slice(0, cut.lastIndexOf(" ") > 40 ? cut.lastIndexOf(" ") : 80)}…`;
+const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
+const SEVERITY_WORD: Record<Severity, string> = {
+	critical: "Critical",
+	high: "High",
+	medium: "Medium",
+	low: "Low",
+	info: "Info",
+};
+
+export function subjectOf(search: NewThreadSearch): ThreadStartSubject {
+	if (search.project) return { kind: "project", repositoryId: search.project };
+	if (search.service) return { kind: "service", serviceId: search.service };
+	return { kind: "none" };
 }
 
 /**
- * Home on a quiet workspace: one question, one box, one setup line.
- * A thread still needs an incident to live on (#1020 follow-up), so Send
- * makes one from the first line and opens its conversation.
+ * Home (#1020): one question over one box. The subject is a quiet choice under
+ * the question (a project, a service or nothing); Incident turns the message
+ * into an incident's brief. Without a pick, the service touched last is meant.
  */
-export function HomeComposer() {
-	const navigate = useNavigate();
-	const { data: servicesPage } = useServices({ limit: 100 });
+export function HomeComposer({
+	search: given,
+	onSearch,
+}: {
+	search?: NewThreadSearch;
+	onSearch?: (next: Partial<NewThreadSearch>) => void;
+}) {
+	const [local, setLocal] = useState<NewThreadSearch>({});
+	const search = given ?? local;
+	const set =
+		onSearch ??
+		((next: Partial<NewThreadSearch>) =>
+			setLocal((prev) => ({ ...prev, ...next })));
+	const servicesPage = useServices({ limit: 100 }).data;
 	const services = servicesPage?.data ?? [];
-	const [serviceId, setServiceId] = useState<string | null>(null);
-	// Unpicked, the box means the service touched last, preferring one with code (#1020 D7).
+	const repos = useRepositories({ limit: 100 }).data?.data ?? [];
+	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
+	const canSchedule = useSchedules().data?.canEdit === true;
+	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
 	const { incidents } = useActiveIncidents();
 	const recent = [...incidents]
 		.sort(
@@ -69,46 +94,86 @@ export function HomeComposer() {
 		)
 		.map((i) => services.find((s) => s.id === i.serviceId))
 		.filter((s): s is (typeof services)[number] => !!s);
-	const service =
-		services.find((s) => s.id === serviceId) ??
-		recent.find((s) => codeWhere(s)) ??
-		recent[0] ??
-		services.find((s) => codeWhere(s)) ??
-		services[0] ??
-		null;
-	const [draft, setDraft] = useState<DraftChoice>({});
-	const { harness, hid, model, accessLevel, now, sent } = boxChoice(
-		useAgentChoice(),
-		draft,
-	);
-	const [text, setText] = useState("");
-	const create = useCreateIncident();
-	const chat = useMutation(orpc.incidents.chat.mutationOptions());
-	const unready = harness ? unreadyLine(harness) : "No coding agent yet.";
-
-	const onSend = async ({ text, files }: ComposerSend) => {
-		const incident = await create.mutateAsync({
-			title: titleOf(text),
-			tags: [CHAT_TAG],
-			...(service ? { serviceId: service.id } : {}),
-		});
-		const attachments = await Promise.all(
-			files.map((f) => uploadAttachment(incident.id, f)),
-		);
-		const run = await chat.mutateAsync({
-			id: incident.id,
-			text,
-			...sent,
-			...(attachments.length
-				? { attachments: attachments.map((a) => a.id) }
-				: {}),
-		});
-		await navigate({
-			to: "/incidents/$id/conversation",
-			params: { id: incident.id },
-			search: { investigation: run.investigationId },
+	const assumed =
+		search.project || search.service || search.none
+			? undefined
+			: (recent.find((s) => codeWhere(s)) ??
+				recent[0] ??
+				services.find((s) => codeWhere(s)) ??
+				services[0]);
+	const picked: NewThreadSearch = assumed
+		? { ...search, service: assumed.id }
+		: search;
+	const subject = subjectOf(picked);
+	const repo = repos.find((r) => r.id === picked.project);
+	const service = services.find((s) => s.id === picked.service);
+	// An incident carries a service, not a project (the contract has no repositoryId): #1020.
+	const incidentOff = !!picked.project;
+	const incident =
+		search.incident && !incidentOff ? (search.severity ?? "high") : null;
+	const pick = (v: string) => {
+		const [kind, id] = v.split(":");
+		set({
+			project: kind === "project" ? id : undefined,
+			service: kind === "service" ? id : undefined,
+			none: kind === "none" ? true : undefined,
+			...(kind === "project" ? { incident: undefined, note: undefined } : {}),
 		});
 	};
+	const top = (
+		<div
+			className="flex flex-wrap items-center gap-1.5 px-0.5"
+			data-testid="composer-top"
+		>
+			<button
+				type="button"
+				aria-pressed={!!incident}
+				disabled={incidentOff}
+				aria-label={incidentOff ? "Incident: needs a service" : undefined}
+				onClick={() =>
+					set({ incident: search.incident ? undefined : true, note: undefined })
+				}
+				className={cn(
+					"inline-flex h-7 items-center gap-1.5 rounded-control px-2 text-meta transition-colors duration-(--dur-instant)",
+					incident
+						? "bg-surface-3 font-medium text-text-1"
+						: "bg-surface-2 text-text-2 hover:text-text-1",
+					incidentOff && "cursor-not-allowed opacity-50",
+				)}
+				data-testid="composer-incident"
+			>
+				<Siren aria-hidden className="size-3.5" />
+				Incident
+			</button>
+			{incident && (
+				<Select
+					value={incident}
+					onValueChange={(v) => set({ severity: v as Severity })}
+				>
+					<SelectTrigger
+						aria-label="Severity"
+						className="text-meta"
+						data-testid="composer-severity"
+					>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{SEVERITIES.map((sv) => (
+							<SelectItem key={sv} value={sv} data-testid={`severity-${sv}`}>
+								{SEVERITY_WORD[sv]}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			)}
+			{search.note && incident && (
+				<span className="text-meta text-text-3" data-testid="composer-note">
+					Note only
+				</span>
+			)}
+		</div>
+	);
+	const nothing = !!servicesPage && services.length === 0 && repos.length === 0;
 
 	return (
 		<div
@@ -119,19 +184,33 @@ export function HomeComposer() {
 				<h2 className="text-center text-display text-text-1">
 					What should we look into?
 				</h2>
-				{service && (
-					// The service is a quiet choice under the question, so a long name never outweighs it.
+				{!nothing && (
+					// The subject is a quiet choice under the question, so a long name never outweighs it.
 					<p className="flex items-center gap-1 text-body text-text-3">
 						in
-						<ServicePicker
-							services={services}
-							value={service}
-							onPick={setServiceId}
+						<SubjectPicker
+							value={
+								picked.project
+									? `project:${picked.project}`
+									: picked.service
+										? `service:${picked.service}`
+										: "none"
+							}
+							label={
+								repo?.fullName ??
+								(service ? service.displayName || service.name : "no project")
+							}
+							projects={repos.map((r) => ({ id: r.id, name: r.fullName }))}
+							services={services.map((s) => ({
+								id: s.id,
+								name: s.displayName || s.name,
+							}))}
+							onPick={pick}
 						/>
 					</p>
 				)}
 			</div>
-			{!service && servicesPage && (
+			{nothing && (
 				<p className="-mt-2 self-center text-body text-text-3">
 					Ask now, or{" "}
 					<Link
@@ -145,80 +224,106 @@ export function HomeComposer() {
 					so the agent can read its code.
 				</p>
 			)}
-			<ComposerBox
-				actions={SEND}
-				action="ask"
-				onAction={() => {}}
-				chips={
-					<>
-						<ModelChip
-							harness={harness}
-							model={model}
-							disabled={!!unready}
-							onPick={(h, m) =>
-								setDraft(
-									h.id === hid
-										? { ...now, model: m }
-										: { harness: h.id as HarnessId, model: m },
-								)
-							}
-						/>
-						<AccessChip
-							harness={harness}
-							level={accessLevel}
-							disabled={!!unready}
-							onLevel={(l) => setDraft({ ...now, accessLevel: l })}
-						/>
-					</>
-				}
-				onSend={onSend}
+			<NewThread
+				subject={subject}
+				branch={repo?.defaultBranch ?? null}
+				incident={incident}
+				note={!!search.note}
+				top={top}
 				placeholder="Ask anything"
-				text={text}
-				setText={setText}
-				agent={{
-					label: harness?.label ?? "The agent",
-					images:
-						harness?.checked?.outcome === "answers-acp"
-							? harness.checked.images
-							: null,
-				}}
-				isPending={create.isPending || chat.isPending}
-				blockedReason={unready ?? undefined}
-				autoFocus
+				{...(canSchedule ? { onRepeat: setRepeat } : {})}
+				slash={
+					incidentOff
+						? []
+						: [
+								{
+									id: "investigate",
+									label: "Investigate",
+									run: () => set({ incident: true, note: undefined }),
+								},
+								{
+									id: "note",
+									label: "Note",
+									run: () => set({ incident: true, note: true }),
+								},
+							]
+				}
 			/>
-			<SetupHint service={service} />
+			<SetupHint service={service ?? null} />
 			<AwayStrip />
+			{repeat && (
+				<ScheduleDialog
+					open
+					onOpenChange={(open) => {
+						if (!open) setRepeat(null);
+					}}
+					prefill={repeat}
+					canSetHostZone
+				/>
+			)}
 		</div>
 	);
 }
 
-function ServicePicker({
-	services,
+function SubjectPicker({
 	value,
+	label,
+	projects,
+	services,
 	onPick,
 }: {
+	value: string;
+	label: string;
+	projects: { id: string; name: string }[];
 	services: { id: string; name: string }[];
-	value: { id: string; name: string };
-	onPick: (id: string) => void;
+	onPick: (value: string) => void;
 }) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				className="inline-flex min-h-6 max-w-[28rem] items-center gap-1 rounded-control px-1.5 text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
-				data-testid="home-service"
+				aria-label={`Subject: ${label}`}
+				data-testid="composer-subject"
 			>
-				<span className="truncate">{value.name}</span>
+				<span className="truncate">{label}</span>
 				<ChevronDown className="size-4 self-center text-text-3" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="center">
-				<DropdownMenuRadioGroup value={value.id} onValueChange={onPick}>
+				<DropdownMenuRadioGroup value={value} onValueChange={onPick}>
+					<DropdownMenuRadioItem value="none" data-testid="subject-none">
+						No project
+					</DropdownMenuRadioItem>
+					{projects.length > 0 && (
+						<DropdownMenuLabel>Projects</DropdownMenuLabel>
+					)}
+					{projects.map((p) => (
+						<DropdownMenuRadioItem
+							key={p.id}
+							value={`project:${p.id}`}
+							data-testid={`subject-project-${p.id}`}
+						>
+							{p.name}
+						</DropdownMenuRadioItem>
+					))}
+					{services.length > 0 && (
+						<DropdownMenuLabel>Services</DropdownMenuLabel>
+					)}
 					{services.map((s) => (
-						<DropdownMenuRadioItem key={s.id} value={s.id}>
+						<DropdownMenuRadioItem
+							key={s.id}
+							value={`service:${s.id}`}
+							data-testid={`subject-service-${s.id}`}
+						>
 							{s.name}
 						</DropdownMenuRadioItem>
 					))}
 				</DropdownMenuRadioGroup>
 				<DropdownMenuSeparator />
+				<DropdownMenuItem asChild>
+					<Link to="/projects" search={{ add: true }}>
+						Add project
+					</Link>
+				</DropdownMenuItem>
 				<DropdownMenuItem asChild>
 					<Link to="/services" search={{ add: "1" }}>
 						Add a service

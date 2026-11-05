@@ -25,9 +25,8 @@ import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useAbout } from "@/components/settings";
 import { Hint } from "@/components/shared/Hint";
-import { rowStateOf } from "@/components/shell/IncidentTree";
-import { openSearch } from "@/components/shell/SearchPalette";
-import { ThreadList } from "@/components/shell/ThreadList";
+import { SearchHost, useOpenSearch } from "@/components/shell/SearchHost";
+import { ThreadList, useWaitingCount } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
 	Sheet,
@@ -78,7 +77,7 @@ function useDoors(signedIn: boolean): Door[] {
 	// Operations is earned: it stays once alerts have ever arrived, not only while one is open (#1020).
 	const operations =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
-	const waiting = incidents.filter((i) => rowStateOf(i) === "asks").length;
+	const waiting = useWaitingCount();
 	return [
 		...(waiting
 			? [
@@ -138,7 +137,7 @@ function Shell({ pathname }: { pathname: string }) {
 	useBreathePhase();
 	useFoldKey(toggleSidebar, true);
 	return (
-		<>
+		<SearchHost enabled={signedIn}>
 			{hidden ? (
 				<ShowSidebar onShow={toggleSidebar} />
 			) : (
@@ -155,7 +154,7 @@ function Shell({ pathname }: { pathname: string }) {
 				</aside>
 			)}
 			<PhoneStrip pathname={pathname} doors={doors} signedIn={signedIn} />
-		</>
+		</SearchHost>
 	);
 }
 
@@ -188,6 +187,7 @@ function MainBar({
 }) {
 	const { sidebarFolded } = useLayoutPrefs();
 	const full = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
+	const openSearch = useOpenSearch();
 	const settingsDoor = doors.find((d) => d.to === "/settings");
 	return (
 		<>
@@ -463,6 +463,7 @@ function PhoneStrip({
 	signedIn: boolean;
 }) {
 	const [open, setOpen] = useState(false);
+	const openSearch = useOpenSearch();
 	const waiting = doors.find((d) => d.narrowOnly);
 	return (
 		<nav

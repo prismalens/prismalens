@@ -17,6 +17,7 @@ import {
 	unreadyLine,
 	unreadyReason,
 } from "./AgentPicker";
+import { levelModeId } from "@/lib/access-levels";
 
 vi.mock("@/components/ui/popover", () => ({
 	Popover: ({ children }: { children: React.ReactNode }) => children,
@@ -165,9 +166,41 @@ describe("the box's chips (#673)", () => {
 		expect(off).toContain("disabled");
 		expect(off).toContain("Fixed");
 		expect(off).not.toContain("Default");
-		// The agent's own effort is tagged by its name, never "Default" (#907).
+		// The agent's pick is tagged by its name; the no-level entry reads "Default" (#1020).
 		expect(on).toMatch(/Claude Code(&#x27;|')s pick/);
-		expect(on).not.toMatch(/>Default</);
+		expect(on).toMatch(/>Default</);
+		expect(on).not.toContain("Set by");
+	});
+
+	it("shows access as icon plus word, warning above the agent's default level (#1020)", () => {
+		const at = (level: "supervised" | "full-access") =>
+			renderToStaticMarkup(
+				React.createElement(AccessChip, {
+					harness: claude(),
+					level,
+					onLevel: () => {},
+				}),
+			).split("</button>")[0] ?? "";
+		const calm = at("supervised");
+		expect(calm).toContain('data-testid="access-chip-icon"');
+		expect(calm).toContain("Ask always");
+		expect(calm).not.toContain('data-tone="warn"');
+		const loud = at("full-access");
+		expect(loud).toContain('data-testid="access-chip-icon"');
+		expect(loud).toContain('data-tone="warn"');
+		expect(loud).toContain("Full access");
+		// The warning reaches a screen reader, not only the icon's colour (review of #1040).
+		expect(loud).toMatch(/aria-label="Permission: Full access, above the default"/);
+		expect(calm).toMatch(/aria-label="Permission: Ask always"/);
+		const lockedLoud = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude(),
+				level: "full-access",
+				onLevel: () => {},
+				lockedHint: "Kept from the run",
+			}),
+		);
+		expect(lockedLoud).toMatch(/aria-label="Permission: Full access, above the default. Kept from the run"/);
 	});
 
 	it("lists the four levels, the default first and tagged, each with the agent's own mode name (#673 w21)", () => {
@@ -231,6 +264,25 @@ describe("the box's chips (#673)", () => {
 			}),
 		);
 		expect(withoutLock).not.toContain("lucide-lock");
+		expect(withLock).not.toContain('data-testid="access-chip-warning"');
+
+		// Above the default and sandboxed: the lock stays and the warning shape is kept beside it.
+		const fullMode = levelModeId(enforcedClaude, "full-access");
+		const loudHarness = claude({
+			checked: {
+				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+				sandbox: { [fullMode]: { state: "enforced", reason: "sandbox active" } },
+			},
+		});
+		const loudLock = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: loudHarness,
+				level: "full-access",
+				onLevel: () => {},
+			}),
+		).split("</button>")[0];
+		expect(loudLock).toContain("lucide-lock");
+		expect(loudLock).toContain('data-testid="access-chip-warning"');
 	});
 });
 

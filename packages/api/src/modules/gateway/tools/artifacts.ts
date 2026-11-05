@@ -8,6 +8,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { ANYWHERE } from "./serves.js";
 
 /** Where a published page goes: the run's own record, by the bearer's run. */
 export interface ArtifactsData {
@@ -26,6 +27,7 @@ export function artifactTools(data: ArtifactsData): HarnessTool[] {
 			description: `Publish one self-contained HTML page into this run, for something prose shows badly: a table of findings, a timeline, a chart drawn in inline SVG. Inline CSS and SVG only: scripts do not run and nothing is fetched, so external images, fonts and links will not load. Up to ${ARTIFACT_HTML_CHARS} characters. The operator sees it where you published it and can open it larger.`,
 			group: "record",
 			effect: "record",
+			serves: ANYWHERE,
 			input: z.object({
 				title: z.string().trim().min(1).max(120),
 				html: z.string().min(1).max(ARTIFACT_HTML_CHARS),

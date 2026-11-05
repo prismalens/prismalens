@@ -244,7 +244,7 @@ test("design coverage matrix", async ({
 		await page.keyboard.press("Escape");
 		await visit(page, "/new");
 		await page.keyboard.press("Control+k");
-		await expect(page.getByTestId("search-palette")).toBeVisible();
+		await expect(page.getByTestId("thread-search")).toBeVisible();
 		await shotHere(`palette-1280-${t}`);
 		await page.keyboard.press("Escape");
 		await page.getByTestId("nav-new").hover();
@@ -516,7 +516,7 @@ test("design coverage matrix", async ({
 		await page.getByTestId("header-more").click();
 		await shotHere(`menu-action-1280-${t}`);
 		await page.keyboard.press("Escape");
-		const row = page.getByTestId("tree-incident-link").first();
+		const row = page.getByTestId("thread-row").first();
 		await row.hover();
 		await shotHere(`hover-row-1280-${t}`, false);
 		await row.focus();

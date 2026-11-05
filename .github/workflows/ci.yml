@@ -20,12 +20,9 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Merge-queue support (#403): the queue builds a speculative merge of the
-  # queued PR(s) onto main and requires `CI gate` to pass on THAT commit, which
-  # is what lets the ruleset drop "branch must be up to date" without letting
-  # two individually-green PRs break main together. Every job in this file is
-  # event-agnostic, so no job-level changes are needed — the trigger is enough.
-  merge_group:
+  # Nightly on main: the release-only proofs a PR skips, and the npm registry's upgrade chain (#1052).
+  schedule:
+    - cron: "47 3 * * *"
   # The live agent check (#884): only the `live-*` jobs run on dispatch; every PR job
   # above them, and `CI gate`, is skipped. It is dispatch-only because the free model
   # stalls (2 of 2 rounds timed out, #914), so a nightly would be red most nights.
@@ -42,7 +39,7 @@ permissions:
 # A live run on main has its own group and is never cancelled, so it and a push
 # run on main cannot cancel each other.
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && format('live-agent-{0}', inputs.ref || github.ref) || format('ci-{0}-{1}', github.workflow, github.ref) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('live-agent-{0}', inputs.ref || github.ref) || github.event_name == 'schedule' && 'ci-nightly' || format('ci-{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 # One build per run (#885): `build` saves turbo's cache under this run's SHA, and the
@@ -54,9 +51,47 @@ env:
   FREE_MODEL: opencode/deepseek-v4.1-flash-free
 
 jobs:
+  # What this run has to run (scripts/ci-plan.mjs, #1052). `skip` starts no other job: a push
+  # whose tree already passed, or a docs-only PR. `full` and `agents` switch on the release-only
+  # proofs and the agent legs; `CI gate` below lets exactly the jobs they switch off be skipped.
+  changes:
+    name: Plan this run
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      skip: ${{ steps.plan.outputs.skip }}
+      full: ${{ steps.plan.outputs.full }}
+      agents: ${{ steps.plan.outputs.agents }}
+      reason: ${{ steps.plan.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci-plan.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ci-plan.mjs
+
   build:
     name: Build & typecheck
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -184,7 +219,7 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
 
       - name: Pack script tests
-        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-adapter-sdk.test.mjs
+        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-adapter-sdk.test.mjs
 
       - name: Agent adapters tarball
         run: |
@@ -299,7 +334,9 @@ jobs:
     # `pl service` on a real systemd user manager (#732).
     # REQUIRED: in `ci-gate`'s `needs` (#920).
     name: "Tarball: pl service under systemd"
-    needs: pack
+    # Release-only on a PR (#1052): main, the nightly, release PRs and PRs that touch the CLI or scripts.
+    needs: [pack, changes]
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -392,7 +429,9 @@ jobs:
     #
     # REQUIRED: in `ci-gate`'s `needs` (#920).
     name: "Tarball: release side checks (${{ matrix.os }})"
-    needs: pack
+    # Release-only on a PR (#1052): main, the nightly, release PRs and PRs `ci-plan` marks `full`.
+    needs: [pack, changes]
+    if: needs.changes.outputs.full == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -450,7 +489,9 @@ jobs:
     # `needs`. gemini and dcode run on every PR, but a red tier-2 leg leaves the job green
     # (`continue-on-error`), so it gates nothing (#914 rulings of 2026-10-24).
     name: Agent qualification (${{ matrix.harness }}, scripted model)
-    if: github.event_name != 'workflow_dispatch'
+    # Only a change to an agent's launch inputs (scripts/ci-plan.mjs `AGENTS`) runs these (#1052).
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.agents == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     continue-on-error: ${{ matrix.tier == 2 }}
@@ -561,7 +602,8 @@ jobs:
 
   lint:
     name: Lint (Biome)
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -596,7 +638,7 @@ jobs:
   # guards. All of it was deleted with the `review-evidence` gate in #415, so the
   # directory is gone and there is nothing left for this job to run.
 
-  # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it and the merge queue runs it).
+  # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it).
   e2e:
     name: E2E
     needs: build
@@ -621,6 +663,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
+      - changes
       - build
       - test
       - pack
@@ -644,9 +687,18 @@ jobs:
         run: |
           echo "Needed job results:"
           echo "$NEEDS_JSON"
+          # A job may be skipped only when `changes` says so (#1052): everything on `skip`,
+          # `packed-service` and `gate-side-checks` unless `full`, `harness-admission` unless `agents`. Any other
+          # skipped job is red, and so is a `changes` that did not succeed.
           bad=$(echo "$NEEDS_JSON" | jq -r '
-            to_entries
-            | map(select(.value.result != "success") | "\(.key)=\(.value.result)")
+            .changes.outputs as $p
+            | to_entries
+            | map(select(.value.result != "success"
+                and ((.value.result == "skipped" and .key != "changes"
+                      and ($p.skip == "true"
+                           or ((.key == "packed-service" or .key == "gate-side-checks") and $p.full != "true")
+                           or (.key == "harness-admission" and $p.agents != "true"))) | not))
+                | "\(.key)=\(.value.result)")
             | join(", ")')
           if [ -n "$bad" ]; then
             echo "::error::CI gate is red — these jobs did not succeed: $bad"
@@ -656,7 +708,8 @@ jobs:
               || echo "(could not list the failed jobs)"
             exit 1
           fi
-          echo "All required jobs succeeded."
+          reason=$(echo "$NEEDS_JSON" | jq -r '.changes.outputs.reason // empty')
+          echo "All required jobs succeeded or were skipped by the plan${reason:+: $reason}"
 
   # The live agent check (#884): the real pinned agent on the free model, on dispatch
   # only; advisory, and not in `ci-gate`'s `needs`. Release gate: dispatch with

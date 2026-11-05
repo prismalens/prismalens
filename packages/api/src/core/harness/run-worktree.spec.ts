@@ -306,6 +306,36 @@ describe("a follow-up and the user's own Remove", () => {
 		expect(existsSync(dest)).toBe(true);
 	});
 
+	it("a project follow-up drops the same-named service an older sidecar named, so that service's policy never removes its edits (#1020)", async () => {
+		const repo = initRepo();
+		const { dest } = await run("r1", repo, "shop");
+		expect(sidecar(dest).project).toBe("id-shop");
+		writeFileSync(join(dest, "a.txt"), "agent's edit");
+		await end("r1");
+		overrides.set("id-shop", { retention: { kind: "always-remove" } });
+		await bindRun("r1", { incidentId: null, serviceName: null, project: "shop" });
+		await addRunWorktree(repo.dir, dest, repo.head, "r1");
+		expect(sidecar(dest).project).toBeUndefined();
+		await end("r1");
+		expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("agent's edit");
+	});
+
+	it("a follow-up bound by service id keeps that service's policy after the service is renamed", async () => {
+		const repo = initRepo();
+		const { dest } = await run("r1", repo, "shop");
+		writeFileSync(join(dest, "a.txt"), "agent's edit");
+		await end("r1");
+		const bound = await bindRun("r1", {
+			incidentId: "inc",
+			serviceName: "shop-renamed",
+			serviceId: "id-shop",
+		});
+		expect(bound.serviceId).toBe("id-shop");
+		await addRunWorktree(repo.dir, dest, repo.head, "r1");
+		expect(sidecar(dest).project).toBe("id-shop");
+		await end("r1");
+	});
+
 	it("Remove takes a changed workspace away and says the user did it", async () => {
 		const repo = initRepo();
 		const { dest } = await run("r1", repo);

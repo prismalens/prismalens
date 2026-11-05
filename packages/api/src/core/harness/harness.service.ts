@@ -98,6 +98,8 @@ export interface AgentRuntime {
 	launchArgs?: string[];
 	/** Recorded as `fidelity.runtime`; null when Settings set nothing for this agent. */
 	note: RunRuntimeNote | null;
+	/** The host let alert and schedule runs keep the GitHub token (#1020). */
+	unattendedGithub?: boolean;
 }
 
 export interface HarnessSettings {
@@ -124,6 +126,10 @@ export interface HarnessSettings {
 	localAgent?: LocalAgent;
 	/** Only pass named variables to the agent (#817); off by default. */
 	strictEnv?: boolean;
+	/** Stored only when on: alert and schedule runs keep the GitHub token (#1020). */
+	unattendedGithub?: boolean;
+	/** Stored only when `wait`: an alert-started run's asks wait for a person (#1020). */
+	alertAsks?: "wait";
 	/** Stored only when off: runs a restart cut off resume by default (#981). */
 	resumeAfterRestart?: boolean;
 	/** Read from HARNESS_ENV: names only. */
@@ -156,6 +162,8 @@ export interface HarnessSettingsPatch {
 	env?: Partial<Record<HarnessId, Record<string, string | null>>>;
 	localAgent?: LocalAgent | null;
 	strictEnv?: boolean;
+	unattendedGithub?: boolean;
+	alertAsks?: "decide" | "wait";
 	resumeAfterRestart?: boolean;
 }
 
@@ -165,6 +173,8 @@ const RUNTIME_FIELDS = [
 	"env",
 	"localAgent",
 	"strictEnv",
+	"unattendedGithub",
+	"alertAsks",
 	"resumeAfterRestart",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
 
@@ -448,6 +458,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		return {
 			env,
 			policy: prismalensLaunchPolicy({ strict }),
+			...(s.unattendedGithub === true ? { unattendedGithub: true } : {}),
 			...(binaryPath ? { binaryPath } : {}),
 			...(local ? { launchArgs: args } : {}),
 			note: set
@@ -650,6 +661,8 @@ export class HarnessService implements OnApplicationBootstrap {
 				...nonEmpty("configDirs", cleanModels(parsed.configDirs)),
 				...(localAgent ? { localAgent } : {}),
 				...(parsed.strictEnv === true ? { strictEnv: true } : {}),
+				...(parsed.unattendedGithub === true ? { unattendedGithub: true } : {}),
+				...(parsed.alertAsks === "wait" ? { alertAsks: "wait" as const } : {}),
 				...(parsed.resumeAfterRestart === false
 					? { resumeAfterRestart: false }
 					: {}),
@@ -731,6 +744,12 @@ export class HarnessService implements OnApplicationBootstrap {
 			...nonEmpty("configDirs", configDirs),
 			...(localAgent ? { localAgent } : {}),
 			...((patch.strictEnv ?? current.strictEnv) ? { strictEnv: true } : {}),
+			...((patch.unattendedGithub ?? current.unattendedGithub)
+				? { unattendedGithub: true }
+				: {}),
+			...((patch.alertAsks ?? current.alertAsks) === "wait"
+				? { alertAsks: "wait" as const }
+				: {}),
 			...((patch.resumeAfterRestart ?? current.resumeAfterRestart) === false
 				? { resumeAfterRestart: false }
 				: {}),

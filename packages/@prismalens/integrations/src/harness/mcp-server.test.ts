@@ -8,7 +8,7 @@ import { z } from "zod";
 import { harnessMcpServer, harnessPromptLine } from "./mcp-server.js";
 import type { HarnessCall } from "./registry.js";
 import { runView } from "./search.js";
-import { annotationsFor, defineHarnessTool } from "./tool.js";
+import { annotationsFor, defineHarnessTool, EVERY_SUBJECT } from "./tool.js";
 
 const makeFakeTools = (recorded: unknown[] = []) => {
 	const incidentGet = defineHarnessTool({
@@ -16,6 +16,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 		title: "Get current incident details",
 		description: "Read details of the incident currently being investigated.",
 		group: "core",
+		serves: { subjects: EVERY_SUBJECT },
 		effect: "read",
 		input: z.object({ number: z.number().optional() }),
 		run: async () => ({
@@ -28,6 +29,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 		title: "Search past investigations",
 		description: "Find past investigations matching query keywords.",
 		group: "knowledge",
+		serves: { subjects: EVERY_SUBJECT },
 		effect: "read",
 		input: z.object({ query: z.string() }),
 		run: async () => ({
@@ -40,6 +42,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 		title: "List runbooks",
 		description: "List runbooks matching service.",
 		group: "knowledge",
+		serves: { subjects: EVERY_SUBJECT },
 		effect: "read",
 		input: z.object({ service: z.string().optional() }),
 		run: async () => ({
@@ -52,6 +55,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 		title: "Read runbook",
 		description: "Read the markdown content of a runbook.",
 		group: "core",
+		serves: { subjects: EVERY_SUBJECT },
 		effect: "read",
 		input: z.object({ path: z.string() }),
 		run: async () => ({
@@ -64,6 +68,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 		title: "Record evidence",
 		description: "Record a verified piece of evidence.",
 		group: "record",
+		serves: { subjects: EVERY_SUBJECT },
 		effect: "record",
 		input: z.object({
 			id: z.string(),
@@ -81,6 +86,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 		title: "Record hypothesis",
 		description: "Record a hypothesis being tested.",
 		group: "record",
+		serves: { subjects: EVERY_SUBJECT },
 		effect: "record",
 		input: z.object({
 			id: z.string(),
@@ -242,6 +248,26 @@ describe("harnessPromptLine", () => {
 		expect(line).toContain(
 			"For metrics, logs and other live data, use the tools your own setup gives you.",
 		);
+	});
+
+	it("asks for a thread title only when thread_title is listed (#1020)", () => {
+		const titled = defineHarnessTool({
+			name: "thread_title",
+			title: "Name this thread",
+			description: "d",
+			group: "record",
+			serves: { subjects: EVERY_SUBJECT },
+			effect: "record",
+			input: z.object({ title: z.string() }),
+			run: async () => ({ value: {} }),
+		});
+		const without = harnessPromptLine(runView(makeFakeTools(), { search: false }), "s");
+		const withIt = harnessPromptLine(
+			runView([...makeFakeTools(), titled], { search: false }),
+			"s",
+		);
+		expect(without).not.toContain("Name this thread");
+		expect(withIt).toContain("Name this thread with `thread_title`");
 	});
 
 	it("omits tools_search when no tools are deferred, and omits evidence_record when no record tools", () => {

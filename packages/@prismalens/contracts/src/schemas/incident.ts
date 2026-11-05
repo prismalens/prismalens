@@ -116,6 +116,8 @@ export const UpdateIncidentSchema = z.object({
 	/** Editable after Resolve (R1a d3); an empty string clears it. */
 	actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
 	actualCauseCategory: RootCauseCategorySchema.nullable().optional(),
+	/** Link service, on an incident that has none yet (#1020). */
+	serviceId: z.string().uuid().optional(),
 });
 
 // =============================================================================
@@ -218,6 +220,8 @@ export const IncidentQuerySchema = z.object({
 	serviceId: z.string().uuid().optional(),
 	fromDate: CoerceDateSchema.optional(),
 	toDate: CoerceDateSchema.optional(),
+	/** Matches the title, or the number as `42` or `INC-42` (#1020). */
+	search: z.string().trim().max(200).optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useInfiniteQuery } from "@tanstack/react-query";
 import {
 	createFileRoute,
 	Link,
@@ -10,7 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { PageHeader } from "@/components/shell/PageHeader";
 import {
-	incidentRow,
+	isOn,
 	ORIGIN_WORD,
 	STATE_WORD,
 	type ThreadRow,
@@ -27,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { orpc } from "@/lib/api/orpc-client";
+import { useRepositories } from "@/lib/api/hooks";
 import { threadGroups } from "@/lib/thread-groups";
 
 const ORIGINS = ["all", "you", "alert", "webhook", "schedule"] as const;
@@ -38,7 +37,12 @@ type StateFilter = (typeof STATES)[number];
 export const Route = createFileRoute("/_authenticated/threads/")({
 	validateSearch: (
 		s: Record<string, unknown>,
-	): { origin?: Origin; state?: StateFilter; q?: string } => ({
+	): {
+		origin?: Origin;
+		state?: StateFilter;
+		q?: string;
+		project?: string;
+	} => ({
 		origin: ORIGINS.includes(s.origin as Origin)
 			? (s.origin as Origin)
 			: undefined,
@@ -46,6 +50,10 @@ export const Route = createFileRoute("/_authenticated/threads/")({
 			? (s.state as StateFilter)
 			: undefined,
 		q: typeof s.q === "string" ? s.q : undefined,
+		project:
+			typeof s.project === "string" && /^[0-9a-f-]{36}$/i.test(s.project)
+				? s.project
+				: undefined,
 	}),
 	component: Threads,
 });
@@ -65,33 +73,13 @@ const STATE_LABEL: Record<StateFilter, string> = {
 	ready: STATE_WORD.ready,
 };
 
-const PAGE = 50;
-
 function matches(r: ThreadRow, origin: Origin, state: StateFilter, q: string) {
 	if (origin !== "all" && r.origin !== origin) return false;
 	if (state === "waiting" && r.state !== "asks") return false;
 	if (state !== "all" && state !== "waiting" && r.state !== state) return false;
 	// The raw alert name matches too: people search by what the alert is called.
-	const text = `${r.title} ${r.incident?.title ?? ""}`.toLowerCase();
+	const text = `${r.title} ${r.thread.title ?? ""}`.toLowerCase();
 	return !q || text.includes(q.toLowerCase());
-}
-
-/** Resolved threads, fifty at a time, so the whole history can be reached (#1020). */
-function useResolvedThreads() {
-	return useInfiniteQuery({
-		queryKey: ["threads-page", "closed"],
-		initialPageParam: 0,
-		queryFn: ({ pageParam }) =>
-			orpc.incidents.list.call({
-				status: "closed",
-				limit: PAGE,
-				offset: pageParam,
-			}),
-		getNextPageParam: (last) =>
-			last.pagination.hasMore
-				? last.pagination.offset + last.pagination.limit
-				: undefined,
-	});
 }
 
 /**
@@ -100,26 +88,29 @@ function useResolvedThreads() {
  */
 function Threads() {
 	usePageTitle("Threads");
-	const { origin = "all", state = "all", q = "" } = Route.useSearch();
+	const { origin = "all", state = "all", q = "", project } = Route.useSearch();
 	const navigate = useNavigate({ from: "/threads/" });
-	const { pathname } = useLocation();
+	const { pathname, search } = useLocation();
+	const investigation = (search as { investigation?: string }).investigation;
+	const repos = useRepositories({ limit: 100 }).data?.data ?? [];
 	const now = useNow(30_000) ?? 0;
-	const open = useThreadRows(0);
-	const closed = useResolvedThreads();
-	const byKey = new Map(open.rows.map((r) => [r.key, r]));
-	for (const i of (closed.data?.pages ?? []).flatMap((p) => p.data)) {
-		const r = incidentRow(i, true);
-		if (!byKey.has(r.key)) byKey.set(r.key, r);
-	}
-	const rows = Array.from(byKey.values());
+	const { rows, feed, isLoading } = useThreadRows({
+		...(q.trim() ? { search: q.trim() } : {}),
+		...(project ? { repositoryId: project } : {}),
+	});
 	const shown = rows
 		.filter((r) => matches(r, origin, state, q))
 		.sort((a, b) => b.at - a.at);
-	const filtered = origin !== "all" || state !== "all" || !!q;
+	const filtered = origin !== "all" || state !== "all" || !!q || !!project;
 	const set = (
-		patch: Partial<{ origin: Origin; state: StateFilter; q: string }>,
+		patch: Partial<{
+			origin: Origin;
+			state: StateFilter;
+			q: string;
+			project: string;
+		}>,
 	) => navigate({ search: (s) => ({ ...s, ...patch }), replace: true });
-	const loading = open.isLoading || closed.isLoading;
+	const loading = isLoading;
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-testid="threads-page">
 			<PageHeader title="Threads">
@@ -155,6 +146,30 @@ function Threads() {
 							value={state}
 							onPick={(v) => set({ state: v === "all" ? undefined : v })}
 						/>
+						{repos.length > 0 && (
+							<Select
+								value={project ?? "all"}
+								onValueChange={(v) =>
+									set({ project: v === "all" ? undefined : v })
+								}
+							>
+								<SelectTrigger
+									className="h-8 w-auto min-w-36 max-sm:flex-1"
+									aria-label="Project"
+									data-testid="threads-filter-project"
+								>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">Any project</SelectItem>
+									{repos.map((r) => (
+										<SelectItem key={r.id} value={r.id}>
+											{r.fullName}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						)}
 						{filtered && (
 							<button
 								type="button"
@@ -172,18 +187,18 @@ function Threads() {
 								<div key={n} className="shimmer h-11 rounded-control" />
 							))}
 						</div>
-					) : closed.isError ? (
+					) : feed.isError && rows.length === 0 ? (
 						<p className="py-6 text-body text-text-2">
 							Couldn't load older threads.{" "}
 							<button
 								type="button"
-								onClick={() => void closed.refetch()}
+								onClick={() => void feed.refetch()}
 								className="text-accent hover:underline"
 							>
 								Retry
 							</button>
 						</p>
-					) : rows.length === 0 ? (
+					) : rows.length === 0 && !filtered ? (
 						<p className="py-6 text-body text-text-2">
 							No threads yet.{" "}
 							<Link to="/new" className="text-accent hover:underline">
@@ -216,7 +231,7 @@ function Threads() {
 											key={r.key}
 											row={r}
 											now={now}
-											pathname={pathname}
+											on={isOn(r, pathname, investigation)}
 											detailed
 										/>
 									))}
@@ -224,15 +239,15 @@ function Threads() {
 							</section>
 						))
 					)}
-					{closed.hasNextPage && !loading && (
+					{feed.hasNextPage && !loading && (
 						<Button
 							variant="secondary"
 							className="self-center"
-							disabled={closed.isFetchingNextPage}
-							onClick={() => void closed.fetchNextPage()}
+							disabled={feed.isFetchingNextPage}
+							onClick={() => void feed.fetchNextPage()}
 							data-testid="threads-more"
 						>
-							{closed.isFetchingNextPage ? "Loading" : "Load older threads"}
+							{feed.isFetchingNextPage ? "Loading" : "Load older threads"}
 						</Button>
 					)}
 				</div>

@@ -85,7 +85,7 @@ Feature: The conversation and the box
     # T24 (#673 w59, §3, OBJ-003, OBJ-007)
     Scenario: A stopped reportless run reads Stopped by you and sending continues it
       When I press "Stop" in the box
-      Then the status line reads "Stopped by you" and the box continues it to a report, with no verb chip
+      Then the status line reads "Stopped by you" and the box continues it to a report, with no action to pick
 
     Scenario: A chat in Error reads Ended after it answers
       Given the run is a chat that ended in an error

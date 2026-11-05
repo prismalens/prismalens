@@ -75,6 +75,12 @@ vi.mock("@/components/shared/Hint", () => ({
 
 vi.mock("@/components/shell/ThreadList", () => ({
 	ThreadList: () => null,
+	useWaitingCount: () => 0,
+}));
+
+vi.mock("@/components/shell/SearchHost", () => ({
+	SearchHost: ({ children }: { children: React.ReactNode }) => children,
+	useOpenSearch: () => () => {},
 }));
 
 vi.mock("@/components/alerts/AlertListPane", () => ({

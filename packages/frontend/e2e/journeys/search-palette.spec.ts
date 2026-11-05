@@ -13,13 +13,12 @@ test("Ctrl+K finds a past incident by title and opens it", async ({ page }) => {
 	const { id, title } = (await made.json()) as { id: string; title: string };
 	await openBoard(page);
 	await page.keyboard.press("Control+k");
-	const palette = page.getByTestId("search-palette");
+	const palette = page.getByTestId("thread-search");
 	await expect(palette).toBeVisible();
-	await palette.getByTestId("search-input").fill(title);
-	await expect(palette.getByTestId("search-incident").first()).toContainText(
-		title,
-	);
-	await page.keyboard.press("Enter");
+	await palette.getByTestId("thread-search-input").fill(title);
+	const hit = palette.getByTestId("thread-search-incident").first();
+	await expect(hit).toContainText(title);
+	await hit.click();
 	await expect(page).toHaveURL(new RegExp(`/incidents/${id}$`));
 	await expect(palette).toBeHidden();
 });

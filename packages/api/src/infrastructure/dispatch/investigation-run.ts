@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import {
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readdirSync,
 	realpathSync,
@@ -51,6 +52,7 @@ import {
 	recordedFindings,
 	ServiceInvestigationMetadataSchema,
 	serviceCheckContext,
+	type ThreadSubjectKind,
 	type TurnOutcome,
 	threadChatContext,
 	toFiringAlert,
@@ -69,16 +71,21 @@ import type {
 import {
 	buildHandoff,
 	conductRun,
+	githubFor,
 	HANDOFF_TRANSCRIPT_PATH,
 	type InvestigationSink,
 	newGatewayServerName,
 	type PermissionPolicy,
+	prismalensLaunchPolicy,
 	type ResolvedConnector,
+	type StartedBy,
 	type SteerPort,
 	telemetryEndpointsFrom,
 } from "@prismalens/engine";
+import type { HarnessScope } from "@prismalens/integrations/harness";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
+import { gitEnv } from "../../core/harness/git-env.js";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import {
@@ -95,6 +102,7 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
+import { isCanonical } from "./folder-lock.js";
 import {
 	clearReceipt,
 	stampOf,
@@ -173,11 +181,28 @@ async function assembled<T>(
 }
 
 /** A service check names its service in the values it was admitted with; an incident run in its incident (#979). */
+/** A project thread takes the global workspace policy, never a same-named service's (#1020). */
+function policyService(
+	data: InvestigationJobData,
+	name: string | undefined,
+): string | null {
+	return onProject(data) ? null : (name ?? null);
+}
+
+/** A project's thread or a project's schedule: its repo names no service (#1020). */
+function onProject(data: InvestigationJobData): boolean {
+	return (
+		data.thread?.subject === "project" ||
+		(!!data.scheduled && data.scheduled.subject === "project")
+	);
+}
+
 function serviceIdOf(
 	incident: Record<string, unknown> | null,
 	data?: InvestigationJobData,
 ): string | undefined {
-	if (data?.scheduled && !data.incidentId) return data.scheduled.serviceId;
+	if (data?.scheduled && !data.incidentId)
+		return data.scheduled.serviceId ?? undefined;
 	if (data?.thread && !data.incidentId)
 		return data.thread.serviceId ?? undefined;
 	return typeof incident?.serviceId === "string"
@@ -185,11 +210,27 @@ function serviceIdOf(
 		: undefined;
 }
 
+/** A thread with no incident: its subject picks the PrismaLens tools it is offered (#1020). */
+/** What a run is about and owes, for its gateway tools (#1020); a legacy run keeps them all. */
+function toolScope(data: InvestigationJobData, kind: ThreadKind): HarnessScope {
+	// A schedule with no code gets what a no-subject thread gets (#1020).
+	const subject: ThreadSubjectKind | undefined = data.incidentId
+		? "incident"
+		: data.scheduled
+			? data.scheduled.subject === "none"
+				? "none"
+				: "schedule"
+			: data.thread?.subject;
+	return { subject, owes: kind === "chat" ? "answer" : "report" };
+}
+
 /** What the pre-run reads are keyed by: the incident, else the service a check is about (#979). */
 function subjectOf(data: InvestigationJobData): RunSubject | null {
 	if (data.incidentId) return data.incidentId;
 	if (data.thread?.serviceId) return { serviceId: data.thread.serviceId };
-	return data.scheduled ? { serviceId: data.scheduled.serviceId } : null;
+	return data.scheduled?.serviceId
+		? { serviceId: data.scheduled.serviceId }
+		: null;
 }
 
 export interface InvestigationResult {
@@ -409,7 +450,13 @@ async function runJobInternal(
 		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
 		const gateway = await ports.gateway
-			?.lease(runId, workspace.toolsServer, harness)
+			?.lease(
+				runId,
+				workspace.toolsServer,
+				harness,
+				undefined,
+				toolScope(data, kind),
+			)
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the run has no PrismaLens tools",
@@ -433,11 +480,15 @@ async function runJobInternal(
 				...(effort ? { effort } : {}),
 				accessLevel,
 				...(data.unattended ? { unattended: true } : {}),
+				...(data.waitForAsks ? { waitForAsks: true } : {}),
+				...(data.scheduled?.alwaysAllow?.length
+					? { alwaysAllow: data.scheduled.alwaysAllow }
+					: {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
-				...runOptionsOf(runtime),
+				...runOptionsOf(runtime, data),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -706,6 +757,10 @@ export function sessionCwds(ws: RunWorkspace): string[] {
  * so the snapshot's `git status` stays clean.
  */
 export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
+	if (ws.layout === "folder") {
+		writeInFolder(ws.cwd, text);
+		return;
+	}
 	for (const cwd of sessionCwds(ws)) {
 		const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
 		const dir = dirname(file);
@@ -717,7 +772,22 @@ export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
 	}
 }
 
+/** The user's own folder: nothing of theirs is removed, so a name already there means no transcript. */
+function writeInFolder(cwd: string, text: string): void {
+	const dir = dirname(join(cwd, HANDOFF_TRANSCRIPT_PATH));
+	try {
+		mkdirSync(dir);
+	} catch (e) {
+		logger.warn(`No handoff transcript in the folder: ${messageOf(e)}`);
+		return;
+	}
+	writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
+	writeFileSync(join(cwd, HANDOFF_TRANSCRIPT_PATH), text, { flag: "wx" });
+}
+
 function copyTargets(ws: RunWorkspace): CopyTarget[] {
+	// Read copies go into a snapshot; a plain folder is the user's own (#1020).
+	if (ws.layout === "folder") return [];
 	return sessionCwds(ws).map((dir) => {
 		const repo = ws.repos.find((r) => {
 			const rel = relative(r.dir, dir);
@@ -874,9 +944,20 @@ async function runFollowUp(
 		const existed = new Map(
 			recorded.repos.map((r) => [r.dir, existsSync(r.dir)]),
 		);
+		const incident = data.incidentId
+			? await assembled(
+					"the incident",
+					() => ports.getIncident(data.incidentId as string),
+					null,
+				)
+			: null;
+		// The recorded service name goes stale on a rename; the id does not.
+		const serviceId =
+			data.thread?.subject === "project" ? null : serviceIdOf(incident, data);
 		await bindRun(id, {
 			incidentId: data.incidentId,
-			serviceName: recorded.repos[0]?.services[0] ?? null,
+			serviceName: policyService(data, recorded.repos[0]?.services[0]),
+			...(serviceId !== undefined ? { serviceId } : {}),
 			recorded: recorded.cwd,
 			project: data.thread?.name ?? null,
 		});
@@ -895,19 +976,13 @@ async function runFollowUp(
 				ports,
 				io.signal,
 				handoff,
+				data.thread?.repos.find((r) => r.plain)?.url ?? null,
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 			...(recorded.compare ? { compare: recorded.compare } : {}),
 		};
 		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
 
-		const incident = data.incidentId
-			? await assembled(
-					"the incident",
-					() => ports.getIncident(data.incidentId as string),
-					null,
-				)
-			: null;
 		const connectors = await assembled(
 			"the connectors",
 			() => ports.resolveConnectors(serviceIdOf(incident, data)),
@@ -970,7 +1045,13 @@ async function runFollowUp(
 			: followUpModelSource(harness, model, runtime.env);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
 		const gateway = await ports.gateway
-			?.lease(id, workspace.toolsServer, harness, new Date())
+			?.lease(
+				id,
+				workspace.toolsServer,
+				harness,
+				new Date(),
+				toolScope(data, kind),
+			)
 			.catch((e) => {
 				logger.warn(
 					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",
@@ -1042,7 +1123,7 @@ async function runFollowUp(
 				// A recovered alert-started run is still nobody's to answer (#818, #981).
 				...(data.unattended ? { unattended: true } : {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
-				...runOptionsOf(runtime),
+				...runOptionsOf(runtime, data),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -1395,10 +1476,23 @@ export function followUpModelSource(
 }
 
 /** A run's spawn inputs from Settings → Agent (#907). */
-function runOptionsOf(runtime: AgentRuntime) {
+/** Who started the thread; a job from before #1020 says it by `scheduled` or `unattended`. */
+export function startedByOf(data: InvestigationJobData): StartedBy {
+	return (
+		data.startedBy ??
+		(data.scheduled ? "schedule" : data.unattended ? "alert" : "person")
+	);
+}
+
+function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
+	const policy = runtime.policy ?? prismalensLaunchPolicy();
 	return {
 		env: runtime.env,
-		...(runtime.policy ? { policy: runtime.policy } : {}),
+		// R41: an alert's or a schedule's run gets no GitHub token unless the host allows it (#1020).
+		policy: {
+			...policy,
+			github: githubFor(startedByOf(data), runtime.unattendedGithub === true),
+		},
 		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
 		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
 		...(runtime.note ? { runtimeNote: runtime.note } : {}),
@@ -1747,7 +1841,15 @@ function inCheckout(runId: string, snap: string, sub: string | null): string {
 	const dir = inside(snap, sub);
 	const root = ownerOf(runId, snap);
 	onDisk(root, snap, relative(root, snap));
-	return onDisk(snap, dir, sub ?? ".");
+	const found = onDisk(snap, dir, sub ?? ".");
+	// A committed link on the way down, even one inside the repo, starts the agent elsewhere (#1020).
+	let at = snap;
+	for (const part of relative(snap, dir).split(/[\\/]/).filter(Boolean)) {
+		at = join(at, part);
+		if (lstatSync(at).isSymbolicLink())
+			throw new Error(`the sub-path ${sub} goes through a link`);
+	}
+	return found;
 }
 
 /** The run's own dir that lexically holds `path`: its worktree dir (#918) or its run dir. */
@@ -1810,28 +1912,54 @@ export async function resolveWorkspace(
 		}
 	}
 	const runId = data.investigationId;
-	const all = dedupeRepos(listed);
+	// A project has no service: its display name never selects a service's policy or deployments (#1020).
+	const deduped = dedupeRepos(listed).map((r) =>
+		onProject(data) ? { ...r, services: [] } : r,
+	);
+	// A plain folder runs in place, only in a thread a person started on its project (#1020).
+	const inPlace =
+		data.thread?.subject === "project" &&
+		!data.scheduled &&
+		!data.incidentId &&
+		!data.unattended
+			? deduped.find((r) => r.repo.plain)
+			: undefined;
+	if (inPlace) return folderWorkspace(runDir, inPlace.repo.url);
+	const all = deduped.filter((r) => !r.repo.plain);
 	const repos = all.slice(0, WORKSPACE_REPOS_GUARD);
-	const guarded: Skip[] = all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
-		repo,
-		reason: `over the ${WORKSPACE_REPOS_GUARD}-repository guard`,
-		code: "guard",
-	}));
+	const guarded: Skip[] = [
+		...deduped
+			.filter((r) => r.repo.plain)
+			.map(({ repo }) => ({
+				repo,
+				reason: "a folder with no git runs only in a thread you start",
+				code: "failed" as const,
+			})),
+		...all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
+			repo,
+			reason: `over the ${WORKSPACE_REPOS_GUARD}-repository guard`,
+			code: "guard" as const,
+		})),
+	];
 	if (repos.length === 0)
 		return unmappedWorkspace(
 			runDir,
 			unlisted
 				? `Ran without code: ${unlisted}.`
-				: data.thread
-					? "Ran without code: this thread has no project linked."
-					: data.scheduled
-						? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
-						: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+				: guarded.length
+					? `Ran without code: ${guarded.map((k) => `${whereFrom(k.repo)} (${k.reason})`).join("; ")}.`
+					: data.thread
+						? "Ran without code: this thread has no project linked."
+						: data.scheduled?.subject === "none"
+							? "Ran without code: this schedule has no project."
+							: data.scheduled
+								? "Ran UNMAPPED: this service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe its code."
+								: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		);
 	await bindRun(runId, {
 		incidentId: data.incidentId,
-		serviceName: repos[0]?.services[0] ?? null,
-		project: data.thread?.name ?? null,
+		serviceName: policyService(data, repos[0]?.services[0]),
+		project: data.thread?.name ?? data.scheduled?.projectName ?? null,
 	});
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
@@ -1978,6 +2106,26 @@ interface Skip {
 	code: CheckoutSkipped["code"];
 }
 
+/** The plain folder itself (#1020): no snapshot, no branch and no diff base, so nothing to undo. */
+async function folderWorkspace(
+	runDir: string,
+	dir: string,
+): Promise<Workspace> {
+	const st = lstatSync(dir, { throwIfNoEntry: false });
+	if (!st?.isDirectory() || st.isSymbolicLink() || !(await isCanonical(dir)))
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: the folder ${dir} is gone or is a link.`,
+		);
+	return {
+		layout: "folder",
+		cwd: dir,
+		repos: [],
+		checkoutsSkipped: [],
+		note: `Working in the folder ${dir} itself. Changes there are not undone.`,
+	};
+}
+
 function unmappedWorkspace(
 	runDir: string,
 	note: string,
@@ -2113,7 +2261,18 @@ export async function rebuildWorkspace(
 	ports: RunPorts,
 	signal?: AbortSignal,
 	handoff = false,
+	folder?: string | null,
 ): Promise<Workspace> {
+	if (ws.layout === "folder") {
+		// Only the project's plain folder as it stands now; Start git there ends in-place runs.
+		if (!folder || folder !== ws.cwd)
+			throw new Error(
+				"This folder project changed since the thread started. Start a new thread.",
+			);
+		const again = await folderWorkspace(runDirFor(investigationId), ws.cwd);
+		if (again.layout !== "folder") throw new Error(again.note);
+		return { ...again, toolsServer: ws.toolsServer };
+	}
 	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.
 	const owned = ownedBy(investigationId);
 	owned(ws.cwd);
@@ -2292,8 +2451,13 @@ async function assembleInvestigationContext(
 		// A coding chat: never an alert made up from nothing (#1020, OBJ-003).
 		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
 		const name = data.thread.name ?? undefined;
+		const place = data.thread.place ?? undefined;
 		return threadChatContext(
-			{ subject: data.thread.subject, ...(name ? { name } : {}) },
+			{
+				subject: data.thread.subject,
+				...(name ? { name } : {}),
+				...(place ? { place } : {}),
+			},
 			{
 				...(data.thread.subject === "service" && name
 					? { service: { name } }
@@ -2306,14 +2470,31 @@ async function assembleInvestigationContext(
 	if (data.scheduled && !data.incidentId) {
 		const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
 		const notes = data.scheduled.serviceNotes?.trim();
+		const subject = data.scheduled.subject ?? "service";
+		const project = data.scheduled.projectName ?? undefined;
+		// Report off: the saved text opens a chat about the schedule's subject (#1020).
+		if (data.chat) {
+			const name = subject === "service" ? data.scheduled.serviceName : project;
+			return threadChatContext(
+				{ subject, ...(name ? { name } : {}) },
+				{
+					...(subject === "service" && name ? { service: { name } } : {}),
+					...(telemetry ? { telemetry } : {}),
+					...(contextPack ? { contextPack } : {}),
+				},
+			);
+		}
 		return serviceCheckContext(
-			{
-				name: data.scheduled.serviceName,
-				...(notes ? { notes } : {}),
-			},
+			subject === "service"
+				? {
+						name: data.scheduled.serviceName,
+						...(notes ? { notes } : {}),
+					}
+				: null,
 			{
 				...(data.brief ? { brief: data.brief } : {}),
 				runbook: data.scheduled.runbook,
+				...(subject === "project" && project ? { project } : {}),
 			},
 			{
 				...(telemetry ? { telemetry } : {}),
@@ -2502,6 +2683,7 @@ export function observeWorkspace(
 
 function gitIn(dir: string, args: string[]): string {
 	return execFileSync("git", ["-C", dir, ...args], {
+		env: gitEnv({ source: "none" }),
 		encoding: "utf8",
 		windowsHide: true,
 		timeout: 15_000,

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
+import { createIncidentByHand } from "./by-hand";
 
 /**
  * #338 — Resolve records what actually caused the incident, and the incident
@@ -17,14 +18,7 @@ async function resolveFromHeader(page: Page): Promise<void> {
 }
 
 async function createFromHeader(page: Page, title: string): Promise<void> {
-	await page.goto("/incidents");
-	await page.getByTestId("create-incident-button").click({ timeout: 15_000 });
-	const dialog = page.getByTestId("create-incident-dialog");
-	await dialog.getByTestId("create-incident-title").fill(title);
-	await dialog.getByTestId("create-incident-submit").click();
-	await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
-		timeout: 15_000,
-	});
+	await createIncidentByHand(page, title);
 }
 
 test.describe("#338 — the actual cause is recorded on Resolve", () => {

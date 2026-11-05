@@ -3,47 +3,24 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import {
-	createContext,
-	type ReactNode,
-	useCallback,
-	useContext,
-	useMemo,
-	useState,
-} from "react";
-import { CreateIncidentDialog } from "@/components/incidents/CreateIncidentDialog";
+import { useCallback } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** The shortcut that opens it, shown in the tooltip and the ? sheet. */
+/** `c`: Home with Incident on (#1020). */
 export const NEW_INCIDENT_KEY = "c";
 
-const NewIncidentContext = createContext<() => void>(() => {});
-
-/** The one manual entry (decision 4): every New in the app opens this dialog. */
-export function NewIncidentProvider({ children }: { children: ReactNode }) {
+/** Opens Home with Incident on; the box's text becomes the brief. */
+export function useNewIncident() {
 	const navigate = useNavigate();
-	const [open, setOpen] = useState(false);
-	const show = useCallback(() => setOpen(true), []);
-	const value = useMemo(() => show, [show]);
-	return (
-		<NewIncidentContext.Provider value={value}>
-			{children}
-			<CreateIncidentDialog
-				open={open}
-				onOpenChange={setOpen}
-				onCreated={(id) => navigate({ to: "/incidents/$id", params: { id } })}
-			/>
-		</NewIncidentContext.Provider>
+	return useCallback(
+		() => void navigate({ to: "/new", search: { incident: true } }),
+		[navigate],
 	);
 }
 
-export function useNewIncident() {
-	return useContext(NewIncidentContext);
-}
-
-/** The header's primary on every list screen, the phone's included (#673 w11). */
+/** Operations' header primary: an incident logged by hand. */
 export function NewIncidentButton({ className }: { className?: string }) {
 	const open = useNewIncident();
 	return (

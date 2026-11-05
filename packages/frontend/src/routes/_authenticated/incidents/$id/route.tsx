@@ -356,7 +356,7 @@ function IncidentLayout() {
 function IncidentSkeleton() {
 	return (
 		<div className="flex h-full flex-col">
-			<div className="h-(--header-h) shrink-0 bg-surface-1" />
+			<div data-title-row className="h-(--header-h) shrink-0 bg-surface-1" />
 			<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-6">
 				<Loading rows={5} />
 			</div>

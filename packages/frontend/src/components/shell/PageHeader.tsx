@@ -27,6 +27,7 @@ export function PageHeader({
 				className,
 			)}
 			data-testid="page-header"
+			data-title-row
 		>
 			<h1 className="mr-1 text-title">{title}</h1>
 			{children}

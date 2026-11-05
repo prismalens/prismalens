@@ -6,7 +6,11 @@
  * with no API or agent behind them. The design matrix shoots it; a new component
  * shows its states here before it is wired to data (design/GUIDELINES.md).
  */
-import type { IncidentWithRelations } from "@prismalens/contracts";
+import type {
+	ThreadRow as FeedRow,
+	IncidentWithRelations,
+	ThreadUnit,
+} from "@prismalens/contracts";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
@@ -17,9 +21,9 @@ import { Ring } from "@/components/shared/Ring";
 import { Blank, Empty, Loading, Problem } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import {
-	incidentRow,
 	type ThreadRow,
 	ThreadRowView,
+	unitRow,
 } from "@/components/shell/ThreadList";
 import type { TranscriptItem } from "@/lib/investigation-events";
 
@@ -64,6 +68,35 @@ const incident = (
 		service: { id: "s1", name: "checkout-api", displayName: "Checkout API" },
 		...p,
 	}) as unknown as IncidentWithRelations;
+
+/** A fixture incident as the feed shows it: one unit, one run. */
+const incidentRow = (i: IncidentWithRelations): ThreadRow =>
+	unitRow(
+		{
+			section: "active",
+			incident: {
+				id: i.id,
+				number: i.number,
+				title: i.title,
+				severity: i.severity,
+				status: i.status,
+			},
+			threads: [
+				{
+					id: `run-${i.id}`,
+					incidentId: i.id,
+					kind: "investigation",
+					status: "completed",
+					title: i.title,
+					triggerType: i.alertCount ? "alert" : "manual",
+					lastActivityAt: i.updatedAt,
+					serviceName: "Checkout API",
+					projectName: null,
+				} as unknown as FeedRow,
+			],
+		} as ThreadUnit,
+		i,
+	);
 
 const ROWS: ThreadRow[] = [
 	{
@@ -116,7 +149,7 @@ function Gallery() {
 					<div className="grid gap-6 md:grid-cols-2">
 						<div className="flex flex-col gap-px rounded-pool bg-surface-1 p-2">
 							{ROWS.map((r) => (
-								<ThreadRowView key={r.key} row={r} now={NOW} pathname="/" />
+								<ThreadRowView key={r.key} row={r} now={NOW} on={false} />
 							))}
 						</div>
 						<div className="flex flex-col gap-px">
@@ -125,7 +158,7 @@ function Gallery() {
 									key={r.key}
 									row={r}
 									now={NOW}
-									pathname="/"
+									on={false}
 									detailed
 								/>
 							))}

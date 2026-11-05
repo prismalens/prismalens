@@ -54,6 +54,7 @@ import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
+import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { compose } from "@/lib/compose";
 import { desktopBridge } from "@/lib/desktop";
 import {
@@ -150,6 +151,7 @@ export function RunPage() {
 	const { harnesses } = useAgentChoice();
 	const inv = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);
+	useVisitThread(inv?.id ?? null, !live);
 	// The transcript's own counter has its clock; the strip and panel need a second only while live.
 	const now = useNow(live ? 1000 : 30_000);
 	useRenderProbe("RunPage", { now, run });
@@ -707,10 +709,12 @@ export function RunPage() {
 					: null
 			}
 			trailing={
-				inv && !draft ? (
+				// Its slot is there from the first paint, so the header never shifts when the run loads (#1020).
+				!draft ? (
 					<DetailsToggle
 						ref={toggleRef}
-						open={panel}
+						disabled={!inv}
+						open={panel && !!inv}
 						onToggle={() => (panel ? closePanel() : setPanel(true))}
 						title={chat ? "Question details" : "Run details"}
 						flagged={flaggedCount}
@@ -817,6 +821,7 @@ export function RunPage() {
 							cwd={cwd}
 							agent={who.agent}
 							runName={name}
+							chat={chat}
 							briefBy={
 								startedBy(inv.triggerType) === "you" ? "You" : "PrismaLens"
 							}
@@ -832,6 +837,7 @@ export function RunPage() {
 									: null
 							}
 							summaryAbove={incidentThread}
+							runId={live ? inv.id : undefined}
 						/>
 					)}
 				</div>
@@ -932,6 +938,7 @@ export function RunPage() {
 /** The header's details toggle: a red dot while something is flagged and the panel is shut. */
 function DetailsToggle({
 	ref,
+	disabled = false,
 	open,
 	onToggle,
 	title,
@@ -939,6 +946,7 @@ function DetailsToggle({
 	warns,
 }: {
 	ref: React.Ref<HTMLButtonElement>;
+	disabled?: boolean;
 	open: boolean;
 	onToggle: () => void;
 	title: string;
@@ -963,9 +971,10 @@ function DetailsToggle({
 				id="details-toggle"
 				// Points only at a panel that exists; a closed one has no id to name.
 				aria-controls={open ? "run-details" : undefined}
+				disabled={disabled}
 				onClick={onToggle}
 				className={cn(
-					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3",
+					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3 disabled:opacity-50",
 					open ? "bg-surface-3 text-text-1" : "bg-surface-2 text-text-2",
 				)}
 				data-testid="details-toggle"

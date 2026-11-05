@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_TOOL_STEPS } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, FileText } from "lucide-react";
 import {
@@ -19,6 +20,7 @@ import {
 	ConversationScrollButton,
 } from "@/components/ai/conversation";
 import { MessageResponse } from "@/components/ai/message";
+import { AskCard } from "@/components/investigation/RunDock";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
@@ -40,6 +42,13 @@ import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
 import { restartSent } from "@/lib/restart";
 import { type AskRecord, askEnd, askTitle } from "@/lib/run-asks";
+import {
+	NODE_ICON,
+	statusWord,
+	type TurnFold,
+	turnFolds,
+	workedLabel,
+} from "@/lib/spine";
 import { cn } from "@/lib/utils";
 
 export { unfence } from "@/components/run/run-steps";
@@ -63,6 +72,7 @@ function deliveryWord(state: OperatorState, mode: "queue" | "now"): string {
 	if (state === "started" || state === "resumed" || state === "asked")
 		return OPERATOR_STATE_LABEL[state].toLowerCase();
 	if (state === "queued") return "waits for the next pause";
+	if (state === "answered") return "answered";
 	return mode === "now" ? "sent now" : "delivered at the next pause";
 }
 
@@ -150,6 +160,9 @@ export const Transcript = memo(function Transcript({
 	loginHint,
 	limits,
 	summaryAbove,
+	runId,
+	foldTurns,
+	chat = false,
 }: {
 	items: TranscriptItem[];
 	/** Null on a scheduled check no finding has linked yet (#979). */
@@ -184,6 +197,12 @@ export const Transcript = memo(function Transcript({
 	afterReport?: ReactNode;
 	/** The first node: what started the thread, when it came from the world (#1020). */
 	lead?: ReactNode;
+	/** The run a waiting ask's inline card answers (#1020). */
+	runId?: string;
+	/** Each finished turn's work folds behind `Worked for …`; the answer stays out (#1020). */
+	foldTurns?: { live: boolean };
+	/** A thread that owes an answer: its first message is a message, never a brief (#1020). */
+	chat?: boolean;
 }) {
 	useRenderProbe("Transcript", { items, steps, worked, report });
 	const groups = useGroupSteps(items, steps);
@@ -192,6 +211,27 @@ export const Transcript = memo(function Transcript({
 	);
 	const end = items.findIndex((i) => i.kind === "end" && i.report);
 	const folds = !!worked && end > brief + 1;
+	const live = foldTurns?.live;
+	const turns = useMemo(
+		() => (live === undefined ? [] : turnFolds(items, live)),
+		[items, live],
+	);
+	const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
+	const { turnAt, turnHidden } = useMemo(() => {
+		const turnAt = new Map<number, TurnFold>();
+		const turnHidden = new Set<number>();
+		for (const t of turns) {
+			turnAt.set(t.at, t);
+			if (!openTurns.has(t.key)) for (const i of t.hidden) turnHidden.add(i);
+		}
+		return { turnAt, turnHidden };
+	}, [turns, openTurns]);
+	const toggleTurn = (key: string) =>
+		setOpenTurns((o) => {
+			const next = new Set(o);
+			if (!next.delete(key)) next.add(key);
+			return next;
+		});
 	return (
 		<Conversation className="h-full" data-testid="transcript-scroller">
 			<ConversationContent className="px-4 pt-5 pb-2">
@@ -209,45 +249,55 @@ export const Transcript = memo(function Transcript({
 						const lit = steps?.highlight ?? null;
 						return (
 							<Fragment key={item.key}>
-								{(!folds ||
-									worked?.open ||
-									i <= brief ||
-									i >= end ||
-									item.kind === "artifact") && (
-									<TranscriptRow
-										item={item}
-										incidentId={incidentId}
-										cwd={cwd}
-										agent={agent}
-										runName={runName}
-										briefBy={briefBy}
-										reportTitle={report?.title}
-										reportSummary={report?.summary}
-										reportStop={report?.stop}
-										reportLasting={report?.lasting}
-										loginHint={loginHint}
-										limits={limits}
-										summaryAbove={summaryAbove}
-										hasSteps={!!steps}
-										group={group}
-										open={has(steps?.open)}
-										flagged={has(steps?.flagged)}
-										highlight={
-											lit !== null && group?.own.some((s) => s.n === lit)
-												? lit
-												: null
-										}
-										ask={
-											item.kind === "ask"
-												? steps?.asks?.find((a) => a.askId === item.askId)
-												: undefined
-										}
-										onToggle={steps?.onToggle}
-										onSeeFlag={steps?.onSeeFlag}
-										fileOf={steps?.fileOf}
-										onOpenFile={steps?.onOpenFile}
+								{turnAt.has(i) && (
+									<TurnToggle
+										fold={turnAt.get(i) as TurnFold}
+										open={openTurns.has(turnAt.get(i)?.key ?? "")}
+										onToggle={toggleTurn}
 									/>
 								)}
+								{!turnHidden.has(i) &&
+									(!folds ||
+										worked?.open ||
+										i <= brief ||
+										i >= end ||
+										item.kind === "artifact") && (
+										<TranscriptRow
+											item={item}
+											incidentId={incidentId}
+											cwd={cwd}
+											agent={agent}
+											runName={runName}
+											briefBy={briefBy}
+											chat={chat}
+											reportTitle={report?.title}
+											reportSummary={report?.summary}
+											reportStop={report?.stop}
+											reportLasting={report?.lasting}
+											loginHint={loginHint}
+											limits={limits}
+											summaryAbove={summaryAbove}
+											hasSteps={!!steps}
+											group={group}
+											open={has(steps?.open)}
+											flagged={has(steps?.flagged)}
+											highlight={
+												lit !== null && group?.own.some((s) => s.n === lit)
+													? lit
+													: null
+											}
+											ask={
+												item.kind === "ask"
+													? steps?.asks?.find((a) => a.askId === item.askId)
+													: undefined
+											}
+											onToggle={steps?.onToggle}
+											onSeeFlag={steps?.onSeeFlag}
+											fileOf={steps?.fileOf}
+											onOpenFile={steps?.onOpenFile}
+											runId={runId}
+										/>
+									)}
 								{folds && worked && i === brief && (
 									<WorkedToggle worked={worked} />
 								)}
@@ -258,7 +308,7 @@ export const Transcript = memo(function Transcript({
 				</ol>
 			</ConversationContent>
 			<ConversationScrollButton />
-			<ReleaseOnUnfold open={!!worked?.open} />
+			<ReleaseOnUnfold open={!!worked?.open || openTurns.size > 0} />
 			{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
 			<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
 		</Conversation>
@@ -299,6 +349,38 @@ function WorkedToggle({ worked }: { worked: WorkedFold }) {
 	);
 }
 
+/** A finished turn's fold: `Worked for 4m 12s`, its work behind the chevron (#1020). */
+function TurnToggle({
+	fold,
+	open,
+	onToggle,
+}: {
+	fold: TurnFold;
+	open: boolean;
+	onToggle: (key: string) => void;
+}) {
+	return (
+		<li>
+			<button
+				type="button"
+				onClick={() => onToggle(fold.key)}
+				aria-expanded={open}
+				className="flex w-full items-center gap-1.5 rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				data-testid="turn-fold"
+			>
+				<ChevronRight
+					aria-hidden
+					className={cn(
+						"size-3 shrink-0 text-text-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none",
+						open && "rotate-90",
+					)}
+				/>
+				{workedLabel(fold.seconds)}
+			</button>
+		</li>
+	);
+}
+
 /** What a tool group's row knows of the run's steps; every field is stable while its own steps are. */
 interface RowSteps {
 	hasSteps: boolean;
@@ -327,6 +409,8 @@ const TranscriptRow = memo(function TranscriptRow({
 	limits,
 	summaryAbove,
 	ask,
+	runId,
+	chat,
 	...steps
 }: RowSteps & {
 	item: TranscriptItem;
@@ -344,6 +428,8 @@ const TranscriptRow = memo(function TranscriptRow({
 	summaryAbove?: boolean;
 
 	ask?: AskRecord;
+	runId?: string;
+	chat?: boolean;
 }) {
 	useRenderProbe("TranscriptRow", { item, ask, ...steps });
 	switch (item.kind) {
@@ -397,6 +483,19 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "tools":
 			return <StepGroup item={item} steps={steps} cwd={cwd} />;
 		case "ask": {
+			// A waiting ask sits inline where it was asked, mirrored in the dock (#1020).
+			if (ask?.state === "waiting" && runId)
+				return (
+					<li
+						className={cn(
+							"rounded-surface bg-surface-1 px-3 py-2.5 shadow-[0_0_0_1px_oklch(from_var(--warn)_l_c_h/0.3)]",
+							ENTER,
+						)}
+						data-testid="transcript-ask-card"
+					>
+						<AskCard ask={ask} runId={runId} agent={agent} cwd={cwd} inline />
+					</li>
+				);
 			// An ask no step carries keeps its own line where it was (#820).
 			if (!ask || ask.step !== undefined) return null;
 			const end = askEnd(ask);
@@ -417,6 +516,37 @@ const TranscriptRow = memo(function TranscriptRow({
 		}
 		case "artifact":
 			return <ArtifactCard artifact={item.artifact} />;
+		case "finding":
+			return <FindingRow finding={item.finding} />;
+		case "gateway": {
+			const Icon = NODE_ICON[item.node];
+			return (
+				<li
+					className={cn(
+						"flex min-w-0 items-center gap-2.5 px-3 text-meta",
+						ENTER,
+					)}
+					data-testid="transcript-gateway"
+					data-node={item.node}
+				>
+					<Icon
+						className={cn(
+							"size-3.5 shrink-0",
+							item.failed ? "text-danger" : "text-text-3",
+						)}
+						aria-hidden
+					/>
+					<span className="shrink-0 text-text-2">
+						{HARNESS_TOOL_STEPS[item.name] ?? item.name}
+					</span>
+					{item.outcome && (
+						<span className="min-w-0 flex-1 truncate text-text-2">
+							{item.outcome}
+						</span>
+					)}
+				</li>
+			);
+		}
 		case "thought":
 			return (
 				<li className="text-meta text-text-3" data-testid="transcript-thought">
@@ -426,7 +556,7 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "thinking":
 			return <ThinkingLine since={item.since} />;
 		case "operator": {
-			const brief = item.state === "started";
+			const brief = item.state === "started" && !chat;
 			const who = brief ? briefBy : "You";
 			return (
 				<li
@@ -455,7 +585,9 @@ const TranscriptRow = memo(function TranscriptRow({
 										? runName === "Ask"
 											? "asked"
 											: `brief for ${runName ?? "this run"}`
-										: deliveryWord(item.state, item.mode)}
+										: chat && item.state === "started"
+											? "sent"
+											: deliveryWord(item.state, item.mode)}
 								</span>
 							</>
 						)}
@@ -760,6 +892,57 @@ function StepGroup({
 				</Fragment>
 			))}
 		</>
+	);
+}
+
+/**
+ * Evidence or a suspect the agent recorded (#1020): its own words as plain text. Evidence
+ * whose quote was not found is marked unverified; a suspect keeps the agent's status word.
+ */
+function FindingRow({
+	finding,
+}: {
+	finding: Extract<TranscriptItem, { kind: "finding" }>["finding"];
+}) {
+	const evidence = finding.type === "evidence";
+	const Icon = NODE_ICON[evidence ? "evidence" : "suspect"];
+	return (
+		<li
+			className={cn(
+				"flex min-w-0 gap-2.5 rounded-surface bg-surface-1 px-3 py-2",
+				ENTER,
+			)}
+			data-testid="transcript-finding"
+			data-type={finding.type}
+		>
+			<Icon className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden />
+			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<p className="flex min-w-0 items-baseline gap-2 text-meta">
+					<span className="text-accent">
+						{evidence ? "Evidence" : "Suspect"}
+					</span>
+					{evidence && !finding.anchor && (
+						<span className="text-warn" data-testid="finding-unverified">
+							Unverified
+						</span>
+					)}
+					<span className="ml-auto min-w-0 truncate text-text-3">
+						{evidence ? (
+							<span className="font-mono text-mono">
+								{finding.path ?? finding.source}
+							</span>
+						) : (
+							<span data-testid="finding-status">
+								{statusWord(finding.status)}
+							</span>
+						)}
+					</span>
+				</p>
+				<p dir="auto" className="[overflow-wrap:anywhere] text-text-1">
+					{evidence ? finding.observation : finding.statement}
+				</p>
+			</div>
+		</li>
 	);
 }
 

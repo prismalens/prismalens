@@ -21,8 +21,14 @@
 @utility app-drag {
   -webkit-app-region: drag;
 }
-/* A drag region swallows clicks on anything painted over it, so whatever
-   floats above the title row opts out. */
+/* The desktop title rows drag the window (#1020); a drag region swallows clicks,
+   so every control in one, and whatever floats above it, opts out. */
+[data-desktop] [data-title-row] {
+  -webkit-app-region: drag;
+}
+[data-desktop] [data-title-row] :is(a, button, input, select, textarea, label, [role="button"], [tabindex]) {
+  -webkit-app-region: no-drag;
+}
 [role="dialog"],
 [role="alertdialog"],
 [data-radix-popper-content-wrapper] {
