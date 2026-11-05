@@ -3,6 +3,7 @@
 
 import type { ExecutionContext } from "@nestjs/common";
 import { ServiceUnavailableException } from "@nestjs/common";
+import { ORPCError } from "@orpc/nest";
 import { GUARDS_METADATA } from "@nestjs/common/constants.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -109,6 +110,24 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 		});
 		expect(alertPull.onWebhook).toHaveBeenCalledTimes(1);
 		expect(res).toEqual({ received: 1, processed: 1, alertIds: ["a1"] });
+	});
+
+	it("answers a retryable failure with an error after the rest of the batch ran", async () => {
+		const service = {
+			processPrometheusAlert: vi
+				.fn()
+				.mockRejectedValueOnce(
+					new ORPCError("SERVICE_UNAVAILABLE", { message: "claim failed" }),
+				)
+				.mockResolvedValueOnce({ alertId: "a2", isNew: true }),
+		};
+		await expect(
+			prometheusHandler(service as unknown as Partial<WebhooksService>)({
+				input: { alerts: [firing, { ...firing, fingerprint: "fp-2" }] },
+				context: {},
+			}),
+		).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+		expect(service.processPrometheusAlert).toHaveBeenCalledTimes(2);
 	});
 
 	it("handles errors thrown by processPrometheusAlert gracefully", async () => {

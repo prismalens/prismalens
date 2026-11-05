@@ -835,10 +835,10 @@ describe("WebhooksService", () => {
 				autoInvestigate: true,
 			});
 
-			expect(eventsService.markProcessed).not.toHaveBeenCalledWith(
-				"evt-early",
-				expect.anything(),
-			);
+			const claimedIds = vi
+				.mocked(eventsService.markProcessed)
+				.mock.calls.map(([id]) => id);
+			expect(claimedIds).not.toContain("evt-early");
 		});
 
 		it("claims the early resolution on a second try after a transient write failure", async () => {
@@ -880,7 +880,7 @@ describe("WebhooksService", () => {
 					source: "prometheus",
 					autoInvestigate: true,
 				}),
-			).rejects.toThrow("Could not claim early resolution evt-early");
+			).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
 		});
 
 		it("passes a resolution's episode so an unknown fingerprint can be remembered", async () => {

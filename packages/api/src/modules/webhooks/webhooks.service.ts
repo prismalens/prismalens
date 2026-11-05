@@ -543,9 +543,9 @@ export class WebhooksService {
 				// resolve step closes it again): fail the delivery instead.
 				const claimed = (await claim()) ?? (await claim());
 				if (!claimed) {
-					throw new Error(
-						`Could not claim early resolution ${earlyResolution.id}`,
-					);
+					throw new ORPCError("SERVICE_UNAVAILABLE", {
+						message: `Could not claim early resolution ${earlyResolution.id}`,
+					});
 				}
 			}
 		}
