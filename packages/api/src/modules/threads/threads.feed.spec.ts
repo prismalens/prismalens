@@ -248,14 +248,15 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			where: { incidentId: inc },
 			select: { id: true },
 		});
+		// Each row is written on its own, keeping its updatedAt.
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
-			where: { id: { in: ids } },
-			data: { settledAt: expect.any(Date) },
+			where: { id: ids[1], updatedAt: stamp },
+			data: { settledAt: expect.any(Date), updatedAt: stamp },
 		});
 		await service().settle(ids[0] as string, false);
 		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
-			where: { id: { in: ids } },
-			data: { settledAt: null },
+			where: { id: ids[1], updatedAt: stamp },
+			data: { settledAt: null, updatedAt: stamp },
 		});
 		prisma.investigation.findUnique.mockResolvedValue(null);
 		await expect(service().settle(uuid(), true)).rejects.toMatchObject({
