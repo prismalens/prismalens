@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 import { INCIDENT_ONLY, SCOPED } from "./serves.js";
 
 export interface SimilarIncident {
@@ -62,8 +63,10 @@ export function historyTools(data: HistoryData): HarnessTool[] {
 		defineHarnessTool({
 			name: "incidents_similar",
 			title: "Past incidents like this one",
-			description:
+			description: withRules(
 				"The past incidents PrismaLens scored most like this run's incident, best first: number, title, service, status, when resolved, the cause the operator recorded if any, the stored similarity score (0 to 100) and what it matched on. Use it to find a precedent, then read its threads with thread_list.",
+				"this incident's own threads: use thread_list.",
+			),
 			group: "knowledge",
 			effect: "read",
 			serves: INCIDENT_ONLY,
@@ -78,8 +81,10 @@ export function historyTools(data: HistoryData): HarnessTool[] {
 		defineHarnessTool({
 			name: "fixes_list",
 			title: "Fixes proposed on past investigations",
-			description:
+			description: withRules(
 				"Fixes and recommendations from past investigations on this thread's incident services, or its project or service, newest first: title, detail, incident, status (applied, rejected, deferred, pending), priority, when applied and the latest fix-check verdict if any. Use it to see what was proposed and whether it worked.",
+				"applying a fix: propose it to the user.",
+			),
 			group: "knowledge",
 			effect: "read",
 			serves: SCOPED,

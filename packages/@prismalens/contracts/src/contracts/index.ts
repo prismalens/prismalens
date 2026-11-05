@@ -54,6 +54,7 @@ export {
 } from "./setup.js";
 export { sourcesContract } from "./sources.js";
 export { terminalContract } from "./terminal.js";
+export { threadTreeContract } from "./thread-tree.js";
 export { threadsContract } from "./threads.js";
 export { timelineContract } from "./timeline.js";
 export { webhooksContract } from "./webhooks.js";
@@ -82,6 +83,7 @@ import { settingsContract } from "./settings.js";
 import { setupContract } from "./setup.js";
 import { sourcesContract } from "./sources.js";
 import { terminalContract } from "./terminal.js";
+import { threadTreeContract } from "./thread-tree.js";
 import { threadsContract } from "./threads.js";
 import { timelineContract } from "./timeline.js";
 import { webhooksContract } from "./webhooks.js";
@@ -118,6 +120,7 @@ export const contract = {
 	push: pushContract,
 	terminal: terminalContract,
 	threads: threadsContract,
+	threadTree: threadTreeContract,
 };
 
 export type Contract = typeof contract;

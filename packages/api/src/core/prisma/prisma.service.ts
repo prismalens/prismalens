@@ -110,6 +110,26 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.threadWake;
 	}
 
+	get threadMessage() {
+		return db.threadMessage;
+	}
+
+	get threadWait() {
+		return db.threadWait;
+	}
+
+	get proposal() {
+		return db.proposal;
+	}
+
+	get pendingAction() {
+		return db.pendingAction;
+	}
+
+	get treeAllowance() {
+		return db.treeAllowance;
+	}
+
 	get incident() {
 		return db.incident;
 	}

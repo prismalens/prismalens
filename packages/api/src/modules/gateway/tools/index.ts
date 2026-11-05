@@ -16,11 +16,13 @@ import {
 	knowledgeTools,
 	type PastInvestigation,
 } from "./knowledge.js";
+import { type ProposalsData, proposeTools } from "./propose.js";
 import { type FindingsData, recordTools } from "./record.js";
 import { reportTools } from "./report.js";
 import { type RunStatusLookup, runTools } from "./run.js";
 import { runbookTools } from "./runbooks.js";
 import { type ServiceLookup, serviceTools } from "./services.js";
+import { type ThreadTreeData, threadTreeTools } from "./thread-tree.js";
 import { type ThreadsData, threadTools } from "./threads.js";
 
 export type { ArtifactsData } from "./artifacts.js";
@@ -37,9 +39,11 @@ export type {
 	InvestigationsQuery,
 	PastInvestigation,
 } from "./knowledge.js";
+export type { ProposalsData } from "./propose.js";
 export type { FindingsData } from "./record.js";
 export type { RunStatusLookup, RunStatusView } from "./run.js";
 export type { ServiceLookup, ServiceView } from "./services.js";
+export type { ThreadTreeData } from "./thread-tree.js";
 export type {
 	ThreadReport,
 	ThreadSummary,
@@ -60,6 +64,8 @@ export interface GatewayToolData {
 	runStatus: RunStatusLookup;
 	attachments: AttachmentsData;
 	history: HistoryData;
+	tree: ThreadTreeData;
+	proposals: ProposalsData;
 }
 
 /**
@@ -80,6 +86,8 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...reportTools(),
 		...attachmentTools(data.attachments),
 		...historyTools(data.history),
+		...threadTreeTools(data.tree),
+		...proposeTools(data.proposals),
 	])
 		registry.register(tool);
 	return registry.list();

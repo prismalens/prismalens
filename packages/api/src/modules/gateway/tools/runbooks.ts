@@ -8,6 +8,7 @@ import {
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
 import { RUNBOOK_CHARS, type RunbooksData } from "../runbooks.js";
+import { withRules } from "./rules.js";
 import { SCOPED } from "./serves.js";
 
 export function runbookTools(data: RunbooksData): HarnessTool[] {
@@ -15,8 +16,10 @@ export function runbookTools(data: RunbooksData): HarnessTool[] {
 		defineHarnessTool({
 			name: "runbooks_list",
 			title: "Runbooks in the bound repos",
-			description:
-				"Runbooks found in the repositories bound to services, read at the commit this run saw: markdown under runbooks/ and docs/runbooks/, RUNBOOK*.md, and runbook links in catalog-info.yaml (links are returned as links, never fetched). Optionally for one service.",
+			description: withRules(
+				"Runbooks found in the repositories bound to services, read at the commit this run saw: markdown under runbooks/ and docs/runbooks/, RUNBOOK*.md, and runbook links in catalog-info.yaml (links are returned as links, never fetched). Optionally for one service. Use it before acting on a service.",
+				"fetching linked pages: open them yourself if allowed.",
+			),
 			group: "knowledge",
 			effect: "read",
 			serves: SCOPED,
@@ -35,7 +38,10 @@ export function runbookTools(data: RunbooksData): HarnessTool[] {
 		defineHarnessTool({
 			name: "runbooks_read",
 			title: "Read a runbook",
-			description: `The markdown of a runbook runbooks_list returned, cut at ${RUNBOOK_CHARS} characters. Pass its path and service exactly as listed.`,
+			description: withRules(
+				`The markdown of a runbook runbooks_list returned, cut at ${RUNBOOK_CHARS} characters. Pass its path and service exactly as listed. Use it on a runbooks_list entry.`,
+				"paths runbooks_list did not return.",
+			),
 			group: "core",
 			effect: "read",
 			serves: SCOPED,

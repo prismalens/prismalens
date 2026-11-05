@@ -31,6 +31,8 @@ export type HarnessGroup = "core" | "knowledge" | "record";
 export interface HarnessServes {
 	subjects: readonly ThreadSubjectKind[];
 	owes?: "report";
+	/** Also served to any member of a thread tree, whatever its subject (#1024). */
+	tree?: true;
 }
 
 /** Every subject: tools that need nothing but the run itself. */
@@ -40,16 +42,20 @@ export const EVERY_SUBJECT: readonly ThreadSubjectKind[] = THREAD_SUBJECTS;
 export interface HarnessScope {
 	subject?: ThreadSubjectKind;
 	owes?: "answer" | "report";
+	/** The run is a member of a thread tree (#1024). */
+	tree?: boolean;
 }
 
 /** The tools a run's scope can use; replay reads recorded events, not this. */
 export function servedTo(
 	tools: readonly HarnessTool[],
-	{ subject, owes }: HarnessScope,
+	{ subject, owes, tree }: HarnessScope,
 ): readonly HarnessTool[] {
 	return tools.filter(
 		(t) =>
-			(!subject || t.serves.subjects.includes(subject)) &&
+			(!subject ||
+				t.serves.subjects.includes(subject) ||
+				(!!tree && !!t.serves.tree)) &&
 			(!owes || !t.serves.owes || t.serves.owes === owes),
 	);
 }

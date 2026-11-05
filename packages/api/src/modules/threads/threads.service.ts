@@ -72,6 +72,22 @@ type FeedRow = Prisma.InvestigationGetPayload<{
 	include: typeof FEED_INCLUDE;
 }>;
 
+/** Where a thread an agent started sits in its tree (#1024 spec F). */
+export interface TreePlacement {
+	parentId: string;
+	rootId: string;
+	role: string;
+	depth: number;
+	title: string;
+	/** The pending action that started it: a retried start finds this thread again. */
+	actionId: string;
+	/** The commit or ref each repo is checked out at; absent takes the default branch. */
+	at?: (repo: { url: string }) => string | undefined;
+}
+
+/** The trigger reason that keys a child to the action that started it. */
+export const actionReason = (actionId: string) => `action:${actionId}`;
+
 /** The chips a request named; each field it left out falls back to Settings. */
 function runChoice({ harness, model, effort }: RunChoice): RunChoice {
 	return {
@@ -129,7 +145,10 @@ export class ThreadsService {
 		private readonly pullRequests: PullRequestsService,
 	) {}
 
-	async start(input: StartThreadInput): Promise<{
+	async start(
+		input: StartThreadInput,
+		tree?: TreePlacement,
+	): Promise<{
 		investigationId: string;
 		jobId: string | null;
 		queued: boolean;
@@ -179,10 +198,22 @@ export class ThreadsService {
 			...(ids.serviceId ? { serviceId: ids.serviceId } : {}),
 			...(helperPlace ? { helperPlace } : {}),
 			triggerType: "manual",
+			...(tree ? { triggerReason: actionReason(tree.actionId) } : {}),
 			kind: "chat",
-			title: input.text.slice(0, 120),
+			title: (tree?.title ?? input.text).slice(0, 120),
 			accessLevel: input.accessLevel ?? null,
 			onCreate: async (tx, id) => {
+				if (tree)
+					await tx.investigation.update({
+						where: { id },
+						data: {
+							parentId: tree.parentId,
+							rootId: tree.rootId,
+							role: tree.role,
+							depth: tree.depth,
+							...(tree.title ? { titleSetBy: "agent" } : {}),
+						},
+					});
 				if (repositoryId && (await folderBusy(tx, repositoryId, id)))
 					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
 				if (draftKey && files.length)
@@ -194,10 +225,20 @@ export class ThreadsService {
 					);
 			},
 		});
-		const thread = await this.dispatch.threadRunOf({
+		const plain = await this.dispatch.threadRunOf({
 			...ids,
 			helperPlace: helperPlace ?? null,
 		});
+		const pin = tree?.at;
+		const thread = pin
+			? {
+					...plain,
+					repos: plain.repos.map((r) => {
+						const at = pin(r);
+						return at ? { ...r, at } : r;
+					}),
+				}
+			: plain;
 		const connections = ids.serviceId
 			? await this.integrations.getIntegrationsForService(ids.serviceId)
 			: [];

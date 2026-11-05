@@ -41,6 +41,13 @@ import {
 	RUN_END_REASONS,
 	TURN_OUTCOMES,
 } from "./state-semantics.js";
+import {
+	ChildFinishedShape,
+	ProposalSchema,
+	ProposalStateSchema,
+	ThreadMessageEventShape,
+	ThreadStartedShape,
+} from "./thread-tree.js";
 
 // =============================================================================
 // ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
@@ -859,6 +866,7 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	hypothesis_record: "Recorded a hypothesis",
 	incident_get: "Read the incident",
 	incidents_similar: "Searched for similar incidents",
+	propose_action: "Proposed a change",
 	investigations_search: "Searched past reports",
 	report_validate: "Checked the report",
 	run_status: "Checked the run",
@@ -866,8 +874,13 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	runbooks_read: "Read a runbook",
 	service_get: "Read a service",
 	thread_list: "Listed threads",
+	thread_cancel: "Stopped a thread",
 	thread_read: "Read a thread",
+	thread_roster: "Read the thread tree",
+	thread_send: "Messaged a thread",
+	thread_start: "Started a thread",
 	thread_title: "Set the thread name",
+	thread_wait: "Waited on threads",
 	timeline_read: "Read the timeline",
 	tools_call: "Ran a PrismaLens tool",
 	tools_search: "Searched PrismaLens tools",
@@ -1225,6 +1238,36 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 				count: z.number().int().min(1),
 			}),
 		),
+	}),
+	z.object({
+		/** This thread started a child thread (#1024 spec F). */
+		kind: z.literal("thread_started"),
+		...StreamBaseShape,
+		...ThreadStartedShape,
+	}),
+	z.object({
+		/** A message between tree members, on the sender's and the receiver's side. */
+		kind: z.literal("thread_message"),
+		...StreamBaseShape,
+		...ThreadMessageEventShape,
+	}),
+	z.object({
+		/** A child of this thread ended; its parent hears the outcome and an excerpt. */
+		kind: z.literal("child_finished"),
+		...StreamBaseShape,
+		...ChildFinishedShape,
+	}),
+	z.object({
+		/** The agent proposed a change; nothing changes until the user applies it. */
+		kind: z.literal("action_proposed"),
+		...StreamBaseShape,
+		proposal: ProposalSchema,
+	}),
+	z.object({
+		kind: z.literal("action_resolved"),
+		...StreamBaseShape,
+		proposalId: z.string(),
+		state: ProposalStateSchema,
 	}),
 	z.object({
 		/** The agent published a self-contained HTML page through PrismaLens's tool (#871). */
@@ -1733,6 +1776,11 @@ export const ScheduledRunSchema = z.object({
 			serviceName: z.string(),
 			/** A folder with no git; only a thread a person starts may run in it (#1020). */
 			plain: z.boolean().optional(),
+			/** A child thread's commit or ref; absent takes the default branch's tip (#1024). */
+			at: z
+				.string()
+				.regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/)
+				.optional(),
 		}),
 	),
 });

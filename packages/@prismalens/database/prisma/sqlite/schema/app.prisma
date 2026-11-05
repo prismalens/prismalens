@@ -327,6 +327,12 @@ model Investigation {
   autoResume     Boolean? // null: the "Resume after a usage limit" setting decides
   agentPlan String? // JSON PlanEntry[]: the agent's latest ACP plan (#1024)
 
+  // Threads that start threads (#1024 spec F): null on a thread no agent started
+  parentId String?
+  rootId   String? // the tree's root; set on the root too once it has a child
+  role     String? // the role its parent gave it
+  depth    Int     @default(0)
+
   incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: SetNull)
   repository      Repository?          @relation("ProjectThreads", fields: [repositoryId], references: [id], onDelete: SetNull)
@@ -334,7 +340,11 @@ model Investigation {
   events          InvestigationEvent[]
   wakes           ThreadWake[]
   pullRequests    PullRequest[]
+  parent          Investigation?       @relation("ThreadTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Investigation[]      @relation("ThreadTree")
 
+  @@index([rootId])
+  @@index([parentId])
   @@index([incidentId])
   @@index([scheduleId, createdAt])
   @@index([serviceId])
@@ -745,4 +755,87 @@ model ScheduleEvent {
 
   @@index([scheduleId, createdAt])
   @@map("schedule_events")
+}
+
+// =============================================================================
+// THREAD TREES - threads that start threads (#1024 spec F)
+// =============================================================================
+
+/// A message between members of one tree, delivered at the receiver's next pause.
+model ThreadMessage {
+  id          String    @id @default(uuid())
+  rootId      String
+  fromId      String
+  toId        String
+  type        String // handoff | blocker | fact | question | reply | result
+  text        String
+  mode        String    @default("queue") // queue | steer
+  state       String    @default("queued") // queued | delivered | withdrawn
+  requestId   String // the sender's idempotency key; a result's is its child's end
+  createdAt   DateTime  @default(now())
+  deliveredAt DateTime?
+
+  @@unique([fromId, requestId])
+  @@index([toId, state])
+  @@index([rootId])
+  @@map("thread_messages")
+}
+
+/// A parent waits on a child (or on a pending start) to finish; its session reopens for the result.
+model ThreadWait {
+  waiterId  String
+  targetId  String // a thread id, or a pending action's id until it starts one
+  mode      String   @default("any") // any | all
+  createdAt DateTime @default(now())
+
+  @@id([waiterId, targetId])
+  @@map("thread_waits")
+}
+
+/// A change an agent proposed; the host's click applies it through the normal API.
+model Proposal {
+  id        String   @id @default(uuid())
+  threadId  String
+  kind      String // setting | schedule | service_link | project_add
+  change    String // JSON ProposalChange
+  why       String
+  state     String   @default("open") // open | applied | dismissed
+  outcome   String?
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+
+  @@index([threadId])
+  @@map("proposals")
+}
+
+/// An `act` tool call waiting on, or past, the host's approval: an immutable snapshot of the call.
+model PendingAction {
+  id          String    @id @default(uuid())
+  askId       String?
+  callerId    String
+  rootId      String
+  tool        String
+  args        String // JSON, validated at the call
+  requestId   String
+  state       String    @default("pending") // pending | approved | executing | done | failed | denied | expired | cancelled
+  result      String? // JSON
+  error       String?
+  createdAt   DateTime  @default(now())
+  decidedAt   DateTime?
+  executedAt  DateTime?
+  deliveredAt DateTime?
+
+  @@unique([callerId, requestId])
+  @@index([state])
+  @@index([askId])
+  @@map("pending_actions")
+}
+
+/// "Allow for this thread tree": later act calls inside the tree run without a card.
+model TreeAllowance {
+  rootId    String   @id
+  grantedAt DateTime @default(now())
+  grantedBy String
+
+  @@map("tree_allowances")
 }

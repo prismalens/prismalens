@@ -7,6 +7,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 import { FOR_A_REPORT } from "./serves.js";
 
 /** `parseReport` joins zod's issues as "path: message; path: message". */
@@ -29,8 +30,10 @@ export function reportTools(): HarnessTool[] {
 		defineHarnessTool({
 			name: "report_validate",
 			title: "Check your final report",
-			description:
-				"Check your final report before you finish; PrismaLens rejects a report that fails this. Pass the full final answer you intend to give, including its fenced json block. Returns valid, or each field that fails and what it expects.",
+			description: withRules(
+				"Check your final report before you finish; PrismaLens rejects a report that fails this. Pass the full final answer you intend to give, including its fenced json block. Returns valid, or each field that fails and what it expects. Use it once, just before you finish.",
+				"drafts mid-investigation.",
+			),
 			group: "knowledge",
 			effect: "read",
 			serves: FOR_A_REPORT,
