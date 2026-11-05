@@ -78,7 +78,7 @@ function fakeInstaller(code: number, onRun?: () => void) {
 			if (code === 0) {
 				const bin = join(dataDir, "runtime", NEXT, "bin");
 				mkdirSync(bin, { recursive: true });
-				writeFileSync(join(bin, process.platform === "win32" ? "pl.cmd" : "pl"), "");
+				for (const name of ["pl", "pl.cmd"]) writeFileSync(join(bin, name), "");
 			} else child.stderr.write("✗ Checksum mismatch; nothing was installed\n");
 			onRun?.();
 			child.emit("exit", code);
@@ -265,3 +265,75 @@ describe("autoInstallTick", () => {
 		expect(await s.autoInstallTick()).toBe(false);
 	});
 });
+
+describe("UpdateService edges", () => {
+	it("runs the auto-install check on a timer and stops it on shutdown", () => {
+		vi.useFakeTimers();
+		const { s } = service({});
+		const tick = vi.spyOn(s, "autoInstallTick").mockResolvedValue(false);
+		s.onModuleInit();
+		vi.advanceTimersByTime(61_000);
+		expect(tick).toHaveBeenCalledOnce();
+		s.onModuleDestroy();
+		vi.advanceTimersByTime(120_000);
+		expect(tick).toHaveBeenCalledOnce();
+	});
+
+	it("fails cleanly when the installer can't start or errors", async () => {
+		const throws = vi.fn(() => {
+			throw new Error("EACCES");
+		});
+		const a = service({ spawn: throws as never });
+		await a.s.install(NEXT, true);
+		expect((await settled(a.s)).error).toContain("Couldn't run the installer: EACCES");
+
+		const erroring = vi.fn(() => {
+			const child = new EventEmitter() as EventEmitter & { stdout: PassThrough; stderr: PassThrough; kill: () => void };
+			child.stdout = new PassThrough();
+			child.stderr = new PassThrough();
+			child.kill = () => {};
+			setImmediate(() => child.emit("error", new Error("spawn powershell ENOENT")));
+			return child;
+		});
+		const b = service({ spawn: erroring as never });
+		await b.s.install(NEXT, true);
+		expect((await settled(b.s)).error).toContain("spawn powershell ENOENT");
+		expect(b.admission.draining).toBe(false);
+	});
+
+	it("fails when the installer exits 0 but the runtime isn't there", async () => {
+		const quiet = vi.fn(() => {
+			const child = new EventEmitter() as EventEmitter & { stdout: PassThrough; stderr: PassThrough; kill: () => void };
+			child.stdout = new PassThrough();
+			child.stderr = new PassThrough();
+			child.kill = () => {};
+			setImmediate(() => child.emit("exit", 0));
+			return child;
+		});
+		const { s } = service({ spawn: quiet as never });
+		await s.install(NEXT, true);
+		expect((await settled(s)).error).toContain("is missing");
+	});
+
+	it("under a service manager, exits with the code the manager restarts on", async () => {
+		const { s } = service({});
+		s.env.INVOCATION_ID = "abc";
+		s.platform = "linux";
+		await s.install(NEXT, true);
+		await settled(s);
+		const cfg = JSON.parse(readFileSync(join(workspace, "update-handoff.json"), "utf8"));
+		expect(cfg.mode).toBe("systemd");
+		expect(restartExitCode()).toBe(75);
+	});
+
+	it("reads the installer's bin folder from its receipt", async () => {
+		mkdirSync(dataDir, { recursive: true });
+		writeFileSync(join(dataDir, "receipt"), "version=0.5.1\nbin_dir=/home/me/.local/bin\n");
+		const { s } = service({});
+		await s.install(NEXT, true);
+		await settled(s);
+		const cfg = JSON.parse(readFileSync(join(workspace, "update-handoff.json"), "utf8"));
+		expect(cfg.binDir).toBe("/home/me/.local/bin");
+	});
+});
+

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { secretFileName } from "@prismalens/config";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DiagnosticsService } from "./diagnostics.service.js";
 
@@ -52,5 +53,29 @@ describe("DiagnosticsService", () => {
 		expect(c.node.fix).toBeTruthy();
 		expect(c.git).toMatchObject({ status: "fail", fix: "Install git, then restart PrismaLens." });
 		expect(c.path.status).toBe("warn");
+	});
+
+	it("fails a workspace it can't write, and counts several helpers or none", () => {
+		process.env.PRISMALENS_WORKSPACE_DIR = join(workspace, "missing", "deeper");
+		const s = new DiagnosticsService();
+		s.env = { PATH: "/usr/bin" };
+		s.nodeVersion = "24.22.1";
+		s.git = (args) =>
+			args[0] === "--version"
+				? { status: 0, stdout: "git version 2.47.0" }
+				: { status: 0, stdout: "credential.helper store\ncredential.https://x.helper manager\n" };
+		const c = byId(s);
+		expect(c.workspace).toMatchObject({ status: "fail" });
+		expect(c.git.detail).toContain("2 credential helpers");
+		s.git = (args) =>
+			args[0] === "--version" ? { status: 0, stdout: "git version 2.47.0" } : { status: 1, stdout: "" };
+		expect(byId(s).git.detail).toContain("no credential helper");
+	});
+
+	it("names the webhook token file once it exists", () => {
+		writeFileSync(join(workspace, secretFileName("PRISMALENS_WEBHOOK_SECRET")), "x");
+		const s = new DiagnosticsService();
+		s.git = () => ({ status: 0, stdout: "git version 2" });
+		expect(byId(s)["webhook-token"].status).toBe("ok");
 	});
 });

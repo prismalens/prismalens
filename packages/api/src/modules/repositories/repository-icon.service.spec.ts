@@ -167,6 +167,66 @@ describe("the logo order", () => {
 	});
 });
 
+describe("lookups that find nothing", () => {
+	it("an ssh address, a host API that fails, and GitHub without a token all fall through", async () => {
+		const { prisma } = store();
+		const s = new RepositoryIconService(prisma, images());
+		s.mirrorRootsFn = () => [];
+		expect(await s.refresh(row({ url: "git@github.com:acme/app.git" }))).toEqual({});
+		s.fetchImpl = vi.fn(async () => new Response("", { status: 404 })) as never;
+		expect(await s.refresh(row({ url: "https://gitlab.example.com/a/b.git" }))).toEqual({});
+		s.fetchImpl = vi.fn(async () => {
+			throw new Error("offline");
+		}) as never;
+		expect(await s.refresh(row({ url: "https://bitbucket.org/a/b.git" }))).toEqual({});
+		const tokenless = new RepositoryIconService(prisma, images(), {
+			resolveForUse: vi.fn(async () => ({ apiAuthorization: () => undefined })),
+		} as unknown as GitCredentialService);
+		tokenless.mirrorRootsFn = () => [];
+		expect((await tokenless.refresh(row({}))).p).toBeUndefined();
+	});
+
+	it("scans a project below its repository's top folder", async () => {
+		mkdirSync(join(root, "web", "public"), { recursive: true });
+		writeFileSync(join(root, "web", "public", "favicon.png"), PNG);
+		const { prisma } = store();
+		const s = new RepositoryIconService(prisma, images());
+		expect(await s.refresh(row({ sourceKind: "folder", url: root, subPath: "web" }))).toEqual({
+			f: "public/favicon.png",
+		});
+	});
+
+	it("reads a remote project's icon from its mirror", async () => {
+		const { execFileSync } = await import("node:child_process");
+		const { mirrorPathFor } = await import("../../core/harness/repo-source.service.js");
+		const url = "https://github.com/acme/app.git";
+		const work = join(root, "work");
+		mkdirSync(work);
+		const git = (...args: string[]) => execFileSync("git", args, { cwd: work, stdio: "pipe" });
+		git("init", "-q", "-b", "main");
+		git("config", "user.email", "t@example.com");
+		git("config", "user.name", "t");
+		writeFileSync(join(work, "favicon.png"), PNG);
+		git("add", ".");
+		git("commit", "-q", "-m", "icon");
+		const mirrors = join(root, "mirrors");
+		execFileSync("git", ["clone", "-q", "--mirror", work, mirrorPathFor(url, mirrors)]);
+		const { prisma } = store();
+		const s = new RepositoryIconService(
+			Object.assign(prisma, {
+				repository: {
+					...(prisma as unknown as { repository: object }).repository,
+					findUnique: async () => ({ id: ID, sourceKind: "url", url, subPath: null, defaultBranch: "main", iconKey: '{"f":"favicon.png"}' }),
+				},
+			}) as unknown as PrismaService,
+			images(false),
+		);
+		s.mirrorRootsFn = () => [mirrors];
+		expect(await s.refresh(row({ url }))).toEqual({ f: "favicon.png" });
+		expect((await s.file(ID))?.type).toBe("image/png");
+	});
+});
+
 describe("GET /repositories/{id}/icon", () => {
 	function res() {
 		const headers: Record<string, string> = {};

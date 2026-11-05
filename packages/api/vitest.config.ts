@@ -68,6 +68,18 @@ export default defineConfig({
 			],
 			thresholds: {
 				...PACKAGE_FLOOR,
+				// #724 and #1024 E
+				"src/core/settings/update.service.ts": NEW_CODE_THRESHOLD,
+				"src/core/settings/update-handoff.ts": NEW_CODE_THRESHOLD,
+				"src/core/settings/diagnostics.service.ts": NEW_CODE_THRESHOLD,
+				"src/core/lifecycle/admission.service.ts": NEW_CODE_THRESHOLD,
+				"src/modules/images/image-fetch.ts": NEW_CODE_THRESHOLD,
+				"src/modules/images/images.service.ts": NEW_CODE_THRESHOLD,
+				"src/modules/repositories/repo-icon-scan.ts": NEW_CODE_THRESHOLD,
+				"src/modules/repositories/repository-icon.service.ts":
+					NEW_CODE_THRESHOLD,
+				"src/modules/integrations/host-repositories.service.ts":
+					NEW_CODE_THRESHOLD,
 				"src/modules/investigations/stream-relay.service.ts":
 					NEW_CODE_THRESHOLD,
 				"src/core/harness/harness.service.ts": NEW_CODE_THRESHOLD,
