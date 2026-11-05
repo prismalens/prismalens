@@ -6,6 +6,7 @@
 //   skip    "true": the PR head tree already passed `CI`, or the PR changes only docs.
 //   full    "true": the release-only proofs (the release side checks on all three OSes, the systemd service) run.
 //   agents  "true": the five agent qualification legs run.
+//   defer   "true": a draft release PR; nothing runs and `CI gate` stays red until it is marked ready.
 // A tier runs unless every changed path is on its safe list, so an unlisted path costs minutes, not a missed check.
 // Anything that is not a pull request (main, the nightly) plans everything.
 // ci.yml's `CI gate` reads these three and lets exactly the matching jobs be skipped.
@@ -49,8 +50,10 @@ const needs = (/** @type {RegExp[]} */ safe, /** @type {string[]} */ files) =>
  *   labels?: string[],
  *   headRef?: string,
  *   sameTreeAs?: string | null,
+ *   draft?: boolean,
+ *   readyOnPassedHead?: boolean,
  * }} input
- * @returns {{ skip: boolean, full: boolean, agents: boolean, reason: string }}
+ * @returns {{ skip: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean }}
  */
 export function plan({
 	event,
@@ -58,6 +61,8 @@ export function plan({
 	labels = [],
 	headRef = "",
 	sameTreeAs = null,
+	draft = false,
+	readyOnPassedHead = false,
 }) {
 	if (event !== "pull_request")
 		return {
@@ -66,12 +71,29 @@ export function plan({
 			agents: true,
 			reason: `${event}: everything runs`,
 		};
+	// release-please rebuilds this PR on every push to main; CI waits until it is marked ready.
+	if (draft && headRef.startsWith("release-please--"))
+		return {
+			skip: true,
+			full: false,
+			agents: false,
+			defer: true,
+			reason: "draft release PR: CI waits until it is marked ready for review",
+		};
+	// "Ready for review" starts a run; a head that already passed CI as a draft has nothing left to prove.
+	if (readyOnPassedHead)
+		return {
+			skip: true,
+			full: false,
+			agents: false,
+			reason: "marked ready for review: this head already passed CI",
+		};
 	if (sameTreeAs)
 		return {
 			skip: true,
 			full: false,
 			agents: false,
-			reason: `tree identical to ${sameTreeAs}, which already passed CI: nothing re-run`,
+			reason: `tree identical to ${sameTreeAs}, which already passed CI: nothing re-run. A head made with "git merge -s ours" lacks main's other changes (CONTRIBUTING.md, Landing a stack)`,
 		};
 	if (files.length > 0 && files.every((f) => DOCS.some((p) => p.test(f))))
 		return {
@@ -124,6 +146,17 @@ function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
 	return hit ? hit.sha : null;
 }
 
+/** Whether a `CI` run on exactly this head commit already succeeded. */
+function headAlreadyPassed(/** @type {NodeJS.ProcessEnv} */ env) {
+	const out = gh([
+		"api",
+		`repos/${env.REPO}/actions/workflows/ci.yml/runs?head_sha=${env.HEAD_SHA}&event=pull_request&status=success&per_page=1`,
+		"--jq",
+		".total_count",
+	]);
+	return Number(out.trim()) > 0;
+}
+
 function main(/** @type {NodeJS.ProcessEnv} */ env) {
 	const event = String(env.EVENT_NAME);
 	/** @type {string[]} */
@@ -147,17 +180,29 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 			console.log(`tree lookup failed, running everything: ${error}`);
 		}
 	}
+	/** @type {boolean} */
+	let readyOnPassedHead = false;
+	if (event === "pull_request" && env.ACTION === "ready_for_review") {
+		try {
+			readyOnPassedHead = headAlreadyPassed(env);
+		} catch (error) {
+			console.log(`pass lookup failed, running everything: ${error}`);
+		}
+	}
 	const result = plan({
 		event,
 		files,
 		labels: JSON.parse(env.LABELS || "[]"),
 		headRef: env.HEAD_REF || "",
 		sameTreeAs,
+		draft: env.DRAFT === "true",
+		readyOnPassedHead,
 	});
 	const lines = [
 		`skip=${result.skip}`,
 		`full=${result.full}`,
 		`agents=${result.agents}`,
+		`defer=${Boolean(result.defer)}`,
 		`reason=${result.reason}`,
 	];
 	console.log(lines.join("\n"));
