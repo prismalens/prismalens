@@ -18,6 +18,13 @@ import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { needsFind } from "@/lib/needs-find";
 
+/** displayName is not unique, name is: show both when they differ so twins stay apart. */
+export function serviceLabel(s: { name: string; displayName?: string | null }) {
+	return s.displayName && s.displayName !== s.name
+		? `${s.displayName} (${s.name})`
+		: s.name;
+}
+
 /**
  * A blank incident's service, picked from the ones PrismaLens knows. Past one page of
  * the catalog it searches the server; a failed link says so and clears the pick (#1020).
@@ -25,8 +32,10 @@ import { needsFind } from "@/lib/needs-find";
 export function LinkService({ incidentId }: { incidentId: string }) {
 	const [find, setFind] = useState("");
 	const search = useDeferredValue(find.trim());
-	const services = useServices(search ? { search } : undefined);
+	const services = useServices({ limit: 100, ...(search ? { search } : {}) });
 	const [picked, setPicked] = useState("");
+	// Once the catalog has needed a search, the field stays mounted while the query catches up.
+	const [paged, setPaged] = useState(false);
 	const { toast } = useToast();
 	const queryClient = useQueryClient();
 	const link = useMutation({
@@ -43,7 +52,10 @@ export function LinkService({ incidentId }: { incidentId: string }) {
 		},
 	});
 	const list = services.data?.data ?? [];
-	const finding = needsFind(services.data, find);
+	const needed = needsFind(services.data, find);
+	if (needed && !paged) setPaged(true);
+	const finding = needed || paged;
+	const truncated = !!services.data && services.data.total > list.length;
 	if (services.isError)
 		return (
 			<p
@@ -69,7 +81,11 @@ export function LinkService({ incidentId }: { incidentId: string }) {
 				<Input
 					value={find}
 					onChange={(e) => setFind(e.target.value)}
-					placeholder="Find a service"
+					placeholder={
+						truncated
+							? `${list.length} of ${services.data?.total}: narrow the search`
+							: "Find a service"
+					}
 					aria-label="Find a service"
 					className="w-44"
 					data-testid="incident-link-service-find"
@@ -97,7 +113,7 @@ export function LinkService({ incidentId }: { incidentId: string }) {
 							value={s.id}
 							data-testid={`incident-link-service-${s.id}`}
 						>
-							{s.displayName || s.name}
+							{serviceLabel(s)}
 						</SelectItem>
 					))}
 				</SelectContent>

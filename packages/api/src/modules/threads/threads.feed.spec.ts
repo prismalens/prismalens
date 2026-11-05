@@ -312,6 +312,35 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		expect(rows.map((r) => r.settledAt)).toEqual([earlier, null]);
 	});
 
+	it("puts the written threads back when a later one in the block conflicts", async () => {
+		const inc = uuid();
+		const earlier = new Date("2020-01-01T08:00:00Z");
+		const rows = [
+			{ id: uuid(), settledAt: earlier as Date | null },
+			{ id: uuid(), settledAt: null as Date | null },
+		];
+		const stamp = new Date("2026-01-01T00:00:00Z");
+		prisma.investigation.findUnique.mockResolvedValue({
+			incidentId: inc,
+			updatedAt: stamp,
+		});
+		prisma.investigation.findMany.mockImplementation(async () =>
+			rows.map((r) => ({ ...r })),
+		);
+		prisma.investigation.updateMany.mockImplementation(
+			async ({ where, data }: { where: { id: string }; data: { settledAt: Date | null } }) => {
+				const r = rows.find((x) => x.id === where.id);
+				if (!r || where.id === rows[1]?.id) return { count: 0 };
+				r.settledAt = data.settledAt;
+				return { count: 1 };
+			},
+		);
+		await expect(service().settle(rows[0]?.id as string, true)).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		expect(rows.map((r) => r.settledAt)).toEqual([earlier, null]);
+	});
+
 	it("restores only threads of the block it was asked about", async () => {
 		const inc = uuid();
 		const own = uuid();

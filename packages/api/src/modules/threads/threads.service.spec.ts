@@ -54,7 +54,11 @@ describe("ThreadsService (#1020)", () => {
 	let prisma: {
 		repository: { findUnique: ReturnType<typeof vi.fn> };
 		service: { findUnique: ReturnType<typeof vi.fn> };
-		investigation: { findMany: ReturnType<typeof vi.fn> };
+		investigation: {
+			findMany: ReturnType<typeof vi.fn>;
+			findUnique: ReturnType<typeof vi.fn>;
+			updateMany: ReturnType<typeof vi.fn>;
+		};
 	};
 	let investigations: { startOrGet: ReturnType<typeof vi.fn> };
 	let dispatch: {
@@ -84,7 +88,11 @@ describe("ThreadsService (#1020)", () => {
 		prisma = {
 			repository: { findUnique: vi.fn(async () => ({ id: REPO })) },
 			service: { findUnique: vi.fn(async () => ({ id: SERVICE })) },
-			investigation: { findMany: vi.fn(async () => [row()]) },
+			investigation: {
+				findMany: vi.fn(async () => [row()]),
+				findUnique: vi.fn(async () => ({ updatedAt: row().updatedAt })),
+				updateMany: vi.fn(async () => ({ count: 1 })),
+			},
 		};
 		investigations = {
 			startOrGet: vi.fn(
@@ -280,6 +288,21 @@ describe("ThreadsService (#1020)", () => {
 		expect(out.queued).toBe(false);
 	});
 
+	it("visit retries a lost race, then refuses with CONFLICT rather than report an unwritten visit", async () => {
+		prisma.investigation.updateMany
+			.mockResolvedValueOnce({ count: 0 })
+			.mockResolvedValueOnce({ count: 1 });
+		await expect(service().visit(RUN)).resolves.toHaveProperty("lastVisitedAt");
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(2);
+
+		prisma.investigation.updateMany.mockReset();
+		prisma.investigation.updateMany.mockResolvedValue({ count: 0 });
+		await expect(service().visit(RUN)).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(3);
+	});
+
 	it("lists a project's or a service's own threads, never its incidents' or schedules'", async () => {
 		const rows = await service().list({ repositoryId: REPO, limit: 10 });
 		expect(prisma.investigation.findMany).toHaveBeenCalledWith(
@@ -306,6 +329,32 @@ describe("ThreadsService (#1020)", () => {
 			}),
 		);
 		await expect(service().list({ limit: 5 })).resolves.toEqual([]);
+	});
+
+	it("settles every thread of an incident without moving their updatedAt", async () => {
+		const updatedAt = new Date("2026-11-03T00:00:00Z");
+		const findUnique = vi.fn(async (args: { select: object }) =>
+			"updatedAt" in args.select ? { updatedAt } : { incidentId: "inc-1" },
+		);
+		const updateMany = vi.fn(async () => ({ count: 1 }));
+		Object.assign(prisma.investigation, {
+			findUnique,
+			updateMany,
+			findMany: vi.fn(async () => [{ id: "a" }, { id: "b" }]),
+		});
+
+		await expect(service().settle("a", true)).resolves.toMatchObject({
+			ids: ["a", "b"],
+		});
+
+		expect(updateMany).toHaveBeenCalledTimes(2);
+		for (const [arg] of updateMany.mock.calls as unknown as [
+			{ where: object; data: { settledAt: Date; updatedAt: Date } },
+		][]) {
+			expect(arg.where).toMatchObject({ updatedAt });
+			expect(arg.data.updatedAt).toBe(updatedAt);
+			expect(arg.data.settledAt).toBeInstanceOf(Date);
+		}
 	});
 
 	it("shows a row with an unknown level as none, and an investigation kind as such", () => {
