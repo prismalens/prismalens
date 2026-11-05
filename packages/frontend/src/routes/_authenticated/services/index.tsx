@@ -275,7 +275,7 @@ function ServicesPage() {
 	// Repositories waiting for a service keep the list page, so they stay reachable.
 	const none =
 		!isLoading &&
-		total === 0 &&
+		response?.total === 0 &&
 		reviewItems.length === 0 &&
 		!searchParams.search &&
 		teamFilter === "all";

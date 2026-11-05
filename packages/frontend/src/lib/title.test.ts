@@ -11,6 +11,12 @@ describe("readableTitle", () => {
 	it("keeps acronyms whole", () => {
 		expect(readableTitle("APILatencyP99High")).toBe("API latency P99 high");
 	});
+	it("splits an acronym-led name", () => {
+		expect(readableTitle("CPUHigh")).toBe("CPU high");
+	});
+	it("leaves a lone acronym alone", () => {
+		expect(readableTitle("CPU")).toBe("CPU");
+	});
 	it("leaves a sentence alone", () => {
 		expect(readableTitle("CI failed on main")).toBe("CI failed on main");
 	});

@@ -114,7 +114,7 @@ function IncidentsLanding() {
 			data-testid="incidents-overview"
 		>
 			<PageHeader
-				title={firstRun ? "" : "Operations"}
+				title={firstRun ? <span className="sr-only">Home</span> : "Operations"}
 				primary={firstRun ? null : <NewIncidentButton />}
 			>
 				{!firstRun && (

@@ -24,6 +24,17 @@ describe("threadGroups", () => {
 		]);
 	});
 
+	it("cuts days at local midnight, whatever the day's length", () => {
+		// 2026-11-01 is 25 hours long in zones that end DST then; a fixed 24h step would call Oct 31 23:30 Yesterday.
+		const monday = new Date(2026, 10, 2, 10, 0).getTime();
+		expect(dayGroup(new Date(2026, 9, 31, 23, 30).getTime(), monday)).toBe(
+			"Earlier this week",
+		);
+		expect(dayGroup(new Date(2026, 10, 1, 0, 30).getTime(), monday)).toBe(
+			"Yesterday",
+		);
+	});
+
 	it("names a day more than a week back by its month", () => {
 		expect(dayGroup(new Date(2026, 9, 2).getTime(), now)).toBe("October 2026");
 	});

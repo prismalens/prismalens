@@ -84,15 +84,17 @@ const time = (v: string | Date | null | undefined) =>
 	v ? new Date(v).getTime() : Number.NaN;
 
 /**
- * The newest investigation that has ended, and the newest with a named cause:
+ * The newest run that has ended, and the newest investigation with a named cause:
  * a later run that stopped or failed leaves that finding standing, as the overview does.
+ * A plain chat has only chat runs, so its ended run is a chat run.
  */
 function concluded(incident: IncidentWithRelations): {
 	ended: Run | null;
 	finding: Run | null;
 } {
+	const chat = isPlainChat(incident);
 	const runs = (incident.investigations ?? [])
-		.filter((r) => (r.kind ?? "investigation") === "investigation")
+		.filter((r) => chat || (r.kind ?? "investigation") === "investigation")
 		.filter((r) => !isWorkflowLive(r.status))
 		.sort((a, b) => time(b.createdAt) - time(a.createdAt));
 	const [ended = null] = runs;
@@ -132,11 +134,9 @@ export function needOf(incident: IncidentWithRelations): NeedKey | null {
 	if (incident.status === "resolved") return "cleared";
 	// A chat asks nothing of you once answered; only its failure does (#1020 D10).
 	if (isPlainChat(incident)) {
-		const last = (incident.investigations ?? [])
-			.filter((r) => !isWorkflowLive(r.status))
-			.sort((a, b) => time(b.createdAt) - time(a.createdAt))[0];
-		if (last?.status !== "failed") return null;
-		return interrupted(last) ? "interrupted" : "failed";
+		const { ended } = concluded(incident);
+		if (ended?.status !== "failed") return null;
+		return interrupted(ended) ? "interrupted" : "failed";
 	}
 	const { ended, finding } = concluded(incident);
 	if (finding) return "ready";
@@ -158,6 +158,7 @@ export const FIRING_LABEL: Record<Firing, string> = {
 /** Firing alerts at `at`, from each alert's own start and end. */
 function firingAt(incident: IncidentWithRelations, at: number): number {
 	return (incident.alerts ?? []).filter((a) => {
+		if (isEvent(a)) return false;
 		const from = time(a.triggeredAt);
 		const to = a.resolvedAt ? time(a.resolvedAt) : Number.POSITIVE_INFINITY;
 		return from <= at && at < to;
