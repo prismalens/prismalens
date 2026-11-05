@@ -127,7 +127,7 @@ test.describe("the services filter follows the URL (#781 review)", () => {
 		await expect(input).toHaveValue("gate", { timeout: 15_000 });
 
 		// Services from Search: a plain link to /services, with no search (#1020).
-		await page.getByTestId("sidebar").getByTestId("sidebar-search").click();
+		await page.getByTestId("sidebar").getByTestId("nav-search").click();
 		await page
 			.getByTestId("thread-search-place")
 			.filter({ hasText: "Services" })

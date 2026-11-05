@@ -374,7 +374,10 @@ function ServicesPage() {
 							searchParams.search || teamFilter !== "all" ? (
 								<Empty text="No service matches." testId="services-empty" />
 							) : (
-								<Empty text="No services yet." testId="services-empty" />
+								<>
+									<Empty text="No services yet." testId="services-empty" />
+									<HelperThread place="services" className="mt-4" />
+								</>
 							)
 						) : (
 							<h2

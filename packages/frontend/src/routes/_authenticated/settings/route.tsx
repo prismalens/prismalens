@@ -59,16 +59,26 @@ export function legacySettingsTarget(
 	return agent ? { ...to, agent } : to;
 }
 
+/**
+ * The query as typed. A first page load hands beforeLoad a search that validation has
+ * already stripped of an unknown tab, so the browser's own URL is read then (#1020).
+ */
+function rawSearch(location: { pathname: string; searchStr: string }): string {
+	if (location.searchStr) return location.searchStr;
+	if (typeof window === "undefined") return "";
+	return window.location.pathname === location.pathname
+		? window.location.search
+		: "";
+}
+
 export const Route = createFileRoute("/_authenticated/settings")({
 	validateSearch: validateSettingsSearch,
 	beforeLoad: ({ location }) => {
+		const raw = rawSearch(location);
 		// Schedules moved to Automation (#1020); old links still land there.
-		if (
-			new URLSearchParams(location.searchStr).get("tab")?.replace(/"/g, "") ===
-			"schedules"
-		)
+		if (new URLSearchParams(raw).get("tab")?.replace(/"/g, "") === "schedules")
 			throw redirect({ to: "/automation", replace: true });
-		const to = legacySettingsTarget(location.searchStr);
+		const to = legacySettingsTarget(raw);
 		if (to)
 			throw redirect({
 				to: "/settings",

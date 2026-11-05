@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The thread list and New thread (#1020): the three journeys that must pass
- * before the old entry points go.
+ * The sidebar's thread list, Home and the Search palette (#1020): starting a
+ * thread, settling, renaming and stopping from a row, and reaching places.
  */
 import { expect, type Page, test } from "@playwright/test";
 import { hideQueryDevtools } from "./live-stream-fixtures";
@@ -66,31 +66,85 @@ const threadRow = (over: Record<string, unknown> = {}) => ({
 	schemaVersion: 1,
 	createdAt: new Date().toISOString(),
 	updatedAt: new Date().toISOString(),
-	section: "needs",
+	section: "active",
 	lastActivityAt: new Date().toISOString(),
 	lastVisitedAt: null,
 	settledAt: null,
 	unseen: true,
 	latestText: "It misses after the nightly flush",
 	projectName: null,
+	titleSetBy: null,
 	serviceName: null,
 	...over,
 });
+type Row = ReturnType<typeof threadRow>;
 
-test.describe("#1020 — thread list and New thread", () => {
+/** Serves GET /threads/feed: one unit per row, from whatever `rows` returns for the request. */
+async function serveFeed(
+	page: Page,
+	rows: (params: URLSearchParams) => Row[],
+	nextCursor: (params: URLSearchParams) => number | null = () => null,
+) {
+	await page.route(
+		(url) => url.pathname === "/api/threads/feed",
+		async (route) => {
+			const params = new URL(route.request().url()).searchParams;
+			const list = rows(params);
+			const count = (s: string) => list.filter((r) => r.section === s).length;
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					units: list.map((r) => ({
+						section: r.section,
+						incident: null,
+						threads: [r],
+					})),
+					nextCursor: nextCursor(params),
+					counts: {
+						needs: count("needs"),
+						active: count("active"),
+						settled: count("settled"),
+					},
+				}),
+			});
+		},
+	);
+}
+
+/** A sidebar row's title: the row's link also carries its state words for screen readers. */
+const rowTitle = (page: Page) =>
+	page.getByTestId("thread-row").locator("span[dir=auto]");
+
+/** The list renders only once the app has hydrated and read the feed, so keys and clicks land. */
+const hydrated = (page: Page) =>
+	expect(page.getByTestId("thread-list")).toBeVisible();
+
+test.describe("#1020 — thread list and Home", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	test("a. New thread on a project starts it there and opens its page", async ({
+	test("a. New on a project starts the thread there and opens its page", async ({
 		page,
 	}) => {
 		const started = await captureStart(page);
 		const projectId = await addProject(page);
-		await page.getByTestId("sidebar-new-thread").click();
-		await expect(page.getByTestId("new-thread-page")).toBeVisible({
-			timeout: 15_000,
-		});
+		await page.getByTestId("nav-new").click();
+		await expect(page).toHaveURL(/\/new/);
+		await expect(page.getByTestId("home")).toBeVisible({ timeout: 15_000 });
 		await page.getByTestId("composer-subject").click();
+		await expect(
+			page.getByRole("menuitemradio", { name: "No project" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("menuitem", { name: "Add project" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("menuitem", { name: "Add a service" }),
+		).toBeVisible();
 		await page.getByTestId(`subject-project-${projectId}`).click();
+		await expect(page).toHaveURL(new RegExp(`project=${projectId}`));
+		// An incident carries a service, not a project, so Incident is off here.
+		await expect(page.getByTestId("composer-incident")).toBeDisabled();
 		await page.getByTestId("composer-input").fill("Tidy the retry helper");
 		await page.getByTestId("composer-input").press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
@@ -100,7 +154,7 @@ test.describe("#1020 — thread list and New thread", () => {
 		});
 	});
 
-	test("b. New thread with Incident on creates the incident and investigates the text", async ({
+	test("b. Home with Incident on creates the incident and investigates the text; /threads/new still leads there", async ({
 		page,
 	}) => {
 		let investigated: Record<string, unknown> | null = null;
@@ -124,7 +178,8 @@ test.describe("#1020 — thread list and New thread", () => {
 				});
 			},
 		);
-		await page.goto("/threads/new?incident=true");
+		await page.goto("/threads/new?incident=true&none=true");
+		await expect(page).toHaveURL(/\/new\?.*incident=true/);
 		await expect(page.getByTestId("new-thread-page")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -152,41 +207,39 @@ test.describe("#1020 — thread list and New thread", () => {
 		});
 	});
 
-	test("c. a thread that needs you settles from its row, and Undo brings it back", async ({
+	test("b2. the composer's slash commands turn Incident on, as an investigation or a note", async ({
+		page,
+	}) => {
+		await page.goto("/new?none=true");
+		const input = page.getByTestId("composer-input");
+		await expect(input).toBeVisible({ timeout: 15_000 });
+		const incident = page.getByTestId("composer-incident");
+		await expect(incident).toHaveAttribute("aria-pressed", "false");
+
+		await input.fill("/");
+		await expect(page.getByTestId("composer-slash-investigate")).toBeVisible();
+		await page.getByTestId("composer-slash-investigate").click();
+		await expect(incident).toHaveAttribute("aria-pressed", "true");
+		await expect(page.getByTestId("composer-severity")).toBeVisible();
+		await expect(page.getByTestId("composer-note")).toHaveCount(0);
+
+		await input.fill("/no");
+		await page.getByTestId("composer-slash-note").click();
+		await expect(page.getByTestId("composer-note")).toHaveText("Note only");
+	});
+
+	test("c. a thread settles from its row, and Undo brings it back", async ({
 		page,
 	}) => {
 		let settledAt: string | null = null;
 		const settles: unknown[] = [];
-		await page.route(
-			(url) => url.pathname === "/api/threads/feed",
-			async (route) => {
-				const settled = settledAt !== null;
-				const row = threadRow(
-					settled
-						? { section: "settled", unseen: false, settledAt }
-						: { section: "needs" },
-				);
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({
-						units: [
-							{
-								section: row.section,
-								incident: null,
-								threads: [row],
-							},
-						],
-						nextCursor: null,
-						counts: {
-							needs: settled ? 0 : 1,
-							active: 0,
-							settled: settled ? 1 : 0,
-						},
-					}),
-				});
-			},
-		);
+		await serveFeed(page, () => [
+			threadRow(
+				settledAt !== null
+					? { section: "settled", unseen: false, settledAt }
+					: {},
+			),
+		]);
 		let answer = () => {};
 		const answered = new Promise<void>((r) => {
 			answer = r;
@@ -210,29 +263,24 @@ test.describe("#1020 — thread list and New thread", () => {
 		);
 
 		await page.goto("/incidents");
-		const needs = page.getByTestId("threads-needs");
-		await expect(needs.getByTestId("thread-row")).toHaveAttribute(
-			"data-state",
-			"new",
-		);
-		await expect(needs.getByTestId("thread-row-line")).toHaveText(
-			"Answer: It misses after the nightly flush",
-		);
-		await needs.getByTestId("thread-row-wrap").hover();
-		await needs.getByTestId("thread-settle").click();
+		const recents = page.getByTestId("thread-section-recents");
+		const row = recents.getByTestId("thread-row");
+		await expect(row).toHaveAttribute("data-state", "new");
+		await expect(row).toHaveAttribute("data-id", RUN_ID);
+		await recents.getByTestId("thread-row-wrap").hover();
+		await expect(recents.getByTestId("thread-stop")).toHaveCount(0);
+		await recents.getByTestId("thread-settle").click();
 		// Undo waits for Settle's answer: without it, it would not know what to restore.
 		await expect(page.getByTestId("settle-undo")).toBeDisabled();
+		await expect(row).toHaveCount(0);
 		answer();
 		await expect(page.getByTestId("settle-undo")).toBeEnabled();
-		await expect(page.getByTestId("threads-needs")).toHaveCount(0);
-		await expect(page.getByTestId("settle-undo-line")).toContainText(
+		await expect(recents.getByTestId("settle-undo-line")).toContainText(
 			"Settled Why does checkout cache miss",
 		);
-		await expect(page.getByTestId("threads-settled-toggle")).toContainText("1");
+		await expect(row).toHaveCount(0);
 		await page.getByTestId("settle-undo").click();
-		await expect(
-			page.getByTestId("threads-needs").getByTestId("thread-row"),
-		).toBeVisible();
+		await expect(row).toBeVisible();
 		await expect(page.getByTestId("settle-undo-line")).toHaveCount(0);
 		// Undo sends back what Settle answered, so each thread returns exactly (#1020).
 		expect(settles).toEqual([
@@ -241,43 +289,62 @@ test.describe("#1020 — thread list and New thread", () => {
 		]);
 	});
 
-	test("d. Search finds a thread and places by name", async ({ page }) => {
+	test("c2. a live thread offers Stop on its row instead of Settle", async ({
+		page,
+	}) => {
+		const cancelled: string[] = [];
+		await serveFeed(page, () => [
+			threadRow({
+				status: "running",
+				completedAt: null,
+				startedAt: new Date().toISOString(),
+				unseen: false,
+			}),
+		]);
 		await page.route(
-			(url) => url.pathname === "/api/threads/feed",
+			(url) => url.pathname === `/api/investigations/${RUN_ID}/cancel`,
 			async (route) => {
-				const search = new URL(route.request().url()).searchParams.get(
-					"search",
-				);
-				const rows =
-					search === "cache" ? [threadRow({ section: "active" })] : [];
+				cancelled.push(route.request().method());
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify({
-						units: rows.map((r) => ({
-							section: "active",
-							incident: null,
-							threads: [r],
-						})),
-						nextCursor: null,
-						counts: { needs: 0, active: rows.length, settled: 0 },
-					}),
+					body: JSON.stringify(threadRow({ status: "cancelled" })),
 				});
 			},
 		);
 		await page.goto("/incidents");
-		await expect(page.getByTestId("sidebar-search")).toBeVisible();
-		await page.keyboard.press("Control+k");
+		const wrap = page
+			.getByTestId("thread-section-recents")
+			.getByTestId("thread-row-wrap");
+		await expect(wrap.getByTestId("thread-row")).toHaveAttribute(
+			"data-state",
+			"working",
+		);
+		await wrap.hover();
+		await expect(wrap.getByTestId("thread-settle")).toHaveCount(0);
+		await wrap.getByTestId("thread-stop").click();
+		await expect.poll(() => cancelled).toEqual(["POST"]);
+	});
+
+	test("d. Search finds a thread and places by name", async ({ page }) => {
+		await serveFeed(page, (params) =>
+			params.get("search") === "cache" ? [threadRow()] : [],
+		);
+		await page.goto("/incidents");
+		await hydrated(page);
+		await page.getByTestId("nav-search").click();
 		await expect(page.getByTestId("thread-search")).toBeVisible();
 		await page.getByTestId("thread-search-input").fill("cache");
 		await expect(page.getByTestId("thread-search-result")).toHaveText(
 			/Why does checkout cache miss/,
 		);
 		await page.getByTestId("thread-search-input").fill("serv");
-		await expect(page.getByTestId("thread-search-place")).toHaveText(
-			"Services",
-		);
-		await page.getByTestId("thread-search-place").click();
+		const services = page
+			.getByTestId("thread-search-place")
+			.filter({ hasText: "Services" });
+		await expect(services).toHaveCount(1);
+		await services.click();
+		await expect(page.getByTestId("thread-search")).toHaveCount(0);
 		await expect(page).toHaveURL(/\/services/);
 	});
 
@@ -285,41 +352,27 @@ test.describe("#1020 — thread list and New thread", () => {
 		page,
 	}) => {
 		const cursors: string[] = [];
-		await page.route(
-			(url) => url.pathname === "/api/threads/feed",
-			async (route) => {
-				const params = new URL(route.request().url()).searchParams;
+		const searching = (p: URLSearchParams) => p.get("search") === "retry";
+		await serveFeed(
+			page,
+			(params) => {
+				if (!searching(params)) return [];
 				const cursor = params.get("cursor") ?? "0";
-				const searching = params.get("search") === "retry";
-				if (searching) cursors.push(cursor);
-				const ids = !searching
-					? []
-					: cursor === "0"
-						? Array.from({ length: 20 }, (_, i) => i)
-						: [20];
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({
-						units: ids.map((i) => ({
-							section: "active",
-							incident: null,
-							threads: [
-								threadRow({
-									id: `f7777777-7777-4777-8777-${String(i).padStart(12, "0")}`,
-									title: `Retry thread ${i}`,
-									section: "active",
-								}),
-							],
-						})),
-						nextCursor: searching && cursor === "0" ? 20 : null,
-						counts: { needs: 0, active: searching ? 21 : 0, settled: 0 },
+				cursors.push(cursor);
+				const ids =
+					cursor === "0" ? Array.from({ length: 20 }, (_, i) => i) : [20];
+				return ids.map((i) =>
+					threadRow({
+						id: `f7777777-7777-4777-8777-${String(i).padStart(12, "0")}`,
+						title: `Retry thread ${i}`,
 					}),
-				});
+				);
 			},
+			(params) =>
+				searching(params) && (params.get("cursor") ?? "0") === "0" ? 20 : null,
 		);
 		await page.goto("/incidents");
-		await expect(page.getByTestId("sidebar-search")).toBeVisible();
+		await hydrated(page);
 		await page.keyboard.press("Control+k");
 		await page.getByTestId("thread-search-input").fill("retry");
 		await expect(page.getByTestId("thread-search-result")).toHaveCount(20);
@@ -338,8 +391,9 @@ test.describe("#1020 — thread list and New thread", () => {
 		page,
 	}) => {
 		await page.goto("/incidents");
-		await expect(page.getByTestId("sidebar-search")).toBeVisible();
+		await hydrated(page);
 		await page.keyboard.press("[");
+		await expect(page.getByTestId("sidebar")).toHaveCount(0);
 		await expect(page.getByTestId("sidebar-show")).toBeVisible();
 		await page.keyboard.press("Control+k");
 		await expect(page.getByTestId("thread-search")).toBeVisible();
@@ -347,7 +401,12 @@ test.describe("#1020 — thread list and New thread", () => {
 		await page.getByTestId("sidebar-show").click();
 
 		await page.getByTestId("nav-settings").click();
-		await expect(page.getByTestId("settings-back")).toBeVisible();
+		await expect(page.getByTestId("settings-frame")).toBeVisible({
+			timeout: 15_000,
+		});
+		// Settings keeps the same sidebar: no separate back bar.
+		await expect(page.getByTestId("sidebar")).toBeVisible();
+		await expect(page.getByTestId("settings-back")).toHaveCount(0);
 		await page.keyboard.press("Control+k");
 		await expect(page.getByTestId("thread-search")).toBeVisible();
 		await page.getByTestId("thread-search-input").fill("term");
@@ -361,7 +420,7 @@ test.describe("#1020 — thread list and New thread", () => {
 		page,
 	}) => {
 		await page.goto("/incidents");
-		await expect(page.getByTestId("sidebar-search")).toBeVisible();
+		await hydrated(page);
 		await page.getByTestId("nav-settings").click();
 		const days = page.getByTestId("general-settle-days");
 		await expect(days).toHaveText(/3 days/);
@@ -380,21 +439,7 @@ test.describe("#1020 — thread list and New thread", () => {
 	}) => {
 		let title = "Why does checkout cache miss";
 		const sent: unknown[] = [];
-		await page.route(
-			(url) => url.pathname === "/api/threads/feed",
-			async (route) => {
-				const row = threadRow({ section: "active", title, unseen: false });
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({
-						units: [{ section: "active", incident: null, threads: [row] }],
-						nextCursor: null,
-						counts: { needs: 0, active: 1, settled: 0 },
-					}),
-				});
-			},
-		);
+		await serveFeed(page, () => [threadRow({ title, unseen: false })]);
 		await page.route(
 			(url) => url.pathname === `/api/threads/${RUN_ID}/title`,
 			async (route) => {
@@ -416,43 +461,113 @@ test.describe("#1020 — thread list and New thread", () => {
 		await expect(input).toBeFocused();
 		await input.fill("<b>Cache</b> misses");
 		await input.press("Enter");
-		await expect(page.getByTestId("thread-row-title").first()).toHaveText(
-			"<b>Cache</b> misses",
-		);
+		await expect(rowTitle(page).first()).toHaveText("<b>Cache</b> misses");
+		await expect(page.getByTestId("thread-row").locator("b")).toHaveCount(0);
 		expect(sent).toEqual([{ title: "<b>Cache</b> misses" }]);
 		await page.getByTestId("thread-row-wrap").first().hover();
 		await page.getByTestId("thread-rename").first().click();
 		await page.getByTestId("thread-rename-input").fill("dropped");
 		await page.getByTestId("thread-rename-input").press("Escape");
-		await expect(page.getByTestId("thread-row-title").first()).toHaveText(
-			"<b>Cache</b> misses",
-		);
+		await expect(rowTitle(page).first()).toHaveText("<b>Cache</b> misses");
 		expect(sent).toHaveLength(1);
+	});
+
+	test("j. J and K move through the rows and Enter opens the focused one", async ({
+		page,
+	}) => {
+		const ids = [0, 1, 2].map(
+			(i) => `f8888888-8888-4888-8888-${String(i).padStart(12, "0")}`,
+		);
+		await serveFeed(page, () =>
+			ids.map((id, i) =>
+				threadRow({
+					id,
+					title: `Row ${i}`,
+					unseen: false,
+					lastActivityAt: new Date(Date.now() - i * 60_000).toISOString(),
+				}),
+			),
+		);
+		await page.goto("/incidents");
+		const rows = page
+			.getByTestId("thread-section-recents")
+			.getByTestId("thread-row");
+		await expect(rows).toHaveCount(3);
+		await page.evaluate(() =>
+			(document.activeElement as HTMLElement | null)?.blur(),
+		);
+		await page.keyboard.press("j");
+		await expect(rows.nth(0)).toBeFocused();
+		await page.keyboard.press("j");
+		await expect(rows.nth(1)).toBeFocused();
+		await page.keyboard.press("j");
+		await page.keyboard.press("j");
+		await expect(rows.nth(2)).toBeFocused();
+		await page.keyboard.press("k");
+		await expect(rows.nth(1)).toBeFocused();
+		await page.keyboard.press("Enter");
+		await expect(page).toHaveURL(new RegExp(`/threads/${ids[1]}$`));
 	});
 
 	test.describe("on a phone", () => {
 		test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-		test("g. Search opens from the strip and reaches Schedules by touch", async ({
+		test("g. the menu opens Search, which reaches Automation by touch", async ({
 			page,
 		}) => {
 			await page.goto("/incidents");
-			await page.getByTestId("strip-search").tap();
+			const strip = page.getByTestId("topbar");
+			await expect(strip.getByTestId("strip-new")).toBeVisible();
+			await expect(page.getByTestId("sidebar")).toBeHidden();
+			const menu = page.getByTestId("phone-menu");
+			// The server-rendered strip shows before it hydrates; tap until the menu opens.
+			await expect(async () => {
+				await strip.getByTestId("strip-menu").tap();
+				await expect(menu).toBeVisible({ timeout: 1000 });
+			}).toPass({ timeout: 15_000 });
+			for (const id of [
+				"menu-new",
+				"menu-search",
+				"menu-threads",
+				"menu-automation",
+				"menu-services",
+				"menu-settings",
+			])
+				await expect(menu.getByTestId(id)).toBeVisible();
+			await menu.getByTestId("menu-search").tap();
+			await expect(menu).toHaveCount(0);
 			await expect(page.getByTestId("thread-search")).toBeVisible();
 			// A phone has no bottom panel, so Terminal is not offered.
 			await page.getByTestId("thread-search-input").fill("term");
 			await expect(
 				page.getByTestId("thread-search-action-terminal"),
 			).toHaveCount(0);
-			await page.getByTestId("thread-search-input").fill("sched");
+			await page.getByTestId("thread-search-input").fill("auto");
 			await page
 				.getByTestId("thread-search-place")
-				.filter({ hasText: "Scheduled prompts" })
+				.filter({ hasText: "Automation" })
 				.tap();
-			await expect(page).toHaveURL(/\/settings\?tab=schedules/);
-			await expect(
-				page.getByRole("heading", { name: "Scheduled prompts", level: 2 }),
-			).toBeVisible();
+			await expect(page).toHaveURL(/\/automation/);
+			await expect(page.getByTestId("automation-page")).toBeVisible();
+		});
+
+		test("g2. the strip shows what waits on you and leads to it", async ({
+			page,
+		}) => {
+			await serveFeed(page, () => [
+				threadRow({
+					status: "running",
+					completedAt: null,
+					awaitingApprovalAt: new Date().toISOString(),
+					section: "needs",
+				}),
+			]);
+			await page.goto("/incidents");
+			const waiting = page.getByTestId("strip-waiting");
+			await expect(waiting).toHaveText("1 waiting");
+			await waiting.tap();
+			await expect(page).toHaveURL(/\/threads\?state=waiting/);
+			await expect(page.getByTestId("threads-page")).toBeVisible();
 		});
 	});
 });

@@ -134,6 +134,10 @@ describe("feed rows (#1020)", () => {
 			"Why is the cart slow?",
 		]);
 	});
+	it("marks a settled unit, which Recents leaves to the Threads page", () => {
+		expect(unitRow(unit([thread({ section: "settled" })])).settled).toBe(true);
+		expect(unitRow(unit([thread({ section: "active" })])).settled).toBe(false);
+	});
 	it("opens a schedule's run under its schedule", () => {
 		const t = thread({ scheduleId: "s1", kind: "investigation" });
 		const row = unitRow(unit([t]));

@@ -75,6 +75,8 @@ export interface ThreadRow {
 	link: RowLink;
 	/** The thread Rename, Stop and Settle act on; an incident's first covers its block. */
 	thread: FeedRow;
+	/** Settled by hand or by quiet days: off Recents, still on the Threads page. */
+	settled: boolean;
 	incidentId?: string;
 	incidentClosed?: boolean;
 	service?: string | null;
@@ -152,6 +154,7 @@ export function unitRow(
 				: { to: "/incidents/$id", params: { id: chip.id } }
 			: threadLink(first),
 		thread: first,
+		settled: unit.section === "settled",
 		incidentId: chip?.id,
 		incidentClosed: chip?.status === "closed",
 		service,
@@ -253,7 +256,7 @@ export function ThreadList() {
 		.filter((r) => r.state === "asks")
 		.sort((a, b) => a.at - b.at);
 	const recents = rows
-		.filter((r) => r.state !== "asks" && r.thread.id !== undo?.id)
+		.filter((r) => r.state !== "asks" && !r.settled && r.thread.id !== undo?.id)
 		.sort((a, b) => b.at - a.at);
 	const row = (r: ThreadRow) => (
 		<ThreadRowView
