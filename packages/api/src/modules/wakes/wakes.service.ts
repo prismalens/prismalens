@@ -1,0 +1,164 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { Injectable } from "@nestjs/common";
+import type { WakeKind } from "@prismalens/contracts";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
+
+export type WakeState = "pending" | "done" | "skipped" | "cancelled";
+
+export interface Wake {
+	id: string;
+	investigationId: string;
+	kind: WakeKind;
+	at: Date;
+	reason: string;
+	payload: Record<string, unknown>;
+	state: WakeState;
+	attempts: number;
+	createdAt: Date;
+	doneAt: Date | null;
+}
+
+type Row = Omit<Wake, "kind" | "payload" | "state"> & {
+	kind: string;
+	payload: string | null;
+	state: string;
+};
+
+function toWake(row: Row): Wake {
+	let payload: Record<string, unknown> = {};
+	try {
+		const parsed: unknown = row.payload ? JSON.parse(row.payload) : {};
+		if (parsed && typeof parsed === "object")
+			payload = parsed as Record<string, unknown>;
+	} catch {
+		payload = {};
+	}
+	return {
+		...row,
+		kind: row.kind as WakeKind,
+		state: row.state as WakeState,
+		payload,
+	};
+}
+
+/**
+ * The times PrismaLens takes a thread up again (#1024): one table, one pending
+ * row per (thread, kind). Another kind's wake never replaces this one. Surface B
+ * schedules `agent` and `pr_watch` wakes through this service.
+ */
+@Injectable()
+export class WakesService {
+	constructor(private readonly prisma: PrismaService) {}
+
+	/** Replaces the thread's pending wake of the same kind; answers the new wake's id. */
+	async schedule(
+		threadId: string,
+		kind: WakeKind,
+		at: Date,
+		reason: string,
+		payload: Record<string, unknown> = {},
+		attempts = 1,
+	): Promise<string> {
+		return this.prisma.$transaction(async (tx) => {
+			await tx.threadWake.updateMany({
+				where: { investigationId: threadId, kind, state: "pending" },
+				data: { state: "cancelled", doneAt: new Date() },
+			});
+			const row = await tx.threadWake.create({
+				data: {
+					investigationId: threadId,
+					kind,
+					at,
+					reason,
+					payload: JSON.stringify(payload),
+					attempts,
+				},
+			});
+			return row.id;
+		});
+	}
+
+	/** False when the wake was no longer pending. */
+	async cancel(wakeId: string): Promise<boolean> {
+		const { count } = await this.prisma.threadWake.updateMany({
+			where: { id: wakeId, state: "pending" },
+			data: { state: "cancelled", doneAt: new Date() },
+		});
+		return count > 0;
+	}
+
+	/** Cancels the thread's pending wake of this kind; answers how many it cancelled. */
+	async cancelKind(threadId: string, kind: WakeKind): Promise<number> {
+		const { count } = await this.prisma.threadWake.updateMany({
+			where: { investigationId: threadId, kind, state: "pending" },
+			data: { state: "cancelled", doneAt: new Date() },
+		});
+		return count;
+	}
+
+	/** Pending wakes whose time has come, oldest first; one missed while PrismaLens was off is due once. */
+	async due(now: Date = new Date()): Promise<Wake[]> {
+		const rows = await this.prisma.threadWake.findMany({
+			where: { state: "pending", at: { lte: now } },
+			orderBy: { at: "asc" },
+			take: 50,
+		});
+		return rows.map(toWake);
+	}
+
+	/** Ends a pending wake; false when another pass already ended it. */
+	async finish(
+		wakeId: string,
+		state: Exclude<WakeState, "pending">,
+		payload?: Record<string, unknown>,
+		now: Date = new Date(),
+	): Promise<boolean> {
+		const { count } = await this.prisma.threadWake.updateMany({
+			where: { id: wakeId, state: "pending" },
+			data: {
+				state,
+				doneAt: now,
+				...(payload ? { payload: JSON.stringify(payload) } : {}),
+			},
+		});
+		return count > 0;
+	}
+
+	/** Moves a pending wake later, keeping its attempts. */
+	async defer(wakeId: string, at: Date): Promise<void> {
+		await this.prisma.threadWake.updateMany({
+			where: { id: wakeId, state: "pending" },
+			data: { at },
+		});
+	}
+
+	/** Rewrites a pending wake's payload; false when it is no longer pending. */
+	async setPayload(
+		wakeId: string,
+		payload: Record<string, unknown>,
+	): Promise<boolean> {
+		const { count } = await this.prisma.threadWake.updateMany({
+			where: { id: wakeId, state: "pending" },
+			data: { payload: JSON.stringify(payload) },
+		});
+		return count > 0;
+	}
+
+	/** The thread's latest wake of this kind, in any state. */
+	async latest(threadId: string, kind: WakeKind): Promise<Wake | null> {
+		const row = await this.prisma.threadWake.findFirst({
+			where: { investigationId: threadId, kind },
+			orderBy: { createdAt: "desc" },
+		});
+		return row ? toWake(row) : null;
+	}
+
+	/** How many wakes of this kind finished since `since`, across threads. */
+	async doneSince(kind: WakeKind, since: Date): Promise<number> {
+		return this.prisma.threadWake.count({
+			where: { kind, state: "done", doneAt: { gte: since } },
+		});
+	}
+}

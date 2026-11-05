@@ -15,6 +15,7 @@
 // "resume" (a turn answers `Heard: <prompt>` with no tool call; FAKE_LOAD_SESSION=1
 // advertises loadSession and replays two updates before answering session/load),
 // "continue" (like "resume", but every turn also writes a valid report: a stopped run taken on, R4.4),
+// "limited" (every prompt answers with a usage-limit JSON-RPC error; FAKE_LIMIT_TEXT sets its text),
 // or "auth-required" (offers authMethods, then answers session/new with ACP's -32000).
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
@@ -770,6 +771,24 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			if (b.type === "image")
 				process.stderr.write(`fake: image ${b.mimeType}\n`);
 		const text = blocks[0]?.text ?? "";
+		// "limited": the turn answers with Codex's usage-limit error, its text in data (#1024).
+		if (mode === "limited") {
+			send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				error: {
+					code: -32603,
+					message: "Internal error",
+					data: {
+						message:
+							process.env.FAKE_LIMIT_TEXT ??
+							"You've hit your usage limit. Try again at 3:45 PM.",
+						codexErrorInfo: "usageLimitExceeded",
+					},
+				},
+			});
+			return;
+		}
 		const result = await turn(msg.params.sessionId, text);
 		send({ jsonrpc: "2.0", id: msg.id, result });
 	} else if (msg.method === "session/cancel") {

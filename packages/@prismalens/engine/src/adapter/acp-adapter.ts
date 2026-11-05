@@ -37,6 +37,7 @@ import type {
 	AskClosedOutcome,
 	AttachmentRef,
 	CanonicalEvent,
+	CompactionMethod,
 	FollowUpKind,
 	InvestigationReport,
 	OperatorMessageMode,
@@ -354,6 +355,23 @@ export class AcpAdapter {
 			...(shown ? { input: shown } : {}),
 			...(server ? { server } : {}),
 			...(identity ? { identity } : {}),
+		};
+	}
+
+	/** A compaction boundary in the transcript, with the context before and after when known (#1024). */
+	compaction(
+		phase: "started" | "completed" | "failed",
+		method: CompactionMethod,
+		counts: { before?: number; after?: number; instructions?: string } = {},
+	): CanonicalEvent {
+		return {
+			kind: "compaction",
+			...this.base(),
+			phase,
+			method,
+			...(counts.before !== undefined ? { before: counts.before } : {}),
+			...(counts.after !== undefined ? { after: counts.after } : {}),
+			...(counts.instructions ? { instructions: counts.instructions } : {}),
 		};
 	}
 

@@ -90,6 +90,7 @@ export default defineConfig({
 				"src/modules/references/references.service.ts": COMPOSER_SEAM_THRESHOLD,
 				"src/modules/asks/asks.service.ts": COMPOSER_SEAM_THRESHOLD,
 				"src/modules/openapi/build-spec.ts": NEW_CODE_THRESHOLD,
+				"src/modules/wakes/*.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/run-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/attachments.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/harness/ready-harness.ts": NEW_CODE_THRESHOLD,

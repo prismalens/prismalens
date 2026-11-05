@@ -42,6 +42,7 @@ import {
 	SCHEDULED_KIND,
 } from "../../infrastructure/dispatch/job-store.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { allowedAsks } from "./allowed-asks.js";
 import { type Decision, decide } from "./decide.js";
 import {
@@ -134,6 +135,8 @@ export class SchedulesService
 		@Optional()
 		@Inject(RuntimeLifecycleService)
 		private readonly gaps?: RuntimeGaps,
+		@Optional()
+		private readonly sessions?: SessionLifecycleService,
 	) {}
 
 	onApplicationBootstrap(): void {
@@ -162,6 +165,12 @@ export class SchedulesService
 	}
 
 	async evaluate(now: Date): Promise<void> {
+		// Wakes share the pass: a wake missed while PrismaLens was off fires on the boot pass (#1024).
+		await this.sessions
+			?.process(now)
+			.catch((error) =>
+				this.logger.error("Wakes were not processed", error as Error),
+			);
 		await this.expire(now);
 		await this.pauseFailing();
 		const due = await this.prisma.schedule.findMany({

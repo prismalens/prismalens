@@ -319,11 +319,17 @@ model Investigation {
   lastVisitedAt DateTime?
   settledAt     DateTime?
 
+  // Session lifecycle (#1024): the last thing that happened, a usage limit's reset, and the thread's resume choice
+  lastActivityAt DateTime?
+  limitResetsAt  DateTime?
+  autoResume     Boolean? // null: the "Resume after a usage limit" setting decides
+
   incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: SetNull)
   repository      Repository?          @relation("ProjectThreads", fields: [repositoryId], references: [id], onDelete: SetNull)
   recommendations Recommendation[]
   events          InvestigationEvent[]
+  wakes           ThreadWake[]
 
   @@index([incidentId])
   @@index([scheduleId, createdAt])
@@ -332,6 +338,27 @@ model Investigation {
   @@index([incidentId, createdAt])
   @@index([status])
   @@map("investigations")
+}
+
+/// A time PrismaLens takes a thread up again (#1024): a usage limit's reset, idle
+/// compaction, or a wake an agent or a PR watch asked for. One pending row per (thread, kind).
+model ThreadWake {
+  id              String    @id @default(uuid())
+  investigationId String
+  kind            String // limit | idle_compact | agent | pr_watch
+  at              DateTime
+  reason          String
+  payload         String? // JSON, per kind
+  state           String    @default("pending") // pending | done | skipped | cancelled
+  attempts        Int       @default(1)
+  createdAt       DateTime  @default(now())
+  doneAt          DateTime?
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([state, at])
+  @@index([investigationId, kind, state])
+  @@map("thread_wakes")
 }
 
 /// Durable server-side canonical event record (ADR-0018 store.append) — one row per

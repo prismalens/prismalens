@@ -72,6 +72,8 @@ export interface RunPorts {
 		stopRequestedAt?: Date | string | null;
 		/** JSON InvestigationReport; a handoff carries it. */
 		report?: string | null;
+		/** JSON RunUsage; a compact turn records the context it started from (#1024). */
+		usage?: string | null;
 	} | null>;
 	/** Every stored event of the run, in order; a handoff is built from them. */
 	events(id: string): Promise<CanonicalEvent[]>;

@@ -102,6 +102,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.scheduleEvent;
 	}
 
+	get threadWake() {
+		return db.threadWake;
+	}
+
 	get incident() {
 		return db.incident;
 	}

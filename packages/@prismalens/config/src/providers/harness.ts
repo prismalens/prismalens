@@ -124,6 +124,12 @@ interface ProductFacts {
 	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
 	 */
 	harnessToolSearch?: true;
+	/** Minutes the agent's prompt cache lives idle; null when no source states it (#1024). */
+	cacheTtlMinutes: number | null;
+	/** The agent compacts an idle session itself, so PrismaLens never does (#1024). */
+	compactsWhenIdle: boolean;
+	/** The command that compacts the session, without its slash; null when it has none. */
+	compactCommand: string | null;
 }
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
@@ -159,6 +165,10 @@ function noModeLines(label: string): Lines {
 
 const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 	opencode: {
+		// Retention depends on the provider and model behind it, so nothing is known (#1024).
+		cacheTtlMinutes: null,
+		compactsWhenIdle: false,
+		compactCommand: null,
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
@@ -182,6 +192,11 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`opencode auth login`, or a provider key in env",
 	},
 	"claude-code": {
+		// claude-agent-acp 0.99.1 handles `/compact` but has no idle self-compaction, and states no cache
+		// lifetime; a later adapter compacts idle sessions before its one-hour cache expires (#1024).
+		cacheTtlMinutes: null,
+		compactsWhenIdle: false,
+		compactCommand: "compact",
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
 		install:
@@ -209,6 +224,10 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
+		// codex-acp 2.5.0 advertises `compact`, taking no input; retention depends on the model and request (#1024).
+		cacheTtlMinutes: null,
+		compactsWhenIdle: false,
+		compactCommand: "compact",
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
 		install:
@@ -236,6 +255,10 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	},
 	gemini: {
+		// Gemini's implicit caching states no TTL (#1024).
+		cacheTtlMinutes: null,
+		compactsWhenIdle: false,
+		compactCommand: null,
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
@@ -258,6 +281,10 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		},
 	},
 	deepagents: {
+		// No source states a cache lifetime or a compact command.
+		cacheTtlMinutes: null,
+		compactsWhenIdle: false,
+		compactCommand: null,
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
@@ -269,6 +296,10 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 	},
 	local: {
+		// An agent PrismaLens knows nothing about.
+		cacheTtlMinutes: null,
+		compactsWhenIdle: false,
+		compactCommand: null,
 		install: "Add it under Settings → Agent → Add agent → Local ACP command.",
 		lines: noModeLines("Local agent"),
 		loginHint: "It signs in on its own.",

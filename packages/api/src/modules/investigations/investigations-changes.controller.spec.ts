@@ -8,6 +8,7 @@
 import { Test, type TestingModule } from "@nestjs/testing";
 import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
@@ -53,6 +54,7 @@ describe("InvestigationsController.getChanges (#1020)", () => {
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: {} },
 				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
+				{ provide: SessionLifecycleService, useValue: { sessionOf: async () => undefined } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

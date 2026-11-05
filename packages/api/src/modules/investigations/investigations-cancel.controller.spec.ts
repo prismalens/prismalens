@@ -18,6 +18,7 @@ import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 
@@ -69,6 +70,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
 				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
+				{ provide: SessionLifecycleService, useValue: { sessionOf: async () => undefined } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

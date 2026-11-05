@@ -707,7 +707,8 @@ export class AcpSession {
 				protocolVersion: PROTOCOL_VERSION,
 				clientCapabilities: {
 					fs: { readTextFile: false, writeTextFile: false },
-					session: { replayComplete: {} },
+					// ACP RFD "Session Compaction": the agent reports its compactions as `compaction_update` (#1024).
+					session: { replayComplete: {}, compaction: {} },
 					// Form mode only: an agent-supplied URL needs its own trust ruling (#1024).
 					...(config.elicit ? { elicitation: { form: {} } } : {}),
 				},

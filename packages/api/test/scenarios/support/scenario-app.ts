@@ -117,6 +117,15 @@ export class ScenarioApp {
 		await this.app.get(DispatchService)["dispatcher"].tick();
 	}
 
+	/** The running app's session lifecycle: a scenario runs a wake pass at a chosen time (#1024). */
+	async sessions() {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { SessionLifecycleService } = await import(
+			"../../../src/modules/wakes/session-lifecycle.service.js"
+		);
+		return this.app.get(SessionLifecycleService);
+	}
+
 	/** Makes this process read as having run since `startedAt`, so its stop is not a boot loop (#981). */
 	async ranSince(startedAt: Date): Promise<void> {
 		if (!this.app) throw new Error("PrismaLens is not running");

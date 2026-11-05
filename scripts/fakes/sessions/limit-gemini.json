@@ -1,0 +1,28 @@
+{
+	"description": "Gemini CLI's terminal daily quota, then on the resumed turn a short retry the agent makes itself, which is not a limit (#1024).",
+	"agent": {
+		"name": "gemini-cli",
+		"version": "0.99.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Checking the service.\n\n"
+			},
+			{
+				"error": {
+					"code": 429,
+					"message": "You have exhausted your daily quota on this model. QUOTA_EXHAUSTED"
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"error": {
+				"code": 429,
+				"message": "Quota exceeded for quota metric. Please retry in 20s."
+			}
+		}
+	]
+}

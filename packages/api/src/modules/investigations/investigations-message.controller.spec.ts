@@ -15,6 +15,7 @@ import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -74,6 +75,7 @@ describe("InvestigationsController.message (#743)", () => {
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
 				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
+				{ provide: SessionLifecycleService, useValue: { sessionOf: async () => undefined } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)
@@ -82,7 +84,7 @@ describe("InvestigationsController.message (#743)", () => {
 		controller = module.get(InvestigationsController);
 	});
 
-	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue"; harness?: string; model?: string; draftScope?: string; draftRev?: number };
+	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue"; harness?: string; model?: string; draftScope?: string; draftRev?: number; compact?: boolean; fresh?: boolean };
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
 	function messageHandler(): (args: { input: Input }) => Promise<any> {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
@@ -173,6 +175,26 @@ describe("InvestigationsController.message (#743)", () => {
 			expect(result).toEqual({ state: "resumed" });
 			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith("inv-1", "why the pool?", "queue", "chat", [], {});
 			expect(mockDispatchService.sendMessage).not.toHaveBeenCalled();
+		});
+
+		it("carries the cold-session choice: compact with the agent's command, or start fresh (#1024)", async () => {
+			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
+			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), harness: "codex" });
+			await messageHandler()({ input: { id: "inv-1", text: "still slow?", mode: "queue", compact: true } });
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "still slow?", "queue", "chat", [], {}, undefined, {
+				compact: { command: "compact" },
+			});
+			await messageHandler()({ input: { id: "inv-1", text: "fresh look", mode: "queue", fresh: true } });
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "fresh look", "queue", "chat", [], {}, undefined, {
+				fresh: true,
+			});
+		});
+
+		it("refuses Compact for an agent with no compact command (#1024)", async () => {
+			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), harness: "gemini" });
+			await expect(
+				messageHandler()({ input: { id: "inv-1", text: "still slow?", mode: "queue", compact: true } }),
+			).rejects.toMatchObject({ code: "CONFLICT" });
 		});
 
 		it("a draft tombstone that fails after the follow-up was admitted does not fail it (#1024)", async () => {
@@ -291,6 +313,7 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
 				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
+				{ provide: SessionLifecycleService, useValue: { sessionOf: async () => undefined } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)
@@ -359,6 +382,7 @@ describe("InvestigationsController.handoff (#849)", () => {
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
 				{ provide: HarnessService, useValue: {} },
+				{ provide: SessionLifecycleService, useValue: { sessionOf: async () => undefined } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

@@ -13,6 +13,13 @@ export interface ToolStep {
 	fail?: string;
 }
 
+/** A JSON-RPC error the prompt answers with (#1024). */
+export interface RpcErrorStep {
+	code: number;
+	message: string;
+	data?: unknown;
+}
+
 export interface Step {
 	delayMs?: number;
 	say?: string;
@@ -30,6 +37,8 @@ export interface Step {
 	elicit?: { message: string; requestedSchema: Record<string, unknown> };
 	/** Says each linked file's first 4,000 characters: a file:// one read from disk, any other named (#1024). */
 	readLinks?: boolean;
+	/** Ends the turn with this JSON-RPC error instead of a stop reason. */
+	error?: RpcErrorStep;
 }
 
 export interface FakeSession {
@@ -48,6 +57,8 @@ export interface FakeSession {
 	load?: Step[];
 	/** Answers a message to the run still in this process; `followUp` answers one after session/load. */
 	steer?: Step[];
+	/** Answers a `/compact` prompt; not counted as one of `turns` (#1024). */
+	compact?: Step[];
 	/** Answers the host's report retry ("Your final message did not …"). */
 	retry?: Step[];
 	/** Advertised as `promptCapabilities.image` at initialize. */

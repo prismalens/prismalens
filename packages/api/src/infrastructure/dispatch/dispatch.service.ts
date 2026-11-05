@@ -172,6 +172,18 @@ const AGENT_KINDS = [
 /** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
 export class FollowUpRefused extends Error {}
 
+/** How a follow-up treats the session (#1024): compact it first, or start fresh from a summary. */
+export interface FollowUpSession {
+	compact?: { command: string; instructions?: string; only?: boolean };
+	fresh?: boolean;
+}
+
+/** Told when a run's job settles, with how it ended (#1024). */
+export type RunSettledListener = (
+	investigationId: string,
+	outcome: { outcome: "succeeded" | "failed" | "cancelled"; error?: string },
+) => void | Promise<void>;
+
 /** Priority ordering for the claim. Lower claims first. NOT a fairness key. */
 const PRIORITY_ORDER: Record<string, number> = {
 	critical: 1,
@@ -346,6 +358,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							kind: investigation.kind,
 							stopRequestedAt: investigation.stopRequestedAt ?? null,
 							report: investigation.report ?? null,
+							usage: investigation.usage ?? null,
 						}
 					: null;
 			},
@@ -415,7 +428,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			recordUsage: async (id, usage) => {
 				await this.prisma.investigation.updateMany({
 					where: { id },
-					data: { usage: JSON.stringify(usage) },
+					data: { usage: JSON.stringify(usage), lastActivityAt: new Date() },
 				});
 			},
 			markAwaitingApproval: async (id, since) => {
@@ -671,8 +684,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				// attaching the relay here (before the run's first event) stays
 				// correct even though there is no reclaim any more to re-attach for.
 				onClaim: (job) => this.streamRelay.attach(job.investigationId),
-				onSettled: (job) =>
-					this.logger.log(`Job ${job.id} settled (${job.investigationId})`),
+				onSettled: (job, outcome) => {
+					this.logger.log(`Job ${job.id} settled (${job.investigationId})`);
+					for (const listener of this.settledListeners)
+						void Promise.resolve()
+							.then(() => listener(job.investigationId, outcome))
+							.catch((e) =>
+								this.logger.warn(
+									`A run-settled listener failed: ${(e as Error).message}`,
+								),
+							);
+				},
 				log: {
 					info: (m) => this.logger.log(m),
 					warn: (m) => this.logger.warn(m),
@@ -746,6 +768,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			status as "completed" | "failed" | "cancelled",
 			{ startedAt: investigation?.startedAt, error: investigation?.error },
 		);
+	}
+
+	private readonly settledListeners: RunSettledListener[] = [];
+
+	/** Session lifecycle reads each run's end here, so a usage limit becomes a resume (#1024). */
+	onRunSettled(listener: RunSettledListener): void {
+		this.settledListeners.push(listener);
 	}
 
 	async onModuleInit(): Promise<void> {
@@ -1182,6 +1211,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		attachments: JobAttachment[] = [],
 		to: RunChoice = {},
 		context?: JobMessageContext,
+		session: FollowUpSession = {},
 	): Promise<boolean> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -1257,7 +1287,11 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				...(attachments.length ? { attachments } : {}),
 				...(context ? { context } : {}),
 				to: { ...to, harness: plan.harness },
-				...(plan.route === "handoff" ? { handoff: true } : {}),
+				...(plan.route === "handoff" || session.fresh ? { handoff: true } : {}),
+				...(session.fresh ? { fresh: true } : {}),
+				...(session.compact && !session.fresh
+					? { compact: session.compact }
+					: {}),
 				...((await this.afterRestart(id, row.endReason))
 					? { afterRestart: true }
 					: {}),
