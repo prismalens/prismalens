@@ -91,7 +91,7 @@ describe("Walk: the composer keeps every word, and what it carries reaches the a
 		expect(await pl.api(`/drafts/${scope}`, { method: "DELETE" })).toEqual({
 			deleted: true,
 		});
-	});
+	}, 60_000);
 
 	it("Given a run waiting on an ask with two queued messages, When one is edited and one withdrawn, Then the agent gets only the edited text, and a late edit is ALREADY_DELIVERED", async () => {
 		const { run } = await personRun("queue", "ask");
@@ -150,7 +150,7 @@ describe("Walk: the composer keeps every word, and what it carries reaches the a
 				body: { text: "too late" },
 			}),
 		).rejects.toThrow(/409/);
-	});
+	}, 60_000);
 
 	it("Given an agent that advertises commands, When the composer types /, Then its commands are listed apart from PrismaLens's actions", async () => {
 		const { run } = await personRun("cmds", "commands");

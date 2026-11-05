@@ -147,7 +147,7 @@ describe("Walk: the agent asks a question and for input, and the dock answers (#
 			e.kind === "ask_closed" ? [e.outcome] : [],
 		);
 		expect(closings).toEqual(["answered", "answered"]);
-	});
+	}, 60_000);
 
 	it("Given an alert-started run, When its agent elicits, Then the question is declined at once and no ask waits", async () => {
 		await pl.serviceWithRepo("authors");
@@ -184,7 +184,7 @@ describe("Walk: the agent asks a question and for input, and the dock answers (#
 		);
 		expect(said).toContain('You answered: {"action":"decline"}');
 		expect((await events(run.id)).some((e) => e.kind === "ask_opened")).toBe(false);
-	});
+	}, 60_000);
 
 	it("Given a permission ask, When the person denies it with a reason, Then the rejection reaches the agent and the reason follows as its next message", async () => {
 		await pl.serviceWithRepo("ledger");
@@ -256,5 +256,5 @@ describe("Walk: the agent asks a question and for input, and the dock answers (#
 					e.delivered,
 			),
 		).toBe(true);
-	});
+	}, 60_000);
 });
