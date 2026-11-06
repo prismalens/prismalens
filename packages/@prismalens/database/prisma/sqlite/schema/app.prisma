@@ -809,7 +809,7 @@ model Proposal {
   kind      String // setting | schedule | service_link | project_add
   change    String // JSON ProposalChange
   why       String
-  state     String   @default("open") // open | applied | dismissed
+  state     String   @default("open") // open | applying | applied | dismissed
   outcome   String?
   createdAt DateTime @default(now())
   decidedAt DateTime?

@@ -166,6 +166,7 @@ export class ThreadTreeService
 	private ticking: Promise<void> | null = null;
 	private readonly reopenTries = new Map<string, number>();
 	private readonly putOff = new PutOff();
+	private draining: Promise<void> = Promise.resolve();
 	/** Children that ended after this were not yet looked at; the first tick reads all. */
 	private sweptTo = new Date(0);
 
@@ -400,6 +401,17 @@ export class ThreadTreeService
 				"run_ended",
 				"This thread is gone.",
 				"Stop starting threads.",
+			);
+		// A plain folder has no commits to branch from, so a child would share this thread's folder.
+		const project = await this.prisma.investigation.findUnique({
+			where: { id: callerId },
+			select: { repository: { select: { plain: true } } },
+		});
+		if (project?.repository?.plain)
+			return fail(
+				"invalid_input",
+				"This project is a plain folder with no git, so a child thread would work in the same folder as this one.",
+				"Do the work in this thread, or tell the user that Start git on the project gives children their own worktrees.",
 			);
 		if (caller.depth + 1 > s.depth)
 			return fail(
@@ -769,7 +781,17 @@ export class ThreadTreeService
 	}
 
 	/** Hands every queued message to its receiver; a result reopens a parent that waits on it. */
-	async drain(): Promise<void> {
+	/** Tick and send both drain; passes run one after another, so no message is sent twice. */
+	drain(): Promise<void> {
+		const pass = this.draining.then(
+			() => this.drainOnce(),
+			() => this.drainOnce(),
+		);
+		this.draining = pass.catch(() => {});
+		return pass;
+	}
+
+	private async drainOnce(): Promise<void> {
 		// Only receivers that can take a message now: a message parked on an ended thread waits for its next run.
 		const receivers = (
 			await this.prisma.threadMessage.findMany({

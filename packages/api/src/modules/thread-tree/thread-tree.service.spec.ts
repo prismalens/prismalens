@@ -1338,3 +1338,30 @@ describe("rows a pass puts off never hold back newer ones (#1024 spec F)", () =>
 		expect(await prisma.threadMessage.count({ where: { toId: root.id, state: "queued" } })).toBe(100);
 	});
 });
+
+describe("plain folders and overlapping deliveries (#1024 spec F)", () => {
+	it("Given a parent in a plain folder, Then a child start is refused up front with the reason, before any card", async () => {
+		const repo = await prisma.repository.create({
+			data: { fullName: `plain-${randomUUID()}`, sourceKind: "folder", url: `/plain/${randomUUID()}`, plain: true },
+		});
+		const root = await thread({ repositoryId: repo.id });
+		const r = await start(root.id);
+		expect(isFailure(r) && r.failure).toMatchObject({ error: "invalid_input", message: expect.stringContaining("plain folder") });
+		expect(await asks.pending(root.id)).toHaveLength(0);
+		expect(starts).toHaveLength(0);
+	});
+
+	it("Given two delivery passes at once, Then a queued message reaches its receiver once", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		const root = await thread();
+		const db = value(await startIn(root.id, { role: "db" })).childId as string;
+		await prisma.investigation.update({ where: { id: db }, data: { status: "running" } });
+		await prisma.threadMessage.deleteMany();
+		await prisma.threadMessage.create({
+			data: { rootId: root.id, fromId: root.id, toId: db, type: "fact", text: "only once", requestId: "once" },
+		});
+		live.add(db);
+		await Promise.all([tree.drain(), tree.drain(), tree.drain()]);
+		expect(sent.filter((m) => m.id === db && m.text.includes("only once"))).toHaveLength(1);
+	});
+});
