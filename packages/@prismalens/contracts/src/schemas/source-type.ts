@@ -626,7 +626,38 @@ export type GitHostView = z.infer<typeof GitHostViewSchema>;
 export const SourcesOverviewSchema = z.object({
 	sources: z.array(SourceRowSchema),
 	gitHosts: z.array(GitHostViewSchema),
+	/** "Images from the git host" (#1024 E): logos, avatars and previews; on by default. */
+	hostImages: z.boolean().optional(),
 });
+
+export const HostImagesToggleSchema = z.object({ enabled: z.boolean() });
+
+/** Add project → From GitHub, GitLab or Bitbucket (#1024 E): what the resolved credential can see. */
+export const HostRepositoriesInputSchema = z.object({
+	/** A git host's name as `GET /sources/git-hosts` lists it, e.g. `github.com`. */
+	host: z.string().trim().min(1).max(253),
+	search: z.string().trim().max(200).optional(),
+	page: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const HostRepositorySchema = z.object({
+	fullName: z.string(),
+	/** The https clone URL; a pick becomes the existing git-URL source. */
+	url: z.string(),
+	private: z.boolean(),
+	pushedAt: z.string().nullable(),
+	description: z.string().optional(),
+	ownerAvatarUrl: z.string().optional(),
+});
+export type HostRepository = z.infer<typeof HostRepositorySchema>;
+
+export const HostRepositoriesSchema = z.object({
+	/** `none`: no credential for the host; offer connect or a pasted URL. */
+	credential: z.enum(["resolved", "none"]),
+	repositories: z.array(HostRepositorySchema),
+	hasMore: z.boolean(),
+});
+export type HostRepositories = z.infer<typeof HostRepositoriesSchema>;
 export type SourcesOverview = z.infer<typeof SourcesOverviewSchema>;
 
 export const SourcesPreRunInputSchema = z.object({

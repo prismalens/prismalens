@@ -67,6 +67,11 @@ export const GitCredentialDisplaySchema = RunCredentialSchema.extend({
 });
 export type GitCredentialDisplay = z.infer<typeof GitCredentialDisplaySchema>;
 
+/** Where a project's logo came from (#1024 E), in the order they are tried. */
+export const ICON_SOURCES = ["host", "repo", "owner", "monogram"] as const;
+export const IconSourceSchema = z.enum(ICON_SOURCES);
+export type IconSource = z.infer<typeof IconSourceSchema>;
+
 export const RepositorySchema = z.object({
 	id: z.string().uuid(),
 	/** Null for a folder or URL the operator typed; set when a VCS connection discovered it. */
@@ -93,6 +98,11 @@ export const RepositorySchema = z.object({
 	updatedAt: DateStringSchema,
 	/** The credential the next git call would use, worked out when the row is read (#673). */
 	credential: GitCredentialDisplaySchema.optional(),
+	/** The project's logo; absent means the monogram (#1024 E). */
+	iconUrl: z.string().optional(),
+	iconSource: IconSourceSchema.optional(),
+	/** A GitHub repo's custom social preview, through the image proxy. */
+	previewUrl: z.string().optional(),
 });
 
 /** What a project is (#1020): a plain folder, a git repo on this computer, or a git URL. */

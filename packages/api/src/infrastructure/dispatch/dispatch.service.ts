@@ -58,6 +58,7 @@ import {
 import { type AskResult, reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
+import { AdmissionService } from "../../core/lifecycle/admission.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -348,6 +349,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		@Optional() telemetrySnapshot?: TelemetrySnapshotService,
 		@Optional() private readonly runWorkspaces?: RunWorkspacesService,
 		@Optional() private readonly lifecycle?: RuntimeLifecycleService,
+		@Optional() admission?: AdmissionService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -714,6 +716,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				},
 			},
 		);
+		admission?.attach({
+			drain: (on) => this.dispatcher.drain(on),
+			running: () => this.dispatcher.running,
+		});
 	}
 
 	/**

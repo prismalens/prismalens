@@ -18,6 +18,7 @@ import { ORPCError } from "@orpc/nest";
 import type {
 	CanonicalEvent,
 	PrChecks,
+	PrDetail,
 	PrSource,
 	PullRequest,
 	RunWorkspace,
@@ -46,6 +47,7 @@ import {
 } from "../../core/harness/git-spawn.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { ImagesService } from "../images/images.service.js";
 import {
 	GitCredentialService,
 	type GitRepoRef,
@@ -84,7 +86,45 @@ interface Remote extends KnownRemote {
 	ref: GitRepoRef;
 }
 
-export function pullRequestView(row: PullRequestRow): PullRequest {
+/** A stored host image URL to what a read serves; undefined drops it. */
+export type ImageFor = (url: string) => string | undefined;
+
+/** The proxy's signed path for a host's avatar; GitLab and Bitbucket hand these out from their APIs. */
+export function imageFor(images: ImagesService | undefined): ImageFor {
+	return images
+		? (url) => images.urlFor(url, "avatar", { fromHostApi: true })
+		: noImages;
+}
+
+/** Without the proxy, no host image is served at all: never the raw URL (#1024). */
+const noImages: ImageFor = () => undefined;
+
+function detailView(raw: unknown, image: ImageFor): PrDetail | undefined {
+	const detail = PrDetailSchema.safeParse(raw).data;
+	if (!detail) return undefined;
+	const person = <T extends { avatarUrl?: string }>(p: T): T => {
+		const { avatarUrl, ...rest } = p;
+		const shown = avatarUrl ? image(avatarUrl) : undefined;
+		return (shown ? { ...rest, avatarUrl: shown } : rest) as T;
+	};
+	return {
+		...(detail.author ? { author: person(detail.author) } : {}),
+		...(detail.reviewers ? { reviewers: detail.reviewers.map(person) } : {}),
+		...(detail.checkRuns
+			? {
+					checkRuns: detail.checkRuns.map(({ appAvatarUrl, ...run }) => {
+						const shown = appAvatarUrl ? image(appAvatarUrl) : undefined;
+						return shown ? { ...run, appAvatarUrl: shown } : run;
+					}),
+				}
+			: {}),
+	};
+}
+
+export function pullRequestView(
+	row: PullRequestRow,
+	image: ImageFor = noImages,
+): PullRequest {
 	const checks: PrChecks =
 		PrChecksSchema.safeParse(safeParseJsonObject(row.checks)).data ?? NO_CHECKS;
 	const fields = {
@@ -104,7 +144,7 @@ export function pullRequestView(row: PullRequestRow): PullRequest {
 		tone: prTone(fields),
 		source: PrSourceSchema.safeParse(row.source).data ?? "agent",
 		fetchedAt: row.fetchedAt?.toISOString() ?? null,
-		...PrDetailSchema.safeParse(safeParseJsonObject(row.detail)).data,
+		...detailView(safeParseJsonObject(row.detail), image),
 	};
 }
 
@@ -120,7 +160,13 @@ export class PullRequestsService implements OnModuleInit {
 		private readonly credentials: GitCredentialService,
 		private readonly investigations: InvestigationsService,
 		@Optional() @Inject(PR_FETCH) private readonly fetchImpl?: typeof fetch,
+		@Optional() private readonly images?: ImagesService,
 	) {}
+
+	/** A row as a read shows it, its avatars through the image proxy (#1024). */
+	private view(row: PullRequestRow): PullRequest {
+		return pullRequestView(row, imageFor(this.images));
+	}
 
 	onModuleInit(): void {
 		this.investigations.onEventsAppended((id, events) =>
@@ -177,9 +223,9 @@ export class PullRequestsService implements OnModuleInit {
 		const row = await this.store(investigationId, pr, remote, "user");
 		// The link is stored either way; only "Show pull request status" lets it reach the host.
 		if (!(await readThreadContextSettings(this.prisma)).prStatus)
-			return pullRequestView(row);
+			return this.view(row);
 		const [fresh] = await this.refreshRows([row], true);
-		return pullRequestView(fresh ?? row);
+		return this.view(fresh ?? row);
 	}
 
 	async unlink(investigationId: string, prId: string): Promise<boolean> {
@@ -202,12 +248,15 @@ export class PullRequestsService implements OnModuleInit {
 		if (prStatus) await this.lookUpBranch(run, opts.force ?? false);
 		let rows = await this.rows(investigationId);
 		if (prStatus) rows = await this.refreshRows(rows, opts.force ?? false);
-		return { pullRequests: rows.map(pullRequestView), statusEnabled: prStatus };
+		return {
+			pullRequests: rows.map((r) => this.view(r)),
+			statusEnabled: prStatus,
+		};
 	}
 
 	/** Stored state only, never a host call: what a list row or a context read shows. */
 	async stored(investigationId: string): Promise<PullRequest[]> {
-		return (await this.rows(investigationId)).map(pullRequestView);
+		return (await this.rows(investigationId)).map((r) => this.view(r));
 	}
 
 	/** Each thread's newest PR as number and tone, for feed rows. */

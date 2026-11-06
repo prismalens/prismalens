@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { type GitEnvInput, gitEnv } from "./git-env.js";
 import { scrubGitStderr } from "./git-failure.js";
@@ -43,6 +44,19 @@ export class GitSpawnError extends Error {
 	) {
 		super(message);
 		this.name = "GitSpawnError";
+	}
+}
+
+/** No `git` on the PATH this process runs with; said plainly instead of `spawn git ENOENT` (#1024). */
+export class GitMissingError extends GitSpawnError {
+	constructor() {
+		super(
+			"Git isn't installed, or isn't on the PATH PrismaLens runs with. Install git, then run `pl doctor` to check.",
+			null,
+			"",
+			false,
+		);
+		this.name = "GitMissingError";
 	}
 }
 
@@ -134,7 +148,11 @@ export function spawnGit(
 		};
 		child.on("error", (err) => {
 			done();
-			reject(failure ?? err);
+			// A missing cwd is ENOENT too; only an existing one means git itself is missing.
+			const missing =
+				(err as NodeJS.ErrnoException).code === "ENOENT" &&
+				(!opts.cwd || existsSync(opts.cwd));
+			reject(failure ?? (missing ? new GitMissingError() : err));
 		});
 		child.on("close", (code) => {
 			done();

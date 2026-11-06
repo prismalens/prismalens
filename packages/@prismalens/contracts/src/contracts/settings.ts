@@ -11,14 +11,18 @@ import {
 	AboutSchema,
 	CheckHarnessInputSchema,
 	DangerOperationResultSchema,
+	DiagnosticsSchema,
 	FactoryResetInputSchema,
 	HarnessesResponseSchema,
 	HarnessProbeResultSchema,
 	HarnessSettingsSchema,
+	InstallUpdateInputSchema,
 	ReportDeliverySettingsSchema,
 	ResetDataInputSchema,
 	TelemetrySettingsSchema,
 	UpdateHarnessSettingsSchema,
+	UpdateInstallStatusSchema,
+	UpdatePrefsSchema,
 	UpdateReportDeliverySchema,
 	UpdateTelemetrySettingsSchema,
 } from "../schemas/settings.js";
@@ -40,6 +44,73 @@ export const settingsContract = {
 				summary: "What this install is and whether a newer release is out",
 				tags: ["settings"],
 			})
+			.output(AboutSchema),
+		/**
+		 * What `pl doctor` checks, run in the API. Host only (#932).
+		 * GET /settings/about/diagnostics
+		 */
+		diagnostics: oc
+			.route({
+				method: "GET",
+				path: "/settings/about/diagnostics",
+				summary: "Run the doctor checks on this machine",
+				tags: ["settings"],
+			})
+			.output(DiagnosticsSchema),
+	},
+
+	/** Check, install and the update preferences (#724, #1024 E). */
+	update: {
+		/**
+		 * Check for a newer release now, ignoring the day-long cache
+		 * POST /settings/update/check
+		 */
+		check: oc
+			.route({
+				method: "POST",
+				path: "/settings/update/check",
+				summary: "Check for a newer release now",
+				tags: ["settings"],
+			})
+			.output(AboutSchema),
+		/**
+		 * Install the offered release into the installer's runtime folder and restart. Host only, idle only.
+		 * POST /settings/update/install
+		 */
+		install: oc
+			.route({
+				method: "POST",
+				path: "/settings/update/install",
+				successStatus: 202,
+				summary: "Install the newer release and restart",
+				tags: ["settings"],
+			})
+			.input(InstallUpdateInputSchema)
+			.output(UpdateInstallStatusSchema),
+		/**
+		 * Where an install stands
+		 * GET /settings/update/status
+		 */
+		status: oc
+			.route({
+				method: "GET",
+				path: "/settings/update/status",
+				summary: "Where an update install stands",
+				tags: ["settings"],
+			})
+			.output(UpdateInstallStatusSchema),
+		/**
+		 * Check for updates, and what to do when one is ready. Host only.
+		 * PUT /settings/update
+		 */
+		prefs: oc
+			.route({
+				method: "PUT",
+				path: "/settings/update",
+				summary: "Set the update preferences",
+				tags: ["settings"],
+			})
+			.input(UpdatePrefsSchema)
 			.output(AboutSchema),
 	},
 

@@ -28,6 +28,7 @@ import { gitEnv } from "./git-env.js";
 import { diagnoseGitFailure, GitFailure } from "./git-failure.js";
 import {
 	GIT_TIMEOUT_MS,
+	GitMissingError,
 	GitSpawnError,
 	remoteGitEnv,
 	spawnGit,
@@ -166,7 +167,7 @@ function urlSegments(url: string): string[] {
 
 /** A git error a person can act on: the taxonomy for a remote call, git's own text otherwise. */
 export function remoteFailure(err: unknown, src: RepoSource): Error {
-	if (err instanceof GitFailure) return err;
+	if (err instanceof GitFailure || err instanceof GitMissingError) return err;
 	const url = src.credential?.effectiveUrl ?? src.source;
 	const host = urlHost(url) ?? url;
 	if (err instanceof GitSpawnError && err.timedOut)

@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, PullRequestSchema } from "@prismalens/contracts";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { OffOriginError } from "../integrations/source-request.js";
 import { fakeDb } from "./__fixtures__/fake-db.js";
@@ -428,6 +428,50 @@ describe("PullRequestsService edges", () => {
 		});
 		expect(view).toMatchObject({ host: "other", state: "unknown", source: "agent", tone: "unknown" });
 		expect(view.author).toBeUndefined();
+	});
+
+	it("serves host avatars only through the image proxy, and drops what it won't serve (#1024)", () => {
+		const row = {
+			id: "x",
+			investigationId: RUN,
+			repositoryId: null,
+			host: "github",
+			repo: "a/b",
+			url: "https://github.com/a/b/pull/1",
+			number: 1,
+			title: null,
+			state: "open",
+			review: "none",
+			checks: "{}",
+			conflicts: null,
+			detail: JSON.stringify({
+				author: { login: "ana", avatarUrl: "https://avatars.githubusercontent.com/u/1" },
+				reviewers: [{ login: "bo", state: "approved", avatarUrl: "https://evil.example/bo.png" }],
+				checkRuns: [
+					{
+						name: "ci",
+						state: "passing",
+						appName: "Actions",
+						appAvatarUrl: "https://avatars.githubusercontent.com/in/15368",
+					},
+				],
+			}),
+			source: "agent",
+			etag: null,
+			fetchedAt: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		};
+		const proxied = (u: string) => (u.includes("evil") ? undefined : "/api/images/k.sig");
+		const view = pullRequestView(row, proxied);
+		expect(view.author).toEqual({ login: "ana", avatarUrl: "/api/images/k.sig" });
+		expect(view.reviewers).toEqual([{ login: "bo", state: "approved" }]);
+		expect(view.checkRuns?.[0]?.appAvatarUrl).toBe("/api/images/k.sig");
+		expect(PullRequestSchema.safeParse(view).success).toBe(true);
+		// Without the proxy no host URL reaches the browser at all.
+		const bare = pullRequestView(row);
+		expect(bare.author).toEqual({ login: "ana" });
+		expect(bare.checkRuns?.[0]?.appAvatarUrl).toBeUndefined();
 	});
 });
 

@@ -1,0 +1,27 @@
+[
+	{
+		"id": 278964,
+		"description": "Inventory service",
+		"name": "inventory",
+		"path_with_namespace": "platform/inventory",
+		"http_url_to_repo": "https://gitlab.example.com/platform/inventory.git",
+		"ssh_url_to_repo": "git@gitlab.example.com:platform/inventory.git",
+		"visibility": "internal",
+		"last_activity_at": "2026-11-04T12:00:00.000Z",
+		"namespace": {
+			"id": 9,
+			"name": "platform",
+			"kind": "group",
+			"avatar_url": "/uploads/-/system/group/avatar/9/logo.png"
+		}
+	},
+	{
+		"id": 278965,
+		"description": "",
+		"path_with_namespace": "platform/docs",
+		"http_url_to_repo": "https://gitlab.example.com/platform/docs.git",
+		"visibility": "public",
+		"last_activity_at": "2026-10-01T12:00:00.000Z",
+		"namespace": { "id": 9, "avatar_url": null }
+	}
+]

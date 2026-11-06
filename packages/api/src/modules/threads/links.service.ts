@@ -7,7 +7,7 @@
  */
 import { realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import type {
 	LinkCandidate,
@@ -20,8 +20,9 @@ import {
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { ImagesService } from "../images/images.service.js";
 import { readWorktreeChanges } from "../investigations/worktree-changes.js";
-import { pullRequestView } from "./pull-requests.service.js";
+import { imageFor, pullRequestView } from "./pull-requests.service.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -83,7 +84,10 @@ async function within(root: string, path: string): Promise<string | null> {
 
 @Injectable()
 export class LinksService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		@Optional() private readonly images?: ImagesService,
+	) {}
 
 	async resolve(
 		id: string,
@@ -209,7 +213,10 @@ export class LinksService {
 			where: { investigationId: id, url: href.replace(/\/$/, "") },
 		});
 		return pr
-			? { type: "pull_request", pullRequest: pullRequestView(pr) }
+			? {
+					type: "pull_request",
+					pullRequest: pullRequestView(pr, imageFor(this.images)),
+				}
 			: { type: "url", href };
 	}
 

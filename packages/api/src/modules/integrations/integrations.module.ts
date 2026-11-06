@@ -4,9 +4,11 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "../../core/prisma/prisma.module.js";
+import { ImagesModule } from "../images/images.module.js";
 import { ConnectorResolverService } from "./connector-resolver.service.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
+import { HostRepositoriesService } from "./host-repositories.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
 import { SourcesService } from "./sources.service.js";
@@ -14,7 +16,7 @@ import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 @Module({
-	imports: [PrismaModule, ConfigModule],
+	imports: [PrismaModule, ConfigModule, ImagesModule],
 	controllers: [IntegrationsController],
 	providers: [
 		IntegrationsService,
@@ -24,6 +26,7 @@ import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 		GitCredentialService,
 		TelemetrySnapshotService,
 		SourcesService,
+		HostRepositoriesService,
 	],
 	exports: [
 		IntegrationsService,

@@ -81,6 +81,7 @@ import { AlertsModule } from "./modules/alerts/alerts.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
 import { FixesModule } from "./modules/fixes/fixes.module.js";
+import { ImagesModule } from "./modules/images/images.module.js";
 import { ImpactModule } from "./modules/impact/impact.module.js";
 import { IncidentsModule } from "./modules/incidents/incidents.module.js";
 import { IntegrationsModule } from "./modules/integrations/integrations.module.js";
@@ -189,6 +190,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		WakesModule, // Wakes and the session lifecycle (#1024)
 		ServicesModule, // Service catalog
 		RepositoriesModule, // Repository management
+		ImagesModule, // The one image proxy (#1024 E)
 		AlertsModule, // Alert processing
 		AlertMappingModule, // Alert → service lookup (exact label match)
 		IncidentsModule, // Incident management (primary entity)

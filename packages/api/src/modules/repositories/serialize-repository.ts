@@ -12,6 +12,7 @@ import {
 	UNSHOWN_REPO,
 } from "../../core/harness/git-credential.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
+import type { IconView } from "./repository-icon.service.js";
 
 /** A legacy row's fullName was derived from its address and may hold the same credential (#938). */
 export function shownFullName(
@@ -31,10 +32,13 @@ export function shownFullName(
 export async function serializeRepository(
 	repo: PrismaRepository,
 	credentialFor: (repo: PrismaRepository) => Promise<GitCredentialDisplay>,
+	iconFor?: (repo: PrismaRepository) => IconView,
 ): Promise<Repository> {
 	const url = shownRepoUrl(repo.sourceKind, repo.url);
+	const { iconKey: _key, iconCheckedAt: _checked, ...row } = repo;
 	return {
-		...repo,
+		...row,
+		...(iconFor ? iconFor(repo) : {}),
 		url,
 		fullName: shownFullName(repo, url),
 		createdAt: repo.createdAt.toISOString(),

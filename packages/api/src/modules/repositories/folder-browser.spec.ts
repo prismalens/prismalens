@@ -15,6 +15,7 @@ import { ACCESS_SCOPE } from "@prismalens/auth";
 import type { Request } from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { browseFolders } from "./folder-browser.js";
+import type { RepositoryIconService } from "./repository-icon.service.js";
 import { RepositoriesController } from "./repositories.controller.js";
 import type { RepositoriesService } from "./repositories.service.js";
 
@@ -132,6 +133,7 @@ describe("host-only folder routes (#1020)", () => {
 	const service = { startGit: vi.fn() };
 	const controller = new RepositoriesController(
 		service as unknown as RepositoriesService,
+		{} as RepositoryIconService,
 	);
 	// biome-ignore lint/suspicious/noExplicitAny: oRPC handler extraction
 	const procs = controller.repositories() as Record<string, any>;

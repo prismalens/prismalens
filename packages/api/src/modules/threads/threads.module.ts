@@ -3,6 +3,7 @@
 
 import { Module } from "@nestjs/common";
 import { HarnessModule } from "../../core/harness/harness.module.js";
+import { ImagesModule } from "../images/images.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { InvestigationsModule } from "../investigations/investigations.module.js";
 import { RunWorkspacesModule } from "../run-workspaces/run-workspaces.module.js";
@@ -20,6 +21,7 @@ import { ThreadsService } from "./threads.service.js";
 		HarnessModule,
 		IntegrationsModule,
 		RunWorkspacesModule,
+		ImagesModule,
 	],
 	controllers: [ThreadsController, ThreadContextSettingsController],
 	providers: [

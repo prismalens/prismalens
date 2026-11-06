@@ -234,6 +234,14 @@ jobs:
             echo "::endgroup::"
           done
 
+      # #724: from a running installer copy, POST /settings/update/install moves it to the next version.
+      - name: Install and restart from the app (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -eu
+          version=$(node -p "require('./packages/cli/package.json').version")
+          sh scripts/install/smoke-update-endpoint.sh "$GITHUB_WORKSPACE/dist/standalone" "$version"
+
       - name: Installer end to end, upgrading from each release (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

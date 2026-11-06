@@ -292,6 +292,28 @@ export class GitCredential {
 		return `Basic ${Buffer.from(`${user}:${this.#token}`).toString("base64")}`;
 	}
 
+	/**
+	 * `Bearer` for the token's host's REST or GraphQL API: the same host, or
+	 * api.github.com and api.bitbucket.org for their sites (#1024 E).
+	 */
+	apiAuthorization(apiUrl: string): string | undefined {
+		if (!isTokenSource(this.display.source) || !this.#token || !this.#host)
+			return undefined;
+		let url: URL;
+		try {
+			url = new URL(apiUrl);
+		} catch {
+			return undefined;
+		}
+		if (url.protocol !== "https:") return undefined;
+		const api = url.host.toLowerCase();
+		const ok =
+			api === this.#host ||
+			(this.#host === "github.com" && api === "api.github.com") ||
+			(this.#host === "bitbucket.org" && api === "api.bitbucket.org");
+		return ok ? `Bearer ${this.#token}` : undefined;
+	}
+
 	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */
 	authHeader(effectiveUrl: string): string | undefined {
 		const value = this.authorization(effectiveUrl);

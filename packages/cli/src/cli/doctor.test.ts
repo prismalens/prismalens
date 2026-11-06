@@ -4,7 +4,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import { secretFileName } from "@prismalens/config";
+import { runDiagnostics, secretFileName } from "@prismalens/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	AGENTS_LINE,
@@ -12,6 +12,7 @@ import {
 	checkInstalls,
 	checkWebhookToken,
 	checkWebhookUrl,
+	doctorChecks,
 	nodeVersionProblem,
 	summary,
 } from "./doctor.js";
@@ -208,3 +209,22 @@ describe("doctor — Node patch floor per line (#998)", () => {
 		expect(nodeVersionProblem(v)).toEqual(expect.any(String));
 	});
 });
+
+describe("doctor — the same machine checks as About's diagnostics (#936)", () => {
+	it("prints what runDiagnostics returns, then only its own bind checks", () => {
+		const git = () => ({ status: 0, stdout: "git version 2.43.0" });
+		const shared = runDiagnostics({
+			workspaceDir: process.env.PRISMALENS_WORKSPACE_DIR ?? os.tmpdir(),
+			version: "0.0.0",
+			git,
+			runVersion: () => null,
+			gitScope: "this shell",
+		});
+		const names = doctorChecks(git).map((c) => c.name);
+		expect(names.slice(0, shared.length).map((n) => n.replace(/^PrismaLens \S+/, "PrismaLens"))).toEqual(
+			shared.map((c) => c.label.replace(/^PrismaLens \S+/, "PrismaLens")),
+		);
+		expect(names.slice(shared.length)).toEqual(["Port/host", "Webhook URL"]);
+	});
+});
+

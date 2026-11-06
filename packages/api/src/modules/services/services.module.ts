@@ -3,11 +3,12 @@
 
 import { Module } from "@nestjs/common";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
+import { RepositoriesModule } from "../repositories/repositories.module.js";
 import { ServicesController } from "./services.controller.js";
 import { ServicesService } from "./services.service.js";
 
 @Module({
-	imports: [IntegrationsModule],
+	imports: [IntegrationsModule, RepositoriesModule],
 	controllers: [ServicesController],
 	providers: [ServicesService],
 	exports: [ServicesService],

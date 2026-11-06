@@ -112,6 +112,8 @@ export class Dispatcher {
 	private stopped = false;
 	/** Held: nothing is claimed, though the loop keeps its runs (#981 OBJ-013). */
 	private held = false;
+	/** Draining for an update install (#724): queued work waits for the restart. */
+	private draining = false;
 
 	constructor(
 		private readonly store: JobStore,
@@ -146,6 +148,12 @@ export class Dispatcher {
 		void this.tick();
 	}
 
+	/** Separate from {@link hold}, so restoring admission never lifts a boot hold. */
+	drain(on: boolean): void {
+		this.draining = on;
+		if (!on) void this.tick();
+	}
+
 	async stop(settleMs = STOP_SETTLE_MS): Promise<void> {
 		this.stopped = true;
 		const runs = [...this.inFlight.values()];
@@ -167,7 +175,7 @@ export class Dispatcher {
 	 * single pass after it, so a slow tick cannot stack up and a wake is never dropped.
 	 */
 	async tick(): Promise<void> {
-		if (this.stopped || this.held) return;
+		if (this.stopped || this.held || this.draining) return;
 		if (this.ticking) {
 			this.again = true;
 			return;
@@ -188,8 +196,8 @@ export class Dispatcher {
 				if (slots <= 0) break;
 
 				const claimed = await this.store.claim(this.owner, slots);
-				// A claim that lands after stop() is handed back, never started (#981 OBJ-017).
-				if (this.stopped) {
+				// A claim that lands after stop() or a drain is handed back, never started (#981 OBJ-017).
+				if (this.stopped || this.draining) {
 					for (const job of claimed)
 						await this.store.release(job.id, this.owner).catch(() => false);
 					break;

@@ -593,6 +593,24 @@ export const TelemetrySettingsSchema = z.object({
 });
 export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
 
+/** "When an update is ready" on About (#1024 E): notify, or install once idle. */
+export const UpdateAutoInstallSchema = z.enum(["notify", "idle"]);
+export type UpdateAutoInstall = z.infer<typeof UpdateAutoInstallSchema>;
+
+export const UPDATE_INSTALL_BLOCKERS = [
+	"not_installer",
+	"not_host",
+	"busy",
+	"disabled",
+] as const;
+export const UpdateInstallAvailabilitySchema = z.object({
+	available: z.boolean(),
+	blockedBy: z.enum(UPDATE_INSTALL_BLOCKERS).optional(),
+});
+export type UpdateInstallAvailability = z.infer<
+	typeof UpdateInstallAvailabilitySchema
+>;
+
 /**
  * Settings → About (#717): what this copy is, whether a newer release is out,
  * and the commands to upgrade or uninstall it the way it was installed.
@@ -612,11 +630,72 @@ export const AboutSchema = z.object({
 		/** The variable that turned the check off, or null when it runs. */
 		disabledBy: z.enum(["PRISMALENS_UPDATE_CHECK", "DO_NOT_TRACK"]).nullable(),
 		releaseNotesUrl: z.string().nullable(),
+		/** The release's own notes as sanitised Markdown, or null until fetched (#1024 E). */
+		notes: z.string().nullable().optional(),
+		publishedAt: z.string().nullable().optional(),
+		/** Whether this caller may Install and restart now, and if not, why (#724). */
+		install: UpdateInstallAvailabilitySchema.optional(),
 	}),
 	upgradeCommand: z.string(),
 	uninstallCommand: z.string(),
+	logsDir: z.string().optional(),
+	runtime: z
+		.object({ node: z.string(), os: z.string(), arch: z.string() })
+		.optional(),
+	autoInstall: UpdateAutoInstallSchema.optional(),
+	/** "Check for updates" on About; the env switches in `disabledBy` still win. */
+	checkForUpdates: z.boolean().optional(),
 });
 export type About = z.infer<typeof AboutSchema>;
+
+/** One `pl doctor` check, run in the API for About's diagnostics (#932). */
+export const DoctorCheckSchema = z.object({
+	id: z.string(),
+	label: z.string(),
+	status: z.enum(["ok", "warn", "fail"]),
+	detail: z.string(),
+	fix: z.string().optional(),
+});
+export type DoctorCheck = z.infer<typeof DoctorCheckSchema>;
+
+export const DiagnosticsSchema = z.object({
+	checks: z.array(DoctorCheckSchema),
+	ranAt: z.string(),
+});
+export type Diagnostics = z.infer<typeof DiagnosticsSchema>;
+
+export const UPDATE_INSTALL_PHASES = [
+	"idle",
+	"downloading",
+	"verifying",
+	"installing",
+	"restarting",
+	"failed",
+	"done",
+] as const;
+
+/** Where an Install and restart stands (#724); polled while the card shows progress. */
+export const UpdateInstallStatusSchema = z.object({
+	phase: z.enum(UPDATE_INSTALL_PHASES),
+	/** The version being installed, or this copy's own version when idle. */
+	version: z.string(),
+	error: z.string().optional(),
+	upgradeCommand: z.string(),
+	/** Dispatch claims nothing new; queued work starts after the restart. */
+	draining: z.boolean(),
+});
+export type UpdateInstallStatus = z.infer<typeof UpdateInstallStatusSchema>;
+
+export const UpdatePrefsSchema = z.object({
+	autoInstall: UpdateAutoInstallSchema.optional(),
+	checkForUpdates: z.boolean().optional(),
+});
+export type UpdatePrefs = z.infer<typeof UpdatePrefsSchema>;
+
+export const InstallUpdateInputSchema = z.object({
+	/** The version the card offered; refused when the check now says otherwise. */
+	version: z.string().regex(/^\d+\.\d+\.\d+$/),
+});
 
 export const UpdateTelemetrySettingsSchema = z.object({
 	enabled: z.boolean().optional(),

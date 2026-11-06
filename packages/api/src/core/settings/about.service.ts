@@ -8,6 +8,8 @@
  */
 
 import { readdirSync } from "node:fs";
+import { release as osRelease, type as osType } from "node:os";
+import { join } from "node:path";
 import { Injectable } from "@nestjs/common";
 import {
 	getAppDataDir,
@@ -27,6 +29,14 @@ import {
 	resolveServiceBuild,
 	resolveServiceVersion,
 } from "../../shared/utils/service-version.js";
+
+/** Where `pl up` writes its logs: `PRISMALENS_LOG_FILE_LOCATION`, else the workspace's `logs`. */
+export function resolveLogDir(
+	env: NodeJS.ProcessEnv,
+	workspaceDir: string,
+): string {
+	return env.PRISMALENS_LOG_FILE_LOCATION || join(workspaceDir, "logs");
+}
 
 /** The newest `prismalens.db.bak-*`; the names sort by the time they were made. */
 export function latestBackup(workspaceDir: string): string | null {
@@ -51,12 +61,22 @@ export class AboutService {
 	fetchImpl: typeof fetch = fetch;
 	now: () => number = Date.now;
 
-	async get(): Promise<About> {
+	/**
+	 * `checkEnabled` is About's "Check for updates" row; `force` is Check now,
+	 * which asks GitHub whatever the cache's age.
+	 */
+	async get(
+		opts: { checkEnabled?: boolean; force?: boolean } = {},
+	): Promise<About> {
 		const workspaceDir = getAppDataDir();
 		const channel = installChannel(this.env);
 		const disabledBy = updateCheckDisabledBy(this.env);
+		const checking = !disabledBy && opts.checkEnabled !== false;
 
-		if (!disabledBy && isStale(readCache(workspaceDir), this.now())) {
+		if (
+			checking &&
+			(opts.force || isStale(readCache(workspaceDir), this.now()))
+		) {
 			this.refreshing ??= refreshUpdateCache(
 				workspaceDir,
 				this.fetchImpl,
@@ -67,7 +87,7 @@ export class AboutService {
 			await this.refreshing;
 		}
 
-		const cache = disabledBy ? null : readCache(workspaceDir);
+		const cache = checking ? readCache(workspaceDir) : null;
 		const latest = cache?.latest ?? null;
 		const available = latest !== null && isNewer(latest, this.version);
 		return {
@@ -87,6 +107,13 @@ export class AboutService {
 			uninstallCommand: installedService()
 				? `pl service uninstall && ${uninstallCommand(channel)}`
 				: uninstallCommand(channel),
+			logsDir: resolveLogDir(this.env, workspaceDir),
+			runtime: {
+				node: process.version,
+				os: `${osType()} ${osRelease()}`,
+				arch: process.arch,
+			},
+			checkForUpdates: opts.checkEnabled !== false,
 		};
 	}
 }

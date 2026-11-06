@@ -7,7 +7,8 @@ import type { HarnessService } from "../harness/harness.service.js";
 import { SettingsController } from "./settings.controller.js";
 import { ActiveRunsError, type SettingsService } from "./settings.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
-import type { AboutService } from "./about.service.js";
+import type { DiagnosticsService } from "./diagnostics.service.js";
+import type { UpdateService } from "./update.service.js";
 
 type Handler = (args: { input: { confirmation: string } }) => Promise<unknown>;
 
@@ -16,7 +17,8 @@ function dangerHandlers(settings: Partial<SettingsService>) {
 		settings as SettingsService,
 		{} as HarnessService,
 		telemetryStub(),
-		{} as AboutService,
+		{} as UpdateService,
+		{} as DiagnosticsService,
 	);
 	const procedures = controller.danger() as unknown as Record<
 		string,
@@ -83,7 +85,8 @@ describe("SettingsController usage data (#673 w45)", () => {
 			{} as SettingsService,
 			{} as HarnessService,
 			telemetry,
-			{} as AboutService,
+			{} as UpdateService,
+			{} as DiagnosticsService,
 		);
 		const update = (
 			controller.telemetry() as unknown as Record<
@@ -96,5 +99,54 @@ describe("SettingsController usage data (#673 w45)", () => {
 			enabled: false,
 			dismissed: true,
 		});
+	});
+});
+
+describe("SettingsController host-only update routes (#724)", () => {
+	type Proc = { "~orpc": { handler: (a: unknown) => Promise<unknown> } };
+	const paired = { request: { operator: { device: { scopes: [] } } } };
+	const host = { request: { operator: { device: { scopes: ["admin:access"] } } } };
+
+	function controller(update: Partial<UpdateService>, diagnostics: Partial<DiagnosticsService>) {
+		return new SettingsController(
+			{} as SettingsService,
+			{} as HarnessService,
+			telemetryStub(),
+			update as UpdateService,
+			diagnostics as DiagnosticsService,
+		);
+	}
+
+	it("refuses diagnostics to a paired device and runs them for the host", async () => {
+		const run = vi.fn(() => ({ checks: [], ranAt: "now" }));
+		const about = controller({}, { run }).about() as unknown as Record<string, Proc>;
+		await expect(
+			about.diagnostics["~orpc"].handler({ input: undefined, context: paired }),
+		).rejects.toMatchObject({ code: "FORBIDDEN" });
+		await about.diagnostics["~orpc"].handler({ input: undefined, context: host });
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("refuses Check now to a paired device and runs it for the host", async () => {
+		const aboutFor = vi.fn(async () => ({}));
+		const update = controller({ aboutFor } as never, {}).update() as unknown as Record<string, Proc>;
+		await expect(update.check["~orpc"].handler({ input: undefined, context: paired })).rejects.toMatchObject({
+			code: "FORBIDDEN",
+		});
+		expect(aboutFor).not.toHaveBeenCalled();
+		await update.check["~orpc"].handler({ input: undefined, context: host });
+		expect(aboutFor).toHaveBeenCalledWith(true, true);
+	});
+
+	it("passes who is asking to install, and maps a refusal to its status", async () => {
+		const { UpdateRefused } = await import("./update.service.js");
+		const install = vi.fn(async () => {
+			throw new UpdateRefused("FORBIDDEN", "host only");
+		});
+		const update = controller({ install }, {}).update() as unknown as Record<string, Proc>;
+		await expect(
+			update.install["~orpc"].handler({ input: { version: "9.9.9" }, context: paired }),
+		).rejects.toMatchObject({ code: "FORBIDDEN", message: "host only" });
+		expect(install).toHaveBeenCalledWith("9.9.9", false);
 	});
 });

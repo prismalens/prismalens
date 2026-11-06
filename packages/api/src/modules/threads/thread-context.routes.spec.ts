@@ -139,7 +139,7 @@ describe("open in editor and project scripts routes", () => {
 			.mockResolvedValueOnce({ sourceKind: "folder", url: dir, subPath: null })
 			.mockResolvedValueOnce({ sourceKind: "url", url: "https://github.com/a/b" })
 			.mockResolvedValueOnce(null);
-		const routes = new RepositoriesController({ findById } as never).repositories();
+		const routes = new RepositoriesController({ findById } as never, {} as never).repositories();
 		await expect(call(routes.scripts, { id: RUN })).resolves.toEqual({
 			scripts: [{ runner: "just", name: "fmt", command: "just fmt" }],
 		});

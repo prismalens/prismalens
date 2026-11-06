@@ -94,6 +94,15 @@ export class ScenarioApp {
 		if (!this.cookie) await this.pair();
 	}
 
+	/** Dispatch's admission, which an update install drains (#724). */
+	async admission() {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { AdmissionService } = await import(
+			"../../../src/core/lifecycle/admission.service.js"
+		);
+		return this.app.get(AdmissionService);
+	}
+
 	async stop(): Promise<void> {
 		await this.app?.close();
 		this.app = null;

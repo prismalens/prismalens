@@ -485,4 +485,54 @@ describe("Dispatcher", () => {
 			expect(store.released).toEqual(["job-1"]);
 		});
 	});
+
+	describe("draining for an update install (#724)", () => {
+		it("claims nothing while draining, and the queued work starts once restored", async () => {
+			const { runner, started } = controllableRunner();
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+			dispatcher.drain(true);
+			store.pending = [job(1), job(2)];
+			await dispatcher.tick();
+			expect(started).toEqual([]);
+			expect(store.pending).toHaveLength(2);
+
+			dispatcher.drain(false);
+			await vi.waitFor(() => expect(started).toHaveLength(2));
+			await dispatcher.stop();
+		});
+
+		it("hands back a claim that lands after the drain began", async () => {
+			const { runner, started } = controllableRunner();
+			let land!: () => void;
+			const gate = new Promise<void>((r) => {
+				land = r;
+			});
+			const claim = store.claim.bind(store);
+			store.claim = async (owner, limit) => {
+				await gate;
+				return claim(owner, limit);
+			};
+			store.pending = [job(1)];
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+			const ticking = dispatcher.tick();
+			dispatcher.drain(true);
+			land();
+			await ticking;
+			expect(started).toEqual([]);
+			expect(store.released).toEqual(["job-1"]);
+			await dispatcher.stop();
+		});
+
+		it("restoring admission never lifts a boot hold", async () => {
+			const { runner, started } = controllableRunner();
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+			dispatcher.hold();
+			dispatcher.drain(true);
+			dispatcher.drain(false);
+			store.pending = [job(1)];
+			await dispatcher.tick();
+			expect(started).toEqual([]);
+			await dispatcher.stop();
+		});
+	});
 });
