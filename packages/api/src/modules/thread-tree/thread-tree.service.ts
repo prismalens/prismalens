@@ -41,6 +41,8 @@ const logger = new Logger({ context: "ThreadTree" });
 
 /** How often queued messages, finished children and approved actions are looked at. */
 const TICK_MS = 2_000;
+/** Refused reopens of a waiting parent before its wait is dropped: about a minute of ticks. */
+const REOPEN_TRIES = 30;
 /** The roster lines a child's first prompt lists; a bigger tree is cut with a count. */
 const ROSTER_LINES = 20;
 
@@ -159,6 +161,7 @@ export class ThreadTreeService
 {
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private ticking: Promise<void> | null = null;
+	private readonly reopenTries = new Map<string, number>();
 	/** Children that ended after this were not yet looked at; the first tick reads all. */
 	private sweptTo = new Date(0);
 
@@ -355,10 +358,23 @@ export class ThreadTreeService
 		if (lower === "root") return members.find((m) => m.id === rootId) ?? null;
 		const numbered = lower.match(/^#?(\d+)$/);
 		if (numbered) return members[Number(numbered[1]) - 1] ?? null;
-		return (
-			members.find((m) => m.id !== selfId && m.role?.toLowerCase() === lower) ??
-			null
-		);
+		// A role can be reused once its holder ends: the running one wins, then the nearest, then the newest.
+		const rank = (m: Row) => [
+			isWorkflowTerminal(m.status) ? 1 : 0,
+			m.parentId === selfId ? 0 : m.parentId === self.parentId ? 1 : 2,
+			-m.createdAt.getTime(),
+		];
+		const [best] = members
+			.filter((m) => m.id !== selfId && m.role?.toLowerCase() === lower)
+			.sort((a, b) => {
+				const [x, y] = [rank(a), rank(b)];
+				return (
+					(x[0] ?? 0) - (y[0] ?? 0) ||
+					(x[1] ?? 0) - (y[1] ?? 0) ||
+					(x[2] ?? 0) - (y[2] ?? 0)
+				);
+			});
+		return best ?? null;
 	}
 
 	// ---------- thread_start ----------
@@ -750,8 +766,34 @@ export class ThreadTreeService
 
 	/** Hands every queued message to its receiver; a result reopens a parent that waits on it. */
 	async drain(): Promise<void> {
+		// Only receivers that can take a message now: a message parked on an ended thread waits for its next run.
+		const receivers = (
+			await this.prisma.threadMessage.findMany({
+				where: { state: "queued" },
+				distinct: ["toId"],
+				select: { toId: true },
+			})
+		).map((r) => r.toId);
+		if (!receivers.length) return;
+		const [running, waiting] = await Promise.all([
+			this.prisma.investigation.findMany({
+				where: { id: { in: receivers }, status: { in: LIVE } },
+				select: { id: true },
+			}),
+			this.prisma.threadWait.findMany({
+				where: { waiterId: { in: receivers } },
+				distinct: ["waiterId"],
+				select: { waiterId: true },
+			}),
+		]);
 		const queued = await this.prisma.threadMessage.findMany({
-			where: { state: "queued" },
+			where: {
+				state: "queued",
+				OR: [
+					{ toId: { in: running.map((r) => r.id) } },
+					{ toId: { in: waiting.map((w) => w.waiterId) }, type: "result" },
+				],
+			},
 			orderBy: { createdAt: "asc" },
 			take: 100,
 		});
@@ -762,7 +804,9 @@ export class ThreadTreeService
 				steer: m.mode === "steer",
 				reopen,
 			});
+			if (reopen && got.state === "later") await this.refusedReopen(m);
 			if (got.state !== "delivered") continue;
+			this.reopenTries.delete(m.id);
 			await this.prisma.threadMessage.update({
 				where: { id: m.id },
 				data: { state: "delivered", deliveredAt: new Date() },
@@ -786,6 +830,20 @@ export class ThreadTreeService
 				messageId: got.messageId,
 			});
 		}
+	}
+
+	/** After REOPEN_TRIES refused reopens the parent stops waiting; its result stays for its next run. */
+	private async refusedReopen(m: { id: string; toId: string; fromId: string }) {
+		const tries = (this.reopenTries.get(m.id) ?? 0) + 1;
+		this.reopenTries.set(m.id, tries);
+		if (tries < REOPEN_TRIES) return;
+		this.reopenTries.delete(m.id);
+		logger.info(
+			`Gave up reopening ${m.toId} for a child's result after ${tries} tries`,
+		);
+		await this.prisma.threadWait.deleteMany({
+			where: { waiterId: m.toId, targetId: m.fromId },
+		});
 	}
 
 	/** Whether a result from `childId` reopens `parentId`: it waits on it, and on all when `all`. */

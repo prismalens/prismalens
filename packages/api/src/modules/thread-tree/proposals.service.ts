@@ -88,9 +88,27 @@ export class ProposalsService {
 		deviceId: string | null,
 	): Promise<Proposal> {
 		const row = await this.open(threadId, id);
+		const { count } = await this.prisma.proposal.updateMany({
+			where: { id: row.id, state: "open" },
+			data: { state: "applying" },
+		});
+		if (!count)
+			throw new ORPCError("CONFLICT", {
+				message: "This proposal is already being applied or was decided.",
+			});
 		const change = ProposalChangeSchema.parse(JSON.parse(row.change));
-		const outcome = await this.run(threadId, change, deviceId);
-		return this.decide(row, "applied", outcome);
+		let outcome: string;
+		try {
+			outcome = await this.run(threadId, change, deviceId);
+		} catch (e) {
+			// The change did not happen, so the card is the user's to try again.
+			await this.prisma.proposal.updateMany({
+				where: { id: row.id, state: "applying" },
+				data: { state: "open" },
+			});
+			throw e;
+		}
+		return this.decide(row, "applied", outcome, "applying");
 	}
 
 	async dismiss(threadId: string, id: string): Promise<Proposal> {
@@ -101,9 +119,10 @@ export class ProposalsService {
 		row: ProposalRow,
 		state: "applied" | "dismissed",
 		outcome: string | null,
+		from: "open" | "applying" = "open",
 	): Promise<Proposal> {
 		const { count } = await this.prisma.proposal.updateMany({
-			where: { id: row.id, state: "open" },
+			where: { id: row.id, state: from },
 			data: { state, outcome, decidedAt: new Date() },
 		});
 		if (!count)

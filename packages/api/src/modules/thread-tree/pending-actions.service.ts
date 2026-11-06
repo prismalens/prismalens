@@ -317,10 +317,15 @@ export class PendingActionsService {
 		if (row.state !== "approved" && row.state !== "executing")
 			return this.answerFor(row);
 		const resumed = row.state === "executing";
-		await this.prisma.pendingAction.updateMany({
+		const claimed = await this.prisma.pendingAction.updateMany({
 			where: { id, state: "approved" },
 			data: { state: "executing" },
 		});
+		// Only the runner that claimed it, or boot resuming it, goes on.
+		if (!resumed && !claimed.count)
+			return this.answerFor(
+				await this.prisma.pendingAction.findUniqueOrThrow({ where: { id } }),
+			);
 		const executor = this.executors.get(row.tool);
 		const args: unknown = JSON.parse(row.args);
 		let outcome: ToolOutcome;

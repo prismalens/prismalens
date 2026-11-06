@@ -305,9 +305,18 @@ function run() {
 					content: text(`${readLinks().join("\n") || "No linked files."}\n`),
 				});
 			if (step.call) {
-				const args = JSON.parse(
-					fill(JSON.stringify(step.call.arguments ?? {}), prompt),
-				);
+				/** @param {unknown} v @returns {unknown} */
+				const subst = (v) =>
+					typeof v === "string"
+						? fill(v, prompt)
+						: Array.isArray(v)
+							? v.map(subst)
+							: v && typeof v === "object"
+								? Object.fromEntries(
+										Object.entries(v).map(([k, x]) => [k, subst(x)]),
+									)
+								: v;
+				const args = subst(step.call.arguments ?? {});
 				const out = await mcpRequest("tools/call", {
 					name: step.call.tool,
 					arguments: args,

@@ -126,7 +126,13 @@ export const ProposalChangeSchema = z.discriminatedUnion("kind", [
 ]);
 export type ProposalChange = z.infer<typeof ProposalChangeSchema>;
 
-export const ProposalStateSchema = z.enum(["open", "applied", "dismissed"]);
+/** `applying`: claimed by one click while its change runs, so a second click changes nothing. */
+export const ProposalStateSchema = z.enum([
+	"open",
+	"applying",
+	"applied",
+	"dismissed",
+]);
 
 export const ProposalSchema = z.object({
 	id: z.string(),

@@ -971,3 +971,124 @@ describe("applying proposals (#1024 spec F)", () => {
 		});
 	});
 });
+
+describe("review fixes at 73232133 (#1024 spec F)", () => {
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+
+	it("Given two runners of one approved action at once, Then one thread starts", async () => {
+		const root = await thread();
+		value(await start(root.id, { requestId: "twice" }));
+		const row = await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "twice" } });
+		await prisma.pendingAction.update({ where: { id: row.id }, data: { state: "approved" } });
+		const [a, b] = await Promise.all([actions.execute(row.id), actions.execute(row.id)]);
+		expect(starts).toHaveLength(1);
+		expect(value(a).childId).toBe(value(b).childId);
+	});
+
+	it("Given a role reused after its holder ended, Then a message and a stop reach the running holder", async () => {
+		await allow();
+		const root = await thread();
+		const old = value(await startIn(root.id, { role: "db" })).childId as string;
+		await prisma.investigation.update({ where: { id: old }, data: { status: "completed", completedAt: new Date() } });
+		const fresh = value(await startIn(root.id, { role: "db" })).childId as string;
+		await prisma.investigation.update({ where: { id: fresh }, data: { status: "running" } });
+		expect((await tree.resolveMember(root.id, "db"))?.id).toBe(fresh);
+		live.add(fresh);
+		value(await tree.send(root.id, { to: "db", type: "fact", text: "use the replica", mode: "queue", requestId: "re1" }));
+		expect(sent.at(-1)?.id).toBe(fresh);
+		value(await actions.gate({ callerId: root.id, rootId: root.id, tool: "thread_cancel", args: { id: "db", reason: "done", requestId: "re2" }, requestId: "re2" }));
+		expect(investigations.markStopRequested).toHaveBeenCalledWith(fresh);
+		// With no running holder, the ended one is still addressable.
+		await prisma.investigation.update({ where: { id: fresh }, data: { status: "completed", completedAt: new Date() } });
+		expect((await tree.resolveMember(root.id, "db"))?.id).toBe(fresh);
+	});
+
+	it("Given more parked messages than one batch, Then a message to a running thread is still delivered", async () => {
+		await allow();
+		const root = await thread();
+		const ended = value(await startIn(root.id, { role: "ended" })).childId as string;
+		const running = value(await startIn(root.id, { role: "running" })).childId as string;
+		await prisma.investigation.update({ where: { id: ended }, data: { status: "completed", completedAt: new Date() } });
+		await prisma.investigation.update({ where: { id: running }, data: { status: "running" } });
+		await prisma.threadMessage.deleteMany();
+		await prisma.threadMessage.createMany({
+			data: Array.from({ length: 101 }, (_, i) => ({
+				rootId: root.id,
+				fromId: root.id,
+				toId: ended,
+				type: "fact",
+				text: `old ${i}`,
+				requestId: `old-${i}`,
+			})),
+		});
+		live.add(running);
+		value(await tree.send(root.id, { to: "running", type: "fact", text: "fresh news", mode: "queue", requestId: "fresh" }));
+		expect(sent.some((m) => m.id === running && m.text.includes("fresh news"))).toBe(true);
+		expect(await prisma.threadMessage.count({ where: { toId: ended, state: "queued" } })).toBe(101);
+	});
+
+	it("Given a waiting parent whose reopen keeps being refused, Then it stops trying after a bounded number of ticks", async () => {
+		await allow();
+		const root = await thread();
+		const child = value(await startIn(root.id, { role: "db" })).childId as string;
+		value(await tree.wait(root.id, ["db"], "all"));
+		await prisma.investigation.update({ where: { id: root.id }, data: { status: "completed" } });
+		await prisma.investigation.update({ where: { id: child }, data: { status: "completed", completedAt: new Date() } });
+		dispatch.resumeInvestigation.mockImplementation(async () => {
+			throw new FollowUpRefused("Pick an agent to continue in.");
+		});
+		let tries = 0;
+		try {
+			for (let i = 0; i < 40; i++) await tree.tick();
+		} finally {
+			tries = dispatch.resumeInvestigation.mock.calls.length;
+			dispatch.resumeInvestigation.mockReset();
+			dispatch.resumeInvestigation.mockImplementation(async (id: string, text: string) => {
+				resumed.push({ id, text });
+				await prisma.investigation.update({ where: { id }, data: { status: "pending" } });
+				return true;
+			});
+		}
+		expect(tries).toBe(30);
+		expect(await prisma.threadWait.count({ where: { waiterId: root.id } })).toBe(0);
+		// The result itself is kept for the parent's next run.
+		expect(await prisma.threadMessage.count({ where: { toId: root.id, type: "result", state: "queued" } })).toBe(1);
+	});
+});
+
+describe("proposals are claimed before they apply (#1024 spec F)", () => {
+	it("Given two applies at once, Then the change runs once and the second gets a conflict", async () => {
+		let release = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const addSource = vi.fn(async () => {
+			await gate;
+			return { id: "repo-1" };
+		});
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const p = new ProposalsService(prisma, io, settings, { addSource } as never, {} as never);
+		const root = await thread();
+		const made = await p.propose(root.id, { kind: "project_add", source: "/code/shop" }, "w");
+		if ("error" in made) throw new Error(made.error);
+		const first = p.apply(root.id, made.id, null);
+		const second = p.apply(root.id, made.id, null);
+		await expect(second).rejects.toThrow(/already being applied/);
+		release();
+		expect((await first).state).toBe("applied");
+		expect(addSource).toHaveBeenCalledTimes(1);
+	});
+
+	it("Given a change that fails, Then the card is open again to retry", async () => {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const addSource = vi.fn(async () => {
+			throw new Error("not a git repository");
+		});
+		const p = new ProposalsService(prisma, io, settings, { addSource } as never, {} as never);
+		const root = await thread();
+		const made = await p.propose(root.id, { kind: "project_add", source: "/nope" }, "w");
+		if ("error" in made) throw new Error(made.error);
+		await expect(p.apply(root.id, made.id, null)).rejects.toThrow(/not a git repository/);
+		expect((await prisma.proposal.findUniqueOrThrow({ where: { id: made.id } })).state).toBe("open");
+	});
+});
