@@ -1032,6 +1032,19 @@ export {
 /** An unanswered ask is denied after this long, so an unattended run still reaches its report (#673 w21). */
 export const ASK_TIMEOUT_MS = 10 * 60 * 1000;
 
+/** One entry of the agent's latest ACP `plan` update (#1024). */
+export const PlanEntrySchema = z.object({
+	content: z.string().max(2000),
+	status: z.enum(["pending", "in_progress", "completed"]),
+	priority: z.enum(["high", "medium", "low"]).optional(),
+});
+export type PlanEntry = z.infer<typeof PlanEntrySchema>;
+/** Entries kept from one plan update; an agent's own list is rarely longer. */
+export const PLAN_MAX_ENTRIES = 100;
+export const AgentPlanSchema = z.array(PlanEntrySchema).max(PLAN_MAX_ENTRIES);
+/** UTF-8 bytes of thinking kept per turn; the rest is dropped and `truncated` says so (#1024). */
+export const THOUGHT_MAX_BYTES = 16 * 1024;
+
 export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("agent_step"),
@@ -1288,6 +1301,27 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("resumed"),
 		...StreamBaseShape,
 		reason: z.enum(["limit_reset", "idle_compact", "wake"]),
+	}),
+	z.object({
+		/** The agent's plan replaced whole, as ACP sends it (#1024). */
+		kind: z.literal("plan"),
+		...StreamBaseShape,
+		entries: AgentPlanSchema,
+	}),
+	z.object({
+		/** The agent's thinking since its last step, bounded per turn (#1024). */
+		kind: z.literal("thought"),
+		...StreamBaseShape,
+		text: z.string().max(THOUGHT_MAX_BYTES),
+		truncated: z.literal(true).optional(),
+	}),
+	z.object({
+		/** PrismaLens linked a pull request to the thread (#1024). */
+		kind: z.literal("pull_request_linked"),
+		...StreamBaseShape,
+		prId: z.string(),
+		url: z.string(),
+		source: z.enum(["agent", "branch", "user"]),
 	}),
 	z.object({
 		kind: z.literal("report"),

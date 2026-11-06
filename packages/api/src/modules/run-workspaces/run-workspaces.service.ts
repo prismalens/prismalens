@@ -10,10 +10,12 @@ import {
 } from "@nestjs/common";
 import {
 	DEFAULT_RUN_WORKSPACE_SETTINGS,
+	type EditorId,
 	type KeptWorkspace,
 	type RunWorkspaceGlobal,
 	type RunWorkspaceOverride,
 	RunWorkspaceOverrideSchema,
+	RunWorkspaceSchema,
 	type RunWorkspaceSettings,
 	RunWorkspaceSettingsSchema,
 	resolveRunWorkspaceSettings,
@@ -37,6 +39,13 @@ import {
 	sweepRunWorktrees,
 } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { readThreadContextSettings } from "../threads/thread-context-settings.js";
+import {
+	detectEditors,
+	editorCommand,
+	existingInsideRoot,
+	launch,
+} from "./editors.js";
 
 const GLOBAL_KEY = "runWorkspace.global";
 const OVERRIDE_PREFIX = "runWorkspace.service.";
@@ -413,6 +422,42 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 
 	remove(runId: string, dir: string) {
 		return removeKeptWorkspace(this.kept(runId, dir));
+	}
+
+	/**
+	 * The run's own workspace, or a file in it, in an editor (#1024). The path must stay
+	 * inside the recorded cwd; the editor gets an argument array, never a shell.
+	 */
+	async openInEditor(input: {
+		id: string;
+		path?: string;
+		line?: number;
+		editor?: EditorId | "system";
+	}): Promise<{ opened: boolean; editor: EditorId | "system" }> {
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: input.id },
+			select: { workspace: true },
+		});
+		const ws = run
+			? RunWorkspaceSchema.safeParse(parseJson(run.workspace ?? "")).data
+			: undefined;
+		if (!ws)
+			throw new RunWorkspaceNotFoundError("The run recorded no workspace");
+		const target = await existingInsideRoot(ws.cwd, input.path);
+		if (!target)
+			throw new RunWorkspaceNotFoundError("No such file in the workspace");
+		const editor =
+			input.editor ?? (await readThreadContextSettings(this.prisma)).editor;
+		const found = detectEditors().find((e) => e.id === editor);
+		if (editor !== "system" && !found)
+			throw new RunWorkspaceNotFoundError(`${editor} is not installed`);
+		const [cmd, args] = editorCommand(editor, target, input.line, {
+			platform: process.platform,
+			...(found ? { command: found.command } : {}),
+		});
+		const opened = await launch(cmd, args);
+		if (!opened) this.logger.warn(`Could not start ${cmd} for ${target}`);
+		return { opened, editor };
 	}
 
 	open(runId: string, dir: string): { opened: boolean } {

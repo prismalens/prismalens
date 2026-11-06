@@ -85,6 +85,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.investigationEvent;
 	}
 
+	get pullRequest() {
+		return db.pullRequest;
+	}
+
 	/** The dispatch JobStore's table (claim / heartbeat / reclaim). */
 	get job() {
 		return db.job;

@@ -1,0 +1,21 @@
+{
+	"html_url": "https://github.com/cli/cli/pull/14927",
+	"number": 14927,
+	"state": "open",
+	"title": "Add guided multi-account setup and evaluation",
+	"draft": true,
+	"merged": false,
+	"merged_at": null,
+	"mergeable": true,
+	"mergeable_state": "unstable",
+	"user": {
+		"login": "williammartin",
+		"avatar_url": "https://avatars.githubusercontent.com/u/1611510?v=4"
+	},
+	"head": {
+		"sha": "d43c4e3ad3c34332c803a568f85f116e3ee58f19",
+		"ref": "williammartin-multiaccount-draft-08-evaluation"
+	},
+	"requested_reviewers": [],
+	"requested_teams": []
+}

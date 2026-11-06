@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import type { PrHost } from "@prismalens/contracts";
+import { repoPath, urlHost } from "../../core/harness/git-credential.js";
+
+/** A pull request URL as written; nothing about it is trusted yet. */
+export interface PrUrl {
+	/** The URL rebuilt from its parts, so stored and compared URLs agree. */
+	url: string;
+	host: string;
+	/** `owner/repo`, or a GitLab project path with its groups. */
+	repo: string;
+	number: number;
+	shape: PrHost;
+}
+
+const SEGMENT = /^[\w.~-]+$/;
+const MAX_NUMBER = 2 ** 31 - 1;
+
+/** Parses the three shapes PrismaLens knows; null for anything else. */
+export function parsePrUrl(raw: string): PrUrl | null {
+	let u: URL;
+	try {
+		u = new URL(raw.trim());
+	} catch {
+		return null;
+	}
+	if (u.protocol !== "https:" || u.username || u.password) return null;
+	const host = u.host.toLowerCase();
+	const parts = u.pathname.split("/").filter(Boolean);
+	const at = (shape: PrHost, repoParts: string[], n: string | undefined) => {
+		const number = Number(n);
+		if (!Number.isInteger(number) || number < 1 || number > MAX_NUMBER)
+			return null;
+		if (!repoParts.length || !repoParts.every((p) => SEGMENT.test(p)))
+			return null;
+		const repo = repoParts.join("/");
+		const tail =
+			shape === "gitlab"
+				? `-/merge_requests/${number}`
+				: shape === "github"
+					? `pull/${number}`
+					: `pull-requests/${number}`;
+		return {
+			url: `https://${host}/${repo}/${tail}`,
+			host,
+			repo,
+			number,
+			shape,
+		};
+	};
+	const mr = parts.indexOf("-");
+	if (mr >= 2 && parts[mr + 1] === "merge_requests")
+		return at("gitlab", parts.slice(0, mr), parts[mr + 2]);
+	if (parts.length >= 4 && parts[2] === "pull")
+		return at("github", parts.slice(0, 2), parts[3]);
+	if (parts.length >= 4 && parts[2] === "pull-requests")
+		return at("other", parts.slice(0, 2), parts[3]);
+	return null;
+}
+
+const URL_IN_TEXT = /https:\/\/[^\s<>()[\]{}"'`|\\^]+/g;
+
+/** Every distinct PR URL in a piece of agent text, in order. */
+export function prUrlsIn(text: string): PrUrl[] {
+	const seen = new Map<string, PrUrl>();
+	for (const m of text.matchAll(URL_IN_TEXT)) {
+		const pr = parsePrUrl(m[0].replace(/[.,;:!?*_]+$/, ""));
+		if (pr && !seen.has(pr.url)) seen.set(pr.url, pr);
+	}
+	return [...seen.values()];
+}
+
+/** A git remote PrismaLens has configured, as host and repo path. */
+export interface KnownRemote {
+	repositoryId: string;
+	host: string;
+	repo: string;
+	/** The remote as git reaches it, for the credential lookup. */
+	gitUrl: string;
+}
+
+export function remoteOf(
+	repositoryId: string,
+	gitUrl: string,
+): KnownRemote | null {
+	const host = urlHost(gitUrl);
+	const repo = repoPath(gitUrl);
+	if (!host || !repo.includes("/") || repo.includes(" ")) return null;
+	return { repositoryId, host, repo: repo.toLowerCase(), gitUrl };
+}
+
+/**
+ * Agent text is untrusted (#1024 decision 2): a PR URL counts only when its host
+ * and repo are a configured repository's, compared exactly, so a look-alike host never matches.
+ */
+export function trustedRemote<T extends KnownRemote>(
+	pr: PrUrl,
+	remotes: readonly T[],
+): T | null {
+	return (
+		remotes.find(
+			(r) => r.host === pr.host && r.repo === pr.repo.toLowerCase(),
+		) ?? null
+	);
+}
+
+/** The API origin comes from this fixed mapping, never from the URL's own path. */
+export function apiBase(pr: Pick<PrUrl, "host" | "shape">): string | null {
+	if (pr.shape === "github")
+		return pr.host === "github.com"
+			? "https://api.github.com"
+			: `https://${pr.host}/api/v3`;
+	if (pr.shape === "gitlab") return `https://${pr.host}/api/v4`;
+	return null;
+}

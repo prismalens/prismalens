@@ -1,0 +1,35 @@
+[
+	{
+		"iid": 4288,
+		"title": "refactor(packages): deprecate the rm alias of delete in favour of del",
+		"state": "merged",
+		"draft": false,
+		"web_url": "https://gitlab.com/gitlab-org/cli/-/merge_requests/4288",
+		"author": {
+			"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/3457201/avatar.png?v=1793884314",
+			"username": "viktomas"
+		}
+	},
+	{
+		"iid": 4286,
+		"title": "feat(api): accept PKCS#12 and DER client certificates",
+		"state": "merged",
+		"draft": false,
+		"web_url": "https://gitlab.com/gitlab-org/cli/-/merge_requests/4286",
+		"author": {
+			"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/12347103/avatar.png?v=1793896644",
+			"username": "arpitgogia"
+		}
+	},
+	{
+		"iid": 4262,
+		"title": "feat(deploy-token): Add the delete command",
+		"state": "merged",
+		"draft": false,
+		"web_url": "https://gitlab.com/gitlab-org/cli/-/merge_requests/4262",
+		"author": {
+			"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/939514/avatar.png?v=1793906563",
+			"username": "vertisan"
+		}
+	}
+]

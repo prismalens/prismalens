@@ -118,6 +118,12 @@ export class RunWorkspacesController {
 					return notFound(() => this.service.open(input.runId, input.dir));
 				},
 			),
+			openInEditor: implement(runWorkspacesContract.openInEditor).handler(
+				async ({ input, context }) => {
+					hostOnly(context.request);
+					return notFoundAsync(() => this.service.openInEditor(input));
+				},
+			),
 		};
 	}
 }

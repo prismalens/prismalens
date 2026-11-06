@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { join } from "node:path";
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { repositoriesContract } from "@prismalens/contracts";
@@ -13,6 +14,7 @@ import type { Repository as PrismaRepository } from "@prismalens/database";
 import type { Request } from "express";
 import { isHost } from "../../core/settings/settings.controller.js";
 import { browseFolders } from "./folder-browser.js";
+import { detectScripts } from "./project-scripts.js";
 import { RepositoriesService } from "./repositories.service.js";
 import { serializeRepository } from "./serialize-repository.js";
 
@@ -152,6 +154,20 @@ export class RepositoriesController {
 			delete: implement(repositoriesContract.delete).handler(
 				async ({ input, context }) => {
 					await this.repositoriesService.delete(input.id);
+				},
+			),
+
+			// GET /repositories/:id/scripts - A folder project's declared scripts; a git URL has no folder here
+			scripts: implement(repositoriesContract.scripts).handler(
+				async ({ input }) => {
+					const repo = await this.repositoriesService.findById(input.id);
+					if (!repo)
+						throw new ORPCError("NOT_FOUND", {
+							message: "Repository not found",
+						});
+					if (repo.sourceKind !== "folder") return { scripts: [] };
+					const dir = repo.subPath ? join(repo.url, repo.subPath) : repo.url;
+					return { scripts: await detectScripts(dir) };
 				},
 			),
 		};

@@ -81,6 +81,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{} as never,
 			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
 			{ compose: async () => undefined } as never,
+			{ rowGlyphs: async () => new Map() } as never,
 		);
 	const query = (over: Record<string, unknown> = {}) =>
 		ThreadFeedQuerySchema.parse(over);
@@ -177,6 +178,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{} as never,
 			{ withDrafts: async () => drafts } as never,
 			{} as never,
+			{ rowGlyphs: async () => new Map() } as never,
 		);
 		const feed = await svc.feed(query(), NOW);
 		const rows = feed.units.flatMap((u) => u.threads);

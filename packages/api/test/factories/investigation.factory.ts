@@ -48,6 +48,7 @@ export class InvestigationFactory {
 			lastActivityAt: null,
 			limitResetsAt: null,
 			autoResume: null,
+			agentPlan: null,
 			acpSessionId: null,
 			workspace: null,
 			startedAt: null,

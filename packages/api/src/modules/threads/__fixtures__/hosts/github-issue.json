@@ -1,0 +1,11 @@
+{
+	"html_url": "https://github.com/cli/cli/issues/14755",
+	"number": 14755,
+	"title": "Support persistent command defaults without requiring custom aliases",
+	"state": "open",
+	"state_reason": null,
+	"user": {
+		"login": "samaluk",
+		"avatar_url": "https://avatars.githubusercontent.com/u/80332200?v=4"
+	}
+}

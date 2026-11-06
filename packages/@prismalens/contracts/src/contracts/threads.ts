@@ -10,17 +10,24 @@ import {
 	AttachmentSchema,
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
+	LinkPullRequestSchema,
+	PullRequestSchema,
 	RenameThreadSchema,
+	ResolvedLinksSchema,
+	ResolveLinksSchema,
 	SettledStateSchema,
 	SettleThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
+	ThreadContextSchema,
 	ThreadFeedQuerySchema,
 	ThreadFeedSchema,
 	ThreadIdSchema,
 	ThreadListQuerySchema,
 	ThreadListSchema,
+	ThreadPullRequestsSchema,
 	ThreadSettingsSchema,
+	UnlinkPullRequestSchema,
 	UploadDraftAttachmentSchema,
 	UploadThreadAttachmentSchema,
 } from "../schemas/index.js";
@@ -188,4 +195,88 @@ export const threadsContract = {
 		})
 		.input(GetAttachmentSchema)
 		.output(z.file()),
+
+	/**
+	 * What the right panel shows for this kind of thread (#1024)
+	 * GET /threads/:id/context
+	 */
+	context: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/context",
+			summary:
+				"Read what a thread is about: machine, code, PRs, incident or schedule",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(ThreadContextSchema),
+
+	/**
+	 * The thread's pull requests, refreshed from the host when older than 60 s
+	 * GET /threads/:id/pull-requests
+	 */
+	pullRequests: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/pull-requests",
+			summary: "List a thread's pull requests with their state and checks",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(ThreadPullRequestsSchema),
+
+	/**
+	 * Link a pull request URL the user pasted
+	 * POST /threads/:id/pull-requests
+	 */
+	linkPullRequest: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pull-requests",
+			summary: "Link a pull request to a thread",
+			tags: ["threads"],
+		})
+		.input(LinkPullRequestSchema)
+		.output(PullRequestSchema),
+
+	/**
+	 * DELETE /threads/:id/pull-requests/:prId
+	 */
+	unlinkPullRequest: oc
+		.route({
+			method: "DELETE",
+			path: "/threads/{id}/pull-requests/{prId}",
+			summary: "Unlink a pull request from a thread",
+			tags: ["threads"],
+		})
+		.input(UnlinkPullRequestSchema)
+		.output(z.object({ removed: z.boolean() })),
+
+	/**
+	 * Read every linked PR from its host now, and look the branch up again
+	 * POST /threads/:id/pull-requests/refresh
+	 */
+	refreshPullRequests: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pull-requests/refresh",
+			summary: "Refresh a thread's pull requests from the git host",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(ThreadPullRequestsSchema),
+
+	/**
+	 * Which of the names the agent wrote exist, and what each opens
+	 * POST /threads/:id/links/resolve
+	 */
+	resolveLinks: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/links/resolve",
+			summary: "Resolve paths, URLs, threads and artifacts named in agent text",
+			tags: ["threads"],
+		})
+		.input(ResolveLinksSchema)
+		.output(ResolvedLinksSchema),
 };
