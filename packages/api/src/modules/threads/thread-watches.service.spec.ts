@@ -258,4 +258,17 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		await h.svc.tick(new Date(t0 + 61_000));
 		expect(h.prSvc.refreshForWatch).toHaveBeenCalledTimes(1);
 	});
+
+	it("Given a waiting wake that already holds the line, Then the pass leaves it as it is, its other lines kept", async () => {
+		const h = harness({ prs: [pr({ id: "a", number: 1 })] });
+		await h.svc.watch(THREAD, "a", "merged");
+		const line = "Pull request acme/shop#1: merged. You asked to hear when it was merged (pr_watch).";
+		h.wakes.push({ kind: "pr_watch", at: new Date(), reason: `Another PR ended.\n${line}`, state: "pending", payload: {} });
+		const scheduled = vi.mocked(h.svc["wakes"].schedule).mock.calls.length;
+		h.prs[0] = pr({ id: "a", number: 1, state: "merged" });
+		await h.svc.tick();
+		expect(vi.mocked(h.svc["wakes"].schedule).mock.calls.length).toBe(scheduled);
+		expect(h.wakes.filter((w) => w.state === "pending").map((w) => w.reason)).toEqual([`Another PR ended.\n${line}`]);
+	});
 });
+

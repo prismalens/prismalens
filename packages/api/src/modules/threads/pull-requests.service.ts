@@ -57,6 +57,7 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import {
 	type EtagCache,
 	type HostRead,
+	HostReadError,
 	readGithub,
 	readGitlab,
 } from "./pr-hosts.js";
@@ -119,6 +120,15 @@ function detailView(raw: unknown, image: ImageFor): PrDetail | undefined {
 				}
 			: {}),
 	};
+}
+
+/**
+ * The host itself could not answer: no connection, a 5xx or a 429. Any other answer,
+ * a deleted PR's 404 included, is about that PR, so a watch need not back off for it.
+ */
+export function hostDown(e: unknown): boolean {
+	if (!(e instanceof HostReadError)) return true;
+	return e.status !== undefined && (e.status >= 500 || e.status === 429);
 }
 
 export function pullRequestView(
@@ -333,7 +343,6 @@ export class PullRequestsService implements OnModuleInit {
 		return row;
 	}
 
-	/** Reads stale rows from their hosts; a host that fails leaves the row as it was. */
 	/**
 	 * A PR watch's pass (#1024 spec B): every PR read from its host now, and whether any
 	 * host failed to answer, so the watch can back off instead of asking again.
@@ -353,6 +362,7 @@ export class PullRequestsService implements OnModuleInit {
 		};
 	}
 
+	/** Reads stale rows from their hosts; a host that fails leaves the row as it was. */
 	private async refreshRows(
 		rows: PullRequestRow[],
 		force: boolean,
@@ -394,7 +404,7 @@ export class PullRequestsService implements OnModuleInit {
 				this.logger.warn(
 					`Could not read ${pr.host} ${pr.repo}#${pr.number}: ${e instanceof Error ? e.message : String(e)}`,
 				);
-				failures?.push(row.id);
+				if (hostDown(e)) failures?.push(row.id);
 				out.push(row);
 			}
 		}

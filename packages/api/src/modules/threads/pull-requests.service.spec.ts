@@ -48,6 +48,8 @@ function setup(
 		workspace?: unknown;
 		repositories?: Record<string, unknown>[];
 		token?: boolean;
+		/** In place of the fake host: a fetch of the test's own, e.g. one that cannot connect. */
+		fetch?: typeof fetch;
 	} = {},
 ) {
 	const db = fakeDb({
@@ -98,7 +100,7 @@ function setup(
 		db as never,
 		credentials as never,
 		investigations as never,
-		host.impl,
+		opts.fetch ?? host.impl,
 	);
 	return { db, host, svc, appended, investigations, credentials };
 }
@@ -494,15 +496,31 @@ describe("a folder project's remote", () => {
 		expect((await svc.remotes()).map((r) => r.repositoryId)).toEqual(["folder"]);
 	});
 
-	it("Given a watch pass, Then each PR is read from its host now, and a host that does not answer is reported, not swallowed (#1024 spec B)", async () => {
-		const down = setup({ routes: {} });
-		await down.svc.readAgentEvents(RUN, [step(PR_URL)]);
-		const failed = await down.svc.refreshForWatch(RUN);
-		expect(failed.failed).toBe(true);
-		expect(failed.pullRequests[0]).toMatchObject({ state: "unknown" });
-		const up = setup();
-		await up.svc.readAgentEvents(RUN, [step(PR_URL)]);
-		const read = await up.svc.refreshForWatch(RUN);
+	it("Given a watch pass, Then each PR is read now, and a host that cannot be reached, fails or limits is reported, while a 404 is not (#1024 spec B)", async () => {
+		const pass = async (opts: Parameters<typeof setup>[0]) => {
+			const t = setup(opts);
+			await t.svc.readAgentEvents(RUN, [step(PR_URL)]);
+			return t.svc.refreshForWatch(RUN);
+		};
+		const refused = await pass({
+			fetch: (async () => {
+				throw new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED 127.0.0.1:443") });
+			}) as typeof fetch,
+		});
+		expect(refused.failed).toBe(true);
+		expect(refused.pullRequests[0]).toMatchObject({ state: "unknown" });
+		const busy = await pass({
+			fetch: (async () => new Response("busy", { status: 503 })) as typeof fetch,
+		});
+		expect(busy.failed).toBe(true);
+		const limited = await pass({
+			fetch: (async () => new Response("slow down", { status: 429 })) as typeof fetch,
+		});
+		expect(limited.failed).toBe(true);
+		// A deleted PR answers 404: the host is fine, so nothing backs off.
+		const gone = await pass({ routes: {} });
+		expect(gone.failed).toBe(false);
+		const read = await pass({});
 		expect(read.failed).toBe(false);
 		expect(read.pullRequests[0]).toMatchObject({ state: "draft" });
 	});
