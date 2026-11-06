@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it } from "vitest";
-import { dayGroup, threadGroups } from "./thread-groups";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dayGroup, rowWhen, threadGroups } from "./thread-groups";
 
 const now = new Date(2026, 10, 5, 15, 0).getTime();
 const at = (d: number, h = 9) => new Date(2026, 10, d, h, 0).getTime();
@@ -37,5 +37,31 @@ describe("threadGroups", () => {
 
 	it("names a day more than a week back by its month", () => {
 		expect(dayGroup(new Date(2026, 9, 2).getTime(), now)).toBe("October 2026");
+	});
+});
+
+describe("a zone whose DST skips local midnight", () => {
+	// Chile moves 2026-09-06 00:00 to 01:00, so that day has no midnight.
+	const zone = process.env.TZ;
+	beforeAll(() => {
+		process.env.TZ = "America/Santiago";
+	});
+	afterAll(() => {
+		if (zone === undefined) delete process.env.TZ;
+		else process.env.TZ = zone;
+	});
+
+	it("keeps 00:30 the day before in Yesterday", () => {
+		const sunday = new Date(2026, 8, 6, 15, 0).getTime();
+		expect(dayGroup(new Date(2026, 8, 5, 0, 30).getTime(), sunday)).toBe(
+			"Yesterday",
+		);
+	});
+
+	it("keeps the week's first half hour a weekday, not a date", () => {
+		const sunday = new Date(2026, 8, 6, 15, 0).getTime();
+		expect(rowWhen(new Date(2026, 7, 31, 0, 30).getTime(), sunday)).not.toMatch(
+			/\d/,
+		);
 	});
 });
