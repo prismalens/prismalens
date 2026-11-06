@@ -207,6 +207,8 @@ export class PullRequestsService implements OnModuleInit {
 	async linkFromUser(
 		investigationId: string,
 		url: string,
+		/** `agent` when its `pr_link` tool asked (#1024 spec B). */
+		source: "user" | "agent" = "user",
 	): Promise<PullRequest> {
 		await this.requireThread(investigationId);
 		const pr = parsePrUrl(url);
@@ -220,7 +222,7 @@ export class PullRequestsService implements OnModuleInit {
 				message:
 					"That pull request is not on a repository PrismaLens knows. Add the repository first.",
 			});
-		const row = await this.store(investigationId, pr, remote, "user");
+		const row = await this.store(investigationId, pr, remote, source);
 		// The link is stored either way; only "Show pull request status" lets it reach the host.
 		if (!(await readThreadContextSettings(this.prisma)).prStatus)
 			return this.view(row);

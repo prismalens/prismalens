@@ -1,0 +1,53 @@
+{
+	"row": "gateway-wakeup-schedule",
+	"kind": "happy",
+	"title": "Schedules its own wake through PrismaLens's wakeup_schedule tool, then reports",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "wakeup_schedule",
+				"ok": true,
+				"outputHas": "scheduled"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-wakeup-schedule]",
+				"toolName": "$gw:wakeup_schedule",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:wakeup_schedule",
+						"arguments": {
+							"delaySeconds": 600,
+							"reason": "Check the rollout"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-wakeup-schedule]",
+				"hasToolResult": true
+			},
+			"response": {
+				"content": "$report"
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-wakeup-schedule]"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}
