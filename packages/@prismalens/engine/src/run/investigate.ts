@@ -7,6 +7,7 @@
  * permission asks by the run's level, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
+import { randomUUID } from "node:crypto";
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -247,6 +248,20 @@ export interface RunInvestigationOptions {
 		context?: JobMessageContext;
 		/** A newer run on the incident saw other commits; the prompt says so (#673 w27). */
 		newer?: NewerRun;
+		/**
+		 * Compact with the agent's own command first (#1024); `only` sends no
+		 * message after it. `before` is the context the row last recorded.
+		 */
+		compact?: {
+			command: string;
+			instructions?: string;
+			only?: boolean;
+			before?: number;
+		};
+		/** The line's queue id; with `compact` the line is recorded as queued before it (#1024). */
+		messageId?: string;
+		/** Queued messages the line carries, acknowledged on its `operator_message` (#1024). */
+		delivers?: string[];
 	};
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
@@ -754,6 +769,10 @@ export async function* runInvestigation(
 	let text = "";
 	let sawEvidence = false;
 	const ownCalls = new Set<string>();
+	/** The context the agent last reported, and whether PrismaLens's own compact turn runs (#1024). */
+	let lastUsed: number | undefined = opts.resume?.compact?.before;
+	let compacting = false;
+	let autoCompactFrom: number | undefined;
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
 	let heldMode: string | null = null;
 	let lastCall: { title?: string; toolCallId?: string } | null = null;
@@ -791,7 +810,36 @@ export async function* runInvestigation(
 				}
 				if (u.sessionUpdate === "usage_update") {
 					const usage = parseUsageUpdate(u);
-					if (usage) opts.onUsage?.(usage);
+					if (usage) {
+						lastUsed = usage.used;
+						opts.onUsage?.(usage);
+					}
+				}
+				// The agent compacted on its own; PrismaLens's own compact turn records itself.
+				if (u.sessionUpdate === "compaction_update" && !compacting) {
+					const status = (u as { status?: unknown }).status;
+					const flushed = adapter.flushText();
+					if (flushed) yield flushed;
+					if (status === "in_progress") {
+						autoCompactFrom = lastUsed;
+						yield adapter.compaction("started", "agent_auto", {
+							...(lastUsed !== undefined ? { before: lastUsed } : {}),
+						});
+					} else if (status === "completed" || status === "failed") {
+						yield adapter.compaction(
+							status === "completed" ? "completed" : "failed",
+							"agent_auto",
+							{
+								...(autoCompactFrom !== undefined
+									? { before: autoCompactFrom }
+									: {}),
+								...(lastUsed !== undefined && lastUsed !== autoCompactFrom
+									? { after: lastUsed }
+									: {}),
+							},
+						);
+						autoCompactFrom = undefined;
+					}
 				}
 				if (u.sessionUpdate === "tool_call")
 					lastCall = { title: u.title, toolCallId: u.toolCallId };
@@ -1149,8 +1197,62 @@ export async function* runInvestigation(
 			return yield* consume(session.prompt(parts));
 		};
 
+		/** The agent's own compact command as a turn, between two boundary events (#1024). */
+		const compactTurn = async function* (
+			c: NonNullable<NonNullable<RunInvestigationOptions["resume"]>["compact"]>,
+		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+			const before = lastUsed;
+			const instructions = c.instructions?.trim();
+			yield adapter.compaction("started", "agent_command", {
+				...(before !== undefined ? { before } : {}),
+				...(instructions ? { instructions } : {}),
+			});
+			compacting = true;
+			let r: { stop: string } | { error: string };
+			try {
+				r = yield* turn([
+					{
+						type: "text",
+						text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
+					},
+				]);
+			} finally {
+				compacting = false;
+			}
+			const flushed = adapter.flushText();
+			if (flushed) yield flushed;
+			text = "";
+			const ok = "stop" in r && r.stop !== "cancelled";
+			yield adapter.compaction(ok ? "completed" : "failed", "agent_command", {
+				...(before !== undefined ? { before } : {}),
+				...(ok && lastUsed !== undefined && lastUsed !== before
+					? { after: lastUsed }
+					: {}),
+			});
+			return r;
+		};
+
 		let outcome: { stop: string } | { error: string };
-		if (opts.resume) {
+		// A compaction can fail on a usage limit: the line waits as queued, so a later resume still sends it.
+		const lineId =
+			opts.resume?.messageId ??
+			(opts.resume?.compact && !opts.resume.compact.only
+				? randomUUID()
+				: undefined);
+		if (opts.resume?.compact && !opts.resume.compact.only && lineId)
+			yield adapter.messageQueued(
+				lineId,
+				opts.resume.text,
+				refsOf(opts.resume.attachments),
+				opts.resume.context,
+				opts.resume.delivers,
+			);
+		const compacted = opts.resume?.compact
+			? yield* compactTurn(opts.resume.compact)
+			: null;
+		if (compacted && ("error" in compacted || opts.resume?.compact?.only)) {
+			outcome = compacted;
+		} else if (opts.resume) {
 			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
 			const handoff = fresh?.text ?? opts.resume.handoff;
 			const via = opts.resume.via;
@@ -1161,7 +1263,7 @@ export async function* runInvestigation(
 				heads,
 				refsOf(attachments),
 				kind ?? "chat",
-				undefined,
+				lineId,
 				fresh && via
 					? {
 							...via,
@@ -1173,6 +1275,7 @@ export async function* runInvestigation(
 						}
 					: via,
 				opts.resume.context,
+				opts.resume.delivers,
 			);
 			const said = [
 				...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),

@@ -808,6 +808,26 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(await svc.resumeAfterRestart()).toBe(true);
 	});
 
+	it("the session rows keep their defaults unstored, persist a change, and survive other patches (#1024)", async () => {
+		const { svc } = runtimeService();
+		const stored = () => JSON.parse(store.HARNESS?.value ?? "{}");
+		await svc.updateSettings({ strictEnv: true });
+		expect(stored()).not.toHaveProperty("coldResume");
+		expect(stored()).not.toHaveProperty("resumeAfterLimit");
+		await svc.updateSettings({ coldResume: "compact", coldResumeTokens: 80_000, resumeAfterLimit: false, compactIdle: true });
+		expect(await svc.getSettings()).toMatchObject({
+			coldResume: "compact",
+			coldResumeTokens: 80_000,
+			resumeAfterLimit: false,
+			compactIdle: true,
+		});
+		await svc.updateSettings({ strictEnv: false });
+		expect(stored()).toMatchObject({ coldResume: "compact", coldResumeTokens: 80_000, resumeAfterLimit: false, compactIdle: true });
+		await svc.updateSettings({ coldResume: "ask", coldResumeTokens: 50_000, resumeAfterLimit: true, compactIdle: false });
+		for (const key of ["coldResume", "coldResumeTokens", "resumeAfterLimit", "compactIdle"])
+			expect(stored()).not.toHaveProperty(key);
+	});
+
 	it("strict mode is off by default, saved with the other settings, and gives every agent the allowlist floor (#817)", async () => {
 		const { svc } = runtimeService();
 		expect((await svc.getSettings()).strictEnv).toBeUndefined();

@@ -236,12 +236,15 @@ Given(
 );
 
 When("I expand {string}", async ({ page }, _label: string) => {
-	const expand = page.getByTestId("tools-expand");
-	const toggle = page.getByTestId("step-toggle").first();
-	// The group renders folded once its steps load; wait for it instead of glancing once.
-	await expect(expand.or(toggle).first()).toBeVisible();
-	if (await expand.isVisible()) await expand.click();
-	await expect(toggle).toBeVisible();
+	// A tool group is a plain line until the run's steps load, and only then folds
+	// behind tools-expand; open every folded group until the steps show.
+	await expect(async () => {
+		for (const expand of await page.getByTestId("tools-expand").all())
+			await expand.click({ timeout: 1_000 }).catch(() => {});
+		await expect(page.getByTestId("step-toggle").first()).toBeVisible({
+			timeout: 1_000,
+		});
+	}).toPass({ timeout: 30_000 });
 	if (await page.getByTestId("steps-unfold").isVisible()) {
 		await page.getByTestId("steps-unfold").click();
 	}

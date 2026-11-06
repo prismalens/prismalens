@@ -42,6 +42,7 @@ import {
 } from "@prismalens/config/harness-selection";
 import {
 	type AgentEnvVar,
+	COLD_RESUME_TOKENS,
 	effectiveAccess,
 	type FavouriteModel,
 	type HarnessesResponse,
@@ -132,6 +133,14 @@ export interface HarnessSettings {
 	alertAsks?: "wait";
 	/** Stored only when off: runs a restart cut off resume by default (#981). */
 	resumeAfterRestart?: boolean;
+	/** A long-idle thread with a large context (#1024); absent asks. */
+	coldResume?: "ask" | "compact" | "send";
+	/** Only ask above this many context tokens; absent is COLD_RESUME_TOKENS. */
+	coldResumeTokens?: number;
+	/** Stored only when off: a usage limit schedules a resume (#1024). */
+	resumeAfterLimit?: boolean;
+	/** Stored only when on: idle threads are compacted (#1024). */
+	compactIdle?: boolean;
 	/** Read from HARNESS_ENV: names only. */
 	envNames?: Partial<Record<HarnessId, string[]>>;
 }
@@ -165,6 +174,14 @@ export interface HarnessSettingsPatch {
 	unattendedGithub?: boolean;
 	alertAsks?: "decide" | "wait";
 	resumeAfterRestart?: boolean;
+	/** A long-idle thread with a large context (#1024); absent asks. */
+	coldResume?: "ask" | "compact" | "send";
+	/** Only ask above this many context tokens; absent is COLD_RESUME_TOKENS. */
+	coldResumeTokens?: number;
+	/** Stored only when off: a usage limit schedules a resume (#1024). */
+	resumeAfterLimit?: boolean;
+	/** Stored only when on: idle threads are compacted (#1024). */
+	compactIdle?: boolean;
 }
 
 const RUNTIME_FIELDS = [
@@ -666,6 +683,7 @@ export class HarnessService implements OnApplicationBootstrap {
 				...(parsed.resumeAfterRestart === false
 					? { resumeAfterRestart: false }
 					: {}),
+				...sessionRows(parsed),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -753,6 +771,12 @@ export class HarnessService implements OnApplicationBootstrap {
 			...((patch.resumeAfterRestart ?? current.resumeAfterRestart) === false
 				? { resumeAfterRestart: false }
 				: {}),
+			...sessionRows({
+				coldResume: patch.coldResume ?? current.coldResume,
+				coldResumeTokens: patch.coldResumeTokens ?? current.coldResumeTokens,
+				resumeAfterLimit: patch.resumeAfterLimit ?? current.resumeAfterLimit,
+				compactIdle: patch.compactIdle ?? current.compactIdle,
+			}),
 		};
 		// The variables and the rest of the PATCH land together or not at all (#911).
 		await this.prisma.$transaction(async (tx) => {
@@ -952,4 +976,27 @@ export class HarnessService implements OnApplicationBootstrap {
 					},
 		};
 	}
+}
+
+/** The session rows (#1024), each kept only when it differs from its default. */
+function sessionRows(
+	from: Partial<HarnessSettings>,
+): Pick<
+	HarnessSettings,
+	"coldResume" | "coldResumeTokens" | "resumeAfterLimit" | "compactIdle"
+> {
+	const tokens = from.coldResumeTokens;
+	return {
+		...(from.coldResume === "compact" || from.coldResume === "send"
+			? { coldResume: from.coldResume }
+			: {}),
+		...(typeof tokens === "number" &&
+		Number.isInteger(tokens) &&
+		tokens >= 0 &&
+		tokens !== COLD_RESUME_TOKENS
+			? { coldResumeTokens: tokens }
+			: {}),
+		...(from.resumeAfterLimit === false ? { resumeAfterLimit: false } : {}),
+		...(from.compactIdle === true ? { compactIdle: true } : {}),
+	};
 }

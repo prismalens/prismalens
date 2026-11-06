@@ -2119,3 +2119,98 @@ describe("a service-check run (#979)", () => {
 		expect(prompts[0]).not.toContain("FIRING ALERT");
 	});
 });
+
+describe("session lifecycle over a fake ACP harness (#1024)", () => {
+	it("ends a turn the agent refused for its usage limit with the limit text, not the generic RPC message", async () => {
+		const { events } = await collect("limited");
+		const last = events.at(-1);
+		expect(last?.kind).toBe("error");
+		if (last?.kind === "error") expect(last.message).toBe("You've hit your usage limit. Try again at 3:45 PM.");
+	});
+
+	it("compacts with the agent's own command before the message, between two boundary events", async () => {
+		const { events } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", FAKE_USAGE: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Still slow?",
+				mode: "queue",
+				heads: [],
+				compact: { command: "compact", instructions: "keep the index finding", before: 142_000 },
+			},
+		});
+		const kinds = events.map((e) => (e.kind === "compaction" ? `compaction:${e.phase}` : e.kind));
+		expect(kinds.indexOf("compaction:started")).toBeLessThan(kinds.indexOf("compaction:completed"));
+		expect(kinds.indexOf("compaction:completed")).toBeLessThan(kinds.indexOf("operator_message"));
+		expect(events.find((e) => e.kind === "compaction")).toMatchObject({
+			method: "agent_command",
+			before: 142_000,
+			instructions: "keep the index finding",
+		});
+		const prose = events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("");
+		expect(prose).toContain("Heard: /compact keep the index finding");
+		expect(prose).toContain("Heard: Still slow?");
+		expect(events.at(-1)?.kind).toBe("branch_done");
+	});
+
+	it("a limit during compaction leaves the pending line queued, so it is not lost", async () => {
+		const { events } = await collect("limited", {
+			env: { ...process.env, FAKE_ACP_MODE: "limited", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Still slow? DISTINCT-7421",
+				mode: "queue",
+				heads: [],
+				messageId: "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a",
+				delivers: ["7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b"],
+				compact: { command: "compact" },
+			},
+		});
+		// It names what it carries, so a later resume sends it once, not beside the messages inside it.
+		expect(events.find((e) => e.kind === "message_queued")).toMatchObject({
+			messageId: "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a",
+			text: "Still slow? DISTINCT-7421",
+			delivers: ["7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b"],
+		});
+		expect(events.some((e) => e.kind === "operator_message" && e.delivered)).toBe(false);
+		expect(events.at(-1)?.kind).toBe("error");
+	});
+
+	it("the resume line carries its queue id and the queued messages it delivers", async () => {
+		const { events } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Then this.",
+				mode: "queue",
+				heads: [],
+				messageId: "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a",
+				delivers: ["7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b"],
+			},
+		});
+		expect(events.find((e) => e.kind === "operator_message")).toMatchObject({
+			messageId: "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a",
+			delivers: ["7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b"],
+		});
+	});
+
+	it("a compact-only turn sends no message after it", async () => {
+		const { events } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "/compact",
+				mode: "queue",
+				heads: [],
+				compact: { command: "compact", only: true },
+			},
+		});
+		expect(events.some((e) => e.kind === "operator_message")).toBe(false);
+		expect(events.filter((e) => e.kind === "compaction").map((e) => e.kind === "compaction" && e.phase)).toEqual([
+			"started",
+			"completed",
+		]);
+		expect(events.at(-1)?.kind).toBe("branch_done");
+	});
+});
+

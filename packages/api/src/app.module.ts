@@ -94,6 +94,7 @@ import { ServicesModule } from "./modules/services/services.module.js";
 import { TerminalModule } from "./modules/terminal/terminal.module.js";
 import { ThreadsModule } from "./modules/threads/threads.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
+import { WakesModule } from "./modules/wakes/wakes.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 import { resolveServiceVersion } from "./shared/utils/service-version.js";
 
@@ -185,6 +186,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		// Feature modules (incident-centric architecture)
 		EventsModule, // Raw event ingestion
 		SchedulesModule, // Scheduled tasks (#979)
+		WakesModule, // Wakes and the session lifecycle (#1024)
 		ServicesModule, // Service catalog
 		RepositoriesModule, // Repository management
 		AlertsModule, // Alert processing

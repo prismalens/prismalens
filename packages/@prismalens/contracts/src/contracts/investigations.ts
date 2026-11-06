@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
 	AnswerAskResultSchema,
 	AnswerAskSchema,
+	CompactInvestigationSchema,
 	CreateInvestigationSchema,
 	EditQueuedMessageSchema,
 	EvidenceBlobQuerySchema,
@@ -32,6 +33,7 @@ import {
 	RunTreeSchema,
 	SendInvestigationMessageResultSchema,
 	SendInvestigationMessageSchema,
+	SetAutoResumeSchema,
 	UpdateInvestigationStatusSchema,
 	WithdrawQueuedMessageSchema,
 	WorktreeChangesQuerySchema,
@@ -346,6 +348,41 @@ export const investigationsContract = {
 				message: "The run was not interrupted by a restart, or is live",
 			},
 		}),
+
+	/**
+	 * Compact a finished thread's session with its agent's own command (#1024)
+	 * POST /investigations/:id/compact
+	 */
+	compact: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/compact",
+			summary: "Compact a finished thread's session",
+			tags: ["investigations"],
+			successStatus: 202,
+		})
+		.input(IdParamSchema.merge(CompactInvestigationSchema))
+		.output(InvestigationSchema)
+		.errors({
+			CONFLICT: {
+				message:
+					"The thread is running, or its agent has no compact command or no session",
+			},
+		}),
+
+	/**
+	 * Turn the resume after a usage limit on or off for one thread (#1024)
+	 * PUT /investigations/:id/auto-resume
+	 */
+	setAutoResume: oc
+		.route({
+			method: "PUT",
+			path: "/investigations/{id}/auto-resume",
+			summary: "Resume this thread when its usage limit resets",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema.merge(SetAutoResumeSchema))
+		.output(InvestigationSchema),
 
 	/**
 	 * What the last start did with the runs a stop cut off (#981)

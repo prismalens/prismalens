@@ -574,6 +574,52 @@ export const HelperPlaceSchema = z.enum(HELPER_PLACES);
 export type HelperPlace = z.infer<typeof HelperPlaceSchema>;
 export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
+/** Whether the agent's prompt cache likely holds the session: known only where the registry has evidence (#1024). */
+export const SESSION_CACHE_STATES = ["warm", "cold", "unknown"] as const;
+export type SessionCacheState = (typeof SESSION_CACHE_STATES)[number];
+export const COMPACTION_METHODS = [
+	"agent_command",
+	"summary",
+	"agent_auto",
+] as const;
+export type CompactionMethod = (typeof COMPACTION_METHODS)[number];
+/** The wake kinds one table holds (#1024): a limit's resume, idle compaction, and surface B's. */
+export const WAKE_KINDS = [
+	"limit",
+	"idle_compact",
+	"agent",
+	"pr_watch",
+] as const;
+export type WakeKind = (typeof WAKE_KINDS)[number];
+
+/** A thread's session as a resume needs it (#1024): idle time, cache state, context, limit. */
+export const ThreadSessionSchema = z.object({
+	lastActivityAt: DateStringSchema,
+	cache: z.enum(SESSION_CACHE_STATES),
+	/** The context the next turn carries, from the agent's last `usage_update`. */
+	contextTokens: z.number().int().nonnegative().optional(),
+	/** How the session was last compacted; `none` when it never was. */
+	compaction: z.enum(["agent_command", "summary", "none"]),
+	/** The agent's command that compacts it, without its slash; absent when it has none. */
+	compactCommand: z.string().optional(),
+	/** Set while the thread's last turn ended on its agent's usage limit. */
+	limit: z
+		.object({
+			resetsAt: DateStringSchema.nullable().optional(),
+			since: DateStringSchema,
+			autoResume: z.boolean(),
+			/** When PrismaLens resumes it; absent when it will not. */
+			nextAttemptAt: DateStringSchema.optional(),
+			attempts: z.number().int().nonnegative(),
+			/** A draft the user chose to send at the reset. */
+			message: z.string().optional(),
+			/** No time was given and every retry was spent. */
+			gaveUp: z.boolean().optional(),
+		})
+		.optional(),
+});
+export type ThreadSession = z.infer<typeof ThreadSessionSchema>;
+
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
 	/** Null for a scheduled service check until a finding links it to an incident (#979). */
@@ -627,6 +673,8 @@ export const InvestigationSchema = z.object({
 	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
 	/** A failed run a restart cut off, or one its agent's usage limit ended; null otherwise. */
 	endReason: RunEndReasonSchema.nullable().optional(),
+	/** Idle time, cache state and limit, for a resume (#1024). */
+	session: ThreadSessionSchema.optional(),
 	/** The harness's own session id, kept only when it can be loaded again (#747). */
 	acpSessionId: z.string().nullable().optional(),
 	workspace: RunWorkspaceSchema.nullable().optional(),
@@ -897,10 +945,29 @@ export const SendInvestigationMessageSchema = z.object({
 	/** A finished run's follow-up may go to another agent or model; absent fields keep the run's. */
 	...RunChoiceSchema.shape,
 	...MessageContextShape,
+	/** The cold-session prompt's choice: compact with the agent's own command first (#1024). */
+	compact: z.boolean().optional(),
+	/** The cold-session prompt's choice: a fresh session seeded with a summary of the record (#1024). */
+	fresh: z.boolean().optional(),
 });
 export type SendInvestigationMessageInput = z.infer<
 	typeof SendInvestigationMessageSchema
 >;
+
+/** Body of `POST /investigations/{id}/compact` (#1024). */
+export const CompactInvestigationSchema = z.object({
+	instructions: z.string().trim().max(2000).optional(),
+});
+export type CompactInvestigationInput = z.infer<
+	typeof CompactInvestigationSchema
+>;
+
+/** Body of `PUT /investigations/{id}/auto-resume` (#1024): `message` only by the user's own action. */
+export const SetAutoResumeSchema = z.object({
+	on: z.boolean(),
+	message: z.string().trim().min(1).max(4000).nullable().optional(),
+});
+export type SetAutoResumeInput = z.infer<typeof SetAutoResumeSchema>;
 
 /** How a finished run's follow-up reaches an agent: its own session, or a handoff to a fresh one. */
 export const FollowUpRouteSchema = z.enum(["load", "handoff"]);
@@ -1033,6 +1100,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		references: z.array(ReferenceRefSchema).optional(),
 		/** The `message_queued` this delivers or gives up on; absent before #820. */
 		messageId: z.string().uuid().optional(),
+		/** Other queued messages this one carries, as a resume after a limit does (#1024). */
+		delivers: z.array(z.string().uuid()).optional(),
 		/** A follow-up's first message: the agent, model and level that took it, and what a handoff carried. */
 		via: z
 			.object({
@@ -1067,6 +1136,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		...StreamBaseShape,
 		messageId: z.string().uuid(),
 		text: z.string(),
+		/** Earlier queued messages this one carries and replaces, as a resume line does (#1024). */
+		delivers: z.array(z.string().uuid()).optional(),
 		attachments: z.array(AttachmentRefSchema).optional(),
 		quotes: z.array(QuoteSchema).optional(),
 		references: z.array(ReferenceRefSchema).optional(),
@@ -1183,6 +1254,40 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		/** On an ask the level answered, which never showed a card: what it was. */
 		title: z.string().optional(),
 		toolKind: z.string().nullable().optional(),
+	}),
+	z.object({
+		/** The session was compacted: by its agent's command, a fresh summary, or the agent itself (#1024). */
+		kind: z.literal("compaction"),
+		...StreamBaseShape,
+		phase: z.enum(["started", "completed", "failed"]),
+		method: z.enum(COMPACTION_METHODS),
+		/** Context tokens before and after, when the agent reported them. */
+		before: z.number().int().nonnegative().optional(),
+		after: z.number().int().nonnegative().optional(),
+		instructions: z.string().optional(),
+	}),
+	z.object({
+		/** The agent's account ran out of usage (#1024). */
+		kind: z.literal("usage_limit"),
+		...StreamBaseShape,
+		agent: z.string(),
+		text: z.string(),
+		resetsAt: z.string().datetime().nullable().optional(),
+	}),
+	z.object({
+		/** PrismaLens will wake the thread: `at` null with `gaveUp` when it stopped retrying (#1024). */
+		kind: z.literal("resume_scheduled"),
+		...StreamBaseShape,
+		at: z.string().datetime().nullable(),
+		wakeKind: z.enum(WAKE_KINDS),
+		attempt: z.number().int().min(1).optional(),
+		gaveUp: z.literal(true).optional(),
+	}),
+	z.object({
+		/** A wake took the thread up again (#1024). */
+		kind: z.literal("resumed"),
+		...StreamBaseShape,
+		reason: z.enum(["limit_reset", "idle_compact", "wake"]),
 	}),
 	z.object({
 		kind: z.literal("report"),
@@ -1684,7 +1789,14 @@ export const InvestigationJobDataSchema = z.object({
 	/** A follow-up on a finished run: reopen its session and send this (#747). */
 	resume: z
 		.object({
-			text: z.string().min(1).max(4000),
+			// A limit resume carries every message it re-sends whole, so it can pass one message's cap (#1024).
+			text: z.string().min(1).max(200_000),
+			/** The line's queue id: it is recorded as queued before a compaction that may fail (#1024). */
+			messageId: z.string().uuid().optional(),
+			/** Queued messages this line carries, so a later resume never sends them again (#1024). */
+			delivers: z.array(z.string().uuid()).optional(),
+			/** The wake this follow-up consumes; its admission ends the wake in the same transaction (#1024). */
+			wakeId: z.string().uuid().optional(),
 			mode: OperatorMessageModeSchema,
 			/** `continue` takes a stopped run on to its report (R4.4); `chat` when absent. */
 			kind: FollowUpKindSchema.optional(),
@@ -1696,6 +1808,16 @@ export const InvestigationJobDataSchema = z.object({
 			to: RunChoiceSchema.optional(),
 			/** A fresh session of `to.harness`, seeded with the handoff, instead of loading the run's own. */
 			handoff: z.boolean().optional(),
+			/** With `handoff`: the seed is a summary of the record, not the whole handoff (#1024). */
+			fresh: z.boolean().optional(),
+			/** Compact with the agent's own command first; `only` sends `text` nowhere (#1024). */
+			compact: z
+				.object({
+					command: z.string().min(1).max(64),
+					instructions: z.string().max(2000).optional(),
+					only: z.boolean().optional(),
+				})
+				.optional(),
 			/** A restart cut the run off: the agent is told its last command may not have completed. */
 			afterRestart: z.boolean().optional(),
 			/** PrismaLens composes the message when the job is claimed, from what it finds then (#981). */

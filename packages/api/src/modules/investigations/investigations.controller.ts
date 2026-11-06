@@ -43,6 +43,7 @@ import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.gua
 import {
 	DispatchService,
 	FollowUpRefused,
+	type FollowUpSession,
 } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -50,6 +51,8 @@ import { AskConflict, AskForbidden } from "../asks/asks.contract.js";
 import { AskInvalid, AsksService } from "../asks/asks.service.js";
 import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { ReferencesService } from "../references/references.service.js";
+import { compactCommandOf, registryFacts } from "../wakes/session.js";
+import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import type {
 	InternalInvestigationResultDto,
@@ -113,6 +116,7 @@ export class InvestigationsController {
 		private readonly asks: AsksService,
 		private readonly drafts: DraftsService,
 		private readonly references: ReferencesService,
+		private readonly sessions: SessionLifecycleService,
 	) {}
 
 	/** A queued message is the session's to change: a schedule's only on the host (#1024). */
@@ -188,6 +192,7 @@ export class InvestigationsController {
 				const agentMode = base.report?.fidelity?.mode ?? base.agentMode ?? null;
 				return {
 					...base,
+					session: await this.sessions.sessionOf(investigation),
 					preRun: preRunDetailOf(investigation.preRun),
 					agentMode,
 					agentModeName: this.harnessService.modeName(
@@ -279,6 +284,42 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					return this.serializeInvestigation(investigation);
+				},
+			),
+
+			compact: implement(investigationsContract.compact).handler(
+				async ({ input, context }) => {
+					const found = await this.investigationsService.findById(input.id);
+					if (!found)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					scheduledRunHostOnly(found, context?.request as Request | undefined);
+					const admitted = await this.sessions
+						.compact(input.id, input.instructions)
+						.catch((e: unknown) => {
+							if (e instanceof FollowUpRefused)
+								throw new ORPCError("CONFLICT", { message: e.message });
+							throw e;
+						});
+					if (!admitted)
+						throw new ORPCError("CONFLICT", {
+							message: "A follow-up is already running.",
+						});
+					return this.withSession(input.id);
+				},
+			),
+
+			setAutoResume: implement(investigationsContract.setAutoResume).handler(
+				async ({ input, context }) => {
+					const found = await this.investigationsService.findById(input.id);
+					if (!found)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					scheduledRunHostOnly(found, context?.request as Request | undefined);
+					await this.sessions.setAutoResume(input.id, input.on, input.message);
+					return this.withSession(input.id);
 				},
 			),
 
@@ -563,6 +604,7 @@ export class InvestigationsController {
 					if (TERMINAL_STATUSES.has(investigation.status)) {
 						const reason = followUpBlockedReason(investigation);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
+						const chosen = await this.followUpSession(investigation, input);
 						const kind =
 							input.kind ??
 							(this.resumeState(investigation).continuable
@@ -582,7 +624,10 @@ export class InvestigationsController {
 										? { effort: input.effort }
 										: {}),
 								},
-								...withContext,
+								// The message context keeps its place; the cold-session choice follows it.
+								...((chosen.length
+									? [messageContext, ...chosen]
+									: withContext) as [typeof messageContext?, FollowUpSession?]),
 							)
 							.catch((e: unknown) => {
 								if (e instanceof FollowUpRefused)
@@ -901,6 +946,34 @@ export class InvestigationsController {
 	}
 
 	/** Only a finished run can take a follow-up; a live one takes messages (#747). */
+	/** The cold-session prompt's choice, as the follow-up's trailing argument; none when it made none (#1024). */
+	private async followUpSession(
+		investigation: Investigation,
+		input: { compact?: boolean; fresh?: boolean },
+	): Promise<[] | [FollowUpSession]> {
+		if (input.fresh) return [{ fresh: true }];
+		if (!input.compact) return [];
+		const command = compactCommandOf(registryFacts(investigation.harness));
+		if (!command)
+			throw new ORPCError("CONFLICT", {
+				message:
+					"This agent has no compact command; send as is or start fresh.",
+			});
+		return [{ compact: { command } }];
+	}
+
+	private async withSession(id: string) {
+		const now = await this.investigationsService.findById(id);
+		if (!now)
+			throw new ORPCError("NOT_FOUND", {
+				message: `Investigation ${id} not found`,
+			});
+		return {
+			...this.serializeInvestigation(now),
+			session: await this.sessions.sessionOf(now),
+		};
+	}
+
 	private resumeState(investigation: Investigation) {
 		if (!TERMINAL_STATUSES.has(investigation.status))
 			return {

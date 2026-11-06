@@ -2,9 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel } from "@prismalens/config/harness";
-import type {
-	CanonicalEvent,
-	InvestigationReport,
+import {
+	type CanonicalEvent,
+	type InvestigationReport,
+	recordedFindings,
 } from "@prismalens/contracts/schemas";
 import { fenceUntrusted, sanitizeUntrustedBlock } from "./fence.js";
 
@@ -278,4 +279,101 @@ export function renderTranscript(events: readonly CanonicalEvent[]): string {
 		"What the previous session ran and said, in order.",
 		sanitizeUntrustedBlock(out.join("\n\n")),
 	)}\n`;
+}
+
+/** About 8,000 tokens: the whole of a fresh session's summary (#1024). */
+export const FRESH_SUMMARY_CHARS = 32_000;
+const FRESH_MESSAGES = 3;
+const PATH_KEYS = [
+	"path",
+	"file_path",
+	"filePath",
+	"abs_path",
+	"file",
+] as const;
+
+/**
+ * The record a fresh session starts from when the user chose "Start fresh with a
+ * summary" (#1024): the report or last answer, findings, files touched, open asks
+ * and the last few messages each way. Built from PrismaLens's record; no model call.
+ */
+export function buildFreshSummary(input: {
+	events: readonly CanonicalEvent[];
+	report: InvestigationReport | null;
+	from: string | null;
+	budgetChars?: number;
+}): Handoff {
+	const { events, report } = input;
+	const answers = events.filter(
+		(e): e is Extract<CanonicalEvent, { kind: "agent_step" }> =>
+			e.kind === "agent_step" && e.text.trim().length > 0,
+	);
+	const said = events.filter(
+		(e): e is Extract<CanonicalEvent, { kind: "operator_message" }> =>
+			e.kind === "operator_message" && !e.via?.restart && !!e.text.trim(),
+	);
+	const files = new Set<string>();
+	for (const e of events)
+		if (e.kind === "agent_step")
+			for (const c of e.toolCalls)
+				for (const k of PATH_KEYS)
+					if (typeof c.args[k] === "string") files.add(c.args[k] as string);
+	const asked = new Map<string, string>();
+	for (const e of events) {
+		if (e.kind === "permission_ask")
+			asked.set(e.askId, e.detail ? `${e.title} (${e.detail})` : e.title);
+		else if (e.kind === "permission_answer") asked.delete(e.askId);
+	}
+	const recorded = recordedFindings(events);
+	const findings = [
+		...recorded.hypotheses.map(
+			(h) => `- [suspect, ${h.status}] ${h.statement}`,
+		),
+		...recorded.evidence.map(
+			(e) => `- [evidence] ${e.observation}${e.path ? ` (${e.path})` : ""}`,
+		),
+	];
+	const last = answers[answers.length - 1];
+	const sections = [
+		report
+			? `## The report\n${renderReport(report)}`
+			: `## The agent's last answer\n${last ? last.text.trim() : "(none)"}`,
+		...(findings.length
+			? [`## Findings and suspects\n${findings.join("\n")}`]
+			: []),
+		...(files.size
+			? [`## Files touched\n${[...files].map((f) => `- ${f}`).join("\n")}`]
+			: []),
+		...(asked.size
+			? [
+					`## Asks still open\n${[...asked.values()].map((a) => `- ${a}`).join("\n")}`,
+				]
+			: []),
+		`## The last messages\n${[
+			...said.slice(-FRESH_MESSAGES).map((m) => `User: ${m.text.trim()}`),
+			...answers.slice(-FRESH_MESSAGES).map((a) => `Agent: ${a.text.trim()}`),
+		].join("\n\n")}`,
+	];
+	const opening = `You are continuing a conversation ${input.from ?? "an agent"} had in this workspace. It was restarted from a summary to save context, so details below are condensed. The full transcript is at ${HANDOFF_TRANSCRIPT_PATH}.`;
+	const budget = (input.budgetChars ?? FRESH_SUMMARY_CHARS) - opening.length;
+	const body = sanitizeUntrustedBlock(sections.join("\n\n"));
+	const cut = body.length > budget;
+	return {
+		text: `${opening}\n\n${fenceUntrusted(
+			"PREVIOUS SESSION",
+			"A summary of the previous session.",
+			cut ? `${body.slice(0, Math.max(0, budget - 40))}\n(cut to fit)` : body,
+		)}`,
+		transcript: renderTranscript(events),
+		carried: list([
+			report ? "the report" : "the last answer",
+			...(findings.length ? [plural(findings.length, "finding")] : []),
+			...(files.size ? [plural(files.size, "file")] : []),
+			...(asked.size ? [plural(asked.size, "open ask")] : []),
+			"the last messages",
+		]),
+		omitted: cut
+			? "the rest of the summary, cut to fit"
+			: "earlier detail; it stays in the transcript file",
+	};
 }

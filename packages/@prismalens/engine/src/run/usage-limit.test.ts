@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { isUsageLimitError, usageLimitText } from "./usage-limit.js";
+import { isUsageLimitError, parseReset, usageLimitText } from "./usage-limit.js";
 
 describe("isUsageLimitError", () => {
 	it.each([
@@ -52,5 +52,67 @@ describe("usageLimitText", () => {
 
 	it("leaves every other error alone", () => {
 		expect(usageLimitText("Internal error", '{"message":"boom"}')).toBeNull();
+	});
+});
+
+describe("Gemini CLI's quota errors", () => {
+	it("a terminal quota is a limit", () => {
+		expect(isUsageLimitError("You have exhausted your daily quota on this model.")).toBe(true);
+		expect(isUsageLimitError('{"reason":"QUOTA_EXHAUSTED"}')).toBe(true);
+	});
+
+	it("a short retry is a rate error the agent retries itself, never a limit", () => {
+		expect(isUsageLimitError("Quota exceeded for quota metric. Please retry in 20s.")).toBe(false);
+		expect(isUsageLimitError("Quota exceeded for quota metric. Please retry in 4m.")).toBe(false);
+	});
+
+	it("a retry of five minutes or more is a limit", () => {
+		expect(isUsageLimitError("Quota exceeded for quota metric. Please retry in 3600s.")).toBe(true);
+	});
+
+	it("a limit message in any JSON-RPC error's data is lifted out", () => {
+		const data = JSON.stringify({ message: "You have exhausted your daily quota on this model." });
+		expect(usageLimitText("Internal error", data)).toBe("You have exhausted your daily quota on this model.");
+	});
+});
+
+describe("parseReset", () => {
+	// Local time throughout: the agents word the reset in the user's own zone.
+	const now = new Date(2026, 10, 7, 13, 12, 0);
+
+	it("reads Codex's time later the same day", () => {
+		expect(parseReset("You've hit your usage limit. Try again at 3:45 PM.", now, "codex")).toEqual(
+			new Date(2026, 10, 7, 15, 45, 0),
+		);
+	});
+
+	it("reads a time already past today as tomorrow", () => {
+		expect(parseReset("You've hit your usage limit. try again at 9:05 am.", now, "codex")).toEqual(
+			new Date(2026, 10, 8, 9, 5, 0),
+		);
+	});
+
+	it("reads 12 AM and 12 PM", () => {
+		expect(parseReset("try again at 12:00 AM", now)).toEqual(new Date(2026, 10, 8, 0, 0, 0));
+		expect(parseReset("try again at 12:30 PM", now)).toEqual(new Date(2026, 10, 8, 12, 30, 0));
+	});
+
+	it("reads Codex's dated form across days", () => {
+		expect(
+			parseReset("You've hit your usage limit. Try again at Nov 9th, 2026 3:45 PM.", now, "codex"),
+		).toEqual(new Date(2026, 10, 9, 15, 45, 0));
+		expect(parseReset("Try again at Jan 1st, 2027 12:05 AM.", now)).toEqual(new Date(2027, 0, 1, 0, 5, 0));
+	});
+
+	it("reads Gemini's retry of five minutes or more", () => {
+		expect(parseReset("Please retry in 3600s.", now, "gemini")).toEqual(new Date(now.getTime() + 3_600_000));
+		expect(parseReset("Please retry in 10m", now, "gemini")).toEqual(new Date(now.getTime() + 600_000));
+	});
+
+	it("names no time for a short retry, for Claude's wording, or for nothing", () => {
+		expect(parseReset("Please retry in 20s.", now, "gemini")).toBeNull();
+		expect(parseReset("You've hit your session limit · resets 6:10am (Europe/London)", now, "claude-code")).toBeNull();
+		expect(parseReset("You're out of extra usage", now)).toBeNull();
+		expect(parseReset("try again at 13:99 PM", now)).toBeNull();
 	});
 });

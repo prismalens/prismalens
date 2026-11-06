@@ -37,6 +37,7 @@ import type {
 	AskClosedOutcome,
 	AttachmentRef,
 	CanonicalEvent,
+	CompactionMethod,
 	FollowUpKind,
 	InvestigationReport,
 	OperatorMessageMode,
@@ -207,6 +208,7 @@ export class AcpAdapter {
 		messageId?: string,
 		via?: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
 		context?: MessageContextRefs,
+		delivers?: string[],
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -219,6 +221,7 @@ export class AcpAdapter {
 			...(attachments?.length ? { attachments } : {}),
 			...contextRefs(context),
 			...(messageId ? { messageId } : {}),
+			...(delivers?.length ? { delivers } : {}),
 			...(via ? { via } : {}),
 		};
 	}
@@ -229,6 +232,7 @@ export class AcpAdapter {
 		text: string,
 		attachments?: AttachmentRef[],
 		context?: MessageContextRefs,
+		delivers?: string[],
 	): CanonicalEvent {
 		return {
 			kind: "message_queued",
@@ -237,6 +241,7 @@ export class AcpAdapter {
 			text,
 			...(attachments?.length ? { attachments } : {}),
 			...contextRefs(context),
+			...(delivers?.length ? { delivers } : {}),
 		};
 	}
 
@@ -354,6 +359,23 @@ export class AcpAdapter {
 			...(shown ? { input: shown } : {}),
 			...(server ? { server } : {}),
 			...(identity ? { identity } : {}),
+		};
+	}
+
+	/** A compaction boundary in the transcript, with the context before and after when known (#1024). */
+	compaction(
+		phase: "started" | "completed" | "failed",
+		method: CompactionMethod,
+		counts: { before?: number; after?: number; instructions?: string } = {},
+	): CanonicalEvent {
+		return {
+			kind: "compaction",
+			...this.base(),
+			phase,
+			method,
+			...(counts.before !== undefined ? { before: counts.before } : {}),
+			...(counts.after !== undefined ? { after: counts.after } : {}),
+			...(counts.instructions ? { instructions: counts.instructions } : {}),
 		};
 	}
 

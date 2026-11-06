@@ -1,0 +1,80 @@
+{
+	"description": "Codex's usage limit: a generic JSON-RPC error with the limit text and its reset time in data (#1024).",
+	"agent": {
+		"name": "codex-acp",
+		"version": "2.5.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Looking at recent commits first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_01",
+					"title": "`git log --oneline -5`",
+					"rawInput": {
+						"command": "git log --oneline -5"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index\n1a2b3c4 Bump flask"
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 64000,
+					"size": 200000
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error",
+					"data": {
+						"message": "You've hit your usage limit. Upgrade to Plus to continue using Codex. Try again at Jan 1st, 2099 3:45 PM.",
+						"codexErrorInfo": "usageLimitExceeded"
+					}
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the reset: {{prompt}}\n\n"
+		},
+		{
+			"report": {
+				"summary": "The p99 rise follows d37d888, which dropped the index the book list query uses.",
+				"rootCause": "Commit d37d888 dropped ix_books_owner_lower_title, so GET /books scans the table.",
+				"rootCauseCategory": "code",
+				"hypotheses": [
+					{
+						"statement": "Dropping ix_books_owner_lower_title in d37d888 made the list query scan",
+						"status": "supported",
+						"evidence": [
+							{
+								"observation": "d37d888 'Schema cleanup: drop unused books title index' is the newest commit",
+								"source": "git log --oneline -5",
+								"direction": "supports",
+								"status": "verified",
+								"toolCallId": "toolu_01"
+							}
+						]
+					}
+				],
+				"ruledOut": [],
+				"coverage": {
+					"queried": ["git log"],
+					"notQueried": ["prometheus"]
+				},
+				"nextSteps": [
+					{
+						"title": "Restore the index",
+						"detail": "Revert d37d888 or recreate ix_books_owner_lower_title.",
+						"priority": "high"
+					}
+				]
+			}
+		}
+	]
+}

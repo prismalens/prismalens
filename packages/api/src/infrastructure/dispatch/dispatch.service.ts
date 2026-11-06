@@ -172,6 +172,30 @@ const AGENT_KINDS = [
 /** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
 export class FollowUpRefused extends Error {}
 
+/** The thread's checkout is gone or moved (#1024): retrying never admits it, unlike a held lease. */
+export class CheckoutGone extends FollowUpRefused {}
+
+/** How a follow-up treats the session (#1024): compact it first, or start fresh from a summary. */
+export interface FollowUpSession {
+	compact?: { command: string; instructions?: string; only?: boolean };
+	fresh?: boolean;
+	/** A wake's follow-up: admitting it consumes the pending wake in the same transaction, or nothing is admitted. */
+	wakeId?: string;
+	/** When the wake is taken; the wake's own clock, so its retries count in one time base. */
+	wakeDoneAt?: Date;
+	/** Queued messages the follow-up's text carries. */
+	delivers?: string[];
+}
+
+/** A wake's admission found it already consumed; its transaction rolls back. */
+class WakeTaken extends Error {}
+
+/** Told when a run's job settles, with how it ended (#1024). */
+export type RunSettledListener = (
+	investigationId: string,
+	outcome: { outcome: "succeeded" | "failed" | "cancelled"; error?: string },
+) => void | Promise<void>;
+
 /** Priority ordering for the claim. Lower claims first. NOT a fairness key. */
 const PRIORITY_ORDER: Record<string, number> = {
 	critical: 1,
@@ -346,6 +370,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							kind: investigation.kind,
 							stopRequestedAt: investigation.stopRequestedAt ?? null,
 							report: investigation.report ?? null,
+							usage: investigation.usage ?? null,
 						}
 					: null;
 			},
@@ -415,7 +440,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			recordUsage: async (id, usage) => {
 				await this.prisma.investigation.updateMany({
 					where: { id },
-					data: { usage: JSON.stringify(usage) },
+					data: { usage: JSON.stringify(usage), lastActivityAt: new Date() },
 				});
 			},
 			markAwaitingApproval: async (id, since) => {
@@ -671,8 +696,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				// attaching the relay here (before the run's first event) stays
 				// correct even though there is no reclaim any more to re-attach for.
 				onClaim: (job) => this.streamRelay.attach(job.investigationId),
-				onSettled: (job) =>
-					this.logger.log(`Job ${job.id} settled (${job.investigationId})`),
+				onSettled: (job, outcome) => {
+					this.logger.log(`Job ${job.id} settled (${job.investigationId})`);
+					for (const listener of this.settledListeners)
+						void Promise.resolve()
+							.then(() => listener(job.investigationId, outcome))
+							.catch((e) =>
+								this.logger.warn(
+									`A run-settled listener failed: ${(e as Error).message}`,
+								),
+							);
+				},
 				log: {
 					info: (m) => this.logger.log(m),
 					warn: (m) => this.logger.warn(m),
@@ -746,6 +780,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			status as "completed" | "failed" | "cancelled",
 			{ startedAt: investigation?.startedAt, error: investigation?.error },
 		);
+	}
+
+	private readonly settledListeners: RunSettledListener[] = [];
+
+	/** Session lifecycle reads each run's end here, so a usage limit becomes a resume (#1024). */
+	onRunSettled(listener: RunSettledListener): void {
+		this.settledListeners.push(listener);
 	}
 
 	async onModuleInit(): Promise<void> {
@@ -1182,6 +1223,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		attachments: JobAttachment[] = [],
 		to: RunChoice = {},
 		context?: JobMessageContext,
+		session: FollowUpSession = {},
 	): Promise<boolean> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -1257,56 +1299,77 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				...(attachments.length ? { attachments } : {}),
 				...(context ? { context } : {}),
 				to: { ...to, harness: plan.harness },
-				...(plan.route === "handoff" ? { handoff: true } : {}),
+				...(plan.route === "handoff" || session.fresh ? { handoff: true } : {}),
+				...(session.fresh ? { fresh: true } : {}),
+				...(session.compact && !session.fresh
+					? { compact: session.compact }
+					: {}),
+				...(session.wakeId
+					? { wakeId: session.wakeId, messageId: session.wakeId }
+					: {}),
+				...(session.delivers?.length ? { delivers: session.delivers } : {}),
 				...((await this.afterRestart(id, row.endReason))
 					? { afterRestart: true }
 					: {}),
 			},
 		};
-		const admitted = await this.prisma.$transaction(async (tx) => {
-			const other = sharesAdmission(row)
-				? await tx.investigation.findFirst({
+		const admitted = await this.prisma
+			.$transaction(async (tx) => {
+				const other = sharesAdmission(row)
+					? await tx.investigation.findFirst({
+							where: {
+								...runScope(row),
+								id: { not: id },
+								status: { in: [...LIVE_WORKFLOW_STATUSES] },
+							},
+							orderBy: { createdAt: "desc" },
+							select: { createdAt: true },
+						})
+					: null;
+				if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
+					throw new FollowUpRefused(FOLDER_BUSY);
+				if (other) {
+					const n = await tx.investigation.count({
 						where: {
 							...runScope(row),
-							id: { not: id },
-							status: { in: [...LIVE_WORKFLOW_STATUSES] },
+							createdAt: { lte: other.createdAt },
 						},
-						orderBy: { createdAt: "desc" },
-						select: { createdAt: true },
-					})
-				: null;
-			if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
-				throw new FollowUpRefused(FOLDER_BUSY);
-			if (other) {
-				const n = await tx.investigation.count({
-					where: {
-						...runScope(row),
-						createdAt: { lte: other.createdAt },
+					});
+					throw new FollowUpRefused(
+						`Run #${n} is working; message it or stop it.`,
+					);
+				}
+				const { count } = await tx.investigation.updateMany({
+					where: { id, status: row.status },
+					data: {
+						status: "pending",
+						completedAt: null,
+						error: null,
+						stopRequestedAt: null,
+						liveTurn: kind === "continue" ? "report" : "answer",
 					},
 				});
-				throw new FollowUpRefused(
-					`Run #${n} is working; message it or stop it.`,
-				);
-			}
-			const { count } = await tx.investigation.updateMany({
-				where: { id, status: row.status },
-				data: {
-					status: "pending",
-					completedAt: null,
-					error: null,
-					stopRequestedAt: null,
-					liveTurn: kind === "continue" ? "report" : "answer",
-				},
+				if (count === 0) return false;
+				if (session.wakeId) {
+					const taken = await tx.threadWake.updateMany({
+						where: { id: session.wakeId, state: "pending" },
+						data: { state: "done", doneAt: session.wakeDoneAt ?? new Date() },
+					});
+					// Another pass took this wake already: roll the admission back.
+					if (taken.count === 0) throw new WakeTaken();
+				}
+				await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
+					investigationId: id,
+					incidentId: row.incidentId,
+					payload: JSON.stringify(data),
+					priority: PRIORITY_ORDER.normal ?? 3,
+				});
+				return true;
+			}, FOLDER_TX)
+			.catch((e: unknown) => {
+				if (e instanceof WakeTaken) return false;
+				throw e;
 			});
-			if (count === 0) return false;
-			await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
-				investigationId: id,
-				incidentId: row.incidentId,
-				payload: JSON.stringify(data),
-				priority: PRIORITY_ORDER.normal ?? 3,
-			});
-			return true;
-		}, FOLDER_TX);
 		if (!admitted) return false;
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();

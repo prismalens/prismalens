@@ -7,6 +7,7 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { ORPCError } from "@orpc/nest";
 import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
@@ -41,6 +42,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 					useValue: { forJob: vi.fn(async () => []) },
 				},
 				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
+				{ provide: SessionLifecycleService, useValue: { sessionOf: async () => undefined } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

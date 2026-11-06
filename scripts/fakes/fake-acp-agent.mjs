@@ -212,7 +212,7 @@ function run() {
 	 * @param {string} sessionId
 	 * @param {import("./fake-acp-agent.d.mts").Step[]} steps
 	 * @param {string} prompt
-	 * @returns {Promise<string | null>} a stopReason a step forced, or null
+	 * @returns {Promise<string | { error: import("./fake-acp-agent.d.mts").RpcErrorStep } | null>} a stopReason or an error a step forced, or null
 	 */
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
@@ -279,6 +279,8 @@ function run() {
 				if (!released) return "cancelled";
 			}
 			if (step.stop) return step.stop;
+			// The prompt answers with a JSON-RPC error, as an agent reports a usage limit (#1024).
+			if (step.error) return { error: step.error };
 		}
 		return null;
 	}
@@ -358,6 +360,13 @@ function run() {
 
 	/** @param {string} sessionId @param {string} prompt */
 	async function turn(sessionId, prompt) {
+		// The agent's own compact command plays `compact` and is not one of the script's turns (#1024).
+		if (script.compact && prompt.trim().split(/\s+/)[0] === "/compact") {
+			const forced = await play(sessionId, script.compact, prompt);
+			return typeof forced === "object" && forced
+				? forced
+				: { stopReason: forced ?? "end_turn" };
+		}
 		turns += 1;
 		const scripted = script.turns ?? [];
 		// The host's "your report did not validate" retry gets the script's own answer.
@@ -370,8 +379,11 @@ function run() {
 				? scripted[turns - 1]
 				: !loaded && script.steer
 					? script.steer
-					: (script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+					: (script.followUpWhen?.find((w) => prompt.includes(w.match))
+							?.steps ??
+						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
 		const forced = await play(sessionId, steps, prompt);
+		if (typeof forced === "object" && forced) return forced;
 		return { stopReason: forced ?? "end_turn" };
 	}
 
@@ -490,7 +502,12 @@ function run() {
 					mkdirSync(PICKED_DIR, { recursive: true });
 					writeFileSync(join(PICKED_DIR, sessionId), scriptName);
 				}
-				return reply(await turn(sessionId, prompt));
+				const answer = await turn(sessionId, prompt);
+				if ("error" in answer && answer.error) {
+					send({ jsonrpc: "2.0", id: msg.id, error: answer.error });
+					return;
+				}
+				return reply(answer);
 			}
 			case "session/cancel":
 				onCancel?.();

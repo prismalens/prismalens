@@ -261,6 +261,9 @@ export type LocalAgent = z.infer<typeof LocalAgentSchema>;
 export const RUNTIME_HOST_ONLY =
 	"Only this machine's own session can change what an agent runs.";
 
+/** Context tokens above which a long-idle thread asks before it sends (#1024). */
+export const COLD_RESUME_TOKENS = 50_000;
+
 /**
  * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
  * stored per harness (#639): an id is in one harness's own format, so a model
@@ -300,6 +303,14 @@ export const HarnessSettingsSchema = z.object({
 	alertAsks: z.enum(["decide", "wait"]).optional(),
 	/** Runs a restart cut off carry on when PrismaLens starts again (#981); absent is on. */
 	resumeAfterRestart: z.boolean().optional(),
+	/** A long-idle thread with a large context (#1024): ask first (absent), compact first, or send as is. */
+	coldResume: z.enum(["ask", "compact", "send"]).optional(),
+	/** Only ask above this many context tokens; absent is 50,000. */
+	coldResumeTokens: z.number().int().min(0).max(10_000_000).optional(),
+	/** A usage limit schedules a resume at its reset (#1024); absent is on. */
+	resumeAfterLimit: z.boolean().optional(),
+	/** Compact idle threads before their agent's cache expires (#1024); absent is off. */
+	compactIdle: z.boolean().optional(),
 	/** Names of the variables set per agent; values are never read back. */
 	envNames: z
 		.partialRecord(z.enum(HARNESS_IDS), z.array(EnvNameSchema))
@@ -361,6 +372,14 @@ export const UpdateHarnessSettingsSchema = z
 		alertAsks: z.enum(["decide", "wait"]).optional(),
 		/** Resume runs a restart cut off (#981). Host only. */
 		resumeAfterRestart: z.boolean().optional(),
+		/** A long-idle thread with a large context (#1024): ask first (absent), compact first, or send as is. */
+		coldResume: z.enum(["ask", "compact", "send"]).optional(),
+		/** Only ask above this many context tokens; absent is 50,000. */
+		coldResumeTokens: z.number().int().min(0).max(10_000_000).optional(),
+		/** A usage limit schedules a resume at its reset (#1024); absent is on. */
+		resumeAfterLimit: z.boolean().optional(),
+		/** Compact idle threads before their agent's cache expires (#1024); absent is off. */
+		compactIdle: z.boolean().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;

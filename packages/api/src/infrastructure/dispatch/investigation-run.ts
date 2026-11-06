@@ -69,6 +69,7 @@ import type {
 	Urgency,
 } from "@prismalens/contracts/schemas";
 import {
+	buildFreshSummary,
 	buildHandoff,
 	conductRun,
 	githubFor,
@@ -894,6 +895,17 @@ function usageWriter(
 	};
 }
 
+/** The context the agent last reported, from the row's stored usage. */
+function contextOf(raw: string | null | undefined): number | undefined {
+	if (!raw) return undefined;
+	try {
+		const used = (JSON.parse(raw) as { used?: unknown }).used;
+		return typeof used === "number" ? used : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 /** Read as stored, not re-validated: a report an older schema wrote still hands off its hypotheses. */
 function storedReport(
 	raw: string | null | undefined,
@@ -1110,15 +1122,22 @@ async function runFollowUp(
 		const accessLevel = handoff
 			? inheritedLevel(data.accessLevel)
 			: data.accessLevel;
-		const seed = handoff
-			? buildHandoff({
-					events: await ports.events(id),
-					report: storedReport(inv.report),
-					accessLevel: inheritedLevel(data.accessLevel),
-					from: own ? HARNESS_REGISTRY[own].label : null,
-					afterRestart: !!resume.afterRestart,
-				})
-			: null;
+		// "Start fresh with a summary" seeds the new session with the record's summary, never the whole handoff (#1024).
+		const seed = !handoff
+			? null
+			: resume.fresh
+				? buildFreshSummary({
+						events: await ports.events(id),
+						report: storedReport(inv.report),
+						from: own ? HARNESS_REGISTRY[own].label : null,
+					})
+				: buildHandoff({
+						events: await ports.events(id),
+						report: storedReport(inv.report),
+						accessLevel: inheritedLevel(data.accessLevel),
+						from: own ? HARNESS_REGISTRY[own].label : null,
+						afterRestart: !!resume.afterRestart,
+					});
 		if (seed) writeHandoffTranscript(workspace, seed.transcript);
 		const restartAt = new Date();
 		const restartText = resume.restart
@@ -1264,6 +1283,18 @@ async function runFollowUp(
 						: {}),
 					...(resume.context ? { context: resume.context } : {}),
 					...(moved ? { newer: moved } : {}),
+					...(resume.messageId ? { messageId: resume.messageId } : {}),
+					...(resume.delivers?.length ? { delivers: resume.delivers } : {}),
+					...(resume.compact
+						? {
+								compact: {
+									...resume.compact,
+									...(contextOf(inv.usage) !== undefined
+										? { before: contextOf(inv.usage) }
+										: {}),
+								},
+							}
+						: {}),
 				},
 				seqStart,
 			},

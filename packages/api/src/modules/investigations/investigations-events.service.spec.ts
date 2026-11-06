@@ -4,7 +4,7 @@
 /**
  * Hermetic tests for the durable event record on InvestigationsService (ADR-0018
  * B.4): the idempotent bulk `appendEvents` and the paginated `getEvents` replay.
- * Prisma is a double covering exactly `investigationEvent.{create,findMany}`.
+ * Prisma is a double covering exactly `investigationEvent.{create,findMany}` and `investigation.updateMany`.
  */
 import { Logger } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
@@ -70,6 +70,7 @@ function makeMockPrisma() {
 			create: vi.fn().mockResolvedValue({}),
 			findMany: vi.fn().mockResolvedValue([]),
 		},
+		investigation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
 	};
 }
 
@@ -100,6 +101,18 @@ describe("InvestigationsService — durable event record", () => {
 	});
 
 	describe("appendEvents (idempotent bulk insert)", () => {
+		it("stamps the thread's last activity once something was stored, and not for duplicates alone (#1024)", async () => {
+			await service.appendEvents(INV_ID, [stepEvent(1)]);
+			expect(mockPrisma.investigation.updateMany).toHaveBeenCalledWith({
+				where: { id: INV_ID },
+				data: { lastActivityAt: expect.any(Date) },
+			});
+			mockPrisma.investigation.updateMany.mockClear();
+			mockPrisma.investigationEvent.create.mockRejectedValue(p2002());
+			await service.appendEvents(INV_ID, [stepEvent(1)]);
+			expect(mockPrisma.investigation.updateMany).not.toHaveBeenCalled();
+		});
+
 		it("inserts one row per event, JSON-encoding the full canonical event", async () => {
 			const result = await service.appendEvents(INV_ID, [
 				stepEvent(1),

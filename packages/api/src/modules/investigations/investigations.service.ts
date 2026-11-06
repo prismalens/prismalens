@@ -877,6 +877,12 @@ export class InvestigationsService {
 				throw error;
 			}
 		}
+		// Stored, not derived, so a resume can read the thread's idle time cheaply (#1024).
+		if (inserted > 0)
+			await this.prisma.investigation.updateMany({
+				where: { id: investigationId },
+				data: { lastActivityAt: new Date() },
+			});
 		return { inserted, duplicates };
 	}
 
