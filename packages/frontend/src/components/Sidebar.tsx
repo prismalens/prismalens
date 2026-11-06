@@ -124,7 +124,8 @@ const goKey = (label: string) =>
 
 export function Sidebar() {
 	const { pathname } = useLocation();
-	if (pathname.startsWith("/pair")) return null;
+	if (pathname.startsWith("/pair") || pathname.startsWith("/_design"))
+		return null;
 	return <Shell pathname={pathname} />;
 }
 

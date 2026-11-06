@@ -1,0 +1,18 @@
+// Menus use components/ui/select, and tooltips use shared/Hint, never the DOM title
+// (design/GUIDELINES.md, look rules).
+language js
+
+or {
+	JsxName() as $name where {
+		$name <: `select`,
+		register_diagnostic(span=$name, message="A native select; use components/ui/select.")
+	},
+	JsxSelfClosingElement() as $el where {
+		$el <: r"^<[a-z][a-z0-9-]*\s[^>]*\btitle=.*",
+		register_diagnostic(span=$el, message="A DOM title tooltip; use shared/Hint.")
+	},
+	JsxOpeningElement() as $el where {
+		$el <: r"^<[a-z][a-z0-9-]*\s[^>]*\btitle=.*",
+		register_diagnostic(span=$el, message="A DOM title tooltip; use shared/Hint.")
+	}
+}

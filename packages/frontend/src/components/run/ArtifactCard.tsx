@@ -14,6 +14,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { formatClock } from "@/lib/format-time";
+import { cn } from "@/lib/utils";
 
 const root = () => document.documentElement;
 
@@ -61,7 +62,7 @@ function Frame({
 			sandbox=""
 			srcDoc={NO_FETCH + theme + html}
 			title={artifact.title}
-			className={`w-full rounded-control border-0 bg-surface-2 ${className}`}
+			className={cn("w-full rounded-control border-0 bg-surface-2", className)}
 			data-testid={testId}
 		/>
 	);

@@ -1,0 +1,9 @@
+// One top bar: shell/PageHeader, or run/IncidentHeader on a thread (design/GUIDELINES.md,
+// rule 10). Pages that still build their own are excluded in biome.json; a side panel's
+// tab row and the desktop drag row sit at header height without being a page header.
+language js
+
+JsxString() as $str where {
+	$str <: r".*h-\(--header-h\).*",
+	register_diagnostic(span=$str, message="A page header is shell/PageHeader; this builds its own top bar.")
+}

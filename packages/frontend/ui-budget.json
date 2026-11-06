@@ -1,0 +1,1190 @@
+{
+	"$comment": "Per-state ceilings from the design matrix (pnpm ui:shots). A run fails when any number rises; raise one only with a reason in the PR. GUIDELINES.md explains each field.",
+	"rules": {
+		"emptyCopyWords": 5,
+		"oneStatePerRow": true,
+		"minContrast": 4.5,
+		"minTarget": 24
+	},
+	"states": {
+		"empty-home-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-home-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-home-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-home-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-home-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-home-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-alerts-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-alerts-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-alerts-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-alerts-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-alerts-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-alerts-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"empty-services-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"empty-services-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"empty-services-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"empty-services-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"empty-services-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"empty-services-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"settings-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"settings-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"settings-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"settings-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"settings-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"settings-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"dialog-add-service-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"dialog-add-service-more-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"palette-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"dialog-add-service-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"dialog-add-service-more-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 7
+		},
+		"palette-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"one-service-home-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"one-service-home-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"chat-finished-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"chat-finished-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"chat-finished-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"chat-finished-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"chat-finished-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"chat-finished-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"chat-running-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"chat-running-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"chat-running-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"chat-running-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"chat-running-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"chat-running-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"chats-home-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 11
+		},
+		"chats-home-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"chats-home-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"chats-home-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"chats-home-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"chats-home-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"many-board-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 36
+		},
+		"many-board-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 29
+		},
+		"many-board-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"many-board-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 35
+		},
+		"many-board-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 29
+		},
+		"many-board-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"new-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"new-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"new-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"new-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"new-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"new-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"webhook-thread-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"webhook-thread-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"webhook-thread-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 19
+		},
+		"webhook-thread-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"webhook-thread-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"webhook-thread-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 19
+		},
+		"ask-thread-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"ask-thread-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"ask-thread-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 19
+		},
+		"ask-thread-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"ask-thread-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"ask-thread-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 19
+		},
+		"sidebar-sections-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 12
+		},
+		"sidebar-sections-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 10
+		},
+		"threads-page-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"threads-page-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"threads-page-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"threads-page-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"threads-page-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"threads-page-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"automation-page-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 8
+		},
+		"automation-page-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 11
+		},
+		"automation-page-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 8
+		},
+		"automation-page-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 8
+		},
+		"automation-page-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 11
+		},
+		"automation-page-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 8
+		},
+		"schedule-run-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 2
+		},
+		"schedule-run-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 2
+		},
+		"away-board-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 36
+		},
+		"away-board-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 36
+		},
+		"live-run-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"live-run-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"live-run-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 15
+		},
+		"live-run-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"live-run-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"live-run-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 15
+		},
+		"finished-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"finished-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"finished-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 19
+		},
+		"finished-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"finished-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"finished-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 19
+		},
+		"incident-panel-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 34
+		},
+		"incident-panel-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 36
+		},
+		"incident-panel-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 19
+		},
+		"incident-panel-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 35
+		},
+		"incident-panel-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 36
+		},
+		"incident-panel-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"failed-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 25
+		},
+		"failed-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"failed-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 15
+		},
+		"failed-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"failed-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 16
+		},
+		"failed-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 15
+		},
+		"design-gallery-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 14
+		},
+		"design-gallery-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 17
+		},
+		"design-gallery-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"design-gallery-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 14
+		},
+		"design-gallery-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 17
+		},
+		"design-gallery-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 13
+		},
+		"many-services-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 5
+		},
+		"many-services-768-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 5
+		},
+		"many-services-390-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 5
+		},
+		"many-services-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 5
+		},
+		"many-services-768-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 5
+		},
+		"many-services-390-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 5
+		},
+		"menu-action-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"menu-action-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 20
+		},
+		"error-board-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 4,
+			"otherAxe": 0,
+			"controls": 0
+		}
+	}
+}

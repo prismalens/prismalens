@@ -1,0 +1,38 @@
+// Structure comes from surface steps and a one-pixel hairline, never a border, ring or inset
+// shadow (design/GUIDELINES.md, rule 14). Variant-prefixed rings (focus-visible:) pass.
+language js
+
+or {
+	JsxString() as $s where {
+		$s <: r".*[\s\x22]border[\s\x22].*",
+		register_diagnostic(span=$s, message="A border as structure; draw an after: hairline or step the surface.")
+	},
+	JsxString() as $s where {
+		$s <: r".*[\s\x22]border-[trblxy][\s\x22].*",
+		register_diagnostic(span=$s, message="A border as structure; draw an after: hairline or step the surface.")
+	},
+	JsxString() as $s where {
+		$s <: r".*[\s\x22]border-hairline[\s\x22].*",
+		register_diagnostic(span=$s, message="A border as structure; draw an after: hairline or step the surface.")
+	},
+	JsxString() as $s where {
+		$s <: r".*[\s\x22]ring-[0-9].*",
+		register_diagnostic(span=$s, message="A ring as structure; draw an after: hairline instead.")
+	},
+	JsxString() as $s where {
+		$s <: r".*[\s\x22]ring-\[.*",
+		register_diagnostic(span=$s, message="A ring as structure; draw an after: hairline instead.")
+	},
+	JsxString() as $s where {
+		$s <: r".*[\s\x22]shadow-\[inset_0_0_0.*",
+		register_diagnostic(span=$s, message="An inset shadow as an edge; draw an after: hairline instead.")
+	},
+	JsxString() as $s where {
+		$s <: r".*raised-edge.*",
+		register_diagnostic(span=$s, message="raised-edge is a deleted token; step the surface instead.")
+	},
+	JsxString() as $s where {
+		$s <: r".*hairline-strong.*",
+		register_diagnostic(span=$s, message="hairline-strong is a deleted token; use the hairline.")
+	}
+}

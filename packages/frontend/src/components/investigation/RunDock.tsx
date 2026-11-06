@@ -9,6 +9,7 @@ import { formatClock } from "@/lib/format-time";
 import type { AttachmentView } from "@/lib/investigation-events";
 import { mcpTool, shortPath } from "@/lib/report-view";
 import { type AskRecord, askTitle } from "@/lib/run-asks";
+import { cn } from "@/lib/utils";
 import { isConflict } from "./useInvestigationRun";
 
 /** After the next ask takes the slot, a click or key this soon was meant for the last one (#820). */
@@ -159,7 +160,10 @@ export function AskCard({
 			<p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-meta">
 				<span
 					aria-hidden
-					className={`${inline ? "" : "breathe "}size-[7px] shrink-0 self-center rounded-full bg-warn`}
+					className={cn(
+						"size-[7px] shrink-0 self-center rounded-full bg-warn",
+						!inline && "breathe",
+					)}
 				/>
 				<span className="font-medium text-text-1">{agent} asks to run</span>
 				{count > 1 && (
