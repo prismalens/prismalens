@@ -3,8 +3,8 @@
 
 import { Module } from "@nestjs/common";
 import { HarnessModule } from "../../core/harness/harness.module.js";
-import { ImagesModule } from "../images/images.module.js";
 import { THREAD_WATCHES } from "../gateway/tools/watches.js";
+import { ImagesModule } from "../images/images.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { InvestigationsModule } from "../investigations/investigations.module.js";
 import { WORK_ITEMS } from "../references/work-items.provider.js";

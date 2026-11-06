@@ -4,7 +4,6 @@
 		"name": "opencode",
 		"version": "2.0.0-fake"
 	},
-	"mcpHttp": true,
 	"turns": [
 		[
 			{
@@ -18,13 +17,16 @@
 				}
 			},
 			{
-				"gateway": {
+				"call": {
 					"tool": "wakeup_schedule",
 					"arguments": {
 						"delaySeconds": 600,
 						"reason": "Check the rollout of revision 42"
 					}
 				}
+			},
+			{
+				"say": "wakeup_schedule said: {{result}}\n"
 			},
 			{
 				"say": "I will look again in ten minutes.\n"

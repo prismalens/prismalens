@@ -3,22 +3,19 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { setFakeCapability } from "../../../../scripts/fakes/fake-acp-agent.mjs";
 import { type FakeAlertmanager, startFakeAlertmanager } from "../../../../scripts/fakes/fake-alertmanager.mjs";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
-const pl = new ScenarioApp();
+const pl = new ScenarioApp({ mcp: true });
 let am: FakeAlertmanager;
 
 beforeAll(async () => {
 	am = await startFakeAlertmanager();
-	setFakeCapability("mcpHttp", true, pl.fakeState);
 	await pl.boot();
 	await pl.api("/settings/harness", { method: "PATCH", body: { harness: "opencode" } });
 }, 60_000);
 
 afterAll(async () => {
-	setFakeCapability("mcpHttp", false, pl.fakeState);
 	await am.close();
 	await pl.dispose();
 });
