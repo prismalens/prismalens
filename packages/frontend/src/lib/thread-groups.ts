@@ -4,8 +4,8 @@
 /** Local midnight `daysBack` calendar days before `t`; a DST day is 23 or 25 hours, so never subtract 24h. */
 function startOfDay(t: number, daysBack = 0): number {
 	const d = new Date(t);
-	d.setHours(0, 0, 0, 0);
 	d.setDate(d.getDate() - daysBack);
+	d.setHours(0, 0, 0, 0);
 	return d.getTime();
 }
 
