@@ -45,17 +45,18 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 		},
 		prWatch: {
 			upsert: vi.fn(async ({ create }: { create: (typeof watches)[number] }) => {
-				watches = [...watches.filter((w) => w.prId !== create.prId), create];
+				watches = [...watches.filter((w) => !(w.prId === create.prId && w.investigationId === create.investigationId)), create];
 			}),
-			findUnique: vi.fn(async ({ where }: { where: { prId_investigationId: { prId: string } } }) =>
-				watches.find((w) => w.prId === where.prId_investigationId.prId) ?? null,
+			findUnique: vi.fn(async ({ where }: { where: { prId_investigationId: { prId: string; investigationId: string } } }) =>
+				watches.find((w) => w.prId === where.prId_investigationId.prId && w.investigationId === where.prId_investigationId.investigationId) ?? null,
 			),
 			findMany: vi.fn(async () => watches),
-			delete: vi.fn(async ({ where }: { where: { prId_investigationId: { prId: string } } }) => {
-				watches = watches.filter((w) => w.prId !== where.prId_investigationId.prId);
+			delete: vi.fn(async ({ where }: { where: { prId_investigationId: { prId: string; investigationId: string } } }) => {
+				const k = where.prId_investigationId;
+				watches = watches.filter((w) => !(w.prId === k.prId && w.investigationId === k.investigationId));
 			}),
-			deleteMany: vi.fn(async ({ where }: { where: { prId: string } }) => {
-				watches = watches.filter((w) => w.prId !== where.prId);
+			deleteMany: vi.fn(async ({ where }: { where: { prId: string; investigationId: string } }) => {
+				watches = watches.filter((w) => !(w.prId === where.prId && w.investigationId === where.investigationId));
 			}),
 		},
 		$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>

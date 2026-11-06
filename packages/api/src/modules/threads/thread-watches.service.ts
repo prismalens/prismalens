@@ -295,7 +295,7 @@ export class ThreadWatchesService
 
 	/**
 	 * One pending `pr_watch` wake per thread: a second watch that ends joins its reason.
-	 * A wake already handed to the agent is not joined, so the agent never hears it twice.
+	 * A wake already handed to the agent is not joined; a retry after a failed write can still repeat one, which beats losing it.
 	 */
 	private async wakeWith(threadId: string, said: string, now: Date) {
 		const pending = await this.wakes.latest(threadId, "pr_watch");
