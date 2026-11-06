@@ -78,6 +78,41 @@ describe("checkout leases (#1024)", () => {
 		expect(await lease.checkoutRoot(join(env.root, "nowhere"))).toBeNull();
 	});
 
+	it("a checkout git cannot read right now is unreadable, not gone; one git says is not a work tree is gone", async () => {
+		const { GitMissingError, GitSpawnError } = await import(
+			"../../core/harness/git-spawn.js"
+		);
+		const failWith = (e: Error) => lease.setCheckoutGit(async () => Promise.reject(e));
+		try {
+			failWith(new GitSpawnError("git rev-parse timed out", null, "", true));
+			await expect(lease.checkoutRoot(shop)).rejects.toThrow(
+				lease.CheckoutUnreadable,
+			);
+			failWith(new GitMissingError());
+			await expect(lease.checkoutRoot(shop)).rejects.toThrow(/Git isn't installed/);
+			failWith(new GitSpawnError("git rev-parse failed (exit 128)", 128, "not a git repository", false));
+			expect(await lease.checkoutRoot(shop)).toBeNull();
+		} finally {
+			lease.setCheckoutGit(null);
+		}
+	});
+
+	it("a busy folder reader is unreadable too, not gone", async () => {
+		const { CanonicalBusy } = await import("./folder-lock.js");
+		lease.setCheckoutGit(async () => ({ stdout: `${shop}\n`, stderr: "" }));
+		const canonical = vi
+			.spyOn(await import("./folder-lock.js"), "canonical")
+			.mockRejectedValueOnce(new CanonicalBusy());
+		try {
+			await expect(lease.checkoutRoot(shop)).rejects.toThrow(
+				lease.CheckoutUnreadable,
+			);
+		} finally {
+			canonical.mockRestore();
+			lease.setCheckoutGit(null);
+		}
+	});
+
 	it("a status never runs an fsmonitor hook the checkout's own config names", async () => {
 		const dir = repo("hooked");
 		const marker = join(env.root, "hook-ran");

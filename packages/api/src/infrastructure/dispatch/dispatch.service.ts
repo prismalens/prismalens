@@ -100,6 +100,7 @@ import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import {
 	CHECKOUT_BUSY,
+	CheckoutUnreadable,
 	checkoutBusy,
 	checkoutRoot,
 	leasedBy,
@@ -1446,7 +1447,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					select: { url: true },
 				})
 			: null;
-		const now = repo ? await checkoutRoot(repo.url) : null;
+		const now = repo
+			? await checkoutRoot(repo.url).catch((e: unknown) => {
+					// Retryable, unlike a checkout that is gone: a wake tries again.
+					if (e instanceof CheckoutUnreadable)
+						throw new FollowUpRefused(e.message);
+					throw e;
+				})
+			: null;
 		if (!now || !sameCheckout(now, recorded))
 			throw new CheckoutGone(checkoutGoneReason(recorded));
 		return recorded;

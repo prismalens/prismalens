@@ -101,6 +101,18 @@ describe("Work in: This checkout or New worktree (#1024)", () => {
 		});
 	});
 
+	it("a checkout that cannot be read right now is retryable, not reported gone", async () => {
+		const { CheckoutUnreadable } = await import(
+			"../../infrastructure/dispatch/checkout-lease.js"
+		);
+		lease.checkoutRoot.mockRejectedValueOnce(new CheckoutUnreadable("Try again in a moment."));
+		await expect(start({ workIn: "checkout" })).rejects.toMatchObject({
+			code: "SERVICE_UNAVAILABLE",
+			message: "Try again in a moment.",
+		});
+		expect(dispatch.addInvestigationJob).not.toHaveBeenCalled();
+	});
+
 	it("a start that dies before a job is stored fails the run and frees its checkout, then says why", async () => {
 		dispatch.threadRunOf?.mockRejectedValueOnce(new Error("disk gone"));
 		await expect(start({ workIn: "checkout" })).rejects.toThrow("disk gone");

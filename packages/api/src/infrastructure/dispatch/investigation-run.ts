@@ -115,6 +115,7 @@ import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
 import {
+	CheckoutUnreadable,
 	checkoutRoot,
 	checkoutState,
 	NO_FSMONITOR,
@@ -2359,7 +2360,16 @@ async function borrowedWorkspace(
 	root: string,
 	repo: IncidentRepo,
 ): Promise<Workspace> {
-	const now = await checkoutRoot(repo.url);
+	let now: string | null;
+	try {
+		now = await checkoutRoot(repo.url);
+	} catch (e) {
+		if (!(e instanceof CheckoutUnreadable)) throw e;
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: your checkout ${root} could not be read (${e.message}).`,
+		);
+	}
 	if (!now || !sameCheckout(now, root))
 		return unmappedWorkspace(
 			runDir,

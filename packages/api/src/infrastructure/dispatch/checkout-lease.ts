@@ -13,7 +13,9 @@ import type { Prisma } from "@prismalens/database";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
+	GitMissingError,
 	type GitOutput,
+	GitSpawnError,
 	type SpawnGitOptions,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
@@ -62,21 +64,35 @@ export function checkoutGit(args: string[], cwd: string): Promise<GitOutput> {
 	});
 }
 
-/** The working tree's top level that holds `folder`, as the disk names it; null when unknown. */
+/** The checkout could not be read just now (a busy or slow disk, no git): trying again may work, unlike a checkout that is gone. */
+export class CheckoutUnreadable extends Error {}
+
+/**
+ * The working tree's top level that holds `folder`, as the disk names it. Null when git says
+ * it is missing or not a work tree; a read that failed for another reason throws CheckoutUnreadable.
+ */
 export async function checkoutRoot(folder: string): Promise<string | null> {
 	let top: string;
 	try {
 		top = (
 			await checkoutGit(["rev-parse", "--show-toplevel"], folder)
 		).stdout.trim();
-	} catch {
+	} catch (e) {
+		if (e instanceof GitMissingError) throw new CheckoutUnreadable(e.message);
+		if (e instanceof GitSpawnError && e.timedOut)
+			throw new CheckoutUnreadable(
+				"Reading your checkout timed out. Try again in a moment.",
+			);
 		return null;
 	}
 	if (!top) return null;
 	try {
 		return await canonical(top);
 	} catch (e) {
-		if (e instanceof CanonicalBusy) return null;
+		if (e instanceof CanonicalBusy)
+			throw new CheckoutUnreadable(
+				"PrismaLens is busy reading folders. Try again in a moment.",
+			);
 		throw e;
 	}
 }

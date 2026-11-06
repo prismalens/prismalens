@@ -34,6 +34,7 @@ import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	CHECKOUT_BUSY,
+	CheckoutUnreadable,
 	checkoutBusy,
 	checkoutRoot,
 	takeLease,
@@ -342,7 +343,11 @@ export class ThreadsService {
 			(await this.getSettings()).newThreadsWorkIn ??
 			"worktree";
 		if (chosen !== "checkout") return null;
-		const root = await checkoutRoot(repo.url);
+		const root = await checkoutRoot(repo.url).catch((e: unknown) => {
+			if (e instanceof CheckoutUnreadable)
+				throw new ORPCError("SERVICE_UNAVAILABLE", { message: e.message });
+			throw e;
+		});
 		if (!root)
 			throw new ORPCError("CONFLICT", {
 				message: `Your checkout ${repo.url} is gone or is not a git repository. Start this thread in a new worktree instead.`,

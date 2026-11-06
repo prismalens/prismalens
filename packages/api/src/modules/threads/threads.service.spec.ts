@@ -64,6 +64,7 @@ describe("ThreadsService (#1020)", () => {
 	let dispatch: {
 		threadRunOf: ReturnType<typeof vi.fn>;
 		addInvestigationJob: ReturnType<typeof vi.fn>;
+		abandonUnstarted: ReturnType<typeof vi.fn>;
 	};
 	let harness: {
 		resolveSelection: ReturnType<typeof vi.fn>;
@@ -108,6 +109,7 @@ describe("ThreadsService (#1020)", () => {
 		dispatch = {
 			threadRunOf: vi.fn(async () => thread),
 			addInvestigationJob: vi.fn(async () => "job-1"),
+			abandonUnstarted: vi.fn(async () => {}),
 		};
 		harness = {
 			resolveSelection: vi.fn(async () => ({
