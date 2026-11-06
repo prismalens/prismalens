@@ -86,6 +86,12 @@ until [ "$(curl -sf "$url/health" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)
 	sleep 1
 done
 ! kill -0 "$old_pid" 2>/dev/null || fail "the $new_version process is still running"
-grep -q '"result":"done"' "$ws/update-result.json" || fail "the handoff recorded no success"
+# The handoff polls /health once a second too, so its record can land just after ours.
+i=0
+until grep -q '"result":"done"' "$ws/update-result.json" 2>/dev/null; do
+	i=$((i + 1))
+	[ $i -lt 30 ] || { cat "$ws/update-result.json" >&2 2>/dev/null || true; fail "the handoff recorded no success"; }
+	sleep 1
+done
 [ "$(env -i PATH="$clean_path" "$bin/pl" --version)" = "$next" ] || fail "pl --version after the restart"
 echo "ok - Install and restart: $new_version → $next from the endpoint, /health reports $next"
