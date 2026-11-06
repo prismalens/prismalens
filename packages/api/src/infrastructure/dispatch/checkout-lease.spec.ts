@@ -6,7 +6,13 @@
  * database and real git repositories, and only read-only git ever runs on it.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -70,6 +76,25 @@ describe("checkout leases (#1024)", () => {
 		expect(root).not.toBeNull();
 		expect(lease.sameCheckout(root as string, shop)).toBe(true);
 		expect(await lease.checkoutRoot(join(env.root, "nowhere"))).toBeNull();
+	});
+
+	it("a status never runs an fsmonitor hook the checkout's own config names", async () => {
+		const dir = repo("hooked");
+		const marker = join(env.root, "hook-ran");
+		const hook = join(env.root, "hook.sh").replaceAll("\\", "/");
+		writeFileSync(
+			hook,
+			`#!/bin/sh\necho ran > "${marker.replaceAll("\\", "/")}"\nprintf '/'\n`,
+			{ mode: 0o755 },
+		);
+		git(dir, "config", "core.fsmonitor", hook);
+		// The control: git's own status runs the hook, so the guard below is what stops it.
+		git(dir, "status", "--porcelain");
+		expect(existsSync(marker)).toBe(true);
+		rmSync(marker);
+		await lease.checkoutState(dir);
+		await lease.checkoutRoot(dir);
+		expect(existsSync(marker)).toBe(false);
 	});
 
 	it("an alias through a symlink or junction is the same checkout", async () => {
@@ -237,7 +262,7 @@ describe("checkout leases (#1024)", () => {
 	it("no git call that writes ever reaches a borrowed checkout", async () => {
 		const seen: string[][] = [];
 		lease.setCheckoutGit(async (args, opts) => {
-			seen.push(args);
+			seen.push(args.slice(lease.NO_FSMONITOR.length));
 			const { spawnGit } = await import("../../core/harness/git-spawn.js");
 			return spawnGit(args, opts);
 		});

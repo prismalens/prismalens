@@ -71,12 +71,12 @@ beforeAll(async () => {
 		body: { source: checkout },
 	});
 	projectId = project.id;
-	const { setCheckoutGit } = await import(
+	const { NO_FSMONITOR, setCheckoutGit } = await import(
 		"../../src/infrastructure/dispatch/checkout-lease.js"
 	);
 	const { spawnGit } = await import("../../src/core/harness/git-spawn.js");
 	setCheckoutGit((args, opts) => {
-		seen.push(args);
+		seen.push(args.slice(NO_FSMONITOR.length));
 		return spawnGit(args, opts);
 	});
 }, 60_000);

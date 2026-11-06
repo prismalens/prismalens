@@ -106,7 +106,12 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
-import { checkoutRoot, checkoutState, sameCheckout } from "./checkout-lease.js";
+import {
+	checkoutRoot,
+	checkoutState,
+	NO_FSMONITOR,
+	sameCheckout,
+} from "./checkout-lease.js";
 import { isCanonical } from "./folder-lock.js";
 import {
 	clearReceipt,
@@ -2973,12 +2978,16 @@ export function observeWorkspace(
 
 function gitIn(dir: string, args: string[]): string {
 	// A status never refreshes the index: an in-place run's is the user's own (#1024).
-	return execFileSync("git", ["--no-optional-locks", "-C", dir, ...args], {
-		env: gitEnv({ source: "none" }),
-		encoding: "utf8",
-		windowsHide: true,
-		timeout: 15_000,
-	});
+	return execFileSync(
+		"git",
+		["--no-optional-locks", ...NO_FSMONITOR, "-C", dir, ...args],
+		{
+			env: gitEnv({ source: "none" }),
+			encoding: "utf8",
+			windowsHide: true,
+			timeout: 15_000,
+		},
+	);
 }
 
 async function restartFacts(

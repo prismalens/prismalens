@@ -41,6 +41,12 @@ export function setCheckoutGit(next: GitRunner | null): void {
 	runner = next ?? spawnGit;
 }
 
+/**
+ * Leads every git call on a borrowed checkout: its own config may name an fsmonitor hook, which
+ * `status` would run. An empty value turns it off on every git version (`false` reads as a path on old ones).
+ */
+export const NO_FSMONITOR = ["-c", "core.fsmonitor="] as const;
+
 /** git on the user's checkout: a write is refused here, before git sees it (#1024). */
 export function checkoutGit(args: string[], cwd: string): Promise<GitOutput> {
 	const sub = args[0];
@@ -48,7 +54,7 @@ export function checkoutGit(args: string[], cwd: string): Promise<GitOutput> {
 		return Promise.reject(
 			new Error(`git ${sub ?? ""} never runs on a borrowed checkout`),
 		);
-	return runner(args, {
+	return runner([...NO_FSMONITOR, ...args], {
 		cwd,
 		// Optional locks off: a status here never writes the user's index (git-status(1)).
 		env: { ...gitEnv({ source: "machine" }), GIT_OPTIONAL_LOCKS: "0" },
