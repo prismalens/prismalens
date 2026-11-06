@@ -3,7 +3,14 @@
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { releaseRun } from "../../../../scripts/fakes/fake-acp-agent.mjs";
@@ -162,10 +169,11 @@ describe("A thread works in the user's own checkout (#1024)", () => {
 		const trees = git("worktree", "list", "--porcelain")
 			.split("\n")
 			.filter((l) => l.startsWith("worktree "))
-			.map((l) => l.slice("worktree ".length).toLowerCase());
-		const slash = (p: string) => p.replaceAll("\\", "/").toLowerCase();
-		expect(trees[0]).toBe(slash(checkout));
-		for (const t of trees.slice(1)) expect(t).toContain(slash(join(pl.workspace, "data")));
+			.map((l) => l.slice("worktree ".length));
+		// Both sides as the disk names them: /tmp is /private/tmp on macOS.
+		const real = (p: string) => realpathSync(p).replaceAll("\\", "/").toLowerCase();
+		expect(real(trees[0] as string)).toBe(real(checkout));
+		for (const t of trees.slice(1)) expect(real(t)).toContain(real(join(pl.workspace, "data")));
 		expect(new Set(seen.map((a) => a[0]))).toEqual(
 			new Set(["rev-parse", "symbolic-ref", "status"]),
 		);
