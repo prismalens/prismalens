@@ -246,6 +246,23 @@ export class ScenarioApp {
 		return this.app.get(GatewayService);
 	}
 
+	/** A request as this paired device, answered raw, so a test can read a refusal's body (#1024). */
+	async fetchAs(
+		method: string,
+		path: string,
+		body: unknown,
+	): Promise<Response> {
+		return fetch(`${this.url}/api${path}`, {
+			method,
+			headers: {
+				"content-type": "application/json",
+				origin: this.url,
+				cookie: this.cookie,
+			},
+			body: JSON.stringify(body),
+		});
+	}
+
 	/** A GET as this paired device, answered raw: for a stream or an error body. */
 	async fetchRaw(path: string, signal?: AbortSignal): Promise<Response> {
 		return fetch(`${this.url}/api${path}`, {

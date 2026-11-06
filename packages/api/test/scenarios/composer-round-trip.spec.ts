@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { randomUUID } from "node:crypto";
 import type {
 	CanonicalEvent,
 	ComposerDraft,
@@ -51,6 +52,12 @@ afterAll(async () => {
 	await am.close();
 	await pl.dispose();
 });
+
+/** A PUT as this paired device, answered with its status and body whatever they are. */
+async function fetchJson(path: string, body: unknown) {
+	const res = await pl.fetchAs("PUT", path, body);
+	return { status: res.status, body: (await res.json()) as unknown };
+}
 
 async function events(runId: string): Promise<CanonicalEvent[]> {
 	const page = await pl.api<{ events: CanonicalEvent[] }>(
@@ -136,6 +143,33 @@ describe("Walk: the composer keeps every word, and what it carries reaches the a
 			}),
 		).rejects.toThrow(/409/);
 		expect((await pl.api<ComposerDraft>(`/drafts/${scope}`)).text).toBe("");
+	}, 60_000);
+
+	it("Given a new scope, When two first saves race on real SQLite, Then one is stored and the other gets 409 carrying it", async () => {
+		const scope = `new:project:${randomUUID()}`;
+		const save = (text: string) =>
+			fetchJson(`/drafts/${scope}`, {
+				text,
+				draftKey: null,
+				attachments: [],
+				quotes: [],
+				references: [],
+				choice: {},
+				baseRev: 0,
+				generation: 0,
+			});
+		const results = await Promise.all([save("phone"), save("laptop")]);
+		const ok = results.filter((r) => r.status === 200);
+		const lost = results.filter((r) => r.status === 409);
+		expect(ok).toHaveLength(1);
+		expect(lost).toHaveLength(1);
+		const winner = ok[0]?.body as ComposerDraft;
+		expect(winner.rev).toBe(1);
+		expect(lost[0]?.body).toMatchObject({
+			code: "CONFLICT",
+			data: { current: { text: winner.text, rev: 1 } },
+		});
+		expect((await pl.api<ComposerDraft>(`/drafts/${scope}`)).text).toBe(winner.text);
 	}, 60_000);
 
 	it("Given a run waiting on an ask with two queued messages, When one is edited and one withdrawn, Then the agent gets only the edited text, and a late edit is ALREADY_DELIVERED", async () => {
