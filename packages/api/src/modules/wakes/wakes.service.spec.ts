@@ -33,7 +33,7 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 	let wakes: InstanceType<typeof WakesService>;
 	let settings: Record<string, unknown>;
 	const resumed: Array<{ id: string; text: string; kind: string; session: unknown }> = [];
-	const sent: Array<{ id: string; text: string }> = [];
+	const sent: Array<{ id: string; text: string; messageId?: string }> = [];
 	let refuse: Error | null = null;
 	let sendState: "queued" | "sent" | null = "queued";
 	let listener: ((id: string, o: { outcome: string; error?: string }) => Promise<void> | void) | null = null;
@@ -45,12 +45,20 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 		resumeInvestigation: vi.fn(
 			async (id: string, text: string, _mode: string, kind: string, _a: unknown, _to: unknown, session: unknown) => {
 				if (refuse) throw refuse;
+				const wakeId = (session as { wakeId?: string } | undefined)?.wakeId;
+				if (wakeId) {
+					const { count } = await prisma.threadWake.updateMany({
+						where: { id: wakeId, state: "pending" },
+						data: { state: "done", doneAt: new Date() },
+					});
+					if (!count) return false;
+				}
 				resumed.push({ id, text, kind, session });
 				return true;
 			},
 		),
-		sendMessage: vi.fn((id: string, text: string) => {
-			sent.push({ id, text });
+		sendMessage: vi.fn((id: string, text: string, _mode?: string, _a?: unknown, _k?: unknown, messageId?: string) => {
+			sent.push({ id, text, ...(messageId ? { messageId } : {}) });
 			return sendState;
 		}),
 	};
@@ -199,11 +207,12 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			expect((await s.sessionOf(row)).limit).toMatchObject({ resetsAt: RESET.toISOString(), autoResume: true, attempts: 1 });
 		});
 
-		it("reads the limit text from the row when the job's error is generic", async () => {
-			const t = await thread();
-			lifecycle();
-			await listener?.(t.id, { outcome: "failed", error: "the run failed" });
-			expect((await wakes.latest(t.id, "limit"))?.state).toBe("pending");
+		it("a later transient error never schedules from an older limit's stored text, and clears the stale limit", async () => {
+			const t = await thread({ endReason: "limited" });
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: "Quota exceeded for quota metric. Please retry in 20s." });
+			expect(await wakes.latest(t.id, "limit")).toBeNull();
+			expect((await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } })).endReason).toBeNull();
 		});
 
 		it("a short retry the agent makes itself schedules nothing", async () => {
@@ -248,7 +257,12 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
 			await s.process(new Date(RESET.getTime() + 3 * 60_000));
 			expect(resumed).toEqual([
-				{ id: t.id, text: `${LIMIT_RESET_NOTE}\n\nWhy is checkout slow?`, kind: "continue", session: {} },
+				{
+					id: t.id,
+					text: `${LIMIT_RESET_NOTE}\n\nWhy is checkout slow?`,
+					kind: "continue",
+					session: { wakeId: expect.any(String) },
+				},
 			]);
 			expect((await wakes.latest(t.id, "limit"))?.state).toBe("done");
 			expect((await investigations.allEvents(t.id)).at(-1)).toMatchObject({ kind: "resumed", reason: "limit_reset" });
@@ -310,7 +324,7 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			const s = lifecycle();
 			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
 			await s.process(new Date(RESET.getTime() + 3 * 60_000));
-			expect(resumed[0]?.session).toEqual({ compact: { command: "compact" } });
+			expect(resumed[0]?.session).toEqual({ compact: { command: "compact" }, wakeId: expect.any(String) });
 		});
 
 		it("is skipped when the thread is already running again", async () => {
@@ -361,17 +375,87 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 
 	});
 
+	describe("pre-merge review (#1024)", () => {
+		it("the admission itself consumes the wake, so a crash after it never admits twice", async () => {
+			const t = await thread();
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
+			const wake = await wakes.latest(t.id, "limit");
+			// Ending the wake after admission fails, as a crash there would.
+			const finish = vi.spyOn(wakes, "finish").mockRejectedValue(new Error("crashed"));
+			await s.process(new Date(RESET.getTime() + 3 * 60_000)).catch(() => {});
+			finish.mockRestore();
+			await s.process(new Date(RESET.getTime() + 4 * 60_000));
+			expect(resumed).toHaveLength(1);
+			expect(resumed[0]?.session).toMatchObject({ wakeId: wake?.id });
+		});
+
+		it("keeps every submitted message whole, however long", async () => {
+			const t = await thread({ kind: "chat" });
+			const a = `first ${"a".repeat(3990)}`;
+			const b = `second ${"b".repeat(3990)}`;
+			await say(t.id, [
+				{ kind: "message_queued", messageId: "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a", text: a },
+				{ kind: "message_queued", messageId: "7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b", text: b },
+			]);
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
+			await s.setAutoResume(t.id, true, "c".repeat(4000));
+			await s.process(new Date(RESET.getTime() + 3 * 60_000));
+			expect(resumed[0]?.text).toBe(`${LIMIT_RESET_NOTE}
+
+${a}
+
+${b}
+
+${"c".repeat(4000)}`);
+			expect(resumed[0]?.session).toMatchObject({
+				delivers: ["6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a", "7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b"],
+			});
+		});
+
+		it("wakes held back by an auto-resume turned off never starve a later wake", async () => {
+			for (let i = 0; i < 60; i++) {
+				const held = await thread({ autoResume: false });
+				await wakes.schedule(held.id, "limit", new Date(1_000 + i), "usage limit");
+			}
+			const t = await thread({ status: "completed" });
+			await wakes.schedule(t.id, "agent", new Date(10_000), "Look again.");
+			await lifecycle().process(new Date(20_000));
+			expect(resumed.map((r) => r.text)).toEqual(["Look again."]);
+		});
+	});
+
 	describe("agent and PR wakes", () => {
-		it("delivers its reason as a queued message while the thread runs, and is never dropped", async () => {
+		it("queues its reason under the wake's id while the thread runs, and is done only once the run recorded it", async () => {
 			const t = await thread({ status: "running" });
 			const s = lifecycle();
-			await wakes.schedule(t.id, "agent", new Date(1), "Check the deploy again.");
+			const id = await wakes.schedule(t.id, "agent", new Date(1), "Check the deploy again.");
 			sendState = null;
 			await s.process(new Date());
 			expect((await wakes.latest(t.id, "agent"))?.state).toBe("pending");
 			sendState = "queued";
 			await s.process(new Date());
-			expect(sent.at(-1)).toEqual({ id: t.id, text: "Check the deploy again." });
+			expect(sent.at(-1)).toEqual({ id: t.id, text: "Check the deploy again.", messageId: id });
+			// Queued in memory only: a crash now would lose it, so the wake stays.
+			expect((await wakes.latest(t.id, "agent"))?.state).toBe("pending");
+			const sends = sent.length;
+			await s.process(new Date());
+			expect(sent).toHaveLength(sends);
+			await say(t.id, [{ kind: "message_queued", messageId: id, text: "Check the deploy again." }]);
+			await s.process(new Date());
+			expect((await wakes.latest(t.id, "agent"))?.state).toBe("done");
+		});
+
+		it("a queued reason the run never delivered is taken up once the thread finishes", async () => {
+			const t = await thread({ status: "running" });
+			const s = lifecycle();
+			const id = await wakes.schedule(t.id, "agent", new Date(1), "Check the deploy again.");
+			await s.process(new Date());
+			await prisma.investigation.update({ where: { id: t.id }, data: { status: "completed" } });
+			await say(t.id, [{ kind: "operator_message", text: "Check the deploy again.", mode: "queue", delivered: false, messageId: id }]);
+			await s.process(new Date());
+			expect(resumed[0]).toMatchObject({ text: "Check the deploy again.", kind: "chat" });
 			expect((await wakes.latest(t.id, "agent"))?.state).toBe("done");
 		});
 
@@ -452,7 +536,8 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			}
 			await s.process(new Date(last.getTime() + 56 * 60_000));
 			expect(resumed).toHaveLength(3);
-			expect(await wakes.latest(ids[3] as string, "idle_compact")).toMatchObject({ state: "skipped", payload: { skipped: "rate cap" } });
+			const capped = await prisma.threadWake.findMany({ where: { kind: "idle_compact", state: "skipped" } });
+			expect(capped.map((w) => [ids.includes(w.investigationId), JSON.parse(w.payload ?? "{}").skipped])).toEqual([[true, "rate cap"]]);
 		});
 
 		it("is skipped when the thread was used since, or settled", async () => {

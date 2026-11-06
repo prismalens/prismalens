@@ -1100,6 +1100,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		references: z.array(ReferenceRefSchema).optional(),
 		/** The `message_queued` this delivers or gives up on; absent before #820. */
 		messageId: z.string().uuid().optional(),
+		/** Other queued messages this one carries, as a resume after a limit does (#1024). */
+		delivers: z.array(z.string().uuid()).optional(),
 		/** A follow-up's first message: the agent, model and level that took it, and what a handoff carried. */
 		via: z
 			.object({
@@ -1785,7 +1787,14 @@ export const InvestigationJobDataSchema = z.object({
 	/** A follow-up on a finished run: reopen its session and send this (#747). */
 	resume: z
 		.object({
-			text: z.string().min(1).max(4000),
+			// A limit resume carries every message it re-sends whole, so it can pass one message's cap (#1024).
+			text: z.string().min(1).max(200_000),
+			/** The line's queue id: it is recorded as queued before a compaction that may fail (#1024). */
+			messageId: z.string().uuid().optional(),
+			/** Queued messages this line carries, so a later resume never sends them again (#1024). */
+			delivers: z.array(z.string().uuid()).optional(),
+			/** The wake this follow-up consumes; its admission ends the wake in the same transaction (#1024). */
+			wakeId: z.string().uuid().optional(),
 			mode: OperatorMessageModeSchema,
 			/** `continue` takes a stopped run on to its report (R4.4); `chat` when absent. */
 			kind: FollowUpKindSchema.optional(),

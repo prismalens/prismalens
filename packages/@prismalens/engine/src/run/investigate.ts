@@ -7,6 +7,7 @@
  * permission asks by the run's level, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
+import { randomUUID } from "node:crypto";
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -257,6 +258,10 @@ export interface RunInvestigationOptions {
 			only?: boolean;
 			before?: number;
 		};
+		/** The line's queue id; with `compact` the line is recorded as queued before it (#1024). */
+		messageId?: string;
+		/** Queued messages the line carries, acknowledged on its `operator_message` (#1024). */
+		delivers?: string[];
 	};
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
@@ -1228,6 +1233,18 @@ export async function* runInvestigation(
 		};
 
 		let outcome: { stop: string } | { error: string };
+		// A compaction can fail on a usage limit: the line waits as queued, so a later resume still sends it.
+		const lineId =
+			opts.resume?.messageId ??
+			(opts.resume?.compact && !opts.resume.compact.only
+				? randomUUID()
+				: undefined);
+		if (opts.resume?.compact && !opts.resume.compact.only && lineId)
+			yield adapter.messageQueued(
+				lineId,
+				opts.resume.text,
+				refsOf(opts.resume.attachments),
+			);
 		const compacted = opts.resume?.compact
 			? yield* compactTurn(opts.resume.compact)
 			: null;
@@ -1244,7 +1261,7 @@ export async function* runInvestigation(
 				heads,
 				refsOf(attachments),
 				kind ?? "chat",
-				undefined,
+				lineId,
 				fresh && via
 					? {
 							...via,
@@ -1256,6 +1273,7 @@ export async function* runInvestigation(
 						}
 					: via,
 				opts.resume.context,
+				opts.resume.delivers,
 			);
 			const said = [
 				...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),

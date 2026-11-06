@@ -91,6 +91,41 @@ describe("A usage limit becomes a scheduled resume (#1024)", () => {
 		expect((await session(limited.id)).limit).toBeUndefined();
 	}, 120_000);
 
+	it("the user's follow-up chose Compact, then send, and the compaction hit the limit: the resume re-sends exactly what they wrote, once", async () => {
+		// Claude Code has a compact command; the thread keeps the agent it started with.
+		await pl.api("/settings/harness", { method: "PATCH", body: { harness: "claude-code" } });
+		const done = await runOf("limit-follow-up");
+		await pl.api("/settings/harness", { method: "PATCH", body: { harness: "auto" } });
+		expect(done.status).toBe("completed");
+		const asked = "DISTINCT-7421: which deploy dropped the books index?";
+		await pl.api(`/investigations/${done.id}/messages`, { method: "POST", body: { text: asked, compact: true } });
+		await eventually(
+			() => pl.api<{ session: Session }>(`/investigations/${done.id}`),
+			(t) => !!t.session.limit?.nextAttemptAt,
+			"the follow-up to hit the limit",
+			30_000,
+		);
+		const reset = new Date(2099, 0, 1, 15, 45, 0);
+		const sessions = await pl.sessions();
+		await sessions.process(new Date(reset.getTime() + 3 * 60_000));
+		// A second pass right after finds the wake already consumed by the admission.
+		await sessions.process(new Date(reset.getTime() + 4 * 60_000));
+		await eventually(
+			async () => events(done.id),
+			(all) => JSON.stringify(all).includes("Picked up after the reset"),
+			"the resumed turn's answer",
+			30_000,
+		);
+		const all = await events(done.id);
+		expect(all.filter((e) => e.kind === "resumed")).toHaveLength(1);
+		// The line waited as queued through the failed compaction, and the resume delivered it.
+		expect(all.filter((e) => e.kind === "message_queued").map((e) => e.text)).toEqual([asked]);
+		const sent = all.filter((e) => e.kind === "operator_message").map((e) => e.text);
+		expect(sent).toEqual([`${NOTE}\n\n${asked}`]);
+		const answer = all.filter((e) => e.kind === "agent_step").map((e) => e.text).join("");
+		expect(answer).toContain(`Picked up after the reset: ${NOTE}\n\n${asked}`);
+	}, 120_000);
+
 	it("Gemini: a terminal quota retries in 30 minutes; the short retry on the resumed turn schedules nothing", async () => {
 		const limited = await runOf("limit-gemini");
 		expect(limited).toMatchObject({ status: "failed", endReason: "limited" });

@@ -90,37 +90,50 @@ export function needsResumePrompt(
 	);
 }
 
+/** What a limit cut off, and the queued messages it carries. */
+export interface InterruptedTurn {
+	text: string;
+	delivers: string[];
+}
+
 /**
  * What the limit cut off: messages queued but never delivered, in order, else
- * the last message the agent received. PrismaLens's restart notes are not the user's.
+ * the last message the agent received. PrismaLens's restart notes are not the
+ * user's. A message a resume carried counts as delivered by its `delivers`.
  */
 export function interruptedTurn(
 	events: readonly CanonicalEvent[],
-): string | null {
+): InterruptedTurn | null {
 	const delivered = new Set<string>();
 	let last: string | null = null;
 	for (const e of events)
 		if (e.kind === "operator_message" && e.delivered) {
 			if (e.messageId) delivered.add(e.messageId);
+			for (const id of e.delivers ?? []) delivered.add(id);
 			if (!e.via?.restart && e.text.trim()) last = e.text;
 		}
 	const waiting = events.filter(
 		(e): e is Extract<CanonicalEvent, { kind: "message_queued" }> =>
 			e.kind === "message_queued" && !delivered.has(e.messageId),
 	);
-	if (waiting.length) return waiting.map((e) => e.text).join("\n\n");
-	return last;
+	if (waiting.length)
+		return {
+			text: waiting.map((e) => e.text).join("\n\n"),
+			delivers: waiting.map((e) => e.messageId),
+		};
+	return last ? { text: last, delivers: [] } : null;
 }
 
-/** The message a limit wake sends: the note, the interrupted turn, and a draft the user chose to send. */
+/** The message a limit wake sends: the note, the interrupted turn and a draft the user chose, each whole. */
 export function limitResumeText(
-	turn: string | null,
+	turn: InterruptedTurn | null,
 	draft: string | undefined,
 ): string {
-	return [LIMIT_RESET_NOTE, turn, draft]
+	// A line an earlier resume queued already opens with the note.
+	const noted = turn?.text.startsWith(LIMIT_RESET_NOTE) ?? false;
+	return [noted ? null : LIMIT_RESET_NOTE, turn?.text, draft]
 		.filter((p): p is string => !!p?.trim())
-		.join("\n\n")
-		.slice(0, 4000);
+		.join("\n\n");
 }
 
 /** When a limit wake fires, and whether the retries are spent. */

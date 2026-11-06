@@ -208,6 +208,7 @@ export class AcpAdapter {
 		messageId?: string,
 		via?: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
 		context?: MessageContextRefs,
+		delivers?: string[],
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -220,6 +221,7 @@ export class AcpAdapter {
 			...(attachments?.length ? { attachments } : {}),
 			...contextRefs(context),
 			...(messageId ? { messageId } : {}),
+			...(delivers?.length ? { delivers } : {}),
 			...(via ? { via } : {}),
 		};
 	}

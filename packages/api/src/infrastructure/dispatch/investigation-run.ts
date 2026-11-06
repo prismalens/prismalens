@@ -1283,6 +1283,8 @@ async function runFollowUp(
 						: {}),
 					...(resume.context ? { context: resume.context } : {}),
 					...(moved ? { newer: moved } : {}),
+					...(resume.messageId ? { messageId: resume.messageId } : {}),
+					...(resume.delivers?.length ? { delivers: resume.delivers } : {}),
 					...(resume.compact
 						? {
 								compact: {

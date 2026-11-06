@@ -179,7 +179,14 @@ export class CheckoutGone extends FollowUpRefused {}
 export interface FollowUpSession {
 	compact?: { command: string; instructions?: string; only?: boolean };
 	fresh?: boolean;
+	/** A wake's follow-up: admitting it consumes the pending wake in the same transaction, or nothing is admitted. */
+	wakeId?: string;
+	/** Queued messages the follow-up's text carries. */
+	delivers?: string[];
 }
+
+/** A wake's admission found it already consumed; its transaction rolls back. */
+class WakeTaken extends Error {}
 
 /** Told when a run's job settles, with how it ended (#1024). */
 export type RunSettledListener = (
@@ -1295,55 +1302,72 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				...(session.compact && !session.fresh
 					? { compact: session.compact }
 					: {}),
+				...(session.wakeId
+					? { wakeId: session.wakeId, messageId: session.wakeId }
+					: {}),
+				...(session.delivers?.length ? { delivers: session.delivers } : {}),
 				...((await this.afterRestart(id, row.endReason))
 					? { afterRestart: true }
 					: {}),
 			},
 		};
-		const admitted = await this.prisma.$transaction(async (tx) => {
-			const other = sharesAdmission(row)
-				? await tx.investigation.findFirst({
+		const admitted = await this.prisma
+			.$transaction(async (tx) => {
+				const other = sharesAdmission(row)
+					? await tx.investigation.findFirst({
+							where: {
+								...runScope(row),
+								id: { not: id },
+								status: { in: [...LIVE_WORKFLOW_STATUSES] },
+							},
+							orderBy: { createdAt: "desc" },
+							select: { createdAt: true },
+						})
+					: null;
+				if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
+					throw new FollowUpRefused(FOLDER_BUSY);
+				if (other) {
+					const n = await tx.investigation.count({
 						where: {
 							...runScope(row),
-							id: { not: id },
-							status: { in: [...LIVE_WORKFLOW_STATUSES] },
+							createdAt: { lte: other.createdAt },
 						},
-						orderBy: { createdAt: "desc" },
-						select: { createdAt: true },
-					})
-				: null;
-			if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
-				throw new FollowUpRefused(FOLDER_BUSY);
-			if (other) {
-				const n = await tx.investigation.count({
-					where: {
-						...runScope(row),
-						createdAt: { lte: other.createdAt },
+					});
+					throw new FollowUpRefused(
+						`Run #${n} is working; message it or stop it.`,
+					);
+				}
+				const { count } = await tx.investigation.updateMany({
+					where: { id, status: row.status },
+					data: {
+						status: "pending",
+						completedAt: null,
+						error: null,
+						stopRequestedAt: null,
+						liveTurn: kind === "continue" ? "report" : "answer",
 					},
 				});
-				throw new FollowUpRefused(
-					`Run #${n} is working; message it or stop it.`,
-				);
-			}
-			const { count } = await tx.investigation.updateMany({
-				where: { id, status: row.status },
-				data: {
-					status: "pending",
-					completedAt: null,
-					error: null,
-					stopRequestedAt: null,
-					liveTurn: kind === "continue" ? "report" : "answer",
-				},
+				if (count === 0) return false;
+				if (session.wakeId) {
+					const taken = await tx.threadWake.updateMany({
+						where: { id: session.wakeId, state: "pending" },
+						data: { state: "done", doneAt: new Date() },
+					});
+					// Another pass took this wake already: roll the admission back.
+					if (taken.count === 0) throw new WakeTaken();
+				}
+				await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
+					investigationId: id,
+					incidentId: row.incidentId,
+					payload: JSON.stringify(data),
+					priority: PRIORITY_ORDER.normal ?? 3,
+				});
+				return true;
+			}, FOLDER_TX)
+			.catch((e: unknown) => {
+				if (e instanceof WakeTaken) return false;
+				throw e;
 			});
-			if (count === 0) return false;
-			await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
-				investigationId: id,
-				incidentId: row.incidentId,
-				payload: JSON.stringify(data),
-				priority: PRIORITY_ORDER.normal ?? 3,
-			});
-			return true;
-		}, FOLDER_TX);
 		if (!admitted) return false;
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();

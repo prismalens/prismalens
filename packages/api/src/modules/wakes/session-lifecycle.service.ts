@@ -45,6 +45,8 @@ import { type Wake, WakesService } from "./wakes.service.js";
 
 /** A wake whose resume keeps being refused (a busy folder, a held checkout) gives up after this long. */
 const REFUSED_FOR_MS = 24 * 60 * 60_000;
+/** Due wakes are read this many at a time. */
+const DUE_PAGE = 50;
 /** A no-time limit that comes back within this long of its wake's resume counts as the next attempt. */
 const RETRY_LINK_MS = 2 * NO_TIME_RETRY_MS;
 
@@ -117,17 +119,19 @@ export class SessionLifecycleService implements OnModuleInit {
 	): Promise<void> {
 		const row = await this.thread(id);
 		if (!row) return;
-		// The job's error, else the row's: a first run writes its limit text there.
-		const text = isUsageLimitError(outcome.error) ? outcome.error : row.error;
-		if (outcome.outcome === "failed" && isUsageLimitError(text)) {
-			await this.recordLimit(row, text as string);
+		// Only this turn's own error decides: the row may still hold an older limit's text.
+		if (outcome.outcome === "failed" && isUsageLimitError(outcome.error)) {
+			await this.recordLimit(row, outcome.error as string);
 			return;
 		}
-		if (await this.wakes.cancelKind(id, "limit"))
-			await this.prisma.investigation.updateMany({
-				where: { id },
-				data: { limitResetsAt: null },
-			});
+		await this.wakes.cancelKind(id, "limit");
+		await this.prisma.investigation.updateMany({
+			where: { id },
+			data: {
+				limitResetsAt: null,
+				...(row.endReason === "limited" ? { endReason: null } : {}),
+			},
+		});
 		if (outcome.outcome === "succeeded") await this.scheduleIdleCompact(row);
 	}
 
@@ -140,8 +144,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			!resetsAt &&
 			prev?.state === "done" &&
 			prev.payload.noTime === true &&
-			!!prev.doneAt &&
-			now.getTime() - prev.doneAt.getTime() < RETRY_LINK_MS;
+			now.getTime() - prev.at.getTime() < RETRY_LINK_MS;
 		const attempts = linked && prev ? prev.attempts + 1 : 1;
 		await this.prisma.investigation.updateMany({
 			where: { id: row.id },
@@ -199,14 +202,21 @@ export class SessionLifecycleService implements OnModuleInit {
 
 	/** One pass over the due wakes, oldest first. */
 	async process(now: Date = this.now()): Promise<void> {
-		for (const wake of await this.wakes.due(now)) {
-			try {
-				await this.fire(wake, now);
-			} catch (e) {
-				this.logger.warn(
-					`Wake ${wake.id} (${wake.kind}) did not fire: ${(e as Error).message}`,
-				);
+		// Paged: wakes that stay pending (auto-resume off, a refused resume) never hide later ones.
+		let after: Wake | undefined;
+		for (;;) {
+			const page = await this.wakes.due(now, after, DUE_PAGE);
+			for (const wake of page) {
+				try {
+					await this.fire(wake, now);
+				} catch (e) {
+					this.logger.warn(
+						`Wake ${wake.id} (${wake.kind}) did not fire: ${(e as Error).message}`,
+					);
+				}
 			}
+			if (page.length < DUE_PAGE) return;
+			after = page[page.length - 1];
 		}
 	}
 
@@ -235,10 +245,28 @@ export class SessionLifecycleService implements OnModuleInit {
 			return this.fireIdleCompact(wake, row, now);
 		}
 		// An agent's or a PR watch's wake is never dropped: a running thread gets it at its next pause.
+		// Done only once the run recorded the message under the wake's id; until then a crash would lose it.
+		const seen = seenAs(await this.investigations.allEvents(row.id), wake.id);
+		if (seen === "delivered" || (running && seen === "queued")) {
+			await this.wakes.finish(wake.id, "done", undefined, this.now());
+			return;
+		}
 		if (running) {
-			const state = this.dispatch.sendMessage(row.id, wake.reason, "queue");
-			if (state === "queued" || state === "sent")
-				await this.wakes.finish(wake.id, "done", undefined, this.now());
+			if (wake.payload.sentTo !== row.id) {
+				const state = this.dispatch.sendMessage(
+					row.id,
+					wake.reason,
+					"queue",
+					[],
+					undefined,
+					wake.id,
+				);
+				if (state === "queued" || state === "sent")
+					await this.wakes.setPayload(wake.id, {
+						...wake.payload,
+						sentTo: row.id,
+					});
+			}
 			return;
 		}
 		await this.resume(wake, row, now, wake.reason, "chat", {}, "wake");
@@ -255,10 +283,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			typeof wake.payload.message === "string"
 				? wake.payload.message
 				: undefined;
-		const text = limitResumeText(
-			interruptedTurn(await this.investigations.allEvents(row.id)),
-			draft,
-		);
+		const turn = interruptedTurn(await this.investigations.allEvents(row.id));
+		const text = limitResumeText(turn, draft);
 		const kind = continuableRun({
 			kind: row.kind,
 			status: row.status,
@@ -269,10 +295,12 @@ export class SessionLifecycleService implements OnModuleInit {
 			: "chat";
 		// Unattended, a large context is compacted only by the agent's own command; never started fresh.
 		const command = compactCommandOf(this.facts(row.harness));
-		const session: FollowUpSession =
-			command && (usedOf(row.usage) ?? 0) >= (await this.threshold())
+		const session: FollowUpSession = {
+			...(command && (usedOf(row.usage) ?? 0) >= (await this.threshold())
 				? { compact: { command } }
-				: {};
+				: {}),
+			...(turn?.delivers.length ? { delivers: turn.delivers } : {}),
+		};
 		await this.resume(wake, row, now, text, kind, session, "limit_reset");
 	}
 
@@ -294,7 +322,7 @@ export class SessionLifecycleService implements OnModuleInit {
 						? "agent compacts itself or has no command"
 						: !(await this.harness.getSettings()).compactIdle
 							? "turned off"
-							: (await this.wakes.doneSince(
+							: (await this.wakes.firedSince(
 										"idle_compact",
 										new Date(now.getTime() - 60 * 60_000),
 									)) >= IDLE_COMPACT_PER_HOUR
@@ -342,17 +370,16 @@ export class SessionLifecycleService implements OnModuleInit {
 			});
 		}
 		try {
-			const admitted = await this.dispatch.resumeInvestigation(
+			// The admission ends the wake in its own transaction: nothing after it can admit twice.
+			await this.dispatch.resumeInvestigation(
 				row.id,
 				text,
 				"queue",
 				kind,
 				[],
 				{},
-				session,
+				{ ...session, wakeId: wake.id },
 			);
-			if (admitted)
-				await this.wakes.finish(wake.id, "done", wake.payload, this.now());
 		} catch (e) {
 			if (!(e instanceof FollowUpRefused)) throw e;
 			// A held lease or a busy folder clears; a checkout that is gone never does.
@@ -504,4 +531,22 @@ export class SessionLifecycleService implements OnModuleInit {
 			),
 		);
 	}
+}
+
+/** How the record shows a wake's message: delivered, queued but not yet delivered, or not at all. */
+function seenAs(
+	events: readonly CanonicalEvent[],
+	id: string,
+): "delivered" | "queued" | "missing" {
+	let seen: "queued" | "missing" = "missing";
+	for (const e of events) {
+		if (
+			e.kind === "operator_message" &&
+			e.delivered &&
+			(e.messageId === id || e.delivers?.includes(id))
+		)
+			return "delivered";
+		if (e.kind === "message_queued" && e.messageId === id) seen = "queued";
+	}
+	return seen;
 }

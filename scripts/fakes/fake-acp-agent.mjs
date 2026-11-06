@@ -379,7 +379,9 @@ function run() {
 				? scripted[turns - 1]
 				: !loaded && script.steer
 					? script.steer
-					: (script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+					: (script.followUpWhen?.find((w) => prompt.includes(w.match))
+							?.steps ??
+						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
 		const forced = await play(sessionId, steps, prompt);
 		if (typeof forced === "object" && forced) return forced;
 		return { stopReason: forced ?? "end_turn" };

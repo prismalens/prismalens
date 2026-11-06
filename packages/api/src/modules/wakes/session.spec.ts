@@ -52,12 +52,30 @@ describe("what a limit resume sends (#1024)", () => {
 				msg(1, "Why?"),
 				msg(2, "PrismaLens restarted.", { via: { harness: "codex", model: null, accessLevel: null, restart: { stoppedAt: "a", resumedAt: "b", by: "auto" } } }),
 			]),
-		).toBe("Why?");
+		).toEqual({ text: "Why?", delivers: [] });
 	});
 
 	it("nothing when nobody wrote anything", () => {
 		expect(interruptedTurn([])).toBeNull();
 		expect(limitResumeText(null, undefined)).toBe(LIMIT_RESET_NOTE);
+	});
+
+	it("a queued message a resume already carried is not sent again, though the resume named it only in delivers", () => {
+		const id = "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a";
+		expect(
+			interruptedTurn([
+				{ kind: "message_queued", ...base, seq: 1, messageId: id, text: "Then this." } as CanonicalEvent,
+				msg(2, "Resumed with: Then this.", { delivers: [id] }),
+			]),
+		).toEqual({ text: "Resumed with: Then this.", delivers: [] });
+	});
+
+	it("a resume line already starting with the reset note gets no second note", () => {
+		expect(limitResumeText({ text: `${LIMIT_RESET_NOTE}
+
+Why?`, delivers: [] }, undefined)).toBe(`${LIMIT_RESET_NOTE}
+
+Why?`);
 	});
 
 	it("a delivered queued message is not sent again", () => {
@@ -67,7 +85,7 @@ describe("what a limit resume sends (#1024)", () => {
 				{ kind: "message_queued", ...base, seq: 1, messageId: id, text: "Queued." } as CanonicalEvent,
 				msg(2, "Queued.", { messageId: id }),
 			]),
-		).toBe("Queued.");
+		).toEqual({ text: "Queued.", delivers: [] });
 	});
 
 	it("waits two minutes past a known reset, and stops after six blind retries", () => {

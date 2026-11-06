@@ -99,11 +99,27 @@ export class WakesService {
 	}
 
 	/** Pending wakes whose time has come, oldest first; one missed while PrismaLens was off is due once. */
-	async due(now: Date = new Date()): Promise<Wake[]> {
+	async due(
+		now: Date = new Date(),
+		after?: Pick<Wake, "at" | "id">,
+		take = 50,
+	): Promise<Wake[]> {
 		const rows = await this.prisma.threadWake.findMany({
-			where: { state: "pending", at: { lte: now } },
-			orderBy: { at: "asc" },
-			take: 50,
+			where: {
+				state: "pending",
+				at: { lte: now },
+				// A page after `after`, so wakes left pending never hide the ones behind them.
+				...(after
+					? {
+							OR: [
+								{ at: { gt: after.at } },
+								{ at: after.at, id: { gt: after.id } },
+							],
+						}
+					: {}),
+			},
+			orderBy: [{ at: "asc" }, { id: "asc" }],
+			take,
 		});
 		return rows.map(toWake);
 	}
@@ -155,10 +171,10 @@ export class WakesService {
 		return row ? toWake(row) : null;
 	}
 
-	/** How many wakes of this kind finished since `since`, across threads. */
-	async doneSince(kind: WakeKind, since: Date): Promise<number> {
+	/** How many wakes of this kind fired, due at or after `since`, across threads. */
+	async firedSince(kind: WakeKind, since: Date): Promise<number> {
 		return this.prisma.threadWake.count({
-			where: { kind, state: "done", doneAt: { gte: since } },
+			where: { kind, state: "done", at: { gte: since } },
 		});
 	}
 }

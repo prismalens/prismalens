@@ -54,6 +54,8 @@ export interface FakeSession {
 	};
 	turns?: Step[][];
 	followUp?: Step[];
+	/** A follow-up whose prompt contains `match` plays `steps` instead of `followUp` (#1024). */
+	followUpWhen?: { match: string; steps: Step[] }[];
 	load?: Step[];
 	/** Answers a message to the run still in this process; `followUp` answers one after session/load. */
 	steer?: Step[];
