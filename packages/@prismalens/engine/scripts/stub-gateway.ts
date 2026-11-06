@@ -318,6 +318,8 @@ export async function startStubGateway(
 				why,
 				state: "open",
 				createdAt: "2026-01-01T00:00:00.000Z",
+			}),
+		},
 		asks: {
 			question: async () => ({ askId: "00000000-0000-4000-8000-0000000000a5" }),
 			secret: async (_run: string, input: { name: string }) => ({

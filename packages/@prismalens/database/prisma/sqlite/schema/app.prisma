@@ -765,7 +765,8 @@ model ScheduleEvent {
   @@map("schedule_events")
 }
 
-// ======================================================================// THREAD TREES - threads that start threads (#1024 spec F)
+// =============================================================================
+// THREAD TREES - threads that start threads (#1024 spec F)
 // =============================================================================
 
 /// A message between members of one tree, delivered at the receiver's next pause.
@@ -856,7 +857,8 @@ model TreeAllowance {
   root Investigation @relation(fields: [rootId], references: [id], onDelete: Cascade)
 
   @@map("tree_allowances")
-=======
+}
+
 /// A sub-agent the agent started in its own session (#1025): its task, state and
 /// whether the agent lets the host stop it. The steps stay in the event log.
 model SubagentSession {

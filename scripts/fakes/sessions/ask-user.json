@@ -71,12 +71,8 @@
 					],
 					"ruledOut": [],
 					"coverage": {
-						"queried": [
-							"git log"
-						],
-						"notQueried": [
-							"prometheus"
-						]
+						"queried": ["git log"],
+						"notQueried": ["prometheus"]
 					},
 					"nextSteps": [
 						{

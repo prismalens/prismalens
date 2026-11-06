@@ -8,6 +8,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 import { ANYWHERE } from "./serves.js";
 
 /**
@@ -84,8 +85,10 @@ export function askTools(data: AsksData): HarnessTool[] {
 			...base,
 			name: "ask_user",
 			title: "Ask the user",
-			description:
+			description: withRules(
 				"Ask the user 1 to 4 questions, each with 2 to 4 options; put the option you recommend first. Use it only for a decision that is genuinely the user's, which you cannot settle from the code, the data or a sensible default. Each question must stand alone: the user may see it without your other text. An option's `preview` (at most 4,000 characters) shows beside it, for code or a layout to compare. The user can always answer in their own words instead. This returns at once; the answer arrives later as a message from the user, so end your turn or carry on with other work.",
+				"a credential: use secret_request.",
+			),
 			serves: {
 				...ANYWHERE,
 				attended: true,
@@ -114,8 +117,10 @@ export function askTools(data: AsksData): HarnessTool[] {
 			...base,
 			name: "secret_request",
 			title: "Ask the user for a secret",
-			description:
-				"Ask the user for one credential you need, such as an API token. Name it as the environment variable you will read (capitals, digits and _) and say in `reason` what it is for. The user types it into PrismaLens, never into this conversation: you never see the value, and it is set as that environment variable the next time this session opens. After calling, end your turn; the thread continues with the variable set once the user gives it. Never print the variable's value.",
+			description: withRules(
+				"Ask the user for one credential you need, such as an API token. Use it when a task needs a secret you were not given. Name it as the environment variable you will read (capitals, digits and _) and say in `reason` what it is for. The user types it into PrismaLens, never into this conversation: you never see the value, and it is set as that environment variable the next time this session opens. After calling, end your turn; the thread continues with the variable set once the user gives it. Never print the variable's value.",
+				"a question or a choice: use ask_user.",
+			),
 			serves: { ...ANYWHERE, attended: true, dock: true },
 			input: z.object({
 				name: z.string().trim().regex(SECRET_ENV_NAME),
