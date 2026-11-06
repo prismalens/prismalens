@@ -367,7 +367,8 @@ export class IncidentsController {
 						...(context ? { context } : {}),
 					},
 				});
-				await this.drafts.consume(input.draftScope, input.draftRev);
+				// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
+				if (jobId) await this.drafts.consume(input.draftScope, input.draftRev);
 				return {
 					incidentId: input.id,
 					investigationId: investigation.id,

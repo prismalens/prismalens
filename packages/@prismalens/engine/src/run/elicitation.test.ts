@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { elicitationAsk, elicitationContent } from "./elicitation.js";
+import {
+	elicitationAccepts,
+	elicitationAsk,
+	elicitationContent,
+} from "./elicitation.js";
 
 const questionForm = {
 	mode: "form",
@@ -76,13 +80,13 @@ describe("elicitationAsk (#1024)", () => {
 });
 
 describe("elicitationContent (#1024)", () => {
-	it("maps a question answer back to the form, dropping unknown picks", () => {
+	it("maps a question answer back to the form, Other included", () => {
 		const ask = elicitationAsk(questionForm);
 		if (!ask) throw new Error("no ask");
 		expect(
 			elicitationContent(ask, {
 				kind: "question",
-				answers: { question_0: { options: ["prod", "nope"], other: "and canary" } },
+				answers: { question_0: { options: ["prod"], other: "and canary" } },
 			}),
 		).toEqual({ question_0: "prod", question_0_custom: "and canary" });
 	});
@@ -102,5 +106,70 @@ describe("elicitationContent (#1024)", () => {
 		expect(
 			elicitationContent(ask, { kind: "input", values: { name: "x", n: 2 } }),
 		).toEqual({ name: "x", n: 2 });
+	});
+});
+
+describe("elicitationContent refuses an answer the form would not take (#1024)", () => {
+	const form = elicitationAsk({
+		requestedSchema: {
+			properties: {
+				name: { type: "string", minLength: 2, maxLength: 5 },
+				mail: { type: "string", format: "email" },
+				env: { type: "string", enum: ["staging", "prod"] },
+				hours: { type: "integer", minimum: 1, maximum: 72 },
+			},
+			required: ["name"],
+		},
+	});
+	if (!form) throw new Error("no form");
+	const input = (values: Record<string, string | number | boolean>) =>
+		elicitationContent(form, { kind: "input", values });
+
+	it("checks length, format, enum, bounds and unknown fields", () => {
+		expect(input({ name: "ok" })).toEqual({ name: "ok" });
+		expect(input({ name: "x" })).toBeNull();
+		expect(input({ name: "toolong" })).toBeNull();
+		expect(input({ name: "ok", mail: "not-an-email" })).toBeNull();
+		expect(input({ name: "ok", mail: "a@b.co" })).toEqual({ name: "ok", mail: "a@b.co" });
+		expect(input({ name: "ok", env: "dev" })).toBeNull();
+		expect(input({ name: "ok", hours: 0 })).toBeNull();
+		expect(input({ name: "ok", hours: 73 })).toBeNull();
+		expect(input({ name: "ok", extra: "x" })).toBeNull();
+	});
+
+	it("a question takes known options only, one for a single select, and Other only where offered", () => {
+		const q = elicitationAsk({
+			requestedSchema: {
+				properties: {
+					one: { type: "string", enum: ["a", "b"] },
+					many: { type: "array", items: { enum: ["x", "y", "z"] } },
+				},
+			},
+		});
+		if (!q) throw new Error("no question");
+		const answer = (answers: Record<string, { options: string[]; other?: string }>) =>
+			elicitationContent(q, { kind: "question", answers });
+		expect(answer({ one: { options: ["a"] }, many: { options: ["x", "z"] } })).toEqual({
+			one: "a",
+			many: ["x", "z"],
+		});
+		expect(answer({ one: { options: ["a", "b"] } })).toBeNull();
+		expect(answer({ one: { options: ["nope"] } })).toBeNull();
+		expect(answer({ one: { options: [], other: "c" } })).toBeNull();
+		expect(answer({ ghost: { options: ["a"] } })).toBeNull();
+	});
+});
+
+describe("elicitationAccepts (#1024)", () => {
+	it("settles on a decline or a valid answer, never on an answer the form refuses", () => {
+		const ask = elicitationAsk({
+			requestedSchema: { properties: { hours: { type: "integer", minimum: 1 } } },
+		});
+		if (!ask) throw new Error("no ask");
+		const accepts = elicitationAccepts(ask);
+		expect(accepts({ kind: "decline" })).toBe(true);
+		expect(accepts({ kind: "input", values: { hours: 2 } })).toBe(true);
+		expect(accepts({ kind: "input", values: { hours: 0 } })).toBe(false);
+		expect(accepts({ kind: "question", answers: {} })).toBe(false);
 	});
 });

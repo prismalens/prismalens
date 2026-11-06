@@ -11,7 +11,33 @@ import {
 	type FakeAlertmanager,
 	startFakeAlertmanager,
 } from "../../../../scripts/fakes/fake-alertmanager.mjs";
+import { setFakeCapability } from "../../../../scripts/fakes/fake-acp-agent.mjs";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
+
+const PDF_TEXT = "PrismaLens runbook 42";
+
+/** A one-page PDF whose page says `text`, with a correct cross-reference table. */
+function pdfWith(text: string): string {
+	const content = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
+	const objects = [
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+		`<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+	];
+	let out = "%PDF-1.4\n";
+	const offsets: number[] = [];
+	objects.forEach((body, i) => {
+		offsets.push(out.length);
+		out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+	});
+	const xref = out.length;
+	out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+	for (const o of offsets) out += `${String(o).padStart(10, "0")} 00000 n \n`;
+	out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+	return out;
+}
 
 const pl = new ScenarioApp();
 let am: FakeAlertmanager;
@@ -61,7 +87,7 @@ async function personRun(service: string, session: string) {
 }
 
 describe("Walk: the composer keeps every word, and what it carries reaches the agent (#1024)", () => {
-	it("Given a draft on a thread, When a second device saves over a stale rev, Then it gets 409 with the newer draft, and a send leaves a tombstone a late autosave cannot pass", async () => {
+	it("Given a draft, When a second device saves over a stale rev, Then it gets 409; and When the draft is sent, Then a late autosave cannot bring it back", async () => {
 		const scope = "new:home";
 		const body = {
 			text: "why is checkout slow",
@@ -76,21 +102,40 @@ describe("Walk: the composer keeps every word, and what it carries reaches the a
 			body: { ...body, baseRev: 0, generation: 0 },
 		});
 		expect(saved).toMatchObject({ rev: 1, text: "why is checkout slow" });
-		await pl.api(`/drafts/${scope}`, {
+		const phone = await pl.api<ComposerDraft>(`/drafts/${scope}`, {
 			method: "PUT",
 			body: { ...body, text: "phone", baseRev: 1, generation: 0 },
 		});
-		const stale = await pl.fetchRaw(`/drafts/${scope}`);
-		expect(((await stale.json()) as ComposerDraft).text).toBe("phone");
 		await expect(
 			pl.api(`/drafts/${scope}`, {
 				method: "PUT",
 				body: { ...body, text: "desktop", baseRev: 1, generation: 0 },
 			}),
 		).rejects.toThrow(/409.*phone/s);
-		expect(await pl.api(`/drafts/${scope}`, { method: "DELETE" })).toEqual({
-			deleted: true,
-		});
+		// The real send, naming the draft it came from.
+		const started = await pl.api<{ investigationId: string; queued: boolean }>(
+			"/threads",
+			{
+				method: "POST",
+				body: {
+					subject: { kind: "none" },
+					text: "phone",
+					draftScope: scope,
+					draftRev: phone.rev,
+				},
+			},
+		);
+		expect(started.queued).toBe(true);
+		const tomb = await pl.api<ComposerDraft>(`/drafts/${scope}`);
+		expect(tomb).toMatchObject({ text: "", generation: 1 });
+		// An autosave in flight from before the send carries the old generation.
+		await expect(
+			pl.api(`/drafts/${scope}`, {
+				method: "PUT",
+				body: { ...body, text: "phone", baseRev: phone.rev, generation: 0 },
+			}),
+		).rejects.toThrow(/409/);
+		expect((await pl.api<ComposerDraft>(`/drafts/${scope}`)).text).toBe("");
 	}, 60_000);
 
 	it("Given a run waiting on an ask with two queued messages, When one is edited and one withdrawn, Then the agent gets only the edited text, and a late edit is ALREADY_DELIVERED", async () => {
@@ -170,60 +215,77 @@ describe("Walk: the composer keeps every word, and what it carries reaches the a
 		expect(result.hits.some((h) => h.source === "app")).toBe(true);
 	}, 60_000);
 
-	it("Given a PDF on an incident, When the run starts, Then the PDF arrives as a prismalens://attachment link and attachment_read returns its bytes to that run only", async () => {
-		await pl.serviceWithRepo("pdfs");
-		const alert = am.fire({
-			labels: { alertname: "PdfSlow fake-session:attach-link", service: "pdfs", severity: "medium" },
-			annotations: { summary: "pdf latency" },
-		});
-		await am.post(pl.webhookUrl, pl.webhookToken);
-		const [incident] = await eventually(
-			() => pl.incidentFor(alert.fingerprint),
-			(found) => found.length === 1,
-			"an incident carrying the alert",
-		);
-		if (!incident) throw new Error("no incident");
-		const file = await pl.uploadFile(
-			`/incidents/${incident.id}/attachments`,
-			new File(["%PDF-1.4 runbook bytes"], "runbook.pdf", { type: "application/pdf" }),
-		);
-		expect(file.mimeType).toBe("application/pdf");
-		await pl.api(`/incidents/${incident.id}/investigate`, {
-			method: "POST",
-			body: { accessLevel: "supervised", attachments: [file.id] },
-		});
-		const [run] = await eventually(
-			() => pl.investigations(incident.id),
-			(runs) => runs.length === 1,
-			"the run started",
-		);
-		if (!run) throw new Error("no run");
-		const said = await eventually(
-			async () =>
-				(await events(run.id))
-					.flatMap((e) => (e.kind === "agent_step" ? [e.text] : []))
-					.join(""),
-			(t) => t.includes("runbook.pdf"),
-			"the agent sees the link",
-			30_000,
-		);
-		const uri = `prismalens://attachment/${file.id}`;
-		expect(said).toContain(`Link runbook.pdf: ${uri}`);
-		const g = await pl.gateway();
-		const read = g.tools.find((t) => t.name === "attachment_read");
-		if (!read) throw new Error("no attachment_read");
-		const own = await read.run(read.input.parse({ id: uri }), {
-			runId: run.id,
-			signal: new AbortController().signal,
-		});
-		// Not a real PDF, so no text: the tool answers, and refuses another run's ask below.
-		expect(JSON.stringify(own)).toContain("runbook.pdf");
-		const other = await read.run(read.input.parse({ id: uri }), {
-			runId: "00000000-0000-4000-8000-000000000000",
-			signal: new AbortController().signal,
-		});
-		expect(JSON.stringify(other)).toContain("not_found");
-	}, 60_000);
+	it.each([
+		{ path: "prismalens://attachment", folder: false },
+		{ path: "the run's own folder", folder: true },
+	])(
+		"Given a PDF on an incident, When the run starts, Then its text reaches the agent through $path",
+		async ({ folder }) => {
+			const name = folder ? "pdfdir" : "pdflink";
+			setFakeCapability("additionalDirectories", folder, pl.fakeState);
+			try {
+				await pl.serviceWithRepo(name);
+				const alert = am.fire({
+					labels: { alertname: `${name}Slow fake-session:attach-link`, service: name, severity: "medium" },
+					annotations: { summary: "pdf latency" },
+				});
+				await am.post(pl.webhookUrl, pl.webhookToken);
+				const [incident] = await eventually(
+					() => pl.incidentFor(alert.fingerprint),
+					(found) => found.length === 1,
+					"an incident carrying the alert",
+				);
+				if (!incident) throw new Error("no incident");
+				const file = await pl.uploadFile(
+					`/incidents/${incident.id}/attachments`,
+					new File([pdfWith(PDF_TEXT)], "runbook.pdf", { type: "application/pdf" }),
+				);
+				expect(file.mimeType).toBe("application/pdf");
+				await pl.api(`/incidents/${incident.id}/investigate`, {
+					method: "POST",
+					body: { accessLevel: "supervised", attachments: [file.id] },
+				});
+				const [run] = await eventually(
+					() => pl.investigations(incident.id),
+					(runs) => runs.length === 1,
+					"the run started",
+				);
+				if (!run) throw new Error("no run");
+				const said = await eventually(
+					async () =>
+						(await events(run.id))
+							.flatMap((e) => (e.kind === "agent_step" ? [e.text] : []))
+							.join(""),
+					(t) => t.includes("runbook.pdf"),
+					"the agent sees the link",
+					30_000,
+				);
+				if (folder) {
+					// The agent read the copy in its own folder, straight from disk.
+					expect(said).toMatch(/Read runbook\.pdf: .*PrismaLens runbook 42/s);
+					return;
+				}
+				const uri = `prismalens://attachment/${file.id}`;
+				expect(said).toContain(`Link runbook.pdf: ${uri}`);
+				const g = await pl.gateway();
+				const read = g.tools.find((t) => t.name === "attachment_read");
+				if (!read) throw new Error("no attachment_read");
+				const own = await read.run(read.input.parse({ id: uri }), {
+					runId: run.id,
+					signal: new AbortController().signal,
+				});
+				expect(JSON.stringify(own)).toContain(PDF_TEXT);
+				const other = await read.run(read.input.parse({ id: uri }), {
+					runId: "00000000-0000-4000-8000-000000000000",
+					signal: new AbortController().signal,
+				});
+				expect(JSON.stringify(other)).toContain("not_found");
+			} finally {
+				setFakeCapability("additionalDirectories", false, pl.fakeState);
+			}
+		},
+		60_000,
+	);
 
 	it("Given a tool's ask on a finished thread, When PrismaLens restarts, Then it still waits and the host answers it with no run live", async () => {
 		const { run } = await personRun("held", "success");

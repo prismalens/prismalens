@@ -48,6 +48,7 @@ interface Resolved {
 	threadId: string | null;
 	repositoryId: string | null;
 	incidentId: string | null;
+	serviceId: string | null;
 	root: string | null;
 	commands: { list: AgentCommand[]; fromLastRun: boolean };
 	agentTouched: Set<string>;
@@ -174,7 +175,13 @@ export class ReferencesService {
 			run.threadId ?? undefined,
 			run.scope ?? undefined,
 		);
-		const at = { threadId: ctx.threadId, root: ctx.root };
+		const at = {
+			threadId: ctx.threadId,
+			root: ctx.root,
+			incidentId: ctx.incidentId,
+			repositoryId: ctx.repositoryId,
+			serviceId: ctx.serviceId,
+		};
 		const out: ReferenceSnapshot[] = [];
 		for (const ref of refs) {
 			if (ref.kind === "command") continue;
@@ -279,6 +286,7 @@ export class ReferencesService {
 			threadId: null,
 			repositoryId: null,
 			incidentId: null,
+			serviceId: null,
 			root: null,
 			commands: { list: [], fromLastRun: false },
 			agentTouched: new Set(),
@@ -290,6 +298,7 @@ export class ReferencesService {
 					id: true,
 					incidentId: true,
 					repositoryId: true,
+					serviceId: true,
 					workspace: true,
 					harness: true,
 					agentCommands: true,
@@ -312,6 +321,7 @@ export class ReferencesService {
 				threadId: run.id,
 				repositoryId: run.repositoryId,
 				incidentId: run.incidentId,
+				serviceId: run.serviceId,
 				root,
 				commands,
 				agentTouched: await this.touched(run.id, root),
@@ -330,6 +340,8 @@ export class ReferencesService {
 		}
 		if (scope?.startsWith("new:incident:"))
 			return { ...empty, incidentId: scope.slice("new:incident:".length) };
+		if (scope?.startsWith("new:service:"))
+			return { ...empty, serviceId: scope.slice("new:service:".length) };
 		return empty;
 	}
 

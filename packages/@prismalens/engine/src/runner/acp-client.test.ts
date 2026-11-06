@@ -945,6 +945,18 @@ describe("elicitation/create (#1024)", () => {
 		expect(said(items)).toContain('Elicited: {"action":"decline"}');
 	});
 
+	it("a handler that throws declines at once, so the agent is never left waiting (#1024)", async () => {
+		const session = open(() => {
+			throw new Error("policy broke");
+		});
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) items.push(item);
+		await session.close();
+		expect(said(items)).toContain('Elicited: {"action":"decline"}');
+		expect(items.at(-1)?.kind).toBe("done");
+	});
+
 	it("without a handler the capability is not declared", async () => {
 		const session = open();
 		await session.open();

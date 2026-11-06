@@ -23,6 +23,15 @@ export interface ReferenceContext {
 	signal?: AbortSignal;
 }
 
+/** The run a snapshot goes into: its thread, or before one exists, the new thread's subject. */
+export interface SnapshotContext {
+	threadId: string | null;
+	root: string | null;
+	incidentId?: string | null;
+	repositoryId?: string | null;
+	serviceId?: string | null;
+}
+
 /** A hit before ranking: the search scores and orders every provider's hits together. */
 export type ReferenceCandidate = Omit<ReferenceHit, "why" | "score">;
 
@@ -57,7 +66,7 @@ export interface ReferenceProvider {
 	/** The bounded snapshot sent with the message; null when the record is gone. */
 	snapshot(
 		ref: ReferenceRef,
-		ctx: { threadId: string | null; root: string | null },
+		ctx: SnapshotContext,
 	): Promise<ReferenceSnapshot | null>;
 }
 

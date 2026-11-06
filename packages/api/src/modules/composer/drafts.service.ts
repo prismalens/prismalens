@@ -80,10 +80,10 @@ export class DraftsService implements OnApplicationBootstrap {
 		const saved = await this.prisma.$transaction(async (tx) => {
 			const row = await tx.composerDraft.findUnique({ where: { scope } });
 			if (!row) {
-				// The first save, or one after a delete or a sweep: nothing newer exists to lose.
-				return tx.composerDraft.create({
-					data: { scope, rev: 1, generation, body },
-				});
+				// The first save, or one after a delete or a sweep; a racing first save loses with 409.
+				return tx.composerDraft
+					.create({ data: { scope, rev: 1, generation, body } })
+					.catch(() => null);
 			}
 			const updated = await tx.composerDraft.updateMany({
 				where: { scope, rev: baseRev, generation },
@@ -119,7 +119,15 @@ export class DraftsService implements OnApplicationBootstrap {
 	): Promise<"sent" | "kept" | "none"> {
 		if (!scope) return "none";
 		const row = await tx.composerDraft.findUnique({ where: { scope } });
-		if (!row) return "none";
+		if (!row) {
+			// Sent before its first autosave landed: the tombstone refuses that late save.
+			const made = await tx.composerDraft
+				.create({
+					data: { scope, rev: 1, generation: 1, body: JSON.stringify(EMPTY) },
+				})
+				.catch(() => null);
+			return made ? "sent" : "kept";
+		}
 		if (rev !== undefined && row.rev !== rev) return "kept";
 		const choice = toDraft(row).choice;
 		const updated = await tx.composerDraft.updateMany({

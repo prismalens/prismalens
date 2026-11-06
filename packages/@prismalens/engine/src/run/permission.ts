@@ -369,8 +369,8 @@ export type HeldOutcome =
 
 export interface AskChannel {
 	policy: PermissionPolicy;
-	/** The operator's answer; null when no ask by that id waits or the answer does not fit it. */
-	answer(askId: string, answer: AskAnswer): AskResult | null;
+	/** The operator's answer; null when no ask by that id waits, `invalid` when it does not fit (the ask stays open). */
+	answer(askId: string, answer: AskAnswer): AskResult | "invalid" | null;
 	/**
 	 * Hold an ask until it is answered, its window lapses (`expired`) or the run ends.
 	 * `timeoutMs <= 0` never lapses.
@@ -471,7 +471,7 @@ export function createAskChannel(
 		answer(askId, answer) {
 			const kept = held.get(askId);
 			if (kept) {
-				if (!kept.ask.accepts(answer)) return null;
+				if (!kept.ask.accepts(answer)) return "invalid";
 				const outcome =
 					answer.kind === "decline"
 						? "declined"

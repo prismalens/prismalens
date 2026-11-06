@@ -9,6 +9,7 @@ import {
 } from "@prismalens/integrations/harness";
 import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
+import { ANYWHERE } from "./serves.js";
 
 export interface AttachmentItem {
 	id: string;
@@ -40,6 +41,8 @@ export interface AttachmentsData {
 
 /** The most of a file `attachment_read` returns. */
 export const ATTACHMENT_READ_CHARS = 32_000;
+/** The most bytes of a binary file one call returns; base64 keeps the result under RESULT_CHARS. */
+export const ATTACHMENT_READ_BYTES = 18_000;
 
 type FileHead = { id: string; name: string; mimeType: string; size: number };
 
@@ -87,6 +90,37 @@ const isText = (mime: string) =>
 
 const PDF = "application/pdf";
 
+/** A binary file's bytes from `offset`, at most ATTACHMENT_READ_BYTES, base64-encoded (#1024). */
+function byteChunk(
+	head: { name: string; mimeType: string; size: number },
+	id: string,
+	bytes: Uint8Array,
+	offset = 0,
+	length = ATTACHMENT_READ_BYTES,
+) {
+	const end = Math.min(
+		bytes.length,
+		offset + Math.min(length, ATTACHMENT_READ_BYTES),
+	);
+	const truncated = end < bytes.length;
+	return {
+		id,
+		name: head.name,
+		mimeType: head.mimeType,
+		size: head.size,
+		encoding: "base64" as const,
+		offset,
+		total: bytes.length,
+		data: Buffer.from(bytes.subarray(offset, end)).toString("base64"),
+		truncated,
+		...(truncated
+			? {
+					note: `Bytes ${offset} to ${end} of ${bytes.length}; call again with offset ${end} for more.`,
+				}
+			: {}),
+	};
+}
+
 /** A PDF's text, page by page, through a maintained parser; null when it has none. */
 export async function pdfText(bytes: Uint8Array): Promise<string | null> {
 	const pdf = await getDocumentProxy(new Uint8Array(bytes));
@@ -103,7 +137,7 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with attachment_read.",
 			group: "knowledge",
 			effect: "read",
-			serves: { subjects: ["incident", "project", "service"] },
+			serves: ANYWHERE,
 			input: z.object({}),
 			run: async (_input, ctx) => {
 				const r = await data.list(ctx.runId);
@@ -119,10 +153,10 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 		defineHarnessTool({
 			name: "attachment_read",
 			title: "Read an attached file",
-			description: `The text of one file attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML, CSV and PDF (its text). At most ${ATTACHMENT_READ_CHARS} characters per call: pass offset (and length) to read the next chunk. Images are not readable here; the operator's prompt carries them.`,
+			description: `One file attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML and CSV come back as text, and a PDF as its text, at most ${ATTACHMENT_READ_CHARS} characters per call. Any other file comes back as base64 bytes, at most ${ATTACHMENT_READ_BYTES} per call. Pass offset (and length) to read the next chunk.`,
 			group: "knowledge",
 			effect: "read",
-			serves: { subjects: ["incident", "project", "service"] },
+			serves: ANYWHERE,
 			input: z.object({
 				id: z.string().trim().min(1).max(200),
 				offset: z.number().int().min(0).optional(),
@@ -138,12 +172,16 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 						"Call attachments_list and pass an id exactly as it returned it.",
 					);
 				const pdf = found.mimeType === PDF && !!found.bytes;
-				if (!isText(found.mimeType) && !pdf)
-					return fail(
-						"invalid_input",
-						`"${found.name}" is ${found.mimeType}, not text.`,
-						"This file is not text or PDF, so it cannot be read here; choose another attachment from attachments_list.",
-					);
+				if (!isText(found.mimeType) && !pdf) {
+					const bytes = await found.bytes?.();
+					if (!bytes)
+						return fail(
+							"not_found",
+							`The file for "${found.name}" is no longer stored.`,
+							"Continue without it, or choose another attachment from attachments_list.",
+						);
+					return { value: byteChunk(found, id, bytes, offset, length) };
+				}
 				const text = pdf
 					? await found
 							.bytes?.()

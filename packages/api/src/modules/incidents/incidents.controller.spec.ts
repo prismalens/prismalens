@@ -561,6 +561,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 
 	describe("a run's own agent, model and effort (#673 w52)", () => {
 		const make = (ready: { ready: boolean; reason?: string }) => {
+			const consume = vi.fn(async () => "sent");
 			const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-4") };
 			const investigationsService = {
 				startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-4" }, created: true }),
@@ -580,15 +581,25 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 				harnessService as unknown as HarnessService,
 				{} as never,
-				{ consume: async () => "none" } as never,
+				{ consume } as never,
 				{ compose: async () => undefined } as never,
 			);
 			const handlers = getHandlers(controller) as unknown as Record<
 				"investigate" | "chat",
 				(a: { input: Record<string, unknown> }) => Promise<unknown>
 			>;
-			return { dispatchService, investigationsService, harnessService, handlers };
+			return { dispatchService, investigationsService, harnessService, handlers, consume };
 		};
+
+		it("tombstones the chat's draft only once its job is stored (#1024)", async () => {
+			const t = make({ ready: true });
+			const input = { id: mockIncident.id, text: "hi", draftScope: `new:incident:${mockIncident.id}`, draftRev: 2 };
+			t.dispatchService.addInvestigationJob.mockResolvedValueOnce(null);
+			await t.handlers.chat({ input });
+			expect(t.consume).not.toHaveBeenCalled();
+			await t.handlers.chat({ input });
+			expect(t.consume).toHaveBeenCalledWith(input.draftScope, 2);
+		});
 
 		it("gates on the agent the request names, with that agent's reason", async () => {
 			const t = make({ ready: false, reason: "Codex: sign in needed" });

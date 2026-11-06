@@ -43,6 +43,7 @@ import type {
 } from "@prismalens/contracts";
 import {
 	AccessLevelSchema,
+	asksLeftOpen,
 	CanonicalEventSchema,
 	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
@@ -50,6 +51,8 @@ import {
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	questionTimeoutFrom,
+	queuedLeftWaiting,
 	RunWorkspaceSchema,
 	ScheduledRunSchema,
 } from "@prismalens/contracts";
@@ -444,10 +447,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				const row = await this.prisma.setting.findUnique({
 					where: { key: QUESTION_TIMEOUT_SETTING },
 				});
-				const minutes = row ? Number(JSON.parse(row.value)) : Number.NaN;
-				return Number.isFinite(minutes) && minutes > 0
-					? Math.min(minutes, 24 * 60) * 60_000
-					: undefined;
+				return questionTimeoutFrom(row?.value);
 			},
 			newerRun: async (id) => {
 				const self = await this.prisma.investigation.findUnique({
@@ -987,36 +987,41 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const events = await this.prisma.investigationEvent.findMany({
 				where: {
 					investigationId: id,
-					event: { contains: '"kind":"permission_' },
+					OR: [
+						{ event: { contains: '"kind":"permission_' } },
+						{ event: { contains: '"kind":"ask_' } },
+					],
 				},
 				orderBy: { seq: "asc" },
 				select: { event: true },
 			});
-			const open = new Map<string, string>();
-			for (const row of events) {
-				const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
-				const e = parsed.success ? parsed.data : null;
-				if (e?.kind === "permission_ask") open.set(e.askId, e.branchId);
-				else if (e?.kind === "permission_answer") open.delete(e.askId);
-			}
-			if (open.size === 0 && !awaitingApprovalAt) continue;
-			if (open.size > 0) denied++;
+			const { legacy, asks } = asksLeftOpen(parsedEvents(events));
+			if (legacy.length + asks.length === 0 && !awaitingApprovalAt) continue;
+			if (legacy.length + asks.length > 0) denied++;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
 			const ts = new Date().toISOString();
-			await this.investigationsService.appendEvents(
-				id,
-				[...open].map(([askId, branchId]) => ({
+			const at = (branchId: string) => ({
+				runId: id,
+				branchId,
+				path: [],
+				seq: seq++,
+				label: null,
+				ts,
+			});
+			await this.investigationsService.appendEvents(id, [
+				...legacy.map(({ askId, branchId }) => ({
 					kind: "permission_answer" as const,
-					runId: id,
-					branchId,
-					path: [],
-					seq: seq++,
-					label: null,
-					ts,
+					...at(branchId),
 					askId,
 					outcome: "restarted" as const,
 				})),
-			);
+				...asks.map(({ askId, branchId }) => ({
+					kind: "ask_closed" as const,
+					...at(branchId),
+					askId,
+					outcome: "restarted" as const,
+				})),
+			]);
 			await this.prisma.investigation.update({
 				where: { id },
 				data: { awaitingApprovalAt: null },
@@ -1043,23 +1048,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				orderBy: { seq: "asc" },
 				select: { event: true },
 			});
-			const open = new Map<
-				string,
-				Extract<CanonicalEvent, { kind: "message_queued" }>
-			>();
-			for (const row of events) {
-				const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
-				const e = parsed.success ? parsed.data : null;
-				if (e?.kind === "message_queued") open.set(e.messageId, e);
-				else if (e?.kind === "operator_message" && e.messageId)
-					open.delete(e.messageId);
-			}
-			if (open.size === 0) continue;
+			const open = queuedLeftWaiting(parsedEvents(events));
+			if (open.length === 0) continue;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
 			const ts = new Date().toISOString();
 			await this.investigationsService.appendEvents(
 				id,
-				[...open.values()].map((q) => ({
+				open.map((q) => ({
 					kind: "operator_message" as const,
 					runId: id,
 					branchId: q.branchId,
@@ -1072,6 +1067,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					delivered: false,
 					messageId: q.messageId,
 					...(q.attachments?.length ? { attachments: q.attachments } : {}),
+					...(q.quotes?.length ? { quotes: q.quotes } : {}),
+					...(q.references?.length ? { references: q.references } : {}),
 				})),
 			);
 		}
@@ -1506,8 +1503,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		investigationId: string,
 		askId: string,
 		answer: AskAnswer,
-	): AskResult | null {
-		let result: AskResult | null = null;
+	): AskResult | "invalid" | null {
+		let result: AskResult | "invalid" | null = null;
 		this.bus.publish<RunAskRequest>(runAskTopic(investigationId), {
 			askId,
 			answer,
@@ -2238,4 +2235,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			error: job.lastError,
 		};
 	}
+}
+
+/** Stored event rows, parsed; a row that no longer parses is skipped. */
+function parsedEvents(rows: { event: string }[]): CanonicalEvent[] {
+	return rows.flatMap((row) => {
+		const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
+		return parsed.success ? [parsed.data] : [];
+	});
 }

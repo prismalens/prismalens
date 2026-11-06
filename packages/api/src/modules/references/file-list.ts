@@ -2,7 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
@@ -45,18 +46,18 @@ async function gitFiles(root: string): Promise<string[] | null> {
 	}
 }
 
-/** A plain folder: walked, honouring its root `.gitignore`, stopping at the cap. */
-function walk(root: string, cap: number): string[] {
+/** A plain folder: walked asynchronously, honouring its root `.gitignore`, stopping at the cap. */
+export async function walk(root: string, cap: number): Promise<string[]> {
 	const ig = ignore().add([".git", "node_modules"]);
 	const gi = join(root, ".gitignore");
-	if (existsSync(gi)) ig.add(readFileSync(gi, "utf8"));
+	if (existsSync(gi)) ig.add(await readFile(gi, "utf8"));
 	const out: string[] = [];
 	const stack = [root];
 	while (stack.length && out.length <= cap) {
 		const dir = stack.pop() as string;
 		let entries: import("node:fs").Dirent[];
 		try {
-			entries = readdirSync(dir, { withFileTypes: true });
+			entries = await readdir(dir, { withFileTypes: true });
 		} catch {
 			continue;
 		}
@@ -96,7 +97,7 @@ export class FileLister {
 	async list(root: string): Promise<FileList> {
 		const hit = this.cache.get(root);
 		if (hit && this.now() - hit.at < FILE_LIST_TTL_MS) return hit.list;
-		const files = (await gitFiles(root)) ?? walk(root, this.cap);
+		const files = (await gitFiles(root)) ?? (await walk(root, this.cap));
 		const list = withFolders(files, this.cap);
 		this.cache.set(root, { at: this.now(), list });
 		if (this.cache.size > 50) {

@@ -1207,7 +1207,13 @@ export class AcpSession {
 			);
 			this.push({ kind: "elicit_closed", askId, closed });
 		};
-		const held = this.config.elicit(ask, { askId, signal: controller.signal });
+		let held: ReturnType<NonNullable<AcpSessionConfig["elicit"]>>;
+		try {
+			held = this.config.elicit(ask, { askId, signal: controller.signal });
+		} catch {
+			// A policy that throws must still answer, or the agent waits out its turn.
+			held = { outcome: "unattended" };
+		}
 		if (!("timeoutMs" in held)) {
 			finish(held);
 			return;

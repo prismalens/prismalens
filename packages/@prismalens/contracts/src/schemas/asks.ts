@@ -42,6 +42,21 @@ export type AskKind = z.infer<typeof AskKindSchema>;
 /** Questions wait this long by default before they are declined (Settings → Agent). */
 export const QUESTION_ASK_TIMEOUT_MS = 30 * 60 * 1000;
 
+/** The stored "Questions from agents wait for" minutes as ms; undefined for anything unusable. */
+export function questionTimeoutFrom(
+	raw: string | undefined,
+): number | undefined {
+	let minutes: unknown;
+	try {
+		minutes = raw === undefined ? undefined : JSON.parse(raw);
+	} catch {
+		return undefined;
+	}
+	return typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0
+		? Math.min(minutes, 24 * 60) * 60_000
+		: undefined;
+}
+
 export const AskSourceSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("agent") }),
 	z.object({

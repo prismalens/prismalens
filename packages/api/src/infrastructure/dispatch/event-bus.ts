@@ -97,7 +97,7 @@ export interface RunAskRequest {
 	askId: string;
 	answer: AskAnswer;
 	/** null: no ask by that id waits, or the answer does not fit it. */
-	reply(result: AskResult | null): void;
+	reply(result: AskResult | "invalid" | null): void;
 }
 
 export function runQueueTopic(investigationId: string): string {

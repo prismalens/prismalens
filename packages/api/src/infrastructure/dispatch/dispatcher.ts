@@ -68,7 +68,7 @@ export interface RunningJob {
 		context?: JobMessageContext,
 	): MessageState;
 	/** The operator's answer to one of the run's asks (#673 w21, #1024); null when it no longer waits. */
-	answer?(askId: string, answer: AskAnswer): AskResult | null;
+	answer?(askId: string, answer: AskAnswer): AskResult | "invalid" | null;
 	/** Edit or withdraw a queued message before it is claimed (#1024). */
 	change?(
 		messageId: string,

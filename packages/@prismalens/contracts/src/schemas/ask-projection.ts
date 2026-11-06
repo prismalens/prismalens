@@ -83,3 +83,44 @@ export function pendingAsks(
 		.filter((a) => !a.closed)
 		.map((a) => a.ask);
 }
+
+type Queued = Extract<CanonicalEvent, { kind: "message_queued" }>;
+
+/** Messages still queued when the last process died, as they last stood: edits folded in, withdrawals gone (#1024). */
+export function queuedLeftWaiting(events: readonly CanonicalEvent[]): Queued[] {
+	const open = new Map<string, Queued>();
+	for (const e of events) {
+		if (e.kind === "message_queued") open.set(e.messageId, e);
+		else if (e.kind === "message_edited") {
+			const q = open.get(e.messageId);
+			if (q) open.set(e.messageId, { ...q, text: e.text });
+		} else if (
+			e.kind === "message_withdrawn" ||
+			(e.kind === "operator_message" && e.messageId)
+		)
+			open.delete(e.messageId as string);
+	}
+	return [...open.values()];
+}
+
+/**
+ * Engine asks the last process left waiting, which no run can answer now (#1024).
+ * A PrismaLens tool's ask is held in `tool_asks`, outlives a restart, and is left alone.
+ */
+export function asksLeftOpen(events: readonly CanonicalEvent[]): {
+	legacy: { askId: string; branchId: string }[];
+	asks: { askId: string; branchId: string }[];
+} {
+	const legacy = new Map<string, string>();
+	const asks = new Map<string, string>();
+	for (const e of events) {
+		if (e.kind === "permission_ask") legacy.set(e.askId, e.branchId);
+		else if (e.kind === "permission_answer") legacy.delete(e.askId);
+		else if (e.kind === "ask_opened" && e.ask.source.kind !== "tool")
+			asks.set(e.ask.askId, e.branchId);
+		else if (e.kind === "ask_closed") asks.delete(e.askId);
+	}
+	const list = (m: Map<string, string>) =>
+		[...m].map(([askId, branchId]) => ({ askId, branchId }));
+	return { legacy: list(legacy), asks: list(asks) };
+}

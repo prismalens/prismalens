@@ -21,83 +21,91 @@ type Row = {
 	closedAt: Date | null;
 };
 
-/** A durable store shared across service instances: a second instance is a restart. */
+/**
+ * A durable store shared across service instances (a second instance is a restart).
+ * Like the real log, a second event at the same (branch, seq) is refused (P2002) or,
+ * through appendEvents, dropped as a duplicate; reads yield, so writers interleave.
+ */
 function store(events: CanonicalEvent[] = []) {
 	const rows = new Map<string, Row>();
 	const log: CanonicalEvent[] = [...events];
+	const pushes: unknown[] = [];
+	const tick = () => new Promise((r) => setTimeout(r, 0));
+	const taken = (e: CanonicalEvent) =>
+		log.some((x) => x.seq === e.seq && "branchId" in x && "branchId" in e && x.branchId === e.branchId);
+	const maxSeq = async () => {
+		await tick();
+		return log.reduce((m, e) => Math.max(m, e.seq), -1);
+	};
+	const toolAsk = (staged: (() => void)[]) => ({
+		create: vi.fn(async ({ data }: { data: Pick<Row, "askId" | "threadId" | "ask" | "status"> }) => {
+			const row = { ...data, outcome: null, answer: null, openedAt: new Date(), closedAt: null };
+			staged.push(() => rows.set(data.askId, row));
+			return row;
+		}),
+		findUnique: vi.fn(async ({ where }: { where: { askId: string } }) => {
+			const r = rows.get(where.askId);
+			return r ? { ...r } : null;
+		}),
+		findMany: vi.fn(async ({ where }: { where: { threadId: string; status: string } }) =>
+			[...rows.values()].filter((r) => r.threadId === where.threadId && r.status === where.status),
+		),
+		updateMany: vi.fn(
+			async ({ where, data }: { where: { askId: string; status: string }; data: Partial<Row> }) => {
+				const r = rows.get(where.askId);
+				if (!r || r.status !== where.status) return { count: 0 };
+				staged.push(() => Object.assign(r, data));
+				return { count: 1 };
+			},
+		),
+	});
+	const direct = toolAsk([]);
+	// Outside a transaction a write lands at once.
+	direct.create = vi.fn(async ({ data }) => {
+		const row = { ...data, outcome: null, answer: null, openedAt: new Date(), closedAt: null };
+		rows.set(data.askId, row);
+		return row;
+	});
 	const prisma = {
 		investigation: { findUnique: vi.fn(async () => ({ id: THREAD })) },
 		investigationEvent: {
-			findFirst: vi.fn(
-				async ({ where }: { where: { event: { contains: string } } }) =>
-					log.some((e) => JSON.stringify(e).includes(where.event.contains))
-						? { investigationId: THREAD }
-						: null,
+			findFirst: vi.fn(async ({ where }: { where: { event: { contains: string } } }) =>
+				log.some((e) => JSON.stringify(e).includes(where.event.contains)) ? { investigationId: THREAD } : null,
 			),
 		},
-		toolAsk: {
-			create: vi.fn(
-				async ({
-					data,
-				}: {
-					data: Pick<Row, "askId" | "threadId" | "ask" | "status">;
-				}) => {
-					const row = {
-						...data,
-						outcome: null,
-						answer: null,
-						openedAt: new Date(),
-						closedAt: null,
-					};
-					rows.set(data.askId, row);
-					return row;
+		toolAsk: direct,
+		$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+			const staged: (() => void)[] = [];
+			const events: CanonicalEvent[] = [];
+			const tx = {
+				toolAsk: { ...toolAsk(staged), findUnique: direct.findUnique },
+				investigationEvent: {
+					aggregate: vi.fn(async () => ({ _max: { seq: (await maxSeq()) < 0 ? null : await maxSeq() } })),
+					create: vi.fn(async ({ data }: { data: { event: string } }) => {
+						events.push(JSON.parse(data.event));
+					}),
 				},
-			),
-			findUnique: vi.fn(async ({ where }: { where: { askId: string } }) => {
-				const r = rows.get(where.askId);
-				return r ? { ...r } : null;
-			}),
-			findMany: vi.fn(
-				async ({ where }: { where: { threadId: string; status: string } }) =>
-					[...rows.values()].filter(
-						(r) => r.threadId === where.threadId && r.status === where.status,
-					),
-			),
-			updateMany: vi.fn(
-				async ({
-					where,
-					data,
-				}: {
-					where: { askId: string; status: string };
-					data: Partial<Row>;
-				}) => {
-					const r = rows.get(where.askId);
-					if (!r || r.status !== where.status) return { count: 0 };
-					Object.assign(r, data);
-					return { count: 1 };
-				},
-			),
-		},
+				pushOutbox: { create: vi.fn(async (a: unknown) => staged.push(() => pushes.push(a))) },
+			};
+			const out = await fn(tx);
+			// Commit: a seq a concurrent writer took first fails the whole transaction.
+			if (events.some(taken)) throw Object.assign(new Error("unique"), { code: "P2002" });
+			log.push(...events);
+			for (const apply of staged) apply();
+			return out;
+		}),
 	};
 	const investigations = {
 		allEvents: vi.fn(async () => log),
-		lastEventSeq: vi.fn(async () => log.length - 1),
+		lastEventSeq: vi.fn(maxSeq),
 		appendEvents: vi.fn(async (_id: string, es: CanonicalEvent[]) => {
-			log.push(...es);
+			for (const e of es) if (!taken(e)) log.push(e);
 		}),
 	};
 	const bus = { publish: vi.fn(() => 1) };
-	const dispatch = {
-		answerAsk: vi.fn(() => ({ outcome: "approved" as const })),
-	};
-	const make = () =>
-		new AsksService(
-			prisma as never,
-			dispatch as never,
-			investigations as never,
-			bus as never,
-		);
-	return { make, rows, log, dispatch, bus };
+	const dispatch = { answerAsk: vi.fn(() => ({ outcome: "approved" as const })) };
+	const make = () => new AsksService(prisma as never, dispatch as never, investigations as never, bus as never);
+	return { make, rows, log, dispatch, bus, pushes };
 }
 
 const toolAsk = {
@@ -121,6 +129,20 @@ describe("AsksService (#1024)", () => {
 		});
 		expect(bus.publish).toHaveBeenCalled();
 		expect((await svc.pending(THREAD)).map((a) => a.askId)).toEqual([askId]);
+	});
+
+	it("concurrent asks each record their event: no seq is shared, none is dropped, each owes a push", async () => {
+		const { make, log, pushes } = store();
+		const svc = make();
+		const ids = await Promise.all(
+			Array.from({ length: 5 }, (_, i) =>
+				svc.open(THREAD, { ...toolAsk, source: { kind: "tool" as const, tool: "act", requestId: `r${i}` } }),
+			),
+		);
+		const opened = log.filter((e) => e.kind === "ask_opened");
+		expect(opened.map((e) => (e.kind === "ask_opened" ? e.ask.askId : "")).sort()).toEqual([...ids].sort());
+		expect(new Set(opened.map((e) => e.seq)).size).toBe(5);
+		expect(pushes).toHaveLength(5);
 	});
 
 	it("outlives the run and a restart: a new instance lists it, and the host answers it with no run live", async () => {
@@ -254,4 +276,13 @@ describe("AsksService (#1024)", () => {
 		).rejects.toBeInstanceOf(AskForbidden);
 		expect(await svc.get("0b3c2f1e-1111-4222-8333-444455556666")).toBeNull();
 	});
+
+	it("an answer the agent's form refuses is a 400 and the ask stays open, not a 409", async () => {
+		const { make, dispatch } = store();
+		dispatch.answerAsk.mockReturnValueOnce("invalid" as never);
+		await expect(
+			make().answer(THREAD, "q1", { kind: "input", values: { hours: 0 } }, DEVICE),
+		).rejects.toBeInstanceOf(AskInvalid);
+	});
 });
+

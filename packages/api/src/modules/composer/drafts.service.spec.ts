@@ -115,6 +115,28 @@ describe("DraftsService (#1024)", () => {
 		expect(fresh.text).toBe("next");
 	});
 
+	it("a send that beats the first autosave still leaves a tombstone, so the late first save is refused (#1024)", async () => {
+		const { prisma } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		expect(await drafts.consume(SCOPE, undefined)).toBe("sent");
+		expect(await drafts.get(SCOPE)).toMatchObject({ text: "", generation: 1 });
+		await expect(drafts.put(put({ baseRev: 0, generation: 0 }))).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+	});
+
+	it("two first saves racing: the loser gets 409, not a 500", async () => {
+		const { prisma } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		const original = prisma.composerDraft.findUnique;
+		prisma.composerDraft.findUnique = async () => null;
+		await drafts.put(put());
+		await expect(drafts.put(put({ text: "other tab" }))).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		prisma.composerDraft.findUnique = original;
+	});
+
 	it("a newer draft from another device survives the send", async () => {
 		const { prisma } = fakePrisma();
 		const drafts = new DraftsService(prisma as never);

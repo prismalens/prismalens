@@ -9,6 +9,7 @@
 import {
 	type AskAnswer,
 	type AskQuestion,
+	type ElicitField,
 	type ElicitForm,
 	ElicitFormSchema,
 } from "@prismalens/contracts/schemas";
@@ -189,37 +190,70 @@ export function elicitationContent(
 	answer: AskAnswer,
 ): Record<string, string | number | boolean | string[]> | null {
 	if (ask.kind === "question" && answer.kind === "question") {
+		const byId = new Map(ask.questions.map((q) => [q.id, q]));
+		if (Object.keys(answer.answers).some((id) => !byId.has(id))) return null;
 		const content: Record<string, string | string[]> = {};
 		for (const q of ask.questions) {
 			const a = answer.answers[q.id];
 			if (!a) continue;
 			const known = new Set(q.options.map((o) => o.id));
-			const picks = a.options.filter((o) => known.has(o));
-			if (q.multiSelect) content[q.id] = picks;
-			else if (picks[0]) content[q.id] = picks[0];
-			if (a.other && q.allowOther) content[`${q.id}${CUSTOM_SUFFIX}`] = a.other;
+			if (a.options.some((o) => !known.has(o))) return null;
+			if (a.other && !q.allowOther) return null;
+			if (!q.multiSelect && a.options.length > 1) return null;
+			if (a.options.length === 0 && !a.other) return null;
+			if (q.multiSelect) content[q.id] = [...a.options];
+			else if (a.options[0]) content[q.id] = a.options[0];
+			if (a.other) content[`${q.id}${CUSTOM_SUFFIX}`] = a.other;
 		}
 		return content;
 	}
 	if (ask.kind === "input" && answer.kind === "input") {
+		const fields = ask.schema.properties;
+		if (Object.keys(answer.values).some((key) => !(key in fields))) return null;
 		const content: Record<string, string | number | boolean> = {};
-		for (const [key, field] of Object.entries(ask.schema.properties)) {
+		for (const [key, field] of Object.entries(fields)) {
 			const v = answer.values[key];
 			if (v === undefined) {
 				if (ask.schema.required?.includes(key)) return null;
 				continue;
 			}
-			const ok =
-				field.type === "boolean"
-					? typeof v === "boolean"
-					: field.type === "string"
-						? typeof v === "string" && (!field.enum || field.enum.includes(v))
-						: typeof v === "number" &&
-							(field.type === "number" || Number.isInteger(v));
-			if (!ok) return null;
+			if (!fieldTakes(field, v)) return null;
 			content[key] = v;
 		}
 		return content;
 	}
 	return null;
+}
+
+/** What settles an elicitation: a decline, or an answer the whole form takes (#1024). */
+export function elicitationAccepts(
+	ask: ElicitationAsk,
+): (answer: AskAnswer) => boolean {
+	return (answer) =>
+		answer.kind === "decline" || elicitationContent(ask, answer) !== null;
+}
+
+const FORMATS: Record<string, (v: string) => boolean> = {
+	email: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+	uri: (v) => URL.canParse(v),
+	date: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)),
+	"date-time": (v) => !Number.isNaN(Date.parse(v)) && v.includes("T"),
+};
+
+/** Whether one value fits its field: type, length, format, enum and bounds (#1024). */
+function fieldTakes(field: ElicitField, v: string | number | boolean): boolean {
+	if (field.type === "boolean") return typeof v === "boolean";
+	if (field.type === "string") {
+		if (typeof v !== "string") return false;
+		if (field.minLength !== undefined && v.length < field.minLength)
+			return false;
+		if (field.maxLength !== undefined && v.length > field.maxLength)
+			return false;
+		if (field.enum && !field.enum.includes(v)) return false;
+		return !field.format || (FORMATS[field.format]?.(v) ?? false);
+	}
+	if (typeof v !== "number" || !Number.isFinite(v)) return false;
+	if (field.type === "integer" && !Number.isInteger(v)) return false;
+	if (field.minimum !== undefined && v < field.minimum) return false;
+	return field.maximum === undefined || v <= field.maximum;
 }

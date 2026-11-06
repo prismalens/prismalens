@@ -193,4 +193,28 @@ describe("ReferencesService (#1024)", () => {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it("a new thread's scope reaches the snapshot: its own incident is in scope before any run exists", async () => {
+		const db = prisma({
+			incident: {
+				findMany: vi.fn(async () => []),
+				findFirst: vi.fn(async () => null),
+				findUnique: vi.fn(async () => ({
+					id: INC,
+					number: 7,
+					title: "Checkout p99",
+					severity: "high",
+					status: "triggered",
+					investigations: [],
+				})),
+			},
+		});
+		const svc = new ReferencesService(db as never);
+		const [snap] = await svc.snapshots(
+			[{ kind: "incident", id: INC, label: "INC-7" }],
+			{ threadId: null, scope: `new:incident:${INC}` },
+		);
+		expect(snap).toMatchObject({ outOfScope: false, readTool: "incident_get" });
+	});
 });
+

@@ -16,6 +16,7 @@ import type {
 	ReferenceCandidate,
 	ReferenceContext,
 	ReferenceProvider,
+	SnapshotContext,
 } from "./reference-provider.js";
 
 const TAKE = 50;
@@ -277,17 +278,14 @@ export class RecordsProvider implements ReferenceProvider {
 
 	async snapshot(
 		ref: ReferenceRef,
-		ctx: { threadId: string | null; root: string | null },
+		ctx: SnapshotContext,
 	): Promise<ReferenceSnapshot | null> {
 		const scope = await this.scopeOf(ctx);
 		return this.snapshotIn(ref, scope);
 	}
 
 	/** The run's subject, for deciding what is in its scope. */
-	async scopeOf(ctx: {
-		threadId: string | null;
-		root: string | null;
-	}): Promise<RunScope> {
+	async scopeOf(ctx: SnapshotContext): Promise<RunScope> {
 		const run = ctx.threadId
 			? await this.prisma.investigation.findUnique({
 					where: { id: ctx.threadId },
@@ -301,9 +299,9 @@ export class RecordsProvider implements ReferenceProvider {
 			: null;
 		return {
 			threadId: ctx.threadId,
-			incidentId: run?.incidentId ?? null,
-			repositoryId: run?.repositoryId ?? null,
-			serviceId: run?.serviceId ?? null,
+			incidentId: run?.incidentId ?? ctx.incidentId ?? null,
+			repositoryId: run?.repositoryId ?? ctx.repositoryId ?? null,
+			serviceId: run?.serviceId ?? ctx.serviceId ?? null,
 			scheduleId: run?.scheduleId ?? null,
 			root: ctx.root,
 		};
@@ -344,10 +342,9 @@ export class RecordsProvider implements ReferenceProvider {
 				});
 				if (!t) return null;
 				const inScope =
-					!!scope.threadId &&
-					((!!t.incidentId && t.incidentId === scope.incidentId) ||
-						(!!t.repositoryId && t.repositoryId === scope.repositoryId) ||
-						(!!t.serviceId && t.serviceId === scope.serviceId));
+					(!!t.incidentId && t.incidentId === scope.incidentId) ||
+					(!!t.repositoryId && t.repositoryId === scope.repositoryId) ||
+					(!!t.serviceId && t.serviceId === scope.serviceId);
 				const answer = t.summary ?? lastAnswer(await this.events(t.id));
 				return {
 					ref,

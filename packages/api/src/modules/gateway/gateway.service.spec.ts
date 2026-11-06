@@ -283,7 +283,12 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 	it("a no-subject thread's lease lists only the title and publish tools, and asks for no evidence (#1020)", async () => {
 		const g = gateway();
 		const none = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "none", owes: "answer" });
-		expect([...(none?.tools ?? [])].sort()).toEqual(["artifact_publish", "thread_title"]);
+		expect([...(none?.tools ?? [])].sort()).toEqual([
+			"artifact_publish",
+			"attachment_read",
+			"attachments_list",
+			"thread_title",
+		]);
 		expect(none?.promptLine).not.toContain("evidence_record");
 		expect(none?.promptLine).not.toContain("tools_search");
 		const incident = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "incident", owes: "report" });
@@ -987,7 +992,8 @@ describe("read tools for the coding agent (#848)", () => {
 
 	type AttachmentRow = {
 		id: string;
-		incidentId: string;
+		incidentId: string | null;
+		investigationId?: string;
 		name: string;
 		mimeType: string;
 		size: number;
@@ -1016,6 +1022,15 @@ describe("read tools for the coding agent (#848)", () => {
 			name: "big.log",
 			mimeType: "text/plain",
 			size: 32_004,
+			createdAt: new Date("2026-10-24T09:00:00Z"),
+		},
+		{
+			id: "att-own",
+			incidentId: null,
+			investigationId: RUN_A,
+			name: "notes.txt",
+			mimeType: "text/plain",
+			size: 9,
 			createdAt: new Date("2026-10-24T09:00:00Z"),
 		},
 		{
@@ -1057,9 +1072,18 @@ describe("read tools for the coding agent (#848)", () => {
 					attachmentRows.filter((a) => a.incidentId === "inc-1"),
 				),
 				findFirst: vi.fn(
-					async ({ where }: { where: { id: string; incidentId: string } }) =>
+					async ({
+						where,
+					}: {
+						where: { id: string; incidentId?: string; investigationId?: string };
+					}) =>
 						attachmentRows.find(
-							(a) => a.id === where.id && a.incidentId === where.incidentId,
+							(a) =>
+								a.id === where.id &&
+								(where.incidentId
+									? a.incidentId === where.incidentId
+									: (a as { investigationId?: string }).investigationId ===
+										where.investigationId),
 						) ?? null,
 				),
 			},
@@ -1822,12 +1846,13 @@ describe("read tools for the coding agent (#848)", () => {
 			expect(out.value).toEqual({ incident: 12, attachments: [] });
 		});
 
-		it("a run with no incident is not_found", async () => {
-			const out = await use(
-				mocks({ run: { incident: null } }),
-				"attachments_list",
+		it("a run with no incident lists its own files, whatever its subject (#1024)", async () => {
+			const m = mocks({ run: { incident: null, serviceId: null, repositoryId: null } });
+			const out = await use(m, "attachments_list");
+			expect(out.isError).toBe(false);
+			expect(m.attachment.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({ where: { investigationId: RUN_A } }),
 			);
-			expect(out.value).toEqual(failure("not_found"));
 		});
 	});
 
@@ -1883,14 +1908,34 @@ describe("read tools for the coding agent (#848)", () => {
 			expect(out.value).toEqual(failure("not_found"));
 		});
 
-		it("a file that is not text is invalid_input and next says so", async () => {
+		it("a binary file is read as base64 bytes, in bounded chunks (#1024)", async () => {
 			const out = await use(mocks(), "attachment_read", { id: "att-2" });
-			expect(out.isError).toBe(true);
-			expect(out.value).toEqual({
-				...failure("invalid_input"),
-				message: expect.stringContaining("image/png"),
-				next: expect.stringContaining("not text or PDF"),
+			expect(out.isError).toBe(false);
+			expect(out.value).toMatchObject({
+				id: "att-2",
+				mimeType: "image/png",
+				encoding: "base64",
+				offset: 0,
+				total: 8,
+				truncated: false,
+				data: Buffer.from("not text").toString("base64"),
 			});
+			const tail = await use(mocks(), "attachment_read", { id: "att-2", offset: 4, length: 2 });
+			expect(tail.value).toMatchObject({
+				offset: 4,
+				data: Buffer.from("te").toString("base64"),
+				truncated: true,
+			});
+		});
+
+		it("a thread with no subject reads its own file, and no other run's (#1024)", async () => {
+			writeFileSync(join(dir, "attachments", "att-own"), "own notes");
+			const none = { incident: null, serviceId: null, repositoryId: null };
+			const own = await use(mocks({ run: none }), "attachment_read", { id: "att-own" });
+			expect(own.isError).toBe(false);
+			expect(own.value.text).toBe("own notes");
+			const other = await use(mocks({ run: none }), "attachment_read", { id: "att-1" });
+			expect(other.value).toEqual(failure("not_found"));
 		});
 
 		it("cuts a long file and says so, keeping the whole result valid JSON", async () => {

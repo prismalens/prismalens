@@ -4,7 +4,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FILE_LIST_TTL_MS, FileLister, withFolders } from "./file-list.js";
+import { FILE_LIST_TTL_MS, FileLister, walk, withFolders } from "./file-list.js";
 
 describe("the workspace file list (#1024)", () => {
 	let dir: string;
@@ -48,4 +48,24 @@ describe("the workspace file list (#1024)", () => {
 		now = FILE_LIST_TTL_MS;
 		expect((await lister.list(dir)).paths.sort()).toEqual(["a.ts", "b.ts"]);
 	});
+
+	it("walks a plain folder without blocking the event loop (#1024)", async () => {
+		for (let i = 0; i < 200; i++) {
+			mkdirSync(join(dir, `d${i}`, "x"), { recursive: true });
+			writeFileSync(join(dir, `d${i}`, "x", "f.ts"), "");
+		}
+		let turns = 0;
+		let done = false;
+		const spin = () => {
+			turns++;
+			if (!done) setImmediate(spin);
+		};
+		setImmediate(spin);
+		const files = await walk(dir, 50_000);
+		done = true;
+		expect(files).toContain("d0/x/f.ts");
+		// Each folder is read asynchronously, so the loop turns while the walk runs.
+		expect(turns).toBeGreaterThan(50);
+	});
 });
+

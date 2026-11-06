@@ -54,7 +54,7 @@ export class ScenarioApp {
 	constructor() {
 		const bin = join(this.workspace, "harness-bin");
 		mkdirSync(bin);
-		installFakeAgent(bin, { session: "success" });
+		installFakeAgent(bin, { session: "success", stateDir: this.fakeState });
 		Object.assign(process.env, {
 			PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`,
 			PRISMALENS_TELEMETRY: "off",
@@ -203,6 +203,11 @@ export class ScenarioApp {
 		if (!res.ok)
 			throw new Error(`POST ${path} → ${res.status}: ${out.slice(0, 300)}`);
 		return JSON.parse(out) as { id: string };
+	}
+
+	/** This app's own fake-agent state, so a capability one scenario turns on stays here (#1024). */
+	get fakeState(): string {
+		return join(this.workspace, "fake-agent-state");
 	}
 
 	/** Uploads any file as this paired device (#1024: not only text). */

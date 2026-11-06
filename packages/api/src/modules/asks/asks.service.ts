@@ -13,6 +13,7 @@ import {
 	pendingAsks,
 	projectAsks,
 } from "@prismalens/contracts";
+import type { Prisma } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import {
@@ -22,6 +23,7 @@ import {
 	runEventsTopic,
 } from "../../infrastructure/dispatch/event-bus.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { owePush, pushOwedBy } from "../push/push-outbox.js";
 import {
 	type AskAnswerer,
 	AskConflict,
@@ -36,6 +38,7 @@ export class AskInvalid extends Error {}
 
 /** Tool asks' events live on their own branch, so they never race a live run's `seq` (#1024). */
 export const TOOL_ASK_BRANCH = "asks";
+const SEQ_RETRIES = 8;
 
 type Row = {
 	askId: string;
@@ -93,10 +96,12 @@ export class AsksService implements AsksPort {
 			select: { id: true },
 		});
 		if (!thread) throw new AskConflict("No such thread.");
-		await this.prisma.toolAsk.create({
-			data: { askId, threadId, ask: JSON.stringify(ask), status: "open" },
+		await this.commit(threadId, { kind: "ask_opened", ask }, async (tx) => {
+			await tx.toolAsk.create({
+				data: { askId, threadId, ask: JSON.stringify(ask), status: "open" },
+			});
+			return true;
 		});
-		await this.record(threadId, { kind: "ask_opened", ask });
 		return askId;
 	}
 
@@ -119,6 +124,8 @@ export class AsksService implements AsksPort {
 				"Only this machine's own session can answer this.",
 			);
 		const result = this.dispatch.answerAsk(threadId, askId, answer);
+		if (result === "invalid")
+			throw new AskInvalid("That answer does not fit the ask; it still waits.");
 		if (!result) throw new AskConflict("This ask is no longer waiting.");
 		const ask =
 			(await this.pending(threadId).catch((): PendingAsk[] => [])).find(
@@ -244,22 +251,28 @@ export class AsksService implements AsksPort {
 		// A secret's value is never kept (#1024).
 		const kept = answer && ask.kind !== "secret" ? answer : undefined;
 		const closedAt = new Date();
-		const won = await this.prisma.toolAsk.updateMany({
-			where: { askId: row.askId, status: "open" },
-			data: {
-				status: "closed",
+		const won = await this.commit(
+			row.threadId,
+			{
+				kind: "ask_closed",
+				askId: row.askId,
 				outcome,
-				answer: kept ? JSON.stringify(kept) : null,
-				closedAt,
+				...(kept ? { answer: kept } : {}),
 			},
-		});
-		if (won.count !== 1) return null;
-		await this.record(row.threadId, {
-			kind: "ask_closed",
-			askId: row.askId,
-			outcome,
-			...(kept ? { answer: kept } : {}),
-		});
+			async (tx) =>
+				(
+					await tx.toolAsk.updateMany({
+						where: { askId: row.askId, status: "open" },
+						data: {
+							status: "closed",
+							outcome,
+							answer: kept ? JSON.stringify(kept) : null,
+							closedAt,
+						},
+					})
+				).count === 1,
+		);
+		if (!won) return null;
 		const closed: ClosedAsk = {
 			ask,
 			outcome,
@@ -291,8 +304,11 @@ export class AsksService implements AsksPort {
 		return out;
 	}
 
-	/** Append to the thread's log on the asks branch, and tell a live stream. */
-	private async record(
+	/**
+	 * Apply `change` and append its event in one transaction; false when `change` declines.
+	 * The seq is taken inside it, and a collision with a concurrent writer retries (#1024).
+	 */
+	private async commit(
 		threadId: string,
 		body:
 			| { kind: "ask_opened"; ask: PendingAsk }
@@ -302,22 +318,48 @@ export class AsksService implements AsksPort {
 					outcome: AskClosedOutcome;
 					answer?: AskAnswer;
 			  },
-	): Promise<void> {
-		const seq = (await this.investigations.lastEventSeq(threadId)) + 1;
-		const event = {
-			...body,
-			runId: threadId,
-			branchId: TOOL_ASK_BRANCH,
-			path: [],
-			seq,
-			label: null,
-			ts: new Date().toISOString(),
-		} as CanonicalEvent;
-		await this.investigations.appendEvents(threadId, [event]);
-		this.bus.publish<RelayMessage>(runEventsTopic(threadId), {
-			kind: "event",
-			event,
-		});
+		change: (tx: Prisma.TransactionClient) => Promise<boolean>,
+	): Promise<boolean> {
+		for (let attempt = 0; ; attempt++) {
+			try {
+				const event = await this.prisma.$transaction(async (tx) => {
+					if (!(await change(tx))) return null;
+					const { _max } = await tx.investigationEvent.aggregate({
+						where: { investigationId: threadId },
+						_max: { seq: true },
+					});
+					const event = {
+						...body,
+						runId: threadId,
+						branchId: TOOL_ASK_BRANCH,
+						path: [],
+						seq: (_max.seq ?? -1) + 1,
+						label: null,
+						ts: new Date().toISOString(),
+					} as CanonicalEvent;
+					await tx.investigationEvent.create({
+						data: {
+							investigationId: threadId,
+							seq: event.seq,
+							branchId: TOOL_ASK_BRANCH,
+							event: JSON.stringify(event),
+						},
+					});
+					const owed = pushOwedBy(threadId, event);
+					if (owed) await owePush(tx, owed);
+					return event;
+				});
+				if (!event) return false;
+				this.bus.publish<RelayMessage>(runEventsTopic(threadId), {
+					kind: "event",
+					event,
+				});
+				return true;
+			} catch (e) {
+				const taken = (e as { code?: string })?.code === "P2002";
+				if (!taken || attempt >= SEQ_RETRIES) throw e;
+			}
+		}
 	}
 
 	private notify(closed: ClosedAsk): void {

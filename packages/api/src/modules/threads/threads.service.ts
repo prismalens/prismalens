@@ -183,8 +183,6 @@ export class ThreadsService {
 			onCreate: async (tx, id) => {
 				if (repositoryId && (await folderBusy(tx, repositoryId, id)))
 					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
-				// The send and the draft's tombstone commit together (#1024).
-				await this.drafts.consume(input.draftScope, input.draftRev, tx);
 				if (draftKey && files.length)
 					attachments = await this.attachments.claimDraft(
 						draftKey,
@@ -217,6 +215,8 @@ export class ThreadsService {
 				...(context ? { context } : {}),
 			},
 		});
+		// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
+		if (jobId) await this.drafts.consume(input.draftScope, input.draftRev);
 		return {
 			investigationId: investigation.id,
 			jobId,

@@ -896,7 +896,8 @@ describe("AskChannel answers (#1024)", () => {
 			{ timeoutMs: 0 },
 		);
 		expect(channel.pending().map((p) => p.askId)).toEqual(["q"]);
-		expect(channel.answer("q", APPROVE)).toBeNull();
+		expect(channel.answer("q", APPROVE)).toBe("invalid");
+		expect(channel.pending().map((p) => p.askId)).toEqual(["q"]);
 		const answer = { kind: "question", answers: { x: { options: ["a"] } } } as const;
 		expect(channel.answer("q", answer)).toEqual({ outcome: "answered" });
 		expect(await held).toEqual({ outcome: "answered", answer });

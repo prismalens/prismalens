@@ -15,7 +15,11 @@ import type {
 	InvestigationJobData,
 	PendingAsk,
 } from "@prismalens/contracts";
-import { createAskChannel, createSteerChannel } from "@prismalens/engine";
+import {
+	createAskChannel,
+	createSteerChannel,
+	elicitationAccepts,
+} from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
 import type { JobRunner, RunningJob, RunSink } from "./dispatcher.js";
 import runInvestigationJob, {
@@ -93,7 +97,11 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				permission: asks.policy,
 				asks: {
 					elicit: (askId, ask, ctx) =>
-						asks.hold(askId, { kind: ask.kind, accepts: fits(ask.kind) }, ctx),
+						asks.hold(
+							askId,
+							{ kind: ask.kind, accepts: elicitationAccepts(ask) },
+							ctx,
+						),
 				},
 			},
 			ports,
@@ -130,16 +138,11 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 			answer: (askId, answer) => {
 				const result = asks.answer(askId, answer);
 				// ACP carries no reason on a rejection, so it follows as the next message (#1024).
-				if (result?.reason)
+				if (result && result !== "invalid" && result.reason)
 					steer.send(result.reason, "queue", undefined, randomUUID());
 				return result;
 			},
 			change: (messageId, text) => steer.change(messageId, text),
 		};
 	};
-}
-
-/** An answer of the ask's own kind, or a decline, settles it. */
-function fits(kind: PendingAsk["kind"]): (answer: AskAnswer) => boolean {
-	return (answer) => answer.kind === "decline" || answer.kind === kind;
 }

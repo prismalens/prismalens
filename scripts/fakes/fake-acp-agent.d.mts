@@ -28,7 +28,7 @@ export interface Step {
 	stop?: string;
 	/** Sends `elicitation/create` (form mode) and says the answer back (#1024). */
 	elicit?: { message: string; requestedSchema: Record<string, unknown> };
-	/** Says each linked file's first bytes: a file:// one read from disk, any other named (#1024). */
+	/** Says each linked file's first 4,000 characters: a file:// one read from disk, any other named (#1024). */
 	readLinks?: boolean;
 }
 
@@ -63,6 +63,11 @@ export const FAKE_AGENT_PATH: string;
 export function loadSession(nameOrPath: string): FakeSession;
 export function releaseDir(stateDir?: string): string;
 export function releaseRun(key: string, stateDir?: string): void;
+export function setFakeCapability(
+	name: "additionalDirectories",
+	on: boolean,
+	stateDir?: string,
+): void;
 export function installFakeAgent(
 	binDir: string,
 	opts?: {

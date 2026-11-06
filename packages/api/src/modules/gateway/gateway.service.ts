@@ -990,12 +990,27 @@ export class GatewayService {
 		};
 	}
 
+	/**
+	 * Whose files a run reads: its incident's, else its own, whatever the subject (#1024).
+	 * Undefined when there is no such run.
+	 */
+	private async fileOwner(
+		runId: string,
+	): Promise<{ id: string; number: number } | null | undefined> {
+		const scope = await this.scopeOf(runId);
+		if (scope) return scope.incident;
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: runId },
+			select: { id: true },
+		});
+		return run ? null : undefined;
+	}
+
 	private async attachmentsOf(
 		runId: string,
 	): Promise<{ incident?: number; attachments: AttachmentItem[] } | null> {
-		const scope = await this.scopeOf(runId);
-		if (!scope) return null;
-		const { incident } = scope;
+		const incident = await this.fileOwner(runId);
+		if (incident === undefined) return null;
 		const rows = await this.prisma.attachment.findMany({
 			where: filesOf(runId, incident),
 			orderBy: { createdAt: "desc" },
@@ -1021,10 +1036,10 @@ export class GatewayService {
 	}
 
 	private async attachmentOf(runId: string, id: string) {
-		const scope = await this.scopeOf(runId);
-		if (!scope) return null;
+		const incident = await this.fileOwner(runId);
+		if (incident === undefined) return null;
 		const row = await this.prisma.attachment.findFirst({
-			where: { id, ...filesOf(runId, scope.incident) },
+			where: { id, ...filesOf(runId, incident) },
 			select: { id: true, name: true, mimeType: true, size: true },
 		});
 		if (!row) return null;
