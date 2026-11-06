@@ -54,6 +54,8 @@ describe("ThreadsService (#1020)", () => {
 	let prisma: {
 		repository: { findUnique: ReturnType<typeof vi.fn> };
 		service: { findUnique: ReturnType<typeof vi.fn> };
+		threadWake: { updateMany: ReturnType<typeof vi.fn> };
+		prWatch: { deleteMany: ReturnType<typeof vi.fn> };
 		investigation: {
 			findMany: ReturnType<typeof vi.fn>;
 			findUnique: ReturnType<typeof vi.fn>;
@@ -89,6 +91,8 @@ describe("ThreadsService (#1020)", () => {
 
 	beforeEach(() => {
 		prisma = {
+			threadWake: { updateMany: vi.fn(async () => ({ count: 0 })) },
+			prWatch: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			repository: { findUnique: vi.fn(async () => ({ id: REPO })) },
 			service: { findUnique: vi.fn(async () => ({ id: SERVICE })) },
 			investigation: {
@@ -502,6 +506,8 @@ describe("ThreadsService.settle (#1020)", () => {
 					},
 				),
 			},
+			threadWake: { updateMany: vi.fn(async () => ({ count: 0 })) },
+			prWatch: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 			$transaction: vi.fn(),
 		};
 		return {

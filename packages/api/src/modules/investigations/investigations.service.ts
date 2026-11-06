@@ -44,6 +44,7 @@ import { OverlayService } from "../overlay/overlay.service.js";
 import { owePush, pushOwedBy } from "../push/push-outbox.js";
 import { withAsk } from "../schedules/allowed-asks.js";
 import { TimelineService } from "../timeline/timeline.service.js";
+import { endAgentWakes } from "../wakes/agent-wakes.js";
 import {
 	CreateInvestigationDto,
 	type InternalInvestigationResultDto,
@@ -908,6 +909,11 @@ export class InvestigationsService {
 					),
 				);
 		return { inserted, duplicates };
+	}
+
+	/** The user stopped this thread: its agent's own wakes and PR watches end. */
+	endAgentWakes(id: string): Promise<void> {
+		return endAgentWakes(this.prisma, [id]);
 	}
 
 	/** One sub-agent the run's agent started, as its events last left it (#1025). */

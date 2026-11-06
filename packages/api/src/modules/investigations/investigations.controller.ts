@@ -346,6 +346,8 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} is already ${investigation.status}`,
 						});
 					}
+					// A stop ends what the agent asked for too: its own wakes and PR watches (#1024 spec B).
+					await this.investigationsService.endAgentWakes(input.id);
 					if (investigation.status === "pending") {
 						const cancelledJob = await this.dispatchService.cancelPendingJob(
 							input.id,

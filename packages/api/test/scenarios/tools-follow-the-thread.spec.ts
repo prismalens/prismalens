@@ -173,6 +173,13 @@ function inputFor(tool: string, run: Seeded) {
 			return { change: { kind: "setting", key: "children", value: 3 }, why: "coverage" };
 		case "ask_user":
 			return { questions: [{ question: "Restart the cart?", options: [{ label: "Yes" }, { label: "No" }] }] };
+		case "wakeup_schedule":
+			return { delaySeconds: 600, reason: "Check the cart rollout" };
+		case "pr_link":
+			return { url: "https://github.com/acme/cart/pull/1" };
+		case "pr_watch":
+		case "pr_unwatch":
+			return { prId: "none", until: "merged" };
 		case "secret_request":
 			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:
