@@ -14,6 +14,9 @@ describe("readableTitle", () => {
 	it("splits an acronym-led name", () => {
 		expect(readableTitle("CPUHigh")).toBe("CPU high");
 	});
+	it("splits where a digit meets a capital", () => {
+		expect(readableTitle("P99High")).toBe("P99 high");
+	});
 	it("leaves a lone acronym alone", () => {
 		expect(readableTitle("CPU")).toBe("CPU");
 	});

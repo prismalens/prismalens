@@ -26,7 +26,7 @@ function Automation() {
 		<div className="flex h-full min-h-0 flex-col" data-testid="automation-page">
 			<PageHeader title="Automation" />
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto flex max-w-[760px] flex-col gap-8 px-4 py-6">
+				<div className="mx-auto flex max-w-[52rem] flex-col gap-8 px-4 py-6">
 					<section
 						aria-labelledby="auto-schedules"
 						className="flex flex-col gap-2"
@@ -69,8 +69,8 @@ function Automation() {
 									className="text-body text-text-1"
 									data-testid="auto-receiving"
 								>
-									Receiving alerts. Last delivery {formatDayClock(last.at, now)}
-									, {last.accepted} accepted.
+									Last delivery {formatDayClock(last.at, now)}, {last.accepted}{" "}
+									accepted.
 								</p>
 								<details className="text-body text-text-2">
 									<summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-control bg-surface-2 px-3 text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3 [&::-webkit-details-marker]:hidden">

@@ -189,7 +189,7 @@ function Threads() {
 						</div>
 					) : feed.isError && rows.length === 0 ? (
 						<p className="py-6 text-body text-text-2">
-							Couldn't load older threads.{" "}
+							Couldn't load threads.{" "}
 							<button
 								type="button"
 								onClick={() => void feed.refetch()}

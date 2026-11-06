@@ -72,4 +72,45 @@ describe("awayItems: while you were away (#1020)", () => {
 		const b = incident({ createdAt: at(1), investigations: [done(1.6)] });
 		expect(awayItems([a, b], SINCE)[0]?.text).toBe("2 runs finished, newest t");
 	});
+	it("counts runs, not incidents, when one incident finished twice", () => {
+		const a = incident({
+			createdAt: at(1),
+			investigations: [done(1.5), done(2)],
+		});
+		const items = awayItems([a], SINCE);
+		expect(items[0]?.text).toBe("2 runs finished, newest t");
+		expect(items[0]?.incidentId).toBe(a.id);
+	});
+	it("names the newest arrival and the newest finished run by event time", () => {
+		const newer = incident({
+			title: "Newer",
+			createdAt: at(3),
+			updatedAt: at(3),
+			alertCount: 1,
+			alerts: [{ id: "a", status: "triggered", source: "prometheus" }],
+		} as Partial<IncidentWithRelations>);
+		const older = incident({
+			title: "Older",
+			createdAt: at(1),
+			updatedAt: at(9),
+			alertCount: 1,
+			alerts: [{ id: "b", status: "triggered", source: "prometheus" }],
+		} as Partial<IncidentWithRelations>);
+		expect(awayItems([older, newer], SINCE)[0]?.text).toBe(
+			"2 threads arrived, newest Newer",
+		);
+		const early = incident({
+			title: "Early",
+			updatedAt: at(9),
+			investigations: [done(1)],
+		});
+		const late = incident({
+			title: "Late",
+			updatedAt: at(2),
+			investigations: [done(4)],
+		});
+		expect(
+			awayItems([early, late], SINCE).find((i) => i.key === "finished")?.text,
+		).toBe("2 runs finished, newest Late");
+	});
 });
