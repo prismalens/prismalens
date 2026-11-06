@@ -827,6 +827,18 @@ export class InvestigationsService {
 		return incidentId;
 	}
 
+	/** Called with each batch's newly stored events, after they are stored; a failure is only logged. */
+	private readonly appended: Array<
+		(investigationId: string, events: CanonicalEvent[]) => Promise<void>
+	> = [];
+
+	/** Read what a run's agent wrote as it is stored, e.g. a PR URL or a plan (#1024). */
+	onEventsAppended(
+		fn: (investigationId: string, events: CanonicalEvent[]) => Promise<void>,
+	): void {
+		this.appended.push(fn);
+	}
+
 	/**
 	 * Append a batch of canonical events to the durable record (ADR-0018
 	 * `store.append`). Idempotent: each row is keyed on
@@ -840,18 +852,6 @@ export class InvestigationsService {
 	 *
 	 * @returns how many rows were newly inserted vs skipped as duplicates.
 	 */
-	/** Called with each batch's newly stored events, after they are stored; a failure is only logged. */
-	private readonly appended: Array<
-		(investigationId: string, events: CanonicalEvent[]) => Promise<void>
-	> = [];
-
-	/** Read what a run's agent wrote as it is stored, e.g. a PR URL or a plan (#1024). */
-	onEventsAppended(
-		fn: (investigationId: string, events: CanonicalEvent[]) => Promise<void>,
-	): void {
-		this.appended.push(fn);
-	}
-
 	async appendEvents(
 		investigationId: string,
 		events: CanonicalEvent[],

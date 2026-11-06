@@ -6,7 +6,8 @@
  * shell. On Windows an editor's executable is found through PATH and PATHEXT.
  */
 import { statSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Editor, EditorId } from "@prismalens/contracts";
 import spawn from "cross-spawn";
 
@@ -105,6 +106,27 @@ export function insideRoot(root: string, path?: string): string | null {
 	const rel = relative(resolve(root), target);
 	if (rel.startsWith("..") || isAbsolute(rel)) return null;
 	return target;
+}
+
+/**
+ * {@link insideRoot}, then the same check on the real paths, so a junction or link inside
+ * `root` that points outside it is refused; null too when the target does not exist.
+ */
+export async function existingInsideRoot(
+	root: string,
+	path?: string,
+): Promise<string | null> {
+	const target = insideRoot(root, path);
+	if (!target) return null;
+	try {
+		const [real, realRoot] = await Promise.all([
+			realpath(target),
+			realpath(root),
+		]);
+		return real === realRoot || real.startsWith(realRoot + sep) ? target : null;
+	} catch {
+		return null;
+	}
 }
 
 /** The command and arguments that open `target`: an editor's own, or the system's default app. */

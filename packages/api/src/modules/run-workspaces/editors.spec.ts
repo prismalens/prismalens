@@ -159,6 +159,28 @@ describe("RunWorkspacesService.openInEditor", async () => {
 			);
 	});
 
+	it("never opens a file a junction or link inside the workspace points outside it", async () => {
+		const { mkdirSync, symlinkSync } = await import("node:fs");
+		const outside = mkdtempSync(join(tmpdir(), "pl-editor-out-"));
+		try {
+			mkdirSync(join(outside, "d"));
+			writeFileSync(join(outside, "d", "secret.txt"), "x\n");
+			// A junction needs no privilege on Windows; a failure here is a broken fixture.
+			symlinkSync(join(outside, "d"), join(cwd, "escape"), "junction");
+			const before = spawned.length;
+			await expect(
+				svc(ws).openInEditor({ id: RUN, path: "escape/secret.txt" }),
+			).rejects.toThrow(/No such file/);
+			await expect(svc(ws).openInEditor({ id: RUN, path: "escape" })).rejects.toThrow(
+				/No such file/,
+			);
+			expect(spawned.length).toBe(before);
+		} finally {
+			rmSync(join(cwd, "escape"), { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
 	it("says when the editor did not start", async () => {
 		fail = true;
 		expect((await svc(ws).openInEditor({ id: RUN })).opened).toBe(false);

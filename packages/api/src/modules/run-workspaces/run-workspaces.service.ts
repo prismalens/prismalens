@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import {
 	Injectable,
 	Logger,
@@ -41,7 +40,12 @@ import {
 } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { readThreadContextSettings } from "../threads/thread-context-settings.js";
-import { detectEditors, editorCommand, insideRoot, launch } from "./editors.js";
+import {
+	detectEditors,
+	editorCommand,
+	existingInsideRoot,
+	launch,
+} from "./editors.js";
 
 const GLOBAL_KEY = "runWorkspace.global";
 const OVERRIDE_PREFIX = "runWorkspace.service.";
@@ -439,8 +443,8 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 			: undefined;
 		if (!ws)
 			throw new RunWorkspaceNotFoundError("The run recorded no workspace");
-		const target = insideRoot(ws.cwd, input.path);
-		if (!target || !existsSync(target))
+		const target = await existingInsideRoot(ws.cwd, input.path);
+		if (!target)
 			throw new RunWorkspaceNotFoundError("No such file in the workspace");
 		const editor =
 			input.editor ?? (await readThreadContextSettings(this.prisma)).editor;
