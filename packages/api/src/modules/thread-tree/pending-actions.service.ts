@@ -64,6 +64,7 @@ export class PendingActionsService {
 	/** One check-then-run at a time per tree, so concurrent calls cannot both pass a cap. */
 	private readonly lanes = new Map<string, Promise<unknown>>();
 	private readonly reopenTries = new Map<string, number>();
+	private delivering: Promise<void> = Promise.resolve();
 	/** Outcomes whose caller would not reopen; they go out when it next runs. */
 	private readonly gaveUp = new Set<string>();
 
@@ -401,7 +402,20 @@ export class PendingActionsService {
 	}
 
 	/** Tells each caller how its action ended, reopening an ended caller when it must. */
-	async deliverOutcomes(): Promise<void> {
+	/**
+	 * Tick, approval and boot all deliver; passes run one after another, so a row
+	 * read by two of them is never sent twice and counts one try per pass.
+	 */
+	deliverOutcomes(): Promise<void> {
+		const pass = this.delivering.then(
+			() => this.deliverOnce(),
+			() => this.deliverOnce(),
+		);
+		this.delivering = pass.catch(() => {});
+		return pass;
+	}
+
+	private async deliverOnce(): Promise<void> {
 		const waiting = await this.prisma.pendingAction.findMany({
 			where: { state: { in: [...ENDED] }, deliveredAt: null },
 			distinct: ["callerId"],

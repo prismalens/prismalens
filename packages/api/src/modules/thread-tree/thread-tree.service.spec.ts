@@ -1267,3 +1267,15 @@ describe("proposals refuse what cannot apply (#1024 spec F)", () => {
 		expect(held.applyingNow.has(made.id)).toBe(false);
 	});
 });
+
+describe("outcome delivery runs one pass at a time (#1024 spec F)", () => {
+	it("Given two delivery passes at once, Then each outcome reaches its caller once", async () => {
+		const caller = await thread();
+		live.add(caller.id);
+		await prisma.pendingAction.create({
+			data: { callerId: caller.id, rootId: caller.id, tool: "thread_start", args: "{}", requestId: "once", state: "denied" },
+		});
+		await Promise.all([actions.deliverOutcomes(), actions.deliverOutcomes(), actions.deliverOutcomes()]);
+		expect(sent.filter((m) => m.id === caller.id && m.text.includes('"once"'))).toHaveLength(1);
+	});
+});
