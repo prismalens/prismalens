@@ -1279,3 +1279,62 @@ describe("outcome delivery runs one pass at a time (#1024 spec F)", () => {
 		expect(sent.filter((m) => m.id === caller.id && m.text.includes('"once"'))).toHaveLength(1);
 	});
 });
+
+describe("rows a pass puts off never hold back newer ones (#1024 spec F)", () => {
+	it("Given 60 outcomes for a caller not yet claimed, Then a newer outcome for a running caller still goes out", async () => {
+		const unclaimed = await thread({ status: "pending" });
+		await prisma.pendingAction.createMany({
+			data: Array.from({ length: 60 }, (_, i) => ({
+				callerId: unclaimed.id,
+				rootId: unclaimed.id,
+				tool: "thread_start",
+				args: "{}",
+				requestId: `wait-${i}`,
+				state: "denied",
+			})),
+		});
+		const running = await thread();
+		live.add(running.id);
+		await prisma.pendingAction.create({
+			data: { callerId: running.id, rootId: running.id, tool: "thread_start", args: "{}", requestId: "newer", state: "denied" },
+		});
+		for (let i = 0; i < 3; i++) await actions.deliverOutcomes();
+		expect(sent.some((m) => m.id === running.id && m.text.includes('"newer"'))).toBe(true);
+		// The put-off outcomes are kept, and go out once their caller runs.
+		live.add(unclaimed.id);
+		await prisma.investigation.update({ where: { id: unclaimed.id }, data: { status: "running" } });
+		for (let i = 0; i < 4; i++) await actions.deliverOutcomes();
+		expect(await prisma.pendingAction.count({ where: { callerId: unclaimed.id, deliveredAt: null } })).toBe(0);
+	});
+
+	it("Given 100 results that cannot wake their parent yet, Then a newer message to a running thread is still delivered", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		const root = await thread();
+		const done = value(await startIn(root.id, { role: "done" })).childId as string;
+		const busy = value(await startIn(root.id, { role: "busy" })).childId as string;
+		const peer = value(await startIn(root.id, { role: "peer" })).childId as string;
+		value(await tree.wait(root.id, ["done", "busy"], "all"));
+		await prisma.investigation.update({ where: { id: root.id }, data: { status: "completed" } });
+		await prisma.investigation.update({ where: { id: busy }, data: { status: "running" } });
+		await prisma.investigation.update({ where: { id: peer }, data: { status: "running" } });
+		await prisma.threadMessage.deleteMany();
+		await prisma.threadMessage.createMany({
+			data: Array.from({ length: 100 }, (_, i) => ({
+				rootId: root.id,
+				fromId: done,
+				toId: root.id,
+				type: "result",
+				text: `result ${i}`,
+				requestId: `result-${i}`,
+			})),
+		});
+		await prisma.threadMessage.create({
+			data: { rootId: root.id, fromId: busy, toId: peer, type: "fact", text: "newer fact", requestId: "newer" },
+		});
+		live.add(peer);
+		for (let i = 0; i < 3; i++) await tree.drain();
+		expect(sent.some((m) => m.id === peer && m.text.includes("newer fact"))).toBe(true);
+		expect(resumed).toHaveLength(0);
+		expect(await prisma.threadMessage.count({ where: { toId: root.id, state: "queued" } })).toBe(100);
+	});
+});

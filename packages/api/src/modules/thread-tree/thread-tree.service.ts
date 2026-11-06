@@ -33,6 +33,7 @@ import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { actionReason, ThreadsService } from "../threads/threads.service.js";
 import { PendingActionsService } from "./pending-actions.service.js";
+import { PutOff } from "./put-off.js";
 import { isDuplicate, TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
 
@@ -43,6 +44,8 @@ const logger = new Logger({ context: "ThreadTree" });
 const TICK_MS = 2_000;
 /** Refused reopens of a waiting parent before its wait is dropped: about a minute of ticks. */
 const REOPEN_TRIES = 30;
+/** Queued messages one delivery pass reads. */
+const MESSAGE_BATCH = 100;
 /** The roster lines a child's first prompt lists; a bigger tree is cut with a count. */
 const ROSTER_LINES = 20;
 
@@ -162,6 +165,7 @@ export class ThreadTreeService
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private ticking: Promise<void> | null = null;
 	private readonly reopenTries = new Map<string, number>();
+	private readonly putOff = new PutOff();
 	/** Children that ended after this were not yet looked at; the first tick reads all. */
 	private sweptTo = new Date(0);
 
@@ -789,14 +793,25 @@ export class ThreadTreeService
 		const queued = await this.prisma.threadMessage.findMany({
 			where: {
 				state: "queued",
+				id: { notIn: this.putOff.skip() },
 				OR: [
 					{ toId: { in: running.map((r) => r.id) } },
 					{ toId: { in: waiting.map((w) => w.waiterId) }, type: "result" },
 				],
 			},
 			orderBy: { createdAt: "asc" },
-			take: 100,
+			take: MESSAGE_BATCH,
 		});
+		try {
+			await this.deliverEach(queued);
+		} finally {
+			this.putOff.settle(queued.length, MESSAGE_BATCH);
+		}
+	}
+
+	private async deliverEach(
+		queued: Awaited<ReturnType<typeof this.prisma.threadMessage.findMany>>,
+	): Promise<void> {
 		for (const m of queued) {
 			const reopen =
 				m.type === "result" && (await this.wakes(m.toId, m.fromId));
@@ -805,7 +820,10 @@ export class ThreadTreeService
 				reopen,
 			});
 			if (reopen && got.state === "later") await this.refusedReopen(m);
-			if (got.state !== "delivered") continue;
+			if (got.state !== "delivered") {
+				this.putOff.defer(m.id);
+				continue;
+			}
 			this.reopenTries.delete(m.id);
 			await this.prisma.threadMessage.update({
 				where: { id: m.id },

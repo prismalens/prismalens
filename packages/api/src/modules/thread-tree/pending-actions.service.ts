@@ -18,6 +18,7 @@ import {
 	type AsksPort,
 	type ClosedAsk,
 } from "../asks/asks.contract.js";
+import { PutOff } from "./put-off.js";
 import { isDuplicate, TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
 
@@ -48,6 +49,8 @@ const ENDED = ["done", "failed", "denied", "expired", "cancelled"] as const;
 const REOPENS = ["done", "failed", "denied"] as const;
 /** Refused reopens of an ended caller before its outcome waits for the caller's next run. */
 const REOPEN_TRIES = 30;
+/** Outcomes one pass reads for running callers. */
+const OUTCOME_BATCH = 50;
 const SETTING_NEXT =
 	"Tell the user; they can change Settings → Agent → Agents may start threads.";
 
@@ -65,6 +68,7 @@ export class PendingActionsService {
 	private readonly lanes = new Map<string, Promise<unknown>>();
 	private readonly reopenTries = new Map<string, number>();
 	private delivering: Promise<void> = Promise.resolve();
+	private readonly putOff = new PutOff();
 	/** Outcomes whose caller would not reopen; they go out when it next runs. */
 	private readonly gaveUp = new Set<string>();
 
@@ -401,10 +405,9 @@ export class PendingActionsService {
 		}
 	}
 
-	/** Tells each caller how its action ended, reopening an ended caller when it must. */
 	/**
-	 * Tick, approval and boot all deliver; passes run one after another, so a row
-	 * read by two of them is never sent twice and counts one try per pass.
+	 * Tells each caller how its action ended, reopening an ended caller when it must. Tick,
+	 * approval and boot all deliver; passes run one after another, so no row is sent twice.
 	 */
 	deliverOutcomes(): Promise<void> {
 		const pass = this.delivering.then(
@@ -435,9 +438,10 @@ export class PendingActionsService {
 				state: { in: [...ENDED] },
 				deliveredAt: null,
 				callerId: { in: running.map((r) => r.id) },
+				id: { notIn: this.putOff.skip() },
 			},
 			orderBy: { createdAt: "asc" },
-			take: 50,
+			take: OUTCOME_BATCH,
 		});
 		// A caller that has ended takes an outcome only by reopening, and only so many tries of that.
 		const reopening = await this.prisma.pendingAction.findMany({
@@ -450,12 +454,24 @@ export class PendingActionsService {
 			orderBy: { createdAt: "asc" },
 			take: 50,
 		});
-		const rows = [...ready, ...reopening];
+		try {
+			await this.deliverRows([...ready, ...reopening], ready);
+		} finally {
+			this.putOff.settle(ready.length, OUTCOME_BATCH);
+		}
+	}
+
+	private async deliverRows(
+		rows: PendingAction[],
+		ready: PendingAction[],
+	): Promise<void> {
 		for (const row of rows) {
 			const reopen = (REOPENS as readonly string[]).includes(row.state);
 			const got = await this.io.deliver(row.callerId, this.outcomeText(row), {
 				reopen,
 			});
+			if (got.state !== "delivered" && ready.includes(row))
+				this.putOff.defer(row.id);
 			if (got.state === "later") {
 				const tries = (this.reopenTries.get(row.id) ?? 0) + 1;
 				this.reopenTries.set(row.id, tries);
