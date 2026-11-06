@@ -297,61 +297,63 @@ function ServicesPage() {
 					)
 				}
 			>
-				{!none && (
-					<div className="flex basis-full items-center gap-2 md:basis-auto">
-						<Button variant="text" size="sm" asChild>
-							<Link to="/projects" data-testid="services-projects-link">
-								Projects
-							</Link>
-						</Button>
-						<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
-							<Search className="size-3.5 shrink-0 text-text-3" />
-							<input
-								value={q}
-								onChange={(e) => setQ(e.target.value)}
-								placeholder="Filter"
-								aria-label="Filter services"
-								className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
-								data-testid="services-search"
-							/>
-						</label>
-						{teamOptions.length > 0 && (
-							<Select
-								value={teamFilter}
-								onValueChange={(v) =>
-									updateSearch({
-										team: v === "all" ? undefined : v,
-										page: undefined,
-									})
-								}
-							>
-								<SelectTrigger
-									className="h-7 w-auto min-w-28"
-									aria-label="Team"
-									data-testid="services-team-filter"
+				<div className="flex basis-full items-center gap-2 md:basis-auto">
+					<Button variant="text" size="sm" asChild>
+						<Link to="/projects" data-testid="services-projects-link">
+							Projects
+						</Link>
+					</Button>
+					{!none && (
+						<>
+							<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
+								<Search className="size-3.5 shrink-0 text-text-3" />
+								<input
+									value={q}
+									onChange={(e) => setQ(e.target.value)}
+									placeholder="Filter"
+									aria-label="Filter services"
+									className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
+									data-testid="services-search"
+								/>
+							</label>
+							{teamOptions.length > 0 && (
+								<Select
+									value={teamFilter}
+									onValueChange={(v) =>
+										updateSearch({
+											team: v === "all" ? undefined : v,
+											page: undefined,
+										})
+									}
 								>
-									<SelectValue placeholder="Every team" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">Every team</SelectItem>
-									{teamOptions.map((t) => (
-										<SelectItem key={t} value={t}>
-											{t}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						)}
-					</div>
-				)}
+									<SelectTrigger
+										className="h-7 w-auto min-w-28"
+										aria-label="Team"
+										data-testid="services-team-filter"
+									>
+										<SelectValue placeholder="Every team" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">Every team</SelectItem>
+										{teamOptions.map((t) => (
+											<SelectItem key={t} value={t}>
+												{t}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							)}
+						</>
+					)}
+				</div>
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{none ? (
 					<>
 						<Blank title="Add your first service" testId="services-empty">
 							<p className="-mt-2 text-body text-text-2">
-								A service is a repository the agent can read, and the alerts
-								that belong to it. Chats work without one.
+								A service can link a repository the agent reads, and gets the
+								alerts that belong to it. Chats work without one.
 							</p>
 							<Button
 								onClick={() => setShowAddDialog(true)}

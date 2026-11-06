@@ -27,35 +27,44 @@ export function awayItems(
 	since: number | null,
 ): AwayItem[] {
 	if (since === null) return [];
+	const startedAt = (i: IncidentWithRelations) =>
+		t(i.createdAt ?? i.triggeredAt);
 	const arrived = incidents.filter(
-		(i) =>
-			triggerOf(i).kind !== "you" && t(i.createdAt ?? i.triggeredAt) > since,
+		(i) => triggerOf(i).kind !== "you" && startedAt(i) > since,
 	);
-	const finished = incidents.filter((i) =>
-		(i.investigations ?? []).some((r) => t(r.completedAt) > since),
-	);
+	// A run is the unit finished counts; an incident can complete several (#1020).
+	const finishedAt = (i: IncidentWithRelations) =>
+		(i.investigations ?? [])
+			.map((r) => t(r.completedAt))
+			.filter((at) => at > since);
+	const finished = incidents.filter((i) => finishedAt(i).length > 0);
+	const runs = finished.reduce((n, i) => n + finishedAt(i).length, 0);
 	// One count unit in the shell: threads waiting on an approval or answer (#1020).
 	const needs = incidents.filter((i) => rowStateOf(i) === "asks");
 	const items: AwayItem[] = [];
 	const one = (list: IncidentWithRelations[]) =>
 		list.length === 1 ? (list[0]?.id ?? null) : null;
-	// The newest thread is named; the rest are counted (#1020: counts alone say nothing).
-	const named = (list: IncidentWithRelations[], verb: string, noun: string) => {
-		const [first] = [...list].sort(
-			(a, b) => t(b.updatedAt ?? b.createdAt) - t(a.updatedAt ?? a.createdAt),
-		);
+	// The newest event is named; the rest are counted (#1020: counts alone say nothing).
+	const named = (
+		list: IncidentWithRelations[],
+		count: number,
+		eventAt: (i: IncidentWithRelations) => number,
+		verb: string,
+		noun: string,
+	) => {
+		const [first] = [...list].sort((a, b) => eventAt(b) - eventAt(a));
 		if (!first?.title) return null;
 		const title = readableTitle(first.title);
 		// What happened comes first, so a cut line loses the title, never the verb (#1020).
-		return list.length === 1
+		return count === 1
 			? `${title} ${verb}`
-			: `${list.length} ${noun} ${verb}, newest ${title}`;
+			: `${count} ${noun} ${verb}, newest ${title}`;
 	};
 	if (arrived.length)
 		items.push({
 			key: "arrived",
 			text:
-				named(arrived, "arrived", "threads") ??
+				named(arrived, arrived.length, startedAt, "arrived", "threads") ??
 				(arrived.every((i) => triggerOf(i).kind === "alert")
 					? plural(arrived.length, "alert arrived", "alerts arrived")
 					: plural(arrived.length, "event arrived", "events arrived")),
@@ -65,8 +74,13 @@ export function awayItems(
 		items.push({
 			key: "finished",
 			text:
-				named(finished, "finished", "runs") ??
-				plural(finished.length, "run finished", "runs finished"),
+				named(
+					finished,
+					runs,
+					(i) => Math.max(...finishedAt(i)),
+					"finished",
+					"runs",
+				) ?? plural(runs, "run finished", "runs finished"),
 			incidentId: one(finished),
 		});
 	if (items.length && needs.length)

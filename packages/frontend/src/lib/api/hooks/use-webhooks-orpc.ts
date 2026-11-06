@@ -18,9 +18,10 @@ export function useWebhookToken() {
 }
 
 /** When the webhook last took a delivery, re-read while the change stream is down. */
-export function useLastDelivery() {
+export function useLastDelivery(enabled = true) {
 	return useQuery({
 		...orpc.webhooks.lastDelivery.queryOptions({ input: {} }),
+		enabled,
 		refetchInterval: useLiveRefreshInterval(),
 	});
 }

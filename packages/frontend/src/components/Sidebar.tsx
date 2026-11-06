@@ -72,12 +72,12 @@ const ICON = "size-4 shrink-0 stroke-[1.5]";
 
 function useDoors(signedIn: boolean): Door[] {
 	const about = useAbout(signedIn);
-	const { incidents } = useActiveIncidents();
-	const { data: delivery } = useLastDelivery();
+	const { incidents } = useActiveIncidents(signedIn);
+	const { data: delivery } = useLastDelivery(signedIn);
 	// Operations is earned: it stays once alerts have ever arrived, not only while one is open (#1020).
 	const operations =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
-	const waiting = useWaitingCount();
+	const waiting = useWaitingCount(signedIn);
 	return [
 		...(waiting
 			? [
