@@ -122,7 +122,6 @@ export {
 export {
 	AUTO_INSTALL_QUIET_MS,
 	type AutoInstallFacts,
-	AWAIT_PID_ENV,
 	autoInstallBlockedBy,
 	installerArgv,
 	installerEnv,
@@ -132,7 +131,6 @@ export {
 	releaseNotesFor,
 	sanitiseReleaseNotes,
 	underServiceManager,
-	waitForPidExit,
 } from "./utils/update-install.js";
 export {
 	acquireWorkspaceLock,

@@ -52,17 +52,16 @@ describe("Walk #724: work that arrives during an update install waits for the re
 
 		// The operator starts one by hand.
 		const quiet = await incidentFrom("ledger", "info");
-		const existing = await pl.investigations(quiet.id);
-		const manualRun =
-			existing[0] ??
-			{
-				id: (
-					await pl.api<{ investigationId: string; queued: boolean }>(`/incidents/${quiet.id}/investigate`, {
-						method: "POST",
-						body: { brief: "fake-session:success" },
-					})
-				).investigationId,
-			};
+		// An info alert starts nothing on its own, so the run below is the manual start.
+		expect(await pl.investigations(quiet.id)).toHaveLength(0);
+		const manualRun = {
+			id: (
+				await pl.api<{ investigationId: string; queued: boolean }>(`/incidents/${quiet.id}/investigate`, {
+					method: "POST",
+					body: { brief: "fake-session:success" },
+				})
+			).investigationId,
+		};
 
 		// A schedule fires.
 		const service = await pl.serviceWithRepo("books");

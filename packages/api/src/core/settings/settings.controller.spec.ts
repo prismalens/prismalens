@@ -127,6 +127,17 @@ describe("SettingsController host-only update routes (#724)", () => {
 		expect(run).toHaveBeenCalledOnce();
 	});
 
+	it("refuses Check now to a paired device and runs it for the host", async () => {
+		const aboutFor = vi.fn(async () => ({}));
+		const update = controller({ aboutFor } as never, {}).update() as unknown as Record<string, Proc>;
+		await expect(update.check["~orpc"].handler({ input: undefined, context: paired })).rejects.toMatchObject({
+			code: "FORBIDDEN",
+		});
+		expect(aboutFor).not.toHaveBeenCalled();
+		await update.check["~orpc"].handler({ input: undefined, context: host });
+		expect(aboutFor).toHaveBeenCalledWith(true, true);
+	});
+
 	it("passes who is asking to install, and maps a refusal to its status", async () => {
 		const { UpdateRefused } = await import("./update.service.js");
 		const install = vi.fn(async () => {

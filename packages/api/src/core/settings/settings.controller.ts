@@ -60,8 +60,15 @@ export class SettingsController {
 			}
 		};
 		return {
-			check: implement(settingsContract.update.check).handler(({ context }) =>
-				this.updateService.aboutFor(isHost(context.request as Request), true),
+			// Check now makes the server call out, so it is the host's to ask, like install (#724).
+			check: implement(settingsContract.update.check).handler(
+				async ({ context }) => {
+					if (!isHost(context.request as Request))
+						throw new ORPCError("FORBIDDEN", {
+							message: "Only this machine's own browser can check for updates.",
+						});
+					return this.updateService.aboutFor(true, true);
+				},
 			),
 			install: implement(settingsContract.update.install).handler(
 				({ input, context }) =>

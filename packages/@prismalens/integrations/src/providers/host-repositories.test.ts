@@ -37,7 +37,7 @@ describe("hostRepositoriesUrl", () => {
 		expect(
 			hostRepositoriesUrl("github", "https://api.github.com", { search: "checkout", page: 2 }),
 		).toBe(
-			"https://api.github.com/search/repositories?per_page=30&page=2&q=checkout+in%3Aname&sort=updated",
+			"https://api.github.com/user/repos?per_page=100&page=2&sort=pushed&direction=desc&affiliation=owner%2Ccollaborator%2Corganization_member",
 		);
 		expect(
 			hostRepositoriesUrl("gitlab", "https://gitlab.example.com/api/v4", { search: "inv" }),
@@ -78,14 +78,32 @@ describe("listHostRepositories against recorded answers", () => {
 		]);
 	});
 
-	it("GitHub /search/repositories", async () => {
-		const page = await listHostRepositories(
-			"github",
-			"github.com",
-			async () => fixture("github-search.json"),
-			{ search: "checkout" },
-		);
-		expect(page.repositories.map((r) => r.fullName)).toEqual(["acme/checkout-web"]);
+	it("a GitHub search filters the repos the token can see, never all of GitHub", async () => {
+		const get = vi.fn(async () => fixture("github-user-repos.json"));
+		const page = await listHostRepositories("github", "github.com", get, { search: "CHECKOUT" });
+		expect(get).toHaveBeenCalledOnce();
+		expect(get).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/api\.github\.com\/user\/repos\?per_page=100&page=1/));
+		expect(page.repositories.map((r) => r.fullName)).toEqual(["acme/checkout-api"]);
+		expect(page.hasMore).toBe(false);
+	});
+
+	it("a GitHub search reads up to three full pages and pages the matches", async () => {
+		const row = (n: number) => ({
+			full_name: `acme/svc-${n}`,
+			clone_url: `https://github.com/acme/svc-${n}.git`,
+			pushed_at: null,
+		});
+		const get = vi.fn(async (url: string) => {
+			const page = Number(new URL(url).searchParams.get("page"));
+			return Array.from({ length: 100 }, (_, i) => row((page - 1) * 100 + i));
+		});
+		const first = await listHostRepositories("github", "github.com", get, { search: "svc" });
+		expect(get).toHaveBeenCalledTimes(3);
+		expect(first.repositories).toHaveLength(30);
+		expect(first.hasMore).toBe(true);
+		const last = await listHostRepositories("github", "github.com", get, { search: "svc", page: 10 });
+		expect(last.repositories.map((r) => r.fullName)).toEqual(Array.from({ length: 30 }, (_, i) => `acme/svc-${270 + i}`));
+		expect(last.hasMore).toBe(false);
 	});
 
 	it("GitLab /projects, with a relative avatar made absolute on the host", async () => {

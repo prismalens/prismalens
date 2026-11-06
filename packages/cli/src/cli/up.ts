@@ -139,7 +139,6 @@ export default defineCommand({
 		},
 	},
 	async run({ args }) {
-		await awaitReplacedProcess();
 		const app = resolvePackagedApi();
 
 		// The packaged app always runs as production, whatever the shell exports;
@@ -307,25 +306,6 @@ export default defineCommand({
 		printUpdateNotice();
 	},
 });
-
-/**
- * A copy restarted from the app (#724) is launched while the old process still
- * holds the workspace; it waits for that pid to exit, then boots as usual.
- */
-export async function awaitReplacedProcess(
-	env: NodeJS.ProcessEnv = process.env,
-): Promise<void> {
-	const { AWAIT_PID_ENV, waitForPidExit } = await import("@prismalens/config");
-	const pid = Number(env[AWAIT_PID_ENV]);
-	delete env[AWAIT_PID_ENV];
-	if (!Number.isInteger(pid) || pid <= 0) return;
-	if (!(await waitForPidExit(pid))) {
-		consola.error(
-			`The PrismaLens being replaced (pid ${pid}) didn't stop within a minute; not starting a second one.`,
-		);
-		process.exit(1);
-	}
-}
 
 /**
  * The host's own browser pairs like any other device (ADR 0004 §8): one link,

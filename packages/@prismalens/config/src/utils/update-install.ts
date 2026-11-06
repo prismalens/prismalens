@@ -167,9 +167,6 @@ export function underServiceManager(env: NodeJS.ProcessEnv): boolean {
  */
 export const RESTART_EXIT_CODE = 75;
 
-/** Set on the detached `pl up` a terminal copy relaunches; it waits for this pid. */
-export const AWAIT_PID_ENV = "PRISMALENS_AWAIT_PID";
-
 /**
  * argv that installs `version` with the installer, into its own runtime folder.
  * `script` is a local copy of the installer, which the CI upgrade job passes
@@ -223,28 +220,4 @@ export function installerEnv(
 	return Object.fromEntries(
 		Object.entries(env).filter(([key]) => key.toLowerCase() !== "psmodulepath"),
 	);
-}
-
-function alive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "EPERM";
-	}
-}
-
-/** Resolves true once `pid` has exited, false at the deadline. */
-export async function waitForPidExit(
-	pid: number,
-	timeoutMs = 60_000,
-	intervalMs = 250,
-	isAlive: (pid: number) => boolean = alive,
-): Promise<boolean> {
-	const deadline = Date.now() + timeoutMs;
-	while (isAlive(pid)) {
-		if (Date.now() >= deadline) return false;
-		await new Promise((r) => setTimeout(r, intervalMs));
-	}
-	return true;
 }

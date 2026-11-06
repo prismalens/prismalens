@@ -51,6 +51,7 @@ import {
 	type HandoffConfig,
 	RESULT_FILE,
 	readHandoffResult,
+	switchWrappers,
 } from "./update-handoff.js";
 
 const PREFS_KEY = "update.prefs";
@@ -249,6 +250,12 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 				"BAD_REQUEST",
 				`${version} isn't the newer release this copy last saw.`,
 			);
+		const ahead = this.receiptAhead();
+		if (ahead)
+			throw new UpdateRefused(
+				"CONFLICT",
+				`The installer last installed ${ahead}, but this copy runs ${this.version}. Restart PrismaLens, or run the upgrade command from a terminal.`,
+			);
 		if (!this.start(version))
 			throw new UpdateRefused("CONFLICT", "An install is already under way.");
 		return this.getStatus();
@@ -263,7 +270,27 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		return true;
 	}
 
+	/** Every failure before the exit puts the `pl` wrappers back on the running version. */
 	private fail(version: string, error: string): void {
+		const runtimeRoot = join(
+			installerDataDir(this.env, this.platform),
+			"runtime",
+		);
+		const binDir = this.binDir();
+		if (
+			binDir &&
+			version !== this.version &&
+			existsSync(join(runtimeRoot, version))
+		) {
+			const back = switchWrappers(
+				binDir,
+				runtimeRoot,
+				version,
+				this.version,
+				join(runtimeRoot, ".."),
+			);
+			if (back) error = `${error} (${back})`;
+		}
 		this.admission?.restore();
 		this.status = { phase: "failed", version, error };
 		this.logger.warn(`Update to ${version} failed: ${error}`);
@@ -290,23 +317,11 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 			return this.fail(version, `The installer finished but ${pl} is missing.`);
 
 		// Admission was drained, so only work that bypassed dispatch can be live now.
-		if (await this.live()) {
-			const { switchWrappers } = await import("./update-handoff.js");
-			const binDir = this.binDir();
-			const back = binDir
-				? switchWrappers(
-						binDir,
-						runtimeRoot,
-						version,
-						this.version,
-						join(runtimeRoot, ".."),
-					)
-				: null;
+		if (await this.live())
 			return this.fail(
 				version,
-				`A run started during the install, so PrismaLens kept running ${this.version}.${back ? ` (${back})` : ""}`,
+				`A run started during the install, so PrismaLens kept running ${this.version}.`,
 			);
-		}
 
 		this.status = { phase: "restarting", version };
 		const workspaceDir = getAppDataDir();
@@ -413,16 +428,31 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		});
 	}
 
-	private binDir(): string | null {
+	private receipt(key: string): string | null {
 		try {
 			const receipt = readFileSync(
 				join(installerDataDir(this.env, this.platform), "receipt"),
 				"utf8",
 			);
-			return /^bin_dir=(.+)$/m.exec(receipt)?.[1]?.trim() ?? null;
+			return (
+				new RegExp(`^${key}=(.+)$`, "m").exec(receipt)?.[1]?.trim() ?? null
+			);
 		} catch {
 			return null;
 		}
+	}
+
+	private binDir(): string | null {
+		return this.receipt("bin_dir");
+	}
+
+	/**
+	 * The installer keeps only the new runtime and the receipt's, so a receipt
+	 * ahead of the running copy would let it delete the runtime this process runs from.
+	 */
+	private receiptAhead(): string | null {
+		const recorded = this.receipt("version");
+		return recorded && recorded !== this.version ? recorded : null;
 	}
 
 	private healthUrl(): string {
@@ -469,6 +499,7 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		this.logger.log(
 			`Installing ${latest} automatically; nothing has run for 15 minutes`,
 		);
+		if (this.receiptAhead()) return false;
 		return this.start(latest);
 	}
 }

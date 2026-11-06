@@ -15,7 +15,6 @@ import {
 	releaseNotesFor,
 	sanitiseReleaseNotes,
 	underServiceManager,
-	waitForPidExit,
 } from "./update-install.js";
 
 let dir: string;
@@ -137,11 +136,5 @@ describe("restart handoff", () => {
 	it("drops PSModulePath on Windows only", () => {
 		expect(installerEnv({ PSModulePath: "x", A: "1" }, "win32")).toEqual({ A: "1" });
 		expect(installerEnv({ PSModulePath: "x" }, "linux")).toEqual({ PSModulePath: "x" });
-	});
-
-	it("waits for a pid to exit, and gives up at the deadline", async () => {
-		let calls = 0;
-		expect(await waitForPidExit(1, 1_000, 1, () => ++calls < 3)).toBe(true);
-		expect(await waitForPidExit(1, 5, 1, () => true)).toBe(false);
 	});
 });

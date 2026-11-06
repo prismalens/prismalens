@@ -339,7 +339,7 @@ describe("UpdateService edges", () => {
 
 	it("reads the installer's bin folder from its receipt", async () => {
 		mkdirSync(dataDir, { recursive: true });
-		writeFileSync(join(dataDir, "receipt"), "version=0.5.1\nbin_dir=/home/me/.local/bin\n");
+		writeFileSync(join(dataDir, "receipt"), `version=${CURRENT}\nbin_dir=/home/me/.local/bin\n`);
 		const { s } = service({});
 		await s.install(NEXT, true);
 		await settled(s);
@@ -357,6 +357,48 @@ describe("UpdateService concurrency", () => {
 		expect(refused.reason).toMatchObject({ code: "CONFLICT" });
 		await settled(s);
 		expect(installer).toHaveBeenCalledOnce();
+	});
+});
+
+describe("UpdateService keeps the running runtime", () => {
+	it("refuses when the installer's receipt is ahead of the running copy", async () => {
+		mkdirSync(dataDir, { recursive: true });
+		writeFileSync(join(dataDir, "receipt"), "version=98.9.9\nbin_dir=/x\n");
+		const { s, installer } = service({});
+		await expect(s.install(NEXT, true)).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(installer).not.toHaveBeenCalled();
+		await s.setPrefs({ autoInstall: "idle" }, true);
+		s.now = () => Date.now() + 60 * 60_000;
+		expect(await s.autoInstallTick()).toBe(false);
+	});
+
+	it("puts the pl wrappers back on the running version when an install fails after unpacking", async () => {
+		const runtimeRoot = join(dataDir, "runtime");
+		const bin = join(workspace, "bin");
+		mkdirSync(join(runtimeRoot, CURRENT, "bin"), { recursive: true });
+		mkdirSync(bin, { recursive: true });
+		writeFileSync(join(dataDir, "receipt"), `version=${CURRENT}\nbin_dir=${bin}\n`);
+		const unpackedNoPl = vi.fn(() => {
+			const child = new EventEmitter() as EventEmitter & {
+				stdout: PassThrough;
+				stderr: PassThrough;
+				kill: () => void;
+			};
+			child.stdout = new PassThrough();
+			child.stderr = new PassThrough();
+			child.kill = () => {};
+			setImmediate(() => {
+				// The installer unpacked NEXT and switched the wrappers, but its pl is missing.
+				mkdirSync(join(runtimeRoot, NEXT), { recursive: true });
+				writeFileSync(join(bin, "pl"), `#!/bin/sh\nexec "${join(runtimeRoot, NEXT, "bin", "pl")}" "$@"\n`);
+				child.emit("exit", 0);
+			});
+			return child;
+		});
+		const { s } = service({ spawn: unpackedNoPl as never });
+		await s.install(NEXT, true);
+		expect((await settled(s)).phase).toBe("failed");
+		expect(readFileSync(join(bin, "pl"), "utf8")).toContain(join(runtimeRoot, CURRENT, "bin"));
 	});
 });
 

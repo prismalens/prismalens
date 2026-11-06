@@ -27,6 +27,9 @@ export interface HostRepositoryPage {
 export type HostGet = (url: string) => Promise<unknown>;
 
 export const HOST_PAGE_SIZE = 30;
+/** GitHub's search API covers all of GitHub, so a search scans this many of the user's repos instead. */
+const GITHUB_SCAN_PAGE = 100;
+const GITHUB_SCAN_PAGES = 3;
 
 /** github.com and bitbucket.org by name; any other host is taken as GitLab, self-managed included. */
 export function gitHostKind(
@@ -157,13 +160,9 @@ export function hostRepositoriesUrl(
 	const search = opts.search?.trim();
 	const q = new URLSearchParams();
 	if (kind === "github") {
-		q.set("per_page", String(HOST_PAGE_SIZE));
+		// A search reads whole pages of the user's own repos and filters them (see listHostRepositories).
+		q.set("per_page", String(search ? GITHUB_SCAN_PAGE : HOST_PAGE_SIZE));
 		q.set("page", String(page));
-		if (search) {
-			q.set("q", `${search} in:name`);
-			q.set("sort", "updated");
-			return `${apiBase}/search/repositories?${q}`;
-		}
 		q.set("sort", "pushed");
 		q.set("direction", "desc");
 		q.set("affiliation", "owner,collaborator,organization_member");
@@ -193,11 +192,30 @@ export async function listHostRepositories(
 	opts: { search?: string; page?: number } = {},
 ): Promise<HostRepositoryPage> {
 	const apiBase = hostApiBase(kind, host);
+	const search = opts.search?.trim().toLowerCase();
+	if (kind === "github" && search) {
+		const matches: HostRepositoryRow[] = [];
+		for (let page = 1; page <= GITHUB_SCAN_PAGES; page++) {
+			const body = await get(
+				hostRepositoriesUrl(kind, apiBase, { search, page }),
+			);
+			const rows = Array.isArray(body) ? body : [];
+			matches.push(
+				...github(rows).filter((r) =>
+					r.fullName.toLowerCase().includes(search),
+				),
+			);
+			if (rows.length < GITHUB_SCAN_PAGE) break;
+		}
+		const start = ((opts.page ?? 1) - 1) * HOST_PAGE_SIZE;
+		return {
+			repositories: matches.slice(start, start + HOST_PAGE_SIZE),
+			hasMore: matches.length > start + HOST_PAGE_SIZE,
+		};
+	}
 	const body = await get(hostRepositoriesUrl(kind, apiBase, opts));
 	if (kind === "github") {
-		const rows = Array.isArray(body)
-			? body
-			: ((obj(body).items as unknown[]) ?? []);
+		const rows = Array.isArray(body) ? body : [];
 		return {
 			repositories: github(rows),
 			hasMore: rows.length >= HOST_PAGE_SIZE,
