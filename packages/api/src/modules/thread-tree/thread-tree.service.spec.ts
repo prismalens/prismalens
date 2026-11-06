@@ -24,6 +24,8 @@ const { ProposalsService } = await import("./proposals.service.js");
 const { TreeIo } = await import("./tree-io.service.js");
 const { TreeSettings } = await import("./tree-settings.service.js");
 const { actionReason } = await import("../threads/threads.service.js");
+const { nodeState, threadLink } = await import("./thread-tree.service.js");
+const { FollowUpRefused } = await import("../../infrastructure/dispatch/dispatch.service.js");
 
 type Prisma = InstanceType<typeof PrismaService>;
 let prisma: Prisma;
@@ -123,10 +125,10 @@ const investigations = {
 };
 
 /** ThreadsService.start as far as the tree sees it: one row, placed in its tree. */
-const starts: { input: Record<string, unknown>; tree: Record<string, unknown> }[] = [];
+const starts: { input: Record<string, unknown>; tree: Record<string, unknown>; pinned?: string }[] = [];
 const threads = {
 	start: vi.fn(async (input: Record<string, unknown>, tree: { parentId: string; rootId: string; role: string; depth: number; title: string; actionId: string; at?: (r: { url: string }) => string | undefined }) => {
-		starts.push({ input, tree });
+		starts.push({ input, tree, pinned: tree.at?.({ url: "repo-url" }) });
 		const subject = input.subject as { kind: string; repositoryId?: string; serviceId?: string };
 		const row = await prisma.investigation.create({
 			data: {
@@ -578,5 +580,354 @@ describe("proposals (#1024 spec F)", () => {
 		expect((await settings.get()).children).toBe(2);
 		await expect(proposals.dismiss(root.id, p.id)).rejects.toThrow(/already applied/);
 		expect((await events(root.id)).map((e) => e.kind)).toEqual(["action_proposed", "action_resolved"]);
+	});
+});
+
+describe("tree edges (#1024 spec F)", () => {
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+	const fails = (o: ToolOutcome) => (isFailure(o) ? o.failure : null);
+
+	it("links each kind of thread where the app shows it, and rings each status", () => {
+		expect(threadLink({ id: "t", incidentId: "i", scheduleId: null })).toBe("/incidents/i/conversation?investigation=t");
+		expect(threadLink({ id: "t", incidentId: null, scheduleId: "s" })).toBe("/schedules/s/runs/t");
+		expect(["pending", "running", "completed", "failed", "cancelled"].map((status) => nodeState({ status }))).toEqual([
+			"queued",
+			"running",
+			"answered",
+			"failed",
+			"stopped",
+		]);
+	});
+
+	it("starts a child at the parent's commit, at a named ref, or fresh, with the agent, model and effort it names", async () => {
+		await allow();
+		const head = "a".repeat(40);
+		const repo = (dir: string, sourceKind: string) => ({
+			name: "repo",
+			dir,
+			sourceKind,
+			url: "repo-url",
+			subPath: null,
+			connectionId: null,
+			head,
+			branch: null,
+			services: [],
+		});
+		const ws = (r: unknown) => JSON.stringify({ layout: "single", cwd: "/nowhere", repos: [r] });
+		const root = await thread({ workspace: ws(repo("/nowhere", "url")), harness: "claude-code", model: "m1", effort: "high" });
+		value(await startIn(root.id, { workspace: { kind: "new_from_parent" } }));
+		value(await startIn(root.id, { workspace: { kind: "new_from_ref", ref: "release-1" }, agent: "codex", model: "m2", effort: "low" }));
+		value(await startIn(root.id, { workspace: { kind: "same_project_fresh" } }));
+		expect(starts.map((s) => s.pinned)).toEqual([head, "release-1", undefined]);
+		expect(starts[0]?.input).toMatchObject({ harness: "claude-code", model: "m1", effort: "high" });
+		expect(starts[1]?.input).toMatchObject({ harness: "codex", model: "m2", effort: "low" });
+		// A folder whose worktree cannot be read falls back to the recorded commit.
+		const folder = await thread({ workspace: ws(repo("/no/such/dir", "folder")) });
+		value(await startIn(folder.id, { workspace: { kind: "new_from_parent" } }));
+		expect(starts.at(-1)?.pinned).toBe(head);
+		const bare = await thread({ workspace: null });
+		value(await startIn(bare.id, { workspace: { kind: "new_from_parent" } }));
+		expect(starts.at(-1)?.pinned).toBeUndefined();
+	});
+
+	it("gives a project's child the project, and a service thread's child the service", async () => {
+		await allow();
+		const repo = await prisma.repository.create({
+			data: { fullName: `org/r-${randomUUID()}`, sourceKind: "url", url: `https://example.test/${randomUUID()}.git` },
+		});
+		const service = await prisma.service.create({ data: { name: `svc-${randomUUID()}` } });
+		value(await startIn((await thread({ repositoryId: repo.id })).id));
+		value(await startIn((await thread({ serviceId: service.id })).id));
+		expect(starts.map((s) => s.input.subject)).toEqual([
+			{ kind: "project", repositoryId: repo.id },
+			{ kind: "service", serviceId: service.id },
+		]);
+	});
+
+	it("refuses a second running child with the same role, and a caller that is gone", async () => {
+		await allow();
+		const root = await thread();
+		value(await startIn(root.id, { role: "db" }));
+		expect(fails(await startIn(root.id, { role: "db" }))?.error).toBe("invalid_input");
+		const gone = await actions.gate({ callerId: randomUUID(), rootId: "x", tool: "thread_start", args: { role: "db" }, requestId: "g1" });
+		expect(fails(gone)?.error).toBe("run_ended");
+	});
+
+	it("resolves members by number, link, root and id, and lists far members by relation", async () => {
+		await allow();
+		const root = await thread();
+		const a = value(await startIn(root.id, { role: "api" })).childId as string;
+		const grandchild = value(await startIn(a, { role: "deep" })).childId as string;
+		expect((await tree.resolveMember(grandchild, "#1"))?.id).toBe(root.id);
+		expect((await tree.resolveMember(grandchild, `/threads/${a}`))?.id).toBe(a);
+		expect((await tree.resolveMember(grandchild, "root"))?.id).toBe(root.id);
+		expect(await tree.resolveMember(grandchild, "nobody")).toBeNull();
+		expect(await tree.resolveMember(randomUUID(), "root")).toBeNull();
+		expect((await tree.roster(root.id))?.members.map((m) => m.relation)).toEqual(["you", "child", "member"]);
+		expect((await tree.roster(grandchild))?.members.map((m) => m.relation)).toEqual(["root", "parent", "you"]);
+		expect(await tree.roster(randomUUID())).toBeNull();
+		expect(await tree.tree(randomUUID())).toBeNull();
+		expect(await tree.sameTree(root.id, grandchild)).toBe(true);
+		expect(await tree.sameTree(root.id, (await thread()).id)).toBe(false);
+		expect(await tree.sameTree(root.id, randomUUID())).toBe(false);
+	});
+
+	it("answers a thread outside any tree, or gone, without guessing", async () => {
+		const solo = await thread();
+		const msg = { to: "parent", type: "fact" as const, text: "x", mode: "queue" as const, requestId: "n1" };
+		expect(fails(await tree.send(solo.id, msg))?.error).toBe("invalid_input");
+		expect(fails(await tree.wait(solo.id, ["parent"], "any"))?.error).toBe("invalid_input");
+		expect(fails(await tree.send(randomUUID(), msg))?.error).toBe("run_ended");
+		expect(fails(await tree.wait(randomUUID(), ["x"], "any"))?.error).toBe("run_ended");
+		const cancel = await actions.gate({
+			callerId: solo.id,
+			rootId: solo.id,
+			tool: "thread_cancel",
+			args: { id: "x", reason: "r", requestId: "c" },
+			requestId: "c",
+		});
+		expect(fails(cancel)?.error).toBe("invalid_input");
+	});
+
+	it("keeps a message to an ended member for its next run, and says so", async () => {
+		await allow();
+		const root = await thread();
+		const db = value(await startIn(root.id, { role: "db" })).childId as string;
+		await prisma.investigation.update({ where: { id: db }, data: { status: "completed", completedAt: new Date() } });
+		const msg = { to: "db", type: "handoff" as const, text: "use replica", mode: "queue" as const, requestId: "h1" };
+		const r = value(await tree.send(root.id, msg));
+		expect(r).toMatchObject({ status: "queued", note: expect.stringContaining("has ended") });
+		expect(resumed).toHaveLength(0);
+		// A retry with the key answers the same message.
+		expect(value(await tree.send(root.id, msg)).messageId).toBe(r.messageId);
+	});
+
+	it("tells the parent how each child ended: failed, limited and stopped", async () => {
+		await allow();
+		const root = await thread();
+		live.add(root.id);
+		const ids: string[] = [];
+		for (const role of ["a", "b", "c"]) ids.push(value(await startIn(root.id, { role })).childId as string);
+		const ends = [
+			{ status: "failed", endReason: null },
+			{ status: "failed", endReason: "limited" },
+			{ status: "cancelled", endReason: null },
+		];
+		for (const [i, id] of ids.entries())
+			await prisma.investigation.update({ where: { id }, data: { ...ends[i], completedAt: new Date() } });
+		await prisma.investigationEvent.create({
+			data: {
+				investigationId: ids[0] as string,
+				seq: 1,
+				branchId: "run",
+				event: JSON.stringify({ kind: "agent_step", text: "Gave up on the pool." }),
+			},
+		});
+		await tree.tick();
+		const outcomes = (await events(root.id)).flatMap((e) => (e.kind === "child_finished" ? [e.outcome] : []));
+		expect(outcomes.sort()).toEqual(["failed", "limited", "stopped"]);
+		expect(sent.some((m) => m.text.includes("Gave up on the pool."))).toBe(true);
+	});
+
+	it("ends a tree's allowance once nothing in it runs", async () => {
+		const root = await thread({ status: "completed" });
+		await prisma.treeAllowance.create({ data: { rootId: root.id, grantedBy: "host" } });
+		await tree.tick();
+		expect(await prisma.treeAllowance.count()).toBe(0);
+	});
+
+	it("waits only on its own children and starts, and refuses a start that ended without a thread", async () => {
+		await allow();
+		const root = await thread();
+		const a = value(await startIn(root.id, { role: "a" })).childId as string;
+		value(await startIn(a, { role: "deep" }));
+		expect(fails(await tree.wait(root.id, ["deep"], "any"))?.error).toBe("not_found");
+		await prisma.pendingAction.create({
+			data: { callerId: root.id, rootId: root.id, tool: "thread_start", args: "{}", requestId: "dead", state: "denied" },
+		});
+		expect(fails(await tree.wait(root.id, ["dead"], "any"))?.error).toBe("not_found");
+		expect(value(await tree.wait(root.id, ["a"], "any")).waiting).toMatchObject([{ id: "a", state: "queued" }]);
+	});
+
+	it("stops a running child through the run, or as an orphan when nothing holds it, and refuses one already ended", async () => {
+		await allow();
+		const root = await thread();
+		const a = value(await startIn(root.id, { role: "a" })).childId as string;
+		const b = value(await startIn(root.id, { role: "b" })).childId as string;
+		await prisma.investigation.updateMany({ where: { id: { in: [a, b] } }, data: { status: "running" } });
+		const stop = (id: string, requestId: string) =>
+			actions.gate({ callerId: root.id, rootId: root.id, tool: "thread_cancel", args: { id, reason: "replaced", requestId }, requestId });
+		value(await stop("a", "s1"));
+		expect(investigations.markStopRequested).toHaveBeenCalledWith(a);
+		dispatch.requestCancel.mockResolvedValueOnce(0);
+		value(await stop("b", "s2"));
+		expect(dispatch.cancelOrphanedRun).toHaveBeenCalledWith(b);
+		expect(fails(await stop("b", "s3"))?.error).toBe("invalid_input");
+	});
+});
+
+describe("the act gate's edges (#1024 spec F)", () => {
+	const fails = (o: ToolOutcome) => (isFailure(o) ? o.failure : null);
+
+	it("answers an unwired tool, and a retry of each ended state with what it ended as", async () => {
+		const root = await thread();
+		const unwired = await actions.gate({ callerId: root.id, rootId: root.id, tool: "nope", args: {}, requestId: "x" });
+		expect(fails(unwired)?.error).toBe("internal");
+		const cases = [
+			["denied", { error: "not now" }, /not now/],
+			["expired", {}, /expired/],
+			["cancelled", {}, /cancelled/],
+			["failed", { error: "boom" }, /boom/],
+		] as const;
+		for (const [state, extra, says] of cases) {
+			await prisma.pendingAction.create({
+				data: { callerId: root.id, rootId: root.id, tool: "thread_start", args: "{}", requestId: state, state, ...extra },
+			});
+			expect(fails(await start(root.id, { requestId: state }))?.message).toMatch(says);
+		}
+	});
+
+	it("records a card that lapsed unanswered as expired, a denial's reason, and tells the caller", async () => {
+		const root = await thread();
+		live.add(root.id);
+		value(await start(root.id, { requestId: "lapse" }));
+		value(await start(root.id, { requestId: "deny", role: "other" }));
+		const [lapse, deny] = await asks.pending(root.id);
+		await actions.closed({ ask: lapse as PendingAsk, outcome: "expired", closedAt: new Date().toISOString() });
+		await actions.closed(asks.closeQuietly(deny?.askId as string, { kind: "permission", decision: "deny", reason: "too many" }));
+		const rows = await prisma.pendingAction.findMany({ orderBy: { createdAt: "asc" } });
+		expect(rows.map((r) => [r.state, r.error])).toEqual([
+			["expired", null],
+			["denied", "too many"],
+		]);
+		expect(sent.map((m) => m.text).join("\n")).toMatch(/was expired before the user answered[\s\S]*was denied by the user: too many/);
+	});
+
+	it("runs nothing for an unknown row, answers a done row again, and survives an executor that throws", async () => {
+		expect(fails(await actions.execute(randomUUID()))?.error).toBe("not_found");
+		const root = await thread();
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		value(await start(root.id, { requestId: "ok" }));
+		const done = await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "ok" } });
+		expect(value(await actions.execute(done.id)).status).toBe("started");
+		threads.start.mockRejectedValueOnce(new Error("disk full"));
+		expect(fails(await start(root.id, { requestId: "boom", role: "x" }))?.error).toBe("internal");
+		const gone = await prisma.pendingAction.create({
+			data: { callerId: root.id, rootId: root.id, tool: "gone_tool", args: "{}", requestId: "u", state: "approved" },
+		});
+		expect(fails(await actions.execute(gone.id))?.error).toBe("internal");
+	});
+
+	it("expires a card the asks seat no longer knows at boot, and refuses a card for a thread that is gone", async () => {
+		const root = await thread();
+		value(await start(root.id, { requestId: "lost" }));
+		const row = await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "lost" } });
+		asks.asks.delete(row.askId as string);
+		await actions.resume();
+		expect((await prisma.pendingAction.findUniqueOrThrow({ where: { id: row.id } })).state).toBe("expired");
+		const { AskConflict } = await import("../asks/asks.contract.js");
+		const refusing = new FakeAsks();
+		refusing.open = async () => {
+			throw new AskConflict("gone");
+		};
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		actions = new PendingActionsService(prisma, settings, io, refusing);
+		tree = new ThreadTreeService(prisma, threads as never, dispatch as never, investigations as never, settings, actions, io);
+		expect(fails(await start(root.id, { requestId: "nocard", role: "z" }))?.error).toBe("run_ended");
+		actions.stop();
+	});
+});
+
+describe("delivery (#1024 spec F)", () => {
+	it("retries a busy or unclaimed run, keeps text for an ended thread, and retries a refused reopen", async () => {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const t = await thread({ status: "pending" });
+		dispatch.sendMessage.mockReturnValueOnce("conflict" as never);
+		expect((await io.deliver(t.id, "x", { reopen: false })).state).toBe("later");
+		expect((await io.deliver(t.id, "x", { reopen: false })).state).toBe("later");
+		expect((await io.deliver(randomUUID(), "x", { reopen: true })).state).toBe("parked");
+		const ended = await thread({ status: "completed" });
+		expect((await io.deliver(ended.id, "x", { reopen: false })).state).toBe("parked");
+		dispatch.resumeInvestigation.mockRejectedValueOnce(new FollowUpRefused("busy"));
+		expect((await io.deliver(ended.id, "x", { reopen: true })).state).toBe("later");
+		dispatch.resumeInvestigation.mockResolvedValueOnce(false);
+		expect((await io.deliver(ended.id, "x", { reopen: true })).state).toBe("later");
+		dispatch.resumeInvestigation.mockRejectedValueOnce(new Error("db down"));
+		await expect(io.deliver(ended.id, "x", { reopen: true })).rejects.toThrow("db down");
+	});
+
+	it("emits a recorded node onto a live stream, and never throws when it cannot record", async () => {
+		const stream = { isActive: () => true, emit: vi.fn() };
+		const t = await thread();
+		await new TreeIo(prisma, dispatch as never, investigations as never, stream as never).record(t.id, {
+			kind: "thread_started",
+			childId: "c",
+			role: "db",
+			title: "x",
+			link: "/threads/c",
+		});
+		expect(stream.emit).toHaveBeenCalledTimes(1);
+		const broken = {
+			...investigations,
+			lastEventSeq: async () => {
+				throw new Error("no db");
+			},
+		};
+		await expect(
+			new TreeIo(prisma, dispatch as never, broken as never, relay as never).record(t.id, {
+				kind: "action_resolved",
+				proposalId: "p",
+				state: "dismissed",
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("reads stored settings, and falls back to the defaults on a broken row", async () => {
+		await prisma.setting.create({ data: { key: "threads.tree", value: "{not json" } });
+		expect((await settings.get()).agentsStartThreads).toBe("ask");
+		await prisma.setting.update({ where: { key: "threads.tree" }, data: { value: JSON.stringify({ depth: 3 }) } });
+		expect(await settings.get()).toMatchObject({ depth: 3, children: 4 });
+	});
+});
+
+describe("applying proposals (#1024 spec F)", () => {
+	function proposals(repos: Record<string, unknown> = {}, schedules: Record<string, unknown> = {}) {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		return new ProposalsService(prisma, io, settings, repos as never, schedules as never);
+	}
+
+	it("applies a link, a project and a schedule through their services", async () => {
+		const linkToService = vi.fn(async () => ({}));
+		const addSource = vi.fn(async () => ({ id: "repo-1" }));
+		const create = vi.fn(async () => ({ id: "sched-1" }));
+		const p = proposals({ linkToService, addSource }, { create });
+		const service = await prisma.service.create({ data: { name: `svc-${randomUUID()}` } });
+		const root = await thread({ harness: "claude-code", model: "m", effort: "high", serviceId: service.id });
+		const apply = async (change: Parameters<typeof p.propose>[1]) => {
+			const made = await p.propose(root.id, change, "because");
+			if ("error" in made) throw new Error(made.error);
+			return p.apply(root.id, made.id, "dev-1");
+		};
+		expect((await apply({ kind: "service_link", serviceId: "s", repositoryId: "r" })).outcome).toBe("Linked.");
+		expect(linkToService).toHaveBeenCalledWith("r", { serviceId: "s" });
+		expect((await apply({ kind: "project_add", source: "/code/shop" })).outcome).toBe("Added project repo-1.");
+		const schedule = { kind: "schedule" as const, name: "Daily", brief: "Check it", cron: "0 9 * * 1-5", timezone: "UTC" };
+		expect((await apply(schedule)).outcome).toBe("Scheduled sched-1.");
+		expect(create).toHaveBeenCalledWith(expect.objectContaining({ serviceId: service.id, harness: "claude-code", report: false }), "dev-1");
+	});
+
+	it("refuses a schedule from a thread with no agent, an unknown or decided card, and more than ten open", async () => {
+		const p = proposals();
+		const root = await thread({ harness: null });
+		const made = await p.propose(root.id, { kind: "schedule", name: "D", brief: "b", cron: "0 9 * * 1-5", timezone: "UTC" }, "w");
+		if ("error" in made) throw new Error(made.error);
+		await expect(p.apply(root.id, made.id, null)).rejects.toThrow(/no agent/);
+		await expect(p.apply(root.id, randomUUID(), null)).rejects.toThrow(/No such proposal/);
+		await p.dismiss(root.id, made.id);
+		await expect(p.dismiss(root.id, made.id)).rejects.toThrow(/already dismissed/);
+		for (let i = 0; i < 10; i++) await p.propose(root.id, { kind: "project_add", source: `/c/${i}` }, "w");
+		expect(await p.propose(root.id, { kind: "project_add", source: "/c/x" }, "w")).toMatchObject({
+			error: expect.stringContaining("10 open"),
+		});
 	});
 });
