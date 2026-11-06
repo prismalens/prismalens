@@ -1132,3 +1132,138 @@ describe("proposals are claimed before they apply (#1024 spec F)", () => {
 		expect((await prisma.proposal.findUniqueOrThrow({ where: { id: made.id } })).state).toBe("open");
 	});
 });
+
+describe("records follow their threads, and nothing waits forever (#1024 spec F)", () => {
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+
+	it("Given a thread is deleted, Then its inbox, waits, cards, actions and allowance go too, and its sent messages stay", async () => {
+		await allow();
+		const root = await thread();
+		const a = value(await startIn(root.id, { role: "a" })).childId as string;
+		const b = value(await startIn(root.id, { role: "b" })).childId as string;
+		value(await tree.wait(root.id, ["a"], "any"));
+		await prisma.proposal.create({ data: { threadId: root.id, kind: "setting", change: "{}", why: "w" } });
+		await prisma.treeAllowance.create({ data: { rootId: root.id, grantedBy: "host" } });
+		await prisma.threadMessage.create({
+			data: { rootId: root.id, fromId: a, toId: b, type: "fact", text: "from a", requestId: "a-to-b" },
+		});
+		await prisma.threadMessage.create({
+			data: { rootId: root.id, fromId: b, toId: a, type: "fact", text: "to a", requestId: "b-to-a" },
+		});
+		await prisma.investigation.delete({ where: { id: root.id } });
+		expect(await prisma.pendingAction.count({ where: { callerId: root.id } })).toBe(0);
+		expect(await prisma.threadWait.count({ where: { waiterId: root.id } })).toBe(0);
+		expect(await prisma.proposal.count({ where: { threadId: root.id } })).toBe(0);
+		expect(await prisma.treeAllowance.count({ where: { rootId: root.id } })).toBe(0);
+		await prisma.investigation.delete({ where: { id: a } });
+		const left = await prisma.threadMessage.findMany({ where: { rootId: root.id }, select: { requestId: true } });
+		// a's inbox went with it; what a sent to b still waits for b.
+		expect(left.some((m) => m.requestId === "b-to-a")).toBe(false);
+		expect(left.some((m) => m.requestId === "a-to-b")).toBe(true);
+	});
+
+	it("Given more refused outcomes than one batch, Then an outcome for a running caller still goes out, and refused ones stop retrying", async () => {
+		const ended = await thread({ status: "completed" });
+		await prisma.pendingAction.createMany({
+			data: Array.from({ length: 51 }, (_, i) => ({
+				callerId: ended.id,
+				rootId: ended.id,
+				tool: "thread_start",
+				args: "{}",
+				requestId: `refused-${i}`,
+				state: "denied",
+			})),
+		});
+		const running = await thread();
+		live.add(running.id);
+		await prisma.pendingAction.create({
+			data: { callerId: running.id, rootId: running.id, tool: "thread_start", args: "{}", requestId: "fresh", state: "denied" },
+		});
+		dispatch.resumeInvestigation.mockImplementation(async () => {
+			throw new FollowUpRefused("Pick an agent to continue in.");
+		});
+		let tries = 0;
+		try {
+			await actions.deliverOutcomes();
+			expect(sent.some((m) => m.id === running.id && m.text.includes('"fresh"'))).toBe(true);
+			for (let i = 0; i < 70; i++) await actions.deliverOutcomes();
+			tries = dispatch.resumeInvestigation.mock.calls.length;
+		} finally {
+			dispatch.resumeInvestigation.mockReset();
+			dispatch.resumeInvestigation.mockImplementation(async (id: string, text: string) => {
+				resumed.push({ id, text });
+				await prisma.investigation.update({ where: { id }, data: { status: "pending" } });
+				return true;
+			});
+		}
+		// 50 per batch at most, 30 tries each, then they wait for the caller's next run.
+		expect(tries).toBeLessThanOrEqual(51 * 30);
+		expect(await prisma.pendingAction.count({ where: { callerId: ended.id, deliveredAt: null } })).toBe(51);
+		dispatch.resumeInvestigation.mockClear();
+		await actions.deliverOutcomes();
+		expect(dispatch.resumeInvestigation).not.toHaveBeenCalled();
+	});
+
+	it("Given a wait on a start that ended without a thread, Then the parent still wakes when the rest finish", async () => {
+		const root = await thread();
+		value(await start(root.id, { requestId: "lapses", role: "x" }));
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		const child = value(await startIn(root.id, { role: "db" })).childId as string;
+		value(await tree.wait(root.id, ["lapses", "db"], "all"));
+		await prisma.pendingAction.updateMany({ where: { requestId: "lapses" }, data: { state: "expired" } });
+		await prisma.investigation.update({ where: { id: root.id }, data: { status: "completed" } });
+		await prisma.investigation.update({ where: { id: child }, data: { status: "completed", completedAt: new Date() } });
+		await tree.tick();
+		expect(resumed.map((r) => r.id)).toContain(root.id);
+	});
+});
+
+describe("proposals refuse what cannot apply (#1024 spec F)", () => {
+	function proposals(schedules: Record<string, unknown> = {}) {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		return new ProposalsService(prisma, io, settings, {} as never, schedules as never);
+	}
+
+	it("Given a setting out of its range, Then no card is made and the agent is told why", async () => {
+		const root = await thread();
+		const r = await proposals().propose(root.id, { kind: "setting", key: "depth", value: 50 }, "w");
+		expect(r).toMatchObject({ invalid: true, error: expect.stringContaining("depth cannot be 50") });
+		expect(await prisma.proposal.count({ where: { threadId: root.id } })).toBe(0);
+	});
+
+	it("Given a schedule the schedules service refuses, Then apply answers that refusal and reopens the card", async () => {
+		const { ScheduleError } = await import("../schedules/schedules.service.js");
+		const create = vi.fn(async () => {
+			throw new ScheduleError("BAD_REQUEST", "That cron runs more than once a minute.");
+		});
+		const p = proposals({ create });
+		const root = await thread({ harness: "claude-code" });
+		const made = await p.propose(root.id, { kind: "schedule", name: "D", brief: "b", cron: "* * * * *", timezone: "UTC" }, "w");
+		if ("error" in made) throw new Error(made.error);
+		const { ORPCError } = await import("@orpc/nest");
+		const refused = await p.apply(root.id, made.id, null).catch((e: unknown) => e);
+		// The API answers it as a 400 with the reason, not as an internal error.
+		expect(refused).toBeInstanceOf(ORPCError);
+		expect(refused).toMatchObject({ code: "BAD_REQUEST", message: expect.stringContaining("once a minute") });
+		expect((await prisma.proposal.findUniqueOrThrow({ where: { id: made.id } })).state).toBe("open");
+	});
+
+	it("Given an apply that has run its change, Then a dismiss still waits until the card is recorded applied", async () => {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const addSource = vi.fn(async () => ({ id: "repo-3" }));
+		const p = new ProposalsService(prisma, io, settings, { addSource } as never, {} as never);
+		const root = await thread();
+		const made = await p.propose(root.id, { kind: "project_add", source: "/code/shop" }, "w");
+		if ("error" in made) throw new Error(made.error);
+		const held = p as unknown as { applyingNow: Set<string>; decide: (...args: unknown[]) => Promise<unknown> };
+		const decide = held.decide.bind(p);
+		let markedWhileDeciding = false;
+		held.decide = async (...args: unknown[]) => {
+			markedWhileDeciding = held.applyingNow.has(made.id);
+			return decide(...args);
+		};
+		expect((await p.apply(root.id, made.id, null)).state).toBe("applied");
+		expect(markedWhileDeciding).toBe(true);
+		expect(held.applyingNow.has(made.id)).toBe(false);
+	});
+});

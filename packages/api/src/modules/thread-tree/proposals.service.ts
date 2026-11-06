@@ -9,11 +9,15 @@ import {
 	type ProposalChange,
 	ProposalChangeSchema,
 	type ThreadTreeSettings,
+	ThreadTreeSettingsSchema,
 } from "@prismalens/contracts";
 import type { Proposal as ProposalRow } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { RepositoriesService } from "../repositories/repositories.service.js";
-import { SchedulesService } from "../schedules/schedules.service.js";
+import {
+	ScheduleError,
+	SchedulesService,
+} from "../schedules/schedules.service.js";
 import { TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
 
@@ -69,7 +73,19 @@ export class ProposalsService implements OnApplicationBootstrap {
 		threadId: string,
 		change: ProposalChange,
 		why: string,
-	): Promise<Proposal | { error: string }> {
+	): Promise<Proposal | { error: string; invalid?: true }> {
+		if (change.kind === "setting") {
+			const next = {
+				...(await this.settings.get()),
+				[change.key]: change.value,
+			};
+			const checked = ThreadTreeSettingsSchema.safeParse(next);
+			if (!checked.success)
+				return {
+					error: `${change.key} cannot be ${JSON.stringify(change.value)}: ${checked.error.issues[0]?.message ?? "out of range"}.`,
+					invalid: true,
+				};
+		}
 		const open = await this.prisma.proposal.count({
 			where: { threadId, state: "open" },
 		});
@@ -129,11 +145,14 @@ export class ProposalsService implements OnApplicationBootstrap {
 				where: { id: row.id, state: "applying" },
 				data: { state: "open" },
 			});
+			this.applyingNow.delete(row.id);
 			throw e;
+		}
+		try {
+			return await this.decide(row, "applied", outcome, "applying");
 		} finally {
 			this.applyingNow.delete(row.id);
 		}
-		return this.decide(row, "applied", outcome, "applying");
 	}
 
 	/** Also clears a card a stop left `applying`; one whose change is running now waits for it. */
@@ -219,29 +238,36 @@ export class ProposalsService implements OnApplicationBootstrap {
 				const serviceId = thread.repositoryId
 					? null
 					: (thread.incident?.serviceId ?? thread.serviceId);
-				const created = await this.schedules.create(
-					{
-						name: change.name,
-						serviceId,
-						repositoryId: thread.repositoryId,
-						runbook: null,
-						brief: change.brief,
-						recurrence: {
-							type: "cron",
-							expr: change.cron,
-							timezone: change.timezone,
+				const created = await this.schedules
+					.create(
+						{
+							name: change.name,
+							serviceId,
+							repositoryId: thread.repositoryId,
+							runbook: null,
+							brief: change.brief,
+							recurrence: {
+								type: "cron",
+								expr: change.cron,
+								timezone: change.timezone,
+							},
+							harness,
+							model: thread.model,
+							effort: thread.effort,
+							accessLevel: null,
+							report: false,
+							whenAsks: "decide",
+							missedPolicy: "run_once",
+							catchUpMinutes: 60,
 						},
-						harness,
-						model: thread.model,
-						effort: thread.effort,
-						accessLevel: null,
-						report: false,
-						whenAsks: "decide",
-						missedPolicy: "run_once",
-						catchUpMinutes: 60,
-					},
-					deviceId,
-				);
+						deviceId,
+					)
+					.catch((e: unknown) => {
+						// The schedules endpoint answers its own refusals the same way.
+						if (e instanceof ScheduleError)
+							throw new ORPCError(e.code, { message: e.message });
+						throw e;
+					});
 				return `Scheduled ${created.id}.`;
 			}
 		}

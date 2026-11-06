@@ -342,6 +342,11 @@ model Investigation {
   pullRequests    PullRequest[]
   parent          Investigation?       @relation("ThreadTree", fields: [parentId], references: [id], onDelete: SetNull)
   children        Investigation[]      @relation("ThreadTree")
+  inbox           ThreadMessage[]
+  treeWaits       ThreadWait[]
+  proposals       Proposal[]
+  pendingActions  PendingAction[]
+  treeAllowance   TreeAllowance?
 
   @@index([rootId])
   @@index([parentId])
@@ -775,6 +780,9 @@ model ThreadMessage {
   createdAt   DateTime  @default(now())
   deliveredAt DateTime?
 
+  // Gone with its receiver; a deleted sender's message still reaches a receiver that remains.
+  receiver Investigation @relation(fields: [toId], references: [id], onDelete: Cascade)
+
   @@unique([fromId, requestId])
   @@index([toId, state])
   @@index([rootId])
@@ -787,6 +795,8 @@ model ThreadWait {
   targetId  String // a thread id, or a pending action's id until it starts one
   mode      String   @default("any") // any | all
   createdAt DateTime @default(now())
+
+  waiter Investigation @relation(fields: [waiterId], references: [id], onDelete: Cascade)
 
   @@id([waiterId, targetId])
   @@map("thread_waits")
@@ -803,6 +813,8 @@ model Proposal {
   outcome   String?
   createdAt DateTime @default(now())
   decidedAt DateTime?
+
+  thread Investigation @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId])
   @@map("proposals")
@@ -825,6 +837,8 @@ model PendingAction {
   executedAt  DateTime?
   deliveredAt DateTime?
 
+  caller Investigation @relation(fields: [callerId], references: [id], onDelete: Cascade)
+
   @@unique([callerId, requestId])
   @@index([state])
   @@index([askId])
@@ -836,6 +850,8 @@ model TreeAllowance {
   rootId    String   @id
   grantedAt DateTime @default(now())
   grantedBy String
+
+  root Investigation @relation(fields: [rootId], references: [id], onDelete: Cascade)
 
   @@map("tree_allowances")
 }

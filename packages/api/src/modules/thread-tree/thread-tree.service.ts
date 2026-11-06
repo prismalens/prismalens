@@ -853,15 +853,27 @@ export class ThreadTreeService
 		});
 		if (!waits.some((w) => w.targetId === childId)) return false;
 		if (!waits.some((w) => w.mode === "all")) return true;
-		const targets = await this.prisma.investigation.findMany({
-			where: { id: { in: waits.map((w) => w.targetId) } },
-			select: { status: true },
+		const ids = waits.map((w) => w.targetId);
+		const [threads, starts] = await Promise.all([
+			this.prisma.investigation.findMany({
+				where: { id: { in: ids } },
+				select: { id: true, status: true },
+			}),
+			this.prisma.pendingAction.findMany({
+				where: { id: { in: ids } },
+				select: { id: true, state: true },
+			}),
+		]);
+		// A start still waiting is not over; one that ended without a thread will never finish.
+		return ids.every((id) => {
+			const thread = threads.find((t) => t.id === id);
+			if (thread) return isWorkflowTerminal(thread.status);
+			const start = starts.find((s) => s.id === id);
+			return (
+				!!start &&
+				["denied", "expired", "cancelled", "failed"].includes(start.state)
+			);
 		});
-		// A wait still on a pending start is not over.
-		return (
-			targets.length === waits.length &&
-			targets.every((t) => isWorkflowTerminal(t.status))
-		);
 	}
 
 	// ---------- finishing ----------

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Inject, Injectable, Optional } from "@nestjs/common";
-import type { AskAnswer } from "@prismalens/contracts";
+import { type AskAnswer, LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { PendingAction } from "@prismalens/database";
 import {
 	type Failure,
@@ -44,6 +44,10 @@ export interface GateCall {
 }
 
 const ENDED = ["done", "failed", "denied", "expired", "cancelled"] as const;
+/** Outcomes worth reopening an ended caller for: the action ran, or the user decided. */
+const REOPENS = ["done", "failed", "denied"] as const;
+/** Refused reopens of an ended caller before its outcome waits for the caller's next run. */
+const REOPEN_TRIES = 30;
 const SETTING_NEXT =
 	"Tell the user; they can change Settings → Agent → Agents may start threads.";
 
@@ -59,6 +63,9 @@ export class PendingActionsService {
 	private readonly listening = new Map<string, () => void>();
 	/** One check-then-run at a time per tree, so concurrent calls cannot both pass a cap. */
 	private readonly lanes = new Map<string, Promise<unknown>>();
+	private readonly reopenTries = new Map<string, number>();
+	/** Outcomes whose caller would not reopen; they go out when it next runs. */
+	private readonly gaveUp = new Set<string>();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -395,17 +402,59 @@ export class PendingActionsService {
 
 	/** Tells each caller how its action ended, reopening an ended caller when it must. */
 	async deliverOutcomes(): Promise<void> {
-		const rows = await this.prisma.pendingAction.findMany({
+		const waiting = await this.prisma.pendingAction.findMany({
 			where: { state: { in: [...ENDED] }, deliveredAt: null },
+			distinct: ["callerId"],
+			select: { callerId: true },
+		});
+		if (!waiting.length) return;
+		const running = await this.prisma.investigation.findMany({
+			where: {
+				id: { in: waiting.map((w) => w.callerId) },
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
+			},
+			select: { id: true },
+		});
+		// Running callers first, so outcomes that cannot go out now never hold theirs back.
+		const ready = await this.prisma.pendingAction.findMany({
+			where: {
+				state: { in: [...ENDED] },
+				deliveredAt: null,
+				callerId: { in: running.map((r) => r.id) },
+			},
 			orderBy: { createdAt: "asc" },
 			take: 50,
 		});
+		// A caller that has ended takes an outcome only by reopening, and only so many tries of that.
+		const reopening = await this.prisma.pendingAction.findMany({
+			where: {
+				state: { in: [...REOPENS] },
+				deliveredAt: null,
+				callerId: { notIn: running.map((r) => r.id) },
+				id: { notIn: [...this.gaveUp] },
+			},
+			orderBy: { createdAt: "asc" },
+			take: 50,
+		});
+		const rows = [...ready, ...reopening];
 		for (const row of rows) {
-			const text = this.outcomeText(row);
-			// Only an action that ran, or a decision, is worth reopening an ended caller for.
-			const reopen = ["done", "failed", "denied"].includes(row.state);
-			const got = await this.io.deliver(row.callerId, text, { reopen });
-			if (got.state === "later") continue;
+			const reopen = (REOPENS as readonly string[]).includes(row.state);
+			const got = await this.io.deliver(row.callerId, this.outcomeText(row), {
+				reopen,
+			});
+			if (got.state === "later") {
+				const tries = (this.reopenTries.get(row.id) ?? 0) + 1;
+				this.reopenTries.set(row.id, tries);
+				if (tries >= REOPEN_TRIES) {
+					this.reopenTries.delete(row.id);
+					this.gaveUp.add(row.id);
+				}
+				continue;
+			}
+			// Parked: kept for the caller's next run, when it is delivered as a message.
+			if (got.state === "parked") continue;
+			this.reopenTries.delete(row.id);
+			this.gaveUp.delete(row.id);
 			await this.prisma.pendingAction.update({
 				where: { id: row.id },
 				data: { deliveredAt: new Date() },

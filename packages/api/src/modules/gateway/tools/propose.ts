@@ -20,7 +20,7 @@ export interface ProposalsData {
 		runId: string,
 		change: ProposalChange,
 		why: string,
-	): Promise<Proposal | { error: string }>;
+	): Promise<Proposal | { error: string; invalid?: true }>;
 }
 
 /** One card for any change an agent proposes; nothing changes until the user applies it (#1024). */
@@ -42,6 +42,12 @@ export function proposeTools(data: ProposalsData): HarnessTool[] {
 			}),
 			run: async ({ change, why }, ctx) => {
 				const r = await data.propose(ctx.runId, change, why);
+				if ("error" in r && r.invalid)
+					return fail(
+						"invalid_input",
+						r.error,
+						"Propose a value inside the setting's range, or none.",
+					);
 				if ("error" in r)
 					return fail(
 						"limit_reached",

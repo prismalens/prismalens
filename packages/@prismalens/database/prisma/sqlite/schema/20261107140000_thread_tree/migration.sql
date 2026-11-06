@@ -11,7 +11,8 @@ CREATE TABLE "thread_messages" (
     "state" TEXT NOT NULL DEFAULT 'queued',
     "requestId" TEXT NOT NULL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "deliveredAt" DATETIME
+    "deliveredAt" DATETIME,
+    CONSTRAINT "thread_messages_toId_fkey" FOREIGN KEY ("toId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -21,7 +22,8 @@ CREATE TABLE "thread_waits" (
     "mode" TEXT NOT NULL DEFAULT 'any',
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    PRIMARY KEY ("waiterId", "targetId")
+    PRIMARY KEY ("waiterId", "targetId"),
+    CONSTRAINT "thread_waits_waiterId_fkey" FOREIGN KEY ("waiterId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -34,7 +36,8 @@ CREATE TABLE "proposals" (
     "state" TEXT NOT NULL DEFAULT 'open',
     "outcome" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "decidedAt" DATETIME
+    "decidedAt" DATETIME,
+    CONSTRAINT "proposals_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -52,14 +55,16 @@ CREATE TABLE "pending_actions" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "decidedAt" DATETIME,
     "executedAt" DATETIME,
-    "deliveredAt" DATETIME
+    "deliveredAt" DATETIME,
+    CONSTRAINT "pending_actions_callerId_fkey" FOREIGN KEY ("callerId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "tree_allowances" (
     "rootId" TEXT NOT NULL PRIMARY KEY,
     "grantedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "grantedBy" TEXT NOT NULL
+    "grantedBy" TEXT NOT NULL,
+    CONSTRAINT "tree_allowances_rootId_fkey" FOREIGN KEY ("rootId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- RedefineTables
