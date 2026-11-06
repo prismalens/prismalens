@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, type OnApplicationBootstrap } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import { HARNESS_IDS } from "@prismalens/config/harness";
 import {
@@ -16,6 +16,10 @@ import { RepositoriesService } from "../repositories/repositories.service.js";
 import { SchedulesService } from "../schedules/schedules.service.js";
 import { TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
+
+/** What a card left `applying` by a stop says: its change may or may not have happened. */
+const UNCONFIRMED =
+	"PrismaLens stopped before this change was confirmed. Check whether it happened before proposing it again.";
 
 /** Open cards one thread may hold; more would be noise the user has to clear. */
 const OPEN_PER_THREAD = 10;
@@ -38,7 +42,10 @@ export function proposalView(row: ProposalRow): Proposal {
  * click applies it, through the same service the normal endpoint for that kind calls.
  */
 @Injectable()
-export class ProposalsService {
+export class ProposalsService implements OnApplicationBootstrap {
+	/** Cards whose change is running in this process now; any other `applying` card was cut off. */
+	private readonly applyingNow = new Set<string>();
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly io: TreeIo,
@@ -46,6 +53,17 @@ export class ProposalsService {
 		private readonly repositories: RepositoriesService,
 		private readonly schedules: SchedulesService,
 	) {}
+
+	/** At boot no change is running, so a card still `applying` was cut off: it is settled as unconfirmed. */
+	async onApplicationBootstrap(): Promise<void> {
+		const stuck = await this.prisma.proposal.findMany({
+			where: { state: "applying" },
+		});
+		for (const row of stuck)
+			await this.decide(row, "dismissed", UNCONFIRMED, "applying").catch(
+				() => {},
+			);
+	}
 
 	async propose(
 		threadId: string,
@@ -70,11 +88,15 @@ export class ProposalsService {
 		return proposal;
 	}
 
-	private async open(threadId: string, id: string): Promise<ProposalRow> {
+	private async open(
+		threadId: string,
+		id: string,
+		states: readonly string[] = ["open"],
+	): Promise<ProposalRow> {
 		const row = await this.prisma.proposal.findUnique({ where: { id } });
 		if (!row || row.threadId !== threadId)
 			throw new ORPCError("NOT_FOUND", { message: "No such proposal." });
-		if (row.state !== "open")
+		if (!states.includes(row.state))
 			throw new ORPCError("CONFLICT", {
 				message: `This proposal was already ${row.state}.`,
 			});
@@ -98,6 +120,7 @@ export class ProposalsService {
 			});
 		const change = ProposalChangeSchema.parse(JSON.parse(row.change));
 		let outcome: string;
+		this.applyingNow.add(row.id);
 		try {
 			outcome = await this.run(threadId, change, deviceId);
 		} catch (e) {
@@ -107,12 +130,21 @@ export class ProposalsService {
 				data: { state: "open" },
 			});
 			throw e;
+		} finally {
+			this.applyingNow.delete(row.id);
 		}
 		return this.decide(row, "applied", outcome, "applying");
 	}
 
+	/** Also clears a card a stop left `applying`; one whose change is running now waits for it. */
 	async dismiss(threadId: string, id: string): Promise<Proposal> {
-		return this.decide(await this.open(threadId, id), "dismissed", null);
+		const row = await this.open(threadId, id, ["open", "applying"]);
+		if (row.state === "open") return this.decide(row, "dismissed", null);
+		if (this.applyingNow.has(row.id))
+			throw new ORPCError("CONFLICT", {
+				message: "This proposal is being applied now.",
+			});
+		return this.decide(row, "dismissed", UNCONFIRMED, "applying");
 	}
 
 	private async decide(

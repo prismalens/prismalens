@@ -972,7 +972,7 @@ describe("applying proposals (#1024 spec F)", () => {
 	});
 });
 
-describe("review fixes at 73232133 (#1024 spec F)", () => {
+describe("one runner per action, reused roles and parked messages (#1024 spec F)", () => {
 	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
 
 	it("Given two runners of one approved action at once, Then one thread starts", async () => {
@@ -1077,6 +1077,46 @@ describe("proposals are claimed before they apply (#1024 spec F)", () => {
 		release();
 		expect((await first).state).toBe("applied");
 		expect(addSource).toHaveBeenCalledTimes(1);
+	});
+
+	it("Given a card a stop left applying, Then boot settles it as unconfirmed, and the user can dismiss one too", async () => {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const p = new ProposalsService(prisma, io, settings, {} as never, {} as never);
+		const root = await thread();
+		const stuck = async () => {
+			const made = await p.propose(root.id, { kind: "project_add", source: "/code/shop" }, "w");
+			if ("error" in made) throw new Error(made.error);
+			await prisma.proposal.update({ where: { id: made.id }, data: { state: "applying" } });
+			return made.id;
+		};
+		const atBoot = await stuck();
+		await p.onApplicationBootstrap();
+		const settled = await prisma.proposal.findUniqueOrThrow({ where: { id: atBoot } });
+		expect(settled).toMatchObject({ state: "dismissed", outcome: expect.stringContaining("Check whether it happened") });
+		expect((await events(root.id)).some((e) => e.kind === "action_resolved" && e.proposalId === atBoot)).toBe(true);
+		const byUser = await stuck();
+		expect((await p.dismiss(root.id, byUser)).state).toBe("dismissed");
+	});
+
+	it("Given a card whose change is running now, Then dismissing it waits for the change", async () => {
+		let release = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const addSource = vi.fn(async () => {
+			await gate;
+			return { id: "repo-2" };
+		});
+		const p = new ProposalsService(prisma, io, settings, { addSource } as never, {} as never);
+		const root = await thread();
+		const made = await p.propose(root.id, { kind: "project_add", source: "/code/shop" }, "w");
+		if ("error" in made) throw new Error(made.error);
+		const applying = p.apply(root.id, made.id, null);
+		await vi.waitFor(() => expect(addSource).toHaveBeenCalled());
+		await expect(p.dismiss(root.id, made.id)).rejects.toThrow(/being applied now/);
+		release();
+		expect((await applying).state).toBe("applied");
 	});
 
 	it("Given a change that fails, Then the card is open again to retry", async () => {
