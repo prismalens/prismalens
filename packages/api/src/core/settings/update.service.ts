@@ -249,14 +249,18 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 				"BAD_REQUEST",
 				`${version} isn't the newer release this copy last saw.`,
 			);
-		this.start(version);
+		if (!this.start(version))
+			throw new UpdateRefused("CONFLICT", "An install is already under way.");
 		return this.getStatus();
 	}
 
-	private start(version: string): void {
+	/** Checks and claims in one synchronous step: the awaits before it let a second caller in. */
+	private start(version: string): boolean {
+		if (this.inProgress()) return false;
 		this.admission?.drain();
 		this.status = { phase: "downloading", version };
 		void this.runInstall(version);
+		return true;
 	}
 
 	private fail(version: string, error: string): void {
@@ -465,7 +469,6 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		this.logger.log(
 			`Installing ${latest} automatically; nothing has run for 15 minutes`,
 		);
-		this.start(latest);
-		return true;
+		return this.start(latest);
 	}
 }

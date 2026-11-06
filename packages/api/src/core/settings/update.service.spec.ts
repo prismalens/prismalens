@@ -315,15 +315,26 @@ describe("UpdateService edges", () => {
 		expect((await settled(s)).error).toContain("is missing");
 	});
 
-	it("under a service manager, exits with the code the manager restarts on", async () => {
+	it("under the installed service, exits with the code the manager restarts on", async () => {
 		const { s } = service({});
-		s.env.INVOCATION_ID = "abc";
+		s.env.PRISMALENS_SERVICE = "1";
 		s.platform = "linux";
 		await s.install(NEXT, true);
 		await settled(s);
 		const cfg = JSON.parse(readFileSync(join(workspace, "update-handoff.json"), "utf8"));
 		expect(cfg.mode).toBe("systemd");
 		expect(restartExitCode()).toBe(75);
+	});
+
+	it("treats a user's own systemd unit as a terminal copy", async () => {
+		const { s } = service({});
+		s.env.INVOCATION_ID = "abc";
+		s.platform = "linux";
+		await s.install(NEXT, true);
+		await settled(s);
+		const cfg = JSON.parse(readFileSync(join(workspace, "update-handoff.json"), "utf8"));
+		expect(cfg.mode).toBe("terminal");
+		expect(restartExitCode()).toBe(0);
 	});
 
 	it("reads the installer's bin folder from its receipt", async () => {
@@ -334,6 +345,18 @@ describe("UpdateService edges", () => {
 		await settled(s);
 		const cfg = JSON.parse(readFileSync(join(workspace, "update-handoff.json"), "utf8"));
 		expect(cfg.binDir).toBe("/home/me/.local/bin");
+	});
+});
+
+describe("UpdateService concurrency", () => {
+	it("starts one install when two arrive together", async () => {
+		const { s, installer } = service({});
+		const results = await Promise.allSettled([s.install(NEXT, true), s.install(NEXT, true)]);
+		expect(results.map((r) => r.status).sort()).toEqual(["fulfilled", "rejected"]);
+		const refused = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+		expect(refused.reason).toMatchObject({ code: "CONFLICT" });
+		await settled(s);
+		expect(installer).toHaveBeenCalledOnce();
 	});
 });
 

@@ -111,10 +111,11 @@ describe("autoInstallBlockedBy", () => {
 });
 
 describe("restart handoff", () => {
-	it("knows a service manager by its env", () => {
+	it("treats only the unit pl service install wrote as a service", () => {
 		expect(underServiceManager({})).toBe(false);
-		expect(underServiceManager({ INVOCATION_ID: "abc" })).toBe(true);
-		expect(underServiceManager({ XPC_SERVICE_NAME: "io.prismalens.server" })).toBe(true);
+		// A user's own unit or agent is not ours: the rollback would restart the wrong one.
+		expect(underServiceManager({ INVOCATION_ID: "abc" })).toBe(false);
+		expect(underServiceManager({ XPC_SERVICE_NAME: "io.prismalens.server" })).toBe(false);
 		expect(underServiceManager({ XPC_SERVICE_NAME: "0" })).toBe(false);
 		expect(underServiceManager({ PRISMALENS_SERVICE: "1" })).toBe(true);
 	});

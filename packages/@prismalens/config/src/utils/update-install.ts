@@ -9,7 +9,6 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { LAUNCHD_LABEL } from "./background-service.js";
 import type { InstallChannel } from "./install-channel.js";
 
 const RELEASES_API = "https://api.github.com/repos/prismalens/prismalens";
@@ -154,16 +153,12 @@ export function autoInstallBlockedBy(
 }
 
 /**
- * True when a service manager restarts this process after a failed exit:
- * systemd sets `INVOCATION_ID`, launchd `XPC_SERVICE_NAME`, and the unit
- * `pl service install` writes sets `PRISMALENS_SERVICE`.
+ * True only under the unit `pl service install` writes, which sets
+ * `PRISMALENS_SERVICE`: the rollback restarts that unit by name, so a user's
+ * own unit (with `INVOCATION_ID` or `XPC_SERVICE_NAME`) runs as a terminal copy.
  */
 export function underServiceManager(env: NodeJS.ProcessEnv): boolean {
-	return (
-		env.PRISMALENS_SERVICE === "1" ||
-		!!env.INVOCATION_ID ||
-		env.XPC_SERVICE_NAME === LAUNCHD_LABEL
-	);
+	return env.PRISMALENS_SERVICE === "1";
 }
 
 /**
