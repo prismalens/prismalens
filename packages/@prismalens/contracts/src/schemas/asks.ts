@@ -113,6 +113,8 @@ export const AskQuestionSchema = z.object({
 	multiSelect: z.boolean(),
 	/** Adds an "Other" option with free text. */
 	allowOther: z.boolean(),
+	/** The form requires an answer to it; absent on an ask from before #1024. */
+	required: z.boolean().optional(),
 	options: z.array(AskQuestionOptionSchema).min(2).max(4),
 });
 export type AskQuestion = z.infer<typeof AskQuestionSchema>;

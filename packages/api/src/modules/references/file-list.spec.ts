@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FILE_LIST_TTL_MS, FileLister, walk, withFolders } from "./file-list.js";
+import {
+	FILE_LIST_TTL_MS,
+	FileLister,
+	readDirSafely,
+	walk,
+	withFolders,
+} from "./file-list.js";
 
 describe("the workspace file list (#1024)", () => {
 	let dir: string;
@@ -81,6 +87,21 @@ describe("the workspace file list (#1024)", () => {
 		expect(whole.files).toHaveLength(6);
 		const list = await new FileLister(50_000, Date.now, 100).list(dir);
 		expect(list.truncated).toBe(true);
+	});
+
+	it("refuses to open a folder that became a link, so a swap mid-walk cannot leave the root (#1024)", async () => {
+		const outside = mkdtempSync(join(tmpdir(), "pl-outside-"));
+		try {
+			writeFileSync(join(outside, "secret.txt"), "");
+			mkdirSync(join(dir, "real"));
+			symlinkSync(outside, join(dir, "swapped"), "junction");
+			expect(await readDirSafely(join(dir, "real"))).toEqual([]);
+			expect(await readDirSafely(join(dir, "swapped"))).toBeNull();
+			const { files } = await walk(dir, 50_000);
+			expect(files.some((f) => f.includes("secret"))).toBe(false);
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -316,6 +316,26 @@ describe("ThreadsService (#1020)", () => {
 		expect(consume).toHaveBeenCalledWith("new:home", 3);
 	});
 
+	it("a tombstone that fails after the job is stored does not fail the send (#1024)", async () => {
+		const svc = new ThreadsService(
+			prisma as never,
+			investigations as never,
+			dispatch as never,
+			harness as never,
+			attachments as never,
+			integrations as never,
+			{ consume: async () => { throw new Error("db locked"); } } as never,
+			{ compose: async () => undefined } as never,
+		);
+		const out = await svc.start({
+			subject: { kind: "none" },
+			text: "x",
+			draftScope: "new:home",
+			draftRev: 1,
+		});
+		expect(out).toMatchObject({ queued: true, jobId: "job-1" });
+	});
+
 	it("visit retries a lost race, then refuses with CONFLICT rather than report an unwritten visit", async () => {
 		prisma.investigation.updateMany
 			.mockResolvedValueOnce({ count: 0 })

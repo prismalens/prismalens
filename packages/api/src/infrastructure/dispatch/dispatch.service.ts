@@ -51,6 +51,7 @@ import {
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	parseEventRows,
 	questionTimeoutFrom,
 	queuedLeftWaiting,
 	RunWorkspaceSchema,
@@ -995,7 +996,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				orderBy: { seq: "asc" },
 				select: { event: true },
 			});
-			const { legacy, asks } = asksLeftOpen(parsedEvents(events));
+			const { legacy, asks } = asksLeftOpen(parseEventRows(events));
 			if (legacy.length + asks.length === 0 && !awaitingApprovalAt) continue;
 			if (legacy.length + asks.length > 0) denied++;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
@@ -1048,7 +1049,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				orderBy: { seq: "asc" },
 				select: { event: true },
 			});
-			const open = queuedLeftWaiting(parsedEvents(events));
+			const open = queuedLeftWaiting(parseEventRows(events));
 			if (open.length === 0) continue;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
 			const ts = new Date().toISOString();
@@ -2235,12 +2236,4 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			error: job.lastError,
 		};
 	}
-}
-
-/** Stored event rows, parsed; a row that no longer parses is skipped. */
-function parsedEvents(rows: { event: string }[]): CanonicalEvent[] {
-	return rows.flatMap((row) => {
-		const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
-		return parsed.success ? [parsed.data] : [];
-	});
 }

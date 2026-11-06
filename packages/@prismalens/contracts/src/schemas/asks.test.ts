@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	asksLeftOpen,
+	parseEventRows,
 	pendingAsks,
 	projectAsks,
 	queuedLeftWaiting,
@@ -219,5 +220,22 @@ describe("the question wait setting (#1024)", () => {
 		expect(questionTimeoutFrom("100000")).toBe(24 * 60 * 60_000);
 		for (const raw of [undefined, "0", "-3", '"x"', "abc", "{"])
 			expect(questionTimeoutFrom(raw)).toBeUndefined();
+	});
+});
+
+describe("parseEventRows (#1024)", () => {
+	it("skips a corrupt or unknown row instead of throwing, so recovery goes on", () => {
+		const good = {
+			runId: "6a3b1c2d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+			branchId: "run",
+			path: [],
+			label: null,
+			ts: "2026-11-07T10:00:00.000Z",
+			seq: 1,
+			kind: "message_withdrawn",
+			messageId: "0b3c2f1e-1111-4222-8333-444455556666",
+		};
+		const rows = [{ event: "{not json" }, { event: '{"kind":"nope"}' }, { event: JSON.stringify(good) }];
+		expect(parseEventRows(rows).map((e) => e.kind)).toEqual(["message_withdrawn"]);
 	});
 });

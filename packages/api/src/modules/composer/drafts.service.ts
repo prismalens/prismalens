@@ -195,3 +195,21 @@ export class DraftsService implements OnApplicationBootstrap {
 		);
 	}
 }
+
+const sendLogger = new Logger("DraftsAfterSend");
+
+/**
+ * Tombstone a sent message's draft. The message is already stored, so a failure here
+ * only leaves the words in the composer; it never fails the send (#1024).
+ */
+export async function consumeAfterSend(
+	drafts: Pick<DraftsService, "consume">,
+	scope: string | undefined,
+	rev: number | undefined,
+): Promise<void> {
+	try {
+		await drafts.consume(scope, rev);
+	} catch (e) {
+		sendLogger.warn(`Could not clear the sent draft ${scope}: ${String(e)}`);
+	}
+}

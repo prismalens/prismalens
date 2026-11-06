@@ -42,6 +42,7 @@ describe("elicitationAsk (#1024)", () => {
 					header: "Env",
 					multiSelect: false,
 					allowOther: true,
+					required: false,
 					options: [
 						{ id: "staging", label: "Staging", description: "Safe" },
 						{ id: "prod", label: "Production", preview: "kubectl -n prod" },
@@ -171,5 +172,47 @@ describe("elicitationAccepts (#1024)", () => {
 		expect(accepts({ kind: "input", values: { hours: 2 } })).toBe(true);
 		expect(accepts({ kind: "input", values: { hours: 0 } })).toBe(false);
 		expect(accepts({ kind: "question", answers: {} })).toBe(false);
+	});
+});
+
+describe("required questions and calendar dates (#1024)", () => {
+	it("keeps a form's required list on its questions, and refuses an answer that leaves one empty", () => {
+		const ask = elicitationAsk({
+			requestedSchema: {
+				properties: {
+					env: { type: "string", enum: ["staging", "prod"] },
+					why: { type: "string", enum: ["deploy", "load"] },
+				},
+				required: ["env"],
+			},
+		});
+		if (ask?.kind !== "question") throw new Error("no question");
+		expect(ask.questions.map((q) => [q.id, q.required])).toEqual([
+			["env", true],
+			["why", false],
+		]);
+		expect(elicitationContent(ask, { kind: "question", answers: {} })).toBeNull();
+		expect(
+			elicitationContent(ask, { kind: "question", answers: { env: { options: ["prod"] } } }),
+		).toEqual({ env: "prod" });
+	});
+
+	it("refuses a date the calendar does not have", () => {
+		const ask = elicitationAsk({
+			requestedSchema: {
+				properties: {
+					day: { type: "string", format: "date" },
+					at: { type: "string", format: "date-time" },
+				},
+			},
+		});
+		if (!ask) throw new Error("no ask");
+		const take = (values: Record<string, string>) =>
+			elicitationContent(ask, { kind: "input", values });
+		expect(take({ day: "2026-02-28" })).toEqual({ day: "2026-02-28" });
+		expect(take({ day: "2026-02-31" })).toBeNull();
+		expect(take({ day: "2026-13-01" })).toBeNull();
+		expect(take({ at: "2026-02-28T10:00:00Z" })).toEqual({ at: "2026-02-28T10:00:00Z" });
+		expect(take({ at: "2026-02-31T10:00:00Z" })).toBeNull();
 	});
 });

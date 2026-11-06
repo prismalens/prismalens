@@ -36,7 +36,7 @@ import {
 	folderBusy,
 } from "../../infrastructure/dispatch/folder-lock.js";
 import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
-import { DraftsService } from "../composer/drafts.service.js";
+import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
@@ -216,7 +216,8 @@ export class ThreadsService {
 			},
 		});
 		// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
-		if (jobId) await this.drafts.consume(input.draftScope, input.draftRev);
+		if (jobId)
+			await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
 		return {
 			investigationId: investigation.id,
 			jobId,

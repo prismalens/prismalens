@@ -376,7 +376,7 @@ export class RecordsProvider implements ReferenceProvider {
 					},
 				});
 				if (!i) return null;
-				const inScope = !!scope.incidentId;
+				const inScope = scope.incidentId === i.id;
 				const cause = i.investigations[0]?.rootCause;
 				return {
 					ref,

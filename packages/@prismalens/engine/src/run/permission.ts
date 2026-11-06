@@ -540,9 +540,11 @@ export function createAskChannel(
 				held.set(askId, {
 					askId,
 					askedAt,
-					expiresAt: new Date(
-						askedAt.getTime() + (ctx.timeoutMs > 0 ? ctx.timeoutMs : 8.64e15),
-					),
+					// No window: the latest date a Date holds, not a sum past it.
+					expiresAt:
+						ctx.timeoutMs > 0
+							? new Date(askedAt.getTime() + ctx.timeoutMs)
+							: new Date(8.64e15),
 					ask,
 					settle,
 				});

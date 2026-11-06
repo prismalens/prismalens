@@ -28,7 +28,7 @@ import type {
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import { DraftsService } from "../composer/drafts.service.js";
+import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -368,7 +368,8 @@ export class IncidentsController {
 					},
 				});
 				// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
-				if (jobId) await this.drafts.consume(input.draftScope, input.draftRev);
+				if (jobId)
+					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
 				return {
 					incidentId: input.id,
 					investigationId: investigation.id,

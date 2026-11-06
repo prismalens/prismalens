@@ -139,6 +139,7 @@ export function elicitationAsk(
 		TITLE_MAX,
 	);
 	const s = selects(params);
+	const required = new Set(params.requestedSchema?.required ?? []);
 	if (
 		s &&
 		s.fields.length >= 1 &&
@@ -160,6 +161,7 @@ export function elicitationAsk(
 					...(header ? { header } : {}),
 					multiSelect: f.multi,
 					allowOther: s.customs.has(f.key),
+					required: required.has(f.key),
 					options: f.options.map((o) => ({
 						id: o.value.slice(0, 100),
 						label: o.label.slice(0, 200),
@@ -195,7 +197,10 @@ export function elicitationContent(
 		const content: Record<string, string | string[]> = {};
 		for (const q of ask.questions) {
 			const a = answer.answers[q.id];
-			if (!a) continue;
+			if (!a) {
+				if (q.required) return null;
+				continue;
+			}
 			const known = new Set(q.options.map((o) => o.id));
 			if (a.options.some((o) => !known.has(o))) return null;
 			if (a.other && !q.allowOther) return null;
@@ -233,11 +238,27 @@ export function elicitationAccepts(
 		answer.kind === "decline" || elicitationContent(ask, answer) !== null;
 }
 
+/** A real calendar day: `2026-02-31` parses in JS but is no date. */
+function calendarDay(v: string): boolean {
+	const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+	if (!m) return false;
+	const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+	const day = new Date(Date.UTC(y, mo - 1, d));
+	return (
+		day.getUTCFullYear() === y &&
+		day.getUTCMonth() === mo - 1 &&
+		day.getUTCDate() === d
+	);
+}
+
 const FORMATS: Record<string, (v: string) => boolean> = {
 	email: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
 	uri: (v) => URL.canParse(v),
-	date: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)),
-	"date-time": (v) => !Number.isNaN(Date.parse(v)) && v.includes("T"),
+	date: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && calendarDay(v),
+	"date-time": (v) =>
+		/^\d{4}-\d{2}-\d{2}T/.test(v) &&
+		calendarDay(v) &&
+		!Number.isNaN(Date.parse(v)),
 };
 
 /** Whether one value fits its field: type, length, format, enum and bounds (#1024). */

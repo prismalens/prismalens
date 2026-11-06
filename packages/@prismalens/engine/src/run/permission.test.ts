@@ -915,5 +915,13 @@ describe("AskChannel answers (#1024)", () => {
 		expect(await stopping).toEqual({ outcome: "stopped" });
 		vi.useRealTimers();
 	});
+
+	it("a held ask that never lapses still has a valid expiry date", () => {
+		const channel = createAskChannel();
+		void channel.hold("n", { kind: "input", accepts: () => true }, { timeoutMs: 0 });
+		const expiry = channel.pending()[0]?.expiresAt;
+		expect(Number.isNaN(expiry?.getTime())).toBe(false);
+		channel.close();
+	});
 });
 

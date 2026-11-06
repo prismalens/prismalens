@@ -601,6 +601,16 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			expect(t.consume).toHaveBeenCalledWith(input.draftScope, 2);
 		});
 
+		it("a tombstone that fails after the job is stored does not fail the chat (#1024)", async () => {
+			const t = make({ ready: true });
+			t.consume.mockRejectedValueOnce(new Error("db locked"));
+			await expect(
+				t.handlers.chat({
+					input: { id: mockIncident.id, text: "hi", draftScope: `new:incident:${mockIncident.id}`, draftRev: 1 },
+				}),
+			).resolves.toMatchObject({ queued: true });
+		});
+
 		it("gates on the agent the request names, with that agent's reason", async () => {
 			const t = make({ ready: false, reason: "Codex: sign in needed" });
 			await expect(

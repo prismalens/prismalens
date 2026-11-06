@@ -165,4 +165,27 @@ describe("RecordsProvider (#1024)", () => {
 		).toBe("first");
 		expect(lastAnswer([])).toBeNull();
 	});
+
+	it("an incident is in scope only when it is the run's own incident (#1024)", async () => {
+		const p = new RecordsProvider(prisma() as never);
+		const own = await p.snapshotIn(
+			{ kind: "incident", id: INC, label: "INC-7" },
+			{ threadId: RUN, incidentId: INC, repositoryId: null, serviceId: null, scheduleId: null, root: null },
+		);
+		expect(own).toMatchObject({ outOfScope: false, readTool: "incident_get" });
+		const other = await p.snapshotIn(
+			{ kind: "incident", id: INC, label: "INC-7" },
+			{
+				threadId: RUN,
+				incidentId: "9f8e7d6c-5b4a-4392-8171-605f4e3d2c1b",
+				repositoryId: null,
+				serviceId: null,
+				scheduleId: null,
+				root: null,
+			},
+		);
+		expect(other?.outOfScope).toBe(true);
+		expect(other?.readTool).toBeUndefined();
+	});
 });
+

@@ -3,7 +3,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
@@ -66,12 +66,8 @@ export async function walk(
 	while (stack.length && files.length <= cap && dirs < dirCap) {
 		const dir = stack.pop() as string;
 		dirs++;
-		let entries: import("node:fs").Dirent[];
-		try {
-			entries = await readdir(dir, { withFileTypes: true });
-		} catch {
-			continue;
-		}
+		const entries = await readDirSafely(dir);
+		if (!entries) continue;
 		for (const e of entries) {
 			const abs = join(dir, e.name);
 			const rel = relative(root, abs).split(sep).join("/");
@@ -82,6 +78,22 @@ export async function walk(
 		}
 	}
 	return { files, dirs, truncated: stack.length > 0 || files.length > cap };
+}
+
+/**
+ * A folder's entries, or null when it is gone or is now a link: a folder swapped for a
+ * link between listing and reading must not lead the walk out of its root (#1024).
+ */
+export async function readDirSafely(
+	dir: string,
+): Promise<import("node:fs").Dirent[] | null> {
+	try {
+		const st = await lstat(dir);
+		if (st.isSymbolicLink() || !st.isDirectory()) return null;
+		return await readdir(dir, { withFileTypes: true });
+	} catch {
+		return null;
+	}
 }
 
 /** Each file and the folders above it, capped. */
