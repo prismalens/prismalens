@@ -51,6 +51,11 @@ describe("a zone whose DST skips local midnight", () => {
 		else process.env.TZ = zone;
 	});
 
+	it("runs in that zone: local 00:30 on the change day does not exist", () => {
+		// A worker pool that ignores `process.env.TZ` fails here instead of passing vacuously.
+		expect(new Date(2026, 8, 6, 0, 30).getHours()).toBe(1);
+	});
+
 	it("keeps 00:30 the day before in Yesterday", () => {
 		const sunday = new Date(2026, 8, 6, 15, 0).getTime();
 		expect(dayGroup(new Date(2026, 8, 5, 0, 30).getTime(), sunday)).toBe(
