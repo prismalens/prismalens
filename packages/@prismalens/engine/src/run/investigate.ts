@@ -1244,6 +1244,7 @@ export async function* runInvestigation(
 				lineId,
 				opts.resume.text,
 				refsOf(opts.resume.attachments),
+				opts.resume.context,
 				opts.resume.delivers,
 			);
 		const compacted = opts.resume?.compact

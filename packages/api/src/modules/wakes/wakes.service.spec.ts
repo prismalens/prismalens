@@ -43,7 +43,7 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			listener = fn;
 		},
 		resumeInvestigation: vi.fn(
-			async (id: string, text: string, _mode: string, kind: string, _a: unknown, _to: unknown, session: unknown) => {
+			async (id: string, text: string, _mode: string, kind: string, _a: unknown, _to: unknown, _context: unknown, session: unknown) => {
 				if (refuse) throw refuse;
 				const { wakeId, wakeDoneAt } = (session ?? {}) as { wakeId?: string; wakeDoneAt?: Date };
 				if (wakeId) {

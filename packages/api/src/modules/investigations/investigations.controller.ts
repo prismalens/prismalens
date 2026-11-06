@@ -625,7 +625,9 @@ export class InvestigationsController {
 										: {}),
 								},
 								// The message context keeps its place; the cold-session choice follows it.
-								...(chosen.length ? [messageContext, ...chosen] : withContext),
+								...((chosen.length
+									? [messageContext, ...chosen]
+									: withContext) as [typeof messageContext?, FollowUpSession?]),
 							)
 							.catch((e: unknown) => {
 								if (e instanceof FollowUpRefused)

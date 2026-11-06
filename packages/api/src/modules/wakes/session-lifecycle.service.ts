@@ -379,6 +379,7 @@ export class SessionLifecycleService implements OnModuleInit {
 				kind,
 				[],
 				{},
+				undefined,
 				{ ...session, wakeId: wake.id, wakeDoneAt: now },
 			);
 		} catch (e) {
@@ -438,6 +439,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			"chat",
 			[],
 			{},
+			undefined,
 			{
 				compact: {
 					command,
