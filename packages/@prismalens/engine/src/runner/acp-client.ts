@@ -1184,7 +1184,13 @@ export class AcpSession {
 		const reply = (result: Record<string, unknown>) => {
 			if (!this.closed) this.send({ jsonrpc: "2.0", id: msg.id, result });
 		};
-		const ask = this.config.elicit ? elicitationAsk(params) : null;
+		let ask: ReturnType<typeof elicitationAsk> = null;
+		try {
+			ask = this.config.elicit ? elicitationAsk(params) : null;
+		} catch {
+			// A form this code cannot read is declined, never thrown out of the listener.
+			ask = null;
+		}
 		if (!ask || !this.config.elicit) {
 			reply({ action: "decline" });
 			return;

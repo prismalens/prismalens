@@ -138,8 +138,18 @@ export function elicitationAsk(
 		0,
 		TITLE_MAX,
 	);
+	// An agent's `required` that is not a list of names declines the form, never throws.
+	const requiredList: unknown = params.requestedSchema?.required;
+	if (
+		requiredList != null &&
+		!(
+			Array.isArray(requiredList) &&
+			requiredList.every((k) => typeof k === "string")
+		)
+	)
+		return null;
 	const s = selects(params);
-	const required = new Set(params.requestedSchema?.required ?? []);
+	const required = new Set<string>((requiredList as string[] | null) ?? []);
 	if (
 		s &&
 		s.fields.length >= 1 &&
@@ -251,14 +261,16 @@ function calendarDay(v: string): boolean {
 	);
 }
 
+const DATE_TIME =
+	/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/i;
+
 const FORMATS: Record<string, (v: string) => boolean> = {
 	email: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
 	uri: (v) => URL.canParse(v),
 	date: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && calendarDay(v),
+	// RFC 3339: a real time and an offset; `Date.parse` alone takes no offset or T24.
 	"date-time": (v) =>
-		/^\d{4}-\d{2}-\d{2}T/.test(v) &&
-		calendarDay(v) &&
-		!Number.isNaN(Date.parse(v)),
+		DATE_TIME.test(v) && calendarDay(v) && !Number.isNaN(Date.parse(v)),
 };
 
 /** Whether one value fits its field: type, length, format, enum and bounds (#1024). */

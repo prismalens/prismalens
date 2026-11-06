@@ -216,3 +216,30 @@ describe("required questions and calendar dates (#1024)", () => {
 		expect(take({ at: "2026-02-31T10:00:00Z" })).toBeNull();
 	});
 });
+
+describe("a malformed form is declined, never thrown (#1024)", () => {
+	it("declines a required list that is not an array of names", () => {
+		const props = { env: { type: "string", enum: ["staging", "prod"] } };
+		for (const required of [5, {}, "env", [1, 2]])
+			expect(
+				elicitationAsk({ requestedSchema: { properties: props, required } as never }),
+			).toBeNull();
+		expect(
+			elicitationAsk({ requestedSchema: { properties: props, required: ["env"] } }),
+		).not.toBeNull();
+	});
+
+	it("a date-time needs a valid time and an offset", () => {
+		const ask = elicitationAsk({
+			requestedSchema: { properties: { at: { type: "string", format: "date-time" } } },
+		});
+		if (!ask) throw new Error("no ask");
+		const take = (at: string) => elicitationContent(ask, { kind: "input", values: { at } });
+		expect(take("2026-02-28T10:00:00Z")).toEqual({ at: "2026-02-28T10:00:00Z" });
+		expect(take("2026-02-28T10:00:00.250+05:30")).not.toBeNull();
+		expect(take("2026-02-28T10:00:00")).toBeNull();
+		expect(take("2026-02-28T24:00:00Z")).toBeNull();
+		expect(take("2026-02-28T10:00:00+25:00")).toBeNull();
+	});
+});
+

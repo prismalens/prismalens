@@ -138,5 +138,12 @@ describe("the workspace file list (#1024)", () => {
 			rmSync(real, { recursive: true, force: true });
 		}
 	});
+
+	it("walks a folder whose name starts with two dots, such as ..cache (#1024)", async () => {
+		mkdirSync(join(dir, "..cache"));
+		writeFileSync(join(dir, "..cache", "kept.txt"), "");
+		const { files } = await walk(dir, 50_000);
+		expect(files).toContain("..cache/kept.txt");
+	});
 });
 

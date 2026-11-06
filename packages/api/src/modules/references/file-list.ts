@@ -112,8 +112,10 @@ export async function readDirSafely(
 		const after = await fs.realpath(dir);
 		const realRoot = await fs.realpath(root);
 		const rel = relative(realRoot, after);
-		if (after !== before || rel.startsWith("..") || isAbsolute(rel))
-			return null;
+		// A parent-traversal segment, not a name such as `..cache` that starts with two dots.
+		const escapes =
+			rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+		if (after !== before || escapes) return null;
 		return entries;
 	} catch {
 		return null;
