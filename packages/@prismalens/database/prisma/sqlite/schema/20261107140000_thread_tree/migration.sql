@@ -111,6 +111,9 @@ CREATE TABLE "new_investigations" (
     "agentCommands" TEXT,
     "lastVisitedAt" DATETIME,
     "settledAt" DATETIME,
+    "lastActivityAt" DATETIME,
+    "limitResetsAt" DATETIME,
+    "autoResume" BOOLEAN,
     "parentId" TEXT,
     "rootId" TEXT,
     "role" TEXT,
@@ -120,7 +123,7 @@ CREATE TABLE "new_investigations" (
     CONSTRAINT "investigations_repositoryId_fkey" FOREIGN KEY ("repositoryId") REFERENCES "repositories" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "investigations_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "investigations" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-INSERT INTO "new_investigations" ("accessLevel", "acpSessionId", "agentCommands", "agentMode", "awaitingApprovalAt", "completedAt", "configSnapshot", "createdAt", "effort", "endReason", "error", "harness", "harnessThreadId", "helperPlace", "id", "incidentId", "kind", "lastTurnOutcome", "lastVisitedAt", "liveTurn", "model", "origin", "overlay", "preRun", "report", "repositoryId", "rootCause", "rootCauseCategory", "scheduleId", "scheduleRevision", "schemaVersion", "serviceId", "settledAt", "startedAt", "status", "stopRequestedAt", "summary", "tenantId", "title", "titleSetBy", "triggerReason", "triggerType", "updatedAt", "usage", "workspace") SELECT "accessLevel", "acpSessionId", "agentCommands", "agentMode", "awaitingApprovalAt", "completedAt", "configSnapshot", "createdAt", "effort", "endReason", "error", "harness", "harnessThreadId", "helperPlace", "id", "incidentId", "kind", "lastTurnOutcome", "lastVisitedAt", "liveTurn", "model", "origin", "overlay", "preRun", "report", "repositoryId", "rootCause", "rootCauseCategory", "scheduleId", "scheduleRevision", "schemaVersion", "serviceId", "settledAt", "startedAt", "status", "stopRequestedAt", "summary", "tenantId", "title", "titleSetBy", "triggerReason", "triggerType", "updatedAt", "usage", "workspace" FROM "investigations";
+INSERT INTO "new_investigations" ("accessLevel", "acpSessionId", "agentCommands", "agentMode", "autoResume", "awaitingApprovalAt", "completedAt", "configSnapshot", "createdAt", "effort", "endReason", "error", "harness", "harnessThreadId", "helperPlace", "id", "incidentId", "kind", "lastActivityAt", "lastTurnOutcome", "lastVisitedAt", "limitResetsAt", "liveTurn", "model", "origin", "overlay", "preRun", "report", "repositoryId", "rootCause", "rootCauseCategory", "scheduleId", "scheduleRevision", "schemaVersion", "serviceId", "settledAt", "startedAt", "status", "stopRequestedAt", "summary", "tenantId", "title", "titleSetBy", "triggerReason", "triggerType", "updatedAt", "usage", "workspace") SELECT "accessLevel", "acpSessionId", "agentCommands", "agentMode", "autoResume", "awaitingApprovalAt", "completedAt", "configSnapshot", "createdAt", "effort", "endReason", "error", "harness", "harnessThreadId", "helperPlace", "id", "incidentId", "kind", "lastActivityAt", "lastTurnOutcome", "lastVisitedAt", "limitResetsAt", "liveTurn", "model", "origin", "overlay", "preRun", "report", "repositoryId", "rootCause", "rootCauseCategory", "scheduleId", "scheduleRevision", "schemaVersion", "serviceId", "settledAt", "startedAt", "status", "stopRequestedAt", "summary", "tenantId", "title", "titleSetBy", "triggerReason", "triggerType", "updatedAt", "usage", "workspace" FROM "investigations";
 DROP TABLE "investigations";
 ALTER TABLE "new_investigations" RENAME TO "investigations";
 CREATE UNIQUE INDEX "investigations_harnessThreadId_key" ON "investigations"("harnessThreadId");
