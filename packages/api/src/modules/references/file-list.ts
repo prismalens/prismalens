@@ -20,6 +20,8 @@ const run = promisify(execFile);
 
 export const FILE_LIST_CAP = 50_000;
 export const FILE_LIST_TTL_MS = 60_000;
+/** The most folders a plain-folder walk opens. */
+export const DIR_WALK_CAP = 20_000;
 
 export interface FileList {
 	/** Workspace-relative paths with `/` separators; folders end with `/`. */
@@ -46,15 +48,24 @@ async function gitFiles(root: string): Promise<string[] | null> {
 	}
 }
 
-/** A plain folder: walked asynchronously, honouring its root `.gitignore`, stopping at the cap. */
-export async function walk(root: string, cap: number): Promise<string[]> {
+/**
+ * A plain folder, walked asynchronously and honouring its root `.gitignore`. It stops at
+ * `cap` files or `dirCap` folders, so a tree of empty folders cannot run on (#1024).
+ */
+export async function walk(
+	root: string,
+	cap: number,
+	dirCap = DIR_WALK_CAP,
+): Promise<{ files: string[]; dirs: number; truncated: boolean }> {
 	const ig = ignore().add([".git", "node_modules"]);
 	const gi = join(root, ".gitignore");
 	if (existsSync(gi)) ig.add(await readFile(gi, "utf8"));
-	const out: string[] = [];
+	const files: string[] = [];
 	const stack = [root];
-	while (stack.length && out.length <= cap) {
+	let dirs = 0;
+	while (stack.length && files.length <= cap && dirs < dirCap) {
 		const dir = stack.pop() as string;
+		dirs++;
 		let entries: import("node:fs").Dirent[];
 		try {
 			entries = await readdir(dir, { withFileTypes: true });
@@ -67,10 +78,10 @@ export async function walk(root: string, cap: number): Promise<string[]> {
 			if (e.isDirectory()) {
 				if (ig.ignores(`${rel}/`)) continue;
 				stack.push(abs);
-			} else if (e.isFile() && !ig.ignores(rel)) out.push(rel);
+			} else if (e.isFile() && !ig.ignores(rel)) files.push(rel);
 		}
 	}
-	return out;
+	return { files, dirs, truncated: stack.length > 0 || files.length > cap };
 }
 
 /** Each file and the folders above it, capped. */
@@ -92,13 +103,19 @@ export class FileLister {
 	constructor(
 		private readonly cap = FILE_LIST_CAP,
 		private readonly now: () => number = Date.now,
+		private readonly dirCap = DIR_WALK_CAP,
 	) {}
 
 	async list(root: string): Promise<FileList> {
 		const hit = this.cache.get(root);
 		if (hit && this.now() - hit.at < FILE_LIST_TTL_MS) return hit.list;
-		const files = (await gitFiles(root)) ?? (await walk(root, this.cap));
-		const list = withFolders(files, this.cap);
+		const tracked = await gitFiles(root);
+		const walked = tracked ? null : await walk(root, this.cap, this.dirCap);
+		const listed = withFolders(tracked ?? walked?.files ?? [], this.cap);
+		const list = {
+			...listed,
+			truncated: listed.truncated || !!walked?.truncated,
+		};
 		this.cache.set(root, { at: this.now(), list });
 		if (this.cache.size > 50) {
 			const first = this.cache.keys().next().value;

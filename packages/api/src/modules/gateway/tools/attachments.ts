@@ -9,7 +9,6 @@ import {
 } from "@prismalens/integrations/harness";
 import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
-import { ANYWHERE } from "./serves.js";
 
 export interface AttachmentItem {
 	id: string;
@@ -38,6 +37,11 @@ export interface AttachmentsData {
 		bytes?(): Promise<Uint8Array | null>;
 	} | null>;
 }
+
+/** Every subject a file can reach: a scheduled check takes no uploads, so it gets no file tools (#1024). */
+const FILE_SUBJECTS = {
+	subjects: ["incident", "project", "service", "none"],
+} as const;
 
 /** The most of a file `attachment_read` returns. */
 export const ATTACHMENT_READ_CHARS = 32_000;
@@ -137,7 +141,7 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with attachment_read.",
 			group: "knowledge",
 			effect: "read",
-			serves: ANYWHERE,
+			serves: FILE_SUBJECTS,
 			input: z.object({}),
 			run: async (_input, ctx) => {
 				const r = await data.list(ctx.runId);
@@ -156,7 +160,7 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 			description: `One file attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML and CSV come back as text, and a PDF as its text, at most ${ATTACHMENT_READ_CHARS} characters per call. Any other file comes back as base64 bytes, at most ${ATTACHMENT_READ_BYTES} per call. Pass offset (and length) to read the next chunk.`,
 			group: "knowledge",
 			effect: "read",
-			serves: ANYWHERE,
+			serves: FILE_SUBJECTS,
 			input: z.object({
 				id: z.string().trim().min(1).max(200),
 				offset: z.number().int().min(0).optional(),

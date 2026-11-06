@@ -79,7 +79,9 @@ beforeAll(async () => {
 	const s2 = await thread({ kind: "service", serviceId: service.id }, "Any deploys today?", "v42\n");
 	runs.set("service", { id: s2.id, other: s1.id, file: s2.file });
 
-	runs.set("none", { id: (await thread({ kind: "none" }, "hi")).id });
+	// Every subject reads its run's own files (#1024), a no-subject thread included.
+	const none = await thread({ kind: "none" }, "hi", "nothing yet\n");
+	runs.set("none", { id: none.id, file: none.file });
 
 	const schedule = await pl.api<Schedule>("/schedules", {
 		method: "POST",
@@ -105,7 +107,7 @@ beforeAll(async () => {
 		30_000,
 	);
 	const check = detail.ticks.find((t) => t.run)?.run?.id as string;
-	runs.set("schedule", { id: check, other: s1.id });
+runs.set("schedule", { id: check, other: s1.id });
 
 	// An incident made by hand, investigated, then asked a follow-up chat.
 	const incident = await pl.api<{ id: string }>("/incidents", {

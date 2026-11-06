@@ -9,10 +9,15 @@ type Row = { scope: string; rev: number; generation: number; body: string; updat
 /** composerDraft over a Map, with the conditional update the service relies on. */
 function fakePrisma(now = () => new Date("2026-11-07T10:00:00Z")) {
 	const rows = new Map<string, Row>();
+	let createFails: Error | null = null;
 	const attachments: { id: string; draftKey: string | null; investigationId: string | null }[] = [];
 	const composerDraft = {
-		findUnique: async ({ where }: { where: { scope: string } }) =>
-			rows.get(where.scope) ?? null,
+		// Yields first, so two saves can both read "no row" as they do on SQLite.
+		findUnique: async ({ where }: { where: { scope: string } }) => {
+			await new Promise((r) => setTimeout(r, 0));
+			const row = rows.get(where.scope);
+			return row ? { ...row } : null;
+		},
 		findMany: async ({ where }: { where: { updatedAt?: { lt: Date }; scope?: { in: string[] } } }) =>
 			[...rows.values()].filter(
 				(r) =>
@@ -20,7 +25,9 @@ function fakePrisma(now = () => new Date("2026-11-07T10:00:00Z")) {
 					(!where.scope || where.scope.in.includes(r.scope)),
 			),
 		create: async ({ data }: { data: Omit<Row, "updatedAt"> }) => {
-			if (rows.has(data.scope)) throw new Error("unique");
+			if (createFails) throw createFails;
+			if (rows.has(data.scope))
+				throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
 			const row = { ...data, updatedAt: now() };
 			rows.set(data.scope, row);
 			return row;
@@ -61,7 +68,14 @@ function fakePrisma(now = () => new Date("2026-11-07T10:00:00Z")) {
 		$transaction: async (arg: unknown) =>
 			typeof arg === "function" ? (arg as (tx: unknown) => unknown)(prisma) : Promise.all(arg as unknown[]),
 	};
-	return { prisma, rows, attachments };
+	return {
+		prisma,
+		rows,
+		attachments,
+		failCreate: (e: Error | null) => {
+			createFails = e;
+		},
+	};
 }
 
 const SCOPE = "thread:6a3b1c2d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
@@ -125,16 +139,26 @@ describe("DraftsService (#1024)", () => {
 		});
 	});
 
-	it("two first saves racing: the loser gets 409, not a 500", async () => {
+	it("two first saves racing: the loser gets 409 carrying the winner's draft (#1024)", async () => {
 		const { prisma } = fakePrisma();
 		const drafts = new DraftsService(prisma as never);
-		const original = prisma.composerDraft.findUnique;
-		prisma.composerDraft.findUnique = async () => null;
-		await drafts.put(put());
-		await expect(drafts.put(put({ text: "other tab" }))).rejects.toMatchObject({
-			code: "CONFLICT",
+		const [first, second] = await Promise.allSettled([
+			drafts.put(put({ text: "phone" })),
+			drafts.put(put({ text: "laptop" })),
+		]);
+		expect(first).toMatchObject({ status: "fulfilled", value: { text: "phone" } });
+		expect(second).toMatchObject({
+			status: "rejected",
+			reason: { code: "CONFLICT", data: { current: { text: "phone", rev: 1 } } },
 		});
-		prisma.composerDraft.findUnique = original;
+	});
+
+	it("a create that fails for any other reason is not a 409 (#1024)", async () => {
+		const { prisma, failCreate } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		failCreate(new Error("disk full"));
+		await expect(drafts.put(put())).rejects.toThrow("disk full");
+		await expect(drafts.consume(SCOPE, undefined)).rejects.toThrow("disk full");
 	});
 
 	it("a newer draft from another device survives the send", async () => {

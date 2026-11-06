@@ -38,6 +38,12 @@ const EMPTY: DraftBody = {
 	choice: {},
 };
 
+/** A create another writer beat to the scope (P2002) is a lost race: null. Anything else is thrown. */
+function lostRace(e: unknown): null {
+	if ((e as { code?: string })?.code === "P2002") return null;
+	throw e;
+}
+
 function toDraft(row: Row): ComposerDraft {
 	const parsed = DraftBodySchema.safeParse(JSON.parse(row.body));
 	return {
@@ -83,7 +89,7 @@ export class DraftsService implements OnApplicationBootstrap {
 				// The first save, or one after a delete or a sweep; a racing first save loses with 409.
 				return tx.composerDraft
 					.create({ data: { scope, rev: 1, generation, body } })
-					.catch(() => null);
+					.catch(lostRace);
 			}
 			const updated = await tx.composerDraft.updateMany({
 				where: { scope, rev: baseRev, generation },
@@ -125,7 +131,7 @@ export class DraftsService implements OnApplicationBootstrap {
 				.create({
 					data: { scope, rev: 1, generation: 1, body: JSON.stringify(EMPTY) },
 				})
-				.catch(() => null);
+				.catch(lostRace);
 			return made ? "sent" : "kept";
 		}
 		if (rev !== undefined && row.rev !== rev) return "kept";

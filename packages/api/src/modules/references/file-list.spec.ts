@@ -61,11 +61,26 @@ describe("the workspace file list (#1024)", () => {
 			if (!done) setImmediate(spin);
 		};
 		setImmediate(spin);
-		const files = await walk(dir, 50_000);
+		const { files } = await walk(dir, 50_000);
 		done = true;
 		expect(files).toContain("d0/x/f.ts");
 		// Each folder is read asynchronously, so the loop turns while the walk runs.
 		expect(turns).toBeGreaterThan(50);
+	});
+
+	it("stops a tree heavy with folders at the folder limit, and says the list was cut (#1024)", async () => {
+		for (let i = 0; i < 300; i++) {
+			mkdirSync(join(dir, `d${i}`, "empty"), { recursive: true });
+			if (i % 50 === 0) writeFileSync(join(dir, `d${i}`, "f.ts"), "");
+		}
+		const walked = await walk(dir, 50_000, 100);
+		expect(walked.truncated).toBe(true);
+		expect(walked.dirs).toBeLessThanOrEqual(100);
+		const whole = await walk(dir, 50_000, 10_000);
+		expect(whole.truncated).toBe(false);
+		expect(whole.files).toHaveLength(6);
+		const list = await new FileLister(50_000, Date.now, 100).list(dir);
+		expect(list.truncated).toBe(true);
 	});
 });
 
