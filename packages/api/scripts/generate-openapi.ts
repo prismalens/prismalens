@@ -2,85 +2,31 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * OpenAPI Specification Generator
- *
- * Generates OpenAPI 3.1 specification from oRPC contracts.
+ * Writes the OpenAPI document to dist/openapi.json for anyone who wants a file.
  * Run with: pnpm openapi:generate
  */
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { OpenAPIGenerator } from "@orpc/openapi";
-// zod4 subpath required: the root "@orpc/zod" export targets zod v3 and silently
-// no-ops on this repo's zod v4 schemas (#547).
-import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
-import { contract } from "@prismalens/contracts";
+import { buildOpenApiSpec } from "../src/modules/openapi/build-spec.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const outputDir = resolve(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"dist",
+);
 
-async function generateOpenAPISpec() {
-	console.log("Generating OpenAPI specification...");
-
-	const generator = new OpenAPIGenerator({
-		schemaConverters: [new ZodToJsonSchemaConverter()],
+buildOpenApiSpec([
+	{ url: "http://localhost:6473/api", description: "Development server" },
+	{ url: "/api", description: "Relative path (for proxied deployments)" },
+])
+	.then((spec) => {
+		mkdirSync(outputDir, { recursive: true });
+		const jsonPath = resolve(outputDir, "openapi.json");
+		writeFileSync(jsonPath, JSON.stringify(spec, null, 2));
+		console.log(`OpenAPI spec written to: ${jsonPath}`);
+	})
+	.catch((error) => {
+		console.error("Failed to generate OpenAPI spec:", error);
+		process.exit(1);
 	});
-
-	const spec = await generator.generate(contract, {
-		info: {
-			title: "PrismaLens API",
-			version: "1.0.0",
-			description: "PrismaLens API - incident investigation",
-			contact: {
-				name: "PrismaLens Team",
-				url: "https://github.com/prismalens-org/prismalens",
-			},
-			license: {
-				name: "Apache-2.0",
-				url: "https://www.apache.org/licenses/LICENSE-2.0",
-			},
-		},
-		servers: [
-			{
-				url: "http://localhost:6473/api",
-				description: "Development server",
-			},
-			{
-				url: "/api",
-				description: "Relative path (for proxied deployments)",
-			},
-		],
-		tags: [
-			{ name: "alerts", description: "Alert management" },
-			{ name: "incidents", description: "Incident management" },
-			{ name: "investigations", description: "AI-powered investigations" },
-			{ name: "recommendations", description: "Recommendations management" },
-			{ name: "services", description: "Service catalog management" },
-			{ name: "webhooks", description: "Webhook ingestion endpoints" },
-			{ name: "events", description: "Event management" },
-			{ name: "timeline", description: "Incident timeline entries" },
-			{ name: "correlation", description: "Alert correlation rules" },
-			{ name: "integrations", description: "External integrations" },
-			{
-				name: "service-discovery",
-				description: "Service discovery suggestions",
-			},
-			{ name: "alert-mapping", description: "Alert to service mapping rules" },
-		],
-	});
-
-	// Output paths
-	const outputDir = resolve(__dirname, "..");
-	const jsonPath = resolve(outputDir, "openapi.json");
-
-	// Write JSON spec
-	writeFileSync(jsonPath, JSON.stringify(spec, null, 2));
-	console.log(`OpenAPI spec written to: ${jsonPath}`);
-
-	console.log("\nGeneration complete!");
-	console.log(`  - JSON: ${jsonPath}`);
-}
-
-generateOpenAPISpec().catch((error) => {
-	console.error("Failed to generate OpenAPI spec:", error);
-	process.exit(1);
-});

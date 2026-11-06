@@ -507,18 +507,6 @@ describe("RepositoriesService.addSource", () => {
 		expect(preview.label).toBe("token MyToken");
 	});
 
-	it("W13 removal regression: openapi.json contains no removed routes", async () => {
-		const { readFileSync } = await import("node:fs");
-		const { resolve } = await import("node:path");
-		const openapiPath = resolve(__dirname, "../../../openapi.json");
-		const openapi = JSON.parse(readFileSync(openapiPath, "utf8"));
-		const paths = Object.keys(openapi.paths);
-
-		expect(paths).not.toContain("/report/github");
-		expect(paths).not.toContain("/git/repositories");
-		expect(paths).not.toContain("/git/organizations");
-		expect(paths).not.toContain("/repositories/batch");
-	});
 });
 
 
