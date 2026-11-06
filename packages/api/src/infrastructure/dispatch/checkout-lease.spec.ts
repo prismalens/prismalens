@@ -97,6 +97,20 @@ describe("checkout leases (#1024)", () => {
 		}
 	});
 
+	it("a folder git named but the disk would not resolve in time is unreadable, not gone", async () => {
+		lease.setCheckoutGit(async () => ({ stdout: `${shop}
+`, stderr: "" }));
+		const canonical = vi
+			.spyOn(await import("./folder-lock.js"), "canonical")
+			.mockResolvedValueOnce(null);
+		try {
+			await expect(lease.checkoutRoot(shop)).rejects.toThrow(lease.CheckoutUnreadable);
+		} finally {
+			canonical.mockRestore();
+			lease.setCheckoutGit(null);
+		}
+	});
+
 	it("a busy folder reader is unreadable too, not gone", async () => {
 		const { CanonicalBusy } = await import("./folder-lock.js");
 		lease.setCheckoutGit(async () => ({ stdout: `${shop}\n`, stderr: "" }));

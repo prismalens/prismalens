@@ -39,6 +39,7 @@ const { InvestigationsService } = await import(
 	"../../modules/investigations/investigations.service.js"
 );
 const {
+	CheckoutGone,
 	DispatchService,
 	FollowUpRefused,
 	isCustomModel,
@@ -2025,5 +2026,33 @@ describe("DispatchService.abandonUnstarted: an admission that stored no job (#10
 		await service.abandonUnstarted(done.id, "The thread could not be started.");
 
 		expect((await read(done.id)).status).toBe("completed");
+	});
+});
+
+describe("DispatchService.borrowedCheckout: a checkout that cannot be read right now (#1024)", () => {
+	it("is refused as retryable, not as gone, so a wake tries again", async () => {
+		const { service } = realDispatch();
+		const lease = await import("./checkout-lease.js");
+		const { GitSpawnError } = await import("../../core/harness/git-spawn.js");
+		vi.spyOn(service, "recordedCheckout").mockResolvedValue("/code/shop");
+		vi.spyOn(prisma.repository, "findUnique").mockResolvedValue({ url: "/code/shop" } as never);
+		lease.setCheckoutGit(async () =>
+			Promise.reject(new GitSpawnError("git rev-parse timed out", null, "", true)),
+		);
+		try {
+			const refused = await service
+				.borrowedCheckout("any-id", "repo-id")
+				.catch((e: unknown) => e);
+			expect(refused).toBeInstanceOf(FollowUpRefused);
+			expect(refused).not.toBeInstanceOf(CheckoutGone);
+			// A checkout git says is not a work tree is still gone for good.
+			lease.setCheckoutGit(async () =>
+				Promise.reject(new GitSpawnError("git rev-parse failed (exit 128)", 128, "", false)),
+			);
+			await expect(service.borrowedCheckout("any-id", "repo-id")).rejects.toBeInstanceOf(CheckoutGone);
+		} finally {
+			lease.setCheckoutGit(null);
+			vi.restoreAllMocks();
+		}
 	});
 });

@@ -9,6 +9,7 @@ import {
 	readFileSync,
 	renameSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ const env = await vi.hoisted(async () => {
 	return { root };
 });
 
-const { personStarted, rebuildWorkspace, resolveWorkspace, logBorrowed, runDirFor, settleRun, writeHandoffTranscript } =
+const { observeWorkspace, personStarted, rebuildWorkspace, resolveWorkspace, logBorrowed, runDirFor, settleRun, writeHandoffTranscript } =
 	await import(
 	"./investigation-run.js"
 );
@@ -190,6 +191,51 @@ describe("in-place runs on a git checkout (#1024)", () => {
 			expect(readFileSync(join(dir, "user-notes.txt"), "utf8")).toBe("mine\n");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("a handoff refreshes only its own transcript: no link is followed and no file of the user's is overwritten", async () => {
+		const ws = await resolveWorkspace(job(), ports);
+		const dir = join(ws.cwd, ".prismalens-handoff");
+		const outside = join(ws.cwd, "..", `outside-${process.pid}`);
+		mkdirSync(outside, { recursive: true });
+		writeFileSync(join(outside, "transcript.md"), "theirs");
+		writeFileSync(join(outside, ".gitignore"), "*\n");
+		try {
+			// The folder is a link to somewhere else.
+			symlinkSync(outside, dir, "junction");
+			writeHandoffTranscript(ws, "agent text");
+			expect(readFileSync(join(outside, "transcript.md"), "utf8")).toBe("theirs");
+			rmSync(dir, { recursive: true, force: true });
+			// A transcript.md of the user's, with no .gitignore of ours beside it.
+			mkdirSync(dir);
+			writeFileSync(join(dir, "transcript.md"), "mine");
+			writeHandoffTranscript(ws, "agent text");
+			expect(readFileSync(join(dir, "transcript.md"), "utf8")).toBe("mine");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("the restart status read never runs an fsmonitor hook the checkout names", () => {
+		const marker = join(checkout, "..", `hook-ran-${process.pid}`);
+		const hook = join(checkout, "..", `hook-${process.pid}.sh`).replaceAll("\\", "/");
+		writeFileSync(hook, `#!/bin/sh
+echo ran > "${marker.replaceAll("\\", "/")}"
+printf '/'
+`, { mode: 0o755 });
+		execFileSync("git", ["config", "core.fsmonitor", hook], { cwd: checkout });
+		try {
+			execFileSync("git", ["status", "--porcelain"], { cwd: checkout });
+			expect(existsSync(marker)).toBe(true);
+			rmSync(marker);
+			observeWorkspace([{ name: "shop", dir: checkout, head: "x" }], new Map([[checkout, true]]));
+			expect(existsSync(marker)).toBe(false);
+		} finally {
+			execFileSync("git", ["config", "--unset", "core.fsmonitor"], { cwd: checkout });
+			rmSync(hook, { force: true });
+			rmSync(marker, { force: true });
 		}
 	});
 

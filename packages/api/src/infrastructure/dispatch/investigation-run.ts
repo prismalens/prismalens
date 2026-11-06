@@ -14,6 +14,7 @@ import {
 	readdirSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -863,26 +864,41 @@ function writeInFolder(cwd: string, text: string): void {
 	try {
 		mkdirSync(dir);
 	} catch (e) {
-		if (!ownsHandoffDir(dir, basename(file))) {
+		if (!refreshOwnTranscript(dir, file, text))
 			logger.warn(`No handoff transcript in the folder: ${messageOf(e)}`);
-			return;
-		}
-		writeFileSync(file, text);
 		return;
 	}
 	writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
 	writeFileSync(file, text, { flag: "wx" });
 }
 
-/** Whether `dir` holds only what an earlier handoff wrote: no file of the user's. */
-function ownsHandoffDir(dir: string, transcript: string): boolean {
+/**
+ * Replaces the transcript an earlier handoff left, and only that: `dir` must be a real folder
+ * (not a link) holding PrismaLens's own `.gitignore` and at most a regular transcript file,
+ * and the text goes in by rename, so no link is followed and no other file is written.
+ */
+function refreshOwnTranscript(
+	dir: string,
+	file: string,
+	text: string,
+): boolean {
 	try {
+		if (!lstatSync(dir).isDirectory()) return false;
+		const ignore = join(dir, ".gitignore");
 		const names = readdirSync(dir);
-		return (
-			names.every((n) => n === ".gitignore" || n === transcript) &&
-			(!names.includes(".gitignore") ||
-				readFileSync(join(dir, ".gitignore"), "utf8") === "*\n")
-		);
+		if (
+			!names.includes(".gitignore") ||
+			!lstatSync(ignore).isFile() ||
+			readFileSync(ignore, "utf8") !== "*\n" ||
+			names.some((n) => n !== ".gitignore" && n !== basename(file))
+		)
+			return false;
+		if (names.includes(basename(file)) && !lstatSync(file).isFile())
+			return false;
+		const next = join(dir, `.${basename(file)}.new`);
+		writeFileSync(next, text, { flag: "wx" });
+		renameSync(next, file);
+		return true;
 	} catch {
 		return false;
 	}

@@ -87,7 +87,13 @@ export async function checkoutRoot(folder: string): Promise<string | null> {
 	}
 	if (!top) return null;
 	try {
-		return await canonical(top);
+		const root = await canonical(top);
+		// git just named this folder: no answer for it is a slow disk, not a missing checkout.
+		if (root === null)
+			throw new CheckoutUnreadable(
+				"Reading your checkout timed out. Try again in a moment.",
+			);
+		return root;
 	} catch (e) {
 		if (e instanceof CanonicalBusy)
 			throw new CheckoutUnreadable(
