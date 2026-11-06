@@ -21,7 +21,10 @@ import {
 	type ThreadTree,
 	type ThreadTreeNode,
 } from "@prismalens/contracts";
-import type { Investigation } from "@prismalens/database";
+import type {
+	Investigation,
+	ThreadMessage as ThreadMessageRow,
+} from "@prismalens/database";
 import {
 	type Failure,
 	fail,
@@ -104,6 +107,8 @@ const ROW = {
 } as const;
 
 const LIVE = [...LIVE_WORKFLOW_STATUSES];
+
+type Queued = ThreadMessageRow;
 
 /** The thread's path in the app: what the agent shows the user, never an id alone. */
 export function threadLink(row: {
@@ -831,45 +836,54 @@ export class ThreadTreeService
 		}
 	}
 
-	private async deliverEach(
-		queued: Awaited<ReturnType<typeof this.prisma.threadMessage.findMany>>,
-	): Promise<void> {
+	private async deliverEach(queued: Queued[]): Promise<void> {
 		for (const m of queued) {
-			const reopen =
-				m.type === "result" && (await this.wakes(m.toId, m.fromId));
-			const got = await this.io.deliver(m.toId, await this.formatted(m), {
-				steer: m.mode === "steer",
-				reopen,
-			});
-			if (reopen && got.state === "later") await this.refusedReopen(m);
-			if (got.state !== "delivered") {
+			try {
+				await this.deliverMessage(m);
+			} catch (e) {
+				// One failing delivery is put off and logged; the rest of the pass goes on.
+				logger.warn(
+					`Could not deliver a tree message: ${(e as Error).message}`,
+				);
 				this.putOff.defer(m.id);
-				continue;
 			}
-			this.reopenTries.delete(m.id);
-			await this.prisma.threadMessage.update({
-				where: { id: m.id },
-				data: { state: "delivered", deliveredAt: new Date() },
-			});
-			if (reopen)
-				await this.prisma.threadWait.deleteMany({
-					where: { waiterId: m.toId },
-				});
-			if (m.type === "result") continue;
-			const from = await this.row(m.fromId);
-			if (!from) continue;
-			await this.io.record(m.toId, {
-				kind: "thread_message",
-				direction: "received",
-				peerId: from.id,
-				peerRole: this.nameOf(from, m.rootId),
-				peerLink: threadLink(from),
-				type: m.type as ThreadMessageKind,
-				text: m.text,
-				mode: m.mode as ThreadMessageMode,
-				messageId: got.messageId,
-			});
 		}
+	}
+
+	private async deliverMessage(m: Queued): Promise<void> {
+		const reopen = m.type === "result" && (await this.wakes(m.toId, m.fromId));
+		const got = await this.io.deliver(m.toId, await this.formatted(m), {
+			steer: m.mode === "steer",
+			reopen,
+		});
+		if (reopen && got.state === "later") await this.refusedReopen(m);
+		if (got.state !== "delivered") {
+			this.putOff.defer(m.id);
+			return;
+		}
+		this.reopenTries.delete(m.id);
+		await this.prisma.threadMessage.update({
+			where: { id: m.id },
+			data: { state: "delivered", deliveredAt: new Date() },
+		});
+		if (reopen)
+			await this.prisma.threadWait.deleteMany({
+				where: { waiterId: m.toId },
+			});
+		if (m.type === "result") return;
+		const from = await this.row(m.fromId);
+		if (!from) return;
+		await this.io.record(m.toId, {
+			kind: "thread_message",
+			direction: "received",
+			peerId: from.id,
+			peerRole: this.nameOf(from, m.rootId),
+			peerLink: threadLink(from),
+			type: m.type as ThreadMessageKind,
+			text: m.text,
+			mode: m.mode as ThreadMessageMode,
+			messageId: got.messageId,
+		});
 	}
 
 	/** After REOPEN_TRIES refused reopens the parent stops waiting; its result stays for its next run. */

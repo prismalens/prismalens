@@ -466,30 +466,50 @@ export class PendingActionsService {
 		ready: PendingAction[],
 	): Promise<void> {
 		for (const row of rows) {
-			const reopen = (REOPENS as readonly string[]).includes(row.state);
-			const got = await this.io.deliver(row.callerId, this.outcomeText(row), {
-				reopen,
-			});
-			if (got.state !== "delivered" && ready.includes(row))
-				this.putOff.defer(row.id);
-			if (got.state === "later") {
-				const tries = (this.reopenTries.get(row.id) ?? 0) + 1;
-				this.reopenTries.set(row.id, tries);
-				if (tries >= REOPEN_TRIES) {
-					this.reopenTries.delete(row.id);
-					this.gaveUp.add(row.id);
-				}
-				continue;
+			try {
+				await this.deliverRow(row, ready);
+			} catch (e) {
+				// One failing delivery is put off and logged; the rest of the pass goes on.
+				logger.warn(
+					`Could not deliver an action outcome: ${(e as Error).message}`,
+				);
+				if (ready.includes(row)) this.putOff.defer(row.id);
+				else this.refusedReopen(row.id);
 			}
-			// Parked: kept for the caller's next run, when it is delivered as a message.
-			if (got.state === "parked") continue;
-			this.reopenTries.delete(row.id);
-			this.gaveUp.delete(row.id);
-			await this.prisma.pendingAction.update({
-				where: { id: row.id },
-				data: { deliveredAt: new Date() },
-			});
 		}
+	}
+
+	private async deliverRow(
+		row: PendingAction,
+		ready: PendingAction[],
+	): Promise<void> {
+		const reopen = (REOPENS as readonly string[]).includes(row.state);
+		const got = await this.io.deliver(row.callerId, this.outcomeText(row), {
+			reopen,
+		});
+		if (got.state !== "delivered" && ready.includes(row))
+			this.putOff.defer(row.id);
+		if (got.state === "later") {
+			this.refusedReopen(row.id);
+			return;
+		}
+		// Parked: kept for the caller's next run, when it is delivered as a message.
+		if (got.state === "parked") return;
+		this.reopenTries.delete(row.id);
+		this.gaveUp.delete(row.id);
+		await this.prisma.pendingAction.update({
+			where: { id: row.id },
+			data: { deliveredAt: new Date() },
+		});
+	}
+
+	/** After REOPEN_TRIES refused or failed reopens, an outcome waits for its caller's next run. */
+	private refusedReopen(id: string): void {
+		const tries = (this.reopenTries.get(id) ?? 0) + 1;
+		this.reopenTries.set(id, tries);
+		if (tries < REOPEN_TRIES) return;
+		this.reopenTries.delete(id);
+		this.gaveUp.add(id);
 	}
 
 	private outcomeText(row: PendingAction): string {

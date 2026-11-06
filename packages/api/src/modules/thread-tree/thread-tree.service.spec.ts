@@ -1365,3 +1365,65 @@ describe("plain folders and overlapping deliveries (#1024 spec F)", () => {
 		expect(sent.filter((m) => m.id === db && m.text.includes("only once"))).toHaveLength(1);
 	});
 });
+
+describe("one failing delivery never stops the rest (#1024 spec F)", () => {
+	const restore = () => {
+		dispatch.resumeInvestigation.mockReset();
+		dispatch.resumeInvestigation.mockImplementation(async (id: string, text: string) => {
+			resumed.push({ id, text });
+			await prisma.investigation.update({ where: { id }, data: { status: "pending" } });
+			return true;
+		});
+	};
+
+	it("Given a result whose reopen throws, Then a later message in the same pass is still delivered, and the failing one is put off", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		const root = await thread();
+		const child = value(await startIn(root.id, { role: "db" })).childId as string;
+		const peer = value(await startIn(root.id, { role: "peer" })).childId as string;
+		value(await tree.wait(root.id, ["db"], "any"));
+		await prisma.investigation.update({ where: { id: root.id }, data: { status: "completed" } });
+		await prisma.investigation.update({ where: { id: peer }, data: { status: "running" } });
+		await prisma.threadMessage.deleteMany();
+		await prisma.threadMessage.create({
+			data: { rootId: root.id, fromId: child, toId: root.id, type: "result", text: "done", requestId: "boom" },
+		});
+		await prisma.threadMessage.create({
+			data: { rootId: root.id, fromId: child, toId: peer, type: "fact", text: "after the failure", requestId: "after" },
+		});
+		live.add(peer);
+		dispatch.resumeInvestigation.mockImplementation(async () => {
+			throw new Error("UNIQUE constraint failed: jobs.id");
+		});
+		try {
+			await expect(tree.drain()).resolves.toBeUndefined();
+		} finally {
+			restore();
+		}
+		expect(sent.some((m) => m.id === peer && m.text.includes("after the failure"))).toBe(true);
+		expect(await prisma.threadMessage.count({ where: { requestId: "boom", state: "queued" } })).toBe(1);
+	});
+
+	it("Given an outcome whose reopen throws, Then a later outcome in the same pass is still delivered", async () => {
+		const ended = await thread({ status: "completed" });
+		await prisma.pendingAction.create({
+			data: { callerId: ended.id, rootId: ended.id, tool: "thread_start", args: "{}", requestId: "boom", state: "denied" },
+		});
+		const later = await thread({ status: "completed" });
+		await prisma.pendingAction.create({
+			data: { callerId: later.id, rootId: later.id, tool: "thread_start", args: "{}", requestId: "after", state: "denied" },
+		});
+		dispatch.resumeInvestigation.mockImplementation(async (id: string, text: string) => {
+			if (id === ended.id) throw new Error("UNIQUE constraint failed: jobs.id");
+			resumed.push({ id, text });
+			return true;
+		});
+		try {
+			await expect(actions.deliverOutcomes()).resolves.toBeUndefined();
+		} finally {
+			restore();
+		}
+		expect(resumed.map((r) => r.id)).toContain(later.id);
+		expect((await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "boom" } })).deliveredAt).toBeNull();
+	});
+});
