@@ -12,12 +12,20 @@ import {
 	lstatSync,
 	mkdirSync,
 	readdirSync,
+	readFileSync,
 	realpathSync,
 	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+} from "node:path";
 import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
@@ -843,17 +851,40 @@ export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
 	}
 }
 
-/** The user's own folder or checkout: nothing of theirs is removed, so a name already there means no transcript. */
+/**
+ * The user's own folder or checkout: nothing of theirs is removed. A folder PrismaLens made on an
+ * earlier handoff (only its `.gitignore` and transcript) gets the new transcript; any other
+ * folder of that name is the user's, and means no transcript.
+ */
 function writeInFolder(cwd: string, text: string): void {
-	const dir = dirname(join(cwd, HANDOFF_TRANSCRIPT_PATH));
+	const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
+	const dir = dirname(file);
 	try {
 		mkdirSync(dir);
 	} catch (e) {
-		logger.warn(`No handoff transcript in the folder: ${messageOf(e)}`);
+		if (!ownsHandoffDir(dir, basename(file))) {
+			logger.warn(`No handoff transcript in the folder: ${messageOf(e)}`);
+			return;
+		}
+		writeFileSync(file, text);
 		return;
 	}
 	writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
-	writeFileSync(join(cwd, HANDOFF_TRANSCRIPT_PATH), text, { flag: "wx" });
+	writeFileSync(file, text, { flag: "wx" });
+}
+
+/** Whether `dir` holds only what an earlier handoff wrote: no file of the user's. */
+function ownsHandoffDir(dir: string, transcript: string): boolean {
+	try {
+		const names = readdirSync(dir);
+		return (
+			names.every((n) => n === ".gitignore" || n === transcript) &&
+			(!names.includes(".gitignore") ||
+				readFileSync(join(dir, ".gitignore"), "utf8") === "*\n")
+		);
+	} catch {
+		return false;
+	}
 }
 
 function copyTargets(ws: RunWorkspace): CopyTarget[] {

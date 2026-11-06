@@ -176,6 +176,23 @@ describe("in-place runs on a git checkout (#1024)", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
+	it("a later handoff refreshes the transcript an earlier one left, and still spares a user's own files", async () => {
+		const ws = await resolveWorkspace(job(), ports);
+		const dir = join(ws.cwd, ".prismalens-handoff");
+		try {
+			writeHandoffTranscript(ws, "first");
+			writeHandoffTranscript(ws, "second");
+			expect(readFileSync(join(dir, "transcript.md"), "utf8")).toBe("second");
+			expect(readFileSync(join(dir, ".gitignore"), "utf8")).toBe("*\n");
+			writeFileSync(join(dir, "user-notes.txt"), "mine\n");
+			writeHandoffTranscript(ws, "third");
+			expect(readFileSync(join(dir, "transcript.md"), "utf8")).toBe("second");
+			expect(readFileSync(join(dir, "user-notes.txt"), "utf8")).toBe("mine\n");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("a URL project never borrows a checkout", async () => {
 		const url = { ...repo, sourceKind: "url" as const, url: "https://example.com/a/b.git" };
 		const ws = await resolveWorkspace(
