@@ -95,13 +95,33 @@ describe("the workspace file list (#1024)", () => {
 			writeFileSync(join(outside, "secret.txt"), "");
 			mkdirSync(join(dir, "real"));
 			symlinkSync(outside, join(dir, "swapped"), "junction");
-			expect(await readDirSafely(join(dir, "real"))).toEqual([]);
-			expect(await readDirSafely(join(dir, "swapped"))).toBeNull();
+			expect(await readDirSafely(join(dir, "real"), dir)).toEqual([]);
+			expect(await readDirSafely(join(dir, "swapped"), dir)).toBeNull();
 			const { files } = await walk(dir, 50_000);
 			expect(files.some((f) => f.includes("secret"))).toBe(false);
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
+	});
+
+	it("discards a folder swapped for a link between lstat and readdir (#1024)", async () => {
+		mkdirSync(join(dir, "a"));
+		const target = join(dir, "a");
+		let read = false;
+		// The folder is real until readdir runs, then resolves outside the root.
+		const fs = {
+			lstat: async () => ({ isSymbolicLink: () => false, isDirectory: () => true }),
+			readdir: async () => {
+				read = true;
+				return [{ name: "secret.txt", isDirectory: () => false, isFile: () => true }];
+			},
+			realpath: async (p: string) =>
+				p === target && read ? join(tmpdir(), "elsewhere") : p,
+		};
+		expect(await readDirSafely(target, dir, fs as never)).toBeNull();
+		read = false;
+		const steady = { ...fs, realpath: async (p: string) => p };
+		expect(await readDirSafely(target, dir, steady as never)).toHaveLength(1);
 	});
 });
 

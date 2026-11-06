@@ -3,9 +3,9 @@
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { lstat, readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 import { gitEnv } from "../../core/harness/git-env.js";
 
@@ -66,7 +66,7 @@ export async function walk(
 	while (stack.length && files.length <= cap && dirs < dirCap) {
 		const dir = stack.pop() as string;
 		dirs++;
-		const entries = await readDirSafely(dir);
+		const entries = await readDirSafely(dir, root);
 		if (!entries) continue;
 		for (const e of entries) {
 			const abs = join(dir, e.name);
@@ -80,17 +80,34 @@ export async function walk(
 	return { files, dirs, truncated: stack.length > 0 || files.length > cap };
 }
 
+/** The calls `readDirSafely` makes; a test injects them to swap a folder mid-read. */
+export interface DirFs {
+	lstat: typeof lstat;
+	readdir: typeof readdir;
+	realpath: typeof realpath;
+}
+const nodeFs: DirFs = { lstat, readdir, realpath };
+
 /**
- * A folder's entries, or null when it is gone or is now a link: a folder swapped for a
- * link between listing and reading must not lead the walk out of its root (#1024).
+ * A folder's entries, or null when it is gone, is a link, or resolves to somewhere else
+ * (or outside `root`) after it was read: a swap between lstat and readdir is discarded (#1024).
  */
 export async function readDirSafely(
 	dir: string,
+	root: string,
+	fs: DirFs = nodeFs,
 ): Promise<import("node:fs").Dirent[] | null> {
 	try {
-		const st = await lstat(dir);
+		const st = await fs.lstat(dir);
 		if (st.isSymbolicLink() || !st.isDirectory()) return null;
-		return await readdir(dir, { withFileTypes: true });
+		const before = await fs.realpath(dir);
+		const entries = await fs.readdir(dir, { withFileTypes: true });
+		const after = await fs.realpath(dir);
+		const realRoot = await fs.realpath(root);
+		const rel = relative(realRoot, after);
+		if (after !== before || rel.startsWith("..") || isAbsolute(rel))
+			return null;
+		return entries;
 	} catch {
 		return null;
 	}
