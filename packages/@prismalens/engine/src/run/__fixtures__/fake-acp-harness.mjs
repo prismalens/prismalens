@@ -101,6 +101,15 @@ const ask = (params) =>
 		send({ jsonrpc: "2.0", id, method: "session/request_permission", params });
 	});
 
+// Any client request (#1024 elicitation): resolves with the response's result.
+const request = (method, params) =>
+	new Promise((resolve) => {
+		const id = nextId++;
+		pending.set(id, resolve);
+		send({ jsonrpc: "2.0", id, method, params });
+	});
+let clientElicits = false;
+
 const report = {
 	summary: `fake run in ${cwd} (${process.env.FAKE_MARKER ?? "no-marker"})`,
 	rootCause: null,
@@ -297,6 +306,49 @@ async function turn(sessionId, promptText) {
 		await cancelled();
 		return { stopReason: "cancelled" };
 	}
+	// FAKE_ACP_MODE=elicit asks one form question first and says what came back (#1024).
+	if (mode === "elicit" && turns === 1) {
+		const answer = clientElicits
+			? await request("elicitation/create", {
+					mode: "form",
+					sessionId,
+					message: "Which environment?",
+					requestedSchema: {
+						type: "object",
+						properties: {
+							question_0: {
+								type: "string",
+								oneOf: [
+									{ const: "staging", title: "Staging" },
+									{ const: "prod", title: "Production" },
+								],
+							},
+							question_0_custom: { type: "string", title: "Other" },
+						},
+					},
+				})
+			: { action: "not-declared" };
+		notify(sessionId, {
+			sessionUpdate: "agent_message_chunk",
+			content: {
+				type: "text",
+				text: `Elicited: ${JSON.stringify(answer)}
+`,
+			},
+		});
+	}
+	// FAKE_ACP_MODE=commands advertises its slash commands (#1024).
+	if (mode === "commands" && turns === 1)
+		notify(sessionId, {
+			sessionUpdate: "available_commands_update",
+			availableCommands: [
+				{
+					name: "review",
+					description: "Review the diff",
+					input: { hint: "path" },
+				},
+			],
+		});
 	if (mode === "switch-mode" && turns === 1) {
 		const answer = await ask({
 			sessionId,
@@ -491,6 +543,8 @@ async function turn(sessionId, promptText) {
 		});
 	const valid =
 		mode === "ok" ||
+		mode === "elicit" ||
+		mode === "commands" ||
 		mode === "switch-mode" ||
 		mode === "enter-plan" ||
 		mode === "nowrite" ||
@@ -521,6 +575,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		return;
 	}
 	if (msg.method === "initialize") {
+		clientElicits = !!msg.params?.clientCapabilities?.elicitation?.form;
 		// FAKE_INIT_DELAY_MS delays initialize in any mode; "slow-init" then never answers session/new.
 		if (process.env.FAKE_INIT_DELAY_MS)
 			await new Promise((r) =>

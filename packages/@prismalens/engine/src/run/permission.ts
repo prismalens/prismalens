@@ -10,6 +10,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ASK_TIMEOUT_MS,
+	type AskAnswer,
 	type PermissionAskOutcome,
 } from "@prismalens/contracts/schemas";
 
@@ -345,10 +346,40 @@ export interface PendingAsk {
 	expiresAt: Date;
 }
 
+/** How an answered ask ended, and a deny's reason, which the host queues to the session. */
+export interface AskResult {
+	outcome: "approved" | "denied" | "answered" | "declined";
+	reason?: string;
+}
+
+/** A non-permission ask the channel holds: an elicitation, or a PrismaLens tool's ask (#1024). */
+export interface HeldAsk {
+	kind: "question" | "input" | "permission" | "secret";
+	/** Checked before it settles; false answers the caller with a 409. */
+	accepts(answer: AskAnswer): boolean;
+}
+
+/** How a held ask ended: its answer, or why none came. */
+export type HeldOutcome =
+	| {
+			outcome: "answered" | "approved" | "denied" | "declined";
+			answer: AskAnswer;
+	  }
+	| { outcome: "expired" | "stopped" | "restarted" | "unattended" };
+
 export interface AskChannel {
 	policy: PermissionPolicy;
-	/** The operator's answer; null when no ask by that id waits. */
-	answer(askId: string, approve: boolean): "approved" | "denied" | null;
+	/** The operator's answer; null when no ask by that id waits, `invalid` when it does not fit (the ask stays open). */
+	answer(askId: string, answer: AskAnswer): AskResult | "invalid" | null;
+	/**
+	 * Hold an ask until it is answered, its window lapses (`expired`) or the run ends.
+	 * `timeoutMs <= 0` never lapses.
+	 */
+	hold(
+		askId: string,
+		ask: HeldAsk,
+		ctx: { signal?: AbortSignal; timeoutMs: number },
+	): Promise<HeldOutcome>;
 	/** The asks still waiting, oldest first. */
 	pending(): PendingAsk[];
 	/** The run ended: every waiting ask is refused as `stopped`. */
@@ -376,9 +407,17 @@ export function createAskChannel(
 			settle: (d: PermissionDecision) => void;
 		}
 	>();
+	const held = new Map<
+		string,
+		PendingAsk & { ask: HeldAsk; settle: (o: HeldOutcome) => void }
+	>();
 	let closed = false;
-	const changed = () =>
-		opts.onChange?.([...waiting.values()][0]?.askedAt ?? null);
+	const changed = () => {
+		const oldest = [...waiting.values(), ...held.values()]
+			.map((w) => w.askedAt)
+			.sort((a, b) => a.getTime() - b.getTime())[0];
+		opts.onChange?.(oldest ?? null);
+	};
 
 	const policy: PermissionPolicy = (req, ctx) => {
 		if (closed) return deny(req, "stopped", "the run ended");
@@ -429,11 +468,35 @@ export function createAskChannel(
 
 	return {
 		policy,
-		answer(askId, approve) {
+		answer(askId, answer) {
+			const kept = held.get(askId);
+			if (kept) {
+				if (!kept.ask.accepts(answer)) return "invalid";
+				const outcome =
+					answer.kind === "decline"
+						? "declined"
+						: answer.kind === "permission"
+							? answer.decision === "approve"
+								? "approved"
+								: "denied"
+							: "answered";
+				kept.settle({ outcome, answer });
+				return {
+					outcome,
+					...(answer.kind === "permission" && answer.reason
+						? { reason: answer.reason }
+						: {}),
+				};
+			}
 			const entry = waiting.get(askId);
-			if (!entry) return null;
+			if (!entry || answer.kind !== "permission") return null;
+			const approve = answer.decision === "approve";
 			// The answer goes back as one of the agent's own options (ACP session/request_permission).
-			const allow = approve ? optionOf(entry.req, "allow") : undefined;
+			const allow = approve
+				? ((answer.scope === "always"
+						? entry.req.options.find((o) => o.kind === "allow_always")
+						: undefined) ?? optionOf(entry.req, "allow"))
+				: undefined;
 			entry.settle(
 				allow
 					? { allow: true, optionId: allow.optionId, outcome: "approved" }
@@ -443,18 +506,63 @@ export function createAskChannel(
 							approve ? "the agent offered no allow option" : "you denied it",
 						),
 			);
-			return allow ? "approved" : "denied";
+			return allow
+				? { outcome: "approved" }
+				: {
+						outcome: "denied",
+						...(!approve && answer.reason ? { reason: answer.reason } : {}),
+					};
+		},
+		hold(askId, ask, ctx) {
+			if (closed) return Promise.resolve({ outcome: "stopped" });
+			return new Promise<HeldOutcome>((resolve) => {
+				const askedAt = now();
+				let timer: ReturnType<typeof setTimeout> | undefined;
+				const settle = (o: HeldOutcome) => {
+					if (!held.delete(askId)) return;
+					if (timer) clearTimeout(timer);
+					ctx.signal?.removeEventListener("abort", onAbort);
+					resolve(o);
+					changed();
+				};
+				const onAbort = () =>
+					settle({
+						outcome:
+							ctx.signal && isShutdown(ctx.signal) ? "restarted" : "stopped",
+					});
+				if (ctx.timeoutMs > 0) {
+					timer = setTimeout(
+						() => settle({ outcome: "expired" }),
+						ctx.timeoutMs,
+					);
+					timer.unref?.();
+				}
+				held.set(askId, {
+					askId,
+					askedAt,
+					// No window: the latest date a Date holds, not a sum past it.
+					expiresAt:
+						ctx.timeoutMs > 0
+							? new Date(askedAt.getTime() + ctx.timeoutMs)
+							: new Date(8.64e15),
+					ask,
+					settle,
+				});
+				changed();
+				if (ctx.signal?.aborted) onAbort();
+				else ctx.signal?.addEventListener("abort", onAbort, { once: true });
+			});
 		},
 		pending: () =>
-			[...waiting.values()].map(({ askId, askedAt, expiresAt }) => ({
-				askId,
-				askedAt,
-				expiresAt,
-			})),
+			[...waiting.values(), ...held.values()]
+				.map(({ askId, askedAt, expiresAt }) => ({ askId, askedAt, expiresAt }))
+				.sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime()),
 		close() {
 			closed = true;
 			for (const entry of [...waiting.values()])
 				entry.settle(deny(entry.req, "stopped", "the run ended"));
+			for (const entry of [...held.values()])
+				entry.settle({ outcome: "stopped" });
 		},
 	};
 }

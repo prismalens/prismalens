@@ -3,18 +3,14 @@
 
 import { Controller, Get, Header, Res } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { OpenAPIGenerator } from "@orpc/openapi";
-// zod4 subpath required: the root "@orpc/zod" export targets zod v3 and silently
-// no-ops on this repo's zod v4 schemas (#547).
-import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import {
 	EnvironmentVariables,
 	getAppDataDir,
 	resolvePort,
 } from "@prismalens/config";
-import { contract } from "@prismalens/contracts";
 import type { Response } from "express";
 import { Public } from "../../core/auth/public.decorator.js";
+import { buildOpenApiSpec } from "./build-spec.js";
 
 @Public()
 @Controller()
@@ -30,46 +26,13 @@ export class OpenAPIController {
 			return this.cachedSpec;
 		}
 
-		const generator = new OpenAPIGenerator({
-			schemaConverters: [new ZodToJsonSchemaConverter()],
-		});
-
-		const spec = await generator.generate(contract, {
-			info: {
-				title: "PrismaLens API",
-				version: "1.0.0",
-				description: "PrismaLens API - incident investigation",
-				contact: {
-					name: "PrismaLens Team",
-					url: "https://github.com/prismalens-org/prismalens",
-				},
-				license: {
-					name: "Apache-2.0",
-					url: "https://www.apache.org/licenses/LICENSE-2.0",
-				},
+		const spec = await buildOpenApiSpec([
+			{
+				url: `${this.configService.get("PRISMALENS_PROTOCOL")}://${this.configService.get("PRISMALENS_HOST")}:${resolvePort(process.env, getAppDataDir())}/api`,
+				description: "Current server",
 			},
-			servers: [
-				{
-					url: `${this.configService.get("PRISMALENS_PROTOCOL")}://${this.configService.get("PRISMALENS_HOST")}:${resolvePort(process.env, getAppDataDir())}/api`,
-					description: "Current server",
-				},
-				{
-					url: "/api",
-					description: "Relative path",
-				},
-			],
-			tags: [
-				{ name: "alerts", description: "Alert management" },
-				{ name: "incidents", description: "Incident management" },
-				{ name: "investigations", description: "AI-powered investigations" },
-				{ name: "recommendations", description: "Recommendations management" },
-				{ name: "services", description: "Service catalog management" },
-				{ name: "webhooks", description: "Webhook ingestion endpoints" },
-				{ name: "events", description: "Event management" },
-				{ name: "timeline", description: "Incident timeline entries" },
-				{ name: "integrations", description: "External integrations" },
-			],
-		});
+			{ url: "/api", description: "Relative path" },
+		]);
 
 		this.cachedSpec = spec;
 		return spec;

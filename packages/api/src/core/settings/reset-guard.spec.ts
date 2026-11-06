@@ -241,6 +241,9 @@ describe("creating a run while a reset is in progress", () => {
 			telemetryStub(),
 				{} as never,
 			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
 		);
 		const create = (
 			controller.investigations() as unknown as Record<

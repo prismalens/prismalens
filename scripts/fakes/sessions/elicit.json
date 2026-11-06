@@ -1,0 +1,103 @@
+{
+	"description": "Asks a form question, then for input, through elicitation/create, and says each answer back (#1024).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.99.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Before I look, two questions.\n\n"
+			},
+			{
+				"elicit": {
+					"message": "Which environment is slow?",
+					"requestedSchema": {
+						"type": "object",
+						"properties": {
+							"question_0": {
+								"type": "string",
+								"title": "Env",
+								"oneOf": [
+									{
+										"const": "staging",
+										"title": "Staging",
+										"description": "The canary cluster"
+									},
+									{
+										"const": "prod",
+										"title": "Production"
+									}
+								]
+							},
+							"question_0_custom": {
+								"type": "string",
+								"title": "Other"
+							}
+						}
+					}
+				}
+			},
+			{
+				"elicit": {
+					"message": "How far back should I look?",
+					"requestedSchema": {
+						"type": "object",
+						"properties": {
+							"hours": {
+								"type": "integer",
+								"title": "Hours",
+								"minimum": 1,
+								"maximum": 72
+							},
+							"includeDeploys": {
+								"type": "boolean",
+								"title": "Include deploys"
+							}
+						},
+						"required": ["hours"]
+					}
+				}
+			},
+			{
+				"report": {
+					"summary": "The p99 rise follows d37d888, which dropped the index the book list query uses.",
+					"rootCause": "Commit d37d888 dropped ix_books_owner_lower_title, so GET /books scans the table.",
+					"rootCauseCategory": "code",
+					"hypotheses": [
+						{
+							"statement": "Dropping ix_books_owner_lower_title in d37d888 made the list query scan",
+							"status": "supported",
+							"evidence": [
+								{
+									"observation": "d37d888 'Schema cleanup: drop unused books title index' is the newest commit",
+									"source": "git log --oneline -5",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "toolu_01"
+								}
+							]
+						}
+					],
+					"ruledOut": [],
+					"coverage": {
+						"queried": ["git log"],
+						"notQueried": ["prometheus"]
+					},
+					"nextSteps": [
+						{
+							"title": "Restore the index",
+							"detail": "Revert d37d888 or recreate ix_books_owner_lower_title.",
+							"priority": "high"
+						}
+					]
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Heard: {{prompt}}"
+		}
+	]
+}

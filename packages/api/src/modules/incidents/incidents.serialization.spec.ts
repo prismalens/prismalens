@@ -117,6 +117,8 @@ function makeController(): IncidentsController {
 		null as never,
 		null as never,
 		{} as never,
+		{ consume: async () => "none" } as never,
+		{ compose: async () => undefined } as never,
 	);
 }
 

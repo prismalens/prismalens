@@ -111,6 +111,7 @@ function controllableRunner() {
 	const messages: string[] = [];
 	const asks: Array<{ askId: string; approve: boolean }> = [];
 
+
 	const runner: JobRunner = (j, sink) => {
 		started.push(j);
 		sinks.set(j.id, sink);
@@ -126,9 +127,11 @@ function controllableRunner() {
 				messages.push(`${mode}:${text}`);
 				return mode === "now" ? "sent" : "queued";
 			},
-			answer: (askId, approve) => {
+			answer: (askId, answer) => {
+				const approve =
+					answer.kind === "permission" && answer.decision === "approve";
 				asks.push({ askId, approve });
-				return approve ? "approved" : "denied";
+				return { outcome: approve ? "approved" : "denied" };
 			},
 			kill: () => {
 				killed.push(j.id);
@@ -313,8 +316,9 @@ describe("Dispatcher", () => {
 			const replies: Array<string | null> = [];
 			const receivers = bus.publish(runAskTopic("inv-1"), {
 				askId: "ask-1",
-				approve: true,
-				reply: (o: string | null) => replies.push(o),
+				answer: { kind: "permission", decision: "approve" },
+				reply: (o: { outcome: string } | null) =>
+					replies.push(o?.outcome ?? null),
 			});
 
 			expect(receivers).toBe(1);
@@ -328,7 +332,7 @@ describe("Dispatcher", () => {
 			expect(
 				bus.publish(runAskTopic("inv-1"), {
 					askId: "ask-2",
-					approve: true,
+					answer: { kind: "permission", decision: "approve" },
 					reply: () => {},
 				}),
 			).toBe(0);

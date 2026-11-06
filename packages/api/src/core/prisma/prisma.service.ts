@@ -57,6 +57,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.alert;
 	}
 
+	get composerDraft() {
+		return db.composerDraft;
+	}
+
+	get referenceUse() {
+		return db.referenceUse;
+	}
+
+	get toolAsk() {
+		return db.toolAsk;
+	}
+
 	get alertSourceAlert() {
 		return db.alertSourceAlert;
 	}

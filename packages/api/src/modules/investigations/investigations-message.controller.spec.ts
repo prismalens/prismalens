@@ -16,7 +16,7 @@ import { InvestigationsService } from "./investigations.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
+import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,6 +68,7 @@ describe("InvestigationsController.message (#743)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
@@ -81,7 +82,7 @@ describe("InvestigationsController.message (#743)", () => {
 		controller = module.get(InvestigationsController);
 	});
 
-	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue"; harness?: string; model?: string };
+	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue"; harness?: string; model?: string; draftScope?: string; draftRev?: number };
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
 	function messageHandler(): (args: { input: Input }) => Promise<any> {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
@@ -97,6 +98,20 @@ describe("InvestigationsController.message (#743)", () => {
 
 		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", [], undefined, expect.any(String));
 		// The id its message_queued and operator_message events carry (#820).
+		expect(result).toEqual({ state: "queued", messageId: expect.any(String) });
+	});
+
+	it("a draft tombstone that fails after the message reached the run does not fail the send (#1024)", async () => {
+		mockInvestigationsService.findById.mockResolvedValue(investigation("inv-1", "running"));
+		mockDispatchService.sendMessage.mockReturnValue("queued");
+		(controller as unknown as { drafts: { consume: unknown } }).drafts.consume = vi.fn(
+			async () => {
+				throw new Error("db locked");
+			},
+		);
+		const result = await messageHandler()({
+			input: { id: "inv-1", text: "check the TTL", mode: "queue", draftScope: "new:home", draftRev: 1 },
+		});
 		expect(result).toEqual({ state: "queued", messageId: expect.any(String) });
 	});
 
@@ -158,6 +173,20 @@ describe("InvestigationsController.message (#743)", () => {
 			expect(result).toEqual({ state: "resumed" });
 			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith("inv-1", "why the pool?", "queue", "chat", [], {});
 			expect(mockDispatchService.sendMessage).not.toHaveBeenCalled();
+		});
+
+		it("a draft tombstone that fails after the follow-up was admitted does not fail it (#1024)", async () => {
+			mockInvestigationsService.findById.mockResolvedValue(finished("opencode"));
+			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
+			(controller as unknown as { drafts: { consume: unknown } }).drafts.consume = vi.fn(
+				async () => {
+					throw new Error("db locked");
+				},
+			);
+			const result = await messageHandler()({
+				input: { id: "inv-1", text: "why the pool?", mode: "queue", draftScope: "new:home", draftRev: 1 },
+			});
+			expect(result).toEqual({ state: "resumed" });
 		});
 
 		it("continues a stopped run unless asked for a chat (R4.4)", async () => {
@@ -256,6 +285,7 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
@@ -323,6 +353,7 @@ describe("InvestigationsController.handoff (#849)", () => {
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [InvestigationsController],
 			providers: [
+				...composerStubs(),
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },

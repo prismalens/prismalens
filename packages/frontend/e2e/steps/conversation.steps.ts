@@ -237,10 +237,11 @@ Given(
 
 When("I expand {string}", async ({ page }, _label: string) => {
 	const expand = page.getByTestId("tools-expand");
-	if (await expand.isVisible().catch(() => false)) {
-		await expand.click();
-	}
-	await expect(page.getByTestId("step-toggle").first()).toBeVisible();
+	const toggle = page.getByTestId("step-toggle").first();
+	// The group renders folded once its steps load; wait for it instead of glancing once.
+	await expect(expand.or(toggle).first()).toBeVisible();
+	if (await expand.isVisible()) await expand.click();
+	await expect(toggle).toBeVisible();
 	if (await page.getByTestId("steps-unfold").isVisible()) {
 		await page.getByTestId("steps-unfold").click();
 	}

@@ -33,8 +33,15 @@ import type {
 	HarnessLauncher,
 	RunLimits,
 } from "../launch/types.js";
+import {
+	type ElicitationAsk,
+	type ElicitationParams,
+	elicitationAsk,
+	elicitationContent,
+} from "../run/elicitation.js";
 import type { GatewayCall } from "../run/gateway.js";
 import {
+	type HeldOutcome,
 	newAskId,
 	type PermissionDecision,
 	type PermissionPolicy,
@@ -72,7 +79,16 @@ export type AcpStreamItem =
 	/** The agent recorded evidence or a hypothesis through the gateway (#930). */
 	| { kind: "harness_finding"; finding: RecordedFinding }
 	/** The agent published an HTML artifact through the gateway (#871). */
-	| { kind: "harness_artifact"; artifact: Artifact };
+	| { kind: "harness_artifact"; artifact: Artifact }
+	/** The agent asked a question or for input through `elicitation/create` (#1024). */
+	| {
+			kind: "elicit_asked";
+			askId: string;
+			ask: ElicitationAsk;
+			expiresAt: Date | null;
+			toolCallId?: string;
+	  }
+	| { kind: "elicit_closed"; askId: string; closed: HeldOutcome };
 
 /**
  * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
@@ -181,6 +197,14 @@ export interface AcpSessionConfig {
 	onStderr?: (chunk: string) => void;
 	/** A value unknown to the ACP SDK, once per session per value. */
 	onDrift?: (drift: AcpDrift) => void;
+	/**
+	 * Answers an elicitation (#1024): the run's ask policy decides whether anyone may.
+	 * Absent, no elicitation capability is declared and every request is declined.
+	 */
+	elicit?: (
+		ask: ElicitationAsk,
+		ctx: { askId: string; signal: AbortSignal },
+	) => { timeoutMs: number; outcome: Promise<HeldOutcome> } | HeldOutcome;
 	/** Each ask's window, read when it arrives; the policy's own timeout when absent (#673 w21). */
 	askWindow?: () => { timeoutMs: number; clamped: boolean };
 	/** Reopen this session instead of starting one, by the path {@link reopenPath} picks (#747, #942). */
@@ -525,7 +549,15 @@ function currentValueOf(
 /** What a prompt turn carries: text always; an image only where `initialize` advertised it (R4.3). */
 export type PromptPart =
 	| { type: "text"; text: string }
-	| { type: "image"; data: string; mimeType: string };
+	| { type: "image"; data: string; mimeType: string }
+	/** A file the agent reads by URI instead of inline (#1024); every ACP agent takes it. */
+	| {
+			type: "resource_link";
+			uri: string;
+			name: string;
+			mimeType?: string;
+			size?: number;
+	  };
 
 export class AcpSession {
 	private readonly launcher: HarnessLauncher;
@@ -561,6 +593,8 @@ export class AcpSession {
 	modelOptionId: string | null = null;
 	/** `initialize` advertised `promptCapabilities.image` (R4.3). */
 	takesImages = false;
+	/** `initialize` advertised `sessionCapabilities.additionalDirectories` (#918, #1024). */
+	takesDirectories = false;
 	/** The harness advertised `loadSession` or `session/resume` at `initialize`, so a follow-up can reopen it. */
 	loadSession = false;
 	/** The modes `session/new` (or `session/load`) offered. */
@@ -674,6 +708,8 @@ export class AcpSession {
 				clientCapabilities: {
 					fs: { readTextFile: false, writeTextFile: false },
 					session: { replayComplete: {} },
+					// Form mode only: an agent-supplied URL needs its own trust ruling (#1024).
+					...(config.elicit ? { elicitation: { form: {} } } : {}),
 				},
 			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
@@ -689,9 +725,10 @@ export class AcpSession {
 			init?.agentCapabilities?.promptCapabilities?.image === true;
 		this.pushesAuthStatus =
 			init?.agentCapabilities?._meta?.authStatus !== undefined;
-		const roots =
+		this.takesDirectories =
 			init?.agentCapabilities?.sessionCapabilities?.additionalDirectories !=
-				null && config.roots;
+			null;
+		const roots = this.takesDirectories && config.roots;
 		const params = {
 			...(roots
 				? { cwd: roots.cwd, additionalDirectories: roots.additional }
@@ -1139,6 +1176,65 @@ export class AcpSession {
 		return { ...known, ...Object.fromEntries(given) };
 	}
 
+	/** `elicitation/create` (#1024): a question or input ask, declined when nobody may answer. */
+	private onElicitation(msg: JsonRpcMessage): void {
+		const params = (msg.params ?? {}) as ElicitationParams & {
+			toolCallId?: string | null;
+		};
+		const reply = (result: Record<string, unknown>) => {
+			if (!this.closed) this.send({ jsonrpc: "2.0", id: msg.id, result });
+		};
+		let ask: ReturnType<typeof elicitationAsk> = null;
+		try {
+			ask = this.config.elicit ? elicitationAsk(params) : null;
+		} catch {
+			// A form this code cannot read is declined, never thrown out of the listener.
+			ask = null;
+		}
+		if (!ask || !this.config.elicit) {
+			reply({ action: "decline" });
+			return;
+		}
+		const askId = newAskId();
+		const controller = new AbortController();
+		this.asks.add(controller);
+		const finish = (closed: HeldOutcome) => {
+			this.asks.delete(controller);
+			const content =
+				"answer" in closed && closed.outcome === "answered"
+					? elicitationContent(ask, closed.answer)
+					: null;
+			reply(
+				content
+					? { action: "accept", content }
+					: closed.outcome === "stopped" || closed.outcome === "restarted"
+						? { action: "cancel" }
+						: { action: "decline" },
+			);
+			this.push({ kind: "elicit_closed", askId, closed });
+		};
+		let held: ReturnType<NonNullable<AcpSessionConfig["elicit"]>>;
+		try {
+			held = this.config.elicit(ask, { askId, signal: controller.signal });
+		} catch {
+			// A policy that throws must still answer, or the agent waits out its turn.
+			held = { outcome: "unattended" };
+		}
+		if (!("timeoutMs" in held)) {
+			finish(held);
+			return;
+		}
+		this.push({
+			kind: "elicit_asked",
+			askId,
+			ask,
+			expiresAt:
+				held.timeoutMs > 0 ? new Date(Date.now() + held.timeoutMs) : null,
+			...(params.toolCallId ? { toolCallId: params.toolCallId } : {}),
+		});
+		held.outcome.then(finish, () => finish({ outcome: "stopped" }));
+	}
+
 	private onServerRequest(msg: JsonRpcMessage): void {
 		const method = msg.method ?? "";
 		if (method === "session/request_permission") {
@@ -1215,6 +1311,10 @@ export class AcpSession {
 			Promise.resolve(verdict)
 				.catch(refused)
 				.then((decision) => answer(decision, false));
+			return;
+		}
+		if (method === "elicitation/create") {
+			this.onElicitation(msg);
 			return;
 		}
 		if (method.startsWith("fs/")) {

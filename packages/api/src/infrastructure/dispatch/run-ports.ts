@@ -19,6 +19,7 @@ import type {
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import type {
+	AgentCommand,
 	ContextPack,
 	RunChoice,
 	RunCredential,
@@ -150,6 +151,14 @@ export interface RunPorts {
 	recordUsage(id: string, usage: RunUsage): Promise<void>;
 	/** The oldest ask the agent waits on, or null once none waits (#673 w21). Its own write, like `recordSession`. */
 	markAwaitingApproval(id: string, since: Date | null): Promise<void>;
+	/** Keep the agent's advertised commands on the row and as its last list in Settings (#1024). */
+	recordAgentCommands?(
+		id: string,
+		harness: HarnessId,
+		commands: AgentCommand[],
+	): Promise<void>;
+	/** How long a question from the agent waits (Settings → Agent); the default when absent (#1024). */
+	questionTimeoutMs?(): Promise<number | undefined>;
 	/**
 	 * The incident's newest run started after this one, with its `Run #N` and
 	 * the commits it looked at; null when there is none, or it kept no workspace (#673 w27).

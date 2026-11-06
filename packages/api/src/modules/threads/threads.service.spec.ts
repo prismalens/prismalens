@@ -82,6 +82,8 @@ describe("ThreadsService (#1020)", () => {
 			harness as never,
 			attachments as never,
 			integrations as never,
+			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 	beforeEach(() => {
@@ -288,6 +290,52 @@ describe("ThreadsService (#1020)", () => {
 		expect(out.queued).toBe(false);
 	});
 
+	it("tombstones the draft only once the job is stored, and keeps it when admission fails (#1024)", async () => {
+		const consume = vi.fn(async () => "sent");
+		const withDrafts = (c: typeof consume) =>
+			new ThreadsService(
+				prisma as never,
+				investigations as never,
+				dispatch as never,
+				harness as never,
+				attachments as never,
+				integrations as never,
+				{ consume: c } as never,
+				{ compose: async () => undefined } as never,
+			);
+		const input = {
+			subject: { kind: "none" as const },
+			text: "x",
+			draftScope: "new:home",
+			draftRev: 3,
+		};
+		dispatch.addInvestigationJob.mockResolvedValueOnce(null);
+		await withDrafts(consume).start(input);
+		expect(consume).not.toHaveBeenCalled();
+		await withDrafts(consume).start(input);
+		expect(consume).toHaveBeenCalledWith("new:home", 3);
+	});
+
+	it("a tombstone that fails after the job is stored does not fail the send (#1024)", async () => {
+		const svc = new ThreadsService(
+			prisma as never,
+			investigations as never,
+			dispatch as never,
+			harness as never,
+			attachments as never,
+			integrations as never,
+			{ consume: async () => { throw new Error("db locked"); } } as never,
+			{ compose: async () => undefined } as never,
+		);
+		const out = await svc.start({
+			subject: { kind: "none" },
+			text: "x",
+			draftScope: "new:home",
+			draftRev: 1,
+		});
+		expect(out).toMatchObject({ queued: true, jobId: "job-1" });
+	});
+
 	it("visit retries a lost race, then refuses with CONFLICT rather than report an unwritten visit", async () => {
 		prisma.investigation.updateMany
 			.mockResolvedValueOnce({ count: 0 })
@@ -461,6 +509,8 @@ describe("ThreadsService.settle (#1020)", () => {
 				{} as never,
 				{} as never,
 				{} as never,
+				{ consume: async () => "none", withDrafts: async () => new Set() } as never,
+				{ compose: async () => undefined } as never,
 			),
 		};
 	}

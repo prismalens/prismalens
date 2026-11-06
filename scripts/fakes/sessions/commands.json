@@ -1,0 +1,71 @@
+{
+	"description": "Advertises its slash commands with available_commands_update before it answers (#1024).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.99.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"update": {
+					"sessionUpdate": "available_commands_update",
+					"availableCommands": [
+						{
+							"name": "review",
+							"description": "Review the working tree's diff",
+							"input": {
+								"hint": "path or ref"
+							}
+						},
+						{
+							"name": "explain",
+							"description": "Explain a file"
+						}
+					]
+				}
+			},
+			{
+				"say": "Commands are listed."
+			},
+			{
+				"report": {
+					"summary": "The p99 rise follows d37d888, which dropped the index the book list query uses.",
+					"rootCause": "Commit d37d888 dropped ix_books_owner_lower_title, so GET /books scans the table.",
+					"rootCauseCategory": "code",
+					"hypotheses": [
+						{
+							"statement": "Dropping ix_books_owner_lower_title in d37d888 made the list query scan",
+							"status": "supported",
+							"evidence": [
+								{
+									"observation": "d37d888 'Schema cleanup: drop unused books title index' is the newest commit",
+									"source": "git log --oneline -5",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "toolu_01"
+								}
+							]
+						}
+					],
+					"ruledOut": [],
+					"coverage": {
+						"queried": ["git log"],
+						"notQueried": ["prometheus"]
+					},
+					"nextSteps": [
+						{
+							"title": "Restore the index",
+							"detail": "Revert d37d888 or recreate ix_books_owner_lower_title.",
+							"priority": "high"
+						}
+					]
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Heard: {{prompt}}"
+		}
+	]
+}

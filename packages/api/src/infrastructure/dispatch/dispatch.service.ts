@@ -26,11 +26,12 @@ import {
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import type {
-	CanonicalEvent,
+	AskAnswer,
 	FollowUpKind,
 	FollowUpRoute,
 	InvestigationJobData,
 	JobAttachment,
+	JobMessageContext,
 	OperatorMessageMode,
 	RestartRecovery,
 	RestartSummary,
@@ -41,17 +42,20 @@ import type {
 } from "@prismalens/contracts";
 import {
 	AccessLevelSchema,
-	CanonicalEventSchema,
+	asksLeftOpen,
 	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
 	HelperPlaceSchema,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	parseEventRows,
+	questionTimeoutFrom,
+	queuedLeftWaiting,
 	RunWorkspaceSchema,
 	ScheduledRunSchema,
 } from "@prismalens/contracts";
-import { reapLiveHarnesses } from "@prismalens/engine";
+import { type AskResult, reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
@@ -82,6 +86,7 @@ import {
 	sharesAdmission,
 } from "../../modules/investigations/run-scope.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import { agentCommandsKey } from "../../modules/references/references.service.js";
 import { shownFullName } from "../../modules/repositories/serialize-repository.js";
 import {
 	interruptedRunIds,
@@ -97,11 +102,17 @@ import {
 	type MessageState,
 	type RunAskRequest,
 	type RunMessageRequest,
+	type RunQueueRequest,
 	runAskTopic,
 	runCancelTopic,
 	runMessageTopic,
+	runQueueTopic,
 } from "./event-bus.js";
 import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
+
+/** Settings → Agent → "Questions from agents wait for", in minutes (#1024). */
+export const QUESTION_TIMEOUT_SETTING = "agents.questionTimeoutMinutes";
+
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
@@ -412,6 +423,30 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					where: { id },
 					data: { awaitingApprovalAt: since },
 				});
+			},
+			recordAgentCommands: async (id, harness, commands) => {
+				const value = JSON.stringify(commands);
+				await this.prisma.investigation.updateMany({
+					where: { id },
+					data: { agentCommands: value },
+				});
+				// New thread offers this list before a session exists, marked "from the last run".
+				await this.prisma.setting.upsert({
+					where: { key: agentCommandsKey(harness) },
+					create: {
+						key: agentCommandsKey(harness),
+						value,
+						type: "json",
+						category: "ai",
+					},
+					update: { value },
+				});
+			},
+			questionTimeoutMs: async () => {
+				const row = await this.prisma.setting.findUnique({
+					where: { key: QUESTION_TIMEOUT_SETTING },
+				});
+				return questionTimeoutFrom(row?.value);
 			},
 			newerRun: async (id) => {
 				const self = await this.prisma.investigation.findUnique({
@@ -951,36 +986,41 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const events = await this.prisma.investigationEvent.findMany({
 				where: {
 					investigationId: id,
-					event: { contains: '"kind":"permission_' },
+					OR: [
+						{ event: { contains: '"kind":"permission_' } },
+						{ event: { contains: '"kind":"ask_' } },
+					],
 				},
 				orderBy: { seq: "asc" },
 				select: { event: true },
 			});
-			const open = new Map<string, string>();
-			for (const row of events) {
-				const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
-				const e = parsed.success ? parsed.data : null;
-				if (e?.kind === "permission_ask") open.set(e.askId, e.branchId);
-				else if (e?.kind === "permission_answer") open.delete(e.askId);
-			}
-			if (open.size === 0 && !awaitingApprovalAt) continue;
-			if (open.size > 0) denied++;
+			const { legacy, asks } = asksLeftOpen(parseEventRows(events));
+			if (legacy.length + asks.length === 0 && !awaitingApprovalAt) continue;
+			if (legacy.length + asks.length > 0) denied++;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
 			const ts = new Date().toISOString();
-			await this.investigationsService.appendEvents(
-				id,
-				[...open].map(([askId, branchId]) => ({
+			const at = (branchId: string) => ({
+				runId: id,
+				branchId,
+				path: [],
+				seq: seq++,
+				label: null,
+				ts,
+			});
+			await this.investigationsService.appendEvents(id, [
+				...legacy.map(({ askId, branchId }) => ({
 					kind: "permission_answer" as const,
-					runId: id,
-					branchId,
-					path: [],
-					seq: seq++,
-					label: null,
-					ts,
+					...at(branchId),
 					askId,
 					outcome: "restarted" as const,
 				})),
-			);
+				...asks.map(({ askId, branchId }) => ({
+					kind: "ask_closed" as const,
+					...at(branchId),
+					askId,
+					outcome: "restarted" as const,
+				})),
+			]);
 			await this.prisma.investigation.update({
 				where: { id },
 				data: { awaitingApprovalAt: null },
@@ -1007,23 +1047,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				orderBy: { seq: "asc" },
 				select: { event: true },
 			});
-			const open = new Map<
-				string,
-				Extract<CanonicalEvent, { kind: "message_queued" }>
-			>();
-			for (const row of events) {
-				const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
-				const e = parsed.success ? parsed.data : null;
-				if (e?.kind === "message_queued") open.set(e.messageId, e);
-				else if (e?.kind === "operator_message" && e.messageId)
-					open.delete(e.messageId);
-			}
-			if (open.size === 0) continue;
+			const open = queuedLeftWaiting(parseEventRows(events));
+			if (open.length === 0) continue;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
 			const ts = new Date().toISOString();
 			await this.investigationsService.appendEvents(
 				id,
-				[...open.values()].map((q) => ({
+				open.map((q) => ({
 					kind: "operator_message" as const,
 					runId: id,
 					branchId: q.branchId,
@@ -1036,6 +1066,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					delivered: false,
 					messageId: q.messageId,
 					...(q.attachments?.length ? { attachments: q.attachments } : {}),
+					...(q.quotes?.length ? { quotes: q.quotes } : {}),
+					...(q.references?.length ? { references: q.references } : {}),
 				})),
 			);
 		}
@@ -1149,6 +1181,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		kind: FollowUpKind = "chat",
 		attachments: JobAttachment[] = [],
 		to: RunChoice = {},
+		context?: JobMessageContext,
 	): Promise<boolean> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -1222,6 +1255,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				kind,
 				...(kind === "continue" ? { sawEvidence } : {}),
 				...(attachments.length ? { attachments } : {}),
+				...(context ? { context } : {}),
 				to: { ...to, harness: plan.harness },
 				...(plan.route === "handoff" ? { handoff: true } : {}),
 				...((await this.afterRestart(id, row.endReason))
@@ -1446,12 +1480,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		attachments: JobAttachment[] = [],
 		kind?: FollowUpKind,
 		id?: string,
+		context?: JobMessageContext,
 	): MessageState {
 		let state: MessageState = null;
 		this.bus.publish<RunMessageRequest>(runMessageTopic(investigationId), {
 			text,
 			mode,
 			attachments,
+			...(context ? { context } : {}),
 			...(kind ? { kind } : {}),
 			...(id ? { id } : {}),
 			reply: (s) => {
@@ -1461,21 +1497,38 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		return state;
 	}
 
-	/** The operator's Approve or Deny for a live run's ask (#673 w21); null when it no longer waits. */
+	/** The operator's answer to a live run's ask (#673 w21, #1024); null when it no longer waits. */
 	answerAsk(
 		investigationId: string,
 		askId: string,
-		approve: boolean,
-	): "approved" | "denied" | null {
-		let outcome: "approved" | "denied" | null = null;
+		answer: AskAnswer,
+	): AskResult | "invalid" | null {
+		let result: AskResult | "invalid" | null = null;
 		this.bus.publish<RunAskRequest>(runAskTopic(investigationId), {
 			askId,
-			approve,
-			reply: (o) => {
-				outcome = o;
+			answer,
+			reply: (r) => {
+				result = r;
 			},
 		});
-		return outcome;
+		return result;
+	}
+
+	/** Edit (`text`) or withdraw (`null`) a queued message; null once the run claimed it (#1024). */
+	changeQueued(
+		investigationId: string,
+		messageId: string,
+		text: string | null,
+	): "edited" | "withdrawn" | null {
+		let state: "edited" | "withdrawn" | null = null;
+		this.bus.publish<RunQueueRequest>(runQueueTopic(investigationId), {
+			messageId,
+			text,
+			reply: (s) => {
+				state = s;
+			},
+		});
+		return state;
 	}
 
 	async requestCancel(investigationId: string): Promise<number> {

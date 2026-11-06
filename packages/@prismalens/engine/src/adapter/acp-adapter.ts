@@ -33,13 +33,18 @@
  */
 import type {
 	Artifact,
+	AskAnswer,
+	AskClosedOutcome,
 	AttachmentRef,
 	CanonicalEvent,
 	FollowUpKind,
 	InvestigationReport,
 	OperatorMessageMode,
+	PendingAsk,
 	PermissionAskOutcome,
+	Quote,
 	RecordedFinding,
+	ReferenceRef,
 	ToolCategory,
 } from "@prismalens/contracts/schemas";
 import type { GatewayCall } from "../run/gateway.js";
@@ -110,6 +115,19 @@ interface ToolMeta {
 }
 
 export type HarnessToolsTurn = "first" | "follow-up";
+
+/** The quotes and references a message's events show. */
+export interface MessageContextRefs {
+	quotes?: Quote[];
+	references?: ReferenceRef[];
+}
+
+function contextRefs(c: MessageContextRefs | undefined): MessageContextRefs {
+	return {
+		...(c?.quotes?.length ? { quotes: c.quotes } : {}),
+		...(c?.references?.length ? { references: c.references } : {}),
+	};
+}
 
 export class AcpAdapter {
 	private seqCounter = 0;
@@ -188,6 +206,7 @@ export class AcpAdapter {
 		followUp?: FollowUpKind,
 		messageId?: string,
 		via?: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
+		context?: MessageContextRefs,
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -198,6 +217,7 @@ export class AcpAdapter {
 			...(resumed ? { resumed } : {}),
 			...(followUp ? { followUp } : {}),
 			...(attachments?.length ? { attachments } : {}),
+			...contextRefs(context),
 			...(messageId ? { messageId } : {}),
 			...(via ? { via } : {}),
 		};
@@ -208,6 +228,7 @@ export class AcpAdapter {
 		messageId: string,
 		text: string,
 		attachments?: AttachmentRef[],
+		context?: MessageContextRefs,
 	): CanonicalEvent {
 		return {
 			kind: "message_queued",
@@ -215,6 +236,33 @@ export class AcpAdapter {
 			messageId,
 			text,
 			...(attachments?.length ? { attachments } : {}),
+			...contextRefs(context),
+		};
+	}
+
+	/** A queued message changed (`text`) or was withdrawn (`null`) before it was claimed (#1024). */
+	messageChanged(messageId: string, text: string | null): CanonicalEvent {
+		return text === null
+			? { kind: "message_withdrawn", ...this.base(), messageId }
+			: { kind: "message_edited", ...this.base(), messageId, text };
+	}
+
+	/** Any ask the run now waits on (#1024). */
+	askOpened(ask: PendingAsk): CanonicalEvent {
+		return { kind: "ask_opened", ...this.base(), ask };
+	}
+
+	askClosed(
+		askId: string,
+		outcome: AskClosedOutcome,
+		answer?: AskAnswer,
+	): CanonicalEvent {
+		return {
+			kind: "ask_closed",
+			...this.base(),
+			askId,
+			outcome,
+			...(answer ? { answer } : {}),
 		};
 	}
 

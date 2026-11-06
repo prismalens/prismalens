@@ -3,6 +3,7 @@
 
 import { forwardRef, Module } from "@nestjs/common";
 import { HarnessModule } from "../../core/harness/harness.module.js";
+import { ComposerModule } from "../composer/composer.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { InvestigationsModule } from "../investigations/investigations.module.js";
 import { TimelineModule } from "../timeline/timeline.module.js";
@@ -15,6 +16,7 @@ import { IncidentsService } from "./incidents.service.js";
 		forwardRef(() => TimelineModule),
 		IntegrationsModule,
 		HarnessModule,
+		ComposerModule,
 		// DispatchModule is @Global, no need to import - DispatchService is available globally
 	],
 	controllers: [IncidentsController],

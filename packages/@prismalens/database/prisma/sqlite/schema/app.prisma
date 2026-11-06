@@ -313,6 +313,7 @@ model Investigation {
   endReason       String? // interrupted | limited, on a failed run only; null otherwise
   preRun          String? // JSON PreRunSnapshot: what PrismaLens read before the run; its follow-ups read it again (#848)
   awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
+  agentCommands   String? // JSON AgentCommand[]: the agent's last available_commands_update (#1024)
 
   // The thread list (#1020): when the operator last opened it, and when they settled it
   lastVisitedAt DateTime?
@@ -477,6 +478,47 @@ model Setting {
   updatedAt   DateTime @updatedAt
 
   @@map("settings")
+}
+
+/// One composer draft per scope (#1024): `thread:<id>`, `new:home`, `new:<kind>:<id>`.
+/// `rev` guards concurrent saves; `generation` is bumped on send, so a late autosave
+/// from before the send gets 409 instead of re-creating the sent draft.
+model ComposerDraft {
+  scope      String   @id
+  rev        Int      @default(0)
+  generation Int      @default(0)
+  body       String // JSON DraftBody
+  updatedAt  DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@map("composer_drafts")
+}
+
+/// A PrismaLens tool's ask (#1024): held here, not by a run, so it outlives the turn
+/// that opened it and a restart. `status` open|closed; closing is a compare-and-set on it.
+model ToolAsk {
+  askId    String    @id
+  threadId String
+  ask      String // JSON PendingAsk
+  status   String    @default("open")
+  outcome  String?
+  answer   String? // JSON AskAnswer; never set for a secret
+  openedAt DateTime  @default(now())
+  closedAt DateTime?
+
+  @@index([threadId, status])
+  @@map("tool_asks")
+}
+
+/// How often the user picked a reference, for the search's frecency boost (#1024).
+model ReferenceUse {
+  kind       String
+  key        String
+  count      Int      @default(0)
+  lastUsedAt DateTime
+
+  @@id([kind, key])
+  @@map("reference_uses")
 }
 
 // =============================================================================

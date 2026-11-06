@@ -28,9 +28,11 @@ import type {
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { ReferencesService } from "../references/references.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 import { IncidentsService, type MergeRefusal } from "./incidents.service.js";
 
@@ -115,6 +117,8 @@ export class IncidentsController {
 		private readonly integrationsService: IntegrationsService,
 		private readonly harnessService: HarnessService,
 		private readonly attachments: AttachmentsService,
+		private readonly drafts: DraftsService,
+		private readonly references: ReferencesService,
 	) {}
 
 	@Implement(incidentsContract)
@@ -328,6 +332,10 @@ export class IncidentsController {
 					: [];
 				const choice = runChoice(input);
 				await this.requireReadyHarness(choice);
+				const context = await this.references.compose(input, {
+					threadId: null,
+					scope: input.draftScope ?? `new:incident:${input.id}`,
+				});
 				const { investigation, created } =
 					await this.investigationsService.startOrGet({
 						incidentId: input.id,
@@ -356,8 +364,12 @@ export class IncidentsController {
 					chat: {
 						text: input.text,
 						...(attachments.length ? { attachments } : {}),
+						...(context ? { context } : {}),
 					},
 				});
+				// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
+				if (jobId)
+					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
 				return {
 					incidentId: input.id,
 					investigationId: investigation.id,

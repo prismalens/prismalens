@@ -78,6 +78,7 @@ import {
 	type PermissionPolicy,
 	prismalensLaunchPolicy,
 	type ResolvedConnector,
+	type RunInvestigationOptions,
 	type StartedBy,
 	type SteerPort,
 	telemetryEndpointsFrom,
@@ -258,6 +259,36 @@ export interface JobIo {
 	steer?: SteerPort;
 	/** Answers the agent's asks; the operator's Approve or Deny (#673 w21). */
 	permission?: PermissionPolicy;
+	/** Questions, inputs and PrismaLens tools' asks, and the agent's commands (#1024). */
+	asks?: Pick<RunInvestigationOptions, "elicit">;
+}
+
+/** The question window from Settings, and where the agent's advertised commands are kept (#1024). */
+async function askOptions(
+	ports: RunPorts,
+	runId: string,
+	harness: HarnessId,
+): Promise<Pick<RunInvestigationOptions, "onCommands" | "questionTimeoutMs">> {
+	const questionTimeoutMs = await ports.questionTimeoutMs?.();
+	return {
+		...(questionTimeoutMs ? { questionTimeoutMs } : {}),
+		...(ports.recordAgentCommands
+			? {
+					onCommands: (commands) => {
+						ports
+							.recordAgentCommands?.(runId, harness, commands)
+							.catch((e) =>
+								logger.warn("Could not keep the agent's commands", e),
+							);
+					},
+				}
+			: {}),
+	};
+}
+
+/** The run-scoped folder a too-big attachment is copied to; removed with the run's directory (#1024). */
+export function runAttachmentsDir(runId: string): string {
+	return join(runDirFor(runId), "attachments");
 }
 
 export interface JobContext {
@@ -503,6 +534,10 @@ async function runJobInternal(
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
+				...io.asks,
+				...(await askOptions(ports, runId, harness)),
+				attachmentsDir: runAttachmentsDir(runId),
+				...(data.chat?.context ? { messageContext: data.chat.context } : {}),
 				...(brief ? { brief } : {}),
 				onSession: (s) => keepSession(ports, runId, harness, s),
 			},
@@ -1137,6 +1172,9 @@ async function runFollowUp(
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
+				...io.asks,
+				...(await askOptions(ports, id, harness)),
+				attachmentsDir: runAttachmentsDir(id),
 				...(seed || sessionId
 					? {
 							// A load the agent replaced with a fresh session records it as a handoff does (#942).
@@ -1224,6 +1262,7 @@ async function runFollowUp(
 					...(resume.attachments?.length
 						? { attachments: resume.attachments }
 						: {}),
+					...(resume.context ? { context: resume.context } : {}),
 					...(moved ? { newer: moved } : {}),
 				},
 				seqStart,

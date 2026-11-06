@@ -9,8 +9,17 @@
  * entrypoint per run and now just calls a function.
  */
 
-import type { InvestigationJobData } from "@prismalens/contracts";
-import { createAskChannel, createSteerChannel } from "@prismalens/engine";
+import { randomUUID } from "node:crypto";
+import type {
+	AskAnswer,
+	InvestigationJobData,
+	PendingAsk,
+} from "@prismalens/contracts";
+import {
+	createAskChannel,
+	createSteerChannel,
+	elicitationAccepts,
+} from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
 import type { JobRunner, RunningJob, RunSink } from "./dispatcher.js";
 import runInvestigationJob, {
@@ -86,6 +95,14 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				signal: controller.signal,
 				steer: steer.port,
 				permission: asks.policy,
+				asks: {
+					elicit: (askId, ask, ctx) =>
+						asks.hold(
+							askId,
+							{ kind: ask.kind, accepts: elicitationAccepts(ask) },
+							ctx,
+						),
+				},
 			},
 			ports,
 		)
@@ -114,11 +131,18 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 			cancel: () => controller.abort(),
 			kill: () => controller.abort(SHUTDOWN_REASON),
 			// The turn this job runs answers only what it owes (#804 OBJ-032).
-			message: (text, mode, attachments, kind, id) =>
+			message: (text, mode, attachments, kind, id, context) =>
 				kind && kind !== owes
 					? "conflict"
-					: steer.send(text, mode, attachments, id),
-			answer: (askId, approve) => asks.answer(askId, approve),
+					: steer.send(text, mode, attachments, id, context),
+			answer: (askId, answer) => {
+				const result = asks.answer(askId, answer);
+				// ACP carries no reason on a rejection, so it follows as the next message (#1024).
+				if (result && result !== "invalid" && result.reason)
+					steer.send(result.reason, "queue", undefined, randomUUID());
+				return result;
+			},
+			change: (messageId, text) => steer.change(messageId, text),
 		};
 	};
 }

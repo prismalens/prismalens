@@ -6,12 +6,14 @@
  * an incident's. Incident and schedule threads keep their own routes.
  */
 import { z } from "zod";
+import { AskKindSchema } from "./asks.js";
 import {
 	CoerceDateSchema,
 	DateStringSchema,
 	IncidentStatusSchema,
 	SeveritySchema,
 } from "./common.js";
+import { MessageContextShape } from "./composer.js";
 import {
 	AttachmentIdsSchema,
 	HelperPlaceSchema,
@@ -40,6 +42,7 @@ export const StartThreadSchema = z
 		draftKey: z.string().uuid().optional(),
 		/** A helper started from an empty page; only on a no-subject thread. */
 		place: HelperPlaceSchema.optional(),
+		...MessageContextShape,
 	})
 	.refine((v) => !v.place || v.subject.kind === "none", {
 		message: "Only a thread with no subject starts from a page.",
@@ -104,6 +107,13 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	/** Who named the thread last; once `user`, the agent's titles are ignored. */
 	titleSetBy: z.enum(["agent", "user"]).nullable(),
 	serviceName: z.string().nullable(),
+	/** The newest ask the thread waits on, for the row's approval preview (#1024). */
+	waitingAsk: z
+		.object({ kind: AskKindSchema, title: z.string() })
+		.nullable()
+		.optional(),
+	/** The thread's composer keeps unsent words or files (#1024). */
+	hasDraft: z.boolean().optional(),
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
 

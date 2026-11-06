@@ -102,6 +102,8 @@ describe("IncidentsController - storm path alert serialization", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -193,6 +195,8 @@ describe("IncidentsController - storm path alert serialization", () => {
 			{} as unknown as IntegrationsService,
 			{} as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -271,6 +275,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -310,6 +316,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 			} as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		await (getHandlers(controller).investigate as (a: { input: { id: string; brief: string } }) => Promise<unknown>)({
@@ -350,6 +358,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 				ready(),
 				{} as never,
+				{ consume: async () => "none" } as never,
+				{ compose: async () => undefined } as never,
 			);
 			const text = `Is the pool still saturated? ${"x".repeat(200)}`;
 			const result = await (getHandlers(controller).chat as Chat)({
@@ -382,6 +392,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{ getIntegrationsForService: vi.fn() } as unknown as IntegrationsService,
 				ready(),
 				{} as never,
+				{ consume: async () => "none" } as never,
+				{ compose: async () => undefined } as never,
 			);
 			await expect(
 				(getHandlers(controller).chat as Chat)({ input: { id: mockIncident.id, text: "hi" } }),
@@ -405,6 +417,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 					ensureReady: vi.fn().mockResolvedValue({ ready: false, reason: "Codex: sign in needed" }),
 				} as unknown as HarnessService,
 				{} as never,
+				{ consume: async () => "none" } as never,
+				{ compose: async () => undefined } as never,
 			);
 			await expect(
 				(getHandlers(controller).chat as Chat)({ input: { id: mockIncident.id, text: "hi" } }),
@@ -429,6 +443,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 					resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 				} as unknown as HarnessService,
 				{} as never,
+				{ consume: async () => "none" } as never,
+				{ compose: async () => undefined } as never,
 			);
 			const investigate = getHandlers(controller).investigate as (a: {
 				input: { id: string; accessLevel?: string };
@@ -490,6 +506,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{ getIntegrationsForService: vi.fn() } as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const result = await getHandlers(controller).investigate({
@@ -523,6 +541,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const thrown = await getHandlers(controller)
@@ -541,6 +561,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 
 	describe("a run's own agent, model and effort (#673 w52)", () => {
 		const make = (ready: { ready: boolean; reason?: string }) => {
+			const consume = vi.fn(async () => "sent");
 			const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-4") };
 			const investigationsService = {
 				startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-4" }, created: true }),
@@ -560,13 +581,35 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 				harnessService as unknown as HarnessService,
 				{} as never,
+				{ consume } as never,
+				{ compose: async () => undefined } as never,
 			);
 			const handlers = getHandlers(controller) as unknown as Record<
 				"investigate" | "chat",
 				(a: { input: Record<string, unknown> }) => Promise<unknown>
 			>;
-			return { dispatchService, investigationsService, harnessService, handlers };
+			return { dispatchService, investigationsService, harnessService, handlers, consume };
 		};
+
+		it("tombstones the chat's draft only once its job is stored (#1024)", async () => {
+			const t = make({ ready: true });
+			const input = { id: mockIncident.id, text: "hi", draftScope: `new:incident:${mockIncident.id}`, draftRev: 2 };
+			t.dispatchService.addInvestigationJob.mockResolvedValueOnce(null);
+			await t.handlers.chat({ input });
+			expect(t.consume).not.toHaveBeenCalled();
+			await t.handlers.chat({ input });
+			expect(t.consume).toHaveBeenCalledWith(input.draftScope, 2);
+		});
+
+		it("a tombstone that fails after the job is stored does not fail the chat (#1024)", async () => {
+			const t = make({ ready: true });
+			t.consume.mockRejectedValueOnce(new Error("db locked"));
+			await expect(
+				t.handlers.chat({
+					input: { id: mockIncident.id, text: "hi", draftScope: `new:incident:${mockIncident.id}`, draftRev: 1 },
+				}),
+			).resolves.toMatchObject({ queued: true });
+		});
 
 		it("gates on the agent the request names, with that agent's reason", async () => {
 			const t = make({ ready: false, reason: "Codex: sign in needed" });
@@ -634,6 +677,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -699,6 +744,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -755,6 +802,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -792,6 +841,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as unknown as IntegrationsService,
 			{} as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -856,6 +907,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as any,
 			{} as unknown as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -912,6 +965,8 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 			{} as IntegrationsService,
 			{} as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 		const procedures = controller.incidents() as unknown as Record<
 			string,
@@ -1068,6 +1123,8 @@ describe("IncidentsController - merge (#673 w37)", () => {
 			{} as IntegrationsService,
 			{} as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 		const procedures = controller.incidents() as unknown as Record<
 			string,
@@ -1121,6 +1178,8 @@ describe("IncidentsController - runs as threads (#673)", () => {
 			{} as IntegrationsService,
 			{} as HarnessService,
 			{} as never,
+			{ consume: async () => "none" } as never,
+			{ compose: async () => undefined } as never,
 		);
 		const at = new Date("2026-10-07T10:00:00Z");
 		const out = (

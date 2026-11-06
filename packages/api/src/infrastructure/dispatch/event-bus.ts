@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { FollowUpKind, JobAttachment } from "@prismalens/contracts";
+import type {
+	AskAnswer,
+	FollowUpKind,
+	JobAttachment,
+	JobMessageContext,
+} from "@prismalens/contracts";
+import type { AskResult } from "@prismalens/engine";
 
 /**
  * EventBus — the dispatch-layer fan-out seam that replaced Redis pub/sub.
@@ -77,6 +83,8 @@ export interface RunMessageRequest {
 	kind?: FollowUpKind;
 	/** A queued message's id, which its events carry (#820). */
 	id?: string;
+	/** Its quotes and references, and the text they add for the agent (#1024). */
+	context?: JobMessageContext;
 	reply(state: MessageState): void;
 }
 
@@ -84,12 +92,24 @@ export function runAskTopic(investigationId: string): string {
 	return `investigation:ask:${investigationId}`;
 }
 
-/** The operator's Approve or Deny for one of the agent's asks (#673 w21). */
+/** The operator's answer to one of the run's asks (#673 w21, #1024). */
 export interface RunAskRequest {
 	askId: string;
-	approve: boolean;
-	/** null: no ask by that id waits. */
-	reply(outcome: "approved" | "denied" | null): void;
+	answer: AskAnswer;
+	/** null: no ask by that id waits, or the answer does not fit it. */
+	reply(result: AskResult | "invalid" | null): void;
+}
+
+export function runQueueTopic(investigationId: string): string {
+	return `investigation:queue:${investigationId}`;
+}
+
+/** Edit (`text`) or withdraw (`null`) a queued message before the run claims it (#1024). */
+export interface RunQueueRequest {
+	messageId: string;
+	text: string | null;
+	/** null: it was claimed, or never queued on this run. */
+	reply(state: "edited" | "withdrawn" | null): void;
 }
 
 /** `conflict`: the receiving turn owes something else than the message asks for. */

@@ -881,3 +881,105 @@ describe("AcpSession permission stream items (#673 w21)", () => {
 	});
 });
 
+
+describe("elicitation/create (#1024)", () => {
+	const open = (elicit?: ConstructorParameters<typeof AcpSession>[0]["elicit"]) =>
+		new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: "/tmp",
+			env: { ...process.env, FAKE_ACP_MODE: "elicit" },
+			permission: () => ({ allow: true, optionId: "once", outcome: "approved" }),
+			...(elicit ? { elicit } : {}),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+		});
+	const said = (items: AcpStreamItem[]) =>
+		items
+			.map((i) =>
+				i.kind === "update" && i.update.sessionUpdate === "agent_message_chunk"
+					? ((i.update.content as { text?: string })?.text ?? "")
+					: "",
+			)
+			.join("");
+
+	it("declares form elicitation, yields the question as an ask, and returns the answer as form content", async () => {
+		const session = open((ask) => ({
+			timeoutMs: 60_000,
+			outcome: Promise.resolve({
+				outcome: "answered",
+				answer: {
+					kind: "question",
+					answers: {
+						[ask.kind === "question" ? (ask.questions[0]?.id ?? "") : ""]: {
+							options: ["prod"],
+							other: "and canary",
+						},
+					},
+				},
+			}),
+		}));
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) items.push(item);
+		await session.close();
+		const asked = items.find((i) => i.kind === "elicit_asked");
+		expect(asked).toMatchObject({
+			ask: { kind: "question", title: "Which environment?" },
+		});
+		expect(items.find((i) => i.kind === "elicit_closed")).toMatchObject({
+			closed: { outcome: "answered" },
+		});
+		expect(said(items)).toContain(
+			'Elicited: {"action":"accept","content":{"question_0":"prod","question_0_custom":"and canary"}}',
+		);
+	});
+
+	it("an unattended run's policy declines at once, with no ask shown", async () => {
+		const session = open(() => ({ outcome: "unattended" }));
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) items.push(item);
+		await session.close();
+		expect(items.some((i) => i.kind === "elicit_asked")).toBe(false);
+		expect(said(items)).toContain('Elicited: {"action":"decline"}');
+	});
+
+	it("a handler that throws declines at once, so the agent is never left waiting (#1024)", async () => {
+		const session = open(() => {
+			throw new Error("policy broke");
+		});
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) items.push(item);
+		await session.close();
+		expect(said(items)).toContain('Elicited: {"action":"decline"}');
+		expect(items.at(-1)?.kind).toBe("done");
+	});
+
+	it("without a handler the capability is not declared", async () => {
+		const session = open();
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) items.push(item);
+		await session.close();
+		expect(said(items)).toContain('"action":"not-declared"');
+	});
+});
+
+describe("run-scoped attachment folder (#1024)", () => {
+	it("an agent that advertises additionalDirectories is marked, so a big file is copied and linked as file://", async () => {
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: "/tmp",
+			roots: { cwd: "/tmp", additional: ["/tmp/runs/r1/attachments"] },
+			env: { ...process.env, FAKE_ADDITIONAL_DIRS: "1" },
+			permission: () => ({ allow: true, optionId: "once", outcome: "approved" }),
+			initTimeoutMs: 5_000,
+		});
+		await session.open();
+		expect(session.takesDirectories).toBe(true);
+		await session.close();
+	});
+});

@@ -54,7 +54,7 @@ export class ScenarioApp {
 	constructor() {
 		const bin = join(this.workspace, "harness-bin");
 		mkdirSync(bin);
-		installFakeAgent(bin, { session: "success" });
+		installFakeAgent(bin, { session: "success", stateDir: this.fakeState });
 		Object.assign(process.env, {
 			PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`,
 			PRISMALENS_TELEMETRY: "off",
@@ -205,6 +205,38 @@ export class ScenarioApp {
 		return JSON.parse(out) as { id: string };
 	}
 
+	/** This app's own fake-agent state, so a capability one scenario turns on stays here (#1024). */
+	get fakeState(): string {
+		return join(this.workspace, "fake-agent-state");
+	}
+
+	/** Uploads any file as this paired device (#1024: not only text). */
+	async uploadFile(
+		path: string,
+		file: File,
+	): Promise<{ id: string; mimeType: string }> {
+		const body = new FormData();
+		body.append("file", file);
+		const res = await fetch(`${this.url}/api${path}`, {
+			method: "POST",
+			headers: { origin: this.url, cookie: this.cookie },
+			body,
+		});
+		const out = await res.text();
+		if (!res.ok)
+			throw new Error(`POST ${path} → ${res.status}: ${out.slice(0, 300)}`);
+		return JSON.parse(out) as { id: string; mimeType: string };
+	}
+
+	/** The running app's ask seat (#1024): a scenario opens a tool's ask as surface F does. */
+	async asks() {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { AsksService } = await import(
+			"../../../src/modules/asks/asks.service.js"
+		);
+		return this.app.get(AsksService);
+	}
+
 	/** The running app's gateway: a scenario reads what a run's tools answer. */
 	async gateway() {
 		if (!this.app) throw new Error("PrismaLens is not running");
@@ -212,6 +244,23 @@ export class ScenarioApp {
 			"../../../src/modules/gateway/gateway.service.js"
 		);
 		return this.app.get(GatewayService);
+	}
+
+	/** A request as this paired device, answered raw, so a test can read a refusal's body (#1024). */
+	async fetchAs(
+		method: string,
+		path: string,
+		body: unknown,
+	): Promise<Response> {
+		return fetch(`${this.url}/api${path}`, {
+			method,
+			headers: {
+				"content-type": "application/json",
+				origin: this.url,
+				cookie: this.cookie,
+			},
+			body: JSON.stringify(body),
+		});
 	}
 
 	/** A GET as this paired device, answered raw: for a stream or an error body. */

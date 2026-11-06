@@ -13,6 +13,9 @@ import {
 	SHUTDOWN_REASON,
 } from "./permission.js";
 
+const APPROVE = { kind: "permission", decision: "approve" } as const;
+const DENY = { kind: "permission", decision: "deny" } as const;
+
 describe("askWindow", () => {
 	it("no wall clock: unclamped with full ask timeout", () => {
 		expect(askWindow(600_000, undefined, 50_000)).toEqual({
@@ -106,7 +109,7 @@ describe("createAskChannel", () => {
 			},
 		]);
 		expect(changes).toEqual([askedAt]);
-		channel.answer("ask1", true);
+		channel.answer("ask1", APPROVE);
 		await p;
 		expect(changes).toEqual([askedAt, null]);
 		expect(channel.pending()).toEqual([]);
@@ -126,8 +129,8 @@ describe("createAskChannel", () => {
 			},
 			{ askId: "ask1", signal: ac.signal },
 		);
-		const outcome = channel.answer("ask1", true);
-		expect(outcome).toBe("approved");
+		const outcome = channel.answer("ask1", APPROVE);
+		expect(outcome?.outcome).toBe("approved");
 		const decision = await p;
 		expect(decision).toEqual({
 			allow: true,
@@ -149,8 +152,8 @@ describe("createAskChannel", () => {
 			},
 			{ askId: "ask1", signal: ac.signal },
 		);
-		const outcome = channel.answer("ask1", false);
-		expect(outcome).toBe("denied");
+		const outcome = channel.answer("ask1", DENY);
+		expect(outcome?.outcome).toBe("denied");
 		const decision = await p;
 		expect(decision).toEqual({
 			allow: false,
@@ -243,7 +246,7 @@ describe("createAskChannel", () => {
 
 	it("answer() on an unknown id returns null", () => {
 		const channel = createAskChannel({ timeoutMs: 5000 });
-		expect(channel.answer("unknown", true)).toBeNull();
+		expect(channel.answer("unknown", APPROVE)).toBeNull();
 	});
 
 	it("approve with no allow option resolves denied", async () => {
@@ -254,8 +257,8 @@ describe("createAskChannel", () => {
 			{ options: [{ optionId: "reject", kind: "reject_once" }] },
 			{ askId: "ask1", signal: ac.signal },
 		);
-		const outcome = channel.answer("ask1", true);
-		expect(outcome).toBe("denied");
+		const outcome = channel.answer("ask1", APPROVE);
+		expect(outcome?.outcome).toBe("denied");
 		const decision = await p;
 		expect(decision).toEqual({
 			allow: false,
@@ -837,7 +840,7 @@ describe("asks a person allowed always on a schedule (#1020 R33, CP4 OBJ-011)", 
 		const verdict = policy(ask("execute", { command: "git push origin main --force", cwd: "/w" }), ctx);
 		expect(verdict).toBeInstanceOf(Promise);
 		expect(channel.pending()).toHaveLength(1);
-		channel.answer(channel.pending()[0]?.askId as string, false);
+		channel.answer(channel.pending()[0]?.askId as string, DENY);
 		await expect(verdict).resolves.toMatchObject({ allow: false, outcome: "denied" });
 		expect(policy(npmTest, ctx)).toEqual({ allow: true, optionId: "yes", outcome: "allowed" });
 	});
@@ -849,7 +852,76 @@ describe("asks a person allowed always on a schedule (#1020 R33, CP4 OBJ-011)", 
 		expect(verdict).toBeInstanceOf(Promise);
 		expect(channel.pending()).toHaveLength(1);
 		const id = channel.pending()[0]?.askId as string;
-		expect(channel.answer(id, false)).toBe("denied");
+		expect(channel.answer(id, DENY)?.outcome).toBe("denied");
 		await expect(verdict).resolves.toMatchObject({ allow: false, outcome: "denied" });
 	});
 });
+
+describe("AskChannel answers (#1024)", () => {
+	const options = [
+		{ optionId: "always", kind: "allow_always" },
+		{ optionId: "once", kind: "allow_once" },
+		{ optionId: "reject", kind: "reject_once" },
+	] as PermissionRequest["options"];
+
+	it("Always allow picks the agent's allow_always option", async () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const p = channel.policy(
+			{ options },
+			{ askId: "a", signal: new AbortController().signal },
+		);
+		channel.answer("a", { ...APPROVE, scope: "always" });
+		expect(await p).toMatchObject({ allow: true, optionId: "always" });
+		channel.close();
+	});
+
+	it("a deny with a reason returns the reason for the host to queue", async () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const p = channel.policy(
+			{ options },
+			{ askId: "a", signal: new AbortController().signal },
+		);
+		expect(channel.answer("a", { ...DENY, reason: "use staging" })).toEqual({
+			outcome: "denied",
+			reason: "use staging",
+		});
+		expect(await p).toMatchObject({ allow: false, optionId: "reject" });
+	});
+
+	it("a held question settles on an answer it accepts, and refuses one it does not", async () => {
+		const channel = createAskChannel();
+		const held = channel.hold(
+			"q",
+			{ kind: "question", accepts: (a) => a.kind === "question" },
+			{ timeoutMs: 0 },
+		);
+		expect(channel.pending().map((p) => p.askId)).toEqual(["q"]);
+		expect(channel.answer("q", APPROVE)).toBe("invalid");
+		expect(channel.pending().map((p) => p.askId)).toEqual(["q"]);
+		const answer = { kind: "question", answers: { x: { options: ["a"] } } } as const;
+		expect(channel.answer("q", answer)).toEqual({ outcome: "answered" });
+		expect(await held).toEqual({ outcome: "answered", answer });
+		expect(channel.answer("q", answer)).toBeNull();
+	});
+
+	it("a held ask expires after its window, and stops when the run ends", async () => {
+		vi.useFakeTimers();
+		const channel = createAskChannel();
+		const expiring = channel.hold("e", { kind: "input", accepts: () => true }, { timeoutMs: 1000 });
+		const stopping = channel.hold("s", { kind: "input", accepts: () => true }, { timeoutMs: 0 });
+		vi.advanceTimersByTime(1000);
+		expect(await expiring).toEqual({ outcome: "expired" });
+		channel.close();
+		expect(await stopping).toEqual({ outcome: "stopped" });
+		vi.useRealTimers();
+	});
+
+	it("a held ask that never lapses still has a valid expiry date", () => {
+		const channel = createAskChannel();
+		void channel.hold("n", { kind: "input", accepts: () => true }, { timeoutMs: 0 });
+		const expiry = channel.pending()[0]?.expiresAt;
+		expect(Number.isNaN(expiry?.getTime())).toBe(false);
+		channel.close();
+	});
+});
+

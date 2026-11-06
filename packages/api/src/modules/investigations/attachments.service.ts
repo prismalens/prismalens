@@ -20,9 +20,8 @@ import { Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import { getAppDataDir } from "@prismalens/config";
 import {
-	ATTACHMENT_IMAGE_MAX_BYTES,
 	ATTACHMENT_IMAGE_TYPES,
-	ATTACHMENT_TEXT_MAX_BYTES,
+	ATTACHMENT_MAX_BYTES,
 	type Attachment,
 	attachmentKind,
 	type JobAttachment,
@@ -55,6 +54,13 @@ async function sniffedType(
 		(ATTACHMENT_IMAGE_TYPES as readonly string[]).includes(found.mime)
 		? found.mime
 		: null;
+}
+
+/** A file that is neither an inline image nor text: the type its bytes show, else UTF-8 text or binary. */
+async function otherType(bytes: Buffer): Promise<string> {
+	const found = await fileTypeFromBuffer(bytes);
+	if (found) return found.mime;
+	return isUtf8(bytes) ? "text/plain" : "application/octet-stream";
 }
 
 function writeAttachment(id: string, bytes: Buffer): void {
@@ -275,32 +281,19 @@ export class AttachmentsService {
 		return row;
 	}
 
-	/** The checks every upload passes: kind, size, and the type the bytes are. */
+	/** The checks every upload passes: size, and the type the bytes are (#1024: any file to 25 MB). */
 	private async accept(
 		file: File,
 	): Promise<{ bytes: Buffer; mimeType: string; sha256: string }> {
-		const kind = attachmentKind(file);
-		if (!kind)
-			throw new ORPCError("UNSUPPORTED_MEDIA_TYPE", {
-				message:
-					"Attach an image (PNG, JPEG, WebP, GIF) or a text file (.log, .json, .csv, .md, .txt, .yaml).",
-			});
-		const limit =
-			kind === "image" ? ATTACHMENT_IMAGE_MAX_BYTES : ATTACHMENT_TEXT_MAX_BYTES;
-		if (file.size > limit)
+		if (file.size > ATTACHMENT_MAX_BYTES)
 			throw new ORPCError("PAYLOAD_TOO_LARGE", {
-				message:
-					kind === "image" ? "Images up to 4 MB" : "Text files up to 256 KB",
+				message: "Files up to 25 MB",
 			});
 		const bytes = Buffer.from(await file.arrayBuffer());
-		const mimeType = await sniffedType(kind, bytes);
-		if (!mimeType)
-			throw new ORPCError("UNSUPPORTED_MEDIA_TYPE", {
-				message:
-					kind === "image"
-						? "That file is not a PNG, JPEG, WebP or GIF image."
-						: "That file is not UTF-8 text.",
-			});
+		const kind = attachmentKind(file);
+		const mimeType =
+			(kind ? await sniffedType(kind, bytes) : null) ??
+			(await otherType(bytes));
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		return { bytes, mimeType, sha256 };
 	}

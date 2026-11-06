@@ -18,7 +18,6 @@
 			"!**/*.yml",
 			"!**/routeTree.gen.ts",
 			"!**/project.inlang",
-			"!packages/api/openapi.json",
 			"!packages/@prismalens/engine/eval/captures",
 			"!packages/@prismalens/engine/src/run/__fixtures__/red-team-corpus.json",
 			"!packages/frontend/src/app.css",
