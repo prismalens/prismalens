@@ -493,4 +493,17 @@ describe("a folder project's remote", () => {
 		svc.forgetRemotes();
 		expect((await svc.remotes()).map((r) => r.repositoryId)).toEqual(["folder"]);
 	});
+
+	it("Given a watch pass, Then each PR is read from its host now, and a host that does not answer is reported, not swallowed (#1024 spec B)", async () => {
+		const down = setup({ routes: {} });
+		await down.svc.readAgentEvents(RUN, [step(PR_URL)]);
+		const failed = await down.svc.refreshForWatch(RUN);
+		expect(failed.failed).toBe(true);
+		expect(failed.pullRequests[0]).toMatchObject({ state: "unknown" });
+		const up = setup();
+		await up.svc.readAgentEvents(RUN, [step(PR_URL)]);
+		const read = await up.svc.refreshForWatch(RUN);
+		expect(read.failed).toBe(false);
+		expect(read.pullRequests[0]).toMatchObject({ state: "draft" });
+	});
 });

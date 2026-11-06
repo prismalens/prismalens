@@ -245,8 +245,11 @@ export class SessionLifecycleService implements OnModuleInit {
 			if (wake.kind === "limit") return this.fireLimit(wake, row, now);
 			return this.fireIdleCompact(wake, row, now);
 		}
-		// The user stopped or settled the thread: what its agent asked for never takes it up again.
-		if (row.settledAt !== null || row.status === "cancelled") {
+		// The user stopped the thread, or settled it with nothing since: its agent's wakes end.
+		const settled =
+			row.settledAt !== null &&
+			row.settledAt >= (row.lastActivityAt ?? row.updatedAt);
+		if (settled || row.status === "cancelled") {
 			await this.wakes.finish(wake.id, "cancelled", undefined, this.now());
 			return;
 		}

@@ -41,7 +41,7 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 		setting: { findUnique: vi.fn(async () => ({ value: JSON.stringify({ prStatus: opts.prStatus ?? true }) })) },
 		investigation: { findUnique: vi.fn(async () => ({ id: THREAD })) },
 		threadWake: {
-			count: vi.fn(async ({ where }: { where: { kind: string } }) => wakes.filter((w) => w.kind === where.kind).length),
+			count: vi.fn(async ({ where }: { where: { kind: { in: string[] } } }) => wakes.filter((w) => where.kind.in.includes(w.kind)).length),
 		},
 		prWatch: {
 			upsert: vi.fn(async ({ create }: { create: (typeof watches)[number] }) => {
@@ -77,7 +77,7 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 	};
 	const prSvc = {
 		stored: vi.fn(async () => prs),
-		list: vi.fn(async (): Promise<{ pullRequests: PullRequest[]; statusEnabled: boolean }> => ({ pullRequests: prs, statusEnabled: true })),
+		refreshForWatch: vi.fn(async (): Promise<{ pullRequests: PullRequest[]; failed: boolean }> => ({ pullRequests: prs, failed: false })),
 		linkFromUser: vi.fn(async (_t: string, url: string) => {
 			if (!url.includes("acme")) throw new ORPCError("BAD_REQUEST", { message: "not on a repository PrismaLens knows" });
 			return prs[0] as PullRequest;
@@ -134,9 +134,11 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 	});
 
 	it("Given two watches that end in one pass, Then their wake carries both reasons rather than losing one", async () => {
-		const h = harness({ prs: [pr({ id: "a", number: 1, state: "merged" }), pr({ id: "b", number: 2, review: "approved" })] });
+		const h = harness({ prs: [pr({ id: "a", number: 1 }), pr({ id: "b", number: 2 })] });
 		await h.svc.watch(THREAD, "a", "merged");
 		await h.svc.watch(THREAD, "b", "review");
+		h.prs[0] = pr({ id: "a", number: 1, state: "merged" });
+		h.prs[1] = pr({ id: "b", number: 2, review: "approved" });
 		await h.svc.tick();
 		const pending = h.wakes.filter((w) => w.state === "pending");
 		expect(pending).toHaveLength(1);
@@ -197,7 +199,7 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		h.prisma.setting.findUnique.mockResolvedValue({ value: JSON.stringify({ prStatus: false }) });
 		h.prs[0] = pr({ state: "merged" });
 		await h.svc.tick();
-		expect(h.prSvc.list).not.toHaveBeenCalled();
+		expect(h.prSvc.refreshForWatch).not.toHaveBeenCalled();
 		expect(h.watches()).toHaveLength(1);
 		expect(h.wakes).toEqual([]);
 	});
@@ -205,26 +207,55 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 	it("Given a host that does not answer, Then the next passes back off before it is read again", async () => {
 		const h = harness();
 		await h.svc.watch(THREAD, "pr1", "merged");
-		h.prSvc.list.mockRejectedValue(new Error("ECONNREFUSED"));
+		h.prSvc.refreshForWatch.mockResolvedValue({ pullRequests: h.prs, failed: true });
 		const t0 = Date.now();
 		await h.svc.tick(new Date(t0));
 		await h.svc.tick(new Date(t0 + 2 * 60_000));
-		expect(h.prSvc.list).toHaveBeenCalledTimes(1);
+		expect(h.prSvc.refreshForWatch).toHaveBeenCalledTimes(1);
 		await h.svc.tick(new Date(t0 + 5 * 60_000));
-		expect(h.prSvc.list).toHaveBeenCalledTimes(2);
-		h.prSvc.list.mockResolvedValue({ pullRequests: [pr({ state: "merged" })], statusEnabled: true });
+		expect(h.prSvc.refreshForWatch).toHaveBeenCalledTimes(2);
+		h.prSvc.refreshForWatch.mockResolvedValue({ pullRequests: [pr({ state: "merged" })], failed: false });
 		await h.svc.tick(new Date(t0 + 60 * 60_000));
 		expect(h.wakes).toHaveLength(1);
 	});
 
 	it("Given a pending pr_watch wake already handed to the agent, Then a later end starts a new wake rather than repeating it", async () => {
-		const h = harness({ prs: [pr({ id: "a", number: 1, state: "merged" })] });
+		const h = harness({ prs: [pr({ id: "a", number: 1 })] });
 		h.wakes.push({ kind: "pr_watch", at: new Date(), reason: "old news", state: "pending", payload: { sentTo: THREAD } });
 		await h.svc.watch(THREAD, "a", "merged");
+		h.prs[0] = pr({ id: "a", number: 1, state: "merged" });
 		await h.svc.tick();
 		const pending = h.wakes.filter((w) => w.state === "pending");
 		expect(pending).toHaveLength(1);
 		expect(pending[0]?.reason).not.toContain("old news");
 	});
-});
 
+	it("Given a PR whose condition already holds, Then the watch is refused, so watching a merged PR again never wakes the thread", async () => {
+		const h = harness({ prs: [pr({ state: "merged" })] });
+		expect(await h.svc.watch(THREAD, "pr1", "checks_done")).toMatchObject({ error: expect.stringContaining("already merged") });
+		const [, , watch] = watchTools(h.svc);
+		expect(await watch?.run({ prId: "pr1", until: "merged" }, { runId: THREAD, signal: new AbortController().signal })).toMatchObject({ failure: { error: "invalid_input" } });
+		expect(h.watches()).toEqual([]);
+	});
+
+	it("Given a day of PR-watch wakes, Then they count in the budget: no more wakes or watches", async () => {
+		const h = harness({ prs: [pr({ id: "x" })] });
+		for (let i = 0; i < WAKES_PER_DAY; i++) h.wakes.push({ kind: "pr_watch", at: new Date(), reason: `r${i}`, state: "done", payload: {} });
+		expect(await h.svc.wakeup(THREAD, 60, "again")).toMatchObject({ limit: true });
+		expect(await h.svc.watch(THREAD, "x", "merged")).toMatchObject({ limit: true });
+	});
+
+	it("Given a host that never answers, Then its backoff entry goes once the thread watches nothing", async () => {
+		const h = harness();
+		await h.svc.watch(THREAD, "pr1", "merged");
+		h.prSvc.refreshForWatch.mockResolvedValue({ pullRequests: h.prs, failed: true });
+		const t0 = Date.now();
+		await h.svc.tick(new Date(t0));
+		await h.svc.unwatch(THREAD, "pr1");
+		await h.svc.tick(new Date(t0 + 60_000));
+		await h.svc.watch(THREAD, "pr1", "merged");
+		h.prSvc.refreshForWatch.mockClear();
+		await h.svc.tick(new Date(t0 + 61_000));
+		expect(h.prSvc.refreshForWatch).toHaveBeenCalledTimes(1);
+	});
+});

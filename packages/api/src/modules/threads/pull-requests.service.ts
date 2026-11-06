@@ -334,9 +334,30 @@ export class PullRequestsService implements OnModuleInit {
 	}
 
 	/** Reads stale rows from their hosts; a host that fails leaves the row as it was. */
+	/**
+	 * A PR watch's pass (#1024 spec B): every PR read from its host now, and whether any
+	 * host failed to answer, so the watch can back off instead of asking again.
+	 */
+	async refreshForWatch(
+		investigationId: string,
+	): Promise<{ pullRequests: PullRequest[]; failed: boolean }> {
+		const failures: string[] = [];
+		const rows = await this.refreshRows(
+			await this.rows(investigationId),
+			true,
+			failures,
+		);
+		return {
+			pullRequests: rows.map((r) => this.view(r)),
+			failed: failures.length > 0,
+		};
+	}
+
 	private async refreshRows(
 		rows: PullRequestRow[],
 		force: boolean,
+		/** Each row whose host did not answer, for a caller that backs off. */
+		failures?: string[],
 	): Promise<PullRequestRow[]> {
 		const remotes = await this.remotes();
 		const out: PullRequestRow[] = [];
@@ -373,6 +394,7 @@ export class PullRequestsService implements OnModuleInit {
 				this.logger.warn(
 					`Could not read ${pr.host} ${pr.repo}#${pr.number}: ${e instanceof Error ? e.message : String(e)}`,
 				);
+				failures?.push(row.id);
 				out.push(row);
 			}
 		}

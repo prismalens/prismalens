@@ -35,7 +35,7 @@ const SEQ_RETRIES = 8;
 export const WAKES_PER_DAY = 12;
 export const WATCHES_PER_THREAD = 5;
 const DAY_MS = 24 * 60 * 60_000;
-/** A host that does not answer is read again after 2, 4, 8… minutes, at most an hour apart. */
+/** A host that does not answer is read again after 4, 8, 16… minutes, at most an hour apart. */
 const BACKOFF_MAX_MS = 60 * 60_000;
 
 const prName = (pr: Pick<PullRequest, "repo" | "number">) =>
@@ -100,16 +100,9 @@ export class ThreadWatchesService
 		{ at: string; replaced: boolean } | { error: string; limit?: true }
 	> {
 		if (!(await this.thread(runId))) return { error: "This run is gone." };
-		const recent = await this.prisma.threadWake.count({
-			where: {
-				investigationId: runId,
-				kind: "agent",
-				createdAt: { gte: new Date(Date.now() - DAY_MS) },
-			},
-		});
-		if (recent >= WAKES_PER_DAY)
+		if (await this.overBudget(runId))
 			return {
-				error: `This thread already scheduled ${WAKES_PER_DAY} wakes in the last 24 hours.`,
+				error: `This thread already woke itself ${WAKES_PER_DAY} times in the last 24 hours.`,
 				limit: true,
 			};
 		const replaced =
@@ -158,6 +151,17 @@ export class ThreadWatchesService
 		if (!pr)
 			return {
 				error: `No pull request "${prId}" is linked to this thread.`,
+			};
+		// Its condition already holds: the watch would wake the thread at once, again on every retry.
+		const already = watchMet(pr, until);
+		if (already)
+			return {
+				error: `Pull request ${prName(pr)} is already ${already}; there is nothing to watch for.`,
+			};
+		if (await this.overBudget(runId))
+			return {
+				error: `This thread already woke itself ${WAKES_PER_DAY} times in the last 24 hours.`,
+				limit: true,
 			};
 		const watching = await this.prisma.prWatch.findMany({
 			where: { investigationId: runId },
@@ -220,25 +224,27 @@ export class ThreadWatchesService
 					...(byThread.get(r.investigationId) ?? []),
 					r,
 				]);
+			// A thread that watches nothing any more forgets its backoff.
+			for (const id of this.failing.keys())
+				if (!byThread.has(id)) this.failing.delete(id);
 			for (const [threadId, watches] of byThread) {
 				const backoff = this.failing.get(threadId);
 				if (backoff && backoff.next > now.getTime()) continue;
-				const prs = await this.prs
-					.list(threadId, { force: true })
-					.then((l) => {
-						this.failing.delete(threadId);
-						return l.pullRequests;
-					})
-					.catch(() => {
-						const fails = (backoff?.fails ?? 0) + 1;
-						this.failing.set(threadId, {
-							fails,
-							next:
-								now.getTime() +
-								Math.min(PR_WATCH_EVERY_MS * 2 ** fails, BACKOFF_MAX_MS),
-						});
-						return this.prs.stored(threadId);
+				const { pullRequests: prs, failed } = await this.prs
+					.refreshForWatch(threadId)
+					.catch(async () => ({
+						pullRequests: await this.prs.stored(threadId),
+						failed: true,
+					}));
+				if (failed) {
+					const fails = (backoff?.fails ?? 0) + 1;
+					this.failing.set(threadId, {
+						fails,
+						next:
+							now.getTime() +
+							Math.min(PR_WATCH_EVERY_MS * 2 ** fails, BACKOFF_MAX_MS),
 					});
+				} else this.failing.delete(threadId);
 				for (const w of watches) {
 					const until = w.until as PrWatchUntil;
 					const pr = prs.find((p) => p.id === w.prId);
@@ -274,14 +280,26 @@ export class ThreadWatchesService
 	 */
 	private async wakeWith(threadId: string, said: string, now: Date) {
 		const pending = await this.wakes.latest(threadId, "pr_watch");
-		const joinable =
-			pending?.state === "pending" &&
-			pending.payload.sentTo === undefined &&
-			!pending.reason.split("\n").includes(said);
-		const reason = joinable ? `${pending.reason}\n${said}` : said;
+		const unsent =
+			pending?.state === "pending" && pending.payload.sentTo === undefined;
+		// Already in the waiting wake: rescheduling would only drop its other lines.
+		if (unsent && pending.reason.split("\n").includes(said)) return;
+		const reason = unsent ? `${pending.reason}\n${said}` : said;
 		await this.wakes.schedule(threadId, "pr_watch", now, reason, {
 			from: "pr_watch",
 		});
+	}
+
+	/** The thread's own wakes in the last 24 hours, agent and PR watch alike, at the budget. */
+	private async overBudget(runId: string): Promise<boolean> {
+		const recent = await this.prisma.threadWake.count({
+			where: {
+				investigationId: runId,
+				kind: { in: ["agent", "pr_watch"] },
+				createdAt: { gte: new Date(Date.now() - DAY_MS) },
+			},
+		});
+		return recent >= WAKES_PER_DAY;
 	}
 
 	private thread(id: string) {
