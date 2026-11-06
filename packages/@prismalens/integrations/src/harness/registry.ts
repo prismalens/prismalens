@@ -152,7 +152,7 @@ export async function executeTool(
 			"Fix the named fields and call again with the same tool.",
 		);
 	} else {
-		const timeoutMs = ctx.timeoutMs ?? CALL_TIMEOUT_MS;
+		const timeoutMs = ctx.timeoutMs ?? tool.timeoutMs ?? CALL_TIMEOUT_MS;
 		const stop = new AbortController();
 		const signal = AbortSignal.any([ctx.signal, stop.signal]);
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -172,8 +172,8 @@ export async function executeTool(
 			tool.run(parsed.data, { runId: ctx.runId, signal }),
 		);
 		try {
-			// A record tool is never cut short: a late write after a timeout answer would invite a duplicate.
-			outcome = await (tool.effect === "record"
+			// A record or act tool is never cut short: a late write after a timeout answer would invite a duplicate.
+			outcome = await (tool.effect !== "read"
 				? running
 				: Promise.race([running, timedOut]));
 		} catch {

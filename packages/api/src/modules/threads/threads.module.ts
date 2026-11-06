@@ -30,6 +30,6 @@ import { ThreadsService } from "./threads.service.js";
 		ThreadContextService,
 		LinksService,
 	],
-	exports: [PullRequestsService],
+	exports: [PullRequestsService, ThreadsService],
 })
 export class ThreadsModule {}

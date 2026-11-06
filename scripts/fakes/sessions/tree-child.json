@@ -1,0 +1,23 @@
+{
+	"description": "A child thread that sends one fact to the member its brief names, then answers (#1024 spec F).",
+	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"turns": [
+		[
+			{
+				"call": {
+					"tool": "thread_send",
+					"arguments": {
+						"to": "{{send-to}}",
+						"type": "fact",
+						"text": "The pool has 10 connections and all are busy.",
+						"requestId": "fact-1"
+					}
+				}
+			},
+			{ "say": "Sent: {{result}}\n" },
+			{ "say": "The pool is exhausted by retries from the api." }
+		]
+	],
+	"followUp": [{ "say": "Heard: {{prompt}}" }],
+	"steer": [{ "say": "Heard: {{prompt}}" }]
+}

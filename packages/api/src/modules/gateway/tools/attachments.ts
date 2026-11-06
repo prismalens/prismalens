@@ -9,6 +9,7 @@ import {
 } from "@prismalens/integrations/harness";
 import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 
 export interface AttachmentItem {
 	id: string;
@@ -137,8 +138,10 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 		defineHarnessTool({
 			name: "attachments_list",
 			title: "Files attached to this thread",
-			description:
-				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with attachment_read.",
+			description: withRules(
+				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with attachment_read. Use it when the operator says they attached something.",
+				"images, which the prompt already carries.",
+			),
 			group: "knowledge",
 			effect: "read",
 			serves: FILE_SUBJECTS,
@@ -157,7 +160,10 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 		defineHarnessTool({
 			name: "attachment_read",
 			title: "Read an attached file",
-			description: `One file attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML and CSV come back as text, and a PDF as its text, at most ${ATTACHMENT_READ_CHARS} characters per call. Any other file comes back as base64 bytes, at most ${ATTACHMENT_READ_BYTES} per call. Pass offset (and length) to read the next chunk.`,
+			description: withRules(
+				`One file attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML and CSV come back as text, and a PDF as its text, at most ${ATTACHMENT_READ_CHARS} characters per call. Any other file comes back as base64 bytes, at most ${ATTACHMENT_READ_BYTES} per call. Pass offset (and length) to read the next chunk. Use it after attachments_list.`,
+				"images the operator's prompt already carries.",
+			),
 			group: "knowledge",
 			effect: "read",
 			serves: FILE_SUBJECTS,

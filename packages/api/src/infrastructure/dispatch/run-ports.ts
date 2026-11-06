@@ -53,6 +53,8 @@ export interface IncidentRepo {
 	serviceName: string;
 	/** A folder with no git: only a thread a person starts runs in it, in place (#1020). */
 	plain?: boolean;
+	/** A child thread's commit or ref; absent takes the default branch's tip (#1024). */
+	at?: string;
 }
 
 export interface RunPorts {

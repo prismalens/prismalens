@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { executeTool, resultValue } from "./registry.js";
 import {
+	autoAllowed,
 	TOOLS_CALL,
 	TOOLS_SEARCH,
 	resolveCall,
@@ -264,5 +265,51 @@ describe("resolveCall", () => {
 		const view = runView(tools, { search: true });
 		const resolved = resolveCall(view, "non_existent_tool", {});
 		expect(resolved).toBeUndefined();
+	});
+});
+
+describe("act tools stay out of search (#1024)", () => {
+	const act = defineHarnessTool({
+		name: "thread_start",
+		title: "Start a thread",
+		description: "Starts a thread.",
+		group: "knowledge",
+		serves: { subjects: EVERY_SUBJECT },
+		effect: "act",
+		input: z.object({}),
+		run: async () => ({ value: { started: true } }),
+	});
+	const read = defineHarnessTool({
+		name: "thread_roster",
+		title: "Roster",
+		description: "Reads the roster.",
+		group: "knowledge",
+		serves: { subjects: EVERY_SUBJECT },
+		effect: "read",
+		input: z.object({}),
+		run: async () => ({ value: { members: [] } }),
+	});
+
+	it("lists an act tool directly and defers only the read one", () => {
+		const view = runView([act, read], { search: true });
+		expect(view.direct.map((t) => t.name)).toContain("thread_start");
+		expect(view.deferred.map((t) => t.name)).toEqual(["thread_roster"]);
+	});
+
+	it("never runs an act tool through tools_call", () => {
+		const view = runView([act, read], { search: true });
+		const resolved = resolveCall(view, TOOLS_CALL, {
+			name: "thread_start",
+			arguments: {},
+		});
+		expect(resolved?.tool.name).toBe(TOOLS_CALL);
+		expect(resolveCall(view, TOOLS_CALL, { name: "thread_roster" })?.tool.name).toBe(
+			"thread_roster",
+		);
+	});
+
+	it("auto-allows act tools in the agent's own prompt, since PrismaLens gates them itself", () => {
+		const view = runView([act, read], { search: false });
+		expect(autoAllowed(view)).toEqual(["thread_start", "thread_roster"]);
 	});
 });

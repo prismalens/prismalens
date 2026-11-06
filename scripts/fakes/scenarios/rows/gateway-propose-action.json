@@ -1,0 +1,49 @@
+{
+	"row": "gateway-propose-action",
+	"kind": "happy",
+	"title": "Proposes a change through PrismaLens's proposal tool, always listed",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "propose_action",
+				"ok": true,
+				"outputHas": "ScenarioProposal"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-propose-action]",
+				"toolName": "$gw:propose_action",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:propose_action",
+						"arguments": {
+							"change": {
+								"kind": "setting",
+								"key": "children",
+								"value": 3
+							},
+							"why": "Three at once is enough here."
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-propose-action]",
+				"resultContains": "ScenarioProposal"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

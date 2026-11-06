@@ -1,0 +1,47 @@
+{
+	"row": "gateway-thread-start",
+	"kind": "happy",
+	"title": "Starts a child thread through PrismaLens's tree tool, always listed",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "thread_start",
+				"ok": true,
+				"outputHas": "ScenarioTreeChild"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-start]",
+				"toolName": "$gw:thread_start",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:thread_start",
+						"arguments": {
+							"title": "Check the database pool",
+							"role": "db",
+							"brief": "Find whether the database pool is exhausted and return the cause.",
+							"requestId": "row-start"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-start]",
+				"resultContains": "ScenarioTreeChild"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

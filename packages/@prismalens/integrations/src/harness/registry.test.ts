@@ -290,6 +290,77 @@ describe("annotationsFor", () => {
 			openWorldHint: false,
 		});
 	});
+
+	it("marks an act tool as neither read-only nor destructive (#1024)", () => {
+		expect(annotationsFor("act")).toEqual({
+			readOnlyHint: false,
+			destructiveHint: false,
+			openWorldHint: false,
+		});
+	});
+});
+
+describe("act tools and limits (#1024)", () => {
+	const ctx = { runId: "r1", signal: new AbortController().signal };
+
+	it("answers a cap refusal as limit_reached with the tool's next", async () => {
+		const capped = defineHarnessTool({
+			name: "capped_tool",
+			title: "Capped",
+			description: "Refuses at a cap.",
+			group: "core",
+			effect: "act",
+			serves: { subjects: EVERY_SUBJECT },
+			input: z.object({}),
+			run: async () =>
+				fail(
+					"limit_reached",
+					"This tree already has 10 live threads.",
+					"Settings → Agent → Threads per tree.",
+				),
+		});
+		const call = await executeTool(capped, {}, ctx);
+		expect(call.isError).toBe(true);
+		expect(resultValue(call.output)).toEqual({
+			error: "limit_reached",
+			message: "This tree already has 10 live threads.",
+			next: "Settings → Agent → Threads per tree.",
+		});
+	});
+
+	it("uses a tool's own timeout for a read tool", async () => {
+		const slow = defineHarnessTool({
+			name: "slow_read",
+			title: "Slow",
+			description: "Never answers.",
+			group: "core",
+			effect: "read",
+			serves: { subjects: EVERY_SUBJECT },
+			input: z.object({}),
+			timeoutMs: 20,
+			run: () => new Promise(() => {}),
+		});
+		const call = await executeTool(slow, {}, ctx);
+		expect(resultValue(call.output).error).toBe("timeout");
+	});
+
+	it("never cuts an act tool short, so a late write is never answered as a timeout", async () => {
+		const act = defineHarnessTool({
+			name: "slow_act",
+			title: "Slow act",
+			description: "Answers after its timeout.",
+			group: "core",
+			effect: "act",
+			serves: { subjects: EVERY_SUBJECT },
+			input: z.object({}),
+			timeoutMs: 10,
+			run: () =>
+				new Promise((r) => setTimeout(() => r({ value: { done: true } }), 40)),
+		});
+		const call = await executeTool(act, {}, ctx);
+		expect(call.isError).toBe(false);
+		expect(resultValue(call.output)).toEqual({ done: true });
+	});
 });
 
 describe("round-3 guarantees (#848)", () => {

@@ -8,6 +8,7 @@ import {
 	type HarnessTool,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 import { ANYWHERE } from "./serves.js";
 
 /** Where a published page goes: the run's own record, by the bearer's run. */
@@ -24,7 +25,10 @@ export function artifactTools(data: ArtifactsData): HarnessTool[] {
 		defineHarnessTool({
 			name: "artifact_publish",
 			title: "Show the operator an HTML page",
-			description: `Publish one self-contained HTML page into this run, for something prose shows badly: a table of findings, a timeline, a chart drawn in inline SVG. Inline CSS and SVG only: scripts do not run and nothing is fetched, so external images, fonts and links will not load. Up to ${ARTIFACT_HTML_CHARS} characters. The operator sees it where you published it and can open it larger.`,
+			description: withRules(
+				`Publish one self-contained HTML page into this run, for something prose shows badly: a table of findings, a timeline, a chart drawn in inline SVG. Inline CSS and SVG only: scripts do not run and nothing is fetched, so external images, fonts and links will not load. Up to ${ARTIFACT_HTML_CHARS} characters. The operator sees it where you published it and can open it larger. Use it for a table, a timeline or a chart.`,
+				"prose or a report: answer in your message.",
+			),
 			group: "record",
 			effect: "record",
 			serves: ANYWHERE,

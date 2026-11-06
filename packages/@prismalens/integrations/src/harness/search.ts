@@ -36,11 +36,12 @@ export function runView(
 	};
 }
 
-/** Tools the agent may run without a card: every level here only reads or writes the run's own record. */
+/**
+ * Tools the agent may run without its own card: `read` and `record` touch only PrismaLens's
+ * records, and an `act` tool is gated by PrismaLens's card, which a bypassed prompt cannot skip.
+ */
 export const autoAllowed = (view: RunView): string[] =>
-	[...view.direct, ...view.deferred]
-		.filter((t) => t.effect === "read" || t.effect === "record")
-		.map((t) => t.name);
+	[...view.direct, ...view.deferred].map((t) => t.name);
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
@@ -59,7 +60,7 @@ function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
 		name: TOOLS_SEARCH,
 		title: "Find more PrismaLens tools",
-		description: `Find PrismaLens tools that are not listed up front, by what you want to do (e.g. "past incidents", "runbooks"). Returns each match's name, description and input schema; run one with ${TOOLS_CALL}.`,
+		description: `Find PrismaLens tools that are not listed up front, by what you want to do (e.g. "past incidents", "runbooks"). Use it before guessing a tool name. Returns each match's name, description and input schema; run one with ${TOOLS_CALL}. Not for tools already listed. Show the user links, not ids. On failure, follow \`next\`.`,
 		group: "core",
 		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },
@@ -99,7 +100,7 @@ function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
 		name: TOOLS_CALL,
 		title: "Run a PrismaLens tool found by search",
-		description: `Run a tool ${TOOLS_SEARCH} returned: pass its exact \`name\` and its \`arguments\` as its input schema describes.`,
+		description: `Run a tool ${TOOLS_SEARCH} returned: pass its exact \`name\` and its \`arguments\` as its input schema describes. Use it only for a name ${TOOLS_SEARCH} gave you. Not for listed tools: call those directly. Show the user links, not ids. On failure, follow \`next\`.`,
 		group: "core",
 		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },

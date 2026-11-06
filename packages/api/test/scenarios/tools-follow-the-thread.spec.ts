@@ -159,6 +159,18 @@ function inputFor(tool: string, run: Seeded) {
 			return { statement: "A bad deploy", status: "speculative" };
 		case "report_validate":
 			return { report: "{}" };
+		// Ask each time opens a card for the start; the others answer "not in a tree yet".
+		case "thread_start":
+			return { title: "Check the cart", role: "cart", brief: "Find why the cart fails and return the cause.", requestId: "cov-start" };
+		case "thread_send":
+			return { to: "parent", type: "fact", text: "x", requestId: "cov-send" };
+		// The start above left a card waiting; a wait on it is registered.
+		case "thread_wait":
+			return { ids: ["cov-start"] };
+		case "thread_cancel":
+			return { id: "parent", reason: "coverage", requestId: "cov-cancel" };
+		case "propose_action":
+			return { change: { kind: "setting", key: "children", value: 3 }, why: "coverage" };
 		default:
 			return {};
 	}

@@ -1,0 +1,47 @@
+{
+	"row": "gateway-thread-send",
+	"kind": "happy",
+	"title": "Messages a tree member through PrismaLens's tree tool, always listed",
+	"run": {},
+	"expect": "gateway",
+	"gateway": {
+		"calls": [
+			{
+				"name": "thread_send",
+				"ok": true,
+				"outputHas": "ScenarioTreeChild"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-send]",
+				"toolName": "$gw:thread_send",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:thread_send",
+						"arguments": {
+							"to": "db",
+							"type": "fact",
+							"text": "The pool has 10 connections.",
+							"requestId": "row-send"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-thread-send]",
+				"resultContains": "ScenarioTreeChild"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

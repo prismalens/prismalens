@@ -51,10 +51,15 @@ export class ScenarioApp {
 	private cookie = "";
 	url = "";
 
-	constructor() {
+	/** `mcp`: the fake agent takes the gateway, so its sessions can call PrismaLens's tools. */
+	constructor(opts: { mcp?: boolean } = {}) {
 		const bin = join(this.workspace, "harness-bin");
 		mkdirSync(bin);
-		installFakeAgent(bin, { session: "success", stateDir: this.fakeState });
+		installFakeAgent(bin, {
+			session: "success",
+			stateDir: this.fakeState,
+			...(opts.mcp ? { mcp: true } : {}),
+		});
 		Object.assign(process.env, {
 			PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`,
 			PRISMALENS_TELEMETRY: "off",
@@ -279,6 +284,16 @@ export class ScenarioApp {
 			},
 			body: JSON.stringify(body),
 		});
+	}
+
+	/** A provider of the running app, or undefined when nothing provides it. */
+	resolve<T>(token: unknown): T | undefined {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		try {
+			return this.app.get(token as never, { strict: false }) as T;
+		} catch {
+			return undefined;
+		}
 	}
 
 	/** A GET as this paired device, answered raw: for a stream or an error body. */

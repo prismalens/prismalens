@@ -117,6 +117,16 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	hasDraft: z.boolean().optional(),
 	/** The thread's newest linked pull request, for the hover card and the row glyph (#1024). */
 	pr: ThreadRowPrSchema.optional(),
+	/** Its place in a thread tree (#1024); null outside one. The sidebar indents children by it. */
+	tree: z
+		.object({
+			rootId: z.string(),
+			parentId: z.string().nullable(),
+			role: z.string().nullable(),
+			depth: z.number().int().min(0),
+		})
+		.nullable()
+		.optional(),
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
 

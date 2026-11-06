@@ -8,6 +8,7 @@ import {
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
 import { agentTitle } from "../../threads/thread-titles.js";
+import { withRules } from "./rules.js";
 import { ANYWHERE, SCOPED } from "./serves.js";
 
 /** A thread as a list shows it: enough to pick one to read. */
@@ -44,6 +45,8 @@ export interface ThreadView {
 	/** The last agent-step texts of an unfinished thread, oldest first. */
 	steps: string[];
 	error: string | null;
+	/** With `afterSeq` or `limit`: the next steps of any thread, and the seq to pass next. */
+	page?: { steps: { seq: number; text: string }[]; nextSeq: number | null };
 }
 
 /** Threads are investigations and chats; a run reads only its incident's, project's and services'. */
@@ -53,8 +56,15 @@ export interface ThreadsData {
 		service?: string;
 		limit: number;
 	}): Promise<{ threads: ThreadSummary[] } | { error: string }>;
-	/** Null when there is no such thread, or it is outside this run's incident, project and services. */
-	read(runId: string, threadId: string): Promise<ThreadView | null>;
+	/**
+	 * Null when there is no such thread, or it is outside this run's incident, project, services
+	 * and tree. `page` reads a tree member's steps after `afterSeq`, oldest first (#1024).
+	 */
+	read(
+		runId: string,
+		threadId: string,
+		page?: { afterSeq?: number; limit: number },
+	): Promise<ThreadView | null>;
 	/** Names this run's thread unless the user already did; `kept` is the user's name standing. */
 	title(
 		runId: string,
@@ -69,8 +79,10 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 		defineHarnessTool({
 			name: "thread_list",
 			title: "Threads on this incident, project or service",
-			description:
+			description: withRules(
 				"Earlier investigations and chats (threads) on this run's incident, project or service, or across one of its services named in `service`, newest first: id, kind, status, start and finish time, agent and model, and a one-line summary when finished. Excludes this run. Use it to see what was already tried; read one with thread_read.",
+				"this thread's own tree: use thread_roster.",
+			),
 			group: "knowledge",
 			effect: "read",
 			serves: SCOPED,
@@ -97,35 +109,54 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 		defineHarnessTool({
 			name: "thread_read",
 			title: "Read one thread",
-			description:
-				"One thread thread_list returned, by id. A finished one gives its report: summary, root cause, hypotheses with status, next steps and culprit. A failed or stopped one gives its status, error and last 20 agent-step texts; a running one gives only its status. Only threads on this run's incident, project or services can be read.",
+			description: withRules(
+				"One thread thread_list returned, by id. A finished one gives its report: summary, root cause, hypotheses with status, next steps and culprit. A failed or stopped one gives its status, error and last 20 agent-step texts; a running one gives only its status. Only threads on this run's incident, project or services, or in its own tree, can be read. Use it to see what a thread found; `afterSeq` and `limit` page a running tree member's steps, and `page.nextSeq` is the next `afterSeq`.",
+				"this run itself.",
+			),
 			group: "knowledge",
 			effect: "read",
-			serves: SCOPED,
+			serves: { ...SCOPED, tree: true },
 			input: z.object({
 				threadId: z.string().trim().min(1).max(100),
+				afterSeq: z.number().int().min(-1).optional(),
+				limit: z.number().int().min(1).max(50).optional(),
 			}),
-			run: async ({ threadId }, ctx) => {
-				const t = await data.read(ctx.runId, threadId);
+			run: async ({ threadId, afterSeq, limit }, ctx) => {
+				const paged = afterSeq !== undefined || limit !== undefined;
+				const t = await data.read(
+					ctx.runId,
+					threadId,
+					paged
+						? {
+								...(afterSeq !== undefined ? { afterSeq } : {}),
+								limit: limit ?? 20,
+							}
+						: undefined,
+				);
 				if (!t)
 					return fail(
 						"not_found",
 						`No thread "${threadId}" on this thread's incident, project or services.`,
 						"Call thread_list and pass an id exactly as it returned it.",
 					);
-				const { report, steps, error, ...head } = t;
+				const { report, steps, error, page, ...head } = t;
 				return {
-					value: report
-						? { ...head, ...report }
-						: { ...head, ...(error ? { error } : {}), steps },
+					value: {
+						...(report
+							? { ...head, ...report }
+							: { ...head, ...(error ? { error } : {}), steps }),
+						...(page ? { page } : {}),
+					},
 				};
 			},
 		}),
 		defineHarnessTool({
 			name: "thread_title",
 			title: "Name this thread",
-			description:
-				"Give this thread a short title, 3 to 7 words and at most 80 characters, once you know what it is about; call it again if the subject changes. Plain words only. Once the user renames the thread, their name stays and this returns it with `kept: true`.",
+			description: withRules(
+				"Give this thread a short title, 3 to 7 words and at most 80 characters, once you know what it is about; call it again if the subject changes. Plain words only. Once the user renames the thread, their name stays and this returns it with `kept: true`. Use it once you know the subject.",
+				"status updates: the title is a name.",
+			),
 			group: "record",
 			effect: "record",
 			serves: ANYWHERE,

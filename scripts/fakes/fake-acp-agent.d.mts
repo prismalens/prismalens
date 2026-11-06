@@ -20,12 +20,20 @@ export interface RpcErrorStep {
 	data?: unknown;
 }
 
+/** Calls one of PrismaLens's gateway tools over MCP; needs `--mcp` (#1024). */
+export interface CallStep {
+	tool: string;
+	/** `{{prompt}}`, `{{result}}` and `{{send-to}}` are filled in its strings. */
+	arguments?: Record<string, unknown>;
+}
+
 export interface Step {
 	delayMs?: number;
 	say?: string;
 	think?: string;
 	update?: Record<string, unknown>;
 	tool?: ToolStep;
+	call?: CallStep;
 	report?: Record<string, unknown>;
 	stderr?: string;
 	exit?: number;
@@ -87,5 +95,7 @@ export function installFakeAgent(
 		session?: string;
 		binaries?: string[];
 		stateDir?: string;
+		/** Advertise HTTP MCP, so runs offer the gateway and `call` steps work. */
+		mcp?: boolean;
 	},
 ): string[];

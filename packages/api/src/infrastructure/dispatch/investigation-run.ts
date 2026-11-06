@@ -2049,7 +2049,7 @@ export async function resolveWorkspace(
 				},
 				multi ? join(runWorktreeDir(runId), name) : runWorktreeDir(runId),
 				repoSignal,
-				undefined,
+				repo.at,
 				runId,
 				(chunk) => {
 					printed[i] = (printed[i] + chunk).slice(-SETUP_OUTPUT_TAIL);

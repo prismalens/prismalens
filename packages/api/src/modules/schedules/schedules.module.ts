@@ -11,5 +11,6 @@ import { SchedulesService } from "./schedules.service.js";
 	imports: [DispatchModule, HarnessModule],
 	controllers: [SchedulesController],
 	providers: [SchedulesService],
+	exports: [SchedulesService],
 })
 export class SchedulesModule {}

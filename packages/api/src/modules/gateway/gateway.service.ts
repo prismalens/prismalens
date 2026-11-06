@@ -30,6 +30,7 @@ import {
 } from "@prismalens/engine";
 import {
 	autoAllowed,
+	fail,
 	type HarnessScope,
 	type HarnessTool,
 	harnessMcpServer,
@@ -60,10 +61,12 @@ import {
 	type InvestigationsQuery,
 	type PastFix,
 	type PastInvestigation,
+	type ProposalsData,
 	type RunStatusView,
 	type ServiceView,
 	type SimilarIncident,
 	type ThreadSummary,
+	type ThreadTreeData,
 	type ThreadView,
 	type TimelineItem,
 } from "./tools/index.js";
@@ -193,6 +196,30 @@ interface RunState {
 
 const NO_TOOLS: RunView = { direct: [], deferred: [] };
 
+/** The thread tree as the gateway reaches it; bound by the tree module, which depends on this one. */
+export interface TreePort {
+	tree: ThreadTreeData;
+	proposals: ProposalsData;
+	/** "Agents may start threads" is Never: the act tools leave the run's view. */
+	actsOff(): Promise<boolean>;
+}
+
+/** A tree's own tools: a run outside any tree, with starting threads off, is offered none. */
+const TREE_TOOLS = new Set([
+	"thread_start",
+	"thread_send",
+	"thread_wait",
+	"thread_cancel",
+	"thread_roster",
+]);
+
+const NO_TREE = () =>
+	fail(
+		"disabled",
+		"Thread trees are not running in this PrismaLens.",
+		"Do the work in this thread.",
+	);
+
 /** The largest file a recorded quote is looked up in. */
 const QUOTE_FILE_BYTES = 2_000_000;
 /** Pages one run may publish (#871). */
@@ -208,6 +235,7 @@ const NO_HISTORY =
 @Injectable()
 export class GatewayService {
 	private readonly tokens = new RunTokens();
+	private treePort: TreePort | undefined;
 	private readonly runs = new Map<string, RunState>();
 	/** Whether an agent's runs get a core plus `tools_search`: its registry row says (#848). */
 	toolSearch = (harness?: string): boolean =>
@@ -240,6 +268,10 @@ export class GatewayService {
 		this.tools = gatewayTools(this.data);
 	}
 
+	bindTree(port: TreePort): void {
+		this.treePort = port;
+	}
+
 	/** The run's gateway entry, or null when the api is not listening on a reachable address. */
 	async lease(
 		runId: string,
@@ -250,6 +282,7 @@ export class GatewayService {
 	): Promise<GatewayEntry | null> {
 		const base = this.baseUrl();
 		if (!base) return null;
+		const tree = await this.treeView(runId);
 		const token = this.tokens.mint(runId);
 		const state: RunState = {
 			connected: false,
@@ -262,9 +295,14 @@ export class GatewayService {
 			artifacts: [],
 			published: new Set(),
 			recording: true,
-			view: runView(servedTo(this.tools, scope), {
-				search: this.toolSearch(harness),
-			}),
+			view: runView(
+				servedTo(this.tools, { ...scope, tree: tree.member }).filter(
+					(t) =>
+						!(tree.actsOff && t.effect === "act") &&
+						!(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
+				),
+				{ search: this.toolSearch(harness) },
+			),
 			turnStartedAt,
 		};
 		this.runs.set(runId, state);
@@ -318,6 +356,20 @@ export class GatewayService {
 							const timer = setTimeout(() => done(false), ms);
 							state.waiters.add(done);
 						}),
+		};
+	}
+
+	/** Whether the run is in a tree, and whether its act tools are off (they then cost no tokens). */
+	private async treeView(
+		runId: string,
+	): Promise<{ member: boolean; actsOff: boolean }> {
+		const row = await this.prisma.investigation.findUnique({
+			where: { id: runId },
+			select: { rootId: true },
+		});
+		return {
+			member: !!row?.rootId,
+			actsOff: this.treePort ? await this.treePort.actsOff() : true,
 		};
 	}
 
@@ -457,7 +509,7 @@ export class GatewayService {
 		incident: (q) => this.incident(q),
 		threads: {
 			list: (q) => this.listThreads(q),
-			read: (runId, threadId) => this.readThread(runId, threadId),
+			read: (runId, threadId, page) => this.readThread(runId, threadId, page),
 			title: (runId, title) => setAgentTitle(this.prisma, runId, title),
 		},
 		incidentRecord: {
@@ -470,6 +522,26 @@ export class GatewayService {
 		attachments: {
 			list: (runId) => this.attachmentsOf(runId),
 			read: (runId, id) => this.attachmentOf(runId, id),
+		},
+		tree: {
+			start: async (runId, input) =>
+				this.treePort ? this.treePort.tree.start(runId, input) : NO_TREE(),
+			send: async (runId, input) =>
+				this.treePort ? this.treePort.tree.send(runId, input) : NO_TREE(),
+			wait: async (runId, ids, mode) =>
+				this.treePort ? this.treePort.tree.wait(runId, ids, mode) : NO_TREE(),
+			cancel: async (runId, id, reason, requestId) =>
+				this.treePort
+					? this.treePort.tree.cancel(runId, id, reason, requestId)
+					: NO_TREE(),
+			roster: async (runId) =>
+				this.treePort ? this.treePort.tree.roster(runId) : NO_TREE(),
+		},
+		proposals: {
+			propose: async (runId, change, why) =>
+				this.treePort
+					? this.treePort.proposals.propose(runId, change, why)
+					: { error: "Proposals are not running in this PrismaLens." },
 		},
 		history: {
 			similar: (runId, limit) => this.similarTo(runId, limit),
@@ -729,12 +801,69 @@ export class GatewayService {
 		};
 	}
 
+	/** Both threads are members of one tree (#1024): they read each other whatever their subject. */
+	private async sameTree(a: string, b: string): Promise<boolean> {
+		const rows = await this.prisma.investigation.findMany({
+			where: { id: { in: [a, b] } },
+			select: { id: true, rootId: true },
+		});
+		const root = (id: string) => {
+			const r = rows.find((x) => x.id === id);
+			return r ? (r.rootId ?? r.id) : null;
+		};
+		return (
+			rows.length === 2 && rows.some((r) => r.rootId) && root(a) === root(b)
+		);
+	}
+
+	/** A tree member's agent steps after `afterSeq`, oldest first, so a parent reads a child as it works. */
+	private async stepsPage(
+		id: string,
+		page: { afterSeq?: number; limit: number },
+	): Promise<NonNullable<ThreadView["page"]>> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: {
+				investigationId: id,
+				seq: { gt: page.afterSeq ?? -1 },
+				event: { contains: '"kind":"agent_step"' },
+			},
+			orderBy: { seq: "asc" },
+			take: page.limit + 1,
+			select: { seq: true, event: true },
+		});
+		const steps = rows.slice(0, page.limit).flatMap((r) => {
+			const ev = safeParseJsonObject(r.event);
+			return typeof ev?.text === "string" && ev.text.trim()
+				? [{ seq: r.seq, text: ev.text.slice(0, STEP_CHARS) }]
+				: [];
+		});
+		const last = rows[Math.min(rows.length, page.limit) - 1];
+		return {
+			steps,
+			nextSeq: rows.length > page.limit && last ? last.seq : null,
+		};
+	}
+
 	private async readThread(
 		runId: string,
 		threadId: string,
+		page?: { afterSeq?: number; limit: number },
 	): Promise<ThreadView | null> {
-		const scope = await this.scopeOf(runId);
-		if (!scope) return null;
+		const member = await this.sameTree(runId, threadId);
+		const view = await this.threadBody(runId, threadId, member);
+		if (!view) return null;
+		return page && member
+			? { ...view, page: await this.stepsPage(view.id, page) }
+			: view;
+	}
+
+	private async threadBody(
+		runId: string,
+		threadId: string,
+		member: boolean,
+	): Promise<ThreadView | null> {
+		const scope = member ? null : await this.scopeOf(runId);
+		if (!scope && !member) return null;
 		const row = await this.prisma.investigation.findUnique({
 			where: { id: threadId },
 			select: {
@@ -751,8 +880,10 @@ export class GatewayService {
 			},
 		});
 		if (!row) return null;
-		const own = scope.incident;
-		if (own) {
+		const own = scope?.incident;
+		if (!scope) {
+			// A tree member: readable whatever its subject.
+		} else if (own) {
 			// A scheduled check's run has no incident (#984), so no incident makes it readable.
 			if (!row.incident) return null;
 			// Readable on this run's incident, or on another incident of one of its services.

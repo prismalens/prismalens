@@ -186,6 +186,7 @@ const ALL_TOOLS = [
 	"incident_get",
 	"incidents_similar",
 	"investigations_search",
+	"propose_action",
 	"report_validate",
 	"run_status",
 	"runbooks_list",
@@ -287,6 +288,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			"artifact_publish",
 			"attachment_read",
 			"attachments_list",
+			"propose_action",
 			"thread_title",
 		]);
 		expect(none?.promptLine).not.toContain("evidence_record");
@@ -308,6 +310,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 
 	it("every PrismaLens tool, search and call included, has a plain step name (#1020)", () => {
 		const names = [...gateway().tools.map((t) => t.name), TOOLS_SEARCH, TOOLS_CALL];
+		expect(names).toEqual(expect.arrayContaining(["thread_start", "thread_send", "thread_wait", "thread_cancel", "thread_roster", "propose_action"]));
 		for (const n of names) expect(HARNESS_TOOL_STEPS[n], n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
 		expect(Object.keys(HARNESS_TOOL_STEPS).sort()).toEqual([...names].sort());
 		// A search can come back empty: its step line never claims a find.
@@ -812,6 +815,7 @@ describe("gateway views, search and the call record (#848)", () => {
 			"evidence_record",
 			"hypothesis_record",
 			"incident_get",
+			"propose_action",
 			"runbooks_read",
 			"thread_title",
 			"tools_call",
