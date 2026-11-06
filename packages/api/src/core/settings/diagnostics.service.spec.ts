@@ -20,4 +20,15 @@ describe("DiagnosticsService", () => {
 		const d = new DiagnosticsService().run();
 		expect(d.checks.find((c) => c.id === "git")?.status).toMatch(/ok|fail/);
 	});
+
+	it("fails the git check when the server's PATH has no git", () => {
+		const path = process.env.PATH;
+		process.env.PATH = "";
+		try {
+			const git = new DiagnosticsService().run().checks.find((c) => c.id === "git");
+			expect(git?.status).toBe("fail");
+		} finally {
+			process.env.PATH = path;
+		}
+	});
 });
