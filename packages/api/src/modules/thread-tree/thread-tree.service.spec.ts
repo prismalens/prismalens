@@ -374,8 +374,48 @@ describe("thread_start behind the host's approval (#1024 spec F)", () => {
 		await asks.decide(open?.askId as string, "approve");
 		const row = await prisma.pendingAction.findFirstOrThrow();
 		await prisma.pendingAction.update({ where: { id: row.id }, data: { state: "executing" } });
-		await actions.execute(row.id);
+		// The child it made fills its own role and cap slot; the rerun must not refuse on that.
+		expect(value(await actions.execute(row.id))).toMatchObject({ status: "started", role: "db" });
 		expect(starts).toHaveLength(1);
+		expect((await prisma.pendingAction.findUniqueOrThrow({ where: { id: row.id } })).state).toBe("done");
+	});
+
+	it("Given a crash after a stop landed, Then the rerun reports the stop instead of failing", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		const root = await thread();
+		value(await startIn(root.id, { role: "db" }));
+		const stop = { id: "db", reason: "replaced", requestId: "stop-1" };
+		await prisma.investigation.updateMany({ where: { parentId: root.id }, data: { status: "running" } });
+		value(await actions.gate({ callerId: root.id, rootId: root.id, tool: "thread_cancel", args: stop, requestId: "stop-1" }));
+		const row = await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "stop-1" } });
+		await prisma.investigation.updateMany({ where: { parentId: root.id }, data: { status: "cancelled" } });
+		await prisma.pendingAction.update({ where: { id: row.id }, data: { state: "executing" } });
+		value(await actions.execute(row.id));
+		expect((await prisma.pendingAction.findUniqueOrThrow({ where: { id: row.id } })).state).toBe("done");
+	});
+
+	it("Given concurrent starts in one tree, Then each cap still holds", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 1, perTree: 10 });
+		const root = await thread();
+		const outcomes = await Promise.all([1, 2, 3].map(() => startIn(root.id)));
+		expect(outcomes.filter((o) => !isFailure(o))).toHaveLength(1);
+		expect(outcomes.filter((o) => isFailure(o) && o.failure.error === "limit_reached")).toHaveLength(2);
+		expect(await prisma.investigation.count({ where: { parentId: root.id } })).toBe(1);
+		// The same race on one role leaves one running child with it.
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		const other = await thread();
+		await Promise.all([1, 2, 3].map(() => startIn(other.id, { role: "db" })));
+		expect(await prisma.investigation.count({ where: { parentId: other.id, role: "db" } })).toBe(1);
+	});
+
+	it("Given concurrent approvals in one tree, Then the cap holds at execution too", async () => {
+		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10 });
+		const root = await thread();
+		for (const role of ["a", "b", "c"]) value(await start(root.id, { role }));
+		const cards = await asks.pending(root.id);
+		await Promise.all(cards.map((c) => asks.decide(c.askId, "approve")));
+		expect(starts).toHaveLength(1);
+		expect(await prisma.pendingAction.count({ where: { state: "failed" } })).toBe(2);
 	});
 
 	it("Given a duplicate approval, Then one thread starts", async () => {

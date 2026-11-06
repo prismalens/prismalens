@@ -175,6 +175,11 @@ export class ThreadTreeService
 			check: (caller, args) => this.startRefusal(caller, args as StartArgs),
 			run: (caller, args, actionId) =>
 				this.startChild(caller, args as StartArgs, actionId),
+			already: async (_caller, _args, actionId) =>
+				!!(await this.prisma.investigation.findFirst({
+					where: { triggerReason: actionReason(actionId) },
+					select: { id: true },
+				})),
 			describe: (args) => {
 				const a = args as StartArgs;
 				return {
@@ -192,6 +197,14 @@ export class ThreadTreeService
 				this.cancelRefusal(caller, (args as { id: string }).id),
 			run: (caller, args) =>
 				this.cancelMember(caller, args as { id: string; reason: string }),
+			// A stop that landed before a crash leaves its target ended; the rerun only reports it.
+			already: async (caller, args) => {
+				const target = await this.resolveMember(
+					caller,
+					(args as { id: string }).id,
+				);
+				return !!target && isWorkflowTerminal(target.status);
+			},
 			describe: (args) => {
 				const a = args as { id: string; reason: string };
 				return { title: "Stop a thread in this tree", detail: a.reason };

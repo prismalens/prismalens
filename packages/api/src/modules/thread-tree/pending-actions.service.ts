@@ -27,6 +27,8 @@ export interface ActExecutor {
 	check(callerId: string, args: unknown): Promise<Failure | null>;
 	/** Idempotent on `actionId`: a retry finds what the first attempt did. */
 	run(callerId: string, args: unknown, actionId: string): Promise<ToolOutcome>;
+	/** The action already took effect: a run resumed after a crash skips `check`, which its own effect would fail. */
+	already?(callerId: string, args: unknown, actionId: string): Promise<boolean>;
 	/** The card: what the user approves. */
 	describe(args: unknown): { title: string; detail: string };
 	/** One line for the agent once the action ran. */
@@ -55,6 +57,8 @@ const logger = new Logger({ context: "PendingActions" });
 export class PendingActionsService {
 	private readonly executors = new Map<string, ActExecutor>();
 	private readonly listening = new Map<string, () => void>();
+	/** One check-then-run at a time per tree, so concurrent calls cannot both pass a cap. */
+	private readonly lanes = new Map<string, Promise<unknown>>();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -78,45 +82,22 @@ export class PendingActionsService {
 			);
 		const seen = await this.byRequest(call.callerId, call.requestId);
 		if (seen) return this.answerFor(seen);
-		const refused = await executor.check(call.callerId, call.args);
-		if (refused) return refused;
 		const { agentsStartThreads } = await this.settings.get();
 		const allowed =
 			agentsStartThreads === "allow" || (await this.allowanceOn(call.rootId));
-		if (!allowed && !this.asks)
+		if (allowed)
+			return this.serial(call.rootId, () => this.runNow(call, executor));
+		const refused = await executor.check(call.callerId, call.args);
+		if (refused) return refused;
+		if (!this.asks)
 			return fail(
 				"disabled",
 				"Approvals cannot open in this PrismaLens, so nothing that needs one can run.",
 				SETTING_NEXT,
 			);
-		let row: PendingAction;
-		try {
-			row = await this.prisma.pendingAction.create({
-				data: {
-					callerId: call.callerId,
-					rootId: call.rootId,
-					tool: call.tool,
-					args: JSON.stringify(call.args),
-					requestId: call.requestId,
-					state: allowed ? "approved" : "pending",
-					...(allowed ? { decidedAt: new Date() } : {}),
-				},
-			});
-		} catch (e) {
-			if (!isDuplicate(e)) throw e;
-			const raced = await this.byRequest(call.callerId, call.requestId);
-			if (!raced) throw e;
-			return this.answerFor(raced);
-		}
-		if (allowed) {
-			const ran = await this.execute(row.id);
-			// Answered in the call itself, so nothing is left to deliver.
-			await this.prisma.pendingAction.update({
-				where: { id: row.id },
-				data: { deliveredAt: new Date() },
-			});
-			return ran;
-		}
+		const created = await this.createRow(call, "pending");
+		if (!("id" in created)) return created.answer;
+		const row = created;
 		const card = executor.describe(call.args);
 		const asks = this.asks as AsksPort;
 		const askId = await asks
@@ -166,6 +147,62 @@ export class PendingActionsService {
 		});
 		this.listen(askId);
 		return this.answerFor({ ...row, askId });
+	}
+
+	/** Runs `work` after every earlier one queued for `key`. */
+	private serial<T>(key: string, work: () => Promise<T>): Promise<T> {
+		const before = this.lanes.get(key) ?? Promise.resolve();
+		const next = before.then(work, work);
+		const tail = next.catch(() => {});
+		this.lanes.set(key, tail);
+		void tail.then(() => {
+			if (this.lanes.get(key) === tail) this.lanes.delete(key);
+		});
+		return next;
+	}
+
+	/** Writes the call's row; a racing retry with the same key gets the first row's answer. */
+	private async createRow(
+		call: GateCall,
+		state: "pending" | "approved",
+	): Promise<PendingAction | { answer: ToolOutcome }> {
+		try {
+			return await this.prisma.pendingAction.create({
+				data: {
+					callerId: call.callerId,
+					rootId: call.rootId,
+					tool: call.tool,
+					args: JSON.stringify(call.args),
+					requestId: call.requestId,
+					state,
+					...(state === "approved" ? { decidedAt: new Date() } : {}),
+				},
+			});
+		} catch (e) {
+			if (!isDuplicate(e)) throw e;
+			const raced = await this.byRequest(call.callerId, call.requestId);
+			if (!raced) throw e;
+			return { answer: this.answerFor(raced) };
+		}
+	}
+
+	/** An allowed call, inside its tree's lane: check, record and run, answered in the call itself. */
+	private async runNow(
+		call: GateCall,
+		executor: ActExecutor,
+	): Promise<ToolOutcome> {
+		const seen = await this.byRequest(call.callerId, call.requestId);
+		if (seen) return this.answerFor(seen);
+		const refused = await executor.check(call.callerId, call.args);
+		if (refused) return refused;
+		const created = await this.createRow(call, "approved");
+		if (!("id" in created)) return created.answer;
+		const ran = await this.executeNow(created.id);
+		await this.prisma.pendingAction.update({
+			where: { id: created.id },
+			data: { deliveredAt: new Date() },
+		});
+		return ran;
 	}
 
 	/** What a call answers for a row it already wrote: a retry gets the same thing. */
@@ -270,8 +307,16 @@ export class PendingActionsService {
 		const row = await this.prisma.pendingAction.findUnique({ where: { id } });
 		if (!row)
 			return fail("not_found", "No such action.", "Continue without it.");
+		return this.serial(row.rootId, () => this.executeNow(id));
+	}
+
+	private async executeNow(id: string): Promise<ToolOutcome> {
+		const row = await this.prisma.pendingAction.findUnique({ where: { id } });
+		if (!row)
+			return fail("not_found", "No such action.", "Continue without it.");
 		if (row.state !== "approved" && row.state !== "executing")
 			return this.answerFor(row);
+		const resumed = row.state === "executing";
 		await this.prisma.pendingAction.updateMany({
 			where: { id, state: "approved" },
 			data: { state: "executing" },
@@ -287,8 +332,11 @@ export class PendingActionsService {
 			);
 		else {
 			try {
+				const tookEffect =
+					resumed &&
+					(await executor.already?.(row.callerId, args, row.id)) === true;
 				outcome =
-					(await executor.check(row.callerId, args)) ??
+					(tookEffect ? null : await executor.check(row.callerId, args)) ??
 					(await executor.run(row.callerId, args, row.id));
 			} catch (e) {
 				logger.warn(`${row.tool} failed: ${(e as Error).message}`);
