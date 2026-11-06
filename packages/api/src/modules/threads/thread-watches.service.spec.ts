@@ -77,7 +77,7 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 	};
 	const prSvc = {
 		stored: vi.fn(async () => prs),
-		refreshForWatch: vi.fn(async (): Promise<{ pullRequests: PullRequest[]; failed: boolean }> => ({ pullRequests: prs, failed: false })),
+		refreshForWatch: vi.fn(async (_thread?: string): Promise<{ pullRequests: PullRequest[]; failed: boolean }> => ({ pullRequests: prs, failed: false })),
 		linkFromUser: vi.fn(async (_t: string, url: string) => {
 			if (!url.includes("acme")) throw new ORPCError("BAD_REQUEST", { message: "not on a repository PrismaLens knows" });
 			return prs[0] as PullRequest;
@@ -85,7 +85,7 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 	};
 	const bus = { publish: vi.fn() };
 	const svc = new ThreadWatchesService(prisma as never, prSvc as never, wakeSvc as never, bus as never);
-	return { svc, watches: () => watches, events, wakes, prs, prSvc, bus, prisma };
+	return { svc, watches: () => watches, events, wakes, prs, prSvc, wakeSvc, bus, prisma };
 }
 
 describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () => {
@@ -99,6 +99,41 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		expect(watchMet(pr({ review: "approved" }), "merged")).toBeNull();
 		expect(watchMet(pr({ state: "merged" }), "checks_done")).toBe("merged");
 		expect(watchMet(pr({ state: "closed" }), "merged")).toBe("closed without merging");
+	});
+
+	it("a row the host never answered for is not 'no checks': the watch waits for a real read", () => {
+		const none = { ...NO_CHECKS, state: "none" as const };
+		expect(watchMet(pr({ checks: none, fetchedAt: null }), "checks_done")).toBeNull();
+		expect(watchMet(pr({ checks: none, fetchedAt: "2026-01-01T00:00:00.000Z" }), "checks_done")).toBe("checks none");
+	});
+
+	it("one thread's failed pass never stops the other threads' watches", async () => {
+		const OTHER = "0b3c2f1e-1111-4222-8333-444455556666";
+		const h = harness();
+		await h.svc.watch(THREAD, "pr1", "review");
+		await h.svc.watch(OTHER, "pr1", "review");
+		h.prs[0] = pr({ review: "approved" });
+		h.prSvc.refreshForWatch.mockImplementation(async (t: string) => {
+			if (t === THREAD) throw new Error("db busy");
+			return { pullRequests: h.prs, failed: false };
+		});
+		h.prSvc.stored.mockRejectedValueOnce(new Error("db busy"));
+		await h.svc.tick();
+		expect(h.wakeSvc.schedule).toHaveBeenCalledTimes(1);
+		expect(h.wakeSvc.schedule).toHaveBeenCalledWith(OTHER, "pr_watch", expect.any(Date), expect.stringContaining("approved"), expect.anything());
+	});
+
+	it("a watch stays until its wake is stored, so a failed handoff is retried on the next pass", async () => {
+		const h = harness();
+		await h.svc.watch(THREAD, "pr1", "review");
+		h.prs[0] = pr({ review: "approved" });
+		h.wakeSvc.schedule.mockRejectedValueOnce(new Error("db busy"));
+		await h.svc.tick();
+		expect(h.watches()).toHaveLength(1);
+		expect(h.wakes).toEqual([]);
+		await h.svc.tick();
+		expect(h.watches()).toEqual([]);
+		expect(h.wakes).toEqual([expect.objectContaining({ kind: "pr_watch", reason: expect.stringContaining("approved") })]);
 	});
 
 	it("Given a wake, Then one agent wake is pending with the agent's reason, a second replaces it, and the thread records each", async () => {

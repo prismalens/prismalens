@@ -612,11 +612,12 @@ export class ThreadsService {
 		}
 		// Undo with no states to restore clears only the thread named, never its block.
 		const at = settled ? new Date() : null;
-		if (settled) await endAgentWakes(this.prisma, ids);
 		await this.writeSettled(
 			(settled ? ids : [id]).map((target) => ({ id: target, settledAt: at })),
 			prior,
 		);
+		// After the settle is written: a failed settle keeps what the agent scheduled.
+		if (settled) await endAgentWakes(this.prisma, ids);
 		return {
 			ids,
 			previous: settled

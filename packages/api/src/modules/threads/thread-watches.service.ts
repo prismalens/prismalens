@@ -46,10 +46,17 @@ export function watchMet(pr: PullRequest, until: PrWatchUntil): string | null {
 	if (pr.state === "merged") return "merged";
 	if (pr.state === "closed") return "closed without merging";
 	if (until === "merged") return null;
-	if (until === "checks_done")
-		return ["passing", "failing", "none"].includes(pr.checks.state)
-			? `checks ${pr.checks.state}${pr.checks.failed ? ` (${pr.checks.failed} failed)` : ""}`
+	if (until === "checks_done") {
+		const { state, failed } = pr.checks;
+		// "none" from a row the host never answered for is not a result: wait for a real read.
+		const done =
+			state === "passing" ||
+			state === "failing" ||
+			(state === "none" && pr.fetchedAt !== null);
+		return done
+			? `checks ${state}${failed ? ` (${failed} failed)` : ""}`
 			: null;
+	}
 	return pr.review === "approved"
 		? "approved"
 		: pr.review === "changes_requested"
@@ -210,7 +217,7 @@ export class ThreadWatchesService
 		return { stopped: true };
 	}
 
-	/** One pass: each watched thread's PRs read again from the host; a met or expired watch wakes it. */
+	/** One pass: each watched thread's PRs read again; a met or expired watch wakes it. */
 	async tick(now: Date = new Date()): Promise<void> {
 		if (this.ticking) return;
 		this.ticking = true;
@@ -227,50 +234,62 @@ export class ThreadWatchesService
 			// A thread that watches nothing any more forgets its backoff.
 			for (const id of this.failing.keys())
 				if (!byThread.has(id)) this.failing.delete(id);
-			for (const [threadId, watches] of byThread) {
-				const backoff = this.failing.get(threadId);
-				if (backoff && backoff.next > now.getTime()) continue;
-				const { pullRequests: prs, failed } = await this.prs
-					.refreshForWatch(threadId)
-					.catch(async () => ({
-						pullRequests: await this.prs.stored(threadId),
-						failed: true,
-					}));
-				if (failed) {
-					const fails = (backoff?.fails ?? 0) + 1;
-					this.failing.set(threadId, {
-						fails,
-						next:
-							now.getTime() +
-							Math.min(PR_WATCH_EVERY_MS * 2 ** fails, BACKOFF_MAX_MS),
-					});
-				} else this.failing.delete(threadId);
-				for (const w of watches) {
-					const until = w.until as PrWatchUntil;
-					const pr = prs.find((p) => p.id === w.prId);
-					const met = pr ? watchMet(pr, until) : "no longer linked";
-					const expired = !met && w.expiresAt.getTime() <= now.getTime();
-					if (!met && !expired) continue;
-					await this.prisma.prWatch.deleteMany({
-						where: { prId: w.prId, investigationId: threadId },
-					});
-					const name = pr ? prName(pr) : w.prId;
-					const said = met
-						? `Pull request ${name}: ${met}. You asked to hear when it was ${until.replace("_", " ")} (pr_watch).`
-						: `Stopped watching pull request ${name} after 12 hours; it never became ${until.replace("_", " ")}.`;
-					await this.wakeWith(threadId, said, now);
-					await this.record(threadId, {
-						kind: "pr_watch",
-						prId: w.prId,
-						pr: name,
-						until,
-						phase: met ? "met" : "expired",
-						...(met ? { state: met } : {}),
-					});
-				}
-			}
+			// One thread's failure never stops the others' watches.
+			for (const [threadId, watches] of byThread)
+				await this.tickThread(threadId, watches, now).catch((e: unknown) =>
+					this.logger.warn(`Watch pass for ${threadId} failed: ${String(e)}`),
+				);
 		} finally {
 			this.ticking = false;
+		}
+	}
+
+	/** One thread's pass: its PRs read again; each met or expired watch wakes it, then goes. */
+	private async tickThread(
+		threadId: string,
+		watches: Array<{ prId: string; until: string; expiresAt: Date }>,
+		now: Date,
+	): Promise<void> {
+		const backoff = this.failing.get(threadId);
+		if (backoff && backoff.next > now.getTime()) return;
+		const { pullRequests: prs, failed } = await this.prs
+			.refreshForWatch(threadId)
+			.catch(async () => ({
+				pullRequests: await this.prs.stored(threadId),
+				failed: true,
+			}));
+		if (failed) {
+			const fails = (backoff?.fails ?? 0) + 1;
+			this.failing.set(threadId, {
+				fails,
+				next:
+					now.getTime() +
+					Math.min(PR_WATCH_EVERY_MS * 2 ** fails, BACKOFF_MAX_MS),
+			});
+		} else this.failing.delete(threadId);
+		for (const w of watches) {
+			const until = w.until as PrWatchUntil;
+			const pr = prs.find((p) => p.id === w.prId);
+			const met = pr ? watchMet(pr, until) : "no longer linked";
+			const expired = !met && w.expiresAt.getTime() <= now.getTime();
+			if (!met && !expired) continue;
+			const name = pr ? prName(pr) : w.prId;
+			const said = met
+				? `Pull request ${name}: ${met}. You asked to hear when it was ${until.replace("_", " ")} (pr_watch).`
+				: `Stopped watching pull request ${name} after 12 hours; it never became ${until.replace("_", " ")}.`;
+			// The wake is stored before the watch goes: a failure here retries on the next pass.
+			await this.wakeWith(threadId, said, now);
+			await this.prisma.prWatch.deleteMany({
+				where: { prId: w.prId, investigationId: threadId },
+			});
+			await this.record(threadId, {
+				kind: "pr_watch",
+				prId: w.prId,
+				pr: name,
+				until,
+				phase: met ? "met" : "expired",
+				...(met ? { state: met } : {}),
+			});
 		}
 	}
 

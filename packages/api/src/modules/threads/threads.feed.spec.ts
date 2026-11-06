@@ -308,6 +308,9 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		await expect(service().settle(id, true)).rejects.toMatchObject({
 			code: "CONFLICT",
 		});
+		// A settle that did not happen leaves what the agent scheduled in place.
+		expect(prisma.threadWake.updateMany).not.toHaveBeenCalled();
+		expect(prisma.prWatch.deleteMany).not.toHaveBeenCalled();
 	});
 
 	it("settles an incident's whole block, and undoes it", async () => {

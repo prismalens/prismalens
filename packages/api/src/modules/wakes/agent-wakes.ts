@@ -15,6 +15,11 @@ export async function endAgentWakes(
 	threadIds: readonly string[],
 ): Promise<void> {
 	if (!threadIds.length) return;
+	// Watches go first: if that fails nothing was cancelled, and a wake that outlives a
+	// stopped or settled thread is ended when it fires (session-lifecycle).
+	await prisma.prWatch.deleteMany({
+		where: { investigationId: { in: [...threadIds] } },
+	});
 	await prisma.threadWake.updateMany({
 		where: {
 			investigationId: { in: [...threadIds] },
@@ -22,8 +27,5 @@ export async function endAgentWakes(
 			state: "pending",
 		},
 		data: { state: "cancelled", doneAt: new Date() },
-	});
-	await prisma.prWatch.deleteMany({
-		where: { investigationId: { in: [...threadIds] } },
 	});
 }
