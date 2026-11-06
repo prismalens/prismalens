@@ -8,6 +8,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { aboutOf, nameFrom, ScheduleDialog } from "./ScheduleDialog";
 
+// Each render mounts the whole dialog: well past 5s on a cold macOS runner.
+vi.setConfig({ testTimeout: 30_000 });
+
 type Agent = { id: string; label: string };
 let agents: {
 	harnesses: Agent[];
@@ -125,8 +128,7 @@ afterEach(() => {
 	document.body.innerHTML = "";
 });
 
-// Each render mounts the whole dialog: well past 5s on a cold macOS runner.
-describe("ScheduleDialog (#979)", { timeout: 30_000 }, () => {
+describe("ScheduleDialog (#979)", () => {
 	it("a new schedule takes the default agent when it arrives after the dialog opened", async () => {
 		await render();
 		expect(chip()).toBe("none:");
