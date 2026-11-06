@@ -8,91 +8,83 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type DiagnosticGitRun, runDiagnostics } from "./diagnostics.js";
 import { secretFileName } from "./secrets.js";
 
-/** The fields a test sets, as the API's service holds them. */
-class DiagnosticsService {
-	env: NodeJS.ProcessEnv = process.env;
-	nodeVersion = process.versions.node;
-	git: DiagnosticGitRun = () => ({ status: 0, stdout: "git version 2" });
-	run() {
-		return {
-			checks: runDiagnostics({
-				workspaceDir: process.env.PRISMALENS_WORKSPACE_DIR as string,
-				git: this.git,
-				env: this.env,
-				nodeVersion: this.nodeVersion,
-			}),
-		};
-	}
-}
-
 let workspace: string;
-let before: string | undefined;
 beforeEach(() => {
 	workspace = mkdtempSync(join(tmpdir(), "pl-diag-"));
-	before = process.env.PRISMALENS_WORKSPACE_DIR;
-	process.env.PRISMALENS_WORKSPACE_DIR = workspace;
 });
-afterEach(() => {
-	if (before === undefined) delete process.env.PRISMALENS_WORKSPACE_DIR;
-	else process.env.PRISMALENS_WORKSPACE_DIR = before;
-	rmSync(workspace, { recursive: true, force: true });
-});
+afterEach(() => rmSync(workspace, { recursive: true, force: true }));
 
-function byId(s: DiagnosticsService) {
-	return Object.fromEntries(s.run().checks.map((c) => [c.id, c]));
+const gitOk: DiagnosticGitRun = (args) =>
+	args[0] === "--version" ? { status: 0, stdout: "git version 2.47.0\n" } : { status: 1, stdout: "" };
+
+function run(over: Partial<Parameters<typeof runDiagnostics>[0]> = {}) {
+	return Object.fromEntries(
+		runDiagnostics({
+			workspaceDir: workspace,
+			version: "0.6.0",
+			git: gitOk,
+			runVersion: () => "0.6.0",
+			gitScope: "this shell",
+			env: { PATH: ["/usr/bin", "/bin", "/a", "/b"].join(":") },
+			platform: "linux",
+			channel: "installer",
+			service: null,
+			exists: () => false,
+			nodeVersion: "24.22.1",
+			...over,
+		}).map((c) => [c.id, c]),
+	);
 }
 
 describe("runDiagnostics (#936: one set of checks for About and pl doctor)", () => {
-	it("runs the doctor's checks in the server's own environment", () => {
-		const s = new DiagnosticsService();
-		s.env = { PATH: ["/usr/bin", "/bin", "/a", "/b"].join(process.platform === "win32" ? ";" : ":") };
-		s.nodeVersion = "24.22.1";
-		s.git = (args) =>
-			args[0] === "--version"
-				? { status: 0, stdout: "git version 2.47.0\n" }
-				: { status: 0, stdout: "credential.helper store\n" };
-		const c = byId(s);
-		expect(c.node).toMatchObject({ status: "ok" });
-		expect(c.workspace).toMatchObject({ status: "ok", detail: workspace });
-		expect(c.path.detail).toContain("4 entries");
-		expect(c.git.detail).toBe("git 2.47.0; 1 credential helper");
-		expect(c["webhook-token"].status).toBe("warn");
-		expect(c.service.status).toBe("ok");
+	it("runs the machine checks and marks which ones stop pl up", () => {
+		const c = run();
+		expect(c.node).toMatchObject({ status: "ok", required: true, detail: "24.22.1 (patched)" });
+		expect(c.workspace).toMatchObject({ status: "ok", detail: workspace, required: true });
+		expect(c.path.detail).toBe("4 entries, starting /usr/bin, /bin, /a, …");
+		expect(c.installs).toMatchObject({ label: "PrismaLens 0.6.0 (installer)", detail: "this one (0.6.0) is not on PATH" });
+		expect(c.git).toMatchObject({ status: "ok", required: true, detail: "git 2.47.0 (for this shell); no credential helper" });
+		expect(c["git-service"]).toBeUndefined();
+		expect(c["webhook-token"]).toMatchObject({ status: "warn", required: false });
+		expect(c.service.detail).toContain("not installed");
 	});
 
-	it("fails an unpatched Node and a missing git, each with a fix", () => {
-		const s = new DiagnosticsService();
-		s.env = {};
-		s.nodeVersion = "22.1.0";
-		s.git = () => ({ status: null, stdout: "", error: new Error("ENOENT") });
-		const c = byId(s);
+	it("fails an unpatched Node, a missing git and an unwritable workspace", () => {
+		writeFileSync(join(workspace, "file"), "x");
+		const c = run({
+			nodeVersion: "22.1.0",
+			git: () => ({ status: null, stdout: "", error: new Error("ENOENT") }),
+			workspaceDir: join(workspace, "file", "below"),
+			env: {},
+		});
 		expect(c.node).toMatchObject({ status: "fail" });
-		expect(c.node.fix).toBeTruthy();
-		expect(c.git).toMatchObject({ status: "fail", fix: "Install git, then restart PrismaLens." });
-		expect(c.path.status).toBe("warn");
+		expect(c.git).toMatchObject({ status: "fail", required: true });
+		expect(c.git.detail).toMatch(/git missing/);
+		expect(c.path).toMatchObject({ status: "warn" });
+		expect(c.workspace.status).toBe("fail");
 	});
 
-	it("fails a workspace it can't write, and counts several helpers or none", () => {
-		process.env.PRISMALENS_WORKSPACE_DIR = join(workspace, "missing", "deeper");
-		const s = new DiagnosticsService();
-		s.env = { PATH: "/usr/bin" };
-		s.nodeVersion = "24.22.1";
-		s.git = (args) =>
-			args[0] === "--version"
-				? { status: 0, stdout: "git version 2.47.0" }
-				: { status: 0, stdout: "credential.helper store\ncredential.https://x.helper manager\n" };
-		const c = byId(s);
-		expect(c.workspace).toMatchObject({ status: "fail" });
-		expect(c.git.detail).toContain("2 credential helpers");
-		s.git = (args) =>
-			args[0] === "--version" ? { status: 0, stdout: "git version 2.47.0" } : { status: 1, stdout: "" };
-		expect(byId(s).git.detail).toContain("no credential helper");
+	it("names the credential helpers and the service's own git", () => {
+		const c = run({
+			git: (args) =>
+				args[0] === "--version"
+					? { status: 0, stdout: "git version 2.47.0" }
+					: { status: 0, stdout: "credential.helper store\ncredential.https://github.com.helper manager\n" },
+			service: { unitPath: "/u", workspace, port: 6473 },
+		});
+		expect(c.git.detail).toContain("credential helpers: all hosts: store; github.com: manager");
+		expect(c["git-service"]).toMatchObject({ status: "ok", required: false });
+		expect(c.service.detail).toContain("installed on port 6473");
 	});
 
-	it("names the webhook token file once it exists", () => {
+	it("warns about two copies on PATH and finds the webhook token once it exists", () => {
 		writeFileSync(join(workspace, secretFileName("PRISMALENS_WEBHOOK_SECRET")), "x");
-		const s = new DiagnosticsService();
-		s.git = () => ({ status: 0, stdout: "git version 2" });
-		expect(byId(s)["webhook-token"].status).toBe("ok");
+		const c = run({
+			env: { PATH: "/a:/b" },
+			exists: (p) => p === "/a/pl" || p === "/b/pl",
+		});
+		expect(c.installs.status).toBe("warn");
+		expect(c.installs.detail).toContain("2 on PATH");
+		expect(c["webhook-token"].status).toBe("ok");
 	});
 });

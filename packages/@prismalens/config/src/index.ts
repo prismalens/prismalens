@@ -69,10 +69,19 @@ export {
 	serviceUnitPath,
 } from "./utils/background-service.js";
 export {
+	channelOfPath,
 	type DiagnosticCheck,
 	type DiagnosticGitRun,
 	type DiagnosticsInput,
+	gitChecks,
+	installsCheck,
+	nodeCheck,
+	pathCheck,
 	runDiagnostics,
+	serviceCheck,
+	type VersionRun,
+	webhookTokenCheck,
+	workspaceCheck,
 } from "./utils/diagnostics.js";
 export {
 	INSTALL_CHANNELS,

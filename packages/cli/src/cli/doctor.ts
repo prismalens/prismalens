@@ -7,20 +7,20 @@
  * the service. It never checks a coding agent; Settings → Agent does that (#907).
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { delimiter, join, posix, win32 } from "node:path";
+import { existsSync } from "node:fs";
 import {
 	DEFAULT_PORT,
-	ensureAppDataDir,
+	type DiagnosticCheck,
+	type DiagnosticGitRun,
 	getAppDataDir,
+	gitChecks,
 	installChannel,
 	installedService,
-	isWindowsMountPath,
-	isWsl,
-	nodeVersionProblem,
+	installsCheck,
 	readInstanceFile,
-	secretFileName,
-	serviceOwnsWorkspace,
+	runDiagnostics,
+	type VersionRun,
+	webhookTokenCheck,
 } from "@prismalens/config";
 import { defineCommand } from "citty";
 import consola from "consola";
@@ -37,168 +37,17 @@ interface Check {
 	hard: boolean;
 }
 
-function checkNodeVersion(): Check {
-	const problem = nodeVersionProblem(process.versions.node);
+/** A shared check as the doctor prints it; only `required` failures fail the run. */
+function toCheck(d: DiagnosticCheck): Check {
 	return {
-		name: "Node version",
-		pass: problem === null,
-		detail:
-			problem === null
-				? `${process.versions.node} (patched)`
-				: `${process.versions.node} — ${problem}`,
-		hard: true,
+		name: d.label,
+		pass: d.status === "ok",
+		detail: d.detail,
+		hard: d.required,
 	};
 }
 
-function checkAppDataDir(): Check {
-	try {
-		const dir = ensureAppDataDir();
-		return {
-			name: "Workspace",
-			pass: true,
-			detail: dir,
-			hard: true,
-		};
-	} catch (err) {
-		return {
-			name: "Workspace",
-			pass: false,
-			detail: `${getAppDataDir()} — ${err instanceof Error ? err.message : String(err)}`,
-			hard: true,
-		};
-	}
-}
-
-/** The PATH, once, so a bare sudo or service PATH shows. */
-function checkPath(): Check {
-	const entries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
-	const head = entries.slice(0, 3).join(", ");
-	return {
-		name: "PATH",
-		pass: entries.length > 0,
-		detail:
-			entries.length === 0
-				? "empty"
-				: `${entries.length} entries, starting ${head}${entries.length > 3 ? ", …" : ""}`,
-		hard: false,
-	};
-}
-
-const INSTALLER_MARKER = "Added by the PrismaLens installer";
-
-/** Which channel put this `pl` on PATH, from its path or the installer's marker. */
-export function channelOfPath(path: string, contents = ""): string {
-	if (path.includes("/Cellar/prismalens/") || path.includes("/homebrew/bin/")) {
-		return "homebrew";
-	}
-	if (/[\\/]scoop[\\/]/i.test(path)) return "scoop";
-	if (contents.includes(INSTALLER_MARKER)) return "installer";
-	return "npm";
-}
-
-/**
- * Every `pl` on PATH (#717). They all share one workspace, and an older copy
- * refuses a database a newer one has migrated, so more than one is worth a warning.
- */
-export function checkInstalls(
-	path = process.env.PATH ?? "",
-	platform: NodeJS.Platform = process.platform,
-	env: NodeJS.ProcessEnv = process.env,
-	exists: (p: string) => boolean = existsSync,
-): Check {
-	const names = platform === "win32" ? ["pl.cmd", "pl.exe"] : ["pl"];
-	// The PATH is the given platform's, so its own path rules read it (#776 review).
-	const paths = platform === "win32" ? win32 : posix;
-	const seen = new Map<string, string>();
-	for (const dir of path.split(paths.delimiter).filter(Boolean)) {
-		for (const name of names) {
-			const candidate = paths.join(dir, name);
-			if (!exists(candidate)) continue;
-			let real = candidate;
-			try {
-				real = realpathSync(candidate);
-			} catch {}
-			if ([...seen.values()].some((r) => r === real)) continue;
-			seen.set(candidate, real);
-		}
-	}
-	const rows = [...seen.keys()].map((p) => {
-		let contents = "";
-		try {
-			contents = readFileSync(p, "utf8").slice(0, 400);
-		} catch {}
-		// A .cmd path with a space needs cmd.exe's own quoting, which the engine already has.
-		const plan = windowsSpawnPlan(p, ["--version"], platform);
-		const out = spawnSync(plan.command, plan.args, {
-			...plan.options,
-			encoding: "utf8",
-			timeout: 5_000,
-		});
-		const version = out.status === 0 ? out.stdout.trim() : "version unknown";
-		return `${p} (${channelOfPath(seen.get(p) ?? p, contents)}, ${version})`;
-	});
-	const wslHints: string[] = [];
-	if (isWsl(env)) {
-		for (const p of seen.keys()) {
-			if (isWindowsMountPath(p)) {
-				wslHints.push(
-					`${p} is the Windows install; it can't run inside WSL. Install PrismaLens inside this distro.`,
-				);
-			}
-		}
-	}
-	const baseDetail =
-		rows.length === 0
-			? `this one (${cliVersion()}) is not on PATH`
-			: rows.length === 1
-				? rows[0]
-				: `${rows.length} on PATH, sharing one workspace: ${rows.join("; ")}. An older one stops once a newer one has migrated the database; remove all but one.`;
-	const detail =
-		wslHints.length > 0
-			? `${baseDetail.replace(/\.?$/, ".")} ${wslHints.join(" ")}`
-			: baseDetail;
-
-	return {
-		name: `PrismaLens ${cliVersion()} (${installChannel()})`,
-		pass: rows.length <= 1 && wslHints.length === 0,
-		detail,
-		hard: false,
-	};
-}
-
-export function checkWebhookToken(): Check {
-	const filePath = join(
-		getAppDataDir(),
-		secretFileName("PRISMALENS_WEBHOOK_SECRET"),
-	);
-	const exists = existsSync(filePath);
-	return {
-		name: "Webhook token",
-		pass: exists,
-		detail: `${filePath} (${exists ? "exists" : "does not exist yet"})`,
-		hard: false,
-	};
-}
-
-export function checkService(
-	service = installedService(),
-	workspace = getAppDataDir(),
-): Check {
-	return {
-		name: "Background service",
-		pass: true,
-		detail: !service
-			? "not installed (pl service install runs PrismaLens in the background)"
-			: `installed on port ${service.port}${serviceOwnsWorkspace(workspace, service) ? "" : `, for workspace ${service.workspace}`}; pl service status shows whether it is running`,
-		hard: false,
-	};
-}
-
-type GitRun = (args: string[]) => {
-	status: number | null;
-	stdout: string;
-	error?: Error;
-};
+type GitRun = DiagnosticGitRun;
 
 const runGit: GitRun = (args) => {
 	const r = spawnSync("git", args, {
@@ -209,59 +58,47 @@ const runGit: GitRun = (args) => {
 	return { status: r.status, stdout: r.stdout ?? "", error: r.error };
 };
 
-/**
- * git and the credential helpers this shell would use (#673). A helper value is
- * config, never a secret. The background service has its own environment, so
- * what this shell sees is not proof the service sees it.
- */
+/** `pl --version` of one copy on PATH; a .cmd path with a space needs cmd.exe's own quoting. */
+const plVersion: VersionRun = (path, platform) => {
+	const plan = windowsSpawnPlan(path, ["--version"], platform);
+	const out = spawnSync(plan.command, plan.args, {
+		...plan.options,
+		encoding: "utf8",
+		timeout: 5_000,
+	});
+	return out.status === 0 ? out.stdout.trim() : null;
+};
+
+export { channelOfPath } from "@prismalens/config";
+
+export function checkInstalls(
+	path = process.env.PATH ?? "",
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+	exists: (p: string) => boolean = existsSync,
+): Check {
+	return toCheck(
+		installsCheck({
+			version: cliVersion(),
+			channel: installChannel(),
+			path,
+			platform,
+			env,
+			exists,
+			runVersion: plVersion,
+		}),
+	);
+}
+
+export function checkWebhookToken(): Check {
+	return toCheck(webhookTokenCheck(getAppDataDir()));
+}
+
 export function checkGit(
 	run: GitRun = runGit,
 	service = installedService(),
 ): Check[] {
-	const version = run(["--version"]);
-	if (version.error || version.status !== 0)
-		return [
-			{
-				name: "Git",
-				pass: false,
-				detail:
-					"git missing: PrismaLens reads a service's code with git. Install it and run pl doctor again",
-				hard: true,
-			},
-		];
-	const helpers = run(["config", "--get-regexp", "credential\\..*helper"]);
-	const lines =
-		helpers.status === 0
-			? helpers.stdout
-					.split("\n")
-					.filter((l) => l.trim())
-					.map((l) => {
-						const [key = "", ...value] = l.trim().split(/\s+/);
-						const host = key
-							.replace(/^credential\.?/i, "")
-							.replace(/\.?helper$/i, "")
-							.replace(/^https?:\/\//i, "")
-							.replace(/\/$/, "");
-						return `${host || "all hosts"}: ${value.join(" ")}`;
-					})
-			: [];
-	const checks: Check[] = [
-		{
-			name: "Git",
-			pass: true,
-			detail: `git ${version.stdout.trim().replace(/^git version\s+/, "")} (for this shell); ${lines.length ? `credential helpers: ${lines.join("; ")}` : "no credential helper"}`,
-			hard: true,
-		},
-	];
-	if (service)
-		checks.push({
-			name: "Git in the background service",
-			pass: true,
-			detail:
-				"The background service runs with its own environment; helpers that need a desktop keyring or an SSH agent may not work there.",
-			hard: false,
-		});
-	return checks;
+	return gitChecks(run, service, "this shell").map(toCheck);
 }
 
 /** What `pl up` would pick, without creating the instance file the doctor only reports on. */
@@ -309,6 +146,21 @@ export function checkWebhookUrl(
 				: `${protocol}://${shown}:${port}${path}; machines that can route to ${host} can reach it`,
 		hard: false,
 	};
+}
+
+/** The machine checks are About's diagnostics too (#936); only the bind is the doctor's own. */
+export function doctorChecks(git: GitRun = runGit): Check[] {
+	return [
+		...runDiagnostics({
+			workspaceDir: getAppDataDir(),
+			version: cliVersion(),
+			git,
+			runVersion: plVersion,
+			gitScope: "this shell",
+		}).map(toCheck),
+		checkPortHost(),
+		checkWebhookUrl(),
+	];
 }
 
 /** The closing line; agents never reach it (#907). */
@@ -361,17 +213,7 @@ export default defineCommand({
 				process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 			}
 
-			const checks: Check[] = [
-				checkNodeVersion(),
-				checkAppDataDir(),
-				checkPath(),
-				checkInstalls(),
-				...checkGit(),
-				checkWebhookToken(),
-				checkPortHost(),
-				checkWebhookUrl(),
-				checkService(),
-			];
+			const checks = doctorChecks();
 
 			consola.log("");
 			for (const check of checks) {
