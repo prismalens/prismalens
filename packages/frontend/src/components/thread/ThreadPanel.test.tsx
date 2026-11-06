@@ -481,4 +481,22 @@ describe("AskCard inline (#1020)", () => {
 		expect(q("ask-approve")).toBeNull();
 		expect(q("inline-ask-title")?.getAttribute("aria-live")).toBeNull();
 	});
+
+	it("names the sub-agent that asked (#1025)", async () => {
+		const ask: AskRecord = {
+			askId: "00000000-0000-4000-8000-00000000000a",
+			title: "kubectl get deploys",
+			detail: null,
+			input: null,
+			server: null,
+			at: "2026-11-03T10:00:00Z",
+			expiresAt: "2026-11-03T10:10:00Z",
+			clamped: false,
+			state: "waiting",
+			source: { kind: "subagent", sessionId: "s1", title: "Check deploys" },
+		};
+		await render(<AskCard ask={ask} runId="r1" agent="Claude Code" />);
+		expect(q("dock-ask")?.textContent).toContain("Check deploys asks to run");
+		expect(q("dock-ask")?.textContent).not.toContain("Claude Code");
+	});
 });

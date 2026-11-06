@@ -129,11 +129,17 @@ function run() {
 	let turns = 0;
 	let loaded = false;
 	let sessionId = "";
+	/** The session `session/new` or `session/load` opened; anything else is a sub-agent's. */
+	let rootSessionId = "";
 	let nextId = 1000;
 	/** @type {Map<number, (result: { outcome?: { outcome?: string, optionId?: string } }) => void>} */
 	const pending = new Map();
 	/** @type {(() => void) | null} */
 	let onCancel = null;
+	/** A sub-agent session's own cancel, by its session id (#1025). @type {Map<string, () => void>} */
+	const childCancels = new Map();
+	/** The client declared `clientCapabilities.subagents` at initialize (#1025). */
+	let clientSubagents = false;
 	/** @type {string | null} */
 	let currentMode = null;
 	/** The client declared form elicitation at initialize (#1024). */
@@ -215,6 +221,11 @@ function run() {
 		new Promise((r) => setTimeout(r, ms));
 	const fill = (/** @type {string} */ text, /** @type {string} */ prompt) =>
 		text
+			// An agent that prints a variable it was given, as a careless one would (#1024 spec B).
+			.replace(
+				/\{\{env:([A-Z0-9_]+)\}\}/g,
+				(_, name) => process.env[name] ?? "",
+			)
 			.replaceAll("{{cwd}}", cwd)
 			.replaceAll("{{prompt}}", prompt)
 			.replaceAll("{{result}}", lastResult)
@@ -276,10 +287,15 @@ function run() {
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
 			if (step.delayMs) await sleep(step.delayMs);
+			// claude-agent-acp's stamp on a helper's traffic when no sub-agent sessions are declared (#1025).
+			const meta = step.parent
+				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }
+				: {};
 			if (step.say !== undefined) {
 				notify(sessionId, {
 					sessionUpdate: "agent_message_chunk",
 					content: text(fill(step.say, prompt)),
+					...meta,
 				});
 			}
 			if (step.think !== undefined) {
@@ -289,7 +305,8 @@ function run() {
 				});
 			}
 			if (step.update) notify(sessionId, step.update);
-			if (step.tool) await tool(sessionId, step.tool);
+			if (step.tool) await tool(sessionId, step.tool, meta);
+			if (step.subagent) await subagent(sessionId, step.subagent, prompt);
 			if (step.elicit) {
 				const answer = clientElicits
 					? await elicit({ mode: "form", sessionId, ...step.elicit })
@@ -332,11 +349,12 @@ function run() {
 					content: text(`\n\`\`\`json\n${fill(body, prompt)}\n\`\`\`\n`),
 				});
 			}
-			if (step.stderr) process.stderr.write(`${step.stderr}\n`);
+			if (step.stderr) process.stderr.write(`${fill(step.stderr, prompt)}\n`);
 			if (step.exit !== undefined) process.exit(step.exit);
 			if (step.waitForCancel) {
 				await new Promise((r) => {
-					onCancel = () => r(undefined);
+					if (sessionId === rootSessionId) onCancel = () => r(undefined);
+					else childCancels.set(sessionId, () => r(undefined));
 				});
 				return "cancelled";
 			}
@@ -366,18 +384,51 @@ function run() {
 	}
 
 	/**
+	 * A sub-agent as ACP's Subagent Sessions RFD streams one (#1025): announced on its
+	 * parent, its steps in its own session, then its end state. A client that declared
+	 * no sub-agents sees its steps on the parent, stamped with the call that started it.
+	 * @param {string} parentId
+	 * @param {import("./fake-acp-agent.d.mts").SubagentStep} sub
+	 * @param {string} prompt
+	 */
+	async function subagent(parentId, sub, prompt) {
+		if (!clientSubagents) {
+			const steps = sub.steps.map((s) => ({ ...s, parent: sub.id }));
+			await play(parentId, steps, prompt);
+			return;
+		}
+		notify(parentId, {
+			sessionUpdate: "subagent_update",
+			sessionId: sub.id,
+			title: sub.title,
+			...(sub.description ? { description: sub.description } : {}),
+			...(sub.cancel ? { capabilities: { cancel: {} } } : {}),
+			state: { state: "running" },
+		});
+		const forced = await play(sub.id, sub.steps, prompt);
+		const end = forced === "cancelled" ? "cancelled" : (sub.end ?? "end_turn");
+		notify(parentId, {
+			sessionUpdate: "subagent_update",
+			sessionId: sub.id,
+			state: { state: "idle", stopReason: end },
+		});
+	}
+
+	/**
 	 * Claude Code's shape: the call opens as "Terminal" with empty input, and the
 	 * command arrives in a progress update before the permission request.
 	 * @param {string} sessionId
 	 * @param {import("./fake-acp-agent.d.mts").ToolStep} step
+	 * @param {Record<string, unknown>} [meta]
 	 */
-	async function tool(sessionId, step) {
+	async function tool(sessionId, step, meta = {}) {
 		// `{{cwd}}` in a call is the run's own copy, as a harness would print it.
 		const t = JSON.parse(
-			JSON.stringify(step).replaceAll(
-				"{{cwd}}",
-				JSON.stringify(cwd).slice(1, -1),
-			),
+			JSON.stringify(step)
+				.replaceAll("{{cwd}}", JSON.stringify(cwd).slice(1, -1))
+				.replace(/\{\{env:([A-Z0-9_]+)\}\}/g, (_, name) =>
+					JSON.stringify(process.env[name] ?? "").slice(1, -1),
+				),
 		);
 		const kind = t.kind ?? "execute";
 		notify(sessionId, {
@@ -387,6 +438,7 @@ function run() {
 			kind,
 			status: "pending",
 			rawInput: {},
+			...meta,
 		});
 		notify(sessionId, {
 			sessionUpdate: "tool_call_update",
@@ -394,6 +446,7 @@ function run() {
 			status: "in_progress",
 			title: t.title,
 			rawInput: t.rawInput,
+			...meta,
 		});
 		let allowed = t.fail === undefined;
 		// Reads run unasked, as a supervised mode runs them; `ask: true` is a call the agent asks about (#673 w21).
@@ -423,6 +476,7 @@ function run() {
 		notify(sessionId, {
 			sessionUpdate: "tool_call_update",
 			toolCallId: t.id,
+			...meta,
 			status: allowed ? "completed" : "failed",
 			content: [
 				{
@@ -484,6 +538,10 @@ function run() {
 			send({ jsonrpc: "2.0", id: msg.id, result });
 		switch (msg.method) {
 			case "initialize":
+				clientSubagents =
+					/** @type {{ clientCapabilities?: { subagents?: unknown } }} */ (
+						msg.params ?? {}
+					).clientCapabilities?.subagents != null;
 				clientElicits = !!(
 					/** @type {{ clientCapabilities?: { elicitation?: { form?: unknown } } }} */ (
 						msg.params ?? {}
@@ -505,6 +563,7 @@ function run() {
 				});
 			case "session/new":
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
+				rootSessionId = sessionId;
 				await connect(msg.params?.mcpServers);
 				return reply({
 					sessionId,
@@ -549,6 +608,7 @@ function run() {
 			}
 			case "session/load": {
 				sessionId = String(msg.params?.sessionId ?? "");
+				rootSessionId = sessionId;
 				await connect(msg.params?.mcpServers);
 				const pickedFile = join(PICKED_DIR, sessionId);
 				const named = existsSync(pickedFile)
@@ -595,10 +655,18 @@ function run() {
 				}
 				return reply(answer);
 			}
-			case "session/cancel":
+			case "session/cancel": {
+				const target = String(msg.params?.sessionId ?? "");
+				const child = childCancels.get(target);
+				if (child) {
+					childCancels.delete(target);
+					child();
+					return;
+				}
 				onCancel?.();
 				onCancel = null;
 				return;
+			}
 			default:
 				if (msg.id !== undefined) reply({});
 		}

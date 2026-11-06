@@ -50,7 +50,8 @@ import {
 import { usageLimitText } from "../run/usage-limit.js";
 
 export type AcpStreamItem =
-	| { kind: "update"; update: AcpUpdate }
+	/** `sessionId` is set only for a sub-agent's session, never the main one (#1025). */
+	| { kind: "update"; update: AcpUpdate; sessionId?: string }
 	/** The agent asked; the turn waits until a `permission` item answers `askId`. */
 	| {
 			kind: "permission_asked";
@@ -87,6 +88,8 @@ export type AcpStreamItem =
 			ask: ElicitationAsk;
 			expiresAt: Date | null;
 			toolCallId?: string;
+			/** The sub-agent session that asked (#1025). */
+			sessionId?: string;
 	  }
 	| { kind: "elicit_closed"; askId: string; closed: HeldOutcome };
 
@@ -579,6 +582,10 @@ export class AcpSession {
 	private readonly driftSeen = new Set<string>();
 	/** Asks the policy has not answered; a cancel or close aborts them. */
 	private readonly asks = new Set<AbortController>();
+	/** The sub-agent session each open ask came from, so cancelling one child aborts only its asks (#1025). */
+	private readonly askSessions = new Map<AbortController, string>();
+	/** Sub-agent sessions the agent announced, and whether it lets the client cancel each (#1025). */
+	private readonly subagents = new Map<string, { cancel: boolean }>();
 	/** This turn's `tool_call` announcements by id, for an ask that carries only the id (#848, OBJ-011). */
 	private readonly toolCalls = new Map<string, Record<string, unknown>>();
 	agent: AcpAgentInfo = {};
@@ -709,6 +716,9 @@ export class AcpSession {
 					fs: { readTextFile: false, writeTextFile: false },
 					// ACP RFD "Session Compaction": the agent reports its compactions as `compaction_update` (#1024).
 					session: { replayComplete: {}, compaction: {} },
+					// ACP's unstable Subagent Sessions RFD; claude-agent-acp strips a child's words without the meta (#1025).
+					subagents: {},
+					_meta: { "subagent-transcript": true },
 					// Form mode only: an agent-supplied URL needs its own trust ruling (#1024).
 					...(config.elicit ? { elicitation: { form: {} } } : {}),
 				},
@@ -954,6 +964,47 @@ export class AcpSession {
 		});
 	}
 
+	/**
+	 * `session/cancel` for one sub-agent (#1025): false when the agent never announced
+	 * it or did not grant its cancel. Its asks are answered cancelled; the parent's stay.
+	 */
+	cancelSubagent(sessionId: string): boolean {
+		if (!this.subagents.get(sessionId)?.cancel || this.closed) return false;
+		for (const [ask, owner] of this.askSessions)
+			if (owner === sessionId) ask.abort();
+		this.send({
+			jsonrpc: "2.0",
+			method: "session/cancel",
+			params: { sessionId },
+		});
+		return true;
+	}
+
+	/** A `subagent_update` patches its child's record: `capabilities: null` revokes cancel. */
+	private noteSubagent(u: Record<string, unknown>): void {
+		const id = u.sessionId;
+		if (typeof id !== "string" || !id) return;
+		const known = this.subagents.get(id) ?? { cancel: false };
+		if ("capabilities" in u) {
+			const caps = u.capabilities as { cancel?: unknown } | null | undefined;
+			known.cancel = caps?.cancel != null;
+		}
+		this.subagents.set(id, known);
+	}
+
+	/** The child session a message names, or undefined for the main one. */
+	private childOf(
+		params: Record<string, unknown> | undefined,
+	): string | undefined {
+		const id = params?.sessionId;
+		return typeof id === "string" &&
+			id &&
+			this.currentSessionId &&
+			id !== this.currentSessionId
+			? id
+			: undefined;
+	}
+
 	async close(): Promise<void> {
 		if (this.closed) return;
 		this.closed = true;
@@ -1117,8 +1168,15 @@ export class AcpSession {
 					this.drift("session/update", "status", u.status);
 					this.noteToolCall(u);
 				}
-				this.trackMode(u);
-				this.push({ kind: "update", update: update as AcpUpdate });
+				const child = this.childOf(msg.params);
+				// A child's mode is its own; only the main session's is the run's (#1025).
+				if (!child) this.trackMode(u);
+				if (u.sessionUpdate === "subagent_update") this.noteSubagent(u);
+				this.push({
+					kind: "update",
+					update: update as AcpUpdate,
+					...(child ? { sessionId: child } : {}),
+				});
 			}
 		} else if (msg.method === AUTH_STATUS_UPDATE) {
 			const status = msg.params?.authStatus as { kind?: unknown } | undefined;
@@ -1198,9 +1256,12 @@ export class AcpSession {
 		}
 		const askId = newAskId();
 		const controller = new AbortController();
+		const child = this.childOf(msg.params);
 		this.asks.add(controller);
+		if (child) this.askSessions.set(controller, child);
 		const finish = (closed: HeldOutcome) => {
 			this.asks.delete(controller);
+			this.askSessions.delete(controller);
 			const content =
 				"answer" in closed && closed.outcome === "answered"
 					? elicitationContent(ask, closed.answer)
@@ -1232,6 +1293,7 @@ export class AcpSession {
 			expiresAt:
 				held.timeoutMs > 0 ? new Date(Date.now() + held.timeoutMs) : null,
 			...(params.toolCallId ? { toolCallId: params.toolCallId } : {}),
+			...(child ? { sessionId: child } : {}),
 		});
 		held.outcome.then(finish, () => finish({ outcome: "stopped" }));
 	}
@@ -1240,11 +1302,13 @@ export class AcpSession {
 		const method = msg.method ?? "";
 		if (method === "session/request_permission") {
 			const params = msg.params ?? {};
+			const child = this.childOf(params);
 			const request: PermissionRequest = {
 				options: (params.options as PermissionRequest["options"]) ?? [],
 				toolCall: this.withAnnounced(
 					params.toolCall as PermissionRequest["toolCall"],
 				),
+				...(child ? { sessionId: child } : {}),
 			};
 			const askId = newAskId();
 			const controller = new AbortController();
@@ -1256,6 +1320,7 @@ export class AcpSession {
 			});
 			const answer = (decision: PermissionDecision, sync: boolean): void => {
 				this.asks.delete(controller);
+				this.askSessions.delete(controller);
 				if (this.closed) return;
 				const optionId =
 					decision.outcome === "stopped" || decision.outcome === "restarted"
@@ -1284,6 +1349,7 @@ export class AcpSession {
 			};
 			let verdict: PermissionDecision | Promise<PermissionDecision>;
 			this.asks.add(controller);
+			if (child) this.askSessions.set(controller, child);
 			try {
 				verdict = this.config.permission(request, {
 					askId,

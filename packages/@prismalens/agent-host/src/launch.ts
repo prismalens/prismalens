@@ -27,8 +27,58 @@ import {
 	mergeConfigPatch,
 	type ResolvedLevel,
 	resolveLevel,
+	type SubagentLimitKey,
 	type UserSetup,
 } from "./registry/index.js";
+
+export interface SubagentLimits {
+	depth?: number;
+	concurrency?: number;
+}
+
+/** `value` set at `path` inside `obj`, the objects on the way created or copied. */
+function setPath(
+	obj: JsonObject,
+	path: readonly string[],
+	value: unknown,
+): JsonObject {
+	const [head, ...rest] = path;
+	if (!head) return obj;
+	const next = isJsonObject(obj[head]) ? (obj[head] as JsonObject) : {};
+	return { ...obj, [head]: rest.length ? setPath(next, rest, value) : value };
+}
+
+/** The row's sub-agent keys for the limits set: env values, and patches to its config files. */
+export function subagentLimitLayers(
+	row: AgentDescriptor,
+	limits: SubagentLimits | undefined,
+	env: Readonly<Record<string, string>>,
+): { env: Record<string, string>; files: Record<string, JsonObject> } {
+	const out = {
+		env: {} as Record<string, string>,
+		files: {} as Record<string, JsonObject>,
+	};
+	const keys: [SubagentLimitKey | undefined, number | undefined][] = [
+		[row.subagentLimits?.depth, limits?.depth],
+		[row.subagentLimits?.concurrency, limits?.concurrency],
+	];
+	for (const [key, value] of keys) {
+		if (!key || value === undefined) continue;
+		if ("env" in key) out.env[key.env] = String(value);
+		else if ("jsonEnv" in key) {
+			const base = out.env[key.jsonEnv] ?? env[key.jsonEnv];
+			out.env[key.jsonEnv] = JSON.stringify(
+				setPath(userConfigEnv(key.jsonEnv, base), key.path, value),
+			);
+		} else
+			out.files[key.configFile] = setPath(
+				out.files[key.configFile] ?? {},
+				key.path,
+				value,
+			);
+	}
+	return out;
+}
 
 /**
  * The `.exe` an npm `.cmd` shim runs, else `path`. The companion is handed to an adapter that
@@ -150,6 +200,8 @@ export interface PlanLaunchInput {
 	userConfig?: JsonObject;
 	/** The product's MCP gateway; reaches the run only on a row with `gatewayDelivery` (#848). */
 	gateway?: AgentRunEnv["gateway"];
+	/** Sub-agent limits the user set; each reaches only a row with a key for it (#1024 spec B). */
+	subagents?: SubagentLimits;
 	/** Swap the row's facts, as tests and a `local` command do. */
 	descriptor?: AgentDescriptor;
 }
@@ -307,13 +359,11 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		const value = host[key];
 		if (value !== undefined) env[key] = value;
 	}
-	for (const layer of [
-		stored,
-		input.launch.env ?? {},
-		row.acpEnv(runEnv),
-		input.overrides ?? {},
-	])
+	for (const layer of [stored, input.launch.env ?? {}, row.acpEnv(runEnv)])
 		overlay(env, layer);
+	// After the user's own values, so a JSON env such as CODEX_CONFIG keeps what they set in it.
+	const limits = subagentLimitLayers(row, input.subagents, env);
+	for (const layer of [limits.env, input.overrides ?? {}]) overlay(env, layer);
 
 	const own =
 		policy.floor?.mode === "inherit-minus-own-secrets"
@@ -374,7 +424,23 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	const patch = level?.configPatch?.(
 		mergeConfigPatch(input.userConfig ?? {}, inline),
 	);
-	const planned = levelFiles(row.configFiles?.(runEnv) ?? {}, patch);
+	const planned = Object.fromEntries(
+		Object.entries(levelFiles(row.configFiles?.(runEnv) ?? {}, patch)).map(
+			([rel, content]) => {
+				const limit = limits.files[rel];
+				return [
+					rel,
+					limit
+						? JSON.stringify(
+								mergeConfigPatch(JSON.parse(content) as JsonObject, limit),
+								null,
+								2,
+							)
+						: content,
+				];
+			},
+		),
+	);
 	if (row.configEnv && planned[row.configEnv.file] !== undefined) {
 		const { file, key } = row.configEnv;
 		const run = JSON.parse(planned[file] as string) as JsonObject;

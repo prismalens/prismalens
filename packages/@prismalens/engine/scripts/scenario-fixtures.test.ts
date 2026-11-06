@@ -168,6 +168,8 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"gateway-thread-cancel",
 				"gateway-thread-roster",
 				"gateway-propose-action",
+				"gateway-ask-user",
+				"gateway-secret-request",
 			].sort(),
 		);
 	});

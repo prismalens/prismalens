@@ -227,4 +227,15 @@ describe("a schedule's composer (#1020)", () => {
 		expect(q("composer-repeat")).toBeNull();
 		expect(q("composer-attach")).not.toBeNull();
 	});
+
+	it("takes a page's quote and focuses the box at its end, unsent (#1025)", async () => {
+		const onSend = vi.fn();
+		const quote = `> Sub-agent "Check deploys": List deploys${"\n\n"}`;
+		await render({ onSend, text: quote, onText: vi.fn(), focusSignal: 1 });
+		const box = q("composer-input") as HTMLTextAreaElement;
+		expect(box.value).toBe(quote);
+		expect(document.activeElement).toBe(box);
+		expect(box.selectionStart).toBe(quote.length);
+		expect(onSend).not.toHaveBeenCalled();
+	});
 });

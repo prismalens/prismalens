@@ -8,7 +8,7 @@ import { useAnswerAsk } from "@/lib/api/hooks/use-investigations-orpc";
 import { formatClock } from "@/lib/format-time";
 import type { AttachmentView } from "@/lib/investigation-events";
 import { mcpTool, shortPath } from "@/lib/report-view";
-import { type AskRecord, askTitle } from "@/lib/run-asks";
+import { type AskRecord, askTitle, askWho } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import { isConflict } from "./useInvestigationRun";
 
@@ -165,7 +165,9 @@ export function AskCard({
 						!inline && "breathe",
 					)}
 				/>
-				<span className="font-medium text-text-1">{agent} asks to run</span>
+				<span className="font-medium text-text-1">
+					{askWho(ask, agent)} asks to run
+				</span>
 				{count > 1 && (
 					<span
 						className="text-text-3 tabular-nums"

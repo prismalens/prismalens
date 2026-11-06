@@ -171,6 +171,10 @@ function inputFor(tool: string, run: Seeded) {
 			return { id: "parent", reason: "coverage", requestId: "cov-cancel" };
 		case "propose_action":
 			return { change: { kind: "setting", key: "children", value: 3 }, why: "coverage" };
+		case "ask_user":
+			return { questions: [{ question: "Restart the cart?", options: [{ label: "Yes" }, { label: "No" }] }] };
+		case "secret_request":
+			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:
 			return {};
 	}

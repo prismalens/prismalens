@@ -1,0 +1,69 @@
+{
+	"row": "gateway-ask-user",
+	"kind": "happy",
+	"title": "Asks the user one question through PrismaLens's ask_user tool, which returns at once, then reports",
+	"run": {},
+	"expect": "gateway",
+	"na": {
+		"claude-code": "PrismaLens does not offer ask_user to Claude Code: claude-agent-acp routes its own AskUserQuestion to the client by elicitation, so no PrismaLens tool runs and the run has no evidence",
+		"codex": "PrismaLens does not offer ask_user to Codex: codex-acp routes its own request_user_input to the client by elicitation, so no PrismaLens tool runs and the run has no evidence",
+		"gemini": "Gemini CLI never ran the ask_user call in CI run 42207366195 (no tool ran) while secret_request runs; the cause is not found yet and is an open question on #1024. ask_user is offered to no run until the ask dock ships"
+	},
+	"gateway": {
+		"calls": [
+			{
+				"name": "ask_user",
+				"ok": true,
+				"outputHas": "asked"
+			}
+		]
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:gateway-ask-user]",
+				"toolName": "$gw:ask_user",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:ask_user",
+						"arguments": {
+							"questions": [
+								{
+									"question": "Roll back the deploy, or restore the index by hand?",
+									"options": [
+										{
+											"label": "Roll back"
+										},
+										{
+											"label": "Restore the index"
+										}
+									]
+								}
+							]
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-ask-user]",
+				"hasToolResult": true
+			},
+			"response": {
+				"content": "$report"
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:gateway-ask-user]"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

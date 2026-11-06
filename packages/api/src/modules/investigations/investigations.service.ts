@@ -50,6 +50,7 @@ import {
 } from "./dto/index.js";
 import { meetsPromotionRule } from "./promotion.js";
 import { runScope, sharesAdmission } from "./run-scope.js";
+import { recordSubagent } from "./subagent-sessions.js";
 
 export type { Investigation };
 
@@ -880,6 +881,8 @@ export class InvestigationsService {
 				else await this.prisma.investigationEvent.create({ data });
 				inserted++;
 				stored.push(event);
+				if (event.kind === "subagent")
+					await recordSubagent(this.prisma, investigationId, event);
 			} catch (error) {
 				if (
 					error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -905,6 +908,13 @@ export class InvestigationsService {
 					),
 				);
 		return { inserted, duplicates };
+	}
+
+	/** One sub-agent the run's agent started, as its events last left it (#1025). */
+	subagent(investigationId: string, sessionId: string) {
+		return this.prisma.subagentSession.findUnique({
+			where: { investigationId_sessionId: { investigationId, sessionId } },
+		});
 	}
 
 	/** The highest stored event `seq`, -1 when none; a follow-up numbers after it (#747). */

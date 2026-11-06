@@ -54,7 +54,8 @@ export interface AsksPort {
 	 */
 	close(
 		askId: string,
-		outcome: "stopped" | "expired",
+		/** `answered` only for a `secret` ask, whose value went through its own endpoint. */
+		outcome: "stopped" | "expired" | "answered",
 	): Promise<ClosedAsk | null>;
 }
 

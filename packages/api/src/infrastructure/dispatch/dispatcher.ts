@@ -32,11 +32,13 @@ import {
 	type RunAskRequest,
 	type RunMessageRequest,
 	type RunQueueRequest,
+	type RunSubagentRequest,
 	runAskTopic,
 	runCancelTopic,
 	runEventsTopic,
 	runMessageTopic,
 	runQueueTopic,
+	runSubagentTopic,
 } from "./event-bus.js";
 import type { ClaimedJob, JobStore } from "./job-store.js";
 
@@ -69,6 +71,8 @@ export interface RunningJob {
 	): MessageState;
 	/** The operator's answer to one of the run's asks (#673 w21, #1024); null when it no longer waits. */
 	answer?(askId: string, answer: AskAnswer): AskResult | "invalid" | null;
+	/** Stop one sub-agent the agent granted cancel for (#1025); null once the run no longer listens. */
+	cancelSubagent?(sessionId: string): boolean | null;
 	/** Edit or withdraw a queued message before it is claimed (#1024). */
 	change?(
 		messageId: string,
@@ -266,6 +270,10 @@ export class Dispatcher {
 			runAskTopic(job.investigationId),
 			(a) => a.reply(running.answer?.(a.askId, a.answer) ?? null),
 		);
+		const subagentSub = this.bus.subscribe<RunSubagentRequest>(
+			runSubagentTopic(job.investigationId),
+			(r) => r.reply(running.cancelSubagent?.(r.sessionId) ?? null),
+		);
 		const queueSub = this.bus.subscribe<RunQueueRequest>(
 			runQueueTopic(job.investigationId),
 			(q) => q.reply(running.change?.(q.messageId, q.text) ?? null),
@@ -291,6 +299,7 @@ export class Dispatcher {
 				cancelSub.unsubscribe();
 				messageSub.unsubscribe();
 				askSub.unsubscribe();
+				subagentSub.unsubscribe();
 				queueSub.unsubscribe();
 				this.inFlight.delete(job.id);
 				// A freed slot is worth claiming into immediately rather than waiting for

@@ -69,6 +69,7 @@ import { ReportDeliveryService } from "../../modules/delivery/report-delivery.se
 import { GatewayService } from "../../modules/gateway/gateway.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
+import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
 import {
 	GitCredentialService,
 	pickOf,
@@ -104,10 +105,12 @@ import {
 	type RunAskRequest,
 	type RunMessageRequest,
 	type RunQueueRequest,
+	type RunSubagentRequest,
 	runAskTopic,
 	runCancelTopic,
 	runMessageTopic,
 	runQueueTopic,
+	runSubagentTopic,
 } from "./event-bus.js";
 import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
 
@@ -350,6 +353,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		@Optional() private readonly runWorkspaces?: RunWorkspacesService,
 		@Optional() private readonly lifecycle?: RuntimeLifecycleService,
 		@Optional() admission?: AdmissionService,
+		@Optional() private readonly credentials?: CredentialsService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -468,6 +472,19 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					},
 					update: { value },
 				});
+			},
+			requestedSecrets: async (runId) => {
+				const rows = await this.prisma.secretRequested.findMany({
+					where: { investigationId: runId, valueEnc: { not: null } },
+					orderBy: { answeredAt: "asc" },
+				});
+				const out: Record<string, string> = {};
+				for (const row of rows)
+					if (row.valueEnc && this.credentials)
+						out[row.name] = this.credentials.decryptFromBase64<string>(
+							row.valueEnc,
+						);
+				return out;
 			},
 			questionTimeoutMs: async () => {
 				const row = await this.prisma.setting.findUnique({
@@ -1576,6 +1593,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.bus.publish<RunAskRequest>(runAskTopic(investigationId), {
 			askId,
 			answer,
+			reply: (r) => {
+				result = r;
+			},
+		});
+		return result;
+	}
+
+	/** Stop one sub-agent of a live run (#1025): false when its agent refused, null when nothing holds the run. */
+	cancelSubagent(investigationId: string, sessionId: string): boolean | null {
+		let result: boolean | null = null;
+		this.bus.publish<RunSubagentRequest>(runSubagentTopic(investigationId), {
+			sessionId,
 			reply: (r) => {
 				result = r;
 			},

@@ -179,6 +179,8 @@ export interface ComposerProps {
 	noFiles?: boolean;
 	/** Beside Send: save this text as a schedule instead (#1020). */
 	onRepeat?: (text: string) => void;
+	/** Each change focuses the box with the caret at the end, e.g. after a quote fills it. */
+	focusSignal?: number;
 }
 
 interface Draft {
@@ -243,6 +245,7 @@ export function Composer({
 	floating,
 	noFiles,
 	onRepeat,
+	focusSignal,
 }: ComposerProps) {
 	const [ownText, setOwnText] = useState("");
 	const text = keptText ?? ownText;
@@ -281,6 +284,12 @@ export function Composer({
 	useEffect(() => {
 		if (autoFocus) ref.current?.focus();
 	}, [autoFocus]);
+	useEffect(() => {
+		const box = ref.current;
+		if (!focusSignal || !box) return;
+		box.focus();
+		box.setSelectionRange(box.value.length, box.value.length);
+	}, [focusSignal]);
 	const shown = useRef(drafts);
 	shown.current = drafts;
 	useEffect(() => {

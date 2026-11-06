@@ -404,3 +404,49 @@ describe.skipIf(process.platform !== "win32")("a companion behind an npm .cmd sh
 		}
 	});
 });
+
+describe("planLaunch sub-agent limits (#1024 spec B)", () => {
+	it("Given depth and concurrency, Then Claude Code gets its two env keys and nothing is set when they are unset", () => {
+		const env = plan({ subagents: { depth: 2, concurrency: 3 } }).env;
+		expect(env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBe("2");
+		expect(env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS).toBe("3");
+		const unset = plan().env;
+		expect(unset.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBeUndefined();
+		expect(unset.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS).toBeUndefined();
+	});
+
+	it("Given a CODEX_CONFIG the user stored, Then Codex's agents keys merge into it", () => {
+		const env = plan({
+			agent: "codex",
+			launch: { command: "codex-acp" },
+			stored: { CODEX_CONFIG: JSON.stringify({ model: "gpt-x", agents: { other: 1 } }) },
+			subagents: { depth: 1, concurrency: 4 },
+		}).env;
+		expect(JSON.parse(env.CODEX_CONFIG ?? "{}")).toEqual({
+			model: "gpt-x",
+			agents: { other: 1, max_depth: 1, max_threads: 4 },
+		});
+	});
+
+	it("Given depth and concurrency, Then OpenCode gets experimental.subagent_depth in its inline config and no concurrency key", () => {
+		const p = plan({
+			agent: "opencode",
+			launch: { command: "opencode" },
+			subagents: { depth: 2, concurrency: 5 },
+		});
+		const config = JSON.parse(p.env.OPENCODE_CONFIG_CONTENT ?? "{}");
+		expect(config.experimental).toMatchObject({ subagent_depth: 2, continue_loop_on_deny: true });
+		expect(JSON.stringify(config)).not.toContain("5");
+	});
+
+	it("Given an agent with no keys, Then the limits change nothing", () => {
+		const base = plan({ agent: "gemini", launch: { command: "gemini" } });
+		const limited = plan({
+			agent: "gemini",
+			launch: { command: "gemini" },
+			subagents: { depth: 2, concurrency: 2 },
+		});
+		expect(limited.env).toEqual(base.env);
+		expect(limited.files).toEqual(base.files);
+	});
+});

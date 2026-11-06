@@ -26,7 +26,9 @@ vi.mock("./investigate.js", () => ({
 }));
 
 const { conductRun } = await import("./conductor.js");
-const { injectedSecrets, redactEvent } = await import("./redact.js");
+const { injectedSecrets, redactEvent, requestedSecrets, scrub } = await import(
+	"./redact.js"
+);
 
 describe("the run's own credentials never reach its events (#1020, CP4 OBJ-015)", () => {
 	it("finds the GitHub token values the agent's env may hold, whatever the name's case, and the bearer", () => {
@@ -71,5 +73,14 @@ describe("the run's own credentials never reach its events (#1020, CP4 OBJ-015)"
 			expect(e).not.toContain(BEARER);
 		}
 		expect(append).toHaveBeenCalled();
+	});
+});
+
+describe("requestedSecrets (#1024 spec B)", () => {
+	it("keeps a value the user handed the thread whatever its length, longest first, so one inside another leaves nothing behind", () => {
+		const secrets = requestedSecrets(["abc", "abcdef", undefined, "", "abc"]);
+		expect(secrets).toEqual(["abcdef", "abc"]);
+		expect(scrub("token abcdef and abc", secrets)).toBe("token [redacted] and [redacted]");
+		expect(redactEvent({ text: "say abc" }, secrets)).toEqual({ text: "say [redacted]" });
 	});
 });

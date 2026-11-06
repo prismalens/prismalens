@@ -101,6 +101,8 @@ export interface AgentRuntime {
 	note: RunRuntimeNote | null;
 	/** The host let alert and schedule runs keep the GitHub token (#1020). */
 	unattendedGithub?: boolean;
+	/** Settings → Agent → Advanced; absent is the agent's own default (#1024 spec B). */
+	subagentLimits?: { depth?: number; concurrency?: number };
 }
 
 export interface HarnessSettings {
@@ -141,6 +143,9 @@ export interface HarnessSettings {
 	resumeAfterLimit?: boolean;
 	/** Stored only when on: idle threads are compacted (#1024). */
 	compactIdle?: boolean;
+	/** In-session sub-agent limits (#1024 spec B); unset is the agent's own default. */
+	subagentDepth?: number;
+	subagentConcurrency?: number;
 	/** Read from HARNESS_ENV: names only. */
 	envNames?: Partial<Record<HarnessId, string[]>>;
 }
@@ -182,6 +187,9 @@ export interface HarnessSettingsPatch {
 	resumeAfterLimit?: boolean;
 	/** Stored only when on: idle threads are compacted (#1024). */
 	compactIdle?: boolean;
+	/** `null` goes back to the agent's own default. */
+	subagentDepth?: number | null;
+	subagentConcurrency?: number | null;
 }
 
 const RUNTIME_FIELDS = [
@@ -193,7 +201,29 @@ const RUNTIME_FIELDS = [
 	"unattendedGithub",
 	"alertAsks",
 	"resumeAfterRestart",
+	"subagentDepth",
+	"subagentConcurrency",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
+
+/** A stored sub-agent limit, 1 to 8; anything else reads as unset. */
+function subagentLimit(raw: unknown): number | undefined {
+	return typeof raw === "number" &&
+		Number.isInteger(raw) &&
+		raw >= 1 &&
+		raw <= 8
+		? raw
+		: undefined;
+}
+
+/** The two limits as fields, each only when set. */
+function subagentLimitFields(depth: unknown, concurrency: unknown) {
+	const d = subagentLimit(depth);
+	const c = subagentLimit(concurrency);
+	return {
+		...(d !== undefined ? { subagentDepth: d } : {}),
+		...(c !== undefined ? { subagentConcurrency: c } : {}),
+	};
+}
 
 /** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped (models, efforts and modes alike). */
 function cleanModels(raw: unknown): Partial<Record<HarnessId, string>> {
@@ -476,6 +506,18 @@ export class HarnessService implements OnApplicationBootstrap {
 			env,
 			policy: prismalensLaunchPolicy({ strict }),
 			...(s.unattendedGithub === true ? { unattendedGithub: true } : {}),
+			...(s.subagentDepth !== undefined || s.subagentConcurrency !== undefined
+				? {
+						subagentLimits: {
+							...(s.subagentDepth !== undefined
+								? { depth: s.subagentDepth }
+								: {}),
+							...(s.subagentConcurrency !== undefined
+								? { concurrency: s.subagentConcurrency }
+								: {}),
+						},
+					}
+				: {}),
 			...(binaryPath ? { binaryPath } : {}),
 			...(local ? { launchArgs: args } : {}),
 			note: set
@@ -684,6 +726,10 @@ export class HarnessService implements OnApplicationBootstrap {
 					? { resumeAfterRestart: false }
 					: {}),
 				...sessionRows(parsed),
+				...subagentLimitFields(
+					parsed.subagentDepth,
+					parsed.subagentConcurrency,
+				),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -777,6 +823,14 @@ export class HarnessService implements OnApplicationBootstrap {
 				resumeAfterLimit: patch.resumeAfterLimit ?? current.resumeAfterLimit,
 				compactIdle: patch.compactIdle ?? current.compactIdle,
 			}),
+			...subagentLimitFields(
+				patch.subagentDepth === undefined
+					? current.subagentDepth
+					: patch.subagentDepth,
+				patch.subagentConcurrency === undefined
+					? current.subagentConcurrency
+					: patch.subagentConcurrency,
+			),
 		};
 		// The variables and the rest of the PATCH land together or not at all (#911).
 		await this.prisma.$transaction(async (tx) => {

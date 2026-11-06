@@ -15,7 +15,11 @@
  * (`selection.pinned`), so the picker stays editable but the page says so.
  */
 
-import { ACCESS_LEVELS, type HarnessId } from "@prismalens/config/harness";
+import {
+	ACCESS_LEVELS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type HarnessProbeResult,
@@ -145,6 +149,8 @@ export function HarnessSettings() {
 					<StrictEnvRow />
 				</Pool>
 			</SettingGroup>
+
+			<AdvancedSection />
 
 			<SettingGroup
 				title="Agents"
@@ -531,5 +537,134 @@ function AgentRow({
 				</span>
 			}
 		/>
+	);
+}
+
+const LIMIT_OPTIONS = [
+	{ value: "default", label: "Agent's default" },
+	...Array.from({ length: 8 }, (_, i) => ({
+		value: String(i + 1),
+		label: String(i + 1),
+	})),
+];
+
+/** Which limits an agent applies through a documented key of its own (the registry's `subagentLimits`). */
+export function subagentKeys(id: HarnessId): {
+	depth: boolean;
+	concurrency: boolean;
+} {
+	const keys = HARNESS_REGISTRY[id]?.subagentLimits;
+	return { depth: !!keys?.depth, concurrency: !!keys?.concurrency };
+}
+
+/** Sub-agent limits, folded: each agent applies them through its own key, unset sets nothing (#1024). */
+function AdvancedSection() {
+	return (
+		<details className="group mt-8" data-testid="harness-advanced">
+			<summary className="flex cursor-pointer list-none items-center gap-1.5 text-body font-medium text-text-2 hover:text-text-1">
+				<ChevronRight
+					aria-hidden
+					className="size-3.5 shrink-0 text-text-3 transition-transform duration-(--dur-fast) group-open:rotate-90 motion-reduce:transition-none"
+				/>
+				Advanced
+			</summary>
+			<p className="mt-1 mb-3 text-meta text-text-3">
+				Claude Code, Codex and OpenCode use these. OpenCode takes depth only.
+			</p>
+			<Pool>
+				<SubagentLimitRow
+					field="subagentDepth"
+					label="Sub-agent depth"
+					description="How deep sub-agents may nest"
+				/>
+				<SubagentLimitRow
+					field="subagentConcurrency"
+					label="Concurrent sub-agents"
+					description="How many run at once"
+				/>
+			</Pool>
+		</details>
+	);
+}
+
+function SubagentLimitRow({
+	field,
+	label,
+	description,
+}: {
+	field: "subagentDepth" | "subagentConcurrency";
+	label: string;
+	description: string;
+}) {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const { effective } = useAgentChoice();
+	const id = `harness-${field}`;
+	// The rows follow the next run's agent: one without a key would ignore the value.
+	const keyed =
+		!effective ||
+		subagentKeys(effective.id as HarnessId)[
+			field === "subagentDepth" ? "depth" : "concurrency"
+		];
+	return (
+		<SettingRow
+			label={<span id={`${id}-label`}>{label}</span>}
+			description={
+				settings?.canEditRuntime === false
+					? "Only the computer running PrismaLens can change this."
+					: effective
+						? `For ${effective.label}. ${description}`
+						: description
+			}
+			testId={`${id}-row`}
+		>
+			{keyed ? (
+				<LimitSelect
+					id={id}
+					value={settings?.[field]}
+					disabled={update.isPending || settings?.canEditRuntime === false}
+					onChange={(v) => update.mutate({ [field]: v })}
+				/>
+			) : (
+				<span className="text-meta text-text-3" data-testid={`${id}-agent`}>
+					Set by the agent
+				</span>
+			)}
+		</SettingRow>
+	);
+}
+
+function LimitSelect({
+	id,
+	value,
+	disabled,
+	onChange,
+}: {
+	id: string;
+	value: number | undefined;
+	disabled: boolean;
+	onChange: (value: number | null) => void;
+}) {
+	return (
+		<Select
+			value={value ? String(value) : "default"}
+			onValueChange={(v) => onChange(v === "default" ? null : Number(v))}
+			disabled={disabled}
+		>
+			<SelectTrigger
+				aria-labelledby={`${id}-label`}
+				className="w-40"
+				data-testid={id}
+			>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				{LIMIT_OPTIONS.map((o) => (
+					<SelectItem key={o.value} value={o.value}>
+						{o.label}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
 	);
 }

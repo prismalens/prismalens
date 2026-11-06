@@ -297,6 +297,31 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect([...(incident?.tools ?? [])].sort()).toEqual(ALL_TOOLS);
 	});
 
+	it("Given no ask dock to answer them, Then neither ask tool is offered to any run (#1024 spec B)", async () => {
+		const g = gateway();
+		for (const agent of ["opencode", "claude-code", undefined]) {
+			const lease = await g.lease(RUN_A, NAME, agent, undefined, { subject: "incident", owes: "report", attended: true, ...(agent ? { agent } : {}) });
+			expect(lease?.tools).not.toContain("ask_user");
+			expect(lease?.tools).not.toContain("secret_request");
+		}
+	});
+
+	it("Given a run nobody can answer, Then neither ask tool is offered; Given Claude Code or Codex, Then ask_user is left to their own question tool (#1024 spec B)", async () => {
+		const g = gateway();
+		const alone = await g.lease(RUN_A, NAME, undefined, undefined, { subject: "incident", owes: "report", attended: false, dock: true });
+		expect(alone?.tools).not.toContain("ask_user");
+		expect(alone?.tools).not.toContain("secret_request");
+		for (const agent of ["claude-code", "codex"]) {
+			const own = await g.lease(RUN_A, NAME, agent, undefined, { subject: "incident", owes: "report", attended: true, agent, dock: true });
+			expect(own?.tools).not.toContain("ask_user");
+			expect(own?.tools).toContain("secret_request");
+		}
+		const open = await g.lease(RUN_A, NAME, "opencode", undefined, { subject: "incident", owes: "report", attended: true, agent: "opencode", dock: true });
+		expect(open?.tools).toEqual(expect.arrayContaining(["ask_user", "secret_request"]));
+		// Asking is never a card of its own, and never found by search.
+		expect(open?.autoAllow).toEqual(expect.arrayContaining(["ask_user", "secret_request"]));
+	});
+
 	it("a project or service thread is offered its own records, never an incident's (#1020)", async () => {
 		const g = gateway();
 		const project = await g.lease(RUN_B, NAME, undefined, undefined, { subject: "project", owes: "answer" });

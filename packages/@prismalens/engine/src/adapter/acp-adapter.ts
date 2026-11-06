@@ -23,9 +23,11 @@
  * - A tool call is announced by a `tool_call` update (status `pending`) and
  *   resolved by one or more `tool_call_update`s; we pair them by `toolCallId` and
  *   emit `tool_result` only on a terminal (`completed`/`failed`) update.
- * - ACP/deepagents is FLAT (verified 2026-06-29 — a subagent's tool calls surface
- *   as top-level siblings, no parent linkage), so `path` is always `[]` and
- *   `label` is null. Depth comes from an Agent-SDK harness, not here.
+ * - A sub-agent the agent announces with `subagent_update` (ACP's Subagent Sessions
+ *   RFD) streams in its own session: its steps carry `path: [sessionId]` and its
+ *   title as `label`. An agent that sends no sessions but stamps
+ *   `_meta.claudeCode.parentToolUseId` nests under that call; anything else is the
+ *   branch top, `path: []` (#1025).
  *
  * Scope (Slice 0): a single branch. The adapter owns the per-branch monotonic
  * `seq` and stamps `ts`, so it is the single ordering authority for a branch's
@@ -50,7 +52,10 @@ import type {
 	ToolCategory,
 } from "@prismalens/contracts/schemas";
 import {
+	type AskSource,
 	PLAN_MAX_ENTRIES,
+	SUBAGENT_TEXT_CAP,
+	type SubagentState,
 	THOUGHT_MAX_BYTES,
 } from "@prismalens/contracts/schemas";
 import type { GatewayCall } from "../run/gateway.js";
@@ -96,6 +101,33 @@ export interface AcpUpdate {
 }
 
 /** A call Claude Code's own permission rules refused: no ask reached PrismaLens or the user (#673 w7-6). */
+/** Where a step belongs: the branch top, a sub-agent session, or under the call that started it. */
+interface Lane {
+	path: string[];
+	label: string | null;
+	/** Text deltas not yet flushed into a step. */
+	text: string;
+	/** Characters of a sub-agent's text kept so far, against SUBAGENT_TEXT_CAP. */
+	kept: number;
+	capped: boolean;
+}
+
+interface Subagent {
+	lane: Lane;
+	/** The lane it was started from, where its `subagent` events sit. */
+	parent: Lane;
+	title: string;
+	state: SubagentState;
+}
+
+const newLane = (path: string[], label: string | null): Lane => ({
+	path,
+	label,
+	text: "",
+	kept: 0,
+	capped: false,
+});
+
 export const RULE_DENIED =
 	"Denied by a permission rule in your Claude Code settings.";
 
@@ -141,8 +173,14 @@ export class AcpAdapter {
 	private seqCounter = 0;
 	private readonly now: () => Date;
 	private readonly previewLimit: number;
-	/** Assistant text deltas accumulated since the last flush. */
-	private pendingText = "";
+	/** The branch top; each sub-agent and nested call gets its own lane (#1025). */
+	private readonly top: Lane = newLane([], null);
+	/** The lane the event being built is stamped with. */
+	private lane: Lane = this.top;
+	/** Sub-agent sessions by ACP session id. */
+	private readonly subagents = new Map<string, Subagent>();
+	/** Lanes of calls stamped with a `parentToolUseId`, by that id (the fallback). */
+	private readonly nested = new Map<string, Lane>();
 	/** tool_call metadata kept to enrich the later tool_call_update (paired by id). */
 	private readonly toolMeta = new Map<string, ToolMeta>();
 	/** Thought deltas since the last step; one `thought` event carries them (#1024). */
@@ -162,29 +200,75 @@ export class AcpAdapter {
 	 * don't surface (mode updates, progress frames), one for most, two for a call
 	 * announced already finished. Held thinking goes out before the next event.
 	 */
-	events(u: AcpUpdate): CanonicalEvent[] {
-		if (u.sessionUpdate === "agent_thought_chunk") {
-			this.addThought(flattenAcpContent(u.content));
-			return [];
+	events(u: AcpUpdate, sessionId?: string): CanonicalEvent[] {
+		if (u.sessionUpdate === "subagent_update")
+			return this.subagentUpdate(u, sessionId);
+		this.lane = this.laneOf(u, sessionId);
+		try {
+			// Thinking is kept for the main agent only; a sub-agent's view shows its words and steps.
+			if (u.sessionUpdate === "agent_thought_chunk") {
+				if (this.lane === this.top)
+					this.addThought(flattenAcpContent(u.content));
+				return [];
+			}
+			if (this.lane !== this.top) return this.laneEvents(u);
+			const thought = this.flushThought();
+			const out = this.laneEvents(u);
+			return thought ? [thought, ...out] : out;
+		} finally {
+			this.lane = this.top;
 		}
-		const thought = this.flushThought();
-		const out = this.mapped(u);
-		return thought ? [thought, ...out] : out;
 	}
 
-	private mapped(u: AcpUpdate): CanonicalEvent[] {
+	/** Who asked: a sub-agent session the agent announced, else the main agent. */
+	askSource(sessionId?: string): AskSource {
+		const sub = sessionId ? this.subagents.get(sessionId) : undefined;
+		return sub && sessionId
+			? { kind: "subagent", sessionId, title: sub.title.slice(0, 200) }
+			: { kind: "agent" };
+	}
+
+	/**
+	 * The run ended with sub-agents still running; they end with its session. A stop
+	 * cancels them, any other end leaves what they did as all there is.
+	 */
+	endSubagents(stopped: boolean): CanonicalEvent[] {
+		const out: CanonicalEvent[] = [];
+		for (const lane of [
+			...[...this.subagents.values()].map((s) => s.lane),
+			...this.nested.values(),
+		]) {
+			const flushed = this.flushLane(lane);
+			if (flushed) out.push(flushed);
+		}
+		for (const [sessionId, sub] of this.subagents) {
+			if (sub.state !== "running") continue;
+			sub.state = stopped ? "cancelled" : "completed";
+			out.push(this.subagentEvent(sessionId, "state", { state: sub.state }));
+		}
+		return out;
+	}
+
+	private laneEvents(u: AcpUpdate): CanonicalEvent[] {
 		switch (u.sessionUpdate) {
 			case "plan": {
 				const entries = planEntries(u.entries);
 				return entries ? [{ kind: "plan", ...this.base(), entries }] : [];
 			}
 			case "agent_message_chunk":
-				this.pendingText += flattenAcpContent(u.content);
-				return [];
+				return this.addText(flattenAcpContent(u.content));
 			case "tool_call": {
 				const step = this.toolCall(u);
 				const done = isTerminal(u.status) ? this.toolResult(u) : null;
-				return done ? [step, done] : [step];
+				const out = done ? [step, done] : [step];
+				const sub = this.subagentOf(this.lane);
+				if (sub)
+					out.push(
+						this.subagentEvent(sub, "step", {
+							step: pickName(u).slice(0, 300),
+						}),
+					);
+				return out;
 			}
 			case "tool_call_update": {
 				const toolCallId = u.toolCallId ?? "";
@@ -195,7 +279,16 @@ export class AcpAdapter {
 					const done = this.toolResult(u);
 					return done ? [done] : [];
 				}
-				return filled ? [this.reannounce(toolCallId)] : [];
+				if (!filled) return [];
+				const again = [this.reannounce(toolCallId)];
+				// Claude Code opens a call as "Terminal" and names it later: the step line follows.
+				const sub = this.subagentOf(this.lane);
+				const name = this.toolMeta.get(toolCallId)?.name;
+				if (sub && name)
+					again.push(
+						this.subagentEvent(sub, "step", { step: name.slice(0, 300) }),
+					);
+				return again;
 			}
 			default:
 				return [];
@@ -252,10 +345,152 @@ export class AcpAdapter {
 	 * a terminal event so a pure-text turn (no tool call) is not lost.
 	 */
 	flushText(): CanonicalEvent | null {
-		if (this.pendingText.length === 0) return null;
-		const text = this.pendingText;
-		this.pendingText = "";
-		return { kind: "agent_step", ...this.base(), text, toolCalls: [] };
+		return this.flushLane(this.top);
+	}
+
+	private flushLane(lane: Lane): CanonicalEvent | null {
+		if (lane.text.length === 0) return null;
+		const text = lane.text;
+		lane.text = "";
+		const was = this.lane;
+		this.lane = lane;
+		try {
+			return { kind: "agent_step", ...this.base(), text, toolCalls: [] };
+		} finally {
+			this.lane = was;
+		}
+	}
+
+	/** A sub-agent's words stop at SUBAGENT_TEXT_CAP, said once; the top's are never capped. */
+	private addText(chunk: string): CanonicalEvent[] {
+		const lane = this.lane;
+		if (!chunk) return [];
+		if (lane === this.top) {
+			lane.text += chunk;
+			return [];
+		}
+		if (lane.capped) return [];
+		const room = SUBAGENT_TEXT_CAP - lane.kept;
+		lane.text += chunk.slice(0, room);
+		lane.kept += Math.min(chunk.length, room);
+		if (chunk.length <= room) return [];
+		lane.capped = true;
+		const sub = this.subagentOf(lane);
+		return sub ? [this.subagentEvent(sub, "state", { textCapped: true })] : [];
+	}
+
+	/** A child session's lane, a nested call's, or the top. */
+	private laneOf(u: AcpUpdate, sessionId: string | undefined): Lane {
+		if (sessionId)
+			// Traffic before its announcement still belongs to the child, never the top.
+			return (this.subagents.get(sessionId) ?? this.announce(sessionId, {}))
+				.lane;
+		const parent = parentToolUseOf(u._meta);
+		const call = parent ? this.toolMeta.get(parent) : undefined;
+		if (!parent || !call) return this.top;
+		let lane = this.nested.get(parent);
+		if (!lane) {
+			lane = newLane([parent], call.name);
+			this.nested.set(parent, lane);
+		}
+		return lane;
+	}
+
+	private subagentOf(lane: Lane): string | null {
+		for (const [id, sub] of this.subagents) if (sub.lane === lane) return id;
+		return null;
+	}
+
+	/** First sight of a child session; a nested child's lane sits under its parent's. */
+	private announce(
+		sessionId: string,
+		fields: { title?: string; task?: string },
+		parent: Lane = this.top,
+	): Subagent {
+		const title = fields.title?.trim() || fields.task?.trim() || "Sub-agent";
+		const sub: Subagent = {
+			title,
+			state: "running",
+			parent,
+			lane: newLane([...parent.path, sessionId], title),
+		};
+		this.subagents.set(sessionId, sub);
+		return sub;
+	}
+
+	/** ACP `subagent_update`: an omitted field keeps its value; a concrete state replaces the last. */
+	private subagentUpdate(u: AcpUpdate, on?: string): CanonicalEvent[] {
+		const raw = u as unknown as Record<string, unknown>;
+		const sessionId = typeof raw.sessionId === "string" ? raw.sessionId : "";
+		if (!sessionId) return [];
+		const title =
+			typeof raw.title === "string" && raw.title.trim()
+				? raw.title.trim().slice(0, 200)
+				: undefined;
+		const task =
+			typeof raw.description === "string" && raw.description.trim()
+				? raw.description.trim().slice(0, 4000)
+				: undefined;
+		const state = subagentState(raw.state);
+		const canCancel =
+			"capabilities" in raw
+				? (raw.capabilities as { cancel?: unknown } | null)?.cancel != null
+				: undefined;
+		const known = this.subagents.get(sessionId);
+		if (!known) {
+			// Sent on its immediate parent's session: a child of a child nests under it.
+			const parent = on ? this.subagents.get(on)?.lane : undefined;
+			const sub = this.announce(sessionId, { title, task }, parent);
+			if (state) sub.state = state;
+			return [
+				this.subagentEvent(sessionId, "started", {
+					title: sub.title.slice(0, 200),
+					state: sub.state,
+					canCancel: canCancel ?? false,
+					...(task ? { task } : {}),
+				}),
+			];
+		}
+		if (title) {
+			known.title = title;
+			known.lane.label = title;
+		}
+		if (state) known.state = state;
+		const fields = {
+			...(title ? { title } : {}),
+			...(task ? { task } : {}),
+			...(state ? { state } : {}),
+			...(canCancel !== undefined ? { canCancel } : {}),
+		};
+		if (Object.keys(fields).length === 0) return [];
+		const out: CanonicalEvent[] = [];
+		const flushed =
+			state && state !== "running" ? this.flushLane(known.lane) : null;
+		if (flushed) out.push(flushed);
+		out.push(this.subagentEvent(sessionId, "state", fields));
+		return out;
+	}
+
+	private subagentEvent(
+		sessionId: string,
+		phase: "started" | "state" | "step",
+		fields: {
+			title?: string;
+			task?: string;
+			state?: SubagentState;
+			step?: string;
+			canCancel?: boolean;
+			textCapped?: true;
+		},
+	): CanonicalEvent {
+		// A sub-agent's record sits in the lane that started it, where the transcript keeps its node.
+		const was = this.lane;
+		this.lane = this.subagents.get(sessionId)?.parent ?? this.top;
+		try {
+			return { kind: "subagent", ...this.base(), sessionId, phase, ...fields };
+		} finally {
+			this.lane = was;
+		}
 	}
 
 	/** Terminal: a branch finished. Emitted by the runner, not the harness stream. */
@@ -400,6 +635,7 @@ export class AcpAdapter {
 			| undefined,
 		expiresAt: Date,
 		clamped = false,
+		sessionId?: string,
 	): CanonicalEvent {
 		const meta = toolCall?.toolCallId
 			? this.toolMeta.get(toolCall.toolCallId)
@@ -428,6 +664,7 @@ export class AcpAdapter {
 			...(shown ? { input: shown } : {}),
 			...(server ? { server } : {}),
 			...(identity ? { identity } : {}),
+			...(sessionId ? { source: this.askSource(sessionId) } : {}),
 		};
 	}
 
@@ -494,8 +731,8 @@ export class AcpAdapter {
 		const name = pickName(u);
 		this.toolMeta.set(toolCallId, { name, kind: u.kind, rawInput: u.rawInput });
 		// The text the model produced before deciding on this call becomes the step's text.
-		const text = this.pendingText;
-		this.pendingText = "";
+		const text = this.lane.text;
+		this.lane.text = "";
 		return {
 			kind: "agent_step",
 			...this.base(),
@@ -581,10 +818,9 @@ export class AcpAdapter {
 		return {
 			runId: this.ctx.runId,
 			branchId: this.ctx.branchId,
-			// ACP/deepagents is flat (verified 2026-06-29) — no nesting path, no label.
-			path: [],
+			path: [...this.lane.path],
 			seq: this.nextSeq(),
-			label: null,
+			label: this.lane.label,
 			ts: this.now().toISOString(),
 		};
 	}
@@ -597,6 +833,35 @@ export class AcpAdapter {
 // =============================================================================
 // pure helpers (exported for unit tests)
 // =============================================================================
+
+/**
+ * An ACP sub-agent state snapshot as one of PrismaLens's four; null leaves it as it
+ * was. `unknown` (the child can no longer be observed) reads failed.
+ */
+export function subagentState(raw: unknown): SubagentState | null {
+	if (!raw || typeof raw !== "object") return null;
+	const { state, stopReason } = raw as {
+		state?: unknown;
+		stopReason?: unknown;
+	};
+	if (state === "running" || state === "requires_action") return "running";
+	if (state === "idle")
+		return stopReason === "cancelled"
+			? "cancelled"
+			: stopReason === "error"
+				? "failed"
+				: "completed";
+	if (state === "unknown") return "failed";
+	return null;
+}
+
+/** claude-agent-acp's `_meta.claudeCode.parentToolUseId`: the call a helper's step ran under. */
+export function parentToolUseOf(meta: unknown): string | null {
+	const id = (
+		meta as { claudeCode?: { parentToolUseId?: unknown } } | undefined
+	)?.claudeCode?.parentToolUseId;
+	return typeof id === "string" && id ? id : null;
+}
 
 /** A tool call's display name: its title, else its kind, else a generic fallback. */
 export function pickName(u: AcpUpdate): string {

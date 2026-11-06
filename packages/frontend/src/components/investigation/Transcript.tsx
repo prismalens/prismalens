@@ -25,6 +25,7 @@ import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
+import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
 import { compose } from "@/lib/compose";
@@ -41,7 +42,7 @@ import {
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
 import { restartSent } from "@/lib/restart";
-import { type AskRecord, askEnd, askTitle } from "@/lib/run-asks";
+import { type AskRecord, askEnd, askTitle, askWho } from "@/lib/run-asks";
 import {
 	NODE_ICON,
 	statusWord,
@@ -163,6 +164,7 @@ export const Transcript = memo(function Transcript({
 	runId,
 	foldTurns,
 	chat = false,
+	onOpenSubagent,
 }: {
 	items: TranscriptItem[];
 	/** Null on a scheduled check no finding has linked yet (#979). */
@@ -203,6 +205,8 @@ export const Transcript = memo(function Transcript({
 	foldTurns?: { live: boolean };
 	/** A thread that owes an answer: its first message is a message, never a brief (#1020). */
 	chat?: boolean;
+	/** Opens one sub-agent's read-only view (#1025). */
+	onOpenSubagent?: (sessionId: string) => void;
 }) {
 	useRenderProbe("Transcript", { items, steps, worked, report });
 	const groups = useGroupSteps(items, steps);
@@ -296,6 +300,7 @@ export const Transcript = memo(function Transcript({
 											fileOf={steps?.fileOf}
 											onOpenFile={steps?.onOpenFile}
 											runId={runId}
+											onOpenSubagent={onOpenSubagent}
 										/>
 									)}
 								{folds && worked && i === brief && (
@@ -411,6 +416,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	ask,
 	runId,
 	chat,
+	onOpenSubagent,
 	...steps
 }: RowSteps & {
 	item: TranscriptItem;
@@ -430,6 +436,7 @@ const TranscriptRow = memo(function TranscriptRow({
 	ask?: AskRecord;
 	runId?: string;
 	chat?: boolean;
+	onOpenSubagent?: (sessionId: string) => void;
 }) {
 	useRenderProbe("TranscriptRow", { item, ask, ...steps });
 	switch (item.kind) {
@@ -509,7 +516,7 @@ const TranscriptRow = memo(function TranscriptRow({
 					data-testid="transcript-ask"
 					data-state={ask.state}
 				>
-					{agent} asked to run {shortPath(askTitle(ask), cwd)}:{" "}
+					{askWho(ask, agent)} asked to run {shortPath(askTitle(ask), cwd)}:{" "}
 					{end.charAt(0).toLowerCase() + end.slice(1)}
 				</li>
 			);
@@ -555,6 +562,8 @@ const TranscriptRow = memo(function TranscriptRow({
 			);
 		case "thinking":
 			return <ThinkingLine since={item.since} />;
+		case "subagent":
+			return <SubagentNode agent={item.agent} onOpen={onOpenSubagent} />;
 		case "operator": {
 			const brief = item.state === "started" && !chat;
 			const who = brief ? briefBy : "You";

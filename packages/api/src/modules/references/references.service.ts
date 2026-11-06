@@ -185,8 +185,14 @@ export class ReferencesService {
 		const out: ReferenceSnapshot[] = [];
 		for (const ref of refs) {
 			if (ref.kind === "command") continue;
-			const provider = this.providers.find((p) => p.kinds.includes(ref.kind));
-			const snap = await provider?.snapshot(ref, at).catch(() => null);
+			// Several sources serve one kind (stored and live alerts): the first that knows the id answers.
+			let snap: ReferenceSnapshot | null = null;
+			for (const provider of this.providers.filter((p) =>
+				p.kinds.includes(ref.kind),
+			)) {
+				snap = await provider.snapshot(ref, at).catch(() => null);
+				if (snap) break;
+			}
 			out.push(
 				snap ?? {
 					ref,

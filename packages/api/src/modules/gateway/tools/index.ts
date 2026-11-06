@@ -7,6 +7,7 @@ import {
 } from "@prismalens/integrations/harness";
 import type { RunbooksData } from "../runbooks.js";
 import { type ArtifactsData, artifactTools } from "./artifacts.js";
+import { type AsksData, askTools } from "./asks.js";
 import { type AttachmentsData, attachmentTools } from "./attachments.js";
 import { type HistoryData, historyTools } from "./history.js";
 import { type IncidentRecordData, incidentTools } from "./incident.js";
@@ -26,6 +27,12 @@ import { type ThreadTreeData, threadTreeTools } from "./thread-tree.js";
 import { type ThreadsData, threadTools } from "./threads.js";
 
 export type { ArtifactsData } from "./artifacts.js";
+export {
+	ASK_DOCK,
+	type AsksData,
+	ELICITING_AGENTS,
+	TOOL_ASKS,
+} from "./asks.js";
 export type { AttachmentItem, AttachmentsData } from "./attachments.js";
 export type { HistoryData, PastFix, SimilarIncident } from "./history.js";
 export type {
@@ -66,6 +73,7 @@ export interface GatewayToolData {
 	history: HistoryData;
 	tree: ThreadTreeData;
 	proposals: ProposalsData;
+	asks: AsksData;
 }
 
 /**
@@ -88,6 +96,7 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...historyTools(data.history),
 		...threadTreeTools(data.tree),
 		...proposeTools(data.proposals),
+		...askTools(data.asks),
 	])
 		registry.register(tool);
 	return registry.list();

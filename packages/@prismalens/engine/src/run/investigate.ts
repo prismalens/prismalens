@@ -63,6 +63,7 @@ import {
 	type AcpUpdate,
 	type HarnessToolsTurn,
 	mapStopReason,
+	parentToolUseOf,
 	toolOutputText,
 } from "../adapter/acp-adapter.js";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
@@ -96,7 +97,12 @@ import {
 	type NewerRun,
 	newerRunNote,
 } from "./prompt.js";
-import { injectedSecrets } from "./redact.js";
+import {
+	injectedSecrets,
+	redactEvent,
+	requestedSecrets,
+	scrub,
+} from "./redact.js";
 import {
 	parseReport,
 	retryBudgetKey,
@@ -273,6 +279,17 @@ export interface RunInvestigationOptions {
 	onReopen?: (r: { path: ReopenPath; replayed: number; ms: number }) => void;
 	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
 	gateway?: GatewayEntry;
+	/** Settings → Agent → Advanced: sub-agent depth and concurrency, through the agent's own keys (#1024 spec B). */
+	subagentLimits?: { depth?: number; concurrency?: number };
+	/** Stops one sub-agent the agent granted cancel for; the handler answers false otherwise (#1025). */
+	subagents?: {
+		onCancel(handler: (sessionId: string) => boolean): () => void;
+	};
+	/**
+	 * Values the user gave this thread through `secret_request` (#1024 spec B): redacted
+	 * from every event, the transcript and stderr whatever their length or name.
+	 */
+	secrets?: readonly string[];
 	signal?: AbortSignal;
 }
 
@@ -550,6 +567,7 @@ export type PrepareRunEnvOptions = Pick<
 	| "gateway"
 	| "policy"
 	| "hostEnv"
+	| "subagentLimits"
 >;
 
 /** Materialise the per-run config and data dirs, and the child's env, from the agent-host launch plan (#916). */
@@ -613,6 +631,7 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 					},
 				}
 			: {}),
+		...(opts.subagentLimits ? { subagents: opts.subagentLimits } : {}),
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
@@ -623,6 +642,23 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 const GATEWAY_CONFIRM_MS = 5_000;
 
 export async function* runInvestigation(
+	opts: RunInvestigationOptions,
+): AsyncGenerator<CanonicalEvent> {
+	const secrets = requestedSecrets(opts.secrets);
+	if (!secrets.length) {
+		yield* runSession(opts);
+		return;
+	}
+	// A requested secret never reaches an event, even when the agent echoes it (#1024 spec B).
+	const stderr = opts.onHarnessStderr;
+	const scrubbed: RunInvestigationOptions = {
+		...opts,
+		...(stderr ? { onHarnessStderr: (c) => stderr(scrub(c, secrets)) } : {}),
+	};
+	for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+}
+
+async function* runSession(
 	opts: RunInvestigationOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
@@ -650,7 +686,10 @@ export async function* runInvestigation(
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
-	const hidden = injectedSecrets(env, [opts.gateway?.token]);
+	const hidden = [
+		...injectedSecrets(env, [opts.gateway?.token]),
+		...requestedSecrets(opts.secrets),
+	];
 	const wire = (direction: "in" | "out", line: string): void => {
 		let m = line;
 		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
@@ -800,14 +839,16 @@ export async function* runInvestigation(
 			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
 			if (item.kind === "update") {
 				const u = item.update;
-				if (u.sessionUpdate === "agent_message_chunk") {
+				// A sub-agent's words and state are its own: never the report's text, the run's usage or mode (#1025).
+				const main = !item.sessionId && !parentToolUseOf(u._meta);
+				if (main && u.sessionUpdate === "agent_message_chunk") {
 					const chunk = u.content;
 					text +=
 						typeof chunk === "string"
 							? chunk
 							: ((chunk as { text?: string } | undefined)?.text ?? "");
 				}
-				if (u.sessionUpdate === "usage_update") {
+				if (main && u.sessionUpdate === "usage_update") {
 					const usage = parseUsageUpdate(u);
 					if (usage) {
 						lastUsed = usage.used;
@@ -855,19 +896,21 @@ export async function* runInvestigation(
 						opts.gateway.sawOutput(u.toolCallId, out);
 				}
 				if (
+					main &&
 					u.sessionUpdate === "available_commands_update" &&
 					opts.onCommands
 				) {
 					const commands = parseAgentCommands(u);
 					if (commands) opts.onCommands(commands);
 				}
-				for (const ev of adapter.events(u)) {
+				for (const ev of adapter.events(u, item.sessionId)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
 				}
 				// An agent can switch with no ask, so the mode update is the only sign (#673 w7-4).
 				if (
 					heldMode &&
+					!item.sessionId &&
 					(u.sessionUpdate === "current_mode_update" ||
 						u.sessionUpdate === "config_option_update") &&
 					session.currentMode !== heldMode &&
@@ -886,6 +929,7 @@ export async function* runInvestigation(
 					item.request.toolCall,
 					new Date(Date.now() + window.timeoutMs),
 					window.clamped,
+					item.request.sessionId,
 				);
 			} else if (item.kind === "permission") {
 				wire(
@@ -968,7 +1012,7 @@ export async function* runInvestigation(
 		threadId: opts.runId,
 		kind: item.ask.kind,
 		requiresHost: false,
-		source: { kind: "agent" },
+		source: adapter.askSource(item.sessionId),
 		title: item.ask.title,
 		openedAt: new Date().toISOString(),
 		...(item.expiresAt ? { expiresAt: item.expiresAt.toISOString() } : {}),
@@ -1030,6 +1074,8 @@ export async function* runInvestigation(
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
+		unCancel?.();
+		yield* adapter.endSubagents(!!opts.signal?.aborted);
 		if (tools) yield* toolsSummary();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)])
 			yield adapter.operatorMessage(
@@ -1049,6 +1095,9 @@ export async function* runInvestigation(
 		session.cancel();
 	});
 	const unQueued = opts.steer?.onQueued?.(() => session.nudge());
+	const unCancel = opts.subagents?.onCancel((sessionId) =>
+		session.cancelSubagent(sessionId),
+	);
 	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
 	let summarized = false;
 	const unCalled = opts.gateway?.onCall((c) =>
@@ -1464,6 +1513,7 @@ export async function* runInvestigation(
 	} finally {
 		unsubscribe?.();
 		unQueued?.();
+		unCancel?.();
 		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}
