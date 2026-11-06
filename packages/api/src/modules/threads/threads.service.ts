@@ -13,6 +13,7 @@ import type {
 	ThreadFeedQuery,
 	ThreadRow,
 	ThreadSettings,
+	WorkIn,
 } from "@prismalens/contracts";
 import {
 	AccessLevelSchema,
@@ -24,12 +25,20 @@ import {
 	pendingAsks,
 	SeveritySchema,
 	ThreadSettingsSchema,
+	WorkInSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Prisma } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import {
+	CHECKOUT_BUSY,
+	CheckoutUnreadable,
+	checkoutBusy,
+	checkoutRoot,
+	takeLease,
+} from "../../infrastructure/dispatch/checkout-lease.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import {
 	FOLDER_BUSY,
@@ -49,6 +58,8 @@ import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { renameThread } from "./thread-titles.js";
 
 const SETTINGS_KEY = "threads.list";
+const NOT_A_CHECKOUT =
+	"Only a project on a local git repository can work in its checkout.";
 /** The newest threads the list ranks; older ones stay reachable by search. */
 const FEED_CAP = 500;
 
@@ -159,14 +170,23 @@ export class ThreadsService {
 			serviceId: subject.kind === "service" ? subject.serviceId : null,
 		};
 		const helperPlace = subject.kind === "none" ? input.place : undefined;
+		let checkout: string | null = null;
 		if (ids.repositoryId) {
 			const found = await this.prisma.repository.findUnique({
 				where: { id: ids.repositoryId },
-				select: { id: true },
+				select: {
+					id: true,
+					sourceKind: true,
+					plain: true,
+					url: true,
+					workIn: true,
+				},
 			});
 			if (!found)
 				throw new ORPCError("NOT_FOUND", { message: "Project not found" });
-		}
+			if (!tree) checkout = await this.checkoutFor(found, input.workIn);
+		} else if (input.workIn === "checkout")
+			throw new ORPCError("BAD_REQUEST", { message: NOT_A_CHECKOUT });
 		if (ids.serviceId) {
 			const found = await this.prisma.service.findUnique({
 				where: { id: ids.serviceId },
@@ -192,6 +212,7 @@ export class ThreadsService {
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;
 		const repositoryId = ids.repositoryId;
+		if (checkout) await this.dispatch.freeCheckout(checkout);
 		const { investigation } = await this.investigations.startOrGet({
 			incidentId: null,
 			...(ids.repositoryId ? { repositoryId: ids.repositoryId } : {}),
@@ -216,6 +237,11 @@ export class ThreadsService {
 					});
 				if (repositoryId && (await folderBusy(tx, repositoryId, id)))
 					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
+				if (checkout) {
+					if (await checkoutBusy(tx, checkout, id))
+						throw new ORPCError("CONFLICT", { message: CHECKOUT_BUSY });
+					await takeLease(tx, checkout, id);
+				}
 				if (draftKey && files.length)
 					attachments = await this.attachments.claimDraft(
 						draftKey,
@@ -225,39 +251,64 @@ export class ThreadsService {
 					);
 			},
 		});
-		const plain = await this.dispatch.threadRunOf({
-			...ids,
-			helperPlace: helperPlace ?? null,
-		});
-		const pin = tree?.at;
-		const thread = pin
-			? {
-					...plain,
-					repos: plain.repos.map((r) => {
-						const at = pin(r);
-						return at ? { ...r, at } : r;
-					}),
-				}
-			: plain;
-		const connections = ids.serviceId
-			? await this.integrations.getIntegrationsForService(ids.serviceId)
-			: [];
-		const jobId = await this.dispatch.addInvestigationJob({
-			incidentId: null,
-			investigationId: investigation.id,
-			thread,
-			kind: "chat",
-			...(connections.length
-				? { connectionIds: connections.map((c) => c.connectionId) }
-				: {}),
-			...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
-			...choice,
-			chat: {
-				text: input.text,
-				...(attachments.length ? { attachments } : {}),
-				...(context ? { context } : {}),
-			},
-		});
+		let jobId: string | null;
+		try {
+			const plain = await this.dispatch.threadRunOf({
+				...ids,
+				helperPlace: helperPlace ?? null,
+			});
+			const pin = tree?.at;
+			const pinned = pin
+				? {
+						...plain,
+						repos: plain.repos.map((r) => {
+							const at = pin(r);
+							return at ? { ...r, at } : r;
+						}),
+					}
+				: plain;
+			// A thread an agent starts never borrows the user's checkout (#1024).
+			const thread = tree
+				? { ...pinned, byAgent: true }
+				: { ...pinned, ...(checkout ? { checkout } : {}) };
+			// The project remembers the person's own choice for its next thread (#1024).
+			if (repositoryId && input.workIn && !tree)
+				await this.prisma.repository.update({
+					where: { id: repositoryId },
+					data: { workIn: input.workIn },
+				});
+			const connections = ids.serviceId
+				? await this.integrations.getIntegrationsForService(ids.serviceId)
+				: [];
+			jobId = await this.dispatch.addInvestigationJob({
+				incidentId: null,
+				investigationId: investigation.id,
+				thread,
+				kind: "chat",
+				...(connections.length
+					? { connectionIds: connections.map((c) => c.connectionId) }
+					: {}),
+				...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
+				...choice,
+				chat: {
+					text: input.text,
+					...(attachments.length ? { attachments } : {}),
+					...(context ? { context } : {}),
+				},
+			});
+		} catch (e) {
+			// The run exists and holds its lease, but no job will ever take it up.
+			await this.dispatch.abandonUnstarted(
+				investigation.id,
+				"The thread could not be started.",
+			);
+			throw e;
+		}
+		if (jobId === null)
+			await this.dispatch.abandonUnstarted(
+				investigation.id,
+				"The thread could not be queued.",
+			);
 		// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
 		if (jobId)
 			await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
@@ -266,6 +317,42 @@ export class ThreadsService {
 			jobId,
 			queued: jobId !== null,
 		};
+	}
+
+	/**
+	 * Where a new thread on this project works (#1024): the request's choice, else the project's
+	 * remembered one, else Settings. Only a local git project works in its checkout; answers its
+	 * top level as the disk names it, or null for a new worktree.
+	 */
+	private async checkoutFor(
+		repo: {
+			sourceKind: string;
+			plain: boolean;
+			url: string;
+			workIn: string | null;
+		},
+		asked: WorkIn | undefined,
+	): Promise<string | null> {
+		const local = repo.sourceKind === "folder" && !repo.plain;
+		if (asked === "checkout" && !local)
+			throw new ORPCError("BAD_REQUEST", { message: NOT_A_CHECKOUT });
+		if (!local) return null;
+		const chosen =
+			asked ??
+			WorkInSchema.safeParse(repo.workIn).data ??
+			(await this.getSettings()).newThreadsWorkIn ??
+			"worktree";
+		if (chosen !== "checkout") return null;
+		const root = await checkoutRoot(repo.url).catch((e: unknown) => {
+			if (e instanceof CheckoutUnreadable)
+				throw new ORPCError("SERVICE_UNAVAILABLE", { message: e.message });
+			throw e;
+		});
+		if (!root)
+			throw new ORPCError("CONFLICT", {
+				message: `Your checkout ${repo.url} is gone or is not a git repository. Start this thread in a new worktree instead.`,
+			});
+		return root;
 	}
 
 	/** A project's or a service's own threads, newest first; never its incidents' or schedules'. */

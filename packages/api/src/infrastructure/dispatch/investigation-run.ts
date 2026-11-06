@@ -12,12 +12,21 @@ import {
 	lstatSync,
 	mkdirSync,
 	readdirSync,
+	readFileSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+} from "node:path";
 import type { HookResult } from "@prismalens/agent-host";
 import { getAppDataDir } from "@prismalens/config";
 import {
@@ -36,6 +45,7 @@ import {
 } from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
+	type BorrowedCheckout,
 	type CanonicalEvent,
 	correlatedAlertsContext,
 	type FiringAlert,
@@ -105,6 +115,13 @@ import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-sna
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { compareFor } from "../../modules/investigations/run-views.js";
+import {
+	CheckoutUnreadable,
+	checkoutRoot,
+	checkoutState,
+	NO_FSMONITOR,
+	sameCheckout,
+} from "./checkout-lease.js";
 import { isCanonical } from "./folder-lock.js";
 import {
 	clearReceipt,
@@ -447,10 +464,20 @@ async function runJobInternal(
 		const workspace = {
 			...checkout,
 			toolsServer: newGatewayServerName(),
-			compare: await comparisonsFor(checkout.repos, ports, io.signal),
+			// The user's own checkout gets no deploy pairs: its git is read only through checkout-lease (#1024).
+			compare:
+				checkout.layout === "in_place"
+					? []
+					: await comparisonsFor(checkout.repos, ports, io.signal),
 		};
 		await recordWorkspace(data, workspace, ports, context);
-		const afterSetup = await logWorkspaceSetup(data.investigationId, io, ports);
+		const afterSetup = await logBorrowed(
+			data.investigationId,
+			io,
+			ports,
+			workspace.borrowed,
+			await logWorkspaceSetup(data.investigationId, io, ports),
+		);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
 
@@ -655,9 +682,11 @@ async function runJobInternal(
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
 			// A run PrismaLens's own exit cut off keeps its workspace and pid for auto-resume (#981).
-			if (!isShutdown(io.signal))
-				await clearRunWorkspace(unvalidated.investigationId);
-			dropReceipt(unvalidated.investigationId, isShutdown(io.signal));
+			await settleRun(
+				ports,
+				unvalidated.investigationId,
+				isShutdown(io.signal),
+			);
 		}
 	}
 }
@@ -809,7 +838,7 @@ export function sessionCwds(ws: RunWorkspace): string[] {
  * so the snapshot's `git status` stays clean.
  */
 export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
-	if (ws.layout === "folder") {
+	if (ws.layout === "folder" || ws.layout === "in_place") {
 		writeInFolder(ws.cwd, text);
 		return;
 	}
@@ -824,22 +853,60 @@ export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
 	}
 }
 
-/** The user's own folder: nothing of theirs is removed, so a name already there means no transcript. */
+/**
+ * The user's own folder or checkout: nothing of theirs is removed. A folder PrismaLens made on an
+ * earlier handoff (only its `.gitignore` and transcript) gets the new transcript; any other
+ * folder of that name is the user's, and means no transcript.
+ */
 function writeInFolder(cwd: string, text: string): void {
-	const dir = dirname(join(cwd, HANDOFF_TRANSCRIPT_PATH));
+	const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
+	const dir = dirname(file);
 	try {
 		mkdirSync(dir);
 	} catch (e) {
-		logger.warn(`No handoff transcript in the folder: ${messageOf(e)}`);
+		if (!refreshOwnTranscript(dir, file, text))
+			logger.warn(`No handoff transcript in the folder: ${messageOf(e)}`);
 		return;
 	}
 	writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
-	writeFileSync(join(cwd, HANDOFF_TRANSCRIPT_PATH), text, { flag: "wx" });
+	writeFileSync(file, text, { flag: "wx" });
+}
+
+/**
+ * Replaces the transcript an earlier handoff left, and only that: `dir` must be a real folder
+ * (not a link) holding PrismaLens's own `.gitignore` and at most a regular transcript file,
+ * and the text goes in by rename, so no link is followed and no other file is written.
+ */
+function refreshOwnTranscript(
+	dir: string,
+	file: string,
+	text: string,
+): boolean {
+	try {
+		if (!lstatSync(dir).isDirectory()) return false;
+		const ignore = join(dir, ".gitignore");
+		const names = readdirSync(dir);
+		if (
+			!names.includes(".gitignore") ||
+			!lstatSync(ignore).isFile() ||
+			readFileSync(ignore, "utf8") !== "*\n" ||
+			names.some((n) => n !== ".gitignore" && n !== basename(file))
+		)
+			return false;
+		if (names.includes(basename(file)) && !lstatSync(file).isFile())
+			return false;
+		const next = join(dir, `.${basename(file)}.new`);
+		writeFileSync(next, text, { flag: "wx" });
+		renameSync(next, file);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function copyTargets(ws: RunWorkspace): CopyTarget[] {
-	// Read copies go into a snapshot; a plain folder is the user's own (#1020).
-	if (ws.layout === "folder") return [];
+	// Read copies go into a snapshot; a plain folder or a borrowed checkout is the user's own (#1020, #1024).
+	if (ws.layout === "folder" || ws.layout === "in_place") return [];
 	return sessionCwds(ws).map((dir) => {
 		const repo = ws.repos.find((r) => {
 			const rel = relative(r.dir, dir);
@@ -1039,7 +1106,9 @@ async function runFollowUp(
 				ports,
 				io.signal,
 				handoff,
-				data.thread?.repos.find((r) => r.plain)?.url ?? null,
+				recorded.layout === "in_place"
+					? (data.thread?.repos.find((r) => !r.plain)?.url ?? null)
+					: (data.thread?.repos.find((r) => r.plain)?.url ?? null),
 			)),
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 			...(recorded.compare ? { compare: recorded.compare } : {}),
@@ -1347,8 +1416,7 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		if (!isShutdown(io.signal)) await clearRunWorkspace(id);
-		dropReceipt(id, isShutdown(io.signal));
+		await settleRun(ports, id, isShutdown(io.signal));
 	}
 	// PrismaLens is closing: no end is written, so boot reads this turn as interrupted (#981).
 	if (isShutdown(io.signal)) return interruptedResult(data);
@@ -1734,6 +1802,52 @@ export async function logWorkspaceSetup(
 	return seq;
 }
 
+/**
+ * `workspace_borrowed` in the run's log (#1024): the checkout's path, HEAD, branch and change
+ * counts before the first turn. Answers the seq the agent's events start at, like the setup log.
+ */
+export async function logBorrowed(
+	runId: string,
+	io: JobIo,
+	ports: RunPorts,
+	borrowed: BorrowedCheckout | undefined,
+	after: number | null,
+): Promise<number | null> {
+	if (!borrowed) return after;
+	let seq = after;
+	try {
+		seq = after ?? (await ports.lastEventSeq(runId)) + 1;
+		const { staged, unstaged, untracked } = borrowed.dirty;
+		const event: CanonicalEvent = {
+			kind: "tool_result",
+			runId,
+			branchId: "workspace",
+			path: [],
+			seq,
+			ts: new Date().toISOString(),
+			result: {
+				name: "workspace_borrowed",
+				toolCallId: "workspace-borrowed",
+				source: `Working in your checkout ${borrowed.path}`,
+				ok: true,
+				error: null,
+				preview: JSON.stringify({
+					path: borrowed.path,
+					head: borrowed.head,
+					branch: borrowed.branch ?? null,
+					dirty: { staged, unstaged, untracked },
+				}),
+			},
+		};
+		seq += 1;
+		await io.emit(event);
+		await ports.appendEvents(runId, [event]);
+	} catch (e) {
+		logger.warn("Could not record the borrowed checkout in the run's log", e);
+	}
+	return seq;
+}
+
 async function clearRunWorkspace(runId: string): Promise<void> {
 	const runDir = runDirFor(runId);
 	for (const dir of [
@@ -2027,15 +2141,16 @@ export async function resolveWorkspace(
 	const deduped = dedupeRepos(listed).map((r) =>
 		onProject(data) ? { ...r, services: [] } : r,
 	);
-	// A plain folder runs in place, only in a thread a person started on its project (#1020).
-	const inPlace =
-		data.thread?.subject === "project" &&
-		!data.scheduled &&
-		!data.incidentId &&
-		!data.unattended
-			? deduped.find((r) => r.repo.plain)
-			: undefined;
+	// A plain folder, or a checkout a person chose (#1024), runs in place only in a thread a person started on its project (#1020).
+	const personal = personStarted(data);
+	const inPlace = personal ? deduped.find((r) => r.repo.plain) : undefined;
 	if (inPlace) return folderWorkspace(runDir, inPlace.repo.url);
+	const borrowing =
+		personal && data.thread?.checkout
+			? deduped.find((r) => r.repo.sourceKind === "folder" && !r.repo.plain)
+			: undefined;
+	if (borrowing && data.thread?.checkout)
+		return borrowedWorkspace(runDir, data.thread.checkout, borrowing.repo);
 	const all = deduped.filter((r) => !r.repo.plain);
 	const repos = all.slice(0, WORKSPACE_REPOS_GUARD);
 	const guarded: Skip[] = [
@@ -2194,6 +2309,29 @@ export async function resolveWorkspace(
 	};
 }
 
+/**
+ * A follow-up reopens in the same checkout (#1024): no workspace is rebuilt, and one that
+ * is gone or now resolves elsewhere is refused, never replaced.
+ */
+async function reopenCheckout(
+	ws: RunWorkspace,
+	folder?: string | null,
+): Promise<Workspace> {
+	const root = ws.borrowed?.path;
+	const now = folder ? await checkoutRoot(folder) : null;
+	if (!root || !now || !sameCheckout(now, root))
+		throw new Error(checkoutGoneReason(root ?? ws.cwd));
+	onDisk(root, ws.cwd, relative(root, ws.cwd));
+	return {
+		...ws,
+		checkoutsSkipped: [],
+		note: `Continuing in your checkout ${root}. PrismaLens cannot undo changes made there.`,
+	};
+}
+
+export const checkoutGoneReason = (root: string) =>
+	`Your checkout ${root} is gone or is now somewhere else. Start a new thread in a new worktree.`;
+
 /** Refuses a recorded path outside the run's dir and its worktree dir. */
 function ownedBy(runId: string): (path: string) => void {
 	const roots = [runDirFor(runId), runWorktreeDir(runId)];
@@ -2215,6 +2353,75 @@ interface Skip {
 	repo: IncidentRepo;
 	reason: string;
 	code: CheckoutSkipped["code"];
+}
+
+/** A thread a person started on its project; never an incident's, a schedule's or an unattended run (#1020, #1024). */
+export function personStarted(data: InvestigationJobData): boolean {
+	return (
+		data.thread?.subject === "project" &&
+		!data.thread.byAgent &&
+		!data.scheduled &&
+		!data.incidentId &&
+		!data.unattended &&
+		(data.startedBy === undefined || data.startedBy === "person")
+	);
+}
+
+/**
+ * The user's own checkout, borrowed (#1024): its state is recorded before the first turn and
+ * nothing in it is ever reset. A checkout that moved since the thread started runs no code.
+ */
+async function borrowedWorkspace(
+	runDir: string,
+	root: string,
+	repo: IncidentRepo,
+): Promise<Workspace> {
+	let now: string | null;
+	try {
+		now = await checkoutRoot(repo.url);
+	} catch (e) {
+		if (!(e instanceof CheckoutUnreadable)) throw e;
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: your checkout ${root} could not be read (${e.message}).`,
+		);
+	}
+	if (!now || !sameCheckout(now, root))
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: your checkout ${root} is gone or is now somewhere else.`,
+		);
+	let borrowed: BorrowedCheckout;
+	let cwd: string;
+	try {
+		borrowed = await checkoutState(root);
+		cwd = onDisk(root, inside(root, repo.subPath), repo.subPath ?? ".");
+	} catch (e) {
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: your checkout ${root} could not be read (${messageOf(e)}).`,
+		);
+	}
+	return {
+		layout: "in_place",
+		cwd,
+		repos: [
+			{
+				name: "repo",
+				dir: root,
+				sourceKind: "folder",
+				url: repo.url,
+				subPath: repo.subPath,
+				connectionId: null,
+				head: borrowed.head,
+				branch: borrowed.branch ?? null,
+				services: [],
+			},
+		],
+		borrowed,
+		checkoutsSkipped: [],
+		note: `Working in your checkout ${root}${borrowed.branch ? ` on ${borrowed.branch}` : ""} at ${borrowed.head.slice(0, 12)}. PrismaLens cannot undo changes made there.`,
+	};
 }
 
 /** The plain folder itself (#1020): no snapshot, no branch and no diff base, so nothing to undo. */
@@ -2384,6 +2591,7 @@ export async function rebuildWorkspace(
 		if (again.layout !== "folder") throw new Error(again.note);
 		return { ...again, toolsServer: ws.toolsServer };
 	}
+	if (ws.layout === "in_place") return reopenCheckout(ws, folder);
 	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.
 	const owned = ownedBy(investigationId);
 	owned(ws.cwd);
@@ -2750,6 +2958,39 @@ function keepReceipt(runDir: string, pid: number | undefined): void {
 	}
 }
 
+/**
+ * The run's agent has exited: its workspace, checkout lease and receipt go. A shutdown keeps
+ * all three for boot. A lease the release missed keeps the receipt, so `previousGone` can still prove the agent gone (#1024).
+ */
+export async function settleRun(
+	ports: Pick<RunPorts, "releaseLease">,
+	runId: string,
+	shutdown: boolean,
+): Promise<void> {
+	if (shutdown) return dropReceipt(runId, true);
+	await clearRunWorkspace(runId);
+	dropReceipt(runId, !(await freeLease(ports, runId)));
+}
+
+/** True once the lease is gone; one retry, since a missed release blocks the checkout until boot. */
+async function freeLease(
+	ports: Pick<RunPorts, "releaseLease">,
+	runId: string,
+): Promise<boolean> {
+	for (let attempt = 1; attempt <= 2; attempt++) {
+		try {
+			await ports.releaseLease?.(runId);
+			return true;
+		} catch (e) {
+			logger.warn(
+				`Could not release the checkout lease of run ${runId} (attempt ${attempt})`,
+				e,
+			);
+		}
+	}
+	return false;
+}
+
 /** Stops the tree watch; `keepFile` leaves the receipt for the next boot's containment check. */
 function dropReceipt(runId: string, keepFile = false): void {
 	const runDir = runDirFor(runId);
@@ -2793,12 +3034,17 @@ export function observeWorkspace(
 }
 
 function gitIn(dir: string, args: string[]): string {
-	return execFileSync("git", ["-C", dir, ...args], {
-		env: gitEnv({ source: "none" }),
-		encoding: "utf8",
-		windowsHide: true,
-		timeout: 15_000,
-	});
+	// A status never refreshes the index: an in-place run's is the user's own (#1024).
+	return execFileSync(
+		"git",
+		["--no-optional-locks", ...NO_FSMONITOR, "-C", dir, ...args],
+		{
+			env: gitEnv({ source: "none" }),
+			encoding: "utf8",
+			windowsHide: true,
+			timeout: 15_000,
+		},
+	);
 }
 
 async function restartFacts(

@@ -52,6 +52,7 @@ import {
 	parseEventRows,
 	questionTimeoutFrom,
 	queuedLeftWaiting,
+	type RunWorkspace,
 	RunWorkspaceSchema,
 	ScheduledRunSchema,
 } from "@prismalens/contracts";
@@ -97,6 +98,17 @@ import {
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import {
+	CHECKOUT_BUSY,
+	CheckoutUnreadable,
+	checkoutBusy,
+	checkoutRoot,
+	leasedBy,
+	releaseIfGone,
+	releaseLease,
+	sameCheckout,
+	takeLease,
+} from "./checkout-lease.js";
 import { Dispatcher } from "./dispatcher.js";
 import {
 	EVENT_BUS,
@@ -120,6 +132,7 @@ export const QUESTION_TIMEOUT_SETTING = "agents.questionTimeoutMinutes";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
+	checkoutGoneReason,
 	followUpNotDelivered,
 	runDirFor,
 	sweepRunWorkspaces,
@@ -362,6 +375,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.store = new PrismaJobStore(this.prisma.job as unknown as JobDelegate);
 
 		const ports: RunPorts = {
+			releaseLease: (id) => releaseLease(this.prisma, id),
 			findInvestigation: async (id) => {
 				const investigation = await this.investigationsService.findById(id);
 				return investigation
@@ -844,6 +858,21 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			),
 		);
 		const checked = boot ? await this.checkRecoveries(boot) : true;
+		// After every boot write: a lease frees its checkout once its run ended and its agent is proven gone (#1024).
+		await releaseIfGone(
+			this.prisma,
+			async (id, session) =>
+				boot?.contained.get(id) ?? this.previousGone(id, session),
+		)
+			.then((n) => {
+				if (n > 0)
+					this.logger.log(`Released ${n} checkout lease(s) of ended runs`);
+			})
+			.catch((e) =>
+				this.logger.warn(
+					`Could not release ended checkout leases: ${(e as Error).message}`,
+				),
+			);
 		// The boot sweep applies each workspace's own retention rule, so the settings load first.
 		await this.runWorkspaces?.ready();
 		try {
@@ -1290,6 +1319,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					"Only a stopped or failed run can be continued.",
 				);
 		}
+		const checkout = await this.borrowedCheckout(id, row.repositoryId);
+		if (checkout) await this.freeCheckout(checkout);
 		const accessLevel = await this.followUpLevel(row);
 		const sawEvidence = kind === "continue" && (await this.hasToolResult(id));
 		const restore = {
@@ -1351,6 +1382,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					: null;
 				if (row.repositoryId && (await folderBusy(tx, row.repositoryId, id)))
 					throw new FollowUpRefused(FOLDER_BUSY);
+				if (checkout) await this.leaseIn(tx, checkout, id);
 				if (other) {
 					const n = await tx.investigation.count({
 						where: {
@@ -1397,6 +1429,93 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();
 		return true;
+	}
+
+	/**
+	 * The user's checkout this thread works in (#1024), or null for any other thread. Throws
+	 * CheckoutGone when it no longer resolves to the path the thread borrowed.
+	 */
+	async borrowedCheckout(
+		id: string,
+		repositoryId: string | null,
+	): Promise<string | null> {
+		const recorded = await this.recordedCheckout(id);
+		if (!recorded) return null;
+		const repo = repositoryId
+			? await this.prisma.repository.findUnique({
+					where: { id: repositoryId },
+					select: { url: true },
+				})
+			: null;
+		const now = repo
+			? await checkoutRoot(repo.url).catch((e: unknown) => {
+					// Retryable, unlike a checkout that is gone: a wake tries again.
+					if (e instanceof CheckoutUnreadable)
+						throw new FollowUpRefused(e.message);
+					throw e;
+				})
+			: null;
+		if (!now || !sameCheckout(now, recorded))
+			throw new CheckoutGone(checkoutGoneReason(recorded));
+		return recorded;
+	}
+
+	/** The checkout path the thread borrowed (#1024): from its workspace, else its first turn's lease. */
+	async recordedCheckout(id: string): Promise<string | null> {
+		const inv = await this.prisma.investigation.findUnique({
+			where: { id },
+			select: { workspace: true },
+		});
+		let ws: RunWorkspace | undefined;
+		try {
+			ws = inv?.workspace
+				? RunWorkspaceSchema.safeParse(JSON.parse(inv.workspace)).data
+				: undefined;
+		} catch {
+			ws = undefined;
+		}
+		if (ws)
+			return ws.layout === "in_place" ? (ws.borrowed?.path ?? null) : null;
+		return leasedBy(this.prisma, id);
+	}
+
+	/**
+	 * An admission died before a job was stored: the run ends failed and its lease goes, or the
+	 * checkout stays blocked until a restart. A stored job keeps both; it runs or is reconciled (#1024).
+	 */
+	async abandonUnstarted(
+		investigationId: string,
+		error: string,
+	): Promise<void> {
+		if (await this.store.findByInvestigation(investigationId)) return;
+		await this.prisma.investigation.updateMany({
+			where: {
+				id: investigationId,
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
+			},
+			data: { status: "failed", error, completedAt: new Date() },
+		});
+		await releaseLease(this.prisma, investigationId);
+	}
+
+	/** Before an admission: a lease on `path` whose run ended and whose agent is proven gone is released (#1024). */
+	async freeCheckout(path: string): Promise<void> {
+		await releaseIfGone(
+			this.prisma,
+			(id, session) => this.previousGone(id, session),
+			path,
+		);
+	}
+
+	/** Takes the checkout's lease again for this thread, or refuses while another run holds it. */
+	private async leaseIn(
+		tx: Parameters<typeof checkoutBusy>[0],
+		checkout: string,
+		id: string,
+	): Promise<void> {
+		if (await checkoutBusy(tx, checkout, id))
+			throw new FollowUpRefused(CHECKOUT_BUSY);
+		await takeLease(tx, checkout, id);
 	}
 
 	/** A project, service or no-subject thread's subject and code as they stand now (#1020). */
@@ -1883,6 +2002,15 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		runAt: Date,
 		from: "live" | "interrupted",
 	): Promise<boolean> {
+		const repositoryId =
+			(
+				await this.prisma.investigation.findUnique({
+					where: { id },
+					select: { repositoryId: true },
+				})
+			)?.repositoryId ?? null;
+		const checkout = await this.borrowedCheckout(id, repositoryId);
+		if (checkout) await this.freeCheckout(checkout);
 		return this.prisma.$transaction(async (tx) => {
 			const own = await tx.investigation.findUnique({
 				where: { id },
@@ -1890,6 +2018,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			});
 			if (own?.repositoryId && (await folderBusy(tx, own.repositoryId, id)))
 				throw new FollowUpRefused(FOLDER_BUSY);
+			if (checkout) await this.leaseIn(tx, checkout, id);
 			const { count } = await tx.investigation.updateMany({
 				where:
 					from === "live"

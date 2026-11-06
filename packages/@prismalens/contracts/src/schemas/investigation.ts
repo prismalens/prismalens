@@ -32,7 +32,7 @@ import {
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
 import { AgentCommandsSchema } from "./references.js";
-import { RunCredentialSchema } from "./repository.js";
+import { RunCredentialSchema, WorkInSchema } from "./repository.js";
 import { RunComparisonSchema } from "./run-views.js";
 import { AccessLevelSchema } from "./settings.js";
 import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
@@ -404,16 +404,35 @@ export const RunWorkspaceRepoSchema = z.object({
 });
 export type RunWorkspaceRepo = z.infer<typeof RunWorkspaceRepoSchema>;
 
+/** The checkout's state before the first turn: counts of changes only, never their contents (#1024). */
+export const BorrowedCheckoutSchema = z.object({
+	/** The working tree's top level, as the disk names it. */
+	path: z.string(),
+	head: z.string(),
+	branch: z.string().nullable().optional(),
+	dirty: z.object({
+		staged: z.number().int().min(0),
+		unstaged: z.number().int().min(0),
+		untracked: z.number().int().min(0),
+	}),
+});
+export type BorrowedCheckout = z.infer<typeof BorrowedCheckoutSchema>;
+
 /** Where a run's harness worked, recorded so a follow-up can rebuild it (#747). */
 export const RunWorkspaceSchema = z.object({
-	/** `folder`: a plain folder's thread runs in the folder itself, with no snapshot (#1020). */
-	layout: z.enum(["unmapped", "single", "multi", "folder"]),
+	/**
+	 * `folder`: a plain folder's thread runs in the folder itself, with no snapshot (#1020).
+	 * `in_place`: a git project's thread runs in the user's own checkout, which it never resets (#1024).
+	 */
+	layout: z.enum(["unmapped", "single", "multi", "folder", "in_place"]),
 	cwd: z.string(),
 	repos: z.array(RunWorkspaceRepoSchema),
 	/** The run's MCP server name, reused by its follow-ups; absent on a run from before (#848). */
 	toolsServer: z.string().optional(),
 	/** Commit pairs the panel may diff, recorded at run start; absent on a run from before (#973). */
 	compare: z.array(RunComparisonSchema).optional(),
+	/** The user's checkout an `in_place` run borrowed, as it stood before the first turn (#1024). */
+	borrowed: BorrowedCheckoutSchema.optional(),
 });
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 
@@ -965,6 +984,8 @@ export const SendInvestigationMessageSchema = z.object({
 	compact: z.boolean().optional(),
 	/** The cold-session prompt's choice: a fresh session seeded with a summary of the record (#1024). */
 	fresh: z.boolean().optional(),
+	/** Must match where the thread works; a thread never moves between checkout and worktree (#1024). */
+	workIn: WorkInSchema.optional(),
 });
 export type SendInvestigationMessageInput = z.infer<
 	typeof SendInvestigationMessageSchema
@@ -1831,6 +1852,10 @@ export const ThreadRunSchema = z.object({
 	repos: ScheduledRunSchema.shape.repos,
 	/** Set on a no-subject helper started from an empty page. */
 	place: HelperPlaceSchema.nullable().optional(),
+	/** Set when a person chose to work in their own checkout: its top level, as the disk names it (#1024). */
+	checkout: z.string().optional(),
+	/** Set on a thread an agent started; it never borrows a checkout, whatever it carries (#1024). */
+	byAgent: z.boolean().optional(),
 });
 export type ThreadRun = z.infer<typeof ThreadRunSchema>;
 /** A run PrismaLens's restart cut off, taken up again (#981). Carried across boots, never recomputed. */

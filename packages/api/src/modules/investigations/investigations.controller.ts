@@ -663,6 +663,18 @@ export class InvestigationsController {
 					});
 					// Only a message with quotes or references passes one on.
 					const withContext = messageContext ? [messageContext] : [];
+					// A thread never moves between the user's checkout and a worktree (#1024).
+					if (input.workIn) {
+						const borrowed = await this.dispatchService.recordedCheckout(
+							input.id,
+						);
+						if ((input.workIn === "checkout") !== !!borrowed)
+							throw new ORPCError("CONFLICT", {
+								message: borrowed
+									? "This thread works in your checkout. Start a new thread to work in a new worktree."
+									: "This thread works in its own worktree. Start a new thread to work in your checkout.",
+							});
+					}
 					if (TERMINAL_STATUSES.has(investigation.status)) {
 						const reason = followUpBlockedReason(investigation);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });

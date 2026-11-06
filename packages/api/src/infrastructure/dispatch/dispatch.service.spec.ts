@@ -39,6 +39,7 @@ const { InvestigationsService } = await import(
 	"../../modules/investigations/investigations.service.js"
 );
 const {
+	CheckoutGone,
 	DispatchService,
 	FollowUpRefused,
 	isCustomModel,
@@ -1979,5 +1980,79 @@ describe("project, service and no-subject threads (#1020)", () => {
 		expect((await service.threadRunOf({ repositoryId: "gone", serviceId: null })).subject).toBe("none");
 		await prisma.service.delete({ where: { id: svc.id } });
 		await prisma.repository.delete({ where: { id: repo.id } });
+	});
+});
+
+describe("DispatchService.abandonUnstarted: an admission that stored no job (#1024)", () => {
+	it("fails a pending run that has no job and frees its checkout lease", async () => {
+		const { service } = realDispatch();
+		const run = await prisma.investigation.create({
+			data: { status: "pending", kind: "chat" },
+		});
+		await prisma.checkoutLease.create({
+			data: { canonicalPath: "/code/abandoned", investigationId: run.id },
+		});
+
+		await service.abandonUnstarted(run.id, "The thread could not be started.");
+
+		expect(await read(run.id)).toMatchObject({
+			status: "failed",
+			error: "The thread could not be started.",
+		});
+		expect(await prisma.checkoutLease.count({ where: { investigationId: run.id } })).toBe(0);
+	});
+
+	it("keeps both when a job was stored, since it runs or is reconciled at boot", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const run = await thread(inc.id, { status: "pending", completedAt: null });
+		await job(run.id, inc.id, {}, "pending");
+		await prisma.checkoutLease.create({
+			data: { canonicalPath: "/code/queued", investigationId: run.id },
+		});
+
+		await service.abandonUnstarted(run.id, "The thread could not be queued.");
+
+		expect((await read(run.id)).status).toBe("pending");
+		expect(await prisma.checkoutLease.count({ where: { investigationId: run.id } })).toBe(1);
+		await prisma.checkoutLease.deleteMany({ where: { investigationId: run.id } });
+	});
+
+	it("leaves a run that already ended as it was", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await service.abandonUnstarted(done.id, "The thread could not be started.");
+
+		expect((await read(done.id)).status).toBe("completed");
+	});
+});
+
+describe("DispatchService.borrowedCheckout: a checkout that cannot be read right now (#1024)", () => {
+	it("is refused as retryable, not as gone, so a wake tries again", async () => {
+		const { service } = realDispatch();
+		const lease = await import("./checkout-lease.js");
+		const { GitSpawnError } = await import("../../core/harness/git-spawn.js");
+		vi.spyOn(service, "recordedCheckout").mockResolvedValue("/code/shop");
+		vi.spyOn(prisma.repository, "findUnique").mockResolvedValue({ url: "/code/shop" } as never);
+		lease.setCheckoutGit(async () =>
+			Promise.reject(new GitSpawnError("git rev-parse timed out", null, "", true)),
+		);
+		try {
+			const refused = await service
+				.borrowedCheckout("any-id", "repo-id")
+				.catch((e: unknown) => e);
+			expect(refused).toBeInstanceOf(FollowUpRefused);
+			expect(refused).not.toBeInstanceOf(CheckoutGone);
+			// A checkout git says is not a work tree is still gone for good.
+			lease.setCheckoutGit(async () =>
+				Promise.reject(new GitSpawnError("git rev-parse failed (exit 128)", 128, "", false)),
+			);
+			await expect(service.borrowedCheckout("any-id", "repo-id")).rejects.toBeInstanceOf(CheckoutGone);
+		} finally {
+			lease.setCheckoutGit(null);
+			vi.restoreAllMocks();
+		}
 	});
 });

@@ -58,6 +58,8 @@ export interface IncidentRepo {
 }
 
 export interface RunPorts {
+	/** The run's agent has exited: its checkout lease goes (#1024). */
+	releaseLease?(investigationId: string): Promise<void>;
 	findInvestigation(id: string): Promise<{
 		id: string;
 		status: string;
