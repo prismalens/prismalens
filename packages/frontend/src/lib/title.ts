@@ -3,7 +3,8 @@
 
 /** `CheckoutLatencyHigh` reads as "Checkout latency high"; titles with spaces stay as written. */
 export function readableTitle(title: string): string {
-	if (/\s/.test(title) || !/[a-z][A-Z]|[A-Z]{2}[a-z]/.test(title)) return title;
+	if (/\s/.test(title) || !/[a-z0-9][A-Z]|[A-Z]{2}[a-z]/.test(title))
+		return title;
 	const words = title
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
 		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")

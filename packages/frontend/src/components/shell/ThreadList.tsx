@@ -198,9 +198,9 @@ const RECENT = 12;
 const WAITING = 3;
 
 /** Every thread, whoever started it, as rows: the feed joined to open incidents. */
-export function useThreadRows(input: ThreadFeedInput = {}) {
-	const feed = useThreadFeed(input);
-	const { incidents } = useActiveIncidents();
+export function useThreadRows(input: ThreadFeedInput = {}, enabled = true) {
+	const feed = useThreadFeed(input, enabled);
+	const { incidents } = useActiveIncidents(enabled);
 	const units = useMemo(
 		() => feed.data?.pages.flatMap((p) => p.units) ?? [],
 		[feed.data],
@@ -215,8 +215,8 @@ export function useThreadRows(input: ThreadFeedInput = {}) {
 }
 
 /** How many threads wait on an approval: the rail's and the phone strip's count. */
-export function useWaitingCount(): number {
-	const { rows } = useThreadRows();
+export function useWaitingCount(enabled = true): number {
+	const { rows } = useThreadRows({}, enabled);
 	return rows.filter((r) => r.state === "asks").length;
 }
 
