@@ -92,6 +92,16 @@
 		transform: translateY(8px);
 	}
 }
+/* The working ring (§12): one quarter arc turning; reduced motion shows it still. */
+@keyframes pl-ring {
+	to {
+		transform: rotate(360deg);
+	}
+}
+.ring-spin {
+	animation: pl-ring 900ms linear infinite;
+}
+
 @keyframes pl-spin {
 	to {
 		transform: rotate(360deg);
@@ -231,6 +241,7 @@
 		transition-duration: 0.01ms !important;
 	}
 	[data-pulse],
+	.ring-spin,
 	.breathe,
 	.live-glow::after,
 	.ring-spin,

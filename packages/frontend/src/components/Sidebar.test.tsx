@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
@@ -15,8 +15,6 @@ const state = {
 	pathname: "/incidents",
 	sidebarHidden: false,
 	toggleSidebar: vi.fn(),
-	openSearch: vi.fn(),
-	head: {} as { compact?: boolean; filterable?: boolean },
 };
 
 vi.mock("@tanstack/react-router", () => ({
@@ -30,6 +28,11 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/components/inbox/use-inbox-data", () => ({
 	useNeedsYouCount: () => 0,
+	useActiveIncidents: () => ({ incidents: [], isLoading: false }),
+}));
+
+vi.mock("@/lib/api/hooks/use-webhooks-orpc", () => ({
+	useLastDelivery: () => ({ data: null }),
 }));
 
 vi.mock("@/components/settings", () => ({
@@ -72,15 +75,12 @@ vi.mock("@/components/shared/Hint", () => ({
 
 vi.mock("@/components/shell/ThreadList", () => ({
 	ThreadList: () => null,
+	useWaitingCount: () => 0,
 }));
 
-vi.mock("@/components/shell/SidebarHead", () => ({
-	SidebarHead: (props: { compact?: boolean; filterable?: boolean }) => {
-		state.head = props;
-		return null;
-	},
-	SearchHost: ({ children }: { children: ReactNode }) => children,
-	useOpenSearch: () => state.openSearch,
+vi.mock("@/components/shell/SearchHost", () => ({
+	SearchHost: ({ children }: { children: React.ReactNode }) => children,
+	useOpenSearch: () => () => {},
 }));
 
 vi.mock("@/components/alerts/AlertListPane", () => ({
@@ -94,7 +94,6 @@ beforeEach(() => {
 	state.pathname = "/incidents";
 	state.sidebarHidden = false;
 	state.toggleSidebar = vi.fn();
-	state.openSearch = vi.fn();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -141,51 +140,14 @@ describe("Sidebar (case 2)", () => {
 		expect(state.toggleSidebar).toHaveBeenCalledTimes(2);
 	});
 
-	it("offers the thread filters only beside the thread list", async () => {
-		for (const [pathname, filterable] of [
-			["/incidents", true],
-			["/alerts", false],
-			["/services/abc", false],
-		] as const) {
-			state.pathname = pathname;
-			await act(async () => root.render(createElement(Sidebar)));
-			expect(state.head.filterable, pathname).toBe(filterable);
-		}
-	});
-
-	it("opens Search from the phone strip", async () => {
-		await act(async () => root.render(createElement(Sidebar)));
-		const search = container.querySelector(
-			'[data-testid="topbar"] [data-testid="strip-search"]',
-		) as HTMLButtonElement;
-		expect(search).not.toBeNull();
-		await act(async () => search.click());
-		expect(state.openSearch).toHaveBeenCalledTimes(1);
-	});
-
-	it("never hides in Settings, and places settings-back below settings-sections", async () => {
+	it("keeps the app's own bar in Settings; the sections live in the page", async () => {
 		state.pathname = "/settings";
-		state.sidebarHidden = true;
 		await act(async () => root.render(createElement(Sidebar)));
 
-		const sidebar = container.querySelector('[data-testid="sidebar"]');
-		expect(sidebar).not.toBeNull();
-		expect(container.querySelector('[data-testid="sidebar-show"]')).toBeNull();
-
-		const sections = container.querySelector(
-			'[data-testid="settings-sections"]',
-		);
-		const backBtn = container.querySelector('[data-testid="settings-back"]');
-		expect(sections).not.toBeNull();
-		expect(backBtn).not.toBeNull();
-
-		if (sections && backBtn) {
-			expect(
-				Boolean(
-					sections.compareDocumentPosition(backBtn) &
-						Node.DOCUMENT_POSITION_FOLLOWING,
-				),
-			).toBe(true);
-		}
+		expect(container.querySelector('[data-testid="sidebar"]')).not.toBeNull();
+		expect(container.querySelector('[data-testid="nav-new"]')).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="settings-sections"]'),
+		).toBeNull();
 	});
 });

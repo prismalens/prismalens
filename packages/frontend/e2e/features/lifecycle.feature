@@ -20,19 +20,19 @@ Feature: Resolve, reopen, refire
   Scenario: The same alert fires again on a Resolved incident
     Given INC-1 is Resolved with cause "pool capped at 10"
     When the same alert fires again
-    Then within 2 seconds a new incident for the same alert is under "No cause found"
+    Then within 2 seconds a new incident for the same alert is under "Not investigated"
     And the new incident's Overview reads "Fired before" as "1 time this week"
     And INC-1 stays Resolved, in Recently resolved reading "Resolved by you"
 
   Scenario: The same alert fires again on Alerts cleared
     Given INC-1 reads "Alerts cleared" and the flap window is open
     When the same alert fires again
-    Then INC-1 is under "No cause found" reading "Not investigated yet" and the band reads "Triggered"
+    Then INC-1 is under "Not investigated" reading "Not investigated yet" and the band reads "Triggered"
 
   Scenario: Reopen keeps the old cause
     Given INC-1 is Resolved with a cause
     When I press "Reopen" and confirm
-    Then the band reads "Acknowledged", the Overview shows "Previous cause", and INC-1 is under "No cause found"
+    Then the band reads "Acknowledged", the Overview shows "Previous cause", and INC-1 is under "Not investigated"
     When I start a run from the box
     Then INC-1 leaves Needs you while the run works
 

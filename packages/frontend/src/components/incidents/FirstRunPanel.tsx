@@ -58,37 +58,39 @@ export function useSetupProgress() {
 export function SetupLine() {
 	const p = useSetupProgress();
 	if (!p.loaded || p.done === 4) return null;
+	const left =
+		(p.steps.agent ? 0 : 1) + (p.alertsIn ? 0 : 1) + (p.steps.code ? 0 : 1);
 	const [why, action] = !p.steps.agent
 		? [
 				!p.agent
-					? "no coding agent on this machine, so no run can start."
+					? "no agent ready."
 					: p.agent.checked
-						? `${p.agent.label} is not ready, so no run can start.`
-						: `${p.agent.label} has not been checked, so no run can start.`,
+						? `${p.agent.label} not ready.`
+						: `${p.agent.label} not checked.`,
 				<Link key="a" to="/settings" search={{ tab: "agent" }}>
 					Set up an agent
 				</Link>,
 			]
 		: !p.alertsIn
 			? [
-					"no alert source yet, so only incidents you create arrive.",
+					"no alert source.",
 					<Link key="s" to="/settings" search={{ tab: "alert-intake" }}>
 						Add a source
 					</Link>,
 				]
 			: [
-					"no service names its code yet, so runs read nothing.",
-					<Link key="v" to="/services" search={{ add: "1" }}>
-						Add a service
+					"no code linked.",
+					<Link key="v" to="/services">
+						Link code
 					</Link>,
 				];
 	return (
 		<p
-			className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 pb-4 text-meta text-text-2 [&_a]:text-accent [&_a]:hover:underline"
+			className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 pb-4 text-meta text-text-2 [&_a]:inline-flex [&_a]:min-h-6 [&_a]:items-center [&_a]:text-accent [&_a]:hover:underline"
 			data-testid="setup-line"
 		>
 			<span>
-				Setup, {p.done} of 4 done: {why}
+				{left === 1 ? "One setup step left" : `${left} setup steps left`}: {why}
 			</span>
 			{action}
 		</p>
@@ -254,8 +256,8 @@ export function FirstRunPanel() {
 			</ol>
 			<p className="mt-5 text-body text-text-2">
 				No alert source yet?{" "}
-				<span className="font-medium text-text-1">New thread</span> with
-				Incident on creates one by hand and investigates it.
+				<span className="font-medium text-text-1">+ Log incident</span> in the
+				header creates one by hand and investigates it.
 			</p>
 		</div>
 	);

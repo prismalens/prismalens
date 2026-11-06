@@ -1,27 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	ThreadRow,
-	ThreadSection,
-	ThreadUnit,
+import {
+	type ThreadRow as FeedRow,
+	type IncidentWithRelations,
+	isAlertFiring,
+	isWorkflowLive,
+	type ThreadUnit,
 } from "@prismalens/contracts";
-import { isWorkflowLive } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
 import {
+	Bell,
 	BellRing,
+	CalendarClock,
 	Check,
-	ChevronRight,
-	FolderGit2,
 	Pencil,
-	Server,
 	Square,
+	User,
+	Webhook,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
+import { runElapsed } from "@/components/incidents/run-facts";
 import { Hint } from "@/components/shared/Hint";
-import { Mono } from "@/components/shared/Mono";
-import { RingTick } from "@/components/shared/RingTick";
+import { Ring } from "@/components/shared/Ring";
 import { Input } from "@/components/ui/input";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
@@ -34,53 +37,213 @@ import {
 	useThreadFeed,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
-import { shortAge } from "@/lib/incident-board";
+import { formatElapsed } from "@/lib/format-time";
+import { rowWhen } from "@/lib/thread-groups";
 import {
 	announcements,
-	rowContext,
-	rowLine,
 	rowState,
-	STATE_WORD,
 	sectionsOf,
-	severityColor,
-	severityWord,
+	type ThreadLink,
 	threadLink,
 } from "@/lib/thread-rows";
+import { readableTitle } from "@/lib/title";
+import {
+	isPlainChat,
+	TRIGGER_WORD,
+	type TriggerKind,
+	triggerOf,
+} from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
-const SECTION_LABEL: Record<ThreadSection, string> = {
-	needs: "Needs you",
-	active: "Active",
-	settled: "Settled",
-};
+type State = "asks" | "failed" | "working" | "ready" | "new" | null;
+
+type RowLink =
+	| ThreadLink
+	| { to: "/incidents/$id"; params: { id: string } }
+	| { to: "/incidents/$id/conversation"; params: { id: string } };
+
+/** One row: a thread, or an incident's block of threads, the same shape either way. */
+export interface ThreadRow {
+	key: string;
+	title: string;
+	origin: TriggerKind;
+	state: State;
+	hint: string;
+	/** The alert's own state, apart from the agent's: firing until it clears (#1020). */
+	firing?: boolean;
+	at: number;
+	link: RowLink;
+	/** The thread Rename, Stop and Settle act on; an incident's first covers its block. */
+	thread: FeedRow;
+	/** Settled by hand or by quiet days: off Recents, still on the Threads page. */
+	settled: boolean;
+	incidentId?: string;
+	incidentClosed?: boolean;
+	service?: string | null;
+	/** The live run, for the working time. */
+	live?: { status: string; startedAt: string | null; createdAt: string };
+}
+
+/** One mark per trigger kind; the row, the trigger card and Home share it. */
+export const TRIGGER_ICON = {
+	you: User,
+	alert: Bell,
+	webhook: Webhook,
+	schedule: CalendarClock,
+} as const;
+
+const time = (at: string | null | undefined) => (at ? Date.parse(at) : 0);
+
+/** The one state a unit shows: an ask outranks a failure, a run, a finding, news. */
+export function unitState(threads: FeedRow[]): State {
+	const states = threads.map(rowState);
+	if (states.includes("ask")) return "asks";
+	if (states.includes("failed")) return "failed";
+	if (states.includes("live")) return "working";
+	if (states.includes("new"))
+		return threads.some((t) => t.rootCause?.trim()) ? "ready" : "new";
+	return null;
+}
 
 /**
- * The sidebar's thread list (#1020): Needs you, Active, and Settled folded at
- * the foot. An incident's threads move as one block under one chip.
+ * A feed unit as one row (#1020). `incident` is the open incident behind it,
+ * when loaded: it tells an alert from a webhook and whether the alert still fires.
  */
-export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
-	const feed = useThreadFeed(filters);
-	const settle = useSettleThread();
-	const [settledOpen, setSettledOpen] = useState(false);
-	const { undo, settle: onSettle, restore } = useSettleUndo(settle.mutate);
+export function unitRow(
+	unit: ThreadUnit,
+	incident?: IncidentWithRelations,
+): ThreadRow {
+	const first = unit.threads[0] as FeedRow;
+	const live = unit.threads.find((t) => isWorkflowLive(t.status));
+	const chip = unit.incident;
+	const origin: TriggerKind = first.scheduleId
+		? "schedule"
+		: incident
+			? triggerOf(incident).kind
+			: chip && first.triggerType && first.triggerType !== "manual"
+				? "alert"
+				: "you";
+	const service = first.serviceName ?? first.projectName;
+	const chat = !!incident && isPlainChat(incident);
+	const title = chip
+		? origin === "you"
+			? chip.title
+			: readableTitle(chip.title)
+		: first.title?.trim() || (first.kind === "chat" ? "Thread" : "Run");
+	return {
+		key: chip ? `i-${chip.id}` : `t-${first.id}`,
+		title,
+		origin,
+		state: unitState(unit.threads),
+		hint: [
+			chip && !chat ? `INC-${chip.number}` : null,
+			service,
+			TRIGGER_WORD[origin],
+		]
+			.filter(Boolean)
+			.join(", "),
+		at: Math.max(...unit.threads.map((t) => time(t.lastActivityAt))),
+		firing:
+			origin === "alert" &&
+			!!incident &&
+			incident.status !== "closed" &&
+			(incident.alerts ?? []).some((a) => isAlertFiring(a.status)),
+		link: chip
+			? chat
+				? { to: "/incidents/$id/conversation", params: { id: chip.id } }
+				: { to: "/incidents/$id", params: { id: chip.id } }
+			: threadLink(first),
+		thread: first,
+		settled: unit.section === "settled",
+		incidentId: chip?.id,
+		incidentClosed: chip?.status === "closed",
+		service,
+		...(live
+			? {
+					live: {
+						status: live.status,
+						startedAt: live.startedAt ?? null,
+						createdAt: live.createdAt,
+					},
+				}
+			: {}),
+	};
+}
+
+/** What started a thread, in a word; a thread you started needs none (#1020). */
+export const ORIGIN_WORD: Record<TriggerKind, string | null> = {
+	you: null,
+	alert: "Alert",
+	webhook: "Webhook",
+	schedule: "Scheduled",
+};
+/** What a thread's agent work is doing, in words, never a lone glyph (#1020). */
+export const STATE_WORD: Record<NonNullable<State>, string> = {
+	asks: "Approval needed",
+	failed: "Failed",
+	working: "Working",
+	ready: "Likely cause",
+	new: "New",
+};
+const STATE_TONE: Record<NonNullable<State>, string> = {
+	asks: "text-warn",
+	failed: "text-danger",
+	working: "text-text-2",
+	ready: "text-accent",
+	new: "text-accent",
+};
+/** Recents rows before View all. */
+const RECENT = 12;
+/** Waiting threads shown before View all. */
+const WAITING = 3;
+
+/** Every thread, whoever started it, as rows: the feed joined to open incidents. */
+export function useThreadRows(input: ThreadFeedInput = {}, enabled = true) {
+	const feed = useThreadFeed(input, enabled);
+	const { incidents } = useActiveIncidents(enabled);
 	const units = useMemo(
 		() => feed.data?.pages.flatMap((p) => p.units) ?? [],
 		[feed.data],
 	);
-	const counts = feed.data?.pages[0]?.counts;
+	const rows = useMemo(() => {
+		const byId = new Map(incidents.map((i) => [i.id, i]));
+		return units.map((u) =>
+			unitRow(u, u.incident ? byId.get(u.incident.id) : undefined),
+		);
+	}, [units, incidents]);
+	return { rows, units, feed, isLoading: feed.isLoading };
+}
+
+/** How many threads wait on an approval: the rail's and the phone strip's count. */
+export function useWaitingCount(enabled = true): number {
+	const { rows } = useThreadRows({}, enabled);
+	return rows.filter((r) => r.state === "asks").length;
+}
+
+/**
+ * The sidebar's list (#1020): Waiting for you (approvals and questions, any
+ * origin), then Recents by last activity. A waiting thread shows once, above.
+ */
+export function ThreadList() {
+	const { rows, units, feed, isLoading } = useThreadRows();
+	const now = useNow(30_000) ?? 0;
+	const { pathname, search } = useLocation();
+	const settle = useSettleThread();
+	const { undo, settle: onSettle, restore } = useSettleUndo(settle.mutate);
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
+	const investigation = (search as { investigation?: string }).investigation;
 
-	if (feed.isLoading)
+	if (isLoading)
 		return (
-			<div className="flex flex-col gap-1.5 px-4 pt-2.5" aria-busy>
-				<div className="shimmer h-3 w-1/3 rounded-[4px]" />
-				<div className="shimmer h-9 rounded-[4px]" />
-				<div className="shimmer h-9 rounded-[4px]" />
+			<div className="flex flex-col gap-1 px-4 pt-2.5" aria-busy>
+				<div className="shimmer mb-1 h-3 w-1/2 rounded-[4px]" />
+				<div className="shimmer h-5 rounded-[4px]" />
+				<div className="shimmer h-5 rounded-[4px]" />
 			</div>
 		);
-	if (feed.isError)
+	if (feed.isError && rows.length === 0)
 		return (
 			<p
 				className="px-4 py-2 text-meta text-danger"
@@ -89,282 +252,224 @@ export function ThreadList({ filters = {} }: { filters?: ThreadFeedInput }) {
 				Threads did not load
 			</p>
 		);
-
-	const bySection = (s: ThreadSection) => units.filter((u) => u.section === s);
-	const empty = units.length === 0;
+	const waiting = rows
+		.filter((r) => r.state === "asks")
+		.sort((a, b) => a.at - b.at);
+	const recents = rows
+		.filter((r) => r.state !== "asks" && !r.settled && r.thread.id !== undo?.id)
+		.sort((a, b) => b.at - a.at);
+	const row = (r: ThreadRow) => (
+		<ThreadRowView
+			key={r.key}
+			row={r}
+			now={now}
+			on={isOn(r, pathname, investigation)}
+			onSettle={onSettle}
+		/>
+	);
 	return (
 		<div
 			ref={listRef}
-			className="flex flex-col gap-2 px-2"
+			className="flex flex-col gap-3 px-2"
 			data-testid="thread-list"
 		>
 			<div role="status" aria-live="polite" className="sr-only">
 				{said}
 			</div>
 			<UnmappedAlertsRow />
-			{empty && (
-				<p
-					className="px-2 py-1 text-meta text-text-3"
-					data-testid="threads-empty"
-				>
-					No threads yet
-				</p>
-			)}
-			{(["needs", "active"] as const).map((s) => {
-				const list = bySection(s);
-				if (list.length === 0) return null;
-				return (
-					<section
-						key={s}
-						aria-label={SECTION_LABEL[s]}
-						className="flex flex-col gap-px"
-						data-testid={`threads-${s}`}
-					>
-						<Lane label={SECTION_LABEL[s]} count={counts?.[s]} />
-						{list.map((u) => (
-							<UnitRows key={unitKey(u)} unit={u} onSettle={onSettle} />
-						))}
-					</section>
-				);
-			})}
-			{(counts?.settled ?? 0) > 0 || undo ? (
+			{waiting.length > 0 && (
 				<section
-					aria-label="Settled"
+					aria-label="Waiting for you"
 					className="flex flex-col gap-px"
-					data-testid="threads-settled"
+					data-testid="thread-section-waiting"
 				>
-					<button
-						type="button"
-						aria-expanded={settledOpen}
-						onClick={() => setSettledOpen((o) => !o)}
-						className="flex h-6 items-center gap-1.5 rounded-control px-2 text-meta text-text-3 hover:text-text-1"
-						data-testid="threads-settled-toggle"
-					>
-						<span>Settled</span>
-						<span className="tabular-nums">{counts?.settled ?? 0}</span>
-						<ChevronRight
-							aria-hidden
-							className={cn(
-								"ml-auto size-3 transition-transform duration-150 motion-reduce:transition-none",
-								settledOpen && "rotate-90",
-							)}
-						/>
-					</button>
-					{undo && (
-						<div
-							className="flex h-7 items-center gap-2 px-2 text-meta text-text-2"
-							data-testid="settle-undo-line"
+					<h2 className="flex h-7 items-center px-2.5 text-meta text-text-3">
+						Waiting for you
+						<span className="ml-auto text-warn tabular-nums">
+							{waiting.length}
+						</span>
+					</h2>
+					{waiting.slice(0, WAITING).map(row)}
+					{waiting.length > WAITING && (
+						<Link
+							to="/threads"
+							search={{ state: "waiting" }}
+							className="flex h-6 items-center px-2.5 text-meta text-accent hover:underline"
 						>
-							<span className="min-w-0 truncate">Settled {undo.title}</span>
-							<button
-								type="button"
-								// Until Settle answers there is nothing exact to restore (#1020).
-								disabled={!undo.previous || undo.restoring}
-								onClick={restore}
-								className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
-								data-testid="settle-undo"
-							>
-								Undo
-							</button>
-						</div>
+							{waiting.length} threads waiting. View all
+						</Link>
 					)}
-					{settledOpen &&
-						bySection("settled").map((u) => (
-							<UnitRows key={unitKey(u)} unit={u} />
-						))}
 				</section>
-			) : null}
-			{feed.hasNextPage && (
-				<button
-					type="button"
-					onClick={() => void feed.fetchNextPage()}
-					disabled={feed.isFetchingNextPage}
-					className="h-7 rounded-control px-2 text-left text-meta text-text-3 hover:bg-surface-3 hover:text-text-1"
-					data-testid="threads-more"
-				>
-					Show more
-				</button>
 			)}
+			<section
+				aria-label="Recents"
+				className="flex flex-col gap-px"
+				data-testid="thread-section-recents"
+			>
+				<h2 className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-3">
+					Recents
+				</h2>
+				{undo && (
+					<div
+						className="flex h-7 items-center gap-2 px-2.5 text-meta text-text-2"
+						data-testid="settle-undo-line"
+					>
+						<span className="min-w-0 truncate">Settled {undo.title}</span>
+						<button
+							type="button"
+							// Until Settle answers there is nothing exact to restore (#1020).
+							disabled={!undo.previous || undo.restoring}
+							onClick={restore}
+							className="ml-auto shrink-0 rounded-control px-1.5 font-medium text-text-1 hover:bg-surface-3 disabled:text-text-3"
+							data-testid="settle-undo"
+						>
+							Undo
+						</button>
+					</div>
+				)}
+				{rows.length === 0 ? (
+					<p
+						className="px-2.5 py-1 text-body text-text-3"
+						data-testid="threads-empty"
+					>
+						No threads yet
+					</p>
+				) : (
+					<>
+						{recents.slice(0, RECENT).map(row)}
+						<Link
+							to="/threads"
+							className="flex h-7 items-center px-2.5 text-meta text-text-3 hover:text-text-1"
+							data-testid="threads-view-all"
+						>
+							View all
+						</Link>
+					</>
+				)}
+			</section>
 		</div>
 	);
 }
 
-const unitKey = (u: ThreadUnit) => u.incident?.id ?? u.threads[0]?.id ?? "";
-
-function Lane({ label, count }: { label: string; count?: number }) {
+export function isOn(r: ThreadRow, pathname: string, investigation?: string) {
+	if (r.incidentId) return pathname.startsWith(`/incidents/${r.incidentId}`);
+	const id = r.thread.id;
 	return (
-		<div className="flex h-6 items-center gap-1.5 px-2 text-meta text-text-3">
-			<span>{label}</span>
-			{count !== undefined && <span className="tabular-nums">{count}</span>}
-		</div>
+		pathname === `/threads/${id}` ||
+		pathname.endsWith(`/runs/${id}`) ||
+		investigation === id
 	);
 }
 
-/** One unit: a lone thread, or an incident's block joined by its severity stripe. */
-function UnitRows({
-	unit,
+/** One thread: its title, then what started it and what it is doing, in words. */
+export function ThreadRowView({
+	row,
+	now,
+	on,
+	detailed = false,
 	onSettle,
 }: {
-	unit: ThreadUnit;
-	onSettle?: (t: ThreadRow) => void;
+	row: ThreadRow;
+	now: number;
+	on: boolean;
+	/** Two lines with origin and state in words, for the Threads page; the sidebar keeps one line. */
+	detailed?: boolean;
+	/** Rename, Stop and Settle on hover: the sidebar's rows only. */
+	onSettle?: (t: FeedRow) => void;
 }) {
-	const stripe = unit.incident ? severityColor(unit.incident.severity) : null;
-	return (
-		<div
-			className={cn("relative flex flex-col gap-px", stripe && "pl-1")}
-			data-testid="thread-unit"
-			data-incident={unit.incident?.number}
-		>
-			{stripe && (
-				<span
-					aria-hidden
-					className="absolute inset-y-1 left-0 w-0.5 rounded-full"
-					style={{ background: stripe }}
-				/>
-			)}
-			{unit.threads.map((t, i) => (
-				<Row
-					key={t.id}
-					thread={t}
-					unit={unit}
-					chip={i === 0}
-					onSettle={onSettle}
-				/>
-			))}
-		</div>
-	);
-}
-
-function Row({
-	thread: t,
-	unit,
-	chip,
-	onSettle,
-}: {
-	thread: ThreadRow;
-	unit: ThreadUnit;
-	chip: boolean;
-	onSettle?: (t: ThreadRow) => void;
-}) {
-	const now = useNow(30_000);
-	const { pathname, search } = useLocation();
-	const cancel = useCancelInvestigation();
-	const state = rowState(t);
-	const line = rowLine(t);
-	const context = rowContext(t);
-	const live = isWorkflowLive(t.status);
 	const [renaming, setRenaming] = useState(false);
-	const here =
-		pathname === `/threads/${t.id}` ||
-		pathname.endsWith(`/runs/${t.id}`) ||
-		(search as { investigation?: string }).investigation === t.id;
-	const incident = unit.incident;
-	const title =
-		t.title?.trim() ||
-		incident?.title ||
-		(t.kind === "chat" ? "Thread" : "Investigation");
+	const cancel = useCancelInvestigation();
 	if (renaming)
 		return (
-			<RenameRow id={t.id} title={title} onDone={() => setRenaming(false)} />
+			<RenameRow
+				id={row.thread.id}
+				title={row.title}
+				onDone={() => setRenaming(false)}
+			/>
 		);
-	return (
-		<div className="group/row relative" data-testid="thread-row-wrap">
-			<Hint
-				label={incident ? `INC-${incident.number}` : (context ?? "No subject")}
-				meta={
-					state === "ask"
-						? "Waiting on you"
-						: [t.model ?? t.harness, shortAge(t.createdAt, now)]
-								.filter(Boolean)
-								.join(", ")
-				}
-				side="right"
-			>
-				<Link
-					{...threadLink(t)}
-					aria-current={here ? "page" : undefined}
-					className={cn(
-						"flex min-w-0 flex-col gap-0.5 rounded-control px-2 py-1.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
-						here && "bg-surface-3",
-					)}
-					data-testid="thread-row"
-					data-id={t.id}
-					data-section={t.section}
-					data-state={state ?? "quiet"}
+	const origin = ORIGIN_WORD[row.origin];
+	const body = !detailed ? (
+		<>
+			<span dir="auto" className="min-w-0 flex-1 truncate">
+				{row.title}
+			</span>
+			<RowMark row={row} now={now} hideOnHover={!!onSettle} />
+		</>
+	) : (
+		<>
+			<span className="flex min-w-0 items-baseline gap-3">
+				<span
+					dir="auto"
+					className="min-w-0 flex-1 truncate text-body text-text-1"
 				>
-					<span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-text-3">
-						{incident && chip ? (
-							<span
-								className="inline-flex shrink-0 items-center gap-1 font-medium"
-								style={{ color: severityColor(incident.severity) }}
-								data-testid="thread-incident-chip"
-							>
-								<Mono>INC-{incident.number}</Mono>
-								<span>{severityWord(incident.severity)}</span>
-							</span>
-						) : null}
-						{context && (
-							<span className="inline-flex min-w-0 items-center gap-1">
-								{t.projectName ? (
-									<FolderGit2 aria-hidden className="size-3 shrink-0" />
-								) : (
-									<Server aria-hidden className="size-3 shrink-0" />
-								)}
-								<span dir="auto" className="truncate">
-									{context}
-								</span>
-							</span>
-						)}
+					{row.title}
+				</span>
+				<span
+					className="shrink-0 text-meta text-text-3 tabular-nums"
+					data-testid="row-when"
+				>
+					{now ? rowWhen(row.at, now) : null}
+				</span>
+			</span>
+			<span className="flex min-w-0 items-center gap-1.5 text-meta text-text-3">
+				<span data-testid="row-origin" className="shrink-0">
+					{origin ?? "Chat"}
+					{row.firing && <span className="text-danger"> firing</span>}
+				</span>
+				{row.state ? (
+					<>
+						<span aria-hidden>·</span>
 						<span
 							className={cn(
-								"ml-auto inline-flex shrink-0 items-center gap-1 tabular-nums",
-								onSettle &&
-									"group-hover/row:invisible group-focus-within/row:invisible",
-								state === "ask" && "text-warn",
-								state === "failed" && "text-danger",
-								state === "live" && "text-live",
-								state === "new" && "text-accent",
+								"flex shrink-0 items-center gap-1",
+								STATE_TONE[row.state],
 							)}
-							data-testid="thread-row-state"
+							data-testid="tree-state"
+							data-state={row.state}
 						>
-							{state ? (
-								<>
-									{state === "live" ? (
-										<RingTick state="busy" className="size-2.5" />
-									) : (
-										<span
-											aria-hidden
-											className={cn(
-												"size-1.5 rounded-full bg-current",
-												state === "ask" && "breathe motion-reduce:animate-none",
-											)}
-										/>
-									)}
-									{STATE_WORD[state]}
-								</>
-							) : (
-								shortAge(t.lastActivityAt, now)
-							)}
+							{row.state === "working" && <Ring />}
+							{STATE_WORD[row.state]}
+							{row.state === "working" && row.live && now
+								? ` ${formatElapsed(runElapsed(row.live, now))}`
+								: null}
 						</span>
-					</span>
-					<span
-						dir="auto"
-						className="truncate text-body text-text-1"
-						data-testid="thread-row-title"
-					>
-						{title}
-					</span>
-					{line && (
-						<span
-							dir="auto"
-							className="truncate text-meta text-text-3"
-							data-testid="thread-row-line"
-						>
-							{line}
-						</span>
-					)}
-				</Link>
-			</Hint>
+					</>
+				) : (
+					row.incidentClosed && (
+						<>
+							<span aria-hidden>·</span>
+							<span className="shrink-0">Resolved</span>
+						</>
+					)
+				)}
+				{row.service && (
+					<>
+						<span aria-hidden>·</span>
+						<span className="min-w-0 truncate">{row.service}</span>
+					</>
+				)}
+			</span>
+		</>
+	);
+	const live = isWorkflowLive(row.thread.status);
+	return (
+		<div className="group/row relative" data-testid="thread-row-wrap">
+			<Link
+				{...row.link}
+				aria-current={on ? "page" : undefined}
+				className={cn(
+					"flex min-w-0 rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 focus-visible:bg-surface-3",
+					detailed
+						? "flex-col justify-center gap-0.5 py-1.5"
+						: "h-8 items-center gap-2 text-body hover:bg-surface-2",
+					on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
+				)}
+				data-testid="thread-row"
+				data-id={row.thread.id}
+				data-state={row.state ?? "quiet"}
+			>
+				{body}
+			</Link>
 			{onSettle && (
 				<div className="absolute top-1 right-1 hidden items-center gap-0.5 group-focus-within/row:flex group-hover/row:flex">
 					<RowAction
@@ -377,7 +482,7 @@ function Row({
 					{live ? (
 						<RowAction
 							label="Stop"
-							onClick={() => cancel.mutate({ id: t.id })}
+							onClick={() => cancel.mutate({ id: row.thread.id })}
 							testId="thread-stop"
 						>
 							<Square className="size-3" />
@@ -385,7 +490,7 @@ function Row({
 					) : (
 						<RowAction
 							label="Settle"
-							onClick={() => onSettle(t)}
+							onClick={() => onSettle(row.thread)}
 							testId="thread-settle"
 						>
 							<Check className="size-3.5" />
@@ -394,6 +499,64 @@ function Row({
 				</div>
 			)}
 		</div>
+	);
+}
+
+/**
+ * The sidebar row's one trailing mark, in a fixed 16 px slot (#1020): a
+ * status dot, a small ring while working, else a muted origin glyph. The words
+ * live in the hint and for screen readers.
+ */
+function RowMark({
+	row,
+	now,
+	hideOnHover,
+}: {
+	row: ThreadRow;
+	now: number;
+	/** The row's actions take the slot on hover. */
+	hideOnHover: boolean;
+}) {
+	const origin = ORIGIN_WORD[row.origin];
+	const words = [
+		origin && `${origin}${row.firing ? ", firing" : ""}`,
+		row.state && STATE_WORD[row.state],
+		row.state === "working" && row.live && now
+			? formatElapsed(runElapsed(row.live, now))
+			: null,
+	]
+		.filter(Boolean)
+		.join(", ");
+	if (!words) return null;
+	let mark: ReactNode = null;
+	if (row.state === "failed")
+		mark = <span className="block size-1.5 rounded-full bg-danger" />;
+	else if (row.state === "ready" || row.state === "new")
+		mark = <span className="block size-1.5 rounded-full bg-accent" />;
+	else if (row.state === "asks")
+		mark = <span className="block size-1.5 rounded-full bg-warn" />;
+	else if (row.state === "working") mark = <Ring />;
+	else if (origin) {
+		const Icon = TRIGGER_ICON[row.origin];
+		mark = <Icon className="size-3 stroke-[1.75] text-text-3" />;
+	}
+	return (
+		<Hint label={words} side="right">
+			<span
+				className={cn(
+					"flex w-4 shrink-0 items-center justify-center",
+					hideOnHover &&
+						"group-focus-within/row:invisible group-hover/row:invisible",
+				)}
+				data-testid={row.state ? "tree-state" : "row-origin"}
+				data-state={row.state ?? undefined}
+			>
+				<span aria-hidden className="flex items-center">
+					{mark}
+				</span>
+				<span className="sr-only">, {words}</span>
+			</span>
+		</Hint>
 	);
 }
 
@@ -416,7 +579,7 @@ function RenameRow({
 	};
 	return (
 		<form
-			className="px-1 py-1"
+			className="px-1 py-0.5"
 			onSubmit={(e) => {
 				e.preventDefault();
 				save();
@@ -453,7 +616,7 @@ function RowAction({
 	label: string;
 	onClick: () => void;
 	testId: string;
-	children: React.ReactNode;
+	children: ReactNode;
 }) {
 	return (
 		<Hint label={label} side="top">
@@ -481,7 +644,7 @@ function UnmappedAlertsRow() {
 		<Link
 			to="/alerts"
 			search={{ tab: "unmapped" }}
-			className="flex h-7 items-center gap-2 rounded-control px-2 text-meta text-text-2 hover:bg-surface-3 hover:text-text-1"
+			className="flex h-7 items-center gap-2 rounded-control px-2.5 text-meta text-text-2 hover:bg-surface-3 hover:text-text-1"
 			data-testid="unmapped-alerts-row"
 		>
 			<BellRing aria-hidden className="size-3.5 text-warn" />
@@ -494,7 +657,7 @@ function UnmappedAlertsRow() {
 
 /** Reads background moves into Needs you or Settled; the first read says nothing. */
 function useAnnouncer(units: ThreadUnit[]): string {
-	const before = useRef<Map<string, ThreadSection> | null>(null);
+	const before = useRef<Map<string, FeedRow["section"]> | null>(null);
 	const [said, setSaid] = useState("");
 	useEffect(() => {
 		const next = sectionsOf(units);

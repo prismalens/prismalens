@@ -62,10 +62,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		// 0. Precondition: the gate reports a runnable harness (#520).
 		await serveRunnableSelection(page);
 
-		// 1. Every list screen offers New thread; Incident on with /note authors one by hand.
+		// 1. Operations offers Log incident; Home with Incident on and /note authors one by hand.
 		await page.goto("/incidents");
 		await expect(
-			page.getByTestId("page-header").getByTestId("new-thread-button"),
+			page.getByTestId("page-header").getByTestId("create-incident-button"),
 		).toBeVisible({ timeout: 15_000 });
 
 		// 2. The note calls incidents.create and lands on the new incident.
@@ -185,7 +185,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		page,
 	}) => {
 		// New thread with Incident on, light.
-		await page.goto("/threads/new?incident=true&note=true");
+		await page.goto("/new?incident=true&note=true&none=true");
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
 		});
@@ -281,7 +281,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {
-		await page.goto("/threads/new?incident=true&note=true");
+		await page.goto("/new?incident=true&note=true&none=true");
 		const send = page.getByTestId("composer-send");
 		await expect(send).toBeDisabled({ timeout: 15_000 });
 

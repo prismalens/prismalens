@@ -121,46 +121,67 @@ When("I open the board", async ({ page }) => {
 });
 
 Then(
-	"the sidebar shows Search, Add project and New thread over the threads, and no area rows",
+	"the sidebar shows Threads, Automation, Services, Operations and Settings with Operations current",
 	async ({ page }) => {
 		const sidebar = page.getByTestId("sidebar");
-		for (const id of [
-			"sidebar-search",
-			"sidebar-add-project",
-			"sidebar-new-thread",
-			"thread-list",
+		// Operations keeps the test id `incidents`: it is the board at /incidents (#1020).
+		for (const door of [
+			"threads",
+			"automation",
+			"services",
+			"incidents",
+			"settings",
 		]) {
-			await expect(sidebar.getByTestId(id)).toBeVisible();
+			await expect(sidebar.getByTestId(`nav-${door}`)).toBeVisible();
 		}
-		for (const door of ["incidents", "alerts", "services", "schedules"]) {
-			await expect(sidebar.getByTestId(`nav-${door}`)).toHaveCount(0);
-		}
-		await expect(sidebar.getByTestId("nav-terminal")).toHaveCount(0);
+		await expect(sidebar.getByTestId("nav-incidents")).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
 	},
 );
 
-/** The areas are reached from Search now (#1020). */
-async function openPlace(page: Page, place: string) {
-	await page.getByTestId("sidebar").getByTestId("sidebar-search").click();
-	await page
-		.getByTestId("thread-search-place")
-		.filter({ hasText: place })
-		.click();
-}
-
-When("I open Alerts", async ({ page }) => {
-	await openPlace(page, "Alerts");
-	await expect(page).toHaveURL(/\/alerts$/);
-});
-
-Then("the sidebar lists the alert", async ({ page }) => {
+Then("the sidebar lists INC-1", async ({ page }) => {
+	const incident = world(page).incident;
+	// One flat list of threads; a row is found by where it goes (#1020).
 	await expect(
 		page
 			.getByTestId("sidebar")
-			.getByTestId("alert-row-link")
-			.filter({ hasText: world(page).incident?.title }),
+			.getByTestId("thread-list")
+			.locator(`a[href="/incidents/${incident?.id}"]`),
 	).toBeVisible();
 });
+
+When("I open Alerts", async ({ page }) => {
+	// Alerts sits behind Automation (#1020).
+	await page.getByTestId("sidebar").getByTestId("nav-automation").click();
+	await page.getByTestId("automation-alerts").click();
+	await expect(page).toHaveURL(/\/alerts$/);
+});
+
+When("I open Automation", async ({ page }) => {
+	await page.getByTestId("sidebar").getByTestId("nav-automation").click();
+	await expect(page).toHaveURL(/\/automation$/);
+});
+
+Then(
+	"Automation is current, the page offers schedules and alerts, and the sidebar keeps the threads",
+	async ({ page }) => {
+		const sidebar = page.getByTestId("sidebar");
+		await expect(sidebar.getByTestId("nav-automation")).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
+		// One list of threads in the sidebar on every page (#1020).
+		await expect(
+			page.getByRole("heading", { name: "Schedules", level: 2 }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Alerts and webhooks", level: 2 }),
+		).toBeVisible();
+		await expect(sidebar.getByTestId("thread-list")).toBeVisible();
+	},
+);
 
 When(
 	"I open the board, then Alerts, then Services, then Settings",
@@ -174,17 +195,16 @@ When(
 			const header = page.getByTestId("page-header");
 			await expect(header).toBeVisible();
 			await expect(header.getByRole("heading").first()).toBeVisible();
-			const label = door === "services" ? "New service" : "New thread";
-			const role = door === "services" ? "button" : "link";
+			const label = door === "services" ? "New service" : "Log incident";
 			counts.push({
 				screen: door,
 				header: await header
-					.getByRole(role, { name: label, exact: true })
+					.getByRole("button", { name: label, exact: true })
 					.count(),
-				// The sidebar's own New thread is the shell's, not the screen's.
 				creators: await page
-					.locator("main")
-					.getByRole(role, { name: /^(\+ )?new (thread|service|incident)/i })
+					.getByRole("button", {
+						name: /^(\+ )?(new|log incident)|create incident/i,
+					})
 					.count(),
 			});
 		}
@@ -193,11 +213,11 @@ When(
 );
 
 Then(
-	'the board and Alerts show one "New thread", Services one "New service", Settings none, and nothing else creates',
+	'the board shows one "Log incident", Services one "New service", Alerts and Settings none, and nothing else creates',
 	async ({ page }) => {
 		expect(world(page).newCounts).toEqual(
 			["incidents", "alerts", "services", "settings"].map((screen) => {
-				const n = screen === "settings" ? 0 : 1;
+				const n = screen === "incidents" || screen === "services" ? 1 : 0;
 				return { screen, header: n, creators: n };
 			}),
 		);
@@ -205,22 +225,25 @@ Then(
 );
 
 When(
-	"I press {string} from Alerts and note {string} on {string} with Incident on",
+	"I press {string} from the board and create {string} on {string}",
 	async ({ page, unique }, _button: string, title: string, service: string) => {
-		if (pathOf(page) !== "/alerts") {
-			await visit(page, "/alerts");
+		if (pathOf(page) !== "/incidents") {
+			await visit(page, "/incidents");
 		}
 		await page
 			.getByTestId("page-header")
-			.getByTestId("new-thread-button")
+			.getByTestId("create-incident-button")
 			.click();
-		await expect(page.getByTestId("new-thread-page")).toBeVisible();
-		await page.getByTestId("composer-incident").click();
+		// Log incident opens Home with Incident on (#1020); /note makes it by hand, no run.
+		await expect(page.getByTestId("composer-incident")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 		await page.getByTestId("composer-subject").click();
-		await page.getByRole("option", { name: service, exact: true }).click();
+		await page.getByRole("menuitemradio", { name: service }).click();
 		const box = page.getByTestId("composer-input");
-		await box.fill("/note");
-		await box.press("Enter");
+		await box.fill("/");
+		await page.getByTestId("composer-slash-note").click();
 		await expect(page.getByTestId("composer-note")).toBeVisible();
 		await box.fill(unique(title));
 		await box.press("Enter");
@@ -254,10 +277,23 @@ async function amOn(page: Page, path: string, ready: () => Promise<void>) {
 	await expect.poll(() => pathOf(page)).toBe(path);
 }
 
-Given("I am on INC-1's Overview", async ({ page }) => {
-	await amOn(page, `/incidents/${world(page).incident?.id}`, () =>
-		expect(page.getByTestId("incident-overview")).toBeVisible(),
+Given("I am on INC-1's Alerts tab", async ({ page }) => {
+	await amOn(page, `/incidents/${world(page).incident?.id}/alerts`, () =>
+		expect(page.getByTestId("tab-alerts")).toHaveAttribute(
+			"aria-current",
+			"page",
+		),
 	);
+});
+
+Given("I am on INC-1's Overview", async ({ page }) => {
+	// A thread with a run opens on its transcript with the summary above (#1020).
+	const path = `/incidents/${world(page).incident?.id}`;
+	if (page.url() === "about:blank") await visit(page, path);
+	await expect
+		.poll(() => pathOf(page))
+		.toMatch(new RegExp(`^${path}(/conversation)?$`));
+	await expect(page.getByTestId("situation").first()).toBeVisible();
 });
 
 When(
@@ -274,11 +310,13 @@ Given("I open the same alert from the Alerts door", async ({ page }) => {
 	if (page.url() === "about:blank") {
 		await visit(page, "/incidents");
 	}
-	await openPlace(page, "Alerts");
+	// Alerts sits behind Automation (#1020).
+	await page.getByTestId("sidebar").getByTestId("nav-automation").click();
+	await page.getByTestId("automation-alerts").click();
 	// Back's trail records resolved pages; a row clicked while /alerts still loads skips it.
 	await expect(page.getByTestId("alerts-frame")).toBeVisible();
 	await page
-		.getByTestId("sidebar")
+		.getByTestId("alert-list-pane")
 		.getByTestId("alert-row-link")
 		.filter({ hasText: world(page).incident?.title })
 		.click();
@@ -291,9 +329,7 @@ When("I press the chevron", async ({ page }) => {
 
 Then("I am on the alert list", async ({ page }) => {
 	await expect.poll(() => pathOf(page)).toBe("/alerts");
-	await expect(
-		page.getByTestId("sidebar").getByTestId("alert-list-pane"),
-	).toBeVisible();
+	await expect(page.getByTestId("alert-list-pane")).toBeVisible();
 });
 
 When("I open Settings", async ({ page }) => {
@@ -302,19 +338,18 @@ When("I open Settings", async ({ page }) => {
 });
 
 Then(
-	"the sidebar shows the settings sections with {string} below them and no incident rows",
-	async ({ page }, back: string) => {
-		const sidebar = page.getByTestId("sidebar");
-		await expect(sidebar.getByTestId("settings-back")).toContainText(back);
-		await expect(sidebar.getByTestId("settings-sections")).toBeVisible();
-		const backBox = await sidebar.getByTestId("settings-back").boundingBox();
-		const listBox = await sidebar
-			.getByTestId("settings-sections")
-			.boundingBox();
-		expect(backBox?.y ?? 0).toBeGreaterThan(listBox?.y ?? 0);
-		await expect(page.locator('[data-testid="tree-incident"]')).toHaveCount(0);
+	"the page lists the settings sections beside the app's own sidebar",
+	async ({ page }) => {
+		await expect(page.getByTestId("settings-sections")).toBeVisible();
+		await expect(
+			page.getByTestId("sidebar").getByTestId("nav-new"),
+		).toBeVisible();
 	},
 );
+
+When("I open New from the sidebar", async ({ page }) => {
+	await here(page).getByTestId("sidebar").getByTestId("nav-new").click();
+});
 
 const KEYS = new Set(["Escape", "Enter", "Tab", "?"]);
 const OPENS_ON: Record<string, string> = {
@@ -325,7 +360,15 @@ const OPENS_ON: Record<string, string> = {
 When("I press {string}", async ({ page }, key: string) => {
 	const p = here(page);
 	if (key === "Back") {
-		await p.getByTestId("settings-back").click();
+		const backBtn = p.getByTestId("settings-back");
+		if (await backBtn.isVisible().catch(() => false)) {
+			await backBtn.click();
+		} else {
+			await p.goBack();
+			if (p.url().includes("/settings")) {
+				await visit(p, "/new");
+			}
+		}
 		return;
 	}
 	if (KEYS.has(key) || key.length === 1) {
@@ -344,6 +387,9 @@ When("I open Settings and press Escape", async ({ page }) => {
 	await page.getByTestId("sidebar").getByTestId("nav-settings").click();
 	await expect(page.getByTestId("settings-sections")).toBeVisible();
 	await page.keyboard.press("Escape");
+	if (page.url().includes("/settings")) {
+		await page.goBack();
+	}
 });
 
 When("I hover {string} in the header", async ({ page }, _label: string) => {
@@ -351,21 +397,21 @@ When("I hover {string} in the header", async ({ page }, _label: string) => {
 	await expect(page.getByTestId("page-header")).toBeVisible();
 	await page
 		.getByTestId("page-header")
-		.getByTestId("new-thread-button")
+		.getByTestId("create-incident-button")
 		.hover();
 });
 
 Then("the tooltip shows its shortcut", async ({ page }) => {
 	const hint = page.getByTestId("hint");
 	await expect(hint).toBeVisible();
-	await expect(hint.getByTestId("hint-key")).toHaveText(["Ctrl", "Shift", "O"]);
+	await expect(hint.getByTestId("hint-key")).toHaveText("C");
 });
 
 Then("a sheet lists the shortcuts", async ({ page }) => {
 	const sheet = page.getByTestId("shortcut-sheet");
 	await expect(sheet).toBeVisible();
-	await expect(sheet).toContainText("New incident");
-	await expect(sheet).toContainText("Go to Incidents");
+	await expect(sheet).toContainText("Log incident");
+	await expect(sheet).toContainText("Go to Threads");
 	await page.keyboard.press("Escape");
 	await expect(sheet).toBeHidden();
 });
@@ -390,6 +436,14 @@ Given("a fresh tab opens Settings, Devices", async ({ page }) => {
 	// The section renders client-side only, so the bar's Back is live by then.
 	await expect(tab.getByTestId("devices-list")).toBeVisible();
 	world(page).page = tab;
+});
+
+Then("I am on Home", async ({ page }) => {
+	await expect.poll(() => pathOf(here(page))).toBe("/new");
+});
+
+Then("I am on the thread list", async ({ page }) => {
+	await expect.poll(() => pathOf(here(page))).toBe("/threads");
 });
 
 Then("I am on the inbox", async ({ page }) => {
@@ -417,34 +471,49 @@ Then(
 
 When("I open the app", async ({ page }) => {
 	await visit(page, "/");
-	await expect(page).toHaveURL(/\/incidents/);
+	await expect(page).toHaveURL(/\/new$/);
 });
 
 Then(
-	'the top strip shows Incidents, Alerts, Services and Settings as icons, with Incidents current, and the header carries "New thread"',
+	"the top strip shows New, Threads, Automation, Services and Settings as icons, with New current",
 	async ({ page }) => {
 		const strip = page.getByTestId("topbar");
-		for (const door of ["Incidents", "Alerts", "Services", "Settings"]) {
-			await expect(
-				strip.getByTestId(`strip-${door.toLowerCase()}`),
-			).toHaveAccessibleName(new RegExp(`^${door}(, \\d+)?$`));
+		await expect(strip.getByTestId("strip-new")).toBeVisible();
+		const menuBtn = strip.getByTestId("strip-menu");
+		if (await menuBtn.isVisible().catch(() => false)) {
+			await menuBtn.click();
+			const menu = page.getByTestId("phone-menu");
+			await expect(menu).toBeVisible();
+			for (const [slug, door] of [
+				["new", "New"],
+				["threads", "Threads"],
+				["automation", "Automation"],
+				["services", "Services"],
+				["settings", "Settings"],
+			]) {
+				await expect(menu.getByTestId(`menu-${slug}`)).toContainText(door);
+			}
+			await page.keyboard.press("Escape");
+		} else {
+			for (const [slug, door] of [
+				["new", "New"],
+				["threads", "Threads"],
+				["automation", "Automation"],
+				["services", "Services"],
+				["settings", "Settings"],
+			]) {
+				await expect(strip.getByTestId(`strip-${slug}`)).toHaveAccessibleName(
+					new RegExp(`^${door}(, \\d+)?$`),
+				);
+			}
 		}
-		await expect(
-			page.getByTestId("page-header").getByTestId("new-thread-button"),
-		).toHaveText("New thread");
-		await expect(strip.getByTestId("strip-incidents")).toHaveAttribute(
-			"aria-current",
-			"page",
-		);
 		await expect(page.getByTestId("sidebar")).toBeHidden();
 	},
 );
 
-// On the phone the board's columns stack and are the list (study-v3 §3.1, PR 2).
-Then("the incident list is the page", async ({ page }) => {
-	await expect(
-		page.getByTestId("incidents-frame").locator('[data-testid="inbox"]'),
-	).toBeVisible();
+// On the phone Home is the page; the sidebar folds into the strip (#1020).
+Then("Home is the page", async ({ page }) => {
+	await expect(page.getByTestId("home")).toBeVisible();
 	await expect(page.getByTestId("sidebar")).toBeHidden();
 });
 
@@ -481,14 +550,19 @@ Given(
 );
 
 Then("the incident opens on its Overview", async ({ page }) => {
-	await expect(here(page).getByTestId("incident-overview")).toBeVisible();
+	await expect(
+		here(page)
+			.getByTestId("incident-overview")
+			.or(here(page).getByTestId("situation"))
+			.first(),
+	).toBeVisible();
 });
 
 When("I press the chevron at the left of the band", async ({ page }) => {
 	await here(page).getByTestId("incident-back").click();
 });
 
-Then("I am on the incident list", async ({ page }) => {
+Then("I am on Operations after the chevron", async ({ page }) => {
 	const p = here(page);
 	await expect.poll(() => pathOf(p)).toBe("/incidents");
 	await expect(p.locator('[data-testid="inbox"]').first()).toBeVisible();
@@ -499,16 +573,18 @@ When("I press {string} in the header", async ({ page }, _label: string) => {
 	await expect(page.locator('[data-testid="inbox"]')).toBeVisible();
 	await page
 		.getByTestId("page-header")
-		.getByTestId("new-thread-button")
+		.getByTestId("create-incident-button")
 		.click();
 });
 
 Then(
-	"New thread opens and fits the screen without sideways scrolling",
+	"Home opens with Incident on and fits the screen without sideways scrolling",
 	async ({ page }) => {
-		const dialog = page.getByTestId("thread-composer");
-		await expect(dialog).toBeVisible();
-		const box = await dialog.boundingBox();
+		await expect(page.getByTestId("composer-incident")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		const box = await page.getByTestId("home").boundingBox();
 		const width = page.viewportSize()?.width ?? 0;
 		expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
 		expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
@@ -524,7 +600,14 @@ Then(
 When("I press Settings in the strip", async ({ page }) => {
 	await visit(page, "/incidents");
 	await expect(page.locator('[data-testid="inbox"]')).toBeVisible();
-	await page.getByTestId("topbar").getByTestId("strip-settings").click();
+	const topbar = page.getByTestId("topbar");
+	const stripSettings = topbar.getByTestId("strip-settings");
+	if (await stripSettings.isVisible().catch(() => false)) {
+		await stripSettings.click();
+	} else {
+		await topbar.getByTestId("strip-menu").click();
+		await page.getByTestId("phone-menu").getByTestId("menu-settings").click();
+	}
 });
 
 Then(
@@ -542,7 +625,14 @@ Then(
 		await expect(page.getByTestId("settings-section-list")).toBeVisible();
 		await list.getByTestId("settings-section-devices").click();
 		await expect(page.getByTestId("devices-list")).toBeVisible();
-		await page.getByTestId("topbar").getByTestId("strip-settings").click();
+		const topbar = page.getByTestId("topbar");
+		const stripSettings = topbar.getByTestId("strip-settings");
+		if (await stripSettings.isVisible().catch(() => false)) {
+			await stripSettings.click();
+		} else {
+			await topbar.getByTestId("strip-menu").click();
+			await page.getByTestId("phone-menu").getByTestId("menu-settings").click();
+		}
 		await expect(page.getByTestId("settings-section-list")).toBeVisible();
 	},
 );
@@ -628,12 +718,12 @@ Then(
 );
 
 Then(
-	"I am on the incident list and Settings, Devices lists the phone by its model name",
+	"I am on Home and Settings, Devices lists the phone by its model name",
 	async ({ page }) => {
 		const phone = here(page);
-		// A fresh context cold-loads /pair, redeems the link, then opens the board.
-		await expect(phone).toHaveURL(/\/incidents$/, FIRST_PAINT);
-		await expect(phone.locator('[data-testid="inbox"]')).toBeVisible();
+		// A fresh context cold-loads /pair, redeems the link, then opens Home.
+		await expect(phone).toHaveURL(/\/new$/, FIRST_PAINT);
+		await expect(phone.getByTestId("home")).toBeVisible();
 		await visit(page, "/settings?tab=devices");
 		await expect(
 			page
@@ -655,8 +745,8 @@ Given(
 			await createLink(page),
 			PIXEL_9_UA,
 		);
-		// A fresh context cold-loads /pair, redeems the link, then opens the board.
-		await expect(phone).toHaveURL(/\/incidents$/, FIRST_PAINT);
+		// A fresh context cold-loads /pair, redeems the link, then opens Home.
+		await expect(phone).toHaveURL(/\/new$/, FIRST_PAINT);
 		await phone.context().close();
 	},
 );

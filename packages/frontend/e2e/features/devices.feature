@@ -11,7 +11,7 @@ Feature: Pair a phone, and the devices that can reach this instance
   Scenario: A fresh link pairs without a click
     Given a fresh pairing link
     When I open it on the phone
-    Then I am on the incident list and Settings, Devices lists the phone by its model name
+    Then I am on Home and Settings, Devices lists the phone by its model name
 
   Scenario: Devices carry the device's name and OS and can be renamed
     Given the host browser is paired and a phone "Pixel 9" is paired

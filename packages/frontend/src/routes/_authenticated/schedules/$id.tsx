@@ -46,6 +46,7 @@ import {
 	useRunScheduleNow,
 	useSchedule,
 } from "@/lib/api/hooks/use-schedules-orpc";
+import { scheduleWhen } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -79,11 +80,7 @@ function ScheduleHistoryPage() {
 		return missing ? (
 			<NotFound
 				text="This schedule no longer exists."
-				back={
-					<Link to="/settings" search={{ tab: "schedules" }}>
-						Scheduled prompts
-					</Link>
-				}
+				back={<Link to="/automation">Automation</Link>}
 			/>
 		) : (
 			<Problem text={getErrorMessage(error)} onRetry={() => void refetch()} />
@@ -323,7 +320,7 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 		["Runs", aboutText(s), s.runbook ? `Runbook ${s.runbook}` : ""],
 		[
 			"When",
-			s.description,
+			scheduleWhen(s),
 			s.enabled ? `Next ${whenText(s.nextRunAt)}` : "Paused",
 		],
 		[

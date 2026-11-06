@@ -58,9 +58,9 @@ describe("alertBackLabel", () => {
 	});
 
 	it("calls the board the board, query string or not", () => {
-		expect(alertBackLabel("/incidents")).toBe("Back to the board");
+		expect(alertBackLabel("/incidents")).toBe("Back to Operations");
 		expect(alertBackLabel("/incidents?state=open", incident)).toBe(
-			"Back to the board",
+			"Back to Operations",
 		);
 	});
 

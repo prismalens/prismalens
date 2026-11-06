@@ -8,7 +8,7 @@ import { hideQueryDevtools } from "./live-stream-fixtures";
 /**
  * #1020: helper threads on empty pages and transcript properties (more journeys).
  * Verifies:
- * 1. A helper thread can be started from each of empty Alerts, Services, and Scheduled prompts.
+ * 1. A helper thread can be started from each of empty Alerts, Services, and Automation's schedules.
  * 2. First reply to "hi" is a plain answer: steps list shows no tool step before the answer.
  * 3. The webhook token never appears in the page DOM of the helper thread while Copy token exists on Alerts.
  * 4. The "PrismaLens data" note shows at most once per run in the transcript.
@@ -195,12 +195,15 @@ test.describe("helper threads more journeys (#1020)", () => {
 		});
 	});
 
-	test("1b. a helper thread can be started from the empty Scheduled prompts page", async ({
+	test("1b. a helper thread can be started from Automation with no schedules", async ({
 		page,
 	}) => {
 		await emptySchedules(page);
 		const start = await captureStart(page);
-		await page.goto("/settings?tab=schedules");
+		await page.goto("/automation");
+		await expect(page.getByTestId("schedules-empty")).toBeVisible({
+			timeout: 20_000,
+		});
 		const helper = page.getByTestId("helper-thread");
 		await expect(helper).toHaveAttribute("data-place", "schedules", {
 			timeout: 20_000,

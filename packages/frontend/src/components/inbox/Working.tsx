@@ -5,6 +5,7 @@ import type { IncidentWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Mono } from "@/components/shared/Mono";
 import { incidentServices } from "@/lib/service-lanes";
+import { readableTitle } from "@/lib/title";
 import { ago, workingOf } from "./inbox-model";
 
 /** Working under Needs you: incidents a run is on with no finding yet, quiet. */
@@ -41,7 +42,7 @@ export function Working({
 							INC-{i.number}
 						</Mono>
 						<span dir="auto" className="min-w-0 flex-1 truncate text-text-1">
-							{i.title}
+							{readableTitle(i.title)}
 						</span>
 						{service && (
 							<span

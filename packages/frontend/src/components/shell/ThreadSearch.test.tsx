@@ -17,7 +17,16 @@ vi.mock("@tanstack/react-router", () => ({
 	Link: () => null,
 }));
 vi.mock("@/hooks/use-layout-prefs", () => ({
-	useLayoutPrefs: () => ({ setBottomPanel: vi.fn() }),
+	useLayoutPrefs: () => ({ bottomPanel: false, setBottomPanel: vi.fn() }),
+}));
+vi.mock("@tanstack/react-query", () => ({
+	useQuery: () => ({ data: undefined }),
+}));
+vi.mock("@/lib/api/orpc-client", () => ({
+	orpc: { incidents: { list: { queryOptions: () => ({}) } } },
+}));
+vi.mock("@/lib/providers/theme-provider", () => ({
+	useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
 }));
 vi.mock("@/hooks/use-media-query", () => ({
 	PHONE: "phone",
@@ -28,6 +37,7 @@ vi.mock("@/lib/api/hooks", () => ({
 		h.repoArgs.push(args);
 		return { data: { data: [{ id: "r1", fullName: "shop" }], total: 1 } };
 	},
+	useServices: () => ({ data: { data: [] } }),
 }));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useThreadFeed: () => ({
@@ -78,7 +88,7 @@ afterEach(async () => {
 
 describe("the search palette (#1020)", () => {
 	it("gives every item an icon, with Actions, Recent threads and places at rest", async () => {
-		const { ThreadSearch } = await import("./SidebarHead");
+		const { ThreadSearch } = await import("./SearchHost");
 		await act(async () =>
 			root.render(<ThreadSearch open onOpenChange={() => {}} />),
 		);
@@ -98,12 +108,16 @@ describe("the search palette (#1020)", () => {
 				'[data-testid="thread-search-action-add-project"]',
 			),
 		).not.toBeNull();
+		expect(
+			document.querySelector('[data-testid="thread-search-action-theme"]')
+				?.textContent,
+		).toBe("Use the light theme");
 	});
 });
 
 describe("the palette project search (#1020)", () => {
 	it("sends the typed text to the server, so a project past the first page is found", async () => {
-		const { ThreadSearch } = await import("./SidebarHead");
+		const { ThreadSearch } = await import("./SearchHost");
 		await act(async () =>
 			root.render(<ThreadSearch open onOpenChange={() => {}} />),
 		);

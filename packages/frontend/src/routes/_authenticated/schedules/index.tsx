@@ -3,9 +3,9 @@
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-/** Schedules live in Settings, Scheduled prompts; this address stays for links (#1020). */
+/** Schedules live in Automation; this address stays for links (#1020). */
 export const Route = createFileRoute("/_authenticated/schedules/")({
 	beforeLoad: () => {
-		throw redirect({ to: "/settings", search: { tab: "schedules" } });
+		throw redirect({ to: "/automation" });
 	},
 });

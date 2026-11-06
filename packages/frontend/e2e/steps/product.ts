@@ -210,14 +210,26 @@ export async function reopen(page: Page, id: string) {
 	);
 }
 
+/** `CheckoutLatencyHigh` reads as "Checkout latency high"; titles with spaces stay as written. */
+export function readableTitle(title: string): string {
+	if (/\s/.test(title) || !/[a-z][A-Z]/.test(title)) return title;
+	const words = title
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+		.split(" ");
+	return words
+		.map((w, i) => (i === 0 || /^[A-Z0-9]{2,}$/.test(w) ? w : w.toLowerCase()))
+		.join(" ");
+}
+
 /** The inbox row or card for a title, inside `scope` (the page or a group). */
 export const cardOf = (scope: Page | Locator, title: string) => {
-	const page = "goto" in scope ? scope : scope.page();
+	const readable = readableTitle(title);
 	return scope
 		.locator(
 			'[data-testid="inbox-row"], [data-testid="recent-row"], [data-testid="all-row"], [data-testid="working-row"]',
 		)
-		.filter({ has: page.getByText(title, { exact: true }) });
+		.filter({ hasText: readable });
 };
 
 /**
@@ -229,7 +241,10 @@ export const FIRST_PAINT = { timeout: 15_000 };
 /** The frame each route paints first; the first match wins. */
 const FRAMES: [RegExp, string][] = [
 	[/^\/incidents\/[^/?]+/, "incident-record-frame"],
-	[/^\/(incidents)?(\?|$)/, "incidents-frame"],
+	[/^\/incidents(\?|$)/, "incidents-frame"],
+	[/^\/(new)?(\?|$)/, "home"],
+	[/^\/threads/, "threads-page"],
+	[/^\/automation/, "automation-page"],
 	[/^\/alerts/, "alerts-frame"],
 	[/^\/settings(\?|$)/, "settings-frame"],
 	[/^\/services\/[^/?]+/, "service-page"],
@@ -253,7 +268,7 @@ export async function visit(target: Page, path: string, frame?: string) {
 export async function openBoard(page: Page) {
 	await visit(page, "/incidents");
 	await expect(
-		page.locator('[data-testid="inbox"], [data-testid="first-run"]'),
+		page.locator('[data-testid="inbox"], [data-testid="home"]'),
 	).toBeVisible();
 }
 

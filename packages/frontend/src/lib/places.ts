@@ -2,51 +2,58 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	Activity,
 	Bell,
 	Boxes,
-	CalendarClock,
 	FolderGit2,
-	Inbox,
 	type LucideIcon,
+	MessagesSquare,
 	SlidersHorizontal,
+	Zap,
 } from "lucide-react";
 
 export type PlaceId =
+	| "threads"
+	| "automation"
+	| "services"
 	| "incidents"
 	| "alerts"
-	| "services"
 	| "projects"
-	| "schedules"
 	| "settings";
 
 export interface Place {
 	id: PlaceId;
 	label: string;
 	icon: LucideIcon;
-	to: "/incidents" | "/alerts" | "/services" | "/projects" | "/settings";
-	search?: { tab: "schedules" };
+	to:
+		| "/threads"
+		| "/automation"
+		| "/services"
+		| "/incidents"
+		| "/alerts"
+		| "/projects"
+		| "/settings";
 	/** The second key after `g`. */
 	goKey?: string;
-	/** A sidebar door and a phone strip button. */
+	/** A sidebar door; Operations shows only once alerts have arrived. */
 	door?: boolean;
 }
 
 /** The one list of places (#1020): the sidebar doors, the palette, `g` keys and the shortcut sheet read it. */
 export const PLACES: readonly Place[] = [
 	{
-		id: "incidents",
-		label: "Incidents",
-		icon: Inbox,
-		to: "/incidents",
-		goKey: "i",
+		id: "threads",
+		label: "Threads",
+		icon: MessagesSquare,
+		to: "/threads",
+		goKey: "t",
 		door: true,
 	},
 	{
-		id: "alerts",
-		label: "Alerts",
-		icon: Bell,
-		to: "/alerts",
-		goKey: "a",
+		id: "automation",
+		label: "Automation",
+		icon: Zap,
+		to: "/automation",
 		door: true,
 	},
 	{
@@ -56,14 +63,16 @@ export const PLACES: readonly Place[] = [
 		to: "/services",
 		door: true,
 	},
-	{ id: "projects", label: "Projects", icon: FolderGit2, to: "/projects" },
 	{
-		id: "schedules",
-		label: "Scheduled prompts",
-		icon: CalendarClock,
-		to: "/settings",
-		search: { tab: "schedules" },
+		id: "incidents",
+		label: "Operations",
+		icon: Activity,
+		to: "/incidents",
+		goKey: "o",
+		door: true,
 	},
+	{ id: "alerts", label: "Alerts", icon: Bell, to: "/alerts", goKey: "a" },
+	{ id: "projects", label: "Projects", icon: FolderGit2, to: "/projects" },
 	{
 		id: "settings",
 		label: "Settings",

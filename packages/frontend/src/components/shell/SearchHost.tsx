@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
 	ChevronsDown,
 	FileText,
 	FolderGit2,
 	FolderPlus,
 	MessageSquare,
-	Search,
+	Moon,
+	Server,
+	Siren,
 	SquarePen,
 	SquareTerminal,
+	Sun,
 } from "lucide-react";
 import {
 	createContext,
@@ -20,7 +24,6 @@ import {
 	useEffect,
 	useState,
 } from "react";
-import { Hint } from "@/components/shared/Hint";
 import {
 	Command,
 	CommandEmpty,
@@ -37,16 +40,13 @@ import {
 } from "@/components/ui/dialog";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
-import { useRepositories } from "@/lib/api/hooks";
+import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
+import { orpc } from "@/lib/api/orpc-client";
 import { PLACES } from "@/lib/places";
+import { useTheme } from "@/lib/providers/theme-provider";
 import { rowContext, threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
-import { ThreadFilterButton, ThreadFiltersHost } from "./ThreadFilters";
-
-const ICON = "size-4 shrink-0 stroke-[1.5]";
-const BUTTON =
-	"flex size-8 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1";
 
 const OpenSearch = createContext<() => void>(() => {});
 
@@ -75,7 +75,7 @@ export function SearchHost({
 				setOpen(true);
 			} else if (mod && e.shiftKey && e.key.toLowerCase() === "o") {
 				e.preventDefault();
-				void navigate({ to: "/threads/new" });
+				void navigate({ to: "/new" });
 			}
 		};
 		window.addEventListener("keydown", onKey);
@@ -83,71 +83,9 @@ export function SearchHost({
 	}, [navigate, enabled]);
 	return (
 		<OpenSearch.Provider value={() => setOpen(true)}>
-			<ThreadFiltersHost>
-				{children}
-				{enabled && <ThreadSearch open={open} onOpenChange={setOpen} />}
-			</ThreadFiltersHost>
+			{children}
+			{enabled && <ThreadSearch open={open} onOpenChange={setOpen} />}
 		</OpenSearch.Provider>
-	);
-}
-
-/** The sidebar's head (#1020): Search, Filter for the list, Add project, and New thread. */
-export function SidebarHead({
-	compact = false,
-	filterable = true,
-}: {
-	compact?: boolean;
-	/** False where the list beside it is not the thread list: the filters would change nothing. */
-	filterable?: boolean;
-}) {
-	const openSearch = useOpenSearch();
-	return (
-		<div
-			className={cn(
-				"flex gap-0.5 px-2 pb-1",
-				compact ? "flex-col items-center" : "items-center",
-			)}
-			data-testid="sidebar-head"
-		>
-			<Hint label="Search" keys={["Ctrl", "K"]} side="bottom">
-				<button
-					type="button"
-					onClick={openSearch}
-					aria-label="Search"
-					className={
-						compact
-							? BUTTON
-							: "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 text-body text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
-					}
-					data-testid="sidebar-search"
-				>
-					<Search className={ICON} />
-					{!compact && <span>Search</span>}
-				</button>
-			</Hint>
-			{filterable && <ThreadFilterButton className={BUTTON} />}
-			<Hint label="Add project" side="bottom">
-				<Link
-					to="/projects"
-					search={{ add: true }}
-					aria-label="Add project"
-					className={BUTTON}
-					data-testid="sidebar-add-project"
-				>
-					<FolderPlus className={ICON} />
-				</Link>
-			</Hint>
-			<Hint label="New thread" keys={["Ctrl", "Shift", "O"]} side="bottom">
-				<Link
-					to="/threads/new"
-					aria-label="New thread"
-					className={BUTTON}
-					data-testid="sidebar-new-thread"
-				>
-					<SquarePen className={ICON} />
-				</Link>
-			</Hint>
-		</div>
 	);
 }
 
@@ -166,7 +104,9 @@ export function ThreadSearch({
 	onOpenChange: (open: boolean) => void;
 }) {
 	const navigate = useNavigate();
-	const { setBottomPanel } = useLayoutPrefs();
+	const { bottomPanel, setBottomPanel } = useLayoutPrefs();
+	const { theme, setTheme } = useTheme();
+	const services = useServices({ limit: 100 });
 	// A phone has no bottom panel (#931), so Terminal is not an action there.
 	const phone = useMediaQuery(PHONE);
 	const [query, setQuery] = useState("");
@@ -182,9 +122,21 @@ export function ThreadSearch({
 		{ ...(q ? { search: query.trim() } : {}), limit: 20 },
 		open,
 	);
+	// An incident with no run has no thread; it is found by title or number here (#1020).
+	const incidents = useQuery({
+		...orpc.incidents.list.queryOptions({
+			input: { search: typed, limit: 8 },
+		}),
+		enabled: open && !!typed,
+	});
+	const threadIncidents = new Set<string>();
 	const found =
 		feed.data?.pages.flatMap((p) => p.units.flatMap((u) => u.threads)) ?? [];
 	const threads = q ? found : found.slice(0, RECENT);
+	for (const t of threads) if (t.incidentId) threadIncidents.add(t.incidentId);
+	const incidentHits = q
+		? (incidents.data?.data ?? []).filter((i) => !threadIncidents.has(i.id))
+		: [];
 	const named = (label: string) => !q || label.toLowerCase().includes(q);
 	const actions: {
 		id: string;
@@ -198,7 +150,7 @@ export function ThreadSearch({
 			label: "New thread",
 			icon: SquarePen,
 			keys: ["Ctrl", "Shift", "O"],
-			run: () => void navigate({ to: "/threads/new" }),
+			run: () => void navigate({ to: "/new" }),
 		},
 		{
 			id: "add-project",
@@ -211,14 +163,25 @@ export function ThreadSearch({
 			: [
 					{
 						id: "terminal",
-						label: "Terminal",
+						label: bottomPanel ? "Hide the terminal" : "Show the terminal",
 						icon: SquareTerminal,
 						keys: TERMINAL_KEYS,
-						run: () => setBottomPanel(true),
+						run: () => setBottomPanel(!bottomPanel),
 					},
 				]),
+		{
+			id: "theme",
+			label: theme === "dark" ? "Use the light theme" : "Use the dark theme",
+			icon: theme === "dark" ? Sun : Moon,
+			run: () => setTheme(theme === "dark" ? "light" : "dark"),
+		},
 	].filter((a) => named(a.label));
 	const places = PLACES.filter((p) => named(p.label));
+	const serviceHits = q
+		? (services.data?.data ?? []).filter((sv) =>
+				named(`${sv.displayName ?? ""} ${sv.name}`),
+			)
+		: [];
 	const projects = q
 		? (repos.data?.data ?? []).filter((r) => named(r.fullName))
 		: [];
@@ -237,7 +200,7 @@ export function ThreadSearch({
 					<CommandInput
 						value={query}
 						onValueChange={setQuery}
-						placeholder="Search threads, projects, places"
+						placeholder="Search threads, services, projects, places"
 						data-testid="thread-search-input"
 					/>
 					<CommandList className="max-h-[min(60vh,420px)]">
@@ -319,21 +282,66 @@ export function ThreadSearch({
 								))}
 							</CommandGroup>
 						)}
+						{incidentHits.length > 0 && (
+							<CommandGroup heading="Incidents">
+								{incidentHits.map((i) => (
+									<CommandItem
+										key={i.id}
+										value={`incident-${i.id}`}
+										onSelect={() =>
+											go(
+												() =>
+													void navigate({
+														to: "/incidents/$id",
+														params: { id: i.id },
+													}),
+											)
+										}
+										data-testid="thread-search-incident"
+									>
+										<Siren aria-hidden />
+										<span dir="auto" className="min-w-0 flex-1 truncate">
+											{i.title}
+										</span>
+										<span className="shrink-0 text-meta text-text-3">
+											INC-{i.number}
+										</span>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+						{serviceHits.length > 0 && (
+							<CommandGroup heading="Services">
+								{serviceHits.map((sv) => (
+									<CommandItem
+										key={sv.id}
+										value={`service-${sv.id}`}
+										onSelect={() =>
+											go(
+												() =>
+													void navigate({
+														to: "/services/$id",
+														params: { id: sv.id },
+													}),
+											)
+										}
+										data-testid="thread-search-service"
+									>
+										<Server aria-hidden />
+										<span className="min-w-0 flex-1 truncate">
+											{sv.displayName || sv.name}
+										</span>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
 						{places.length > 0 && (
 							<CommandGroup heading="Go to">
 								{places.map((p) => (
 									<CommandItem
 										key={p.id}
 										value={`place-${p.id}`}
-										onSelect={() =>
-											go(
-												() =>
-													void navigate({
-														to: p.to,
-														...(p.search ? { search: p.search } : {}),
-													}),
-											)
-										}
+										onSelect={() => go(() => void navigate({ to: p.to }))}
 										data-testid="thread-search-place"
 									>
 										<p.icon aria-hidden />

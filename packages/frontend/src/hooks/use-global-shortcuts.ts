@@ -24,7 +24,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /**
- * `g` then `i` / `a` / `s` moves between the front doors; `c` opens New
+ * `g` then a place's key (`GO_SHORTCUTS`, from `places.ts`) moves between the front doors; `c` opens New
  * thread with Incident on; `?` opens the shortcut sheet. Mounted once in the authenticated
  * layout. A chord waits one second for its second key, then forgets the first.
  */

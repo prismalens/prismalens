@@ -11,7 +11,7 @@ test.describe("#523 — the settings frame", () => {
 		});
 	});
 
-	test("Settings swaps the sidebar for its sections, the agent picker sets a model, Services is its own door", async ({
+	test("Settings keeps the sidebar and lists sections inside the page, the agent picker sets a model, Services is its own door", async ({
 		page,
 	}) => {
 		await page.goto("/settings");
@@ -19,15 +19,16 @@ test.describe("#523 — the settings frame", () => {
 			timeout: 15_000,
 		});
 
-		// 1. The sidebar is the page list now, flat, with Back at its foot (#848)
+		// 1. Sidebar is retained; sections are inside the page (#1020)
 		const sidebar = page.getByTestId("sidebar");
-		await expect(sidebar.getByTestId("settings-back")).toBeVisible();
-		await expect(sidebar.getByTestId("nav-incidents")).toHaveCount(0);
-		const sections = sidebar.getByTestId("settings-sections");
+		await expect(sidebar).toBeVisible();
+		await expect(sidebar.getByTestId("settings-back")).toHaveCount(0);
+		const sections = page.getByTestId("settings-sections");
 		for (const [tab, label] of [
 			["general", "General"],
 			["appearance", "Appearance"],
 			["agent", "Agent"],
+			["runs", "Runs"],
 			["alert-intake", "Alert intake"],
 			["sources", "Sources"],
 			["notifications", "Notifications"],
@@ -65,15 +66,13 @@ test.describe("#523 — the settings frame", () => {
 		await expect(page.getByTestId("model-pill")).toBeVisible();
 		await expect(page.getByTestId("model-pill")).not.toHaveText(/default$/i);
 
-		// 3. Back leaves Settings; Services is its own page, reached from Search (#1020)
-		await sidebar.getByTestId("settings-back").click();
-		await expect(page).not.toHaveURL(/\/settings/);
-		await sidebar.getByTestId("sidebar-search").click();
-		await page
-			.getByTestId("thread-search-place")
-			.filter({ hasText: "Services" })
-			.click();
+		// 3. Services door in sidebar leaves Settings
+		await sidebar.getByTestId("nav-services").click();
 		await expect(page).toHaveURL(/\/services/);
+		await expect(sidebar.getByTestId("nav-services")).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
 		// From the door at this width the first service opens (look ruling L32);
 		// a service is one page, with no tabs (services.feature).
 		await expect(page).toHaveURL(/\/services\/[0-9a-f-]{36}/);

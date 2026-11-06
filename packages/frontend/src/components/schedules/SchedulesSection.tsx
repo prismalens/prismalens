@@ -26,7 +26,7 @@ const ROW =
 	"grid min-h-14 grid-cols-[minmax(0,1fr)_44px] items-center gap-x-3 gap-y-0.5 px-3.5 py-3 @3xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.3fr)_44px]";
 const CELL = "col-start-1 min-w-0 truncate text-meta @3xl:col-start-auto";
 
-/** Settings, Scheduled prompts: New schedule for the host, View only elsewhere (#979, #1020). */
+/** Automation, Schedules: New schedule for the host, View only elsewhere (#979, #1020). */
 export function NewScheduleAction() {
 	const { data } = useSchedules();
 	const [creating, setCreating] = useState(false);
@@ -58,7 +58,7 @@ export function SchedulesSection() {
 	const { data, isLoading, error, refetch } = useSchedules();
 	const canEdit = data?.canEdit ?? false;
 	return (
-		<div className="@container mx-auto grid w-full gap-5 pt-1">
+		<div className="@container mx-auto grid w-full grid-cols-[minmax(0,1fr)] gap-5 pt-1">
 			{data && !canEdit && <HostOnlyNote hostName={data.hostName} />}
 			{isLoading ? (
 				<Loading />

@@ -8,6 +8,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { aboutOf, nameFrom, ScheduleDialog } from "./ScheduleDialog";
 
+// Each render mounts the whole dialog: well past 5s on a cold macOS runner.
+vi.setConfig({ testTimeout: 30_000 });
+
 type Agent = { id: string; label: string };
 let agents: {
 	harnesses: Agent[];

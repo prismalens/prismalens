@@ -16,9 +16,8 @@ export function ThemeToggle() {
 				variant="ghost"
 				size="icon"
 				onClick={() => setTheme(next)}
-				aria-label={
-					next === "light" ? "Use the light theme" : "Use the dark theme"
-				}
+				// One name in both themes: the prerendered shell is dark, so a theme-dependent name fails hydration.
+				aria-label="Switch theme"
 				data-testid="theme-toggle"
 			>
 				{/* CSS picks the icon: the prerendered shell cannot know the cookie. */}

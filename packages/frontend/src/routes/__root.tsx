@@ -48,7 +48,6 @@ e.classList.remove('light','dark');e.classList.add(t);
 var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
 try{var l=JSON.parse(localStorage.getItem('pl.layout')||'{}');var b=l.sidebar||(l.sidebarFolded?'folded':'full');if(b==='folded')e.setAttribute('data-sidebar-folded','');if(b==='hidden')e.setAttribute('data-sidebar-hidden','');}catch(_){}
 if(g(${JSON.stringify(FONT_COOKIE)})==='system'){e.style.setProperty('--font-sans',${JSON.stringify(SYSTEM_FONT_STACK)});e.setAttribute('data-font','system');}
-if(location.pathname.indexOf('/settings')===0)e.setAttribute('data-settings','');
 }catch(_){}})();`;
 
 export const Route = createRootRouteWithContext<RouterContext>()({

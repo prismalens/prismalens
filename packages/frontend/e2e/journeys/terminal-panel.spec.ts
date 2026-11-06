@@ -43,9 +43,9 @@ async function openInbox(page: Page, width: number) {
 // The sidebar draws before the layout's key listener is attached; the page's heading is after it.
 async function inboxLoaded(page: Page) {
 	await expect(
-		page.getByRole("heading", { name: "Incidents", level: 1 }),
+		page.getByRole("heading", { name: "Operations", level: 1 }),
 	).toBeVisible({ timeout: 15_000 });
-	await expect(page.getByTestId("sidebar-search")).toBeVisible();
+	await expect(page.getByTestId("nav-search")).toBeVisible();
 }
 
 async function openRegistryChip(page: Page) {

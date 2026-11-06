@@ -3,7 +3,14 @@
 
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { availableParallelism, homedir } from "node:os";
-import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
+import {
+	delimiter,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+} from "node:path";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 
@@ -71,9 +78,14 @@ export function agentFreePath(toolsDir: string): string {
 		chmodSync(shim, 0o755);
 		writeFileSync(`${shim}.cmd`, `@"${target}" %*\r\n`);
 	}
+	// Windows spawns without a shell, so the git.cmd shim is never found: git's own folder goes on PATH.
+	const git = resolveOnPath("git", inherited);
 	const system =
 		process.platform === "win32"
-			? [join(process.env.SystemRoot ?? "C:\\Windows", "System32")]
+			? [
+					join(process.env.SystemRoot ?? "C:\\Windows", "System32"),
+					...(git ? [dirname(git)] : []),
+				]
 			: ["/usr/bin", "/bin"];
 	const path = [toolsDir, ...system].join(delimiter);
 	const leaked = Object.values(HARNESS_REGISTRY)

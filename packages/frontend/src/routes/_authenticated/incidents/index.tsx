@@ -1,12 +1,14 @@
 /**
  * The incidents landing (#811): the inbox, All incidents with `?view=all`, or
  * Analytics with `?view=analytics`. A workspace with no incidents shows only
- * the first-run steps. The text filter narrows what is loaded, on the client.
+ * the Home box. The text filter narrows what is loaded, on the client.
  */
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AwayStrip } from "@/components/home/AwayStrip";
+import { HomeComposer } from "@/components/home/HomeComposer";
 import { AllIncidents } from "@/components/inbox/AllIncidents";
 import { InboxTiles } from "@/components/inbox/InboxTiles";
 import { groupNeeds, matches } from "@/components/inbox/inbox-model";
@@ -22,13 +24,13 @@ import {
 import { Working } from "@/components/inbox/Working";
 import { IncidentAnalytics } from "@/components/incidents/analytics/IncidentAnalytics";
 import {
-	FirstRunPanel,
 	SetupLine,
 	useSetupProgress,
 } from "@/components/incidents/FirstRunPanel";
 import { TelemetryConsent } from "@/components/settings/TelemetrySettings";
 import { Segmented } from "@/components/shared/Segmented";
 import { Empty, Problem } from "@/components/shared/State";
+import { NewIncidentButton } from "@/components/shell/NewIncident";
 import { PageHeader } from "@/components/shell/PageHeader";
 import {
 	Select,
@@ -74,7 +76,7 @@ function IncidentsLanding() {
 			? "Analytics, Incidents"
 			: view === "all"
 				? "All incidents"
-				: "Incidents",
+				: "Operations",
 	);
 	const [q, setQ] = useState("");
 	const now = useNow(30_000);
@@ -111,7 +113,10 @@ function IncidentsLanding() {
 			className="flex h-full min-h-0 flex-col"
 			data-testid="incidents-overview"
 		>
-			<PageHeader title="Incidents">
+			<PageHeader
+				title={firstRun ? <span className="sr-only">Home</span> : "Operations"}
+				primary={firstRun ? null : <NewIncidentButton />}
+			>
 				{!firstRun && (
 					<>
 						<Segmented
@@ -177,7 +182,7 @@ function IncidentsLanding() {
 			)}
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{firstRun ? (
-					<FirstRunPanel />
+					<HomeComposer />
 				) : view === "analytics" ? (
 					<IncidentAnalytics
 						filter={q}
@@ -217,6 +222,7 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 			aria-busy={loading || undefined}
 			data-testid="inbox"
 		>
+			<AwayStrip />
 			<InboxTiles
 				incidents={active.incidents}
 				now={now ?? 0}

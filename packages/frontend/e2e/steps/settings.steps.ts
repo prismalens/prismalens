@@ -382,7 +382,10 @@ Then(
 		}
 		const mine = rows.filter({ hasText: unique("pr2-gateway") });
 		await expect(mine.getByTestId("service-kind")).toHaveText("Gateway");
-		await expect(mine.getByTestId("service-code")).toHaveText(repoRoot());
+		// git reports the root with forward slashes on Windows too.
+		await expect(mine.getByTestId("service-code")).toHaveText(
+			repoRoot().replace(/\\/g, "/"),
+		);
 	},
 );
 
@@ -796,12 +799,11 @@ Then(
 Then(
 	/^the box still reads "(.+)" and "(.+)" after I open Alerts and come back$/,
 	async ({ page }, model, level) => {
-		await page.getByTestId("sidebar-search").click();
-		await page
-			.getByTestId("thread-search-place")
-			.filter({ hasText: "Alerts" })
-			.click();
+		// Alerts sits behind Automation (#1020): two steps there, two back.
+		await page.getByTestId("nav-automation").click();
+		await page.getByTestId("automation-alerts").click();
 		await expect.poll(() => new URL(page.url()).pathname).toMatch(/\/alerts$/);
+		await page.goBack();
 		await page.goBack();
 		await expect(page.getByTestId("docked-composer")).toBeVisible();
 		await expect(page.getByTestId("model-pill")).toHaveText(model);

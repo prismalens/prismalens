@@ -3,10 +3,6 @@ import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import {
-	NewScheduleAction,
-	SchedulesSection,
-} from "@/components/schedules/SchedulesSection";
-import {
 	AboutSettings,
 	AlertIntakeSettings,
 	HarnessSettings,
@@ -56,10 +52,6 @@ const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
 		title: "Alert intake",
 		intro: "What starts an investigation.",
 	},
-	schedules: {
-		title: "Scheduled prompts",
-		intro: "Checks that run on their own.",
-	},
 	sources: { title: "Sources", intro: "What a run reads before it starts." },
 	notifications: { title: "Notifications", intro: "Where findings go." },
 	devices: {
@@ -105,21 +97,14 @@ function SettingsPage() {
 			section={tab}
 			title={section.title}
 			intro={section.intro}
-			actions={
-				tab === "sources" ? (
-					<AddSourceButton />
-				) : tab === "schedules" ? (
-					<NewScheduleAction />
-				) : undefined
-			}
-			wide={(tab === "sources" && manySources) || tab === "schedules"}
+			actions={tab === "sources" ? <AddSourceButton /> : undefined}
+			wide={tab === "sources" && manySources}
 		>
 			{tab === "general" && <GeneralSettings />}
 			{tab === "appearance" && <AppearanceSettings />}
 			{tab === "agent" &&
 				(agent ? <AgentDetail id={agent} /> : <HarnessSettings />)}
 			{tab === "runs" && <RunWorkspaceSettings />}
-			{tab === "schedules" && <SchedulesSection />}
 			{tab === "alert-intake" && <AlertIntakeSettings />}
 			{tab === "sources" && <SourcesSettings source={source} />}
 			{tab === "notifications" && <NotificationsSettings />}

@@ -17,9 +17,10 @@ test.describe("Hint: the only tooltip", () => {
 		page,
 	}) => {
 		await page.goto("/incidents");
-		const create = page
-			.getByTestId("page-header")
-			.getByTestId("new-thread-button");
+		// The thread list renders once the app has hydrated, so the hover lands.
+		await expect(page.getByTestId("thread-list")).toBeVisible();
+		// The sidebar's Hide button: an icon whose name lives in its Hint.
+		const create = page.getByTestId("sidebar").getByTestId("sidebar-hide");
 		await expect(create).toBeVisible();
 		expect(await create.getAttribute("title")).toBeNull();
 		await create.hover();
@@ -54,7 +55,7 @@ test.describe("Hint: the only tooltip", () => {
 			expect(
 				await page.evaluate(() => matchMedia("(hover: hover)").matches),
 			).toBe(false);
-			const create = page.getByTestId("new-thread-button").first();
+			const create = page.getByTestId("sidebar-hide");
 			await expect(create).toBeVisible();
 			const hint = page.getByTestId("hint");
 			// Radix opens it on keyboard focus; hover-less media keeps it unseen.
@@ -73,7 +74,7 @@ test.describe("Select: keyboard", () => {
 	// New thread's Severity, with Incident on: a Select on a screen that does
 	// not redirect or re-render under the test.
 	async function openDialog(page: import("@playwright/test").Page) {
-		await page.goto("/threads/new?incident=true");
+		await page.goto("/new?incident=true");
 		await expect(page.getByTestId("new-thread-page")).toBeVisible();
 		return page.getByTestId("composer-severity");
 	}
@@ -294,7 +295,8 @@ test.describe("dialog height lock", () => {
 		page,
 	}) => {
 		await page.goto("/incidents");
-		await page.getByTestId("sidebar-search").click();
+		await expect(page.getByTestId("thread-list")).toBeVisible();
+		await page.getByTestId("nav-search").click();
 		const dialog = page.getByTestId("thread-search");
 		await expect(dialog).toBeVisible();
 		const height = async () => (await dialog.boundingBox())?.height ?? 0;

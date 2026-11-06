@@ -1,23 +1,24 @@
 # flows-v3.feature, @pr1: Shell and Back, and the alert page without Acknowledge.
 @pr1
 Feature: Shell and Back
-  The sidebar is Search, Add project, New thread and the threads; one way back
-  from every leaf, and it goes to where you came from.
+  Four doors in the sidebar, always lit where you are; one way back from every
+  leaf, and it goes to where you came from.
 
   Background:
     Given a paired browser at 1440 px
     And incident INC-1 "BooklogrApiLatencyP99High" on service "Booklogr API" with one alert
 
-  Scenario: The sidebar is the thread list
+  Scenario: The sidebar lights the area I am in
     When I open the board
-    Then the sidebar shows Search, Add project and New thread over the threads, and no area rows
-    When I open Alerts
-    Then the sidebar lists the alert
+    Then the sidebar shows Threads, Automation, Services, Operations and Settings with Operations current
+    And the sidebar lists INC-1
+    When I open Automation
+    Then Automation is current, the page offers schedules and alerts, and the sidebar keeps the threads
 
-  Scenario: One primary on every list screen, none in Settings
+  Scenario: One primary on the board and Services, none on Alerts or Settings
     When I open the board, then Alerts, then Services, then Settings
-    Then the board and Alerts show one "New thread", Services one "New service", Settings none, and nothing else creates
-    When I press "New thread" from Alerts and note "Checkout slow" on "Booklogr API" with Incident on
+    Then the board shows one "Log incident", Services one "New service", Alerts and Settings none, and nothing else creates
+    When I press "Log incident" from the board and create "Checkout slow" on "Booklogr API"
     Then I am on the new incident's Overview
 
   Scenario: Back from an alert goes to where I came from
@@ -25,26 +26,26 @@ Feature: Shell and Back
     When I press the chevron
     Then I am on the alert list
 
-  Scenario: Settings replaces the sidebar and Back returns to where I was
+  Scenario: Settings keeps the app's sidebar and Back returns to where I was
     Given I am on INC-1's Overview
     When I open Settings
-    Then the sidebar shows the settings sections with "Back" below them and no incident rows
+    Then the page lists the settings sections beside the app's own sidebar
     When I press "Back"
     Then I am on INC-1's Overview
     When I open Settings and press Escape
     Then I am on INC-1's Overview
 
   Scenario: Shortcuts live in tooltips and the help sheet
-    When I hover "New thread" in the header
+    When I hover "Log incident" in the header
     Then the tooltip shows its shortcut
     When I press "?"
     Then a sheet lists the shortcuts
     And no screen shows a line of key names
 
-  Scenario: Settings opened by a deep link
+  Scenario: Settings opened by a deep link keeps the way home
     Given a fresh tab opens Settings, Devices
-    When I press "Back"
-    Then I am on the inbox
+    When I open New from the sidebar
+    Then I am on Home
 
   Scenario: Acknowledging is the incident's
     When I open an alert that opened INC-1

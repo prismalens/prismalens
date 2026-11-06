@@ -149,6 +149,11 @@ export function AlertListPane({
 		...orpc.alerts.list.queryOptions({ input: listInput }),
 		refetchInterval: interval,
 	});
+	const stats = useQuery({
+		...orpc.alerts.getStats.queryOptions({ input: {} }),
+		enabled: sidebar,
+	});
+	const none = stats.data?.total === 0;
 	const alerts = data?.data ?? [];
 	const rows = useMemo(() => orderAlerts(alerts), [alerts]);
 	const empty = !isLoading && !(error && !data) && rows.length === 0;
@@ -267,7 +272,8 @@ export function AlertListPane({
 						onRetry={() => void refetch()}
 					/>
 				)}
-				{empty && (
+				{/* No alert at all: the page's own empty state says it once. */}
+				{empty && !(sidebar && none) && (
 					<Empty
 						className="px-4"
 						text="No alerts found."

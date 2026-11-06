@@ -34,6 +34,7 @@ import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { incidentServices } from "@/lib/service-lanes";
+import { readableTitle } from "@/lib/title";
 import { cn } from "@/lib/utils";
 import {
 	actionsOf,
@@ -65,7 +66,7 @@ const TONE_TEXT: Record<Tone, string> = {
 
 const FIRING_TEXT: Record<Firing, string> = {
 	worse: "text-danger",
-	steady: "text-warn",
+	steady: "text-text-2",
 	clear: "text-text-3",
 	none: "text-text-3",
 };
@@ -107,7 +108,7 @@ export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
 		>
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
 				<h2 id="needs-heading" className="text-title">
-					Needs you
+					To look at
 				</h2>
 				{total > 0 && (
 					<span className="text-text-3" data-testid="needs-count">
@@ -185,7 +186,7 @@ export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
 							<Button
 								variant="text"
 								size="default"
-								className="my-0.5 self-start text-accent md:ml-[130px]"
+								className="my-0.5 self-start text-accent lg:ml-[130px]"
 								onClick={() => setMore((m) => ({ ...m, [g.key]: true }))}
 								data-testid="needs-more"
 							>
@@ -266,7 +267,7 @@ function InboxRow({
 	const used = new Set([primary.kind, secondary?.kind]);
 	return (
 		<div
-			className="flex min-h-[52px] min-w-0 items-center gap-3.5 rounded-surface px-2.5 whitespace-nowrap transition-colors duration-(--dur-instant) hover:bg-surface-2 max-md:flex-wrap max-md:gap-y-1.5 max-md:py-2"
+			className="flex min-h-[52px] min-w-0 items-center gap-3.5 rounded-surface px-2.5 whitespace-nowrap transition-colors duration-(--dur-instant) hover:bg-surface-2 max-lg:flex-wrap max-lg:gap-y-1.5 max-lg:py-2"
 			data-testid="inbox-row"
 			data-incident={incident.id}
 			data-new={fresh ? "" : undefined}
@@ -280,23 +281,23 @@ function InboxRow({
 			<Mono className="w-[52px] shrink-0 text-text-3">
 				INC-{incident.number}
 			</Mono>
-			<div className="flex min-w-0 flex-1 flex-col max-md:basis-full">
+			<div className="flex min-w-0 flex-1 flex-col max-lg:basis-full">
 				<span className="flex min-w-0 items-baseline gap-2.5">
 					<Hint label={incident.title}>
 						<Link
 							to="/incidents/$id"
 							params={{ id: incident.id }}
 							dir="auto"
-							className="min-w-0 truncate font-medium text-text-1 hover:underline hover:underline-offset-3"
+							className="inline-flex min-h-6 min-w-0 items-center truncate font-medium text-text-1 hover:underline hover:underline-offset-3"
 							data-testid="inbox-row-title"
 						>
-							{incident.title}
+							{readableTitle(incident.title)}
 						</Link>
 					</Hint>
 					{service && (
 						<span
 							dir="auto"
-							className="max-w-[180px] min-w-0 shrink truncate text-meta text-text-3"
+							className="max-w-[180px] min-w-0 shrink-[4] truncate text-meta text-text-3"
 						>
 							{service}
 						</span>
@@ -346,7 +347,7 @@ function InboxRow({
 							className={cn(
 								"stroke-text-3",
 								firing === "worse" && "stroke-danger",
-								firing === "steady" && "stroke-warn",
+								firing === "steady" && "stroke-text-2",
 							)}
 						/>
 					</svg>
@@ -364,7 +365,7 @@ function InboxRow({
 			<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
 				{ago(incident.triggeredAt, now)} ago
 			</span>
-			<span className="flex w-[240px] shrink-0 items-center justify-end gap-1 max-md:ml-auto max-md:w-auto">
+			<span className="flex w-[168px] shrink-0 items-center justify-end gap-1 max-lg:ml-auto max-lg:w-auto">
 				{secondary && (
 					<Button
 						variant="text"
