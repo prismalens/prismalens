@@ -1427,3 +1427,36 @@ describe("one failing delivery never stops the rest (#1024 spec F)", () => {
 		expect((await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "boom" } })).deliveredAt).toBeNull();
 	});
 });
+
+describe("a reopen that keeps throwing is given up (#1024 spec F)", () => {
+	it("Given a result whose reopen always throws, Then it stops after 30 tries and the parent stops waiting", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		const root = await thread();
+		const child = value(await startIn(root.id, { role: "db" })).childId as string;
+		value(await tree.wait(root.id, ["db"], "any"));
+		await prisma.investigation.update({ where: { id: root.id }, data: { status: "completed" } });
+		await prisma.threadMessage.deleteMany();
+		await prisma.threadMessage.create({
+			data: { rootId: root.id, fromId: child, toId: root.id, type: "result", text: "done", requestId: "throws" },
+		});
+		dispatch.resumeInvestigation.mockImplementation(async () => {
+			throw new Error("UNIQUE constraint failed: jobs.id");
+		});
+		let tries = 0;
+		try {
+			for (let i = 0; i < 40; i++) await tree.drain();
+			tries = dispatch.resumeInvestigation.mock.calls.length;
+		} finally {
+			dispatch.resumeInvestigation.mockReset();
+			dispatch.resumeInvestigation.mockImplementation(async (id: string, text: string) => {
+				resumed.push({ id, text });
+				await prisma.investigation.update({ where: { id }, data: { status: "pending" } });
+				return true;
+			});
+		}
+		expect(tries).toBe(30);
+		expect(await prisma.threadWait.count({ where: { waiterId: root.id } })).toBe(0);
+		// The result itself is kept for the parent's next run.
+		expect(await prisma.threadMessage.count({ where: { requestId: "throws", state: "queued" } })).toBe(1);
+	});
+});

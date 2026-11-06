@@ -471,7 +471,7 @@ export class PendingActionsService {
 			} catch (e) {
 				// One failing delivery is put off and logged; the rest of the pass goes on.
 				logger.warn(
-					`Could not deliver an action outcome: ${(e as Error).message}`,
+					`Could not deliver action outcome ${row.id} to ${row.callerId}: ${(e as Error).message}`,
 				);
 				if (ready.includes(row)) this.putOff.defer(row.id);
 				else this.refusedReopen(row.id);

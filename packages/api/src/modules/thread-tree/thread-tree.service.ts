@@ -843,9 +843,11 @@ export class ThreadTreeService
 			} catch (e) {
 				// One failing delivery is put off and logged; the rest of the pass goes on.
 				logger.warn(
-					`Could not deliver a tree message: ${(e as Error).message}`,
+					`Could not deliver tree message ${m.id} to ${m.toId}: ${(e as Error).message}`,
 				);
 				this.putOff.defer(m.id);
+				// A result's failed reopen counts like a refused one, so it is given up after REOPEN_TRIES.
+				if (m.type === "result") await this.refusedReopen(m).catch(() => {});
 			}
 		}
 	}
