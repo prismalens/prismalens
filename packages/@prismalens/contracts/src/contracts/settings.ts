@@ -22,6 +22,10 @@ import {
 	UpdateReportDeliverySchema,
 	UpdateTelemetrySettingsSchema,
 } from "../schemas/settings.js";
+import {
+	EditorsSchema,
+	ThreadContextSettingsSchema,
+} from "../schemas/thread-context.js";
 
 export const settingsContract = {
 	/**
@@ -182,5 +186,38 @@ export const settingsContract = {
 			})
 			.input(CheckHarnessInputSchema)
 			.output(HarnessProbeResultSchema),
+	},
+
+	/** The editors on this computer's PATH (#1024). */
+	editors: {
+		list: oc
+			.route({
+				method: "GET",
+				path: "/settings/editors",
+				summary: "List the editors PrismaLens can open files in",
+				tags: ["settings"],
+			})
+			.output(EditorsSchema),
+	},
+
+	/** "Show pull request status" and "Open files in" (#1024). */
+	threadContext: {
+		get: oc
+			.route({
+				method: "GET",
+				path: "/settings/thread-context",
+				summary: "Read the pull request status and editor settings",
+				tags: ["settings"],
+			})
+			.output(ThreadContextSettingsSchema),
+		update: oc
+			.route({
+				method: "PUT",
+				path: "/settings/thread-context",
+				summary: "Change the pull request status and editor settings",
+				tags: ["settings"],
+			})
+			.input(ThreadContextSettingsSchema)
+			.output(ThreadContextSettingsSchema),
 	},
 };

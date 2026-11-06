@@ -16,6 +16,10 @@ import {
 	UpdateServiceWorkspaceSchema,
 	WorkspaceRemovalsSchema,
 } from "../schemas/run-workspace.js";
+import {
+	OpenInEditorResultSchema,
+	OpenInEditorSchema,
+} from "../schemas/thread-context.js";
 
 const tags = ["run-workspaces"];
 
@@ -119,4 +123,16 @@ export const runWorkspacesContract = {
 		})
 		.input(RunWorkspaceTargetSchema)
 		.output(z.object({ opened: z.boolean() })),
+
+	/** Spawns the editor with an argument array, never a shell (#1024). */
+	openInEditor: oc
+		.route({
+			method: "POST",
+			path: "/run-workspaces/{id}/open-in-editor",
+			summary:
+				"Open a run's workspace, or a file in it, in an editor. Host only",
+			tags,
+		})
+		.input(OpenInEditorSchema)
+		.output(OpenInEditorResultSchema),
 };

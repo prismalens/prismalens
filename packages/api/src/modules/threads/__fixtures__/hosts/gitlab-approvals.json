@@ -1,0 +1,19 @@
+{
+	"approved": true,
+	"approvals_required": 1,
+	"approvals_left": 0,
+	"approved_by": [
+		{
+			"user": {
+				"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/11279441/avatar.png?v=1789087001",
+				"username": "hacks4oats"
+			}
+		},
+		{
+			"user": {
+				"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/142752/avatar.png?v=1793720977",
+				"username": "garyh"
+			}
+		}
+	]
+}

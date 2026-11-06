@@ -44,6 +44,7 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { PullRequestsService } from "./pull-requests.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { renameThread } from "./thread-titles.js";
 
@@ -125,6 +126,7 @@ export class ThreadsService {
 		private readonly integrations: IntegrationsService,
 		private readonly drafts: DraftsService,
 		private readonly references: ReferencesService,
+		private readonly pullRequests: PullRequestsService,
 	) {}
 
 	async start(input: StartThreadInput): Promise<{
@@ -324,6 +326,7 @@ export class ThreadsService {
 		const drafts = await this.drafts.withDrafts(
 			pageIds.map((id) => `thread:${id}`),
 		);
+		const prs = await this.pullRequests.rowGlyphs(pageIds);
 		return {
 			units: page.map((u) => {
 				const incident = u.threads[0]?.row.incident ?? null;
@@ -361,6 +364,7 @@ export class ThreadsService {
 									: null,
 							waitingAsk: asks.get(t.id) ?? null,
 							hasDraft: drafts.has(`thread:${t.id}`),
+							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
 						}),
 					),
 				};

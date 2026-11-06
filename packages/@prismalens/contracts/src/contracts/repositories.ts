@@ -18,6 +18,7 @@ import {
 	ServiceRepositorySchema,
 	SetRepositoryCredentialSchema,
 } from "../schemas/index.js";
+import { ProjectScriptsSchema } from "../schemas/thread-context.js";
 
 export const repositoriesContract = {
 	/**
@@ -170,4 +171,19 @@ export const repositoriesContract = {
 		})
 		.input(IdParamSchema)
 		.output(z.void()),
+
+	/**
+	 * Scripts a project's folder declares, read only; nothing runs them (#1024)
+	 * GET /repositories/:id/scripts
+	 */
+	scripts: oc
+		.route({
+			method: "GET",
+			path: "/repositories/{id}/scripts",
+			summary:
+				"List the package scripts, make targets and just recipes a project declares",
+			tags: ["repositories"],
+		})
+		.input(IdParamSchema)
+		.output(ProjectScriptsSchema),
 };

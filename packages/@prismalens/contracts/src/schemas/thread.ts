@@ -20,6 +20,7 @@ import {
 	InvestigationSchema,
 	RunChoiceSchema,
 } from "./investigation.js";
+import { ThreadRowPrSchema } from "./pull-request.js";
 import { AccessLevelSchema } from "./settings.js";
 import { INVESTIGATION_KINDS } from "./state-semantics.js";
 
@@ -114,6 +115,8 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 		.optional(),
 	/** The thread's composer keeps unsent words or files (#1024). */
 	hasDraft: z.boolean().optional(),
+	/** The thread's newest linked pull request, for the hover card and the row glyph (#1024). */
+	pr: ThreadRowPrSchema.optional(),
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
 

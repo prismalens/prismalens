@@ -84,6 +84,7 @@ describe("ThreadsService (#1020)", () => {
 			integrations as never,
 			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
 			{ compose: async () => undefined } as never,
+			{ rowGlyphs: async () => new Map() } as never,
 		);
 
 	beforeEach(() => {
@@ -302,6 +303,7 @@ describe("ThreadsService (#1020)", () => {
 				integrations as never,
 				{ consume: c } as never,
 				{ compose: async () => undefined } as never,
+				{} as never,
 			);
 		const input = {
 			subject: { kind: "none" as const },
@@ -326,6 +328,7 @@ describe("ThreadsService (#1020)", () => {
 			integrations as never,
 			{ consume: async () => { throw new Error("db locked"); } } as never,
 			{ compose: async () => undefined } as never,
+			{} as never,
 		);
 		const out = await svc.start({
 			subject: { kind: "none" },
@@ -436,6 +439,9 @@ describe("ThreadsController (#1020)", () => {
 		const routes = new ThreadsController(
 			threads as never,
 			attachments as never,
+			{} as never,
+			{} as never,
+			{} as never,
 		).routes();
 		type Callable = { "~orpc": { handler: (o: { input: unknown }) => unknown } };
 		const call = (r: unknown, input: unknown) =>
@@ -511,6 +517,7 @@ describe("ThreadsService.settle (#1020)", () => {
 				{} as never,
 				{ consume: async () => "none", withDrafts: async () => new Set() } as never,
 				{ compose: async () => undefined } as never,
+				{} as never,
 			),
 		};
 	}

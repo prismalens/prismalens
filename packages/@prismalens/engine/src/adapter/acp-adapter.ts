@@ -43,10 +43,15 @@ import type {
 	OperatorMessageMode,
 	PendingAsk,
 	PermissionAskOutcome,
+	PlanEntry,
 	Quote,
 	RecordedFinding,
 	ReferenceRef,
 	ToolCategory,
+} from "@prismalens/contracts/schemas";
+import {
+	PLAN_MAX_ENTRIES,
+	THOUGHT_MAX_BYTES,
 } from "@prismalens/contracts/schemas";
 import type { GatewayCall } from "../run/gateway.js";
 import { askIdentity } from "../run/permission.js";
@@ -59,8 +64,8 @@ import { askIdentity } from "../run/permission.js";
 export interface AcpUpdate {
 	/**
 	 * Discriminates the update: `agent_message_chunk` | `tool_call` |
-	 * `tool_call_update` are the three we surface; everything else (thoughts, plan,
-	 * mode/command updates) is ignored.
+	 * `tool_call_update`, `agent_thought_chunk` and `plan` are surfaced; everything
+	 * else (mode and command updates) is ignored.
 	 */
 	sessionUpdate: string;
 	/** Stable per-call id; pairs a `tool_call` with its `tool_call_update`(s). */
@@ -86,6 +91,8 @@ export interface AcpUpdate {
 	rawOutput?: unknown;
 	/** Harness extras; Claude Code names a call its own settings refused here. */
 	_meta?: unknown;
+	/** `plan`: the whole plan, replacing the last one. */
+	entries?: unknown;
 }
 
 /** A call Claude Code's own permission rules refused: no ask reached PrismaLens or the user (#673 w7-6). */
@@ -138,6 +145,11 @@ export class AcpAdapter {
 	private pendingText = "";
 	/** tool_call metadata kept to enrich the later tool_call_update (paired by id). */
 	private readonly toolMeta = new Map<string, ToolMeta>();
+	/** Thought deltas since the last step; one `thought` event carries them (#1024). */
+	private pendingThought = "";
+	/** UTF-8 bytes of thinking this turn has kept; past THOUGHT_MAX_BYTES the rest is dropped. */
+	private thoughtBytes = 0;
+	private thoughtCut = false;
 
 	constructor(private readonly ctx: AdapterContext) {
 		this.now = ctx.now ?? (() => new Date());
@@ -147,11 +159,25 @@ export class AcpAdapter {
 
 	/**
 	 * Map one ACP `update` to the canonical events it means: none for what we
-	 * don't surface (thought chunks, plan, mode updates, progress frames), one
-	 * for most, two for a call announced already finished.
+	 * don't surface (mode updates, progress frames), one for most, two for a call
+	 * announced already finished. Held thinking goes out before the next event.
 	 */
 	events(u: AcpUpdate): CanonicalEvent[] {
+		if (u.sessionUpdate === "agent_thought_chunk") {
+			this.addThought(flattenAcpContent(u.content));
+			return [];
+		}
+		const thought = this.flushThought();
+		const out = this.mapped(u);
+		return thought ? [thought, ...out] : out;
+	}
+
+	private mapped(u: AcpUpdate): CanonicalEvent[] {
 		switch (u.sessionUpdate) {
+			case "plan": {
+				const entries = planEntries(u.entries);
+				return entries ? [{ kind: "plan", ...this.base(), entries }] : [];
+			}
 			case "agent_message_chunk":
 				this.pendingText += flattenAcpContent(u.content);
 				return [];
@@ -174,6 +200,46 @@ export class AcpAdapter {
 			default:
 				return [];
 		}
+	}
+
+	private addThought(delta: string): void {
+		let room = THOUGHT_MAX_BYTES - this.thoughtBytes;
+		let kept = "";
+		// Whole code points only, so a cut never leaves half a character.
+		for (const ch of delta) {
+			const size = Buffer.byteLength(ch, "utf8");
+			if (size > room) {
+				this.thoughtCut = true;
+				break;
+			}
+			kept += ch;
+			room -= size;
+		}
+		this.pendingThought += kept;
+		this.thoughtBytes = THOUGHT_MAX_BYTES - room;
+	}
+
+	/** The thinking held since the last step, as one event; null when there is none. */
+	flushThought(): CanonicalEvent | null {
+		if (!this.pendingThought) return null;
+		const text = this.pendingThought;
+		this.pendingThought = "";
+		return {
+			kind: "thought",
+			...this.base(),
+			text,
+			...(this.thoughtCut ? { truncated: true as const } : {}),
+		};
+	}
+
+	/** Held thinking, then held text: what a pause, an ask or a turn's end must not lose. */
+	flush(): CanonicalEvent[] {
+		const out: CanonicalEvent[] = [];
+		const thought = this.flushThought();
+		if (thought) out.push(thought);
+		const text = this.flushText();
+		if (text) out.push(text);
+		return out;
 	}
 
 	/** {@link events}, first event only: kept for callers that map one update to one event. */
@@ -210,6 +276,9 @@ export class AcpAdapter {
 		context?: MessageContextRefs,
 		delivers?: string[],
 	): CanonicalEvent {
+		// Each message the agent takes starts a turn, with its own thinking budget.
+		this.thoughtBytes = 0;
+		this.thoughtCut = false;
 		return {
 			kind: "operator_message",
 			...this.base(),
@@ -579,6 +648,26 @@ export function unwrapInput(
  * `agent_message_chunk` block `{ type:"text", text }` and a `tool_call_update`'s
  * array of `{ type:"content", content:{ type:"text", text } }` blocks.
  */
+/** ACP plan entries, cut to what the contract keeps; null when the update carries no list. */
+export function planEntries(raw: unknown): PlanEntry[] | null {
+	if (!Array.isArray(raw)) return null;
+	const out: PlanEntry[] = [];
+	for (const e of raw.slice(0, PLAN_MAX_ENTRIES)) {
+		if (!e || typeof e !== "object") continue;
+		const { content, status, priority } = e as Record<string, unknown>;
+		if (typeof content !== "string") continue;
+		out.push({
+			content: content.slice(0, 2000),
+			status:
+				status === "in_progress" || status === "completed" ? status : "pending",
+			...(priority === "high" || priority === "medium" || priority === "low"
+				? { priority }
+				: {}),
+		});
+	}
+	return out;
+}
+
 export function flattenAcpContent(content: unknown): string {
 	if (content === undefined || content === null) return "";
 	if (typeof content === "string") return content;

@@ -783,8 +783,7 @@ export async function* runInvestigation(
 		held: string,
 	): AsyncGenerator<CanonicalEvent> {
 		const left = session.currentMode;
-		const flushed = adapter.flushText();
-		if (flushed) yield flushed;
+		for (const flushed of adapter.flush()) yield flushed;
 		const back = (await session.setMode(held)) && session.currentMode === held;
 		stuckIn = back ? null : left;
 		wire("in", JSON.stringify({ modeHeld: held, left, back }));
@@ -877,8 +876,7 @@ export async function* runInvestigation(
 					yield* holdMode(heldMode);
 			} else if (item.kind === "permission_asked") {
 				openAsks.add(item.askId);
-				const flushed = adapter.flushText();
-				if (flushed) yield flushed;
+				for (const flushed of adapter.flush()) yield flushed;
 				const window = item.window ?? {
 					timeoutMs: opts.askTimeoutMs ?? ASK_TIMEOUT_MS,
 					clamped: false,
@@ -903,8 +901,7 @@ export async function* runInvestigation(
 				);
 				if (item.warn) opts.onPolicyWarning?.(item.warn);
 				if (item.sync) {
-					const flushed = adapter.flushText();
-					if (flushed) yield flushed;
+					for (const flushed of adapter.flush()) yield flushed;
 				}
 				openAsks.delete(item.askId);
 				yield adapter.permissionAnswer(
@@ -940,12 +937,10 @@ export async function* runInvestigation(
 					yield adapter.artifactPublished(item.artifact);
 				}
 			} else if (item.kind === "done") {
-				const flushed = adapter.flushText();
-				if (flushed) yield flushed;
+				for (const flushed of adapter.flush()) yield flushed;
 				return { stop: item.stopReason };
 			} else {
-				const flushed = adapter.flushText();
-				if (flushed) yield flushed;
+				for (const flushed of adapter.flush()) yield flushed;
 				return { error: item.message };
 			}
 		}

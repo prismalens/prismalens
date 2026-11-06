@@ -323,6 +323,7 @@ model Investigation {
   lastActivityAt DateTime?
   limitResetsAt  DateTime?
   autoResume     Boolean? // null: the "Resume after a usage limit" setting decides
+  agentPlan String? // JSON PlanEntry[]: the agent's latest ACP plan (#1024)
 
   incident        Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   service         Service?             @relation("ServiceRuns", fields: [serviceId], references: [id], onDelete: SetNull)
@@ -330,6 +331,7 @@ model Investigation {
   recommendations Recommendation[]
   events          InvestigationEvent[]
   wakes           ThreadWake[]
+  pullRequests    PullRequest[]
 
   @@index([incidentId])
   @@index([scheduleId, createdAt])
@@ -359,6 +361,35 @@ model ThreadWake {
   @@index([state, at])
   @@index([investigationId, kind, state])
   @@map("thread_wakes")
+}
+
+/// A pull request a thread found in agent text, on its branch, or from a paste (#1024).
+/// Only a URL on a configured repository is stored; state is read from its git host.
+model PullRequest {
+  id              String    @id @default(uuid())
+  investigationId String
+  repositoryId    String? // the configured repository the URL matched
+  host            String // github | gitlab | other
+  repo            String // owner/repo, or GitLab's project path
+  url             String
+  number          Int
+  title           String?
+  state           String    @default("unknown") // open | draft | merged | closed | unknown
+  review          String    @default("unknown") // approved | changes_requested | review_required | none | unknown
+  checks          String? // JSON PrChecks
+  conflicts       Boolean?
+  detail          String? // JSON PrDetail: author, reviewers and check runs, image URLs as the host gave them
+  source          String // agent | branch | user
+  etag            String? // JSON: the host's ETag per request, for conditional reads
+  fetchedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@unique([investigationId, url])
+  @@index([repositoryId])
+  @@map("pull_requests")
 }
 
 /// Durable server-side canonical event record (ADR-0018 store.append) — one row per

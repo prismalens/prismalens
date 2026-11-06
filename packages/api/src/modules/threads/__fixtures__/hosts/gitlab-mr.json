@@ -1,0 +1,28 @@
+{
+	"iid": 1500,
+	"title": "feat: rename `ask git` to `duo ask`",
+	"state": "merged",
+	"draft": false,
+	"work_in_progress": false,
+	"has_conflicts": false,
+	"web_url": "https://gitlab.com/gitlab-org/cli/-/merge_requests/1500",
+	"sha": "0da2cfbfeb405f156867e066a4517d634cdf6875",
+	"author": {
+		"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/2935693/avatar.png?v=1793904236",
+		"username": "phikai"
+	},
+	"reviewers": [
+		{
+			"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/142752/avatar.png?v=1793720977",
+			"username": "garyh"
+		},
+		{
+			"avatar_url": "https://gitlab.com/uploads/-/system/user/avatar/11279441/avatar.png?v=1789087001",
+			"username": "hacks4oats"
+		}
+	],
+	"head_pipeline": {
+		"id": 1304361054,
+		"status": "success"
+	}
+}

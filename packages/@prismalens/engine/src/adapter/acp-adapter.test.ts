@@ -371,7 +371,8 @@ describe("AcpAdapter.normalize", () => {
 				content: { text: "hmm" },
 			}),
 		).toBeNull();
-		expect(adapter.normalize({ sessionUpdate: "plan" })).toBeNull();
+		// A plan update with no entry list maps to nothing.
+		expect(new AcpAdapter(ctx).normalize({ sessionUpdate: "plan" })).toBeNull();
 	});
 
 	it("returns null for an unknown update and does not throw", () => {
@@ -603,5 +604,99 @@ describe("ACP status semantics (#820, #673 w5-2)", () => {
 		expect(queued).toMatchObject({ kind: "message_queued", messageId: id });
 		expect(delivered).toMatchObject({ kind: "operator_message", messageId: id });
 		expect(CanonicalEventSchema.safeParse(queued).success).toBe(true);
+	});
+});
+
+describe("AcpAdapter plan and thinking (#1024)", () => {
+	const think = (text: string): AcpUpdate => ({
+		sessionUpdate: "agent_thought_chunk",
+		content: { type: "text", text },
+	});
+
+	it("maps a plan update to a plan event that replaces the list", () => {
+		const adapter = new AcpAdapter(ctx);
+		const [ev] = adapter.events({
+			sessionUpdate: "plan",
+			entries: [
+				{ content: "Read the logs", status: "completed", priority: "high" },
+				{ content: "Check the deploy", status: "in_progress" },
+				{ content: "Odd status", status: "weird", priority: "urgent" },
+				{ status: "pending" },
+			],
+		});
+		expect(ev).toMatchObject({
+			kind: "plan",
+			entries: [
+				{ content: "Read the logs", status: "completed", priority: "high" },
+				{ content: "Check the deploy", status: "in_progress" },
+				{ content: "Odd status", status: "pending" },
+			],
+		});
+		expect(CanonicalEventSchema.safeParse(ev).success).toBe(true);
+	});
+
+	it("merges thought chunks into one event before the step they preceded", () => {
+		const adapter = new AcpAdapter(ctx);
+		expect(adapter.events(think("Start with "))).toEqual([]);
+		expect(adapter.events(think("the deploys."))).toEqual([]);
+		const out = adapter.events(lsToolCall);
+		expect(out.map((e) => e.kind)).toEqual(["thought", "agent_step"]);
+		expect(out[0]).toMatchObject({ text: "Start with the deploys." });
+		expect(out[0]?.seq).toBeLessThan(out[1]?.seq ?? 0);
+		expect(CanonicalEventSchema.safeParse(out[0]).success).toBe(true);
+	});
+
+	it("flush keeps thinking that ends a turn, then the text", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.events({
+			sessionUpdate: "agent_message_chunk",
+			content: { type: "text", text: "Done." },
+		});
+		adapter.events(think("Was that all?"));
+		expect(adapter.flush().map((e) => e.kind)).toEqual(["thought", "agent_step"]);
+		expect(adapter.flush()).toEqual([]);
+	});
+
+	it("keeps at most THOUGHT_MAX_BYTES per turn, marks the cut, and resets on the next message", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.events(think("a".repeat(10_000)));
+		adapter.events(think("b".repeat(10_000)));
+		const [cut] = adapter.flush();
+		expect(cut).toMatchObject({ kind: "thought", truncated: true });
+		const text = cut?.kind === "thought" ? cut.text : "";
+		expect(text.length).toBe(16 * 1024);
+		expect(CanonicalEventSchema.safeParse(cut).success).toBe(true);
+		adapter.events(think("more"));
+		expect(adapter.flush()).toEqual([]);
+		adapter.operatorMessage("next", "queue", true);
+		adapter.events(think("fresh"));
+		expect(adapter.flush()[0]).toMatchObject({ kind: "thought", text: "fresh" });
+	});
+});
+
+describe("AcpAdapter thinking budget in bytes (#1024)", () => {
+	const think = (text: string): AcpUpdate => ({
+		sessionUpdate: "agent_thought_chunk",
+		content: { type: "text", text },
+	});
+
+	it("keeps at most 16 KB of UTF-8 per turn, whatever the script", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.events(think("漢".repeat(16 * 1024)));
+		const [cut] = adapter.flush();
+		const text = cut?.kind === "thought" ? cut.text : "";
+		expect(Buffer.byteLength(text, "utf8")).toBeLessThanOrEqual(16 * 1024);
+		expect(text.length).toBe(Math.floor((16 * 1024) / 3));
+		expect(cut).toMatchObject({ truncated: true });
+	});
+
+	it("never splits a character at the cut", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.events(think(`${"a".repeat(16 * 1024 - 2)}😀😀`));
+		const [cut] = adapter.flush();
+		const text = cut?.kind === "thought" ? cut.text : "";
+		expect(text.endsWith("a")).toBe(true);
+		expect(text).not.toMatch(/[\uD800-\uDFFF]$/);
+		expect(Buffer.byteLength(text, "utf8")).toBe(16 * 1024 - 2);
 	});
 });

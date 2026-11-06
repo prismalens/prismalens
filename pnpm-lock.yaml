@@ -467,6 +467,9 @@ importers:
       cronstrue:
         specifier: ^3.38.0
         version: 3.38.0
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       express:
         specifier: ^5.3.0
         version: 5.3.0
@@ -522,6 +525,9 @@ importers:
       '@swc/core':
         specifier: ^1.16.20
         version: 1.16.21(@swc/helpers@0.5.23)
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6

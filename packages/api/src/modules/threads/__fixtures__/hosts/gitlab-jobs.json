@@ -1,0 +1,72 @@
+[
+	{
+		"name": "windows_installer",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "release_test",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "build_windows",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "run_tests: [1.22]",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "code_navigation_convert",
+		"status": "success",
+		"allow_failure": true
+	},
+	{
+		"name": "code_navigation_generate",
+		"status": "success",
+		"allow_failure": true
+	},
+	{
+		"name": "lint",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "lint_commit",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "danger-review",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "secret_detection",
+		"status": "success",
+		"allow_failure": true
+	},
+	{
+		"name": "gemnasium-dependency_scanning",
+		"status": "success",
+		"allow_failure": true
+	},
+	{
+		"name": "semgrep-sast",
+		"status": "success",
+		"allow_failure": true
+	},
+	{
+		"name": "check_docs_markdown",
+		"status": "success",
+		"allow_failure": false
+	},
+	{
+		"name": "check_docs_update",
+		"status": "success",
+		"allow_failure": false
+	}
+]

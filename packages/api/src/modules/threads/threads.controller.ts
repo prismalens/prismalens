@@ -4,7 +4,12 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement } from "@orpc/nest";
 import { threadsContract } from "@prismalens/contracts";
+import type { Request } from "express";
+import { isHost } from "../../core/settings/settings.controller.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
+import { LinksService } from "./links.service.js";
+import { PullRequestsService } from "./pull-requests.service.js";
+import { ThreadContextService } from "./thread-context.service.js";
 import { ThreadsService } from "./threads.service.js";
 
 @Controller()
@@ -12,6 +17,9 @@ export class ThreadsController {
 	constructor(
 		private readonly threads: ThreadsService,
 		private readonly attachments: AttachmentsService,
+		private readonly context: ThreadContextService,
+		private readonly pullRequests: PullRequestsService,
+		private readonly links: LinksService,
 	) {}
 
 	@Implement(threadsContract)
@@ -72,6 +80,43 @@ export class ThreadsController {
 			// GET /threads/:id/attachments/:attachmentId
 			attachment: implement(threadsContract.attachment).handler(({ input }) =>
 				this.attachments.readForRun(input.id, input.attachmentId),
+			),
+
+			// GET /threads/:id/context - What the right panel shows (#1024)
+			context: implement(threadsContract.context).handler(
+				({ input, context }) =>
+					this.context.context(input.id, isHost(context.request as Request)),
+			),
+
+			// GET /threads/:id/pull-requests - Read from the host only when older than 60 s
+			pullRequests: implement(threadsContract.pullRequests).handler(
+				({ input }) => this.pullRequests.list(input.id),
+			),
+
+			// POST /threads/:id/pull-requests
+			linkPullRequest: implement(threadsContract.linkPullRequest).handler(
+				({ input }) => this.pullRequests.linkFromUser(input.id, input.url),
+			),
+
+			// DELETE /threads/:id/pull-requests/:prId
+			unlinkPullRequest: implement(threadsContract.unlinkPullRequest).handler(
+				async ({ input }) => ({
+					removed: await this.pullRequests.unlink(input.id, input.prId),
+				}),
+			),
+
+			// POST /threads/:id/pull-requests/refresh
+			refreshPullRequests: implement(
+				threadsContract.refreshPullRequests,
+			).handler(({ input }) =>
+				this.pullRequests.list(input.id, { force: true }),
+			),
+
+			// POST /threads/:id/links/resolve
+			resolveLinks: implement(threadsContract.resolveLinks).handler(
+				async ({ input }) => ({
+					targets: await this.links.resolve(input.id, input.candidates),
+				}),
 			),
 		};
 	}

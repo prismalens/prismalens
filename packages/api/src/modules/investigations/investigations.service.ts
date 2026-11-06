@@ -840,10 +840,23 @@ export class InvestigationsService {
 	 *
 	 * @returns how many rows were newly inserted vs skipped as duplicates.
 	 */
+	/** Called with each batch's newly stored events, after they are stored; a failure is only logged. */
+	private readonly appended: Array<
+		(investigationId: string, events: CanonicalEvent[]) => Promise<void>
+	> = [];
+
+	/** Read what a run's agent wrote as it is stored, e.g. a PR URL or a plan (#1024). */
+	onEventsAppended(
+		fn: (investigationId: string, events: CanonicalEvent[]) => Promise<void>,
+	): void {
+		this.appended.push(fn);
+	}
+
 	async appendEvents(
 		investigationId: string,
 		events: CanonicalEvent[],
 	): Promise<{ inserted: number; duplicates: number }> {
+		const stored: CanonicalEvent[] = [];
 		let inserted = 0;
 		let duplicates = 0;
 		for (const event of events) {
@@ -866,6 +879,7 @@ export class InvestigationsService {
 					});
 				else await this.prisma.investigationEvent.create({ data });
 				inserted++;
+				stored.push(event);
 			} catch (error) {
 				if (
 					error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -883,6 +897,13 @@ export class InvestigationsService {
 				where: { id: investigationId },
 				data: { lastActivityAt: new Date() },
 			});
+		if (stored.length)
+			for (const fn of this.appended)
+				await fn(investigationId, stored).catch((e: unknown) =>
+					this.logger.warn(
+						`Reading stored events of ${investigationId} failed: ${e instanceof Error ? e.message : String(e)}`,
+					),
+				);
 		return { inserted, duplicates };
 	}
 

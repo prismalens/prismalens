@@ -1,0 +1,35 @@
+{
+	"total_count": 557,
+	"items": [
+		{
+			"html_url": "https://github.com/cli/cli/issues/14755",
+			"number": 14755,
+			"title": "Support persistent command defaults without requiring custom aliases",
+			"state": "open",
+			"user": {
+				"login": "samaluk",
+				"avatar_url": "https://avatars.githubusercontent.com/u/80332200?v=4"
+			}
+		},
+		{
+			"html_url": "https://github.com/cli/cli/issues/13104",
+			"number": 13104,
+			"title": "Allow aliases for repos",
+			"state": "open",
+			"user": {
+				"login": "TyeMcQueen",
+				"avatar_url": "https://avatars.githubusercontent.com/u/41888?v=4"
+			}
+		},
+		{
+			"html_url": "https://github.com/cli/cli/issues/3512",
+			"number": 3512,
+			"title": "repo specific aliases",
+			"state": "open",
+			"user": {
+				"login": "zahmadsaleem",
+				"avatar_url": "https://avatars.githubusercontent.com/u/11913101?v=4"
+			}
+		}
+	]
+}

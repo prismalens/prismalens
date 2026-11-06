@@ -13,6 +13,7 @@ const TOPIC_BY_MODEL: Readonly<Record<string, LiveTopic>> = {
 	AlertSourceAlert: "alerts",
 	Investigation: "investigations",
 	InvestigationEvent: "threads",
+	PullRequest: "threads",
 	Schedule: "schedules",
 	ScheduleTick: "schedules",
 	// A ticked Do now step is shared across browsers (study-v3 §3.2).

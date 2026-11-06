@@ -1,0 +1,40 @@
+{
+	"description": "Thread context (#1024): a plan update, thinking, prose naming a PR on a configured repo and one on an unknown repo, and path:line mentions for the link resolver.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.85.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"update": {
+					"sessionUpdate": "plan",
+					"entries": [
+						{
+							"content": "Read the README",
+							"status": "completed",
+							"priority": "high"
+						},
+						{
+							"content": "Open a pull request",
+							"status": "in_progress",
+							"priority": "medium"
+						},
+						{ "content": "Wait for checks", "status": "pending" }
+					]
+				}
+			},
+			{
+				"think": "The fix is small; a PR is the right next step."
+			},
+			{
+				"say": "I opened https://github.com/cli/cli/pull/14927 for this.\n\nThe entry point is `README.md:1`, and `src/missing.ts:4` no longer exists. An unrelated PR, https://github.com/evil/cart/pull/1, is not ours.\n"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "On your question (*{{prompt}}*): the PR is still https://github.com/cli/cli/pull/14927."
+		}
+	]
+}

@@ -113,6 +113,25 @@ describe("InvestigationsService — durable event record", () => {
 			expect(mockPrisma.investigation.updateMany).not.toHaveBeenCalled();
 		});
 
+		it("hands readers only the newly stored events, and a reader's failure only logs (#1024)", async () => {
+			const seen: number[][] = [];
+			service.onEventsAppended(async (_id, events) => {
+				seen.push(events.map((e) => e.seq));
+			});
+			service.onEventsAppended(async () => {
+				throw new Error("reader broke");
+			});
+			mockPrisma.investigationEvent.create
+				.mockResolvedValueOnce({})
+				.mockRejectedValueOnce(p2002());
+			const result = await service.appendEvents(INV_ID, [stepEvent(1), stepEvent(2)]);
+			expect(result).toEqual({ inserted: 1, duplicates: 1 });
+			expect(seen).toEqual([[1]]);
+			mockPrisma.investigationEvent.create.mockRejectedValueOnce(p2002());
+			await service.appendEvents(INV_ID, [stepEvent(2)]);
+			expect(seen).toEqual([[1]]);
+		});
+
 		it("inserts one row per event, JSON-encoding the full canonical event", async () => {
 			const result = await service.appendEvents(INV_ID, [
 				stepEvent(1),
