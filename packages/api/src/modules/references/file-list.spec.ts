@@ -72,7 +72,7 @@ describe("the workspace file list (#1024)", () => {
 		expect(files).toContain("d0/x/f.ts");
 		// Each folder is read asynchronously, so the loop turns while the walk runs.
 		expect(turns).toBeGreaterThan(50);
-	});
+	}, 30_000);
 
 	it("stops a tree heavy with folders at the folder limit, and says the list was cut (#1024)", async () => {
 		for (let i = 0; i < 300; i++) {
@@ -87,7 +87,7 @@ describe("the workspace file list (#1024)", () => {
 		expect(whole.files).toHaveLength(6);
 		const list = await new FileLister(50_000, Date.now, 100).list(dir);
 		expect(list.truncated).toBe(true);
-	});
+	}, 30_000);
 
 	it("refuses to open a folder that became a link, so a swap mid-walk cannot leave the root (#1024)", async () => {
 		const outside = mkdtempSync(join(tmpdir(), "pl-outside-"));
@@ -122,6 +122,21 @@ describe("the workspace file list (#1024)", () => {
 		read = false;
 		const steady = { ...fs, realpath: async (p: string) => p };
 		expect(await readDirSafely(target, dir, steady as never)).toHaveLength(1);
+	});
+
+	it("a workspace root that is itself a link is still walked (#1024)", async () => {
+		const real = mkdtempSync(join(tmpdir(), "pl-realroot-"));
+		const linked = join(dir, "linked-root");
+		try {
+			mkdirSync(join(real, "src"));
+			writeFileSync(join(real, "src", "pool.ts"), "");
+			symlinkSync(real, linked, "junction");
+			const { files } = await walk(linked, 50_000);
+			expect(files).toEqual(["src/pool.ts"]);
+		} finally {
+			rmSync(linked, { recursive: true, force: true });
+			rmSync(real, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -48,7 +48,7 @@ import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enu
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { AskConflict, AskForbidden } from "../asks/asks.contract.js";
 import { AskInvalid, AsksService } from "../asks/asks.service.js";
-import { DraftsService } from "../composer/drafts.service.js";
+import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { ReferencesService } from "../references/references.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import type {
@@ -593,7 +593,11 @@ export class InvestigationsController {
 							throw new ORPCError("CONFLICT", {
 								message: "A follow-up is already running.",
 							});
-						await this.drafts.consume(input.draftScope, input.draftRev);
+						await consumeAfterSend(
+							this.drafts,
+							input.draftScope,
+							input.draftRev,
+						);
 						return { state: "resumed" as const };
 					}
 					// A message that says what it asks for must match the live turn (#673 w59, OBJ-004).
@@ -649,7 +653,7 @@ export class InvestigationsController {
 						}
 						throw refuse();
 					}
-					await this.drafts.consume(input.draftScope, input.draftRev);
+					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
 					return state === "queued" ? { state, messageId } : { state };
 				},
 			),

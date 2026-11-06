@@ -27,7 +27,6 @@ import {
 } from "@prismalens/config/harness";
 import type {
 	AskAnswer,
-	CanonicalEvent,
 	FollowUpKind,
 	FollowUpRoute,
 	InvestigationJobData,
@@ -44,7 +43,6 @@ import type {
 import {
 	AccessLevelSchema,
 	asksLeftOpen,
-	CanonicalEventSchema,
 	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
 	HelperPlaceSchema,

@@ -57,20 +57,27 @@ export async function walk(
 	cap: number,
 	dirCap = DIR_WALK_CAP,
 ): Promise<{ files: string[]; dirs: number; truncated: boolean }> {
+	// The root itself may be a link (a symlinked or junctioned workspace): walk what it names.
+	let realRoot: string;
+	try {
+		realRoot = await realpath(root);
+	} catch {
+		return { files: [], dirs: 0, truncated: false };
+	}
 	const ig = ignore().add([".git", "node_modules"]);
-	const gi = join(root, ".gitignore");
+	const gi = join(realRoot, ".gitignore");
 	if (existsSync(gi)) ig.add(await readFile(gi, "utf8"));
 	const files: string[] = [];
-	const stack = [root];
+	const stack = [realRoot];
 	let dirs = 0;
 	while (stack.length && files.length <= cap && dirs < dirCap) {
 		const dir = stack.pop() as string;
 		dirs++;
-		const entries = await readDirSafely(dir, root);
+		const entries = await readDirSafely(dir, realRoot);
 		if (!entries) continue;
 		for (const e of entries) {
 			const abs = join(dir, e.name);
-			const rel = relative(root, abs).split(sep).join("/");
+			const rel = relative(realRoot, abs).split(sep).join("/");
 			if (e.isDirectory()) {
 				if (ig.ignores(`${rel}/`)) continue;
 				stack.push(abs);
