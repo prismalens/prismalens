@@ -125,7 +125,8 @@ afterEach(() => {
 	document.body.innerHTML = "";
 });
 
-describe("ScheduleDialog (#979)", () => {
+// Each render mounts the whole dialog: well past 5s on a cold macOS runner.
+describe("ScheduleDialog (#979)", { timeout: 30_000 }, () => {
 	it("a new schedule takes the default agent when it arrives after the dialog opened", async () => {
 		await render();
 		expect(chip()).toBe("none:");
@@ -134,8 +135,7 @@ describe("ScheduleDialog (#979)", () => {
 		await render();
 
 		expect(chip()).toBe("claude-code:sonnet");
-		// The first render of the file loads the whole dialog: slow on a cold runner.
-	}, 20_000);
+	});
 
 	it("a late default never overwrites the agent of a duplicated schedule", async () => {
 		agents = {
