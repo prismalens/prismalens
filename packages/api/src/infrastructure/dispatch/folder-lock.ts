@@ -160,17 +160,17 @@ export async function busyAt(
 	);
 }
 
-/** A live run's checkout lease (#1024) nested with `folder`, or on it, other than `selfId`'s. */
+/**
+ * A checkout lease (#1024) nested with `folder`, or on it, other than `selfId`'s. A lease holds
+ * until its run's agent has exited, whatever the run's status: an agent a restart left may still run.
+ */
 export async function leaseNear(
 	db: Pick<Db, "checkoutLease">,
 	folder: string,
 	selfId?: string,
 ): Promise<boolean> {
 	const held = await db.checkoutLease.findMany({
-		where: {
-			...(selfId ? { investigationId: { not: selfId } } : {}),
-			investigation: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
-		},
+		where: selfId ? { investigationId: { not: selfId } } : {},
 		select: { canonicalPath: true },
 	});
 	if (!held.length) return false;

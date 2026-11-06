@@ -90,7 +90,7 @@ describe("checkout leases (#1024)", () => {
 		},
 	);
 
-	it("a second live thread is refused, on the checkout or a folder nested in it, until the first ends", async () => {
+	it("a second thread is refused, on the checkout or a folder nested in it, until the first's agent is gone", async () => {
 		const first = await thread("running");
 		const second = await thread("pending");
 		await lease.takeLease(prisma as never, shop, first.id);
@@ -106,23 +106,60 @@ describe("checkout leases (#1024)", () => {
 			where: { id: first.id },
 			data: { status: "completed" },
 		});
+		// An ended run still holds the checkout until its agent is proven gone.
+		expect(await lease.checkoutBusy(prisma as never, shop, second.id)).toBe(true);
+		expect(await lease.releaseIfGone(prisma as never, async () => false, shop)).toBe(0);
+		expect(await lease.checkoutBusy(prisma as never, shop, second.id)).toBe(true);
+		expect(await lease.releaseIfGone(prisma as never, async () => true, shop)).toBe(1);
 		expect(await lease.checkoutBusy(prisma as never, shop, second.id)).toBe(false);
 		await lease.takeLease(prisma as never, shop, second.id);
 		expect(await lease.leasedBy(prisma, second.id)).toBe(shop);
 		expect(await prisma.checkoutLease.count()).toBe(1);
 	});
 
-	it("at boot, a lease whose run is no longer live is released and a live one is kept", async () => {
+	it("at boot, a lease is released only once its run ended and its agent is proven gone", async () => {
 		const ended = await thread("failed");
+		const running = await thread("failed");
 		const live = await thread("pending");
-		const other = repo("other");
-		await lease.takeLease(prisma as never, other, ended.id);
+		await lease.takeLease(prisma as never, repo("other"), ended.id);
+		const stillRunning = repo("still-running");
+		await lease.takeLease(prisma as never, stillRunning, running.id);
 		const kept = repo("kept");
 		await lease.takeLease(prisma as never, kept, live.id);
-		const released = await lease.releaseEndedLeases(prisma);
+		const asked: string[] = [];
+		const released = await lease.releaseIfGone(prisma as never, async (id) => {
+			asked.push(id);
+			return id === ended.id;
+		});
 		expect(released).toBeGreaterThanOrEqual(1);
 		expect(await lease.leasedBy(prisma, ended.id)).toBeNull();
+		// A restart that could not prove the agent gone keeps its checkout blocked.
+		expect(await lease.leasedBy(prisma, running.id)).toBe(stillRunning);
+		const next = await thread("pending");
+		expect(await lease.checkoutBusy(prisma as never, stillRunning, next.id)).toBe(true);
 		expect(await lease.leasedBy(prisma, live.id)).toBe(kept);
+		expect(asked).not.toContain(live.id);
+	});
+
+	it("the run's end releases its lease", async () => {
+		const run = await thread("running");
+		const dir = repo("ends");
+		await lease.takeLease(prisma as never, dir, run.id);
+		await lease.releaseLease(prisma as never, run.id);
+		expect(await lease.leasedBy(prisma, run.id)).toBeNull();
+	});
+
+	it("two services whose projects sit in one checkout share its single lease", async () => {
+		const mono = repo("mono");
+		mkdirSync(join(mono, "services", "billing"), { recursive: true });
+		const api = await lease.checkoutRoot(join(mono, "packages", "api"));
+		const billing = await lease.checkoutRoot(join(mono, "services", "billing"));
+		expect(api).not.toBeNull();
+		expect(api).toBe(billing);
+		const first = await thread("running");
+		const second = await thread("pending");
+		await lease.takeLease(prisma as never, api as string, first.id);
+		expect(await lease.checkoutBusy(prisma as never, billing as string, second.id)).toBe(true);
 	});
 
 	it("a plain folder's run and a checkout lease nested with it refuse each other", async () => {
@@ -140,6 +177,8 @@ describe("checkout leases (#1024)", () => {
 			where: { id: holder.id },
 			data: { status: "completed" },
 		});
+		expect(await folderBusy(prisma as never, project.id, plainRun.id)).toBe(true);
+		await lease.releaseLease(prisma as never, holder.id);
 		expect(await folderBusy(prisma as never, project.id, plainRun.id)).toBe(false);
 		await prisma.investigation.update({
 			where: { id: plainRun.id },

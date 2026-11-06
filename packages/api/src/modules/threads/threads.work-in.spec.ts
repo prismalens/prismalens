@@ -76,11 +76,14 @@ describe("Work in: This checkout or New worktree (#1024)", () => {
 				repos: [],
 			})),
 			addInvestigationJob: vi.fn(async () => "job-1"),
+			freeCheckout: vi.fn(async () => {}),
 		};
 	});
 
 	it("a person's choice takes the checkout's lease, rides with the job and is remembered", async () => {
 		await start({ workIn: "checkout" });
+		// A lease an ended run's gone agent left is freed first, outside the transaction.
+		expect(dispatch.freeCheckout).toHaveBeenCalledWith("/code/shop");
 		expect(lease.checkoutBusy).toHaveBeenCalledWith(TX, "/code/shop", RUN);
 		expect(lease.takeLease).toHaveBeenCalledWith(TX, "/code/shop", RUN);
 		expect(job().thread.checkout).toBe("/code/shop");

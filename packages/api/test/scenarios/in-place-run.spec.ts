@@ -146,6 +146,8 @@ describe("A thread works in the user's own checkout (#1024)", () => {
 		const row = await prisma.investigation.findUniqueOrThrow({ where: { id: threadId } });
 		const ws = JSON.parse(row.workspace ?? "{}");
 		expect(ws.layout).toBe("in_place");
+		// Its agent has exited, so the run's end gave the checkout back.
+		expect(await prisma.checkoutLease.count({ where: { investigationId: threadId } })).toBe(0);
 		expect(ws.borrowed).toMatchObject({
 			head: before.head,
 			branch: "main",

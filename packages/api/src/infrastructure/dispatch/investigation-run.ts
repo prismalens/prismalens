@@ -667,8 +667,10 @@ async function runJobInternal(
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
 			// A run PrismaLens's own exit cut off keeps its workspace and pid for auto-resume (#981).
-			if (!isShutdown(io.signal))
+			if (!isShutdown(io.signal)) {
 				await clearRunWorkspace(unvalidated.investigationId);
+				await freeLease(ports, unvalidated.investigationId);
+			}
 			dropReceipt(unvalidated.investigationId, isShutdown(io.signal));
 		}
 	}
@@ -821,7 +823,7 @@ export function sessionCwds(ws: RunWorkspace): string[] {
  * so the snapshot's `git status` stays clean.
  */
 export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
-	if (ws.layout === "folder") {
+	if (ws.layout === "folder" || ws.layout === "in_place") {
 		writeInFolder(ws.cwd, text);
 		return;
 	}
@@ -836,7 +838,7 @@ export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
 	}
 }
 
-/** The user's own folder: nothing of theirs is removed, so a name already there means no transcript. */
+/** The user's own folder or checkout: nothing of theirs is removed, so a name already there means no transcript. */
 function writeInFolder(cwd: string, text: string): void {
 	const dir = dirname(join(cwd, HANDOFF_TRANSCRIPT_PATH));
 	try {
@@ -850,8 +852,8 @@ function writeInFolder(cwd: string, text: string): void {
 }
 
 function copyTargets(ws: RunWorkspace): CopyTarget[] {
-	// Read copies go into a snapshot; a plain folder is the user's own (#1020).
-	if (ws.layout === "folder") return [];
+	// Read copies go into a snapshot; a plain folder or a borrowed checkout is the user's own (#1020, #1024).
+	if (ws.layout === "folder" || ws.layout === "in_place") return [];
 	return sessionCwds(ws).map((dir) => {
 		const repo = ws.repos.find((r) => {
 			const rel = relative(r.dir, dir);
@@ -1361,7 +1363,10 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		if (!isShutdown(io.signal)) await clearRunWorkspace(id);
+		if (!isShutdown(io.signal)) {
+			await clearRunWorkspace(id);
+			await freeLease(ports, id);
+		}
 		dropReceipt(id, isShutdown(io.signal));
 	}
 	// PrismaLens is closing: no end is written, so boot reads this turn as interrupted (#981).
@@ -2895,6 +2900,15 @@ function keepReceipt(runDir: string, pid: number | undefined): void {
 }
 
 /** Stops the tree watch; `keepFile` leaves the receipt for the next boot's containment check. */
+/** Where the receipt goes, the agent has exited; a shutdown keeps the lease for boot to settle (#1024). */
+async function freeLease(ports: RunPorts, runId: string): Promise<void> {
+	try {
+		await ports.releaseLease?.(runId);
+	} catch (e) {
+		logger.warn(`Could not release the checkout lease of run ${runId}`, e);
+	}
+}
+
 function dropReceipt(runId: string, keepFile = false): void {
 	const runDir = runDirFor(runId);
 	receiptWatches.get(runDir)?.();

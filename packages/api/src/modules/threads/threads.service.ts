@@ -211,6 +211,7 @@ export class ThreadsService {
 		let attachments: JobAttachment[] = [];
 		const draftKey = input.draftKey;
 		const repositoryId = ids.repositoryId;
+		if (checkout) await this.dispatch.freeCheckout(checkout);
 		const { investigation } = await this.investigations.startOrGet({
 			incidentId: null,
 			...(ids.repositoryId ? { repositoryId: ids.repositoryId } : {}),

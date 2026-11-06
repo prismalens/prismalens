@@ -103,7 +103,8 @@ import {
 	checkoutBusy,
 	checkoutRoot,
 	leasedBy,
-	releaseEndedLeases,
+	releaseIfGone,
+	releaseLease,
 	sameCheckout,
 	takeLease,
 } from "./checkout-lease.js";
@@ -373,6 +374,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.store = new PrismaJobStore(this.prisma.job as unknown as JobDelegate);
 
 		const ports: RunPorts = {
+			releaseLease: (id) => releaseLease(this.prisma, id),
 			findInvestigation: async (id) => {
 				const investigation = await this.investigationsService.findById(id);
 				return investigation
@@ -855,8 +857,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			),
 		);
 		const checked = boot ? await this.checkRecoveries(boot) : true;
-		// After every boot write: a lease whose run is no longer live frees its checkout (#1024).
-		await releaseEndedLeases(this.prisma)
+		// After every boot write: a lease frees its checkout once its run ended and its agent is proven gone (#1024).
+		await releaseIfGone(
+			this.prisma,
+			async (id, session) =>
+				boot?.contained.get(id) ?? this.previousGone(id, session),
+		)
 			.then((n) => {
 				if (n > 0)
 					this.logger.log(`Released ${n} checkout lease(s) of ended runs`);
@@ -1313,6 +1319,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				);
 		}
 		const checkout = await this.borrowedCheckout(id, row.repositoryId);
+		if (checkout) await this.freeCheckout(checkout);
 		const accessLevel = await this.followUpLevel(row);
 		const sawEvidence = kind === "continue" && (await this.hasToolResult(id));
 		const restore = {
@@ -1463,6 +1470,15 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		if (ws)
 			return ws.layout === "in_place" ? (ws.borrowed?.path ?? null) : null;
 		return leasedBy(this.prisma, id);
+	}
+
+	/** Before an admission: a lease on `path` whose run ended and whose agent is proven gone is released (#1024). */
+	async freeCheckout(path: string): Promise<void> {
+		await releaseIfGone(
+			this.prisma,
+			(id, session) => this.previousGone(id, session),
+			path,
+		);
 	}
 
 	/** Takes the checkout's lease again for this thread, or refuses while another run holds it. */
@@ -1967,6 +1983,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				})
 			)?.repositoryId ?? null;
 		const checkout = await this.borrowedCheckout(id, repositoryId);
+		if (checkout) await this.freeCheckout(checkout);
 		return this.prisma.$transaction(async (tx) => {
 			const own = await tx.investigation.findUnique({
 				where: { id },

@@ -3,7 +3,14 @@
 
 /** Only a person's project thread borrows the user's checkout, and a follow-up never rebuilds it (#1024). */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { InvestigationJobData } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -17,7 +24,7 @@ const env = await vi.hoisted(async () => {
 	return { root };
 });
 
-const { personStarted, rebuildWorkspace, resolveWorkspace, logBorrowed } = await import(
+const { personStarted, rebuildWorkspace, resolveWorkspace, logBorrowed, writeHandoffTranscript } = await import(
 	"./investigation-run.js"
 );
 
@@ -103,6 +110,29 @@ describe("in-place runs on a git checkout (#1024)", () => {
 		const ws = await resolveWorkspace(job({ unattended: true }), ports);
 		expect(ws.layout).not.toBe("in_place");
 		expect((ports as { snapshotWith: ReturnType<typeof vi.fn> }).snapshotWith).toHaveBeenCalled();
+	});
+
+	it("an agent-started child carries no checkout from a person's start, so it never borrows", async () => {
+		const { checkout: _parents, ...child } = job().thread as NonNullable<InvestigationJobData["thread"]>;
+		const ws = await resolveWorkspace(job({ thread: child as InvestigationJobData["thread"] }), ports);
+		expect(ws.layout).not.toBe("in_place");
+	});
+
+	it("a handoff never removes what the user keeps in the checkout", async () => {
+		const ws = await resolveWorkspace(job(), ports);
+		const dir = join(ws.cwd, ".prismalens-handoff");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "user-notes.txt"), "mine\n");
+		try {
+			writeHandoffTranscript(ws, "the transcript");
+			expect(readFileSync(join(dir, "user-notes.txt"), "utf8")).toBe("mine\n");
+			expect(existsSync(join(dir, "transcript.md"))).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+		writeHandoffTranscript(ws, "the transcript");
+		expect(readFileSync(join(dir, "transcript.md"), "utf8")).toBe("the transcript");
+		rmSync(dir, { recursive: true, force: true });
 	});
 
 	it("a URL project never borrows a checkout", async () => {

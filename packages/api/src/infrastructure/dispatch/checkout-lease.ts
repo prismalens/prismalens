@@ -17,7 +17,7 @@ import {
 	type SpawnGitOptions,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
-import { busyAt, CanonicalBusy, canonical } from "./folder-lock.js";
+import { busyAt, CanonicalBusy, canonical, overlaps } from "./folder-lock.js";
 
 export const CHECKOUT_BUSY =
 	"A thread is already working in this checkout. Start this one in a new worktree instead.";
@@ -110,8 +110,8 @@ export async function checkoutState(root: string): Promise<BorrowedCheckout> {
 }
 
 /**
- * Another live run works in `path` or a folder nested with it: through a lease, or as a
- * plain folder's in-place run. Run inside the transaction that admits the run.
+ * Another run works in `path` or a folder nested with it: through a lease its agent still
+ * holds, or as a plain folder's live run. Run inside the transaction that admits the run.
  */
 export function checkoutBusy(
 	db: LeaseDb,
@@ -121,7 +121,7 @@ export function checkoutBusy(
 	return busyAt(db, path, selfId);
 }
 
-/** Takes the checkout's lease for `investigationId`; a lease whose run ended passes over. */
+/** Takes the checkout's lease for `investigationId`, once `checkoutBusy` found it free. */
 export async function takeLease(
 	db: LeaseDb,
 	path: string,
@@ -155,20 +155,79 @@ export async function leasedBy(
 	return row?.canonicalPath ?? null;
 }
 
-/** At boot: leases whose run is no longer live are released. Answers how many. */
-export async function releaseEndedLeases(db: {
+/** Whether a run's agent is proven gone; `DispatchService.previousGone` kills what is left of it first. */
+export type AgentGone = (
+	investigationId: string,
+	acpSessionId: string | null,
+) => Promise<boolean>;
+
+interface LeaseRows {
 	checkoutLease: {
+		findMany(args: {
+			select: {
+				canonicalPath: true;
+				investigationId: true;
+				investigation: { select: { status: true; acpSessionId: true } };
+			};
+		}): PromiseLike<
+			Array<{
+				canonicalPath: string;
+				investigationId: string;
+				investigation: { status: string; acpSessionId: string | null };
+			}>
+		>;
 		deleteMany(args: {
-			where: { investigation: { status: { notIn: string[] } } };
+			where: { canonicalPath?: string; investigationId: string };
 		}): PromiseLike<{ count: number }>;
 	};
-}): Promise<number> {
-	const { count } = await db.checkoutLease.deleteMany({
-		where: {
-			investigation: { status: { notIn: [...LIVE_WORKFLOW_STATUSES] } },
+}
+
+/**
+ * Releases each lease on `path` (every lease when null) whose run is not live and whose agent
+ * is proven gone. Answers how many. Outside any transaction: proving an agent gone reads its process.
+ */
+export async function releaseIfGone(
+	db: LeaseRows,
+	gone: AgentGone,
+	path: string | null = null,
+): Promise<number> {
+	const rows = await db.checkoutLease.findMany({
+		select: {
+			canonicalPath: true,
+			investigationId: true,
+			investigation: { select: { status: true, acpSessionId: true } },
 		},
 	});
-	return count;
+	let released = 0;
+	for (const r of rows) {
+		if (path && !overlaps(r.canonicalPath, path)) continue;
+		if (
+			(LIVE_WORKFLOW_STATUSES as readonly string[]).includes(
+				r.investigation.status,
+			)
+		)
+			continue;
+		if (!(await gone(r.investigationId, r.investigation.acpSessionId)))
+			continue;
+		// Only this run's lease: another may have taken the path since the read.
+		released += (
+			await db.checkoutLease.deleteMany({
+				where: {
+					canonicalPath: r.canonicalPath,
+					investigationId: r.investigationId,
+				},
+			})
+		).count;
+	}
+	return released;
+}
+
+/** The run's agent has exited: its lease goes. */
+export async function releaseLease(
+	db: Pick<LeaseRows, "checkoutLease">,
+	investigationId: string,
+): Promise<void> {
+	await db.checkoutLease.deleteMany({ where: { investigationId } });
 }
 
 /** Two canonical paths name one checkout; case folds where the disk does. */
