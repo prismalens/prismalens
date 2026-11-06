@@ -143,10 +143,16 @@ export class AsksService implements AsksPort {
 
 	async close(
 		askId: string,
-		outcome: "stopped" | "expired",
+		outcome: "stopped" | "expired" | "answered",
 	): Promise<ClosedAsk | null> {
 		const row = await this.prisma.toolAsk.findUnique({ where: { askId } });
 		if (!row) return null;
+		// Only a secret closes answered with no answer: its value went through its own endpoint.
+		if (
+			outcome === "answered" &&
+			PendingAskSchema.parse(JSON.parse(row.ask)).kind !== "secret"
+		)
+			throw new AskInvalid("Only a secret closes answered without an answer.");
 		const closed = await this.settle(row, outcome);
 		if (closed) return closed;
 		const now = await this.prisma.toolAsk.findUnique({ where: { askId } });

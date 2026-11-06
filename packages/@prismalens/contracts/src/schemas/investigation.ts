@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
 	ASK_CLOSED_OUTCOMES,
 	AskAnswerSchema,
+	AskSourceSchema,
 	PERMISSION_ASK_OUTCOMES,
 	PendingAskSchema,
 } from "./asks.js";
@@ -858,6 +859,7 @@ export const HARNESS_DATA_NOTE =
  */
 export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	artifact_publish: "Published a page",
+	ask_user: "Asked you a question",
 	attachment_read: "Read an attached file",
 	attachments_list: "Listed attached files",
 	changes_list: "Listed recent changes",
@@ -872,6 +874,7 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	run_status: "Checked the run",
 	runbooks_list: "Listed runbooks",
 	runbooks_read: "Read a runbook",
+	secret_request: "Asked you for a secret",
 	service_get: "Read a service",
 	thread_list: "Listed threads",
 	thread_cancel: "Stopped a thread",
@@ -1041,6 +1044,17 @@ export {
 	PERMISSION_ASK_OUTCOMES,
 	type PermissionAskOutcome,
 } from "./asks.js";
+
+export const SUBAGENT_PHASES = ["started", "state", "step"] as const;
+export const SUBAGENT_STATES = [
+	"running",
+	"completed",
+	"failed",
+	"cancelled",
+] as const;
+export type SubagentState = (typeof SUBAGENT_STATES)[number];
+/** A sub-agent's own words are kept up to this many characters (#1025). */
+export const SUBAGENT_TEXT_CAP = 200 * 1024;
 
 /** An unanswered ask is denied after this long, so an unattended run still reaches its report (#673 w21). */
 export const ASK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -1301,6 +1315,27 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		server: z.string().optional(),
 		/** A hash of what the call would do, for Always allow; absent when nothing stable names it (#1020). */
 		identity: z.string().optional(),
+		/** Who asked: absent is the main agent; a sub-agent's ask names its session (#1025). */
+		source: AskSourceSchema.optional(),
+	}),
+	z.object({
+		/**
+		 * A sub-agent the agent started in its own session (#1025): `started` once, then
+		 * its `state` and each `step`. Its own steps carry `path: [sessionId]`.
+		 */
+		kind: z.literal("subagent"),
+		...StreamBaseShape,
+		sessionId: z.string().min(1).max(200),
+		phase: z.enum(SUBAGENT_PHASES),
+		title: z.string().max(200).optional(),
+		task: z.string().max(4000).optional(),
+		state: z.enum(SUBAGENT_STATES).optional(),
+		/** One line on what it does now: the tool it called. */
+		step: z.string().max(300).optional(),
+		/** The agent lets the client stop this sub-agent (ACP `capabilities.cancel`). */
+		canCancel: z.boolean().optional(),
+		/** The sub-agent's text reached the 200 KB cap; later text is not kept. */
+		textCapped: z.literal(true).optional(),
 	}),
 	z.object({
 		kind: z.literal("permission_answer"),

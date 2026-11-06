@@ -48,6 +48,7 @@ import { WhyCard } from "@/components/overview/WhyCard";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
+import { SubagentList } from "@/components/thread/StatusBox";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
@@ -82,9 +83,10 @@ import {
 	resumedDetail,
 	resumeFailed,
 } from "@/lib/restart";
-import { askTitle } from "@/lib/run-asks";
+import { askTitle, askWho } from "@/lib/run-asks";
 import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
+import { deriveSubagents } from "@/lib/subagents";
 import { isPlainChat } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 import {
@@ -105,6 +107,7 @@ import {
 } from "./RunDetailsPanel";
 import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
+import { RunSubagentPanel } from "./RunSubagentPanel";
 import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
@@ -217,6 +220,7 @@ export function RunPage() {
 	const toggleRef = useRef<HTMLButtonElement>(null);
 	const timer = useRef<number | undefined>(undefined);
 	const [workOpen, setWorkOpen] = useState(false);
+	const [subagentId, setSubagentId] = useState<string | null>(null);
 	const [preview, setPreview] = useState(false);
 	const phone = useMediaQuery(PHONE);
 	// Below 1024 px the strip drops its chips so the run status keeps its room (#1020).
@@ -432,6 +436,7 @@ export function RunPage() {
 	}, [viewing?.repo, viewing?.path, search.panel]);
 
 	const closePanel = useCallback(() => {
+		setSubagentId(null);
 		hidePanel();
 		window.setTimeout(() => toggleRef.current?.focus(), 0);
 	}, [hidePanel]);
@@ -449,6 +454,18 @@ export function RunPage() {
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
 	}, [panel, closePanel]);
+	const subagents = useMemo(
+		() => deriveSubagents(run.events, { ended: !live }),
+		[run.events, live],
+	);
+	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
+	const openSubagent = useCallback(
+		(sessionId: string) => {
+			setSubagentId(sessionId);
+			setPanel(true);
+		},
+		[setPanel],
+	);
 	const seeFlag = useCallback(() => {
 		setTab("context");
 		setPanel(true);
@@ -739,7 +756,7 @@ export function RunPage() {
 		now,
 		who.agent,
 		run.awaiting
-			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
+			? `${ask ? askWho(ask, who.agent) : who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: null,
 		live ? latestRestart(run.events) : null,
 		run.events,
@@ -838,6 +855,7 @@ export function RunPage() {
 							}
 							summaryAbove={incidentThread}
 							runId={live ? inv.id : undefined}
+							onOpenSubagent={openSubagent}
 						/>
 					)}
 				</div>
@@ -853,6 +871,18 @@ export function RunPage() {
 			>
 				{inv && (
 					<RunDetailsPanel
+						subagent={
+							viewedSubagent && (
+								<RunSubagentPanel
+									runId={inv.id}
+									agent={viewedSubagent}
+									events={run.events}
+									live={live}
+									onBack={() => setSubagentId(null)}
+									onAskMain={compose}
+								/>
+							)
+						}
 						title={chat ? "Question details" : `${name} details`}
 						tab={tab}
 						onTab={setTab}
@@ -861,6 +891,11 @@ export function RunPage() {
 						incidentId={incident.id}
 						summaryTop={
 							<>
+								{subagents.length > 0 && (
+									<div className="mb-4">
+										<SubagentList agents={subagents} onOpen={openSubagent} />
+									</div>
+								)}
 								{overview}
 								{!live && <KeptWorkspaces runId={inv.id} />}
 							</>

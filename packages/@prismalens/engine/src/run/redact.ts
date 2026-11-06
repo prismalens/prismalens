@@ -39,3 +39,24 @@ export function redactEvent<T>(event: T, secrets: readonly string[]): T {
 	for (const s of escaped) out = out.replaceAll(s, "[redacted]");
 	return JSON.parse(out) as T;
 }
+
+/**
+ * The secrets a user handed this thread through `secret_request` (#1024 spec B): each is
+ * redacted whatever its length, unlike {@link injectedSecrets}, since the user said it is one.
+ */
+export function requestedSecrets(
+	values: readonly (string | undefined)[] | undefined,
+): string[] {
+	return (
+		[...new Set((values ?? []).filter((v): v is string => !!v))]
+			// The longest first, so a secret inside another never leaves a piece behind.
+			.sort((a, b) => b.length - a.length)
+	);
+}
+
+/** `text` with every exact secret value replaced. */
+export function scrub(text: string, secrets: readonly string[]): string {
+	let out = text;
+	for (const s of secrets) out = out.replaceAll(s, "[redacted]");
+	return out;
+}

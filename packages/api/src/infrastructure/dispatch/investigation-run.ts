@@ -99,6 +99,7 @@ import {
 	unbindRun,
 } from "../../core/harness/run-worktree.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
+import { ASK_DOCK } from "../../modules/gateway/tools/asks.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { objectDirFor } from "../../modules/investigations/evidence-blob.js";
@@ -214,7 +215,11 @@ function serviceIdOf(
 
 /** A thread with no incident: its subject picks the PrismaLens tools it is offered (#1020). */
 /** What a run is about and owes, for its gateway tools (#1020); a legacy run keeps them all. */
-function toolScope(data: InvestigationJobData, kind: ThreadKind): HarnessScope {
+function toolScope(
+	data: InvestigationJobData,
+	kind: ThreadKind,
+	agent?: string,
+): HarnessScope {
 	// A schedule with no code gets what a no-subject thread gets (#1020).
 	const subject: ThreadSubjectKind | undefined = data.incidentId
 		? "incident"
@@ -223,7 +228,14 @@ function toolScope(data: InvestigationJobData, kind: ThreadKind): HarnessScope {
 				? "none"
 				: "schedule"
 			: data.thread?.subject;
-	return { subject, owes: kind === "chat" ? "answer" : "report" };
+	return {
+		subject,
+		owes: kind === "chat" ? "answer" : "report",
+		// An alert's or schedule's run nobody waits on has no one to ask (#1024 spec B).
+		attended: !(data.unattended || data.scheduled) || !!data.waitForAsks,
+		dock: ASK_DOCK.shipped,
+		...(agent ? { agent } : {}),
+	};
 }
 
 /** What the pre-run reads are keyed by: the incident, else the service a check is about (#979). */
@@ -262,6 +274,8 @@ export interface JobIo {
 	permission?: PermissionPolicy;
 	/** Questions, inputs and PrismaLens tools' asks, and the agent's commands (#1024). */
 	asks?: Pick<RunInvestigationOptions, "elicit">;
+	/** Stops one sub-agent when the user asks and the agent allows (#1025). */
+	subagents?: RunInvestigationOptions["subagents"];
 }
 
 /** The question window from Settings, and where the agent's advertised commands are kept (#1024). */
@@ -487,7 +501,7 @@ async function runJobInternal(
 				workspace.toolsServer,
 				harness,
 				undefined,
-				toolScope(data, kind),
+				toolScope(data, kind, harness),
 			)
 			.catch((e) => {
 				logger.warn(
@@ -521,6 +535,7 @@ async function runJobInternal(
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
 				...runOptionsOf(runtime, data),
+				...(await secretOptions(ports, runId, runtime)),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				...(afterSetup !== null ? { seqStart: afterSetup } : {}),
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -536,6 +551,7 @@ async function runJobInternal(
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
 				...io.asks,
+				...(io.subagents ? { subagents: io.subagents } : {}),
 				...(await askOptions(ports, runId, harness)),
 				attachmentsDir: runAttachmentsDir(runId),
 				...(data.chat?.context ? { messageContext: data.chat.context } : {}),
@@ -1097,7 +1113,7 @@ async function runFollowUp(
 				workspace.toolsServer,
 				harness,
 				new Date(),
-				toolScope(data, kind),
+				toolScope(data, kind, harness),
 			)
 			.catch((e) => {
 				logger.warn(
@@ -1178,6 +1194,7 @@ async function runFollowUp(
 				...(data.unattended ? { unattended: true } : {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime, data),
+				...(await secretOptions(ports, id, runtime)),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -1192,6 +1209,7 @@ async function runFollowUp(
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
 				...io.asks,
+				...(io.subagents ? { subagents: io.subagents } : {}),
 				...(await askOptions(ports, id, harness)),
 				attachmentsDir: runAttachmentsDir(id),
 				...(seed || sessionId
@@ -1566,7 +1584,30 @@ function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
 		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
 		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
 		...(runtime.note ? { runtimeNote: runtime.note } : {}),
+		...(runtime.subagentLimits
+			? { subagentLimits: runtime.subagentLimits }
+			: {}),
 	};
+}
+
+/**
+ * The secrets the user gave this thread (#1024 spec B): each in the agent's env under the
+ * name it asked for, and in the run's redaction whatever its length.
+ */
+async function secretOptions(
+	ports: RunPorts,
+	runId: string,
+	runtime: AgentRuntime,
+): Promise<Pick<RunInvestigationOptions, "env" | "secrets">> {
+	const given: Record<string, string> =
+		(await ports.requestedSecrets?.(runId).catch((e) => {
+			logger.warn("Could not read the thread's requested secrets", e);
+			return {};
+		})) ?? {};
+	const values = Object.values(given);
+	return values.length
+		? { env: { ...runtime.env, ...given }, secrets: values }
+		: {};
 }
 
 function launchProbeOfRuntime(runtime: AgentRuntime): LaunchProbe {

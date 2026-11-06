@@ -17,10 +17,11 @@ export const HARNESS_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 
 /**
  * What a tool may do. `read`: PrismaLens's own records. `record`: append to this run's
- * own record, nothing outside it. `act`: change something beyond the run, behind
- * PrismaLens's own approval, never the agent's permission prompt (#1024 spec F).
+ * own record, nothing outside it. `ask`: open an ask the user answers, nothing else.
+ * `act`: change something beyond the run, behind PrismaLens's own approval, never
+ * the agent's permission prompt (#1024 spec F).
  */
-export type HarnessEffect = "read" | "record" | "act";
+export type HarnessEffect = "read" | "record" | "ask" | "act";
 
 export type HarnessGroup = "core" | "knowledge" | "record";
 
@@ -33,6 +34,12 @@ export interface HarnessServes {
 	owes?: "report";
 	/** Also served to any member of a thread tree, whatever its subject (#1024). */
 	tree?: true;
+	/** Only a run a person can answer: not one an alert or schedule started unwatched (#1024 spec B). */
+	attended?: true;
+	/** Agents whose own tool already does this through the client (e.g. a question by elicitation). */
+	notFor?: readonly string[];
+	/** Its asks are answered in the ask dock: offered only to a scope that says the dock exists. */
+	dock?: true;
 }
 
 /** Every subject: tools that need nothing but the run itself. */
@@ -44,19 +51,28 @@ export interface HarnessScope {
 	owes?: "answer" | "report";
 	/** The run is a member of a thread tree (#1024). */
 	tree?: boolean;
+	/** False for a run nobody can answer; unknown keeps every tool. */
+	attended?: boolean;
+	/** The agent the run is in. */
+	agent?: string;
+	/** The UI can answer a tool's question or secret ask. */
+	dock?: boolean;
 }
 
 /** The tools a run's scope can use; replay reads recorded events, not this. */
 export function servedTo(
 	tools: readonly HarnessTool[],
-	{ subject, owes, tree }: HarnessScope,
+	{ subject, owes, tree, attended, agent, dock }: HarnessScope,
 ): readonly HarnessTool[] {
 	return tools.filter(
 		(t) =>
 			(!subject ||
 				t.serves.subjects.includes(subject) ||
 				(!!tree && !!t.serves.tree)) &&
-			(!owes || !t.serves.owes || t.serves.owes === owes),
+			(!owes || !t.serves.owes || t.serves.owes === owes) &&
+			(!t.serves.attended || attended !== false) &&
+			(!agent || !t.serves.notFor?.includes(agent)) &&
+			(!t.serves.dock || dock === true),
 	);
 }
 

@@ -15,6 +15,7 @@ import {
 	outcomeLine,
 	stepNode,
 } from "@/lib/spine";
+import { isSubagentStep } from "@/lib/subagents";
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -103,6 +104,8 @@ export function deriveSteps(
 	const delegated = new Set<string>();
 	const gateway = matchGateway(events);
 	for (const e of events) {
+		// A sub-agent's steps are its own, shown in its view (#1025).
+		if (isSubagentStep(e)) continue;
 		if (e.kind === "agent_step") {
 			for (const c of e.toolCalls) {
 				if (DELEGATE_TOOL.test(c.name)) delegated.add(c.toolCallId);

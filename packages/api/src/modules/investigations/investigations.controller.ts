@@ -3,7 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
-import { Controller, UseGuards } from "@nestjs/common";
+import { Controller, Optional, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { ACCESS_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
@@ -87,6 +87,7 @@ import {
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
 import { threadSubject } from "./run-scope.js";
 import { readRunDiff, readRunTree } from "./run-views.js";
+import { ToolAsksService } from "./tool-asks.service.js";
 import { readWorktreeChanges } from "./worktree-changes.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
@@ -117,6 +118,7 @@ export class InvestigationsController {
 		private readonly drafts: DraftsService,
 		private readonly references: ReferencesService,
 		private readonly sessions: SessionLifecycleService,
+		@Optional() private readonly toolAsks?: ToolAsksService,
 	) {}
 
 	/** A queued message is the session's to change: a schedule's only on the host (#1024). */
@@ -520,6 +522,66 @@ export class InvestigationsController {
 					if (always && outcome === "approved")
 						await this.investigationsService.rememberAsk(input.id, input.askId);
 					return { outcome };
+				},
+			),
+
+			// POST /investigations/:id/subagents/:sessionId/cancel - Stop one sub-agent (#1025).
+			cancelSubagent: implement(investigationsContract.cancelSubagent).handler(
+				async ({ input, context }) => {
+					const request = context?.request as Request | undefined;
+					// What a sub-agent may do is the host's to stop, like any run's level (ADR 0004 §6).
+					if (!request?.operator?.device.scopes.includes(ACCESS_SCOPE))
+						throw new ORPCError("FORBIDDEN", {
+							message: "Only this machine's own session can stop a sub-agent.",
+						});
+					const row = await this.investigationsService.subagent(
+						input.id,
+						input.sessionId,
+					);
+					if (!row || row.state !== "running")
+						throw new ORPCError("CONFLICT", {
+							message: "That sub-agent is not running.",
+						});
+					if (!row.canCancel)
+						throw new ORPCError("FORBIDDEN", {
+							message: "Its agent does not let PrismaLens stop this sub-agent.",
+						});
+					const result = this.dispatchService.cancelSubagent(
+						input.id,
+						input.sessionId,
+					);
+					if (result === null)
+						throw new ORPCError("CONFLICT", {
+							message: "The run ended; its sub-agents ended with it.",
+						});
+					if (!result)
+						throw new ORPCError("FORBIDDEN", {
+							message: "Its agent does not let PrismaLens stop this sub-agent.",
+						});
+					return { state: "cancelling" as const };
+				},
+			),
+
+			// POST /investigations/:id/secrets/:requestId - Write-only: the value is never answered back (#1024 spec B).
+			answerSecret: implement(investigationsContract.answerSecret).handler(
+				async ({ input, context }) => {
+					const request = context?.request as Request | undefined;
+					const host =
+						!!request?.operator?.device.scopes.includes(ACCESS_SCOPE);
+					if (!this.toolAsks)
+						throw new ORPCError("CONFLICT", {
+							message: "This request is no longer waiting.",
+						});
+					await this.toolAsks
+						.answerSecret(input.id, input.requestId, input.value, host)
+						.catch((e: unknown) => {
+							if (e instanceof AskForbidden)
+								throw new ORPCError("FORBIDDEN", { message: e.message });
+							if (e instanceof AskConflict)
+								throw new ORPCError("CONFLICT", { message: e.message });
+							throw e;
+						});
+					return { outcome: "answered" as const };
 				},
 			),
 

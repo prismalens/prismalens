@@ -27,9 +27,11 @@ import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { touchedFiles } from "@/lib/run-panel";
+import { deriveSubagents } from "@/lib/subagents";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerSend, type ComposerState } from "./Composer";
 import { StatusBox } from "./StatusBox";
+import { SubagentPane } from "./SubagentPane";
 import { type Surface, ThreadPanel } from "./ThreadPanel";
 
 /** Each run state's tone and its word: two words at most. */
@@ -115,6 +117,9 @@ export function ThreadPage({ id }: { id: string }) {
 	const [surface, setSurface] = useState<Surface | null>(null);
 	const [viewing, setViewing] = useState<FileAt | null>(null);
 	const [openSteps, setOpenSteps] = useState<ReadonlySet<number>>(new Set());
+	const [subagentId, setSubagentId] = useState<string | null>(null);
+	const [draft, setDraft] = useState("");
+	const [focusSignal, setFocusSignal] = useState(0);
 	const inv = run.investigation;
 	useVisitThread(inv?.id ?? null, !run.isActive);
 	usePageTitle(inv?.title ?? "Thread");
@@ -157,6 +162,10 @@ export function ThreadPage({ id }: { id: string }) {
 			harnesses,
 		],
 	);
+	const subagents = useMemo(
+		() => deriveSubagents(run.events, { ended: !run.isActive }),
+		[run.events, run.isActive],
+	);
 	const suspects = useMemo(
 		() => recordedFindings(run.events).hypotheses,
 		[run.events],
@@ -173,6 +182,18 @@ export function ThreadPage({ id }: { id: string }) {
 		},
 		[openSurface],
 	);
+	const openSubagent = useCallback(
+		(sessionId: string) => {
+			setSubagentId(sessionId);
+			openSurface("subagent");
+		},
+		[openSurface],
+	);
+	// A sub-agent is never messaged: the quote goes to the main agent's box (ADR 0002 §5).
+	const askMain = useCallback((quote: string) => {
+		setDraft((d) => quote + d);
+		setFocusSignal((n) => n + 1);
+	}, []);
 	const toggleStep = useCallback(
 		(n: number) =>
 			setOpenSteps((o) => {
@@ -350,6 +371,7 @@ export function ThreadPage({ id }: { id: string }) {
 			? (run.resumeBlockedReason ?? "Can't continue")
 			: null;
 	const project = repo.data?.fullName ?? service.data?.name ?? null;
+	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
@@ -362,6 +384,8 @@ export function ThreadPage({ id }: { id: string }) {
 						project={project}
 						workspace={workspace}
 						onOpenDiff={() => openSurface("diff")}
+						subagents={subagents}
+						onOpenSubagent={openSubagent}
 					/>
 				</div>
 			)}
@@ -377,6 +401,7 @@ export function ThreadPage({ id }: { id: string }) {
 						steps={steps}
 						runId={inv.id}
 						foldTurns={{ live: run.isActive }}
+						onOpenSubagent={openSubagent}
 					/>
 				) : (
 					<p className="px-5 pt-6 text-body text-text-3">
@@ -422,6 +447,9 @@ export function ThreadPage({ id }: { id: string }) {
 						locked
 						dock={dock}
 						blockedReason={blocked}
+						text={draft}
+						onText={setDraft}
+						focusSignal={focusSignal}
 					/>
 					{resumeError && (
 						<p className="px-3 pt-1 text-meta text-danger" role="alert">
@@ -441,6 +469,18 @@ export function ThreadPage({ id }: { id: string }) {
 					diff={workspace?.layout !== "folder"}
 					files={files}
 					suspects={suspects}
+					subagent={
+						viewedSubagent && (
+							<SubagentPane
+								key={viewedSubagent.sessionId}
+								runId={inv.id}
+								agent={viewedSubagent}
+								events={run.events}
+								live={run.isActive}
+								onAskMain={askMain}
+							/>
+						)
+					}
 				/>
 			</RightPanel>
 		</div>

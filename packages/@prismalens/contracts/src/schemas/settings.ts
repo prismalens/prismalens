@@ -14,6 +14,7 @@ import {
 	SANDBOX_STATES,
 } from "@prismalens/config/harness";
 import { z } from "zod";
+import { SubagentLimitSchema } from "./subagents.js";
 
 // =============================================================================
 // PERMISSION LEVEL (#673 w21 ruling 2026-10-10)
@@ -315,6 +316,9 @@ export const HarnessSettingsSchema = z.object({
 	envNames: z
 		.partialRecord(z.enum(HARNESS_IDS), z.array(EnvNameSchema))
 		.optional(),
+	/** In-session sub-agents (#1024 spec B): unset is the agent's own default. */
+	subagentDepth: SubagentLimitSchema.optional(),
+	subagentConcurrency: SubagentLimitSchema.optional(),
 	/** False on a paired device: runtime fields are the host's alone. */
 	canEditRuntime: z.boolean().optional(),
 });
@@ -380,6 +384,9 @@ export const UpdateHarnessSettingsSchema = z
 		resumeAfterLimit: z.boolean().optional(),
 		/** Compact idle threads before their agent's cache expires (#1024); absent is off. */
 		compactIdle: z.boolean().optional(),
+		/** `null` goes back to the agent's own default. Host only. */
+		subagentDepth: SubagentLimitSchema.nullable().optional(),
+		subagentConcurrency: SubagentLimitSchema.nullable().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;

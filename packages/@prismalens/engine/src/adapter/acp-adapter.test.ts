@@ -15,6 +15,7 @@ import {
 	pickName,
 	RULE_DENIED,
 	unwrapInput,
+	subagentState,
 } from "./acp-adapter.js";
 
 const FIXED = new Date("2026-06-29T00:00:00.000Z");
@@ -698,5 +699,97 @@ describe("AcpAdapter thinking budget in bytes (#1024)", () => {
 		expect(text.endsWith("a")).toBe(true);
 		expect(text).not.toMatch(/[\uD800-\uDFFF]$/);
 		expect(Buffer.byteLength(text, "utf8")).toBe(16 * 1024 - 2);
+	});
+});
+
+describe("AcpAdapter sub-agents (#1025)", () => {
+	const sub = (fields: Record<string, unknown>): AcpUpdate =>
+		({ sessionUpdate: "subagent_update", ...fields }) as unknown as AcpUpdate;
+
+	it("maps ACP sub-agent states to the four PrismaLens shows", () => {
+		expect(subagentState({ state: "running" })).toBe("running");
+		expect(subagentState({ state: "requires_action" })).toBe("running");
+		expect(subagentState({ state: "idle", stopReason: "end_turn" })).toBe("completed");
+		expect(subagentState({ state: "idle" })).toBe("completed");
+		expect(subagentState({ state: "idle", stopReason: "cancelled" })).toBe("cancelled");
+		expect(subagentState({ state: "idle", stopReason: "error" })).toBe("failed");
+		expect(subagentState({ state: "unknown" })).toBe("failed");
+		expect(subagentState(null)).toBeNull();
+		expect(subagentState(undefined)).toBeNull();
+	});
+
+	it("Given a child of a child, Then its steps nest under both and its record sits in its parent's lane", () => {
+		const a = new AcpAdapter(ctx);
+		const started = a.events(sub({ sessionId: "c1", title: "Outer", description: "do x", capabilities: { cancel: {} } }));
+		expect(started).toEqual([
+			expect.objectContaining({ kind: "subagent", phase: "started", sessionId: "c1", title: "Outer", task: "do x", canCancel: true, state: "running", path: [] }),
+		]);
+		const inner = a.events(sub({ sessionId: "c2", title: "Inner" }), "c1");
+		expect(inner[0]).toMatchObject({ kind: "subagent", sessionId: "c2", path: ["c1"], canCancel: false });
+		const [step, line] = a.events({ ...lsToolCall, toolCallId: "t-inner" }, "c2");
+		expect(step).toMatchObject({ kind: "agent_step", path: ["c1", "c2"], label: "Inner" });
+		expect(line).toMatchObject({ kind: "subagent", phase: "step", sessionId: "c2", path: ["c1"] });
+		expect(a.askSource("c2")).toEqual({ kind: "subagent", sessionId: "c2", title: "Inner" });
+		expect(a.askSource()).toEqual({ kind: "agent" });
+		for (const e of [...started, ...inner, step]) expect(CanonicalEventSchema.safeParse(e).success).toBe(true);
+	});
+
+	it("Given a child that says more than 200 KB, Then its text stops at the cap, the cap is said once, and the top's text is never capped", () => {
+		const a = new AcpAdapter(ctx);
+		a.events(sub({ sessionId: "c1", title: "Chatty" }));
+		const big = "x".repeat(150 * 1024);
+		const chunk = (s: string): AcpUpdate => ({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: s } });
+		expect(a.events(chunk(big), "c1")).toEqual([]);
+		const capped = a.events(chunk(big), "c1");
+		expect(capped).toEqual([expect.objectContaining({ kind: "subagent", textCapped: true })]);
+		expect(a.events(chunk(big), "c1")).toEqual([]);
+		a.events(chunk(big));
+		a.events(chunk(big));
+		const top = a.flushText();
+		expect(top?.kind === "agent_step" && top.text.length).toBe(2 * big.length);
+		const ended = a.endSubagents(false);
+		const child = ended.find((e) => e.kind === "agent_step");
+		expect(child?.kind === "agent_step" && child.text.length).toBe(200 * 1024);
+		expect(ended.at(-1)).toMatchObject({ kind: "subagent", phase: "state", state: "completed" });
+	});
+
+	it("Given the run is stopped with a child running, Then it ends cancelled; one already done is left as it was", () => {
+		const a = new AcpAdapter(ctx);
+		a.events(sub({ sessionId: "c1", title: "A" }));
+		a.events(sub({ sessionId: "c2", title: "B" }));
+		a.events(sub({ sessionId: "c2", state: { state: "idle", stopReason: "end_turn" } }));
+		expect(a.endSubagents(true).map((e) => e.kind === "subagent" && [e.sessionId, e.state])).toEqual([["c1", "cancelled"]]);
+	});
+
+	it("Given a later update with no change, Then nothing is emitted; a new title relabels the lane", () => {
+		const a = new AcpAdapter(ctx);
+		a.events(sub({ sessionId: "c1" }));
+		expect(a.events(sub({ sessionId: "c1" }))).toEqual([]);
+		expect(a.events(sub({ sessionId: "c1", title: "Named" }))[0]).toMatchObject({ phase: "state", title: "Named" });
+		expect(a.events({ ...lsToolCall, toolCallId: "t2" }, "c1")[0]).toMatchObject({ label: "Named" });
+		expect(a.events(sub({}))).toEqual([]);
+	});
+});
+
+
+describe("AcpAdapter thinking with sub-agents (#1025)", () => {
+	const think = (text: string): AcpUpdate => ({
+		sessionUpdate: "agent_thought_chunk",
+		content: { type: "text", text },
+	});
+
+	it("Given the main agent's thought, a sub-agent's thought and step, then a main step, Then one thought carries only the main text, ahead of the main step, and none sits in the sub-agent's lane", () => {
+		const a = new AcpAdapter(ctx);
+		const seen = [
+			...a.events(think("Main idea.")),
+			...a.events(think("Child idea."), "c1"),
+			...a.events({ ...lsToolCall, toolCallId: "t-child" }, "c1"),
+		];
+		const main = a.events({ ...lsToolCall, toolCallId: "t-main" });
+		const thoughts = [...seen, ...main].filter((e) => e.kind === "thought");
+		expect(thoughts).toHaveLength(1);
+		expect(thoughts[0]).toMatchObject({ text: "Main idea.", path: [] });
+		expect(main.map((e) => e.kind)).toEqual(["thought", "agent_step"]);
+		expect(seen.some((e) => e.kind === "thought")).toBe(false);
 	});
 });

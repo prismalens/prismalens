@@ -2697,7 +2697,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 			ports,
 		);
-		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), undefined, { subject: "incident", owes: "report" });
+		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), undefined, expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const updateCall = findWorkspaceCall(updateStatus);
 		const parsed = JSON.parse(updateCall[1].workspace ?? "{}");
@@ -2779,7 +2779,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date), { subject: "incident", owes: "report" });
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234", expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe("prismalens-reused1234");
@@ -2859,7 +2859,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			ports,
 		);
 
-		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date), { subject: "incident", owes: "report" });
+		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/), expect.any(String), expect.any(Date), expect.objectContaining({ subject: "incident", owes: "report", attended: true }));
 		const leasedName = lease.mock.calls[0]?.[1];
 		const followUpCall = findWorkspaceCall(followUpStatus);
 		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
@@ -3520,7 +3520,7 @@ describe("a schedule on a project, a service or nothing (#1020)", () => {
 		});
 		expect(opts.context.service).toBeUndefined();
 		expect(vi.mocked(ports.resolveConnectors)).toHaveBeenCalledWith(undefined);
-		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "schedule", owes: "report" });
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toMatchObject({ subject: "schedule", owes: "report", attended: false });
 	});
 
 	it("Report off: the saved text opens a chat about the subject, which owes an answer", async () => {
@@ -3535,13 +3535,13 @@ describe("a schedule on a project, a service or nothing (#1020)", () => {
 		expect(opts.kind).toBe("chat");
 		expect(opts.brief).toBe("Run the tests and say what broke.");
 		expect(opts.context).toMatchObject({ mode: "project-chat", thread: { subject: "project", name: "shop-monorepo" } });
-		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "schedule", owes: "answer" });
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toMatchObject({ subject: "schedule", owes: "answer", attended: false });
 	});
 
 	it("a no-code schedule's run is offered only the tools a no-subject thread gets", async () => {
 		const ports = leased();
 		await runInvestigationJob({ id: "job-sched", investigationId: "inv-sched", attempts: 1 }, data({ scheduled: onNothing }), io(), ports);
-		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toEqual({ subject: "none", owes: "report" });
+		expect(vi.mocked(ports.gateway!.lease).mock.calls[0]?.[4]).toMatchObject({ subject: "none", owes: "report", attended: false });
 	});
 
 	it("hands the schedule's remembered asks to the run, and none when it has none", async () => {

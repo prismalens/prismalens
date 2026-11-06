@@ -23,6 +23,8 @@ export interface PermissionOption {
 
 export interface PermissionRequest {
 	options: PermissionOption[];
+	/** The sub-agent session that asked; absent for the main session (#1025). */
+	sessionId?: string;
 	toolCall?: {
 		title?: string;
 		toolCallId?: string;

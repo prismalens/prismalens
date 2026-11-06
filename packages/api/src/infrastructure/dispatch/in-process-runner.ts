@@ -48,6 +48,8 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 
 		const controller = new AbortController();
 		const steer = createSteerChannel();
+		/** The live session's per-sub-agent cancel, once the run registers it (#1025). */
+		let stopSubagent: ((sessionId: string) => boolean) | null = null;
 		// Every ask waits on the operator; the row shows it so the board, the band and a notification can (#673 w21).
 		const asks = createAskChannel({
 			onChange: (since) => {
@@ -103,6 +105,14 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 							ctx,
 						),
 				},
+				subagents: {
+					onCancel: (handler) => {
+						stopSubagent = handler;
+						return () => {
+							if (stopSubagent === handler) stopSubagent = null;
+						};
+					},
+				},
 			},
 			ports,
 		)
@@ -143,6 +153,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				return result;
 			},
 			change: (messageId, text) => steer.change(messageId, text),
+			cancelSubagent: (sessionId) => stopSubagent?.(sessionId) ?? null,
 		};
 	};
 }

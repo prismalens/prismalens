@@ -3,7 +3,7 @@
 
 import type { RecordedHypothesis } from "@prismalens/contracts";
 import { Crosshair, FileDiff, FolderTree, Globe, X } from "lucide-react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { BrowserTab } from "@/components/run/BrowserTab";
 import {
 	type EvidenceFiles,
@@ -16,7 +16,8 @@ import { statusWord } from "@/lib/spine";
 import { cn } from "@/lib/utils";
 import { WorktreeDiff } from "./WorktreeDiff";
 
-export type Surface = "files" | "diff" | "suspects" | "browser";
+/** `subagent` has no tab: a sub-agent's row or node opens it (#1025). */
+export type Surface = "files" | "diff" | "suspects" | "browser" | "subagent";
 
 const SURFACES = [
 	{ id: "files", label: "Files", Icon: FolderTree },
@@ -39,6 +40,7 @@ export function ThreadPanel({
 	diff = true,
 	files,
 	suspects,
+	subagent,
 }: {
 	surface: Surface | null;
 	onSurface: (s: Surface) => void;
@@ -51,6 +53,8 @@ export function ThreadPanel({
 	files: EvidenceFiles;
 	/** In the order the agent first recorded them; each at its latest status. */
 	suspects: RecordedHypothesis[];
+	/** The sub-agent view the `subagent` surface shows. */
+	subagent?: ReactNode;
 }) {
 	const shown = SURFACES.filter(
 		(s) => (investigation || s.id !== "suspects") && (diff || s.id !== "diff"),
@@ -108,13 +112,24 @@ export function ThreadPanel({
 			<div
 				role="tabpanel"
 				id="surface-panel"
-				aria-labelledby={surface ? `surface-tab-${surface}` : undefined}
-				aria-label={surface ? undefined : "Surfaces"}
+				aria-labelledby={
+					surface && surface !== "subagent"
+						? `surface-tab-${surface}`
+						: undefined
+				}
+				aria-label={
+					surface === "subagent"
+						? "Sub-agent"
+						: surface
+							? undefined
+							: "Surfaces"
+				}
 				className="flex min-h-0 flex-1 flex-col"
 			>
 				{surface === null ||
 				(surface === "diff" && !diff) ||
-				(surface === "suspects" && !investigation) ? (
+				(surface === "suspects" && !investigation) ||
+				(surface === "subagent" && !subagent) ? (
 					<Empty
 						className="justify-center px-3 pt-8"
 						text="Open a surface"
@@ -126,6 +141,8 @@ export function ThreadPanel({
 					<WorktreeDiff runId={runId} live={live} />
 				) : surface === "suspects" ? (
 					<Suspects suspects={suspects} />
+				) : surface === "subagent" ? (
+					subagent
 				) : (
 					<BrowserTab links={files.links} />
 				)}

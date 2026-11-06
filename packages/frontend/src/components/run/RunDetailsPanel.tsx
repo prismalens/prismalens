@@ -128,7 +128,10 @@ export function RunDetailsPanel({
 	summaryTop,
 	contextTop,
 	incident,
+	subagent,
 }: {
+	/** One sub-agent's view, shown in place of the tabs (#1025). */
+	subagent?: ReactNode;
 	/** An incident thread's impact, fixes, finding and changes, beside the transcript (#1020). */
 	incident?: ReactNode;
 	/** Above the Context sections: the runbooks the run found (#848). */
@@ -234,182 +237,186 @@ export function RunDetailsPanel({
 				</Button>
 				<h2 className="min-w-0 flex-1 truncate text-heading">{title}</h2>
 			</div>
-			<TabsPrimitive.Root
-				value={tab}
-				onValueChange={(v) => onTab(v as DetailsTab)}
-				className="flex min-h-0 flex-1 flex-col"
-			>
-				<div className="relative flex h-9 shrink-0 items-center px-2 max-[359px]:px-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
-					<TabsPrimitive.List
-						aria-label={title}
-						data-scroll-x
-						className="flex min-w-0 gap-0.5 max-[359px]:gap-0 self-end overflow-x-auto [scrollbar-width:none]"
-					>
-						{tabs.map((t) => {
-							const Icon = TAB_ICON[t.id];
-							// The hint sits on the icon: on the trigger it would take over the tab's data-state.
-							return (
-								<TabsPrimitive.Trigger
-									key={t.id}
-									value={t.id}
-									aria-label={t.aria}
-									className="group relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
-									data-testid={`run-details-tab-${t.id}`}
-									onFocus={(e) =>
-										e.currentTarget.matches(":focus-visible") &&
-										setFocused(t.id)
-									}
-									onBlur={() => setFocused(null)}
-								>
-									<Hint label={t.label} open={focused === t.id}>
-										<span className="flex">
-											<Icon className="size-4" aria-hidden />
-										</span>
-									</Hint>
-									{/* No hover, no hint: a touch screen names the open tab (all six would not fit 320 px). */}
-									<span
-										className="ml-1 hidden text-meta [@media(hover:none)]:group-data-[state=active]:inline"
-										data-testid={`run-details-label-${t.id}`}
+			{subagent ?? (
+				<TabsPrimitive.Root
+					value={tab}
+					onValueChange={(v) => onTab(v as DetailsTab)}
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<div className="relative flex h-9 shrink-0 items-center px-2 max-[359px]:px-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
+						<TabsPrimitive.List
+							aria-label={title}
+							data-scroll-x
+							className="flex min-w-0 gap-0.5 max-[359px]:gap-0 self-end overflow-x-auto [scrollbar-width:none]"
+						>
+							{tabs.map((t) => {
+								const Icon = TAB_ICON[t.id];
+								// The hint sits on the icon: on the trigger it would take over the tab's data-state.
+								return (
+									<TabsPrimitive.Trigger
+										key={t.id}
+										value={t.id}
+										aria-label={t.aria}
+										className="group relative inline-flex h-[26px] items-center rounded-t-control px-1.5 text-text-2 min-[360px]:max-md:px-1 max-[359px]:px-0.5 max-[359px]:text-meta transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+										data-testid={`run-details-tab-${t.id}`}
+										onFocus={(e) =>
+											e.currentTarget.matches(":focus-visible") &&
+											setFocused(t.id)
+										}
+										onBlur={() => setFocused(null)}
 									>
-										{t.label}
-									</span>
-									{t.aside}
-								</TabsPrimitive.Trigger>
-							);
-						})}
-					</TabsPrimitive.List>
-				</div>
-				<TabsPrimitive.Content
-					value="files"
-					className="flex min-h-0 flex-1 flex-col"
-					data-testid="run-details-files"
-				>
-					<FilesPane files={files} onJump={onJump} />
-				</TabsPrimitive.Content>
-				<TabsPrimitive.Content
-					value="browser"
-					className="flex min-h-0 flex-1 flex-col"
-					data-testid="run-details-browser"
-				>
-					<BrowserTab links={files.links} />
-				</TabsPrimitive.Content>
-				<TabsPrimitive.Content
-					value="changes"
-					className="flex min-h-0 flex-1 flex-col"
-					data-testid="run-details-changes"
-				>
-					<ChangesTab
-						key={files.runId}
-						runId={files.runId}
-						workspace={files.workspace}
-					/>
-				</TabsPrimitive.Content>
-				{incident && (
+										<Hint label={t.label} open={focused === t.id}>
+											<span className="flex">
+												<Icon className="size-4" aria-hidden />
+											</span>
+										</Hint>
+										{/* No hover, no hint: a touch screen names the open tab (all six would not fit 320 px). */}
+										<span
+											className="ml-1 hidden text-meta [@media(hover:none)]:group-data-[state=active]:inline"
+											data-testid={`run-details-label-${t.id}`}
+										>
+											{t.label}
+										</span>
+										{t.aside}
+									</TabsPrimitive.Trigger>
+								);
+							})}
+						</TabsPrimitive.List>
+					</div>
 					<TabsPrimitive.Content
-						value="incident"
-						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
-						data-testid="run-details-incident"
+						value="files"
+						className="flex min-h-0 flex-1 flex-col"
+						data-testid="run-details-files"
 					>
-						{incident}
+						<FilesPane files={files} onJump={onJump} />
 					</TabsPrimitive.Content>
-				)}
-				{(["summary", "context"] as const).map((id) => (
 					<TabsPrimitive.Content
-						key={id}
-						value={id}
-						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
-						data-testid={`run-details-${id}`}
+						value="browser"
+						className="flex min-h-0 flex-1 flex-col"
+						data-testid="run-details-browser"
 					>
-						{id === "summary" && summaryTop}
-						{id === "context" && contextTop}
-						<Sections
-							sections={id === "summary" ? [...summary, ...evidence] : context}
-							incidentId={incidentId}
-							onJump={onJump}
-							onOpenFile={files.onOpen}
-							onOpenHypotheses={files.onOpenHypotheses}
+						<BrowserTab links={files.links} />
+					</TabsPrimitive.Content>
+					<TabsPrimitive.Content
+						value="changes"
+						className="flex min-h-0 flex-1 flex-col"
+						data-testid="run-details-changes"
+					>
+						<ChangesTab
+							key={files.runId}
+							runId={files.runId}
+							workspace={files.workspace}
 						/>
 					</TabsPrimitive.Content>
-				))}
-				<TabsPrimitive.Content
-					value="steps"
-					className="flex min-h-0 flex-1 flex-col"
-					data-testid="run-details-steps"
-				>
-					<fieldset
-						aria-label="Show"
-						className="m-0 flex min-w-0 shrink-0 gap-1 border-0 px-3 pt-2.5 pb-0"
+					{incident && (
+						<TabsPrimitive.Content
+							value="incident"
+							className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
+							data-testid="run-details-incident"
+						>
+							{incident}
+						</TabsPrimitive.Content>
+					)}
+					{(["summary", "context"] as const).map((id) => (
+						<TabsPrimitive.Content
+							key={id}
+							value={id}
+							className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
+							data-testid={`run-details-${id}`}
+						>
+							{id === "summary" && summaryTop}
+							{id === "context" && contextTop}
+							<Sections
+								sections={
+									id === "summary" ? [...summary, ...evidence] : context
+								}
+								incidentId={incidentId}
+								onJump={onJump}
+								onOpenFile={files.onOpen}
+								onOpenHypotheses={files.onOpenHypotheses}
+							/>
+						</TabsPrimitive.Content>
+					))}
+					<TabsPrimitive.Content
+						value="steps"
+						className="flex min-h-0 flex-1 flex-col"
+						data-testid="run-details-steps"
 					>
-						{FILTERS.map((f) => (
-							<button
-								key={f.id}
-								type="button"
-								aria-pressed={f.id === filter}
-								onClick={() => setFilter(f.id)}
-								className={cn(
-									"h-6 rounded-[4px] px-2 text-meta transition-colors duration-(--dur-instant)",
-									f.id === filter
-										? "bg-surface-3 text-text-1"
-										: "text-text-2 hover:text-text-1",
-								)}
-								data-testid={`steps-filter-${f.id}`}
-							>
-								{f.label}
-							</button>
-						))}
-					</fieldset>
-					<ol className="m-0 min-h-0 flex-1 list-none overflow-y-auto px-3 pt-3 pb-5">
-						{shown.length === 0 && (
-							<li className="px-2 py-1.5 text-text-2">
-								{steps.length === 0
-									? "This run ran no tools."
-									: "No steps match."}
-							</li>
-						)}
-						{shown.map((s) => {
-							const file = files.stepFile(s);
-							const id = `steps-row-${s.n}`;
-							return (
-								<li key={s.callId}>
-									<button
-										type="button"
-										id={id}
-										// A step that read a file in the clone opens it; any other jumps to the step.
-										onClick={() =>
-											file ? files.onOpen(file, id) : onJump(s.n)
-										}
-										className="flex w-full items-baseline gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
-										data-testid="steps-row"
-										data-step={s.n}
-									>
-										<span className="w-11 shrink-0 text-meta text-text-3">
-											Step {s.n}
-										</span>
-										<span className="flex min-w-0 flex-1 flex-col">
-											<span
-												className={cn(
-													"truncate",
-													s.ok === false ? "text-danger" : "text-text-1",
-												)}
-											>
-												{s.title}
-											</span>
-											{s.title !== s.command && (
-												<span className="truncate font-mono text-mono text-text-3">
-													{s.command}
-												</span>
-											)}
-										</span>
-										<span className="shrink-0 text-meta text-text-3 tabular-nums">
-											{clock(s.at)}
-										</span>
-									</button>
+						<fieldset
+							aria-label="Show"
+							className="m-0 flex min-w-0 shrink-0 gap-1 border-0 px-3 pt-2.5 pb-0"
+						>
+							{FILTERS.map((f) => (
+								<button
+									key={f.id}
+									type="button"
+									aria-pressed={f.id === filter}
+									onClick={() => setFilter(f.id)}
+									className={cn(
+										"h-6 rounded-[4px] px-2 text-meta transition-colors duration-(--dur-instant)",
+										f.id === filter
+											? "bg-surface-3 text-text-1"
+											: "text-text-2 hover:text-text-1",
+									)}
+									data-testid={`steps-filter-${f.id}`}
+								>
+									{f.label}
+								</button>
+							))}
+						</fieldset>
+						<ol className="m-0 min-h-0 flex-1 list-none overflow-y-auto px-3 pt-3 pb-5">
+							{shown.length === 0 && (
+								<li className="px-2 py-1.5 text-text-2">
+									{steps.length === 0
+										? "This run ran no tools."
+										: "No steps match."}
 								</li>
-							);
-						})}
-					</ol>
-				</TabsPrimitive.Content>
-			</TabsPrimitive.Root>
+							)}
+							{shown.map((s) => {
+								const file = files.stepFile(s);
+								const id = `steps-row-${s.n}`;
+								return (
+									<li key={s.callId}>
+										<button
+											type="button"
+											id={id}
+											// A step that read a file in the clone opens it; any other jumps to the step.
+											onClick={() =>
+												file ? files.onOpen(file, id) : onJump(s.n)
+											}
+											className="flex w-full items-baseline gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
+											data-testid="steps-row"
+											data-step={s.n}
+										>
+											<span className="w-11 shrink-0 text-meta text-text-3">
+												Step {s.n}
+											</span>
+											<span className="flex min-w-0 flex-1 flex-col">
+												<span
+													className={cn(
+														"truncate",
+														s.ok === false ? "text-danger" : "text-text-1",
+													)}
+												>
+													{s.title}
+												</span>
+												{s.title !== s.command && (
+													<span className="truncate font-mono text-mono text-text-3">
+														{s.command}
+													</span>
+												)}
+											</span>
+											<span className="shrink-0 text-meta text-text-3 tabular-nums">
+												{clock(s.at)}
+											</span>
+										</button>
+									</li>
+								);
+							})}
+						</ol>
+					</TabsPrimitive.Content>
+				</TabsPrimitive.Root>
+			)}
 		</div>
 	);
 }

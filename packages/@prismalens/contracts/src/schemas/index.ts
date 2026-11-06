@@ -38,6 +38,7 @@ export * from "./source-credential.js";
 export * from "./source-type.js";
 export * from "./state-labels.js";
 export * from "./state-semantics.js";
+export * from "./subagents.js";
 export * from "./terminal.js";
 export * from "./thread.js";
 export * from "./thread-context.js";

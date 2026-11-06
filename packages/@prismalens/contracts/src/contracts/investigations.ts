@@ -9,6 +9,10 @@ import { z } from "zod";
 import {
 	AnswerAskResultSchema,
 	AnswerAskSchema,
+	AnswerSecretResultSchema,
+	AnswerSecretSchema,
+	CancelSubagentResultSchema,
+	CancelSubagentSchema,
 	CompactInvestigationSchema,
 	CreateInvestigationSchema,
 	EditQueuedMessageSchema,
@@ -230,6 +234,47 @@ export const investigationsContract = {
 			FORBIDDEN: {
 				message: "Only this machine's own session can answer this ask",
 			},
+		}),
+
+	/**
+	 * Stop one sub-agent the agent started in its session (#1025). Host only, and
+	 * only when the agent granted that sub-agent's cancel.
+	 * POST /investigations/:id/subagents/:sessionId/cancel
+	 */
+	cancelSubagent: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/subagents/{sessionId}/cancel",
+			summary: "Stop one sub-agent, when its agent allows it",
+			tags: ["investigations"],
+		})
+		.input(CancelSubagentSchema)
+		.output(CancelSubagentResultSchema)
+		.errors({
+			CONFLICT: { message: "The sub-agent is not running, or its run ended" },
+			FORBIDDEN: {
+				message:
+					"Only this machine's own session can stop it, and only when its agent allows",
+			},
+		}),
+
+	/**
+	 * Hand a run the secret it asked for (#1024 spec B). Write-only and host only:
+	 * nothing answers the value back, and no event, log or push carries it.
+	 * POST /investigations/:id/secrets/:requestId
+	 */
+	answerSecret: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/secrets/{requestId}",
+			summary: "Give a run the secret it asked for, write-only",
+			tags: ["investigations"],
+		})
+		.input(AnswerSecretSchema)
+		.output(AnswerSecretResultSchema)
+		.errors({
+			CONFLICT: { message: "The request is no longer waiting" },
+			FORBIDDEN: { message: "Only this machine's own session can answer this" },
 		}),
 
 	/**

@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Injectable, Optional } from "@nestjs/common";
-import { HttpAdapterHost } from "@nestjs/core";
+import { HttpAdapterHost, ModuleRef } from "@nestjs/core";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
@@ -53,6 +53,7 @@ import {
 	readRunbook,
 } from "./runbooks.js";
 import {
+	type AsksData,
 	type AttachmentItem,
 	type ChangeItem,
 	type GatewayToolData,
@@ -69,6 +70,7 @@ import {
 	type ThreadTreeData,
 	type ThreadView,
 	type TimelineItem,
+	TOOL_ASKS,
 } from "./tools/index.js";
 
 /** The route, under the global `api` prefix: one path per run. */
@@ -264,6 +266,7 @@ export class GatewayService {
 	constructor(
 		private readonly prisma: PrismaService,
 		@Optional() private readonly http?: HttpAdapterHost,
+		@Optional() private readonly moduleRef?: ModuleRef,
 	) {
 		this.tools = gatewayTools(this.data);
 	}
@@ -490,7 +493,28 @@ export class GatewayService {
 		return `${protocol}://${host}:${address.port}`;
 	}
 
+	/** ToolAsksService, looked up at call time; absent outside the full app. */
+	private toolAsks(): AsksData | null {
+		try {
+			return (
+				this.moduleRef?.get<AsksData>(TOOL_ASKS, { strict: false }) ?? null
+			);
+		} catch {
+			return null;
+		}
+	}
+
 	readonly data: GatewayToolData = {
+		asks: {
+			question: async (runId, questions) =>
+				(await this.toolAsks()?.question(runId, questions)) ?? {
+					error: "PrismaLens cannot ask the user here.",
+				},
+			secret: async (runId, input) =>
+				(await this.toolAsks()?.secret(runId, input)) ?? {
+					error: "PrismaLens cannot ask the user here.",
+				},
+		},
 		runbooks: {
 			list: async (runId, service) =>
 				(await this.runbooksEnabled())

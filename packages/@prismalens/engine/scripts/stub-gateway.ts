@@ -21,6 +21,7 @@ import {
 	harnessMcpServer,
 	harnessPromptLine,
 	runView,
+	servedTo,
 } from "@prismalens/integrations/harness";
 import {
 	type EvidenceInput,
@@ -319,6 +320,13 @@ export async function startStubGateway(
 				createdAt: "2026-01-01T00:00:00.000Z",
 			}),
 		},
+		asks: {
+			question: async () => ({ askId: "00000000-0000-4000-8000-0000000000a5" }),
+			secret: async (_run: string, input: { name: string }) => ({
+				requestId: "00000000-0000-4000-8000-0000000000a6",
+				name: input.name,
+			}),
+		},
 		history: {
 			similar: async () => ({
 				incident: 1,
@@ -396,7 +404,15 @@ export async function startStubGateway(
 			},
 		},
 	});
-	const view = runView(tools, { search });
+	// As the api leases an attended run of this agent; the dock is assumed, so the rows reach the ask tools' direct path (#1024 spec B).
+	const view = runView(
+		servedTo(tools, {
+			attended: true,
+			dock: true,
+			...(opts.harness ? { agent: opts.harness } : {}),
+		}),
+		{ search },
+	);
 	const handler = createMcpHandler(
 		() =>
 			harnessMcpServer({

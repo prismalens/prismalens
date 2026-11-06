@@ -33,6 +33,15 @@ export interface AgentRunEnv {
 	gateway?: { url: string; token: string; name: string };
 }
 
+/**
+ * Where an agent reads one sub-agent limit (#1024 spec B): an env var, a key inside a
+ * JSON env var, or a key in one of the row's config files. Data, applied like `acpEnv`.
+ */
+export type SubagentLimitKey =
+	| { env: string }
+	| { jsonEnv: string; path: readonly string[] }
+	| { configFile: string; path: readonly string[] };
+
 /** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
 export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
 
@@ -84,6 +93,11 @@ export interface AgentDescriptor {
 	resume: boolean;
 	/** The env var naming the agent's own config folder (#907). */
 	configDir?: { envKey: string; shownDefault: string };
+	/** The agent's documented keys for in-session sub-agent limits; absent, the agent sets its own. */
+	subagentLimits?: {
+		depth?: SubagentLimitKey;
+		concurrency?: SubagentLimitKey;
+	};
 }
 
 function noMode(): Record<AccessLevel, LevelFacts> {
@@ -153,6 +167,12 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modeMechanism: "acp",
 		modelVia: "acp",
 		resume: true,
+		subagentLimits: {
+			depth: {
+				configFile: "opencode.json",
+				path: ["experimental", "subagent_depth"],
+			},
+		},
 	},
 	"claude-code": {
 		id: "claude-code",
@@ -216,6 +236,10 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		signInAtFirstTurn: true,
 		resume: true,
 		configDir: { envKey: "CLAUDE_CONFIG_DIR", shownDefault: "~/.claude" },
+		subagentLimits: {
+			depth: { env: "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH" },
+			concurrency: { env: "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS" },
+		},
 	},
 	codex: {
 		id: "codex",
@@ -255,6 +279,11 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 		modelVia: "acp",
 		resume: true,
 		configDir: { envKey: "CODEX_HOME", shownDefault: "~/.codex" },
+		// codex-acp takes Codex's `agents.max_depth` / `max_threads` through CODEX_CONFIG, not `-c` (README, Runtime options).
+		subagentLimits: {
+			depth: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_depth"] },
+			concurrency: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_threads"] },
+		},
 	},
 	gemini: {
 		id: "gemini",

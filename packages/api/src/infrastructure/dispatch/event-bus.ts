@@ -100,6 +100,16 @@ export interface RunAskRequest {
 	reply(result: AskResult | "invalid" | null): void;
 }
 
+export function runSubagentTopic(investigationId: string): string {
+	return `investigation:subagent:${investigationId}`;
+}
+
+/** Stop one sub-agent of the run (#1025): `false` when the agent did not grant its cancel. */
+export interface RunSubagentRequest {
+	sessionId: string;
+	reply(result: boolean | null): void;
+}
+
 export function runQueueTopic(investigationId: string): string {
 	return `investigation:queue:${investigationId}`;
 }

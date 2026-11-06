@@ -9,6 +9,7 @@ import { ASKS_PORT } from "../asks/asks.contract.js";
 import { AsksService } from "../asks/asks.service.js";
 import { ComposerModule } from "../composer/composer.module.js";
 import { ReportDeliveryModule } from "../delivery/report-delivery.module.js";
+import { TOOL_ASKS } from "../gateway/tools/asks.js";
 import { IncidentsModule } from "../incidents/incidents.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { OverlayModule } from "../overlay/overlay.module.js";
@@ -21,6 +22,7 @@ import { InvestigationUpdateService } from "./investigation-update.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { StreamRelayService } from "./stream-relay.service.js";
+import { ToolAsksService } from "./tool-asks.service.js";
 
 @Module({
 	imports: [
@@ -44,10 +46,14 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		AttachmentsService,
 		AsksService,
 		{ provide: ASKS_PORT, useExisting: AsksService },
+		ToolAsksService,
+		{ provide: TOOL_ASKS, useExisting: ToolAsksService },
 	],
 	exports: [
 		AsksService,
 		ASKS_PORT,
+		ToolAsksService,
+		TOOL_ASKS,
 		ComposerModule,
 		AttachmentsService,
 		InvestigationsService,

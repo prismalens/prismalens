@@ -28,6 +28,12 @@ import { handoffRecord } from "./handoff-line";
 import { notResumedReason, type RestartVia, restartDivider } from "./restart";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 import { gatewayNode, matchGateway, type NodeKind, outcomeLine } from "./spine";
+import {
+	deriveSubagents,
+	isSubagentStep,
+	laneOf,
+	type SubagentView,
+} from "./subagents";
 
 export type EventIcon =
 	| "activity"
@@ -496,6 +502,8 @@ export type TranscriptItem =
 			at: string;
 	  }
 	| { kind: "thought"; key: string; seconds: number }
+	/** One node where a sub-agent started; its own steps live in its view (#1025). */
+	| { kind: "subagent"; key: string; at: string; agent: SubagentView }
 	/** A page the agent published, drawn where it was published (#871). */
 	| { kind: "artifact"; key: string; artifact: Artifact }
 	| {
@@ -774,6 +782,22 @@ export function deriveTranscript(
 		string,
 		Extract<CanonicalEvent, { kind: "message_queued" }>
 	>();
+	const subagents = new Map(
+		deriveSubagents(events, { ended: run ? !run.live : false }).map((s) => [
+			s.sessionId,
+			s,
+		]),
+	);
+	// An agent that sends sub-agent sessions draws each where it started, not where it was delegated.
+	const sessions = Array.from(subagents.values()).some((s) => !s.fallback);
+	const placed = new Set<string>();
+	const placeSubagent = (id: string, key: string) => {
+		const agent = subagents.get(id);
+		if (!agent || placed.has(id)) return;
+		placed.add(id);
+		closeGroup();
+		items.push({ kind: "subagent", key, at: agent.startedAt, agent });
+	};
 
 	const groups: OpenGroup[] = [];
 	const closeGroup = () => {
@@ -829,6 +853,13 @@ export function deriveTranscript(
 			event.kind === "report"
 				? `report-${event.seq}`
 				: `${event.branchId}-${event.seq}`;
+		if (isSubagentStep(event)) {
+			lastTs = event.ts;
+			const head = laneOf(event)[0] as string;
+			if (subagents.get(head)?.fallback && !delegated.has(head))
+				placeSubagent(head, `subagent-${head}`);
+			continue;
+		}
 		if (
 			event.kind === "agent_step" &&
 			lastTs &&
@@ -875,6 +906,11 @@ export function deriveTranscript(
 						continue;
 					if (DELEGATE_TOOL.test(call.name)) {
 						delegated.add(call.toolCallId);
+						if (subagents.get(call.toolCallId)?.fallback) {
+							placeSubagent(call.toolCallId, `subagent-${call.toolCallId}`);
+							continue;
+						}
+						if (sessions) continue;
 						closeGroup();
 						items.push({
 							kind: "line",
@@ -990,6 +1026,10 @@ export function deriveTranscript(
 				items.push(item);
 				break;
 			}
+			case "subagent":
+				if (event.phase === "started" && event.path.length === 0)
+					placeSubagent(event.sessionId, `subagent-${event.sessionId}`);
+				break;
 			case "branch_done":
 				closeGroup();
 				break;
@@ -1301,7 +1341,7 @@ export function runStepText(
 export function latestAgentText(events: CanonicalEvent[]): string | null {
 	for (let i = events.length - 1; i >= 0; i--) {
 		const e = events[i];
-		if (e?.kind !== "agent_step") continue;
+		if (e?.kind !== "agent_step" || laneOf(e).length > 0) continue;
 		const text = agentStepMessage(e.text.trim());
 		if (text && text !== REPORT_DRAFTED && text !== REPORT_CUT) return text;
 	}

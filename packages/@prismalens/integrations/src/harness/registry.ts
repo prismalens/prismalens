@@ -172,7 +172,7 @@ export async function executeTool(
 			tool.run(parsed.data, { runId: ctx.runId, signal }),
 		);
 		try {
-			// A record or act tool is never cut short: a late write after a timeout answer would invite a duplicate.
+			// A tool that writes or asks is never cut short: a late write after a timeout answer would invite a duplicate.
 			outcome = await (tool.effect !== "read"
 				? running
 				: Promise.race([running, timedOut]));

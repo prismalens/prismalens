@@ -27,8 +27,24 @@ export interface CallStep {
 	arguments?: Record<string, unknown>;
 }
 
+/** A sub-agent the step starts (#1025): its own session when the client declares sub-agents. */
+export interface SubagentStep {
+	/** Its ACP session id; with no sub-agent sessions, the parentToolUseId its steps carry. */
+	id: string;
+	title: string;
+	description?: string;
+	/** Grants the client `capabilities.cancel` for it. */
+	cancel?: boolean;
+	steps: Step[];
+	/** Its stopReason when its steps end on their own. */
+	end?: "end_turn" | "error";
+}
+
 export interface Step {
 	delayMs?: number;
+	/** Stamps the step's updates with `_meta.claudeCode.parentToolUseId` (#1025). */
+	parent?: string;
+	subagent?: SubagentStep;
 	say?: string;
 	think?: string;
 	update?: Record<string, unknown>;

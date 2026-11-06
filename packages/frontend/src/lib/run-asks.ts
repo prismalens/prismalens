@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	AskSource,
 	CanonicalEvent,
 	PermissionAskOutcome,
 } from "@prismalens/contracts";
@@ -29,6 +30,13 @@ export interface AskRecord {
 	state: AskState;
 	/** The step it asked about; none when the agent named no call the run made. */
 	step?: number;
+	/** Who asked; absent is the main agent (#1025). */
+	source?: AskSource;
+}
+
+/** Who an ask is from: the sub-agent's title, else the agent's name. */
+export function askWho(ask: Pick<AskRecord, "source">, agent: string): string {
+	return ask.source?.kind === "subagent" ? ask.source.title : agent;
 }
 
 /** How an ask ended, in one line (#673 w21). */
@@ -101,6 +109,7 @@ export function deriveAsks(
 				clamped: e.clamped === true,
 				state: "waiting",
 				...(e.toolCallId ? { call: e.toolCallId } : {}),
+				...(e.source ? { source: e.source } : {}),
 			});
 		else if (e.kind === "permission_answer") {
 			const ask = asks.get(e.askId);

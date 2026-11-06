@@ -983,3 +983,64 @@ describe("run-scoped attachment folder (#1024)", () => {
 		await session.close();
 	});
 });
+
+describe("AcpSession sub-agents (#1025)", () => {
+	/** A harness that answers each request; the test pushes updates on any session. */
+	function childOf() {
+		const sent: Array<{ method?: string; params?: Record<string, unknown> }> = [];
+		const child = quietChild();
+		const stdout = child.stdout as PassThrough;
+		child.stdin = new Writable({
+			write(chunk, _enc, cb) {
+				for (const line of String(chunk).split("\n").filter(Boolean)) {
+					const msg = JSON.parse(line);
+					if (msg.method === undefined) continue;
+					sent.push(msg);
+					if (msg.id === undefined) continue;
+					const result =
+						msg.method === "initialize"
+							? { protocolVersion: 1 }
+							: msg.method === "session/new"
+								? { sessionId: "root" }
+								: {};
+					stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result })}\n`);
+				}
+				cb();
+			},
+		});
+		const notify = (sessionId: string, update: Record<string, unknown>) =>
+			stdout.write(
+				`${JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update } })}\n`,
+			);
+		return { child, sent, notify };
+	}
+	const tick = () => new Promise((r) => setTimeout(r, 10));
+
+	it("Given initialize, Then it declares sub-agent sessions and the sub-agent transcript meta", async () => {
+		const { child, sent } = childOf();
+		await sessionOver(child).open();
+		const init = sent.find((m) => m.method === "initialize");
+		expect(init?.params?.clientCapabilities).toMatchObject({
+			subagents: {},
+			_meta: { "subagent-transcript": true },
+		});
+	});
+
+	it("Given a child the agent granted cancel and one it did not, Then only the granted one gets session/cancel, a revoked grant refuses, and the root's cancel is untouched", async () => {
+		const { child, sent, notify } = childOf();
+		const session = sessionOver(child);
+		await session.open();
+		notify("root", { sessionUpdate: "subagent_update", sessionId: "a", capabilities: { cancel: {} } });
+		notify("root", { sessionUpdate: "subagent_update", sessionId: "b", title: "B" });
+		await tick();
+		expect(session.cancelSubagent("a")).toBe(true);
+		expect(session.cancelSubagent("b")).toBe(false);
+		expect(session.cancelSubagent("never-announced")).toBe(false);
+		notify("root", { sessionUpdate: "subagent_update", sessionId: "a", capabilities: null });
+		await tick();
+		expect(session.cancelSubagent("a")).toBe(false);
+		expect(
+			sent.filter((m) => m.method === "session/cancel").map((m) => m.params?.sessionId),
+		).toEqual(["a"]);
+	});
+});

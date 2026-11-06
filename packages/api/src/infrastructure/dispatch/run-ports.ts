@@ -163,6 +163,8 @@ export interface RunPorts {
 	): Promise<void>;
 	/** How long a question from the agent waits (Settings → Agent); the default when absent (#1024). */
 	questionTimeoutMs?(): Promise<number | undefined>;
+	/** The secrets the user gave this thread through `secret_request`, by variable name, decrypted (#1024 spec B). */
+	requestedSecrets?(runId: string): Promise<Record<string, string>>;
 	/**
 	 * The incident's newest run started after this one, with its `Run #N` and
 	 * the commits it looked at; null when there is none, or it kept no workspace (#673 w27).

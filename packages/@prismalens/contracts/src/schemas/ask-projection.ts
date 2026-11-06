@@ -29,7 +29,7 @@ function legacyAsk(
 		threadId,
 		kind: "permission",
 		requiresHost: false,
-		source: { kind: "agent" },
+		source: e.source ?? { kind: "agent" },
 		title: e.title,
 		detail: e.detail,
 		openedAt: e.ts,
