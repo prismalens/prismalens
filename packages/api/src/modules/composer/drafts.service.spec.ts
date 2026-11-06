@@ -139,14 +139,43 @@ describe("DraftsService (#1024)", () => {
 		});
 	});
 
-	it("two first saves racing: the loser gets 409 carrying the winner's draft (#1024)", async () => {
+	it("two first saves racing: the loser hits P2002 and gets 409 carrying the winner's draft (#1024)", async () => {
 		const { prisma } = fakePrisma();
+		// A barrier: neither save gets past its first read until both have read "no row".
+		const read = prisma.composerDraft.findUnique;
+		let waiting = 0;
+		let release!: () => void;
+		const both = new Promise<void>((r) => {
+			release = r;
+		});
+		prisma.composerDraft.findUnique = async (args) => {
+			const row = await read(args);
+			if (waiting < 2) {
+				waiting++;
+				if (waiting === 2) release();
+				await both;
+			}
+			return row;
+		};
+		const create = prisma.composerDraft.create;
+		const creates: string[] = [];
+		prisma.composerDraft.create = async (args) => {
+			try {
+				const row = await create(args);
+				creates.push("ok");
+				return row;
+			} catch (e) {
+				creates.push((e as { code?: string }).code ?? "error");
+				throw e;
+			}
+		};
 		const drafts = new DraftsService(prisma as never);
 		const [first, second] = await Promise.allSettled([
 			drafts.put(put({ text: "phone" })),
 			drafts.put(put({ text: "laptop" })),
 		]);
-		expect(first).toMatchObject({ status: "fulfilled", value: { text: "phone" } });
+		expect(creates).toEqual(["ok", "P2002"]);
+		expect(first).toMatchObject({ status: "fulfilled", value: { text: "phone", rev: 1 } });
 		expect(second).toMatchObject({
 			status: "rejected",
 			reason: { code: "CONFLICT", data: { current: { text: "phone", rev: 1 } } },
