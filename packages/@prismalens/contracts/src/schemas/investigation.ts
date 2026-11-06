@@ -1854,6 +1854,8 @@ export const ThreadRunSchema = z.object({
 	place: HelperPlaceSchema.nullable().optional(),
 	/** Set when a person chose to work in their own checkout: its top level, as the disk names it (#1024). */
 	checkout: z.string().optional(),
+	/** Set on a thread an agent started; it never borrows a checkout, whatever it carries (#1024). */
+	byAgent: z.boolean().optional(),
 });
 export type ThreadRun = z.infer<typeof ThreadRunSchema>;
 /** A run PrismaLens's restart cut off, taken up again (#981). Carried across boots, never recomputed. */

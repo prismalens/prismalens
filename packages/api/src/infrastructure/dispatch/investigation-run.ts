@@ -667,11 +667,11 @@ async function runJobInternal(
 		if (unvalidated?.investigationId) {
 			ports.gateway?.revoke(unvalidated.investigationId);
 			// A run PrismaLens's own exit cut off keeps its workspace and pid for auto-resume (#981).
-			if (!isShutdown(io.signal)) {
-				await clearRunWorkspace(unvalidated.investigationId);
-				await freeLease(ports, unvalidated.investigationId);
-			}
-			dropReceipt(unvalidated.investigationId, isShutdown(io.signal));
+			await settleRun(
+				ports,
+				unvalidated.investigationId,
+				isShutdown(io.signal),
+			);
 		}
 	}
 }
@@ -1363,11 +1363,7 @@ async function runFollowUp(
 		};
 	} finally {
 		ports.gateway?.revoke(id);
-		if (!isShutdown(io.signal)) {
-			await clearRunWorkspace(id);
-			await freeLease(ports, id);
-		}
-		dropReceipt(id, isShutdown(io.signal));
+		await settleRun(ports, id, isShutdown(io.signal));
 	}
 	// PrismaLens is closing: no end is written, so boot reads this turn as interrupted (#981).
 	if (isShutdown(io.signal)) return interruptedResult(data);
@@ -2310,6 +2306,7 @@ interface Skip {
 export function personStarted(data: InvestigationJobData): boolean {
 	return (
 		data.thread?.subject === "project" &&
+		!data.thread.byAgent &&
 		!data.scheduled &&
 		!data.incidentId &&
 		!data.unattended &&
@@ -2899,16 +2896,40 @@ function keepReceipt(runDir: string, pid: number | undefined): void {
 	}
 }
 
-/** Stops the tree watch; `keepFile` leaves the receipt for the next boot's containment check. */
-/** Where the receipt goes, the agent has exited; a shutdown keeps the lease for boot to settle (#1024). */
-async function freeLease(ports: RunPorts, runId: string): Promise<void> {
-	try {
-		await ports.releaseLease?.(runId);
-	} catch (e) {
-		logger.warn(`Could not release the checkout lease of run ${runId}`, e);
-	}
+/**
+ * The run's agent has exited: its workspace, checkout lease and receipt go. A shutdown keeps
+ * all three for boot. A lease the release missed keeps the receipt, so `previousGone` can still prove the agent gone (#1024).
+ */
+export async function settleRun(
+	ports: Pick<RunPorts, "releaseLease">,
+	runId: string,
+	shutdown: boolean,
+): Promise<void> {
+	if (shutdown) return dropReceipt(runId, true);
+	await clearRunWorkspace(runId);
+	dropReceipt(runId, !(await freeLease(ports, runId)));
 }
 
+/** True once the lease is gone; one retry, since a missed release blocks the checkout until boot. */
+async function freeLease(
+	ports: Pick<RunPorts, "releaseLease">,
+	runId: string,
+): Promise<boolean> {
+	for (let attempt = 1; attempt <= 2; attempt++) {
+		try {
+			await ports.releaseLease?.(runId);
+			return true;
+		} catch (e) {
+			logger.warn(
+				`Could not release the checkout lease of run ${runId} (attempt ${attempt})`,
+				e,
+			);
+		}
+	}
+	return false;
+}
+
+/** Stops the tree watch; `keepFile` leaves the receipt for the next boot's containment check. */
 function dropReceipt(runId: string, keepFile = false): void {
 	const runDir = runDirFor(runId);
 	receiptWatches.get(runDir)?.();

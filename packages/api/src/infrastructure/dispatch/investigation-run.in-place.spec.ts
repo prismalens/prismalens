@@ -24,9 +24,12 @@ const env = await vi.hoisted(async () => {
 	return { root };
 });
 
-const { personStarted, rebuildWorkspace, resolveWorkspace, logBorrowed, writeHandoffTranscript } = await import(
+const { personStarted, rebuildWorkspace, resolveWorkspace, logBorrowed, runDirFor, settleRun, writeHandoffTranscript } =
+	await import(
 	"./investigation-run.js"
 );
+
+const { readReceipt, writeReceipt } = await import("./harness-receipt.js");
 
 const checkout = join(env.root, "shop");
 const git = (...args: string[]) =>
@@ -116,6 +119,44 @@ describe("in-place runs on a git checkout (#1024)", () => {
 		const { checkout: _parents, ...child } = job().thread as NonNullable<InvestigationJobData["thread"]>;
 		const ws = await resolveWorkspace(job({ thread: child as InvestigationJobData["thread"] }), ports);
 		expect(ws.layout).not.toBe("in_place");
+	});
+
+	it("an agent-started run never borrows, even when it carries the parent's checkout", async () => {
+		const child = { ...job().thread, byAgent: true } as InvestigationJobData["thread"];
+		expect(personStarted(job({ thread: child }))).toBe(false);
+		const ws = await resolveWorkspace(job({ thread: child }), ports);
+		expect(ws.layout).not.toBe("in_place");
+	});
+
+	it("a run's end releases its lease, retries once, and keeps the receipt when the release still fails", async () => {
+		const id = "22222222-2222-4222-8222-222222222222";
+		const dir = runDirFor(id);
+		const seed = () => {
+			mkdirSync(dir, { recursive: true });
+			writeReceipt(dir, 4242);
+		};
+		seed();
+		const failing = vi.fn(async () => {
+			throw new Error("database is locked");
+		});
+		await settleRun({ releaseLease: failing }, id, false);
+		expect(failing).toHaveBeenCalledTimes(2);
+		// The receipt stays, so a later previousGone can still prove the agent gone.
+		expect(readReceipt(dir)).not.toBeNull();
+
+		const flaky = vi
+			.fn<(id: string) => Promise<void>>()
+			.mockRejectedValueOnce(new Error("busy"))
+			.mockResolvedValueOnce(undefined);
+		await settleRun({ releaseLease: flaky }, id, false);
+		expect(flaky).toHaveBeenCalledTimes(2);
+		expect(readReceipt(dir)).toBeNull();
+
+		seed();
+		const untouched = vi.fn(async () => {});
+		await settleRun({ releaseLease: untouched }, id, true);
+		expect(untouched).not.toHaveBeenCalled();
+		expect(readReceipt(dir)).not.toBeNull();
 	});
 
 	it("a handoff never removes what the user keeps in the checkout", async () => {
