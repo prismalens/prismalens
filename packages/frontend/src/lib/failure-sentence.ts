@@ -19,18 +19,21 @@ const cut = (line: string) =>
 export function failureStatusLine(
 	agent: string,
 	error: string | null | undefined,
+	hint?: string,
 ): string {
-	const s = failureSentence(agent, error);
+	const s = failureSentence(agent, error, hint);
 	return s.detail && s.next ? `${s.said} ${s.next}` : s.said;
 }
 
 export function failureSentence(
 	agent: string,
 	error: string | null | undefined,
+	/** The agent's sign-in line from its settings, so a signed-out run names the command. */
+	hint?: string,
 ): { said: string; words: string | null; next?: string; detail?: string } {
 	if (!error) return { said: "No error was recorded.", words: null };
 	const line = harnessWords(error).split("\n")[0]?.trim() ?? "";
-	const known = failureWords(error, agent);
+	const known = failureWords(error, agent, hint);
 	if (known.ours || known.plain) {
 		return {
 			said: known.what,

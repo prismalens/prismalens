@@ -234,11 +234,12 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 		expect(document.querySelector('[data-testid="action-chip"]')).toBeNull();
 	});
 
-	it("wraps chips instead of horizontal scrolling (#673 walk 4, QA-06)", async () => {
+	it("wraps chips from sm up; on a phone one row scrolls and no chip shrinks (#1020, #673 QA-06)", async () => {
 		await render({});
 		const chips = q("composer-chips");
-		expect(chips.classList.contains("flex-wrap")).toBe(true);
-		expect(chips.classList.contains("overflow-x-auto")).toBe(false);
+		expect(chips.classList.contains("sm:flex-wrap")).toBe(true);
+		expect(chips.classList.contains("max-sm:overflow-x-auto")).toBe(true);
+		expect(chips.classList.contains("max-sm:[&>*]:shrink-0")).toBe(true);
 	});
 
 	it("Enter sends; Ctrl+Enter sends now only on a live run", async () => {

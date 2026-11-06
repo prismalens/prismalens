@@ -26,8 +26,8 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * The strip under the header (#811): the latest run, its state and what it
- * came to, the agent and model (ruling 4: no credential here), Stop run
- * while live, and the runs menu. The run name opens its transcript.
+ * came to, Stop run while live, and the runs menu; the agent and model live
+ * in the transcript and the box. The run name opens its transcript.
  */
 export function LatestRunStrip({ o }: { o: Overview }) {
 	const now = useNow(1000);
@@ -133,14 +133,6 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 			</span>
 			<span className="shrink-0 text-text-3 max-lg:hidden">{when}</span>
 			<span className="flex-1" />
-			{latest && (
-				<span
-					className="shrink-0 text-text-3 max-xl:hidden"
-					data-testid="latest-run-agent"
-				>
-					{who.agent}, {cap(who.model)}
-				</span>
-			)}
 			{live && (
 				<Button
 					variant="secondary"

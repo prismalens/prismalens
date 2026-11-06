@@ -7,6 +7,7 @@ import { type FileAt, locate } from "./evidence-files";
 
 /** The right panel's tabs, as the URL names them (#973). */
 export const PANEL_TABS = [
+	"incident",
 	"summary",
 	"files",
 	"changes",

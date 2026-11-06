@@ -489,6 +489,20 @@ describe("nextStrip", () => {
 		expect(plain.text).toMatch(/^Every alert has cleared/);
 	});
 
+	it("says a thread with no service has no code to read, and offers to add one", () => {
+		const s = nextStrip({
+			...base,
+			option: null,
+			stage: null,
+			runs: 0,
+			reported: false,
+			noService: true,
+		});
+		expect(s.text).toMatch(/no service is attached/);
+		expect(s.primary?.id).toBe("investigate");
+		expect(s.secondary?.id).toBe("services");
+	});
+
 	it("falls back to the run when there is no option", () => {
 		const none = { ...base, option: null, stage: null };
 		expect(nextStrip({ ...none, runs: 0, reported: false }).primary?.id).toBe(
@@ -518,7 +532,10 @@ describe("nextStrip", () => {
 		expect(nextStrip({ ...none, live: { name: "Run 3" } }).primary?.id).toBe(
 			"watch",
 		);
-		expect(nextStrip(none).text).toMatch(/nothing to undo/);
+		expect(nextStrip(none).text).toBe("The report names a cause but no lasting fix yet.");
+		expect(
+			nextStrip({ ...none, lastingFix: "Restore the books title index." }).text,
+		).toBe("Lasting fix: Restore the books title index.");
 		expect(nextStrip({ ...none, cleared: true }).primary?.id).toBe("resolve");
 	});
 });

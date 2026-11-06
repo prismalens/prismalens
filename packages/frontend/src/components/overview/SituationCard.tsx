@@ -12,7 +12,7 @@ import { Database } from "lucide-react";
 import { Fragment, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
-import { viewName } from "@/components/run/run-labels";
+import { firingWord, viewName } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
@@ -57,7 +57,19 @@ export function SituationCard({
 	o,
 	onAction,
 	canStart = true,
+	compact = false,
+	watching = false,
+	omit = [],
+	limited = false,
 }: {
+	/** Actions the page already offers elsewhere, such as the run strip's Retry. */
+	omit?: NextActionId[];
+	/** The finding rests on code alone: the agent could not read alerts or metrics. */
+	limited?: boolean;
+	/** The page already shows the live run, so Watch would go nowhere. */
+	watching?: boolean;
+	/** Above a transcript: two lines of brief and no dependencies line (#1020). */
+	compact?: boolean;
 	o: Overview;
 	onAction: (id: NextActionId) => void;
 	/** The box's agent is known; until then a start would send no harness. */
@@ -84,12 +96,20 @@ export function SituationCard({
 		}).lines.join(" ");
 
 	const trend = firingOf(incident, now);
+	const serviceNames = incidentServices(incident).map((s) => s.name);
+	const where =
+		serviceNames.length > 0 || (incident.alerts ?? []).length > 0
+			? {
+					services: serviceNames.join(", ") || "No service",
+					firing: firingWord(incident.alerts ?? [], now),
+				}
+			: null;
 	const facts: { k: string; v: string; tone?: string }[] = [];
 	if (trend === "worse")
-		facts.push({ k: "Trend", v: "Getting worse", tone: "text-danger" });
-	else if (trend === "steady") facts.push({ k: "Trend", v: "Steady" });
+		facts.push({ k: "Alert trend", v: "Getting worse", tone: "text-danger" });
+	else if (trend === "steady") facts.push({ k: "Alert trend", v: "Steady" });
 	else if (trend === "clear")
-		facts.push({ k: "Trend", v: "Recovered", tone: "text-ok" });
+		facts.push({ k: "Alert trend", v: "Recovered", tone: "text-ok" });
 	const category = causeCategory(
 		incident.actualCauseCategory,
 		report?.rootCauseCategory,
@@ -103,13 +123,18 @@ export function SituationCard({
 
 	const latest = o.latest;
 	const latestState = o.latestRun.state;
+	const harness = harnesses.data?.harnesses.find(
+		(h) => h.id === latest?.harness,
+	);
 	const ended = endedRun(
 		latest,
 		latestState,
 		latest ? viewName(runs, latest) : "",
-		harnesses.data?.harnesses.find((h) => h.id === latest?.harness)?.label,
+		harness?.label,
+		harness?.loginHint,
 	);
 	const strip = nextStrip({
+		lastingFix: report?.nextSteps?.find((s) => s.kind === "lasting")?.title,
 		ended: incident.status === "closed",
 		cause: incident.actualCause,
 		mergedInto: incident.mergedInto,
@@ -117,6 +142,7 @@ export function SituationCard({
 		cleared: o.cleared,
 		alertsCleared: incident.status === "resolved",
 		runs: runs.filter((r) => r.kind !== "chat").length,
+		noService: incidentServices(incident).length === 0,
 		live: o.live
 			? {
 					name: viewName(runs, o.live),
@@ -134,6 +160,13 @@ export function SituationCard({
 		threshold: o.impact.impact?.metric?.threshold,
 		flagged: o.flagged,
 	});
+	const dropped = watching ? [...omit, "watch" as const] : omit;
+	if (strip.primary && dropped.includes(strip.primary.id))
+		strip.primary = undefined;
+	if (strip.secondary && dropped.includes(strip.secondary.id))
+		strip.secondary = undefined;
+	// Beside the live run itself, a Next with nothing to press only repeats the strip above (#1020).
+	const quiet = watching && !strip.primary && !strip.secondary;
 
 	return (
 		<section
@@ -141,14 +174,39 @@ export function SituationCard({
 			className="flex min-w-0 shrink-0 flex-col overflow-hidden rounded-pool bg-surface-1"
 			data-testid="situation"
 		>
+			{compact && where && (
+				// Above a transcript the header may truncate, so the card says what is affected and whether it fires.
+				<p
+					className="flex min-w-0 flex-wrap items-center gap-x-1.5 px-4 pt-2.5 text-meta text-text-3"
+					data-testid="situation-where"
+				>
+					<span className="truncate">{where.services}</span>
+					{where.firing && (
+						<>
+							<span aria-hidden>·</span>
+							<span className={where.firing.firing ? "text-danger" : "text-ok"}>
+								{where.firing.firing ? "Alert still firing" : "Alert cleared"}
+							</span>
+						</>
+					)}
+					{limited && (
+						<>
+							<span aria-hidden>·</span>
+							<span className="text-warn" data-testid="situation-limited">
+								From code only; alerts and metrics not read
+							</span>
+						</>
+					)}
+				</p>
+			)}
 			<div className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2">
 				<button
 					type="button"
 					onClick={() => setOpen((v) => !v)}
 					aria-expanded={open}
 					className={cn(
-						"min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
-						!open && "line-clamp-3",
+						"min-h-6 min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
+						!open && (compact ? "line-clamp-2" : "line-clamp-3"),
 						!report && "text-text-2",
 					)}
 					dir="auto"
@@ -158,7 +216,11 @@ export function SituationCard({
 				</button>
 				{facts.length > 0 && (
 					<dl
-						className="flex min-w-0 shrink flex-wrap justify-end gap-x-6 gap-y-1"
+						className={cn(
+							"flex min-w-0 shrink flex-wrap justify-end gap-x-6 gap-y-1",
+							// Above a phone's transcript the brief and Next are enough; the facts are in the panel.
+							compact && "max-sm:hidden",
+						)}
 						data-testid="situation-facts"
 					>
 						{facts.slice(0, 4).map((f) => (
@@ -172,63 +234,70 @@ export function SituationCard({
 					</dl>
 				)}
 			</div>
-			<DependsLine deps={o.dependencies} />
-			<div
-				className={cn(
-					"flex min-h-11 items-center gap-2.5 py-2 pr-3 pl-4",
-					TONE_BG[strip.tone],
-				)}
-				data-testid="next-strip"
-				data-tone={strip.tone}
-			>
-				<span className="shrink-0 text-meta font-medium text-text-3">Next</span>
-				<span
-					aria-hidden
-					className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[strip.tone])}
-				/>
-				<span
-					className="min-w-0 flex-1 text-text-1"
-					dir="auto"
-					aria-live="polite"
-					data-testid="next-text"
-				>
-					{strip.text}
-					{strip.link && (
-						<>
-							{" "}
-							<Link
-								to="/incidents/$id"
-								params={{ id: strip.link.incidentId }}
-								className="font-medium underline-offset-2 hover:underline"
-								data-testid="next-refire"
-							>
-								{strip.link.label}
-							</Link>
-						</>
+			{!compact && <DependsLine deps={o.dependencies} />}
+			{!quiet && (
+				<div
+					className={cn(
+						"flex min-h-11 items-center gap-2.5 py-2 pr-3 pl-4",
+						TONE_BG[strip.tone],
 					)}
-				</span>
-				{strip.secondary && (
-					<Button
-						variant="secondary"
-						className="h-7 shrink-0 bg-surface-3 hover:bg-surface-4"
-						onClick={() => strip.secondary && onAction(strip.secondary.id)}
-						disabled={o.busy || (startsRun(strip.secondary.id) && !canStart)}
-						data-testid={`next-${strip.secondary.id}`}
+					data-testid="next-strip"
+					data-tone={strip.tone}
+				>
+					<span className="shrink-0 text-meta font-medium text-text-3">
+						Next
+					</span>
+					<span
+						aria-hidden
+						className={cn(
+							"size-1.5 shrink-0 rounded-full",
+							TONE_DOT[strip.tone],
+						)}
+					/>
+					<span
+						className="min-w-0 flex-1 text-text-1"
+						dir="auto"
+						aria-live="polite"
+						data-testid="next-text"
 					>
-						{strip.secondary.label}
-					</Button>
-				)}
-				{strip.primary && (
-					<Button
-						className="h-7 shrink-0"
-						onClick={() => strip.primary && onAction(strip.primary.id)}
-						disabled={o.busy || (startsRun(strip.primary.id) && !canStart)}
-						data-testid={`next-${strip.primary.id}`}
-					>
-						{strip.primary.label}
-					</Button>
-				)}
-			</div>
+						{strip.text}
+						{strip.link && (
+							<>
+								{" "}
+								<Link
+									to="/incidents/$id"
+									params={{ id: strip.link.incidentId }}
+									className="font-medium underline-offset-2 hover:underline"
+									data-testid="next-refire"
+								>
+									{strip.link.label}
+								</Link>
+							</>
+						)}
+					</span>
+					{strip.secondary && (
+						<Button
+							variant="secondary"
+							className="h-7 shrink-0 bg-surface-3 hover:bg-surface-4"
+							onClick={() => strip.secondary && onAction(strip.secondary.id)}
+							disabled={o.busy || (startsRun(strip.secondary.id) && !canStart)}
+							data-testid={`next-${strip.secondary.id}`}
+						>
+							{strip.secondary.label}
+						</Button>
+					)}
+					{strip.primary && (
+						<Button
+							className="h-7 shrink-0"
+							onClick={() => strip.primary && onAction(strip.primary.id)}
+							disabled={o.busy || (startsRun(strip.primary.id) && !canStart)}
+							data-testid={`next-${strip.primary.id}`}
+						>
+							{strip.primary.label}
+						</Button>
+					)}
+				</div>
+			)}
 		</section>
 	);
 }

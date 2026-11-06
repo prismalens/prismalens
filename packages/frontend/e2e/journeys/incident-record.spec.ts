@@ -14,7 +14,7 @@ import {
 	setTheme,
 } from "./live-stream-fixtures";
 import { settled } from "./settled";
-import { investigateButton, pickAction } from "./verb";
+import { investigateButton } from "./verb";
 
 /**
  * #743, #673 — the incident: a band that never scrolls, one reading column
@@ -29,6 +29,7 @@ import { investigateButton, pickAction } from "./verb";
  * fakes the `running` status elsewhere.
  */
 const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
+const NO_RUN_INCIDENT = "b0333333-3333-4333-8333-333333333333";
 
 async function createIncident(page: Page, title: string): Promise<string> {
 	const created = await page.request.post("/api/incidents", {
@@ -58,7 +59,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		const header = page.getByTestId("incident-header");
 		await expect(header).toBeVisible({ timeout: 15_000 });
 		await expect(header).toContainText("INC-1");
-		await expect(header.getByTestId("crumb-view")).toHaveText("Overview");
+		await expect(header.getByTestId("crumb-view")).toHaveText("Run 1");
 		await expect(header.getByTestId("header-severity")).toHaveText("Critical");
 		await expect(
 			header.getByRole("link", {
@@ -66,19 +67,14 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			}),
 		).toBeVisible();
 
-		// Latest run strip under the header
-		const strip = page.getByTestId("latest-run-strip");
-		await expect(strip).toBeVisible();
-		await expect(page.getByTestId("latest-run-link")).toContainText(
-			"concluded",
-		);
-		await expect(page.getByTestId("latest-run-detail")).toContainText(
-			"Likely cause found",
-		);
+		// The summary card is above the transcript
+		await expect(page.getByTestId("situation")).toBeVisible();
 
-		// The sections / cards on overview
+		// The sections / cards on overview live under the Incident tab in details panel
+		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("run-details-tab-incident").click();
+		await expect(page.getByTestId("run-details-incident")).toBeVisible();
 		const cardIds = [
-			"situation",
 			"impact-card",
 			"stop-impact-card",
 			"why-card",
@@ -88,25 +84,23 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			await expect(page.getByTestId(id)).toBeVisible();
 		}
 
-		// A note from the composer lands in changes-timeline
+		// A note from header-more lands in changes-timeline
 		const note = `Design evidence note ${Date.now()}`;
-		await pickAction(page, "note");
-		await page.getByTestId("composer-input").fill(note);
-		await page.getByTestId("composer-send").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("header-note").click();
+		await page.getByTestId("note-text").fill(note);
+		await page.getByTestId("note-save").click();
 		await expect(page.getByTestId("changes-timeline")).toContainText(note);
 
 		await settled(page);
 
-		// The latest run link opens the conversation
-		await page.getByTestId("latest-run-link").click();
-		await expect(page).toHaveURL(
-			new RegExp(`/incidents/${INCIDENT_ID}/conversation\\?investigation=`),
-		);
+		// Transcript
 		await expect(page.getByTestId("run-page")).toBeVisible();
 		const transcript = page.getByTestId("transcript");
 		await expect(transcript.getByTestId("transcript-prose")).toHaveText(
 			"Mapping the connection pool",
 		);
+		await page.getByTestId("tools-expand").first().click();
 		await expect(transcript.getByTestId("step").first()).toBeVisible();
 
 		// The run's facts sit in the run strip under the header; there is no Event log.
@@ -122,18 +116,17 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	test("the chevron returns from the incident to the inbox", async ({
+	test("the chevron returns from the incident to the thread list", async ({
 		page,
 	}) => {
-		await page.goto(`/incidents/${INCIDENT_ID}`);
+		await page.goto(`/incidents/${NO_RUN_INCIDENT}`);
 		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		// Back chevron in the header returns to the inbox
+		// Back chevron in the header returns to the thread list
 		await page.getByTestId("incident-back").click();
-		await expect(page).toHaveURL(/\/incidents$/);
-		await expect(page.getByTestId("inbox")).toBeVisible();
+		await expect(page).toHaveURL(/\/threads$/);
 		await settled(page);
 	});
 
@@ -150,15 +143,12 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		const id = await createIncident(page, `No investigation yet ${Date.now()}`);
 
 		await page.goto(`/incidents/${id}`);
-		await expect(page.getByTestId("latest-run-strip")).toContainText(
-			"No run yet",
+		// No run and no alert: no cards, only the box (cards are earned).
+		await expect(page.getByTestId("incident-blank")).toContainText(
+			"What do you know so far?",
 			{ timeout: 15_000 },
 		);
-		// A blank incident earns no card yet (#1020).
-		await expect(page.getByTestId("incident-blank")).toContainText(
-			"Nothing yet",
-		);
-		await expect(page.getByTestId("why-card")).toHaveCount(0);
+		await expect(page.getByTestId("overview-grid")).toHaveCount(0);
 		await setTheme(page, "light");
 
 		// Navigating to Conversation opens on the draft
@@ -194,21 +184,20 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		);
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await expect(page.getByTestId("latest-run-strip")).toContainText(
-			"harness lost the tool socket",
+		await expect(page.getByTestId("transcript-end")).toContainText(
+			'Run failed: OpenCode answered "harness lost the tool socket".',
 			{ timeout: 15_000 },
 		);
+		await expect(page.getByTestId("run-strip-label")).toHaveText(/failed$/);
+
+		const tab = page.getByTestId("run-details-tab-incident");
+		if (!(await tab.isVisible())) {
+			await page.getByTestId("details-toggle").click();
+		}
+		await tab.click();
 		await expect(page.getByTestId("why-failed")).toBeVisible();
 		await setTheme(page, "light");
 		await settled(page);
-
-		await page.goto(
-			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
-		);
-		await expect(page.getByTestId("transcript-end")).toContainText(
-			'Run failed: OpenCode answered "harness lost the tool socket".',
-		);
-		await expect(page.getByTestId("run-strip-label")).toHaveText(/failed$/);
 	});
 
 	test("a live run: Stop in the box ends it at once, then reads Stopping", async ({
@@ -247,14 +236,10 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		);
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await expect(page.getByTestId("latest-run-strip")).toContainText(
-			"investigating",
+		await expect(page).toHaveURL(
+			new RegExp(`/incidents/${INCIDENT_ID}/conversation`),
 			{ timeout: 15_000 },
 		);
-		await expect(page.getByTestId("why-live")).toBeVisible();
-
-		// Clicking Watch on why-live opens the conversation
-		await page.getByTestId("why-live").click();
 		const state = page.getByTestId("run-strip-label");
 		await expect(state).toHaveText(/starting$/, { timeout: 15_000 });
 

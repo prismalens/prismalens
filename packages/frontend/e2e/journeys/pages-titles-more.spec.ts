@@ -75,14 +75,14 @@ const threadRow = (over: Record<string, unknown> = {}) => ({
 test.describe("#1020 — pages, titles, schedules", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	test("1. Blank incident page shows Nothing yet, Link service and composer, and shows content cards only when they have content after a first message", async ({
+	test("1. Blank incident page asks what you know so far, offers Link service and composer, and shows content cards only when they have content after a first message", async ({
 		page,
 	}) => {
 		const incidentTitle = `Blank incident ${Date.now()}`;
 		await createIncidentByHand(page, incidentTitle);
 
 		const blank = page.getByTestId("incident-blank");
-		await expect(blank).toContainText("Nothing yet");
+		await expect(blank).toContainText("What do you know so far?");
 		await expect(blank.getByTestId("incident-link-service")).toBeVisible();
 		await expect(blank.getByTestId("overview-composer")).toBeVisible();
 

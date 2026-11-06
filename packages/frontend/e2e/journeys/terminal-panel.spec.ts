@@ -60,7 +60,7 @@ async function openRegistryChip(page: Page) {
 }
 
 test.describe("Terminal panel (#931)", () => {
-	test("Ctrl+` shows and hides it, and it stays open across a reload", async ({
+	test("Ctrl+`, the sidebar's Terminal button and the palette show and hide it, and it stays open across a reload", async ({
 		page,
 	}) => {
 		await openInbox(page, 1440);
@@ -72,7 +72,14 @@ test.describe("Terminal panel (#931)", () => {
 		await page.keyboard.press("Control+Backquote");
 		await expect(panel).toHaveCount(0);
 
-		await page.keyboard.press("Control+Backquote");
+		const door = page.getByTestId("nav-terminal");
+		await door.click();
+		await expect(panel.getByTestId("terminal-panel")).toBeVisible();
+		await expect(door).toHaveAttribute("aria-expanded", "true");
+		await door.click();
+		await expect(panel).toHaveCount(0);
+		await page.getByTestId("nav-search").click();
+		await page.getByTestId("thread-search-action-terminal").click();
 		await expect(panel.getByTestId("terminal-panel")).toBeVisible();
 
 		await page.reload();
@@ -141,6 +148,8 @@ test.describe("Terminal panel (#931)", () => {
 		await asHost(page);
 		await visit(page, `/incidents/${inc.id}/conversation`);
 		await openWork(page);
+		if (await page.getByTestId("tools-expand").first().isVisible())
+			await page.getByTestId("tools-expand").first().click();
 		const step = page.getByTestId("step").first();
 		await expect(step.getByTestId("run-in-terminal")).toHaveCount(0);
 		await step.getByTestId("step-toggle").click();

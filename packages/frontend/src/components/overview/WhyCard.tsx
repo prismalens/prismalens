@@ -10,6 +10,7 @@ import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { answerWord } from "@/lib/answer-word";
+import { useHarnesses } from "@/lib/api/hooks";
 import { citedFile } from "@/lib/evidence-files";
 import { failureSentence } from "@/lib/failure-sentence";
 import { failureWords } from "@/lib/failure-words";
@@ -110,7 +111,7 @@ export function WhyCard({
 					{transcriptRun && (
 						<Link
 							{...run(transcriptRun.id)}
-							className="shrink-0 text-meta text-accent hover:underline"
+							className="inline-flex min-h-6 shrink-0 items-center text-meta text-accent hover:underline"
 							data-testid="why-transcript"
 						>
 							{viewName(runs, transcriptRun)} transcript
@@ -192,13 +193,16 @@ function FailedRun({
 	);
 	const error = inv?.error ?? o.latest?.error ?? null;
 	const said = failureSentence("The agent", error);
-	const words = failureWords(error);
+	const harness = useHarnesses().data?.harnesses.find(
+		(h) => h.id === o.latest?.harness,
+	);
+	const words = failureWords(error, harness?.label, harness?.loginHint);
 	const cut = (inv?.endReason ?? o.latest?.endReason) === "interrupted";
 	return (
 		<>
 			<div
 				className="rounded-surface bg-danger/12 px-3 py-2.5"
-				data-row
+				data-row="What failed"
 				data-testid="why-failed"
 			>
 				<div className="font-semibold text-danger">
@@ -224,7 +228,7 @@ function FailedRun({
 							<li
 								key={s.n}
 								className="flex gap-2.5 px-1 py-1.5 shadow-[inset_0_-1px_0_var(--hairline)]"
-								data-row
+								data-row={s.title}
 							>
 								<span className="w-16 shrink-0 text-meta text-text-3 tabular-nums">
 									{formatClock(s.at)}
@@ -275,7 +279,7 @@ function Finding({
 						const src = commandText(e.source, cwd);
 						return (
 							// biome-ignore lint/suspicious/noArrayIndexKey: evidence rows have no id; their order is the report's.
-							<li key={i} data-row>
+							<li key={i} data-row="Evidence">
 								<Hint label={e.observation}>
 									<Link
 										to="/incidents/$id/conversation"
@@ -310,7 +314,7 @@ function Finding({
 				<div
 					id="lasting-fix"
 					className="rounded-control bg-surface-2 px-2.5 py-2"
-					data-row
+					data-row="Lasting fix"
 					data-testid="why-lasting"
 				>
 					<p className="font-medium" dir="auto">
@@ -337,7 +341,7 @@ function Finding({
 					to="/incidents/$id/conversation"
 					params={{ id: incident.id }}
 					search={{ investigation: runId }}
-					className="text-text-2 hover:underline"
+					className="inline-flex min-h-6 items-center text-text-2 hover:underline"
 					data-testid="why-ruled-out"
 				>
 					{ruled === 0 ? "Nothing ruled out" : `${ruled} ruled out`}
@@ -347,10 +351,15 @@ function Finding({
 						to="/incidents/$id/conversation"
 						params={{ id: incident.id }}
 						search={{ investigation: runId }}
-						className="text-warn hover:underline"
+						className="inline-flex min-h-6 min-w-0 items-center text-warn hover:underline"
+						title={report.coverage.notQueried.join(", ")}
 						data-testid="why-unchecked"
 					>
-						{unchecked} not checked
+						{/* Named, so the reader knows what the answer did not look at. */}
+						<span className="truncate">
+							Not checked: {report.coverage.notQueried[0]}
+							{unchecked > 1 && ` and ${unchecked - 1} more`}
+						</span>
 					</Link>
 				)}
 				<span className="flex-1" />

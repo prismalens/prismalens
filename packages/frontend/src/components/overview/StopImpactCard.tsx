@@ -83,8 +83,7 @@ export function StopImpactCard({
 					/>
 				) : o.report ? (
 					<p className="py-2 text-text-2" data-testid="fix-empty">
-						The agent found nothing to undo or switch off right away. The cause
-						and the lasting fix are under Why.
+						The report suggests no mitigation.
 					</p>
 				) : (
 					<div className="flex flex-col gap-1.5 py-2" data-testid="fix-none">
@@ -111,7 +110,7 @@ export function StopImpactCard({
 						type="button"
 						onClick={() => o.pickOption(x)}
 						className="flex min-w-0 flex-col rounded-surface bg-surface-2 px-3 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
-						data-row
+						data-row={x.title}
 						data-testid="fix-other"
 					>
 						<span className="truncate" dir="auto">
@@ -161,7 +160,7 @@ function FixCard({
 	return (
 		<div
 			className="flex flex-col gap-2 rounded-surface bg-surface-2 p-3"
-			data-row
+			data-row={option.title}
 			data-testid="fix-card"
 			data-stage={stage.stage}
 		>
@@ -268,7 +267,7 @@ function YouAsked({ o }: { o: Overview }) {
 	return (
 		<div
 			className="flex flex-col gap-0.5 rounded-surface bg-surface-2 px-3 py-2"
-			data-row
+			data-row="Your question"
 			data-testid="you-asked"
 		>
 			<span className="text-meta text-text-3">

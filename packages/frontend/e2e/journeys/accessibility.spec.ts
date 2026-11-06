@@ -7,6 +7,8 @@ import { hideQueryDevtools, setTheme } from "./live-stream-fixtures";
 
 /** The demo storm incident PRISMALENS_SEED_DEMO seeds on every stack. */
 const DEMO_INCIDENT = "/incidents/b0111111-1111-4111-8111-111111111111";
+/** Demo incident #3 has alerts but no investigation runs, rendering the overview page. */
+const DEMO_INCIDENT_NO_RUN = "/incidents/b0333333-3333-4333-8333-333333333333";
 
 /**
  * Known and not yet fixed, so a new violation still fails: a model row is a
@@ -98,7 +100,7 @@ test.describe("Accessibility at 1440, dark", () => {
 	test("an incident record has no serious or critical axe violations", async ({
 		page,
 	}) => {
-		await page.goto(DEMO_INCIDENT);
+		await page.goto(DEMO_INCIDENT_NO_RUN);
 		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});

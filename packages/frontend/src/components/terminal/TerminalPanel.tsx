@@ -229,7 +229,8 @@ function TabFooter({ tabId }: { tabId: number }) {
 				}}
 			/>
 			<span className="hidden whitespace-nowrap text-meta text-text-3 md:inline">
-				Enter runs it. Esc discards it.
+				Not run yet. It runs in this shell's folder, not the agent's workspace.
+				Enter runs it, Esc discards it.
 			</span>
 			<Button
 				type="button"

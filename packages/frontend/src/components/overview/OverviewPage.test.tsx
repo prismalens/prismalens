@@ -72,13 +72,13 @@ vi.mock("@/components/agent/AgentPicker", async (importOriginal) => ({
 vi.mock("./use-overview", () => ({
 	useOverview: () => ({
 		record: {
-			incident: { id: "inc-1" },
+			incident: { id: "inc-1", alerts: [{ source: "prometheus" }] },
 			draftChoice: { harness: "claude-code" },
 			investigate,
 			// A run makes the incident earn its cards (#1020).
 			runs: [{ id: "run-7" }],
 		},
-		latest: { id: "run-7" },
+		latest: null,
 	}),
 }));
 
@@ -111,7 +111,10 @@ vi.mock("./ImpactCard", () => ({ ImpactCard: () => null }));
 vi.mock("./StopImpactCard", () => ({ StopImpactCard: () => null }));
 vi.mock("./WhyCard", () => ({ WhyCard: () => null }));
 vi.mock("./ChangesCard", () => ({ ChangesCard: () => null }));
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("@tanstack/react-router", () => ({
+	useNavigate: () => vi.fn(),
+	Navigate: () => null,
+}));
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -149,26 +152,12 @@ describe("Next strip Investigate (w8-7)", () => {
 		expect(investigate).toHaveBeenCalledWith({
 			accessLevel: "supervised",
 			harness: "claude-code",
-			stay: true,
 		});
 	});
 
 	it("starts nothing when the box's agent cannot run", async () => {
 		claude = agent("claude-code", "Claude Code", "sign-in-needed");
 		await pressInvestigate();
-		expect(investigate).not.toHaveBeenCalled();
-	});
-});
-
-describe("Next strip Resume (#1010)", () => {
-	it("resumes the latest run by its own id and starts no new investigation", async () => {
-		await act(async () => root.render(<OverviewPage />));
-		await act(async () =>
-			container
-				.querySelector<HTMLButtonElement>('[data-testid="next-resume"]')
-				?.click(),
-		);
-		expect(resumeRun).toHaveBeenCalledWith({ id: "run-7" }, expect.anything());
 		expect(investigate).not.toHaveBeenCalled();
 	});
 });

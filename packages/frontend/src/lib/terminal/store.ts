@@ -96,8 +96,12 @@ export function createTerminalStore() {
 		stage(command: string) {
 			if (!runnableCommand(command)) return;
 			const current = state.tabs.find((t) => t.id === state.active);
-			const id =
-				current && current.exitCode === undefined ? current.id : store.newTab();
+			// A line already waiting in this shell is yours; a new command gets its own tab.
+			const free =
+				current &&
+				current.exitCode === undefined &&
+				(!current.draft || current.draft === command);
+			const id = free ? current.id : store.newTab();
 			set({ active: id });
 			patch(id, { draft: command });
 			openListeners.forEach((l) => {

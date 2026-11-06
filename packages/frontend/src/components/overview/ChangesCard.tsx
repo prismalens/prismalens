@@ -35,7 +35,7 @@ const LATEST = 6;
  * incident's own timeline merged with its git history, newest first. Latest
  * six; "All N events" lists the rest in the card, which scrolls.
  */
-export function ChangesCard({ o }: { o: Overview }) {
+export function ChangesCard({ o, wide }: { o: Overview; wide?: boolean }) {
 	const now = useNow(30_000);
 	const { incident, runs, timeline, timelineLoading } = o.record;
 	const changes = o.changes;
@@ -52,6 +52,7 @@ export function ChangesCard({ o }: { o: Overview }) {
 	return (
 		<Card
 			title="What changed and when"
+			className={wide ? "md:col-span-2" : undefined}
 			testId="changes-card"
 			actions={
 				total > LATEST ? (
@@ -121,7 +122,7 @@ export function ChangesCard({ o }: { o: Overview }) {
 							<li
 								key={r.key}
 								className="flex min-w-0 items-center gap-2.5 px-1 py-1.5 shadow-[inset_0_-1px_0_var(--hairline)]"
-								data-row
+								data-row={r.text}
 								data-testid="changes-row"
 							>
 								<Hint label={formatDateTime(r.at)} side="left">
@@ -150,7 +151,8 @@ function RowText({
 	row: ReturnType<typeof mergeTimeline>[number];
 	incidentId: string;
 }) {
-	const cls = "min-w-0 truncate";
+	// Two lines before it cuts: a reason such as a skipped run is the point of the row.
+	const cls = "min-w-0 line-clamp-2";
 	const inner = (
 		<Hint label={row.text}>
 			<span className={cls} dir="auto">
@@ -164,7 +166,7 @@ function RowText({
 				to="/incidents/$id/conversation"
 				params={{ id: incidentId }}
 				search={{ investigation: row.runId }}
-				className={cn(cls, "hover:text-accent")}
+				className={cn(cls, "py-0.5 hover:text-accent")}
 				dir="auto"
 			>
 				{row.text}

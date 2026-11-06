@@ -8,8 +8,9 @@
  * only Markdown the app renders (study-v3 §3.4).
  */
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
-import { memo } from "react";
+import { isValidElement, memo } from "react";
 import { type Components, Streamdown } from "streamdown";
+import { RunInTerminal } from "@/components/terminal/RunInTerminal";
 import { cn } from "@/lib/utils";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -81,14 +82,27 @@ const components: Components = {
 			{children}
 		</blockquote>
 	),
-	pre: ({ children }) => (
-		<pre
-			data-scroll-x
-			className="my-2 overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 px-3 py-2 text-mono text-text-2"
-		>
-			{children}
-		</pre>
-	),
+	pre: ({ children }) => {
+		const command = shellLine(children);
+		return (
+			<div className="relative my-2">
+				<pre
+					data-scroll-x
+					className={cn(
+						"overflow-x-auto rounded-[var(--radius-control)] bg-surface-1 px-3 py-2 text-mono text-text-2",
+						command && "pr-10",
+					)}
+				>
+					{children}
+				</pre>
+				{command && (
+					<span className="absolute top-1.5 right-1.5">
+						<RunInTerminal command={command} compact />
+					</span>
+				)}
+			</div>
+		);
+	},
 	table: ({ children }) => (
 		<div data-scroll-x className="my-2 overflow-x-auto">
 			<table className="w-full text-meta [&_tbody]:divide-y [&_tbody]:divide-hairline">
@@ -103,6 +117,27 @@ const components: Components = {
 	),
 	td: ({ children }) => <td className="px-2 py-1">{children}</td>,
 };
+
+const SHELL = new Set([
+	"bash",
+	"sh",
+	"shell",
+	"zsh",
+	"console",
+	"powershell",
+	"ps1",
+]);
+
+/** A one-line shell block's command: the agent asks you to run it, so it can go to the terminal. */
+export function shellLine(children: ReactNode): string | null {
+	if (!isValidElement<{ className?: string; children?: ReactNode }>(children))
+		return null;
+	const lang = /language-([\w-]+)/.exec(children.props.className ?? "")?.[1];
+	const text = children.props.children;
+	if (!lang || !SHELL.has(lang) || typeof text !== "string") return null;
+	const line = text.trim().replace(/^\$\s+/, "");
+	return line && !line.includes("\n") ? line : null;
+}
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 

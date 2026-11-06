@@ -265,6 +265,7 @@ describe("the strip's words after a restart (#981)", () => {
 			status: "running",
 			error: null,
 			completedAt: null,
+			createdAt: MONDAY,
 			updatedAt: MONDAY,
 			...over,
 		}) as unknown as InvestigationWithRelations;
@@ -283,7 +284,10 @@ describe("the strip's words after a restart (#981)", () => {
 		expect(words(inv(), "working", { ...base, by: "operator" }).detail).toBe(
 			"Resumed by you",
 		);
-		expect(words(inv(), "working", null).detail).toBe("Working on it");
+		// Without a restart the strip keeps time; the activity is the transcript's (#1020).
+		expect(words(inv(), "working", null).detail).toMatch(
+			/^(\d+s|\d+m \d{2}s|\d+h \d{2}m|Working)$/,
+		);
 	});
 
 	it("names why an interrupted run was not resumed", () => {

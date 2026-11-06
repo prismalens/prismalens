@@ -388,6 +388,11 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		await expect(title).toHaveText(xssPayload);
 
 		// Step line renders as plain text
+		await expect(page.getByTestId("transcript-tools")).toHaveAttribute(
+			"data-folded",
+			"",
+		);
+		await page.getByTestId("tools-expand").first().click();
 		const step = page.locator('[data-testid="step"][data-node="command"]');
 		await expect(step).toBeVisible();
 		await expect(step.getByText(xssPayload)).toBeVisible();

@@ -26,7 +26,7 @@ export function endHint(run: EndLineRun): string | null {
 			: null;
 	if (run.status === "failed")
 		return run.continuable
-			? "Investigate to try the report again, or ask about what it found."
+			? "Retry the run, or ask about the failure."
 			: "Start a new run.";
 	return null;
 }

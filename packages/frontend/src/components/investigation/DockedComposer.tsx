@@ -12,7 +12,7 @@ import {
 	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { type MutableRefObject, useState } from "react";
+import { type MutableRefObject, useEffect, useState } from "react";
 import {
 	defaultAccessOf,
 	unreadyLine,
@@ -31,6 +31,7 @@ import { startedBy, viewName } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { uploadAttachment } from "@/lib/attachments";
+import { onCompose } from "@/lib/compose";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handoffHint } from "@/lib/handoff-line";
 import { defaultVerb, recheckBrief } from "@/lib/run-verb";
@@ -101,8 +102,7 @@ export function threadActions(t: {
 					: "Brief the agent (optional)",
 			hint: {
 				ask: "Starts a conversation about this incident. Its latest answer also shows on the overview.",
-				investigate:
-					"Starts a run. It runs live and ends in a report on the overview.",
+				investigate: "Starts a run. It runs live and ends in a report here.",
 			},
 		};
 	if (t.live)
@@ -151,7 +151,7 @@ export function threadActions(t: {
 			initial: "continue",
 			placeholder: `Message ${t.agent}`,
 			hint: {
-				continue: `Continues in ${t.agent}'s own session and ends in a report on the overview.`,
+				continue: `Answers here, in the same ${t.agent} session; ends in a report here.`,
 			},
 		};
 	return {
@@ -165,7 +165,7 @@ export function threadActions(t: {
 		],
 		initial: "follow-up",
 		placeholder: `Message ${t.agent}`,
-		hint: { "follow-up": `Continues in ${t.agent}'s own session.` },
+		hint: { "follow-up": `Answers here, in the same ${t.agent} session.` },
 	};
 }
 
@@ -254,6 +254,23 @@ export function DockedComposer({
 	const { toast } = useToast();
 	const choice = useAgentChoice();
 	const [message, setMessage] = useState("");
+	// A transcript card's "Ask for a lasting fix" fills the box; you still press Send.
+	useEffect(
+		() =>
+			onCompose((text) => {
+				if (text) (draft ? record.setDraftText : setMessage)(text);
+				window.setTimeout(
+					() =>
+						document
+							.querySelector<HTMLTextAreaElement>(
+								'[data-testid="composer-box"] textarea',
+							)
+							?.focus(),
+					0,
+				);
+			}),
+		[draft, record.setDraftText],
+	);
 	const who = useRunAgentModel(run.investigation);
 	const inv = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);

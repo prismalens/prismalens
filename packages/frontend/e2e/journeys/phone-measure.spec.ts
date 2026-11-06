@@ -85,7 +85,7 @@ test.describe("the walk's phone measurements (0.5.3 walk W11, F2)", () => {
 		});
 	});
 
-	test("INC-1's overview, Run 1 with no cause named: nothing past the screen", async ({
+	test("INC-1's run page, Run 1 with no cause named: nothing past the screen", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -100,16 +100,14 @@ test.describe("the walk's phone measurements (0.5.3 walk W11, F2)", () => {
 		});
 		await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
 		await visit(page, `/incidents/${inc.id}`);
-		await expect(page.getByTestId("why-transcript")).toHaveText(
-			"Run 1 transcript",
-		);
+		await expect(page.getByTestId("situation")).toBeVisible();
 		await walk(
 			page,
-			"overview",
-			'main[data-testid="overview-grid"]',
-			["why-transcript", "runs-menu"],
+			"run-page",
+			'[data-testid="transcript-scroller"]',
+			["situation", "runs-menu"],
 			async () => {
-				await expect(page.getByTestId("why-card")).toBeVisible();
+				await expect(page.getByTestId("situation")).toBeVisible();
 				await expect(page.getByTestId("runs-menu")).toBeAttached();
 			},
 		);

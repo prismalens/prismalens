@@ -274,7 +274,7 @@ describe("threadActions and runFollowUpLevel", () => {
 		expect(res.hint[res.actions[0].id]).toBe("Reaches the agent at its next pause.");
 	});
 
-	it("finished and continuable, agent \"Claude Code\": one action, id \"continue\"; placeholder \"Message Claude Code\"; hint \"Continues in Claude Code's own session and ends in a report on the overview.\"", () => {
+	it("finished and continuable, agent \"Claude Code\": one action, id \"continue\"; placeholder \"Message Claude Code\"; hint \"Answers here, in the same Claude Code session; ends in a report here.\"", () => {
 		const res = threadActions({
 			draft: false,
 			live: false,
@@ -290,11 +290,11 @@ describe("threadActions and runFollowUpLevel", () => {
 		expect(res.actions[0].id).toBe("continue");
 		expect(res.placeholder).toBe("Message Claude Code");
 		expect(res.hint.continue).toBe(
-			"Continues in Claude Code's own session and ends in a report on the overview.",
+			"Answers here, in the same Claude Code session; ends in a report here.",
 		);
 	});
 
-	it("finished, reported, not continuable: one action, id \"follow-up\"; no action with id \"recheck\"; placeholder \"Message Claude Code\"; hint \"Continues in Claude Code's own session.\"", () => {
+	it("finished, reported, not continuable: one action, id \"follow-up\"; no action with id \"recheck\"; placeholder \"Message Claude Code\"; hint \"Answers here, in the same Claude Code session.\"", () => {
 		const res = threadActions({
 			draft: false,
 			live: false,
@@ -310,7 +310,7 @@ describe("threadActions and runFollowUpLevel", () => {
 		expect(res.actions[0].id).toBe("follow-up");
 		expect(res.actions.some((a) => a.id === "recheck")).toBe(false);
 		expect(res.placeholder).toBe("Message Claude Code");
-		expect(res.hint["follow-up"]).toBe("Continues in Claude Code's own session.");
+		expect(res.hint["follow-up"]).toBe("Answers here, in the same Claude Code session.");
 	});
 
 	it("draft: two actions, ask and investigate", () => {

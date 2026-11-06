@@ -5,6 +5,15 @@ import { describe, expect, it } from "vitest";
 import { failureWords } from "./failure-words";
 
 describe("failureWords", () => {
+	it("names the agent's own sign-in command when its settings give one", () => {
+		expect(
+			failureWords("401 unauthorized", "Codex", "`codex login`, or `OPENAI_API_KEY` in env").next,
+		).toBe("Run codex login in a terminal, then retry.");
+		expect(failureWords("401 unauthorized", "Codex").next).toBe(
+			"Sign in with its own CLI, then retry.",
+		);
+	});
+
 	it("names a provider overload and says the setup is fine", () => {
 		expect(
 			failureWords(

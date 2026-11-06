@@ -44,6 +44,6 @@ describe("agentModelLabel", () => {
 			},
 		};
 		expect(agentModelLabel(listed, "").model).toBe("Sonnet 5.5");
-		expect(agentModelLabel(claudeCode, "").model).toBe("its own model");
+		expect(agentModelLabel(claudeCode, "").model).toBe("its default model");
 	});
 });

@@ -64,6 +64,8 @@ interface Overflow {
 	overflows: boolean;
 	/** Rows not yet in view below; a row cut at the bottom counts. */
 	rows: number;
+	/** The first hidden row's name (`data-row="Lasting fix"`), said instead of a count (#1020). */
+	next: string;
 	atEnd: boolean;
 }
 
@@ -71,19 +73,35 @@ function overflowOf(el: HTMLElement): Overflow {
 	const overflows = el.scrollHeight - el.clientHeight > 2;
 	const bottom = el.scrollTop + el.clientHeight;
 	const atEnd = el.scrollHeight - bottom <= 2;
-	if (!overflows || atEnd) return { overflows, rows: 0, atEnd };
+	if (!overflows || atEnd) return { overflows, rows: 0, next: "", atEnd };
 	const top = el.getBoundingClientRect().top - el.scrollTop;
 	let rows = 0;
+	let next = "";
 	for (const row of Array.from(
 		el.querySelectorAll<HTMLElement>("[data-row]"),
 	)) {
-		if (row.getBoundingClientRect().bottom - top > bottom + 2) rows++;
+		if (row.getBoundingClientRect().bottom - top > bottom + 2) {
+			rows++;
+			// A bare `data-row` reads "true"; only a named row is said by name.
+			const name = row.dataset.row;
+			next ||= name && name !== "true" ? name : "";
+		}
 	}
-	return { overflows, rows, atEnd };
+	return { overflows, rows, next, atEnd };
+}
+
+/** A row's name cut at a word, so the foot stays one short line. */
+function short(name: string): string {
+	if (name.length <= 28) return name;
+	const cut = name.slice(0, 28);
+	return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 16))}…`;
 }
 
 const same = (a: Overflow, b: Overflow) =>
-	a.overflows === b.overflows && a.rows === b.rows && a.atEnd === b.atEnd;
+	a.overflows === b.overflows &&
+	a.rows === b.rows &&
+	a.next === b.next &&
+	a.atEnd === b.atEnd;
 
 /**
  * The card's scrolling body. While its content overflows, a foot row of its
@@ -101,6 +119,7 @@ export function ScrollBody({
 	const [state, setState] = useState<Overflow>({
 		overflows: false,
 		rows: 0,
+		next: "",
 		atEnd: true,
 	});
 	const measure = useCallback(() => {
@@ -130,6 +149,9 @@ export function ScrollBody({
 				onScroll={measure}
 				className={cn(
 					"min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]",
+					state.overflows &&
+						!state.atEnd &&
+						"[mask-image:linear-gradient(to_bottom,black_calc(100%-28px),transparent)]",
 					className,
 				)}
 				data-testid="card-body"
@@ -147,14 +169,16 @@ export function ScrollBody({
 							else
 								el.scrollBy({ top: el.clientHeight * 0.8, behavior: "smooth" });
 						}}
-						className="flex items-center gap-1 rounded-control px-1.5 text-meta text-accent transition-colors duration-(--dur-instant) hover:bg-surface-3"
+						className="flex min-h-6 items-center gap-1 rounded-control px-1.5 text-meta text-accent transition-colors duration-(--dur-instant) hover:bg-surface-3"
 						data-testid="card-more"
 					>
 						{state.atEnd
 							? "Back to top"
-							: state.rows > 0
-								? `${state.rows} more`
-								: "More below"}
+							: state.next
+								? `${short(state.next)}${state.rows > 1 ? ` and ${state.rows - 1} more` : ""} below`
+								: state.rows > 0
+									? `${state.rows} more below`
+									: "More below"}
 						<ChevronDown
 							className={cn("size-3", state.atEnd && "rotate-180")}
 							aria-hidden

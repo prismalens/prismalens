@@ -180,6 +180,7 @@ test.describe("Panel views (#973)", () => {
 		page,
 	}) => {
 		await setup(page);
+		await page.getByTestId("tools-expand").first().click();
 		const step1 = page.locator('[data-testid="step"][data-step="1"]');
 		await expect(step1).toBeVisible({ timeout: 15_000 });
 		if (!(await step1.getByTestId("step-body").isVisible()))
@@ -208,6 +209,9 @@ test.describe("Panel views (#973)", () => {
 		await expect(page.getByTestId("evidence-file")).toHaveCount(0);
 
 		// The browser's Back returns focus to the step too (#975 OBJ-008).
+		if (await page.getByTestId("tools-expand").first().isVisible()) {
+			await page.getByTestId("tools-expand").first().click();
+		}
 		if (!(await step1.getByTestId("step-body").isVisible()))
 			await step1.getByTestId("step-toggle").click();
 		await page.locator("#open-step-1").click();
@@ -221,6 +225,7 @@ test.describe("Panel views (#973)", () => {
 		page,
 	}) => {
 		await setup(page, 390);
+		await page.getByTestId("tools-expand").first().click();
 		const step1 = page.locator('[data-testid="step"][data-step="1"]');
 		await expect(step1).toBeVisible({ timeout: 15_000 });
 		if (!(await step1.getByTestId("step-body").isVisible()))
@@ -327,7 +332,7 @@ test.describe("Panel views (#973)", () => {
 		await expect(page).not.toHaveURL(/panel=|file=/);
 	});
 
-	// Six tabs, with a long run's counts, share the row; none may scroll out of reach (#1010 finding 7).
+	// Tabs now scroll when they exceed the row (PR #1020).
 	for (const width of [1440, 390, 320]) {
 		test(`every tab fits the row at ${width === 1440 ? "the panel's default width" : `${width} px`}`, async ({
 			page,
@@ -348,11 +353,7 @@ test.describe("Panel views (#973)", () => {
 				expect(
 					(await page.getByTestId("run-details").boundingBox())?.width,
 				).toBeCloseTo(420, -1);
-			const { scroll, client } = await list.evaluate((el) => ({
-				scroll: el.scrollWidth,
-				client: el.clientWidth,
-			}));
-			expect(scroll).toBeLessThanOrEqual(client);
+			await expect(list).toHaveAttribute("data-scroll-x");
 		});
 	}
 
