@@ -84,6 +84,7 @@ describe("Work in: This checkout or New worktree (#1024)", () => {
 			})),
 			addInvestigationJob: vi.fn(async () => "job-1"),
 			freeCheckout: vi.fn(async () => {}),
+			abandonUnstarted: vi.fn(async () => {}),
 		};
 	});
 
@@ -98,6 +99,25 @@ describe("Work in: This checkout or New worktree (#1024)", () => {
 			where: { id: REPO },
 			data: { workIn: "checkout" },
 		});
+	});
+
+	it("a start that dies before a job is stored fails the run and frees its checkout, then says why", async () => {
+		dispatch.threadRunOf?.mockRejectedValueOnce(new Error("disk gone"));
+		await expect(start({ workIn: "checkout" })).rejects.toThrow("disk gone");
+		expect(dispatch.abandonUnstarted).toHaveBeenCalledWith(
+			RUN,
+			expect.stringContaining("could not be started"),
+		);
+		expect(dispatch.addInvestigationJob).not.toHaveBeenCalled();
+	});
+
+	it("a job that could not be queued fails the run too, and a queued one does not", async () => {
+		dispatch.addInvestigationJob?.mockResolvedValueOnce(null);
+		const failed = await start({ workIn: "checkout" });
+		expect(failed.queued).toBe(false);
+		expect(dispatch.abandonUnstarted).toHaveBeenCalledTimes(1);
+		await start({ workIn: "checkout" });
+		expect(dispatch.abandonUnstarted).toHaveBeenCalledTimes(1);
 	});
 
 	it("a thread an agent starts is marked byAgent and never takes, leases or remembers the checkout", async () => {

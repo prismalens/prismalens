@@ -250,49 +250,64 @@ export class ThreadsService {
 					);
 			},
 		});
-		const plain = await this.dispatch.threadRunOf({
-			...ids,
-			helperPlace: helperPlace ?? null,
-		});
-		const pin = tree?.at;
-		const pinned = pin
-			? {
-					...plain,
-					repos: plain.repos.map((r) => {
-						const at = pin(r);
-						return at ? { ...r, at } : r;
-					}),
-				}
-			: plain;
-		// A thread an agent starts never borrows the user's checkout (#1024).
-		const thread = tree
-			? { ...pinned, byAgent: true }
-			: { ...pinned, ...(checkout ? { checkout } : {}) };
-		// The project remembers the person's own choice for its next thread (#1024).
-		if (repositoryId && input.workIn && !tree)
-			await this.prisma.repository.update({
-				where: { id: repositoryId },
-				data: { workIn: input.workIn },
+		let jobId: string | null;
+		try {
+			const plain = await this.dispatch.threadRunOf({
+				...ids,
+				helperPlace: helperPlace ?? null,
 			});
-		const connections = ids.serviceId
-			? await this.integrations.getIntegrationsForService(ids.serviceId)
-			: [];
-		const jobId = await this.dispatch.addInvestigationJob({
-			incidentId: null,
-			investigationId: investigation.id,
-			thread,
-			kind: "chat",
-			...(connections.length
-				? { connectionIds: connections.map((c) => c.connectionId) }
-				: {}),
-			...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
-			...choice,
-			chat: {
-				text: input.text,
-				...(attachments.length ? { attachments } : {}),
-				...(context ? { context } : {}),
-			},
-		});
+			const pin = tree?.at;
+			const pinned = pin
+				? {
+						...plain,
+						repos: plain.repos.map((r) => {
+							const at = pin(r);
+							return at ? { ...r, at } : r;
+						}),
+					}
+				: plain;
+			// A thread an agent starts never borrows the user's checkout (#1024).
+			const thread = tree
+				? { ...pinned, byAgent: true }
+				: { ...pinned, ...(checkout ? { checkout } : {}) };
+			// The project remembers the person's own choice for its next thread (#1024).
+			if (repositoryId && input.workIn && !tree)
+				await this.prisma.repository.update({
+					where: { id: repositoryId },
+					data: { workIn: input.workIn },
+				});
+			const connections = ids.serviceId
+				? await this.integrations.getIntegrationsForService(ids.serviceId)
+				: [];
+			jobId = await this.dispatch.addInvestigationJob({
+				incidentId: null,
+				investigationId: investigation.id,
+				thread,
+				kind: "chat",
+				...(connections.length
+					? { connectionIds: connections.map((c) => c.connectionId) }
+					: {}),
+				...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
+				...choice,
+				chat: {
+					text: input.text,
+					...(attachments.length ? { attachments } : {}),
+					...(context ? { context } : {}),
+				},
+			});
+		} catch (e) {
+			// The run exists and holds its lease, but no job will ever take it up.
+			await this.dispatch.abandonUnstarted(
+				investigation.id,
+				"The thread could not be started.",
+			);
+			throw e;
+		}
+		if (jobId === null)
+			await this.dispatch.abandonUnstarted(
+				investigation.id,
+				"The thread could not be queued.",
+			);
 		// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
 		if (jobId)
 			await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);

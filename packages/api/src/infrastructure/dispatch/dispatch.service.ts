@@ -1471,6 +1471,25 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		return leasedBy(this.prisma, id);
 	}
 
+	/**
+	 * An admission died before a job was stored: the run ends failed and its lease goes, or the
+	 * checkout stays blocked until a restart. A stored job keeps both; it runs or is reconciled (#1024).
+	 */
+	async abandonUnstarted(
+		investigationId: string,
+		error: string,
+	): Promise<void> {
+		if (await this.store.findByInvestigation(investigationId)) return;
+		await this.prisma.investigation.updateMany({
+			where: {
+				id: investigationId,
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
+			},
+			data: { status: "failed", error, completedAt: new Date() },
+		});
+		await releaseLease(this.prisma, investigationId);
+	}
+
 	/** Before an admission: a lease on `path` whose run ended and whose agent is proven gone is released (#1024). */
 	async freeCheckout(path: string): Promise<void> {
 		await releaseIfGone(

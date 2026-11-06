@@ -1981,3 +1981,49 @@ describe("project, service and no-subject threads (#1020)", () => {
 		await prisma.repository.delete({ where: { id: repo.id } });
 	});
 });
+
+describe("DispatchService.abandonUnstarted: an admission that stored no job (#1024)", () => {
+	it("fails a pending run that has no job and frees its checkout lease", async () => {
+		const { service } = realDispatch();
+		const run = await prisma.investigation.create({
+			data: { status: "pending", kind: "chat" },
+		});
+		await prisma.checkoutLease.create({
+			data: { canonicalPath: "/code/abandoned", investigationId: run.id },
+		});
+
+		await service.abandonUnstarted(run.id, "The thread could not be started.");
+
+		expect(await read(run.id)).toMatchObject({
+			status: "failed",
+			error: "The thread could not be started.",
+		});
+		expect(await prisma.checkoutLease.count({ where: { investigationId: run.id } })).toBe(0);
+	});
+
+	it("keeps both when a job was stored, since it runs or is reconciled at boot", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const run = await thread(inc.id, { status: "pending", completedAt: null });
+		await job(run.id, inc.id, {}, "pending");
+		await prisma.checkoutLease.create({
+			data: { canonicalPath: "/code/queued", investigationId: run.id },
+		});
+
+		await service.abandonUnstarted(run.id, "The thread could not be queued.");
+
+		expect((await read(run.id)).status).toBe("pending");
+		expect(await prisma.checkoutLease.count({ where: { investigationId: run.id } })).toBe(1);
+		await prisma.checkoutLease.deleteMany({ where: { investigationId: run.id } });
+	});
+
+	it("leaves a run that already ended as it was", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await service.abandonUnstarted(done.id, "The thread could not be started.");
+
+		expect((await read(done.id)).status).toBe("completed");
+	});
+});
