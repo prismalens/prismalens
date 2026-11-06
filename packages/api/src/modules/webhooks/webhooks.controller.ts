@@ -9,7 +9,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { Implement, implement } from "@orpc/nest";
+import { Implement, implement, ORPCError } from "@orpc/nest";
 import type { PrometheusAlert } from "@prismalens/contracts";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
@@ -111,6 +111,9 @@ export class WebhooksController {
 					// make alerts 2..n replay alert 1 and report duplicate alertIds.
 					const alertIds: string[] = [];
 					const alerts = input.alerts ?? [];
+					// A failure the sender should retry: the rest of the batch still
+					// runs, then the delivery answers 503 instead of 200.
+					let retryable: ORPCError<string, unknown> | undefined;
 					for (const [index, alert] of alerts.entries()) {
 						try {
 							const derivedKey =
@@ -128,6 +131,11 @@ export class WebhooksController {
 							if (result.alertId) alertIds.push(result.alertId);
 						} catch (error) {
 							this.logger.error(`Failed to process Prometheus alert: ${error}`);
+							if (
+								error instanceof ORPCError &&
+								error.code === "SERVICE_UNAVAILABLE"
+							)
+								retryable = error;
 						}
 					}
 
@@ -135,6 +143,7 @@ export class WebhooksController {
 					// alert it stops listing overnight can resolve by absence (#605).
 					void this.alertPull.onWebhook();
 					await this.rememberDelivery(alerts.length, alertIds.length);
+					if (retryable) throw retryable;
 
 					return {
 						received: alerts.length,

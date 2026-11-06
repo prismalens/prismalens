@@ -85,6 +85,28 @@ export class EventsService {
 	}
 
 	/**
+	 * The events of `eventType` for `sourceEventId` that an alert has claimed,
+	 * received since `receivedSince`: what a retried delivery is checked against.
+	 */
+	async findClaimed(where: {
+		source: string;
+		sourceEventId: string;
+		eventType: string;
+		receivedSince: Date;
+	}): Promise<Event[]> {
+		return this.prisma.event.findMany({
+			where: {
+				source: where.source,
+				sourceEventId: where.sourceEventId,
+				eventType: where.eventType,
+				alertId: { not: null },
+				receivedAt: { gte: where.receivedSince },
+			},
+			orderBy: { receivedAt: "desc" },
+		});
+	}
+
+	/**
 	 * Find all events with optional filters
 	 */
 	async findAll(options?: {
@@ -119,20 +141,51 @@ export class EventsService {
 	}
 
 	/**
-	 * Mark event as processed and link to alert
+	 * Mark event as processed and link to alert; `payload` replaces the stored one.
 	 */
-	async markProcessed(id: string, alertId: string): Promise<Event | null> {
+	async markProcessed(
+		id: string,
+		alertId: string,
+		payload?: string,
+	): Promise<Event | null> {
 		try {
 			return await this.prisma.event.update({
 				where: { id },
 				data: {
 					processed: true,
 					alertId,
+					...(payload !== undefined && { payload }),
 				},
 			});
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * The earliest-ending event of `eventType` for `sourceEventId` that no alert
+	 * has claimed yet, received since `receivedSince`, whose `eventTime` is at or
+	 * after `eventTimeFrom`: of two pending episodes, a late firing of the older
+	 * one takes the older row, not the newer episode's.
+	 */
+	async findUnclaimed(where: {
+		source: string;
+		sourceEventId: string;
+		eventType: string;
+		eventTimeFrom: Date;
+		receivedSince: Date;
+	}): Promise<Event | null> {
+		return this.prisma.event.findFirst({
+			where: {
+				source: where.source,
+				sourceEventId: where.sourceEventId,
+				eventType: where.eventType,
+				alertId: null,
+				eventTime: { gte: where.eventTimeFrom },
+				receivedAt: { gte: where.receivedSince },
+			},
+			orderBy: [{ eventTime: "asc" }, { receivedAt: "asc" }],
+		});
 	}
 
 	/**
