@@ -2162,12 +2162,15 @@ describe("session lifecycle over a fake ACP harness (#1024)", () => {
 				mode: "queue",
 				heads: [],
 				messageId: "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a",
+				delivers: ["7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b"],
 				compact: { command: "compact" },
 			},
 		});
+		// It names what it carries, so a later resume sends it once, not beside the messages inside it.
 		expect(events.find((e) => e.kind === "message_queued")).toMatchObject({
 			messageId: "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a",
 			text: "Still slow? DISTINCT-7421",
+			delivers: ["7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b"],
 		});
 		expect(events.some((e) => e.kind === "operator_message" && e.delivered)).toBe(false);
 		expect(events.at(-1)?.kind).toBe("error");

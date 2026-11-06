@@ -1136,6 +1136,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		...StreamBaseShape,
 		messageId: z.string().uuid(),
 		text: z.string(),
+		/** Earlier queued messages this one carries and replaces, as a resume line does (#1024). */
+		delivers: z.array(z.string().uuid()).optional(),
 		attachments: z.array(AttachmentRefSchema).optional(),
 		quotes: z.array(QuoteSchema).optional(),
 		references: z.array(ReferenceRefSchema).optional(),

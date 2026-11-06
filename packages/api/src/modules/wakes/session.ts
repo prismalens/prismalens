@@ -112,14 +112,21 @@ export function interruptedTurn(
 			for (const id of e.delivers ?? []) delivered.add(id);
 			if (!e.via?.restart && e.text.trim()) last = e.text;
 		}
-	const waiting = events.filter(
+	const queued = events.filter(
 		(e): e is Extract<CanonicalEvent, { kind: "message_queued" }> =>
 			e.kind === "message_queued" && !delivered.has(e.messageId),
 	);
+	// A queued resume line already holds the messages it names; sending them beside it would repeat them.
+	const carried = new Set(queued.flatMap((e) => e.delivers ?? []));
+	const waiting = queued.filter((e) => !carried.has(e.messageId));
 	if (waiting.length)
 		return {
 			text: waiting.map((e) => e.text).join("\n\n"),
-			delivers: waiting.map((e) => e.messageId),
+			delivers: [
+				...new Set(
+					waiting.flatMap((e) => [e.messageId, ...(e.delivers ?? [])]),
+				),
+			],
 		};
 	return last ? { text: last, delivers: [] } : null;
 }

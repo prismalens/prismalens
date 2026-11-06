@@ -70,6 +70,21 @@ describe("what a limit resume sends (#1024)", () => {
 		).toEqual({ text: "Resumed with: Then this.", delivers: [] });
 	});
 
+	it("a resume line queued again after another failed compaction never repeats the text it carries", () => {
+		const q = "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a";
+		const w1 = "7b2c8a1f-3b53-4d9f-8e47-1a8d2c3f4e5b";
+		const w2 = "8c3d9b2a-4c64-4e0a-9f58-2b9e3d4a5f6c";
+		const first = `${LIMIT_RESET_NOTE}\n\nThen this.`;
+		const events = [
+			{ kind: "message_queued", ...base, seq: 1, messageId: q, text: "Then this." },
+			{ kind: "message_queued", ...base, seq: 2, messageId: w1, text: first, delivers: [q] },
+			{ kind: "message_queued", ...base, seq: 3, messageId: w2, text: first, delivers: [w1, q] },
+		] as CanonicalEvent[];
+		const turn = interruptedTurn(events);
+		expect(limitResumeText(turn, undefined)).toBe(first);
+		expect(new Set(turn?.delivers)).toEqual(new Set([w2, w1, q]));
+	});
+
 	it("a resume line already starting with the reset note gets no second note", () => {
 		expect(limitResumeText({ text: `${LIMIT_RESET_NOTE}
 

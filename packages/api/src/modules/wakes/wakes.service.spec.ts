@@ -45,11 +45,11 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 		resumeInvestigation: vi.fn(
 			async (id: string, text: string, _mode: string, kind: string, _a: unknown, _to: unknown, session: unknown) => {
 				if (refuse) throw refuse;
-				const wakeId = (session as { wakeId?: string } | undefined)?.wakeId;
+				const { wakeId, wakeDoneAt } = (session ?? {}) as { wakeId?: string; wakeDoneAt?: Date };
 				if (wakeId) {
 					const { count } = await prisma.threadWake.updateMany({
 						where: { id: wakeId, state: "pending" },
-						data: { state: "done", doneAt: new Date() },
+						data: { state: "done", doneAt: wakeDoneAt ?? new Date() },
 					});
 					if (!count) return false;
 				}
@@ -261,7 +261,7 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 					id: t.id,
 					text: `${LIMIT_RESET_NOTE}\n\nWhy is checkout slow?`,
 					kind: "continue",
-					session: { wakeId: expect.any(String) },
+					session: { wakeId: expect.any(String), wakeDoneAt: expect.any(Date) },
 				},
 			]);
 			expect((await wakes.latest(t.id, "limit"))?.state).toBe("done");
@@ -324,7 +324,11 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			const s = lifecycle();
 			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
 			await s.process(new Date(RESET.getTime() + 3 * 60_000));
-			expect(resumed[0]?.session).toEqual({ compact: { command: "compact" }, wakeId: expect.any(String) });
+			expect(resumed[0]?.session).toEqual({
+				compact: { command: "compact" },
+				wakeId: expect.any(String),
+				wakeDoneAt: expect.any(Date),
+			});
 		});
 
 		it("is skipped when the thread is already running again", async () => {
@@ -375,8 +379,51 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 
 	});
 
+	describe("pre-merge re-review (#1024)", () => {
+		it("a reason the run queued but never delivered is not lost when the run fails", async () => {
+			const t = await thread({ status: "running" });
+			const s = lifecycle();
+			const id = await wakes.schedule(t.id, "agent", new Date(1), "Check the deploy again.");
+			await s.process(new Date());
+			await say(t.id, [{ kind: "message_queued", messageId: id, text: "Check the deploy again." }]);
+			await s.process(new Date());
+			expect((await wakes.latest(t.id, "agent"))?.state).toBe("pending");
+			await prisma.investigation.update({ where: { id: t.id }, data: { status: "failed" } });
+			await s.process(new Date());
+			expect(resumed).toEqual([
+				{ id: t.id, text: "Check the deploy again.", kind: "chat", session: expect.objectContaining({ wakeId: id }) },
+			]);
+		});
+
+		it("a no-time wake that fired late still counts its attempts", async () => {
+			const text = "You've hit your session limit · resets 6:10am (Europe/London)";
+			const t = await thread({ harness: "claude-code", error: text });
+			const start = new Date(2026, 10, 7, 13, 0);
+			await lifecycle(start).onSettled(t.id, { outcome: "failed", error: text });
+			// The machine slept: the 13:30 wake fires at 16:30, and the resumed turn hits the limit again.
+			const late = new Date(start.getTime() + 210 * 60_000);
+			await lifecycle(late).process(late);
+			await lifecycle(new Date(late.getTime() + 60_000)).onSettled(t.id, { outcome: "failed", error: text });
+			expect((await wakes.latest(t.id, "limit"))?.attempts).toBe(2);
+		});
+
+		it("idle compactions that fire late still keep to three an hour", async () => {
+			settings = { harness: "auto", compactIdle: true };
+			const last = new Date(2026, 10, 7, 9, 0);
+			const s = lifecycle();
+			s.facts = () => ({ label: "Agent", cacheTtlMinutes: 60, compactsWhenIdle: false, compactCommand: "compact" });
+			for (let i = 0; i < 4; i++) {
+				const t = await thread({ status: "completed", lastActivityAt: last, usage: JSON.stringify({ used: 80_000, size: 200_000 }) });
+				await s.onSettled(t.id, { outcome: "succeeded" });
+			}
+			// Due at 9:55, run at 13:12 after PrismaLens was off: the cap counts when they ran.
+			await s.process(new Date(2026, 10, 7, 13, 12));
+			expect(resumed).toHaveLength(3);
+		});
+	});
+
 	describe("pre-merge review (#1024)", () => {
-		it("the admission itself consumes the wake, so a crash after it never admits twice", async () => {
+		it("hands its wake to the admission to consume, and ends it nowhere else", async () => {
 			const t = await thread();
 			const s = lifecycle();
 			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
@@ -427,7 +474,7 @@ ${"c".repeat(4000)}`);
 	});
 
 	describe("agent and PR wakes", () => {
-		it("queues its reason under the wake's id while the thread runs, and is done only once the run recorded it", async () => {
+		it("queues its reason under the wake's id while the thread runs, and is done only once the agent received it", async () => {
 			const t = await thread({ status: "running" });
 			const s = lifecycle();
 			const id = await wakes.schedule(t.id, "agent", new Date(1), "Check the deploy again.");
@@ -443,6 +490,12 @@ ${"c".repeat(4000)}`);
 			await s.process(new Date());
 			expect(sent).toHaveLength(sends);
 			await say(t.id, [{ kind: "message_queued", messageId: id, text: "Check the deploy again." }]);
+			await s.process(new Date());
+			expect((await wakes.latest(t.id, "agent"))?.state).toBe("pending");
+			expect(sent).toHaveLength(sends);
+			await say(t.id, [
+				{ kind: "operator_message", text: "Check the deploy again.", mode: "queue", delivered: true, messageId: id },
+			]);
 			await s.process(new Date());
 			expect((await wakes.latest(t.id, "agent"))?.state).toBe("done");
 		});

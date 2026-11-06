@@ -171,10 +171,10 @@ export class WakesService {
 		return row ? toWake(row) : null;
 	}
 
-	/** How many wakes of this kind fired, due at or after `since`, across threads. */
+	/** How many wakes of this kind were admitted since `since`, across threads; an overdue one counts when it ran. */
 	async firedSince(kind: WakeKind, since: Date): Promise<number> {
 		return this.prisma.threadWake.count({
-			where: { kind, state: "done", at: { gte: since } },
+			where: { kind, state: "done", doneAt: { gte: since } },
 		});
 	}
 }

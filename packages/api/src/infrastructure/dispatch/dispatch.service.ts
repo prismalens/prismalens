@@ -181,6 +181,8 @@ export interface FollowUpSession {
 	fresh?: boolean;
 	/** A wake's follow-up: admitting it consumes the pending wake in the same transaction, or nothing is admitted. */
 	wakeId?: string;
+	/** When the wake is taken; the wake's own clock, so its retries count in one time base. */
+	wakeDoneAt?: Date;
 	/** Queued messages the follow-up's text carries. */
 	delivers?: string[];
 }
@@ -1351,7 +1353,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				if (session.wakeId) {
 					const taken = await tx.threadWake.updateMany({
 						where: { id: session.wakeId, state: "pending" },
-						data: { state: "done", doneAt: new Date() },
+						data: { state: "done", doneAt: session.wakeDoneAt ?? new Date() },
 					});
 					// Another pass took this wake already: roll the admission back.
 					if (taken.count === 0) throw new WakeTaken();

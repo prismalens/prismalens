@@ -232,6 +232,7 @@ export class AcpAdapter {
 		text: string,
 		attachments?: AttachmentRef[],
 		context?: MessageContextRefs,
+		delivers?: string[],
 	): CanonicalEvent {
 		return {
 			kind: "message_queued",
@@ -240,6 +241,7 @@ export class AcpAdapter {
 			text,
 			...(attachments?.length ? { attachments } : {}),
 			...contextRefs(context),
+			...(delivers?.length ? { delivers } : {}),
 		};
 	}
 

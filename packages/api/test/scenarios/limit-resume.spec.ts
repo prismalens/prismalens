@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	type FakeAlertmanager,
 	startFakeAlertmanager,
@@ -29,9 +29,9 @@ type Event = { kind: string; [k: string]: unknown };
 const finished = (i: Investigation) => !["pending", "running"].includes(i.status);
 const NOTE = "The usage limit has reset; continue where you left off.";
 
-async function runOf(session: string): Promise<Investigation> {
+async function runOf(session: string, name = "BooksSlow"): Promise<Investigation> {
 	const alert = am.fire({
-		labels: { alertname: `BooksSlow fake-session:${session}`, service: "books", severity: "critical" },
+		labels: { alertname: `${name} fake-session:${session}`, service: "books", severity: "critical" },
 		annotations: { summary: "p99 of GET /books above 2s" },
 	});
 	expect((await am.post(pl.webhookUrl, pl.webhookToken)).status).toBeLessThan(300);
@@ -124,6 +124,25 @@ describe("A usage limit becomes a scheduled resume (#1024)", () => {
 		expect(sent).toEqual([`${NOTE}\n\n${asked}`]);
 		const answer = all.filter((e) => e.kind === "agent_step").map((e) => e.text).join("");
 		expect(answer).toContain(`Picked up after the reset: ${NOTE}\n\n${asked}`);
+	}, 120_000);
+
+	it("a crash right after a wake's admission never admits it a second time", async () => {
+		const limited = await runOf("limit-codex", "BooksSlowTwice");
+		expect(limited).toMatchObject({ status: "failed", endReason: "limited" });
+		const reset = new Date(2099, 0, 1, 15, 45, 0);
+		const sessions = await pl.sessions();
+		const wakes = (sessions as unknown as { wakes: { finish: (...a: unknown[]) => Promise<boolean> } }).wakes;
+		// A crash right after the admission: nothing after it runs, neither the wake's end nor the run's settle hook.
+		const crash = vi.spyOn(wakes, "finish").mockRejectedValue(new Error("crashed after admission"));
+		const unsettled = vi.spyOn(sessions, "onSettled").mockResolvedValue();
+		await sessions.process(new Date(reset.getTime() + 3 * 60_000)).catch(() => {});
+		await eventually(() => pl.investigation(limited.id), (i) => i.status === "completed", "the resumed run", 30_000);
+		crash.mockRestore();
+		unsettled.mockRestore();
+		await sessions.process(new Date(reset.getTime() + 60 * 60_000));
+		expect((await pl.investigation(limited.id)).status).toBe("completed");
+		const resumes = (await events(limited.id)).filter((e) => e.kind === "operator_message" && e.text === NOTE);
+		expect(resumes).toHaveLength(1);
 	}, 120_000);
 
 	it("Gemini: a terminal quota retries in 30 minutes; the short retry on the resumed turn schedules nothing", async () => {

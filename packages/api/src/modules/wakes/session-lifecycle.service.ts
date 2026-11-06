@@ -144,7 +144,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			!resetsAt &&
 			prev?.state === "done" &&
 			prev.payload.noTime === true &&
-			now.getTime() - prev.at.getTime() < RETRY_LINK_MS;
+			!!prev.doneAt &&
+			now.getTime() - prev.doneAt.getTime() < RETRY_LINK_MS;
 		const attempts = linked && prev ? prev.attempts + 1 : 1;
 		await this.prisma.investigation.updateMany({
 			where: { id: row.id },
@@ -245,14 +246,14 @@ export class SessionLifecycleService implements OnModuleInit {
 			return this.fireIdleCompact(wake, row, now);
 		}
 		// An agent's or a PR watch's wake is never dropped: a running thread gets it at its next pause.
-		// Done only once the run recorded the message under the wake's id; until then a crash would lose it.
+		// Done only once the agent received it; a run that ends first leaves it to the resume below.
 		const seen = seenAs(await this.investigations.allEvents(row.id), wake.id);
-		if (seen === "delivered" || (running && seen === "queued")) {
+		if (seen === "delivered") {
 			await this.wakes.finish(wake.id, "done", undefined, this.now());
 			return;
 		}
 		if (running) {
-			if (wake.payload.sentTo !== row.id) {
+			if (seen === "missing" && wake.payload.sentTo !== row.id) {
 				const state = this.dispatch.sendMessage(
 					row.id,
 					wake.reason,
@@ -378,7 +379,7 @@ export class SessionLifecycleService implements OnModuleInit {
 				kind,
 				[],
 				{},
-				{ ...session, wakeId: wake.id },
+				{ ...session, wakeId: wake.id, wakeDoneAt: now },
 			);
 		} catch (e) {
 			if (!(e instanceof FollowUpRefused)) throw e;
