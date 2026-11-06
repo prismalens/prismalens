@@ -24,7 +24,7 @@ const git = (...args: string[]) =>
 		encoding: "utf8",
 	}).trim();
 const seen: string[][] = [];
-// Release files outlive a run, so each run holds on its own key.
+// Each run holds on its own key, in this app's own fake state.
 const HOLD = `hold-${randomUUID().slice(0, 8)}`;
 let projectId = "";
 let threadId = "";
@@ -140,7 +140,7 @@ describe("A thread works in the user's own checkout (#1024)", () => {
 	}, 60_000);
 
 	it("When the run finishes, Then its workspace, the borrowed event and its changes name the checkout, and nothing in it was reset", async () => {
-		releaseRun(HOLD);
+		releaseRun(HOLD, pl.fakeState);
 		expect((await settled(threadId)).status).toBe("completed");
 		const prisma = await pl.prisma();
 		const row = await prisma.investigation.findUniqueOrThrow({ where: { id: threadId } });

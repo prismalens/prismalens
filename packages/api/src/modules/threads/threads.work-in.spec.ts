@@ -47,6 +47,8 @@ describe("Work in: This checkout or New worktree (#1024)", () => {
 			} as never,
 			{} as never,
 			{} as never,
+			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
+			{ compose: async () => undefined } as never,
 		).start({
 			subject: { kind: "project", repositoryId: REPO },
 			text: "Rename the retry helper",
@@ -139,6 +141,8 @@ describe("Work in: This checkout or New worktree (#1024)", () => {
 				prisma as never,
 				{} as never,
 				dispatch as never,
+				{} as never,
+				{} as never,
 				{} as never,
 				{} as never,
 				{} as never,
