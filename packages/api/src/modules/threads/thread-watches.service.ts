@@ -31,6 +31,12 @@ import { readThreadContextSettings } from "./thread-context-settings.js";
 /** The agent's own wakes and PR watches write here, so they never race a live run's `seq`. */
 export const WATCHES_BRANCH = "watches";
 const SEQ_RETRIES = 8;
+/** An agent may wake its own thread this often per day, and watch this many PRs at once (#1024 spec B). */
+export const WAKES_PER_DAY = 12;
+export const WATCHES_PER_THREAD = 5;
+const DAY_MS = 24 * 60 * 60_000;
+/** A host that does not answer is read again after 2, 4, 8… minutes, at most an hour apart. */
+const BACKOFF_MAX_MS = 60 * 60_000;
 
 const prName = (pr: Pick<PullRequest, "repo" | "number">) =>
 	`${pr.repo}#${pr.number}`;
@@ -63,6 +69,8 @@ export class ThreadWatchesService
 	private readonly logger = new Logger({ context: "ThreadWatches" });
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private ticking = false;
+	/** Threads whose host did not answer: how often, and when to read it again. */
+	private readonly failing = new Map<string, { fails: number; next: number }>();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -88,8 +96,22 @@ export class ThreadWatchesService
 		runId: string,
 		delaySeconds: number,
 		reason: string,
-	): Promise<{ at: string; replaced: boolean } | { error: string }> {
+	): Promise<
+		{ at: string; replaced: boolean } | { error: string; limit?: true }
+	> {
 		if (!(await this.thread(runId))) return { error: "This run is gone." };
+		const recent = await this.prisma.threadWake.count({
+			where: {
+				investigationId: runId,
+				kind: "agent",
+				createdAt: { gte: new Date(Date.now() - DAY_MS) },
+			},
+		});
+		if (recent >= WAKES_PER_DAY)
+			return {
+				error: `This thread already scheduled ${WAKES_PER_DAY} wakes in the last 24 hours.`,
+				limit: true,
+			};
 		const replaced =
 			(await this.wakes.latest(runId, "agent"))?.state === "pending";
 		const at = new Date(Date.now() + delaySeconds * 1000);
@@ -124,7 +146,9 @@ export class ThreadWatchesService
 		runId: string,
 		prId: string,
 		until: PrWatchUntil,
-	): Promise<{ expiresAt: string; pr: string } | { error: string }> {
+	): Promise<
+		{ expiresAt: string; pr: string } | { error: string; limit?: true }
+	> {
 		if (!(await readThreadContextSettings(this.prisma)).prStatus)
 			return {
 				error:
@@ -134,6 +158,18 @@ export class ThreadWatchesService
 		if (!pr)
 			return {
 				error: `No pull request "${prId}" is linked to this thread.`,
+			};
+		const watching = await this.prisma.prWatch.findMany({
+			where: { investigationId: runId },
+			select: { prId: true },
+		});
+		if (
+			watching.length >= WATCHES_PER_THREAD &&
+			!watching.some((w) => w.prId === prId)
+		)
+			return {
+				error: `This thread already watches ${WATCHES_PER_THREAD} pull requests.`,
+				limit: true,
 			};
 		const expiresAt = new Date(Date.now() + PR_WATCH_FOR_MS);
 		await this.prisma.prWatch.upsert({
@@ -175,6 +211,8 @@ export class ThreadWatchesService
 		if (this.ticking) return;
 		this.ticking = true;
 		try {
+			// Turned off after the watch began: no host is read, and the watch waits or runs out.
+			if (!(await readThreadContextSettings(this.prisma)).prStatus) return;
 			const rows = await this.prisma.prWatch.findMany();
 			const byThread = new Map<string, typeof rows>();
 			for (const r of rows)
@@ -183,10 +221,24 @@ export class ThreadWatchesService
 					r,
 				]);
 			for (const [threadId, watches] of byThread) {
+				const backoff = this.failing.get(threadId);
+				if (backoff && backoff.next > now.getTime()) continue;
 				const prs = await this.prs
 					.list(threadId, { force: true })
-					.then((l) => l.pullRequests)
-					.catch(() => this.prs.stored(threadId));
+					.then((l) => {
+						this.failing.delete(threadId);
+						return l.pullRequests;
+					})
+					.catch(() => {
+						const fails = (backoff?.fails ?? 0) + 1;
+						this.failing.set(threadId, {
+							fails,
+							next:
+								now.getTime() +
+								Math.min(PR_WATCH_EVERY_MS * 2 ** fails, BACKOFF_MAX_MS),
+						});
+						return this.prs.stored(threadId);
+					});
 				for (const w of watches) {
 					const until = w.until as PrWatchUntil;
 					const pr = prs.find((p) => p.id === w.prId);
@@ -216,11 +268,17 @@ export class ThreadWatchesService
 		}
 	}
 
-	/** One pending `pr_watch` wake per thread: a second watch that ends joins its reason, never replaces it. */
+	/**
+	 * One pending `pr_watch` wake per thread: a second watch that ends joins its reason.
+	 * A wake already handed to the agent is not joined, so the agent never hears it twice.
+	 */
 	private async wakeWith(threadId: string, said: string, now: Date) {
 		const pending = await this.wakes.latest(threadId, "pr_watch");
-		const reason =
-			pending?.state === "pending" ? `${pending.reason}\n${said}` : said;
+		const joinable =
+			pending?.state === "pending" &&
+			pending.payload.sentTo === undefined &&
+			!pending.reason.split("\n").includes(said);
+		const reason = joinable ? `${pending.reason}\n${said}` : said;
 		await this.wakes.schedule(threadId, "pr_watch", now, reason, {
 			from: "pr_watch",
 		});

@@ -44,6 +44,7 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { endAgentWakes } from "../wakes/agent-wakes.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { renameThread } from "./thread-titles.js";
@@ -611,6 +612,7 @@ export class ThreadsService {
 		}
 		// Undo with no states to restore clears only the thread named, never its block.
 		const at = settled ? new Date() : null;
+		if (settled) await endAgentWakes(this.prisma, ids);
 		await this.writeSettled(
 			(settled ? ids : [id]).map((target) => ({ id: target, settledAt: at })),
 			prior,

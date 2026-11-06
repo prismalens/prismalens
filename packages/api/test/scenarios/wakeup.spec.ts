@@ -55,4 +55,42 @@ describe("Walk: the agent wakes its own thread later (#1024 spec B)", () => {
 		);
 		expect(said).toContain("Heard: The wake you scheduled (wakeup_schedule) is due: Check the rollout of revision 42");
 	}, 180_000);
+
+	it("Given a thread with its agent's wake pending, When the user settles it, Then the wake is cancelled; and a wake left on a settled or stopped thread never takes it up again", async () => {
+		await pl.serviceWithRepo("settled");
+		const alert = am.fire({
+			labels: { alertname: "SettledSlow fake-session:wakeup", service: "settled", severity: "medium" },
+			annotations: { summary: "settled latency" },
+		});
+		await am.post(pl.webhookUrl, pl.webhookToken);
+		const [incident] = await eventually(() => pl.incidentFor(alert.fingerprint), (f) => f.length === 1, "an incident");
+		if (!incident) throw new Error("no incident");
+		await pl.api(`/incidents/${incident.id}/investigate`, { method: "POST", body: { accessLevel: "supervised" } });
+		const [run] = await eventually(() => pl.investigations(incident.id), (r) => r.length === 1, "the run");
+		if (!run) throw new Error("no run");
+		await eventually(async () => (await pl.investigation(run.id)).status, (s) => s === "completed", "the first turn ends", 60_000);
+		const db = await pl.prisma();
+		const pending = () => db.threadWake.findMany({ where: { investigationId: run.id, kind: "agent", state: "pending" } });
+		expect(await pending()).toHaveLength(1);
+
+		await pl.api(`/threads/${run.id}/settle`, { method: "POST", body: { settled: true } });
+		expect(await pending()).toEqual([]);
+
+		// A wake that slipped past is ended at fire time, for a settled thread and for a stopped one.
+		for (const status of ["completed", "cancelled"]) {
+			await db.investigation.update({
+				where: { id: run.id },
+				data: { status, ...(status === "cancelled" ? { settledAt: null } : {}) },
+			});
+			const wake = await db.threadWake.create({
+				data: { investigationId: run.id, kind: "agent", at: new Date(Date.now() - 1000), reason: "stale", payload: "{}" },
+			});
+			const before = (await events(run.id)).length;
+			await (await pl.sessions()).process();
+			await pl.tick();
+			expect((await db.threadWake.findUnique({ where: { id: wake.id } }))?.state).toBe("cancelled");
+			expect((await events(run.id)).slice(before).some((e) => e.kind === "operator_message")).toBe(false);
+		}
+	}, 180_000);
 });
+

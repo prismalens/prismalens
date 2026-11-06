@@ -245,6 +245,11 @@ export class SessionLifecycleService implements OnModuleInit {
 			if (wake.kind === "limit") return this.fireLimit(wake, row, now);
 			return this.fireIdleCompact(wake, row, now);
 		}
+		// The user stopped or settled the thread: what its agent asked for never takes it up again.
+		if (row.settledAt !== null || row.status === "cancelled") {
+			await this.wakes.finish(wake.id, "cancelled", undefined, this.now());
+			return;
+		}
 		// An agent's or a PR watch's wake is never dropped: a running thread gets it at its next pause.
 		// Done only once the agent received it; a run that ends first leaves it to the resume below.
 		const seen = seenAs(await this.investigations.allEvents(row.id), wake.id);

@@ -56,6 +56,8 @@ const run = (over: Record<string, unknown> = {}) => ({
 describe("ThreadsService feed, visit, settle (#1020)", () => {
 	let prisma: {
 		$transaction: ReturnType<typeof vi.fn>;
+		threadWake: { updateMany: ReturnType<typeof vi.fn> };
+		prWatch: { deleteMany: ReturnType<typeof vi.fn> };
 		investigation: {
 			findMany: ReturnType<typeof vi.fn>;
 			findUnique: ReturnType<typeof vi.fn>;
@@ -89,6 +91,9 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 	beforeEach(() => {
 		prisma = {
 			$transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
+			threadWake: { updateMany: vi.fn(async () => ({ count: 0 })) },
+			prWatch: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+
 			investigation: {
 				findMany: vi.fn(async () => []),
 				findUnique: vi.fn(async () => null),
