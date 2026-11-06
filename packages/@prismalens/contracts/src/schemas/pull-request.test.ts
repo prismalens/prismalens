@@ -77,5 +77,11 @@ describe("prTone (#1024 item 16)", () => {
 			PullRequestSchema.safeParse({ ...base, author: { login: "x", avatarUrl: "nope" } })
 				.success,
 		).toBe(false);
+		// A read serves the image proxy's signed path; no other relative path passes (#1024).
+		const avatar = (avatarUrl: string) =>
+			PullRequestSchema.safeParse({ ...base, author: { login: "x", avatarUrl } }).success;
+		expect(avatar("/api/images/eyJ1Ijoi.c2ln-_x")).toBe(true);
+		expect(avatar("/api/repositories/1/icon")).toBe(false);
+		expect(avatar("/api/images/../secrets")).toBe(false);
 	});
 });

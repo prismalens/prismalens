@@ -75,8 +75,17 @@ export const PR_TONE_TOKEN: Record<
 	unknown: "neutral",
 };
 
-/** An image URL as the host's API gave it; the UI loads it only through the image proxy (#1024 decision 11). */
-const HostImageUrlSchema = z.string().url().max(2000);
+/**
+ * The host's image URL as stored, or the signed `/api/images/{key}` path a
+ * read serves instead: the UI loads host images only through the proxy (#1024).
+ */
+const HostImageUrlSchema = z.union([
+	z.string().url().max(2000),
+	z
+		.string()
+		.max(4096)
+		.regex(/^\/api\/images\/[\w-]+\.[\w-]+$/),
+]);
 
 export const PrPersonSchema = z.object({
 	login: z.string().max(200),
