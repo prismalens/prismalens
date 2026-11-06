@@ -1430,7 +1430,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		return true;
 	}
 
-	/** A project, service or no-subject thread's subject and code as they stand now (#1020). */
 	/**
 	 * The user's checkout this thread works in (#1024), or null for any other thread. Throws
 	 * CheckoutGone when it no longer resolves to the path the thread borrowed.
@@ -1492,6 +1491,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		await takeLease(tx, checkout, id);
 	}
 
+	/** A project, service or no-subject thread's subject and code as they stand now (#1020). */
 	async threadRunOf(row: {
 		repositoryId: string | null;
 		serviceId: string | null;
