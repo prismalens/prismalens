@@ -219,8 +219,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
 			},
 		},
-		// The pin-bump PR moved this on 2026-11-03: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "0.99.1", date: "2026-11-03", companion: "2.1.316" },
+		// The pin-bump PR moved this on 2026-11-07: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "0.100.0", date: "2026-11-07", companion: "2.1.318" },
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
