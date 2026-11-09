@@ -30,7 +30,7 @@ export function checkoutStatus(root: string): {
 	const read = (...args: string[]) =>
 		execFileSync("git", ["-c", "core.fsmonitor=", ...args], {
 			cwd: root,
-			env,
+			env: { ...gitEnv({ source: "none" }), ...env },
 			encoding: "utf8",
 			timeout: 15_000,
 			windowsHide: true,

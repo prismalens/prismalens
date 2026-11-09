@@ -3043,7 +3043,7 @@ function gitIn(dir: string, args: string[]): string {
 			"git",
 			["--no-optional-locks", ...NO_FSMONITOR, "-C", dir, ...args],
 			{
-				env: status?.env ?? gitEnv({ source: "none" }),
+				env: { ...gitEnv({ source: "none" }), ...status?.env },
 				encoding: "utf8",
 				windowsHide: true,
 				timeout: 15_000,
