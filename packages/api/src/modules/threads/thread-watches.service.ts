@@ -277,11 +277,21 @@ export class ThreadWatchesService
 			const said = met
 				? `Pull request ${name}: ${met}. You asked to hear when it was ${until.replace("_", " ")} (pr_watch).`
 				: `Stopped watching pull request ${name} after 12 hours; it never became ${until.replace("_", " ")}.`;
-			// The wake is stored before the watch goes: a failure here retries on the next pass.
-			await this.wakeWith(threadId, said, now);
-			await this.prisma.prWatch.deleteMany({
-				where: { prId: w.prId, investigationId: threadId },
+			// Claim and wake commit together, so cancellation and retries cannot duplicate delivery (#1072).
+			const handedOff = await this.prisma.$transaction(async (tx) => {
+				const { count } = await tx.prWatch.deleteMany({
+					where: {
+						prId: w.prId,
+						investigationId: threadId,
+						until: w.until,
+						expiresAt: w.expiresAt,
+					},
+				});
+				if (!count) return false;
+				await this.wakeWith(threadId, said, now, tx);
+				return true;
 			});
+			if (!handedOff) continue;
 			await this.record(threadId, {
 				kind: "pr_watch",
 				prId: w.prId,
@@ -293,20 +303,29 @@ export class ThreadWatchesService
 		}
 	}
 
-	/**
-	 * One pending `pr_watch` wake per thread: a second watch that ends joins its reason.
-	 * A wake already handed to the agent is not joined; a retry after a failed write can still repeat one, which beats losing it.
-	 */
-	private async wakeWith(threadId: string, said: string, now: Date) {
-		const pending = await this.wakes.latest(threadId, "pr_watch");
+	private async wakeWith(
+		threadId: string,
+		said: string,
+		now: Date,
+		tx: Pick<PrismaService, "threadWake">,
+	) {
+		const pending = await this.wakes.latest(threadId, "pr_watch", tx);
 		const unsent =
 			pending?.state === "pending" && pending.payload.sentTo === undefined;
 		// Already in the waiting wake: rescheduling would only drop its other lines.
 		if (unsent && pending.reason.split("\n").includes(said)) return;
 		const reason = unsent ? `${pending.reason}\n${said}` : said;
-		await this.wakes.schedule(threadId, "pr_watch", now, reason, {
-			from: "pr_watch",
-		});
+		await this.wakes.schedule(
+			threadId,
+			"pr_watch",
+			now,
+			reason,
+			{
+				from: "pr_watch",
+			},
+			1,
+			tx,
+		);
 	}
 
 	/** The thread's own wakes in the last 24 hours, agent and PR watch alike, at the budget. */

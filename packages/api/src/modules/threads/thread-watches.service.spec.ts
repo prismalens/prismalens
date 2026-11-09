@@ -55,18 +55,28 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 				const k = where.prId_investigationId;
 				watches = watches.filter((w) => !(w.prId === k.prId && w.investigationId === k.investigationId));
 			}),
-			deleteMany: vi.fn(async ({ where }: { where: { prId: string; investigationId: string } }) => {
-				watches = watches.filter((w) => !(w.prId === where.prId && w.investigationId === where.investigationId));
+			deleteMany: vi.fn(async ({ where }: { where: { prId: string; investigationId: string; until: string; expiresAt: Date } }) => {
+				const before = watches.length;
+				watches = watches.filter((w) => !(w.prId === where.prId && w.investigationId === where.investigationId && w.until === where.until && w.expiresAt.getTime() === where.expiresAt.getTime()));
+				return { count: before - watches.length };
 			}),
 		},
-		$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-			fn({
+		$transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+			const beforeWatches = [...watches];
+			const beforeWakes = structuredClone(wakes);
+			try { return await fn({
+				prWatch: prisma.prWatch,
+				threadWake: prisma.threadWake,
 				investigationEvent: {
 					aggregate: async () => ({ _max: { seq: events.length - 1 } }),
 					create: async ({ data }: { data: { event: string } }) => events.push(JSON.parse(data.event)),
 				},
-			}),
-		),
+			}); } catch (error) {
+				watches = beforeWatches;
+				wakes.splice(0, wakes.length, ...beforeWakes);
+				throw error;
+			}
+		}),
 	};
 	const wakeSvc = {
 		latest: vi.fn(async (_t: string, kind: string) => [...wakes].reverse().find((w) => w.kind === kind) ?? null),
@@ -121,7 +131,7 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		h.prSvc.stored.mockRejectedValueOnce(new Error("db busy"));
 		await h.svc.tick();
 		expect(h.wakeSvc.schedule).toHaveBeenCalledTimes(1);
-		expect(h.wakeSvc.schedule).toHaveBeenCalledWith(OTHER, "pr_watch", expect.any(Date), expect.stringContaining("approved"), expect.anything());
+		expect(h.wakeSvc.schedule).toHaveBeenCalledWith(OTHER, "pr_watch", expect.any(Date), expect.stringContaining("approved"), expect.anything(), 1, expect.anything());
 	});
 
 	it("a watch stays until its wake is stored, so a failed handoff is retried on the next pass", async () => {
@@ -135,6 +145,46 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		await h.svc.tick();
 		expect(h.watches()).toEqual([]);
 		expect(h.wakes).toEqual([expect.objectContaining({ kind: "pr_watch", reason: expect.stringContaining("approved") })]);
+	});
+
+	it("a failed watch deletion stores no wake; retry after delivery never repeats it", async () => {
+		const h = harness();
+		await h.svc.watch(THREAD, "pr1", "review");
+		h.prs[0] = pr({ review: "approved" });
+		h.prisma.prWatch.deleteMany.mockRejectedValueOnce(new Error("db busy"));
+		await h.svc.tick();
+		expect(h.wakes).toEqual([]);
+		expect(h.watches()).toHaveLength(1);
+		await h.svc.tick();
+		expect(h.wakes).toHaveLength(1);
+		h.wakes[0]!.state = "done";
+		await h.svc.tick();
+		expect(h.wakes).toHaveLength(1);
+		expect(h.watches()).toEqual([]);
+	});
+
+	it("an unwatch during refresh wins over the pass's stale snapshot", async () => {
+		const h = harness();
+		await h.svc.watch(THREAD, "pr1", "review");
+		h.prSvc.refreshForWatch.mockImplementationOnce(async () => {
+			await h.svc.unwatch(THREAD, "pr1");
+			return { pullRequests: [pr({ review: "approved" })], failed: false };
+		});
+		await h.svc.tick();
+		expect(h.wakes).toEqual([]);
+		expect(h.events.at(-1)).toMatchObject({ phase: "stopped" });
+	});
+
+	it("a renewed watch is not consumed by an older snapshot", async () => {
+		const h = harness();
+		await h.svc.watch(THREAD, "pr1", "review");
+		h.prSvc.refreshForWatch.mockImplementationOnce(async () => {
+			await h.svc.watch(THREAD, "pr1", "merged");
+			return { pullRequests: [pr({ review: "approved" })], failed: false };
+		});
+		await h.svc.tick();
+		expect(h.wakes).toEqual([]);
+		expect(h.watches()).toEqual([expect.objectContaining({ until: "merged" })]);
 	});
 
 	it("Given a wake, Then one agent wake is pending with the agent's reason, a second replaces it, and the thread records each", async () => {
