@@ -24,7 +24,7 @@ const ALLOWED: Record<string, string> = {
 const LAUNCH =
 	/\b(?:spawn|spawnSync|execFile|execFileSync|exec|execSync|run)\(\s*(?:"git"|'git'|`git[ `])/g;
 /** The env the call builds, through the one shared filter. */
-const FILTERED = /env:\s*(?:gitChildEnv|gitEnv)\(/;
+const FILTERED = /env:\s*(?:{\s*\.\.\.)?(?:gitChildEnv|gitEnv)\(/;
 
 function sources(dir: string, out: string[] = []): string[] {
 	for (const name of readdirSync(dir)) {
