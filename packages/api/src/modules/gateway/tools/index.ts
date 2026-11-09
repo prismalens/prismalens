@@ -25,6 +25,7 @@ import { runbookTools } from "./runbooks.js";
 import { type ServiceLookup, serviceTools } from "./services.js";
 import { type ThreadTreeData, threadTreeTools } from "./thread-tree.js";
 import { type ThreadsData, threadTools } from "./threads.js";
+import { type WatchesData, watchTools } from "./watches.js";
 
 export type { ArtifactsData } from "./artifacts.js";
 export {
@@ -57,6 +58,7 @@ export type {
 	ThreadsData,
 	ThreadView,
 } from "./threads.js";
+export { THREAD_WATCHES, type WatchesData } from "./watches.js";
 
 /** What the tools read; the api answers from its own database. */
 export interface GatewayToolData {
@@ -74,6 +76,7 @@ export interface GatewayToolData {
 	tree: ThreadTreeData;
 	proposals: ProposalsData;
 	asks: AsksData;
+	watches: WatchesData;
 }
 
 /**
@@ -97,6 +100,7 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...threadTreeTools(data.tree),
 		...proposeTools(data.proposals),
 		...askTools(data.asks),
+		...watchTools(data.watches),
 	])
 		registry.register(tool);
 	return registry.list();

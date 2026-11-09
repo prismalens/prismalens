@@ -186,6 +186,9 @@ const ALL_TOOLS = [
 	"incident_get",
 	"incidents_similar",
 	"investigations_search",
+	"pr_link",
+	"pr_unwatch",
+	"pr_watch",
 	"propose_action",
 	"report_validate",
 	"run_status",
@@ -196,6 +199,7 @@ const ALL_TOOLS = [
 	"thread_read",
 	"thread_title",
 	"timeline_read",
+	"wakeup_schedule",
 ];
 
 describe("gateway tools (#848 ruling 2026-10-24)", () => {
@@ -288,8 +292,12 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			"artifact_publish",
 			"attachment_read",
 			"attachments_list",
+			"pr_link",
+			"pr_unwatch",
+			"pr_watch",
 			"propose_action",
 			"thread_title",
+			"wakeup_schedule",
 		]);
 		expect(none?.promptLine).not.toContain("evidence_record");
 		expect(none?.promptLine).not.toContain("tools_search");
@@ -840,11 +848,15 @@ describe("gateway views, search and the call record (#848)", () => {
 			"evidence_record",
 			"hypothesis_record",
 			"incident_get",
+			"pr_link",
+			"pr_unwatch",
+			"pr_watch",
 			"propose_action",
 			"runbooks_read",
 			"thread_title",
 			"tools_call",
 			"tools_search",
+			"wakeup_schedule",
 		]);
 		expect(a.promptLine).toContain("tools_search");
 		const direct = await send(g, RUN_A, a.token, "investigations_search", {

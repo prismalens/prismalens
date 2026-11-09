@@ -170,6 +170,8 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"gateway-propose-action",
 				"gateway-ask-user",
 				"gateway-secret-request",
+				"gateway-wakeup-schedule",
+				"gateway-pr-watch",
 			].sort(),
 		);
 	});

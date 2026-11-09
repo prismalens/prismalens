@@ -124,6 +124,8 @@ export default defineConfig({
 				"src/modules/investigations/subagent-sessions.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/asks.ts": NEW_CODE_THRESHOLD,
 				"src/modules/references/monitoring.provider.ts": NEW_CODE_THRESHOLD,
+				"src/modules/references/work-items.provider.ts": NEW_CODE_THRESHOLD,
+				"src/modules/gateway/tools/watches.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

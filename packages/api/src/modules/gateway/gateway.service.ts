@@ -66,11 +66,13 @@ import {
 	type RunStatusView,
 	type ServiceView,
 	type SimilarIncident,
+	THREAD_WATCHES,
 	type ThreadSummary,
 	type ThreadTreeData,
 	type ThreadView,
 	type TimelineItem,
 	TOOL_ASKS,
+	type WatchesData,
 } from "./tools/index.js";
 
 /** The route, under the global `api` prefix: one path per run. */
@@ -504,7 +506,35 @@ export class GatewayService {
 		}
 	}
 
+	/** ThreadWatchesService, looked up at call time; absent outside the full app. */
+	private watches(): WatchesData | null {
+		try {
+			return (
+				this.moduleRef?.get<WatchesData>(THREAD_WATCHES, { strict: false }) ??
+				null
+			);
+		} catch {
+			return null;
+		}
+	}
+
 	readonly data: GatewayToolData = {
+		watches: {
+			wakeup: async (runId, delay, reason) =>
+				(await this.watches()?.wakeup(runId, delay, reason)) ?? {
+					error: "PrismaLens cannot schedule a wake here.",
+				},
+			link: async (runId, url) =>
+				(await this.watches()?.link(runId, url)) ?? {
+					error: "PrismaLens cannot link a pull request here.",
+				},
+			watch: async (runId, prId, until) =>
+				(await this.watches()?.watch(runId, prId, until)) ?? {
+					error: "PrismaLens cannot watch a pull request here.",
+				},
+			unwatch: async (runId, prId) =>
+				(await this.watches()?.unwatch(runId, prId)) ?? { stopped: false },
+		},
 		asks: {
 			question: async (runId, questions) =>
 				(await this.toolAsks()?.question(runId, questions)) ?? {
