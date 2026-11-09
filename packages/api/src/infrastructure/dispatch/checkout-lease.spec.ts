@@ -214,13 +214,13 @@ describe("checkout leases (#1024)", () => {
 		expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
 	}, 30_000);
 
-	it("a content-transforming clean filter yields unknown changes without executing it", async () => {
-		const dir = repo("transform-filter");
+	it.each(["upper", "set", "unset", "unspecified"])("a transforming filter named %s yields unknown changes without executing it", async (driver) => {
+		const dir = repo(`transform-filter-${driver}`);
 		const marker = join(env.root, "transform-ran");
 		const script = join(env.root, "transform.sh").replaceAll("\\", "/");
 		writeFileSync(script, `#!/bin/sh\necho ran > "${marker.replaceAll("\\", "/")}"\ntr a-z A-Z\n`, { mode: 0o755 });
-		writeFileSync(join(dir, ".gitattributes"), "*.txt filter=upper\n");
-		git(dir, "config", "filter.upper.clean", script);
+		writeFileSync(join(dir, ".gitattributes"), `*.txt filter=${driver}\n`);
+		git(dir, "config", `filter.${driver}.clean`, script);
 		git(dir, "add", ".");
 		git(dir, "commit", "-qm", "filter");
 		const file = join(dir, "packages", "api", "a.txt");

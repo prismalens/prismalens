@@ -57,9 +57,7 @@ export function checkoutStatus(root: string): {
 		},
 	).split("\0");
 	const drivers = new Set(
-		attributes
-			.filter((_, i) => i % 3 === 2)
-			.filter((name) => !["unspecified", "unset", "set", ""].includes(name)),
+		attributes.filter((_, i) => i % 3 === 2).filter((name) => name !== ""),
 	);
 	const hasFilters = [...drivers].some((name) =>
 		["clean", "process"].some((kind) => {
