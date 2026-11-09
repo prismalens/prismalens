@@ -193,12 +193,16 @@ export class ReferencesService {
 				snap = await provider.snapshot(ref, at).catch(() => null);
 				if (snap) break;
 			}
+			// A host's issue or PR title is anyone's words: the message names it by number alone.
+			const named = hostWorkItem(ref);
 			out.push(
-				snap ?? {
-					ref,
-					text: `${ref.label} (could not be read when the message was sent).`,
-					outOfScope: true,
-				},
+				snap
+					? { ...snap, ref: named }
+					: {
+							ref: named,
+							text: `${named.label} (could not be read when the message was sent).`,
+							outOfScope: true,
+						},
 			);
 		}
 		return out;
@@ -397,4 +401,15 @@ export class ReferencesService {
 		}
 		return keys;
 	}
+}
+
+/** An issue or pull request as the message names it: its number, never the title the client sent back. */
+function hostWorkItem(ref: ReferenceRef): ReferenceRef {
+	if (ref.kind !== "issue" && ref.kind !== "pull_request") return ref;
+	const n = Number(ref.id.split(":")[2]);
+	if (!Number.isInteger(n) || n <= 0) return { ...ref, label: ref.kind };
+	return {
+		...ref,
+		label: `${ref.kind === "issue" ? "Issue" : "Pull request"} #${n}`,
+	};
 }

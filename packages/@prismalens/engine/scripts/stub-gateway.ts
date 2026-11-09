@@ -320,6 +320,39 @@ export async function startStubGateway(
 				createdAt: "2026-01-01T00:00:00.000Z",
 			}),
 		},
+		watches: {
+			wakeup: async (_run: string, delay: number) => ({
+				at: new Date(Date.now() + delay * 1000).toISOString(),
+				replaced: false,
+			}),
+			link: async (_run: string, url: string) => ({
+				pr: {
+					id: "stub-pr-1",
+					url,
+					host: "github" as const,
+					repo: "scenario/app",
+					number: 1,
+					title: "Scenario fix",
+					state: "open" as const,
+					review: "review_required" as const,
+					checks: {
+						state: "pending" as const,
+						total: 1,
+						failed: 0,
+						pending: 1,
+					},
+					conflicts: false,
+					tone: "attention" as const,
+					source: "agent" as const,
+					fetchedAt: null,
+				},
+			}),
+			watch: async () => ({
+				expiresAt: new Date(Date.now() + 12 * 3_600_000).toISOString(),
+				pr: "scenario/app#1",
+			}),
+			unwatch: async () => ({ stopped: false }),
+		},
 		asks: {
 			question: async () => ({ askId: "00000000-0000-4000-8000-0000000000a5" }),
 			secret: async (_run: string, input: { name: string }) => ({

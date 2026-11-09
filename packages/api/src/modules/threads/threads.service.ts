@@ -53,6 +53,7 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { endAgentWakes } from "../wakes/agent-wakes.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { renameThread } from "./thread-titles.js";
@@ -702,6 +703,8 @@ export class ThreadsService {
 			(settled ? ids : [id]).map((target) => ({ id: target, settledAt: at })),
 			prior,
 		);
+		// After the settle is written: a failed settle keeps what the agent scheduled.
+		if (settled) await endAgentWakes(this.prisma, ids);
 		return {
 			ids,
 			previous: settled

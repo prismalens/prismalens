@@ -610,6 +610,13 @@ export const COMPACTION_METHODS = [
 	"agent_auto",
 ] as const;
 export type CompactionMethod = (typeof COMPACTION_METHODS)[number];
+/** What `pr_watch` waits for (#1024 spec B): checks finished, a review decision, or the merge. */
+export const PR_WATCH_UNTIL = ["checks_done", "review", "merged"] as const;
+export type PrWatchUntil = (typeof PR_WATCH_UNTIL)[number];
+/** A watch refreshes its PR this often, and gives up after this long. */
+export const PR_WATCH_EVERY_MS = 2 * 60_000;
+export const PR_WATCH_FOR_MS = 12 * 60 * 60_000;
+
 /** The wake kinds one table holds (#1024): a limit's resume, idle compaction, and surface B's. */
 export const WAKE_KINDS = [
 	"limit",
@@ -879,6 +886,9 @@ export const HARNESS_DATA_NOTE =
 export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	artifact_publish: "Published a page",
 	ask_user: "Asked you a question",
+	pr_link: "Linked a pull request",
+	pr_unwatch: "Stopped watching a pull request",
+	pr_watch: "Watched a pull request",
 	attachment_read: "Read an attached file",
 	attachments_list: "Listed attached files",
 	changes_list: "Listed recent changes",
@@ -894,6 +904,7 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	runbooks_list: "Listed runbooks",
 	runbooks_read: "Read a runbook",
 	secret_request: "Asked you for a secret",
+	wakeup_schedule: "Scheduled a wake up",
 	service_get: "Read a service",
 	thread_list: "Listed threads",
 	thread_cancel: "Stopped a thread",
@@ -1385,6 +1396,29 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		agent: z.string(),
 		text: z.string(),
 		resetsAt: z.string().datetime().nullable().optional(),
+	}),
+	z.object({
+		/** The agent asked to be woken (`wakeup_schedule`, #1024 spec B): when, and the reason it will hear. */
+		kind: z.literal("wake_scheduled"),
+		...StreamBaseShape,
+		wakeKind: z.enum(["agent"]),
+		at: z.string().datetime(),
+		reason: z.string().max(500),
+		/** It replaced the thread's earlier agent wake. */
+		replaced: z.literal(true).optional(),
+	}),
+	z.object({
+		/** The agent watches a pull request until a condition holds (`pr_watch`, #1024 spec B). */
+		kind: z.literal("pr_watch"),
+		...StreamBaseShape,
+		prId: z.string().min(1).max(200),
+		/** `owner/repo#12`, as the thread's PR list names it. */
+		pr: z.string().max(300),
+		until: z.enum(PR_WATCH_UNTIL),
+		/** started; met (the thread is woken); stopped by `pr_unwatch`; expired after 12 hours. */
+		phase: z.enum(["started", "met", "stopped", "expired"]),
+		/** What the PR showed when it ended, one line. */
+		state: z.string().max(300).optional(),
 	}),
 	z.object({
 		/** PrismaLens will wake the thread: `at` null with `gaveUp` when it stopped retrying (#1024). */

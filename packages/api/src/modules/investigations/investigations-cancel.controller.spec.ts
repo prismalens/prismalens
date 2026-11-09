@@ -27,6 +27,7 @@ const mockInvestigationsService = {
 	updateStatus: vi.fn(),
 	cancelPending: vi.fn(),
 	markStopRequested: vi.fn(),
+	endAgentWakes: vi.fn(async () => {}),
 };
 
 const mockDispatchService = {
@@ -95,6 +96,8 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		const result = await cancelHandler()({ input: { id: "inv-1" } });
 
 		expect(mockDispatchService.requestCancel).toHaveBeenCalledWith("inv-1");
+		// A stop also ends the agent's own wakes and PR watches (#1024 spec B).
+		expect(mockInvestigationsService.endAgentWakes).toHaveBeenCalledWith("inv-1");
 		// A dispatcher received the cancel — it owns the terminal write, not this endpoint.
 		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
 		// A running run is never cancelled at the row level (it is already claimed).
