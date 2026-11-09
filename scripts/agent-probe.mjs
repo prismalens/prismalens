@@ -59,11 +59,11 @@ export const PROBE_FILES = {
 /** A row the probe hands no key, so asking for a sign-in is how it answers when it works. */
 export const keyless = (id) => !PROBE_ENV[id];
 
-const run = (file, args, options = {}) =>
+export const run = (file, args, options = {}) =>
 	execFileSync(file, args, {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"],
-		shell: WINDOWS,
+		shell: WINDOWS && file === "npm",
 		...options,
 	});
 
