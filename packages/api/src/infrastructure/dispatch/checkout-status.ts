@@ -30,7 +30,7 @@ export function checkoutStatus(root: string): {
 	const read = (...args: string[]) =>
 		execFileSync("git", ["-c", "core.fsmonitor=", ...args], {
 			cwd: root,
-			env: { ...gitEnv({ source: "none" }), ...env },
+			env: gitEnv({ source: "none" }),
 			encoding: "utf8",
 			timeout: 15_000,
 			windowsHide: true,
@@ -38,6 +38,9 @@ export function checkoutStatus(root: string): {
 	const index = resolve(root, read("rev-parse", "--git-path", "index"));
 	const common = resolve(root, read("rev-parse", "--git-common-dir"));
 	const head = read("rev-parse", "--verify", "HEAD");
+	const format = read("rev-parse", "--show-object-format");
+	if (format !== "sha1" && format !== "sha256")
+		throw new Error("Unsupported Git object format");
 	const scratch = mkdtempSync(join(tmpdir(), "pl-status-"));
 	const close = () => rmSync(scratch, { recursive: true, force: true });
 	try {
@@ -51,7 +54,7 @@ export function checkoutStatus(root: string): {
 		);
 		const config = [
 			"[core]",
-			"repositoryformatversion = 0",
+			`repositoryformatversion = ${format === "sha256" ? 1 : 0}`,
 			"bare = false",
 			"fsmonitor =",
 			"attributesFile = /dev/null",
@@ -61,6 +64,8 @@ export function checkoutStatus(root: string): {
 			"[diff]",
 			"ignoreSubmodules = all",
 		];
+		if (format === "sha256")
+			config.push("[extensions]", "objectFormat = sha256");
 		const allowed: Record<string, RegExp> = {
 			"core.autocrlf": /^(true|false|input)$/,
 			"core.eol": /^(lf|crlf|native)$/,

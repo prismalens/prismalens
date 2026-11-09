@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	mkdirSync,
+	readFileSync,
 	rmSync,
 	utimesSync,
 	symlinkSync,
@@ -171,6 +172,43 @@ describe("checkout leases (#1024)", () => {
 		const { observeWorkspace } = await import("./investigation-run.js");
 		expect(observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "changed", changed: 3 })]);
 		expect(existsSync(marker)).toBe(false);
+	}, 30_000);
+
+	it("global CRLF normalization remains effective in admission and restart observations", async () => {
+		const home = join(env.root, "global-config");
+		mkdirSync(home);
+		const config = join(home, "gitconfig");
+		writeFileSync(config, "[core]\n autocrlf = true\n");
+		vi.stubEnv("GIT_CONFIG_GLOBAL", config);
+		try {
+			const dir = repo("global-crlf");
+			const file = join(dir, "packages", "api", "a.txt");
+			writeFileSync(file, "a\r\n");
+			utimesSync(file, new Date(1), new Date(1));
+			const index = readFileSync(join(dir, ".git", "index"));
+			expect((await lease.checkoutState(dir)).dirty).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
+			const { observeWorkspace } = await import("./investigation-run.js");
+			expect(observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "as-was" })]);
+			expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
+		} finally { vi.unstubAllEnvs(); }
+	}, 30_000);
+
+	it("SHA-256 checkouts can be observed without changing their index", async () => {
+		const dir = join(env.root, "sha256");
+		mkdirSync(dir);
+		git(dir, "init", "-q", "--object-format=sha256");
+		git(dir, "config", "user.email", "t@example.com");
+		git(dir, "config", "user.name", "t");
+		writeFileSync(join(dir, "file.txt"), "a\n");
+		git(dir, "add", ".");
+		git(dir, "commit", "-qm", "first");
+		const index = readFileSync(join(dir, ".git", "index"));
+		const state = await lease.checkoutState(dir);
+		expect(state.head).toHaveLength(64);
+		expect(state.dirty).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
+		const { observeWorkspace } = await import("./investigation-run.js");
+		expect(observeWorkspace([{ name: "repo", dir, head: state.head }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "as-was" })]);
+		expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
 	}, 30_000);
 
 	it("a stale lease snapshot cannot contain or delete a newer generation of the same run", async () => {
