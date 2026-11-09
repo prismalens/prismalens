@@ -25,7 +25,6 @@ export function checkoutStatus(root: string): {
 		...gitEnv({ source: "none" }),
 		GIT_CONFIG_NOSYSTEM: "1",
 		GIT_CONFIG_GLOBAL: "/dev/null",
-		GIT_ATTR_NOSYSTEM: "1",
 		GIT_OPTIONAL_LOCKS: "0",
 	};
 	const read = (...args: string[]) =>
@@ -85,8 +84,6 @@ export function checkoutStatus(root: string): {
 			`repositoryformatversion = ${format === "sha256" ? 1 : 0}`,
 			"bare = false",
 			"fsmonitor =",
-			"attributesFile = /dev/null",
-			"excludesFile = /dev/null",
 			"[status]",
 			"showUntrackedFiles = normal",
 			"[diff]",
@@ -110,6 +107,18 @@ export function checkoutStatus(root: string): {
 				/* Unset: Git's default. */
 			}
 		}
+		for (const key of ["core.attributesFile", "core.excludesFile"]) {
+			try {
+				const value = read("config", "--path", "--get", key);
+				if (value)
+					config.push(
+						`[core]\n${key.slice(5)} = ${JSON.stringify(resolve(root, value).replaceAll("\\", "/"))}`,
+					);
+			} catch {
+				/* Unset: Git's default. */
+			}
+		}
+
 		writeFileSync(join(scratch, "config"), `${config.join("\n")}\n`);
 		if (existsSync(index)) copyFileSync(index, join(scratch, "index"));
 		for (const dir of new Set([dirname(index), common])) {

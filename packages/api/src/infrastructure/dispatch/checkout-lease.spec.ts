@@ -178,10 +178,13 @@ describe("checkout leases (#1024)", () => {
 		const home = join(env.root, "global-config");
 		mkdirSync(home);
 		const config = join(home, "gitconfig");
-		writeFileSync(config, "[core]\n autocrlf = true\n");
+		const ignore = join(home, "ignore");
+		writeFileSync(ignore, "ignored.txt\n");
+		writeFileSync(config, `[core]\n autocrlf = true\n excludesFile = ${JSON.stringify(ignore.replaceAll("\\", "/"))}\n`);
 		vi.stubEnv("GIT_CONFIG_GLOBAL", config);
 		try {
 			const dir = repo("global-crlf");
+			writeFileSync(join(dir, "ignored.txt"), "ignored\n");
 			const file = join(dir, "packages", "api", "a.txt");
 			rmSync(file);
 			git(dir, "checkout", "--", "packages/api/a.txt");
