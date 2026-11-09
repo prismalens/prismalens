@@ -545,7 +545,7 @@ jobs:
           version=$(node -p "require('./scripts/agent-pins.json').pins[process.env.PIN]")
           if [ "$PIN" = deepagents-code ]; then
             # deepagents-code needs Python 3.14; uv fetches it.
-            uv tool install --python 3.14 "$PIN==$version" --with deepagents-acp
+            uv tool install --python 3.14 "$PIN==$version" --with deepagents-acp --with 'agent-client-protocol<1'
           else
             npm install -g "$PIN@$version"
           fi

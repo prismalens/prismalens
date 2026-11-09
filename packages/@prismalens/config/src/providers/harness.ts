@@ -288,8 +288,11 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
-		install: "uv tool install -U deepagents-code --with deepagents-acp",
-		channel: { uv: ["deepagents-code", "deepagents-acp"] },
+		install:
+			"uv tool install -U deepagents-code --with deepagents-acp --with 'agent-client-protocol<1'",
+		channel: {
+			uv: ["deepagents-code", "deepagents-acp", "agent-client-protocol<1"],
+		},
 		lines: noModeLines("deepagents"),
 		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
 		tested: { version: "0.1.75", date: "2026-09-23" },
