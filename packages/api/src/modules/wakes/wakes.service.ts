@@ -60,8 +60,9 @@ export class WakesService {
 		reason: string,
 		payload: Record<string, unknown> = {},
 		attempts = 1,
+		tx?: Pick<PrismaService, "threadWake">,
 	): Promise<string> {
-		return this.prisma.$transaction(async (tx) => {
+		const write = async (tx: Pick<PrismaService, "threadWake">) => {
 			await tx.threadWake.updateMany({
 				where: { investigationId: threadId, kind, state: "pending" },
 				data: { state: "cancelled", doneAt: new Date() },
@@ -77,7 +78,8 @@ export class WakesService {
 				},
 			});
 			return row.id;
-		});
+		};
+		return tx ? write(tx) : this.prisma.$transaction(write);
 	}
 
 	/** False when the wake was no longer pending. */
@@ -163,8 +165,12 @@ export class WakesService {
 	}
 
 	/** The thread's latest wake of this kind, in any state. */
-	async latest(threadId: string, kind: WakeKind): Promise<Wake | null> {
-		const row = await this.prisma.threadWake.findFirst({
+	async latest(
+		threadId: string,
+		kind: WakeKind,
+		db: Pick<PrismaService, "threadWake"> = this.prisma,
+	): Promise<Wake | null> {
+		const row = await db.threadWake.findFirst({
 			where: { investigationId: threadId, kind },
 			orderBy: { createdAt: "desc" },
 		});
