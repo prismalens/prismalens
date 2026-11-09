@@ -10,6 +10,7 @@ import {
 	existsSync,
 	mkdirSync,
 	rmSync,
+	utimesSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -144,6 +145,57 @@ describe("checkout leases (#1024)", () => {
 		await lease.checkoutState(dir);
 		await lease.checkoutRoot(dir);
 		expect(existsSync(marker)).toBe(false);
+	});
+
+	it("admission and restart status never run a clean filter, while preserving ordinary dirty counts", async () => {
+		const dir = repo("filtered");
+		const marker = join(env.root, "filter-ran");
+		const hook = join(env.root, "filter.sh").replaceAll("\\", "/");
+		writeFileSync(hook, `#!/bin/sh\necho ran > "${marker.replaceAll("\\", "/")}"\ncat\n`, { mode: 0o755 });
+		writeFileSync(join(dir, ".gitattributes"), "*.txt filter=marker\n");
+		git(dir, "config", "filter.marker.clean", hook);
+		git(dir, "add", ".");
+		git(dir, "commit", "-qm", "filter");
+		rmSync(marker, { force: true });
+		const file = join(dir, "packages", "api", "a.txt");
+		utimesSync(file, new Date(1), new Date(1));
+		git(dir, "status", "--porcelain");
+		expect(existsSync(marker)).toBe(true);
+		rmSync(marker);
+		writeFileSync(file, "changed\n");
+		writeFileSync(join(dir, "staged.txt"), "staged\n");
+		git(dir, "add", "staged.txt");
+		rmSync(marker, { force: true });
+		writeFileSync(join(dir, "untracked.txt"), "new\n");
+		expect((await lease.checkoutState(dir)).dirty).toEqual({ staged: 1, unstaged: 1, untracked: 1 });
+		const { observeWorkspace } = await import("./investigation-run.js");
+		expect(observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "changed", changed: 3 })]);
+		expect(existsSync(marker)).toBe(false);
+	}, 30_000);
+
+	it("a stale lease snapshot cannot contain or delete a newer generation of the same run", async () => {
+		const run = await thread("failed");
+		const dir = repo("generation");
+		await lease.takeLease(prisma as never, dir, run.id);
+		const old = await prisma.checkoutLease.findUniqueOrThrow({ where: { canonicalPath: dir } });
+		await lease.takeLease(prisma as never, dir, run.id);
+		const gone = vi.fn(async () => true);
+		const snapshot = vi.spyOn(prisma.checkoutLease, "findMany").mockResolvedValueOnce([old]);
+		try { await lease.releaseIfGone(prisma as never, gone, dir); } finally { snapshot.mockRestore(); }
+		expect(gone).not.toHaveBeenCalled();
+		expect(await lease.leasedBy(prisma, run.id)).toBe(dir);
+		await lease.releaseLease(prisma, run.id);
+	});
+
+	it("rechecks live status under the writer lock before containing a receipt", async () => {
+		const run = await thread("running");
+		const dir = repo("readmitted");
+		await lease.takeLease(prisma as never, dir, run.id);
+		const gone = vi.fn(async () => true);
+		expect(await lease.releaseIfGone(prisma as never, gone, dir)).toBe(0);
+		expect(gone).not.toHaveBeenCalled();
+		expect(await lease.leasedBy(prisma, run.id)).toBe(dir);
+		await lease.releaseLease(prisma, run.id);
 	});
 
 	it("an alias through a symlink or junction is the same checkout", async () => {

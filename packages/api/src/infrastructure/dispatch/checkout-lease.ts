@@ -19,6 +19,8 @@ import {
 	type SpawnGitOptions,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
+import type { PrismaService } from "../../core/prisma/prisma.service.js";
+import { checkoutStatus } from "./checkout-status.js";
 import { busyAt, CanonicalBusy, canonical, overlaps } from "./folder-lock.js";
 
 export const CHECKOUT_BUSY =
@@ -50,18 +52,29 @@ export function setCheckoutGit(next: GitRunner | null): void {
 export const NO_FSMONITOR = ["-c", "core.fsmonitor="] as const;
 
 /** git on the user's checkout: a write is refused here, before git sees it (#1024). */
-export function checkoutGit(args: string[], cwd: string): Promise<GitOutput> {
+export async function checkoutGit(
+	args: string[],
+	cwd: string,
+): Promise<GitOutput> {
 	const sub = args[0];
 	if (!sub || !READ_ONLY.has(sub))
 		return Promise.reject(
 			new Error(`git ${sub ?? ""} never runs on a borrowed checkout`),
 		);
-	return runner([...NO_FSMONITOR, ...args], {
-		cwd,
-		// Optional locks off: a status here never writes the user's index (git-status(1)).
-		env: { ...gitEnv({ source: "machine" }), GIT_OPTIONAL_LOCKS: "0" },
-		timeoutMs: GIT_PROBE_TIMEOUT_MS,
-	});
+	const status = sub === "status" ? checkoutStatus(cwd) : null;
+	try {
+		return await runner([...NO_FSMONITOR, ...args], {
+			cwd,
+			// Optional locks off: a status here never writes the user's index (git-status(1)).
+			env: status?.env ?? {
+				...gitEnv({ source: "machine" }),
+				GIT_OPTIONAL_LOCKS: "0",
+			},
+			timeoutMs: GIT_PROBE_TIMEOUT_MS,
+		});
+	} finally {
+		status?.close();
+	}
 }
 
 /** The checkout could not be read just now (a busy or slow disk, no git): trying again may work, unlike a checkout that is gone. */
@@ -155,10 +168,16 @@ export async function takeLease(
 	path: string,
 	investigationId: string,
 ): Promise<void> {
+	const previous = await db.checkoutLease.findUnique({
+		where: { canonicalPath: path },
+	});
+	const takenAt = new Date(
+		Math.max(Date.now(), (previous?.takenAt.getTime() ?? 0) + 1),
+	);
 	await db.checkoutLease.upsert({
 		where: { canonicalPath: path },
-		create: { canonicalPath: path, investigationId },
-		update: { investigationId, takenAt: new Date() },
+		create: { canonicalPath: path, investigationId, takenAt },
+		update: { investigationId, takenAt },
 	});
 }
 
@@ -189,63 +208,51 @@ export type AgentGone = (
 	acpSessionId: string | null,
 ) => Promise<boolean>;
 
-interface LeaseRows {
-	checkoutLease: {
-		findMany(args: {
-			select: {
-				canonicalPath: true;
-				investigationId: true;
-				investigation: { select: { status: true; acpSessionId: true } };
-			};
-		}): PromiseLike<
-			Array<{
-				canonicalPath: string;
-				investigationId: string;
-				investigation: { status: string; acpSessionId: string | null };
-			}>
-		>;
-		deleteMany(args: {
-			where: { canonicalPath?: string; investigationId: string };
-		}): PromiseLike<{ count: number }>;
-	};
-}
+type LeaseRows = Pick<PrismaService, "checkoutLease" | "investigation">;
+type LeaseStore = LeaseRows & {
+	$transaction<T>(
+		fn: (tx: LeaseRows) => Promise<T>,
+		options?: { timeout: number },
+	): Promise<T>;
+};
 
-/**
- * Releases each lease on `path` (every lease when null) whose run is not live and whose agent
- * is proven gone. Answers how many. Outside any transaction: proving an agent gone reads its process.
- */
+/** Reclaims ended runs under the database write lock, fencing both containment and deletion (#1066). */
 export async function releaseIfGone(
-	db: LeaseRows,
+	db: LeaseStore,
 	gone: AgentGone,
 	path: string | null = null,
 ): Promise<number> {
-	const rows = await db.checkoutLease.findMany({
-		select: {
-			canonicalPath: true,
-			investigationId: true,
-			investigation: { select: { status: true, acpSessionId: true } },
-		},
-	});
+	const rows = await db.checkoutLease.findMany();
 	let released = 0;
 	for (const r of rows) {
 		if (path && !overlaps(r.canonicalPath, path)) continue;
-		if (
-			(LIVE_WORKFLOW_STATUSES as readonly string[]).includes(
-				r.investigation.status,
-			)
-		)
-			continue;
-		if (!(await gone(r.investigationId, r.investigation.acpSessionId)))
-			continue;
-		// Only this run's lease: another may have taken the path since the read.
-		released += (
-			await db.checkoutLease.deleteMany({
-				where: {
+		released += await db.$transaction(
+			async (tx) => {
+				const where = {
 					canonicalPath: r.canonicalPath,
 					investigationId: r.investigationId,
-				},
-			})
-		).count;
+					takenAt: r.takenAt,
+				};
+				// A matching no-op write takes SQLite's writer lock before we inspect or contain a receipt.
+				const { count } = await tx.checkoutLease.updateMany({
+					where,
+					data: { takenAt: r.takenAt },
+				});
+				if (!count) return 0;
+				const run = await tx.investigation.findUnique({
+					where: { id: r.investigationId },
+					select: { status: true, acpSessionId: true },
+				});
+				if (
+					!run ||
+					(LIVE_WORKFLOW_STATUSES as readonly string[]).includes(run.status)
+				)
+					return 0;
+				if (!(await gone(r.investigationId, run.acpSessionId))) return 0;
+				return (await tx.checkoutLease.deleteMany({ where })).count;
+			},
+			{ timeout: 30_000 },
+		);
 	}
 	return released;
 }
