@@ -19,6 +19,7 @@ import { gitEnv } from "../../core/harness/git-env.js";
 export function checkoutStatus(root: string): {
 	env: Record<string, string>;
 	close: () => void;
+	hasFilters: boolean;
 } {
 	const env = {
 		...gitEnv({ source: "none" }),
@@ -33,14 +34,43 @@ export function checkoutStatus(root: string): {
 			env: gitEnv({ source: "none" }),
 			encoding: "utf8",
 			timeout: 15_000,
+			maxBuffer: 16 * 1024 * 1024,
 			windowsHide: true,
-		}).trim();
+		}).replace(/\r?\n$/, "");
 	const index = resolve(root, read("rev-parse", "--git-path", "index"));
 	const common = resolve(root, read("rev-parse", "--git-common-dir"));
 	const head = read("rev-parse", "--verify", "HEAD");
 	const format = read("rev-parse", "--show-object-format");
 	if (format !== "sha1" && format !== "sha256")
 		throw new Error("Unsupported Git object format");
+	const attributes = execFileSync(
+		"git",
+		["-c", "core.fsmonitor=", "check-attr", "-z", "--stdin", "filter"],
+		{
+			cwd: root,
+			env: gitEnv({ source: "none" }),
+			input: read("ls-files", "-z"),
+			encoding: "utf8",
+			timeout: 15_000,
+			maxBuffer: 16 * 1024 * 1024,
+			windowsHide: true,
+		},
+	).split("\0");
+	const drivers = new Set(
+		attributes
+			.filter((_, i) => i % 3 === 2)
+			.filter((name) => !["unspecified", "unset", "set", ""].includes(name)),
+	);
+	const hasFilters = [...drivers].some((name) =>
+		["clean", "process"].some((kind) => {
+			try {
+				return read("config", "--get", `filter.${name}.${kind}`) !== "";
+			} catch {
+				return false;
+			}
+		}),
+	);
+
 	const scratch = mkdtempSync(join(tmpdir(), "pl-status-"));
 	const close = () => rmSync(scratch, { recursive: true, force: true });
 	try {
@@ -94,6 +124,7 @@ export function checkoutStatus(root: string): {
 			if (existsSync(source)) copyFileSync(source, join(scratch, "info", file));
 		}
 		return {
+			hasFilters,
 			env: {
 				...env,
 				GIT_DIR: scratch,

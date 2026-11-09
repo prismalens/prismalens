@@ -417,6 +417,7 @@ model PullRequest {
 /// One thread at a time works in a user's own checkout (#1024): a lease holds until its run's agent has exited.
 model CheckoutLease {
   canonicalPath   String        @id // the working tree's top level, as the disk names it
+  generation      String        @default(uuid())
   investigationId String
   takenAt         DateTime      @default(now())
 

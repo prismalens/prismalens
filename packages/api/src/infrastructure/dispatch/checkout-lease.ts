@@ -6,6 +6,7 @@
  * ADR 0004 §2 as amended). The checkout is borrowed: only read-only git ever runs on it,
  * and one lease per canonical working tree admits one live run at a time.
  */
+import { randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import type { BorrowedCheckout } from "@prismalens/contracts";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
@@ -55,7 +56,7 @@ export const NO_FSMONITOR = ["-c", "core.fsmonitor="] as const;
 export async function checkoutGit(
 	args: string[],
 	cwd: string,
-): Promise<GitOutput> {
+): Promise<GitOutput & { filtered?: boolean }> {
 	const sub = args[0];
 	if (!sub || !READ_ONLY.has(sub))
 		return Promise.reject(
@@ -63,7 +64,7 @@ export async function checkoutGit(
 		);
 	const status = sub === "status" ? checkoutStatus(cwd) : null;
 	try {
-		return await runner([...NO_FSMONITOR, ...args], {
+		const output = await runner([...NO_FSMONITOR, ...args], {
 			cwd,
 			// Optional locks off: a status here never writes the user's index (git-status(1)).
 			env: status?.env ?? {
@@ -72,6 +73,7 @@ export async function checkoutGit(
 			},
 			timeoutMs: GIT_PROBE_TIMEOUT_MS,
 		});
+		return { ...output, ...(status?.hasFilters ? { filtered: true } : {}) };
 	} finally {
 		status?.close();
 	}
@@ -147,7 +149,9 @@ export async function checkoutState(root: string): Promise<BorrowedCheckout> {
 		["status", "--porcelain=v2", "--untracked-files=normal"],
 		root,
 	);
-	return { path: root, head, branch, dirty: dirtyCounts(status.stdout) };
+	const dirty = dirtyCounts(status.stdout);
+	if (status.filtered) dirty.unstaged = null;
+	return { path: root, head, branch, dirty };
 }
 
 /**
@@ -168,16 +172,11 @@ export async function takeLease(
 	path: string,
 	investigationId: string,
 ): Promise<void> {
-	const previous = await db.checkoutLease.findUnique({
-		where: { canonicalPath: path },
-	});
-	const takenAt = new Date(
-		Math.max(Date.now(), (previous?.takenAt.getTime() ?? 0) + 1),
-	);
+	const generation = randomUUID();
 	await db.checkoutLease.upsert({
 		where: { canonicalPath: path },
-		create: { canonicalPath: path, investigationId, takenAt },
-		update: { investigationId, takenAt },
+		create: { canonicalPath: path, investigationId, generation },
+		update: { investigationId, generation, takenAt: new Date() },
 	});
 }
 
@@ -231,7 +230,7 @@ export async function releaseIfGone(
 				const where = {
 					canonicalPath: r.canonicalPath,
 					investigationId: r.investigationId,
-					takenAt: r.takenAt,
+					generation: r.generation,
 				};
 				// A matching no-op write takes SQLite's writer lock before we inspect or contain a receipt.
 				const { count } = await tx.checkoutLease.updateMany({

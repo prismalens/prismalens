@@ -148,7 +148,7 @@ describe("checkout leases (#1024)", () => {
 		expect(existsSync(marker)).toBe(false);
 	});
 
-	it("admission and restart status never run a clean filter, while preserving ordinary dirty counts", async () => {
+	it("admission and restart status never run a clean filter, and mark its unstaged count unknown", async () => {
 		const dir = repo("filtered");
 		const marker = join(env.root, "filter-ran");
 		const hook = join(env.root, "filter.sh").replaceAll("\\", "/");
@@ -168,9 +168,9 @@ describe("checkout leases (#1024)", () => {
 		git(dir, "add", "staged.txt");
 		rmSync(marker, { force: true });
 		writeFileSync(join(dir, "untracked.txt"), "new\n");
-		expect((await lease.checkoutState(dir)).dirty).toEqual({ staged: 1, unstaged: 1, untracked: 1 });
+		expect((await lease.checkoutState(dir)).dirty).toEqual({ staged: 1, unstaged: null, untracked: 1 });
 		const { observeWorkspace } = await import("./investigation-run.js");
-		expect(observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "changed", changed: 3 })]);
+		expect(observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "unchecked" })]);
 		expect(existsSync(marker)).toBe(false);
 	}, 30_000);
 
@@ -183,7 +183,10 @@ describe("checkout leases (#1024)", () => {
 		try {
 			const dir = repo("global-crlf");
 			const file = join(dir, "packages", "api", "a.txt");
-			writeFileSync(file, "a\r\n");
+			rmSync(file);
+			git(dir, "checkout", "--", "packages/api/a.txt");
+			expect(readFileSync(file, "utf8")).toBe("a\r\n");
+			expect(git(dir, "status", "--porcelain")).toBe("");
 			utimesSync(file, new Date(1), new Date(1));
 			const index = readFileSync(join(dir, ".git", "index"));
 			expect((await lease.checkoutState(dir)).dirty).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
@@ -211,12 +214,38 @@ describe("checkout leases (#1024)", () => {
 		expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
 	}, 30_000);
 
-	it("a stale lease snapshot cannot contain or delete a newer generation of the same run", async () => {
+	it("a content-transforming clean filter yields unknown changes without executing it", async () => {
+		const dir = repo("transform-filter");
+		const marker = join(env.root, "transform-ran");
+		const script = join(env.root, "transform.sh").replaceAll("\\", "/");
+		writeFileSync(script, `#!/bin/sh\necho ran > "${marker.replaceAll("\\", "/")}"\ntr a-z A-Z\n`, { mode: 0o755 });
+		writeFileSync(join(dir, ".gitattributes"), "*.txt filter=upper\n");
+		git(dir, "config", "filter.upper.clean", script);
+		git(dir, "add", ".");
+		git(dir, "commit", "-qm", "filter");
+		const file = join(dir, "packages", "api", "a.txt");
+		utimesSync(file, new Date(1), new Date(1));
+		expect(git(dir, "status", "--porcelain")).toBe("");
+		expect(existsSync(marker)).toBe(true);
+		rmSync(marker);
+		utimesSync(file, new Date(2), new Date(2));
+		const index = readFileSync(join(dir, ".git", "index"));
+		const state = await lease.checkoutState(dir);
+		expect(state.dirty).toEqual({ staged: 0, unstaged: null, untracked: 0 });
+		const { observeWorkspace } = await import("./investigation-run.js");
+		expect(observeWorkspace([{ name: "repo", dir, head: state.head }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "unchecked" })]);
+		expect(existsSync(marker)).toBe(false);
+		expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
+	}, 30_000);
+
+	it.each([false, true])("a stale snapshot cannot contain a newer lease, including recreation=%s", async (recreated) => {
 		const run = await thread("failed");
-		const dir = repo("generation");
+		const dir = repo(`generation-${recreated}`);
 		await lease.takeLease(prisma as never, dir, run.id);
 		const old = await prisma.checkoutLease.findUniqueOrThrow({ where: { canonicalPath: dir } });
+		if (recreated) await lease.releaseLease(prisma, run.id);
 		await lease.takeLease(prisma as never, dir, run.id);
+		await prisma.checkoutLease.update({ where: { canonicalPath: dir }, data: { takenAt: old.takenAt } });
 		const gone = vi.fn(async () => true);
 		const snapshot = vi.spyOn(prisma.checkoutLease, "findMany").mockResolvedValueOnce([old]);
 		try { await lease.releaseIfGone(prisma as never, gone, dir); } finally { snapshot.mockRestore(); }

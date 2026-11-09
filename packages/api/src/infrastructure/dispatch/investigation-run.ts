@@ -3010,34 +3010,40 @@ function dropReceipt(runId: string, keepFile = false): void {
 export function observeWorkspace(
 	repos: readonly { name: string; dir: string; head: string }[],
 	existed: ReadonlyMap<string, boolean>,
-	git: (dir: string, args: string[]) => string = gitIn,
+	git: (dir: string, args: string[]) => string | null = gitIn,
 ): WorkspaceState[] {
 	const many = repos.length > 1;
 	const out: WorkspaceState[] = [];
 	for (const r of repos) {
 		const repo = many ? r.name : null;
 		let head: string;
-		let changed: number;
+		let changed: number | null;
 		try {
-			head = git(r.dir, ["rev-parse", "HEAD"]).trim();
-			changed = git(r.dir, ["status", "--porcelain"])
-				.split(/\r?\n/)
-				.filter((l) => l.trim()).length;
+			const current = git(r.dir, ["rev-parse", "HEAD"]);
+			if (current === null) continue;
+			head = current.trim();
+			const status = git(r.dir, ["status", "--porcelain"]);
+			changed =
+				status === null
+					? null
+					: status.split(/\r?\n/).filter((l) => l.trim()).length;
 		} catch {
 			continue;
 		}
 		if (!existed.get(r.dir)) out.push({ repo, state: "rebuilt", head });
 		else if (!r.head.startsWith(head.slice(0, 7)) && !head.startsWith(r.head))
 			out.push({ repo, state: "moved", head, recorded: r.head });
+		else if (changed === null) out.push({ repo, state: "unchecked", head });
 		else if (changed > 0) out.push({ repo, state: "changed", head, changed });
 		else out.push({ repo, state: "as-was", head });
 	}
 	return out;
 }
 
-function gitIn(dir: string, args: string[]): string {
+function gitIn(dir: string, args: string[]): string | null {
 	const status = args[0] === "status" ? checkoutStatus(dir) : null;
 	try {
+		if (status?.hasFilters) return null;
 		// A status never refreshes the index: an in-place run's is the user's own (#1024).
 		return execFileSync(
 			"git",

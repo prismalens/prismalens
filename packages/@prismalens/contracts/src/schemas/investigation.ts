@@ -412,7 +412,7 @@ export const BorrowedCheckoutSchema = z.object({
 	branch: z.string().nullable().optional(),
 	dirty: z.object({
 		staged: z.number().int().min(0),
-		unstaged: z.number().int().min(0),
+		unstaged: z.number().int().min(0).nullable(),
 		untracked: z.number().int().min(0),
 	}),
 });
