@@ -3,10 +3,9 @@
 
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { ACCESS_SCOPE } from "@prismalens/auth";
 import type { HarnessId } from "@prismalens/config/harness";
 import { settingsContract } from "@prismalens/contracts";
-import type { Request } from "express";
+import { isOwner, requireOwner } from "../auth/owner.js";
 import {
 	HarnessService,
 	HarnessSettingsError,
@@ -33,14 +32,11 @@ export class SettingsController {
 	about() {
 		return {
 			get: implement(settingsContract.about.get).handler(({ context }) =>
-				this.updateService.aboutFor(isHost(context.request as Request)),
+				this.updateService.aboutFor(isOwner(context.request)),
 			),
 			diagnostics: implement(settingsContract.about.diagnostics).handler(
 				async ({ context }) => {
-					if (!isHost(context.request as Request))
-						throw new ORPCError("FORBIDDEN", {
-							message: "Only this machine's own browser can run diagnostics.",
-						});
+					requireOwner(context.request, "Only the owner can run diagnostics.");
 					return this.diagnosticsService.run();
 				},
 			),
@@ -63,20 +59,17 @@ export class SettingsController {
 			// Check now makes the server call out, so it is the host's to ask, like install (#724).
 			check: implement(settingsContract.update.check).handler(
 				async ({ context }) => {
-					if (!isHost(context.request as Request))
-						throw new ORPCError("FORBIDDEN", {
-							message: "Only this machine's own browser can check for updates.",
-						});
+					requireOwner(
+						context.request,
+						"Only the owner can check for updates.",
+					);
 					return this.updateService.aboutFor(true, true);
 				},
 			),
 			install: implement(settingsContract.update.install).handler(
 				({ input, context }) =>
 					refusals(() =>
-						this.updateService.install(
-							input.version,
-							isHost(context.request as Request),
-						),
+						this.updateService.install(input.version, isOwner(context.request)),
 					),
 			),
 			status: implement(settingsContract.update.status).handler(() =>
@@ -85,10 +78,7 @@ export class SettingsController {
 			prefs: implement(settingsContract.update.prefs).handler(
 				({ input, context }) =>
 					refusals(() =>
-						this.updateService.setPrefs(
-							input,
-							isHost(context.request as Request),
-						),
+						this.updateService.setPrefs(input, isOwner(context.request)),
 					),
 			),
 		};
@@ -102,7 +92,13 @@ export class SettingsController {
 				this.telemetryService.getSettings(),
 			),
 			update: implement(settingsContract.telemetry.update).handler(
-				({ input }) => this.telemetryService.update(input),
+				({ input, context }) => {
+					requireOwner(
+						context.request,
+						"Only the owner can change usage data.",
+					);
+					return this.telemetryService.update(input);
+				},
 			),
 		};
 	}
@@ -140,7 +136,8 @@ export class SettingsController {
 	danger() {
 		return {
 			resetData: implement(settingsContract.danger.resetData).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
+					requireOwner(context.request, "Only the owner can reset data.");
 					if (input.confirmation !== "RESET") {
 						throw new ORPCError("BAD_REQUEST", {
 							message: "Confirmation required",
@@ -152,7 +149,8 @@ export class SettingsController {
 			),
 
 			factoryReset: implement(settingsContract.danger.factoryReset).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
+					requireOwner(context.request, "Only the owner can reset PrismaLens.");
 					if (input.confirmation !== "FACTORY RESET") {
 						throw new ORPCError("BAD_REQUEST", {
 							message: "Confirmation required",
@@ -179,13 +177,13 @@ export class SettingsController {
 			getSettings: implement(settingsContract.harnesses.getSettings).handler(
 				async ({ context }) => ({
 					...(await this.harnessService.getSettings()),
-					canEditRuntime: isHost(context.request as Request),
+					canEditRuntime: isOwner(context.request),
 				}),
 			),
 			updateSettings: implement(
 				settingsContract.harnesses.updateSettings,
 			).handler(async ({ input, context }) => {
-				const host = isHost(context.request as Request);
+				const host = isOwner(context.request);
 				try {
 					const saved = await this.harnessService.updateSettings(input, {
 						host,
@@ -202,9 +200,4 @@ export class SettingsController {
 			),
 		};
 	}
-}
-
-/** The host's own session holds `admin:access`; a paired device does not (#907 decision 11). */
-export function isHost(request: Request): boolean {
-	return !!request.operator?.device.scopes.includes(ACCESS_SCOPE);
 }

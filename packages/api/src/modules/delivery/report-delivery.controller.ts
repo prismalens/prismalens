@@ -4,6 +4,7 @@
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement } from "@orpc/nest";
 import { settingsContract } from "@prismalens/contracts";
+import { requireOwner } from "../../core/auth/owner.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { ReportDeliveryService } from "./report-delivery.service.js";
 
@@ -19,8 +20,14 @@ export class ReportDeliveryController {
 			get: implement(settingsContract.delivery.get).handler(() =>
 				this.delivery.getSettings(),
 			),
-			update: implement(settingsContract.delivery.update).handler(({ input }) =>
-				this.delivery.setSlackWebhook(input.slackWebhookUrl),
+			update: implement(settingsContract.delivery.update).handler(
+				({ input, context }) => {
+					requireOwner(
+						context.request,
+						"Only the owner can change report delivery.",
+					);
+					return this.delivery.setSlackWebhook(input.slackWebhookUrl);
+				},
 			),
 		};
 	}

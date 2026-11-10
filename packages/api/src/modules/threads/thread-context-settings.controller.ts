@@ -5,8 +5,8 @@ import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { settingsContract } from "@prismalens/contracts";
 import type { Request } from "express";
+import { requireOwner } from "../../core/auth/owner.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { isHost } from "../../core/settings/settings.controller.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { detectEditors } from "../run-workspaces/editors.js";
 import {
@@ -35,14 +35,13 @@ export class ThreadContextSettingsController {
 			get: implement(settingsContract.threadContext.get).handler(() =>
 				readThreadContextSettings(this.prisma),
 			),
-			// The editor setting names what this computer launches, so only the host changes it.
+			// The editor setting names what the host launches, so only the owner changes it.
 			update: implement(settingsContract.threadContext.update).handler(
 				async ({ input, context }) => {
-					if (!isHost(context.request as Request))
-						throw new ORPCError("FORBIDDEN", {
-							message:
-								"These settings can be changed only on the computer PrismaLens runs on.",
-						});
+					requireOwner(
+						context.request,
+						"Only the owner can change these settings.",
+					);
 					return writeThreadContextSettings(this.prisma, input);
 				},
 			),

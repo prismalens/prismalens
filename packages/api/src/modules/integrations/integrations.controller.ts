@@ -22,6 +22,7 @@ import {
 	getTemplate,
 	isLegacyTemplateId,
 } from "@prismalens/integrations";
+import { requireOwner } from "../../core/auth/owner.js";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { ImagesService } from "../images/images.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
@@ -35,6 +36,8 @@ import { redactAddress, shownError, withShownAddress } from "./source-query.js";
 import { SourcesService } from "./sources.service.js";
 import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 
+/** Source credentials are instance-wide: only the owner sets them. */
+const CREDENTIALS_OWNER_ONLY = "Only the owner can change source credentials.";
 @Controller()
 export class IntegrationsController {
 	private readonly logger = new Logger(IntegrationsController.name);
@@ -74,11 +77,14 @@ export class IntegrationsController {
 
 	@Implement(sourcesContract.connect)
 	sourcesConnect() {
-		return implement(sourcesContract.connect).handler(async ({ input }) => {
-			const saved = await this.sourcesOrThrow().connect(input);
-			if (saved.connectionId) this.gitCredentials.invalidate();
-			return saved;
-		});
+		return implement(sourcesContract.connect).handler(
+			async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
+				const saved = await this.sourcesOrThrow().connect(input);
+				if (saved.connectionId) this.gitCredentials.invalidate();
+				return saved;
+			},
+		);
 	}
 
 	@Implement(sourcesContract.gitHosts)
@@ -235,6 +241,7 @@ export class IntegrationsController {
 			createConnection: implement(
 				integrationsContract.createConnection,
 			).handler(async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
 				const connection =
 					await this.integrationsService.createConnection(input);
 				this.gitCredentials.invalidate();
@@ -277,6 +284,7 @@ export class IntegrationsController {
 			updateConnection: implement(
 				integrationsContract.updateConnection,
 			).handler(async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
 				const { id, ...updateData } = input;
 				const connection = await this.integrationsService.updateConnection(
 					id,
@@ -294,7 +302,8 @@ export class IntegrationsController {
 
 			deleteConnection: implement(
 				integrationsContract.deleteConnection,
-			).handler(async ({ input }) => {
+			).handler(async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
 				const deleted = await this.integrationsService.deleteConnection(
 					input.id,
 				);
@@ -355,6 +364,7 @@ export class IntegrationsController {
 			updateConnectionConfig: implement(
 				integrationsContract.updateConnectionConfig,
 			).handler(async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
 				const connection =
 					await this.integrationsService.updateConnectionConfig(
 						input.id,

@@ -5,7 +5,7 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement } from "@orpc/nest";
 import { threadsContract } from "@prismalens/contracts";
 import type { Request } from "express";
-import { isHost } from "../../core/settings/settings.controller.js";
+import { isOwner, requireOwner } from "../../core/auth/owner.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { LinksService } from "./links.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
@@ -62,7 +62,13 @@ export class ThreadsController {
 
 			// PUT /threads/settings
 			updateSettings: implement(threadsContract.updateSettings).handler(
-				({ input }) => this.threads.updateSettings(input),
+				({ input, context }) => {
+					requireOwner(
+						context.request,
+						"Only the owner can change thread settings.",
+					);
+					return this.threads.updateSettings(input);
+				},
 			),
 
 			// POST /threads/drafts/:draftKey/attachments
@@ -85,7 +91,7 @@ export class ThreadsController {
 			// GET /threads/:id/context - What the right panel shows (#1024)
 			context: implement(threadsContract.context).handler(
 				({ input, context }) =>
-					this.context.context(input.id, isHost(context.request as Request)),
+					this.context.context(input.id, isOwner(context.request)),
 			),
 
 			// GET /threads/:id/pull-requests - Read from the host only when older than 60 s

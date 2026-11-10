@@ -13,7 +13,6 @@ import { Controller, Logger, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
-	ACCESS_SCOPE,
 	buildPairingUrl,
 	createPairingLink,
 	type DeviceRecord,
@@ -34,6 +33,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { deviceCookieHeader } from "./device-cookie.js";
 import { InstanceIdentity } from "./instance-identity.js";
+import { requireOwner } from "./owner.js";
 import { Public } from "./public.decorator.js";
 
 @Controller()
@@ -229,11 +229,7 @@ export class PairingRedeemController {
  * device's scopes, never the access scope.
  */
 export function operatorOnly(request: Request): void {
-	if (!request.operator?.device.scopes.includes(ACCESS_SCOPE)) {
-		throw new ORPCError("FORBIDDEN", {
-			message: "Pairing is managed from the host, not from a paired device.",
-		});
-	}
+	requireOwner(request, "Only the owner manages paired devices.");
 }
 
 function requestOrigin(request: Request): string {

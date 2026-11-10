@@ -5,7 +5,6 @@ import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { Controller, Optional, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { ACCESS_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	AnswerAskResult,
@@ -31,6 +30,7 @@ import {
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
 import type { Request } from "express";
+import { isOwner, requireOwner } from "../../core/auth/owner.js";
 import {
 	holdsRemoved,
 	shownRepoUrl,
@@ -504,8 +504,7 @@ export class InvestigationsController {
 						throw new ORPCError("BAD_REQUEST", {
 							message: "Always allow is for a schedule's runs.",
 						});
-					const host =
-						!!request?.operator?.device.scopes.includes(ACCESS_SCOPE);
+					const host = isOwner(request);
 					const closed = await this.asks
 						.answer(input.id, input.askId, answer, { host, via: "device" })
 						.catch((e: unknown) => {
@@ -532,10 +531,7 @@ export class InvestigationsController {
 				async ({ input, context }) => {
 					const request = context?.request as Request | undefined;
 					// What a sub-agent may do is the host's to stop, like any run's level (ADR 0004 §6).
-					if (!request?.operator?.device.scopes.includes(ACCESS_SCOPE))
-						throw new ORPCError("FORBIDDEN", {
-							message: "Only this machine's own session can stop a sub-agent.",
-						});
+					requireOwner(request, "Only the owner can stop a sub-agent.");
 					const row = await this.investigationsService.subagent(
 						input.id,
 						input.sessionId,
@@ -568,8 +564,7 @@ export class InvestigationsController {
 			answerSecret: implement(investigationsContract.answerSecret).handler(
 				async ({ input, context }) => {
 					const request = context?.request as Request | undefined;
-					const host =
-						!!request?.operator?.device.scopes.includes(ACCESS_SCOPE);
+					const host = isOwner(request);
 					if (!this.toolAsks)
 						throw new ORPCError("CONFLICT", {
 							message: "This request is no longer waiting.",
@@ -1159,17 +1154,12 @@ function unattendedRunHostOnly(
 ): void {
 	const byPrismaLens =
 		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual");
-	if (byPrismaLens && !request?.operator?.device.scopes.includes(ACCESS_SCOPE))
-		throw new ORPCError("FORBIDDEN", { message: SCHEDULE_HOST_ONLY });
+	if (byPrismaLens) requireOwner(request, SCHEDULE_HOST_ONLY);
 }
 
 function scheduledRunHostOnly(
 	run: { scheduleId?: string | null },
 	request: Request | undefined,
 ): void {
-	if (
-		run.scheduleId &&
-		!request?.operator?.device.scopes.includes(ACCESS_SCOPE)
-	)
-		throw new ORPCError("FORBIDDEN", { message: SCHEDULE_HOST_ONLY });
+	if (run.scheduleId) requireOwner(request, SCHEDULE_HOST_ONLY);
 }
