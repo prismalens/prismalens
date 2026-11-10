@@ -161,10 +161,7 @@ export class ToolAsksService implements OnModuleInit {
 		value: string,
 		host: boolean,
 	): Promise<void> {
-		if (!host)
-			throw new AskForbidden(
-				"Only this machine's own session can answer this.",
-			);
+		if (!host) throw new AskForbidden("Only the owner can answer this.");
 		const row = await this.prisma.secretRequested.findUnique({
 			where: { requestId },
 		});

@@ -730,11 +730,11 @@ describe("HarnessService agent runtime settings (#907)", () => {
 	});
 
 	const refusals: [string, Record<string, unknown>, string, string, boolean][] = [
-		["a paired device", { binaryPaths: { codex: "/usr/bin/codex" } }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
-		["strict mode from a paired device", { strictEnv: false }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
-		["resume after a restart from a paired device", { resumeAfterRestart: false }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
-		["the unattended GitHub token from a paired device", { unattendedGithub: true }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
-		["When an alert run asks from a paired device", { alertAsks: "wait" }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
+		["a paired device", { binaryPaths: { codex: "/usr/bin/codex" } }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
+		["strict mode from a paired device", { strictEnv: false }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
+		["resume after a restart from a paired device", { resumeAfterRestart: false }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
+		["the unattended GitHub token from a paired device", { unattendedGithub: true }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
+		["When an alert run asks from a paired device", { alertAsks: "wait" }, "FORBIDDEN", "Only the owner can change what an agent runs.", false],
 		["a relative path", { binaryPaths: { codex: "bin/codex" } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a bare name not on PATH", { localAgent: { command: "nowhere-on-path", args: [] } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
 		["a config dir on an agent with none", { configDirs: { opencode: "/tmp" } }, "BAD_REQUEST", "OpenCode has no config directory setting.", true],

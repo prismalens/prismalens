@@ -120,9 +120,7 @@ export class AsksService implements AsksPort {
 			);
 		// A run's bearer token never answers anything.
 		if (by.via === "run")
-			throw new AskForbidden(
-				"Only this machine's own session can answer this.",
-			);
+			throw new AskForbidden("Only the owner can answer this.");
 		const result = this.dispatch.answerAsk(threadId, askId, answer);
 		if (result === "invalid")
 			throw new AskInvalid("That answer does not fit the ask; it still waits.");
@@ -227,9 +225,7 @@ export class AsksService implements AsksPort {
 			throw new AskInvalid("A secret is answered through its own endpoint.");
 		// A tool's ask always needs the host (ADR 0004 §6); a run's bearer never answers.
 		if (by.via === "run" || !by.host)
-			throw new AskForbidden(
-				"Only this machine's own session can answer this.",
-			);
+			throw new AskForbidden("Only the owner can answer this.");
 		if (answer.kind !== "decline" && answer.kind !== ask.kind)
 			throw new AskInvalid(`This ask takes a ${ask.kind} answer.`);
 		if (await this.expireIfDue(row))
