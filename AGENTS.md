@@ -21,7 +21,10 @@ These are easy for an agent to break and expensive to undo.
 - **Migrations are append-only.** A release has shipped, so installed databases exist. Never delete, edit, rename or squash a migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`. A schema change is a new migration (`pnpm db:migrate`). The runner refuses an edited history by design. `CONTRIBUTING.md` → *Database migrations*.
 - **No non-free capability lands here**, not even disabled behind a flag. Paid capabilities load as separate modules through the capability-flag seam (#264); the flags and UI shells in this repo stay inert without one.
 - **One report shape.** What an agent returns and what the UI renders is `ModelReportSchema` in `packages/@prismalens/contracts/src/schemas/investigation.ts`. Change it there, not in a local copy.
-- **Tests ship with code.** New modules get tests at their public seams and a coverage threshold entry (see `packages/cli/vitest.config.ts`). Fix the implementation, not the test, unless the test is wrong.
+- **Tests ship with code.** New modules get tests at their public seams and a coverage threshold entry (see `packages/cli/vitest.config.ts`). Fix the implementation, not the test, unless the test is wrong. A test is held to three rules:
+  - Every claim in its name is asserted in its body, and every value a test step takes as a parameter is a value it asserts.
+  - It asserts the exact value, code or message the behaviour produces, with a fixture the broken code would fail on. No bare `toBeInstanceOf`, `toBeDefined` or `>= 1`, and no `expect` inside an `if`, a loop or a mock.
+  - A test that cannot set up its condition fails, or is skipped by name with its cause; it never returns early. An assertion gated to one platform needs a CI leg that runs that platform.
 - **Keep indentation as found.** Never convert tabs to spaces or back.
 
 ## Writing
