@@ -99,35 +99,35 @@ describe("Walk #979: scheduled checks run end to end", () => {
 			30_000,
 		);
 
-		let racedConflict = false;
-		await pl.api<ScheduleTick>(`/schedules/${schedule.id}/run`, { method: "POST" });
-		try {
-			await pl.api<ScheduleTick>(`/schedules/${schedule.id}/run`, { method: "POST" });
-		} catch (err) {
-			if ((err as Error).message.includes("409")) {
-				racedConflict = true;
-			} else {
-				throw err;
-			}
-		}
-
-		if (racedConflict) {
-			expect(racedConflict).toBe(true);
-		} else {
-			const detail = await eventually(
-				() => pl.api<ScheduleDetail>(`/schedules/${schedule.id}`),
-				(d) => d.ticks.filter((t) => t.outcome === "run_now" && finished(t.run)).length >= 2,
-				"two sequential runs to complete",
-				30_000,
-			);
-			expect(detail.ticks.filter((t) => t.outcome === "run_now").length).toBeGreaterThanOrEqual(2);
-		}
+		const firstTick = await pl.api<ScheduleTick>(`/schedules/${schedule.id}/run`, {
+			method: "POST",
+		});
+		await expect(
+			pl.api<ScheduleTick>(`/schedules/${schedule.id}/run`, { method: "POST" }),
+		).rejects.toThrow(/409/);
 
 		await eventually(
 			() => pl.api<ScheduleDetail>(`/schedules/${schedule.id}`),
 			(d) => d.ticks.every((t) => finished(t.run)),
-			"all runs to reach terminal status",
+			"first run to reach terminal status",
 			30_000,
+		);
+
+		const secondTick = await pl.api<ScheduleTick>(`/schedules/${schedule.id}/run`, {
+			method: "POST",
+		});
+		expect(secondTick.id).not.toBe(firstTick.id);
+		expect(secondTick.outcome).toBe("run_now");
+
+		const detail = await eventually(
+			() => pl.api<ScheduleDetail>(`/schedules/${schedule.id}`),
+			(d) => d.ticks.every((t) => finished(t.run)),
+			"second run to reach terminal status",
+			30_000,
+		);
+		const runNowTicks = detail.ticks.filter((t) => t.outcome === "run_now");
+		expect(runNowTicks.map((t) => t.id)).toEqual(
+			expect.arrayContaining([firstTick.id, secondTick.id]),
 		);
 	}, 60_000);
 
