@@ -53,6 +53,9 @@ function setup() {
 		updateConnection: vi.fn(async () => mockConnection),
 		deleteConnection: vi.fn(async () => true),
 		updateConnectionConfig: vi.fn(async () => mockConnection),
+		createIntegration: vi.fn(),
+		updateIntegration: vi.fn(),
+		deleteIntegration: vi.fn(),
 	};
 	const gitCredentials = {
 		invalidate: vi.fn(),
@@ -173,4 +176,25 @@ describe("IntegrationsController owner guard (#1066)", () => {
 			{ apiKey: "secret" },
 		);
 	});
+
+	it.each([
+		["createIntegration", { type: "oauth2", clientId: "c", clientSecret: "s" }],
+		["updateIntegration", { id: "int-1", clientSecret: "s2" }],
+		["deleteIntegration", { id: "int-1" }],
+	] as const)(
+		"%s: refuses a paired device before the service is called",
+		async (name, input) => {
+			const { controller, integrationsService } = setup();
+			const procs = controller.integrations() as Record<string, unknown>;
+			const route = procs[name] as Callable;
+
+			await expect(async () =>
+				route["~orpc"].handler({ input, context: { request: pairedRequest } }),
+			).rejects.toMatchObject({
+				code: "FORBIDDEN",
+				message: "Only the owner can change source credentials.",
+			});
+			expect(integrationsService[name]).not.toHaveBeenCalled();
+		},
+	);
 });

@@ -321,6 +321,7 @@ export class InvestigationsController {
 
 			setAutoResume: implement(investigationsContract.setAutoResume).handler(
 				async ({ input, context }) => {
+					requireOperate(context.request);
 					const found = await this.investigationsService.findById(input.id);
 					if (!found)
 						throw new ORPCError("NOT_FOUND", {
@@ -593,6 +594,7 @@ export class InvestigationsController {
 			// PATCH /investigations/:id/messages/:messageId - Edit a queued message (#1024).
 			editMessage: implement(investigationsContract.editMessage).handler(
 				async ({ input, context, errors }) => {
+					requireOperate(context.request);
 					await this.queuedOwner(
 						input.id,
 						context?.request as Request | undefined,
@@ -611,6 +613,7 @@ export class InvestigationsController {
 			withdrawMessage: implement(
 				investigationsContract.withdrawMessage,
 			).handler(async ({ input, context, errors }) => {
+				requireOperate(context.request);
 				await this.queuedOwner(
 					input.id,
 					context?.request as Request | undefined,
@@ -786,6 +789,7 @@ export class InvestigationsController {
 			// PATCH /investigations/:id/status - Update status (Worker)
 			updateStatus: implement(investigationsContract.updateStatus).handler(
 				async ({ input, context }) => {
+					requireOwner(context.request);
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -910,6 +914,7 @@ export class InvestigationsController {
 			// POST /investigations/:id/result - Write result (Worker)
 			writeResult: implement(investigationsContract.writeResult).handler(
 				async ({ input, context }) => {
+					requireOwner(context.request);
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);

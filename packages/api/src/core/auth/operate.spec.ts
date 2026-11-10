@@ -7,7 +7,13 @@ import type { Request } from "express";
 import { describe, expect, it, vi } from "vitest";
 import { InvestigationsController } from "../../modules/investigations/investigations.controller.js";
 import { ThreadsController } from "../../modules/threads/threads.controller.js";
-import { isOwner, requireOperate, requireOwner, VIEW_ONLY } from "./owner.js";
+import {
+	isOwner,
+	OWNER_ONLY,
+	requireOperate,
+	requireOwner,
+	VIEW_ONLY,
+} from "./owner.js";
 
 describe("owner and operate checks", () => {
 	const req = (scopes?: string[]) =>
@@ -118,4 +124,39 @@ describe("owner and operate checks", () => {
 		expect(requireOwner(req([ACCESS_SCOPE]))).toBe("dev");
 		expect(() => requireOwner(req([READ_SCOPE]))).toThrow(ORPCError);
 	});
+
+	it.each([
+		["setAutoResume", [READ_SCOPE], VIEW_ONLY],
+		["editMessage", [READ_SCOPE], VIEW_ONLY],
+		["withdrawMessage", [READ_SCOPE], VIEW_ONLY],
+		["updateStatus", [READ_SCOPE, OPERATE_SCOPE], OWNER_ONLY],
+		["writeResult", [READ_SCOPE, OPERATE_SCOPE], OWNER_ONLY],
+	] as const)(
+		"investigations.%s refuses a device without the scope before reading the run",
+		async (name, scopes, message) => {
+			const investigationsService = { findById: vi.fn() };
+			const controller = new InvestigationsController(
+				investigationsService as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+				{} as never,
+			);
+			const routes = controller.investigations() as Record<string, unknown>;
+			// biome-ignore lint/suspicious/noExplicitAny: invoke procedure handler directly
+			const handler = (routes[name] as any)["~orpc"].handler;
+			await expect(
+				handler({
+					input: { id: "inv-1" },
+					context: { request: req([...scopes]) },
+					errors: {},
+				}),
+			).rejects.toMatchObject({ code: "FORBIDDEN", message });
+			expect(investigationsService.findById).not.toHaveBeenCalled();
+		},
+	);
 });

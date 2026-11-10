@@ -171,7 +171,8 @@ export class IntegrationsController {
 
 			createIntegration: implement(
 				integrationsContract.createIntegration,
-			).handler(async ({ input }) => {
+			).handler(async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
 				const integration =
 					await this.integrationsService.createIntegration(input);
 				this.logger.log(`Created integration: ${integration.id}`);
@@ -204,7 +205,8 @@ export class IntegrationsController {
 
 			updateIntegration: implement(
 				integrationsContract.updateIntegration,
-			).handler(async ({ input }) => {
+			).handler(async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
 				const { id, ...updateData } = input;
 				const integration = await this.integrationsService.updateIntegration(
 					id,
@@ -222,6 +224,7 @@ export class IntegrationsController {
 			deleteIntegration: implement(
 				integrationsContract.deleteIntegration,
 			).handler(async ({ input, context }) => {
+				requireOwner(context.request, CREDENTIALS_OWNER_ONLY);
 				const deleted = await this.integrationsService.deleteIntegration(
 					input.id,
 				);
