@@ -317,7 +317,7 @@ describe("Add agent steps (#907)", () => {
 		await click("add-agent-next");
 		expect((q("runtime-binary-input") as HTMLInputElement).readOnly).toBe(true);
 		expect(document.body.textContent).toContain(
-			"Only the owner can change what an agent runs.",
+			"Only this machine's own session can change what an agent runs.",
 		);
 	});
 });

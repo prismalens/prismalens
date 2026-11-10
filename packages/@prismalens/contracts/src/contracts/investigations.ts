@@ -232,7 +232,7 @@ export const investigationsContract = {
 					"The ask is no longer waiting: it was answered, timed out, or the run ended",
 			},
 			FORBIDDEN: {
-				message: "Only the owner can answer this ask",
+				message: "Only this machine's own session can answer this ask",
 			},
 		}),
 
@@ -253,7 +253,8 @@ export const investigationsContract = {
 		.errors({
 			CONFLICT: { message: "The sub-agent is not running, or its run ended" },
 			FORBIDDEN: {
-				message: "Only the owner can stop it, and only when its agent allows",
+				message:
+					"Only this machine's own session can stop it, and only when its agent allows",
 			},
 		}),
 
@@ -273,7 +274,7 @@ export const investigationsContract = {
 		.output(AnswerSecretResultSchema)
 		.errors({
 			CONFLICT: { message: "The request is no longer waiting" },
-			FORBIDDEN: { message: "Only the owner can answer this" },
+			FORBIDDEN: { message: "Only this machine's own session can answer this" },
 		}),
 
 	/**

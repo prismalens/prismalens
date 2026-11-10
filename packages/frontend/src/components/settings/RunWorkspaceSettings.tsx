@@ -57,7 +57,7 @@ export function RunWorkspaceSettings() {
 				description={
 					canEdit
 						? "Where a run's checkout of the code lives and what happens to it afterwards. Each service can override any field."
-						: "Only the owner can change these: setup and teardown run commands on the host."
+						: "Only the computer PrismaLens runs on can change these: setup and teardown run commands there."
 				}
 				testId="run-workspace-settings"
 			>

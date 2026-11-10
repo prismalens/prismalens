@@ -260,7 +260,7 @@ export const LocalAgentSchema = z.object({
 export type LocalAgent = z.infer<typeof LocalAgentSchema>;
 /** The refusal a paired device gets for a runtime field (#907). */
 export const RUNTIME_HOST_ONLY =
-	"Only the owner can change what an agent runs.";
+	"Only this machine's own session can change what an agent runs.";
 
 /** Context tokens above which a long-idle thread asks before it sends (#1024). */
 export const COLD_RESUME_TOKENS = 50_000;

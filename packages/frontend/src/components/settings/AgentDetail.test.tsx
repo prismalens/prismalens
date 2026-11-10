@@ -595,7 +595,7 @@ describe("AgentDetail runtime and environment (#907)", () => {
 		) as HTMLInputElement;
 		expect(input.readOnly).toBe(true);
 		expect(container.textContent).toContain(
-			"Only the owner can change what an agent runs.",
+			"Only this machine's own session can change what an agent runs.",
 		);
 		expect(container.querySelector('[data-testid="env-add"]')).toBeNull();
 	});
