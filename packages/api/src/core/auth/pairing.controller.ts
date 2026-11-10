@@ -203,7 +203,7 @@ export class PairingRedeemController {
 						},
 					);
 					const own = this.instance.deviceCookie;
-					const secure = this.instance.secureCookies;
+					const secure = this.instance.secureFor(request);
 					// Other prismalens.device.* cookies may belong to a live instance on another port (#763).
 					request.res?.append(
 						"Set-Cookie",

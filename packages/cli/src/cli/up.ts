@@ -127,6 +127,11 @@ export default defineCommand({
 			description:
 				"Open this machine's browser on the startup link (--no-open prints it only)",
 		},
+		lan: {
+			type: "boolean",
+			description:
+				"Serve plain HTTP to your local network: binds 0.0.0.0 unless --host is given, and allows this machine's hostname. Prefer --tailscale-serve, which is HTTPS",
+		},
 		"tailscale-serve": {
 			type: "boolean",
 			description:
@@ -146,6 +151,10 @@ export default defineCommand({
 		process.env.NODE_ENV = "production";
 		if (args.port) process.env.PRISMALENS_PORT = String(args.port);
 		if (args.host) process.env.PRISMALENS_HOST = String(args.host);
+		if (args.lan) {
+			process.env.PRISMALENS_LAN = "1";
+			process.env.PRISMALENS_HOST ||= "0.0.0.0";
+		}
 		if (args.workspace) {
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 		}

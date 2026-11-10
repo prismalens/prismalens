@@ -38,7 +38,7 @@ export class OperatorController {
 							deviceCookieHeader(
 								this.instance.deviceCookie,
 								operator.credential.token,
-								this.instance.secureCookies,
+								this.instance.secureFor(request),
 							),
 						);
 					}

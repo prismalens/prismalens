@@ -171,6 +171,23 @@ export function isLoopbackBindAddress(address: string): boolean {
 	return false;
 }
 
+/**
+ * Why a bind is refused, or null. Plain HTTP beyond loopback sends the device
+ * cookie in clear, so it needs `--lan` (`PRISMALENS_LAN=1`) saying so.
+ */
+export function plainLanRefusal(
+	host: string,
+	https: boolean,
+	lan: boolean,
+): string | null {
+	if (https || lan || isLoopbackBindAddress(host)) return null;
+	return (
+		`Refusing to serve plain HTTP on ${host}: the device cookie would cross the network unencrypted. ` +
+		"Use `pl up --tailscale-serve` to reach PrismaLens from other devices over HTTPS, " +
+		"or pass --lan (PRISMALENS_LAN=1) to accept plain HTTP on your network."
+	);
+}
+
 /** True when `hostname` is acceptable under `allowed`. */
 export function isHostnameAllowed(
 	hostname: string | undefined,

@@ -34,6 +34,7 @@ import { createHelmetMiddleware } from "./middlewares/helmet.middleware.js";
 import {
 	createHostAllowlistMiddleware,
 	isLoopbackBindAddress,
+	plainLanRefusal,
 	resolveAllowedHostnames,
 } from "./middlewares/host-allowlist.middleware.js";
 import { TerminalService } from "./modules/terminal/terminal.service.js";
@@ -159,6 +160,16 @@ async function bootstrap() {
 			);
 			process.exit(1);
 		}
+	}
+
+	const refusal = plainLanRefusal(
+		host,
+		Boolean(httpsOptions),
+		process.env.PRISMALENS_LAN === "1",
+	);
+	if (refusal) {
+		logger.error(refusal);
+		process.exit(1);
 	}
 
 	const app = await NestFactory.create(AppModule, {
