@@ -57,7 +57,17 @@ describe("cross-site middleware", () => {
 		expect(await send({ ...cookie, "sec-fetch-site": "cross-site" })).toBe(
 			403,
 		);
-		expect(await send(cookie)).toBe(403);
+	});
+
+	it("holds a client without Sec-Fetch-Site to an Origin on this port", async () => {
+		expect(
+			await send({ ...cookie, origin: `http://127.0.0.1:${port + 1}` }),
+		).toBe(403);
+		expect(await send({ ...cookie, origin: "null" })).toBe(403);
+		expect(await send({ ...cookie, origin: `http://localhost:${port}` })).toBe(
+			200,
+		);
+		expect(await send(cookie)).toBe(200);
 	});
 
 	it("lets the app's own requests through", async () => {

@@ -6,7 +6,8 @@
  * site. `SameSite=Lax` does not stop it: a page on another port of the same
  * host is same-site, so the browser attaches the cookie anyway. The browser's
  * `Sec-Fetch-Site` tells the two apart; a Bearer client is not a browser and
- * is not checked.
+ * is not checked. A client that sends no `Sec-Fetch-Site` (a script, an older
+ * browser) is held to its `Origin`, when it sends one: it must name this port.
  *
  * Form-encoded and plain-text bodies are refused outright: the app sends JSON
  * and multipart uploads only, and those two are what a cross-site form can
@@ -68,7 +69,11 @@ export function createCrossSiteMiddleware(options: CrossSiteOptions) {
 		}
 		const site = req.headers["sec-fetch-site"];
 		const value = Array.isArray(site) ? site[0] : site;
-		if (value && ALLOWED_FETCH_SITES.has(value.toLowerCase())) {
+		if (
+			value
+				? ALLOWED_FETCH_SITES.has(value.toLowerCase())
+				: originOnThisPort(req)
+		) {
 			next();
 			return;
 		}
@@ -78,4 +83,22 @@ export function createCrossSiteMiddleware(options: CrossSiteOptions) {
 			message: "Blocked a cross-site request that carried the device cookie.",
 		});
 	};
+}
+
+const DEFAULT_PORT: Record<string, string> = { "http:": "80", "https:": "443" };
+
+/** No Origin, or one on the port this request reached; the host allowlist vets its hostname. */
+function originOnThisPort(req: Request): boolean {
+	const origin = req.headers.origin;
+	if (!origin) return true;
+	let url: URL;
+	try {
+		url = new URL(origin);
+	} catch {
+		return false;
+	}
+	const host = req.headers.host ?? "";
+	const hostPort =
+		/:(\d+)$/.exec(host)?.[1] ?? DEFAULT_PORT[`${req.protocol}:`];
+	return (url.port || DEFAULT_PORT[url.protocol]) === hostPort;
 }
