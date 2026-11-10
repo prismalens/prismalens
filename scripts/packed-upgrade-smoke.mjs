@@ -328,9 +328,13 @@ async function main() {
 	});
 	ok("pl up booted on the pre-upgrade database and ran the upgrade");
 
-	const pairOut = execFileSync(bin, ["pair", "--workspace", workspace], {
-		encoding: "utf8",
-	});
+	const pairOut = execFileSync(
+		bin,
+		["pair", "--start-runs", "--workspace", workspace],
+		{
+			encoding: "utf8",
+		},
+	);
 	const token = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 	const redeem = await fetch(`${BASE}/api/pairing/redeem`, {
 		method: "POST",
