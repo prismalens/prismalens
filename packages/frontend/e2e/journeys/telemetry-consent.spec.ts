@@ -93,17 +93,29 @@ test.describe("#673 w45: usage data on after a notice", () => {
 		const heading = page
 			.getByTestId("page-header")
 			.getByRole("heading", { name: "Operations", exact: true });
-		for (const flags of [
-			{ ...FRESH, noticed: true, dismissed: true },
-			{ ...FRESH, enabled: false, noticed: true, dismissed: true },
-			{ ...FRESH, enabled: false, forcedOff: true },
-		]) {
-			await page.unrouteAll();
-			await serveTelemetry(page, flags);
-			await page.goto("/incidents");
-			await expect(heading).toBeVisible({ timeout: 15_000 });
-			await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
-		}
+
+		await page.unrouteAll();
+		await serveTelemetry(page, { ...FRESH, noticed: true, dismissed: true });
+		await page.goto("/incidents");
+		await expect(heading).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
+
+		await page.unrouteAll();
+		await serveTelemetry(page, {
+			...FRESH,
+			enabled: false,
+			noticed: true,
+			dismissed: true,
+		});
+		await page.goto("/incidents");
+		await expect(heading).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
+
+		await page.unrouteAll();
+		await serveTelemetry(page, { ...FRESH, enabled: false, forcedOff: true });
+		await page.goto("/incidents");
+		await expect(heading).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
 	});
 
 	test("Settings → Usage data carries the full disclosure and the toggle", async ({
