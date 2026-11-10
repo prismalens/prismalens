@@ -536,8 +536,11 @@ describe("messages, roster and wake on finish (#1024 spec F)", () => {
 				requestId: `cap-${i}`,
 			})),
 		});
-		value(await tree.send(f.api, { to: "db", type: "fact", text: "last one", mode: "queue", requestId: "under" }));
+		const last = value(await tree.send(f.api, { to: "db", type: "fact", text: "last one", mode: "queue", requestId: "under" }));
 		expect(await prisma.threadMessage.count({ where: { rootId: f.root } })).toBe(TREE_MESSAGE_CAP);
+		// A retry of the send that reached the cap answers that message, as any retry does.
+		const retry = value(await tree.send(f.api, { to: "db", type: "fact", text: "last one", mode: "queue", requestId: "under" }));
+		expect(retry.messageId).toBe(last.messageId);
 		const over = await tree.send(f.api, { to: "db", type: "fact", text: "one too many", mode: "queue", requestId: "over" });
 		expect(over).toMatchObject({
 			failure: { error: "limit_reached", message: `This thread tree has sent ${TREE_MESSAGE_CAP} messages, its limit.` },

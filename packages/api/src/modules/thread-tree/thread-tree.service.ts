@@ -723,6 +723,21 @@ export class ThreadTreeService
 				"Send it again with mode `queue`.",
 			);
 		const sent = await this.prisma.threadMessage.count({ where: { rootId } });
+		const retried =
+			sent >= TREE_MESSAGE_CAP &&
+			(await this.prisma.threadMessage.findUnique({
+				where: {
+					fromId_requestId: { fromId: callerId, requestId: args.requestId },
+				},
+			}));
+		if (retried)
+			return {
+				value: {
+					status: retried.state,
+					messageId: retried.id,
+					link: threadLink(to),
+				},
+			};
 		if (sent >= TREE_MESSAGE_CAP)
 			return fail(
 				"limit_reached",
