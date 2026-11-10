@@ -99,7 +99,7 @@ import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import {
-	CHECKOUT_BUSY,
+	busyReason,
 	CheckoutUnreadable,
 	checkoutBusy,
 	checkoutRoot,
@@ -339,6 +339,7 @@ export function isCustomModel(
 	);
 }
 
+const LEASE_RETRY_MS = 60_000;
 @Injectable()
 export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private readonly logger = new Logger(DispatchService.name);
@@ -346,6 +347,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private readonly dispatcher: Dispatcher;
 	private recoveryWake: ReturnType<typeof setTimeout> | undefined;
 	private recheckTimer: ReturnType<typeof setInterval> | undefined;
+	private leaseRetry?: ReturnType<typeof setTimeout>;
 
 	constructor(
 		@Inject(EVENT_BUS) private readonly bus: EventBus,
@@ -859,20 +861,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		);
 		const checked = boot ? await this.checkRecoveries(boot) : true;
 		// After every boot write: a lease frees its checkout once its run ended and its agent is proven gone (#1024).
-		await releaseIfGone(
-			this.prisma,
-			async (id, session) =>
-				boot?.contained.get(id) ?? this.previousGone(id, session),
-		)
-			.then((n) => {
-				if (n > 0)
-					this.logger.log(`Released ${n} checkout lease(s) of ended runs`);
-			})
-			.catch((e) =>
-				this.logger.warn(
-					`Could not release ended checkout leases: ${(e as Error).message}`,
-				),
-			);
+		await this.releaseEndedLeases(boot);
 		// The boot sweep applies each workspace's own retention rule, so the settings load first.
 		await this.runWorkspaces?.ready();
 		try {
@@ -928,6 +917,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	async onApplicationShutdown(): Promise<void> {
 		clearTimeout(this.recoveryWake);
 		clearInterval(this.recheckTimer);
+		clearTimeout(this.leaseRetry);
 		await this.dispatcher.stop();
 		// Aborting a run only asks the harness to stop; its own process group
 		// never saw the terminal's signal, so kill it before the API exits.
@@ -1498,6 +1488,38 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		await releaseLease(this.prisma, investigationId);
 	}
 
+	/**
+	 * Releases ended runs' leases; one that fails is retried each minute, so a
+	 * failed release at boot never leaves a checkout busy for good.
+	 */
+	private async releaseEndedLeases(
+		boot: { contained: Map<string, boolean> } | null,
+	): Promise<void> {
+		const { released, failed } = await releaseIfGone(
+			this.prisma,
+			async (id, session) =>
+				boot?.contained.get(id) ?? this.previousGone(id, session),
+		).catch((e) => {
+			this.logger.warn(
+				`Could not release ended checkout leases: ${(e as Error).message}`,
+			);
+			return { released: 0, failed: 1 };
+		});
+		if (released > 0)
+			this.logger.log(`Released ${released} checkout lease(s) of ended runs`);
+		if (failed > 0) {
+			this.logger.warn(
+				`Could not release ${failed} checkout lease(s); retrying in a minute`,
+			);
+			clearTimeout(this.leaseRetry);
+			this.leaseRetry = setTimeout(
+				() => void this.releaseEndedLeases(null),
+				LEASE_RETRY_MS,
+			);
+			this.leaseRetry.unref?.();
+		}
+	}
+
 	/** Before an admission: a lease on `path` whose run ended and whose agent is proven gone is released (#1024). */
 	async freeCheckout(path: string): Promise<void> {
 		await releaseIfGone(
@@ -1514,7 +1536,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		id: string,
 	): Promise<void> {
 		if (await checkoutBusy(tx, checkout, id))
-			throw new FollowUpRefused(CHECKOUT_BUSY);
+			throw new FollowUpRefused(await busyReason(tx, checkout, id));
 		await takeLease(tx, checkout, id);
 	}
 

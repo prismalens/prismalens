@@ -33,7 +33,7 @@ import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
-	CHECKOUT_BUSY,
+	busyReason,
 	CheckoutUnreadable,
 	checkoutBusy,
 	checkoutRoot,
@@ -240,7 +240,9 @@ export class ThreadsService {
 					throw new ORPCError("CONFLICT", { message: FOLDER_BUSY });
 				if (checkout) {
 					if (await checkoutBusy(tx, checkout, id))
-						throw new ORPCError("CONFLICT", { message: CHECKOUT_BUSY });
+						throw new ORPCError("CONFLICT", {
+							message: await busyReason(tx, checkout, id),
+						});
 					await takeLease(tx, checkout, id);
 				}
 				if (draftKey && files.length)

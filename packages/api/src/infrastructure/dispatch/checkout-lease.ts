@@ -27,6 +27,13 @@ import { busyAt, CanonicalBusy, canonical, overlaps } from "./folder-lock.js";
 export const CHECKOUT_BUSY =
 	"A thread is already working in this checkout. Start this one in a new worktree instead.";
 
+/** Said when only ended runs hold the checkout: their agents are not yet proven gone. */
+export const CHECKOUT_HELD_BY_ENDED =
+	"A thread that ended still holds this checkout until PrismaLens confirms its agent stopped, at most an hour. Start this one in a new worktree, or try again later.";
+
+/** An ended run's lease is released after this, even when its agent cannot be proven gone. */
+export const STALE_LEASE_MS = 60 * 60 * 1000;
+
 type LeaseDb = Pick<
 	Prisma.TransactionClient,
 	"checkoutLease" | "investigation"
@@ -220,40 +227,74 @@ export async function releaseIfGone(
 	db: LeaseStore,
 	gone: AgentGone,
 	path: string | null = null,
-): Promise<number> {
+	now: Date = new Date(),
+): Promise<{ released: number; failed: number }> {
 	const rows = await db.checkoutLease.findMany();
 	let released = 0;
+	let failed = 0;
 	for (const r of rows) {
 		if (path && !overlaps(r.canonicalPath, path)) continue;
-		released += await db.$transaction(
-			async (tx) => {
-				const where = {
-					canonicalPath: r.canonicalPath,
-					investigationId: r.investigationId,
-					generation: r.generation,
-				};
-				// A matching no-op write takes SQLite's writer lock before we inspect or contain a receipt.
-				const { count } = await tx.checkoutLease.updateMany({
-					where,
-					data: { takenAt: r.takenAt },
-				});
-				if (!count) return 0;
-				const run = await tx.investigation.findUnique({
-					where: { id: r.investigationId },
-					select: { status: true, acpSessionId: true },
-				});
-				if (
-					!run ||
-					(LIVE_WORKFLOW_STATUSES as readonly string[]).includes(run.status)
-				)
-					return 0;
-				if (!(await gone(r.investigationId, run.acpSessionId))) return 0;
-				return (await tx.checkoutLease.deleteMany({ where })).count;
-			},
-			{ timeout: 30_000 },
-		);
+		// One lease that cannot be read or released must not keep the others.
+		released += await db
+			.$transaction(
+				async (tx) => {
+					const where = {
+						canonicalPath: r.canonicalPath,
+						investigationId: r.investigationId,
+						generation: r.generation,
+					};
+					// A matching no-op write takes SQLite's writer lock before we inspect or contain a receipt.
+					const { count } = await tx.checkoutLease.updateMany({
+						where,
+						data: { takenAt: r.takenAt },
+					});
+					if (!count) return 0;
+					const run = await tx.investigation.findUnique({
+						where: { id: r.investigationId },
+						select: { status: true, acpSessionId: true, completedAt: true },
+					});
+					if (
+						!run ||
+						(LIVE_WORKFLOW_STATUSES as readonly string[]).includes(run.status)
+					)
+						return 0;
+					const ended = (run.completedAt ?? r.takenAt).getTime();
+					const stale = now.getTime() - ended >= STALE_LEASE_MS;
+					if (!stale && !(await gone(r.investigationId, run.acpSessionId)))
+						return 0;
+					return (await tx.checkoutLease.deleteMany({ where })).count;
+				},
+				{ timeout: 30_000 },
+			)
+			.catch(() => {
+				failed++;
+				return 0;
+			});
 	}
-	return released;
+	return { released, failed };
+}
+
+/** Why `folder` is busy: a live run, or only ended runs still holding a lease. */
+export async function busyReason(
+	db: LeaseDb,
+	folder: string,
+	selfId?: string,
+): Promise<string> {
+	const held = await db.checkoutLease.findMany({
+		where: selfId ? { investigationId: { not: selfId } } : {},
+		select: { canonicalPath: true, investigationId: true },
+	});
+	const near = held.filter((l) => overlaps(l.canonicalPath, folder));
+	if (!near.length) return CHECKOUT_BUSY;
+	const runs = await db.investigation.findMany({
+		where: { id: { in: near.map((l) => l.investigationId) } },
+		select: { status: true },
+	});
+	return runs.every(
+		(r) => !(LIVE_WORKFLOW_STATUSES as readonly string[]).includes(r.status),
+	)
+		? CHECKOUT_HELD_BY_ENDED
+		: CHECKOUT_BUSY;
 }
 
 /** The run's agent has exited: its lease goes. */
