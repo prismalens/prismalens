@@ -24,7 +24,7 @@ jobs:
   pr-state:
     # The callee records title, base, head and state: a body-only edit changes none of them.
     if: github.event.action != 'edited' || github.event.changes.title || github.event.changes.base
-    uses: prismalens/gh-workflows/.github/workflows/pr-state.yml@main
+    uses: prismalens/gh-workflows/.github/workflows/pr-state.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
     # explicit mapping: `inherit` does not cross ownership boundaries.
     secrets:
       REVIEW_TELEMETRY_URL: ${{ secrets.REVIEW_TELEMETRY_URL }}

@@ -179,16 +179,16 @@ jobs:
           done
           echo "No usable tarball from ci.yml; packing here."
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.reuse.outputs.found != 'true'
 
       - name: Setup pnpm
         if: steps.reuse.outputs.found != 'true'
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Setup Node
         if: steps.reuse.outputs.found != 'true'
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -208,7 +208,7 @@ jobs:
           node scripts/pack-cli.mjs --out /tmp/tarballs
           ls -l /tmp/tarballs
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: npm-tarballs-cross-os-smoke
           path: /tmp/tarballs/*.tgz
@@ -239,7 +239,7 @@ jobs:
       MODE: ${{ needs.mode.outputs.mode }}
       VERSION: ${{ needs.mode.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             scripts/cross-os-smoke.sh
@@ -248,13 +248,13 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
       - name: Download tarballs
         if: env.MODE == 'tarball'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: npm-tarballs-cross-os-smoke
           path: tarballs
@@ -300,7 +300,7 @@ jobs:
 
       - name: Cold-install from the npm registry into a clean dir (registry mode)
         if: env.MODE == 'registry'
-        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784 # main
         with:
           working-directory: scratch
           command: npm install --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
@@ -343,7 +343,7 @@ jobs:
       MODE: ${{ needs.mode.outputs.mode }}
       VERSION: ${{ needs.mode.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Deliberately narrow, so an unrelated repo change cannot fail this
           # job. refusal-gate-check.mjs is the Part A assertion sequence this
@@ -358,13 +358,13 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
       - name: Download tarballs
         if: env.MODE == 'tarball'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: npm-tarballs-cross-os-smoke
           path: tarballs
@@ -393,7 +393,7 @@ jobs:
 
       - name: Install from the npm registry GLOBALLY (registry mode)
         if: env.MODE == 'registry'
-        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784 # main
         with:
           command: npm install -g --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
 

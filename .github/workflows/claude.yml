@@ -38,7 +38,7 @@ jobs:
         contains(github.event.comment.body, '@claude review') ||
         contains(github.event.comment.body, '@claude full review')
       )
-    uses: prismalens/gh-workflows/.github/workflows/claude.yml@main
+    uses: prismalens/gh-workflows/.github/workflows/claude.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
     # explicit mapping is the canon pattern — `inherit` does not cross ownership
     # boundaries and silently fails cross-owner consumers.
     secrets:

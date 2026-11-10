@@ -46,4 +46,4 @@ jobs:
     steps:
       # validation logic lives in canon; the job/check name must stay stable
       # (pinned as a required check in the ruleset).
-      - uses: prismalens/gh-workflows/actions/pr-title@main
+      - uses: prismalens/gh-workflows/actions/pr-title@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
