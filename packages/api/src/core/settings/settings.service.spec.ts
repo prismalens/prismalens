@@ -1,11 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import { SettingsService } from "./settings.service.js";
 
 describe("SettingsService (#1066)", () => {
+	// The reset removes the workspace's attachment files: keep it off a real workspace.
+	let workspace: string;
+	beforeEach(() => {
+		workspace = mkdtempSync(join(tmpdir(), "pl-reset-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", workspace);
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(workspace, { recursive: true, force: true });
+	});
+
 	it("factoryReset runs against a transaction without session, account, verification or user", async () => {
 		const fakeTx = {
 			investigation: {
@@ -33,8 +47,10 @@ describe("SettingsService (#1066)", () => {
 			),
 		} as unknown as PrismaService;
 
+		mkdirSync(join(workspace, "attachments"));
 		const service = new SettingsService(prisma);
 		const result = await service.factoryReset();
+		expect(existsSync(join(workspace, "attachments"))).toBe(false);
 		expect(result).toEqual({ success: true, message: "Factory reset complete" });
 		expect(fakeTx.recommendation.deleteMany).toHaveBeenCalled();
 		expect(fakeTx.setting.deleteMany).toHaveBeenCalled();

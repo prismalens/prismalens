@@ -159,16 +159,24 @@ describe("the workspace file list (#1024)", () => {
 		try {
 			execFileSync("git", ["init", "-q"], { cwd: repoDir });
 			const markerFile = join(repoDir, "marker.txt");
-			const hookFile = join(repoDir, "hook.js");
+			const hookFile = join(repoDir, "hook.cjs");
 			writeFileSync(
 				hookFile,
-				`const fs = typeof require === "function" ? require("node:fs") : (await import("node:fs")).default;\nfs.writeFileSync(${JSON.stringify(markerFile)}, "triggered");\n`,
+				`require("node:fs").writeFileSync(${JSON.stringify(markerFile)}, "triggered");\n`,
 			);
+			execFileSync("git", ["add", "-f", "hook.cjs"], { cwd: repoDir });
 			const hookCmd = `node "${hookFile.replace(/\\/g, "/")}"`;
 			execFileSync("git", ["config", "core.fsmonitor", hookCmd], { cwd: repoDir });
 
 			await new FileLister().list(repoDir);
 			expect(existsSync(markerFile)).toBe(false);
+			// The same listing without the override runs the hook: the check above can fail.
+			execFileSync(
+				"git",
+				["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+				{ cwd: repoDir },
+			);
+			expect(existsSync(markerFile)).toBe(true);
 		} finally {
 			rmSync(repoDir, { recursive: true, force: true });
 		}
