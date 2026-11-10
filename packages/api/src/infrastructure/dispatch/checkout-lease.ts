@@ -62,7 +62,7 @@ export async function checkoutGit(
 		return Promise.reject(
 			new Error(`git ${sub ?? ""} never runs on a borrowed checkout`),
 		);
-	const status = sub === "status" ? checkoutStatus(cwd) : null;
+	const status = sub === "status" ? await checkoutStatus(cwd) : null;
 	try {
 		const output = await runner([...NO_FSMONITOR, ...args], {
 			cwd,

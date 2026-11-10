@@ -16,6 +16,8 @@ const ALLOWED: Record<string, string> = {
 		"spawnGit: callers pass gitEnv(...) or an env spread from it",
 	"@prismalens/agent-host/src/workspace/git.ts":
 		"git()/hasCommit(): workspace/index.ts passes gitEnv(...) only",
+	"api/src/infrastructure/dispatch/checkout-status.ts":
+		"readGit: checkoutStatus and gitIn pass gitEnv(...) or an env spread from it",
 	"cli/src/cli/doctor.ts":
 		"reads the user's credential.helper in their own shell; writes nothing",
 };

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import {
 	copyFileSync,
 	existsSync,
@@ -15,58 +15,80 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { gitEnv } from "../../core/harness/git-env.js";
 
+/** Each read; the API's one thread never waits on git, and a hung git is killed here. */
+export const STATUS_GIT_TIMEOUT_MS = 10_000;
+
+/** git off the event loop, with stdin when given; rejects on a non-zero exit or the timeout. */
+export function readGit(
+	args: string[],
+	opts: { cwd: string; env: NodeJS.ProcessEnv; input?: string },
+): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const child = execFile(
+			"git",
+			args,
+			{
+				cwd: opts.cwd,
+				env: opts.env,
+				encoding: "utf8",
+				timeout: STATUS_GIT_TIMEOUT_MS,
+				maxBuffer: 16 * 1024 * 1024,
+				windowsHide: true,
+			},
+			(error, stdout) => (error ? reject(error) : resolve(stdout)),
+		);
+		child.stdin?.end(opts.input ?? "");
+	});
+}
+
 /** A private config and index keep status from executing checkout-defined filters or hooks (#1066). */
-export function checkoutStatus(root: string): {
+export async function checkoutStatus(root: string): Promise<{
 	env: Record<string, string>;
 	close: () => void;
 	hasFilters: boolean;
-} {
+}> {
 	const env = {
 		...gitEnv({ source: "none" }),
 		GIT_CONFIG_NOSYSTEM: "1",
 		GIT_CONFIG_GLOBAL: "/dev/null",
 		GIT_OPTIONAL_LOCKS: "0",
 	};
-	const read = (...args: string[]) =>
-		execFileSync("git", ["-c", "core.fsmonitor=", ...args], {
-			cwd: root,
-			env: gitEnv({ source: "none" }),
-			encoding: "utf8",
-			timeout: 15_000,
-			maxBuffer: 16 * 1024 * 1024,
-			windowsHide: true,
-		}).replace(/\r?\n$/, "");
-	const index = resolve(root, read("rev-parse", "--git-path", "index"));
-	const common = resolve(root, read("rev-parse", "--git-common-dir"));
-	const head = read("rev-parse", "--verify", "HEAD");
-	const format = read("rev-parse", "--show-object-format");
+	const read = async (...args: string[]) =>
+		(
+			await readGit(["-c", "core.fsmonitor=", ...args], {
+				cwd: root,
+				env: gitEnv({ source: "none" }),
+			})
+		).replace(/\r?\n$/, "");
+	const index = resolve(root, await read("rev-parse", "--git-path", "index"));
+	const common = resolve(root, await read("rev-parse", "--git-common-dir"));
+	const head = await read("rev-parse", "--verify", "HEAD");
+	const format = await read("rev-parse", "--show-object-format");
 	if (format !== "sha1" && format !== "sha256")
 		throw new Error("Unsupported Git object format");
-	const attributes = execFileSync(
-		"git",
-		["-c", "core.fsmonitor=", "check-attr", "-z", "--stdin", "filter"],
-		{
-			cwd: root,
-			env: gitEnv({ source: "none" }),
-			input: read("ls-files", "-z"),
-			encoding: "utf8",
-			timeout: 15_000,
-			maxBuffer: 16 * 1024 * 1024,
-			windowsHide: true,
-		},
+	const attributes = (
+		await readGit(
+			["-c", "core.fsmonitor=", "check-attr", "-z", "--stdin", "filter"],
+			{
+				cwd: root,
+				env: gitEnv({ source: "none" }),
+				input: await read("ls-files", "-z"),
+			},
+		)
 	).split("\0");
 	const drivers = new Set(
 		attributes.filter((_, i) => i % 3 === 2).filter((name) => name !== ""),
 	);
-	const hasFilters = [...drivers].some((name) =>
-		["clean", "process"].some((kind) => {
-			try {
-				return read("config", "--get", `filter.${name}.${kind}`) !== "";
-			} catch {
-				return false;
-			}
-		}),
-	);
+	let hasFilters = false;
+	for (const name of drivers)
+		for (const kind of ["clean", "process"])
+			if (
+				!hasFilters &&
+				(await read("config", "--get", `filter.${name}.${kind}`).catch(
+					() => "",
+				)) !== ""
+			)
+				hasFilters = true;
 
 	const scratch = mkdtempSync(join(tmpdir(), "pl-status-"));
 	const close = () => rmSync(scratch, { recursive: true, force: true });
@@ -100,7 +122,7 @@ export function checkoutStatus(root: string): {
 		};
 		for (const [key, pattern] of Object.entries(allowed)) {
 			try {
-				const value = read("config", "--get", key).toLowerCase();
+				const value = (await read("config", "--get", key)).toLowerCase();
 				if (pattern.test(value))
 					config.push(`[core]\n${key.slice(5)} = ${value}`);
 			} catch {
@@ -109,7 +131,7 @@ export function checkoutStatus(root: string): {
 		}
 		for (const key of ["core.attributesFile", "core.excludesFile"]) {
 			try {
-				const value = read("config", "--path", "--get", key);
+				const value = await read("config", "--path", "--get", key);
 				if (value)
 					config.push(
 						`[core]\n${key.slice(5)} = ${JSON.stringify(resolve(root, value).replaceAll("\\", "/"))}`,

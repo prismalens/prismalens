@@ -6,7 +6,6 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
-import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	lstatSync,
@@ -124,7 +123,7 @@ import {
 	sameCheckout,
 } from "./checkout-lease.js";
 
-import { checkoutStatus } from "./checkout-status.js";
+import { checkoutStatus, readGit } from "./checkout-status.js";
 import { isCanonical } from "./folder-lock.js";
 import {
 	clearReceipt,
@@ -1235,7 +1234,7 @@ async function runFollowUp(
 						restartAt,
 						data.incidentId,
 						await ports.events(id),
-						observeWorkspace(workspace.repos, existed),
+						await observeWorkspace(workspace.repos, existed),
 						!ports.preRun
 							? "none"
 							: context.preRun?.state === "unavailable"
@@ -3014,11 +3013,14 @@ function dropReceipt(runId: string, keepFile = false): void {
 }
 
 /** Each repo as git shows it now, against what the run recorded; never more than git said (#981 OBJ-011). */
-export function observeWorkspace(
+export async function observeWorkspace(
 	repos: readonly { name: string; dir: string; head: string }[],
 	existed: ReadonlyMap<string, boolean>,
-	git: (dir: string, args: string[]) => string | null = gitIn,
-): WorkspaceState[] {
+	git: (
+		dir: string,
+		args: string[],
+	) => string | null | Promise<string | null> = gitIn,
+): Promise<WorkspaceState[]> {
 	const many = repos.length > 1;
 	const out: WorkspaceState[] = [];
 	for (const r of repos) {
@@ -3026,10 +3028,10 @@ export function observeWorkspace(
 		let head: string;
 		let changed: number | null;
 		try {
-			const current = git(r.dir, ["rev-parse", "HEAD"]);
+			const current = await git(r.dir, ["rev-parse", "HEAD"]);
 			if (current === null) continue;
 			head = current.trim();
-			const status = git(r.dir, ["status", "--porcelain"]);
+			const status = await git(r.dir, ["status", "--porcelain"]);
 			changed =
 				status === null
 					? null
@@ -3047,20 +3049,14 @@ export function observeWorkspace(
 	return out;
 }
 
-function gitIn(dir: string, args: string[]): string | null {
-	const status = args[0] === "status" ? checkoutStatus(dir) : null;
+async function gitIn(dir: string, args: string[]): Promise<string | null> {
+	const status = args[0] === "status" ? await checkoutStatus(dir) : null;
 	try {
 		if (status?.hasFilters) return null;
 		// A status never refreshes the index: an in-place run's is the user's own (#1024).
-		return execFileSync(
-			"git",
+		return await readGit(
 			["--no-optional-locks", ...NO_FSMONITOR, "-C", dir, ...args],
-			{
-				env: { ...gitEnv({ source: "none" }), ...status?.env },
-				encoding: "utf8",
-				windowsHide: true,
-				timeout: 15_000,
-			},
+			{ cwd: dir, env: { ...gitEnv({ source: "none" }), ...status?.env } },
 		);
 	} finally {
 		status?.close();
