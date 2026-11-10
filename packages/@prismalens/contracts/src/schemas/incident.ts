@@ -278,6 +278,8 @@ export const ChatIncidentSchema = z.object({
  * ATTACHMENT_MAX_BYTES is accepted; the rest reach the agent as a link (#1024).
  */
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+/** All files one thread, draft or incident holds together. */
+export const ATTACHMENT_TOTAL_MAX_BYTES = 200 * 1024 * 1024;
 
 export const ATTACHMENT_IMAGE_TYPES = [
 	"image/png",

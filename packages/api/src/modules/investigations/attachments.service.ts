@@ -22,6 +22,7 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	ATTACHMENT_IMAGE_TYPES,
 	ATTACHMENT_MAX_BYTES,
+	ATTACHMENT_TOTAL_MAX_BYTES,
 	type Attachment,
 	attachmentKind,
 	type JobAttachment,
@@ -267,6 +268,14 @@ export class AttachmentsService {
 		mimeType: string,
 		sha256: string,
 	): Promise<Row> {
+		const held = await this.prisma.attachment.aggregate({
+			where: "incidentId" in owner ? owner : { ...owner, incidentId: null },
+			_sum: { size: true },
+		});
+		if ((held._sum.size ?? 0) + bytes.length > ATTACHMENT_TOTAL_MAX_BYTES)
+			throw new ORPCError("PAYLOAD_TOO_LARGE", {
+				message: "Files up to 200 MB in all",
+			});
 		const row = await this.prisma.attachment.create({
 			data: {
 				...owner,
