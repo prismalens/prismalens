@@ -297,6 +297,8 @@ export async function snapshotReceipt(
 	}
 }
 
+const SYNC_PROBE_TIMEOUT_MS = 3_000;
+
 export function osHost(): ProcessHost {
 	return {
 		platform: process.platform,
@@ -351,8 +353,10 @@ function linuxStartOf(pid: number): number | null {
 }
 
 function psStartOf(pid: number): number | null {
+	// Bounded well under the lease transaction's limit: containment runs inside it.
 	const out = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
 		encoding: "utf8",
+		timeout: SYNC_PROBE_TIMEOUT_MS,
 	});
 	if (out.error) throw out.error;
 	const text = out.stdout.trim();
@@ -368,6 +372,7 @@ function bootId(): string | null {
 			return readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
 		const out = spawnSync("sysctl", ["-n", "kern.boottime"], {
 			encoding: "utf8",
+			timeout: SYNC_PROBE_TIMEOUT_MS,
 		});
 		return out.status === 0 && out.stdout.trim() ? out.stdout.trim() : null;
 	} catch {
