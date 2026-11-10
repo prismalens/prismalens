@@ -70,6 +70,20 @@ describe("cross-site middleware", () => {
 		expect(await send(cookie)).toBe(200);
 	});
 
+	it("reads the scheme a loopback TLS proxy reports when the Origin has no port", async () => {
+		const proxied = { ...cookie, host: "box.tail1234.ts.net" };
+		expect(
+			await send({
+				...proxied,
+				origin: "https://box.tail1234.ts.net",
+				"x-forwarded-proto": "https",
+			}),
+		).toBe(200);
+		expect(
+			await send({ ...proxied, origin: "https://box.tail1234.ts.net" }),
+		).toBe(403);
+	});
+
 	it("lets the app's own requests through", async () => {
 		expect(await send({ ...cookie, "sec-fetch-site": "same-origin" })).toBe(
 			200,

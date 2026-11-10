@@ -87,6 +87,19 @@ export function createCrossSiteMiddleware(options: CrossSiteOptions) {
 
 const DEFAULT_PORT: Record<string, string> = { "http:": "80", "https:": "443" };
 
+/** The scheme the browser used: a TLS proxy on this machine (`tailscale serve`) says so in X-Forwarded-Proto. */
+function schemeOf(req: Request): string {
+	if ((req.socket as { encrypted?: boolean } | undefined)?.encrypted)
+		return "https:";
+	const peer = req.socket?.remoteAddress ?? "";
+	const loopback =
+		peer === "::1" || peer.startsWith("127.") || peer.startsWith("::ffff:127.");
+	const forwarded = String(req.headers["x-forwarded-proto"] ?? "")
+		.split(",")[0]
+		?.trim();
+	return loopback && forwarded === "https" ? "https:" : "http:";
+}
+
 /** No Origin, or one on the port this request reached; the host allowlist vets its hostname. */
 function originOnThisPort(req: Request): boolean {
 	const origin = req.headers.origin;
@@ -98,7 +111,6 @@ function originOnThisPort(req: Request): boolean {
 		return false;
 	}
 	const host = req.headers.host ?? "";
-	const hostPort =
-		/:(\d+)$/.exec(host)?.[1] ?? DEFAULT_PORT[`${req.protocol}:`];
+	const hostPort = /:(\d+)$/.exec(host)?.[1] ?? DEFAULT_PORT[schemeOf(req)];
 	return (url.port || DEFAULT_PORT[url.protocol]) === hostPort;
 }
