@@ -11,20 +11,39 @@ import type { InvestigationsService } from "../investigations/investigations.ser
 import { IncidentsController } from "./incidents.controller.js";
 import type { IncidentsService } from "./incidents.service.js";
 
+const operateRequest = {
+	operator: {
+		device: {
+			id: "dev-operate",
+			scopes: ["investigate:read", "investigate:operate"],
+		},
+	},
+};
+
 describe("IncidentsController - storm path alert serialization", () => {
 	function getHandlers(controller: IncidentsController) {
 		const procedures = controller.incidents() as unknown as Record<
 			string,
-			{ "~orpc"?: { handler: (args: { input: unknown }) => Promise<unknown> } }
+			{
+				"~orpc"?: {
+					handler: (args: { input: unknown; context?: unknown }) => Promise<unknown>;
+				};
+			}
 		>;
 		return Object.fromEntries(
 			Object.entries(procedures).map(([key, proc]) => [
 				key,
-				proc?.["~orpc"]?.handler ?? proc,
+				proc?.["~orpc"]?.handler
+					? (args: { input: unknown; context?: unknown }) =>
+							proc["~orpc"]!.handler({
+								context: { request: operateRequest },
+								...args,
+							})
+					: proc,
 			]),
 		) as Record<
 			string,
-			(args: { input: { id: string } }) => Promise<Record<string, unknown>>
+			(args: { input: { id: string }; context?: unknown }) => Promise<Record<string, unknown>>
 		>;
 	}
 
@@ -218,16 +237,26 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 	function getHandlers(controller: IncidentsController) {
 		const procedures = controller.incidents() as unknown as Record<
 			string,
-			{ "~orpc"?: { handler: (args: { input: unknown }) => Promise<unknown> } }
+			{
+				"~orpc"?: {
+					handler: (args: { input: unknown; context?: unknown }) => Promise<unknown>;
+				};
+			}
 		>;
 		return Object.fromEntries(
 			Object.entries(procedures).map(([key, proc]) => [
 				key,
-				proc?.["~orpc"]?.handler ?? proc,
+				proc?.["~orpc"]?.handler
+					? (args: { input: unknown; context?: unknown }) =>
+							proc["~orpc"]!.handler({
+								context: { request: operateRequest },
+								...args,
+							})
+					: proc,
 			]),
 		) as Record<
 			string,
-			(args: { input: { id: string } }) => Promise<Record<string, unknown>>
+			(args: { input: { id: string }; context?: unknown }) => Promise<Record<string, unknown>>
 		>;
 	}
 
@@ -1128,11 +1157,18 @@ describe("IncidentsController - merge (#673 w37)", () => {
 		);
 		const procedures = controller.incidents() as unknown as Record<
 			string,
-			{ "~orpc": { handler: (a: { input: unknown }) => Promise<unknown> } }
+			{
+				"~orpc": {
+					handler: (a: { input: unknown; context?: unknown }) => Promise<unknown>;
+				};
+			}
 		>;
 		return {
 			incidentsService,
-			result: procedures[name]["~orpc"].handler({ input: { id, ...input } }),
+			result: procedures[name]["~orpc"].handler({
+				input: { id, ...input },
+				context: { request: operateRequest },
+			}),
 		};
 	}
 

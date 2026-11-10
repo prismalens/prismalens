@@ -21,6 +21,7 @@ import {
 	RunChoiceSchema,
 } from "./investigation.js";
 import { ThreadRowPrSchema } from "./pull-request.js";
+import { WorkInSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
 import { INVESTIGATION_KINDS } from "./state-semantics.js";
 
@@ -44,6 +45,8 @@ export const StartThreadSchema = z
 		/** A helper started from an empty page; only on a no-subject thread. */
 		place: HelperPlaceSchema.optional(),
 		...MessageContextShape,
+		/** Only on a local git project; absent takes the project's remembered choice (#1024). */
+		workIn: WorkInSchema.optional(),
 	})
 	.refine((v) => !v.place || v.subject.kind === "none", {
 		message: "Only a thread with no subject starts from a page.",
@@ -178,6 +181,8 @@ export const RenameThreadSchema = z.object({
 export const ThreadSettingsSchema = z.object({
 	/** A thread with no incident settles after this many quiet days. */
 	settleAfterDays: z.number().int().min(1).max(90),
+	/** Where a new local repo's threads start working; absent is a new worktree (#1024). */
+	newThreadsWorkIn: WorkInSchema.optional(),
 });
 export type ThreadSettings = z.infer<typeof ThreadSettingsSchema>;
 export const DEFAULT_SETTLE_AFTER_DAYS = 3;

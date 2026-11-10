@@ -3,22 +3,16 @@
 
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { ACCESS_SCOPE, STARTUP_LINK_LABEL } from "@prismalens/auth";
+import { STARTUP_LINK_LABEL } from "@prismalens/auth";
 import { SCHEDULE_HOST_ONLY, schedulesContract } from "@prismalens/contracts";
 import type { Request } from "express";
+import { isOwner, requireOwner } from "../../core/auth/owner.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { ScheduleError, SchedulesService } from "./schedules.service.js";
 
-/** Every device reads; only the host's session writes, as #907 rules for agent settings (#979, #982). */
-function isHost(request: Request): boolean {
-	return !!request.operator?.device.scopes.includes(ACCESS_SCOPE);
-}
-
-function hostOnly(request: Request): string | null {
-	if (!isHost(request))
-		throw new ORPCError("FORBIDDEN", { message: SCHEDULE_HOST_ONLY });
-	return request.operator?.device.id ?? null;
-}
+/** Every device reads; only the owner writes (#979, #982). */
+const hostOnly = (request: Request) =>
+	requireOwner(request, SCHEDULE_HOST_ONLY);
 
 async function mapped<T>(work: () => Promise<T>): Promise<T> {
 	try {
@@ -38,7 +32,7 @@ export class SchedulesController {
 	@Implement(schedulesContract)
 	routes() {
 		const access = (request: Request) => ({
-			canEdit: isHost(request),
+			canEdit: isOwner(request),
 			hostName: STARTUP_LINK_LABEL,
 		});
 		return {

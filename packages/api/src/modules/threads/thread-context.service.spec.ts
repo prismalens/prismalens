@@ -257,6 +257,28 @@ describe("ThreadContextService (#1024 decision 1)", () => {
 		expect(inFolder.workspaces.listForRun).not.toHaveBeenCalled();
 	});
 
+	it("offers no Undo for a thread in the user's own checkout (#1024)", async () => {
+		const borrowed = {
+			path: folder,
+			head: "abc",
+			branch: "main",
+			dirty: { staged: 0, unstaged: 0, untracked: 0 },
+		};
+		const inPlace = service(
+			run({
+				workspace: JSON.stringify({
+					layout: "in_place",
+					cwd: folder,
+					repos: [{ name: "repo", dir: folder, sourceKind: "folder", url: folder, subPath: null, connectionId: null, head: "abc", branch: "main", services: [] }],
+					borrowed,
+				}),
+			}),
+		);
+		const ctx = parse(await inPlace.svc.context(RUN, true));
+		expect(ctx.workspace).toMatchObject({ layout: "in_place", kept: [] });
+		expect(inPlace.workspaces.listForRun).not.toHaveBeenCalled();
+	});
+
 	it("404s a thread that does not exist", async () => {
 		const { svc, prisma } = service(run());
 		prisma.investigation.findUnique.mockResolvedValueOnce(null as never);

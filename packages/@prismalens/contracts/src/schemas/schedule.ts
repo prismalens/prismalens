@@ -202,6 +202,5 @@ export const ScheduleEnabledSchema = z.object({
 
 export const ScheduleIdSchema = z.object({ id: z.string() });
 
-/** Only the host's session may create, change or run a schedule (#979; the question is open in #982). */
-export const SCHEDULE_HOST_ONLY =
-	"Schedules are changed on the computer that runs PrismaLens.";
+/** Only the owner may create, change or run a schedule (#979; the question is open in #982). */
+export const SCHEDULE_HOST_ONLY = "Only the owner can change schedules.";

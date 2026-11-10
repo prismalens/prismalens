@@ -173,12 +173,12 @@ describe("observeWorkspace (#981 OBJ-011)", () => {
 					: "";
 		const repos = ["/kept", "/changed", "/moved", "/gone"].map((dir) => ({ name: dir.slice(1), dir, head: H }));
 		const existed = new Map([["/kept", true], ["/changed", true], ["/moved", true], ["/gone", false]]);
-		expect(observeWorkspace(repos, existed, git)).toEqual([
+		expect(await observeWorkspace(repos, existed, git)).toEqual([
 			{ repo: "kept", state: "as-was", head: H },
 			{ repo: "changed", state: "changed", head: H, changed: 2 },
 			{ repo: "moved", state: "moved", head: "aaaaaaa1111111111111111111111111111111111", recorded: H },
 			{ repo: "gone", state: "rebuilt", head: H },
 		]);
-		expect(observeWorkspace([repos[0] as (typeof repos)[0]], existed, git)).toEqual([{ repo: null, state: "as-was", head: H }]);
+		expect(await observeWorkspace([repos[0] as (typeof repos)[0]], existed, git)).toEqual([{ repo: null, state: "as-was", head: H }]);
 	});
 });

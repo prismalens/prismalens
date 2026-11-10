@@ -5,20 +5,14 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { threadTreeContract } from "@prismalens/contracts";
 import type { Request } from "express";
-import { isHost } from "../../core/settings/settings.controller.js";
+import { requireOwner } from "../../core/auth/owner.js";
 import { ProposalsService } from "./proposals.service.js";
 import { ThreadTreeService } from "./thread-tree.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
 
-const HOST_ONLY =
-	"Only this machine's own session can change what agents may run.";
-
 /** ADR 0004 §6: a paired device and a run's bearer see the tree, never change what agents run. */
-function hostOnly(request: Request | undefined): string | null {
-	if (!request || !isHost(request))
-		throw new ORPCError("FORBIDDEN", { message: HOST_ONLY });
-	return request.operator?.device.id ?? null;
-}
+const hostOnly = (request: Request | undefined) =>
+	requireOwner(request, "Only the owner can change what agents may run.");
 
 @Controller()
 export class ThreadTreeController {

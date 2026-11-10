@@ -335,7 +335,7 @@ const json = (path, init) =>
 		: bad("/api/webhooks/generic", "the SPA fallback swallowed a webhook");
 
 	// --- pairing: pair a device instead of creating an owner ------------------
-	const pairOut = execFileSync(plBin, ["pair", "--workspace", workspaceDir], {
+	const pairOut = execFileSync(plBin, ["pair", "--start-runs", "--workspace", workspaceDir], {
 		encoding: "utf8",
 	});
 	const token = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
@@ -503,7 +503,7 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 const [base, plBin, workspace, openedFile] = process.argv.slice(2);
-const pairOut = execFileSync(plBin, ["pair", "--workspace", workspace], { encoding: "utf8" });
+const pairOut = execFileSync(plBin, ["pair", "--start-runs", "--workspace", workspace], { encoding: "utf8" });
 const token = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 const redeem = await fetch(`${base}/api/pairing/redeem`, {
 	method: "POST",

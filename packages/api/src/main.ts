@@ -27,11 +27,14 @@ import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
 import { LoggerService } from "@prismalens/logger/nestjs";
 import { AppModule } from "./app.module.js";
+import { InstanceIdentity } from "./core/auth/instance-identity.js";
 import { PrismaService } from "./core/prisma/prisma.service.js";
+import { createCrossSiteMiddleware } from "./middlewares/cross-site.middleware.js";
 import { createHelmetMiddleware } from "./middlewares/helmet.middleware.js";
 import {
 	createHostAllowlistMiddleware,
 	isLoopbackBindAddress,
+	plainLanRefusal,
 	resolveAllowedHostnames,
 } from "./middlewares/host-allowlist.middleware.js";
 import { TerminalService } from "./modules/terminal/terminal.service.js";
@@ -159,6 +162,16 @@ async function bootstrap() {
 		}
 	}
 
+	const refusal = plainLanRefusal(
+		host,
+		Boolean(httpsOptions),
+		process.env.PRISMALENS_LAN === "1",
+	);
+	if (refusal) {
+		logger.error(refusal);
+		process.exit(1);
+	}
+
 	const app = await NestFactory.create(AppModule, {
 		httpsOptions,
 		bodyParser: false, // Required for oRPC to handle body parsing
@@ -207,7 +220,7 @@ async function bootstrap() {
 		logger.warn(
 			'PRISMALENS_ALLOWED_HOSTS="*" — the Host/Origin allowlist is DISABLED. ' +
 				"This re-opens the DNS-rebinding class against public routes " +
-				"(login, session, setup). Prefer listing the hostnames you actually use.",
+				"(pairing, webhooks). Prefer listing the hostnames you actually use.",
 		);
 	}
 
@@ -223,6 +236,14 @@ async function bootstrap() {
 			)
 				? [WEBHOOK_RUNTIME_PATH_PREFIX]
 				: [],
+		}),
+	);
+
+	const instance = app.get(InstanceIdentity);
+	app.use(
+		createCrossSiteMiddleware({
+			cookieName: () => instance.deviceCookie,
+			exemptPathPrefixes: [WEBHOOK_RUNTIME_PATH_PREFIX],
 		}),
 	);
 
@@ -335,9 +356,6 @@ async function bootstrap() {
 	logger.info(`PrismaLens API running on ${protocolDisplay}://${host}:${port}`);
 	logger.info(`Health check: ${protocolDisplay}://${host}:${port}/health`);
 	logger.info(`API endpoints: ${protocolDisplay}://${host}:${port}/api`);
-	logger.info(
-		`API documentation: ${protocolDisplay}://${host}:${port}/api/docs`,
-	);
 
 	// `pl up` mints the host's startup link itself (ADR 0004 §8). In dev
 	// nothing else does, and the browser is Vite's, so the API prints one.

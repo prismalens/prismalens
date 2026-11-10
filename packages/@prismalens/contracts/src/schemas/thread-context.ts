@@ -63,7 +63,7 @@ const ContextBaseShape = {
 	}),
 	workspace: z
 		.object({
-			layout: z.enum(["unmapped", "single", "multi", "folder"]),
+			layout: z.enum(["unmapped", "single", "multi", "folder", "in_place"]),
 			cwd: z.string(),
 			repos: z.array(ContextRepoSchema),
 			/** A kept worktree of this thread's own the panel may discard; never the user's checkout. */

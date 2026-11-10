@@ -89,6 +89,20 @@ describe("harness receipt (#981 OBJ-010)", () => {
 		expect(await containPrevious({ pid: 4120, startedAt: T }, host)).toBe(false);
 	});
 
+	it("kills nothing once its signal aborts, waiting on a slow process listing", async () => {
+		const stop = new AbortController();
+		const host = winHost([{ pid: 4120, parent: 1, created: T }]);
+		const table = host.list();
+		host.list = async () => {
+			stop.abort();
+			return table;
+		};
+		expect(
+			await containPrevious({ pid: 4120, startedAt: T }, host, stop.signal),
+		).toBe(false);
+		expect(host.killed).toEqual([]);
+	});
+
 	describe("POSIX kills the group only once it is proven the harness's", () => {
 		const STAMP = { host: "box", boot: "boot-1", leaderStart: 88_000 };
 		function posixHost(now: { host?: string; boot?: string | null; leader?: number | null } = {}) {

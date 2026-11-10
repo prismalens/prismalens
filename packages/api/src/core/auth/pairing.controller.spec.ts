@@ -3,7 +3,12 @@
 
 import type { ConfigService } from "@nestjs/config";
 import { call } from "@orpc/server";
-import { ACCESS_SCOPE, type DeviceRecord } from "@prismalens/auth";
+import {
+	ACCESS_SCOPE,
+	type DeviceRecord,
+	OPERATE_SCOPE,
+	READ_SCOPE,
+} from "@prismalens/auth";
 import type { Request } from "express";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../prisma/prisma.service.js";
@@ -12,7 +17,7 @@ import { PairingController } from "./pairing.controller.js";
 const host: DeviceRecord = {
 	id: "host",
 	name: "desk",
-	scopes: [ACCESS_SCOPE],
+	scopes: [ACCESS_SCOPE, OPERATE_SCOPE],
 	userAgent: "Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0",
 	createdAt: new Date("2026-10-02T10:00:00Z"),
 	lastSeenAt: null,
@@ -22,11 +27,18 @@ const phone: DeviceRecord = {
 	...host,
 	id: "phone",
 	name: "Pixel 9",
-	scopes: [],
+	scopes: [READ_SCOPE],
 	userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) Chrome/131.0.0.0",
 };
 
 const store = {
+	createLink: vi.fn(async ({ label, scopes, expiresAt }) => ({
+		id: "link-1",
+		label,
+		scopes,
+		expiresAt,
+		usedAt: null,
+	})),
 	listDevices: vi.fn().mockResolvedValue([host, phone]),
 	renameDevice: vi.fn(async (id: string, name: string) =>
 		id === "phone" ? { ...phone, name } : null,
@@ -70,9 +82,37 @@ describe("PairingController", () => {
 			["desk", true],
 			["Pixel 9", false],
 		]);
+		expect(devices.map((d) => [d.name, d.canStartRuns])).toEqual([
+			["desk", true],
+			["Pixel 9", false],
+		]);
 		expect(devices[1]?.userAgent).toContain("Pixel 9");
 		// Push health rides the list (#859): only the phone turned push on, and it expired.
 		expect(devices.map((d) => d.push?.state ?? null)).toEqual([null, "expired"]);
+	});
+
+	it("createLink with canStartRuns: true stores both scopes, without it only read", async () => {
+		await call(
+			controller.manage().createLink,
+			{ canStartRuns: true, origin: "https://prismalens.example.com" },
+			{ context: { request: as(host) } },
+		);
+		expect(store.createLink).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				scopes: JSON.stringify([READ_SCOPE, OPERATE_SCOPE]),
+			}),
+		);
+
+		await call(
+			controller.manage().createLink,
+			{ origin: "https://prismalens.example.com" },
+			{ context: { request: as(host) } },
+		);
+		expect(store.createLink).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				scopes: JSON.stringify([READ_SCOPE]),
+			}),
+		);
 	});
 
 	it("renames a device, and says so when there is none", async () => {

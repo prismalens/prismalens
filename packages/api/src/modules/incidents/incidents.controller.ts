@@ -25,6 +25,7 @@ import type {
 	Alert as PrismaAlert,
 	Incident as PrismaIncident,
 } from "@prismalens/database";
+import { requireOperate } from "../../core/auth/owner.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
@@ -265,7 +266,8 @@ export class IncidentsController {
 
 			// POST /incidents/:id/investigate - Start investigation
 			investigate: implement(incidentsContract.investigate).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
+					requireOperate(context.request);
 					const incident = await this.incidentsService.findById(input.id);
 					if (!incident) {
 						throw new ORPCError("NOT_FOUND", {
@@ -318,65 +320,72 @@ export class IncidentsController {
 			),
 
 			// POST /incidents/:id/chat - A person's message starts a chat run (#673)
-			chat: implement(incidentsContract.chat).handler(async ({ input }) => {
-				const incident = await this.incidentsService.findById(input.id);
-				if (!incident) {
-					throw new ORPCError("NOT_FOUND", {
-						message: `Incident ${input.id} not found`,
+			chat: implement(incidentsContract.chat).handler(
+				async ({ input, context: rpc }) => {
+					requireOperate(rpc.request);
+					const incident = await this.incidentsService.findById(input.id);
+					if (!incident) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Incident ${input.id} not found`,
+						});
+					}
+					refuseUnless("investigate", incident.status);
+					refuseIfMerged(incident);
+					const attachments = input.attachments?.length
+						? await this.attachments.forJob(input.id, input.attachments)
+						: [];
+					const choice = runChoice(input);
+					await this.requireReadyHarness(choice);
+					const context = await this.references.compose(input, {
+						threadId: null,
+						scope: input.draftScope ?? `new:incident:${input.id}`,
 					});
-				}
-				refuseUnless("investigate", incident.status);
-				refuseIfMerged(incident);
-				const attachments = input.attachments?.length
-					? await this.attachments.forJob(input.id, input.attachments)
-					: [];
-				const choice = runChoice(input);
-				await this.requireReadyHarness(choice);
-				const context = await this.references.compose(input, {
-					threadId: null,
-					scope: input.draftScope ?? `new:incident:${input.id}`,
-				});
-				const { investigation, created } =
-					await this.investigationsService.startOrGet({
-						incidentId: input.id,
-						afterResolve: isIncidentEnded(incident.status),
-						triggerType: "manual",
+					const { investigation, created } =
+						await this.investigationsService.startOrGet({
+							incidentId: input.id,
+							afterResolve: isIncidentEnded(incident.status),
+							triggerType: "manual",
+							kind: "chat",
+							title: input.text.slice(0, 120),
+							accessLevel: input.accessLevel ?? null,
+						});
+					// Never hand the message to the live run silently (#673 review M7).
+					if (!created) {
+						const runs = await this.investigationsService.findByIncidentId(
+							input.id,
+						);
+						const n =
+							runs.length - runs.findIndex((r) => r.id === investigation.id);
+						throw new ORPCError("CONFLICT", {
+							message: `Run #${n} is working; message it or stop it`,
+							data: { liveInvestigationId: investigation.id },
+						});
+					}
+					const jobId = await this.enqueueRun(incident, investigation.id, {
 						kind: "chat",
-						title: input.text.slice(0, 120),
-						accessLevel: input.accessLevel ?? null,
+						...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
+						...choice,
+						chat: {
+							text: input.text,
+							...(attachments.length ? { attachments } : {}),
+							...(context ? { context } : {}),
+						},
 					});
-				// Never hand the message to the live run silently (#673 review M7).
-				if (!created) {
-					const runs = await this.investigationsService.findByIncidentId(
-						input.id,
-					);
-					const n =
-						runs.length - runs.findIndex((r) => r.id === investigation.id);
-					throw new ORPCError("CONFLICT", {
-						message: `Run #${n} is working; message it or stop it`,
-						data: { liveInvestigationId: investigation.id },
-					});
-				}
-				const jobId = await this.enqueueRun(incident, investigation.id, {
-					kind: "chat",
-					...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
-					...choice,
-					chat: {
-						text: input.text,
-						...(attachments.length ? { attachments } : {}),
-						...(context ? { context } : {}),
-					},
-				});
-				// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
-				if (jobId)
-					await consumeAfterSend(this.drafts, input.draftScope, input.draftRev);
-				return {
-					incidentId: input.id,
-					investigationId: investigation.id,
-					jobId,
-					queued: jobId !== null,
-				};
-			}),
+					// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
+					if (jobId)
+						await consumeAfterSend(
+							this.drafts,
+							input.draftScope,
+							input.draftRev,
+						);
+					return {
+						incidentId: input.id,
+						investigationId: investigation.id,
+						jobId,
+						queued: jobId !== null,
+					};
+				},
+			),
 
 			// POST /incidents/:id/attachments - A file for the agent (R4.3)
 			uploadAttachment: implement(incidentsContract.uploadAttachment).handler(

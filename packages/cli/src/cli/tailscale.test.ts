@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	ensureServe,
+	machineHostnames,
 	removeServe,
 	type Run,
 	type RunResult,
@@ -175,5 +176,11 @@ describe("withAllowedHost", () => {
 		expect(withAllowedHost(undefined, "b.ts.net")).toBe("b.ts.net");
 		expect(withAllowedHost("a.example, b.ts.net", "b.ts.net")).toBe("a.example,b.ts.net");
 		expect(withAllowedHost("*", "b.ts.net")).toBe("*");
+	});
+});
+
+describe("machineHostnames", () => {
+	it("derives lowercased names without the root dot", () => {
+		expect(machineHostnames("Box.lan.")).toEqual(["box.lan", "box", "box.local"]);
 	});
 });

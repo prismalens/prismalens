@@ -105,6 +105,8 @@ export default defineConfig({
 				"src/modules/wakes/*.ts": NEW_CODE_THRESHOLD,
 				"src/modules/run-workspaces/editors.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/project-scripts.ts": NEW_CODE_THRESHOLD,
+				"src/infrastructure/dispatch/checkout-lease.ts": NEW_CODE_THRESHOLD,
+				"src/infrastructure/dispatch/checkout-status.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/run-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/attachments.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/harness/ready-harness.ts": NEW_CODE_THRESHOLD,

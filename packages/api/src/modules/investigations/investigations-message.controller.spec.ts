@@ -42,6 +42,15 @@ const mockDispatchService = {
 	afterRestart: vi.fn(),
 };
 
+const operateRequest = {
+	operator: {
+		device: {
+			id: "dev-operate",
+			scopes: ["investigate:read", "investigate:operate"],
+		},
+	},
+};
+
 function investigation(id: string, status: string) {
 	const now = new Date("2026-07-05T00:00:00.000Z");
 	return {
@@ -86,10 +95,15 @@ describe("InvestigationsController.message (#743)", () => {
 
 	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue"; harness?: string; model?: string; draftScope?: string; draftRev?: number; compact?: boolean; fresh?: boolean };
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
-	function messageHandler(): (args: { input: Input }) => Promise<any> {
+	function messageHandler(): (args: { input: Input; context?: unknown }) => Promise<any> {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
 		const procs = controller.investigations() as Record<string, any>;
-		return procs.message["~orpc"].handler;
+		const h = procs.message["~orpc"].handler;
+		return (args) =>
+			h({
+				context: { request: operateRequest },
+				...args,
+			});
 	}
 
 	it("queues a message on a running run", async () => {
@@ -324,7 +338,10 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
 	const send = (input: { id: string; text: string; mode: "queue"; kind?: "chat" | "continue" }): Promise<any> =>
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
-		(controller.investigations() as Record<string, any>).message["~orpc"].handler({ input });
+		(controller.investigations() as Record<string, any>).message["~orpc"].handler({
+			input,
+			context: { request: operateRequest },
+		});
 	const live = (liveTurn: string | null, kind = "investigation") => ({
 		...investigation("inv-1", "running"),
 		kind,

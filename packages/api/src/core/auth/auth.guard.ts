@@ -12,10 +12,13 @@
 import {
 	CanActivate,
 	ExecutionContext,
+	ForbiddenException,
 	Injectable,
+	ServiceUnavailableException,
 	UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { READ_SCOPE } from "@prismalens/auth";
 import type { Request } from "express";
 import { OperatorResolver } from "./operator.resolver.js";
 import { IS_PUBLIC_KEY } from "./public.decorator.js";
@@ -47,15 +50,22 @@ export class AuthGuard implements CanActivate {
 				}
 				throw new UnauthorizedException("Authentication required");
 			}
+			if (!resolution.operator.device.scopes.includes(READ_SCOPE))
+				throw new ForbiddenException("This device can't view runs.");
 			request.operator = resolution.operator;
 			return true;
 		} catch (error) {
-			// Re-throw UnauthorizedException as-is; wrap other errors
-			// so infrastructure failures (DB outage, etc.) don't silently become 401
-			if (error instanceof UnauthorizedException) {
+			// A refusal stays a refusal; anything else is a server fault (a database outage),
+			// and a 401 would tell the browser to pair again.
+			if (
+				error instanceof UnauthorizedException ||
+				error instanceof ForbiddenException
+			) {
 				throw error;
 			}
-			throw new UnauthorizedException("Authentication required");
+			throw new ServiceUnavailableException(
+				"PrismaLens could not check this device just now. Try again in a moment.",
+			);
 		}
 	}
 }

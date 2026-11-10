@@ -21,6 +21,7 @@ import { Empty, Loading, Problem } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
 import { guessDeviceName, namesBrowser } from "@/lib/device-name";
@@ -225,6 +226,11 @@ function DeviceRow({
 								this device
 							</StateWord>
 						)}
+						{!device.canStartRuns && (
+							<StateWord tone="quiet" data-testid="device-view-only">
+								view and answer
+							</StateWord>
+						)}
 					</span>
 				)
 			}
@@ -262,6 +268,7 @@ const LOOPBACK = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/i;
 function PairAnother() {
 	const here = typeof window === "undefined" ? "" : window.location.origin;
 	const [origin, setOrigin] = useState(here);
+	const [canStartRuns, setCanStartRuns] = useState(false);
 	const create = useMutation({
 		...orpc.pairing.manage.createLink.mutationOptions(),
 	});
@@ -278,10 +285,29 @@ function PairAnother() {
 			}
 		>
 			<Pool>
+				<SettingRow
+					label={<label htmlFor="pair-start-runs">Can start runs</label>}
+					description={
+						canStartRuns
+							? "Starts, continues and stops runs"
+							: "Views runs and answers asks"
+					}
+					testId="device-start-runs-row"
+				>
+					<Switch
+						id="pair-start-runs"
+						checked={canStartRuns}
+						onCheckedChange={setCanStartRuns}
+						data-testid="device-start-runs"
+					/>
+				</SettingRow>
 				<form
 					onSubmit={(e) => {
 						e.preventDefault();
-						create.mutate({ origin: origin.trim() || undefined });
+						create.mutate({
+							origin: origin.trim() || undefined,
+							canStartRuns,
+						});
 					}}
 				>
 					<SettingRow

@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHelmetMiddleware } from "./helmet.middleware.js";
 import {
 	createHostAllowlistMiddleware,
+	rejectionMessage,
 	resolveAllowedHostnames,
 } from "./host-allowlist.middleware.js";
 
@@ -93,8 +94,17 @@ describe("host allowlist over real HTTP", () => {
 	it("rejects a rebound hostname with 403", async () => {
 		const res = await probe({ host: "rebound.attacker.test" });
 		expect(res.status).toBe(403);
-		expect(res.body).toContain("rebound.attacker.test");
-		expect(res.body).toContain("PRISMALENS_ALLOWED_HOSTS");
+		expect(JSON.parse(res.body).message).toBe(
+			rejectionMessage("Host", "rebound.attacker.test"),
+		);
+	});
+
+	it("rejects a refused Host with 403 carrying rejectionMessage", async () => {
+		const res = await probe({ host: "evil.example:6473" });
+		expect(res.status).toBe(403);
+		expect(JSON.parse(res.body).message).toBe(
+			rejectionMessage("Host", "evil.example:6473"),
+		);
 	});
 
 	it("rejects a request that only carries a hostile Origin", async () => {
@@ -103,7 +113,9 @@ describe("host allowlist over real HTTP", () => {
 			origin: "https://evil.example",
 		});
 		expect(res.status).toBe(403);
-		expect(res.body).toContain("Origin");
+		expect(JSON.parse(res.body).message).toBe(
+			rejectionMessage("Origin", "https://evil.example"),
+		);
 	});
 
 	it("rejects a cross-site form POST to loopback (#698)", async () => {

@@ -194,7 +194,7 @@ async function main() {
 	if (!ready)
 		throw new Error(`pl up not ready in 120s:\n${bootLog.slice(-3000)}`);
 
-	const pairOut = run(bin, ["pair", "--workspace", workspace]);
+	const pairOut = run(bin, ["pair", "--start-runs", "--workspace", workspace]);
 	const pairToken = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 	let cookie = "";
 	const api = async (path, init = {}) => {

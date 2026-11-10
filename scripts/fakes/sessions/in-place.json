@@ -1,0 +1,49 @@
+{
+	"description": "A thread working in the user's own checkout writes a file in its cwd, then waits for the test to release it (#1024).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.85.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Writing a note in **{{cwd}}**.\n\n"
+			},
+			{
+				"write": {
+					"path": "pl-in-place.txt",
+					"content": "written in place\n"
+				}
+			},
+			{
+				"tool": {
+					"id": "toolu_01",
+					"title": "Write pl-in-place.txt",
+					"kind": "edit",
+					"rawInput": {
+						"file_path": "{{cwd}}/pl-in-place.txt",
+						"content": "written in place"
+					},
+					"output": "Wrote pl-in-place.txt"
+				}
+			},
+			{
+				"waitForRelease": true
+			},
+			{
+				"say": "The note is in your checkout."
+			}
+		]
+	],
+	"followUp": [
+		{
+			"write": {
+				"path": "pl-follow-up.txt",
+				"content": "follow-up\n"
+			}
+		},
+		{
+			"say": "On your question (*{{prompt}}*): wrote the follow-up note in the same checkout."
+		}
+	]
+}

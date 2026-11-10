@@ -6,8 +6,7 @@
  *
  * Collapsing the app to one process (ADR-0029) removed the unauthenticated
  * frontend origin, but it did not remove the DNS-rebinding *class*: `@Public()`
- * routes (login, session, setup) stay reachable, and during the pre-setup
- * window a rebound page could drive owner creation. CORS does not help here —
+ * routes (pairing redemption, webhooks, health) stay reachable. CORS does not help here —
  * a rebound page is *same-origin* from the browser's point of view, so no
  * preflight happens and no `Access-Control-*` header is consulted.
  *
@@ -171,6 +170,23 @@ export function isLoopbackBindAddress(address: string): boolean {
 	return false;
 }
 
+/**
+ * Why a bind is refused, or null. Plain HTTP beyond loopback sends the device
+ * cookie in clear, so it needs `--lan` (`PRISMALENS_LAN=1`) saying so.
+ */
+export function plainLanRefusal(
+	host: string,
+	https: boolean,
+	lan: boolean,
+): string | null {
+	if (https || lan || isLoopbackBindAddress(host)) return null;
+	return (
+		`Refusing to serve plain HTTP on ${host}: the device cookie would cross the network unencrypted. ` +
+		"Use `pl up --tailscale-serve` to reach PrismaLens from other devices over HTTPS, " +
+		"or pass --lan (PRISMALENS_LAN=1) to accept plain HTTP on your network."
+	);
+}
+
 /** True when `hostname` is acceptable under `allowed`. */
 export function isHostnameAllowed(
 	hostname: string | undefined,
@@ -242,6 +258,24 @@ function safeUrlHostname(origin: string): string | undefined {
 	}
 }
 
+/** The 403's text: what was refused and the one setting that allows it. */
+export function rejectionMessage(
+	header: string,
+	value: string | undefined,
+): string {
+	if (!value) return `Blocked request: the ${header} header is missing.`;
+	const name =
+		header === "Origin" ? safeUrlHostname(value) : normalizeHostname(value);
+	// The suggestion is meant to be copied into a shell: name only what is plainly a hostname.
+	if (!name || !/^[a-z0-9._:-]{1,253}$/i.test(name))
+		return `Blocked request: cannot suggest an allowlist entry for the ${header} header.`;
+	return (
+		`PrismaLens does not answer to "${name}". If that is how you reach it, ` +
+		`start it with PRISMALENS_ALLOWED_HOSTS=${name} (comma-separate several). ` +
+		"`pl up --lan` and `pl up --tailscale-serve` allow this machine's own names."
+	);
+}
+
 function reject(
 	res: Response,
 	header: string,
@@ -250,9 +284,6 @@ function reject(
 	res.status(403).json({
 		statusCode: 403,
 		error: "Forbidden",
-		message:
-			`Blocked request: ${header} header ${value ? `"${value}"` : "is missing"} is not allowlisted. ` +
-			"If this hostname is how you reach PrismaLens, add it to PRISMALENS_ALLOWED_HOSTS " +
-			"(comma-separated).",
+		message: rejectionMessage(header, value),
 	});
 }
