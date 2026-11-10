@@ -178,7 +178,7 @@ export function resolveOrigin(
 	port: number,
 ): { origin: string; loopback: boolean } {
 	if (!address) {
-		return { origin: `http://localhost:${port}`, loopback: true };
+		return { origin: `http://127.0.0.1:${port}`, loopback: true };
 	}
 	const withScheme = /^https?:\/\//i.test(address)
 		? address
