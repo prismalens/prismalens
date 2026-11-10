@@ -40,7 +40,7 @@ function staticRoot(): string {
 
 /**
  * Everything is behind the `api` global prefix except `health` and `/`, so the
- * exclusion list below covers the docs (`/api/docs`) and the webhook receivers
+ * exclusion list below covers the API and the webhook receivers
  * (`/api/webhooks/*`) by construction. They are named anyway: a future route
  * that escapes the prefix must not silently start returning index.html, and
  * `scripts/packed-smoke.sh` asserts each one.

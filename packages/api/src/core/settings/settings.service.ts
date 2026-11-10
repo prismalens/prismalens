@@ -154,11 +154,6 @@ export class SettingsService {
 			// Registered integrations hold encrypted OAuth client secrets.
 			await tx.integration.deleteMany({});
 			await tx.setting.deleteMany({});
-			// Auth tables (after sessions -> after users)
-			await tx.session.deleteMany({});
-			await tx.account.deleteMany({});
-			await tx.verification.deleteMany({});
-			await tx.user.deleteMany({});
 		});
 		removeAllAttachmentFiles();
 

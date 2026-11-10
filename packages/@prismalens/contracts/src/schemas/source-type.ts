@@ -473,8 +473,6 @@ export const SourceCategoryViewSchema = z.object({
 });
 export type SourceCategoryView = z.infer<typeof SourceCategoryViewSchema>;
 
-export const RunbooksToggleSchema = z.object({ enabled: z.boolean() });
-
 export const DetectedSourceSchema = z.object({
 	type: z.string(),
 	/** The variable it was found in; its value is never sent when it is a token. */
