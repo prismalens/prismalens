@@ -50,6 +50,11 @@ describe("the thread tree tools (#1024 spec F)", () => {
 		expect(ThreadStartInput.safeParse({ ...base, workspace: { kind: "new_from_ref", ref: "main" } }).success).toBe(true);
 		expect(ThreadStartInput.safeParse({ ...base, role: "db; rm" }).success).toBe(false);
 	});
+
+	it("marks thread_send a record tool", () => {
+		const { byName } = tools();
+		expect(byName.thread_send?.effect).toBe("record");
+	});
 });
 
 describe("propose_action (#1024 spec F)", () => {
