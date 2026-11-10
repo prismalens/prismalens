@@ -37,6 +37,8 @@ export function readGit(
 			},
 			(error, stdout) => (error ? reject(error) : resolve(stdout)),
 		);
+		// git can exit before reading stdin; the write then fails with EPIPE, which is not the result.
+		child.stdin?.on("error", () => {});
 		child.stdin?.end(opts.input ?? "");
 	});
 }
