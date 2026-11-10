@@ -5,6 +5,7 @@ import {
 	REFERENCE_SNAPSHOT_MAX_CHARS,
 	REFERENCE_SNAPSHOTS_MAX_CHARS,
 } from "@prismalens/contracts";
+import { FILE_LIST_TIMED_OUT, FileLister } from "./file-list.js";
 import { type ReferenceProvider, SourceUnavailable } from "./reference-provider.js";
 import { ReferencesService } from "./references.service.js";
 
@@ -240,6 +241,44 @@ describe("ReferencesService (#1024)", () => {
 			{ threadId: null, scope: `new:incident:${INC}` },
 		);
 		expect(snap).toMatchObject({ outOfScope: false, readTool: "incident_get" });
+	});
+
+	it("reports unavailable with FILE_LIST_TIMED_OUT when file lister times out (#1066)", async () => {
+		const db = prisma({
+			investigation: {
+				findUnique: vi.fn(async () => ({
+					id: RUN,
+					incidentId: null,
+					repositoryId: null,
+					workspace: JSON.stringify({
+						layout: "folder",
+						cwd: "C:/fake/path",
+						repos: [],
+					}),
+					harness: "claude-code",
+					agentCommands: null,
+				})),
+			},
+		});
+		class TimedOutLister extends FileLister {
+			override async list() {
+				return { paths: [], truncated: false, timedOut: true as const };
+			}
+		}
+		const svc = new ReferencesService(db as never);
+		Object.assign(svc.records, { files: new TimedOutLister() });
+
+		const res = await svc.search({
+			q: "test",
+			trigger: "@",
+			threadId: RUN,
+			limit: 10,
+		});
+		expect(res.unavailable).toEqual(
+			expect.arrayContaining([
+				{ source: "Files", message: FILE_LIST_TIMED_OUT },
+			]),
+		);
 	});
 });
 

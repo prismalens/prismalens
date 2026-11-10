@@ -30,6 +30,14 @@ describe("AttachmentsService (R4.3)", () => {
 			delete: vi.fn(async ({ where }: { where: { id: string } }) => {
 				rows = rows.filter((r) => r.id !== where.id);
 			}),
+			aggregate: vi.fn(async () => ({
+				_sum: {
+					size: rows.reduce(
+						(acc, r) => acc + (typeof r.size === "number" ? r.size : 0),
+						0,
+					),
+				},
+			})),
 		},
 	};
 	const service = () => new AttachmentsService(prisma as never, timeline as never);

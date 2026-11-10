@@ -9,7 +9,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenAPIHandler } from "@orpc/openapi/node";
 import { implement } from "@orpc/server";
-import { threadsContract } from "@prismalens/contracts";
+import {
+	ATTACHMENT_TOTAL_MAX_BYTES,
+	threadsContract,
+} from "@prismalens/contracts";
 import { AttachmentsService } from "./attachments.service.js";
 
 const PNG = Buffer.from(
@@ -57,6 +60,21 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 			),
 			findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
 				rows.filter((r) => matches(r, where)),
+			),
+			aggregate: vi.fn(
+				async ({
+					where,
+				}: {
+					where: Record<string, unknown>;
+					_sum?: { size?: boolean };
+				}) => {
+					const matching = rows.filter((r) => matches(r, where));
+					const total = matching.reduce(
+						(acc, r) => acc + (typeof r.size === "number" ? r.size : 0),
+						0,
+					);
+					return { _sum: { size: total } };
+				},
 			),
 			updateMany: vi.fn(
 				async ({
@@ -235,5 +253,37 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 		await expect(service().forRun(RUN, [])).resolves.toEqual([]);
 		await expect(service().claimDraft(DRAFT, [], RUN)).resolves.toEqual([]);
 		await expect(service().checkDraft(DRAFT, [])).resolves.toBeUndefined();
+	});
+
+	it("caps total size across all files on a thread at ATTACHMENT_TOTAL_MAX_BYTES (#1066)", async () => {
+		// Another run's rows do not count.
+		rows.push({
+			id: "a-other",
+			investigationId: OTHER_RUN,
+			incidentId: null,
+			draftKey: null,
+			size: ATTACHMENT_TOTAL_MAX_BYTES,
+		});
+
+		// Seed this run near the cap without allocating real buffers.
+		rows.push({
+			id: "a-mine",
+			investigationId: RUN,
+			incidentId: null,
+			draftKey: null,
+			size: ATTACHMENT_TOTAL_MAX_BYTES - 10,
+		});
+
+		// An upload that would cross ATTACHMENT_TOTAL_MAX_BYTES is refused.
+		await expect(
+			service().uploadForRun(RUN, text("12345678901", "too-large.txt")),
+		).rejects.toThrow("Files up to 200 MB in all");
+
+		// One under it passes.
+		const under = await service().uploadForRun(
+			RUN,
+			text("12345", "fits.txt"),
+		);
+		expect(under).toMatchObject({ name: "fits.txt" });
 	});
 });
