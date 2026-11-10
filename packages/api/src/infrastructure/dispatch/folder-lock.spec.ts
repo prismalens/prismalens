@@ -56,11 +56,7 @@ describe("one live run per plain folder (#1020)", () => {
 			const real = join(root, "real");
 			mkdirSync(join(real, "notes"), { recursive: true });
 			const alias = join(root, "alias");
-			try {
-				symlinkSync(real, alias, "junction");
-			} catch {
-				return; // symlinks not permitted here
-			}
+			symlinkSync(real, alias, "junction");
 			const d = db({ plain: true, url: join(real, "notes") }, [
 				{ repository: { url: join(alias, "notes") } },
 			]);
