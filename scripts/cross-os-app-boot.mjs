@@ -697,7 +697,12 @@ deep.status === 200 && isHtml(deepBody)
 		);
 
 console.log("==> an authenticated /api call succeeds after pairing");
-const pairOut = await runShimAsync(shim, ["pair", "--workspace", workspace]);
+const pairOut = await runShimAsync(shim, [
+	"pair",
+	"--start-runs",
+	"--workspace",
+	workspace,
+]);
 const pairToken = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 
 const redeem = await json("/api/pairing/redeem", {

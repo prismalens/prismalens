@@ -27,6 +27,7 @@ const identity = {
 	instanceId: ID,
 	deviceCookie: OWN,
 	secureCookies: false,
+	secureFor: () => false,
 } as unknown as InstanceIdentity;
 
 function request(cookie?: string): { req: Request; setCookies: string[] } {

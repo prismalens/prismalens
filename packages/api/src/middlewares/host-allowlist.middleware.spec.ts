@@ -9,6 +9,8 @@ import {
 	isHostnameAllowed,
 	isLoopbackBindAddress,
 	normalizeHostname,
+	plainLanRefusal,
+	rejectionMessage,
 	resolveAllowedHostnames,
 } from "./host-allowlist.middleware.js";
 
@@ -164,6 +166,32 @@ describe("isLoopbackBindAddress", () => {
 	);
 });
 
+describe("plainLanRefusal", () => {
+	it.each(["127.0.0.1", "::1", "localhost"])(
+		"returns null for loopback host %s",
+		(host) => {
+			expect(plainLanRefusal(host, false, false)).toBeNull();
+		},
+	);
+
+	it("returns null when https is true or lan is true", () => {
+		expect(plainLanRefusal("0.0.0.0", true, false)).toBeNull();
+		expect(plainLanRefusal("0.0.0.0", false, true)).toBeNull();
+		expect(plainLanRefusal("192.168.1.5", true, false)).toBeNull();
+		expect(plainLanRefusal("192.168.1.5", false, true)).toBeNull();
+	});
+
+	it.each(["0.0.0.0", "192.168.1.5"])(
+		"returns a refusal message naming %s, --lan and --tailscale-serve over http",
+		(host) => {
+			const refusal = plainLanRefusal(host, false, false);
+			expect(refusal).toContain(host);
+			expect(refusal).toContain("--lan");
+			expect(refusal).toContain("--tailscale-serve");
+		},
+	);
+});
+
 describe("createHostAllowlistMiddleware", () => {
 	let h: Harness;
 
@@ -211,7 +239,9 @@ describe("createHostAllowlistMiddleware", () => {
 		);
 		expect(h.next).not.toHaveBeenCalled();
 		expect(h.status).toHaveBeenCalledWith(403);
-		expect(h.json.mock.calls[0][0].message).toContain("Origin");
+		expect(h.json.mock.calls[0][0].message).toBe(
+			rejectionMessage("Origin", "https://evil.example"),
+		);
 	});
 
 	it("rejects the opaque Origin `null` — a sandboxed iframe is not a caller", () => {
@@ -279,3 +309,25 @@ describe("createHostAllowlistMiddleware", () => {
 		expect(rebound.status).toHaveBeenCalledWith(403);
 	});
 });
+
+describe("rejectionMessage", () => {
+	it("names the refused host and PRISMALENS_ALLOWED_HOSTS", () => {
+		const message = rejectionMessage("Host", "evil.example:6473");
+		expect(message).toContain("evil.example");
+		expect(message).toContain("PRISMALENS_ALLOWED_HOSTS");
+	});
+
+	it("suggests no allowlist entry for a value that is not plainly a hostname", () => {
+		const unsafe = ["a.example,b.example", "x;rm -rf ~", "$(id)"];
+		expect(unsafe.map((value) => rejectionMessage("Host", value))).toEqual(
+			unsafe.map(
+				() =>
+					"Blocked request: cannot suggest an allowlist entry for the Host header.",
+			),
+		);
+		expect(rejectionMessage("Origin", "not a url")).toBe(
+			"Blocked request: cannot suggest an allowlist entry for the Origin header.",
+		);
+	});
+});
+

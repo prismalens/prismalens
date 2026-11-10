@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { BadRequestException } from "@nestjs/common";
+import { ACCESS_SCOPE } from "@prismalens/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SourcesOverviewSchema } from "@prismalens/contracts/schemas";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -550,7 +551,10 @@ describe("SourcesService (#848 C17)", () => {
 			expect(testSpy).toHaveBeenCalledWith({ type: "prometheus", url: "http://prom:9090" });
 
 			const connectH = (controller.sourcesConnect() as any)["~orpc"]?.handler ?? controller.sourcesConnect();
-			await connectH({ input: { type: "prometheus", url: "http://prom:9090" }, context: {} });
+			await connectH({
+				input: { type: "prometheus", url: "http://prom:9090" },
+				context: { request: { operator: { device: { scopes: [ACCESS_SCOPE] } } } },
+			});
 			expect(connectSpy).toHaveBeenCalledWith({ type: "prometheus", url: "http://prom:9090" });
 		});
 	});

@@ -13,6 +13,7 @@ const device = (userAgent: string | null): PairedDevice => ({
 	createdAt: "2026-10-12T10:00:00Z",
 	lastSeenAt: null,
 	push: null,
+	canStartRuns: true,
 });
 
 describe("deviceLine (#831 w6-1)", () => {

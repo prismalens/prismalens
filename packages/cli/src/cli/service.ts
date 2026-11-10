@@ -217,6 +217,11 @@ const install = defineCommand({
 			description: "Port to listen on (default: the workspace's port)",
 		},
 		host: { type: "string", description: "Host to bind (default 127.0.0.1)" },
+		lan: {
+			type: "boolean",
+			description:
+				"Serve plain HTTP to your local network on every start (see `pl up --lan`)",
+		},
 		"tailscale-serve": {
 			type: "boolean",
 			description:
@@ -290,6 +295,7 @@ const install = defineCommand({
 			path: servicePath(process.env.PATH ?? "", process.execPath),
 			env: process.env,
 			tailscaleServe: Boolean(args["tailscale-serve"]),
+			lan: Boolean(args.lan),
 		});
 		mkdirSync(dirname(unitPath), { recursive: true });
 		mkdirSync(dirname(plan.logPath), { recursive: true });

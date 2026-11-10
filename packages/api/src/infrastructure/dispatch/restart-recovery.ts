@@ -61,6 +61,7 @@ export function span(ms: number): string {
 
 export type WorkspaceState =
 	| { repo: string | null; state: "as-was"; head: string }
+	| { repo: string | null; state: "unchecked"; head: string }
 	| { repo: string | null; state: "changed"; head: string; changed: number }
 	| { repo: string | null; state: "moved"; head: string; recorded: string }
 	| { repo: string | null; state: "rebuilt"; head: string };
@@ -142,6 +143,8 @@ function workspaceLine(w: WorkspaceState): string {
 	switch (w.state) {
 		case "as-was":
 			return `${where} is at commit ${at(w.head)}, as it was.`;
+		case "unchecked":
+			return `${where} is at commit ${at(w.head)}; its changes could not be checked without running its Git filters.`;
 		case "changed":
 			return `${where} is at commit ${at(w.head)} with ${count(w.changed, "changed file")} (git status), which may include your edits from before the stop.`;
 		case "moved":

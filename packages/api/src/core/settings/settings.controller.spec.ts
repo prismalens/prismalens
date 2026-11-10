@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { ORPCError } from "@orpc/nest";
+import { ACCESS_SCOPE } from "@prismalens/auth";
 import { describe, expect, it, vi } from "vitest";
 import type { HarnessService } from "../harness/harness.service.js";
 import { SettingsController } from "./settings.controller.js";
@@ -10,7 +11,28 @@ import { telemetryStub } from "../../../test/factories/index.js";
 import type { DiagnosticsService } from "./diagnostics.service.js";
 import type { UpdateService } from "./update.service.js";
 
-type Handler = (args: { input: { confirmation: string } }) => Promise<unknown>;
+type Handler = (args: { input: { confirmation: string }; context: unknown }) => Promise<unknown>;
+
+const paired = {
+	request: {
+		operator: {
+			device: {
+				id: "dev-paired",
+				scopes: ["investigate:read", "investigate:operate"],
+			},
+		},
+	},
+};
+const host = {
+	request: {
+		operator: {
+			device: {
+				id: "dev-host",
+				scopes: ["investigate:read", "investigate:operate", ACCESS_SCOPE],
+			},
+		},
+	},
+};
 
 function dangerHandlers(settings: Partial<SettingsService>) {
 	const controller = new SettingsController(
@@ -40,10 +62,10 @@ describe("SettingsController danger zone (#605 edge 28)", () => {
 		const h = dangerHandlers(settings);
 
 		await expect(
-			h.resetData({ input: { confirmation: "RESET" } }),
+			h.resetData({ input: { confirmation: "RESET" }, context: host }),
 		).rejects.toMatchObject({ code: "CONFLICT" });
 		await expect(
-			h.factoryReset({ input: { confirmation: "FACTORY RESET" } }),
+			h.factoryReset({ input: { confirmation: "FACTORY RESET" }, context: host }),
 		).rejects.toBeInstanceOf(ORPCError);
 		expect(settings.resetData).not.toHaveBeenCalled();
 		expect(settings.factoryReset).not.toHaveBeenCalled();
@@ -61,7 +83,7 @@ describe("SettingsController danger zone (#605 edge 28)", () => {
 		const h = dangerHandlers(settings as unknown as Partial<SettingsService>);
 
 		await expect(
-			h.factoryReset({ input: { confirmation: "FACTORY RESET" } }),
+			h.factoryReset({ input: { confirmation: "FACTORY RESET" }, context: host }),
 		).rejects.toMatchObject({ code: "CONFLICT" });
 	});
 
@@ -73,8 +95,44 @@ describe("SettingsController danger zone (#605 edge 28)", () => {
 		const h = dangerHandlers(settings);
 
 		await expect(
-			h.factoryReset({ input: { confirmation: "FACTORY RESET" } }),
+			h.factoryReset({ input: { confirmation: "FACTORY RESET" }, context: host }),
 		).resolves.toEqual({ success: true, message: "done" });
+	});
+
+	it("refuses resetData to a paired device and runs it for the owner", async () => {
+		const settings = {
+			activeRunCount: vi.fn(async () => 0),
+			resetData: vi.fn(async () => ({ success: true, message: "done" })),
+		};
+		const h = dangerHandlers(settings);
+
+		await expect(
+			h.resetData({ input: { confirmation: "RESET" }, context: paired }),
+		).rejects.toMatchObject({ code: "FORBIDDEN" });
+		expect(settings.resetData).not.toHaveBeenCalled();
+
+		await expect(
+			h.resetData({ input: { confirmation: "RESET" }, context: host }),
+		).resolves.toEqual({ success: true, message: "done" });
+		expect(settings.resetData).toHaveBeenCalledOnce();
+	});
+
+	it("refuses factoryReset to a paired device and runs it for the owner", async () => {
+		const settings = {
+			activeRunCount: vi.fn(async () => 0),
+			factoryReset: vi.fn(async () => ({ success: true, message: "done" })),
+		};
+		const h = dangerHandlers(settings);
+
+		await expect(
+			h.factoryReset({ input: { confirmation: "FACTORY RESET" }, context: paired }),
+		).rejects.toMatchObject({ code: "FORBIDDEN" });
+		expect(settings.factoryReset).not.toHaveBeenCalled();
+
+		await expect(
+			h.factoryReset({ input: { confirmation: "FACTORY RESET" }, context: host }),
+		).resolves.toEqual({ success: true, message: "done" });
+		expect(settings.factoryReset).toHaveBeenCalledOnce();
 	});
 });
 
@@ -91,10 +149,37 @@ describe("SettingsController usage data (#673 w45)", () => {
 		const update = (
 			controller.telemetry() as unknown as Record<
 				string,
-				{ "~orpc": { handler: (a: { input: unknown }) => Promise<unknown> } }
+				{ "~orpc": { handler: (a: { input: unknown; context: unknown }) => Promise<unknown> } }
 			>
 		).update["~orpc"].handler;
-		await update({ input: { enabled: false, dismissed: true } });
+		await update({ input: { enabled: false, dismissed: true }, context: host });
+		expect(telemetry.update).toHaveBeenCalledWith({
+			enabled: false,
+			dismissed: true,
+		});
+	});
+
+	it("refuses update to a paired device and saves for the owner", async () => {
+		const telemetry = telemetryStub();
+		const controller = new SettingsController(
+			{} as SettingsService,
+			{} as HarnessService,
+			telemetry,
+			{} as UpdateService,
+			{} as DiagnosticsService,
+		);
+		const update = (
+			controller.telemetry() as unknown as Record<
+				string,
+				{ "~orpc": { handler: (a: { input: unknown; context: unknown }) => Promise<unknown> } }
+			>
+		).update["~orpc"].handler;
+		await expect(async () =>
+			update({ input: { enabled: false, dismissed: true }, context: paired }),
+		).rejects.toMatchObject({ code: "FORBIDDEN" });
+		expect(telemetry.update).not.toHaveBeenCalled();
+
+		await update({ input: { enabled: false, dismissed: true }, context: host });
 		expect(telemetry.update).toHaveBeenCalledWith({
 			enabled: false,
 			dismissed: true,
@@ -104,8 +189,6 @@ describe("SettingsController usage data (#673 w45)", () => {
 
 describe("SettingsController host-only update routes (#724)", () => {
 	type Proc = { "~orpc": { handler: (a: unknown) => Promise<unknown> } };
-	const paired = { request: { operator: { device: { scopes: [] } } } };
-	const host = { request: { operator: { device: { scopes: ["admin:access"] } } } };
 
 	function controller(update: Partial<UpdateService>, diagnostics: Partial<DiagnosticsService>) {
 		return new SettingsController(

@@ -80,12 +80,26 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		controller = module.get(InvestigationsController);
 	});
 
+	const operateRequest = {
+		operator: {
+			device: {
+				id: "dev-operate",
+				scopes: ["investigate:read", "investigate:operate"],
+			},
+		},
+	};
+
 	// oRPC ImplementedProcedure → the real handler lives at ['~orpc'].handler.
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
-	function cancelHandler(): (args: { input: { id: string } }) => Promise<any> {
+	function cancelHandler(): (args: { input: { id: string }; context?: unknown }) => Promise<any> {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
 		const procs = controller.investigations() as Record<string, any>;
-		return procs.cancel["~orpc"].handler;
+		const h = procs.cancel["~orpc"].handler;
+		return (args) =>
+			h({
+				context: { request: operateRequest },
+				...args,
+			});
 	}
 
 	it("running run: publishes to the cancel channel and returns the run unchanged (no status flip)", async () => {

@@ -12,21 +12,13 @@ import type {
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
 import type { Request, Response } from "express";
-import { isHost } from "../../core/settings/settings.controller.js";
+import { requireOwner } from "../../core/auth/owner.js";
 import { sendImage } from "../images/images.controller.js";
 import { browseFolders } from "./folder-browser.js";
 import { detectScripts } from "./project-scripts.js";
 import { RepositoriesService } from "./repositories.service.js";
 import { RepositoryIconService } from "./repository-icon.service.js";
 import { serializeRepository } from "./serialize-repository.js";
-
-/** The host's folders and git calls in them are for the host's own session only (#1020). */
-function hostOnly(request: unknown): void {
-	if (!isHost(request as Request))
-		throw new ORPCError("FORBIDDEN", {
-			message: "Only the computer PrismaLens runs on can do this.",
-		});
-}
 
 @Controller()
 export class RepositoriesController {
@@ -85,7 +77,7 @@ export class RepositoriesController {
 			// POST /fs/folders - The host's folders, for the Add project browser
 			browseFolders: implement(repositoriesContract.browseFolders).handler(
 				async ({ input, context }) => {
-					hostOnly(context.request);
+					requireOwner(context.request);
 					return browseFolders(input.path);
 				},
 			),
@@ -93,7 +85,7 @@ export class RepositoriesController {
 			// POST /repositories/:id/git - Start git in a plain folder project
 			startGit: implement(repositoriesContract.startGit).handler(
 				async ({ input, context }) => {
-					hostOnly(context.request);
+					requireOwner(context.request);
 					return this.serialize(
 						await this.repositoriesService.startGit(input.id),
 					);

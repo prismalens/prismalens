@@ -8,6 +8,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { hostname } from "node:os";
 
 export interface RunResult {
 	/** null when the executable could not be spawned (not installed). */
@@ -180,6 +181,14 @@ export function serveTarget(host: string | undefined, port: number): string {
 }
 
 /** PRISMALENS_ALLOWED_HOSTS with `hostname` added; never widened to `*`. */
+/** This machine's own names on a LAN: its hostname and its mDNS `.local` name. */
+export function machineHostnames(name: string = hostname()): string[] {
+	const host = name.trim().toLowerCase().replace(/\.$/, "");
+	if (!host) return [];
+	const short = host.split(".")[0] ?? host;
+	return [...new Set([host, short, `${short}.local`])];
+}
+
 export function withAllowedHost(
 	current: string | undefined,
 	hostname: string,

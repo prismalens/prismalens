@@ -72,6 +72,11 @@ export const ICON_SOURCES = ["host", "repo", "owner", "monogram"] as const;
 export const IconSourceSchema = z.enum(ICON_SOURCES);
 export type IconSource = z.infer<typeof IconSourceSchema>;
 
+/** Where a thread on a local repo works (#1024): the user's own checkout, or a new worktree. */
+export const WORK_IN = ["checkout", "worktree"] as const;
+export const WorkInSchema = z.enum(WORK_IN);
+export type WorkIn = z.infer<typeof WorkInSchema>;
+
 export const RepositorySchema = z.object({
 	id: z.string().uuid(),
 	/** Null for a folder or URL the operator typed; set when a VCS connection discovered it. */
@@ -84,6 +89,8 @@ export const RepositorySchema = z.object({
 	subPath: z.string().nullable(),
 	/** A folder with no git: threads you start run in it, nothing unattended does (#1020). */
 	plain: z.boolean(),
+	/** Where the project's next thread works; null is a new worktree (#1024). */
+	workIn: WorkInSchema.nullable().optional(),
 	description: z.string().nullable(),
 	language: z.string().nullable(),
 	defaultBranch: z.string(),

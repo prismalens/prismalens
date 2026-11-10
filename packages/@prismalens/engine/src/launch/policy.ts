@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { LaunchPolicy } from "@prismalens/agent-host";
+import {
+	GIT_AUTH_VARS,
+	GITHUB_TOKEN_VARS,
+	type LaunchPolicy,
+} from "@prismalens/agent-host";
 
 /**
  * PrismaLens's own secrets: every `PRISMALENS_*` name (the encryption key, the auth and
@@ -27,9 +31,30 @@ export function githubFor(
 }
 
 /**
- * The agent gets the user's environment minus PrismaLens's own secrets, GitHub tokens
- * included for a person's thread; `strict` passes only named variables (operator ruling 2026-10-25, #817).
+ * The environment floor: a person's thread inherits the user's environment minus
+ * PrismaLens's own secrets unless `strict`; an alert's or a schedule's run reads text
+ * anyone can write, so it always gets only the named variables (#817).
  */
+export function floorFor(
+	startedBy: StartedBy = "person",
+	strict = false,
+	github: LaunchPolicy["github"] = "include",
+): LaunchPolicy["floor"] {
+	if (!strict && startedBy === "person")
+		return {
+			mode: "inherit-minus-own-secrets",
+			ownSecrets: PRISMALENS_OWN_SECRETS,
+		};
+	// A person's strict thread keeps named variables only; GitHub's are for an allowed unattended run.
+	return github === "include" && startedBy !== "person"
+		? {
+				mode: "allowlist",
+				extraAllow: [...GITHUB_TOKEN_VARS, ...GIT_AUTH_VARS, "GH_CONFIG_DIR"],
+			}
+		: { mode: "allowlist" };
+}
+
+/** A run's launch policy: the floor and GitHub token by who started it (#817, #1020). */
 export function prismalensLaunchPolicy(
 	opts: {
 		strict?: boolean;
@@ -38,15 +63,11 @@ export function prismalensLaunchPolicy(
 		unattendedGithub?: boolean;
 	} = {},
 ): LaunchPolicy {
+	const github = githubFor(opts.startedBy, opts.unattendedGithub);
 	return {
 		userSetup: "inherit",
-		github: githubFor(opts.startedBy, opts.unattendedGithub),
-		floor: opts.strict
-			? { mode: "allowlist" }
-			: {
-					mode: "inherit-minus-own-secrets",
-					ownSecrets: PRISMALENS_OWN_SECRETS,
-				},
+		github,
+		floor: floorFor(opts.startedBy, opts.strict, github),
 		refuseEnvPrefixes: PRISMALENS_OWN_SECRETS.prefixes,
 		refuseEnvNames: PRISMALENS_OWN_SECRETS.names,
 	};

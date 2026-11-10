@@ -52,6 +52,11 @@ export default defineCommand({
 			description:
 				"A link on this machine's tailnet HTTPS address; sets up `tailscale serve` for the running server if missing",
 		},
+		"start-runs": {
+			type: "boolean",
+			description:
+				"The device may also start, continue and stop runs (default: view runs and answer their asks)",
+		},
 		operator: {
 			type: "boolean",
 			description:
@@ -121,6 +126,7 @@ export default defineCommand({
 		const {
 			buildPairingUrl,
 			createPairingLinkInWorkspace,
+			DEVICE_SCOPES,
 			OPERATOR_SCOPES,
 			STARTUP_LINK_LABEL,
 			WorkspaceError,
@@ -132,7 +138,11 @@ export default defineCommand({
 					: args.label
 						? String(args.label)
 						: undefined,
-				scopes: args.operator ? OPERATOR_SCOPES : undefined,
+				scopes: args.operator
+					? OPERATOR_SCOPES
+					: args["start-runs"]
+						? DEVICE_SCOPES
+						: undefined,
 			});
 			const url = buildPairingUrl(origin, link.token);
 			consola.log(`\n  ${url}\n`);
@@ -168,7 +178,7 @@ export function resolveOrigin(
 	port: number,
 ): { origin: string; loopback: boolean } {
 	if (!address) {
-		return { origin: `http://localhost:${port}`, loopback: true };
+		return { origin: `http://127.0.0.1:${port}`, loopback: true };
 	}
 	const withScheme = /^https?:\/\//i.test(address)
 		? address

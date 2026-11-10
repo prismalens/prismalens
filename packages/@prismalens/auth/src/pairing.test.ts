@@ -290,7 +290,7 @@ describe("redeemPairingLink", () => {
 		});
 	});
 
-	it("success returns a device token distinct from the link token, device.scopes equal DEVICE_SCOPES; the name is the label, else the client's name, else Paired device", async () => {
+	it("success returns a device token distinct from the link token, device.scopes has investigate:read by default; the name is the label, else the client's name, else Paired device", async () => {
 		const { store } = createInMemoryPairingStore();
 
 		// Both the operator's label and the name the device guesses
@@ -300,7 +300,7 @@ describe("redeemPairingLink", () => {
 			name: "Linux machine",
 		});
 		expect(redeemed1.token).not.toBe(link1.token);
-		expect(redeemed1.device.scopes).toEqual([...DEVICE_SCOPES]);
+		expect(redeemed1.device.scopes).toEqual(["investigate:read"]);
 		expect(redeemed1.device.name).toBe("Desk Mac");
 
 		const labelOnly = await createPairingLink(store, { label: "Desk Mac" });
@@ -325,6 +325,26 @@ describe("redeemPairingLink", () => {
 			name: "",
 		});
 		expect(redeemed3.device.name).toBe("Paired device");
+	});
+
+	it("a link made with no scopes redeems to a device with exactly ['investigate:read']; with DEVICE_SCOPES it redeems to both", async () => {
+		const { store } = createInMemoryPairingStore();
+
+		const defaultLink = await createPairingLink(store);
+		const defaultRedeemed = await redeemPairingLink(store, {
+			token: defaultLink.token,
+			name: "View-only device",
+		});
+		expect(defaultRedeemed.device.scopes).toEqual(["investigate:read"]);
+
+		const operateLink = await createPairingLink(store, {
+			scopes: DEVICE_SCOPES,
+		});
+		const operateRedeemed = await redeemPairingLink(store, {
+			token: operateLink.token,
+			name: "Operate device",
+		});
+		expect(operateRedeemed.device.scopes).toEqual([...DEVICE_SCOPES]);
 	});
 
 	it("a link minted with OPERATOR_SCOPES pairs a device that holds them; the default link never carries admin:access", async () => {

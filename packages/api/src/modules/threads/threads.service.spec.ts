@@ -66,6 +66,7 @@ describe("ThreadsService (#1020)", () => {
 	let dispatch: {
 		threadRunOf: ReturnType<typeof vi.fn>;
 		addInvestigationJob: ReturnType<typeof vi.fn>;
+		abandonUnstarted: ReturnType<typeof vi.fn>;
 	};
 	let harness: {
 		resolveSelection: ReturnType<typeof vi.fn>;
@@ -112,6 +113,7 @@ describe("ThreadsService (#1020)", () => {
 		dispatch = {
 			threadRunOf: vi.fn(async () => thread),
 			addInvestigationJob: vi.fn(async () => "job-1"),
+			abandonUnstarted: vi.fn(async () => {}),
 		};
 		harness = {
 			resolveSelection: vi.fn(async () => ({
@@ -447,9 +449,20 @@ describe("ThreadsController (#1020)", () => {
 			{} as never,
 			{} as never,
 		).routes();
-		type Callable = { "~orpc": { handler: (o: { input: unknown }) => unknown } };
+		type Callable = {
+			"~orpc": { handler: (o: { input: unknown; context?: unknown }) => unknown };
+		};
 		const call = (r: unknown, input: unknown) =>
-			(r as Callable)["~orpc"].handler({ input });
+			(r as Callable)["~orpc"].handler({
+				input,
+				context: {
+					request: {
+						operator: {
+							device: { scopes: ["investigate:read", "investigate:operate"] },
+						},
+					},
+				},
+			});
 		const file = new File(["x"], "x.txt");
 		await call(routes.start, { subject: { kind: "none" }, text: "x" });
 		expect(threads.start).toHaveBeenCalled();

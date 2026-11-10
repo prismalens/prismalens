@@ -25,6 +25,8 @@ const DeviceSchema = z.object({
 	lastSeenAt: z.string().nullable(),
 	/** Null until the device turns push on (#859). */
 	push: PushHealthSchema.nullable(),
+	/** False: the device views runs and answers their asks, but starts none. */
+	canStartRuns: z.boolean(),
 });
 export type PairedDevice = z.infer<typeof DeviceSchema>;
 
@@ -37,6 +39,8 @@ const CreateLinkInputSchema = z.object({
 	 * itself and reaches only this machine.
 	 */
 	origin: z.string().url().optional(),
+	/** The device may start, continue and stop runs; off by default. */
+	canStartRuns: z.boolean().optional(),
 });
 
 const CreateLinkResponseSchema = z.object({

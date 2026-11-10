@@ -13,12 +13,13 @@ import { Controller, Logger, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
-	ACCESS_SCOPE,
 	buildPairingUrl,
 	createPairingLink,
 	type DeviceRecord,
+	OPERATE_SCOPE,
 	PairingError,
 	prismaPairingStore,
+	READ_SCOPE,
 	redeemPairingLink,
 } from "@prismalens/auth";
 import {
@@ -34,6 +35,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { deviceCookieHeader } from "./device-cookie.js";
 import { InstanceIdentity } from "./instance-identity.js";
+import { requireOwner } from "./owner.js";
 import { Public } from "./public.decorator.js";
 
 @Controller()
@@ -57,6 +59,9 @@ export class PairingController {
 					const origin = input.origin ?? requestOrigin(request);
 					const link = await createPairingLink(this.store, {
 						label: input.label,
+						scopes: input.canStartRuns
+							? [READ_SCOPE, OPERATE_SCOPE]
+							: [READ_SCOPE],
 					});
 					return {
 						url: buildPairingUrl(origin, link.token),
@@ -163,6 +168,7 @@ function deviceOut(
 		createdAt: d.createdAt.toISOString(),
 		lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
 		push: push ?? null,
+		canStartRuns: d.scopes.includes(OPERATE_SCOPE),
 	};
 }
 
@@ -197,7 +203,7 @@ export class PairingRedeemController {
 						},
 					);
 					const own = this.instance.deviceCookie;
-					const secure = this.instance.secureCookies;
+					const secure = this.instance.secureFor(request);
 					// Other prismalens.device.* cookies may belong to a live instance on another port (#763).
 					request.res?.append(
 						"Set-Cookie",
@@ -229,11 +235,7 @@ export class PairingRedeemController {
  * device's scopes, never the access scope.
  */
 export function operatorOnly(request: Request): void {
-	if (!request.operator?.device.scopes.includes(ACCESS_SCOPE)) {
-		throw new ORPCError("FORBIDDEN", {
-			message: "Pairing is managed from the host, not from a paired device.",
-		});
-	}
+	requireOwner(request, "Only the owner manages paired devices.");
 }
 
 function requestOrigin(request: Request): string {

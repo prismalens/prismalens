@@ -185,9 +185,13 @@ async function main() {
 		});
 
 	// --- pairing: pair a device instead of creating an owner ---
-	const pairOut = execFileSync(bin, ["pair", "--workspace", workspace], {
-		encoding: "utf8",
-	});
+	const pairOut = execFileSync(
+		bin,
+		["pair", "--start-runs", "--workspace", workspace],
+		{
+			encoding: "utf8",
+		},
+	);
 	const pairToken = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 
 	const redeem = await json("/api/pairing/redeem", {

@@ -29,6 +29,7 @@ import {
 	FOLDER_BUSY,
 	FOLDER_TX,
 	holdConversion,
+	leaseNear,
 	liveIn,
 } from "../../infrastructure/dispatch/folder-lock.js";
 import {
@@ -217,7 +218,11 @@ export class RepositoriesService {
 		const release = holdConversion(repo.url);
 		try {
 			if (
-				await this.prisma.$transaction((tx) => liveIn(tx, repo.url), FOLDER_TX)
+				await this.prisma.$transaction(
+					async (tx) =>
+						(await liveIn(tx, repo.url)) || (await leaseNear(tx, repo.url)),
+					FOLDER_TX,
+				)
 			)
 				throw new ConflictException(FOLDER_BUSY);
 			try {

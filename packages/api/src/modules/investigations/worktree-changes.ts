@@ -11,7 +11,7 @@
 import { mkdirSync } from "node:fs";
 import { lstat, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
 	CommitShaSchema,
 	isSafeRepoPath,
@@ -395,7 +395,12 @@ export async function readWorktreeChanges(
 	opts: { roots?: readonly string[]; deadlineMs?: number } = {},
 ): Promise<WorktreeChanges> {
 	const repos: WorktreeRepoChanges[] = [];
-	const roots = opts.roots ?? worktreeRoots();
+	// A borrowed checkout (#1024) is read where the user keeps it, against the HEAD it had at start.
+	const borrowed =
+		workspace?.layout === "in_place" ? workspace.borrowed?.path : undefined;
+	const roots = borrowed
+		? [dirname(borrowed)]
+		: (opts.roots ?? worktreeRoots());
 	const deadlineMs = opts.deadlineMs ?? READ_TIMEOUT_MS;
 	for (const repo of workspace?.repos ?? [])
 		repos.push(await repoChanges(repo, roots, deadlineMs));
