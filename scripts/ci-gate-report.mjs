@@ -9,7 +9,7 @@ import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 /**
- * @typedef {{ name: string, conclusion: string | null, created_at?: string, started_at?: string | null,
+ * @typedef {{ id?: number, name: string, conclusion: string | null, created_at?: string, started_at?: string | null,
  *   completed_at?: string | null, html_url?: string, steps?: { name: string, conclusion: string | null }[] }} Job
  * @typedef {{ kind: "failed" | "timed out" | "never started" | "cancelled mid-run", name: string, step: string, url: string }} Red
  */
@@ -48,10 +48,58 @@ export function onlyCancelled(/** @type {Red[]} */ reds) {
 	);
 }
 
-/** Every red job except `CI gate` itself never started: a runner shortage, not a code failure. */
-export function rerunnable(/** @type {Red[]} */ reds, gate = "CI gate") {
+/** A network fault the runner hit, never a result of the code under test. */
+const NETWORK_ERRORS = [
+	/\bfetch failed\b/,
+	/\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED)\b/,
+	/\bsocket hang up\b/,
+	/\b(502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)\b/,
+];
+/** Anything that says a check itself failed: then the job is not retried. */
+const CHECK_FAILED = [
+	/AssertionError/,
+	/SMOKE FAIL/,
+	/^\s*(not ok|FAIL|×) /m,
+	/Test Files .* failed/,
+];
+
+/**
+ * A failed job whose last lines before its error name a network fault, and no failed check:
+ * the download or upload broke, not the code. Read from the job's log.
+ */
+export function networkFailure(/** @type {string} */ log) {
+	const lines = log.split("\n");
+	const end = lines.findIndex((l) => l.includes("##[error]"));
+	const tail = lines
+		.slice(
+			Math.max(0, (end < 0 ? lines.length : end) - 40),
+			end < 0 ? undefined : end + 1,
+		)
+		.join("\n");
+	return (
+		NETWORK_ERRORS.some((re) => re.test(tail)) &&
+		!CHECK_FAILED.some((re) => re.test(log))
+	);
+}
+
+/**
+ * Every red job except `CI gate` itself never started, or failed on a network fault: a runner
+ * shortage or a broken download, not a code failure. `network` names the jobs whose log shows one.
+ */
+export function rerunnable(
+	/** @type {Red[]} */ reds,
+	gate = "CI gate",
+	/** @type {Set<string>} */ network = new Set(),
+) {
 	const rest = reds.filter((r) => r.name !== gate);
-	return rest.length > 0 && rest.every((r) => r.kind === "never started");
+	return (
+		rest.length > 0 &&
+		rest.every(
+			(r) =>
+				r.kind === "never started" ||
+				(r.kind === "failed" && network.has(r.name)),
+		)
+	);
 }
 
 /** Jobs that waited at least `minutes` between being queued and starting (or being cancelled). */
@@ -78,7 +126,7 @@ function listJobs(/** @type {NodeJS.ProcessEnv} */ env) {
 		"--paginate",
 		`repos/${env.REPO}/actions/runs/${env.RUN_ID}/jobs?per_page=100`,
 		"--jq",
-		"[.jobs[] | {name, conclusion, created_at, started_at, completed_at, html_url, steps: [.steps[]? | {name, conclusion}]}]",
+		"[.jobs[] | {id, name, conclusion, created_at, started_at, completed_at, html_url, steps: [.steps[]? | {name, conclusion}]}]",
 	]);
 	/** @type {Job[]} */
 	return out
@@ -115,8 +163,20 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 			`### CI gate\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`\n`,
 		);
 	if (env.RERUN === "1") {
-		if (!rerunnable(reds))
-			return console.log("not rerunning: not only never-started jobs");
+		const network = new Set(
+			jobs
+				.filter((j) => j.conclusion === "failure" && j.id !== undefined)
+				.filter((j) =>
+					networkFailure(
+						gh(["api", `repos/${env.REPO}/actions/jobs/${j.id}/logs`]),
+					),
+				)
+				.map((j) => j.name),
+		);
+		if (!rerunnable(reds, "CI gate", network))
+			return console.log(
+				"not rerunning: a red job failed for a reason other than a network fault",
+			);
 		console.log(`rerunning the failed jobs of run ${env.RUN_ID} once`);
 		gh([
 			"run",
