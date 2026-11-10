@@ -257,6 +257,29 @@ describe("checkout leases (#1024)", () => {
 		await lease.releaseLease(prisma, run.id);
 	});
 
+	it("a containment cut off at its limit keeps the lease and loses no write made meanwhile", async () => {
+		const run = await thread("failed");
+		const dir = repo("slow-containment");
+		await lease.takeLease(prisma as never, dir, run.id);
+		const key = `slow-containment-${run.id}`;
+		let wrote: Promise<unknown> = Promise.resolve();
+		const gone = vi.fn(async (_id: string, _session: string | null, signal?: AbortSignal) => {
+			// A write from elsewhere lands while containment holds the lease transaction open.
+			wrote = prisma.setting.create({ data: { key, value: '"x"' } });
+			await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve()));
+			return false;
+		});
+		expect(await lease.releaseIfGone(prisma as never, gone, dir, new Date(), 200)).toEqual({
+			released: 0,
+			failed: 1,
+		});
+		await wrote;
+		expect(await lease.leasedBy(prisma, run.id)).toBe(dir);
+		expect((await prisma.setting.findUnique({ where: { key } }))?.value).toBe('"x"');
+		await prisma.setting.delete({ where: { key } });
+		await lease.releaseLease(prisma, run.id);
+	});
+
 	it("rechecks live status under the writer lock before containing a receipt", async () => {
 		const run = await thread("running");
 		const dir = repo("readmitted");

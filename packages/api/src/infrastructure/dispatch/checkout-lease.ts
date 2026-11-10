@@ -229,6 +229,7 @@ export async function releaseIfGone(
 	gone: AgentGone,
 	path: string | null = null,
 	now: Date = new Date(),
+	containMs: number = CONTAINMENT_TIMEOUT_MS,
 ): Promise<{ released: number; failed: number }> {
 	const rows = await db.checkoutLease.findMany();
 	let released = 0;
@@ -264,8 +265,9 @@ export async function releaseIfGone(
 					const stale = now.getTime() - ended >= STALE_LEASE_MS;
 					if (stale)
 						return (await tx.checkoutLease.deleteMany({ where })).count;
-					const proof = await withinContainment((signal) =>
-						gone(r.investigationId, run.acpSessionId, signal),
+					const proof = await withinContainment(
+						(signal) => gone(r.investigationId, run.acpSessionId, signal),
+						containMs,
 					);
 					if (proof === "timed-out") unfinished++;
 					if (proof !== true) return 0;
