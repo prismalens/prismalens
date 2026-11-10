@@ -225,6 +225,8 @@ describe("checkout leases (#1024)", () => {
 		writeFileSync(join(dir, ".gitattributes"), `*.txt filter=${driver}\n`);
 		git(dir, "config", `filter.${driver}.clean`, script);
 		git(dir, "add", ".");
+		// a.txt was committed before the filter existed; a plain add re-cleans it only when its stat looks racy.
+		git(dir, "add", "--renormalize", ".");
 		git(dir, "commit", "-qm", "filter");
 		const file = join(dir, "packages", "api", "a.txt");
 		utimesSync(file, new Date(1), new Date(1));
