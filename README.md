@@ -38,7 +38,7 @@ npm install -g prismalens   # needs Node.js
 curl -fsSL https://prismalens.io/install.sh | sh
 
 pl doctor                   # checks this machine; needs nothing running
-pl up                       # http://localhost:6473
+pl up                       # http://127.0.0.1:6473
 ```
 
 Windows, Homebrew, Scoop and the desktop app (all preview) are on
