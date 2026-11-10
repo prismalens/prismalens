@@ -885,4 +885,46 @@ describe("OAuth2Flow.exchangeCodeForTokens — timeout", () => {
 			);
 		}
 	});
+	it("reports a body that stalls after a 200 as the same timeout, not malformed JSON", async () => {
+		const sockets = new Set<Socket>();
+		const server: Server = createServer((_req, res) => {
+			res.writeHead(200, { "content-type": "application/json" });
+			res.write('{"access_token":');
+		});
+		server.on("connection", (socket) => {
+			sockets.add(socket);
+			socket.once("close", () => sockets.delete(socket));
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const port = (server.address() as AddressInfo).port;
+
+		const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+		const spy = vi
+			.spyOn(AbortSignal, "timeout")
+			.mockImplementation(() => realTimeout(200));
+
+		try {
+			const { flow } = makeFlow();
+			const template = templateWith({
+				tokenUrl: `http://127.0.0.1:${port}/oauth/token`,
+			});
+			await expect(
+				flow.exchangeCodeForTokens(
+					template,
+					"auth-code",
+					oauthState(),
+					"client-abc",
+					"secret-xyz",
+				),
+			).rejects.toThrow(
+				`OAuth token exchange with ${template.id} timed out after 15 s. Try connecting again.`,
+			);
+		} finally {
+			spy.mockRestore();
+			for (const socket of sockets) socket.destroy();
+			await new Promise<void>((resolve, reject) =>
+				server.close((err) => (err ? reject(err) : resolve())),
+			);
+		}
+	});
 });

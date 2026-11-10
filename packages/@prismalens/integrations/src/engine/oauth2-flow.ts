@@ -215,16 +215,19 @@ export class OAuth2Flow {
 			template.oauth2.tokenUrl,
 			hostSafeContext(tokenContext, template.id),
 		);
+		// One clock for the headers and the body: a provider can answer 200 and then stall.
+		const deadline = AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS);
+		const timedOut = () =>
+			new Error(
+				`OAuth token exchange with ${template.id} timed out after ${TOKEN_EXCHANGE_TIMEOUT_MS / 1000} s. Try connecting again.`,
+			);
 		const response = await fetch(tokenUrl, {
 			method: "POST",
 			headers: tokenHeaders,
 			body: new URLSearchParams(tokenBody),
-			signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
+			signal: deadline,
 		}).catch((error: unknown) => {
-			if ((error as Error)?.name === "TimeoutError")
-				throw new Error(
-					`OAuth token exchange with ${template.id} timed out after ${TOKEN_EXCHANGE_TIMEOUT_MS / 1000} s. Try connecting again.`,
-				);
+			if ((error as Error)?.name === "TimeoutError") throw timedOut();
 			throw error;
 		});
 
@@ -246,6 +249,7 @@ export class OAuth2Flow {
 		try {
 			data = (await response.json()) as Record<string, unknown>;
 		} catch {
+			if (deadline.aborted) throw timedOut();
 			throw providerJsonParseError({
 				operation: "OAuth token exchange",
 				provider: template.id,
