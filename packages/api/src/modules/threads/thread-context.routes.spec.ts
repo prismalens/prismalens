@@ -107,7 +107,7 @@ describe("thread context settings", () => {
 		expect(Array.isArray(editors.editors)).toBe(true);
 		const routes = c.threadContext();
 		const next = { prStatus: false, editor: "system" };
-		await expect(call(routes.update, next, false)).rejects.toThrow(/only on the computer/);
+		await expect(call(routes.update, next, false)).rejects.toThrow(/Only the owner can/);
 		await expect(call(routes.update, next, true)).resolves.toEqual(next);
 		await expect(call(routes.get, undefined)).resolves.toEqual(next);
 	});
@@ -124,7 +124,7 @@ describe("open in editor and project scripts routes", () => {
 		const procs = new RunWorkspacesController(service as never).runWorkspaces();
 		const input = { id: RUN, path: "a.ts", line: 3 };
 		await expect(call(procs.openInEditor, input, false)).rejects.toThrow(
-			/only on the computer/,
+			/Only the owner can/,
 		);
 		await expect(call(procs.openInEditor, input)).resolves.toEqual({
 			opened: true,
