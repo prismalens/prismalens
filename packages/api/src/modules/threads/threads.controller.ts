@@ -5,7 +5,11 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement } from "@orpc/nest";
 import { threadsContract } from "@prismalens/contracts";
 import type { Request } from "express";
-import { isOwner, requireOwner } from "../../core/auth/owner.js";
+import {
+	isOwner,
+	requireOperate,
+	requireOwner,
+} from "../../core/auth/owner.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { LinksService } from "./links.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
@@ -26,9 +30,10 @@ export class ThreadsController {
 	routes() {
 		return {
 			// POST /threads - The first message starts a project, service or no-subject thread (#1020)
-			start: implement(threadsContract.start).handler(({ input }) =>
-				this.threads.start(input),
-			),
+			start: implement(threadsContract.start).handler(({ input, context }) => {
+				requireOperate(context.request);
+				return this.threads.start(input);
+			}),
 
 			// GET /threads - A project's or a service's threads
 			list: implement(threadsContract.list).handler(async ({ input }) => ({

@@ -8,7 +8,7 @@
  */
 
 import { ORPCError } from "@orpc/nest";
-import { ACCESS_SCOPE } from "@prismalens/auth";
+import { ACCESS_SCOPE, OPERATE_SCOPE } from "@prismalens/auth";
 import type { Request } from "express";
 
 export const OWNER_ONLY = "Only the owner can do this.";
@@ -17,6 +17,15 @@ export function isOwner(request: unknown): boolean {
 	return !!(request as Request | undefined)?.operator?.device.scopes.includes(
 		ACCESS_SCOPE,
 	);
+}
+
+export const VIEW_ONLY = "This device can view and answer, not start runs.";
+
+/** Refuses a device paired to view and answer from starting, continuing or stopping a run. */
+export function requireOperate(request: unknown): void {
+	const scopes = (request as Request | undefined)?.operator?.device.scopes;
+	if (!scopes?.includes(OPERATE_SCOPE))
+		throw new ORPCError("FORBIDDEN", { message: VIEW_ONLY });
 }
 
 /** Refuses anyone but the owner; answers the owner's device id. */

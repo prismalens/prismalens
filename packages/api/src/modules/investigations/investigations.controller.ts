@@ -30,7 +30,11 @@ import {
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
 import type { Request } from "express";
-import { isOwner, requireOwner } from "../../core/auth/owner.js";
+import {
+	isOwner,
+	requireOperate,
+	requireOwner,
+} from "../../core/auth/owner.js";
 import {
 	holdsRemoved,
 	shownRepoUrl,
@@ -137,7 +141,8 @@ export class InvestigationsController {
 		return {
 			// POST /investigations - Create a new investigation
 			create: implement(investigationsContract.create).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
+					requireOperate(context.request);
 					try {
 						const { investigation } =
 							await this.investigationsService.startOrGet(input);
@@ -270,7 +275,8 @@ export class InvestigationsController {
 			//     already claimed (a dispatcher won the race), fall through to the publish
 			//     path; the grace retries cover the claim→subscribe window.
 			resume: implement(investigationsContract.resume).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
+					requireOperate(context.request);
 					try {
 						await this.dispatchService.resumeInterrupted(input.id);
 					} catch (error) {
@@ -291,6 +297,7 @@ export class InvestigationsController {
 
 			compact: implement(investigationsContract.compact).handler(
 				async ({ input, context }) => {
+					requireOperate(context.request);
 					const found = await this.investigationsService.findById(input.id);
 					if (!found)
 						throw new ORPCError("NOT_FOUND", {
@@ -330,7 +337,8 @@ export class InvestigationsController {
 			),
 
 			cancel: implement(investigationsContract.cancel).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
+					requireOperate(context.request);
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -618,6 +626,7 @@ export class InvestigationsController {
 
 			message: implement(investigationsContract.message).handler(
 				async ({ input, context }) => {
+					requireOperate(context.request);
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);

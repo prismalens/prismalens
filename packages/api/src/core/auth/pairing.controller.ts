@@ -16,8 +16,10 @@ import {
 	buildPairingUrl,
 	createPairingLink,
 	type DeviceRecord,
+	OPERATE_SCOPE,
 	PairingError,
 	prismaPairingStore,
+	READ_SCOPE,
 	redeemPairingLink,
 } from "@prismalens/auth";
 import {
@@ -57,6 +59,9 @@ export class PairingController {
 					const origin = input.origin ?? requestOrigin(request);
 					const link = await createPairingLink(this.store, {
 						label: input.label,
+						scopes: input.canStartRuns
+							? [READ_SCOPE, OPERATE_SCOPE]
+							: [READ_SCOPE],
 					});
 					return {
 						url: buildPairingUrl(origin, link.token),
@@ -163,6 +168,7 @@ function deviceOut(
 		createdAt: d.createdAt.toISOString(),
 		lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
 		push: push ?? null,
+		canStartRuns: d.scopes.includes(OPERATE_SCOPE),
 	};
 }
 

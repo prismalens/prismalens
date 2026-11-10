@@ -20,11 +20,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 
-/** What a paired device may do. Minting links and revoking devices are not on it. */
-export const DEVICE_SCOPES = [
-	"investigate:read",
-	"investigate:operate",
-] as const;
+/** Sees runs and answers their asks. */
+export const READ_SCOPE = "investigate:read";
+/** Starts, continues and stops runs; opted into when the link is made. */
+export const OPERATE_SCOPE = "investigate:operate";
+
+/** What a paired device may do at most. Minting links and revoking devices are not on it. */
+export const DEVICE_SCOPES = [READ_SCOPE, OPERATE_SCOPE] as const;
 export type DeviceScope = (typeof DEVICE_SCOPES)[number];
 
 /** Manages who else may pair. */
@@ -131,7 +133,7 @@ export async function createPairingLink(
 	store: PairingStore,
 	input: {
 		label?: string;
-		/** What the redeemed device may do; a paired device's by default. */
+		/** What the redeemed device may do; view and answer by default. */
 		scopes?: readonly string[];
 		ttlMs?: number;
 		now?: Date;
@@ -142,7 +144,7 @@ export async function createPairingLink(
 	const link = await store.createLink({
 		tokenHash: hashToken(token),
 		label: input.label?.trim() || null,
-		scopes: JSON.stringify(input.scopes ?? DEVICE_SCOPES),
+		scopes: JSON.stringify(input.scopes ?? [READ_SCOPE]),
 		expiresAt: new Date(now.getTime() + (input.ttlMs ?? PAIRING_LINK_TTL_MS)),
 	});
 	return { id: link.id, token, expiresAt: link.expiresAt };

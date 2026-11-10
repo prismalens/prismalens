@@ -12,10 +12,12 @@
 import {
 	CanActivate,
 	ExecutionContext,
+	ForbiddenException,
 	Injectable,
 	UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { READ_SCOPE } from "@prismalens/auth";
 import type { Request } from "express";
 import { OperatorResolver } from "./operator.resolver.js";
 import { IS_PUBLIC_KEY } from "./public.decorator.js";
@@ -47,12 +49,17 @@ export class AuthGuard implements CanActivate {
 				}
 				throw new UnauthorizedException("Authentication required");
 			}
+			if (!resolution.operator.device.scopes.includes(READ_SCOPE))
+				throw new ForbiddenException("This device can't view runs.");
 			request.operator = resolution.operator;
 			return true;
 		} catch (error) {
 			// Re-throw UnauthorizedException as-is; wrap other errors
 			// so infrastructure failures (DB outage, etc.) don't silently become 401
-			if (error instanceof UnauthorizedException) {
+			if (
+				error instanceof UnauthorizedException ||
+				error instanceof ForbiddenException
+			) {
 				throw error;
 			}
 			throw new UnauthorizedException("Authentication required");
