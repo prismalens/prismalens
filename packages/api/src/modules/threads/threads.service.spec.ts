@@ -449,9 +449,20 @@ describe("ThreadsController (#1020)", () => {
 			{} as never,
 			{} as never,
 		).routes();
-		type Callable = { "~orpc": { handler: (o: { input: unknown }) => unknown } };
+		type Callable = {
+			"~orpc": { handler: (o: { input: unknown; context?: unknown }) => unknown };
+		};
 		const call = (r: unknown, input: unknown) =>
-			(r as Callable)["~orpc"].handler({ input });
+			(r as Callable)["~orpc"].handler({
+				input,
+				context: {
+					request: {
+						operator: {
+							device: { scopes: ["investigate:read", "investigate:operate"] },
+						},
+					},
+				},
+			});
 		const file = new File(["x"], "x.txt");
 		await call(routes.start, { subject: { kind: "none" }, text: "x" });
 		expect(threads.start).toHaveBeenCalled();

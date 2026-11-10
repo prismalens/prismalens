@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { type ExecutionContext, UnauthorizedException } from "@nestjs/common";
+import {
+	type ExecutionContext,
+	ForbiddenException,
+	UnauthorizedException,
+} from "@nestjs/common";
 import type { Reflector } from "@nestjs/core";
-import type { DeviceRecord } from "@prismalens/auth";
+import { type DeviceRecord, READ_SCOPE } from "@prismalens/auth";
 import type { Request } from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthGuard } from "./auth.guard.js";
@@ -57,7 +61,28 @@ describe("AuthGuard", () => {
 		expect(mockOperator.resolve).not.toHaveBeenCalled();
 	});
 
-	it('resolver returns {via:"device", device} -> true, request.operator set', async () => {
+	it('resolver returns {via:"device", device} with investigate:read -> true, request.operator set', async () => {
+		mockReflector.getAllAndOverride.mockReturnValue(false);
+		const device = {
+			id: "device-1",
+			name: "Ada's phone",
+			scopes: [READ_SCOPE],
+			userAgent: null,
+			createdAt: new Date(),
+			lastSeenAt: null,
+			revokedAt: null,
+		} as DeviceRecord;
+		mockOperator.resolveWithReason.mockResolvedValue({
+			operator: { via: "device", device },
+		});
+
+		const result = await guard.canActivate(mockContext);
+
+		expect(result).toBe(true);
+		expect(request.operator).toEqual({ via: "device", device });
+	});
+
+	it("device with scopes [] gets 403 (ForbiddenException), not 401", async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
 		const device = {
 			id: "device-1",
@@ -72,10 +97,12 @@ describe("AuthGuard", () => {
 			operator: { via: "device", device },
 		});
 
-		const result = await guard.canActivate(mockContext);
-
-		expect(result).toBe(true);
-		expect(request.operator).toEqual({ via: "device", device });
+		await expect(guard.canActivate(mockContext)).rejects.toThrow(
+			ForbiddenException,
+		);
+		await expect(guard.canActivate(mockContext)).rejects.toThrow(
+			"This device can't view runs.",
+		);
 	});
 
 	it("resolver returns null -> throws UnauthorizedException", async () => {

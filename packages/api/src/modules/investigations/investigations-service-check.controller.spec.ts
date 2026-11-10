@@ -137,7 +137,7 @@ describe("InvestigationsController on a service check with no incident (#979)", 
 		await expect(
 			(handler("message") as (a: unknown) => Promise<unknown>)({
 				input: { id: "inv-check", text: "look", mode: "queue", attachments: ["a1"] },
-				context: { request: { operator: { device: { id: "h", scopes: ["admin:access"] } } } },
+				context: { request: { operator: { device: { id: "h", scopes: ["admin:access", "investigate:operate"] } } } },
 			}),
 		).rejects.toMatchObject({ code: "BAD_REQUEST" });
 		expect(attachments.forJob).not.toHaveBeenCalled();

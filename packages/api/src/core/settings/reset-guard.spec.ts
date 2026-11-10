@@ -253,9 +253,16 @@ describe("creating a run while a reset is in progress", () => {
 			>
 		).create["~orpc"].handler;
 
-		const failure = await create({ input: { incidentId: "inc-1" } }).catch(
-			(e: unknown) => e,
-		);
+		const failure = await create({
+			input: { incidentId: "inc-1" },
+			context: {
+				request: {
+					operator: {
+						device: { scopes: ["investigate:read", "investigate:operate"] },
+					},
+				},
+			},
+		} as never).catch((e: unknown) => e);
 		expect(failure).toBeInstanceOf(ORPCError);
 		expect(failure).toMatchObject({ code: "CONFLICT" });
 		expect((failure as ORPCError<never, never>).message).toMatch(
