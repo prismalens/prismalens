@@ -600,10 +600,15 @@ describe("IncidentsService", () => {
 
 		it("fails the whole transaction when the status entry fails", async () => {
 			open("investigating");
+			mockTx.alert.findMany.mockResolvedValue([{ id: "alert-1" }]);
 			mockTx.timelineEntry.create.mockRejectedValueOnce(new Error("disk full"));
 
 			await expect(service.close("inc-1")).resolves.toBeNull();
-			expect(mockPrisma.incident.update).not.toHaveBeenCalled();
+			mockTx.alert.findMany.mockResolvedValue([]);
+
+			expect(mockTx.alert.updateMany).not.toHaveBeenCalled();
+			expect(mockTx.alertSourceAlert.updateMany).not.toHaveBeenCalled();
+			expect(telemetry.capture).not.toHaveBeenCalled();
 		});
 	});
 
