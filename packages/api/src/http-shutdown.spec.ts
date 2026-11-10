@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { Controller, Get, Res } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
@@ -42,12 +43,22 @@ async function closeWithOpenStream(forceCloseConnections: boolean) {
 	return outcome;
 }
 
+function readForceCloseOptionFromMain(): boolean {
+	const source = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+	const match = source.match(
+		/NestFactory\.create[^{]*\{[\s\S]*?\bforceCloseConnections\s*:\s*(true|false)\b/,
+	);
+	return match?.[1] === "true";
+}
+
 describe("shutdown with a browser holding an event stream open (walk f20)", () => {
 	it("hangs without forceCloseConnections — the bug", async () => {
 		expect(await closeWithOpenStream(false)).toBe("hung");
 	});
 
 	it("closes promptly with forceCloseConnections, as main.ts sets it", async () => {
-		expect(await closeWithOpenStream(true)).toBe("closed");
+		const forceCloseConnections = readForceCloseOptionFromMain();
+		expect(forceCloseConnections).toBe(true);
+		expect(await closeWithOpenStream(forceCloseConnections)).toBe("closed");
 	});
 });
