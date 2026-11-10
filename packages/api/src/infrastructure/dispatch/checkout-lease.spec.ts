@@ -569,6 +569,27 @@ describe("checkout leases (#1024)", () => {
 			};
 		}
 
+		it("keeps the lease and fails nothing when containment outlasts CONTAINMENT_TIMEOUT_MS", async () => {
+			vi.useFakeTimers();
+			try {
+				const now = new Date("2026-11-10T12:00:00.000Z");
+				const store = fakeStore({
+					leases: [
+						{ canonicalPath: shop, investigationId: "slow-run", generation: 1, takenAt: now },
+					],
+					runs: [{ id: "slow-run", status: "completed", completedAt: now }],
+				});
+				const gone = vi.fn(() => new Promise<boolean>(() => {}));
+				const result = lease.releaseIfGone(store as never, gone, null, now);
+				await vi.advanceTimersByTimeAsync(lease.CONTAINMENT_TIMEOUT_MS);
+				expect(await result).toEqual({ released: 0, failed: 0 });
+				expect(gone).toHaveBeenCalledTimes(1);
+				expect(store.leases).toHaveLength(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
 		it("keeps an ended run's lease when ended under an hour before now, and loses it at STALE_LEASE_MS or later", async () => {
 			const now = new Date("2026-11-10T12:00:00.000Z");
 			const recentStore = fakeStore({

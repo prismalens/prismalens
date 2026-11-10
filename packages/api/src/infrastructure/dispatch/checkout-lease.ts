@@ -260,11 +260,16 @@ export async function releaseIfGone(
 						return 0;
 					const ended = (run.completedAt ?? r.takenAt).getTime();
 					const stale = now.getTime() - ended >= STALE_LEASE_MS;
-					if (!stale && !(await gone(r.investigationId, run.acpSessionId)))
+					if (
+						!stale &&
+						!(await withinContainment(
+							gone(r.investigationId, run.acpSessionId),
+						))
+					)
 						return 0;
 					return (await tx.checkoutLease.deleteMany({ where })).count;
 				},
-				{ timeout: 30_000 },
+				{ timeout: LEASE_TX_TIMEOUT_MS },
 			)
 			.catch(() => {
 				failed++;
@@ -272,6 +277,24 @@ export async function releaseIfGone(
 			});
 	}
 	return { released, failed };
+}
+
+/**
+ * Containment runs inside the lease transaction, which fences it to this lease's
+ * generation. It is bounded below the transaction's timeout: a timed-out rollback
+ * would also undo other writes on the shared SQLite connection. Unfinished reads as not gone.
+ */
+const LEASE_TX_TIMEOUT_MS = 30_000;
+export const CONTAINMENT_TIMEOUT_MS = 20_000;
+function withinContainment(
+	proof: Promise<boolean>,
+	ms = CONTAINMENT_TIMEOUT_MS,
+): Promise<boolean> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<boolean>((resolve) => {
+		timer = setTimeout(() => resolve(false), ms);
+	});
+	return Promise.race([proof, late]).finally(() => clearTimeout(timer));
 }
 
 /** Why `folder` is busy: a live run, or only ended runs still holding a lease. */
