@@ -168,7 +168,7 @@ export default defineConfig({
 	testDir: "./e2e",
 	fullyParallel: !PL_UP,
 	forbidOnly: !!process.env.CI,
-	retries: process.env.CI ? 2 : 0,
+	retries: process.env.CI ? 1 : 0,
 	// A navigation boots the app from ~320 unbundled module requests: up to 6.7 s with a stack per
 	// core. An assertion after one needs 15 s, and a twelve-step scenario took 73 s. #1048
 	expect: { timeout: 15_000 },
