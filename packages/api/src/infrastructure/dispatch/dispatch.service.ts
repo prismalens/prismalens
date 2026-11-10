@@ -1497,8 +1497,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	): Promise<void> {
 		const { released, failed } = await releaseIfGone(
 			this.prisma,
-			async (id, session) =>
-				boot?.contained.get(id) ?? this.previousGone(id, session),
+			async (id, session, signal) =>
+				boot?.contained.get(id) ?? this.previousGone(id, session, signal),
 		).catch((e) => {
 			this.logger.warn(
 				`Could not release ended checkout leases: ${(e as Error).message}`,
@@ -1524,7 +1524,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	async freeCheckout(path: string): Promise<void> {
 		await releaseIfGone(
 			this.prisma,
-			(id, session) => this.previousGone(id, session),
+			(id, session, signal) => this.previousGone(id, session, signal),
 			path,
 		);
 	}
@@ -1844,11 +1844,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	async previousGone(
 		id: string,
 		acpSessionId: string | null,
+		signal?: AbortSignal,
 	): Promise<boolean> {
 		const receipt = readReceipt(runDirFor(id));
 		// A session means an agent was spawned; with no receipt for it nothing proves it gone (#981 OBJ-010).
 		if (!receipt) return !acpSessionId;
-		return containPrevious(receipt).catch(() => false);
+		return containPrevious(receipt, undefined, signal).catch(() => false);
 	}
 
 	private async hasToolResult(id: string): Promise<boolean> {

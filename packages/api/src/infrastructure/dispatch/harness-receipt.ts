@@ -37,10 +37,10 @@ export interface OsProcess {
 export interface ProcessHost {
 	platform: NodeJS.Platform;
 	/** Every process on the machine; Windows only. */
-	list(): OsProcess[];
+	list(): OsProcess[] | Promise<OsProcess[]>;
 	/** POSIX: is any process in group `pgid` alive. */
 	groupAlive(pgid: number): boolean;
-	kill(pid: number, group: boolean): void;
+	kill(pid: number, group: boolean): void | Promise<void>;
 	sleep(ms: number): Promise<void>;
 	/** POSIX: this machine and its current boot; `boot` is null when unreadable. */
 	identity(): { host: string; boot: string | null };
@@ -199,29 +199,36 @@ export function treeOf(
 	return [...out.values()];
 }
 
-/** True when nothing of the receipt's tree is left running; kills what is, then checks again. */
+/**
+ * True when nothing of the receipt's tree is left running; kills what is, then checks
+ * again. Once `signal` aborts it kills nothing more and answers false.
+ */
 export async function containPrevious(
 	receipt: Receipt | null,
 	host: ProcessHost = osHost(),
+	signal?: AbortSignal,
 ): Promise<boolean> {
 	if (!receipt) return true;
 	if (host.platform !== "win32" && host.groupAlive(receipt.pid)) {
 		const owner = posixOwner(receipt, host);
 		if (owner !== "ours") return owner === "gone";
 	}
-	const alive = () =>
+	const alive = async () =>
 		host.platform === "win32"
-			? treeOf(receipt, host.list())
+			? treeOf(receipt, await host.list())
 			: host.groupAlive(receipt.pid)
 				? [{ pid: receipt.pid, parent: 0, created: receipt.startedAt }]
 				: [];
 	for (let attempt = 0; attempt < 3; attempt++) {
-		const left = alive();
+		const left = await alive();
 		if (left.length === 0) return true;
-		for (const p of left) host.kill(p.pid, host.platform !== "win32");
+		for (const p of left) {
+			if (signal?.aborted) return false;
+			await host.kill(p.pid, host.platform !== "win32");
+		}
 		await host.sleep(500);
 	}
-	return alive().length === 0;
+	return (await alive()).length === 0;
 }
 
 /**
@@ -293,7 +300,7 @@ export async function snapshotReceipt(
 export function osHost(): ProcessHost {
 	return {
 		platform: process.platform,
-		list: listWindowsProcesses,
+		list: listWindowsProcessesAsync,
 		groupAlive: (pgid) => {
 			try {
 				process.kill(-pgid, 0);
@@ -306,9 +313,13 @@ export function osHost(): ProcessHost {
 			try {
 				if (group) process.kill(-pid, "SIGKILL");
 				else
-					spawnSync("taskkill", ["/PID", String(pid), "/F"], {
+					return promisify(execFile)("taskkill", ["/PID", String(pid), "/F"], {
 						windowsHide: true,
-					});
+						timeout: 10_000,
+					}).then(
+						() => {},
+						() => {},
+					);
 			} catch {
 				// Already gone.
 			}
@@ -381,17 +392,6 @@ function parseList(stdout: string): OsProcess[] {
 			parent: parent as number,
 			created: created as number,
 		}));
-}
-
-function listWindowsProcesses(): OsProcess[] {
-	const out = spawnSync("powershell.exe", LIST_ARGS, {
-		encoding: "utf8",
-		windowsHide: true,
-		timeout: 20_000,
-	});
-	if (out.status !== 0)
-		throw new Error(`could not list processes: ${out.stderr}`);
-	return parseList(out.stdout);
 }
 
 async function listWindowsProcessesAsync(): Promise<OsProcess[]> {

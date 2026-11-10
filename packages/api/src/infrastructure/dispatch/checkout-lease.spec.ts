@@ -569,7 +569,7 @@ describe("checkout leases (#1024)", () => {
 			};
 		}
 
-		it("keeps the lease and fails nothing when containment outlasts CONTAINMENT_TIMEOUT_MS", async () => {
+		it("keeps the lease, aborts containment and counts it failed when it outlasts CONTAINMENT_TIMEOUT_MS", async () => {
 			vi.useFakeTimers();
 			try {
 				const now = new Date("2026-11-10T12:00:00.000Z");
@@ -579,11 +579,17 @@ describe("checkout leases (#1024)", () => {
 					],
 					runs: [{ id: "slow-run", status: "completed", completedAt: now }],
 				});
-				const gone = vi.fn(() => new Promise<boolean>(() => {}));
+				const signals: AbortSignal[] = [];
+				const gone = vi.fn(
+					(_id: string, _session: string | null, signal?: AbortSignal) => {
+						if (signal) signals.push(signal);
+						return new Promise<boolean>(() => {});
+					},
+				);
 				const result = lease.releaseIfGone(store as never, gone, null, now);
 				await vi.advanceTimersByTimeAsync(lease.CONTAINMENT_TIMEOUT_MS);
-				expect(await result).toEqual({ released: 0, failed: 0 });
-				expect(gone).toHaveBeenCalledTimes(1);
+				expect(await result).toEqual({ released: 0, failed: 1 });
+				expect(signals.map((s) => s.aborted)).toEqual([true]);
 				expect(store.leases).toHaveLength(1);
 			} finally {
 				vi.useRealTimers();
