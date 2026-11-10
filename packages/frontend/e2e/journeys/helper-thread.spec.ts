@@ -65,11 +65,11 @@ test.describe("helper threads on empty pages (#1020)", () => {
 	}) => {
 		await emptyAlerts(page);
 		const start = await captureStart(page);
-		const token = await page.request
-			.get("/api/webhooks/token")
-			.then(async (r) =>
-				r.ok() ? ((await r.json()) as { token: string }).token : null,
-			);
+		const tokenRes = await page.request.get("/api/webhooks/token");
+		expect(tokenRes.ok()).toBe(true);
+		const { token } = (await tokenRes.json()) as { token: string };
+		expect(typeof token).toBe("string");
+		expect(token.length).toBeGreaterThan(0);
 
 		await page.goto("/alerts");
 		const helper = page.getByTestId("helper-thread");
@@ -93,7 +93,7 @@ test.describe("helper threads on empty pages (#1020)", () => {
 			text: "How do I send alerts here?",
 			place: "alerts",
 		});
-		if (token) expect(body).not.toContain(token);
+		expect(body).not.toContain(token);
 	});
 
 	test("the empty Services page offers the same composer for its page", async ({

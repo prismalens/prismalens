@@ -22,9 +22,11 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	ATTACHMENT_IMAGE_TYPES,
 	ATTACHMENT_MAX_BYTES,
+	ATTACHMENT_TOTAL_MAX_BYTES,
 	type Attachment,
 	attachmentKind,
 	type JobAttachment,
+	type ServedAttachment,
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 import { fileTypeFromBuffer } from "file-type";
@@ -144,13 +146,13 @@ export class AttachmentsService {
 		return asJob(rows, ids);
 	}
 
-	async read(incidentId: string, id: string): Promise<File> {
+	async read(incidentId: string, id: string): Promise<ServedAttachment> {
 		const row = await this.prisma.attachment.findFirst({
 			where: { id, incidentId },
 		});
 		if (!row)
 			throw new ORPCError("NOT_FOUND", { message: "No such attachment" });
-		return fileOf(row);
+		return served(row);
 	}
 
 	/** A thread's file before its run exists; the start claims it (#1020). */
@@ -232,13 +234,16 @@ export class AttachmentsService {
 		return asJob(rows, ids);
 	}
 
-	async readForRun(investigationId: string, id: string): Promise<File> {
+	async readForRun(
+		investigationId: string,
+		id: string,
+	): Promise<ServedAttachment> {
 		const row = await this.prisma.attachment.findFirst({
 			where: { id, investigationId, incidentId: null },
 		});
 		if (!row)
 			throw new ORPCError("NOT_FOUND", { message: "No such attachment" });
-		return fileOf(row);
+		return served(row);
 	}
 
 	private async uploadOwned(
@@ -263,6 +268,14 @@ export class AttachmentsService {
 		mimeType: string,
 		sha256: string,
 	): Promise<Row> {
+		const held = await this.prisma.attachment.aggregate({
+			where: "incidentId" in owner ? owner : { ...owner, incidentId: null },
+			_sum: { size: true },
+		});
+		if ((held._sum.size ?? 0) + bytes.length > ATTACHMENT_TOTAL_MAX_BYTES)
+			throw new ORPCError("PAYLOAD_TOO_LARGE", {
+				message: "Files up to 200 MB in all",
+			});
 		const row = await this.prisma.attachment.create({
 			data: {
 				...owner,
@@ -317,7 +330,18 @@ function asJob(rows: Row[], ids: string[]): JobAttachment[] {
 	});
 }
 
-function fileOf(row: Row): File {
+/** Anything but the four image types downloads: XML or HTML bytes would otherwise run as a page. */
+function served(row: Row): ServedAttachment {
 	const bytes = readFileSync(join(attachmentsDir(), row.id));
-	return new File([bytes], row.name, { type: row.mimeType });
+	const inline = (ATTACHMENT_IMAGE_TYPES as readonly string[]).includes(
+		row.mimeType,
+	);
+	return {
+		headers: {
+			"content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(row.name)}`,
+			"content-security-policy": "default-src 'none'; sandbox",
+			"x-content-type-options": "nosniff",
+		},
+		body: new File([bytes], row.name, { type: row.mimeType }),
+	};
 }

@@ -140,7 +140,7 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		if (!host)
 			throw new UpdateRefused(
 				"FORBIDDEN",
-				"Only this machine's own browser can change updates.",
+				"Only the owner can change updates.",
 			);
 		const next = { ...(await this.prefs()), ...input };
 		const value = JSON.stringify(next);
@@ -235,7 +235,7 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 			const message = {
 				not_installer:
 					"Only an installer copy installs from here; run the upgrade command instead.",
-				not_host: "Only this machine's own browser can install an update.",
+				not_host: "Only the owner can install an update.",
 				disabled: "Update checks are off.",
 				busy: "A run is live or an install is under way; try again once it ends.",
 			}[verdict.blockedBy ?? "busy"];

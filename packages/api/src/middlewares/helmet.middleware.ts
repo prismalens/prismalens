@@ -19,8 +19,7 @@
  *    the plain-HTTP localhost origin `pl up` serves, it rewrites same-origin
  *    subresource requests to `https://` and the page fails to load.
  *
- * `style-src 'unsafe-inline'` is also required — the SPA sets inline styles and
- * Swagger UI at `/api/docs` ships inline `<style>`. Everything else is locked to
+ * `style-src 'unsafe-inline'` is also required — the SPA sets inline styles. Everything else is locked to
  * `'self'`: no external origin can supply script, style, font, image or
  * connection target, and the page cannot be framed at all.
  *

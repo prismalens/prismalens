@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   health:
-    uses: prismalens/gh-workflows/.github/workflows/telemetry-health.yml@main
+    uses: prismalens/gh-workflows/.github/workflows/telemetry-health.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
     secrets:
       REVIEW_TELEMETRY_URL: ${{ secrets.REVIEW_TELEMETRY_URL }}
       REVIEW_TELEMETRY_TOKEN: ${{ secrets.REVIEW_TELEMETRY_TOKEN }}

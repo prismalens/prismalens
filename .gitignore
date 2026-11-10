@@ -110,3 +110,7 @@ packages/desktop/release/
 
 # Per-machine agent instructions (maintainer workflow, local paths)
 AGENTS.local.md
+
+# Mutation testing (stryker.config.mjs): its sandbox and reports
+.stryker-tmp/
+reports/mutation/

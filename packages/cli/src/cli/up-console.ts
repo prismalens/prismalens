@@ -58,16 +58,16 @@ export function resolveBind(
 const isWildcard = (host: string) => host === "0.0.0.0" || host === "::";
 const urlHost = (host: string) => (host.includes(":") ? `[${host}]` : host);
 
-/** A wildcard bind is not a URL anyone can open; loopback reads better as localhost. */
+/**
+ * The address that answers: a wildcard bind is opened at 127.0.0.1, and so is
+ * a 127.0.0.1 bind, since `localhost` can resolve to ::1, where nothing listens.
+ */
 export function displayUrl(bind: {
 	host: string;
 	port: number;
 	protocol: string;
 }): string {
-	const shown =
-		isWildcard(bind.host) || bind.host === "127.0.0.1"
-			? "localhost"
-			: urlHost(bind.host);
+	const shown = isWildcard(bind.host) ? "127.0.0.1" : urlHost(bind.host);
 	return `${bind.protocol}://${shown}:${bind.port}`;
 }
 

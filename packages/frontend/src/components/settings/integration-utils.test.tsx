@@ -30,7 +30,7 @@ describe("ConnectionStatusBadge", () => {
 		await act(async () => {
 			root.render(<ConnectionStatusBadge status="ACTIVE" />);
 		});
-		expect(container.textContent).toContain("connected");
+		expect(container.textContent).toBe("connected");
 	});
 
 	it('ACTIVE with untested renders "not tested"', async () => {

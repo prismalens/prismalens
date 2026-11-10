@@ -327,8 +327,6 @@ const json = (path, init) =>
 	}
 
 	// --- docs and webhooks are excluded from the SPA fallback too --------------
-	const docs = await fetch(base + "/api/docs");
-	docs.status === 200 ? ok("/api/docs 200") : bad("/api/docs", `status ${docs.status}`);
 	const webhook = await json("/api/webhooks/generic", { method: "POST", body: "{}" });
 	webhook.status !== 200 || !/text\/html/.test(webhook.headers.get("content-type") ?? "")
 		? ok("/api/webhooks/generic reaches Nest", `status ${webhook.status}`)

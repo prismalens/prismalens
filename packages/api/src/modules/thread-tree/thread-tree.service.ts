@@ -163,6 +163,9 @@ const rank = (level: AccessLevel) => ACCESS_LEVELS.indexOf(level);
  * Threads that start threads (#1024 spec F): a tree of full threads, its caps, its typed
  * messages and the wake on a child's finish. Completion wakes; nothing polls an agent.
  */
+
+/** A tree of agents messaging each other in a loop stops here, not at the disk. */
+export const TREE_MESSAGE_CAP = 500;
 @Injectable()
 export class ThreadTreeService
 	implements OnApplicationBootstrap, OnModuleDestroy
@@ -719,6 +722,28 @@ export class ThreadTreeService
 				"Only a parent's blocker to its own child may steer.",
 				"Send it again with mode `queue`.",
 			);
+		const sent = await this.prisma.threadMessage.count({ where: { rootId } });
+		const retried =
+			sent >= TREE_MESSAGE_CAP &&
+			(await this.prisma.threadMessage.findUnique({
+				where: {
+					fromId_requestId: { fromId: callerId, requestId: args.requestId },
+				},
+			}));
+		if (retried)
+			return {
+				value: {
+					status: retried.state,
+					messageId: retried.id,
+					link: threadLink((await this.row(retried.toId)) ?? to),
+				},
+			};
+		if (sent >= TREE_MESSAGE_CAP)
+			return fail(
+				"limit_reached",
+				`This thread tree has sent ${TREE_MESSAGE_CAP} messages, its limit.`,
+				"Finish with what you have, and put anything left in your result.",
+			);
 		let message: { id: string; createdAt: Date };
 		try {
 			message = await this.prisma.threadMessage.create({
@@ -740,7 +765,12 @@ export class ThreadTreeService
 				},
 			});
 			return {
-				value: { status: seen.state, messageId: seen.id, link: threadLink(to) },
+				value: {
+					status: seen.state,
+					messageId: seen.id,
+					// The stored recipient: a role reused since the first send names someone else now.
+					link: threadLink((await this.row(seen.toId)) ?? to),
+				},
 			};
 		}
 		await this.io.record(callerId, {

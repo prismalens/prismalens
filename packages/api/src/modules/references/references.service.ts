@@ -24,6 +24,7 @@ import {
 	TRIGGER_KINDS,
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { FILE_LIST_TIMED_OUT } from "./file-list.js";
 import { rank, refKey } from "./ranking.js";
 import { RecordsProvider } from "./records.provider.js";
 import {
@@ -148,10 +149,14 @@ export class ReferencesService {
 			...(input.open ? { open: input.open } : {}),
 		});
 		const files = this.records.files;
-		const truncated = ctx.root
-			? (await files.list(ctx.root).catch(() => null))?.truncated === true &&
-				kinds.some((k) => k === "file" || k === "folder")
-			: false;
+		const wantsFiles = kinds.some((k) => k === "file" || k === "folder");
+		const list =
+			ctx.root && wantsFiles
+				? await files.list(ctx.root).catch(() => null)
+				: null;
+		const truncated = list?.truncated === true;
+		if (list?.timedOut)
+			unavailable.push({ source: "Files", message: FILE_LIST_TIMED_OUT });
 		return { hits: hits.slice(0, input.limit), truncated, unavailable };
 	}
 

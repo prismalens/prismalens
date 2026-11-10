@@ -102,9 +102,12 @@ export interface GitOptions {
 	timeoutMs?: number;
 }
 
+/** An agent can write `core.fsmonitor` into a worktree's config; git would run it on our next status. */
+export const NO_FSMONITOR = ["-c", "core.fsmonitor="] as const;
+
 export async function git(args: string[], opts: GitOptions): Promise<string> {
 	try {
-		const { stdout } = await run("git", args, {
+		const { stdout } = await run("git", [...NO_FSMONITOR, ...args], {
 			cwd: opts.cwd,
 			env: opts.env,
 			timeout: opts.timeoutMs ?? GIT_TIMEOUT_MS,
@@ -130,6 +133,7 @@ export async function hasCommit(
 		await run(
 			"git",
 			[
+				...NO_FSMONITOR,
 				"rev-parse",
 				"--verify",
 				"--quiet",

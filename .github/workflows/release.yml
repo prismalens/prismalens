@@ -37,7 +37,7 @@ jobs:
     steps:
       # A step-level gate: a skipped job would skip every job after it, dispatch included.
       - if: github.event_name == 'push' && vars.RELEASE_ENABLED == 'true'
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
         with:
           token: ${{ secrets.RELEASE_PAT || github.token }}
@@ -55,11 +55,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
           token: ${{ secrets.RELEASE_PAT || github.token }}
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - run: node scripts/acp-registry-snapshot.mjs
@@ -140,10 +140,10 @@ jobs:
         run: gh release download "$TAG" -p 'prismalens-*' -p 'PrismaLens-*' -p install.sh -p install.ps1 -D assets --repo "$GITHUB_REPOSITORY"
       - name: Write SHA256SUMS
         run: cd assets && sha256sum $(ls | LC_ALL=C sort) > SHA256SUMS && cat SHA256SUMS
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: assets/SHA256SUMS
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: assets/SHA256SUMS
       - name: Upload SHA256SUMS
@@ -170,13 +170,13 @@ jobs:
             echo "published=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.npm.outputs.published != 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.draft.outputs.tag }}
       - if: steps.npm.outputs.published != 'true'
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - if: steps.npm.outputs.published != 'true'
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -218,7 +218,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.draft.outputs.tag }}
 
@@ -288,7 +288,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Invoke-RestMethod get.scoop.sh -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
+          Invoke-RestMethod https://raw.githubusercontent.com/ScoopInstaller/Install/1e2f334083d609986d8c8bc9e31ae8e87c39fab4/install.ps1 -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
           & "$env:RUNNER_TEMP\install-scoop.ps1" -RunAsAdmin
           $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
           scoop bucket add prismalens https://github.com/prismalens/scoop-bucket

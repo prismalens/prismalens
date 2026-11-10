@@ -97,7 +97,7 @@ export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 				"threads outside this tree, or status updates.",
 			),
 			group: "core",
-			effect: "act",
+			effect: "record",
 			serves: ANYWHERE,
 			input: ThreadSendInput,
 			run: (input, ctx) => data.send(ctx.runId, input),

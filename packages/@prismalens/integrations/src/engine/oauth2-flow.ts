@@ -43,6 +43,9 @@ function safeOAuthErrorCode(value: unknown): string {
 		: "unrecognized_error_code";
 }
 
+/** A token endpoint that never answers must not hold the OAuth callback open. */
+export const TOKEN_EXCHANGE_TIMEOUT_MS = 15_000;
+
 export interface OAuth2StoreDeps {
 	saveOAuthState(data: OAuthStateData): Promise<void>;
 	getOAuthState(stateToken: string): Promise<OAuthStateData | null>;
@@ -212,10 +215,20 @@ export class OAuth2Flow {
 			template.oauth2.tokenUrl,
 			hostSafeContext(tokenContext, template.id),
 		);
+		// One clock for the headers and the body: a provider can answer 200 and then stall.
+		const deadline = AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS);
+		const timedOut = () =>
+			new Error(
+				`OAuth token exchange with ${template.id} timed out after ${TOKEN_EXCHANGE_TIMEOUT_MS / 1000} s. Try connecting again.`,
+			);
 		const response = await fetch(tokenUrl, {
 			method: "POST",
 			headers: tokenHeaders,
 			body: new URLSearchParams(tokenBody),
+			signal: deadline,
+		}).catch((error: unknown) => {
+			if ((error as Error)?.name === "TimeoutError") throw timedOut();
+			throw error;
 		});
 
 		if (!response.ok) {
@@ -236,6 +249,7 @@ export class OAuth2Flow {
 		try {
 			data = (await response.json()) as Record<string, unknown>;
 		} catch {
+			if (deadline.aborted) throw timedOut();
 			throw providerJsonParseError({
 				operation: "OAuth token exchange",
 				provider: template.id,

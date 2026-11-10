@@ -80,7 +80,7 @@ jobs:
       # The OS is in the file name: one artifact downloads flat, with no folder named after it.
       - name: Keep the failing rows for the report job
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: probe-failures-${{ matrix.os }}
           path: ${{ runner.temp }}/probe-failures-${{ matrix.os }}.tsv
@@ -99,7 +99,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: probe-failures-*
           path: failures
@@ -155,7 +155,7 @@ jobs:
     if: >-
       github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request' &&
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e
+    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
     permissions:
       contents: write
       pull-requests: write

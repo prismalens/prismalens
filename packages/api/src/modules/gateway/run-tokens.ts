@@ -8,8 +8,8 @@ const digest = (token: string): Buffer =>
 
 /**
  * One bearer per live run, held only as its sha256 in memory (#848). A token
- * opens its own run's path and nothing else; it dies when the run ends, and a
- * restart forgets every one.
+ * opens its own run's path and nothing else; it dies when the run ends. A
+ * restart forgets every one, and each resumed run's lease mints a new one.
  */
 export class RunTokens {
 	private readonly hashes = new Map<string, Buffer>();

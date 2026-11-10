@@ -46,8 +46,10 @@ gets in only through a one-time pairing link; there is no account.
 For each investigation PrismaLens checks the service's repository out at its
 last commit into a throwaway directory (a git worktree of a local folder, a
 clone of a URL's mirror) and starts the coding agent the user installed, over
-the Agent Client Protocol (ACP), with that snapshot as its working directory
-and an allowlisted environment. The run's permission level (Ask always,
+the Agent Client Protocol (ACP), with that snapshot as its working directory.
+A run an alert or a schedule starts gets only an allowlisted environment; a
+thread a person starts inherits the user's environment minus PrismaLens's own
+secrets, or the allowlist when the strict environment setting is on. The run's permission level (Ask always,
 Auto-accept edits, Auto or Full access) picks the agent's own mode and
 decides which of its permission requests wait for the user; a run an alert
 starts runs at Auto and refuses anything the agent asks. The agent's own mode is
@@ -69,7 +71,8 @@ Reports in these areas are especially valuable:
 - **The Alertmanager webhook token** — a webhook delivery accepted without the
   token, or a way to learn the token.
 - **Binding beyond loopback** — anything that becomes reachable, or weaker,
-  when `pl up` binds another address with `--host`.
+  when `pl up` binds another address with `--lan` or `--host`. Plain HTTP
+  beyond loopback is refused unless `--lan` is passed.
 - **Tailscale serve** — anything exposed, or trusted, wrongly when PrismaLens
   is published on a tailnet with `--tailscale-serve`.
 - **Permission levels and asks** — a run that gets more than its level: a
@@ -77,8 +80,9 @@ Reports in these areas are especially valuable:
   an alert-started run that lets through something it should refuse, or an
   approval that lands on a different request from the one shown. What the
   agent's own mode allows, and the agent's own sandbox, belong to the agent.
-- **The agent's environment** — the agent receiving an environment variable
-  outside its allowlist, or reading files outside its snapshot through
+- **The agent's environment** — an alert's or a schedule's run receiving an
+  environment variable outside its allowlist, any run receiving PrismaLens's
+  own secrets, or reading files outside its snapshot through
   PrismaLens.
 - **Workspace data at rest** — secrets, integration credentials or report
   contents stored in the workspace in a form they should not be, and secrets

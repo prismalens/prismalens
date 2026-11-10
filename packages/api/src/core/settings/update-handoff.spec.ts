@@ -11,6 +11,7 @@ import {
 	readHandoffResult,
 	restoreBackup,
 	runHandoff,
+	spawnLauncher,
 	switchWrappers,
 } from "./update-handoff.js";
 
@@ -129,5 +130,44 @@ describe("switchWrappers", () => {
 describe("restoreBackup", () => {
 	it("restores nothing when no backup is newer than the install", () => {
 		expect(restoreBackup(cfg.workspaceDir, 1_000)).toBeNull();
+	});
+});
+
+describe("spawnLauncher", () => {
+	it("passes complex arguments with spaces, & and % intact to the launcher", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-spawn-"));
+		try {
+			const outFile = join(dir, "args.json");
+			writeFileSync(
+				join(dir, "echo.js"),
+				`const fs = require("node:fs");\nfs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(process.argv.slice(2)));\n`,
+			);
+			const isWin = process.platform === "win32";
+			const launcherFile = join(dir, isWin ? "pl.cmd" : "pl");
+			if (isWin) {
+				writeFileSync(launcherFile, '@node "%~dp0echo.js" %*\n');
+			} else {
+				writeFileSync(
+					launcherFile,
+					'#!/bin/sh\nexec node "$(dirname "$0")/echo.js" "$@"\n',
+					{ mode: 0o755 },
+				);
+			}
+
+			const args = ["up", "--workspace", "C:\\a b&c%PATH%d"];
+			const child = spawnLauncher(launcherFile, args, "ignore");
+			await new Promise<void>((resolve, reject) => {
+				child.on("exit", (code) => {
+					if (code === 0) resolve();
+					else reject(new Error(`launcher exited with code ${code}`));
+				});
+				child.on("error", reject);
+			});
+
+			const recorded = JSON.parse(readFileSync(outFile, "utf8"));
+			expect(recorded).toEqual(args);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

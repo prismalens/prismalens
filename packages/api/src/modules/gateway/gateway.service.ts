@@ -236,6 +236,8 @@ const NO_HISTORY =
  * PrismaLens's MCP doorway for the agents it launches (#848, ADR 0007 §5): its own
  * harness tools only. A run leases a bearer valid on its own path until the run ends.
  */
+
+const LISTEN_WAIT_MS = 60_000;
 @Injectable()
 export class GatewayService {
 	private readonly tokens = new RunTokens();
@@ -285,7 +287,7 @@ export class GatewayService {
 		turnStartedAt?: Date,
 		scope: HarnessScope = {},
 	): Promise<GatewayEntry | null> {
-		const base = this.baseUrl();
+		const base = await this.listeningBaseUrl();
 		if (!base) return null;
 		const tree = await this.treeView(runId);
 		const token = this.tokens.mint(runId);
@@ -303,8 +305,11 @@ export class GatewayService {
 			view: runView(
 				servedTo(this.tools, { ...scope, tree: tree.member }).filter(
 					(t) =>
-						!(tree.actsOff && t.effect === "act") &&
-						!(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
+						// "Never" also stops messaging between threads, though thread_send is a record tool.
+						!(
+							tree.actsOff &&
+							(t.effect === "act" || t.name === "thread_send")
+						) && !(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
 				),
 				{ search: this.toolSearch(harness) },
 			),
@@ -479,6 +484,35 @@ export class GatewayService {
 		return this.handler.fetch(request, {
 			authInfo: { token: token as string, clientId: runId, scopes: [] },
 		});
+	}
+
+	/**
+	 * Dispatch starts before the server listens, so a run claimed at boot (a queued
+	 * job, a resumed one) waits for the address instead of running without tools.
+	 */
+	private async listeningBaseUrl(
+		waitMs = LISTEN_WAIT_MS,
+	): Promise<string | null> {
+		const now = this.baseUrl();
+		if (now) return now;
+		const server = this.http?.httpAdapter?.getHttpServer?.() as
+			| {
+					once?: (e: string, f: () => void) => void;
+					off?: (e: string, f: () => void) => void;
+			  }
+			| undefined;
+		if (!server?.once) return null;
+		await new Promise<void>((resolve) => {
+			const done = () => {
+				clearTimeout(timer);
+				server.off?.("listening", done);
+				resolve();
+			};
+			const timer = setTimeout(done, waitMs);
+			timer.unref?.();
+			server.once?.("listening", done);
+		});
+		return this.baseUrl();
 	}
 
 	private baseUrl(): string | null {

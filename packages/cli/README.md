@@ -58,7 +58,7 @@ pl doctor
 pl up
 ```
 
-`pl up` serves the dashboard on http://localhost:6473 and prints a one-time
+`pl up` serves the dashboard on http://127.0.0.1:6473 and prints a one-time
 link that pairs your browser; there is no account. It opens that link for you,
 except under WSL and wherever no browser can open: open the printed link
 yourself there. Investigations need a

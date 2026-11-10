@@ -118,14 +118,15 @@ describe("createWorkspace", () => {
 		await expect(create("r3", { ...POLICY, copyIn: [".git/hooks"] })).rejects.toThrow(/inside the repo/);
 	}, 60_000);
 
-	it("refuses a copy-in that leaves the repo through a symlinked directory", async () => {
+	it("refuses a copy-in that leaves the repo through a symlinked directory", async (ctx) => {
 		const elsewhere = join(root, "elsewhere");
 		mkdirSync(elsewhere);
 		writeFileSync(join(elsewhere, "x"), "outside");
 		try {
 			symlinkSync(elsewhere, join(repo, "link"), "junction");
-		} catch {
-			return; // symlinks need a privilege this machine lacks
+		} catch (cause) {
+			ctx.skip(`symlinks need a privilege this machine lacks: ${cause}`);
+			return;
 		}
 		await expect(create("r7", { ...POLICY, copyIn: ["link/x"] })).rejects.toThrow(/inside the repo/);
 	}, 60_000);
@@ -331,15 +332,16 @@ describe("guards", () => {
 		expect(rec).toMatchObject({ removed: false, reason: "shared" });
 	}, 60_000);
 
-	it("never removes a symlinked entry", async () => {
+	it("never removes a symlinked entry", async (ctx) => {
 		const target = join(root, "elsewhere");
 		mkdirSync(target);
 		writeFileSync(join(target, "keep.txt"), "x");
 		mkdirSync(owner.parentDir, { recursive: true });
 		try {
 			symlinkSync(target, join(owner.parentDir, "pl-g5"), "junction");
-		} catch {
-			return; // symlinks need a privilege this machine lacks
+		} catch (cause) {
+			ctx.skip(`symlinks need a privilege this machine lacks: ${cause}`);
+			return;
 		}
 		const recs = await sweepWorkspaces({ ...owner, policy: always, isLive: () => false });
 		expect(recs[0]).toMatchObject({ removed: false, reason: "symlinked" });

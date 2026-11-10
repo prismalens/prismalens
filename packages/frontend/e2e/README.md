@@ -585,10 +585,10 @@ The resolution is to promote on evidence rather than on preference or on a date:
 > `gh run list --workflow=e2e-browser.yml --branch=main --limit=20`; the retry half is visible in the run
 > summary (Playwright reports `N flaky` separately from `N passed`).
 
-The retry clause matters more than the green clause. `playwright.config.ts` sets `retries: 2` in
-CI, so a suite that is 30% flaky still reports green. Green-with-retries is exactly the state that
-makes a required check unbearable later. **At promotion, drop `retries` from 2 to 1** so a flake
-surfaces as a flake instead of hiding inside a pass.
+The retry clause matters more than the green clause. `playwright.config.ts` sets `retries: 1` in
+CI, so a flake surfaces as a flake instead of hiding inside a pass; at 2, a suite that is 30% flaky
+still reported green. Green-with-retries is exactly the state that makes a required check
+unbearable later.
 
 The storm-spec clause matters because promoting a suite that cannot fail on the product's central
 behavior buys governance theatre. Requiring a check that only proves pages render sets the bar in

@@ -8,7 +8,7 @@ on: pull_request
 
 jobs:
   auto-merge:
-    uses: prismalens/gh-workflows/.github/workflows/dependabot-auto-merge.yml@main
+    uses: prismalens/gh-workflows/.github/workflows/dependabot-auto-merge.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
     permissions:
       contents: write
       pull-requests: write

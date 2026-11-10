@@ -201,11 +201,28 @@ describe("runInvestigation over a fake ACP harness", () => {
 		const report = events.at(-1);
 		if (report?.kind !== "report") throw new Error("no report");
 		expect(report.report.fidelity?.effort).toBe("high");
+		expect(events.find((e) => e.kind === "session_config")).toMatchObject({
+			option: "effort",
+			value: "high",
+			accepted: true,
+		});
 		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
-		const sets = wire.split("\n").filter((l) => l.includes('"d":"out"') && l.includes("set_config_option")).length;
-		const prompts = wire.split("\n").filter((l) => l.includes('"d":"out"') && l.includes("session/prompt")).length;
-		expect(prompts).toBe(2);
-		expect(sets).toBe(prompts);
+		const outCalls = wire
+			.split("\n")
+			.filter((l) => l.includes('"d":"out"'))
+			.map((l) => {
+				const isEffort = l.includes("set_config_option") && l.includes('\\"value\\":\\"high\\"');
+				if (isEffort) return "set_effort";
+				if (l.includes("session/prompt")) return "session/prompt";
+				return null;
+			})
+			.filter(Boolean);
+		expect(outCalls).toEqual([
+			"set_effort",
+			"session/prompt",
+			"set_effort",
+			"session/prompt",
+		]);
 	});
 
 	it("puts a text attachment in the prompt as fenced data and refuses an image the harness cannot read (R4.3)", async () => {
@@ -1270,20 +1287,24 @@ describe("the agent's own mode (#673 w21)", () => {
 			{ level: "auto" as const, edit: "ask", bash: "ask" },
 			{ level: "full-access" as const, edit: "allow", bash: "allow" },
 		];
+		const wrapper = join(tmp("opencode-probe"), "capture.mjs");
+		writeFileSync(
+			wrapper,
+			'import fs from "node:fs"; import { pathToFileURL } from "node:url"; if (process.env.OPENCODE_CONFIG_CONTENT) fs.writeFileSync("opencode-config.json", process.env.OPENCODE_CONFIG_CONTENT); await import(pathToFileURL(process.argv[2]).href);\n',
+		);
 		for (const { level, edit, bash } of levels) {
-			const { events, runDir } = await collect("ok", {
+			const { events, cwd } = await collect("ok", {
 				harness: "opencode",
 				accessLevel: level,
 				permission: autoApprovePolicy,
 				descriptor: {
 					...HARNESS_REGISTRY.opencode,
 					binary: process.execPath,
-					acpArgs: () => [FAKE],
+					acpArgs: () => [wrapper, FAKE],
 				},
 			});
 			const config = JSON.parse(
-				prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir, accessLevel: level }).env
-					.OPENCODE_CONFIG_CONTENT as string,
+				readFileSync(join(cwd, "opencode-config.json"), "utf8"),
 			);
 			expect(config.permission.edit["*"]).toBe(edit);
 			expect(config.permission.bash["*"]).toBe(bash);

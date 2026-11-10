@@ -21,7 +21,15 @@ fail() {
 	exit 1
 }
 cleanup() {
-	pkill -f "$work/home/.local/share/prismalens/runtime/" 2>/dev/null || true
+	pattern="$work/home/.local/share/prismalens/runtime/"
+	pkill -f "$pattern" 2>/dev/null || true
+	# A stopping server still writes its log and database; removing the folder under it fails.
+	i=0
+	while pgrep -f "$pattern" >/dev/null 2>&1 && [ "$i" -lt 20 ]; do
+		sleep 0.5
+		i=$((i + 1))
+	done
+	pkill -9 -f "$pattern" 2>/dev/null || true
 	rm -rf "$work"
 }
 trap cleanup EXIT

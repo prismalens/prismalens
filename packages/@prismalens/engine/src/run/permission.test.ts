@@ -441,17 +441,48 @@ describe("levelPolicy", () => {
 			});
 		});
 
-		it("edit, delete, and move return card verdicts (Promises) at supervised", () => {
+		it("edit, delete, and move return card verdicts (Promises) at supervised", async () => {
 			const channel = createAskChannel({ timeoutMs: 5000 });
 			const policy = levelPolicy("supervised", channel);
 
-			for (const kind of ["edit", "delete", "move"]) {
-				const verdict = policy(makeReq(kind), {
-					askId: `ask_${kind}`,
-					signal: new AbortController().signal,
-				});
-				expect(verdict).toBeInstanceOf(Promise);
-			}
+			const editVerdict = policy(makeReq("edit"), {
+				askId: "ask_edit",
+				signal: new AbortController().signal,
+			});
+			const deleteVerdict = policy(makeReq("delete"), {
+				askId: "ask_delete",
+				signal: new AbortController().signal,
+			});
+			const moveVerdict = policy(makeReq("move"), {
+				askId: "ask_move",
+				signal: new AbortController().signal,
+			});
+
+			expect(channel.pending().map((p) => p.askId)).toEqual([
+				"ask_edit",
+				"ask_delete",
+				"ask_move",
+			]);
+
+			channel.answer("ask_edit", APPROVE);
+			channel.answer("ask_delete", APPROVE);
+			channel.answer("ask_move", APPROVE);
+
+			expect(await editVerdict).toEqual({
+				allow: true,
+				optionId: "allow_1",
+				outcome: "approved",
+			});
+			expect(await deleteVerdict).toEqual({
+				allow: true,
+				optionId: "allow_1",
+				outcome: "approved",
+			});
+			expect(await moveVerdict).toEqual({
+				allow: true,
+				optionId: "allow_1",
+				outcome: "approved",
+			});
 		});
 
 		it("edit, delete, and move are allowed at auto-edits as plain objects", () => {
@@ -470,7 +501,7 @@ describe("levelPolicy", () => {
 			}
 		});
 
-		it("execute returns card verdict (Promise) at auto-edits", () => {
+		it("execute returns card verdict (Promise) at auto-edits", async () => {
 			const channel = createAskChannel({ timeoutMs: 5000 });
 			const policy = levelPolicy("auto-edits", channel);
 
@@ -478,7 +509,13 @@ describe("levelPolicy", () => {
 				askId: "ask_exec",
 				signal: new AbortController().signal,
 			});
-			expect(verdict).toBeInstanceOf(Promise);
+			expect(channel.pending().map((p) => p.askId)).toEqual(["ask_exec"]);
+			channel.answer("ask_exec", APPROVE);
+			expect(await verdict).toEqual({
+				allow: true,
+				optionId: "allow_1",
+				outcome: "approved",
+			});
 		});
 
 		it("execute is allowed at auto and full-access as plain objects", () => {
@@ -919,8 +956,10 @@ describe("AskChannel answers (#1024)", () => {
 	it("a held ask that never lapses still has a valid expiry date", () => {
 		const channel = createAskChannel();
 		void channel.hold("n", { kind: "input", accepts: () => true }, { timeoutMs: 0 });
-		const expiry = channel.pending()[0]?.expiresAt;
-		expect(Number.isNaN(expiry?.getTime())).toBe(false);
+		const pending = channel.pending();
+		expect(pending.map((p) => p.askId)).toEqual(["n"]);
+		expect(pending[0].expiresAt).toEqual(new Date(8.64e15));
+		expect(pending[0].expiresAt.getTime()).toBe(8.64e15);
 		channel.close();
 	});
 });

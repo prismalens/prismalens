@@ -37,6 +37,8 @@
 		"@biomejs/biome": "2.6.4",
 		"@copilotkit/aimock": "1.47.0",
 		"@lydell/node-pty": "1.2.0-beta.18",
+		"@stryker-mutator/core": "10.1.1",
+		"@stryker-mutator/vitest-runner": "10.1.1",
 		"@types/node": "catalog:",
 		"cross-spawn": "^7.0.6",
 		"publint": "^0.3.25",

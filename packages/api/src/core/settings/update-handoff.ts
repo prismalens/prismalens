@@ -10,7 +10,7 @@
  * previous version again. Node built-ins only: it runs after the API is gone.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawnSync } from "node:child_process";
 import {
 	copyFileSync,
 	existsSync,
@@ -22,6 +22,7 @@ import {
 } from "node:fs";
 import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import crossSpawn from "cross-spawn";
 
 export const RESULT_FILE = "update-result.json";
 
@@ -227,6 +228,23 @@ export async function runHandoff(
 	return failed;
 }
 
+/**
+ * Starts the `pl` launcher with `args`. On Windows it is a `.cmd`, which only
+ * cmd.exe runs: cross-spawn quotes and escapes each argument for it, so a
+ * workspace path with spaces, `&` or `%` arrives as one argument.
+ */
+export function spawnLauncher(
+	file: string,
+	args: readonly string[],
+	out: number | "ignore",
+): ChildProcess {
+	return crossSpawn(file, [...args], {
+		detached: true,
+		stdio: ["ignore", out, out],
+		windowsHide: true,
+	});
+}
+
 /* v8 ignore start -- the real process glue; runHandoff is tested through HandoffDeps */
 const realDeps: HandoffDeps = {
 	alive(pid) {
@@ -252,18 +270,7 @@ const realDeps: HandoffDeps = {
 	launch(runtimeDir, cfg) {
 		const out = openSync(cfg.logPath, "a");
 		const file = launcher(runtimeDir, cfg.platform);
-		const child =
-			cfg.platform === "win32"
-				? spawn("cmd.exe", ["/d", "/s", "/c", `"${file}"`, ...cfg.upArgs], {
-						detached: true,
-						stdio: ["ignore", out, out],
-						windowsHide: true,
-						windowsVerbatimArguments: true,
-					})
-				: spawn(file, cfg.upArgs, {
-						detached: true,
-						stdio: ["ignore", out, out],
-					});
+		const child = spawnLauncher(file, cfg.upArgs, out);
 		let exited = false;
 		child.on("exit", () => {
 			exited = true;

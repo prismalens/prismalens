@@ -41,7 +41,7 @@ jobs:
       github.event_name != 'pull_request_review' ||
       github.event.review.user.type != 'Bot' ||
       github.event.review.user.login == 'claude[bot]'
-    uses: prismalens/gh-workflows/.github/workflows/review-findings-sweep.yml@main
+    uses: prismalens/gh-workflows/.github/workflows/review-findings-sweep.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
     with:
       full_history: ${{ inputs.full_history || false }}
       window_days: 8

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -34,20 +34,20 @@ export function getAppDataDir(): string {
 }
 
 /**
- * Ensure the application data directory exists.
- *
- * Creates the directory and all parent directories if they don't exist.
- * Sets directory permissions to 0o755 (owner: rwx, group: rx, other: rx)
- * for proper discoverability and access.
- *
- * @returns Absolute path to the created application data directory
- * @throws Error if directory creation fails (permission denied, etc.)
- * @example
- * const appDataDir = ensureAppDataDir();
- * // Directory created at ~/.prismalens with rwxr-xr-x permissions
+ * Ensure the workspace exists and only its owner can read it (0700). It holds
+ * the database, the encryption key and attachments. An existing workspace is
+ * tightened on the first call in each process, so an upgrade fixes an older
+ * 0755 one; a workspace this user cannot chmod (a mounted volume) is left as is.
  */
+const tightened = new Set<string>();
 export function ensureAppDataDir(): string {
 	const appDataDir = getAppDataDir();
-	mkdirSync(appDataDir, { recursive: true, mode: 0o755 });
+	mkdirSync(appDataDir, { recursive: true, mode: 0o700 });
+	if (!tightened.has(appDataDir)) {
+		tightened.add(appDataDir);
+		try {
+			chmodSync(appDataDir, 0o700);
+		} catch {}
+	}
 	return appDataDir;
 }

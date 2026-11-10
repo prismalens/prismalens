@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -75,6 +77,33 @@ async function body(res: Response): Promise<Record<string, unknown>> {
 }
 
 describe("gateway bearer (#848)", () => {
+	it("gives a run claimed at boot its tools once the server listens", async () => {
+		const server = http.createServer();
+		try {
+			const host = {
+				httpAdapter: {
+					getHttpServer: () => server,
+				},
+			};
+			const g = new GatewayService(EMPTY as never, host as never);
+			const pendingLease = g.lease(RUN_A, NAME);
+			await new Promise<void>((resolve) => {
+				server.listen(0, "127.0.0.1", () => resolve());
+			});
+			const entry = await pendingLease;
+			expect(entry).not.toBeNull();
+			const port = (server.address() as AddressInfo).port;
+			expect(entry?.url).toBe(`http://127.0.0.1:${port}/api/mcp/runs/${RUN_A}`);
+			const res = await g.serve(
+				RUN_A,
+				rpc(RUN_A, "initialize", initialize, entry?.token),
+			);
+			expect(res.status).toBe(200);
+		} finally {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
+
 	it("leases a loopback URL on the run's own path", async () => {
 		const entry = await gateway().lease(RUN_A, NAME);
 		expect(entry?.url).toBe(`http://127.0.0.1:3001/api/mcp/runs/${RUN_A}`);

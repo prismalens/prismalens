@@ -275,22 +275,40 @@ describe("Walk #981: runs a restart cut off are taken up again", () => {
 		expect(ids(added)).toEqual([]);
 	}, 120_000);
 
-	it("Given three incidents each with a working run, When PrismaLens restarts once, Then all three resume within the dispatch cap", async () => {
+	it("Given four incidents each with a working run, When PrismaLens restarts once, Then all four resume within the dispatch cap of three", async () => {
 		const cap = 3;
+		const { DispatchService } = await import(
+			"../../src/infrastructure/dispatch/dispatch.service.js"
+		);
+		// Allow all 4 runs to start before restart so each has a working run
+		(pl as any).app.get(DispatchService)["dispatcher"]["options"].concurrency = 4;
+
 		const ids = [
 			await work("many-a", "live-resume"),
 			await work("many-b", "live-resume"),
 			await work("many-c", "live-resume"),
+			await work("many-d", "live-resume"),
 		];
 
 		await restart();
 		const rows = await Promise.all(ids.map(run));
-		expect(rows.map((r) => r.status)).toEqual(["pending", "pending", "pending"]);
+		expect(rows.map((r) => r.status)).toEqual([
+			"pending",
+			"pending",
+			"pending",
+			"pending",
+		]);
 		expect((await summary()).resumed.map((r) => r.investigationId).sort()).toEqual(
 			[...ids].sort(),
 		);
 
-		await Promise.all(ids.map(pullIn));
+		const db = await pl.prisma();
+		await db.job.updateMany({
+			where: { investigationId: { in: ids }, status: "pending" },
+			data: { runAt: new Date() },
+		});
+		await pl.tick();
+
 		let peak = 0;
 		await eventually(
 			async () => {
@@ -299,10 +317,10 @@ describe("Walk #981: runs a restart cut off are taken up again", () => {
 				return now;
 			},
 			(now) => now.every((r) => r.status === "completed"),
-			"all three runs to finish",
+			"all four runs to finish",
 			90_000,
 		);
-		expect(peak).toBeLessThanOrEqual(cap);
+		expect(peak).toBe(cap);
 	}, 150_000);
 
 	it("Given a run PrismaLens stops during every resume, When it starts a fourth time, Then the run is failed as not resumed", async () => {

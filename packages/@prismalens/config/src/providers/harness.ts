@@ -91,10 +91,16 @@ export type InstallChannel =
 export function installCommand(channel: InstallChannel): string {
 	if ("npm" in channel) return `npm i -g ${channel.npm}`;
 	const [cli, ...extras] = channel.uv;
-	return ["uv tool install -U", cli, ...extras.map((p) => `--with ${p}`)].join(
-		" ",
-	);
+	return [
+		"uv tool install -U",
+		cli,
+		...extras.map((p) => `--with "${p}"`),
+	].join(" ");
 }
+
+const DEEPAGENTS_CHANNEL = {
+	uv: ["deepagents-code", "deepagents-acp", "agent-client-protocol<1"],
+} as const;
 
 /** What PrismaLens alone says and pins about an agent (#916). */
 interface ProductFacts {
@@ -219,8 +225,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
 			},
 		},
-		// The pin-bump PR moved this on 2026-11-03: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "0.99.1", date: "2026-11-03", companion: "2.1.316" },
+		// The pin-bump PR moved this on 2026-11-07: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "0.100.0", date: "2026-11-07", companion: "2.1.318" },
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
@@ -288,8 +294,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
-		install: "uv tool install -U deepagents-code --with deepagents-acp",
-		channel: { uv: ["deepagents-code", "deepagents-acp"] },
+		install: installCommand(DEEPAGENTS_CHANNEL),
+		channel: DEEPAGENTS_CHANNEL,
 		lines: noModeLines("deepagents"),
 		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
 		tested: { version: "0.1.75", date: "2026-09-23" },

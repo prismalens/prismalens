@@ -9,6 +9,7 @@ import {
 	keyless,
 	PROBE_FILES,
 	plan,
+	run,
 	shown,
 	verdict,
 } from "./agent-probe.mjs";
@@ -144,5 +145,16 @@ test("the deepagents profile names a default model, which deepagents-code 0.2.4 
 	assert.match(
 		PROBE_FILES.deepagents["config.toml"],
 		/^\[models\]\ndefault = "[a-z]+:[^"]+"\n$/,
+	);
+});
+
+test("native process arguments keep requirement operators literal on Windows", () => {
+	assert.equal(
+		run(process.execPath, [
+			"-p",
+			"process.argv[1]",
+			"agent-client-protocol<1",
+		]).trim(),
+		"agent-client-protocol<1",
 	);
 });

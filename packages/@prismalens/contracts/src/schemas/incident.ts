@@ -278,6 +278,8 @@ export const ChatIncidentSchema = z.object({
  * ATTACHMENT_MAX_BYTES is accepted; the rest reach the agent as a link (#1024).
  */
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+/** All files one thread, draft or incident holds together. */
+export const ATTACHMENT_TOTAL_MAX_BYTES = 200 * 1024 * 1024;
 
 export const ATTACHMENT_IMAGE_TYPES = [
 	"image/png",
@@ -328,6 +330,19 @@ export const GetAttachmentSchema = z.object({
 	id: z.string().uuid(),
 	attachmentId: z.string().uuid(),
 });
+/**
+ * An attached file as served: only the four image types render inline, and
+ * every response is sandboxed, so stored bytes never run in the app's origin.
+ */
+export const ServedAttachmentSchema = z.object({
+	headers: z.object({
+		"content-disposition": z.string(),
+		"content-security-policy": z.string(),
+		"x-content-type-options": z.literal("nosniff"),
+	}),
+	body: z.file(),
+});
+export type ServedAttachment = z.infer<typeof ServedAttachmentSchema>;
 export type InvestigateIncidentInput = z.infer<
 	typeof InvestigateIncidentSchema
 >;

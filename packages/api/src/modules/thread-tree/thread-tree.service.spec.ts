@@ -24,7 +24,7 @@ const { ProposalsService } = await import("./proposals.service.js");
 const { TreeIo } = await import("./tree-io.service.js");
 const { TreeSettings } = await import("./tree-settings.service.js");
 const { actionReason } = await import("../threads/threads.service.js");
-const { nodeState, threadLink } = await import("./thread-tree.service.js");
+const { nodeState, threadLink, TREE_MESSAGE_CAP } = await import("./thread-tree.service.js");
 const { FollowUpRefused } = await import("../../infrastructure/dispatch/dispatch.service.js");
 
 type Prisma = InstanceType<typeof PrismaService>;
@@ -520,6 +520,32 @@ describe("messages, roster and wake on finish (#1024 spec F)", () => {
 		const gotEv = (await events(f.db)).find((e) => e.kind === "thread_message");
 		expect(sentEv).toMatchObject({ direction: "sent", peerRole: "db", type: "fact" });
 		expect(gotEv).toMatchObject({ direction: "received", peerRole: "api", messageId: expect.any(String) });
+	});
+
+	it("stops a tree's messages at TREE_MESSAGE_CAP with limit_reached and stores no more", async () => {
+		const f = await family();
+		live.add(f.db);
+		await prisma.threadMessage.deleteMany();
+		await prisma.threadMessage.createMany({
+			data: Array.from({ length: TREE_MESSAGE_CAP - 1 }, (_, i) => ({
+				rootId: f.root,
+				fromId: f.root,
+				toId: f.api,
+				type: "fact",
+				text: `old ${i}`,
+				requestId: `cap-${i}`,
+			})),
+		});
+		const last = value(await tree.send(f.api, { to: "db", type: "fact", text: "last one", mode: "queue", requestId: "under" }));
+		expect(await prisma.threadMessage.count({ where: { rootId: f.root } })).toBe(TREE_MESSAGE_CAP);
+		// A retry of the send that reached the cap answers that message, as any retry does.
+		const retry = value(await tree.send(f.api, { to: "db", type: "fact", text: "last one", mode: "queue", requestId: "under" }));
+		expect(retry.messageId).toBe(last.messageId);
+		const over = await tree.send(f.api, { to: "db", type: "fact", text: "one too many", mode: "queue", requestId: "over" });
+		expect(over).toMatchObject({
+			failure: { error: "limit_reached", message: `This thread tree has sent ${TREE_MESSAGE_CAP} messages, its limit.` },
+		});
+		expect(await prisma.threadMessage.count({ where: { rootId: f.root } })).toBe(TREE_MESSAGE_CAP);
 	});
 
 	it("lets only a parent's blocker to its own child steer", async () => {

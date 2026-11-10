@@ -15,6 +15,7 @@ import {
 	RenameThreadSchema,
 	ResolvedLinksSchema,
 	ResolveLinksSchema,
+	ServedAttachmentSchema,
 	SettledStateSchema,
 	SettleThreadSchema,
 	StartThreadResponseSchema,
@@ -192,9 +193,10 @@ export const threadsContract = {
 			path: "/threads/{id}/attachments/{attachmentId}",
 			summary: "Download a thread's attached file",
 			tags: ["threads"],
+			outputStructure: "detailed",
 		})
 		.input(GetAttachmentSchema)
-		.output(z.file()),
+		.output(ServedAttachmentSchema),
 
 	/**
 	 * What the right panel shows for this kind of thread (#1024)

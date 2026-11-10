@@ -2,14 +2,27 @@
 // Copyright 2026 Sumit Patel
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { OpenAPIHandler } from "@orpc/openapi/node";
+import { implement } from "@orpc/server";
+import {
+	ATTACHMENT_TOTAL_MAX_BYTES,
+	threadsContract,
+} from "@prismalens/contracts";
 import { AttachmentsService } from "./attachments.service.js";
+
+const PNG = Buffer.from(
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+	"base64",
+);
 
 const DRAFT = "d1111111-1111-4111-8111-111111111111";
 const OTHER_DRAFT = "d2222222-2222-4222-8222-222222222222";
-const RUN = "r1111111-1111-4111-8111-111111111111";
+const RUN = "c1111111-1111-4111-8111-111111111111";
 const OTHER_RUN = "r2222222-2222-4222-8222-222222222222";
 const INCIDENT_RUN = "r3333333-3333-4333-8333-333333333333";
 const SCHEDULED_RUN = "r4444444-4444-4444-8444-444444444444";
@@ -47,6 +60,21 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 			),
 			findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
 				rows.filter((r) => matches(r, where)),
+			),
+			aggregate: vi.fn(
+				async ({
+					where,
+				}: {
+					where: Record<string, unknown>;
+					_sum?: { size?: boolean };
+				}) => {
+					const matching = rows.filter((r) => matches(r, where));
+					const total = matching.reduce(
+						(acc, r) => acc + (typeof r.size === "number" ? r.size : 0),
+						0,
+					);
+					return { _sum: { size: total } };
+				},
 			),
 			updateMany: vi.fn(
 				async ({
@@ -122,7 +150,47 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 			/No such attachment/,
 		);
 		const file = await service().readForRun(RUN, owned.id);
-		expect(await file.text()).toBe("b");
+		expect(await file.body.text()).toBe("b");
+	});
+
+	it("serves stored XML as a sandboxed download and an image inline, over HTTP", async () => {
+		const xml = await service().uploadForRun(
+			RUN,
+			new File(
+				['<?xml version="1.0"?><x:script xmlns:x="http://www.w3.org/1999/xhtml">alert(1)</x:script>'],
+				"evil.xml",
+				{ type: "application/xml" },
+			),
+		);
+		const png = await service().uploadForRun(
+			RUN,
+			new File([PNG], "shot.png", { type: "image/png" }),
+		);
+		const handler = new OpenAPIHandler(
+			implement(threadsContract).router({
+				attachment: implement(threadsContract.attachment).handler(({ input }) =>
+					service().readForRun(input.id, input.attachmentId),
+				),
+			} as never),
+		);
+		const server = createServer(async (req, res) => {
+			const { matched } = await handler.handle(req, res, { prefix: "/api" });
+			if (!matched) res.writeHead(404).end();
+		});
+		await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+		const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/threads/${RUN}/attachments`;
+		try {
+			const doc = await fetch(`${base}/${xml.id}`);
+			expect(doc.headers.get("content-disposition")).toMatch(/^attachment;/);
+			expect(doc.headers.get("content-security-policy")).toContain("sandbox");
+			expect(doc.headers.get("x-content-type-options")).toBe("nosniff");
+			const img = await fetch(`${base}/${png.id}`);
+			expect(img.headers.get("content-type")).toBe("image/png");
+			expect(img.headers.get("content-disposition")).toMatch(/^inline;/);
+			expect(img.headers.get("content-security-policy")).toContain("sandbox");
+		} finally {
+			server.close();
+		}
 	});
 
 	it("refuses a run that is gone, and points an incident's run at its incident", async () => {
@@ -185,5 +253,37 @@ describe("AttachmentsService: a thread's files are its run's (#1020)", () => {
 		await expect(service().forRun(RUN, [])).resolves.toEqual([]);
 		await expect(service().claimDraft(DRAFT, [], RUN)).resolves.toEqual([]);
 		await expect(service().checkDraft(DRAFT, [])).resolves.toBeUndefined();
+	});
+
+	it("caps total size across all files on a thread at ATTACHMENT_TOTAL_MAX_BYTES (#1066)", async () => {
+		// Another run's rows do not count.
+		rows.push({
+			id: "a-other",
+			investigationId: OTHER_RUN,
+			incidentId: null,
+			draftKey: null,
+			size: ATTACHMENT_TOTAL_MAX_BYTES,
+		});
+
+		// Seed this run near the cap without allocating real buffers.
+		rows.push({
+			id: "a-mine",
+			investigationId: RUN,
+			incidentId: null,
+			draftKey: null,
+			size: ATTACHMENT_TOTAL_MAX_BYTES - 10,
+		});
+
+		// An upload that would cross ATTACHMENT_TOTAL_MAX_BYTES is refused.
+		await expect(
+			service().uploadForRun(RUN, text("12345678901", "too-large.txt")),
+		).rejects.toThrow("Files up to 200 MB in all");
+
+		// One under it passes.
+		const under = await service().uploadForRun(
+			RUN,
+			text("12345", "fits.txt"),
+		);
+		expect(under).toMatchObject({ name: "fits.txt" });
 	});
 });

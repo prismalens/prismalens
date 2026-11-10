@@ -27,14 +27,27 @@ export interface FileList {
 	/** Workspace-relative paths with `/` separators; folders end with `/`. */
 	paths: string[];
 	truncated: boolean;
+	/** git did not answer in time: the list is empty, not a folder without a repo. */
+	timedOut?: true;
 }
 
+export const FILE_LIST_TIMED_OUT =
+	"Listing this folder's files timed out. Try again in a moment.";
+
 /** `git ls-files` (tracked and untracked, ignores honoured) in a repo; null outside one. */
-async function gitFiles(root: string): Promise<string[] | null> {
+async function gitFiles(root: string): Promise<string[] | null | "timed-out"> {
 	try {
 		const { stdout } = await run(
 			"git",
-			["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+			[
+				"-c",
+				"core.fsmonitor=",
+				"ls-files",
+				"-z",
+				"--cached",
+				"--others",
+				"--exclude-standard",
+			],
 			{
 				cwd: root,
 				env: gitEnv({ source: "machine", coreSshCommand: null }),
@@ -43,7 +56,9 @@ async function gitFiles(root: string): Promise<string[] | null> {
 			},
 		);
 		return stdout.split("\0").filter(Boolean);
-	} catch {
+	} catch (e) {
+		// execFile's timeout kills git with SIGTERM: a slow repo, not a missing one.
+		if ((e as { killed?: boolean }).killed) return "timed-out";
 		return null;
 	}
 }
@@ -148,6 +163,9 @@ export class FileLister {
 		const hit = this.cache.get(root);
 		if (hit && this.now() - hit.at < FILE_LIST_TTL_MS) return hit.list;
 		const tracked = await gitFiles(root);
+		// Not cached: the next keystroke asks git again.
+		if (tracked === "timed-out")
+			return { paths: [], truncated: false, timedOut: true };
 		const walked = tracked ? null : await walk(root, this.cap, this.dirCap);
 		const listed = withFolders(tracked ?? walked?.files ?? [], this.cap);
 		const list = {

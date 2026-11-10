@@ -1,10 +1,11 @@
-# Reruns a `CI` run once when its only red jobs never got a runner (#1052): a runner shortage is
-# not a code failure, and the run's other jobs keep their results. `scripts/ci-gate-report.mjs` decides.
-name: CI rerun for jobs that never started
+# Reruns a `CI` or standalone build run once when its only red jobs never got a runner (#1052) or
+# failed on a network fault: neither is a code failure, and the run's other jobs keep their results.
+# `scripts/ci-gate-report.mjs` decides, from each failed job's log.
+name: CI rerun for jobs that never started or hit the network
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [CI, Standalone CLI build]
     types: [completed]
 
 permissions:
@@ -17,19 +18,19 @@ concurrency:
 
 jobs:
   rerun:
-    name: Rerun jobs that never started
+    name: Rerun jobs that never started or hit the network
     # One retry per run, and only for a run that failed: a run someone cancelled stays cancelled.
     if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: scripts/ci-gate-report.mjs
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Rerun when only never-started jobs are red
+      - name: Rerun when only never-started or network-failed jobs are red
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

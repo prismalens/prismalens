@@ -14,7 +14,6 @@ import {
 	HostRepositoriesInputSchema,
 	HostRepositoriesSchema,
 	ProbeReportSchema,
-	RunbooksToggleSchema,
 	SourceDraftSchema,
 	SourcesOverviewSchema,
 	SourcesPreRunInputSchema,
@@ -52,26 +51,6 @@ export const sourcesContract = {
 		})
 		.input(SourceDraftSchema)
 		.output(ConnectSourceResponseSchema),
-
-	retest: oc
-		.route({
-			method: "POST",
-			path: "/sources/{id}/test",
-			summary: "Re-run the probes for a saved source",
-			tags: ["sources"],
-		})
-		.input(z.object({ id: z.string() }))
-		.output(ProbeReportSchema),
-
-	setRunbooks: oc
-		.route({
-			method: "PUT",
-			path: "/sources/runbooks",
-			summary: "Turn runbook discovery in the bound repos on or off",
-			tags: ["sources"],
-		})
-		.input(RunbooksToggleSchema)
-		.output(RunbooksToggleSchema),
 
 	gitHosts: oc
 		.route({

@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -144,6 +152,54 @@ describe("the workspace file list (#1024)", () => {
 		writeFileSync(join(dir, "..cache", "kept.txt"), "");
 		const { files } = await walk(dir, 50_000);
 		expect(files).toContain("..cache/kept.txt");
+	});
+
+	it("ignores core.fsmonitor on git calls and never executes it (#1066)", async () => {
+		const repoDir = mkdtempSync(join(tmpdir(), "pl-fsmonitor-"));
+		try {
+			execFileSync("git", ["init", "-q"], { cwd: repoDir });
+			const markerFile = join(repoDir, "marker.txt");
+			const hookFile = join(repoDir, "hook.cjs");
+			writeFileSync(
+				hookFile,
+				`require("node:fs").writeFileSync(${JSON.stringify(markerFile)}, "triggered");\n`,
+			);
+			execFileSync("git", ["add", "-f", "hook.cjs"], { cwd: repoDir });
+			const hookCmd = `node "${hookFile.replace(/\\/g, "/")}"`;
+			execFileSync("git", ["config", "core.fsmonitor", hookCmd], { cwd: repoDir });
+
+			await new FileLister().list(repoDir);
+			expect(existsSync(markerFile)).toBe(false);
+			// The same listing without the override runs the hook: the check above can fail.
+			execFileSync(
+				"git",
+				["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+				{ cwd: repoDir },
+			);
+			expect(existsSync(markerFile)).toBe(true);
+		} finally {
+			rmSync(repoDir, { recursive: true, force: true });
+		}
+	});
+
+	it("FileLister.list returns files with no timedOut on a repo or plain folder (#1066)", async () => {
+		mkdirSync(join(dir, "src"), { recursive: true });
+		writeFileSync(join(dir, "src", "plain.ts"), "");
+		const plainList = await new FileLister().list(dir);
+		expect(plainList.paths).toContain("src/plain.ts");
+		expect(plainList.timedOut).toBeUndefined();
+
+		const repoDir = mkdtempSync(join(tmpdir(), "pl-filelist-repo-"));
+		try {
+			execFileSync("git", ["init", "-q"], { cwd: repoDir });
+			writeFileSync(join(repoDir, "tracked.ts"), "");
+			execFileSync("git", ["add", "tracked.ts"], { cwd: repoDir });
+			const repoList = await new FileLister().list(repoDir);
+			expect(repoList.paths).toContain("tracked.ts");
+			expect(repoList.timedOut).toBeUndefined();
+		} finally {
+			rmSync(repoDir, { recursive: true, force: true });
+		}
 	});
 });
 

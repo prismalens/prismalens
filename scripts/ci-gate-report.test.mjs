@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	classify,
+	networkFailure,
 	onlyCancelled,
 	queueWaits,
 	rerunnable,
@@ -104,4 +105,33 @@ test("a long wait for a runner is reported, a short one is not", () => {
 		{ name: "slow", minutes: 25 },
 		{ name: "never ran", minutes: 22 },
 	]);
+});
+
+test("a failed job is retried only when its log ends on a network fault, not a failed check", () => {
+	const download =
+		"==> Target: linux-x64\nERROR: fetch failed\n##[error]Process completed with exit code 1.";
+	const reset =
+		"npm error code ECONNRESET\n##[error]Process completed with exit code 1.";
+	const assertion =
+		"AssertionError: expected 1 to be 2\nERROR: fetch failed\n##[error]Process completed with exit code 1.";
+	const smoke =
+		"SMOKE FAIL: the pl up HTTP contract is broken\n##[error]Process completed with exit code 1.";
+	const plain =
+		"rm: cannot remove 'ws': Directory not empty\n##[error]Process completed with exit code 1.";
+	assert.deepEqual(
+		[download, reset, assertion, smoke, plain].map(networkFailure),
+		[true, true, false, false, false],
+	);
+
+	const failed = job("Build & smoke (linux-x64)", "failure", [
+		["smoke", "failure"],
+	]);
+	const gate = job("CI gate", "failure", [["report", "failure"]]);
+	const reds = classify([failed, gate]);
+	assert.equal(rerunnable(reds), false);
+	assert.equal(
+		rerunnable(reds, "CI gate", new Set(["Build & smoke (linux-x64)"])),
+		true,
+	);
+	assert.equal(rerunnable(reds, "CI gate", new Set(["Some other job"])), false);
 });

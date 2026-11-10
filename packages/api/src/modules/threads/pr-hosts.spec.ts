@@ -230,7 +230,7 @@ describe("readGithub against a recorded pull (cli/cli#14927)", () => {
 			[`${GH}/pulls/1`]: { body: { title: "x".repeat(2 * 1024 * 1024) } },
 		});
 		await expect(readGithub(req(host.impl), "cli/cli", 1, {})).rejects.toThrow(
-			HostReadError,
+			/^the git host's answer was over 1 MB$/,
 		);
 	});
 
