@@ -23,6 +23,7 @@ import { cliVersion } from "../version.js";
 import { lockBase, probeInstance } from "./instance-check.js";
 import {
 	ensureServe,
+	machineHostnames,
 	serveTarget,
 	TailscaleError,
 	tailnetHostname,
@@ -151,6 +152,14 @@ export default defineCommand({
 		process.env.NODE_ENV = "production";
 		if (args.port) process.env.PRISMALENS_PORT = String(args.port);
 		if (args.host) process.env.PRISMALENS_HOST = String(args.host);
+		if (args.lan || args["tailscale-serve"]) {
+			// A device on the network reaches this machine by its own name, which must not 403.
+			for (const name of machineHostnames())
+				process.env.PRISMALENS_ALLOWED_HOSTS = withAllowedHost(
+					process.env.PRISMALENS_ALLOWED_HOSTS,
+					name,
+				);
+		}
 		if (args.lan) {
 			process.env.PRISMALENS_LAN = "1";
 			process.env.PRISMALENS_HOST ||= "0.0.0.0";

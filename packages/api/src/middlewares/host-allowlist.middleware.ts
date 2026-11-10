@@ -258,6 +258,23 @@ function safeUrlHostname(origin: string): string | undefined {
 	}
 }
 
+/** The 403's text: what was refused and the one setting that allows it. */
+export function rejectionMessage(
+	header: string,
+	value: string | undefined,
+): string {
+	if (!value) return `Blocked request: the ${header} header is missing.`;
+	const name =
+		header === "Origin"
+			? (safeUrlHostname(value) ?? value)
+			: (normalizeHostname(value) ?? value);
+	return (
+		`PrismaLens does not answer to "${name}". If that is how you reach it, ` +
+		`start it with PRISMALENS_ALLOWED_HOSTS=${name} (comma-separate several). ` +
+		"`pl up --lan` and `pl up --tailscale-serve` allow this machine's own names."
+	);
+}
+
 function reject(
 	res: Response,
 	header: string,
@@ -266,9 +283,6 @@ function reject(
 	res.status(403).json({
 		statusCode: 403,
 		error: "Forbidden",
-		message:
-			`Blocked request: ${header} header ${value ? `"${value}"` : "is missing"} is not allowlisted. ` +
-			"If this hostname is how you reach PrismaLens, add it to PRISMALENS_ALLOWED_HOSTS " +
-			"(comma-separated).",
+		message: rejectionMessage(header, value),
 	});
 }
