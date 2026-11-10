@@ -56,7 +56,8 @@ describe("DiagnosticsService", () => {
 			}
 			expect(plVersion(cmdPath, "win32")).toBe("1.4.2");
 		} finally {
-			process.env.PATH = prevPath;
+			if (prevPath === undefined) delete process.env.PATH;
+			else process.env.PATH = prevPath;
 			rmSync(dir, { recursive: true, force: true });
 		}
 		expect(plVersion("Z:\\nowhere\\pl.cmd", "win32")).toBeNull();
