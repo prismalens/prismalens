@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 import { pairingQr, resolveOrigin } from "./pair.js";
 
 describe("resolveOrigin", () => {
-	it("no address → http://localhost:<port>, loopback true", () => {
+	it("no address → http://127.0.0.1:<port>, loopback true", () => {
 		const result = resolveOrigin(undefined, 6473);
 		expect(result).toEqual({
-			origin: "http://localhost:6473",
+			origin: "http://127.0.0.1:6473",
 			loopback: true,
 		});
 	});

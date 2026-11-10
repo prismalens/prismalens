@@ -44,6 +44,25 @@ describe("buildPlan", () => {
 		});
 		expect(served.program).toEqual(["/pl", "up", "--no-open", "--tailscale-serve"]);
 	});
+
+	it("includes --lan when built with lan: true and omits it without", () => {
+		const withLan = buildPlan({
+			launcher: "/pl",
+			workspace: "/w",
+			port: 1,
+			path: "/bin",
+			lan: true,
+		});
+		expect(withLan.program).toContain("--lan");
+
+		const withoutLan = buildPlan({
+			launcher: "/pl",
+			workspace: "/w",
+			port: 1,
+			path: "/bin",
+		});
+		expect(withoutLan.program).not.toContain("--lan");
+	});
 });
 
 describe("resolveLauncher", () => {
