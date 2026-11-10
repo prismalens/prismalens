@@ -1167,9 +1167,11 @@ describe("harness child env (trust floor, #628)", () => {
 				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 				ports,
 			);
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ policy?: { github: string } }];
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ policy?: { github: string; floor: { mode: string } } }];
+			floors.push(`${job.startedBy ?? (job.unattended ? "alert" : "person")}:${opts.policy?.floor.mode}`);
 			return opts.policy?.github;
 		};
+		const floors: string[] = [];
 		expect(await githubOf({})).toBe("include");
 		expect(await githubOf({ startedBy: "person" })).toBe("include");
 		expect(await githubOf({ startedBy: "alert" })).toBe("exclude");
@@ -1179,6 +1181,9 @@ describe("harness child env (trust floor, #628)", () => {
 		expect(await githubOf({ startedBy: "schedule" })).toBe("exclude");
 		expect(await githubOf({ startedBy: "schedule" }, true)).toBe("include");
 		expect(await githubOf({ startedBy: "alert" }, true)).toBe("include");
+		// The environment floor does not follow the GitHub setting: unattended is always the allowlist (#817).
+		expect(floors.filter((f) => f.startsWith("person"))).toEqual(["person:inherit-minus-own-secrets", "person:inherit-minus-own-secrets"]);
+		expect(floors.filter((f) => !f.startsWith("person")).every((f) => f.endsWith(":allowlist"))).toBe(true);
 	});
 
 	it("spawns with the agent's Settings runtime: env, command and arguments (#907)", async () => {

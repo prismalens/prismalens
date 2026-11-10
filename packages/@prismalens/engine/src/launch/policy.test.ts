@@ -44,6 +44,32 @@ function agentEnv(startedBy: StartedBy, unattendedGithub = false) {
 	return { env: plan.env, runDir };
 }
 
+describe("an unattended run's environment (#817)", () => {
+	const envOf = (startedBy: StartedBy, strict = false) =>
+		planLaunch({
+			agent: "claude-code",
+			level: "auto",
+			policy: prismalensLaunchPolicy({ startedBy, strict }),
+			launch: { command: "claude-agent-acp" },
+			cwd: tmpdir(),
+			runDir: tmpdir(),
+			hostEnv: { PATH: "/bin", AWS_SECRET_ACCESS_KEY: "host-secret" },
+		}).env;
+
+	it("passes only allowlisted variables to an alert's or a schedule's run", () => {
+		for (const startedBy of ["alert", "schedule"] as const) {
+			const env = envOf(startedBy);
+			expect(env.AWS_SECRET_ACCESS_KEY, startedBy).toBeUndefined();
+			expect(env.PATH, startedBy).toBe("/bin");
+		}
+	});
+
+	it("keeps a person's thread on the inherited environment unless strict", () => {
+		expect(envOf("person").AWS_SECRET_ACCESS_KEY).toBe("host-secret");
+		expect(envOf("person", true).AWS_SECRET_ACCESS_KEY).toBeUndefined();
+	});
+});
+
 describe("an unattended run's GitHub credentials (#1020 R41)", () => {
 	it("goes by who started the thread, and the host can let unattended runs keep it", () => {
 		expect(githubFor()).toBe("include");

@@ -82,6 +82,7 @@ import {
 	buildFreshSummary,
 	buildHandoff,
 	conductRun,
+	floorFor,
 	githubFor,
 	HANDOFF_TRANSCRIPT_PATH,
 	type InvestigationSink,
@@ -1644,12 +1645,18 @@ export function startedByOf(data: InvestigationJobData): StartedBy {
 
 function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
 	const policy = runtime.policy ?? prismalensLaunchPolicy();
+	const startedBy = startedByOf(data);
+	const github = githubFor(startedBy, runtime.unattendedGithub === true);
 	return {
 		env: runtime.env,
 		// R41: an alert's or a schedule's run gets no GitHub token unless the host allows it (#1020).
 		policy: {
 			...policy,
-			github: githubFor(startedByOf(data), runtime.unattendedGithub === true),
+			github,
+			floor:
+				startedBy === "person"
+					? policy.floor
+					: floorFor(startedBy, true, github),
 		},
 		...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
 		...(runtime.launchArgs ? { launchArgs: runtime.launchArgs } : {}),
