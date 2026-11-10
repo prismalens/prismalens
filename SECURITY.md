@@ -71,7 +71,8 @@ Reports in these areas are especially valuable:
 - **The Alertmanager webhook token** — a webhook delivery accepted without the
   token, or a way to learn the token.
 - **Binding beyond loopback** — anything that becomes reachable, or weaker,
-  when `pl up` binds another address with `--host`.
+  when `pl up` binds another address with `--lan` or `--host`. Plain HTTP
+  beyond loopback is refused unless `--lan` is passed.
 - **Tailscale serve** — anything exposed, or trusted, wrongly when PrismaLens
   is published on a tailnet with `--tailscale-serve`.
 - **Permission levels and asks** — a run that gets more than its level: a
