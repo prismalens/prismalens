@@ -303,8 +303,11 @@ export class GatewayService {
 			view: runView(
 				servedTo(this.tools, { ...scope, tree: tree.member }).filter(
 					(t) =>
-						!(tree.actsOff && t.effect === "act") &&
-						!(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
+						// "Never" also stops messaging between threads, though thread_send is a record tool.
+						!(
+							tree.actsOff &&
+							(t.effect === "act" || t.name === "thread_send")
+						) && !(tree.actsOff && !tree.member && TREE_TOOLS.has(t.name)),
 				),
 				{ search: this.toolSearch(harness) },
 			),

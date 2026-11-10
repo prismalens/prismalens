@@ -17,7 +17,7 @@ export const HARNESS_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 
 /**
  * What a tool may do. `read`: PrismaLens's own records. `record`: append to this run's
- * own record, nothing outside it. `ask`: open an ask the user answers, nothing else.
+ * own record, or a message to its own thread tree, nothing outside it. `ask`: open an ask the user answers, nothing else.
  * `act`: change something beyond the run, behind PrismaLens's own approval, never
  * the agent's permission prompt (#1024 spec F).
  */
