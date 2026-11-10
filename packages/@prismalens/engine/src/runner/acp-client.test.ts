@@ -105,7 +105,9 @@ describe("AcpSession when the harness pipe dies", () => {
 
 	it("reports the harness's own stderr as the reason, not a bare write error", async () => {
 		const session = sessionOver(brokenPipeChild("EPIPE"));
-		await expect(session.open()).rejects.toThrow(/harness/i);
+		await expect(session.open()).rejects.toThrow(
+			/harness stdin failed \(write EPIPE\): harness: fatal: not logged in/,
+		);
 	});
 
 	// The harness exits, its pipe EPIPEs on our write, and its `close` follows a
@@ -126,7 +128,9 @@ describe("AcpSession when the harness pipe dies", () => {
 
 	it("still reports an EPIPE the child never explains", async () => {
 		const session = sessionOver(brokenPipeChild("EPIPE"));
-		await expect(session.open()).rejects.toThrow(/harness/i);
+		await expect(session.open()).rejects.toThrow(
+			/harness stdin failed \(write EPIPE\)/,
+		);
 	});
 
 	it("hands every stderr chunk to onStderr as it arrives", async () => {
