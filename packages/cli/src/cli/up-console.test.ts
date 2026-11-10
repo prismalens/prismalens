@@ -74,17 +74,23 @@ describe("resolveLogDir", () => {
 });
 
 describe("resolveBind and displayUrl", () => {
-	it("defaults to http on 127.0.0.1 at the given port, shown as localhost", () => {
+	it("gives 127.0.0.1 for 127.0.0.1, 0.0.0.0 and ::, and keeps an explicit host", () => {
 		const bind = resolveBind({}, 6473);
 		expect(bind).toEqual({ host: "127.0.0.1", port: 6473, protocol: "http" });
-		expect(displayUrl(bind)).toBe("http://localhost:6473");
-	});
-	it("reads the env and shows a wildcard bind as localhost", () => {
-		const bind = resolveBind(
-			{ PRISMALENS_HOST: "0.0.0.0", PRISMALENS_PROTOCOL: "https" },
-			8080,
+		expect(displayUrl(bind)).toBe("http://127.0.0.1:6473");
+
+		expect(
+			displayUrl({ host: "0.0.0.0", port: 8080, protocol: "https" }),
+		).toBe("https://127.0.0.1:8080");
+		expect(displayUrl({ host: "::", port: 8080, protocol: "http" })).toBe(
+			"http://127.0.0.1:8080",
 		);
-		expect(displayUrl(bind)).toBe("https://localhost:8080");
+		expect(
+			displayUrl({ host: "localhost", port: 3001, protocol: "http" }),
+		).toBe("http://localhost:3001");
+		expect(
+			displayUrl({ host: "192.168.1.5", port: 3001, protocol: "http" }),
+		).toBe("http://192.168.1.5:3001");
 	});
 	it("brackets an IPv6 literal in the shown URL", () => {
 		const url = displayUrl({ host: "::1", port: 3001, protocol: "http" });

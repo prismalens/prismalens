@@ -12,6 +12,8 @@
  * (packages/api's OAuthService.handleCallback), not in this package.
  */
 import { createHash } from "node:crypto";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo, Socket } from "node:net";
 import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthTemplate, OAuthStateData } from "../types.js";
@@ -834,6 +836,52 @@ describe("OAuth2Flow.exchangeCodeForTokens — provider payloads never reach the
 		for (const secret of ["secret-xyz", "auth-code", "verifier-123"]) {
 			expect(surfaces, `request credential '${secret}' leaked`).not.toContain(
 				secret,
+			);
+		}
+	});
+});
+
+describe("OAuth2Flow.exchangeCodeForTokens — timeout", () => {
+	it("rejects with 'timed out' when the token endpoint does not answer", async () => {
+		const sockets = new Set<Socket>();
+		const server: Server = createServer((_req, _res) => {
+			// Never answer the token POST
+		});
+		server.on("connection", (socket) => {
+			sockets.add(socket);
+			socket.once("close", () => sockets.delete(socket));
+		});
+
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const port = (server.address() as AddressInfo).port;
+
+		const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+		const spy = vi
+			.spyOn(AbortSignal, "timeout")
+			.mockImplementation(() => realTimeout(50));
+
+		try {
+			const { flow } = makeFlow();
+			const template = templateWith({
+				tokenUrl: `http://127.0.0.1:${port}/oauth/token`,
+			});
+
+			await expect(
+				flow.exchangeCodeForTokens(
+					template,
+					"auth-code",
+					oauthState(),
+					"client-abc",
+					"secret-xyz",
+				),
+			).rejects.toThrow("timed out");
+		} finally {
+			spy.mockRestore();
+			for (const socket of sockets) {
+				socket.destroy();
+			}
+			await new Promise<void>((resolve, reject) =>
+				server.close((err) => (err ? reject(err) : resolve())),
 			);
 		}
 	});
