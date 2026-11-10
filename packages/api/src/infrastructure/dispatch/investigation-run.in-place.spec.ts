@@ -218,7 +218,7 @@ describe("in-place runs on a git checkout (#1024)", () => {
 		}
 	});
 
-	it("the restart status read never runs an fsmonitor hook the checkout names", () => {
+	it("the restart status read never runs an fsmonitor hook the checkout names", async () => {
 		const marker = join(checkout, "..", `hook-ran-${process.pid}`);
 		const hook = join(checkout, "..", `hook-${process.pid}.sh`).replaceAll("\\", "/");
 		writeFileSync(hook, `#!/bin/sh
@@ -230,7 +230,7 @@ printf '/'
 			execFileSync("git", ["status", "--porcelain"], { cwd: checkout });
 			expect(existsSync(marker)).toBe(true);
 			rmSync(marker);
-			observeWorkspace([{ name: "shop", dir: checkout, head: "x" }], new Map([[checkout, true]]));
+			await observeWorkspace([{ name: "shop", dir: checkout, head: "x" }], new Map([[checkout, true]]));
 			expect(existsSync(marker)).toBe(false);
 		} finally {
 			execFileSync("git", ["config", "--unset", "core.fsmonitor"], { cwd: checkout });
@@ -293,6 +293,27 @@ printf '/'
 			branch: "main",
 			dirty: { staged: 0, unstaged: 1, untracked: 0 },
 		});
+		expect(appended).toHaveBeenCalledWith("run-1", [event]);
 		expect(await logBorrowed("run-1", {} as never, {} as never, undefined, 9)).toBe(9);
+	});
+
+	it("refuses a run whose borrowed checkout cannot be recorded", async () => {
+		const borrowed = (await resolveWorkspace(job(), ports)).borrowed;
+		const failingPorts = {
+			lastEventSeq: async () => 4,
+			appendEvents: vi.fn(async () => {
+				throw new Error("disk failure");
+			}),
+		};
+		const err = await logBorrowed(
+			"run-1",
+			{ emit: async () => {} } as never,
+			failingPorts as never,
+			borrowed,
+			null,
+		).catch((e: Error) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message.startsWith("Did not start:")).toBe(true);
+		expect((err as Error).message).toContain(checkout);
 	});
 });

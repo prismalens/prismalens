@@ -146,7 +146,7 @@ describe("checkout leases (#1024)", () => {
 		await lease.checkoutState(dir);
 		await lease.checkoutRoot(dir);
 		expect(existsSync(marker)).toBe(false);
-	});
+	}, 30_000);
 
 	it("admission and restart status never run a clean filter, and mark its unstaged count unknown", async () => {
 		const dir = repo("filtered");
@@ -170,7 +170,7 @@ describe("checkout leases (#1024)", () => {
 		writeFileSync(join(dir, "untracked.txt"), "new\n");
 		expect((await lease.checkoutState(dir)).dirty).toEqual({ staged: 1, unstaged: null, untracked: 1 });
 		const { observeWorkspace } = await import("./investigation-run.js");
-		expect(observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "unchecked" })]);
+		expect(await observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "unchecked" })]);
 		expect(existsSync(marker)).toBe(false);
 	}, 30_000);
 
@@ -194,7 +194,7 @@ describe("checkout leases (#1024)", () => {
 			const index = readFileSync(join(dir, ".git", "index"));
 			expect((await lease.checkoutState(dir)).dirty).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
 			const { observeWorkspace } = await import("./investigation-run.js");
-			expect(observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "as-was" })]);
+			expect(await observeWorkspace([{ name: "repo", dir, head: git(dir, "rev-parse", "HEAD") }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "as-was" })]);
 			expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
 		} finally { vi.unstubAllEnvs(); }
 	}, 30_000);
@@ -213,7 +213,7 @@ describe("checkout leases (#1024)", () => {
 		expect(state.head).toHaveLength(64);
 		expect(state.dirty).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
 		const { observeWorkspace } = await import("./investigation-run.js");
-		expect(observeWorkspace([{ name: "repo", dir, head: state.head }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "as-was" })]);
+		expect(await observeWorkspace([{ name: "repo", dir, head: state.head }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "as-was" })]);
 		expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
 	}, 30_000);
 
@@ -236,7 +236,7 @@ describe("checkout leases (#1024)", () => {
 		const state = await lease.checkoutState(dir);
 		expect(state.dirty).toEqual({ staged: 0, unstaged: null, untracked: 0 });
 		const { observeWorkspace } = await import("./investigation-run.js");
-		expect(observeWorkspace([{ name: "repo", dir, head: state.head }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "unchecked" })]);
+		expect(await observeWorkspace([{ name: "repo", dir, head: state.head }], new Map([[dir, true]]))).toEqual([expect.objectContaining({ state: "unchecked" })]);
 		expect(existsSync(marker)).toBe(false);
 		expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
 	}, 30_000);
@@ -262,7 +262,7 @@ describe("checkout leases (#1024)", () => {
 		const dir = repo("readmitted");
 		await lease.takeLease(prisma as never, dir, run.id);
 		const gone = vi.fn(async () => true);
-		expect(await lease.releaseIfGone(prisma as never, gone, dir)).toBe(0);
+		expect(await lease.releaseIfGone(prisma as never, gone, dir)).toEqual({ released: 0, failed: 0 });
 		expect(gone).not.toHaveBeenCalled();
 		expect(await lease.leasedBy(prisma, run.id)).toBe(dir);
 		await lease.releaseLease(prisma, run.id);
@@ -304,9 +304,9 @@ describe("checkout leases (#1024)", () => {
 		});
 		// An ended run still holds the checkout until its agent is proven gone.
 		expect(await lease.checkoutBusy(prisma as never, shop, second.id)).toBe(true);
-		expect(await lease.releaseIfGone(prisma as never, async () => false, shop)).toBe(0);
+		expect(await lease.releaseIfGone(prisma as never, async () => false, shop)).toEqual({ released: 0, failed: 0 });
 		expect(await lease.checkoutBusy(prisma as never, shop, second.id)).toBe(true);
-		expect(await lease.releaseIfGone(prisma as never, async () => true, shop)).toBe(1);
+		expect(await lease.releaseIfGone(prisma as never, async () => true, shop)).toEqual({ released: 1, failed: 0 });
 		expect(await lease.checkoutBusy(prisma as never, shop, second.id)).toBe(false);
 		await lease.takeLease(prisma as never, shop, second.id);
 		expect(await lease.leasedBy(prisma, second.id)).toBe(shop);
@@ -327,7 +327,7 @@ describe("checkout leases (#1024)", () => {
 			asked.push(id);
 			return id === ended.id;
 		});
-		expect(released).toBeGreaterThanOrEqual(1);
+		expect(released.released).toBeGreaterThanOrEqual(1);
 		expect(await lease.leasedBy(prisma, ended.id)).toBeNull();
 		// A restart that could not prove the agent gone keeps its checkout blocked.
 		expect(await lease.leasedBy(prisma, running.id)).toBe(stillRunning);
@@ -335,7 +335,7 @@ describe("checkout leases (#1024)", () => {
 		expect(await lease.checkoutBusy(prisma as never, stillRunning, next.id)).toBe(true);
 		expect(await lease.leasedBy(prisma, live.id)).toBe(kept);
 		expect(asked).not.toContain(live.id);
-	});
+	}, 30_000);
 
 	it("the run's end releases its lease", async () => {
 		const run = await thread("running");
@@ -411,7 +411,7 @@ describe("checkout leases (#1024)", () => {
 		expect(JSON.stringify(state)).not.toContain("new.txt");
 		git(dir, "checkout", "-q", "--detach");
 		expect((await lease.checkoutState(dir)).branch).toBeNull();
-	});
+	}, 30_000);
 
 	it("counts each porcelain v2 entry kind", () => {
 		expect(
@@ -462,5 +462,243 @@ describe("checkout leases (#1024)", () => {
 			"rev-parse",
 		]);
 		expect(git(shop, "stash", "list")).toBe("");
+	});
+
+	describe("stale leases and busy reason with fake store (#1066)", () => {
+		function fakeStore(opts: {
+			leases: Array<{
+				canonicalPath: string;
+				investigationId: string;
+				generation: number;
+				takenAt: Date;
+			}>;
+			runs: Array<{
+				id: string;
+				status: string;
+				acpSessionId?: string | null;
+				completedAt?: Date | null;
+			}>;
+			failOnId?: string;
+		}) {
+			const leases = opts.leases.map((l) => ({ ...l }));
+			const runs = opts.runs.map((r) => ({ ...r }));
+
+			const client = {
+				checkoutLease: {
+					findMany: async (args?: {
+						where?: { investigationId?: { not?: string } };
+					}) => {
+						const notId = args?.where?.investigationId?.not;
+						return (
+							notId
+								? leases.filter((l) => l.investigationId !== notId)
+								: leases
+						).map((l) => ({ ...l }));
+					},
+					updateMany: async ({
+						where,
+					}: {
+						where: {
+							canonicalPath: string;
+							investigationId: string;
+							generation: number;
+						};
+					}) => {
+						if (opts.failOnId && where.investigationId === opts.failOnId) {
+							throw new Error("transaction failed");
+						}
+						const found = leases.some(
+							(l) =>
+								l.canonicalPath === where.canonicalPath &&
+								l.investigationId === where.investigationId &&
+								l.generation === where.generation,
+						);
+						return { count: found ? 1 : 0 };
+					},
+					deleteMany: async ({
+						where,
+					}: {
+						where: {
+							canonicalPath: string;
+							investigationId: string;
+							generation: number;
+						};
+					}) => {
+						const idx = leases.findIndex(
+							(l) =>
+								l.canonicalPath === where.canonicalPath &&
+								l.investigationId === where.investigationId &&
+								l.generation === where.generation,
+						);
+						if (idx >= 0) {
+							leases.splice(idx, 1);
+							return { count: 1 };
+						}
+						return { count: 0 };
+					},
+				},
+				investigation: {
+					findUnique: async ({ where }: { where: { id: string } }) => {
+						const r = runs.find((run) => run.id === where.id);
+						return r
+							? {
+									status: r.status,
+									acpSessionId: r.acpSessionId ?? null,
+									completedAt: r.completedAt ?? null,
+								}
+							: null;
+					},
+					findMany: async ({
+						where,
+					}: {
+						where: { id: { in: string[] } };
+					}) => {
+						return runs
+							.filter((r) => where.id.in.includes(r.id))
+							.map((r) => ({ status: r.status }));
+					},
+				},
+			};
+
+			return {
+				...client,
+				leases,
+				$transaction: async <T>(fn: (tx: typeof client) => Promise<T>): Promise<T> => {
+					return fn(client);
+				},
+			};
+		}
+
+		it("keeps an ended run's lease when ended under an hour before now, and loses it at STALE_LEASE_MS or later", async () => {
+			const now = new Date("2026-11-10T12:00:00.000Z");
+			const recentStore = fakeStore({
+				leases: [
+					{
+						canonicalPath: shop,
+						investigationId: "recent-run",
+						generation: 1,
+						takenAt: new Date(now.getTime() - 59 * 60 * 1000),
+					},
+				],
+				runs: [
+					{
+						id: "recent-run",
+						status: "completed",
+						completedAt: new Date(now.getTime() - 59 * 60 * 1000),
+					},
+				],
+			});
+			const gone = vi.fn(async () => false);
+			expect(
+				await lease.releaseIfGone(recentStore as never, gone, null, now),
+			).toEqual({ released: 0, failed: 0 });
+			expect(recentStore.leases).toHaveLength(1);
+
+			const staleStore = fakeStore({
+				leases: [
+					{
+						canonicalPath: shop,
+						investigationId: "stale-run",
+						generation: 1,
+						takenAt: new Date(now.getTime() - lease.STALE_LEASE_MS),
+					},
+				],
+				runs: [
+					{
+						id: "stale-run",
+						status: "completed",
+						completedAt: new Date(now.getTime() - lease.STALE_LEASE_MS),
+					},
+				],
+			});
+			expect(
+				await lease.releaseIfGone(staleStore as never, gone, null, now),
+			).toEqual({ released: 1, failed: 0 });
+			expect(staleStore.leases).toHaveLength(0);
+
+			const olderStore = fakeStore({
+				leases: [
+					{
+						canonicalPath: shop,
+						investigationId: "older-run",
+						generation: 1,
+						takenAt: new Date(now.getTime() - lease.STALE_LEASE_MS - 60_000),
+					},
+				],
+				runs: [
+					{
+						id: "older-run",
+						status: "completed",
+						completedAt: new Date(now.getTime() - lease.STALE_LEASE_MS - 60_000),
+					},
+				],
+			});
+			expect(
+				await lease.releaseIfGone(olderStore as never, gone, null, now),
+			).toEqual({ released: 1, failed: 0 });
+			expect(olderStore.leases).toHaveLength(0);
+		});
+
+		it("a row whose transaction throws gives { failed: 1 } while another row is still released", async () => {
+			const store = fakeStore({
+				leases: [
+					{
+						canonicalPath: join(env.root, "repo-fail"),
+						investigationId: "run-fail",
+						generation: 1,
+						takenAt: new Date(),
+					},
+					{
+						canonicalPath: join(env.root, "repo-ok"),
+						investigationId: "run-ok",
+						generation: 1,
+						takenAt: new Date(),
+					},
+				],
+				runs: [
+					{ id: "run-fail", status: "completed" },
+					{ id: "run-ok", status: "completed" },
+				],
+				failOnId: "run-fail",
+			});
+			const result = await lease.releaseIfGone(
+				store as never,
+				async () => true,
+			);
+			expect(result).toEqual({ released: 1, failed: 1 });
+			expect(store.leases.map((l) => l.investigationId)).toEqual(["run-fail"]);
+		});
+
+		it("busyReason gives CHECKOUT_HELD_BY_ENDED when only ended runs hold the path and CHECKOUT_BUSY when a live run does", async () => {
+			const endedStore = fakeStore({
+				leases: [
+					{
+						canonicalPath: shop,
+						investigationId: "ended-1",
+						generation: 1,
+						takenAt: new Date(),
+					},
+				],
+				runs: [{ id: "ended-1", status: "completed" }],
+			});
+			expect(await lease.busyReason(endedStore as never, shop)).toBe(
+				lease.CHECKOUT_HELD_BY_ENDED,
+			);
+
+			const liveStore = fakeStore({
+				leases: [
+					{
+						canonicalPath: shop,
+						investigationId: "live-1",
+						generation: 1,
+						takenAt: new Date(),
+					},
+				],
+				runs: [{ id: "live-1", status: "running" }],
+			});
+			expect(await lease.busyReason(liveStore as never, shop)).toBe(
+				lease.CHECKOUT_BUSY,
+			);
+		});
 	});
 });
