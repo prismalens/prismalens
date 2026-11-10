@@ -34,7 +34,15 @@ async function gitFiles(root: string): Promise<string[] | null> {
 	try {
 		const { stdout } = await run(
 			"git",
-			["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+			[
+				"-c",
+				"core.fsmonitor=",
+				"ls-files",
+				"-z",
+				"--cached",
+				"--others",
+				"--exclude-standard",
+			],
 			{
 				cwd: root,
 				env: gitEnv({ source: "machine", coreSshCommand: null }),
