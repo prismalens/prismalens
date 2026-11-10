@@ -26,7 +26,7 @@ Feature: The incident record and its report
     Scenario: Live Overview
       Given a run is working
       When I open the Overview
-      Then the summary says a run is working and its current step, and the Report section reads "Run 1 investigating"
+      Then the summary says a run is working and its current step, and the Report section reads "Run #1 working"
 
   Rule: Report
     Four slots above the fold, four variants.
