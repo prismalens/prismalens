@@ -27,7 +27,9 @@ import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
 import { LoggerService } from "@prismalens/logger/nestjs";
 import { AppModule } from "./app.module.js";
+import { InstanceIdentity } from "./core/auth/instance-identity.js";
 import { PrismaService } from "./core/prisma/prisma.service.js";
+import { createCrossSiteMiddleware } from "./middlewares/cross-site.middleware.js";
 import { createHelmetMiddleware } from "./middlewares/helmet.middleware.js";
 import {
 	createHostAllowlistMiddleware,
@@ -223,6 +225,14 @@ async function bootstrap() {
 			)
 				? [WEBHOOK_RUNTIME_PATH_PREFIX]
 				: [],
+		}),
+	);
+
+	const instance = app.get(InstanceIdentity);
+	app.use(
+		createCrossSiteMiddleware({
+			cookieName: () => instance.deviceCookie,
+			exemptPathPrefixes: [WEBHOOK_RUNTIME_PATH_PREFIX],
 		}),
 	);
 
