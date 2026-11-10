@@ -2464,6 +2464,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		mkdirSync(cwd, { recursive: true });
 		writeFileSync(join(cwd, ".prismalens"), "not a directory");
 
+		const save = vi.fn(async (_id: string, _raw: string) => {});
 		const ports = fakePorts({
 			preRun: {
 				telemetry: vi.fn(async () => ({
@@ -2481,7 +2482,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 					endpoints: [],
 				})),
 				runbooks: vi.fn(async () => ({ entries: [] })),
-				save: vi.fn(async () => {}),
+				save,
 				load: vi.fn(async () => null),
 			},
 		});
@@ -2489,20 +2490,40 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		const result = await runInvestigationJob(...job("inv-copy-fail"), io(), ports);
 
 		expect(result.success).toBe(true);
+		expect(save).toHaveBeenCalledTimes(1);
+		const [savedId, savedRaw] = save.mock.calls[0] as [string, string];
+		expect(savedId).toBe("inv-copy-fail");
+		const savedPayload = JSON.parse(savedRaw);
+		expect(savedPayload.sources).toEqual([
+			expect.objectContaining({
+				kind: "loki",
+				label: "LOKI_URL",
+				status: "found",
+				detail: "3 error log lines",
+			}),
+		]);
 		const [opts] = mocks.conductRun.mock.calls[0] as [
 			{ context: { preRun?: { state: string; copy: { state: string; reason?: string }; sources: unknown[] } } },
 		];
 		const pre = opts.context.preRun;
 		expect(pre?.state).toBe("ready");
-		expect(pre?.copy.state).toBe("failed");
-		expect(pre?.copy.reason).toContain(".prismalens is not a folder");
+		expect(pre?.copy).toEqual({
+			state: "failed",
+			reason: ".prismalens is not a folder",
+		});
 		expect(pre?.sources).toEqual([
-			expect.objectContaining({ label: "LOKI_URL", status: "found" }),
+			expect.objectContaining({
+				kind: "loki",
+				label: "LOKI_URL",
+				from: "env",
+				status: "found",
+				detail: "3 error log lines",
+			}),
 		]);
 		const { buildInvestigationPrompt } = await import("@prismalens/engine");
 		const prompt = buildInvestigationPrompt(opts.context as never);
 		expect(prompt).not.toContain("Read copies are in");
-		expect(prompt).toContain("LOKI_URL (loki): 3 error log lines");
+		expect(prompt).toContain("Read: LOKI_URL (loki): 3 error log lines.");
 	});
 
 	it("a save that rejects with a message containing a secret calls save twice without the secret (#848)", async () => {
