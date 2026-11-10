@@ -263,9 +263,12 @@ describe("checkout leases (#1024)", () => {
 		await lease.takeLease(prisma as never, dir, run.id);
 		const key = `slow-containment-${run.id}`;
 		let wrote: Promise<unknown> = Promise.resolve();
+		let started = false;
 		const gone = vi.fn(async (_id: string, _session: string | null, signal?: AbortSignal) => {
 			// A write from elsewhere lands while containment holds the lease transaction open.
-			wrote = prisma.setting.create({ data: { key, value: '"x"' } });
+			// then() starts the query now; a bare Prisma query waits until it is awaited.
+			wrote = prisma.setting.create({ data: { key, value: '"x"' } }).then(() => undefined);
+			started = true;
 			await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve()));
 			return false;
 		});
@@ -273,6 +276,7 @@ describe("checkout leases (#1024)", () => {
 			released: 0,
 			failed: 1,
 		});
+		expect(started).toBe(true);
 		await wrote;
 		expect(await lease.leasedBy(prisma, run.id)).toBe(dir);
 		expect((await prisma.setting.findUnique({ where: { key } }))?.value).toBe('"x"');
