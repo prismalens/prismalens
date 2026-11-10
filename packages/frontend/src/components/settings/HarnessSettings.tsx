@@ -429,7 +429,7 @@ function StrictEnvRow() {
 			description={
 				on
 					? "Agents get the basics (PATH, home, locale, proxy and certificates), their provider keys and the variables set on each agent"
-					: "Agents get your environment, as your terminal has it, minus PrismaLens's own secrets"
+					: "Threads you start get your environment, minus PrismaLens's own secrets. Alert and schedule runs always get named variables only"
 			}
 			testId="harness-strict-env-row"
 		>
