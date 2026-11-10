@@ -1812,7 +1812,8 @@ export async function logWorkspaceSetup(
 
 /**
  * `workspace_borrowed` in the run's log (#1024): the checkout's path, HEAD, branch and change
- * counts before the first turn. Answers the seq the agent's events start at, like the setup log.
+ * counts before the first turn. Answers the seq the agent's events start at, like the setup log;
+ * throws, ending the run before its agent starts, when the record cannot be written.
  */
 export async function logBorrowed(
 	runId: string,
@@ -1851,7 +1852,10 @@ export async function logBorrowed(
 		await io.emit(event);
 		await ports.appendEvents(runId, [event]);
 	} catch (e) {
-		logger.warn("Could not record the borrowed checkout in the run's log", e);
+		// The record is what shows later what the run found in the user's checkout: no record, no run.
+		throw new Error(
+			`Did not start: PrismaLens could not record the state of your checkout ${borrowed.path} (${messageOf(e)}). Nothing in it was changed.`,
+		);
 	}
 	return seq;
 }
