@@ -316,5 +316,18 @@ describe("rejectionMessage", () => {
 		expect(message).toContain("evil.example");
 		expect(message).toContain("PRISMALENS_ALLOWED_HOSTS");
 	});
+
+	it("suggests no allowlist entry for a value that is not plainly a hostname", () => {
+		const unsafe = ["a.example,b.example", "x;rm -rf ~", "$(id)"];
+		expect(unsafe.map((value) => rejectionMessage("Host", value))).toEqual(
+			unsafe.map(
+				() =>
+					"Blocked request: cannot suggest an allowlist entry for the Host header.",
+			),
+		);
+		expect(rejectionMessage("Origin", "not a url")).toBe(
+			"Blocked request: cannot suggest an allowlist entry for the Origin header.",
+		);
+	});
 });
 

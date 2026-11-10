@@ -265,9 +265,10 @@ export function rejectionMessage(
 ): string {
 	if (!value) return `Blocked request: the ${header} header is missing.`;
 	const name =
-		header === "Origin"
-			? (safeUrlHostname(value) ?? value)
-			: (normalizeHostname(value) ?? value);
+		header === "Origin" ? safeUrlHostname(value) : normalizeHostname(value);
+	// The suggestion is meant to be copied into a shell: name only what is plainly a hostname.
+	if (!name || !/^[a-z0-9._:-]{1,253}$/i.test(name))
+		return `Blocked request: cannot suggest an allowlist entry for the ${header} header.`;
 	return (
 		`PrismaLens does not answer to "${name}". If that is how you reach it, ` +
 		`start it with PRISMALENS_ALLOWED_HOSTS=${name} (comma-separate several). ` +
