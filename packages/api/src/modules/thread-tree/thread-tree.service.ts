@@ -735,7 +735,7 @@ export class ThreadTreeService
 				value: {
 					status: retried.state,
 					messageId: retried.id,
-					link: threadLink(to),
+					link: threadLink((await this.row(retried.toId)) ?? to),
 				},
 			};
 		if (sent >= TREE_MESSAGE_CAP)
@@ -765,7 +765,12 @@ export class ThreadTreeService
 				},
 			});
 			return {
-				value: { status: seen.state, messageId: seen.id, link: threadLink(to) },
+				value: {
+					status: seen.state,
+					messageId: seen.id,
+					// The stored recipient: a role reused since the first send names someone else now.
+					link: threadLink((await this.row(seen.toId)) ?? to),
+				},
 			};
 		}
 		await this.io.record(callerId, {
