@@ -1010,8 +1010,7 @@ function Attachments({
 					<a
 						key={f.id}
 						href={href}
-						target="_blank"
-						rel="noreferrer"
+						download={f.name}
 						className="inline-flex h-7 max-w-56 items-center gap-1.5 rounded-[var(--radius-control)] bg-surface-3 px-2 text-meta text-text-1 hover:bg-surface-4"
 					>
 						<FileText className="size-3.5 shrink-0 text-text-3" />

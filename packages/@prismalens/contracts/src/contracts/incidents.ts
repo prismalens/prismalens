@@ -23,6 +23,7 @@ import {
 	InvestigationRefusalSchema,
 	MergeIncidentSchema,
 	paginatedResponseSchema,
+	ServedAttachmentSchema,
 	UpdateIncidentSchema,
 	UploadAttachmentSchema,
 } from "../schemas/index.js";
@@ -163,9 +164,10 @@ export const incidentsContract = {
 			path: "/incidents/{id}/attachments/{attachmentId}",
 			summary: "Download an attached file",
 			tags: ["incidents"],
+			outputStructure: "detailed",
 		})
 		.input(GetAttachmentSchema)
-		.output(z.file()),
+		.output(ServedAttachmentSchema),
 
 	/**
 	 * Resolve an incident

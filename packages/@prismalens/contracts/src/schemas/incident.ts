@@ -328,6 +328,19 @@ export const GetAttachmentSchema = z.object({
 	id: z.string().uuid(),
 	attachmentId: z.string().uuid(),
 });
+/**
+ * An attached file as served: only the four image types render inline, and
+ * every response is sandboxed, so stored bytes never run in the app's origin.
+ */
+export const ServedAttachmentSchema = z.object({
+	headers: z.object({
+		"content-disposition": z.string(),
+		"content-security-policy": z.string(),
+		"x-content-type-options": z.literal("nosniff"),
+	}),
+	body: z.file(),
+});
+export type ServedAttachment = z.infer<typeof ServedAttachmentSchema>;
 export type InvestigateIncidentInput = z.infer<
 	typeof InvestigateIncidentSchema
 >;
