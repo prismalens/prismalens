@@ -6,8 +6,7 @@
  *
  * Collapsing the app to one process (ADR-0029) removed the unauthenticated
  * frontend origin, but it did not remove the DNS-rebinding *class*: `@Public()`
- * routes (login, session, setup) stay reachable, and during the pre-setup
- * window a rebound page could drive owner creation. CORS does not help here —
+ * routes (pairing redemption, webhooks, health) stay reachable. CORS does not help here —
  * a rebound page is *same-origin* from the browser's point of view, so no
  * preflight happens and no `Access-Control-*` header is consulted.
  *

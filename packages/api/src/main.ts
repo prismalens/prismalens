@@ -220,7 +220,7 @@ async function bootstrap() {
 		logger.warn(
 			'PRISMALENS_ALLOWED_HOSTS="*" — the Host/Origin allowlist is DISABLED. ' +
 				"This re-opens the DNS-rebinding class against public routes " +
-				"(login, session, setup). Prefer listing the hostnames you actually use.",
+				"(pairing, webhooks). Prefer listing the hostnames you actually use.",
 		);
 	}
 
@@ -356,9 +356,6 @@ async function bootstrap() {
 	logger.info(`PrismaLens API running on ${protocolDisplay}://${host}:${port}`);
 	logger.info(`Health check: ${protocolDisplay}://${host}:${port}/health`);
 	logger.info(`API endpoints: ${protocolDisplay}://${host}:${port}/api`);
-	logger.info(
-		`API documentation: ${protocolDisplay}://${host}:${port}/api/docs`,
-	);
 
 	// `pl up` mints the host's startup link itself (ADR 0004 §8). In dev
 	// nothing else does, and the browser is Vite's, so the API prints one.
