@@ -76,6 +76,7 @@
 	],
 	"followUp": [
 		{
+			"delayMs": 1000,
 			"say": "Picking up after the restart: the index drop is still the change.\n"
 		},
 		{
