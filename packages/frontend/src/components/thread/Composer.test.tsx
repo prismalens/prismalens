@@ -306,6 +306,11 @@ describe("the one composer (#1020)", () => {
 		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(false);
 		await enter();
 		expect(onSend).toHaveBeenCalledTimes(2);
+
+		await type("hand over");
+		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(true);
+		await enter();
+		expect(onSend).toHaveBeenCalledTimes(2);
 	});
 
 	it("clears only the files a deferred send carried, even when the text changed meanwhile", async () => {

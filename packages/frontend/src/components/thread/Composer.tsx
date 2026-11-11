@@ -211,6 +211,12 @@ interface Draft {
 	preview?: string;
 }
 
+const without = (id: string) => (h: ReadonlySet<string>) => {
+	const next = new Set(h);
+	next.delete(id);
+	return next;
+};
+
 const release = (drafts: Draft[]) => {
 	for (const d of drafts) if (d.preview) URL.revokeObjectURL(d.preview);
 };
@@ -279,7 +285,7 @@ export function Composer({
 	);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
-	const [held, setHeld] = useState<string | null>(null);
+	const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const live = state === "live";
@@ -287,7 +293,7 @@ export function Composer({
 	const hasText = !!text.trim();
 	// A deferred draft stays locked while it is unchanged; editing it makes a new send.
 	const draftId = JSON.stringify([text.trim(), drafts.map((d) => d.key)]);
-	const busy = sending || held === draftId || !!pending;
+	const busy = sending || held.has(draftId) || !!pending;
 	const canSend = !busy && !blocked && !holdSend && (hasText || !!emptySend);
 	const slashQuery = /^\/(\w*)$/.exec(text)?.[1]?.toLowerCase();
 	const commands =
@@ -376,14 +382,14 @@ export function Composer({
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
 			if (receipt.result === "sent") clear(sentText, sentKeys);
 			else if (receipt.result === "deferred") {
-				setHeld(sentId);
+				setHeld((h) => new Set(h).add(sentId));
 				void receipt.settled?.then(
 					(r) => {
-						setHeld((h) => (h === sentId ? null : h));
+						setHeld(without(sentId));
 						if (r === "sent") clear(sentText, sentKeys);
 					},
 					(e: unknown) => {
-						setHeld((h) => (h === sentId ? null : h));
+						setHeld(without(sentId));
 						setRefusal(getErrorMessage(e));
 					},
 				);
