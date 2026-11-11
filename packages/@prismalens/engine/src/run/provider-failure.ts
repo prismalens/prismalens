@@ -54,8 +54,9 @@ const CREDIT_WORDS =
 	/credit balance is too low|out of credit|insufficient (credit|credits|funds|balance)|quota exceeded\. check your plan and billing|check your plan and billing|payment required|add (more )?credits?|prepay credits/;
 const KEY_WORDS =
 	/invalid x-api-key|incorrect api key|invalid api key|api key not valid|api_key_invalid|reported as leaked|api key (was|has been) (revoked|disabled|deleted)|invalid authentication|invalid bearer token/;
+/** A dropped provider connection is retried like a busy provider (#1101 simulated conditions). */
 const OVERLOADED_WORDS =
-	/overloaded|at capacity|\b529\b|high demand|service unavailable|\b503\b/;
+	/overloaded|at capacity|\b529\b|high demand|service unavailable|\b503\b|connection error|econnreset|socket hang up|stream (was )?(dropped|closed|disconnected)/;
 const RATE_WORDS = /rate.?limit|\b429\b|too many requests/;
 
 function plain(text: string): string {
@@ -106,7 +107,11 @@ export function classifyFailure(
 ): RunFailure | null {
 	const said = plain(text ?? "");
 	const ids = plain(`${facts.code ?? ""} ${facts.type ?? ""}`);
-	let mode = byCode(ids) ?? byStatus(facts.status, `${said} ${ids}`);
+	// The code is the most specific: `organization_spend_limit_exceeded` beside type `insufficient_quota`.
+	let mode =
+		byCode(plain(facts.code ?? "")) ??
+		byCode(plain(facts.type ?? "")) ??
+		byStatus(facts.status, `${said} ${ids}`);
 	// A generic rate code or a bare status says less than the words beside it.
 	if (mode === null || mode === "rate_limited") {
 		if (SPEND_WORDS.test(said)) mode = "spend_cap";

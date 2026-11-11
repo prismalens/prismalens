@@ -65,6 +65,8 @@ export interface Step {
 	readLinks?: boolean;
 	/** Ends the turn with this JSON-RPC error instead of a stop reason. */
 	error?: RpcErrorStep;
+	/** Fields the prompt's answer carries beside its stop reason, such as `usage` (#1101). */
+	respond?: Record<string, unknown>;
 }
 
 export interface FakeSession {
