@@ -32,7 +32,7 @@ export function menuResult(
 		.filter((c) => c.id.startsWith(q))
 		.map((c) => ({
 			ref: { kind: "command", id: c.id, label: `/${c.id}` },
-			detail: c.detail ?? c.label,
+			detail: c.detail ? `${c.label} · ${c.detail}` : c.label,
 			source: "app",
 			group: "PrismaLens",
 			why: "match",

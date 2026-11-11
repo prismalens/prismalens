@@ -129,27 +129,27 @@ export function ComposerMenu({
 									data-testid="composer-menu-row"
 									data-ref={`${h.ref.kind}:${h.ref.id}`}
 								>
+									{/* Page actions keep the id their journeys and docs name; it spans the row's words. */}
 									<span
-										className="shrink-0 truncate"
-										// Page actions keep the id their journeys and docs name.
+										className="contents"
 										data-testid={
 											h.ref.kind === "command"
 												? `composer-slash-${h.ref.id}`
 												: undefined
 										}
 									>
-										{h.ref.label}
+										<span className="shrink-0 truncate">{h.ref.label}</span>
+										{h.inputHint && (
+											<span className="shrink-0 font-mono text-meta text-text-3">
+												{h.inputHint}
+											</span>
+										)}
+										{h.detail && (
+											<span className="min-w-0 truncate text-meta text-text-3">
+												{h.detail}
+											</span>
+										)}
 									</span>
-									{h.inputHint && (
-										<span className="shrink-0 font-mono text-meta text-text-3">
-											{h.inputHint}
-										</span>
-									)}
-									{h.detail && (
-										<span className="min-w-0 truncate text-meta text-text-3">
-											{h.detail}
-										</span>
-									)}
 									{why && (
 										<span className="ml-auto shrink-0 text-meta text-text-3">
 											{why}
