@@ -261,9 +261,15 @@ export class MonitoringProvider implements ReferenceProvider {
 		return this.source === "Alertmanager" ? "alertmanager" : "prometheus";
 	}
 
-	/** Every item of `kinds` from every connection; throws only when none answered. */
-	private async items(kinds: readonly ReferenceKind[], signal?: AbortSignal) {
-		const conns = await this.sources.connections(this.templateId);
+	/** Every item of `kinds` from every connection, or from `only`; throws only when none answered. */
+	private async items(
+		kinds: readonly ReferenceKind[],
+		signal?: AbortSignal,
+		only?: string,
+	) {
+		const conns = (await this.sources.connections(this.templateId)).filter(
+			(c) => !only || c.id === only,
+		);
 		const out: { connectionLabel: string; item: Item }[] = [];
 		const failed: string[] = [];
 		await Promise.all(
@@ -340,15 +346,21 @@ export class MonitoringProvider implements ReferenceProvider {
 					this.source,
 					"this link names no single alert, silence or rule",
 				);
-			const found = await this.items([wanted.kind], signal);
-			const hit = found.find(
+			const found = await this.items([wanted.kind], signal, c.id);
+			const hits = found.filter(
 				({ item }) => item.ref.id.startsWith(`${c.id}:`) && wanted.is(item),
 			);
-			if (!hit)
+			if (!hits.length)
 				throw new SourceUnavailable(
 					this.source,
 					"nothing on it matches this link",
 				);
+			if (hits.length > 1)
+				throw new SourceUnavailable(
+					this.source,
+					`${hits.length} items match this link; it names no single one`,
+				);
+			const hit = hits[0] as (typeof hits)[number];
 			return {
 				ref: hit.item.ref,
 				detail: hit.item.detail.slice(0, 300),

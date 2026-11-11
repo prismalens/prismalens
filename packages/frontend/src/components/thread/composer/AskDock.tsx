@@ -17,6 +17,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useOperator } from "@/hooks/use-operator";
 import {
 	useAnswerAsk,
 	useAnswerSecret,
@@ -54,6 +55,8 @@ export function AskDock({
 	focusAskId?: string | null;
 }) {
 	const list = [...asks].sort((a, b) => a.openedAt.localeCompare(b.openedAt));
+	// The host's own session may answer an ask only it can; any other browser is pointed there.
+	const { managesPairing: onHost } = useOperator();
 	const [at, setAt] = useState(0);
 	const [hidden, setHidden] = useState(false);
 	const focusAt = focusAskId
@@ -137,7 +140,7 @@ export function AskDock({
 			{ask.detail && (
 				<p className="truncate font-mono text-meta text-text-2">{ask.detail}</p>
 			)}
-			{ask.requiresHost ? (
+			{ask.requiresHost && !onHost ? (
 				<p className="text-meta text-text-2" data-testid="ask-dock-host">
 					Answer on the host machine
 				</p>

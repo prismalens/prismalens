@@ -69,6 +69,10 @@ export function useComposerDraft({
 	const [conflict, setConflict] = useState<DraftConflict | null>(null);
 	const [unsaved, setUnsaved] = useState(false);
 	const at = useRef({ rev: 0, generation: 0 });
+	// One save at a time: a later one starts from the revision the earlier one returned.
+	const saving = useRef<Promise<void>>(Promise.resolve());
+	// After a send the box is empty; that is not a draft to save over what the server holds.
+	const justSent = useRef(false);
 	const restore = useRef(onRestore);
 	restore.current = onRestore;
 	const latest = useRef({ content, files });
@@ -139,14 +143,24 @@ export function useComposerDraft({
 
 	// Every change: the journal now, the server after the debounce.
 	const contentKey = JSON.stringify([content, files.map((f) => f.key)]);
-	const pushRef = useRef(push);
-	pushRef.current = push;
+	const pushRef = useRef(() => {
+		const next = saving.current.then(() => push());
+		saving.current = next.catch(() => {});
+		return next;
+	});
+	pushRef.current = () => {
+		const next = saving.current.then(() => push());
+		saving.current = next.catch(() => {});
+		return next;
+	};
 	// biome-ignore lint/correctness/useExhaustiveDependencies: contentKey is the change signal.
 	useEffect(() => {
 		if (!scope || !loaded || conflict) return;
 		const ok = writeJournal(scope, journalNow(true));
 		setUnsaved(!ok);
 		if (isEmptyContent(content) && at.current.rev === 0) return;
+		if (isEmptyContent(content) && justSent.current) return;
+		justSent.current = false;
 		const t = setTimeout(() => void pushRef.current(), DRAFT_DEBOUNCE_MS);
 		return () => clearTimeout(t);
 	}, [contentKey, scope, loaded, conflict]);
@@ -192,6 +206,7 @@ export function useComposerDraft({
 				rev: at.current.rev + 1,
 				generation: at.current.generation + 1,
 			};
+			justSent.current = true;
 			writeJournal(scope, undefined);
 		},
 		keepMine: () => {

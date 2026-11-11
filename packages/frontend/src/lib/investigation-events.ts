@@ -1396,7 +1396,13 @@ export function unmatchedPending(
 export function queuedMessages(
 	events: ReadonlyArray<CanonicalEvent>,
 	pending: ReadonlyArray<PendingMessage>,
-): { key: string; text: string; attachments: AttachmentView[] }[] {
+): {
+	key: string;
+	/** The server's id; absent until the API answers a just-sent message. */
+	messageId?: string;
+	text: string;
+	attachments: AttachmentView[];
+}[] {
 	const open = new Map<
 		string,
 		Extract<CanonicalEvent, { kind: "message_queued" }>
@@ -1415,6 +1421,7 @@ export function queuedMessages(
 	return [
 		...Array.from(open.values()).map((q) => ({
 			key: q.messageId,
+			messageId: q.messageId,
 			text: q.text,
 			attachments: q.attachments ?? [],
 		})),
@@ -1422,6 +1429,7 @@ export function queuedMessages(
 			.filter((m) => m.mode === "queue" && !m.undelivered)
 			.map((m) => ({
 				key: m.id,
+				...(m.messageId ? { messageId: m.messageId } : {}),
 				text: m.text,
 				attachments: m.attachments ?? [],
 			})),

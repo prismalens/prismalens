@@ -40,6 +40,7 @@ export function RunDock({
 	asks: readonly AskRecord[];
 	queued: readonly {
 		key: string;
+		messageId?: string;
 		text: string;
 		attachments: AttachmentView[];
 	}[];
@@ -73,7 +74,12 @@ export function RunDock({
 	);
 }
 
-type Queued = { key: string; text: string; attachments: AttachmentView[] };
+type Queued = {
+	key: string;
+	messageId?: string;
+	text: string;
+	attachments: AttachmentView[];
+};
 
 /** Messages waiting for the agent's next pause, muted, each with Edit and Withdraw (#1024). */
 function QueuedList({
@@ -98,7 +104,8 @@ function QueuedList({
 		<ul className="flex flex-col gap-0.5" data-testid="dock-queued">
 			{shown.map((m) => {
 				const text = edited[m.key] ?? m.text;
-				if (editing?.key === m.key && runId)
+				const messageId = m.messageId;
+				if (editing?.key === m.key && runId && messageId)
 					return (
 						<li key={m.key}>
 							<form
@@ -108,7 +115,7 @@ function QueuedList({
 									const next = editing.text.trim();
 									if (!next) return;
 									edit.mutate(
-										{ id: runId, messageId: m.key, text: next },
+										{ id: runId, messageId, text: next },
 										{
 											onSuccess: () => {
 												setEdited((all) => ({ ...all, [m.key]: next }));
@@ -166,6 +173,7 @@ function QueuedList({
 								<Button
 									variant="text"
 									size="sm"
+									disabled={!m.messageId}
 									onClick={() => setEditing({ key: m.key, text })}
 									data-testid="queued-edit"
 								>
@@ -174,10 +182,11 @@ function QueuedList({
 								<Button
 									variant="text"
 									size="sm"
-									disabled={withdraw.isPending}
+									disabled={withdraw.isPending || !m.messageId}
 									onClick={() =>
+										m.messageId &&
 										withdraw.mutate(
-											{ id: runId, messageId: m.key },
+											{ id: runId, messageId: m.messageId },
 											{
 												onSuccess: () => setGone((g) => new Set(g).add(m.key)),
 												onError: fail,

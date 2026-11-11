@@ -50,6 +50,19 @@ vi.mock("@/lib/api/hooks/use-references-orpc", async (importOriginal) => {
 	};
 });
 
+let mockServerDraft: unknown = null;
+vi.mock("@/lib/api/hooks/use-drafts-orpc", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@/lib/api/hooks/use-drafts-orpc")>();
+	return {
+		...actual,
+		useServerDraft: () => ({ data: mockServerDraft, isPending: false }),
+		useSaveDraft: () => ({
+			mutateAsync: vi.fn(async () => ({ rev: 1, generation: 0 })),
+		}),
+	};
+});
+
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -58,6 +71,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+	mockServerDraft = null;
 	localStorage.clear();
 	mockReferenceSearch.mockReturnValue({
 		data: undefined,
@@ -251,6 +265,66 @@ describe("the one composer (#1020)", () => {
 		expect(q("composer-menu")).toBeNull();
 	});
 
+	it("a typed page action keeps the arguments after it, and a picked one keeps the text around the slash", async () => {
+		const note = vi.fn();
+		await render({ slash: [{ id: "note", label: "Note", run: note }] });
+		const typed = await type("/note check the pool");
+		await act(async () => {
+			typed.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(note).toHaveBeenCalledTimes(1);
+		expect(typed.value).toBe("check the pool");
+
+		await type("check the pool\n/no");
+		await act(async () => {
+			(
+				container.querySelector('[data-ref="command:note"]') as HTMLElement
+			).click();
+		});
+		expect(note).toHaveBeenCalledTimes(2);
+		expect((q("composer-input") as HTMLTextAreaElement).value).toBe(
+			"check the pool\n",
+		);
+	});
+
+	it("a restored draft keeps the quote the box opened with", async () => {
+		mockServerDraft = {
+			scope: "new:home",
+			rev: 2,
+			generation: 0,
+			text: "earlier words",
+			quotes: [],
+			references: [],
+			choice: {},
+			updatedAt: "2026-11-11T10:00:00.000Z",
+			attachments: [],
+		};
+		const quote: Quote = {
+			source: {
+				threadId: "11111111-1111-1111-1111-111111111111",
+				kind: "transcript",
+			},
+			text: "the quoted slice",
+		};
+		await render({
+			scope: "new:home",
+			seed: {
+				quotes: [{ key: "seed-1", quote, cut: false }],
+				references: [],
+			},
+		});
+		expect((q("composer-input") as HTMLTextAreaElement).value).toBe(
+			"earlier words",
+		);
+		const chips = Array.from(
+			container.querySelectorAll('[data-testid="composer-quote"]'),
+		);
+		expect(chips).toHaveLength(1);
+		expect(chips[0]?.textContent).toContain("the quoted slice");
+	});
+
 	it("keeps the typed text in the box when onSend returns deferred or cancelled", async () => {
 		const onSendDeferred = vi.fn(() => "deferred" as const);
 		await render({ onSend: onSendDeferred });
@@ -429,7 +503,7 @@ describe("the one composer (#1020)", () => {
 		expect(box.value).toBe("");
 	});
 
-	it("paste-fold threshold: pasting 1,999 characters leaves the text in the box and adds no composer-paste-chip; pasting 2,001 characters adds one chip reading Pasted text, 1 lines and leaves the box empty", async () => {
+	it("paste-fold threshold: pasting 1,999 characters leaves the text in the box and adds no composer-paste-chip; pasting 2,001 characters adds one chip reading Pasted text, 1 line and leaves the box empty", async () => {
 		await render();
 		const box = q("composer-input") as HTMLTextAreaElement;
 
@@ -467,7 +541,7 @@ describe("the one composer (#1020)", () => {
 		expect(box.value).toBe("");
 		const chip = q("composer-paste-chip");
 		expect(chip).not.toBeNull();
-		expect(chip?.textContent).toBe("Pasted text, 1 lines");
+		expect(chip?.textContent).toBe("Pasted text, 1 line");
 	});
 
 	it("the paste chip expands on click and Paste as text puts the exact text back in the box and removes the chip", async () => {

@@ -367,6 +367,38 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		);
 	});
 
+	it("an investigation sent from a saved draft consumes that draft once its job is stored, and keeps it when no job was stored", async () => {
+		const run = async (jobId: string | null) => {
+			const consume = vi.fn(async () => "deleted");
+			const controller = new IncidentsController(
+				{ findById: vi.fn().mockResolvedValue(mockIncident), update: vi.fn() } as unknown as IncidentsService,
+				{
+					startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-3" }, created: true }),
+				} as unknown as InvestigationsService,
+				{ addInvestigationJob: vi.fn().mockResolvedValue(jobId) } as unknown as DispatchService,
+				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
+				{
+					ensureReady: vi.fn().mockResolvedValue({ ready: true }),
+					resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
+				} as unknown as HarnessService,
+				{} as never,
+				{ consume } as never,
+				{ compose: async () => undefined } as never,
+			);
+			await (getHandlers(controller).investigate as (a: { input: Record<string, unknown> }) => Promise<unknown>)({
+				input: { id: mockIncident.id, brief: "Look at the pool.", draftScope: "new:home", draftRev: 4 },
+			});
+			return consume;
+		};
+
+		const stored = await run("job-3");
+		expect(stored).toHaveBeenCalledTimes(1);
+		expect(stored).toHaveBeenCalledWith("new:home", 4);
+
+		const notStored = await run(null);
+		expect(notStored).not.toHaveBeenCalled();
+	});
+
 	describe("chat (#673: runs as threads)", () => {
 		const ready = () =>
 			({

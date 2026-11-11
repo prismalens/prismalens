@@ -309,6 +309,13 @@ export class IncidentsController {
 						...choice,
 						...(attachments.length ? { attachments } : {}),
 					});
+					// Only a stored job is a sent message: a failed admission keeps the draft (#1024).
+					if (jobId)
+						await consumeAfterSend(
+							this.drafts,
+							input.draftScope,
+							input.draftRev,
+						);
 
 					return {
 						incidentId: input.id,

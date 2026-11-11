@@ -359,6 +359,7 @@ export function Composer({
 	const [drafts, setDrafts] = useState<Draft[]>(() =>
 		(initialFiles ?? []).map((f) => draftOf(f)),
 	);
+	const seeded = useRef(seed ?? null);
 	const [quotes, setQuotes] = useState<QuoteChip[]>(() => seed?.quotes ?? []);
 	const [refs, setRefs] = useState<RefChipItem[]>(() =>
 		(seed?.references ?? []).map((ref) => ({
@@ -475,15 +476,27 @@ export function Composer({
 		content,
 		files: pendingFiles,
 		onRestore: (c, files) => {
+			// A restored draft keeps the seed the box opened with, such as an "Ask in a new thread" quote.
+			const opened = seeded.current;
+			seeded.current = null;
 			setText(c.text);
-			setQuotes(
-				c.quotes.map((quote) => ({
+			setQuotes([
+				...c.quotes.map((quote) => ({
 					key: crypto.randomUUID(),
 					quote,
 					cut: false,
 				})),
-			);
-			setRefs(c.references.map((r) => ({ key: crypto.randomUUID(), ref: r })));
+				...(opened?.quotes ?? []),
+			]);
+			setRefs([
+				...c.references.map((r) => ({ key: crypto.randomUUID(), ref: r })),
+				...(opened?.references ?? [])
+					.filter(
+						(r) =>
+							!c.references.some((x) => x.kind === r.kind && x.id === r.id),
+					)
+					.map((r) => ({ key: crypto.randomUUID(), ref: r })),
+			]);
 			if (!scope || !files.length) return;
 			void Promise.all(
 				files.map(async (f) => {
@@ -611,7 +624,7 @@ export function Composer({
 	const runApp = (name: string, args: string): boolean => {
 		const local = slash?.find((c) => c.id === name);
 		if (local) {
-			setText("");
+			setText(args);
 			local.run();
 			return true;
 		}
@@ -645,12 +658,12 @@ export function Composer({
 				...(harness ? { harness: harness.id as HarnessId } : {}),
 				...(choice.model ? { model: choice.model } : {}),
 			});
-			setText("");
+			setText(args);
 			setCommand(null);
 			return true;
 		}
 		if (name === "model" || name === "effort") {
-			setText("");
+			setText(args);
 			setCommand(null);
 			if (locked) setHint("Kept from the first message");
 			else
@@ -660,7 +673,7 @@ export function Composer({
 			return true;
 		}
 		if (name === "context") {
-			setText("");
+			setText(args);
 			setCommand(null);
 			openContextMeter();
 			return true;
@@ -678,7 +691,7 @@ export function Composer({
 			const source = hit.source ?? "app";
 			if (source === "app" && name !== "compact") {
 				setBox(rest, at);
-				runApp(name, "");
+				runApp(name, rest);
 				return;
 			}
 			setCommand({

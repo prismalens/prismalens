@@ -165,6 +165,8 @@ export function NewThread({
 			id,
 			brief: text,
 			...run,
+			...(env.draftScope ? { draftScope: env.draftScope } : {}),
+			...(env.draftRev !== undefined ? { draftRev: env.draftRev } : {}),
 			...(uploaded.length ? { attachments: uploaded.map((a) => a.id) } : {}),
 		});
 		madeIncident.current = null;

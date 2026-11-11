@@ -10,6 +10,7 @@ import {
 	deriveTranscript,
 	latestAgentText,
 	pinnedTo,
+	queuedMessages,
 	splitAgentText,
 	type TranscriptItem,
 } from "./investigation-events";
@@ -649,6 +650,22 @@ describe("queuedMessages folds edits and withdrawals (#1024)", () => {
 	it("shows an edited message's new text and drops a withdrawn one", () => {
 		expect(queuedMessages(events, [])).toEqual([
 			{ key: A, text: "first, edited", attachments: [] },
+		]);
+	});
+});
+
+describe("queuedMessages", () => {
+	it("names the server's id on a recorded line, and on a just-sent one only once the API answered", () => {
+		const queued = queuedMessages(
+			[],
+			[
+				{ id: "local-1", text: "no id yet", mode: "queue", at: "2026-11-11T10:00:00Z" },
+				{ id: "local-2", messageId: "srv-2", text: "has id", mode: "queue", at: "2026-11-11T10:00:01Z" },
+			],
+		);
+		expect(queued).toEqual([
+			{ key: "local-1", text: "no id yet", attachments: [] },
+			{ key: "local-2", messageId: "srv-2", text: "has id", attachments: [] },
 		]);
 	});
 });

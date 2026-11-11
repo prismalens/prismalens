@@ -85,6 +85,9 @@ describe("match tiers (#1024)", () => {
 		expect(matchTier("desk", DESK)?.tier).toBe(2);
 		expect(matchTier("PRdesk", DESK)?.tier).toBe(3);
 		expect(matchTier("pdw", DESK)?.tier).toBe(3);
+		// A leading trigger is dropped for the loose tier too: `@dsk` meets "PR desk" as `dsk` does.
+		expect(matchTier("@dsk", DESK)).toEqual(matchTier("dsk", DESK));
+		expect(matchTier("dsk", DESK)?.tier).toBe(4);
 		expect(matchTier("pdwm", DESK)?.tier).toBe(3);
 		expect(matchTier("rvw", DESK)?.tier).toBe(4);
 		expect(matchTier("zzz", DESK)).toBeNull();
@@ -96,7 +99,7 @@ describe("match tiers (#1024)", () => {
 	});
 
 	it("@PR: label prefixes first, running threads then newest within the tier, then word starts", () => {
-		expect(rank(threads, "@PR", none, NOW).map((h) => h.ref.id)).toEqual(["t1", "t2", "t5", "t3", "t4"]);
+		expect(rank(threads, "@PR", none, NOW).map((h) => h.ref.id)).toEqual(["t1", "t2", "t5", "t3", "t4", "t7"]);
 	});
 
 	it("a past pick lifts the desk thread to the top of its tier", () => {

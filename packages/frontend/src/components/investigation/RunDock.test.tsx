@@ -10,9 +10,13 @@ import type { AskRecord } from "@/lib/run-asks";
 import { RunDock } from "./RunDock";
 
 const mutateSpy = vi.fn();
+const withdrawSpy = vi.fn();
+const editSpy = vi.fn();
 let answerError: { code: string } | null = null;
 
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
+	useWithdrawQueuedMessage: () => ({ mutate: withdrawSpy, isPending: false }),
+	useEditQueuedMessage: () => ({ mutate: editSpy, isPending: false }),
 	useAnswerAsk: () => ({
 		mutate: mutateSpy,
 		isPending: false,
@@ -35,6 +39,8 @@ beforeEach(() => {
 	document.body.appendChild(container);
 	root = createRoot(container);
 	mutateSpy.mockClear();
+	withdrawSpy.mockClear();
+	editSpy.mockClear();
 	answerError = null;
 });
 
@@ -72,6 +78,43 @@ const render = (asks: AskRecord[], onStep?: (n: number) => void) =>
 const button = (id: string) =>
 	container.querySelector(`[data-testid="${id}"]`) as HTMLButtonElement | null;
 const settle = () => act(async () => vi.advanceTimersByTime(700));
+
+describe("RunDock queued messages", () => {
+	const renderQueued = (
+		queued: { key: string; messageId?: string; text: string }[],
+	) =>
+		act(async () => {
+			root.render(
+				<RunDock
+					asks={[]}
+					queued={queued.map((q) => ({ ...q, attachments: [] }))}
+					runId="run-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+
+	it("a message the API has not answered yet cannot be edited or withdrawn", async () => {
+		await renderQueued([{ key: "local-1", text: "check the pool" }]);
+		expect(button("queued-edit")?.disabled).toBe(true);
+		expect(button("queued-withdraw")?.disabled).toBe(true);
+		await act(async () => button("queued-withdraw")?.click());
+		expect(withdrawSpy).not.toHaveBeenCalled();
+	});
+
+	it("Withdraw sends the server's message id, not the row's local key", async () => {
+		await renderQueued([
+			{ key: "local-1", messageId: "srv-1", text: "check the pool" },
+		]);
+		expect(button("queued-withdraw")?.disabled).toBe(false);
+		await act(async () => button("queued-withdraw")?.click());
+		expect(withdrawSpy).toHaveBeenCalledTimes(1);
+		expect(withdrawSpy.mock.calls[0]?.[0]).toEqual({
+			id: "run-1",
+			messageId: "srv-1",
+		});
+	});
+});
 
 describe("RunDock asks (#820, #673 w5-43)", () => {
 	it("answers the oldest ask with Approve or Deny", async () => {

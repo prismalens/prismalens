@@ -180,7 +180,9 @@ export class WorkItemsProvider implements ReferenceProvider {
 		if (!w)
 			throw new SourceUnavailable(
 				group,
-				`could not read #${item.number}; is "Show pull request status" on?`,
+				item.kind === "pull_request"
+					? `could not read #${item.number}; is "Show pull request status" on?`
+					: `could not find issue #${item.number} in ${remote.repo}; check the link.`,
 			);
 		return {
 			ref: {

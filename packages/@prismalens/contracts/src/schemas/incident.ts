@@ -262,6 +262,9 @@ export const InvestigateIncidentSchema = z.object({
 	...RunChoiceSchema.shape,
 	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
 	attachments: AttachmentIdsSchema.optional(),
+	/** The draft this send came from: deleted once the run is stored, when `draftRev` is current. */
+	draftScope: MessageContextShape.draftScope,
+	draftRev: MessageContextShape.draftRev,
 });
 
 /** A person's message that starts a chat run on the incident (#673). */

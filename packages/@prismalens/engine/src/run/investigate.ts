@@ -1331,10 +1331,26 @@ async function* runSession(
 		/** Lines sent together: one turn, or each command turn after the lines before it. */
 		const sayLines = async function* (
 			lines: SteerLine[],
+			nowLine: SteerLine | null,
 		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 			let r: { stop: string } | { error: string } = { stop: "end_turn" };
 			let held: SteerLine[] = [];
+			// A line is recorded as delivered when its turn is about to go out, never before.
+			const record = (line: SteerLine, delivered: boolean) =>
+				adapter.operatorMessage(
+					line.text,
+					line === nowLine ? "now" : "queue",
+					delivered,
+					undefined,
+					refsOf(line.attachments),
+					undefined,
+					line.id,
+					undefined,
+					line.context,
+				);
 			const flush = async function* (command: SteerLine | null) {
+				for (const l of [...held, ...(command ? [command] : [])])
+					yield record(l, true);
 				const said = held.map((l) => withAddendum(l.text, l.context));
 				const files = [...held, ...(command ? [command] : [])].flatMap(
 					(l) => l.attachments ?? [],
@@ -1344,13 +1360,17 @@ async function* runSession(
 					? yield* say(command.text, command.context, files, { before: said })
 					: yield* turn(promptParts(said.join("\n\n"), files, linkOpts()));
 			};
-			for (const line of lines) {
+			for (const [at, line] of lines.entries()) {
 				if (!commandLine(line.text)) {
 					held.push(line);
 					continue;
 				}
 				r = yield* flush(line);
-				if (!("stop" in r) || r.stop === "cancelled") return r;
+				if (!("stop" in r) || r.stop === "cancelled") {
+					// What the failed command left unsent stays queued for a later resume.
+					for (const rest of lines.slice(at + 1)) yield record(rest, false);
+					return r;
+				}
 			}
 			return held.length ? yield* flush(null) : r;
 		};
@@ -1482,21 +1502,8 @@ async function* runSession(
 				(l): l is SteerLine => l !== null,
 			);
 			if (lines.length === 0) break;
-			for (const line of lines) {
-				yield adapter.operatorMessage(
-					line.text,
-					line === now ? "now" : "queue",
-					true,
-					undefined,
-					refsOf(line.attachments),
-					undefined,
-					line.id,
-					undefined,
-					line.context,
-				);
-			}
 			text = "";
-			outcome = yield* sayLines(lines);
+			outcome = yield* sayLines(lines, now ?? null);
 		}
 		// Report repair turns still reach the tools, so their calls count until the end (#848).
 		yield* leftovers(false);

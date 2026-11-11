@@ -10,6 +10,11 @@ import { AskDock } from "./AskDock";
 
 const mockAnswerMutate = vi.fn();
 const mockSecretMutate = vi.fn();
+let mockOnHost = false;
+
+vi.mock("@/hooks/use-operator", () => ({
+	useOperator: () => ({ managesPairing: mockOnHost }),
+}));
 
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
 	useAnswerAsk: () => ({ mutate: mockAnswerMutate, isPending: false }),
@@ -24,6 +29,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+	mockOnHost = false;
 	mockAnswerMutate.mockReset();
 	mockSecretMutate.mockReset();
 	container = document.createElement("div");
@@ -389,6 +395,32 @@ describe("AskDock (#1024)", () => {
 			container.querySelector('[data-testid="ask-dock-allow"]'),
 		).toBeNull();
 		expect(container.querySelector('[data-testid="ask-dock-deny"]')).toBeNull();
+	});
+
+	it("requiresHost: true on the host's own session shows the Allow once and Deny buttons, no host notice", async () => {
+		mockOnHost = true;
+		const ask = baseAsk({
+			askId: "ask-host-owner",
+			kind: "permission",
+			requiresHost: true,
+			permission: {
+				toolKind: "execute",
+				options: [
+					{ optionId: "a", name: "Allow", kind: "allow_once" },
+					{ optionId: "d", name: "Deny", kind: "reject_once" },
+				],
+			},
+		});
+
+		await act(async () => {
+			root.render(
+				<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="ask-dock-host"]')).toBeNull();
+		expect(q("ask-dock-allow").textContent).toContain("Allow");
+		expect(q("ask-dock-deny").textContent).toContain("Deny");
 	});
 
 	it("three asks render 1 of 3 oldest first", async () => {

@@ -17,6 +17,8 @@ export function useServerDraft(
 			}),
 			enabled: !!scope,
 			staleTime: Number.POSITIVE_INFINITY,
+			// Nothing is kept once the box closes: a reopened one reads what the server holds now.
+			gcTime: 0,
 			refetchOnWindowFocus: false,
 			retry: false,
 		},

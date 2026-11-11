@@ -26,7 +26,7 @@ function Remove({ label, onRemove }: { label: string; onRemove: () => void }) {
 			type="button"
 			aria-label={`Remove ${label}`}
 			onClick={onRemove}
-			className="shrink-0 rounded-[4px] p-0.5 text-text-3 hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent/60"
+			className="grid size-6 shrink-0 place-items-center rounded-[4px] text-text-3 hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent/60"
 		>
 			<X className="size-3" />
 		</button>
@@ -69,7 +69,7 @@ export function FileChip({
 	pasteRefusal: string | null;
 }) {
 	const name = item.pasted
-		? `Pasted text, ${pastedLines(item.pasted)} lines`
+		? `Pasted text, ${pastedLines(item.pasted)} ${pastedLines(item.pasted) === 1 ? "line" : "lines"}`
 		: item.file.name;
 	return (
 		<li

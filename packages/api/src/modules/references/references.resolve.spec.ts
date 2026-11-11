@@ -118,6 +118,17 @@ describe("POST /references/resolve (#1024)", () => {
 		expect(results).toEqual([
 			{
 				url: "https://github.com/acme/shop/issues/7",
+				reason: "GitHub · acme/shop: could not find issue #7 in acme/shop; check the link.",
+			},
+		]);
+	});
+
+	it("a configured repository's pull request the host does not return points at Show pull request status", async () => {
+		const { svc } = setup();
+		const { results } = await svc.resolveUrls(["https://github.com/acme/shop/pull/7"]);
+		expect(results).toEqual([
+			{
+				url: "https://github.com/acme/shop/pull/7",
 				reason: 'GitHub · acme/shop: could not read #7; is "Show pull request status" on?',
 			},
 		]);

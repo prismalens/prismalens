@@ -90,7 +90,7 @@ export function matchTier(
 	const ws = words(label);
 	const squeezed = query.replace(/[^\p{L}\p{N}]+/gu, "");
 	if (squeezed && acronym(squeezed, ws)) return { tier: 3, fuzzy: 1 };
-	const fuzzy = fuzzysort.single(q.trim(), label)?.score ?? 0;
+	const fuzzy = fuzzysort.single(query, label)?.score ?? 0;
 	return fuzzy > 0 ? { tier: 4, fuzzy } : null;
 }
 

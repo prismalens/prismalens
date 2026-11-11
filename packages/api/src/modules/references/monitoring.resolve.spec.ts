@@ -47,7 +47,68 @@ async function refusal(p: MonitoringProvider, url: string) {
 		: e;
 }
 
+const TWO_DISKS = [
+	...ALERTS,
+	{
+		fingerprint: "f2",
+		labels: { alertname: "DiskFull", instance: "db-2", severity: "critical" },
+		annotations: { summary: "Disk full on /data" },
+		startsAt: "2026-11-06T10:05:00Z",
+		status: { state: "active" },
+	},
+];
+
 describe("a monitoring link resolved to its record (#1024)", () => {
+	it("refuses a link whose alert name matches two alerts on the connection", async () => {
+		const p = new MonitoringProvider("Alertmanager", {
+			connections: async () => [{ id: "am-1", label: "prod" }],
+			baseUrl: async () => "http://am.example.com/",
+			open: async (src) => ({
+				id: src.id,
+				label: src.label,
+				kind: "alertmanager",
+				secrets: [],
+				request: (async () =>
+					new Response(JSON.stringify(TWO_DISKS), { status: 200 })) as unknown as OpenedSource["request"],
+			}),
+		});
+		expect(
+			await refusal(
+				p,
+				"http://am.example.com/#/alerts?filter=%7Balertname%3D%22DiskFull%22%2Cinstance%3D%22db-2%22%7D",
+			),
+		).toEqual({
+			source: "Alertmanager",
+			message: "2 items match this link; it names no single one",
+		});
+	});
+
+	it("reports the linked connection's own failure, not 'nothing matches', when another connection answers", async () => {
+		const p = new MonitoringProvider("Alertmanager", {
+			connections: async () => [
+				{ id: "am-1", label: "prod" },
+				{ id: "am-2", label: "stage" },
+			],
+			baseUrl: async (id) => (id === "am-1" ? "http://am.example.com/" : "http://stage.example.com/"),
+			open: async (src) => ({
+				id: src.id,
+				label: src.label,
+				kind: "alertmanager",
+				secrets: [],
+				request: (async () =>
+					src.id === "am-1"
+						? new Response("down", { status: 503 })
+						: new Response(JSON.stringify(ALERTS), { status: 200 })) as unknown as OpenedSource["request"],
+			}),
+		});
+		const got = await refusal(
+			p,
+			"http://am.example.com/#/alerts?filter=%7Balertname%3D%22DiskFull%22%7D",
+		);
+		expect(got).toMatchObject({ source: "Alertmanager" });
+		expect((got as { message: string }).message).not.toBe("nothing on it matches this link");
+	});
+
 	it("answers null when the sources cannot name a connection's base URL", async () => {
 		const p = am("http://am.example.com", false);
 		expect(
