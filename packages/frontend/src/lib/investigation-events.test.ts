@@ -10,7 +10,6 @@ import {
 	deriveTranscript,
 	latestAgentText,
 	pinnedTo,
-	queuedMessages,
 	splitAgentText,
 	type TranscriptItem,
 } from "./investigation-events";
@@ -649,7 +648,7 @@ describe("queuedMessages folds edits and withdrawals (#1024)", () => {
 
 	it("shows an edited message's new text and drops a withdrawn one", () => {
 		expect(queuedMessages(events, [])).toEqual([
-			{ key: A, text: "first, edited", attachments: [] },
+			{ key: A, messageId: A, text: "first, edited", attachments: [] },
 		]);
 	});
 });

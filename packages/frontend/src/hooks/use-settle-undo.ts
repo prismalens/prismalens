@@ -16,7 +16,7 @@ interface SettleOpts {
 		ids: string[];
 		previous: SettledState[];
 		/** The server's end of the Undo window (#1024); absent before Surface F, which then uses UNDO_MS. */
-		undoUntil?: string;
+		undoUntil?: string | null;
 	}) => void;
 	onError?: (err: unknown) => void;
 }

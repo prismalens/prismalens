@@ -62,7 +62,7 @@ export function checksLine(c: PrChecks): string | null {
 		: `${c.total} passing`;
 }
 
-/** A PR watch, as Surface F adds it to each PR; absent until that contract lands. */
+/** A PR's watch as the panel reads it: the contract's `PrWatch` fits, and a partial one renders too. */
 export interface PrWatch {
 	state: "watching" | "waiting" | "disconnected" | "expired" | "stopped";
 	reason?: string | null;
@@ -102,7 +102,7 @@ const RUN_WORD: Record<PrCheckRun["state"], string> = {
 	neutral: "Neutral",
 };
 
-export type PullRequestView = PullRequest & { watch?: PrWatch };
+export type PullRequestView = Omit<PullRequest, "watch"> & { watch?: PrWatch };
 
 /** One PR: `#123 title`, its tone mark and word, then checks, review, conflicts and watch. */
 export function PullRequestRow({
