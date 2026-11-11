@@ -4,7 +4,6 @@
 import { AboutSchema, type About } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
-	type AboutWithChannel,
 	blockedWords,
 	canInstall,
 	idleInstallBlocked,
@@ -97,7 +96,7 @@ describe("update-words", () => {
 		});
 		expect(canInstall(busyAbout)).toBe(false);
 
-		const nightlyAbout: AboutWithChannel = {
+		const nightlyAbout: About = {
 			...availableAbout,
 			updateChannel: {
 				current: "nightly",
