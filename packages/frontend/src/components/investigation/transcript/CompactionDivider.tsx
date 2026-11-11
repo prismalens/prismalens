@@ -14,12 +14,7 @@ export function CompactionDivider({ event }: TranscriptNodeProps) {
 	const e = event as Extract<CanonicalEvent, { kind: "compaction" }>;
 	const compact = useCompactSession(e.runId);
 	return (
-		<div
-			className="flex items-center gap-3"
-			role="separator"
-			aria-label="Compaction"
-			data-testid="compaction-divider"
-		>
+		<div className="flex items-center gap-3" data-testid="compaction-divider">
 			<span aria-hidden className="h-px flex-1 bg-hairline" />
 			<CompactionNode
 				event={e}

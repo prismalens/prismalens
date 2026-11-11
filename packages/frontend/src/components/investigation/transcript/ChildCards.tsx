@@ -55,11 +55,11 @@ function ThreadLink({ id, children }: { id: string; children: string }) {
 export function ChildRow({
 	node,
 	fallbackTitle,
-	role,
+	threadRole,
 }: {
 	node: ThreadTreeNode | undefined;
 	fallbackTitle: string;
-	role: string;
+	threadRole: string;
 }) {
 	const [tone, word] = node ? NODE_WORD[node.state] : NODE_WORD.queued;
 	return (
@@ -73,7 +73,7 @@ export function ChildRow({
 						fallbackTitle
 					)}
 				</span>
-				<span className="shrink-0 text-meta text-text-3">{role}</span>
+				<span className="shrink-0 text-meta text-text-3">{threadRole}</span>
 				<span
 					className="shrink-0 text-meta text-text-2"
 					data-testid="child-state"
@@ -112,7 +112,11 @@ export function ThreadStartedCard({ event }: { event: Ev<"thread_started"> }) {
 			<p className="text-meta text-text-3">
 				Started a thread · {formatClock(event.ts)}
 			</p>
-			<ChildRow node={node} fallbackTitle={event.title} role={event.role} />
+			<ChildRow
+				node={node}
+				fallbackTitle={event.title}
+				threadRole={event.role}
+			/>
 		</div>
 	);
 }
