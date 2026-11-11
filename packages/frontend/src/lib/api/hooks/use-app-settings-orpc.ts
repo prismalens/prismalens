@@ -11,6 +11,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 import { useSourcesOverview } from "./use-sources-orpc";
 
+// The routes replace the whole record, so writes run one at a time, each from what the last saved.
+let writes: Promise<unknown> = Promise.resolve();
+const inOrder = <T>(run: () => Promise<T>): Promise<T> => {
+	const next = writes.then(run, run);
+	writes = next.catch(() => undefined);
+	return next;
+};
+
 /** The editors on this computer's PATH, for General → "Open files in". */
 export function useEditors() {
 	return useQuery({
@@ -30,10 +38,14 @@ export function useUpdateThreadContextSettings() {
 	const key = orpc.settings.threadContext.get.queryKey({ input: {} });
 	return useMutation({
 		mutationFn: (patch: Partial<ThreadContextSettings>) =>
-			orpc.settings.threadContext.update.call({
-				...DEFAULT_THREAD_CONTEXT_SETTINGS,
-				...queryClient.getQueryData<ThreadContextSettings>(key),
-				...patch,
+			inOrder(async () => {
+				const saved = await orpc.settings.threadContext.update.call({
+					...DEFAULT_THREAD_CONTEXT_SETTINGS,
+					...queryClient.getQueryData<ThreadContextSettings>(key),
+					...patch,
+				});
+				queryClient.setQueryData(key, saved);
+				return saved;
 			}),
 		onSuccess: (saved) => queryClient.setQueryData(key, saved),
 	});
@@ -49,10 +61,14 @@ export function useUpdateTreeSettings() {
 	const key = orpc.threadTree.getSettings.queryKey({ input: {} });
 	return useMutation({
 		mutationFn: (patch: Partial<ThreadTreeSettings>) =>
-			orpc.threadTree.updateSettings.call({
-				...THREAD_TREE_DEFAULTS,
-				...queryClient.getQueryData<ThreadTreeSettings>(key),
-				...patch,
+			inOrder(async () => {
+				const saved = await orpc.threadTree.updateSettings.call({
+					...THREAD_TREE_DEFAULTS,
+					...queryClient.getQueryData<ThreadTreeSettings>(key),
+					...patch,
+				});
+				queryClient.setQueryData(key, saved);
+				return saved;
 			}),
 		onSuccess: (saved) => queryClient.setQueryData(key, saved),
 	});
