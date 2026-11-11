@@ -738,8 +738,9 @@ export function Composer({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: once, when the editor exists.
 	useEffect(() => {
 		const list = initial.current;
+		if (!editor) return;
 		initial.current = undefined;
-		if (editor && list?.length) void add(list);
+		if (list?.length) void add(list);
 	}, [editor]);
 	const filesNow = useRef(files);
 	filesNow.current = files;
