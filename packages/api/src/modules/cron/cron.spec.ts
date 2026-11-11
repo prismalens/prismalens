@@ -362,6 +362,21 @@ describe("CronService (#1024 surface F)", () => {
 		expect(await h.svc.list(h.THREAD)).toEqual([]);
 	});
 
+	it("removing a job returns whether it existed, and removing the only pending one cancels its unsent wake", async () => {
+		const t0 = new Date("2026-11-11T08:00:00.000Z");
+		const h = harness(t0);
+		const res = await h.svc.create(h.THREAD, { schedule: "0 * * * *", prompt: "Hourly check", recurring: true }, t0);
+		if (!("id" in res)) throw new Error("Job not created");
+		await h.svc.tick(new Date(res.next));
+		expect(h.wakes.filter((w) => w.kind === "cron").map((w) => w.state)).toEqual(["pending"]);
+
+		expect(await h.svc.remove(h.THREAD, "no-such-job")).toBe(false);
+		expect(await h.svc.remove(h.THREAD, res.id)).toBe(true);
+
+		expect(h.wakes.filter((w) => w.kind === "cron").map((w) => w.state)).toEqual(["cancelled"]);
+		expect(await h.svc.list(h.THREAD)).toEqual([]);
+	});
+
 	it("a job whose nextAt is 5 hours in the past fires once and its next nextAt is after now", async () => {
 		const t0 = new Date("2026-11-11T08:00:00.000Z");
 		const h = harness(t0);
