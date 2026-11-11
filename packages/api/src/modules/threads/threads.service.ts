@@ -4,10 +4,12 @@
 import { Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import type {
+	AutoPause,
 	Investigation as InvestigationView,
 	JobAttachment,
 	RunChoice,
 	SettledState,
+	SettleResponse,
 	StartThreadInput,
 	ThreadFeed,
 	ThreadFeedQuery,
@@ -18,16 +20,19 @@ import type {
 import {
 	AccessLevelSchema,
 	type AskKind,
+	AutoPauseSchema,
 	type CanonicalEvent,
 	CanonicalEventSchema,
 	DEFAULT_SETTLE_AFTER_DAYS,
 	IncidentStatusSchema,
 	pendingAsks,
+	SETTLE_UNDO_MS,
 	SeveritySchema,
 	ThreadSettingsSchema,
 	WorkInSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Prisma } from "@prismalens/database";
+import { VIEW_ONLY } from "../../core/auth/owner.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
@@ -44,6 +49,7 @@ import {
 	FOLDER_BUSY,
 	folderBusy,
 } from "../../infrastructure/dispatch/folder-lock.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { hasWildcard, likePattern } from "../../shared/utils/literal-like.js";
 import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
@@ -53,8 +59,9 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
-import { endAgentWakes } from "../wakes/agent-wakes.js";
 import { PullRequestsService } from "./pull-requests.service.js";
+import { isSettled } from "./settled.js";
+import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { renameThread } from "./thread-titles.js";
 
@@ -155,6 +162,7 @@ export class ThreadsService {
 		private readonly drafts: DraftsService,
 		private readonly references: ReferencesService,
 		private readonly pullRequests: PullRequestsService,
+		private readonly lifecycle: ThreadLifecycleService,
 	) {}
 
 	async start(
@@ -459,6 +467,7 @@ export class ThreadsService {
 			pageIds.map((id) => `thread:${id}`),
 		);
 		const prs = await this.pullRequests.rowGlyphs(pageIds);
+		const limits = await this.limits(pageIds);
 		return {
 			units: page.map((u) => {
 				const incident = u.threads[0]?.row.incident ?? null;
@@ -505,6 +514,10 @@ export class ThreadsService {
 							waitingAsk: asks.get(t.id) ?? null,
 							hasDraft: drafts.has(`thread:${t.id}`),
 							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
+							limit: limits.has(t.id)
+								? { resetsAt: limits.get(t.id) ?? null }
+								: null,
+							paused: pausedOf(t.row.autoPause),
 						}),
 					),
 				};
@@ -513,6 +526,25 @@ export class ThreadsService {
 				q.cursor + q.limit < listed.length ? q.cursor + q.limit : null,
 			counts,
 		};
+	}
+
+	/** Threads waiting on a usage limit's resume: their pending `limit` wake and its reset. */
+	private async limits(ids: string[]): Promise<Map<string, string | null>> {
+		const out = new Map<string, string | null>();
+		if (!ids.length) return out;
+		const rows = await this.prisma.threadWake.findMany({
+			where: { investigationId: { in: ids }, kind: "limit", state: "pending" },
+			select: {
+				investigationId: true,
+				investigation: { select: { limitResetsAt: true } },
+			},
+		});
+		for (const r of rows)
+			out.set(
+				r.investigationId,
+				r.investigation.limitResetsAt?.toISOString() ?? null,
+			);
+		return out;
 	}
 
 	/** Each thread's newest waiting ask, from its ask events, legacy and new (#1024). */
@@ -667,55 +699,156 @@ export class ThreadsService {
 		}
 	}
 
-	/** Settling an incident's thread settles, and marks seen, every thread of that incident. */
+	/**
+	 * Settling an incident's thread settles, and marks seen, every thread of that
+	 * incident, and the threads they started (#1024 surface F). Jobs end when Undo's
+	 * window closes; a running run stops at once, and only with `stopRunning`.
+	 */
 	async settle(
 		id: string,
 		settled: boolean,
 		restore?: SettledState[],
-	): Promise<{ ids: string[]; previous: SettledState[] }> {
-		const row = await this.prisma.investigation.findUnique({
-			where: { id },
-			select: { incidentId: true },
-		});
-		if (!row) throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
-		const where = row.incidentId ? { incidentId: row.incidentId } : { id };
+		opts: { stopRunning?: boolean; operate?: boolean } = {},
+	): Promise<SettleResponse> {
+		const block = await this.lifecycle.block(id);
+		if (!block.length)
+			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
+		const children = settled ? await this.lifecycle.descendants(block) : [];
+		const ids = [...block, ...children];
 		const rows = await this.prisma.investigation.findMany({
-			where,
-			select: { id: true, settledAt: true },
+			where: { id: { in: ids } },
+			select: {
+				id: true,
+				settledAt: true,
+				lastActivityAt: true,
+				updatedAt: true,
+				teardownAt: true,
+			},
 		});
-		const ids = rows.map((r) => r.id);
 		const prior = new Map(rows.map((r) => [r.id, r.settledAt]));
-		if (!settled && restore) {
-			// Undo writes back each thread's own state, an earlier Settle included (#1020).
-			const inBlock = new Set(ids);
-			await this.writeSettled(
-				restore
-					.filter((r) => inBlock.has(r.id))
-					.map((r) => ({
-						id: r.id,
-						settledAt: r.settledAt ? new Date(r.settledAt) : null,
-					})),
-				prior,
-			);
-			return { ids, previous: [] };
+		const now = new Date();
+		if (!settled) return this.unsettle(id, block, rows, prior, now, restore);
+		const ended = await this.lifecycle.preview(id);
+		if (ended.running && !opts.stopRunning)
+			throw new ORPCError("CONFLICT", {
+				message: `Settling stops ${ended.running} running ${ended.running === 1 ? "run" : "runs"}. Confirm to stop ${ended.running === 1 ? "it" : "them"}.`,
+				data: { reason: "running", running: ended.running },
+			});
+		const ends =
+			ended.wakes +
+				ended.watches +
+				ended.crons +
+				ended.children +
+				ended.running >
+				0 || ended.worktrees.some((w) => w.action === "remove");
+		// Ending jobs, children or worktrees takes the permission Stop takes.
+		if (ends && opts.operate === false)
+			throw new ORPCError("FORBIDDEN", { message: VIEW_ONLY });
+		let stopped = ended.running > 0;
+		if (stopped) await this.lifecycle.stopRunning(ids);
+		else {
+			// A wake admitted after the preview is a running run the user has not confirmed.
+			const late = await this.lifecycle.liveCount(ids);
+			if (late) {
+				if (!opts.stopRunning)
+					throw new ORPCError("CONFLICT", {
+						message: `Settling stops ${late} running ${late === 1 ? "run" : "runs"}. Confirm to stop ${late === 1 ? "it" : "them"}.`,
+						data: { reason: "running", running: late },
+					});
+				await this.lifecycle.stopRunning(ids);
+				stopped = true;
+			}
 		}
-		// Undo with no states to restore clears only the thread named, never its block.
-		const at = settled ? new Date() : null;
+		// Taken after the stopped runs have ended, so their last write cannot post-date it.
+		const settledAt = stopped ? new Date() : now;
+		const undoUntil = new Date(settledAt.getTime() + SETTLE_UNDO_MS);
 		await this.writeSettled(
-			(settled ? ids : [id]).map((target) => ({ id: target, settledAt: at })),
+			ids.map((target) => ({ id: target, settledAt })),
 			prior,
 		);
-		// After the settle is written: a failed settle keeps what the agent scheduled.
-		if (settled) await endAgentWakes(this.prisma, ids);
+		// A thread settled before keeps its own teardown, as Undo keeps its own state.
+		for (const r of rows.filter((x) => !isSettled(x)))
+			await this.setTeardown(r.id, undoUntil, r.updatedAt);
 		return {
 			ids,
-			previous: settled
-				? rows.map((r) => ({
-						id: r.id,
-						settledAt: r.settledAt?.toISOString() ?? null,
-					}))
-				: [],
+			previous: rows.map((r) => ({
+				id: r.id,
+				settledAt: r.settledAt?.toISOString() ?? null,
+			})),
+			undoUntil: undoUntil.toISOString(),
+			ended,
 		};
+	}
+
+	/** Undo restores each thread's own state while its teardown waits; after it, "Already ended". */
+	private async unsettle(
+		id: string,
+		block: string[],
+		rows: Array<{
+			id: string;
+			settledAt: Date | null;
+			lastActivityAt: Date | null;
+			updatedAt: Date;
+			teardownAt: Date | null;
+		}>,
+		prior: Map<string, Date | null>,
+		now: Date,
+		restore?: SettledState[],
+	): Promise<SettleResponse> {
+		if (restore) {
+			const named = rows.find((r) => r.id === id);
+			const over =
+				named &&
+				isSettled(named) &&
+				(!named.teardownAt || named.teardownAt <= now);
+			if (over)
+				throw new ORPCError("CONFLICT", {
+					message: "Already ended",
+					data: { reason: "ended" },
+				});
+			// Undo writes back each thread's own state, an earlier Settle included (#1020).
+			const inScope = new Set([
+				...block,
+				...(await this.lifecycle.descendants(block)),
+			]);
+			const back = restore.filter((r) => inScope.has(r.id));
+			const states = await this.prisma.investigation.findMany({
+				where: { id: { in: back.map((r) => r.id) } },
+				select: { id: true, settledAt: true, updatedAt: true },
+			});
+			for (const s of states) prior.set(s.id, s.settledAt);
+			await this.writeSettled(
+				back.map((r) => ({
+					id: r.id,
+					settledAt: r.settledAt ? new Date(r.settledAt) : null,
+				})),
+				prior,
+			);
+			// A thread settled before the one being undone keeps the teardown it already had.
+			const wasOpen = new Set(
+				back.filter((r) => r.settledAt === null).map((r) => r.id),
+			);
+			for (const s of states)
+				if (wasOpen.has(s.id)) await this.setTeardown(s.id, null, s.updatedAt);
+			return { ids: block, previous: [], undoUntil: null, ended: null };
+		}
+		// Unsettle with no states to restore clears only the thread named, never its block.
+		await this.writeSettled([{ id, settledAt: null }], prior);
+		const named = rows.find((r) => r.id === id);
+		if (named) await this.setTeardown(id, null, named.updatedAt);
+		return { ids: block, previous: [], undoUntil: null, ended: null };
+	}
+
+	/** Settling never moves `updatedAt`: the feed's order and the settled test both read it. */
+	private async setTeardown(
+		id: string,
+		at: Date | null,
+		updatedAt: Date,
+	): Promise<void> {
+		await this.prisma.investigation.updateMany({
+			where: { id },
+			data: { teardownAt: at, updatedAt },
+		});
 	}
 
 	rename(id: string, title: string): Promise<{ id: string; title: string }> {
@@ -749,6 +882,11 @@ export class ThreadsService {
 		liveChanges.noteTopic("threads");
 		return next;
 	}
+}
+
+/** The row's automatic-updates pause, for Waiting for you; null when none. */
+function pausedOf(raw: string | null): AutoPause | null {
+	return AutoPauseSchema.safeParse(safeParseJsonObject(raw)).data ?? null;
 }
 
 /** The latest of anything that happened on the thread. */

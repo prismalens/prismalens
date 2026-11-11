@@ -41,12 +41,16 @@ describe("thread context routes (#1024)", () => {
 			unlink: vi.fn(async () => true),
 		};
 		const links = { resolve: vi.fn(async () => [null]) };
+		const feed = { withWatches: vi.fn(async (_id: string, list: unknown) => list) };
 		const routes = new ThreadsController(
 			{} as never,
 			{} as never,
 			context as never,
 			prs as never,
 			links as never,
+			feed as never,
+			{} as never,
+			{} as never,
 		).routes();
 		await call(routes.context, { id: RUN }, false);
 		expect(context.context).toHaveBeenCalledWith(RUN, false);

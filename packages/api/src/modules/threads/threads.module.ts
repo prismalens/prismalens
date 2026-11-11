@@ -3,6 +3,7 @@
 
 import { Module } from "@nestjs/common";
 import { HarnessModule } from "../../core/harness/harness.module.js";
+import { CronModule } from "../cron/cron.module.js";
 import { THREAD_WATCHES } from "../gateway/tools/watches.js";
 import { ImagesModule } from "../images/images.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
@@ -10,9 +11,11 @@ import { InvestigationsModule } from "../investigations/investigations.module.js
 import { WORK_ITEMS } from "../references/work-items.provider.js";
 import { RunWorkspacesModule } from "../run-workspaces/run-workspaces.module.js";
 import { LinksService } from "./links.service.js";
+import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { ThreadContextService } from "./thread-context.service.js";
 import { ThreadContextSettingsController } from "./thread-context-settings.controller.js";
+import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { ThreadWatchesService } from "./thread-watches.service.js";
 import { ThreadsController } from "./threads.controller.js";
 import { ThreadsService } from "./threads.service.js";
@@ -25,6 +28,7 @@ import { ThreadsService } from "./threads.service.js";
 		IntegrationsModule,
 		RunWorkspacesModule,
 		ImagesModule,
+		CronModule,
 	],
 	controllers: [ThreadsController, ThreadContextSettingsController],
 	providers: [
@@ -33,6 +37,8 @@ import { ThreadsService } from "./threads.service.js";
 		ThreadContextService,
 		LinksService,
 		ThreadWatchesService,
+		PrFeedService,
+		ThreadLifecycleService,
 		{ provide: THREAD_WATCHES, useExisting: ThreadWatchesService },
 		{ provide: WORK_ITEMS, useExisting: PullRequestsService },
 	],
@@ -40,6 +46,8 @@ import { ThreadsService } from "./threads.service.js";
 		PullRequestsService,
 		ThreadsService,
 		ThreadWatchesService,
+		PrFeedService,
+		ThreadLifecycleService,
 		THREAD_WATCHES,
 		WORK_ITEMS,
 	],

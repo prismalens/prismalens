@@ -56,6 +56,8 @@ import {
 	type AsksData,
 	type AttachmentItem,
 	type ChangeItem,
+	CRON_JOBS,
+	type CronData,
 	type GatewayToolData,
 	gatewayTools,
 	type IncidentView,
@@ -175,6 +177,27 @@ export interface RunbookIndex {
 
 const logger = new Logger({ context: "Gateway" });
 
+/** The MCP SDK's own notice for the response mode chosen here (#1024 surface F). */
+const SDK_MODE_NOTICE = /^responseMode: 'json' drops mid-call notifications/;
+
+/**
+ * Runs `make` with the MCP SDK's startup notice about JSON responses sent to debug:
+ * the SDK prints it unconditionally for the mode this gateway picks on purpose.
+ */
+export function quietly<T>(make: () => T): T {
+	const warn = console.warn;
+	console.warn = (...args: unknown[]) => {
+		if (typeof args[0] === "string" && SDK_MODE_NOTICE.test(args[0]))
+			logger.debug(args[0]);
+		else warn(...args);
+	};
+	try {
+		return make();
+	} finally {
+		console.warn = warn;
+	}
+}
+
 interface RunState {
 	connected: boolean;
 	waiters: Set<(ok: boolean) => void>;
@@ -251,20 +274,22 @@ export class GatewayService {
 	/** Every harness tool PrismaLens serves; each run gets a view of them. */
 	readonly tools: readonly HarnessTool[];
 	private readonly version = resolveServiceVersion();
-	private readonly handler = createMcpHandler(
-		({ authInfo }) => {
-			const runId = authInfo?.clientId ?? "";
-			return harnessMcpServer({
-				runId,
-				view: this.runs.get(runId)?.view ?? NO_TOOLS,
-				version: this.version,
-				onCall: (call) => this.called(runId, call),
-			});
-		},
-		{
-			responseMode: "json",
-			onerror: (e) => logger.warn(`gateway: ${e.message}`),
-		},
+	private readonly handler = quietly(() =>
+		createMcpHandler(
+			({ authInfo }) => {
+				const runId = authInfo?.clientId ?? "";
+				return harnessMcpServer({
+					runId,
+					view: this.runs.get(runId)?.view ?? NO_TOOLS,
+					version: this.version,
+					onCall: (call) => this.called(runId, call),
+				});
+			},
+			{
+				responseMode: "json",
+				onerror: (e) => logger.warn(`gateway: ${e.message}`),
+			},
+		),
 	);
 
 	constructor(
@@ -540,6 +565,17 @@ export class GatewayService {
 		}
 	}
 
+	/** CronService, looked up at call time; absent outside the full app. */
+	private cron(): CronData | null {
+		try {
+			return (
+				this.moduleRef?.get<CronData>(CRON_JOBS, { strict: false }) ?? null
+			);
+		} catch {
+			return null;
+		}
+	}
+
 	/** ThreadWatchesService, looked up at call time; absent outside the full app. */
 	private watches(): WatchesData | null {
 		try {
@@ -553,6 +589,17 @@ export class GatewayService {
 	}
 
 	readonly data: GatewayToolData = {
+		cron: {
+			create: async (runId, input) =>
+				(await this.cron()?.create(runId, input)) ?? {
+					error: "PrismaLens cannot schedule a prompt here.",
+					code: "disabled",
+					next: "Finish without a cron job.",
+				},
+			list: async (runId) => (await this.cron()?.list(runId)) ?? [],
+			remove: async (runId, jobId) =>
+				(await this.cron()?.remove(runId, jobId)) ?? false,
+		},
 		watches: {
 			wakeup: async (runId, delay, reason) =>
 				(await this.watches()?.wakeup(runId, delay, reason)) ?? {

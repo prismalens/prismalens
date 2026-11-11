@@ -95,6 +95,7 @@ import {
 	interruptedRunIds,
 	RunWorkspacesService,
 } from "../../modules/run-workspaces/run-workspaces.service.js";
+import { endedNote } from "../../modules/threads/settled.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -1286,9 +1287,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				model: true,
 				acpSessionId: true,
 				endReason: true,
+				endedNote: true,
 			},
 		});
 		if (!row || !isWorkflowTerminal(row.status)) return false;
+		// What a settle ended rides this turn once, fenced, so the agent can re-arm it (#1024 surface F).
+		if (row.endedNote) text = `${endedNote(row.endedNote)}\n\n${text}`;
+		const person = !session.wakeId;
 		const plan = await this.planFollowUp(row, to);
 		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");
 		if (plan.preflight)
@@ -1392,9 +1397,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						error: null,
 						stopRequestedAt: null,
 						liveTurn: kind === "continue" ? "report" : "answer",
+						endedNote: null,
+						// A person's message inside a settle's Undo window keeps the thread's jobs.
+						...(person ? { teardownAt: null } : {}),
 					},
 				});
 				if (count === 0) return false;
+				// A person's message releases what the autonomous ceiling held (#1024 surface F).
+				if (person)
+					await tx.investigation.updateMany({
+						where: { id, autoPause: { contains: '"reason":"ceiling"' } },
+						data: { autoPause: null },
+					});
 				if (session.wakeId) {
 					const taken = await tx.threadWake.updateMany({
 						where: { id: session.wakeId, state: "pending" },

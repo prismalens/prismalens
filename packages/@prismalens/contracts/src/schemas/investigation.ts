@@ -623,6 +623,8 @@ export const WAKE_KINDS = [
 	"idle_compact",
 	"agent",
 	"pr_watch",
+	"pr_status",
+	"cron",
 ] as const;
 export type WakeKind = (typeof WAKE_KINDS)[number];
 
@@ -649,6 +651,8 @@ export const ThreadSessionSchema = z.object({
 			message: z.string().optional(),
 			/** No time was given and every retry was spent. */
 			gaveUp: z.boolean().optional(),
+			/** Retries PrismaLens makes when the agent gave no reset time. */
+			maxAttempts: z.number().int().positive().optional(),
 		})
 		.optional(),
 });
@@ -889,6 +893,9 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	pr_link: "Linked a pull request",
 	pr_unwatch: "Stopped watching a pull request",
 	pr_watch: "Watched a pull request",
+	pl_cron_create: "Scheduled a recurring prompt",
+	pl_cron_list: "Listed scheduled prompts",
+	pl_cron_delete: "Deleted a scheduled prompt",
 	attachment_read: "Read an attached file",
 	attachments_list: "Listed attached files",
 	changes_list: "Listed recent changes",
@@ -1447,6 +1454,33 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		...StreamBaseShape,
 		text: z.string().max(THOUGHT_MAX_BYTES),
 		truncated: z.literal(true).optional(),
+	}),
+	z.object({
+		/**
+		 * What changed on a watched PR, one line per change (#1024 surface F).
+		 * `delivered` went to the agent; `noted` rode no turn; `ended` closed the watch.
+		 */
+		kind: z.literal("pr_status"),
+		...StreamBaseShape,
+		prId: z.string().min(1).max(200),
+		/** `owner/repo#12`, as the thread's PR list names it. */
+		pr: z.string().max(300),
+		lines: z.array(z.string().max(600)).max(50),
+		phase: z.enum(["delivered", "noted", "ended"]),
+	}),
+	z.object({
+		/** Settling ended the thread's wakes, watches, cron jobs or children (#1024 surface F). */
+		kind: z.literal("jobs_ended"),
+		...StreamBaseShape,
+		text: z.string().max(500),
+	}),
+	z.object({
+		/** Automatic updates stopped until a person acts (#1024 surface F). */
+		kind: z.literal("auto_paused"),
+		...StreamBaseShape,
+		reason: z.enum(["ceiling", "loop_guard"]),
+		prId: z.string().max(200).optional(),
+		text: z.string().max(500),
 	}),
 	z.object({
 		/** PrismaLens linked a pull request to the thread (#1024). */

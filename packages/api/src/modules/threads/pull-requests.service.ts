@@ -58,6 +58,8 @@ import {
 	type EtagCache,
 	type HostRead,
 	HostReadError,
+	type PrActivityItem,
+	readActivity,
 	readGithub,
 	readGitlab,
 } from "./pr-hosts.js";
@@ -154,8 +156,15 @@ export function pullRequestView(
 		tone: prTone(fields),
 		source: PrSourceSchema.safeParse(row.source).data ?? "agent",
 		fetchedAt: row.fetchedAt?.toISOString() ?? null,
+		headSha: row.headSha ?? null,
 		...detailView(safeParseJsonObject(row.detail), image),
 	};
+}
+
+/** One shared read of a PR (#1024 surface F): its state for every thread that links it, and its activity. */
+export interface SharedRead {
+	read: HostRead;
+	activity: PrActivityItem[];
 }
 
 @Injectable()
@@ -396,6 +405,7 @@ export class PullRequestsService implements OnModuleInit {
 							conflicts: read.conflicts,
 							detail: JSON.stringify(read.detail),
 							etag: JSON.stringify(cache),
+							headSha: read.headSha,
 							fetchedAt: new Date(),
 						},
 					}),
@@ -407,6 +417,67 @@ export class PullRequestsService implements OnModuleInit {
 				if (hostDown(e)) failures?.push(row.id);
 				out.push(row);
 			}
+		}
+		return out;
+	}
+
+	/**
+	 * The PR status feed's one read per PR URL (#1024 surface F): state, checks and
+	 * activity, written to every thread's row for that URL. Throws when the host fails.
+	 */
+	async readShared(
+		url: string,
+		activityCache: EtagCache,
+	): Promise<SharedRead | null> {
+		const rows = await this.prisma.pullRequest.findMany({ where: { url } });
+		const first = rows[0];
+		const pr = parsePrUrl(url);
+		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
+		if (!first || !pr || !remote || !apiBase(pr)) return null;
+		const cache = (safeParseJsonObject(first.etag) ?? {}) as EtagCache;
+		const read = await this.read(pr, remote, cache);
+		const base = apiBase(pr) as string;
+		const activity = await readActivity(
+			await this.requestFn(base, remote),
+			pr.shape === "gitlab" ? "gitlab" : "github",
+			pr.repo,
+			pr.number,
+			activityCache,
+		);
+		await this.prisma.pullRequest.updateMany({
+			where: { url },
+			data: {
+				title: read.title,
+				state: read.state,
+				review: read.review,
+				checks: JSON.stringify(read.checks),
+				conflicts: read.conflicts,
+				detail: JSON.stringify(read.detail),
+				etag: JSON.stringify(cache),
+				headSha: read.headSha,
+				fetchedAt: new Date(),
+			},
+		});
+		return { read, activity };
+	}
+
+	/** The branches the thread works on, per configured repository, for automatic PR watches. */
+	async threadBranches(
+		threadId: string,
+	): Promise<Array<{ repo: string; branch: string }>> {
+		const run = await this.prisma.investigation.findUnique({
+			where: { id: threadId },
+			select: { workspace: true },
+		});
+		const ws =
+			RunWorkspaceSchema.safeParse(safeParseJsonObject(run?.workspace ?? null))
+				.data ?? null;
+		const remotes = await this.remotes();
+		const out: Array<{ repo: string; branch: string }> = [];
+		for (const repo of ws?.repos ?? []) {
+			if (!repo.branch) continue;
+			const remote = await this.remoteForRepo(repo, remotes);
+			if (remote) out.push({ repo: remote.repo, branch: repo.branch });
 		}
 		return out;
 	}

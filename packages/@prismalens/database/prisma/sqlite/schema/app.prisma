@@ -321,6 +321,9 @@ model Investigation {
   // The thread list (#1020): when the operator last opened it, and when they settled it
   lastVisitedAt DateTime?
   settledAt     DateTime?
+  teardownAt    DateTime? // when a settle's Undo window closes and its jobs end (#1024 surface F)
+  autoPause     String? // JSON {reason: ceiling | loop_guard, prId?, since}: automatic updates held until a person acts
+  endedNote     String? // what a settle's teardown ended; the thread's next turn carries it once
 
   // Session lifecycle (#1024): the last thing that happened, a usage limit's reset, and the thread's resume choice
   lastActivityAt DateTime?
@@ -350,6 +353,8 @@ model Investigation {
   treeAllowance   TreeAllowance?
   subagentSessions SubagentSession[]
   prWatches        PrWatch[]
+  prFeeds          PrFeed[]
+  cronJobs         CronJob[]
   secretsRequested SecretRequested[]
   checkoutLeases  CheckoutLease[]
 
@@ -369,7 +374,7 @@ model Investigation {
 model ThreadWake {
   id              String    @id @default(uuid())
   investigationId String
-  kind            String // limit | idle_compact | agent | pr_watch
+  kind            String // limit | idle_compact | agent | pr_watch | pr_status | cron
   at              DateTime
   reason          String
   payload         String? // JSON, per kind
@@ -403,11 +408,13 @@ model PullRequest {
   detail          String? // JSON PrDetail: author, reviewers and check runs, image URLs as the host gave them
   source          String // agent | branch | user
   etag            String? // JSON: the host's ETag per request, for conditional reads
+  headSha         String? // the head commit the host last reported
   fetchedAt       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  feed          PrFeed?
 
   @@unique([investigationId, url])
   @@index([repositoryId])
@@ -906,6 +913,65 @@ model PrWatch {
   @@id([prId, investigationId])
   @@index([expiresAt])
   @@map("pr_watches")
+}
+
+/// One shared host poll per PR URL (#1024 surface F): every thread watching it reads this
+/// one answer. Backoff is stored, so a restart neither hammers a failing host nor forgets it.
+model PrPoll {
+  url        String    @id
+  headSha    String?
+  etag       String? // JSON EtagCache for the feed's comment reads
+  nextPollAt DateTime
+  failures   Int       @default(0)
+  lastError  String?
+  updatedAt  DateTime  @updatedAt
+
+  @@index([nextPollAt])
+  @@map("pr_polls")
+}
+
+/// A thread's automatic status feed for one of its PRs (#1024 surface F): what was
+/// delivered (the cursor), what waits, and the watch's state.
+model PrFeed {
+  prId            String    @id
+  investigationId String
+  auto            Boolean // the PR is on the thread's own branch
+  state           String    @default("watching") // watching | waiting | disconnected | expired | stopped
+  reason          String?
+  cursor          String? // JSON FeedCursor
+  pending         String? // JSON lines not yet delivered, with the time the first arrived
+  since           DateTime  @default(now())
+  until           DateTime?
+  guardFailures   Int       @default(0)
+  updatedAt       DateTime  @updatedAt
+
+  pullRequest   PullRequest   @relation(fields: [prId], references: [id], onDelete: Cascade)
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId])
+  @@map("pr_feed")
+}
+
+/// A recurring prompt an agent set on its own thread (#1024 surface F, `cron_create`).
+model CronJob {
+  id              String    @id @default(uuid())
+  investigationId String
+  name            String
+  schedule        String // five-field cron, host local time
+  prompt          String
+  recurring       Boolean   @default(true)
+  nextAt          DateTime?
+  expiresAt       DateTime?
+  lastFiredAt     DateTime?
+  pendingSince    DateTime? // a fire waits for the thread's next cron wake
+  skipped         Int       @default(0)
+  createdAt       DateTime  @default(now())
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId])
+  @@index([nextAt])
+  @@map("cron_jobs")
 }
 
 /// A secret a run asked the user for (#1024 spec B): the value is encrypted, never

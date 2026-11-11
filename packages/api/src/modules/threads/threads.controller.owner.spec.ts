@@ -39,6 +39,9 @@ describe("ThreadsController owner guard (#1066)", () => {
 			{} as never,
 			{} as never,
 			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
 		);
 		const routes = controller.routes();
 		const route = routes.updateSettings as unknown as Callable;

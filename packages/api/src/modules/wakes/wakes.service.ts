@@ -7,6 +7,9 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 
 export type WakeState = "pending" | "done" | "skipped" | "cancelled";
 
+/** Turns no person asked for (#1024 surface F): they share one ceiling per thread. */
+export const AUTONOMOUS_KINDS = ["pr_status", "cron"] as const;
+
 export interface Wake {
 	id: string;
 	investigationId: string;
@@ -175,6 +178,36 @@ export class WakesService {
 			orderBy: { createdAt: "desc" },
 		});
 		return row ? toWake(row) : null;
+	}
+
+	/**
+	 * Autonomous units a thread admitted since `since` (#1024 surface F): each
+	 * `pr_status` or `cron` wake counts its payload's `units` once, at admission:
+	 * when it was queued into a running thread, or when its resume was admitted.
+	 */
+	async autonomousUnits(
+		threadId: string,
+		since: Date,
+		db: Pick<PrismaService, "threadWake"> = this.prisma,
+	): Promise<number> {
+		const rows = await db.threadWake.findMany({
+			where: {
+				investigationId: threadId,
+				kind: { in: [...AUTONOMOUS_KINDS] },
+				OR: [{ state: "done", doneAt: { gte: since } }, { state: "pending" }],
+			},
+		});
+		let n = 0;
+		for (const w of rows.map(toWake)) {
+			const queued =
+				typeof w.payload.admittedAt === "string"
+					? new Date(w.payload.admittedAt)
+					: null;
+			const at = queued ?? (w.state === "done" ? w.doneAt : null);
+			if (!at || at < since) continue;
+			n += typeof w.payload.units === "number" ? w.payload.units : 1;
+		}
+		return n;
 	}
 
 	/** How many wakes of this kind were admitted since `since`, across threads; an overdue one counts when it ran. */
