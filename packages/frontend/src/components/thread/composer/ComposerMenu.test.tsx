@@ -12,7 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerMenu, groupHits, menuRows } from "./ComposerMenu";
 
 vi.mock("@tanstack/react-router", () => ({
-	Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+	Link: ({ children }: { children: React.ReactNode }) => (
+		<a href="/">{children}</a>
+	),
 }));
 
 (
