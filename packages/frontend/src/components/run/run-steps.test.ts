@@ -278,4 +278,13 @@ describe("deriveSteps nodes (#1020)", () => {
 			[false, "No page to publish"],
 		]);
 	});
+
+	it("With stepsBefore: 40, the first step's n is 41.", () => {
+		const events: CanonicalEvent[] = [
+			call(0, 1, "c1", "Bash", { command: "ls" }),
+		];
+		const steps = deriveSteps(events, { stepsBefore: 40 });
+		expect(steps[0]?.n).toBe(41);
+	});
 });
+

@@ -15,6 +15,7 @@ import {
 	waitForRun,
 } from "../steps/product";
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { liveStreamOnce, seedLongThread } from "./long-thread-fixtures";
 
 /**
  * The look pass's coverage matrix (#1020): every state in both themes at three
@@ -620,6 +621,76 @@ test("design coverage matrix", async ({
 		console.log(
 			"matrix: no waiting thread appeared; sidebar-waiting shows none",
 		);
+	}
+
+	// A long thread (#1101 categories 12-14): the rail and its marks, find in each
+	// state, a failed page, the N new pill and the reconnect line.
+	const long = seedLongThread(1500);
+	const longPath = `/threads/${long.id}`;
+	await shoot("thread-long", longPath, (p) =>
+		expect(p.getByTestId("transcript")).toBeVisible(),
+	);
+	for (const t of THEMES) {
+		await theme(page, t);
+		await page.setViewportSize({ width: 1280, height: 800 });
+		await visit(page, longPath, "thread-page");
+		await page.getByTestId("rail-mark-usage_limit").first().hover();
+		await expect(page.getByTestId("rail-preview")).toBeVisible();
+		await shotHere(`thread-rail-hover-1280-${t}`);
+		await page.mouse.move(0, 0);
+
+		await page.keyboard.press("Control+f");
+		const count = page.getByTestId("find-count");
+		await page.getByTestId("find-input").fill("pool");
+		await expect(count).toHaveText(/^\d+\/\d+$/, { timeout: 20_000 });
+		await shotHere(`thread-find-hits-1280-${t}`);
+		await page.getByTestId("find-input").fill("zzz-nothing");
+		await expect(count).toHaveText("0/0", { timeout: 20_000 });
+		await shotHere(`thread-find-none-1280-${t}`);
+		await page.route("**/search?**", async (r) => {
+			await new Promise((ok) => setTimeout(ok, 4000));
+			await r.fallback().catch(() => {});
+		});
+		await page.getByTestId("find-input").fill("checkout");
+		await expect(count).toHaveAttribute("data-state", "counting");
+		await shotHere(`thread-find-counting-1280-${t}`);
+		await page.unroute("**/search?**");
+		await page.route("**/search?**", (r) => r.abort());
+		await page.getByTestId("find-input").fill("rollback");
+		await expect(page.getByTestId("find-retry")).toBeVisible({
+			timeout: 20_000,
+		});
+		await shotHere(`thread-find-retry-1280-${t}`);
+		await page.unroute("**/search?**");
+		await page.keyboard.press("Escape");
+
+		await page.route("**/window/page?**", (r) => r.abort());
+		const edge = page.getByTestId("transcript-edge-before");
+		for (let i = 0; i < 10; i++) {
+			await page
+				.getByTestId("transcript-scroller")
+				.evaluate((el) => el.scrollTo(0, 0));
+			if ((await edge.getAttribute("data-state")) === "error") break;
+			await page.waitForTimeout(400);
+		}
+		await expect(edge).toHaveAttribute("data-state", "error");
+		await shotHere(`thread-page-retry-1280-${t}`);
+		await page.unroute("**/window/page?**");
+
+		const live = await liveStreamOnce(page, long.id, "New answer below.");
+		await visit(page, longPath, "thread-page");
+		await page
+			.getByTestId("transcript-scroller")
+			.evaluate((el) => el.scrollBy(0, -1200));
+		live.release();
+		await expect(page.getByTestId("transcript-new")).toBeVisible({
+			timeout: 20_000,
+		});
+		await expect(page.getByTestId("transcript-reconnecting")).toBeVisible({
+			timeout: 20_000,
+		});
+		await shotHere(`thread-new-reconnecting-1280-${t}`);
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 	}
 
 	writeFileSync(
