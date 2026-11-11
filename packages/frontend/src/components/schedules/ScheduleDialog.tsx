@@ -318,7 +318,10 @@ export function ScheduleDialog({
 						<h3 className="text-heading">What it runs</h3>
 						<Composer
 							state="ready"
-							onSend={({ text }) => save(text)}
+							onSend={async ({ text }) => {
+								await save(text);
+								return "sent" as const;
+							}}
 							placeholder="What should it do?"
 							text={brief}
 							onText={setBrief}

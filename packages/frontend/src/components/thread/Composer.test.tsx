@@ -145,7 +145,7 @@ describe("the one composer (#1020)", () => {
 	});
 
 	it("sends the trimmed text on Enter and clears the box; a refusal keeps it", async () => {
-		const onSend = vi.fn();
+		const onSend = vi.fn(() => "sent" as const);
 		await render({ onSend });
 		const box = await type("  rename it  ");
 		await act(async () =>
@@ -154,7 +154,7 @@ describe("the one composer (#1020)", () => {
 			),
 		);
 		expect(onSend).toHaveBeenCalledWith(
-			{ text: "rename it", files: [] },
+			{ text: "rename it", attachments: [], quotes: [], references: [] },
 			false,
 		);
 		expect(box.value).toBe("");

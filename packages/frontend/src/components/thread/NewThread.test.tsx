@@ -5,17 +5,17 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ComposerSend } from "./Composer";
+import type { SendEnvelope } from "@/lib/composer-send";
 import { NewThread } from "./NewThread";
 
-let send: ((s: ComposerSend) => Promise<void>) | null = null;
+let send: ((s: SendEnvelope) => Promise<unknown>) | null = null;
 const createIncident = vi.fn();
 const investigate = vi.fn();
 const updateIncident = vi.fn(async () => ({}));
 const navigate = vi.fn(async () => {});
 
 vi.mock("./Composer", () => ({
-	Composer: (props: { onSend: (s: ComposerSend) => Promise<void> }) => {
+	Composer: (props: { onSend: (s: SendEnvelope) => Promise<unknown> }) => {
 		send = props.onSend;
 		return <span data-testid="composer" />;
 	},
@@ -74,7 +74,12 @@ describe("NewThread with Incident on (#1020)", () => {
 				<NewThread subject={{ kind: "none" }} branch={null} incident="high" />,
 			),
 		);
-		const message = { text: "checkout is down", files: [] } as ComposerSend;
+		const message = {
+			text: "checkout is down",
+			attachments: [],
+			quotes: [],
+			references: [],
+		} as SendEnvelope;
 		await expect(send?.(message)).rejects.toThrow("agent not ready");
 		await send?.(message);
 		expect(createIncident).toHaveBeenCalledTimes(1);
@@ -99,7 +104,12 @@ describe("NewThread with Incident on (#1020)", () => {
 			),
 		);
 		await expect(
-			send?.({ text: "checkout is down", files: [] } as ComposerSend),
+			send?.({
+				text: "checkout is down",
+				attachments: [],
+				quotes: [],
+				references: [],
+			} as SendEnvelope),
 		).rejects.toThrow("agent not ready");
 		await act(async () =>
 			root.render(
@@ -110,7 +120,12 @@ describe("NewThread with Incident on (#1020)", () => {
 				/>,
 			),
 		);
-		await send?.({ text: "payments are down", files: [] } as ComposerSend);
+		await send?.({
+			text: "payments are down",
+			attachments: [],
+			quotes: [],
+			references: [],
+		} as SendEnvelope);
 		expect(createIncident).toHaveBeenCalledTimes(1);
 		expect(updateIncident).toHaveBeenCalledWith({
 			id: "inc-1",
@@ -133,7 +148,12 @@ describe("NewThread with Incident on (#1020)", () => {
 				<NewThread subject={{ kind: "none" }} branch={null} incident="high" />,
 			),
 		);
-		const message = { text: "checkout is down", files: [] } as ComposerSend;
+		const message = {
+			text: "checkout is down",
+			attachments: [],
+			quotes: [],
+			references: [],
+		} as SendEnvelope;
 		await expect(send?.(message)).rejects.toThrow("agent not ready");
 		await send?.(message);
 		expect(updateIncident).not.toHaveBeenCalled();
@@ -153,7 +173,12 @@ describe("NewThread with Incident on (#1020)", () => {
 				incident="high"
 			/>
 		);
-		const message = { text: "checkout is down", files: [] } as ComposerSend;
+		const message = {
+			text: "checkout is down",
+			attachments: [],
+			quotes: [],
+			references: [],
+		} as SendEnvelope;
 		await act(async () => root.render(on("svc-a")));
 		await expect(send?.(message)).rejects.toThrow("agent not ready");
 		await act(async () => root.render(on("svc-b")));

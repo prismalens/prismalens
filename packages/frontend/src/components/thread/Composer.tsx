@@ -41,13 +41,28 @@ import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { attachRefusal } from "@/lib/attachments";
 import { composerKeyAction } from "@/lib/composer-keys";
+import {
+	envelopeOf,
+	type SendEnvelope,
+	type SendReceipt,
+	type SendResult,
+} from "@/lib/composer-send";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
+/** What the box holds now, for a page that reads it without sending (a handoff). */
 export interface ComposerSend {
 	text: string;
 	files: File[];
 }
+
+/** A send's answer: the box clears only on `sent` (lib/composer-send.ts). */
+export type ComposerReply = SendResult | SendReceipt;
+
+/** Chosen beside the text by a lane (quotes, references, the saved draft); merged into each send. */
+export type EnvelopeExtras = Partial<
+	Pick<SendEnvelope, "quotes" | "references" | "draftScope" | "draftRev">
+>;
 
 /** What the one action button does: Send, Stop while the agent works, Resume a cut-off run. */
 export type ComposerState = "ready" | "live" | "interrupted";
@@ -123,7 +138,14 @@ export function actionProps(
 
 export interface ComposerProps {
 	state: ComposerState;
-	onSend: (send: ComposerSend, now: boolean) => Promise<void> | void;
+	onSend: (
+		envelope: SendEnvelope,
+		now: boolean,
+	) => Promise<ComposerReply> | ComposerReply;
+	/** Merged into every envelope this box sends. */
+	extras?: EnvelopeExtras;
+	/** The page's footer slot, under the box. */
+	footer?: ReactNode;
 	onStop?: () => void;
 	stopping?: boolean;
 	onResume?: () => void;
@@ -211,6 +233,8 @@ const TEXT_TYPES = "text/*,.log,.json,.csv,.md,.txt,.yaml,.yml";
 export function Composer({
 	state,
 	onSend,
+	extras,
+	footer,
 	onStop,
 	stopping,
 	onResume,
@@ -292,6 +316,8 @@ export function Composer({
 	}, [focusSignal]);
 	const shown = useRef(drafts);
 	shown.current = drafts;
+	const textNow = useRef(text);
+	textNow.current = text;
 	useEffect(() => {
 		if (boxRef) boxRef.current = { text, files: drafts.map((d) => d.file) };
 	}, [boxRef, text, drafts]);
@@ -319,18 +345,36 @@ export function Composer({
 		if (next.length) setDrafts((d) => [...d, ...next]);
 	};
 
+	const clear = (sentText: string) => {
+		// A deferred send that lands later clears only the text it carried.
+		if (textNow.current.trim() !== sentText) return;
+		setText("");
+		release(shown.current);
+		setDrafts([]);
+		setRefusal(null);
+	};
 	const submit = async (now: boolean) => {
 		if (!canSend) return;
 		setSending(true);
+		const sentText = text.trim();
 		try {
-			await onSend(
-				{ text: text.trim(), files: drafts.map((d) => d.file) },
+			const reply = await onSend(
+				{
+					...envelopeOf(
+						sentText,
+						drafts.map((d) => d.file),
+					),
+					...extras,
+				},
 				now,
 			);
-			setText("");
-			release(drafts);
-			setDrafts([]);
-			setRefusal(null);
+			const receipt = typeof reply === "string" ? { result: reply } : reply;
+			if (receipt.result === "sent") clear(sentText);
+			else
+				void receipt.settled?.then(
+					(r) => r === "sent" && clear(sentText),
+					(e: unknown) => setRefusal(getErrorMessage(e)),
+				);
 		} catch (e) {
 			setRefusal(getErrorMessage(e));
 		} finally {
@@ -700,6 +744,7 @@ export function Composer({
 					{refusal ?? (blocked ? blockedReason : notice)}
 				</p>
 			)}
+			{footer}
 			{undeliverable && (
 				<div
 					className="flex flex-wrap items-center gap-2 px-3 text-meta text-danger"

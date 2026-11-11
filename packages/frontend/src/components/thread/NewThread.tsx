@@ -22,7 +22,12 @@ import {
 } from "@/lib/api/hooks";
 import { useStartThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadAttachment, uploadThreadAttachment } from "@/lib/attachments";
-import { Composer, type ComposerSend, type SlashCommand } from "./Composer";
+import {
+	messageContext,
+	type SendEnvelope,
+	uploadEach,
+} from "@/lib/composer-send";
+import { Composer, type SlashCommand } from "./Composer";
 
 interface Picked {
 	harness?: HarnessId;
@@ -102,10 +107,8 @@ export function NewThread({
 	};
 
 	/** The text is the brief; its first line names the incident. */
-	const sendIncident = async (
-		severity: Severity,
-		{ text, files }: ComposerSend,
-	) => {
+	const sendIncident = async (severity: Severity, env: SendEnvelope) => {
+		const { text } = env;
 		const fields = {
 			title: (text.split("\n")[0] ?? text).slice(0, 120),
 			description: text,
@@ -134,8 +137,8 @@ export function NewThread({
 		}
 		const id = kept?.id ?? (await createIncident.mutateAsync(fields)).id;
 		madeIncident.current = { id, fields };
-		const uploaded = await Promise.all(
-			files.map((f) => uploadAttachment(id, f)),
+		const uploaded = await uploadEach(env.attachments, (f) =>
+			uploadAttachment(id, f),
 		);
 		if (note) {
 			madeIncident.current = null;
@@ -156,16 +159,16 @@ export function NewThread({
 		});
 	};
 
-	const onSend = async (send: ComposerSend) => {
-		if (incident) return sendIncident(incident, send);
-		const { text, files } = send;
+	const startThread = async (env: SendEnvelope) => {
+		const { text } = env;
 		const draftKey = crypto.randomUUID();
-		const uploaded = await Promise.all(
-			files.map((f) => uploadThreadAttachment({ draftKey }, f)),
+		const uploaded = await uploadEach(env.attachments, (f) =>
+			uploadThreadAttachment({ draftKey }, f),
 		);
 		const started = await start.mutateAsync({
 			subject,
 			text,
+			...messageContext(env),
 			...(place ? { place } : {}),
 			...run,
 			...(uploaded.length
@@ -176,6 +179,11 @@ export function NewThread({
 			to: "/threads/$id",
 			params: { id: started.investigationId },
 		});
+	};
+	const onSend = async (env: SendEnvelope) => {
+		if (incident) await sendIncident(incident, env);
+		else await startThread(env);
+		return "sent" as const;
 	};
 
 	return (

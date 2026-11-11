@@ -108,7 +108,7 @@ function box(p: {
 	onAction?: (id: string) => void;
 	live?: boolean;
 	text: string;
-	onSend: () => void;
+	onSend: () => "sent";
 	[k: string]: unknown;
 }) {
 	const { actions, action, onAction = () => {}, live, ...rest } = p;
@@ -170,7 +170,7 @@ describe("the box's image previews (R4.3)", () => {
 					action: "message",
 					live: true,
 					text: "",
-					onSend: () => {},
+					onSend: () => "sent",
 				}),
 			);
 		});
@@ -194,7 +194,7 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 	const ASK = { id: "ask", label: "Ask", detail: "A question.", needsText: true };
 	const INVESTIGATE = { id: "investigate", label: "Investigate", detail: "A run.", needsText: false };
 	async function render(props: Record<string, unknown>) {
-		const onSend = vi.fn();
+		const onSend = vi.fn(() => "sent" as const);
 		const onAction = vi.fn();
 		await act(async () => {
 			root.render(
@@ -245,10 +245,10 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 	it("Enter sends; Ctrl+Enter sends now only on a live run", async () => {
 		const draft = await render({});
 		await enter(true);
-		expect(draft.onSend).toHaveBeenCalledWith({ text: "why the pool?", files: [] }, false);
+		expect(draft.onSend).toHaveBeenCalledWith({ text: "why the pool?", attachments: [], quotes: [], references: [] }, false);
 		const live = await render({ actions: [MESSAGE], action: "message", live: true });
 		await enter(true);
-		expect(live.onSend).toHaveBeenCalledWith({ text: "why the pool?", files: [] }, true);
+		expect(live.onSend).toHaveBeenCalledWith({ text: "why the pool?", attachments: [], quotes: [], references: [] }, true);
 	});
 
 	it("an action that needs text does not send an empty box; one that does not, does", async () => {

@@ -9,6 +9,7 @@ import {
 	type HarnessStatus,
 	type InvestigationWithRelations,
 	isRunStateLive,
+	pendingAsks,
 	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
@@ -28,12 +29,21 @@ import {
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
 import { startedBy, viewName } from "@/components/run/run-labels";
+import type { PageSlots } from "@/components/thread/slots";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { uploadAttachment } from "@/lib/attachments";
 import { onCompose } from "@/lib/compose";
+import {
+	interceptSend,
+	messageContext,
+	messageFields,
+	type SendEnvelope,
+	uploadEach,
+} from "@/lib/composer-send";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { handoffHint } from "@/lib/handoff-line";
+import { openAsksOf } from "@/lib/run-asks";
 import { defaultVerb, recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import {
@@ -241,9 +251,12 @@ export function DockedComposer({
 	boxRef,
 	floating,
 	onStep,
+	slots,
 }: {
 	branchId?: string;
 	boxRef?: MutableRefObject<ComposerSend | null>;
+	/** The page's dock, footer and send interceptors (components/thread/slots). */
+	slots?: Pick<PageSlots, "dock" | "composerFooter" | "interceptors">;
 	/** The new conversation's box, centred until the first send. */
 	floating?: boolean;
 	/** Rings a step in the transcript, from the dock's ask. */
@@ -428,18 +441,20 @@ export function DockedComposer({
 		else if (n.accessLevel) choose({ kind: "level", level: n.accessLevel });
 	};
 
-	const upload = (files: File[]) =>
-		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
+	const upload = (env: SendEnvelope) =>
+		uploadEach(env.attachments, (f) => uploadAttachment(incident.id, f));
 
 	const rechecker = useRecheck();
 	const recheck = async (text: string, attachments: string[]) =>
 		rechecker?.(text, attachments);
 
-	const onSend = async ({ text, files }: ComposerSend, now: boolean) => {
-		const attachments = await upload(files);
+	const forward = async (env: SendEnvelope, now: boolean) => {
+		const { text } = env;
+		const attachments = await upload(env);
 		const ids = attachments.map((a) => a.id);
 		switch (action) {
 			case "investigate":
+				// POST /incidents/{id}/investigate takes a brief, no quotes or references.
 				return record.investigate({
 					text: text || undefined,
 					accessLevel,
@@ -447,7 +462,13 @@ export function DockedComposer({
 					attachments: ids,
 				});
 			case "ask":
-				return record.chat({ text, accessLevel, ...sent, attachments: ids });
+				return record.chat({
+					text,
+					accessLevel,
+					...sent,
+					attachments: ids,
+					context: messageContext(env),
+				});
 			case "recheck":
 				return recheck(text, ids);
 			default: {
@@ -460,6 +481,7 @@ export function DockedComposer({
 				await run.sendMessage(text, now ? "now" : "queue", {
 					branchId,
 					attachments,
+					fields: messageFields(env),
 					...(kind ? { kind } : {}),
 					...(finished && to.harness
 						? {
@@ -477,6 +499,9 @@ export function DockedComposer({
 			}
 		}
 	};
+
+	const onSend = (env: SendEnvelope, now: boolean) =>
+		interceptSend(env, now, slots?.interceptors ?? [], forward);
 
 	// Where the message goes and what a fresh session gets; the server plans it again on send.
 	const hint: string[] = ended
@@ -504,8 +529,9 @@ export function DockedComposer({
 		</p>
 	) : null;
 	const restarted = finished && !!preview.data?.note;
-	const asks = live ? run.asks.filter((a) => a.state === "waiting") : [];
-	const dock = restarted ? (
+	// Open asks come from the ask record: one outlives the run that opened it (#1024).
+	const asks = openAsksOf(run.asks, inv ? pendingAsks(inv.id, run.events) : []);
+	const askDock = restarted ? (
 		<p className="text-meta text-text-1" data-testid="composer-restart-note">
 			PrismaLens restarted while the previous session was working. Its last
 			command may or may not have completed; check before relying on it.
@@ -521,6 +547,13 @@ export function DockedComposer({
 			always={!!inv?.scheduleId}
 		/>
 	) : null;
+	const dock =
+		askDock || slots?.dock ? (
+			<>
+				{askDock}
+				{slots?.dock}
+			</>
+		) : null;
 
 	return (
 		<div
@@ -583,6 +616,7 @@ export function DockedComposer({
 					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
 					above={above}
 					floating={floating}
+					footer={slots?.composerFooter}
 				/>
 			</div>
 		</div>

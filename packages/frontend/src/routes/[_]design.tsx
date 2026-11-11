@@ -25,6 +25,9 @@ import {
 	ThreadRowView,
 	unitRow,
 } from "@/components/shell/ThreadList";
+import { appGallery } from "@/design/gallery.app";
+import { composerGallery } from "@/design/gallery.composer";
+import { panelGallery } from "@/design/gallery.panel";
 import type { TranscriptItem } from "@/lib/investigation-events";
 
 export const Route = createFileRoute("/_design")({
@@ -33,6 +36,9 @@ export const Route = createFileRoute("/_design")({
 	},
 	component: Gallery,
 });
+
+/** Each lane adds its states to its own file, so lanes never edit this one (#1024). */
+const LANE_SECTIONS = [...composerGallery, ...panelGallery, ...appGallery];
 
 const NOW = Date.parse("2026-11-05T12:00:00Z");
 const ago = (m: number) => new Date(NOW - m * 60_000).toISOString();
@@ -253,6 +259,12 @@ function Gallery() {
 						</Blank>
 					</div>
 				</Section>
+
+				{LANE_SECTIONS.map((s) => (
+					<Section key={s.id} title={s.title}>
+						{s.render()}
+					</Section>
+				))}
 			</div>
 		</div>
 	);
