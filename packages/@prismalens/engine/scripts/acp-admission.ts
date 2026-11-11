@@ -14,7 +14,7 @@
  * The predicates live in `admission-checks.ts` and are tested there; this file
  * is the unimportable top-level-await entrypoint that drives the run.
  *
- * R8 and R9 (#848): a loopback stub of PrismaLens's gateway serves `incident_get`, and
+ * R8 and R9 (#848): a loopback stub of PrismaLens's gateway serves `pl_incident_get`, and
  * the model must call it on the first turn and on the follow-up. ADMISSION_NO_GATEWAY=1
  * omits the stub, so the run must fail.
  */
@@ -172,7 +172,7 @@ try {
 		onSession: (s) => {
 			session = s;
 		},
-		promptSuffix: `ADMISSION TOOL STEP, required: call \`incident_get\` before anything else.\nADMISSION STEP, required: run exactly \`cat ./${CWD_PROBE_BASENAME}\` with the shell tool.`,
+		promptSuffix: `ADMISSION TOOL STEP, required: call \`pl_incident_get\` before anything else.\nADMISSION STEP, required: run exactly \`cat ./${CWD_PROBE_BASENAME}\` with the shell tool.`,
 	})) {
 		events.push(ev);
 	}

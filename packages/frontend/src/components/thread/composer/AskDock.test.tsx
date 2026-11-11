@@ -328,7 +328,7 @@ describe("AskDock (#1024)", () => {
 			kind: "secret",
 			source: {
 				kind: "tool",
-				tool: "secret_request",
+				tool: "pl_secret_request",
 				requestId: "ask-secret-id",
 			},
 			title: "GRAFANA_TOKEN",

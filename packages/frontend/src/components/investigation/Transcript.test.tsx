@@ -612,7 +612,7 @@ describe("Transcript spine (#1020)", () => {
 				kind: "gateway",
 				key: "g1",
 				node: "knowledge",
-				name: "incidents_similar",
+				name: "pl_incidents_similar",
 				outcome: "INC-7 retry storm",
 				failed: false,
 				at: "x",

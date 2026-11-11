@@ -5,7 +5,7 @@
 		[
 			{
 				"call": {
-					"tool": "thread_send",
+					"tool": "pl_thread_send",
 					"arguments": {
 						"to": "{{send-to}}",
 						"type": "fact",
