@@ -173,6 +173,8 @@ export function threadSession(
 		resumeAfterLimit: boolean;
 		limitWake: Wake | null;
 		compaction?: "agent_command" | "summary" | "none";
+		/** Retries PrismaLens makes when the agent gave no reset time. */
+		maxAttempts?: number;
 	},
 ): ThreadSession {
 	const last = row.lastActivityAt ?? row.completedAt ?? row.updatedAt;
@@ -204,6 +206,7 @@ export function threadSession(
 							? { nextAttemptAt: wake.at.toISOString() }
 							: {}),
 						attempts: wake.attempts,
+						...(opts.maxAttempts ? { maxAttempts: opts.maxAttempts } : {}),
 						...(message ? { message } : {}),
 						...(wake.payload.gaveUp === true ? { gaveUp: true } : {}),
 					},

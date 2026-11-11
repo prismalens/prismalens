@@ -224,6 +224,9 @@ export const SettleResponseSchema = z.object({
 });
 export type SettleResponse = z.infer<typeof SettleResponseSchema>;
 
+/** How long Undo can take a settle back before its teardown ends its jobs. */
+export const SETTLE_UNDO_MS = 8_000;
+
 /** A settle refused: a running run without `stopRunning`, or Undo after `undoUntil`. */
 export const SettleRefusalSchema = z.object({
 	reason: z.enum(["running", "ended"]),

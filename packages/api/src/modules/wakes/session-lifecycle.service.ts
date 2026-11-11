@@ -9,6 +9,7 @@ import {
 	type OnModuleInit,
 } from "@nestjs/common";
 import {
+	AUTONOMOUS_TURNS_PER_DAY,
 	type CanonicalEvent,
 	COLD_RESUME_TOKENS,
 	continuableRun,
@@ -36,6 +37,7 @@ import {
 	interruptedTurn,
 	limitResumeText,
 	limitWakeAt,
+	NO_TIME_ATTEMPTS,
 	NO_TIME_RETRY_MS,
 	registryFacts,
 	threadSession,
@@ -49,6 +51,8 @@ const REFUSED_FOR_MS = 24 * 60 * 60_000;
 const DUE_PAGE = 50;
 /** A no-time limit that comes back within this long of its wake's resume counts as the next attempt. */
 const RETRY_LINK_MS = 2 * NO_TIME_RETRY_MS;
+const DAY_MS = 24 * 60 * 60_000;
+export const CEILING_LINE = `Paused automatic updates: ${AUTONOMOUS_TURNS_PER_DAY} in the last day. Your next message releases them.`;
 
 const THREAD_FIELDS = {
 	id: true,
@@ -66,6 +70,8 @@ const THREAD_FIELDS = {
 	limitResetsAt: true,
 	autoResume: true,
 	settledAt: true,
+	teardownAt: true,
+	autoPause: true,
 } as const;
 
 type ThreadRow = {
@@ -84,6 +90,8 @@ type ThreadRow = {
 	limitResetsAt: Date | null;
 	autoResume: boolean | null;
 	settledAt: Date | null;
+	teardownAt: Date | null;
+	autoPause: string | null;
 };
 
 /**
@@ -228,6 +236,11 @@ export class SessionLifecycleService implements OnModuleInit {
 			return;
 		}
 		const running = !isWorkflowTerminal(row.status);
+		const settled =
+			row.settledAt !== null &&
+			row.settledAt >= (row.lastActivityAt ?? row.updatedAt);
+		// Inside a settle's Undo window nothing fires; the teardown ends it, or Undo keeps it.
+		if (settled && row.teardownAt) return;
 		if (wake.kind === "limit" || wake.kind === "idle_compact") {
 			// Moot while the thread runs: the turn in flight is its own resume.
 			if (running) {
@@ -246,9 +259,6 @@ export class SessionLifecycleService implements OnModuleInit {
 			return this.fireIdleCompact(wake, row, now);
 		}
 		// The user stopped the thread, or settled it with nothing since: its agent's wakes end.
-		const settled =
-			row.settledAt !== null &&
-			row.settledAt >= (row.lastActivityAt ?? row.updatedAt);
 		if (settled || row.status === "cancelled") {
 			await this.wakes.finish(wake.id, "cancelled", undefined, this.now());
 			return;
@@ -260,6 +270,8 @@ export class SessionLifecycleService implements OnModuleInit {
 			await this.wakes.finish(wake.id, "done", undefined, this.now());
 			return;
 		}
+		if (wake.kind === "pr_status" || wake.kind === "cron")
+			return this.fireAutonomous(wake, row, now, running, seen);
 		if (running) {
 			if (seen === "missing" && wake.payload.sentTo !== row.id) {
 				const state = this.dispatch.sendMessage(
@@ -279,6 +291,143 @@ export class SessionLifecycleService implements OnModuleInit {
 			return;
 		}
 		await this.resume(wake, row, now, wake.reason, "chat", {}, "wake");
+	}
+
+	/**
+	 * A PR status batch or a cron fire (#1024 surface F): held while the thread is
+	 * paused or limited, then counted against the thread's one autonomous ceiling at
+	 * admission, in the same step as the delivery. Over it, held, never dropped.
+	 */
+	private async fireAutonomous(
+		wake: Wake,
+		row: ThreadRow,
+		now: Date,
+		running: boolean,
+		seen: "delivered" | "queued" | "missing",
+	): Promise<void> {
+		// Already admitted into a running thread: it waits for delivery or the resume below.
+		const admitted = typeof wake.payload.admittedAt === "string";
+		if (!admitted) {
+			if (await this.paused(row, now)) return;
+			if (!running && (await this.limited(row.id))) return;
+		}
+		await this.serial(row.id, async () => {
+			const fresh = await this.wakes.latest(row.id, wake.kind);
+			if (fresh?.id !== wake.id || fresh.state !== "pending") return;
+			const units =
+				typeof wake.payload.units === "number" ? wake.payload.units : 1;
+			const already = typeof fresh.payload.admittedAt === "string";
+			if (!already) {
+				const used = await this.wakes.autonomousUnits(
+					row.id,
+					new Date(now.getTime() - DAY_MS),
+				);
+				if (used + units > AUTONOMOUS_TURNS_PER_DAY) {
+					await this.pause(row.id, now);
+					return;
+				}
+			}
+			if (running) {
+				if (seen === "missing" && fresh.payload.sentTo !== row.id) {
+					const state = this.dispatch.sendMessage(
+						row.id,
+						wake.reason,
+						"queue",
+						[],
+						undefined,
+						wake.id,
+					);
+					if (state === "queued" || state === "sent")
+						await this.wakes.setPayload(wake.id, {
+							...fresh.payload,
+							sentTo: row.id,
+							admittedAt: now.toISOString(),
+						});
+				}
+				return;
+			}
+			await this.resume(fresh, row, now, wake.reason, "chat", {}, "wake");
+		});
+	}
+
+	/** Automatic updates are paused; a user message since a ceiling pause releases it. */
+	private async paused(row: ThreadRow, now: Date): Promise<boolean> {
+		if (!row.autoPause) return false;
+		let pause: { reason?: string; since?: string } = {};
+		try {
+			pause = JSON.parse(row.autoPause) as typeof pause;
+		} catch {
+			return false;
+		}
+		if (pause.reason !== "ceiling") return true;
+		const since = pause.since ? new Date(pause.since) : now;
+		if (!(await this.userSpokeSince(row.id, since))) return true;
+		await this.prisma.investigation.updateMany({
+			where: { id: row.id, autoPause: row.autoPause },
+			data: { autoPause: null },
+		});
+		return false;
+	}
+
+	/** A message from a person since `since`: one no wake delivered. */
+	private async userSpokeSince(id: string, since: Date): Promise<boolean> {
+		const wakeIds = new Set(
+			(
+				await this.prisma.threadWake.findMany({
+					where: { investigationId: id },
+					select: { id: true },
+				})
+			).map((w) => w.id),
+		);
+		for (const e of await this.investigations.allEvents(id))
+			if (
+				e.kind === "operator_message" &&
+				new Date(e.ts) > since &&
+				!(e.messageId && wakeIds.has(e.messageId))
+			)
+				return true;
+		return false;
+	}
+
+	/** Under any usage limit, gave-up included: no PR or cron turn starts a retry. */
+	private async limited(id: string): Promise<boolean> {
+		const w = await this.wakes.latest(id, "limit");
+		return (
+			!!w &&
+			(w.state === "pending" ||
+				(w.state === "skipped" && w.payload.gaveUp === true))
+		);
+	}
+
+	private async pause(id: string, now: Date): Promise<void> {
+		const { count } = await this.prisma.investigation.updateMany({
+			where: { id, autoPause: null },
+			data: {
+				autoPause: JSON.stringify({
+					reason: "ceiling",
+					since: now.toISOString(),
+				}),
+			},
+		});
+		if (count)
+			await this.say(id, [
+				{ kind: "auto_paused", reason: "ceiling", text: CEILING_LINE },
+			]);
+	}
+
+	private readonly locks = new Map<string, Promise<void>>();
+
+	/** One admission at a time per thread, so two never pass the ceiling together. */
+	private async serial(id: string, fn: () => Promise<void>): Promise<void> {
+		const prior = this.locks.get(id) ?? Promise.resolve();
+		const next = prior.then(fn, fn);
+		const settled = next.catch(() => undefined);
+		this.locks.set(id, settled);
+		try {
+			await next;
+		} finally {
+			if (this.locks.get(id) === settled) this.locks.delete(id);
+		}
 	}
 
 	private async fireLimit(
@@ -494,6 +643,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			facts: this.facts(row.harness),
 			resumeAfterLimit: settings.resumeAfterLimit !== false,
 			limitWake: await this.wakes.latest(row.id, "limit"),
+			maxAttempts: NO_TIME_ATTEMPTS,
 			compaction: !compacted
 				? "none"
 				: compacted.event.includes('"method":"agent_command"')

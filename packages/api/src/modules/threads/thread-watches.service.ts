@@ -26,6 +26,7 @@ import {
 import type { WatchesData } from "../gateway/tools/watches.js";
 import { WakesService } from "../wakes/wakes.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
+import { isSettled } from "./settled.js";
 import { readThreadContextSettings } from "./thread-context-settings.js";
 
 /** The agent's own wakes and PR watches write here, so they never race a live run's `seq`. */
@@ -199,10 +200,19 @@ export class ThreadWatchesService
 	}
 
 	async unwatch(runId: string, prId: string): Promise<{ stopped: boolean }> {
+		// The agent's stop also ends the automatic status feed on that PR (#1024 surface F).
+		const { count: feeds } = await this.prisma.prFeed.updateMany({
+			where: {
+				prId,
+				investigationId: runId,
+				state: { in: ["watching", "disconnected"] },
+			},
+			data: { state: "stopped", reason: "Stopped by the agent", pending: null },
+		});
 		const row = await this.prisma.prWatch.findUnique({
 			where: { prId_investigationId: { prId, investigationId: runId } },
 		});
-		if (!row) return { stopped: false };
+		if (!row) return { stopped: feeds > 0 };
 		await this.prisma.prWatch.delete({
 			where: { prId_investigationId: { prId, investigationId: runId } },
 		});
@@ -224,9 +234,16 @@ export class ThreadWatchesService
 		try {
 			// Turned off after the watch began: no host is read, and the watch waits or runs out.
 			if (!(await readThreadContextSettings(this.prisma)).prStatus) return;
-			const rows = await this.prisma.prWatch.findMany();
+			const rows = await this.prisma.prWatch.findMany({
+				include: {
+					investigation: {
+						select: { settledAt: true, lastActivityAt: true, updatedAt: true },
+					},
+				},
+			});
 			const byThread = new Map<string, typeof rows>();
-			for (const r of rows)
+			// A settled thread's watches wait for its teardown, or for Undo.
+			for (const r of rows.filter((w) => !isSettled(w.investigation)))
 				byThread.set(r.investigationId, [
 					...(byThread.get(r.investigationId) ?? []),
 					r,
@@ -347,46 +364,55 @@ export class ThreadWatchesService
 		});
 	}
 
-	/** Appends one event on WATCHES_BRANCH after the thread's newest, retrying a lost race, and relays it. */
-	private async record(
+	private record(
 		threadId: string,
 		body: Record<string, unknown>,
 	): Promise<void> {
-		for (let attempt = 0; ; attempt++) {
-			try {
-				const event = await this.prisma.$transaction(async (tx) => {
-					const { _max } = await tx.investigationEvent.aggregate({
-						where: { investigationId: threadId },
-						_max: { seq: true },
-					});
-					const event = {
-						...body,
-						runId: threadId,
+		return recordWatchEvent(this.prisma, this.bus, threadId, body);
+	}
+}
+
+/** Appends one event on WATCHES_BRANCH after the thread's newest, retrying a lost race, and relays it. */
+export async function recordWatchEvent(
+	prisma: PrismaService,
+	bus: EventBus,
+	threadId: string,
+	body: Record<string, unknown>,
+): Promise<void> {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			const event = await prisma.$transaction(async (tx) => {
+				const { _max } = await tx.investigationEvent.aggregate({
+					where: { investigationId: threadId },
+					_max: { seq: true },
+				});
+				const event = {
+					...body,
+					runId: threadId,
+					branchId: WATCHES_BRANCH,
+					path: [],
+					seq: (_max.seq ?? -1) + 1,
+					label: null,
+					ts: new Date().toISOString(),
+				} as unknown as CanonicalEvent;
+				await tx.investigationEvent.create({
+					data: {
+						investigationId: threadId,
+						seq: event.seq,
 						branchId: WATCHES_BRANCH,
-						path: [],
-						seq: (_max.seq ?? -1) + 1,
-						label: null,
-						ts: new Date().toISOString(),
-					} as unknown as CanonicalEvent;
-					await tx.investigationEvent.create({
-						data: {
-							investigationId: threadId,
-							seq: event.seq,
-							branchId: WATCHES_BRANCH,
-							event: JSON.stringify(event),
-						},
-					});
-					return event;
+						event: JSON.stringify(event),
+					},
 				});
-				this.bus.publish<RelayMessage>(runEventsTopic(threadId), {
-					kind: "event",
-					event,
-				});
-				return;
-			} catch (e) {
-				const taken = (e as { code?: string })?.code === "P2002";
-				if (!taken || attempt >= SEQ_RETRIES) throw e;
-			}
+				return event;
+			});
+			bus.publish<RelayMessage>(runEventsTopic(threadId), {
+				kind: "event",
+				event,
+			});
+			return;
+		} catch (e) {
+			const taken = (e as { code?: string })?.code === "P2002";
+			if (!taken || attempt >= SEQ_RETRIES) throw e;
 		}
 	}
 }

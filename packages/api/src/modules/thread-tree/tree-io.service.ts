@@ -13,6 +13,7 @@ import {
 } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { StreamRelayService } from "../investigations/stream-relay.service.js";
+import { isSettled } from "../threads/settled.js";
 
 /** The branch tree events are stored under, apart from the run's own numbering. */
 export const TREE_BRANCH = "tree";
@@ -108,9 +109,16 @@ export class TreeIo {
 		if (state === "conflict") return { state: "later" };
 		const row = await this.prisma.investigation.findUnique({
 			where: { id: threadId },
-			select: { status: true },
+			select: {
+				status: true,
+				settledAt: true,
+				lastActivityAt: true,
+				updatedAt: true,
+			},
 		});
 		if (!row) return { state: "parked" };
+		// A settled thread keeps the result in its record and is never reopened for it (#1024 surface F).
+		if (isSettled(row)) return { state: "parked" };
 		if (!isWorkflowTerminal(row.status)) return { state: "later" };
 		if (!opts.reopen) return { state: "parked" };
 		try {

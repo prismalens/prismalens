@@ -26,6 +26,11 @@ export interface HostRead {
 	checks: PrChecks;
 	conflicts: boolean | null;
 	detail: PrDetail;
+	/** The head commit, its branch and repository, and the branch it merges into. */
+	headSha: string | null;
+	headRef: string | null;
+	headRepo: string | null;
+	baseRef: string | null;
 }
 
 /** Per request path: the host's ETag and what PrismaLens read from that answer. */
@@ -130,17 +135,44 @@ function tally(runs: PrCheckRun[]): ChecksRead {
 	};
 }
 
+type RunIdentity = Partial<Pick<PrCheckRun, "id" | "appId" | "headSha">> & {
+	url?: string | null;
+};
+
+const idOf = (v: unknown): string | undefined =>
+	typeof v === "number" || (typeof v === "string" && v)
+		? String(v).slice(0, 100)
+		: undefined;
+
+/** An http(s) link the host gave for a check's log; anything else is dropped. */
+function linkOf(v: unknown): string | undefined {
+	const s = str(v);
+	if (!s || s.length > 2000) return undefined;
+	try {
+		const u = new URL(s);
+		return u.protocol === "https:" || u.protocol === "http:" ? s : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function run(
 	name: string | null,
 	state: PrCheckRun["state"],
 	appName?: string | null,
 	appAvatarUrl?: string,
+	identity: RunIdentity = {},
 ): PrCheckRun {
+	const url = linkOf(identity.url);
 	return {
 		name: (name ?? "check").slice(0, 300),
 		state,
 		...(appName ? { appName: appName.slice(0, 200) } : {}),
 		...(appAvatarUrl ? { appAvatarUrl } : {}),
+		...(identity.id ? { id: identity.id } : {}),
+		...(identity.appId ? { appId: identity.appId } : {}),
+		...(identity.headSha ? { headSha: identity.headSha.slice(0, 64) } : {}),
+		...(url ? { url } : {}),
 	};
 }
 
@@ -157,6 +189,9 @@ interface GithubPull {
 	state: PrState;
 	conflicts: boolean | null;
 	sha: string | null;
+	headRef: string | null;
+	headRepo: string | null;
+	baseRef: string | null;
 	author?: PrPerson;
 	requested: PrPerson[];
 }
@@ -196,6 +231,9 @@ export async function readGithub(
 							? false
 							: null,
 				sha: str(obj(p.head).sha),
+				headRef: str(obj(p.head).ref),
+				headRepo: str(obj(obj(p.head).repo).full_name),
+				baseRef: str(obj(p.base).ref),
 				...(author ? { author } : {}),
 				requested: [
 					...arr(p.requested_reviewers).map((r) =>
@@ -260,6 +298,10 @@ export async function readGithub(
 			reviewers,
 			checkRuns: checks.runs,
 		},
+		headSha: pull.sha,
+		headRef: pull.headRef,
+		headRepo: pull.headRepo,
+		baseRef: pull.baseRef,
 	};
 }
 
@@ -291,6 +333,12 @@ async function githubChecks(
 										: "neutral",
 							str(app.name),
 							imageUrl(app.avatar_url ?? obj(app.owner).avatar_url),
+							{
+								id: idOf(o.id),
+								appId: idOf(app.id),
+								headSha: str(o.head_sha) ?? sha,
+								url: str(o.html_url) ?? str(o.details_url),
+							},
 						);
 					}),
 				),
@@ -314,6 +362,7 @@ async function githubChecks(
 									: "neutral",
 						null,
 						imageUrl(o.avatar_url),
+						{ id: idOf(o.id), headSha: sha, url: str(o.target_url) },
 					);
 				}),
 			),
@@ -414,6 +463,9 @@ interface GitlabMr {
 	conflicts: boolean | null;
 	pipelineId: number | null;
 	pipelineStatus: string | null;
+	sha: string | null;
+	headRef: string | null;
+	baseRef: string | null;
 	author?: PrPerson;
 	reviewers: PrPerson[];
 }
@@ -452,6 +504,9 @@ export async function readGitlab(
 					typeof m.has_conflicts === "boolean" ? m.has_conflicts : null,
 				pipelineId: typeof pipeline.id === "number" ? pipeline.id : null,
 				pipelineStatus: str(pipeline.status),
+				sha: str(m.sha),
+				headRef: str(m.source_branch),
+				baseRef: str(m.target_branch),
 				...(author ? { author } : {}),
 				reviewers: arr(m.reviewers)
 					.map((r) => person(obj(r).username, obj(r).avatar_url))
@@ -510,6 +565,14 @@ export async function readGitlab(
 										: s === "success"
 											? "passing"
 											: "neutral",
+								null,
+								undefined,
+								{
+									id: idOf(o.id),
+									appId: "gitlab",
+									headSha: str(obj(o.commit).id) ?? mr.sha ?? undefined,
+									url: str(o.web_url),
+								},
 							);
 						}),
 					),
@@ -531,5 +594,118 @@ export async function readGitlab(
 			reviewers,
 			checkRuns: checks.runs,
 		},
+		headSha: mr.sha,
+		headRef: mr.headRef,
+		// A GitLab MR's source project is read by id, not name: same-project branches only.
+		headRepo: project,
+		baseRef: mr.baseRef,
 	};
+}
+
+/** A review or comment on a PR, by the host's id, as the PR status feed reads it (#1024 surface F). */
+export interface PrActivityItem {
+	/** Which id sequence `id` belongs to: ids only compare within one source. */
+	source: "review" | "issue_comment" | "review_comment" | "note";
+	id: number;
+	login: string;
+	bot: boolean;
+	/** A review's verdict; absent on a comment. */
+	verdict?: "approved" | "changes_requested" | "commented";
+	body: string;
+}
+
+const numId = (v: unknown): number | null =>
+	typeof v === "number" && Number.isSafeInteger(v) ? v : null;
+
+function items(
+	body: unknown,
+	source: PrActivityItem["source"],
+	who: (o: Record<string, unknown>) => { login: string | null; bot: boolean },
+	verdict?: (o: Record<string, unknown>) => PrActivityItem["verdict"] | null,
+): PrActivityItem[] {
+	const out: PrActivityItem[] = [];
+	for (const raw of arr(body)) {
+		const o = obj(raw);
+		const id = numId(o.id);
+		const { login, bot } = who(o);
+		if (id === null || !login) continue;
+		const v = verdict?.(o);
+		if (v === null) continue;
+		out.push({
+			source,
+			id,
+			login: login.slice(0, 200),
+			bot,
+			...(v ? { verdict: v } : {}),
+			body: (str(o.body) ?? "").slice(0, 2000),
+		});
+	}
+	return out;
+}
+
+const githubUser = (o: Record<string, unknown>) => ({
+	login: str(obj(o.user).login),
+	bot: obj(o.user).type === "Bot",
+});
+
+/**
+ * New reviews and comments on a PR, oldest first; a newer PR history past the
+ * first 100 of each kind is not read. Bots count like people.
+ */
+export async function readActivity(
+	req: AuthenticatedRequestFn,
+	shape: "github" | "gitlab",
+	repo: string,
+	number: number,
+	cache: EtagCache,
+): Promise<PrActivityItem[]> {
+	if (shape === "gitlab") {
+		const base = `projects/${encodeURIComponent(repo)}`;
+		return cachedGet(
+			req,
+			`${base}/merge_requests/${number}/notes?sort=asc&order_by=created_at&per_page=100`,
+			cache,
+			(b) =>
+				items(
+					b,
+					"note",
+					(o) => ({
+						login: str(obj(o.author).username),
+						bot: obj(o.author).bot === true,
+					}),
+					// System notes are the host's own changelog, not a person's comment.
+					(o) => (o.system === true ? null : undefined),
+				),
+		);
+	}
+	const base = `repos/${repo}`;
+	const reviews = await cachedGet(
+		req,
+		`${base}/pulls/${number}/reviews?per_page=100`,
+		cache,
+		(b) =>
+			items(b, "review", githubUser, (o) => {
+				const s = str(o.state);
+				return s === "APPROVED"
+					? "approved"
+					: s === "CHANGES_REQUESTED"
+						? "changes_requested"
+						: s === "COMMENTED"
+							? "commented"
+							: null;
+			}),
+	);
+	const issueComments = await cachedGet(
+		req,
+		`${base}/issues/${number}/comments?per_page=100`,
+		cache,
+		(b) => items(b, "issue_comment", githubUser),
+	);
+	const reviewComments = await cachedGet(
+		req,
+		`${base}/pulls/${number}/comments?per_page=100`,
+		cache,
+		(b) => items(b, "review_comment", githubUser),
+	);
+	return [...reviews, ...issueComments, ...reviewComments];
 }

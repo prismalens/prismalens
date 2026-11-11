@@ -893,6 +893,9 @@ export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
 	pr_link: "Linked a pull request",
 	pr_unwatch: "Stopped watching a pull request",
 	pr_watch: "Watched a pull request",
+	cron_create: "Scheduled a recurring prompt",
+	cron_list: "Listed scheduled prompts",
+	cron_delete: "Deleted a scheduled prompt",
 	attachment_read: "Read an attached file",
 	attachments_list: "Listed attached files",
 	changes_list: "Listed recent changes",
@@ -1464,6 +1467,12 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		pr: z.string().max(300),
 		lines: z.array(z.string().max(600)).max(50),
 		phase: z.enum(["delivered", "noted", "ended"]),
+	}),
+	z.object({
+		/** Settling ended the thread's wakes, watches, cron jobs or children (#1024 surface F). */
+		kind: z.literal("jobs_ended"),
+		...StreamBaseShape,
+		text: z.string().max(500),
 	}),
 	z.object({
 		/** Automatic updates stopped until a person acts (#1024 surface F). */

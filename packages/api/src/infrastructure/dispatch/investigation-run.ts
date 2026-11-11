@@ -1887,6 +1887,14 @@ async function clearRunWorkspace(runId: string): Promise<void> {
 }
 
 /**
+ * A settled thread's workspace, once its teardown runs (#1024 surface F): the same
+ * release a finished run gets, so its retention rule and guards decide what stays.
+ */
+export async function releaseSettledWorkspace(runId: string): Promise<void> {
+	await clearRunWorkspace(runId);
+}
+
+/**
  * Called at boot, when nothing is running: a process that died mid-run never
  * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
  * A run named by `isInterrupted` keeps all of it until it is resumed (#981); one named by

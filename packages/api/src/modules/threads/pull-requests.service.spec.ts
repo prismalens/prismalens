@@ -425,6 +425,7 @@ describe("PullRequestsService edges", () => {
 			source: "bogus",
 			etag: null,
 			fetchedAt: null,
+			headSha: null,
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		});
@@ -461,6 +462,7 @@ describe("PullRequestsService edges", () => {
 			source: "agent",
 			etag: null,
 			fetchedAt: null,
+			headSha: null,
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		};

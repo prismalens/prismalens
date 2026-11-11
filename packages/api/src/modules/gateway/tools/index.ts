@@ -9,6 +9,7 @@ import type { RunbooksData } from "../runbooks.js";
 import { type ArtifactsData, artifactTools } from "./artifacts.js";
 import { type AsksData, askTools } from "./asks.js";
 import { type AttachmentsData, attachmentTools } from "./attachments.js";
+import { type CronData, cronTools } from "./cron.js";
 import { type HistoryData, historyTools } from "./history.js";
 import { type IncidentRecordData, incidentTools } from "./incident.js";
 import {
@@ -35,6 +36,7 @@ export {
 	TOOL_ASKS,
 } from "./asks.js";
 export type { AttachmentItem, AttachmentsData } from "./attachments.js";
+export { CRON_JOBS, type CronData } from "./cron.js";
 export type { HistoryData, PastFix, SimilarIncident } from "./history.js";
 export type {
 	ChangeItem,
@@ -77,6 +79,7 @@ export interface GatewayToolData {
 	proposals: ProposalsData;
 	asks: AsksData;
 	watches: WatchesData;
+	cron: CronData;
 }
 
 /**
@@ -101,6 +104,7 @@ export function gatewayTools(data: GatewayToolData): readonly HarnessTool[] {
 		...proposeTools(data.proposals),
 		...askTools(data.asks),
 		...watchTools(data.watches),
+		...cronTools(data.cron),
 	])
 		registry.register(tool);
 	return registry.list();
