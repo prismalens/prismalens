@@ -238,6 +238,7 @@
 				"!packages/frontend/src/components/Sidebar.tsx",
 				"!packages/frontend/src/components/run/RunDetailsPanel.tsx",
 				"!packages/frontend/src/components/thread/ThreadPanel.tsx",
+				"!packages/frontend/src/components/thread/panel/ThreadSidePanel.tsx",
 				"!packages/frontend/src/components/TitleBarStrip.tsx",
 				"!packages/frontend/src/components/alerts/AlertDetail.tsx",
 				"!packages/frontend/src/components/projects/ProjectList.tsx",
