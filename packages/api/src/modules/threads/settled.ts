@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /** The settled test and the line a settle's teardown leaves (#1024 surface F); no services, so any layer imports it. */
-import { fenceUntrusted } from "@prismalens/engine";
+import { fenceUntrusted, sanitizeUntrustedLine } from "@prismalens/engine";
 
 /**
  * The one settled test (#1024 surface F): settled, and nothing happened since.
@@ -52,7 +52,7 @@ export function endedNote(line: string): string {
 	return fenceUntrusted(
 		"SETTLED",
 		"What PrismaLens ended when the user settled this thread.",
-		line,
+		sanitizeUntrustedLine(line),
 		"answer",
 	);
 }
