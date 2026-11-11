@@ -279,12 +279,13 @@ export function Composer({
 	);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
+	const [deferring, setDeferring] = useState(false);
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const live = state === "live";
 	const blocked = !!blockedReason;
 	const hasText = !!text.trim();
-	const busy = sending || !!pending;
+	const busy = sending || deferring || !!pending;
 	const canSend = !busy && !blocked && !holdSend && (hasText || !!emptySend);
 	const slashQuery = /^\/(\w*)$/.exec(text)?.[1]?.toLowerCase();
 	const commands =
@@ -345,36 +346,46 @@ export function Composer({
 		if (next.length) setDrafts((d) => [...d, ...next]);
 	};
 
-	const clear = (sentText: string) => {
-		// A deferred send that lands later clears only the text it carried.
-		if (textNow.current.trim() !== sentText) return;
-		setText("");
-		release(shown.current);
-		setDrafts([]);
+	const clear = (sentText: string, sentKeys: Set<string>) => {
+		// A deferred send that lands later clears the text and files it carried, no others.
+		if (textNow.current.trim() === sentText) setText("");
+		release(shown.current.filter((d) => sentKeys.has(d.key)));
+		setDrafts((d) => d.filter((x) => !sentKeys.has(x.key)));
 		setRefusal(null);
 	};
 	const submit = async (now: boolean) => {
 		if (!canSend) return;
 		setSending(true);
 		const sentText = text.trim();
+		const sent = drafts;
+		const sentKeys = new Set(sent.map((d) => d.key));
 		try {
 			const reply = await onSend(
 				{
 					...envelopeOf(
 						sentText,
-						drafts.map((d) => d.file),
+						sent.map((d) => d.file),
 					),
 					...extras,
 				},
 				now,
 			);
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
-			if (receipt.result === "sent") clear(sentText);
-			else
-				void receipt.settled?.then(
-					(r) => r === "sent" && clear(sentText),
-					(e: unknown) => setRefusal(getErrorMessage(e)),
+			if (receipt.result === "sent") clear(sentText, sentKeys);
+			else if (receipt.result === "deferred" && receipt.settled) {
+				// The kept draft is locked until the decision lands, so it cannot go out twice.
+				setDeferring(true);
+				void receipt.settled.then(
+					(r) => {
+						setDeferring(false);
+						if (r === "sent") clear(sentText, sentKeys);
+					},
+					(e: unknown) => {
+						setDeferring(false);
+						setRefusal(getErrorMessage(e));
+					},
 				);
+			}
 		} catch (e) {
 			setRefusal(getErrorMessage(e));
 		} finally {

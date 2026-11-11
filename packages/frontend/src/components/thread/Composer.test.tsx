@@ -260,6 +260,79 @@ describe("the one composer (#1020)", () => {
 		expect(box.value).toBe("");
 	});
 
+	it("refuses a second send of a draft whose deferred decision is pending, then frees it on cancel", async () => {
+		let settle!: (val: "sent" | "cancelled") => void;
+		const settled = new Promise<"sent" | "cancelled">((resolve) => {
+			settle = resolve;
+		});
+		const onSend = vi.fn(() => ({ result: "deferred" as const, settled }));
+		await render({ onSend });
+		const box = await type("ask first");
+		const enter = () =>
+			act(async () => {
+				box.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+				);
+			});
+		await enter();
+		await enter();
+		expect(onSend).toHaveBeenCalledTimes(1);
+		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(true);
+
+		await act(async () => {
+			settle("cancelled");
+			await settled;
+		});
+		expect(box.value).toBe("ask first");
+		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it("clears only the files a deferred send carried, even when the text changed meanwhile", async () => {
+		let settle!: (val: "sent" | "cancelled") => void;
+		const settled = new Promise<"sent" | "cancelled">((resolve) => {
+			settle = resolve;
+		});
+		const onSend = vi.fn(() => ({ result: "deferred" as const, settled }));
+		await render({
+			onSend,
+			initialFiles: [new File(["a"], "sent.log", { type: "text/plain" })],
+		});
+		const box = await type("with a log");
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		const input = q("composer-file-input") as HTMLInputElement;
+		await act(async () => {
+			Object.defineProperty(input, "files", {
+				configurable: true,
+				value: [new File(["b"], "later.log", { type: "text/plain" })],
+			});
+			input.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		await type("something else");
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="composer-file"]'),
+			).map((f) => f.textContent),
+		).toEqual([
+			expect.stringContaining("sent.log"),
+			expect.stringContaining("later.log"),
+		]);
+
+		await act(async () => {
+			settle("sent");
+			await settled;
+		});
+		expect(box.value).toBe("something else");
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="composer-file"]'),
+			).map((f) => f.textContent),
+		).toEqual([expect.stringContaining("later.log")]);
+	});
+
 	it("merges extras into the envelope received by onSend", async () => {
 		const q: Quote = {
 			source: {
