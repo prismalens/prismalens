@@ -31,6 +31,7 @@ export function LimitDock({
 	onDontResume,
 	onSendAtReset,
 	onSend,
+	onSendNow,
 	pending = false,
 	now: fixedNow,
 	clock,
@@ -41,6 +42,8 @@ export function LimitDock({
 	onDontResume: () => void;
 	onSendAtReset: (message: string) => void;
 	onSend?: () => void;
+	/** A held draft sent at once; a manual send tries even while limited. */
+	onSendNow?: () => void;
 	pending?: boolean;
 	/** A fixed clock, for tests and the gallery. */
 	now?: number;
@@ -104,6 +107,17 @@ export function LimitDock({
 								data-testid="limit-dock-send-at-reset"
 							>
 								Send this draft when it resets
+							</Button>
+						)}
+						{message && onSendNow && (
+							<Button
+								size="sm"
+								variant="text"
+								disabled={pending}
+								onClick={onSendNow}
+								data-testid="limit-dock-send-now"
+							>
+								Send now
 							</Button>
 						)}
 						{limit.autoResume && (

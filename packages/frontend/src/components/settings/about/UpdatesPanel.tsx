@@ -127,7 +127,9 @@ export function UpdateAvailable({
 	/** Live runs, for the busy words; read from the sidebar's own feed when absent. */
 	liveRuns?: number;
 }) {
-	const counted = useLiveRunCount(about.update.install?.blockedBy === "busy");
+	const counted = useLiveRunCount(
+		given === undefined && about.update.install?.blockedBy === "busy",
+	);
 	const liveRuns = given ?? counted;
 	const queryClient = useQueryClient();
 	const [started, setStarted] = useState(false);
