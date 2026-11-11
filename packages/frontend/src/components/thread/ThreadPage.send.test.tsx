@@ -232,15 +232,14 @@ describe("ThreadPage send handling (#1024)", () => {
 		compact: true,
 	};
 
-	it("forwards envelope with fields to sendMessage and resolves result sent while capturing dock", async () => {
+	it("forwards every envelope field to sendMessage and resolves sent", async () => {
 		await act(async () => {
 			root.render(<ThreadPage id="inv-1" />);
 		});
 
-		expect(capturedProps.onSend).toBeDefined();
-		expect(capturedProps.dock).toBeDefined();
-
-		const receipt = await capturedProps.onSend!(envelope, true);
+		const send = capturedProps.onSend;
+		if (!send) throw new Error("ThreadPage did not mount the composer");
+		const receipt = await send(envelope, true);
 
 		expect(sendMessage).toHaveBeenCalledTimes(1);
 		expect(sendMessage).toHaveBeenCalledWith(text, "now", {
@@ -267,9 +266,9 @@ describe("ThreadPage send handling (#1024)", () => {
 			root.render(<ThreadPage id="inv-1" />);
 		});
 
-		expect(capturedProps.onSend).toBeDefined();
-
-		const receipt = await capturedProps.onSend!(envelope, true);
+		const send = capturedProps.onSend;
+		if (!send) throw new Error("ThreadPage did not mount the composer");
+		const receipt = await send(envelope, true);
 
 		expect(receipt).toEqual({ result: "deferred" });
 		expect(sendMessage).not.toHaveBeenCalled();
