@@ -106,6 +106,7 @@ export function resolveUpdateChannel(
 	requested: string | undefined,
 	env: NodeJS.ProcessEnv = process.env,
 ): { channel: UpdateChannel; note?: string } | { error: string } {
+	let saveNote: string | undefined;
 	if (requested !== undefined) {
 		const wanted = requested.trim().toLowerCase();
 		if (wanted !== "stable" && wanted !== "nightly")
@@ -115,22 +116,22 @@ export function resolveUpdateChannel(
 		if (wanted === "nightly" && config.nightlyBlockedBy(channel))
 			return { error: NIGHTLY_NPM_ONLY };
 		config.writeUpdateChannel(workspace, wanted);
-		const effective = config.readUpdateChannel(workspace, env);
-		return {
-			channel: effective,
-			note:
-				effective === wanted
-					? `Release channel set to ${wanted}.`
-					: `Release channel saved as ${wanted}, but PRISMALENS_UPDATE_CHANNEL=${effective} overrides it while it is set.`,
-		};
+		const read = config.readUpdateChannel(workspace, env);
+		saveNote =
+			read === wanted
+				? `Release channel set to ${wanted}.`
+				: `Release channel saved as ${wanted}, but PRISMALENS_UPDATE_CHANNEL=${read} overrides it while it is set.`;
 	}
+	// One fallback for both paths: the env can still say nightly after --channel stable.
 	const saved = config.readUpdateChannel(workspace, env);
-	if (saved === "nightly" && config.nightlyBlockedBy(channel))
+	if (saved === "nightly" && config.nightlyBlockedBy(channel)) {
+		const fallback = `This copy was installed with ${channel}, so it follows stable. ${NIGHTLY_NPM_ONLY}`;
 		return {
 			channel: "stable",
-			note: `This copy was installed with ${channel}, so it follows stable. ${NIGHTLY_NPM_ONLY}`,
+			note: saveNote ? `${saveNote} ${fallback}` : fallback,
 		};
-	return { channel: saved };
+	}
+	return saveNote ? { channel: saved, note: saveNote } : { channel: saved };
 }
 
 /** argv to run for `channel`, or null when the user has to act (desktop). */

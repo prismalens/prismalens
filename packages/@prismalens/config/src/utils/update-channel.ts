@@ -7,7 +7,7 @@
  * runs without the API and About writes it from the API.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import semver from "semver";
 import type { InstallChannel } from "./install-channel.js";
@@ -38,11 +38,15 @@ export function readUpdateChannel(
 	}
 }
 
-/** Throws when the file can't be written: a setting the user chose must not be lost silently. */
+/**
+ * Creates the workspace when absent: `pl upgrade` can run before the first `pl up`.
+ * Throws when the file can't be written: a setting the user chose must not be lost silently.
+ */
 export function writeUpdateChannel(
 	workspaceDir: string,
 	channel: UpdateChannel,
 ): void {
+	mkdirSync(workspaceDir, { recursive: true, mode: 0o700 });
 	writeFileSync(
 		join(workspaceDir, CHANNEL_FILE),
 		`${JSON.stringify({ channel })}\n`,

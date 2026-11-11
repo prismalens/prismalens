@@ -116,6 +116,20 @@ describe("resolveUpdateChannel", () => {
 		}
 	});
 
+	it("requested stable with env PRISMALENS_UPDATE_CHANNEL=nightly on the installer still follows stable, with both notes", () => {
+		const workspace = mkdtempSync(join(tmpdir(), "pl-chan-"));
+		try {
+			const env = { PRISMALENS_UPDATE_CHANNEL: "nightly" };
+			const res = resolveUpdateChannel(realConfig, workspace, "installer", "stable", env);
+			expect(res).toEqual({
+				channel: "stable",
+				note: `Release channel saved as stable, but PRISMALENS_UPDATE_CHANNEL=nightly overrides it while it is set. This copy was installed with installer, so it follows stable. ${NIGHTLY_NPM_ONLY}`,
+			});
+		} finally {
+			rmSync(workspace, { recursive: true, force: true });
+		}
+	});
+
 	it("no request, saved nightly, install homebrew falls back to stable with note", () => {
 		const workspace = mkdtempSync(join(tmpdir(), "pl-chan-"));
 		try {

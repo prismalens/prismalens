@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -122,13 +128,28 @@ describe("writeUpdateChannel", () => {
 		}
 	});
 
-	it("throws when writing into a missing directory", () => {
-		const nonExistentDir = join(
-			tmpdir(),
-			`non-existent-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-			"nested",
-		);
-		expect(() => writeUpdateChannel(nonExistentDir, "nightly")).toThrow();
+	it("creates a workspace that doesn't exist yet and writes the channel into it", () => {
+		const root = mkdtempSync(join(tmpdir(), "pl-channel-new-"));
+		const workspace = join(root, "not-yet", "workspace");
+		try {
+			writeUpdateChannel(workspace, "nightly");
+			expect(
+				readFileSync(join(workspace, "update-channel.json"), "utf8"),
+			).toBe('{"channel":"nightly"}\n');
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("throws EEXIST when the workspace path is a file", () => {
+		const root = mkdtempSync(join(tmpdir(), "pl-channel-file-"));
+		const file = join(root, "a-file");
+		writeFileSync(file, "x");
+		try {
+			expect(() => writeUpdateChannel(file, "nightly")).toThrow(/EEXIST/);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 });
 
