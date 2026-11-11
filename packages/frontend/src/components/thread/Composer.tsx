@@ -781,7 +781,6 @@ export function Composer({
 		const attrs: Record<string, string | null> = {
 			role: "combobox",
 			"aria-label": placeholder,
-			"aria-multiline": "true",
 			"aria-autocomplete": "list",
 			"aria-expanded": String(menuOpen && rows.length > 0),
 			"aria-controls": menuOpen ? "composer-menu" : null,

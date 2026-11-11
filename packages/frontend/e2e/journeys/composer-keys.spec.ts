@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page } from "@playwright/test";
+import type { Editor } from "@tiptap/core";
 import { test } from "../steps/fixtures";
 import { visit } from "../steps/product";
 
@@ -24,10 +25,16 @@ const SAM_THREAD_HIT = {
 	unavailable: [],
 };
 
+/** TipTap puts its editor on the contenteditable it renders. */
+type WithEditor = HTMLElement & { editor?: Editor };
+
 async function getEditorState(page: Page) {
 	return page.evaluate(() => {
-		const v = (document.querySelector('[data-testid="composer-input"]') as any)
-			?.editor?.view;
+		const v = (
+			document.querySelector(
+				'[data-testid="composer-input"]',
+			) as WithEditor | null
+		)?.editor?.view;
 		if (!v) return null;
 		const s = v.state.selection;
 		return {
@@ -110,8 +117,16 @@ async function visitComposer(page: Page) {
 				window.localStorage.removeItem(key);
 			}
 		}
-		const ed = (document.querySelector('[data-testid="composer-input"]') as any)
-			?.editor;
+		const ed = (
+			document.querySelector('[data-testid="composer-input"]') as
+				| (HTMLElement & {
+						editor?: {
+							isEmpty: boolean;
+							commands: { clearContent: () => void };
+						};
+				  })
+				| null
+		)?.editor;
 		if (ed && !ed.isEmpty) {
 			ed.commands.clearContent();
 		}
@@ -139,6 +154,16 @@ async function pickSam(page: Page) {
 }
 
 test.describe("Composer key list (#1101 category 7)", () => {
+	// The stack is shared with the design matrix: drop every draft a case left behind.
+	test.afterEach(async ({ page }) => {
+		const scopes = await page.evaluate(() =>
+			Object.keys(window.localStorage)
+				.filter((k) => k.startsWith("pl.draft."))
+				.map((k) => k.slice("pl.draft.".length)),
+		);
+		for (const scope of Array.from(new Set([...scopes, "new:home"])))
+			await page.request.delete(`/api/drafts/${encodeURIComponent(scope)}`);
+	});
 	test.beforeEach(async ({ page }) => {
 		await page.route("**/api/references/search*", async (route) => {
 			await route.fulfill({
@@ -569,10 +594,12 @@ test.describe("Composer key list (#1101 category 7)", () => {
 			.poll(async () =>
 				page.evaluate(() => {
 					const v = (
-						document.querySelector('[data-testid="composer-input"]') as any
+						document.querySelector(
+							'[data-testid="composer-input"]',
+						) as WithEditor | null
 					)?.editor?.view;
 					let hasBreak = false;
-					v?.state.doc.descendants((node: any) => {
+					v?.state.doc.descendants((node) => {
 						if (node.type.name === "hardBreak") hasBreak = true;
 					});
 					return hasBreak;

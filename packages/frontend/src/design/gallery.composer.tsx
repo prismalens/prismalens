@@ -160,7 +160,10 @@ function ChipLine({
 		content: { type: "doc", content: [{ type: "paragraph", content: parts }] },
 		immediatelyRender: false,
 		editorProps: {
-			attributes: { class: "composer-editor text-body leading-6 text-text-1" },
+			attributes: {
+				class: "composer-editor text-body leading-6 text-text-1",
+				"aria-label": "Composer example",
+			},
 		},
 		onCreate: ({ editor: ed }) => {
 			if (chosenAt === undefined) return;
