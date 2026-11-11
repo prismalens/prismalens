@@ -19,9 +19,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
-import type {
-	CanonicalEvent,
-	InvestigationContext,
+import {
+	type CanonicalEvent,
+	type InvestigationContext,
+	plToolName,
 } from "@prismalens/contracts/schemas";
 import type {
 	Expectation,
@@ -429,7 +430,8 @@ export function gatewayProblem(
 		const i = calls.findIndex(
 			(c, n) =>
 				n >= at &&
-				c.name === w.name &&
+				// A row may still name a tool by its pre-`pl_` name (#1101).
+				c.name === plToolName(w.name) &&
 				c.input !== undefined &&
 				typeof c.callId === "string" &&
 				c.callId.length > 0 &&
