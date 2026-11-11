@@ -18,6 +18,7 @@ import { PULL_TEMPLATES } from "@/components/settings/SettingsFrame";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
+import { ProjectMark } from "@/components/shared/ProjectMark";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Blank, Empty, Loading } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
@@ -554,6 +555,12 @@ function ServiceRow({
 				data-testid="service-row-link"
 			>
 				<p className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+					<ProjectMark
+						name={service.name}
+						iconUrl={service.iconUrl}
+						size="sm"
+						className="self-center"
+					/>
 					<span
 						className="font-semibold text-text-1"
 						data-testid="service-name"

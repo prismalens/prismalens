@@ -15,6 +15,8 @@ const choice: { effective: { id: string; label: string } | null } = {
 	effective: null,
 };
 
+// Its rows have their own tests.
+vi.mock("./AgentThreadsSettings", () => ({ AgentThreadsGroup: () => null }));
 vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: { harnesses: [], selection: { harness: null } },

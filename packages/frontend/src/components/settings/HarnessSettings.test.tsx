@@ -81,6 +81,8 @@ const mockHarnesses: HarnessStatus[] = [
 	},
 ];
 
+// Its rows have their own tests.
+vi.mock("./AgentThreadsSettings", () => ({ AgentThreadsGroup: () => null }));
 vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: {

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { TickDot } from "@/components/schedules/TickDot";
+import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Empty, Loading, NotFound, Problem } from "@/components/shared/State";
 import { NewThread } from "@/components/thread/NewThread";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,6 @@ import {
 import { useThreads } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { KIND_ICON } from "@/lib/project-source";
 import { KindMark } from "./ProjectList";
 
 const TONE = {
@@ -70,7 +70,6 @@ export function ProjectPage({ id }: { id: string }) {
 	}
 	const p = repo.data;
 	const kind = projectKindOf(p);
-	const KindIcon = KIND_ICON[kind];
 	const linked = p.services ?? [];
 	const rows = threads.data?.data ?? [];
 	return (
@@ -89,7 +88,7 @@ export function ProjectPage({ id }: { id: string }) {
 						<ChevronLeft />
 					</Link>
 				</Button>
-				<KindIcon className="size-4 shrink-0 text-text-3" aria-hidden />
+				<ProjectMark name={p.fullName} iconUrl={p.iconUrl} />
 				<h1
 					className="min-w-0 flex-1 truncate text-title"
 					data-testid="project-name"
