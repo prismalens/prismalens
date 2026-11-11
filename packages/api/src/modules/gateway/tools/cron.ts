@@ -47,7 +47,7 @@ export function cronTools(data: CronData): HarnessTool[] {
 	return [
 		defineHarnessTool({
 			...base,
-			name: "cron_create",
+			name: "pl_cron_create",
 			title: "Repeat a prompt on this thread",
 			description: withRules(
 				`Have PrismaLens send this thread \`prompt\` on a 5-field cron \`schedule\` in the host's time zone, at least ${CRON_MIN_GAP_MINUTES} minutes apart; \`recurring: false\` fires once. A recurring job ends after 7 days. Each fire reaches you as a message headed "Scheduled: <name>", at your next pause or by reopening the thread. At most ${CRON_JOBS_MAX} per thread. Returns its id and next fire. Use it for a check that repeats, such as a nightly look at a flaky test.`,
@@ -62,10 +62,10 @@ export function cronTools(data: CronData): HarnessTool[] {
 		}),
 		defineHarnessTool({
 			...base,
-			name: "cron_list",
+			name: "pl_cron_list",
 			title: "List this thread's repeated prompts",
 			description: withRules(
-				"List the cron jobs on this thread: id, name, schedule, prompt, next fire and expiry. Use it before cron_create or cron_delete.",
+				"List the cron jobs on this thread: id, name, schedule, prompt, next fire and expiry. Use it before pl_cron_create or pl_cron_delete.",
 				"wakes or Schedules: they are not cron jobs.",
 			),
 			input: z.object({}),
@@ -86,10 +86,10 @@ export function cronTools(data: CronData): HarnessTool[] {
 		}),
 		defineHarnessTool({
 			...base,
-			name: "cron_delete",
+			name: "pl_cron_delete",
 			title: "Delete a repeated prompt",
 			description: withRules(
-				"Delete a cron job on this thread by its id from cron_list; it never fires again. Returns `deleted: false` when no such job exists. Use it when the check no longer matters.",
+				"Delete a cron job on this thread by its id from pl_cron_list; it never fires again. Returns `deleted: false` when no such job exists. Use it when the check no longer matters.",
 				"a wake: wakeup_schedule replaces its own.",
 			),
 			input: z.object({ id: z.string().trim().min(1).max(100) }),

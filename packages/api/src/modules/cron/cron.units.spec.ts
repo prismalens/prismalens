@@ -18,7 +18,7 @@ describe("cron seams (#1024 surface F)", () => {
 		expect(cronScheduleError("0 9 30 2 *", NOW)).toBe("This cron expression never runs.");
 	});
 
-	it("Given a thread that is gone, When cron_create runs, Then it is refused as invalid input with next 'Finish without a cron job.'", async () => {
+	it("Given a thread that is gone, When pl_cron_create runs, Then it is refused as invalid input with next 'Finish without a cron job.'", async () => {
 		const svc = new CronService(
 			{ investigation: { findUnique: vi.fn().mockResolvedValue(null) } } as never,
 			{} as never,
@@ -62,17 +62,17 @@ describe("cron seams (#1024 surface F)", () => {
 		});
 	});
 
-	it("Given a refused create, When cron_create runs, Then the tool fails with the service's code, message and next", async () => {
+	it("Given a refused create, When pl_cron_create runs, Then the tool fails with the service's code, message and next", async () => {
 		const create = cronTools({
 			create: vi.fn().mockResolvedValue({
 				error: "This thread already has 3 cron jobs.",
 				code: "limit_reached",
-				next: "Delete one with `cron_delete`.",
+				next: "Delete one with `pl_cron_delete`.",
 			}),
 			list: vi.fn(),
 			remove: vi.fn(),
-		}).find((t) => t.name === "cron_create");
-		if (!create) throw new Error("cron_create is not served");
+		}).find((t) => t.name === "pl_cron_create");
+		if (!create) throw new Error("pl_cron_create is not served");
 		const r = await create.run(create.input.parse({ schedule: "0 9 * * *", prompt: "Check" }), {
 			runId: "t1",
 			signal: new AbortController().signal,
@@ -81,7 +81,7 @@ describe("cron seams (#1024 surface F)", () => {
 			failure: {
 				error: "limit_reached",
 				message: "This thread already has 3 cron jobs.",
-				next: "Delete one with `cron_delete`.",
+				next: "Delete one with `pl_cron_delete`.",
 			},
 		});
 	});

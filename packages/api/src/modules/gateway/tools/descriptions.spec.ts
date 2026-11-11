@@ -50,9 +50,9 @@ describe("every tool description follows the checklist (#1024 spec F, decision 6
 			"pr_watch",
 			"pr_unwatch",
 			"wakeup_schedule",
-			"cron_create",
-			"cron_list",
-			"cron_delete",
+			"pl_cron_create",
+			"pl_cron_list",
+			"pl_cron_delete",
 		];
 		const subset = tools.filter((t) => targetNames.includes(t.name));
 		expect(subset.map((t) => t.name).sort()).toEqual([...targetNames].sort());

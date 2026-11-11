@@ -3,7 +3,7 @@
 
 /**
  * A thread's cron jobs (#1024 surface F): a recurring prompt the agent set on
- * its own thread with `cron_create`. Unlike a Schedule, a fire messages this
+ * its own thread with `pl_cron_create`. Unlike a Schedule, a fire messages this
  * thread instead of starting a new run.
  */
 import { z } from "zod";
@@ -15,7 +15,7 @@ export const CRON_JOBS_MAX = 3;
 export const CRON_MIN_GAP_MINUTES = 60;
 /** A recurring job expires this long after creation, after one last fire. */
 export const CRON_EXPIRES_DAYS = 7;
-/** `cron_create` is refused when the user has not written in the thread for this long. */
+/** `pl_cron_create` is refused when the user has not written in the thread for this long. */
 export const CRON_USER_QUIET_DAYS = 7;
 export const CRON_PROMPT_MAX = 2000;
 export const CRON_NAME_MAX = 80;

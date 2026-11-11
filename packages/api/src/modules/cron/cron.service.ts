@@ -153,7 +153,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
 			return {
 				error: `This thread already has ${CRON_JOBS_MAX} cron jobs.`,
 				code: "limit_reached",
-				next: "Delete one with `cron_delete`.",
+				next: "Delete one with `pl_cron_delete`.",
 			};
 		const why = cronScheduleError(input.schedule, now);
 		if (why)

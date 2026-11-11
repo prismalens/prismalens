@@ -214,7 +214,7 @@ describe("CronService (#1024 surface F)", () => {
 		expect(fourth).toEqual({
 			error: "This thread already has 3 cron jobs.",
 			code: "limit_reached",
-			next: "Delete one with `cron_delete`.",
+			next: "Delete one with `pl_cron_delete`.",
 		});
 	});
 
