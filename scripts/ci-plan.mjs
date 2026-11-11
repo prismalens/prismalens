@@ -36,7 +36,7 @@ const METADATA = [
 const CI_ONLY = [
 	...METADATA,
 	/^\.github\/workflows\/(?!ci\.yml$|e2e-browser\.yml$)/,
-	/^scripts\/(ci-plan|ci-gate-report|agent-probe|agent-tested|agent-adapter-sdk|gate-side-checks|packed-upgrade-chain|admission-fake)(\.test)?\.mjs$/,
+	/^scripts\/(ci-plan|ci-gate-report|agent-probe|agent-tested|agent-adapter-sdk|gate-side-checks|packed-upgrade-chain|admission-fake|nightly-version)(\.test)?\.mjs$/,
 	/^scripts\/(workflow-pins\.test\.mjs|agent-pins\.json)$/,
 ];
 
@@ -67,7 +67,7 @@ const SAFE_FOR_AGENTS = [
 	/^packages\/(frontend|desktop|api|cli)\//,
 	/^packages\/@prismalens\/(auth|database|logger)\//,
 	/^\.github\/workflows\/(?!ci\.yml$|proofs\.yml$|nightly\.yml$)/,
-	/^scripts\/(ci-plan|ci-gate-report|gate-side-checks|packed-upgrade-chain|packed-upgrade-smoke|workflow-pins)(\.test)?\.mjs$/,
+	/^scripts\/(ci-plan|ci-gate-report|gate-side-checks|packed-upgrade-chain|packed-upgrade-smoke|workflow-pins|nightly-version)(\.test)?\.mjs$/,
 ];
 
 /** An unlisted path counts as unsafe, so a new package runs the tier until someone lists it. */

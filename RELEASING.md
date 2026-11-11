@@ -94,6 +94,18 @@ What a minor adds to a patch:
 ## Major release
 Not decided yet. VERSIONING.md: "`1.0.0` is a deliberate stability promise, not just the number after `0.9`."
 
+## Nightly
+- Each night whose proofs pass, `.github/workflows/nightly.yml` publishes main's head as `<next patch>-nightly.<YYYYMMDD>.<run number>` (`scripts/nightly-version.mjs`). It goes to npm under the `nightly` dist-tag, then to a GitHub prerelease that is never marked latest. There is no walk and no soak. A night with no new commits publishes nothing.
+- Nightlies are npm-only. They have no installer archives, Homebrew formula, Scoop manifest or desktop build.
+- Only the newest 10 nightly prereleases stay listed. The installers read the newest 30 releases to find a stable one with archives.
+- To turn it on:
+  1. Ship a stable release that carries the 30-release installers, because the installers run from the newest stable release's assets.
+  2. Add `nightly.yml` as a trusted publisher of `prismalens` on npmjs.com, beside `release.yml`.
+  3. Set the repository variable `NIGHTLY_PUBLISH` to `true`.
+
+  A dispatch on `main` with `publish` checked and no `ref` publishes once by hand.
+- A re-run computes the same version, and finishes whichever half (npm or the prerelease) is missing.
+
 ## Where findings go
 Each walk records its findings in the Phase gate issue or one linked GitHub issue titled `X.Y.Z walk findings`: one checkbox per finding with its evidence, screenshots attached with `gh issue comment --attach`.
 
