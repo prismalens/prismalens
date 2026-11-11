@@ -164,7 +164,7 @@ describe("AskDock (#1024)", () => {
 		});
 
 		const allowBtn = q("ask-dock-allow");
-		expect(allowBtn.textContent).toBe("Allow once");
+		expect(allowBtn.textContent).toBe("Allow once Alt Y");
 		await act(async () => {
 			allowBtn.click();
 		});
@@ -253,7 +253,7 @@ describe("AskDock (#1024)", () => {
 		});
 
 		const denyBtn = q("ask-dock-deny");
-		expect(denyBtn.textContent).toBe("Keep planning");
+		expect(denyBtn.textContent).toBe("Keep planning Alt N");
 		await act(async () => {
 			denyBtn.click();
 		});
