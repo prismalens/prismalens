@@ -287,6 +287,27 @@ describe("the one composer (#1020)", () => {
 		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(false);
 	});
 
+	it("locks a deferred draft that has no settled promise until it is edited", async () => {
+		const onSend = vi.fn(() => ({ result: "deferred" as const }));
+		await render({ onSend });
+		const box = await type("hand over");
+		const enter = () =>
+			act(async () => {
+				box.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+				);
+			});
+		await enter();
+		await enter();
+		expect(onSend).toHaveBeenCalledTimes(1);
+		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(true);
+
+		await type("hand over, edited");
+		expect((q("composer-send") as HTMLButtonElement).disabled).toBe(false);
+		await enter();
+		expect(onSend).toHaveBeenCalledTimes(2);
+	});
+
 	it("clears only the files a deferred send carried, even when the text changed meanwhile", async () => {
 		let settle!: (val: "sent" | "cancelled") => void;
 		const settled = new Promise<"sent" | "cancelled">((resolve) => {

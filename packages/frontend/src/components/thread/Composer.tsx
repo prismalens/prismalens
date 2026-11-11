@@ -279,13 +279,15 @@ export function Composer({
 	);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
-	const [deferring, setDeferring] = useState(false);
+	const [held, setHeld] = useState<string | null>(null);
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const live = state === "live";
 	const blocked = !!blockedReason;
 	const hasText = !!text.trim();
-	const busy = sending || deferring || !!pending;
+	// A deferred draft stays locked while it is unchanged; editing it makes a new send.
+	const draftId = JSON.stringify([text.trim(), drafts.map((d) => d.key)]);
+	const busy = sending || held === draftId || !!pending;
 	const canSend = !busy && !blocked && !holdSend && (hasText || !!emptySend);
 	const slashQuery = /^\/(\w*)$/.exec(text)?.[1]?.toLowerCase();
 	const commands =
@@ -359,6 +361,7 @@ export function Composer({
 		const sentText = text.trim();
 		const sent = drafts;
 		const sentKeys = new Set(sent.map((d) => d.key));
+		const sentId = JSON.stringify([sentText, sent.map((d) => d.key)]);
 		try {
 			const reply = await onSend(
 				{
@@ -372,16 +375,15 @@ export function Composer({
 			);
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
 			if (receipt.result === "sent") clear(sentText, sentKeys);
-			else if (receipt.result === "deferred" && receipt.settled) {
-				// The kept draft is locked until the decision lands, so it cannot go out twice.
-				setDeferring(true);
-				void receipt.settled.then(
+			else if (receipt.result === "deferred") {
+				setHeld(sentId);
+				void receipt.settled?.then(
 					(r) => {
-						setDeferring(false);
+						setHeld((h) => (h === sentId ? null : h));
 						if (r === "sent") clear(sentText, sentKeys);
 					},
 					(e: unknown) => {
-						setDeferring(false);
+						setHeld((h) => (h === sentId ? null : h));
 						setRefusal(getErrorMessage(e));
 					},
 				);
