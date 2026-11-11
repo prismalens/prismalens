@@ -8,7 +8,11 @@ import {
 } from "@prismalens/contracts";
 import type { QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useSaveDraft, useServerDraft } from "@/lib/api/hooks/use-drafts-orpc";
+import {
+	fetchServerDraft,
+	useSaveDraft,
+	useServerDraft,
+} from "@/lib/api/hooks/use-drafts-orpc";
 import {
 	type DraftContent,
 	isEmptyContent,
@@ -199,15 +203,29 @@ export function useComposerDraft({
 				: scope
 					? { draftScope: scope }
 					: {},
-		/** The server tombstoned the draft: the next save starts its new generation. */
+		/**
+		 * A send went out: the server tombstoned the draft, unless another device saved a newer
+		 * one first. The server's own revision and generation replace the assumed ones, and a
+		 * newer draft it kept is offered as "Changed on another device" rather than overwritten.
+		 */
 		sent: () => {
 			if (!scope) return;
+			const before = at.current;
 			at.current = {
-				rev: at.current.rev + 1,
-				generation: at.current.generation + 1,
+				rev: before.rev + 1,
+				generation: before.generation + 1,
 			};
 			justSent.current = true;
 			writeJournal(scope, undefined);
+			void fetchServerDraft(client, scope).then(
+				(now) => {
+					if (!now) return;
+					at.current = { rev: now.rev, generation: now.generation };
+					if (now.generation === before.generation && now.rev > before.rev)
+						setConflict({ mine: latest.current.content, theirs: now });
+				},
+				() => {},
+			);
 		},
 		keepMine: () => {
 			if (!conflict) return;

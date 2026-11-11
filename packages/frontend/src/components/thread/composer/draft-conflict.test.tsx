@@ -25,6 +25,7 @@ vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 		},
 		isPending: false,
 	}),
+	fetchServerDraft: async () => null,
 	useSaveDraft: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
 	useDeleteDraft: () => ({ mutate: vi.fn() }),
 	useDraftAttachments: () => ({ data: undefined }),

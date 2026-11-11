@@ -115,6 +115,43 @@ describe("a monitoring link resolved to its record (#1024)", () => {
 			});
 		});
 
+		it("reads an alert's own labels: exported_instance does not stand in for instance", async () => {
+			const lookalike = new MonitoringProvider("Alertmanager", {
+				connections: async () => [{ id: "am-1", label: "prod" }],
+				baseUrl: async () => "http://am.example.com/",
+				open: async (src) => ({
+					id: src.id,
+					label: src.label,
+					kind: "alertmanager",
+					secrets: [],
+					request: (async () =>
+						new Response(
+							JSON.stringify([
+								{
+									fingerprint: "f9",
+									labels: { alertname: "DiskFull", instance: "db-1", exported_instance: "db-2" },
+									annotations: {},
+									startsAt: "2026-11-06T10:00:00Z",
+									status: { state: "active" },
+								},
+							]),
+							{ status: 200 },
+						)) as unknown as OpenedSource["request"],
+				}),
+			});
+			expect(await refusal(lookalike, url('{alertname="DiskFull",instance="db-2"}'))).toEqual({
+				source: "Alertmanager",
+				message: "nothing on it matches this link",
+			});
+		});
+
+		it("refuses a filter with a second alertname matcher, even a pattern one", async () => {
+			expect(await refusal(p(), url('{alertname="DiskFull",alertname=~"Other"}'))).toEqual({
+				source: "Alertmanager",
+				message: "this link filters by a pattern, which cannot name a single alert",
+			});
+		});
+
 		it("refuses a link that filters by a pattern", async () => {
 			expect(await refusal(p(), url('{alertname="DiskFull",instance=~"db-.*"}'))).toEqual({
 				source: "Alertmanager",

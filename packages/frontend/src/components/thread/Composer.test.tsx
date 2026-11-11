@@ -56,6 +56,7 @@ vi.mock("@/lib/api/hooks/use-drafts-orpc", async (importOriginal) => {
 		await importOriginal<typeof import("@/lib/api/hooks/use-drafts-orpc")>();
 	return {
 		...actual,
+		fetchServerDraft: async () => null,
 		useServerDraft: () => ({ data: mockServerDraft, isPending: false }),
 		useSaveDraft: () => ({
 			mutateAsync: vi.fn(async () => ({ rev: 1, generation: 0 })),

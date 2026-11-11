@@ -63,19 +63,20 @@ function alertmanagerWanted(url: URL): Wanted | null {
 		return { kind: "silence", is: (i) => i.ref.id.endsWith(`:${silence[1]}`) };
 	const filter =
 		path === "/alerts" ? new URLSearchParams(query).get("filter") : null;
-	const name = alertnameOf(filter);
-	if (!name || !filter) return null;
-	// Every other matcher in the link must hold for the one alert it names.
-	const rest = matchersOf(filter).filter((m) => m.key !== "alertname");
-	if (rest.some((m) => m.op === "=~" || m.op === "!~"))
+	if (!alertnameOf(filter) || !filter) return null;
+	// Every matcher in the link must hold for the one alert it names, read from its own labels.
+	const all = matchersOf(filter);
+	const names = all.filter((m) => m.key === "alertname");
+	const exact = (m: { op: string }) => m.op === "=" || m.op === "!=";
+	if (names.length !== 1 || names[0]?.op !== "=" || !all.every(exact))
 		return { kind: "alert", is: () => false, unverifiable: true };
 	return {
 		kind: "alert",
 		is: (i) =>
-			i.ref.label === name &&
-			rest.every(
-				(m) => i.text.includes(`${m.key}="${m.value}"`) === (m.op === "="),
-			),
+			all.every((m) => {
+				const has = i.labels?.[m.key] === m.value;
+				return m.op === "=" ? has : !has;
+			}),
 	};
 }
 
@@ -103,7 +104,13 @@ function onConnection(base: string, url: URL): boolean {
 	);
 }
 
-type Item = { ref: ReferenceRef; detail: string; text: string };
+type Item = {
+	ref: ReferenceRef;
+	detail: string;
+	text: string;
+	/** An alert's own labels, for checking a link's matchers against the alert itself. */
+	labels?: Record<string, string>;
+};
 type Lister = (src: OpenedSource, signal: AbortSignal) => Promise<Item[]>;
 
 /** A ref id names its connection, so a snapshot reads the same source again. */
@@ -150,6 +157,7 @@ const ALERTMANAGER: Partial<Record<ReferenceKind, Lister>> = {
 						label: label(name),
 					},
 					detail: `${x.status?.state ?? "active"} · ${x.labels?.severity ?? "no severity"}`,
+					...(x.labels ? { labels: x.labels } : {}),
 					text: [
 						`Alertmanager alert "${name}", ${x.status?.state ?? "active"}, since ${x.startsAt ?? "unknown"}.`,
 						`Labels: ${labels(x.labels)}`,

@@ -26,6 +26,14 @@ export function useServerDraft(
 	);
 }
 
+/** What the server holds for the scope right now, past the mount-time read. */
+export function fetchServerDraft(client: QueryClient, scope: ComposerScope) {
+	return client.fetchQuery({
+		...orpc.drafts.get.queryOptions({ input: { scope } }),
+		staleTime: 0,
+	});
+}
+
 export function useSaveDraft(client?: QueryClient) {
 	return useMutation(orpc.drafts.put.mutationOptions(), client);
 }

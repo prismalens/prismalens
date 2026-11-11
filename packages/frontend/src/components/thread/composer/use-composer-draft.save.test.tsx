@@ -12,7 +12,16 @@ import { DRAFT_DEBOUNCE_MS, useComposerDraft } from "./use-composer-draft";
 type Saved = { rev: number; generation: number };
 const saves: { baseRev: number; text: string; done: (s: Saved) => void }[] = [];
 
+let serverNow: {
+	rev: number;
+	generation: number;
+	text: string;
+	quotes: [];
+	references: [];
+} | null = null;
+
 vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
+	fetchServerDraft: async () => serverNow,
 	useServerDraft: () => ({ data: null, isPending: false }),
 	useSaveDraft: () => ({
 		mutateAsync: (body: { baseRev: number; text: string }) =>
@@ -56,6 +65,7 @@ const wait = (ms: number) => act(async () => vi.advanceTimersByTime(ms));
 beforeEach(() => {
 	vi.useFakeTimers();
 	window.localStorage.clear();
+	serverNow = null;
 	saves.length = 0;
 	container = document.createElement("div");
 	document.body.appendChild(container);
@@ -104,5 +114,47 @@ describe("saving a draft (#1024)", () => {
 		await show("next message");
 		await wait(DRAFT_DEBOUNCE_MS);
 		expect(saves.map((s) => s.text)).toEqual(["next message"]);
+	});
+
+	it("after a send that kept another device's newer draft, offers it instead of saving over it", async () => {
+		await show("");
+		await show("hello");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 5, generation: 0 }));
+		saves.length = 0;
+		serverNow = {
+			rev: 6,
+			generation: 0,
+			text: "from the laptop",
+			quotes: [],
+			references: [],
+		};
+
+		await act(async () => api.sent());
+		await show("");
+		await wait(0);
+		expect(api.conflict?.theirs.text).toBe("from the laptop");
+
+		await show("typed after");
+		await wait(DRAFT_DEBOUNCE_MS * 2);
+		expect(saves).toEqual([]);
+	});
+
+	it("after a send the server tombstoned, saves from the revision and generation it holds", async () => {
+		await show("");
+		await show("hello");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 5, generation: 0 }));
+		saves.length = 0;
+		serverNow = { rev: 8, generation: 3, text: "", quotes: [], references: [] };
+
+		await act(async () => api.sent());
+		await show("");
+		await wait(0);
+		expect(api.conflict).toBeNull();
+
+		await show("next");
+		await wait(DRAFT_DEBOUNCE_MS);
+		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([[8, "next"]]);
 	});
 });
