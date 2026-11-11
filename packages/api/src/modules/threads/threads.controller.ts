@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller } from "@nestjs/common";
-import { Implement, implement } from "@orpc/nest";
+import { Implement, implement, ORPCError } from "@orpc/nest";
 import { threadsContract } from "@prismalens/contracts";
 import type { Request } from "express";
 import {
@@ -51,9 +51,40 @@ export class ThreadsController {
 			),
 
 			// POST /threads/:id/settle
-			settle: implement(threadsContract.settle).handler(({ input }) =>
-				this.threads.settle(input.id, input.settled, input.restore),
+			settle: implement(threadsContract.settle).handler(async ({ input }) => ({
+				...(await this.threads.settle(input.id, input.settled, input.restore)),
+				undoUntil: null,
+				ended: null,
+			})),
+
+			// GET /threads/:id/settle-preview - What settling would end (#1024 surface F)
+			settlePreview: implement(threadsContract.settlePreview).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED");
+			}),
+
+			// POST /threads/:id/pull-requests/:prId/watch
+			watchPullRequest: implement(threadsContract.watchPullRequest).handler(
+				() => {
+					throw new ORPCError("NOT_IMPLEMENTED");
+				},
 			),
+
+			// DELETE /threads/:id/pull-requests/:prId/watch
+			unwatchPullRequest: implement(threadsContract.unwatchPullRequest).handler(
+				() => {
+					throw new ORPCError("NOT_IMPLEMENTED");
+				},
+			),
+
+			// GET /threads/:id/cron
+			cron: implement(threadsContract.cron).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED");
+			}),
+
+			// DELETE /threads/:id/cron/:jobId
+			deleteCron: implement(threadsContract.deleteCron).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED");
+			}),
 
 			// POST /threads/:id/title - The user names it; the agent never renames it after
 			rename: implement(threadsContract.rename).handler(({ input }) =>

@@ -8,6 +8,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AttachmentSchema,
+	DeleteCronJobSchema,
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
 	LinkPullRequestSchema,
@@ -16,11 +17,14 @@ import {
 	ResolvedLinksSchema,
 	ResolveLinksSchema,
 	ServedAttachmentSchema,
-	SettledStateSchema,
+	SettlePreviewSchema,
+	SettleRefusalSchema,
+	SettleResponseSchema,
 	SettleThreadSchema,
 	StartThreadResponseSchema,
 	StartThreadSchema,
 	ThreadContextSchema,
+	ThreadCronSchema,
 	ThreadFeedQuerySchema,
 	ThreadFeedSchema,
 	ThreadIdSchema,
@@ -31,6 +35,7 @@ import {
 	UnlinkPullRequestSchema,
 	UploadDraftAttachmentSchema,
 	UploadThreadAttachmentSchema,
+	WatchPullRequestSchema,
 } from "../schemas/index.js";
 
 export const threadsContract = {
@@ -108,12 +113,27 @@ export const threadsContract = {
 			tags: ["threads"],
 		})
 		.input(SettleThreadSchema)
-		.output(
-			z.object({
-				ids: z.array(z.string()),
-				previous: z.array(SettledStateSchema),
-			}),
-		),
+		.output(SettleResponseSchema)
+		.errors({
+			CONFLICT: {
+				data: SettleRefusalSchema,
+				message: "The thread cannot be settled as asked",
+			},
+		}),
+
+	/**
+	 * What settling would end: wakes, watches, cron jobs, children, runs, worktrees
+	 * GET /threads/:id/settle-preview
+	 */
+	settlePreview: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/settle-preview",
+			summary: "Preview what settling a thread would end",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(SettlePreviewSchema),
 
 	/**
 	 * Name a thread; the agent never renames it after this
@@ -252,6 +272,60 @@ export const threadsContract = {
 			tags: ["threads"],
 		})
 		.input(UnlinkPullRequestSchema)
+		.output(z.object({ removed: z.boolean() })),
+
+	/**
+	 * Watch a linked PR: its status changes reach the agent (#1024 surface F)
+	 * POST /threads/:id/pull-requests/:prId/watch
+	 */
+	watchPullRequest: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/pull-requests/{prId}/watch",
+			summary: "Watch a pull request for status changes",
+			tags: ["threads"],
+		})
+		.input(WatchPullRequestSchema)
+		.output(PullRequestSchema),
+
+	/**
+	 * DELETE /threads/:id/pull-requests/:prId/watch
+	 */
+	unwatchPullRequest: oc
+		.route({
+			method: "DELETE",
+			path: "/threads/{id}/pull-requests/{prId}/watch",
+			summary: "Stop watching a pull request",
+			tags: ["threads"],
+		})
+		.input(WatchPullRequestSchema)
+		.output(PullRequestSchema),
+
+	/**
+	 * The thread's cron jobs, for its Scheduled section (#1024 surface F)
+	 * GET /threads/:id/cron
+	 */
+	cron: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/cron",
+			summary: "List a thread's cron jobs",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(ThreadCronSchema),
+
+	/**
+	 * DELETE /threads/:id/cron/:jobId
+	 */
+	deleteCron: oc
+		.route({
+			method: "DELETE",
+			path: "/threads/{id}/cron/{jobId}",
+			summary: "Delete one of a thread's cron jobs",
+			tags: ["threads"],
+		})
+		.input(DeleteCronJobSchema)
 		.output(z.object({ removed: z.boolean() })),
 
 	/**

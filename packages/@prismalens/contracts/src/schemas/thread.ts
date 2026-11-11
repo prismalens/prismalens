@@ -98,6 +98,19 @@ export const ThreadIncidentChipSchema = z.object({
 });
 
 /** A row: the run, its context names, and the plain-text line under its title. */
+/**
+ * Automatic PR updates and cron fires held (#1024 surface F): `ceiling` clears on
+ * the user's next message; `loop_guard` only when the user watches that PR again.
+ */
+export const AutoPauseSchema = z.object({
+	reason: z.enum(["ceiling", "loop_guard"]),
+	prId: z.string().optional(),
+	since: DateStringSchema,
+});
+export type AutoPause = z.infer<typeof AutoPauseSchema>;
+/** Turns no person asked for (PR deliveries and cron fires) a thread admits per rolling day. */
+export const AUTONOMOUS_TURNS_PER_DAY = 12;
+
 export const ThreadRowSchema = InvestigationSchema.extend({
 	section: ThreadSectionSchema,
 	lastActivityAt: DateStringSchema,
@@ -120,6 +133,13 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	hasDraft: z.boolean().optional(),
 	/** The thread's newest linked pull request, for the hover card and the row glyph (#1024). */
 	pr: ThreadRowPrSchema.optional(),
+	/** The thread waits on its agent's usage limit (#1024 surface F); null otherwise. */
+	limit: z
+		.object({ resetsAt: DateStringSchema.nullable() })
+		.nullable()
+		.optional(),
+	/** Automatic updates are paused until a person acts; the row lists under Waiting for you. */
+	paused: AutoPauseSchema.nullable().optional(),
 	/** Its place in a thread tree (#1024); null outside one. The sidebar indents children by it. */
 	tree: z
 		.object({
@@ -168,6 +188,46 @@ export const SettleThreadSchema = z.object({
 	settled: z.boolean(),
 	/** On Undo: each thread's state from Settle's `previous`, restored exactly. */
 	restore: z.array(SettledStateSchema).max(500).optional(),
+	/** Required when the block has a running run: settling stops it at once. */
+	stopRunning: z.boolean().optional(),
+});
+
+/** What settling removes from one directory a thread worked in (#1024 surface F). */
+export const WorktreeVerdictSchema = z.object({
+	threadId: z.string().uuid(),
+	dir: z.string(),
+	action: z.enum(["remove", "keep"]),
+	/** Why it is kept, e.g. "2 uncommitted files". */
+	reason: z.string().optional(),
+});
+export type WorktreeVerdict = z.infer<typeof WorktreeVerdictSchema>;
+
+/** `GET /threads/{id}/settle-preview`: what settling the block would end. */
+export const SettlePreviewSchema = z.object({
+	wakes: z.number().int().nonnegative(),
+	watches: z.number().int().nonnegative(),
+	crons: z.number().int().nonnegative(),
+	children: z.number().int().nonnegative(),
+	/** Running runs in the block and its descendants; non-zero needs `stopRunning`. */
+	running: z.number().int().nonnegative(),
+	worktrees: z.array(WorktreeVerdictSchema),
+});
+export type SettlePreview = z.infer<typeof SettlePreviewSchema>;
+
+/** Settle's answer; `undoUntil` is the one Undo deadline, null on unsettle. */
+export const SettleResponseSchema = z.object({
+	ids: z.array(z.string()),
+	previous: z.array(SettledStateSchema),
+	undoUntil: DateStringSchema.nullable(),
+	/** What the teardown ends once Undo's window closes; null on unsettle. */
+	ended: SettlePreviewSchema.nullable(),
+});
+export type SettleResponse = z.infer<typeof SettleResponseSchema>;
+
+/** A settle refused: a running run without `stopRunning`, or Undo after `undoUntil`. */
+export const SettleRefusalSchema = z.object({
+	reason: z.enum(["running", "ended"]),
+	running: z.number().int().nonnegative().optional(),
 });
 
 /** A thread title: one line of plain text (#1020). */

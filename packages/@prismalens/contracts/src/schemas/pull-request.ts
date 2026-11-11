@@ -103,6 +103,13 @@ export const PrCheckRunSchema = z.object({
 	state: z.enum(["passing", "failing", "pending", "neutral"]),
 	appName: z.string().max(200).optional(),
 	appAvatarUrl: HostImageUrlSchema.optional(),
+	/** The host's id for this execution; a same-SHA rerun gets a new one. */
+	id: z.string().max(100).optional(),
+	/** With the name, the logical check; absent for a commit status context. */
+	appId: z.string().max(100).optional(),
+	headSha: z.string().max(64).optional(),
+	/** The check's log or details page. */
+	url: z.string().url().max(2000).optional(),
 });
 export type PrCheckRun = z.infer<typeof PrCheckRunSchema>;
 /** Check runs kept per PR; the summary counts still cover all of them. */
@@ -119,6 +126,32 @@ export type PrDetail = z.infer<typeof PrDetailSchema>;
 export const PR_HOSTS = ["github", "gitlab", "other"] as const;
 export const PrHostSchema = z.enum(PR_HOSTS);
 export type PrHost = z.infer<typeof PrHostSchema>;
+
+/**
+ * A watch's lifecycle (#1024 surface F): `waiting` holds a batch for the agent;
+ * `disconnected` is a failing host; `expired` is 7 idle days; `stopped` keeps why.
+ */
+export const PR_WATCH_STATES = [
+	"watching",
+	"waiting",
+	"disconnected",
+	"expired",
+	"stopped",
+] as const;
+export const PrWatchStateSchema = z.enum(PR_WATCH_STATES);
+export type PrWatchState = z.infer<typeof PrWatchStateSchema>;
+
+export const PrWatchSchema = z.object({
+	state: PrWatchStateSchema,
+	/** Why it is disconnected or stopped, in plain words. */
+	reason: z.string().max(300).nullable(),
+	since: z.string().datetime(),
+	/** When an automatic watch lapses without new thread activity. */
+	until: z.string().datetime().nullable(),
+	/** Watched because the PR is on the thread's own branch, not by Watch or `pr_watch`. */
+	auto: z.boolean(),
+});
+export type PrWatch = z.infer<typeof PrWatchSchema>;
 
 export const PullRequestSchema = z.object({
 	id: z.string(),
@@ -137,6 +170,10 @@ export const PullRequestSchema = z.object({
 	source: PrSourceSchema,
 	/** null until the host answered once. */
 	fetchedAt: z.string().nullable(),
+	/** The head commit the host last reported. */
+	headSha: z.string().nullable().optional(),
+	/** null when the thread does not watch this PR. */
+	watch: PrWatchSchema.nullable().optional(),
 	...PrDetailSchema.shape,
 });
 export type PullRequest = z.infer<typeof PullRequestSchema>;
@@ -197,6 +234,9 @@ export const UnlinkPullRequestSchema = z.object({
 	id: z.string().uuid(),
 	prId: z.string().uuid(),
 });
+
+/** Watch or Stop watching one of the thread's PRs. */
+export const WatchPullRequestSchema = UnlinkPullRequestSchema;
 
 /** The feed row's glyph: number and tone only (#1024 decision 9). */
 export const ThreadRowPrSchema = z.object({
