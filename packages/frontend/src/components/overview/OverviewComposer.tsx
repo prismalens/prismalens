@@ -18,9 +18,14 @@ import {
 	Composer,
 	type ComposerAction,
 	type ComposerChoice,
-	type ComposerSend,
 } from "@/components/thread/Composer";
 import { uploadAttachment } from "@/lib/attachments";
+import {
+	messageContext,
+	messageFields,
+	type SendEnvelope,
+	uploadEach,
+} from "@/lib/composer-send";
 import { recheckBrief } from "@/lib/run-verb";
 import type { Overview } from "./use-overview";
 
@@ -182,13 +187,14 @@ export function OverviewComposer({
 			record.setDraftChoice({ ...now, accessLevel: n.accessLevel });
 	};
 
-	const onSend = async ({ text, files }: ComposerSend) => {
+	const forward = async (env: SendEnvelope) => {
+		const { text } = env;
 		if (current === "note")
 			return new Promise<void>((resolve, reject) =>
 				record.addNote(text, resolve, reject),
 			);
-		const attachments = await Promise.all(
-			files.map((f) => uploadAttachment(incident.id, f)),
+		const attachments = await uploadEach(env.attachments, (f) =>
+			uploadAttachment(incident.id, f),
 		);
 		const ids = attachments.map((a) => a.id);
 		if (current === "message") {
@@ -202,6 +208,7 @@ export function OverviewComposer({
 			await o.latestRun.sendMessage(text, "queue", {
 				attachments,
 				...(kind ? { kind } : {}),
+				fields: messageFields(env),
 			});
 			return;
 		}
@@ -210,6 +217,7 @@ export function OverviewComposer({
 				text,
 				...sent,
 				attachments: ids,
+				context: messageContext(env),
 			});
 		const report = o.report;
 		return record.investigate({
@@ -220,6 +228,11 @@ export function OverviewComposer({
 			...sent,
 			attachments: ids,
 		});
+	};
+
+	const onSend = async (env: SendEnvelope) => {
+		await forward(env);
+		return "sent" as const;
 	};
 
 	// The live run's asks open here too: the box that messages it is where it waits on you (#820).

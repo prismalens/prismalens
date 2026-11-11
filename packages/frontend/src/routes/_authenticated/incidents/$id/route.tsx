@@ -233,6 +233,7 @@ function IncidentLayout() {
 					id,
 					text: start.text,
 					...startInput(start),
+					...start.context,
 				});
 				onStarted(data.investigationId, start.stay);
 			},

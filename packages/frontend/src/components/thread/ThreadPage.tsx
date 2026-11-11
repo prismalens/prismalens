@@ -2,13 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel } from "@prismalens/config/harness";
-import { recordedFindings } from "@prismalens/contracts";
+import { pendingAsks, recordedFindings } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, PanelRight, PanelTop, TriangleAlert } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
+import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import type { EvidenceFiles } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
@@ -23,15 +24,23 @@ import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
+import {
+	interceptSend,
+	messageFields,
+	type SendEnvelope,
+	uploadEach,
+} from "@/lib/composer-send";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
+import { openAsksOf } from "@/lib/run-asks";
 import { touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { cn } from "@/lib/utils";
-import { Composer, type ComposerSend, type ComposerState } from "./Composer";
+import { Composer, type ComposerState } from "./Composer";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
+import { usePageSlots } from "./slots";
 import { type Surface, ThreadPanel } from "./ThreadPanel";
 
 /** Each run state's tone and its word: two words at most. */
@@ -132,6 +141,7 @@ export function ThreadPage({ id }: { id: string }) {
 		() =>
 			deriveTranscript(run.events, {
 				pending: run.pending,
+				nodes: hasTranscriptNode,
 				modelName: (m) => modelName(harness, m) ?? m,
 				agentName: (h) => harnesses.find((x) => x.id === h)?.label ?? h,
 				run: inv
@@ -241,18 +251,33 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, workspace, run.steps, viewing, fileOfStep],
 	);
 
+	const openAsks = useMemo(() => pendingAsks(id, run.events), [id, run.events]);
+	const slots = usePageSlots({
+		page: "thread",
+		threadId: inv?.id ?? null,
+		incidentId: null,
+		live: run.isActive,
+		asks: openAsks,
+	});
 	const { sendMessage } = run;
-	const onSend = useCallback(
-		async ({ text, files }: ComposerSend, now: boolean) => {
-			const attachments = await Promise.all(
-				files.map((f) => uploadThreadAttachment({ runId: id }, f)),
+	const forward = useCallback(
+		async (env: SendEnvelope, now: boolean) => {
+			const attachments = await uploadEach(env.attachments, (f) =>
+				uploadThreadAttachment({ runId: id }, f),
 			);
-			await sendMessage(text, now ? "now" : "queue", {
+			await sendMessage(env.text, now ? "now" : "queue", {
 				attachments,
 				kind: "chat",
+				fields: messageFields(env),
 			});
 		},
 		[id, sendMessage],
+	);
+	const { interceptors } = slots;
+	const onSend = useCallback(
+		(env: SendEnvelope, now: boolean) =>
+			interceptSend(env, now, interceptors, forward),
+		[interceptors, forward],
 	);
 	const closePanel = useCallback(() => setPanelOpen(false), []);
 
@@ -352,11 +377,10 @@ export function ThreadPage({ id }: { id: string }) {
 		: inv.endReason === "interrupted"
 			? "interrupted"
 			: "ready";
-	const asks = run.isActive
-		? run.asks.filter((a) => a.state === "waiting")
-		: [];
+	// Open asks come from the ask record: one outlives the run that opened it (#1024).
+	const asks = openAsksOf(run.asks, openAsks);
 	const agentLabel = harness?.label ?? "The agent";
-	const dock =
+	const askDock =
 		asks.length > 0 || run.queued.length > 0 ? (
 			<RunDock
 				asks={asks}
@@ -365,6 +389,13 @@ export function ThreadPage({ id }: { id: string }) {
 				agent={agentLabel}
 				cwd={workspace?.cwd}
 			/>
+		) : null;
+	const dock =
+		askDock || slots.dock ? (
+			<>
+				{askDock}
+				{slots.dock}
+			</>
 		) : null;
 	const blocked =
 		run.ended && !run.resumable && state !== "interrupted"
@@ -389,6 +420,7 @@ export function ThreadPage({ id }: { id: string }) {
 					/>
 				</div>
 			)}
+			{slots.banner}
 			<div className="min-h-0 flex-1">
 				{items.length ? (
 					<Transcript
@@ -450,6 +482,7 @@ export function ThreadPage({ id }: { id: string }) {
 						text={draft}
 						onText={setDraft}
 						focusSignal={focusSignal}
+						footer={slots.composerFooter}
 					/>
 					{resumeError && (
 						<p className="px-3 pt-1 text-meta text-danger" role="alert">

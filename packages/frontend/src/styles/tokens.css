@@ -38,6 +38,10 @@
 	--live: oklch(0.46 0.11 195);
 	--ok: oklch(0.44 0.14 160);
 	--warn: oklch(0.47 0.15 75);
+	/* PR tones (contracts PR_TONE_TOKEN): open, merged and a host with no state; AA on surface-3. */
+	--info: oklch(0.47 0.14 250);
+	--done: oklch(0.47 0.17 305);
+	--neutral: oklch(0.47 0.012 285);
 	--sev-critical: var(--danger);
 	--sev-high: oklch(0.54 0.17 50);
 	--sev-medium: var(--warn);
@@ -153,6 +157,9 @@
 	--live: oklch(0.78 0.12 195);
 	--ok: oklch(0.76 0.14 160);
 	--warn: oklch(0.8 0.14 80);
+	--info: oklch(0.76 0.12 250);
+	--done: oklch(0.76 0.14 305);
+	--neutral: oklch(0.74 0.01 285);
 	--sev-high: oklch(0.75 0.16 50);
 	--sev-low: oklch(0.72 0.12 250);
 }

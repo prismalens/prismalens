@@ -52,6 +52,8 @@ import {
 } from "@/lib/spine";
 import { cn } from "@/lib/utils";
 
+import { TranscriptNode } from "./transcript/registry";
+
 export { unfence } from "@/components/run/run-steps";
 
 const ENTER =
@@ -771,6 +773,14 @@ const TranscriptRow = memo(function TranscriptRow({
 				>
 					{item.text}
 				</li>
+			);
+		case "node":
+			return (
+				<TranscriptNode
+					event={item.event}
+					runId={runId}
+					incidentId={incidentId}
+				/>
 			);
 	}
 });

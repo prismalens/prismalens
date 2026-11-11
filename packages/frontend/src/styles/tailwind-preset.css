@@ -32,6 +32,9 @@
   --color-live: var(--live);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
+  --color-info: var(--info);
+  --color-done: var(--done);
+  --color-neutral: var(--neutral);
   --color-danger: var(--danger);
   --color-danger-solid: var(--danger-solid);
   --color-sev-critical: var(--sev-critical);
