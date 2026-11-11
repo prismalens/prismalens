@@ -153,7 +153,8 @@ export function RunDetailsPanel({
 		kind: "incident",
 		thread: true,
 		changes: true,
-		browser: !!browser || current === "browser",
+		// The run page keeps Browser: its address bar (desktop) and the run's links (browser) live there.
+		browser: true,
 	}).map((t) =>
 		t.id === "kind" && flaggedCount > 0 ? { ...t, flagged: flaggedCount } : t,
 	);
@@ -253,7 +254,11 @@ export function RunDetailsPanel({
 			</div>
 		);
 	return (
-		<div id="run-details" className="contents" data-testid="run-details">
+		<div
+			id="run-details"
+			className="flex h-full min-h-0 flex-col"
+			data-testid="run-details"
+		>
 			<ThreadSidePanel
 				tabs={tabs}
 				tab={current}

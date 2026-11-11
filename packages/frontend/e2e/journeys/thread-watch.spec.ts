@@ -301,10 +301,11 @@ test.describe("#1020 S2 — watch a thread work", () => {
 		await expect(page.getByTestId("status-box")).toHaveCount(0);
 		await expect(page.getByTestId("thread-panel")).toHaveCount(0);
 		await page.getByTestId("panel-toggle").click();
-		await expect(page.getByTestId("surface-empty")).toHaveText(
-			"Open a surface",
+		await expect(page.getByTestId("panel-tab-thread")).toHaveAttribute(
+			"aria-selected",
+			"true",
 		);
-		await expect(page.getByTestId("surface-suspects")).toHaveCount(0);
+		await expect(page.getByRole("tab", { name: "Suspects" })).toHaveCount(0);
 		await page.getByTestId("panel-toggle").click();
 		await expect(page.getByTestId("thread-panel")).toHaveCount(0);
 
@@ -315,7 +316,7 @@ test.describe("#1020 S2 — watch a thread work", () => {
 		);
 		await expect(page.getByTestId("status-changes")).toHaveText("+77 −3");
 		await page.getByTestId("status-changes").click();
-		await expect(page.getByTestId("surface-diff")).toHaveAttribute(
+		await expect(page.getByTestId("panel-tab-changes")).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
@@ -380,7 +381,7 @@ test.describe("#1020 S2 — watch a thread work", () => {
 			"Workspace gone",
 		);
 		await page.getByTestId("panel-toggle").click();
-		await page.getByTestId("surface-diff").click();
+		await page.getByTestId("panel-tab-changes").click();
 		await expect(page.getByTestId("diff-unavailable")).toHaveText(
 			"Workspace removed",
 		);

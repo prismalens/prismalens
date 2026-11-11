@@ -196,9 +196,9 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.getByTestId("step-flag-details").click();
 
 		await expect(page.locator("#run-details")).toBeVisible();
-		await expect(page.getByTestId("run-details-tab-context")).toHaveAttribute(
-			"data-state",
-			"active",
+		await expect(page.getByTestId("panel-tab-kind")).toHaveAttribute(
+			"aria-selected",
+			"true",
 		);
 		await expect(page.getByTestId("run-details-context")).toBeVisible();
 		await expect(flag).toBeHidden();
@@ -242,7 +242,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
 		// Click detail-step in the evidence, now on Summary (#973)
-		await page.getByTestId("run-details-tab-summary").click();
+		await page.getByTestId("panel-tab-kind").click();
 		const stepBtn = page.getByTestId("detail-step").first();
 		await expect(stepBtn).toBeVisible();
 		await stepBtn.click();
@@ -252,7 +252,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step1.getByTestId("step-body")).toBeVisible();
 
 		// Steps tab and filters
-		await page.getByTestId("run-details-tab-steps").click();
+		await page.getByTestId("panel-tab-thread").click();
 		const allFilter = page.getByTestId("steps-filter-all");
 		const cmdFilter = page.getByTestId("steps-filter-command");
 		const fileFilter = page.getByTestId("steps-filter-file");
@@ -286,26 +286,26 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step2).toHaveAttribute("data-highlight", "");
 		await expect(step2.getByTestId("step-body")).toBeVisible();
 
-		// Arrow keys move between run-details-tab-*
-		const summaryTab = page.getByTestId("run-details-tab-summary");
-		await summaryTab.click();
-		await expect(summaryTab).toHaveAttribute("data-state", "active");
-		await summaryTab.focus();
-		await expect(summaryTab).toBeFocused();
+		// Arrow keys move between the panel's tabs (#1024): Incident, Thread, Changes.
+		const kindTab = page.getByTestId("panel-tab-kind");
+		await kindTab.click();
+		await expect(kindTab).toHaveAttribute("aria-selected", "true");
+		await kindTab.focus();
+		await expect(kindTab).toBeFocused();
 
-		// Summary, Files, Changes, Steps, Context (#973).
-		for (const id of ["files", "changes", "steps", "context"]) {
+		for (const id of ["thread", "changes"]) {
 			await page.keyboard.press("ArrowRight");
-			await expect(page.getByTestId(`run-details-tab-${id}`)).toHaveAttribute(
-				"data-state",
-				"active",
+			await expect(page.getByTestId(`panel-tab-${id}`)).toHaveAttribute(
+				"aria-selected",
+				"true",
 			);
+			await expect(page.getByTestId(`panel-tab-${id}`)).toBeFocused();
 		}
 
 		await page.keyboard.press("ArrowLeft");
-		await expect(page.getByTestId("run-details-tab-steps")).toHaveAttribute(
-			"data-state",
-			"active",
+		await expect(page.getByTestId("panel-tab-thread")).toHaveAttribute(
+			"aria-selected",
+			"true",
 		);
 	});
 
@@ -625,7 +625,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(statusRow).toContainText("Failed");
 
 		// Evidence "The run failed before it reported.", now on Summary (#973)
-		await page.getByTestId("run-details-tab-summary").click();
+		await page.getByTestId("panel-tab-kind").click();
 		const evidenceContent = page.getByTestId("run-details-summary");
 		await expect(evidenceContent).toContainText(
 			"The run failed before it reported.",

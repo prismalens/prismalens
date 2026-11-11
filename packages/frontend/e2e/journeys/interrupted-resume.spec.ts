@@ -90,7 +90,7 @@ test("Resume on an interrupted run keeps its id, from the inbox and the overview
 		"was interrupted when PrismaLens restarted",
 	);
 	await page.getByTestId("details-toggle").click();
-	await page.getByTestId("run-details-tab-incident").click();
+	await page.getByTestId("panel-tab-kind").click();
 	await expect(page.getByTestId("why-failed")).toContainText(
 		"was interrupted when PrismaLens restarted",
 	);

@@ -311,7 +311,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		test("Back from a file cited in Summary returns to the citation, inside the sheet", async ({
 			page,
 		}) => {
-			await page.getByTestId("run-details-tab-summary").click();
+			await page.getByTestId("panel-tab-kind").click();
 			await page.getByTestId("detail-file").first().click();
 			await expect(page.getByTestId("evidence-file")).toBeVisible();
 			await page.getByTestId("evidence-file-back").click();
@@ -323,7 +323,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		test("Back from a file opened in Steps returns to the steps, inside the sheet", async ({
 			page,
 		}) => {
-			await page.getByTestId("run-details-tab-steps").click();
+			await page.getByTestId("panel-tab-thread").click();
 			await page.locator('[data-testid="steps-row"][data-step="1"]').click();
 			await expect(page.getByTestId("evidence-file")).toBeVisible();
 			await page.getByTestId("evidence-file-back").click();
@@ -335,7 +335,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		test("a step link in the sheet lifts it and shows the step", async ({
 			page,
 		}) => {
-			await page.getByTestId("run-details-tab-summary").click();
+			await page.getByTestId("panel-tab-kind").click();
 			await page.getByTestId("detail-step").first().click();
 			await expect(page.getByTestId("run-details")).toBeHidden();
 			await expect(
@@ -353,7 +353,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		}) => {
 			const preview = page.getByTestId("hypotheses-preview");
 			const open = async () => {
-				await page.getByTestId("run-details-tab-summary").click();
+				await page.getByTestId("panel-tab-kind").click();
 				await page.getByTestId("detail-hypotheses").click();
 				await expect(preview).toBeVisible();
 			};
@@ -384,7 +384,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		}) => {
 			expect(await sidewaysFaults(page)).toEqual([]);
 			await page
-				.locator("#run-details h2")
+				.locator('#run-details [role="tablist"]')
 				.evaluate((h) => h.style.setProperty("min-width", "600px"));
 			expect((await sidewaysFaults(page)).join(" | ")).toMatch(
 				/spans \d+ to \d+ of 390/,
@@ -396,7 +396,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		}) => {
 			const preview = page.getByTestId("hypotheses-preview");
 			const link = page.getByTestId("detail-hypotheses");
-			await page.getByTestId("run-details-tab-summary").click();
+			await page.getByTestId("panel-tab-kind").click();
 			for (const close of ["Escape", "Close"] as const) {
 				await link.click();
 				await expect(preview).toBeVisible();
@@ -432,7 +432,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		test("nothing spills sideways with a file open at 320, 360 and 390 px", async ({
 			page,
 		}) => {
-			await page.getByTestId("run-details-tab-steps").click();
+			await page.getByTestId("panel-tab-thread").click();
 			await page.locator('[data-testid="steps-row"][data-step="1"]').click();
 			await expect(page.getByTestId("evidence-file-code")).toBeVisible();
 			for (const width of [320, 360, 390]) {

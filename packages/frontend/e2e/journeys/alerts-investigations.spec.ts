@@ -42,7 +42,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 		await page.getByTestId("details-toggle").click();
-		await page.getByTestId("run-details-tab-incident").click();
+		await page.getByTestId("panel-tab-kind").click();
 		await expect(page.getByTestId("run-details-incident")).toBeVisible({
 			timeout: 15_000,
 		});

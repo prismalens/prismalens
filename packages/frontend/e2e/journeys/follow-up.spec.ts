@@ -149,7 +149,7 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			window.__liveStream.deliver(JSON.stringify({ type: "done" })),
 		);
 
-		const tab = page.getByTestId("run-details-tab-incident");
+		const tab = page.getByTestId("panel-tab-kind");
 		if (!(await tab.isVisible())) {
 			await page.getByTestId("details-toggle").click();
 		}

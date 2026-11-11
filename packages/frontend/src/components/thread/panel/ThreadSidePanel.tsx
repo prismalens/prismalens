@@ -39,6 +39,26 @@ export function ThreadSidePanel({
 		onClose();
 	};
 	const strip = !override && tabs.length > 1;
+	// The tabs pattern: arrows, Home and End move between tabs; only the shown tab is in the Tab order.
+	const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+		const at = tabs.findIndex((t) => t.id === tab);
+		const arrow = e.key.startsWith("Arrow") ? e.key.slice(5) : null;
+		const to =
+			arrow === "Right"
+				? (at + 1) % tabs.length
+				: arrow === "Left"
+					? (at - 1 + tabs.length) % tabs.length
+					: e.key === "Home"
+						? 0
+						: e.key === "End"
+							? tabs.length - 1
+							: -1;
+		const next = tabs[to];
+		if (!next) return;
+		e.preventDefault();
+		onTab(next.id);
+		document.getElementById(`panel-tab-${next.id}`)?.focus();
+	};
 	return (
 		<div
 			id="thread-panel"
@@ -54,7 +74,9 @@ export function ThreadSidePanel({
 					<div
 						role="tablist"
 						aria-label="Panel"
-						className="flex min-w-0 flex-1 items-center gap-0.5"
+						onKeyDown={onTabKey}
+						data-scroll-x
+						className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
 					>
 						{tabs.map((t) => (
 							<button
@@ -64,6 +86,7 @@ export function ThreadSidePanel({
 								id={`panel-tab-${t.id}`}
 								aria-controls="panel-body"
 								aria-selected={tab === t.id}
+								tabIndex={tab === t.id ? 0 : -1}
 								onClick={() => onTab(t.id)}
 								className={cn(
 									"h-7 rounded-control px-2 text-body transition-colors duration-(--dur-instant) hover:bg-surface-3",
