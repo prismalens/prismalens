@@ -33,6 +33,28 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		expect(darkContent).toMatch(/--text-3:\s*oklch\(0\.68\s+0\.012\s+285\);/);
 	});
 
+	it("defines --info, --done, and --neutral tokens in :root and .dark, and tailwind-preset.css maps them", () => {
+		const rootMatch = css.match(/:root\s*\{([\s\S]*?)\n\}/);
+		const rootContent = rootMatch ? rootMatch[1] : "";
+		expect(rootContent).toMatch(/--info:\s*oklch\(0\.47\s+0\.14\s+250\);/);
+		expect(rootContent).toMatch(/--done:\s*oklch\(0\.47\s+0\.17\s+305\);/);
+		expect(rootContent).toMatch(/--neutral:\s*oklch\(0\.47\s+0\.012\s+285\);/);
+
+		const darkMatch = css.match(/\.dark\s*\{([\s\S]*?)\n\}/);
+		const darkContent = darkMatch ? darkMatch[1] : "";
+		expect(darkContent).toMatch(/--info:\s*oklch\(0\.76\s+0\.12\s+250\);/);
+		expect(darkContent).toMatch(/--done:\s*oklch\(0\.76\s+0\.14\s+305\);/);
+		expect(darkContent).toMatch(/--neutral:\s*oklch\(0\.74\s+0\.01\s+285\);/);
+
+		const preset = readFileSync(
+			resolve(__dirname, "tailwind-preset.css"),
+			"utf8",
+		);
+		expect(preset).toContain("--color-info: var(--info);");
+		expect(preset).toContain("--color-done: var(--done);");
+		expect(preset).toContain("--color-neutral: var(--neutral);");
+	});
+
 	it("enforces 48 px minimum height for controls on touch layouts", () => {
 		const touchQueryMatch = css.match(
 			/@media\s*\(pointer:\s*coarse\),\s*\(max-width:\s*767px\)\s*\{([\s\S]*?)\n\}/,
