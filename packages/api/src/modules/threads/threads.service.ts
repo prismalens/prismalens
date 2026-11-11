@@ -745,9 +745,11 @@ export class ThreadsService {
 		if (ends && opts.operate === false)
 			throw new ORPCError("FORBIDDEN", { message: VIEW_ONLY });
 		if (ended.running) await this.lifecycle.stopRunning(ids);
-		const undoUntil = new Date(now.getTime() + SETTLE_UNDO_MS);
+		// Taken after the stopped runs have ended, so their last write cannot post-date it.
+		const settledAt = ended.running ? new Date() : now;
+		const undoUntil = new Date(settledAt.getTime() + SETTLE_UNDO_MS);
 		await this.writeSettled(
-			ids.map((target) => ({ id: target, settledAt: now })),
+			ids.map((target) => ({ id: target, settledAt })),
 			prior,
 		);
 		// A thread settled before keeps its own teardown, as Undo keeps its own state.
@@ -808,7 +810,12 @@ export class ThreadsService {
 				})),
 				prior,
 			);
-			for (const s of states) await this.setTeardown(s.id, null, s.updatedAt);
+			// A thread settled before the one being undone keeps the teardown it already had.
+			const wasOpen = new Set(
+				back.filter((r) => r.settledAt === null).map((r) => r.id),
+			);
+			for (const s of states)
+				if (wasOpen.has(s.id)) await this.setTeardown(s.id, null, s.updatedAt);
 			return { ids: block, previous: [], undoUntil: null, ended: null };
 		}
 		// Unsettle with no states to restore clears only the thread named, never its block.

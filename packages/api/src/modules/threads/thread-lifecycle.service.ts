@@ -163,13 +163,17 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 		};
 	}
 
-	/** Settle's stop: the run's process ends at once; its jobs wait for the teardown. */
+	/** How long Settle waits for a stopped run to reach a terminal state. */
+	stopWaitMs = 10_000;
+
+	/** Settle's stop: the run's process ends, and its last writes land, before this returns; its jobs wait for the teardown. */
 	async stopRunning(ids: readonly string[]): Promise<number> {
 		const live = await this.prisma.investigation.findMany({
 			where: { id: { in: [...ids] }, status: { in: LIVE } },
 			select: { id: true, status: true, incidentId: true },
 		});
 		const why = "Stopped when the thread was settled";
+		const asked: string[] = [];
 		for (const row of live) {
 			if (
 				row.status === "pending" &&
@@ -182,9 +186,25 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 			if ((await this.dispatch.requestCancel(row.id)) === 0) {
 				await this.dispatch.cancelOrphanedRun(row.id);
 				await this.investigations.cancelPending(row.id, row.incidentId, why);
-			}
+			} else asked.push(row.id);
 		}
+		await this.untilEnded(asked);
 		return live.length;
+	}
+
+	/** A cancel only asks: the run's final usage flush lands after it, so Settle waits for the end. */
+	private async untilEnded(ids: string[]): Promise<void> {
+		const deadline = Date.now() + this.stopWaitMs;
+		let waiting = ids;
+		while (waiting.length) {
+			const live = await this.prisma.investigation.findMany({
+				where: { id: { in: waiting }, status: { in: LIVE } },
+				select: { id: true },
+			});
+			if (!live.length || Date.now() >= deadline) return;
+			waiting = live.map((r) => r.id);
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
 	}
 
 	/**

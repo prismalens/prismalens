@@ -543,6 +543,35 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		expect(teardownWrites).toEqual([]);
 	});
 
+	it("an undo clears the teardown of a thread that was open before, never of one settled earlier", async () => {
+		const earlier = uuid();
+		const open = uuid();
+		const stamp = new Date("2026-11-10T11:00:00Z");
+		lifecycle.block.mockResolvedValue([open, earlier]);
+		lifecycle.descendants.mockResolvedValue([]);
+		const rowOf = (id: string, settledAt: Date | null) => ({
+			id,
+			settledAt,
+			lastActivityAt: null,
+			updatedAt: stamp,
+			teardownAt: null,
+		});
+		prisma.investigation.findMany.mockImplementation(async () => [
+			rowOf(open, null),
+			rowOf(earlier, new Date("2026-11-01T00:00:00.000Z")),
+		]);
+		prisma.investigation.updateMany.mockResolvedValue({ count: 1 });
+		await service().settle(open, false, [
+			{ id: open, settledAt: null },
+			{ id: earlier, settledAt: "2026-11-01T00:00:00.000Z" },
+		]);
+		const cleared = prisma.investigation.updateMany.mock.calls
+			.map((c) => c[0] as { where: { id: string }; data: { teardownAt?: Date | null } })
+			.filter((c) => "teardownAt" in c.data)
+			.map((c) => [c.where.id, c.data.teardownAt]);
+		expect(cleared).toEqual([[open, null]]);
+	});
+
 	it("shows the agent's latest sentence as the row's third line", async () => {
 		const t = run({ status: "running" });
 		prisma.investigation.findMany.mockResolvedValue([t]);

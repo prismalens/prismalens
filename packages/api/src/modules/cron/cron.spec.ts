@@ -344,6 +344,24 @@ describe("CronService (#1024 surface F)", () => {
 		expect(remaining).toEqual([]);
 	});
 
+	it("a job whose stored nextAt lies past its expiresAt is retired without a fire", async () => {
+		const t0 = new Date("2026-11-11T08:00:00.000Z");
+		const h = harness(t0);
+		const res = await h.svc.create(h.THREAD, { schedule: "0 * * * *", prompt: "Monthly check", recurring: true }, t0);
+		if (!("id" in res)) throw new Error("Job not created");
+		const job = h.jobs.get(res.id)!;
+		const due = new Date(t0.getTime() + 60 * 60_000);
+		job.nextAt = due;
+		job.expiresAt = new Date(due.getTime() - 30 * 60_000);
+
+		await h.svc.tick(due);
+
+		expect(job.pendingSince).toBeNull();
+		expect(job.nextAt).toBeNull();
+		expect(h.wakes.filter((w) => w.kind === "cron")).toEqual([]);
+		expect(await h.svc.list(h.THREAD)).toEqual([]);
+	});
+
 	it("a job whose nextAt is 5 hours in the past fires once and its next nextAt is after now", async () => {
 		const t0 = new Date("2026-11-11T08:00:00.000Z");
 		const h = harness(t0);

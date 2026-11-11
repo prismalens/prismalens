@@ -99,6 +99,18 @@ export function quote(text: string): string {
 
 const name = (s: string) => sanitizeUntrustedLine(s).slice(0, 200);
 
+/**
+ * The lines a `pr_status` event records, within what the event schema accepts. The
+ * agent still gets every line through the wake; only the transcript's copy is bounded.
+ */
+export function recorded(lines: string[]): string[] {
+	const clipped = lines.map((l) =>
+		l.length > 600 ? `${l.slice(0, 599)}…` : l,
+	);
+	if (clipped.length <= 50) return clipped;
+	return [...clipped.slice(0, 49), `and ${clipped.length - 49} more changes`];
+}
+
 /** The baseline a new watch starts from: nothing already on the PR is news. */
 export function baseline(snap: FeedSnapshot): FeedCursor {
 	return diff(null, snap).cursor;
@@ -152,20 +164,28 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 	}
 
 	// The loop guard: one check failing on each new head, LOOP_GUARD_HEADS times in a row.
-	if (!quiet && head && head !== cursor.headSha) {
+	// A head with no verdict on the guarded check yet (pending, or no run) leaves it as is.
+	if (!quiet && head) {
 		const g = cursor.guard;
-		const again = g && failedNow.includes(g.key) ? g.key : null;
-		if (again && g && !g.heads.includes(head))
-			cursor.guard = { key: again, heads: [...g.heads, head] };
-		else if (failedNow[0]) cursor.guard = { key: failedNow[0], heads: [head] };
-		else cursor.guard = null;
+		const guardedFailing = !!g && failedNow.includes(g.key);
+		const guardedPassing =
+			!!g &&
+			snap.runs.some(
+				(r) =>
+					checkKey(r) === g.key &&
+					(!r.headSha || r.headSha === head) &&
+					r.state === "passing",
+			);
+		if (g && guardedFailing) {
+			if (!g.heads.includes(head))
+				cursor.guard = { key: g.key, heads: [...g.heads, head] };
+		} else {
+			if (guardedPassing) cursor.guard = null;
+			if (failedNow[0] && head !== cursor.headSha)
+				cursor.guard = { key: failedNow[0], heads: [head] };
+		}
 		if (cursor.guard && cursor.guard.heads.length >= LOOP_GUARD_HEADS)
 			guardTripped = cursor.guard.key.replace(/^(app:[^/]*|status:)\/?/, "");
-	} else if (!quiet && cursor.guard && !failedNow.length) {
-		// A pass on the same head clears the streak.
-		const g = cursor.guard;
-		if (snap.runs.some((r) => checkKey(r) === g.key && r.state === "passing"))
-			cursor.guard = null;
 	}
 	cursor.headSha = head;
 

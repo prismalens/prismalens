@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { CanonicalEventSchema } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
 	baseline,
@@ -11,6 +12,7 @@ import {
 	type FeedCursor,
 	feedMessage,
 	type FeedSnapshot,
+	recorded,
 } from "./pr-feed.js";
 
 const SHA_A = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
@@ -285,6 +287,87 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 		const snapC = emptySnap({ headSha: SHA_C, runs: [runC] });
 		const diff3 = diff(diff2.cursor, snapC);
 		expect(diff3.guardTripped).toBe("test");
+	});
+
+	it("loop guard keeps its streak across a head that is pending first, and counts it once the check fails", () => {
+		const fail = (sha: string) => ({
+			name: "test",
+			state: "failing" as const,
+			headSha: sha,
+		});
+		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
+		cur = diff(cur, emptySnap({ headSha: SHA_A, runs: [fail(SHA_A)] })).cursor;
+		cur = diff(cur, emptySnap({ headSha: SHA_B, runs: [fail(SHA_B)] })).cursor;
+		expect(cur.guard).toEqual({ key: "status:test", heads: [SHA_A, SHA_B] });
+
+		const pendingC = diff(
+			cur,
+			emptySnap({
+				headSha: SHA_C,
+				runs: [{ name: "test", state: "pending", headSha: SHA_C }],
+			}),
+		);
+		expect(pendingC.guardTripped).toBeNull();
+		expect(pendingC.cursor.guard).toEqual({
+			key: "status:test",
+			heads: [SHA_A, SHA_B],
+		});
+
+		const failedC = diff(
+			pendingC.cursor,
+			emptySnap({ headSha: SHA_C, runs: [fail(SHA_C)] }),
+		);
+		expect(failedC.guardTripped).toBe("test");
+	});
+
+	it("loop guard keeps its streak across a head with no run yet, and a pass clears it", () => {
+		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
+		cur = diff(
+			cur,
+			emptySnap({
+				headSha: SHA_A,
+				runs: [{ name: "test", state: "failing", headSha: SHA_A }],
+			}),
+		).cursor;
+		const none = diff(cur, emptySnap({ headSha: SHA_B, runs: [] }));
+		expect(none.cursor.guard).toEqual({ key: "status:test", heads: [SHA_A] });
+
+		const passed = diff(
+			none.cursor,
+			emptySnap({
+				headSha: SHA_B,
+				runs: [{ name: "test", state: "passing", headSha: SHA_B }],
+			}),
+		);
+		expect(passed.cursor.guard).toBeNull();
+	});
+
+	it("recorded() clips a 2,000-character log line and folds 60 lines into 50, and the event schema accepts the result", () => {
+		const long = `CI failed: build on a1b2c3d, log https://ci.example.com/${"x".repeat(2000)}`;
+		const sixty = Array.from({ length: 60 }, (_, i) => `New comment ${i}`);
+		const lines = recorded([long, ...sixty]);
+
+		expect(lines).toHaveLength(50);
+		expect(lines[0]).toHaveLength(600);
+		expect(lines[0]?.endsWith("…")).toBe(true);
+		expect(lines[49]).toBe("and 12 more changes");
+		expect(lines.slice(1, 49)).toEqual(sixty.slice(0, 48));
+		expect(
+			CanonicalEventSchema.safeParse({
+				kind: "pr_status",
+				runId: "00000000-0000-4000-8000-000000000001",
+				branchId: "watches",
+				path: [],
+				seq: 1,
+				ts: "2026-11-11T12:00:00.000Z",
+				label: null,
+				prId: "pr-1",
+				pr: "acme/shop#12",
+				lines,
+				phase: "noted",
+			}).success,
+		).toBe(true);
+		expect(recorded(["one", "two"])).toEqual(["one", "two"]);
 	});
 
 	it("feedMessage output contains PR #123 title and is fenced with sentinel neutralized", () => {

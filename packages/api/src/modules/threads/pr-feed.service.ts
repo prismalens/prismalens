@@ -32,6 +32,7 @@ import {
 	FeedLineSchema,
 	feedMessage,
 	parseCursor,
+	recorded,
 } from "./pr-feed.js";
 import { type EtagCache, HostReadError } from "./pr-hosts.js";
 import { hostDown, PullRequestsService } from "./pull-requests.service.js";
@@ -331,7 +332,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 		}
 		const prev = parseCursor(f.cursor);
 		const d = prev ? diff(prev, snap) : { ...diff(null, snap), lines: [] };
-		const texts = d.lines.map((l) => l.text);
+		const texts = recorded(d.lines.map((l) => l.text));
 		if (d.guardTripped) {
 			const text = `Stopped sending PR #${pr.number} updates: ${d.guardTripped} still failing after 3 tries`;
 			await this.prisma.$transaction([

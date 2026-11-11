@@ -245,6 +245,14 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
 	 * fire is skipped and counted. Missed windows collapse into this one fire.
 	 */
 	private async fire(job: CronJobRow, now: Date): Promise<void> {
+		// A fire stored past the expiry never happens: the job is retired, not fired.
+		if (job.nextAt && job.expiresAt && job.nextAt > job.expiresAt) {
+			await this.prisma.cronJob.updateMany({
+				where: { id: job.id, nextAt: job.nextAt },
+				data: { nextAt: null },
+			});
+			return;
+		}
 		let nextAt: Date | null = job.recurring
 			? nextFire(job.schedule, now)
 			: null;
