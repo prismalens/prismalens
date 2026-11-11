@@ -667,7 +667,7 @@ test.describe("Composer key list (#1101 category 7)", () => {
 			.toBe("Hello @sam");
 	});
 
-	test.fixme("Up on an empty box recalls the last sent message with its chips, and Down returns to the draft (implementation bug: NewThread onSend awaits navigate before returning sent, unmounting Composer before remember() persists pl.sent)", async ({
+	test("Up on an empty box recalls the last sent message with its chips, and Down returns to the draft", async ({
 		page,
 	}) => {
 		await visitComposer(page);

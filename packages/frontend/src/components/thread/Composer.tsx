@@ -66,7 +66,11 @@ import {
 } from "@/components/ai/prompt-input";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
-import { usePersistedState } from "@/hooks/use-persisted-state";
+import {
+	readStored,
+	usePersistedState,
+	writeStored,
+} from "@/hooks/use-persisted-state";
 import { useCompactThread } from "@/lib/api/hooks/use-investigations-orpc";
 import {
 	useComposerClient,
@@ -504,8 +508,9 @@ export function Composer({
 	const [trigger, setTrigger] = useState<DocTrigger | null>(null);
 	const [dismissed, setDismissed] = useState<number | null>(null);
 	const [active, setActive] = useState(0);
+	const historyKey = `pl.sent.${scope ?? "none"}`;
 	const [stored, setHistory] = usePersistedState<StoredSent[]>(
-		`pl.sent.${scope ?? "none"}`,
+		historyKey,
 		NO_HISTORY,
 	);
 	const history = useMemo(() => stored.map(sentDoc), [stored]);
@@ -1033,6 +1038,24 @@ export function Composer({
 		const sent = keptFiles;
 		const sentKeys = new Set(sent.map((f) => f.key));
 		const sentId = draftId;
+		// Recorded as it goes out, and taken back if it does not: a send that opens a new
+		// thread can unload this page before its promise settles.
+		const before = readStored<StoredSent[]>(historyKey, NO_HISTORY);
+		const record = (list: StoredSent[]) => {
+			writeStored(historyKey, list);
+			setHistory(list);
+		};
+		const recorded = !(isEmptyDoc(sentDocNow) && !sent.length);
+		if (recorded) {
+			for (const f of sent) rememberFile(f.key, f.file);
+			record(
+				[
+					sentDocNow,
+					...before.filter((x) => !sameDoc(sentDoc(x), sentDocNow)),
+				].slice(0, HISTORY_SIZE),
+			);
+		}
+		const takeBack = () => recorded && record(before);
 		try {
 			const reply = await onSend(
 				{
@@ -1048,36 +1071,24 @@ export function Composer({
 				now,
 			);
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
-			const remember = () => {
-				if (isEmptyDoc(sentDocNow) && !sent.length) return;
-				for (const f of sent) rememberFile(f.key, f.file);
-				setHistory((h) =>
-					[
-						sentDocNow,
-						...h.filter((x) => !sameDoc(sentDoc(x), sentDocNow)),
-					].slice(0, HISTORY_SIZE),
-				);
-			};
-			if (receipt.result === "sent") {
-				remember();
-				clear(sentDocNow, sentKeys);
-			} else if (receipt.result === "deferred") {
+			if (receipt.result === "sent") clear(sentDocNow, sentKeys);
+			else if (receipt.result === "deferred") {
 				setHeld((h) => new Set(h).add(sentId));
 				void receipt.settled?.then(
 					(r) => {
 						setHeld(without(sentId));
-						if (r === "sent") {
-							remember();
-							clear(sentDocNow, sentKeys);
-						}
+						if (r === "sent") clear(sentDocNow, sentKeys);
+						else takeBack();
 					},
 					(e: unknown) => {
 						setHeld(without(sentId));
+						takeBack();
 						setRefusal(getErrorMessage(e));
 					},
 				);
-			}
+			} else takeBack();
 		} catch (e) {
+			takeBack();
 			setRefusal(getErrorMessage(e));
 		} finally {
 			setSending(false);
