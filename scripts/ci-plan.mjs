@@ -139,7 +139,10 @@ export function plan({
 		code,
 		e2e: code && needs(SAFE_FOR_E2E, files),
 		intake: code && needs(SAFE_FOR_INTAKE, files),
-		full: release || forced || files.some((f) => FULL_INPUTS.some((p) => p.test(f))),
+		full:
+			release ||
+			forced ||
+			files.some((f) => FULL_INPUTS.some((p) => p.test(f))),
 		agents: release || forced || needs(SAFE_FOR_AGENTS, files),
 		reason: release
 			? "release PR: everything runs"

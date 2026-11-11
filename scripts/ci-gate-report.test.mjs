@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	classify,
+	networkFailedJobs,
 	networkFailure,
 	onlyCancelled,
 	queueWaits,
@@ -134,4 +135,48 @@ test("a failed job is retried only when its log ends on a network fault, not a f
 		true,
 	);
 	assert.equal(rerunnable(reds, "CI gate", new Set(["Some other job"])), false);
+});
+
+test("a failed job whose log cannot be read is unknown, never a network fault, and is not rerun", () => {
+	const netLog = [
+		"line",
+		"Error: fetch failed",
+		"##[error]Process completed with exit code 1.",
+	].join("\n");
+	/** @type {number[]} */
+	const read = [];
+	/** @type {string[]} */
+	const warned = [];
+	const jobs = [
+		{ id: 1, ...job("Pack", "failure") },
+		{ id: 2, ...job("Smoke", "failure") },
+		{ id: 3, ...job("Build", "success") },
+		job("No id", "failure"),
+	];
+	const names = networkFailedJobs(
+		jobs,
+		(id) => {
+			read.push(id);
+			if (id === 1) throw new Error("Not Found");
+			return netLog;
+		},
+		(message) => warned.push(message),
+	);
+	assert.deepEqual([...names], ["Smoke"]);
+	assert.deepEqual(read, [1, 2]);
+	assert.equal(warned.length, 1);
+	assert.match(
+		warned[0],
+		/"Pack" unavailable, so not rerunning it: Error: Not Found/,
+	);
+	const reds = classify(jobs);
+	assert.equal(rerunnable(reds, "CI gate", names), false);
+	assert.equal(
+		rerunnable(
+			classify([jobs[1]]),
+			"CI gate",
+			networkFailedJobs([jobs[1]], () => netLog),
+		),
+		true,
+	);
 });
