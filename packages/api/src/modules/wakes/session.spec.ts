@@ -11,9 +11,15 @@ import {
 	limitResumeText,
 	limitWakeAt,
 	needsResumePrompt,
+	PROVIDER_BACK_NOTE,
 	registryFacts,
+	resumeNoteFor,
+	type SessionRow,
+	threadSession,
+	UNBLOCKED_NOTE,
 	usedOf,
 } from "./session.js";
+import type { Wake } from "./wakes.service.js";
 
 const base = { runId: "r", branchId: "run", path: [], ts: "2026-11-07T00:00:00.000Z" };
 const msg = (seq: number, text: string, extra: Record<string, unknown> = {}) =>
@@ -93,6 +99,14 @@ Why?`, delivers: [] }, undefined)).toBe(`${LIMIT_RESET_NOTE}
 Why?`);
 	});
 
+	it("limitResumeText does not repeat a note an earlier line opens with, for each of the three notes", () => {
+		for (const note of [LIMIT_RESET_NOTE, PROVIDER_BACK_NOTE, UNBLOCKED_NOTE]) {
+			expect(
+				limitResumeText({ text: `${note}\n\nWhy?`, delivers: [] }, undefined, note),
+			).toBe(`${note}\n\nWhy?`);
+		}
+	});
+
 	it("a delivered queued message is not sent again", () => {
 		const id = "6a1b7f0e-2a42-4c8e-9d36-0f7c1b2e3d4a";
 		expect(
@@ -122,5 +136,100 @@ describe("the compact command", () => {
 		expect(usedOf('{"used":5,"size":9}')).toBe(5);
 		expect(usedOf("{")).toBeUndefined();
 		expect(usedOf(null)).toBeUndefined();
+	});
+});
+
+describe("resumeNoteFor", () => {
+	it.each([
+		["rate_limited", PROVIDER_BACK_NOTE],
+		["overloaded", PROVIDER_BACK_NOTE],
+		["out_of_credit", UNBLOCKED_NOTE],
+		["key_rejected", UNBLOCKED_NOTE],
+		["spend_cap", UNBLOCKED_NOTE],
+		["usage_limit", LIMIT_RESET_NOTE],
+		[null, LIMIT_RESET_NOTE],
+		[undefined, LIMIT_RESET_NOTE],
+	])("maps mode %s to note %s", (mode, expectedNote) => {
+		expect(resumeNoteFor(mode)).toBe(expectedNote);
+	});
+});
+
+describe("threadSession", () => {
+	const now = new Date("2026-11-12T12:00:00Z");
+	const baseRow: SessionRow = {
+		harness: "codex",
+		usage: null,
+		lastActivityAt: now,
+		updatedAt: now,
+		limitResetsAt: new Date("2026-11-12T13:00:00Z"),
+		autoResume: true,
+		completedAt: null,
+		status: "failed",
+	};
+
+	it("hides the stop while status is running", () => {
+		const row: SessionRow = { ...baseRow, status: "running" };
+		const wake = {
+			id: "wake-1",
+			investigationId: "inv-1",
+			kind: "limit",
+			at: new Date("2026-11-12T13:02:00Z"),
+			reason: "limit",
+			payload: { mode: "usage_limit" },
+			attempts: 1,
+			state: "pending",
+			createdAt: now,
+			updatedAt: now,
+			doneAt: null,
+		} as Wake;
+
+		const session = threadSession(row, {
+			now,
+			facts: null,
+			resumeAfterLimit: true,
+			limitWake: wake,
+		});
+		expect(session.limit).toBeUndefined();
+	});
+
+	it("shows mode, window, agent, and maxAttempts from the wake payload", () => {
+		const row: SessionRow = { ...baseRow, status: "failed" };
+		const wake = {
+			id: "wake-2",
+			investigationId: "inv-2",
+			kind: "limit",
+			at: new Date("2026-11-12T13:02:00Z"),
+			reason: "limit",
+			payload: {
+				mode: "usage_limit",
+				window: "weekly",
+				maxAttempts: 5,
+			},
+			attempts: 2,
+			state: "pending",
+			createdAt: now,
+			updatedAt: now,
+			doneAt: null,
+		} as Wake;
+		const facts = {
+			label: "Codex",
+			cacheTtlMinutes: null,
+			compactsWhenIdle: false,
+			compactCommand: null,
+		};
+
+		const session = threadSession(row, {
+			now,
+			facts,
+			resumeAfterLimit: true,
+			limitWake: wake,
+		});
+		expect(session.limit).toMatchObject({
+			mode: "usage_limit",
+			window: "weekly",
+			agent: "Codex",
+			maxAttempts: 5,
+			attempts: 2,
+		});
 	});
 });

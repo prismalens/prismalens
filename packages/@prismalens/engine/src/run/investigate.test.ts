@@ -1016,7 +1016,8 @@ describe("runInvestigation over a fake ACP harness", () => {
 describe("prepareRunEnv and claude-code (#650)", () => {
 	function claudeOnPath(): string {
 		const dir = tmp("path");
-		const bin = join(dir, "claude");
+		const name = process.platform === "win32" ? "claude.cmd" : "claude";
+		const bin = join(dir, name);
 		writeFileSync(bin, "#!/bin/sh\n");
 		chmodSync(bin, 0o755);
 		return dir;
@@ -1100,7 +1101,7 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 
 	it("hands the adapter the claude already on PATH", () => {
 		const env = envFor(claudeOnPath());
-		expect(env.CLAUDE_CODE_EXECUTABLE).toMatch(/\/claude$/);
+		expect(env.CLAUDE_CODE_EXECUTABLE).toMatch(/[/\\]claude(\.cmd)?$/i);
 	});
 
 	it("passes no executable when none is on PATH", () => {
