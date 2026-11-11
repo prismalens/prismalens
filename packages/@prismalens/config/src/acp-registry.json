@@ -69,7 +69,7 @@
 		"id": "codebuddy-code",
 		"name": "Codebuddy Code",
 		"description": "Tencent Cloud's official intelligent coding tool",
-		"install": ["npx -y @tencent-ai/codebuddy-code@2.182.0 --acp"]
+		"install": ["npx -y @tencent-ai/codebuddy-code@2.183.0 --acp"]
 	},
 	{
 		"id": "codex-acp",
@@ -265,11 +265,11 @@
 		"name": "Kimchi",
 		"description": "Coding agent powered by multi-model orchestration",
 		"install": [
-			"darwin-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_darwin_arm64.tar.gz",
-			"darwin-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_darwin_amd64.tar.gz",
-			"linux-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_linux_arm64.tar.gz",
-			"linux-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_linux_amd64.tar.gz",
-			"windows-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.0/kimchi_windows_amd64.zip"
+			"darwin-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.34.2/kimchi_darwin_arm64.tar.gz",
+			"darwin-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.2/kimchi_darwin_amd64.tar.gz",
+			"linux-aarch64: https://github.com/getkimchi/kimchi/releases/download/v1.34.2/kimchi_linux_arm64.tar.gz",
+			"linux-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.2/kimchi_linux_amd64.tar.gz",
+			"windows-x86_64: https://github.com/getkimchi/kimchi/releases/download/v1.34.2/kimchi_windows_amd64.zip"
 		]
 	},
 	{
@@ -386,7 +386,7 @@
 		"id": "qoder",
 		"name": "Qoder CLI",
 		"description": "AI coding assistant with agentic capabilities",
-		"install": ["npx -y @qoder-ai/qodercli@1.1.86 --acp"]
+		"install": ["npx -y @qoder-ai/qodercli@1.1.87 --acp"]
 	},
 	{
 		"id": "qwen-code",
