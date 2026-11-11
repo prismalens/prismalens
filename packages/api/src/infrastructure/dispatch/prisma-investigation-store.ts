@@ -29,7 +29,16 @@ import type {
 	InvestigationReport,
 	LiveTurn,
 } from "@prismalens/contracts";
-import { type InvestigationStore, isUsageLimitError } from "@prismalens/engine";
+import { isBlockedMode } from "@prismalens/contracts";
+import { classifyFailure, type InvestigationStore } from "@prismalens/engine";
+
+/** A provider stop's end reason from the error's words; the settle hook refines it from the record (#1101). */
+function stopReasonOf(error: string): { endReason?: "limited" | "blocked" } {
+	const mode = classifyFailure(error)?.mode;
+	if (!mode) return {};
+	return { endReason: isBlockedMode(mode) ? "blocked" : "limited" };
+}
+
 import { Logger } from "@prismalens/logger";
 import type { RunPorts } from "./run-ports.js";
 
@@ -281,7 +290,7 @@ export function createPrismaInvestigationStore(
 				status: "failed",
 				error,
 				...(resume?.continuing ? { lastTurnOutcome: "error" as const } : {}),
-				...(isUsageLimitError(error) ? { endReason: "limited" as const } : {}),
+				...stopReasonOf(error),
 			});
 			// A refused write (Stop asked for) leaves the end to the run (#673 w59).
 			refused = !applied;

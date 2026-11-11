@@ -333,6 +333,30 @@ export class InvestigationsController {
 				},
 			),
 
+			retryNow: implement(investigationsContract.retryNow).handler(
+				async ({ input, context }) => {
+					requireOperate(context.request);
+					const found = await this.investigationsService.findById(input.id);
+					if (!found)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					scheduledRunHostOnly(found, context?.request as Request | undefined);
+					const fired = await this.sessions
+						.retryNow(input.id)
+						.catch((e: unknown) => {
+							if (e instanceof FollowUpRefused)
+								throw new ORPCError("CONFLICT", { message: e.message });
+							throw e;
+						});
+					if (!fired)
+						throw new ORPCError("CONFLICT", {
+							message: "Nothing is waiting to be tried again on this thread.",
+						});
+					return this.withSession(input.id);
+				},
+			),
+
 			restartSummary: implement(investigationsContract.restartSummary).handler(
 				() => this.dispatchService.restartSummary(),
 			),

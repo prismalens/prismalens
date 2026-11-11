@@ -51,12 +51,15 @@ import {
 	type JobMessageContext,
 	type OperatorMessageMode,
 	type PendingAsk,
+	PROVIDER_RETRY_ATTEMPTS,
 	type PreRunSource,
 	QUESTION_ASK_TIMEOUT_MS,
 	type RecordedFinding,
+	type RunFailure,
 	type RunFidelity,
 	type RunRuntimeNote,
 	type RunUsage,
+	type TurnUsage,
 } from "@prismalens/contracts/schemas";
 import {
 	AcpAdapter,
@@ -99,6 +102,11 @@ import {
 	type NewerRun,
 	newerRunNote,
 } from "./prompt.js";
+import {
+	PROVIDER_RETRY_NOTE,
+	retriesInTurn,
+	retryDelayMs,
+} from "./provider-failure.js";
 import {
 	injectedSecrets,
 	redactEvent,
@@ -228,6 +236,10 @@ export interface RunInvestigationOptions {
 	onHarnessDrift?: (message: string) => void;
 	/** Each ACP `usage_update` the harness sends; never called for a harness that sends none. */
 	onUsage?: (usage: RunUsage) => void;
+	/** Waits out a short provider retry inside the turn (#1101); injectable so tests need no real wait. */
+	sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+	/** The clock a retry's time is read from; injectable beside `sleep`. */
+	now?: () => Date;
 	/**
 	 * A follow-up on a finished run: reopen its session and send `text` (#747).
 	 * `heads` are the commits the workspace was rebuilt at. Without a
@@ -812,6 +824,9 @@ async function* runSession(
 	const ownCalls = new Set<string>();
 	/** The context the agent last reported, and whether PrismaLens's own compact turn runs (#1024). */
 	let lastUsed: number | undefined = opts.resume?.compact?.before;
+	/** The session's cumulative cost and model, as the agent last reported them (#1101). */
+	let lastCost: RunUsage["cost"];
+	let lastModel: string | undefined;
 	let compacting = false;
 	let autoCompactFrom: number | undefined;
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
@@ -836,7 +851,7 @@ async function* runSession(
 	};
 	const consume = async function* (
 		items: AsyncGenerator<AcpStreamItem>,
-	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+	): AsyncGenerator<CanonicalEvent, TurnEnd> {
 		for await (const item of items) {
 			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
 			if (item.kind === "update") {
@@ -854,8 +869,13 @@ async function* runSession(
 					const usage = parseUsageUpdate(u);
 					if (usage) {
 						lastUsed = usage.used;
+						if (usage.cost) lastCost = usage.cost;
 						opts.onUsage?.(usage);
 					}
+					const model = (u._meta as Record<string, unknown> | undefined)?.[
+						"_claude/model"
+					];
+					if (typeof model === "string" && model) lastModel = model;
 				}
 				// The agent compacted on its own; PrismaLens's own compact turn records itself.
 				if (u.sessionUpdate === "compaction_update" && !compacting) {
@@ -984,10 +1004,16 @@ async function* runSession(
 				}
 			} else if (item.kind === "done") {
 				for (const flushed of adapter.flush()) yield flushed;
-				return { stop: item.stopReason };
+				return {
+					stop: item.stopReason,
+					...(item.usage ? { usage: item.usage } : {}),
+				};
 			} else {
 				for (const flushed of adapter.flush()) yield flushed;
-				return { error: item.message };
+				return {
+					error: item.message,
+					...(item.failure ? { failure: item.failure } : {}),
+				};
 			}
 		}
 		return { error: "harness stream ended without a stop reason" };
@@ -1233,14 +1259,42 @@ async function* runSession(
 		let turns = 0;
 		const turn = async function* (
 			parts: PromptPart[],
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			// A stop during startup found no turn to cancel; prompting now would wait out the prompt timeout.
 			if (opts.signal?.aborted) return { stop: "cancelled" };
 			// A line queued while the run started is recorded before the turn that may read it (#820).
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
-			return yield* consume(session.prompt(parts));
+			// A short provider wait is sat out here and the message sent again, up to five tries (#1101).
+			let attempt = 1;
+			let sent = parts;
+			for (;;) {
+				// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
+				const costBefore = lastCost ?? (opts.resume ? null : undefined);
+				const end = yield* consume(session.prompt(sent));
+				if ("stop" in end) {
+					const usage = turnUsage(end.usage, costBefore, lastCost, lastModel);
+					if (usage) yield adapter.turnUsage(usage);
+					return end;
+				}
+				if (!end.failure) return end;
+				const failure: RunFailure = { ...end.failure, attempt };
+				const next = attempt + 1;
+				if (opts.signal?.aborted || !retriesInTurn(failure, next))
+					return { ...end, failure };
+				const wait = retryDelayMs(failure, next);
+				yield adapter.providerRetry(
+					failure.mode as "rate_limited" | "overloaded",
+					next,
+					PROVIDER_RETRY_ATTEMPTS,
+					new Date((opts.now?.() ?? new Date()).getTime() + wait),
+				);
+				await (opts.sleep ?? abortableSleep)(wait, opts.signal);
+				if (opts.signal?.aborted) return { stop: "cancelled" };
+				attempt = next;
+				sent = [{ type: "text", text: PROVIDER_RETRY_NOTE }, ...parts];
+			}
 		};
 
 		/**
@@ -1259,7 +1313,7 @@ async function* runSession(
 				/** The record of the command line, yielded just before its own turn goes out. */
 				beforeCommand?: () => CanonicalEvent;
 			} = {},
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const before = frame.before ?? [];
 			const after = frame.after ?? [];
 			const wrap = frame.wrap ?? ((m: string) => m);
@@ -1296,7 +1350,7 @@ async function* runSession(
 		/** The agent's own compact command as a turn, between two boundary events (#1024). */
 		const compactTurn = async function* (
 			c: NonNullable<NonNullable<RunInvestigationOptions["resume"]>["compact"]>,
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const before = lastUsed;
 			// Codex's compact takes no input: focus words would reach it as a malformed command.
 			const instructions = HARNESS_REGISTRY[opts.harness].compactTakesFocus
@@ -1307,7 +1361,7 @@ async function* runSession(
 				...(instructions ? { instructions } : {}),
 			});
 			compacting = true;
-			let r: { stop: string } | { error: string };
+			let r: TurnEnd;
 			try {
 				r = yield* turn([
 					{
@@ -1335,8 +1389,8 @@ async function* runSession(
 		const sayLines = async function* (
 			lines: SteerLine[],
 			nowLine: SteerLine | null,
-		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
-			let r: { stop: string } | { error: string } = { stop: "end_turn" };
+		): AsyncGenerator<CanonicalEvent, TurnEnd> {
+			let r: TurnEnd = { stop: "end_turn" };
 			let held: SteerLine[] = [];
 			// A line is recorded as delivered when its turn is about to go out, never before.
 			const record = (line: SteerLine, delivered: boolean) =>
@@ -1386,7 +1440,7 @@ async function* runSession(
 			return held.length ? yield* flush(null) : r;
 		};
 
-		let outcome: { stop: string } | { error: string };
+		let outcome: TurnEnd;
 		// A compaction can fail on a usage limit: the line waits as queued, so a later resume still sends it.
 		const lineId =
 			opts.resume?.messageId ??
@@ -1521,9 +1575,9 @@ async function* runSession(
 
 		if ("error" in outcome) {
 			yield* toolsSummary();
-			yield adapter.error(
-				opts.signal?.aborted ? CANCELLED_MESSAGE : outcome.error,
-			);
+			yield opts.signal?.aborted
+				? adapter.error(CANCELLED_MESSAGE)
+				: adapter.error(outcome.error, outcome.failure);
 			return;
 		}
 		if (opts.signal?.aborted || outcome.stop === "cancelled") {
@@ -1564,7 +1618,7 @@ async function* runSession(
 			}
 			if ("error" in retry) {
 				yield* toolsSummary();
-				yield adapter.error(retry.error);
+				yield adapter.error(retry.error, retry.failure);
 				return;
 			}
 			parsed = parseReport(text);
@@ -1728,4 +1782,53 @@ function drain(steer: SteerPort | undefined): SteerLine[] {
 	const left: SteerLine[] = [];
 	for (let line = steer?.next(); line; line = steer?.next()) left.push(line);
 	return left;
+}
+
+/** How a turn ended: its stop reason and reported usage, or its error and the provider stop it was. */
+type TurnEnd =
+	| { stop: string; usage?: TurnUsage }
+	| { error: string; failure?: RunFailure };
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve) => {
+		if (signal?.aborted) return resolve();
+		const t = setTimeout(done, ms);
+		function done() {
+			clearTimeout(t);
+			signal?.removeEventListener("abort", done);
+			resolve();
+		}
+		signal?.addEventListener("abort", done, { once: true });
+	});
+}
+
+/**
+ * One turn's usage: the tokens the prompt response reported, and the cost as the
+ * change in the session's cumulative cost; null when the agent reported neither.
+ */
+export function turnUsage(
+	reported: TurnUsage | undefined,
+	/** Undefined: a fresh session, from zero; null: unknown. */
+	costBefore: RunUsage["cost"] | null,
+	costAfter: RunUsage["cost"],
+	model: string | undefined,
+): TurnUsage | null {
+	const spent =
+		costAfter &&
+		costBefore !== null &&
+		(!costBefore || costBefore.currency === costAfter.currency) &&
+		costAfter.amount - (costBefore?.amount ?? 0) >= 0
+			? {
+					amount:
+						Math.round((costAfter.amount - (costBefore?.amount ?? 0)) * 1e6) /
+						1e6,
+					currency: costAfter.currency,
+				}
+			: undefined;
+	if (!reported && (!spent || costAfter === costBefore)) return null;
+	return {
+		...(reported?.model || model ? { model: reported?.model ?? model } : {}),
+		...(reported ?? {}),
+		...(spent && costAfter !== costBefore ? { cost: spent } : {}),
+	};
 }
