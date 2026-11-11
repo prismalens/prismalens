@@ -10,8 +10,11 @@ import {
 } from "@nestjs/common";
 import { ACCESS_LEVELS, type AccessLevel } from "@prismalens/config/harness";
 import {
+	type CanonicalEvent,
+	HARNESS_TOOL_STEPS,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	plToolName,
 	RunWorkspaceSchema,
 	THREAD_MESSAGE_CHARS,
 	type ThreadMessageKind,
@@ -107,6 +110,25 @@ const ROW = {
 } as const;
 
 const LIVE = [...LIVE_WORKFLOW_STATUSES];
+
+/** Events read back for a working thread's last step; its newest step is near the end. */
+const LAST_STEP_SCAN = 25;
+
+/** One event as the step a parent sees: a PrismaLens tool, the agent's own call, or its words. */
+function stepLine(e: CanonicalEvent): string | null {
+	if (e.kind === "harness_tool_call")
+		return HARNESS_TOOL_STEPS[plToolName(e.name)] ?? null;
+	if (e.kind !== "agent_step") return null;
+	const call = e.toolCalls.at(-1);
+	if (call) {
+		const d = call.args.description ?? call.args.command ?? call.args.path;
+		return typeof d === "string" && d.trim()
+			? `${call.name}: ${d.trim().split(/\r?\n/)[0]}`
+			: call.name;
+	}
+	const text = e.text.trim();
+	return text ? (text.split(/\r?\n/)[0] ?? null) : null;
+}
 
 type Queued = ThreadMessageRow;
 
@@ -300,6 +322,13 @@ export class ThreadTreeService
 		const allowance = await this.prisma.treeAllowance.findUnique({
 			where: { rootId },
 		});
+		const settings = await this.settings.get();
+		const working = members.filter((m) => nodeState(m) === "running");
+		const steps = new Map(
+			await Promise.all(
+				working.map(async (m) => [m.id, await this.lastStep(m.id)] as const),
+			),
+		);
 		return {
 			rootId,
 			nodes: members.map(
@@ -312,13 +341,41 @@ export class ThreadTreeService
 					depth: m.depth,
 					state: nodeState(m),
 					unread: count.get(m.id) ?? 0,
+					lastStep: steps.get(m.id) ?? null,
 					link: threadLink(m),
 				}),
 			),
 			allowance: allowance
 				? { grantedAt: allowance.grantedAt.toISOString() }
 				: null,
+			limits: {
+				depth: settings.depth,
+				children: settings.children,
+				perTree: settings.perTree,
+				agentsStartThreads: settings.agentsStartThreads,
+			},
 		};
+	}
+
+	/** A working thread's latest tool call or words, in a line, from its last few events. */
+	private async lastStep(id: string): Promise<string | null> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: { investigationId: id },
+			orderBy: { createdAt: "desc" },
+			take: LAST_STEP_SCAN,
+			select: { event: true },
+		});
+		for (const r of rows) {
+			let e: CanonicalEvent;
+			try {
+				e = JSON.parse(r.event) as CanonicalEvent;
+			} catch {
+				continue;
+			}
+			const line = stepLine(e);
+			if (line) return line.length > 100 ? `${line.slice(0, 99)}…` : line;
+		}
+		return null;
 	}
 
 	/** A member's name in messages: its role, `root` for the root. */

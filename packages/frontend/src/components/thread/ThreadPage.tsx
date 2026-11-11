@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
+import { ParentBar } from "@/components/investigation/transcript/ChildCards";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import { BrowserTab } from "@/components/run/BrowserTab";
@@ -555,6 +556,7 @@ export function ThreadPage({ id }: { id: string }) {
 						foldTurns={{ live: run.isActive }}
 						onOpenSubagent={openSubagent}
 						links={links}
+						lead={<ParentBar threadId={inv.id} />}
 					/>
 				) : (
 					<p className="px-5 pt-6 text-body text-text-3">
