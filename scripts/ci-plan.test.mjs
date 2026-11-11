@@ -95,9 +95,22 @@ test("a change to packaging or to the workflows that run the proofs turns the re
 	const proofs = pr({ files: [".github/workflows/proofs.yml"] });
 	assert.deepEqual(tiers(proofs), [false, false, false, false, true, true]);
 	assert.equal(pr({ files: ["packages/api/src/a.ts"] }).full, false);
+	// The CLI commands those proofs drive turn them on; their tests and the other commands do not.
+	for (const file of [
+		"packages/cli/src/cli/service.ts",
+		"packages/cli/src/cli/upgrade.ts",
+		"packages/cli/src/cli/upgrade-trial.ts",
+		"packages/cli/src/cli/update-notice.ts",
+	])
+		assert.equal(pr({ files: [file] }).full, true, file);
+	for (const file of [
+		"packages/cli/src/cli/service.test.ts",
+		"packages/cli/src/cli/doctor.ts",
+	])
+		assert.equal(pr({ files: [file] }).full, false, file);
 });
 
-test("a path on no list turns every tier on, so a new package is never skipped", () => {
+test("a path on no list turns every PR tier and the agent legs on, so a new package is never skipped; the release proofs stay opt-in", () => {
 	const p = pr({ files: ["packages/@prismalens/newpkg/src/a.ts"] });
 	assert.deepEqual(tiers(p), [false, true, true, true, false, true]);
 });
