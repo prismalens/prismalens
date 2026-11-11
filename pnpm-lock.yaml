@@ -791,6 +791,9 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
+      diff:
+        specifier: 9.0.0
+        version: 9.0.0
       html-to-image:
         specifier: ^1.11.13
         version: 1.11.13

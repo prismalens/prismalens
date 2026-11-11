@@ -3,11 +3,12 @@
 
 import {
 	type CanonicalEvent,
-	HARNESS_TOOL_STEPS,
 	type InvestigationReport,
+	plToolName,
 	type StreamToolResult,
 } from "@prismalens/contracts";
 import { fileVerb } from "@/lib/investigation-events";
+import { plArgsLine, plLabel } from "@/lib/pl-tools";
 import { commandText, mcpTool, shortPath } from "@/lib/report-view";
 import {
 	matchGateway,
@@ -16,6 +17,7 @@ import {
 	stepNode,
 } from "@/lib/spine";
 import { isSubagentStep } from "@/lib/subagents";
+import { type EditStat, editStat } from "@/lib/turn-summary";
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -36,6 +38,10 @@ export interface RunStep {
 	outcome?: string | null;
 	/** A PrismaLens tool call: the header names it by `title`, never the raw call. */
 	gateway?: boolean;
+	/** Lines an edit call added and removed, from its arguments (#1101 cat 9). */
+	edit?: EditStat | null;
+	/** A PrismaLens tool's current name and its arguments as one line (#1101 cat 9). */
+	pl?: { name: string; args: string | null };
 	/** The run's first PrismaLens step: it shows the data note every result carries, once (#1020). */
 	dataNote?: boolean;
 	/** The call named a shell command, so it can be copied or staged in the terminal. */
@@ -156,7 +162,20 @@ export function deriveSteps(
 				)
 			: null;
 		const recorded = gateway.byCall.get(callId);
-		const plain = recorded ? HARNESS_TOOL_STEPS[recorded.name] : undefined;
+		const plInput = recorded?.input ?? call.args;
+		const plain = recorded
+			? plLabel(
+					recorded.name,
+					plInput,
+					result
+						? result.ok && !recorded.isError
+							? "done"
+							: "failed"
+						: unfinished
+							? "failed"
+							: "running",
+				)
+			: undefined;
 		return {
 			n: i + 1,
 			callId,
@@ -167,10 +186,24 @@ export function deriveSteps(
 				gateway: recorded?.name,
 			}),
 			outcome: recorded ? outcomeLine(recorded) : null,
-			...(recorded ? { gateway: true } : {}),
+			...(recorded
+				? {
+						gateway: true,
+						pl: { name: plToolName(recorded.name), args: plArgsLine(plInput) },
+					}
+				: {}),
 			...(callId === noted ? { dataNote: true } : {}),
 			input: inputOf(call.name, call.args),
 			...fileOf(call.args),
+			...(recorded
+				? {}
+				: (() => {
+						const edit =
+							fileVerb(call.name) === "read" && !call.args.patch
+								? null
+								: editStat(fileOf(call.args).path, call.args);
+						return edit ? { edit } : {};
+					})()),
 			title: plain ?? describe(call.args) ?? command,
 			command,
 			kind:

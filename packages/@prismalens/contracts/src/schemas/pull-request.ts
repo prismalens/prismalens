@@ -148,7 +148,7 @@ export const PrWatchSchema = z.object({
 	since: z.string().datetime(),
 	/** When an automatic watch lapses without new thread activity. */
 	until: z.string().datetime().nullable(),
-	/** Watched because the PR is on the thread's own branch, not by Watch or `pr_watch`. */
+	/** Watched because the PR is on the thread's own branch, not by Watch or `pl_pr_watch`. */
 	auto: z.boolean(),
 });
 export type PrWatch = z.infer<typeof PrWatchSchema>;

@@ -12,6 +12,7 @@ import {
 	ASK_TIMEOUT_MS,
 	type AskAnswer,
 	type PermissionAskOutcome,
+	plToolName,
 } from "@prismalens/contracts/schemas";
 
 export interface PermissionOption {
@@ -299,7 +300,7 @@ export function isGatewayToolCall(
 	return (
 		!!named &&
 		named.servers.every((s) => s === gateway.serverName) &&
-		(gateway.autoAllow ?? gateway.tools).includes(named.tool)
+		(gateway.autoAllow ?? gateway.tools).includes(plToolName(named.tool))
 	);
 }
 

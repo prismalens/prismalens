@@ -87,7 +87,7 @@ export const ThreadMessageSchema = z.object({
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
 
-/** What `propose_action` may propose; the user's click applies it through the normal API. */
+/** What `pl_propose_action` may propose; the user's click applies it through the normal API. */
 export const PROPOSAL_KINDS = [
 	"setting",
 	"schedule",
