@@ -616,7 +616,7 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 			...base,
 			kind: "harness_tool_call" as const,
 			server: "prismalens-abcdefgh23",
-			name: "incident_get",
+			name: "pl_incident_get",
 			at: "2026-10-24T10:00:00.000Z",
 			turn: "first" as const,
 		};
@@ -628,7 +628,7 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 			server: "prismalens-abcdefgh23",
 			turn: "first" as const,
 			connected: true,
-			calls: [{ name: "incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
+			calls: [{ name: "pl_incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
 		};
 		expect(CanonicalEventSchema.parse(summary)).toEqual(summary);
 	});

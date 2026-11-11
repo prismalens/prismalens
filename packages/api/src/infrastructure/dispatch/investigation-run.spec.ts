@@ -2911,7 +2911,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 					ts: "2026-10-24T10:00:00.000Z",
 					seq: 1,
 					server: "prismalens-abcdefgh23",
-					name: "incident_get",
+					name: "pl_incident_get",
 					at: "2026-10-24T10:00:00.000Z",
 					turn: "first",
 				});
@@ -2925,7 +2925,7 @@ describe("toolsServer per run and follow-up (#848)", () => {
 					server: "prismalens-abcdefgh23",
 					turn: "first",
 					connected: true,
-					calls: [{ name: "incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
+					calls: [{ name: "pl_incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
 				});
 				await (ioRun.store as unknown as { finish(r: unknown): Promise<void> }).finish(null);
 				return { report: { summary: "done", rootCause: null, nextSteps: [] } };

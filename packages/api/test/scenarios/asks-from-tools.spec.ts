@@ -116,7 +116,7 @@ describe("Walk: the agent asks the user through PrismaLens's own tools (#1024 sp
 			60_000,
 		);
 		const said = (await events(runId)).flatMap((e) => (e.kind === "agent_step" ? [e.text] : [])).join("");
-		expect(said).toContain('ask_user said:');
+		expect(said).toContain('pl_ask_user said:');
 		expect(said).toContain('"status": "asked"');
 
 		await pl.api(`/investigations/${runId}/asks/${ask?.askId}`, {

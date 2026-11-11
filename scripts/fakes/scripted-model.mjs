@@ -65,7 +65,7 @@ const GW = "$gw:";
 /** @param {unknown} name */
 const gwName = (name) =>
 	name === "$incident_get"
-		? "incident_get"
+		? "pl_incident_get"
 		: typeof name === "string" && name.startsWith(GW)
 			? name.slice(GW.length)
 			: null;
@@ -311,7 +311,7 @@ export function requestSummary(req) {
 }
 
 /**
- * `tools_search` results the request carries back to the model, characters by call id.
+ * `pl_tools_search` results the request carries back to the model, characters by call id.
  * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
  */
 function searchResults(req) {
@@ -319,7 +319,7 @@ function searchResults(req) {
 	const out = {};
 	for (const m of req.messages)
 		for (const c of m.tool_calls ?? [])
-			if (endsWith("tools_search").test(c.function.name)) {
+			if (endsWith("pl_tools_search").test(c.function.name)) {
 				const result = req.messages.find(
 					(r) => r.role === "tool" && r.tool_call_id === c.id,
 				);

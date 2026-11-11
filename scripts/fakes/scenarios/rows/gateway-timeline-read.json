@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "timeline_read",
+				"name": "pl_timeline_read",
 				"ok": true,
 				"outputHas": "ScenarioTimelineNote"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-timeline-read]",
-				"toolName": "$gw:timeline_read",
+				"toolName": "$gw:pl_timeline_read",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:timeline_read",
+						"name": "$gw:pl_timeline_read",
 						"arguments": {}
 					}
 				]
@@ -32,13 +32,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-timeline-read]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "read timeline"
 						}
@@ -49,15 +49,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-timeline-read]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "timeline_read"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_timeline_read"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "timeline_read",
+							"name": "pl_timeline_read",
 							"arguments": {}
 						}
 					}

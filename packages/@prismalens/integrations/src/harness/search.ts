@@ -6,7 +6,6 @@
  * and run with `pl_tools_call`. No `list_changed`: two of the agents ignore it, and the
  * gateway has no stream to send it on.
  */
-import { plToolName } from "@prismalens/contracts/schemas";
 import { z } from "zod";
 import type { RunView } from "./registry.js";
 import {
@@ -122,23 +121,21 @@ function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 /**
  * Which tool a `tools/call` runs, and with what arguments: a listed tool as itself,
  * `pl_tools_call` as its `read` target in the view. `undefined` is an unknown tool, a
- * protocol error (MCP `/server/tools` Error Handling). A pre-`pl_` name still resolves
- * until the specs and fakes move over (#1101).
+ * protocol error (MCP `/server/tools` Error Handling).
  */
 export function resolveCall(
 	view: RunView,
 	name: string,
 	args: unknown,
 ): { tool: HarnessTool; args: unknown } | undefined {
-	const current = plToolName(name);
-	const listed = view.direct.find((t) => t.name === current);
+	const listed = view.direct.find((t) => t.name === name);
 	if (!listed) return undefined;
-	if (current !== TOOLS_CALL) return { tool: listed, args };
+	if (name !== TOOLS_CALL) return { tool: listed, args };
 	const parsed = listed.input.safeParse(args ?? {});
 	if (!parsed.success) return { tool: listed, args };
 	const target = [...view.deferred, ...view.direct].find(
 		(t) =>
-			t.name === plToolName(String(parsed.data.name)) &&
+			t.name === parsed.data.name &&
 			t.effect === "read" &&
 			t.name !== TOOLS_CALL &&
 			t.name !== TOOLS_SEARCH,

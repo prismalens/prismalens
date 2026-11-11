@@ -120,7 +120,7 @@ export interface RequestSummary {
 	row: string | null;
 	/** Characters of PrismaLens's own tool definitions in this request (#848). */
 	plDefChars: number;
-	/** `tools_search` results carried back to the model, characters by call id. */
+	/** `pl_tools_search` results carried back to the model, characters by call id. */
 	searchResults: Record<string, number>;
 }
 export function requestSummary(req: ChatCompletionRequest): RequestSummary;
