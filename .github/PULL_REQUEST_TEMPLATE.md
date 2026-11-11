@@ -25,7 +25,7 @@ Keep PRs focused and small where you can.
       pass locally
 - [ ] Tests added or updated for the change
 - [ ] No secrets, tokens, or private content committed
-- [ ] Every issue this PR finishes has its own `closes #n`; `closingIssuesReferences` on the PR lists them
+- [ ] Every issue this PR finishes, except an umbrella, has its own `closes #n`; `closingIssuesReferences` on the PR lists them
 - [ ] Breaking config or schema change → called out above
 
 ## Docs

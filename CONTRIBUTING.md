@@ -466,8 +466,10 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
 
 GitHub reads one issue per closing keyword: `closes #a, #b` links only #a, so write `closes #a, closes #b`. A keyword
 only counts when the PR merges into the default branch, so a PR merged into another branch of a stack closes nothing.
-After opening the PR, check that `gh pr view --json closingIssuesReferences` lists every issue it finishes. A PR that
-finishes only part of an issue writes `refs #n`, and the issue stays open with a comment on what is left.
+After opening the PR, check that `gh pr view --json closingIssuesReferences` lists every issue it finishes. A stacked PR
+lists nothing until it targets `main`, so check it again after it retargets and before it merges. A PR that finishes only
+part of an issue writes `refs #n`, and the issue stays open with a comment on what is left. An umbrella issue never takes
+`closes #n`: it is closed by hand once its Done when is met.
 
 ### Landing a stack
 
