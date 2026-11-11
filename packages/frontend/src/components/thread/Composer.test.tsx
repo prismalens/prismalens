@@ -3,6 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ACCESS_LEVEL_LINE,
 	docParts,
 	type HarnessStatus,
 	type Quote,
@@ -846,5 +847,28 @@ describe("a schedule's composer (#1020)", () => {
 		expect(document.activeElement).toBe(box);
 		expect(editor.isFocused).toBe(true);
 		expect(onSend).not.toHaveBeenCalled();
+	});
+
+	it("Shift+Tab picks the next permission level, says it, and says how to move focus back (#1101)", async () => {
+		const props = await render();
+		const box = q("composer-input") as HTMLElement;
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "Tab",
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+		expect(props.onChoice).toHaveBeenCalledWith({ accessLevel: "auto" });
+		expect(q("composer-hint")?.textContent).toBe(
+			`Auto, above the default. ${ACCESS_LEVEL_LINE.auto} Esc, then Shift+Tab to move focus back.`,
+		);
+		const described = box.getAttribute("aria-describedby") ?? "";
+		expect(document.getElementById(described)?.textContent).toBe(
+			"Shift+Tab changes the permission level. Esc, then Shift+Tab to move focus back.",
+		);
 	});
 });

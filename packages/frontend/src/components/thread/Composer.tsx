@@ -43,6 +43,7 @@ import {
 	type MutableRefObject,
 	type ReactNode,
 	useEffect,
+	useId,
 	useMemo,
 	useRef,
 	useState,
@@ -393,6 +394,12 @@ function withSeed(doc: ComposerDoc, seed: NewThreadSeed | null): ComposerDoc {
 	};
 }
 
+/**
+ * Shift+Tab cycles permission in the box instead of moving focus back, so the way out
+ * is said wherever the key is (#1101 category 6 item 5; WCAG 2.1.2).
+ */
+export const FOCUS_BACK = "Esc, then Shift+Tab to move focus back.";
+
 /** Why a follow-up's agent, model, effort and permission cannot change. */
 const KEPT = "Kept from the first message";
 
@@ -506,6 +513,7 @@ export function Composer({
 	const recall = useRef<{ at: number; draft: ComposerDoc } | null>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const root = useRef<HTMLDivElement>(null);
+	const keysId = useId();
 	const rawPaste = useRef(false);
 	const client = useComposerClient();
 	const compact = useCompactThread(client);
@@ -775,6 +783,7 @@ export function Composer({
 			"aria-activedescendant":
 				menuOpen && rows.length ? optionId(activeRow) : null,
 			"aria-disabled": blocked ? "true" : null,
+			"aria-describedby": agentless ? null : keysId,
 			"data-testid": "composer-input",
 		};
 		for (const [k, v] of Object.entries(attrs))
@@ -972,7 +981,7 @@ export function Composer({
 		const fallback = defaultAccessOf(harness, axes).level.level;
 		const above = ACCESS_LEVELS.indexOf(next) > ACCESS_LEVELS.indexOf(fallback);
 		setHint(
-			`${ACCESS_LEVEL_LABEL[next]}${above ? ", above the default" : ""}. ${ACCESS_LEVEL_LINE[next]}`,
+			`${ACCESS_LEVEL_LABEL[next]}${above ? ", above the default" : ""}. ${ACCESS_LEVEL_LINE[next]} ${FOCUS_BACK}`,
 		);
 	};
 
@@ -1450,6 +1459,11 @@ export function Composer({
 					onSubmit={() => void submit(false)}
 				>
 					<PromptInputBody>
+						{!agentless && (
+							<span id={keysId} className="sr-only">
+								Shift+Tab changes the permission level. {FOCUS_BACK}
+							</span>
+						)}
 						<ChipContext.Provider value={chipContext}>
 							<EditorContent
 								editor={editor}
