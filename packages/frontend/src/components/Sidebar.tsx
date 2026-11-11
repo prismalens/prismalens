@@ -29,6 +29,7 @@ import { Hint } from "@/components/shared/Hint";
 import { SearchHost, useOpenSearch } from "@/components/shell/SearchHost";
 import { ThreadList, useWaitingCount } from "@/components/shell/ThreadList";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Badge } from "@/components/ui/badge";
 import {
 	Sheet,
 	SheetContent,
@@ -190,6 +191,8 @@ function MainBar({
 	const full = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
 	const openSearch = useOpenSearch();
 	const settingsDoor = doors.find((d) => d.to === "/settings");
+	// Same query as the Settings door's dot; it marks a nightly build in every screenshot (#1024).
+	const nightlyBuild = useAbout(signedIn).data?.updateChannel?.nightlyBuild;
 	return (
 		<>
 			<div
@@ -200,6 +203,15 @@ function MainBar({
 				<span className="flex items-center gap-2.5 text-body font-semibold">
 					<PrismaLensMark className="size-[18px] shrink-0" aria-hidden />
 					<span className={FULL_ONLY}>PrismaLens</span>
+					{nightlyBuild && (
+						<Badge
+							variant="secondary"
+							className={FULL_ONLY}
+							data-testid="sidebar-nightly"
+						>
+							Nightly
+						</Badge>
+					)}
 				</span>
 				<span className={cn("ml-auto", FULL_ONLY)}>
 					<Hint label="Hide the sidebar" keys={["["]} side="right">

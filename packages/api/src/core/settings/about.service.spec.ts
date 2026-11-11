@@ -95,6 +95,7 @@ describe("AboutService", () => {
 			fromEnv: false,
 			nightlyBlockedBy: "not_npm",
 			leavingNightly: null,
+			nightlyBuild: false,
 		});
 	});
 
@@ -102,6 +103,20 @@ describe("AboutService", () => {
 		const a = await about({ PRISMALENS_UPDATE_CHANNEL: "nightly", PRISMALENS_UPDATE_CHECK: "off" }, github(false));
 		expect(a.updateChannel?.current).toBe("nightly");
 		expect(a.updateChannel?.fromEnv).toBe(true);
+	});
+});
+
+describe("AboutService nightly build", () => {
+	it("reports nightlyBuild from the running version, not the saved channel", async () => {
+		const stable = await about({ PRISMALENS_UPDATE_CHECK: "off" }, github(false));
+		expect(stable.updateChannel?.nightlyBuild).toBe(false);
+
+		const s = new AboutService();
+		s.env = { PRISMALENS_UPDATE_CHECK: "off" };
+		(s as unknown as { version: string }).version = "0.5.6-nightly.20261111.1";
+		const nightly = await s.get();
+		expect(nightly.updateChannel?.current).toBe("stable");
+		expect(nightly.updateChannel?.nightlyBuild).toBe(true);
 	});
 });
 

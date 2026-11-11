@@ -96,3 +96,8 @@ export function effectiveUpdateChannel(
 		? "stable"
 		: saved;
 }
+
+/** True when `version` is a nightly build (`0.5.6-nightly.20261111.1`), whatever channel is saved. */
+export function isNightlyBuild(version: string): boolean {
+	return semver.prerelease(version)?.[0] === "nightly";
+}
