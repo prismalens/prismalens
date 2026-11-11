@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { useResolveProposal } from "@/lib/api/hooks/use-thread-tree-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { cn } from "@/lib/utils";
 import type { TranscriptNodeProps } from "./types";
 
 type Ev<K extends CanonicalEvent["kind"]> = Extract<
@@ -41,7 +42,7 @@ export function ThreadMessageNode({ event }: TranscriptNodeProps) {
 	const e = event as Ev<"thread_message">;
 	const peer = e.peerLink.split("/").pop() ?? e.peerId;
 	return (
-		<p className={`${LINE} truncate`} data-testid="tree-message">
+		<p className={cn(LINE, "truncate")} data-testid="tree-message">
 			{e.direction === "sent" ? "To " : "From "}
 			<ChildLink id={peer}>{e.peerRole}</ChildLink>: {e.text}
 		</p>

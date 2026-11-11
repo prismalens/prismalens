@@ -636,7 +636,7 @@ export function ThreadPage({ id }: { id: string }) {
 							) : (
 								<div className="flex min-h-0 flex-1 flex-col">
 									{files.touched.length > 0 && (
-										<div className="shrink-0 border-hairline border-b">
+										<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
 											<FilesPane files={files} onJump={() => {}} />
 										</div>
 									)}

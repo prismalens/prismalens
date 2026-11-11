@@ -15,6 +15,7 @@ import {
 	BellRing,
 	CalendarClock,
 	Check,
+	Clock3,
 	Pencil,
 	Square,
 	User,
@@ -596,7 +597,7 @@ function RowMark({
 	else if (row.state === "asks")
 		mark = <span className="block size-1.5 rounded-full bg-warn" />;
 	else if (row.state === "limited")
-		mark = <span className="block size-1.5 rounded-full border border-warn" />;
+		mark = <Clock3 className="size-3 stroke-[1.75] text-warn" />;
 	else if (row.state === "working") mark = <Ring />;
 	else if (origin) {
 		const Icon = TRIGGER_ICON[row.origin];
