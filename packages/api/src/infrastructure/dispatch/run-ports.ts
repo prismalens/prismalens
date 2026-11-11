@@ -179,6 +179,8 @@ export interface RunPorts {
 	lastEventSeq(id: string): Promise<number>;
 	appendEvents(id: string, events: CanonicalEvent[]): Promise<void>;
 	clearEvents(id: string): Promise<void>;
+	/** Count events a run could not store, so every reader is told its record is incomplete (#1101). */
+	recordLostEvents?(id: string, count: number): Promise<void>;
 	/** False when the row refused the result; the same rule as `updateStatus`. */
 	writeResult(
 		id: string,

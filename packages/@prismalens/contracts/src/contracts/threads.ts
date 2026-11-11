@@ -16,6 +16,8 @@ import {
 	RenameThreadSchema,
 	ResolvedLinksSchema,
 	ResolveLinksSchema,
+	SearchMessagesInputSchema,
+	SearchMessagesSchema,
 	ServedAttachmentSchema,
 	SettlePreviewSchema,
 	SettleRefusalSchema,
@@ -58,6 +60,17 @@ export const threadsContract = {
 				message: "The thread cannot be started",
 			},
 		}),
+
+	/** Message text across threads, newest activity first; `next` walks on past them (#1101 cat 13). */
+	searchMessages: oc
+		.route({
+			method: "GET",
+			path: "/threads/search-messages",
+			summary: "Find message text across threads",
+			tags: ["threads"],
+		})
+		.input(SearchMessagesInputSchema)
+		.output(SearchMessagesSchema),
 
 	/**
 	 * A project's or service's threads, newest first
