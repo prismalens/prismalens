@@ -99,12 +99,15 @@ Why?`, delivers: [] }, undefined)).toBe(`${LIMIT_RESET_NOTE}
 Why?`);
 	});
 
-	it("limitResumeText does not repeat a note an earlier line opens with, for each of the three notes", () => {
-		for (const note of [LIMIT_RESET_NOTE, PROVIDER_BACK_NOTE, UNBLOCKED_NOTE]) {
-			expect(
-				limitResumeText({ text: `${note}\n\nWhy?`, delivers: [] }, undefined, note),
-			).toBe(`${note}\n\nWhy?`);
-		}
+	// The resume's own note differs from the one the queued line opens with, so a check on one note alone fails.
+	it.each([
+		[LIMIT_RESET_NOTE, PROVIDER_BACK_NOTE],
+		[PROVIDER_BACK_NOTE, UNBLOCKED_NOTE],
+		[UNBLOCKED_NOTE, LIMIT_RESET_NOTE],
+	])("limitResumeText adds no second note when the line already opens with %s", (opening, resumeNote) => {
+		expect(
+			limitResumeText({ text: `${opening}\n\nWhy?`, delivers: [] }, undefined, resumeNote),
+		).toBe(`${opening}\n\nWhy?`);
 	});
 
 	it("a delivered queued message is not sent again", () => {
