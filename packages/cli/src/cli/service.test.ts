@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	noServiceLine,
 	runningLine,
 	serviceFailed,
 	unitInTransition,
@@ -83,4 +84,21 @@ describe("unitInTransition (#673)", () => {
 		);
 		expect(runningLine({ kind: "not-running" }, "x", null)).toBe("no");
 	});
+});
+
+describe("noServiceLine", () => {
+	it("win32 directs to desktop app tray menu without pl service install", () => {
+		expect(noServiceLine("win32")).toBe(
+			"No background service runs on Windows. On Windows, turn on Start at login in the desktop app's tray menu.",
+		);
+	});
+
+	it.each(["linux", "darwin"] as const)(
+		"%s directs to pl service install",
+		(platform) => {
+			expect(noServiceLine(platform)).toBe(
+				"No background service is installed. Install one with: pl service install",
+			);
+		},
+	);
 });

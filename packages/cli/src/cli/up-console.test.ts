@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	browserCommand,
+	hasIpv6,
+	lanBindHost,
 	openTarget,
 	writeRedirectFile,
 	displayUrl,
@@ -377,6 +379,11 @@ describe("serviceHint", () => {
 			"For a machine that should always be on: On Windows, turn on Start at login in the desktop app's tray menu.",
 		);
 	});
+	it("linux with empty env and serviceOwnsWorkspace false returns pl service install hint", () => {
+		expect(
+			serviceHint({ platform: "linux", env: {}, serviceOwnsWorkspace: false }),
+		).toBe("For a machine that should always be on: pl service install");
+	});
 
 	it("hidden under a service, in electron, or when a service owns the workspace", () => {
 		expect(serviceHint({ platform: "win32", env: { PRISMALENS_RUN_MODE: "electron" }, serviceOwnsWorkspace: false })).toBeNull();
@@ -528,6 +535,53 @@ describe("portInUseLine", () => {
 		expect(portInUseLine(3170, false)).toBe(
 			"Port 3170 is in use. Start on another port with --port.",
 		);
+	});
+});
+
+describe("lanBindHost", () => {
+	it("returns :: when IPv6 is available and 0.0.0.0 when not", () => {
+		expect(lanBindHost(true)).toBe("::");
+		expect(lanBindHost(false)).toBe("0.0.0.0");
+	});
+});
+
+describe("hasIpv6", () => {
+	it("returns false with IPv4 only fixture", () => {
+		const interfaces: ReturnType<typeof import("node:os").networkInterfaces> = {
+			eth0: [
+				{
+					address: "192.168.1.10",
+					netmask: "255.255.255.0",
+					family: "IPv4",
+					mac: "00:00:00:00:00:00",
+					internal: false,
+					cidr: "192.168.1.10/24",
+				},
+			],
+		};
+		expect(hasIpv6(interfaces)).toBe(false);
+	});
+
+	it("returns true with IPv6 fixture", () => {
+		const interfaces: ReturnType<typeof import("node:os").networkInterfaces> = {
+			lo: [
+				{
+					address: "::1",
+					netmask: "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+					family: "IPv6",
+					mac: "00:00:00:00:00:00",
+					internal: true,
+					cidr: "::1/128",
+					scopeid: 0,
+				},
+			],
+		};
+		expect(hasIpv6(interfaces)).toBe(true);
+	});
+
+	it("returns false with empty interfaces fixture", () => {
+		const interfaces: ReturnType<typeof import("node:os").networkInterfaces> = {};
+		expect(hasIpv6(interfaces)).toBe(false);
 	});
 });
 

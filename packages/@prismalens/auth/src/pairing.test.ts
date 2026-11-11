@@ -12,6 +12,7 @@ import {
 	createPairingLink,
 	DEVICE_SCOPES,
 	type DeviceRecord,
+	deviceNameFor,
 	hashToken,
 	OPERATOR_SCOPES,
 	PAIRING_LINK_TTL_MS,
@@ -632,6 +633,28 @@ describe("onDevicePaired", () => {
 		} finally {
 			unsubscribe();
 		}
+	});
+});
+
+describe("deviceNameFor", () => {
+	it("label equals startup ('my-host'), sent 'Pixel 9' -> 'Pixel 9'", () => {
+		expect(deviceNameFor("my-host", "Pixel 9", "my-host")).toBe("Pixel 9");
+	});
+
+	it("label 'my-host' startup 'my-host', sent '  ' -> 'my-host'", () => {
+		expect(deviceNameFor("my-host", "  ", "my-host")).toBe("my-host");
+	});
+
+	it("label 'Kitchen tablet', startup 'my-host', sent 'Pixel 9' -> 'Kitchen tablet'", () => {
+		expect(deviceNameFor("Kitchen tablet", "Pixel 9", "my-host")).toBe("Kitchen tablet");
+	});
+
+	it("label null, sent 'Pixel 9', startup 'my-host' -> 'Pixel 9'", () => {
+		expect(deviceNameFor(null, "Pixel 9", "my-host")).toBe("Pixel 9");
+	});
+
+	it("label null, sent '', startup 'my-host' -> 'Paired device'", () => {
+		expect(deviceNameFor(null, "", "my-host")).toBe("Paired device");
 	});
 });
 
