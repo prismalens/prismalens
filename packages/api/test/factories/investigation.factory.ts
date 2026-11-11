@@ -51,6 +51,7 @@ export class InvestigationFactory {
 			lastActivityAt: null,
 			eventOrdinal: 0,
 			eventGeneration: 0,
+			eventsLost: 0,
 			limitResetsAt: null,
 			autoResume: null,
 			agentPlan: null,

@@ -330,6 +330,7 @@ model Investigation {
   // Event record positions (#1101 cat 12): a commit counter that never resets, and the attempt a rerun's clear started
   eventOrdinal    Int @default(0)
   eventGeneration Int @default(0)
+  eventsLost      Int @default(0) // events a run could not store this generation
   limitResetsAt  DateTime?
   autoResume     Boolean? // null: the "Resume after a usage limit" setting decides
   agentPlan String? // JSON PlanEntry[]: the agent's latest ACP plan (#1024)

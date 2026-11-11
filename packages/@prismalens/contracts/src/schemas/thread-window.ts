@@ -132,6 +132,8 @@ export const ThreadIndexSchema = z.object({
 	revision: z.number().int(),
 	/** Every event the record holds. */
 	total: z.number().int(),
+	/** Events a run could not store this generation: the record is incomplete when above 0. */
+	lost: z.number().int().nonnegative(),
 	turns: z.array(IndexTurnSchema),
 	entries: z.array(IndexEntrySchema),
 });
@@ -377,6 +379,11 @@ export function countOccurrences(
 
 // ---- pages ----
 
+/** A query-string flag: only `true` is true; `z.coerce.boolean` reads "false" as true. */
+export const QueryFlagSchema = z
+	.preprocess((v) => v === true || v === "true" || v === "1", z.boolean())
+	.optional();
+
 /** A field cut to keep a page small; `eventFull` returns the event whole. */
 export const CutFieldSchema = z.object({
 	path: z.string(),
@@ -450,7 +457,7 @@ export const OpenThreadInputSchema = z.object({
 	/** A named position a resolver answers, e.g. `unread` (#1101 cat 3); the tail when none does. */
 	position: z.string().min(1).max(40).optional(),
 	/** Ship finished turns folded (bar 12.5). */
-	fold: z.coerce.boolean().optional(),
+	fold: QueryFlagSchema,
 });
 export type OpenThreadInput = z.infer<typeof OpenThreadInputSchema>;
 
@@ -474,7 +481,7 @@ export const ThreadPageInputSchema = z
 		around: EventKeySchema.optional(),
 		/** One turn whole, by its boundary key: an unfolded turn's work. */
 		turn: EventKeySchema.optional(),
-		fold: z.coerce.boolean().optional(),
+		fold: QueryFlagSchema,
 	})
 	.refine(
 		(v) =>
@@ -499,7 +506,7 @@ export const EventFullSchema = z.object({
 export const SearchEventsInputSchema = z.object({
 	id: z.string().uuid(),
 	q: z.string().min(1).max(FIND_QUERY_MAX),
-	caseSensitive: z.coerce.boolean().optional(),
+	caseSensitive: QueryFlagSchema,
 	scope: z.enum(FIND_SCOPES).default("all"),
 	/** Count only what was committed up to here, so paging never chases new events. */
 	revision: z.coerce.number().int().min(0).optional(),
@@ -527,7 +534,7 @@ export type SearchEvents = z.infer<typeof SearchEventsSchema>;
 
 export const SearchMessagesInputSchema = z.object({
 	q: z.string().min(1).max(FIND_QUERY_MAX),
-	caseSensitive: z.coerce.boolean().optional(),
+	caseSensitive: QueryFlagSchema,
 	/** The `next` of the previous answer: where the walk over threads goes on. */
 	cursor: z.string().max(200).optional(),
 	limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -582,6 +589,8 @@ export const DoneFrameSchema = z.object({
 	gen: z.number().int(),
 	/** Every committed event up to here was sent; a provisional key never acked was not saved. */
 	through: z.number().int(),
+	/** Events a run could not store this generation: the record is incomplete when above 0. */
+	lost: z.number().int().nonnegative(),
 });
 export const ResetFrameSchema = z.object({ gen: z.number().int() });
 export type LiveFrame = z.infer<typeof LiveFrameSchema>;
