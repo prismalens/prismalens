@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { About, UpdateInstallStatus } from "@prismalens/contracts";
+import {
+	type About,
+	isWorkflowLive,
+	type UpdateInstallStatus,
+} from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
@@ -16,11 +20,11 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useOperator } from "@/hooks/use-operator";
+import { useThreadFeed } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { CommandLine } from "../AboutSettings";
 import {
-	type AboutWithChannel,
 	blockedWords,
 	canInstall,
 	idleInstallBlocked,
@@ -84,6 +88,16 @@ export function UpdatesRow({ about }: { about: About }) {
 	);
 }
 
+/** Live runs in the thread feed the sidebar already holds; undefined until it loads. */
+function useLiveRunCount(enabled: boolean): number | undefined {
+	const feed = useThreadFeed({}, enabled);
+	if (!enabled || !feed.data) return undefined;
+	return feed.data.pages
+		.flatMap((p) => p.units)
+		.flatMap((u) => u.threads)
+		.filter((t) => isWorkflowLive(t.status)).length;
+}
+
 const WORKING = new Set<UpdateInstallStatus["phase"]>([
 	"downloading",
 	"verifying",
@@ -107,12 +121,14 @@ export const PHASE_WORD: Record<UpdateInstallStatus["phase"], string> = {
  */
 export function UpdateAvailable({
 	about,
-	liveRuns,
+	liveRuns: given,
 }: {
-	about: AboutWithChannel;
-	/** Live runs, for the busy words. */
+	about: About;
+	/** Live runs, for the busy words; read from the sidebar's own feed when absent. */
 	liveRuns?: number;
 }) {
+	const counted = useLiveRunCount(about.update.install?.blockedBy === "busy");
+	const liveRuns = given ?? counted;
 	const queryClient = useQueryClient();
 	const [started, setStarted] = useState(false);
 	const latest = about.update.latest;
@@ -132,11 +148,6 @@ export function UpdateAvailable({
 			if (status.data.phase === "idle" || status.data.phase === "done")
 				window.location.reload();
 	}, [started, status.data, latest]);
-	const check = useMutation({
-		...orpc.settings.update.check.mutationOptions(),
-		onSuccess: (next) => queryClient.setQueryData(aboutKey(), next),
-	});
-
 	const phase = started ? (status.data?.phase ?? "restarting") : "idle";
 	const working = WORKING.has(phase) || phase === "done";
 	const blocker = about.update.install?.blockedBy;
@@ -197,14 +208,6 @@ export function UpdateAvailable({
 					{status.data?.error ?? getErrorMessage(install.error)}
 				</p>
 			)}
-			{channel?.leavingNightly && (
-				<p
-					className="text-meta text-text-2"
-					data-testid="about-leaving-nightly"
-				>
-					{channel.leavingNightly}
-				</p>
-			)}
 			{about.update.notes && (
 				<div
 					className="max-h-72 overflow-y-auto rounded-surface bg-surface-1 px-3 py-2 text-body text-text-2"
@@ -226,17 +229,29 @@ export function UpdateAvailable({
 					</Streamdown>
 				</div>
 			)}
-			<div>
-				<Button
-					variant="secondary"
-					size="sm"
-					disabled={check.isPending}
-					onClick={() => check.mutate({})}
-					data-testid="about-check-now"
-				>
-					{check.isPending ? "Checking" : "Check now"}
-				</Button>
-			</div>
+			<CheckNowButton />
+		</div>
+	);
+}
+
+/** Check now: `POST /settings/update/check`, its answer replacing About's. */
+export function CheckNowButton() {
+	const queryClient = useQueryClient();
+	const check = useMutation({
+		...orpc.settings.update.check.mutationOptions(),
+		onSuccess: (next) => queryClient.setQueryData(aboutKey(), next),
+	});
+	return (
+		<div className="mt-3">
+			<Button
+				variant="secondary"
+				size="sm"
+				disabled={check.isPending}
+				onClick={() => check.mutate({})}
+				data-testid="about-check-now"
+			>
+				{check.isPending ? "Checking" : "Check now"}
+			</Button>
 		</div>
 	);
 }

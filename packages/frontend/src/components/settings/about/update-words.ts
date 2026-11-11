@@ -51,20 +51,10 @@ export function blockedWords(blocker: Blocker, liveRuns?: number): string {
 /** Install takes the installer's path only, and never while nightly blocks it. */
 export function canInstall(about: About): boolean {
 	const nightlyBlocked =
-		(about as AboutWithChannel).updateChannel?.nightlyBlockedBy != null &&
-		(about as AboutWithChannel).updateChannel?.current === "nightly";
+		about.updateChannel?.nightlyBlockedBy != null &&
+		about.updateChannel.current === "nightly";
 	return about.update.install?.available === true && !nightlyBlocked;
 }
-
-/** #1086's channel fields, optional until it merges. */
-export type AboutWithChannel = About & {
-	updateChannel?: {
-		current: "stable" | "nightly";
-		fromEnv: boolean;
-		nightlyBlockedBy: "not_npm" | null;
-		leavingNightly: string | null;
-	};
-};
 
 /** "Updates" can install when idle only where the app can install at all. */
 export function idleInstallBlocked(about: About): Blocker | null {

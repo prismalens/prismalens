@@ -20,6 +20,12 @@ import {
 } from "@/components/ui/select";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatDateTime } from "@/lib/format-time";
+import {
+	CheckNowButton,
+	CopyDiagnosticsRow,
+	UpdateAvailable,
+	UpdatesRow,
+} from "./about/UpdatesPanel";
 import { DangerZoneSettings } from "./DangerZoneSettings";
 
 export const CHANNEL_LABEL: Record<About["channel"], string> = {
@@ -95,6 +101,15 @@ function ReleaseChannelRow({ about }: { about: About }) {
 	);
 }
 
+const HELP_LINKS = (notes: string | null) => [
+	{ label: "Docs", href: "https://docs.prismalens.io" },
+	{ label: "Issues", href: "https://github.com/prismalens/prismalens/issues" },
+	{
+		label: "Release notes",
+		href: notes ?? "https://github.com/prismalens/prismalens/releases",
+	},
+];
+
 /** A command to run, in mono, with the one Copy button (look ruling §2). */
 export function CommandLine({ command }: { command: string }) {
 	return (
@@ -131,55 +146,6 @@ export function AboutSettings() {
 	const { update } = about;
 	return (
 		<>
-			<SettingGroup title="Updates" testId="about-updates">
-				<Pool>
-					<SettingRow
-						label={
-							update.disabledBy
-								? "The update check is off"
-								: update.available && update.latest
-									? `PrismaLens ${update.latest} is available`
-									: "You're on the newest release"
-						}
-						description={
-							update.disabledBy ? (
-								<>
-									<Mono>{update.disabledBy}</Mono> is set; unset it to hear
-									about new releases
-								</>
-							) : update.available ? (
-								about.channel === "electron" ? (
-									`You have ${about.version}. Download the new desktop app from the release notes`
-								) : (
-									`You have ${about.version}. Stop pl up, then run this; it upgrades with ${CHANNEL_LABEL[about.channel]}`
-								)
-							) : update.checkedAt ? (
-								`Checked ${formatDateTime(update.checkedAt)}; the request carries nothing about this install`
-							) : (
-								"PrismaLens asks GitHub once a day; the request carries nothing about this install"
-							)
-						}
-						below={
-							update.available &&
-							about.channel !== "electron" && (
-								<CommandLine command="pl upgrade" />
-							)
-						}
-					>
-						{update.available && update.releaseNotesUrl && (
-							<a
-								className="inline-flex items-center gap-1 text-body text-accent hover:underline"
-								href={update.releaseNotesUrl}
-								target="_blank"
-								rel="noreferrer"
-							>
-								Release notes <ExternalLink className="size-3" />
-							</a>
-						)}
-					</SettingRow>
-					<ReleaseChannelRow about={about} />
-				</Pool>
-			</SettingGroup>
 			<SettingGroup
 				title="This install"
 				testId="about-install"
@@ -200,6 +166,15 @@ export function AboutSettings() {
 							</Mono>
 						}
 					/>
+					{about.updateChannel && (
+						<SettingRow
+							label="Channel"
+							description={
+								about.updateChannel.current === "nightly" ? "Nightly" : "Stable"
+							}
+							testId="about-channel"
+						/>
+					)}
 					<SettingRow
 						label="Installed with"
 						description={CHANNEL_LABEL[about.channel]}
@@ -210,6 +185,22 @@ export function AboutSettings() {
 					>
 						<CopyButton value={about.workspaceDir} variant="text" />
 					</SettingRow>
+					{about.logsDir && (
+						<SettingRow
+							label="Logs"
+							description={<Mono>{about.logsDir}</Mono>}
+							testId="about-logs"
+						>
+							<CopyButton value={about.logsDir} variant="text" />
+						</SettingRow>
+					)}
+					{about.runtime && (
+						<SettingRow
+							label="Runtime"
+							description={`Node ${about.runtime.node}, ${about.runtime.os} ${about.runtime.arch}`}
+							testId="about-runtime"
+						/>
+					)}
 					<SettingRow
 						label="Last database backup"
 						description={
@@ -223,6 +214,75 @@ export function AboutSettings() {
 						{about.latestBackup && (
 							<CopyButton value={about.latestBackup} variant="text" />
 						)}
+					</SettingRow>
+				</Pool>
+			</SettingGroup>
+			<SettingGroup title="Updates" testId="about-updates">
+				<Pool>
+					<SettingRow
+						label={
+							update.disabledBy
+								? "The update check is off"
+								: update.available && update.latest
+									? `PrismaLens ${update.latest} is available`
+									: "You're on the newest release"
+						}
+						description={
+							update.disabledBy ? (
+								<>
+									<Mono>{update.disabledBy}</Mono> is set; unset it to hear
+									about new releases
+								</>
+							) : update.available ? (
+								about.channel === "electron" ? (
+									`You have ${about.version}. Download the new desktop app from the release notes`
+								) : (
+									`You have ${about.version}`
+								)
+							) : update.checkedAt ? (
+								`Checked ${formatDateTime(update.checkedAt)}; the request carries nothing about this install`
+							) : (
+								"PrismaLens asks GitHub once a day; the request carries nothing about this install"
+							)
+						}
+						below={
+							update.available &&
+							about.channel !== "electron" && <UpdateAvailable about={about} />
+						}
+					>
+						{update.available && update.releaseNotesUrl && (
+							<a
+								className="inline-flex items-center gap-1 text-body text-accent hover:underline"
+								href={update.releaseNotesUrl}
+								target="_blank"
+								rel="noreferrer"
+							>
+								Release notes <ExternalLink className="size-3" />
+							</a>
+						)}
+					</SettingRow>
+					<UpdatesRow about={about} />
+					<ReleaseChannelRow about={about} />
+				</Pool>
+				{!update.available && !update.disabledBy && <CheckNowButton />}
+			</SettingGroup>
+			<SettingGroup title="Help" testId="about-help">
+				<Pool>
+					<CopyDiagnosticsRow />
+					<SettingRow label="Links" testId="about-links">
+						<span className="flex flex-wrap gap-3 text-body">
+							{HELP_LINKS(update.releaseNotesUrl).map((l) => (
+								<a
+									key={l.label}
+									className="inline-flex items-center gap-1 text-accent hover:underline"
+									href={l.href}
+									target="_blank"
+									rel="noreferrer"
+								>
+									{l.label} <ExternalLink className="size-3" />
+								</a>
+							))}
+						</span>
 					</SettingRow>
 				</Pool>
 			</SettingGroup>
