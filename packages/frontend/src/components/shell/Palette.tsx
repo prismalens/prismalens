@@ -180,7 +180,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 				testId: "thread-search-message",
 			}),
 		),
-		...(incidents.data?.data ?? []).map(
+		...(q || tab === "incidents" ? (incidents.data?.data ?? []) : []).map(
 			(i): Item => ({
 				key: `incident-${i.id}`,
 				tab: "incidents",
@@ -192,7 +192,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 				testId: "thread-search-incident",
 			}),
 		),
-		...(alerts.data?.data ?? [])
+		...(q || tab === "alerts" ? (alerts.data?.data ?? []) : [])
 			.filter((a) => named(`${a.title} ${a.fingerprint ?? ""}`))
 			.slice(0, 8)
 			.map(
@@ -207,7 +207,8 @@ export function Palette({ onDone }: { onDone: () => void }) {
 					testId: "thread-search-alert",
 				}),
 			),
-		...(repos.data?.data ?? [])
+		// At rest a cached project list would crowd out recents; projects show once typed.
+		...(q || tab === "projects" ? (repos.data?.data ?? []) : [])
 			.filter((r) => named(r.fullName))
 			.slice(0, 8)
 			.map(
@@ -238,7 +239,7 @@ export function Palette({ onDone }: { onDone: () => void }) {
 						}),
 					)
 			: []),
-		...(schedules.data?.schedules ?? [])
+		...(q || tab === "schedules" ? (schedules.data?.schedules ?? []) : [])
 			.filter((s) => named(s.name))
 			.slice(0, 8)
 			.map(

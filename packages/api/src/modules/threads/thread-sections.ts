@@ -56,6 +56,8 @@ export function threadSection(
 	if (live) return "active";
 	// Settling holds only until new activity: anything later returns it to Active.
 	if (t.settledAt && t.settledAt >= t.lastActivityAt) return "settled";
+	// Unread work never settles by quiet days alone: it waits to be read (#1101 category 2).
+	if (status && isUnseen(t)) return "active";
 	if (t.incident) {
 		const closedAt = t.incident.closedAt;
 		return t.incident.status === "closed" &&
