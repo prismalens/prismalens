@@ -18,5 +18,12 @@
 				"status": 402
 			}
 		}
-	]
+	],
+	"agents": {
+		"codex": {
+			"expect": "error",
+			"failure": null,
+			"why": "codex-acp ends the turn without the provider's error (it logs stream errors and sends none), so there is nothing to classify"
+		}
+	}
 }

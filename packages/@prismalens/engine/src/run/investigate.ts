@@ -697,6 +697,7 @@ async function* runSession(
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
+	const keyed = apiKeyIn(env, HARNESS_REGISTRY[opts.harness]?.providerKeys);
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
@@ -1286,6 +1287,9 @@ async function* runSession(
 					if (usage) yield adapter.turnUsage(usage);
 					return end;
 				}
+				// Claude Code and Codex answer a provider 401 with ACP's auth-required: with a key set, the key was rejected.
+				if (!end.failure && keyed && AUTH_REQUIRED.test(end.error))
+					end.failure = { mode: "key_rejected" };
 				if (!end.failure) return end;
 				const failure: RunFailure = { ...end.failure, attempt };
 				const next = attempt + 1;
@@ -1802,6 +1806,18 @@ function drain(steer: SteerPort | undefined): SteerLine[] {
 type TurnEnd =
 	| { stop: string; usage?: TurnUsage }
 	| { error: string; failure?: RunFailure };
+
+const AUTH_REQUIRED = /authentication required|auth_required/i;
+
+/** The agent runs on an API key: one of its key variables (not a base URL or model) is set. */
+export function apiKeyIn(
+	env: Record<string, string | undefined>,
+	keys: readonly string[] | undefined,
+): boolean {
+	return (keys ?? []).some(
+		(k) => /(_API_KEY|_AUTH_TOKEN)$/.test(k) && !!env[k]?.trim(),
+	);
+}
 
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve) => {
