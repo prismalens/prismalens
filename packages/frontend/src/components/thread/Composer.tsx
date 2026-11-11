@@ -415,6 +415,13 @@ export function Composer({
 	const { harness } = choice;
 	const facts = harness ? HARNESS_REGISTRY[harness.id as HarnessId] : undefined;
 	const agentLabel = harness?.label ?? "The agent";
+	const agentFacts = {
+		label: agentLabel,
+		images:
+			harness?.checked?.outcome === "answers-acp"
+				? harness.checked.images
+				: null,
+	};
 
 	// The menu: a trigger at the caret, searched as typed; Esc dismisses that trigger only.
 	const trigger = activeTrigger(text, caret);
@@ -554,21 +561,26 @@ export function Composer({
 
 	const add = async (files: File[], extra: Partial<Draft> = {}) => {
 		const ready = await Promise.all(files.map(downscaleImage));
-		setDrafts((current) => {
-			const ok = current.filter((d) => !d.refusal);
-			let count = ok.length;
-			let bytes = ok.reduce((n, d) => n + d.file.size, 0);
-			const next = ready.map((file) => {
-				const no = attachRefusal(file, { count, bytes });
-				if (no) return draftOf(file, { ...extra, refusal: no });
-				count++;
-				bytes += file.size;
-				const d = draftOf(file, extra);
-				keepBytes(d);
-				return d;
-			});
-			return [...current, ...next];
+		// Counted from what the box shows now; adds are one user action at a time.
+		const ok = shown.current.filter((d) => !d.refusal);
+		let count = ok.length;
+		let bytes = ok.reduce((n, d) => n + d.file.size, 0);
+		let why: string | null = null;
+		const next = ready.map((file) => {
+			const no = attachRefusal(file, { count, bytes }, agentFacts);
+			if (no) {
+				why = no;
+				return draftOf(file, { ...extra, refusal: no });
+			}
+			count++;
+			bytes += file.size;
+			const d = draftOf(file, extra);
+			keepBytes(d);
+			return d;
 		});
+		setDrafts((current) => [...current, ...next]);
+		// The latest refusal also shows under the box, where the eye already is.
+		setRefusal(why);
 	};
 
 	const removeDraft = (d: Draft) => {
@@ -986,7 +998,12 @@ export function Composer({
 		);
 
 	const hasEffort = effortLevels(harness).length > 0;
-	const clipHint = "Attach files, up to 10";
+	const clipHint =
+		agentFacts.images === true
+			? "Attach files or a screenshot"
+			: agentFacts.images === false
+				? `${agentLabel} can't take images. Other files attach.`
+				: "Images: not checked yet. Other files attach.";
 	const chipCount =
 		drafts.length + quotes.length + refs.length + (command ? 1 : 0);
 	const docked = !!dock || chipCount > 0;

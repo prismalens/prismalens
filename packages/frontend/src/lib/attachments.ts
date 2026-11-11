@@ -20,6 +20,7 @@ const MB = 1024 * 1024;
 export function attachRefusal(
 	file: { name: string; type: string; size: number },
 	already: { count: number; bytes: number },
+	agent?: { label: string; images: boolean | null },
 ): string | null {
 	if (already.count >= MAX_ATTACHMENTS_PER_MESSAGE)
 		return `${ordinal(already.count + 1)} file: ${MAX_ATTACHMENTS_PER_MESSAGE} per message`;
@@ -27,6 +28,12 @@ export function attachRefusal(
 		return `Over ${ATTACHMENT_MAX_BYTES / MB} MB`;
 	if (already.bytes + file.size > ATTACHMENT_TOTAL_MAX_BYTES)
 		return `Over ${ATTACHMENT_TOTAL_MAX_BYTES / MB} MB in all`;
+	// An image goes inline, so it needs an agent whose check recorded that it takes images.
+	if (agent && attachmentKind(file) === "image") {
+		if (agent.images === false) return `${agent.label} can't take images`;
+		if (agent.images === null)
+			return `Images: not checked yet for ${agent.label}. Run its check in Settings, Agent.`;
+	}
 	return null;
 }
 
@@ -40,7 +47,7 @@ function ordinal(n: number): string {
 
 /** An image the browser can shrink: over 4 MB and of a type a canvas can encode. */
 export const needsDownscale = (file: { type: string; size: number }) =>
-	attachmentKind({ name: "", ...file }) === "image" &&
+	attachmentKind({ name: "", type: file.type }) === "image" &&
 	file.type !== "image/gif" &&
 	file.size > ATTACHMENT_IMAGE_MAX_BYTES;
 

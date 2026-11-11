@@ -129,7 +129,17 @@ export function ComposerMenu({
 									data-testid="composer-menu-row"
 									data-ref={`${h.ref.kind}:${h.ref.id}`}
 								>
-									<span className="shrink-0 truncate">{h.ref.label}</span>
+									<span
+										className="shrink-0 truncate"
+										// Page actions keep the id their journeys and docs name.
+										data-testid={
+											h.ref.kind === "command"
+												? `composer-slash-${h.ref.id}`
+												: undefined
+										}
+									>
+										{h.ref.label}
+									</span>
 									{h.inputHint && (
 										<span className="shrink-0 font-mono text-meta text-text-3">
 											{h.inputHint}
