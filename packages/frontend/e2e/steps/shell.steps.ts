@@ -8,7 +8,6 @@
  * through a pairing link opened in its own browser.
  */
 
-import { hostname } from "node:os";
 import { type Browser, devices, expect, type Page } from "@playwright/test";
 import { guessDeviceName } from "../../src/lib/device-name";
 import { Given, Then, When } from "./fixtures";
@@ -763,11 +762,14 @@ Given("I am on Settings, Devices", async ({ page }) => {
 });
 
 Then(
-	"the first row reads the host's hostname and this browser's name, and is marked {string}",
+	"the first row reads the name this browser paired under, and is marked {string}",
 	async ({ page }, mark: string) => {
 		const first = page.getByTestId("device-row").first();
-		await expect(first.getByTestId("device-name")).toHaveText(hostname());
 		const ua = await page.evaluate(() => navigator.userAgent);
+		// The name the redeem sent beats the startup link's hostname label (#1024).
+		await expect(first.getByTestId("device-name")).toHaveText(
+			guessDeviceName(ua, false) ?? "",
+		);
 		await expect(first.getByTestId("device-line")).toContainText(
 			guessDeviceName(ua, false) ?? "",
 		);

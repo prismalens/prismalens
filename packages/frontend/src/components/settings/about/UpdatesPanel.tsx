@@ -68,7 +68,7 @@ export function UpdatesRow({ about }: { about: About }) {
 				<SelectTrigger
 					aria-labelledby="about-updates-label"
 					className="w-44"
-					data-testid="about-updates"
+					data-testid="about-updates-select"
 				>
 					<SelectValue />
 				</SelectTrigger>
