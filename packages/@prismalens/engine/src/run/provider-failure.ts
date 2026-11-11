@@ -43,7 +43,7 @@ const BY_CODE: [RegExp, FailureMode][] = [
 		"overloaded",
 	],
 	[
-		/rate_limit_error|rate_limit_exceeded|\brate_limit\b|slow_down|resource_exhausted|too_many_requests/,
+		/rate_limit_error|rate_limit_exceeded|\brate_limit(ed)?\b|slow_down|resource_exhausted|too_many_requests/,
 		"rate_limited",
 	],
 ];
@@ -190,6 +190,10 @@ function numberOf(v: unknown): number | undefined {
 	return typeof n === "number" && Number.isFinite(n) ? n : undefined;
 }
 
+function msToSeconds(ms: number | undefined): number | undefined {
+	return ms === undefined ? undefined : Math.ceil(ms / 1000);
+}
+
 function stringOf(v: unknown): string | undefined {
 	return typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : undefined;
 }
@@ -251,10 +255,11 @@ function collect(v: unknown, into: ProviderErrorFacts, depth = 0): void {
 		numberOf(o.retryAfterSeconds) ??
 		numberOf(o.retry_after) ??
 		numberOf(o.retryAfter) ??
-		numberOf(headers?.["retry-after"]);
+		numberOf(headers?.["retry-after"]) ??
+		msToSeconds(numberOf(o.retry_delay_ms) ?? numberOf(o.retryDelayMs));
 	if (into.retryAfterSeconds === undefined && after !== undefined && after >= 0)
 		into.retryAfterSeconds = after;
-	for (const key of ["error", "data", "details", "cause"])
+	for (const key of ["error", "data", "details", "cause", "_meta"])
 		if (o[key] !== undefined) collect(o[key], into, depth + 1);
 	if (typeof o.message === "string")
 		collect(quotedJson(o.message), into, depth + 1);

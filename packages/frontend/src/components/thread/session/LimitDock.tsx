@@ -113,37 +113,39 @@ export function LimitDock({
 	return (
 		<section
 			aria-label={LABEL[mode]}
-			className="grid gap-2 rounded-surface bg-surface-2 px-3 py-2.5"
+			className="grid grid-cols-[minmax(0,1fr)] gap-2 rounded-surface bg-surface-2 px-3 py-2.5"
 			data-testid="limit-dock"
 			data-state={state}
 			data-mode={mode}
 		>
-			<p className="flex flex-wrap items-baseline gap-x-2 text-body text-text-1">
+			<p className="flex items-baseline gap-2 text-body text-text-1">
 				<span
 					aria-hidden
 					className={cn(
-						"h-3 w-[3px] shrink-0 self-center rounded-full",
+						"h-3 w-[3px] shrink-0 translate-y-0.5 rounded-full",
 						blocked ? "bg-danger" : "bg-warn",
 					)}
 				/>
-				<span data-testid="limit-dock-line">
-					{stopLine(limit, { clock, now })}
-				</span>
-				{left && (
-					<span
-						className="text-meta text-text-3 tabular-nums"
-						data-testid="limit-dock-countdown"
-					>
-						{left}
+				<span className="min-w-0 [overflow-wrap:anywhere]">
+					<span data-testid="limit-dock-line">
+						{stopLine(limit, { clock, now })}
 					</span>
-				)}
+					{left && (
+						<span
+							className="ml-2 whitespace-nowrap text-meta text-text-3 tabular-nums"
+							data-testid="limit-dock-countdown"
+						>
+							{left}
+						</span>
+					)}
+				</span>
 			</p>
 			<p className="text-meta text-text-2" data-testid="limit-dock-next">
 				{stopNext(limit)}
 			</p>
 			{limit.message && !blocked && (
-				<p className="flex items-baseline gap-2 text-meta text-text-3">
-					<span className="truncate" data-testid="limit-dock-queued">
+				<p className="flex min-w-0 items-baseline gap-2 text-meta text-text-3">
+					<span className="min-w-0 truncate" data-testid="limit-dock-queued">
 						Sends at the reset: {limit.message}
 					</span>
 					{onRemoveQueued && (

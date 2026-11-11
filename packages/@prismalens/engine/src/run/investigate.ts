@@ -120,7 +120,7 @@ import {
 	stampReport,
 } from "./report.js";
 import { checkSandbox } from "./sandbox-check.js";
-import { parseUsageUpdate } from "./usage.js";
+import { parseUsageUpdate, quotaOf } from "./usage.js";
 
 /** What a fresh session is given in place of a session the agent cannot reload (#942). */
 export interface FreshSeed {
@@ -827,6 +827,7 @@ async function* runSession(
 	/** The session's cumulative cost and model, as the agent last reported them (#1101). */
 	let lastCost: RunUsage["cost"];
 	let lastModel: string | undefined;
+	let lastQuota: string | null = null;
 	let compacting = false;
 	let autoCompactFrom: number | undefined;
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
@@ -876,6 +877,13 @@ async function* runSession(
 						"_claude/model"
 					];
 					if (typeof model === "string" && model) lastModel = model;
+					// A window's state is recorded only when it changes (#1101).
+					const quota = quotaOf(u._meta);
+					const key = quota ? JSON.stringify(quota) : null;
+					if (quota && key !== lastQuota) {
+						lastQuota = key;
+						yield adapter.agentQuota(quota);
+					}
 				}
 				// The agent compacted on its own; PrismaLens's own compact turn records itself.
 				if (u.sessionUpdate === "compaction_update" && !compacting) {

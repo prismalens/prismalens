@@ -186,6 +186,35 @@ export class SessionLifecycleService implements OnModuleInit {
 	}
 
 	/**
+	 * The reset of a usage window the agent reported full (#1101): Claude Code's
+	 * `agent_quota`, when the limit's own words name no time.
+	 */
+	private async reportedReset(id: string, now: Date): Promise<Date | null> {
+		const last = await this.prisma.investigationEvent.findFirst({
+			where: {
+				investigationId: id,
+				event: { contains: '"kind":"agent_quota"' },
+			},
+			orderBy: { seq: "desc" },
+			select: { event: true },
+		});
+		try {
+			const q = JSON.parse(last?.event ?? "null") as {
+				status?: unknown;
+				usedPercent?: unknown;
+				resetsAt?: unknown;
+			} | null;
+			const full =
+				q?.status === "rejected" ||
+				(typeof q?.usedPercent === "number" && q.usedPercent >= 100);
+			const at = typeof q?.resetsAt === "string" ? new Date(q.resetsAt) : null;
+			return full && at && at.getTime() > now.getTime() ? at : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
 	 * A rate limit or a busy provider (#1101): the next try on the provider's
 	 * `retry-after` or the backoff, counting the tries the turn made itself; past
 	 * the fifth, it needs the user.
@@ -330,7 +359,9 @@ export class SessionLifecycleService implements OnModuleInit {
 		failure?: RunFailure,
 	): Promise<void> {
 		const now = this.now();
-		const resetsAt = parseReset(text, now, row.harness);
+		const resetsAt =
+			parseReset(text, now, row.harness) ??
+			(await this.reportedReset(row.id, now));
 		const prev = await this.wakes.latest(row.id, "limit");
 		const linked =
 			!resetsAt &&

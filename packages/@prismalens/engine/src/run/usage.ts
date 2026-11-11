@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type LimitWindow,
 	type RunUsage,
 	RunUsageSchema,
 	type TurnUsage,
@@ -32,6 +33,49 @@ export function parseUsageUpdate(
 		at: now.toISOString(),
 	});
 	return bare.success ? bare.data : null;
+}
+
+/** A usage window from Claude Code's `_meta["_claude/rateLimit"]` on a `usage_update`, or null. */
+export function quotaOf(meta: unknown): {
+	window?: LimitWindow;
+	type?: string;
+	usedPercent?: number;
+	resetsAt?: string;
+	status?: string;
+} | null {
+	const info = (meta as Record<string, unknown> | null | undefined)?.[
+		"_claude/rateLimit"
+	] as Record<string, unknown> | null | undefined;
+	if (!info || typeof info !== "object") return null;
+	const type =
+		typeof info.rateLimitType === "string" ? info.rateLimitType : undefined;
+	const window: LimitWindow | undefined = !type
+		? undefined
+		: type === "five_hour"
+			? "session"
+			: /opus|sonnet|fable|haiku/.test(type)
+				? "model"
+				: type.startsWith("seven_day")
+					? "weekly"
+					: undefined;
+	const u = typeof info.utilization === "number" ? info.utilization : null;
+	// A fraction from the SDK; a value above 1 is already a percent.
+	const usedPercent =
+		u === null || u < 0 ? undefined : Math.min(100, u <= 1 ? u * 100 : u);
+	const r = typeof info.resetsAt === "number" ? info.resetsAt : null;
+	const resetsAt =
+		r && r > 0 ? new Date(r < 1e12 ? r * 1000 : r).toISOString() : undefined;
+	const status = typeof info.status === "string" ? info.status : undefined;
+	if (usedPercent === undefined && !resetsAt && !status) return null;
+	return {
+		...(window ? { window } : {}),
+		...(type ? { type: type.slice(0, 100) } : {}),
+		...(usedPercent !== undefined
+			? { usedPercent: Math.round(usedPercent * 10) / 10 }
+			: {}),
+		...(resetsAt ? { resetsAt } : {}),
+		...(status ? { status: status.slice(0, 100) } : {}),
+	};
 }
 
 const count = (v: unknown): number | undefined =>

@@ -29,7 +29,7 @@ export function InterruptedDock({
 	return (
 		<section
 			aria-label="Interrupted by restart"
-			className="grid gap-2 rounded-surface bg-surface-2 px-3 py-2.5"
+			className="grid grid-cols-[minmax(0,1fr)] gap-2 rounded-surface bg-surface-2 px-3 py-2.5"
 			data-testid="interrupted-dock"
 		>
 			<p className="flex items-baseline gap-2 text-body text-text-1">

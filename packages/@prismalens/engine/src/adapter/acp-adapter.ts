@@ -42,6 +42,7 @@ import type {
 	CompactionMethod,
 	FollowUpKind,
 	InvestigationReport,
+	LimitWindow,
 	OperatorMessageMode,
 	PendingAsk,
 	PermissionAskOutcome,
@@ -735,6 +736,17 @@ export class AcpAdapter {
 			maxAttempts,
 			at: at.toISOString(),
 		};
+	}
+
+	/** A usage window as the agent reported it (#1101). */
+	agentQuota(quota: {
+		window?: LimitWindow;
+		type?: string;
+		usedPercent?: number;
+		resetsAt?: string;
+		status?: string;
+	}): CanonicalEvent {
+		return { kind: "agent_quota", ...this.base(), ...quota };
 	}
 
 	/** What one turn consumed, as the agent reported it (#1101). */

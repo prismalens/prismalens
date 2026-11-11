@@ -1463,6 +1463,21 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		reason: z.enum(["restart"]),
 	}),
 	z.object({
+		/**
+		 * A usage window as the agent reported it (#1101): how much is used and when it
+		 * resets. Claude Code alone reports these over ACP today; others report none.
+		 */
+		kind: z.literal("agent_quota"),
+		...StreamBaseShape,
+		window: LimitWindowSchema.optional(),
+		/** The agent's own name for the window, such as `five_hour` or `seven_day_opus`. */
+		type: z.string().max(100).optional(),
+		usedPercent: z.number().min(0).max(100).optional(),
+		resetsAt: z.string().datetime().optional(),
+		/** The agent's word for the window's state: `allowed`, `allowed_warning`, `rejected`. */
+		status: z.string().max(100).optional(),
+	}),
+	z.object({
 		/** What one turn consumed, as the agent reported it (#1101); a field it did not report is absent, never zero. */
 		kind: z.literal("turn_usage"),
 		...StreamBaseShape,
