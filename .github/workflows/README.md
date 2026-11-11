@@ -112,10 +112,10 @@ flowchart LR
 
 ## `nightly.yml`: the proofs outside a PR
 
-`nightly.yml` runs at 03:47 UTC and on dispatch. It calls `proofs.yml` with everything on, and nothing in it is a required check.
+`nightly.yml` runs at 03:47 UTC once the repository variable `NIGHTLY_ENABLED` is `true` (the schedule does nothing before), and on dispatch. It calls `proofs.yml` with everything on, and nothing in it is a required check.
 On dispatch with `live` it also runs the live agent check. Its `report` job keeps one issue titled `Nightly CI failing`:
 found by that exact title, open or closed, so a red night opens it or rewrites its body, a recurrence reopens it, and a green
-night closes it. A `proofs` run that was cancelled or skipped counts as red. The agent probe (`agent-release-watch.yml`)
+night closes it. On dispatch it only prints what it would do, in the job summary, unless the `report` input is on. A `proofs` run that was cancelled or skipped counts as red. The agent probe (`agent-release-watch.yml`)
 and the standalone, desktop and cross-OS builds report in their own runs.
 
 ## `e2e-browser.yml`: sharded, with a quarantine

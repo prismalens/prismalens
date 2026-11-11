@@ -13,6 +13,11 @@ on:
         description: Branch, tag or SHA to prove (default is the branch the run is dispatched on)
         required: false
         type: string
+      report:
+        description: Let the tracking-issue job change issues; off, it only prints what it would do
+        required: false
+        type: boolean
+        default: false
       live:
         description: Also run the live agent check on the free model (stalls often, #914)
         required: false
@@ -32,8 +37,10 @@ env:
   FREE_MODEL: opencode/deepseek-v4.1-flash-free
 
 jobs:
+  # The schedule stays off until the repository variable NIGHTLY_ENABLED is "true", as RELEASE_ENABLED holds the release.
   proofs:
     name: Proofs
+    if: github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED == 'true'
     uses: ./.github/workflows/proofs.yml
     with:
       ref: ${{ inputs.ref }}
@@ -43,7 +50,7 @@ jobs:
   report:
     name: Nightly tracking issue
     needs: proofs
-    if: always() && github.event_name == 'schedule'
+    if: always() && (github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -61,20 +68,29 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
           PROOFS: ${{ needs.proofs.result }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
         run: |
           set -eu
+          # A dry run says what it would do, in the job summary, and touches no issue.
+          act() {
+            if [ "$DRY_RUN" = true ]; then
+              { echo "Dry run, would run: $*"; [ ! -f "$body" ] || cat "$body"; } | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              "$@"
+            fi
+          }
+          body="$RUNNER_TEMP/nightly-body.md"
           title="Nightly CI failing"
           found=$(gh issue list -R "$REPO" --state all --limit 100 --search "\"$title\" in:title" --json number,title,state)
           open=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "OPEN")][0].number // empty')
           closed=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "CLOSED")][0].number // empty')
           if [ "$PROOFS" = success ]; then
             if [ -n "$open" ]; then
-              gh issue close "$open" -R "$REPO" --comment "The nightly proofs passed: $RUN_URL"
+              act gh issue close "$open" -R "$REPO" --comment "The nightly proofs passed: $RUN_URL"
             fi
             exit 0
           fi
           failed=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --jq '.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped" and .name != "Nightly tracking issue") | "- \(.name): \(.conclusion) \(.html_url)"')
-          body="$RUNNER_TEMP/nightly-body.md"
           {
             echo "The nightly proofs ended \`$PROOFS\`: $RUN_URL"
             echo
@@ -84,12 +100,12 @@ jobs:
             echo "These run outside pull requests and never block one. This issue closes itself on the next green night."
           } > "$body"
           if [ -n "$open" ]; then
-            gh issue edit "$open" -R "$REPO" --body-file "$body"
+            act gh issue edit "$open" -R "$REPO" --body-file "$body"
           elif [ -n "$closed" ]; then
-            gh issue reopen "$closed" -R "$REPO" --comment "Red again: $RUN_URL"
-            gh issue edit "$closed" -R "$REPO" --body-file "$body"
+            act gh issue reopen "$closed" -R "$REPO" --comment "Red again: $RUN_URL"
+            act gh issue edit "$closed" -R "$REPO" --body-file "$body"
           else
-            gh issue create -R "$REPO" --title "$title" --body-file "$body"
+            act gh issue create -R "$REPO" --title "$title" --body-file "$body"
           fi
 
   # The live agent check (#884): the real pinned agent on its free model, on dispatch with `live`.

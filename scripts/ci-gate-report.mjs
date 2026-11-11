@@ -190,12 +190,22 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 	if (env.RERUN === "1") {
 		const network = networkFailedJobs(
 			jobs,
-			(id) => gh(["api", `repos/${env.REPO}/actions/jobs/${id}/logs`]),
+			(id) =>
+				// Logs carry colour codes, which `gh api` refuses to print without this flag.
+				gh([
+					"api",
+					"--allow-escape-sequences",
+					`repos/${env.REPO}/actions/jobs/${id}/logs`,
+				]),
 			(message) => console.log(`::warning::${message}`),
 		);
 		if (!rerunnable(reds, "CI gate", network))
 			return console.log(
 				"not rerunning: a red job failed for a reason other than a network fault",
+			);
+		if (env.DRY_RUN === "1")
+			return console.log(
+				`dry run: would rerun the failed jobs of run ${env.RUN_ID}`,
 			);
 		console.log(`rerunning the failed jobs of run ${env.RUN_ID} once`);
 		gh([
