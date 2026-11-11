@@ -82,7 +82,7 @@ export function StepCard({
 					)}
 					<span className="shrink-0 text-meta text-text-3">Step {step.n}</span>
 					{/* A PrismaLens step's title carries its own verb, running or done (#1101). */}
-					{(waiting || denied || !step.gateway) && (
+					{(waiting || denied || !step.gateway || step.ok === false) && (
 						<span
 							className={cn(
 								"shrink-0",

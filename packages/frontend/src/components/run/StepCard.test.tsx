@@ -146,7 +146,7 @@ describe("A PrismaLens tool's step header (#1020)", () => {
 		render(
 			step({
 				title: "Searched for similar incidents",
-				command: 'incidents_similar (prismalens-1)({"q":"x"})',
+				command: 'pl_incidents_similar (prismalens-1)({"q":"x"})',
 				gateway: true,
 				shell: false,
 			}),
@@ -154,8 +154,8 @@ describe("A PrismaLens tool's step header (#1020)", () => {
 		);
 		const header = q("step")?.querySelector("button");
 		expect(header?.textContent).toContain("Searched for similar incidents");
-		expect(header?.textContent).not.toContain("incidents_similar");
-		expect(q("step-body")?.textContent).toContain("incidents_similar");
+		expect(header?.textContent).not.toContain("pl_incidents_similar");
+		expect(q("step-body")?.textContent).toContain("pl_incidents_similar");
 	});
 
 	it("leaves out the verb on a finished gateway step and keeps a failed one", () => {

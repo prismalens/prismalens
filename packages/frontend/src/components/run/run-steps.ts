@@ -167,13 +167,13 @@ export function deriveSteps(
 			? plLabel(
 					recorded.name,
 					plInput,
-					result
-						? result.ok && !recorded.isError
+					recorded.isError || result?.ok === false
+						? "failed"
+						: result || recorded.output !== undefined
 							? "done"
-							: "failed"
-						: unfinished
-							? "failed"
-							: "running",
+							: unfinished
+								? "failed"
+								: "running",
 				)
 			: undefined;
 		return {

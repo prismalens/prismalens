@@ -147,11 +147,11 @@ export function plLabel(name: string, input: unknown, state: PlState): string {
 	const tool = plToolName(name);
 	const l = LABELS[tool];
 	const plain = HARNESS_TOOL_STEPS[tool] ?? tool;
-	if (!l) return state === "running" ? `${plain}…` : plain;
+	if (!l) return state === "running" ? `${plain}, still running` : plain;
 	const subject = l.subject?.(asInput(input));
 	const verb = state === "running" ? l.running : l.done;
 	if (subject) return `${verb} ${subject}`;
-	return state === "running" ? `${verb}…` : plain;
+	return state === "running" ? `${verb}, still running` : plain;
 }
 
 /** The arguments as one line, `until: merged · role: reviewer`, long text left out. */

@@ -78,19 +78,25 @@ function sources(
 export function userServerByOurName(
 	harness: string,
 	env: NodeJS.ProcessEnv,
-	cwd: string,
+	cwd: string | undefined,
 	read: { json: Read; toml: Read } = {
 		json: (p) => readJsonc(p),
 		toml: readToml,
 	},
 ): string | null {
-	for (const s of sources(harness, env, cwd)) {
-		const config = (s.toml ? read.toml : read.json)(s.path);
-		if (
-			config &&
-			s.servers(config).some((m) => child(m, PL_SERVER_NAME) !== undefined)
-		)
-			return s.path;
+	// A config PrismaLens cannot read never stops a run; it is only not reported.
+	if (!cwd) return null;
+	try {
+		for (const s of sources(harness, env, cwd)) {
+			const config = (s.toml ? read.toml : read.json)(s.path);
+			if (
+				config &&
+				s.servers(config).some((m) => child(m, PL_SERVER_NAME) !== undefined)
+			)
+				return s.path;
+		}
+	} catch {
+		return null;
 	}
 	return null;
 }
