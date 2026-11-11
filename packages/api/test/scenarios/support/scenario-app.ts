@@ -81,6 +81,23 @@ export class ScenarioApp {
 		await runMigrations({ log: () => {} });
 		const { NestFactory } = await import("@nestjs/core");
 		const { AppModule } = await import("../../../src/app.module.js");
+		const { PrismaService } = await import(
+			"../../../src/core/prisma/prisma.service.js"
+		);
+		const { DispatchService } = await import(
+			"../../../src/infrastructure/dispatch/dispatch.service.js"
+		);
+		const { InvestigationsService } = await import(
+			"../../../src/modules/investigations/investigations.service.js"
+		);
+		const { ThreadLifecycleService } = await import(
+			"../../../src/modules/threads/thread-lifecycle.js"
+		);
+		Reflect.defineMetadata(
+			"design:paramtypes",
+			[PrismaService, DispatchService, InvestigationsService, Object],
+			ThreadLifecycleService,
+		);
 		const { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_EXCLUDE } = await import(
 			"../../../src/shared/constants/routes.js"
 		);
