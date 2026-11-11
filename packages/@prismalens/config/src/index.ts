@@ -80,6 +80,7 @@ export {
 	runDiagnostics,
 	serviceCheck,
 	type VersionRun,
+	WINDOWS_START_AT_LOGIN,
 	webhookTokenCheck,
 	workspaceCheck,
 } from "./utils/diagnostics.js";

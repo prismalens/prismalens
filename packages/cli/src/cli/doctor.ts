@@ -163,18 +163,27 @@ export function doctorChecks(git: GitRun = runGit): Check[] {
 	];
 }
 
+const NODE_CHECK_NAME = "Node version";
+
+export const NODE_BELOW_FLOOR =
+	"Node is below the supported version. pl up still starts, but it runs without the Node security fixes; upgrade Node.";
+
 /** The closing line; agents never reach it (#907). */
 export function summary(checks: Check[]): {
 	level: "success" | "error";
 	line: string;
 } {
 	const hardFailures = checks.filter((c) => c.hard && !c.pass);
-	if (hardFailures.length > 0) {
+	// Nothing refuses an old Node, so its failure says what still runs (#1024).
+	const node = hardFailures.some((c) => c.name === NODE_CHECK_NAME);
+	const others = hardFailures.length - (node ? 1 : 0);
+	if (others > 0) {
 		return {
 			level: "error",
-			line: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
+			line: `${others} required check(s) failed. Fix the above before running \`pl up\`.${node ? ` ${NODE_BELOW_FLOOR}` : ""}`,
 		};
 	}
+	if (node) return { level: "error", line: NODE_BELOW_FLOOR };
 	return { level: "success", line: "All required checks passed." };
 }
 

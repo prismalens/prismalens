@@ -32,7 +32,9 @@ import {
 import {
 	browserCommand,
 	displayUrl,
+	hasIpv6,
 	healthUrl,
+	lanBindHost,
 	NO_BROWSER_LINE,
 	networkBindWarning,
 	noAgentLine,
@@ -131,7 +133,7 @@ export default defineCommand({
 		lan: {
 			type: "boolean",
 			description:
-				"Serve plain HTTP to your local network: binds 0.0.0.0 unless --host is given, and allows this machine's hostname. Prefer --tailscale-serve, which is HTTPS",
+				"Serve plain HTTP to your local network: binds every IPv4 and IPv6 address unless --host is given, and allows this machine's hostname. Prefer --tailscale-serve, which is HTTPS",
 		},
 		"tailscale-serve": {
 			type: "boolean",
@@ -162,7 +164,7 @@ export default defineCommand({
 		}
 		if (args.lan) {
 			process.env.PRISMALENS_LAN = "1";
-			process.env.PRISMALENS_HOST ||= "0.0.0.0";
+			process.env.PRISMALENS_HOST ||= lanBindHost(hasIpv6());
 		}
 		if (args.workspace) {
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);

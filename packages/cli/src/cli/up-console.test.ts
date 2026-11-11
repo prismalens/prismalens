@@ -372,8 +372,14 @@ describe("serviceHint", () => {
 			expect(serviceHint({ platform, env: {}, serviceOwnsWorkspace: false })).toBe(hint);
 		}
 	});
-	it("hidden on Windows, under a service, in electron, or when a service owns the workspace", () => {
-		expect(serviceHint({ platform: "win32", env: {}, serviceOwnsWorkspace: false })).toBeNull();
+	it("names the tray's Start at login on Windows, where there is no service to install", () => {
+		expect(serviceHint({ platform: "win32", env: {}, serviceOwnsWorkspace: false })).toBe(
+			"For a machine that should always be on: On Windows, turn on Start at login in the desktop app's tray menu.",
+		);
+	});
+
+	it("hidden under a service, in electron, or when a service owns the workspace", () => {
+		expect(serviceHint({ platform: "win32", env: { PRISMALENS_RUN_MODE: "electron" }, serviceOwnsWorkspace: false })).toBeNull();
 		expect(serviceHint({ platform: "linux", env: { PRISMALENS_SERVICE: "1" }, serviceOwnsWorkspace: false })).toBeNull();
 		expect(serviceHint({ platform: "linux", env: { PRISMALENS_RUN_MODE: "electron" }, serviceOwnsWorkspace: false })).toBeNull();
 		expect(serviceHint({ platform: "darwin", env: {}, serviceOwnsWorkspace: true })).toBeNull();
