@@ -10,10 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RunSubagentPanel } from "@/components/run/RunSubagentPanel";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { SubagentView } from "@/lib/subagents";
+import { ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { StatusBox, SubagentList } from "./StatusBox";
 import { SubagentNode } from "./SubagentNode";
 import { askMainQuote, SubagentPane } from "./SubagentPane";
-import { ThreadPanel } from "./ThreadPanel";
 
 const state = vi.hoisted(() => ({
 	cancelled: [] as unknown[],
@@ -298,21 +298,21 @@ describe("a sub-agent's read-only view (#1025)", () => {
 
 	it("opens in the thread panel's sub-agent surface", async () => {
 		await render(
-			<ThreadPanel
-				surface="subagent"
-				onSurface={vi.fn()}
+			<ThreadSidePanel
+				tabs={[{ id: "thread", label: "Thread" }]}
+				tab="thread"
+				onTab={vi.fn()}
 				onClose={vi.fn()}
-				runId={RUN_ID}
-				live
-				investigation={false}
-				files={{} as Parameters<typeof ThreadPanel>[0]["files"]}
-				suspects={[]}
-				subagent={pane()}
+				content={null}
+				override={pane()}
+				overrideLabel="Sub-agent"
 			/>,
 		);
 		expect(q("subagent-pane")).not.toBeNull();
 		expect(
-			container.querySelector('[role="tabpanel"]')?.getAttribute("aria-label"),
+			container
+				.querySelector('[data-testid="panel-body"]')
+				?.getAttribute("aria-label"),
 		).toBe("Sub-agent");
 	});
 });

@@ -11,7 +11,7 @@ import { AskCard } from "@/components/investigation/RunDock";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AskRecord } from "@/lib/run-asks";
 import { StatusBox } from "./StatusBox";
-import { ThreadPanel } from "./ThreadPanel";
+import { WorktreeDiff } from "./WorktreeDiff";
 
 const state = vi.hoisted(() => ({
 	changes: { repos: [] } as WorktreeChanges | Error,
@@ -108,21 +108,6 @@ const workspace = {
 		},
 	],
 };
-const files = {
-	runId: "r1",
-	workspace,
-	touched: [],
-	links: [],
-	viewing: null,
-	onOpen: vi.fn(),
-	onClose: vi.fn(),
-	backLabel: "Back",
-	reads: [],
-	codeHost: null,
-	stepFile: () => null,
-	onOpenHypotheses: vi.fn(),
-};
-
 let container: HTMLDivElement;
 let root: Root;
 const q = (id: string) => container.querySelector(`[data-testid="${id}"]`);
@@ -159,89 +144,7 @@ afterEach(async () => {
 	container.remove();
 });
 
-const panel = (over: Partial<Parameters<typeof ThreadPanel>[0]> = {}) => (
-	<ThreadPanel
-		surface={null}
-		onSurface={vi.fn()}
-		onClose={vi.fn()}
-		runId="r1"
-		live={false}
-		investigation={false}
-		files={files}
-		suspects={[]}
-		{...over}
-	/>
-);
-
-describe("ThreadPanel (#1020)", () => {
-	it("opens on no surface, and a chat has no Suspects tab", async () => {
-		await render(panel());
-		expect(q("surface-empty")?.textContent).toBe("Open a surface");
-		expect(q("surface-files")).not.toBeNull();
-		expect(q("surface-diff")).not.toBeNull();
-		expect(q("surface-browser")).not.toBeNull();
-		expect(q("surface-suspects")).toBeNull();
-		// The empty panel is still named for assistive technology.
-		const panelEl = container.querySelector('[role="tabpanel"]');
-		expect(panelEl?.getAttribute("aria-label")).toBe("Surfaces");
-	});
-
-	it("a plain folder's thread has no Diff: there is no base to diff against", async () => {
-		await render(panel({ diff: false, surface: "diff" }));
-		expect(q("surface-diff")).toBeNull();
-		expect(q("surface-files")).not.toBeNull();
-		expect(q("surface-empty")?.textContent).toBe("Open a surface");
-		expect(q("browser-tab")).toBeNull();
-	});
-
-	it("a chat that was on Suspects shows the empty pane, not the Browser", async () => {
-		await render(panel({ surface: "suspects" }));
-		expect(q("surface-empty")?.textContent).toBe("Open a surface");
-		expect(q("browser-tab")).toBeNull();
-	});
-
-	it("lists an investigation's suspects in the agent's order with its status words", async () => {
-		const onSurface = vi.fn();
-		await render(
-			panel({
-				investigation: true,
-				surface: "suspects",
-				onSurface,
-				suspects: [
-					{
-						id: "h2",
-						statement: "Cache stampede",
-						status: "refuted",
-						evidenceIds: [],
-						at: "x",
-					},
-					{
-						id: "h1",
-						statement: "Retry storm",
-						status: "supported",
-						evidenceIds: [],
-						at: "x",
-					},
-				],
-			}),
-		);
-		const rows = Array.from(
-			container.querySelectorAll('[data-testid="suspect"]'),
-		);
-		expect(rows.map((r) => r.textContent)).toEqual([
-			"RefutedCache stampede",
-			"SupportedRetry storm",
-		]);
-		expect(container.textContent).not.toMatch(/leading/i);
-		await act(async () => (q("surface-diff") as HTMLButtonElement).click());
-		expect(onSurface).toHaveBeenCalledWith("diff");
-	});
-
-	it("says when there are no suspects yet", async () => {
-		await render(panel({ investigation: true, surface: "suspects" }));
-		expect(q("suspects-empty")?.textContent).toBe("No suspects yet");
-	});
-});
+const diff = () => <WorktreeDiff runId="r1" live={false} />;
 
 describe("WorktreeDiff (#1020)", () => {
 	const ok = (over: Record<string, unknown> = {}) => ({
@@ -283,7 +186,7 @@ describe("WorktreeDiff (#1020)", () => {
 				}),
 			],
 		};
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		const rows = Array.from(
 			container.querySelectorAll('[data-testid="diff-file"]'),
 		);
@@ -309,7 +212,7 @@ describe("WorktreeDiff (#1020)", () => {
 				}),
 			],
 		};
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		expect(q("diff-new-file")?.textContent).toBe("New file");
 	});
 
@@ -328,7 +231,7 @@ describe("WorktreeDiff (#1020)", () => {
 				}),
 			],
 		};
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		expect(q("diff-linked-file")?.textContent).toBe("Linked file");
 	});
 
@@ -349,7 +252,7 @@ describe("WorktreeDiff (#1020)", () => {
 				}),
 			],
 		};
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		const rows = () =>
 			Array.from(container.querySelectorAll('[data-testid="diff-file"]'));
 		await act(async () => (rows()[1] as HTMLButtonElement).click());
@@ -371,17 +274,17 @@ describe("WorktreeDiff (#1020)", () => {
 	});
 
 	it("has a state for no code, no changes, a removed workspace, too large and a failed read", async () => {
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		expect(q("diff-none")?.textContent).toBe("No code here");
 
 		state.changes = { repos: [ok()] };
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		expect(q("diff-empty")?.textContent).toBe("No changes yet");
 
 		state.changes = {
 			repos: [{ state: "unavailable", repo: "repo", reason: "removed" }],
 		};
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		expect(q("diff-unavailable")?.textContent).toBe("Workspace removed");
 
 		state.changes = {
@@ -395,11 +298,11 @@ describe("WorktreeDiff (#1020)", () => {
 				}),
 			],
 		};
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		expect(q("diff-too-large")?.textContent).toBe("Too large to show");
 
 		state.changes = new Error("boom");
-		await render(panel({ surface: "diff" }));
+		await render(diff());
 		expect(q("state-problem")?.textContent).toContain("Changes did not load");
 	});
 });

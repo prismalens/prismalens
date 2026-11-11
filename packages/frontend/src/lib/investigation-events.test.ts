@@ -573,6 +573,62 @@ describe("deriveTranscript: handoff record", () => {
 			text: `Codex, took over at ${formatClock(ts)}, in a fresh session. It got the alert.`,
 		});
 	});
+
+	it("thread_message with messageId m1 plus operator_message with messageId m1 produces exactly one node item of kind thread_message and no operator item (#1024)", () => {
+		const threadMsg = {
+			kind: "thread_message",
+			messageId: "m1",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 1,
+			ts: "2026-08-22T14:30:00Z",
+		} as unknown as CanonicalEvent;
+
+		const opMsg: CanonicalEvent = {
+			kind: "operator_message",
+			messageId: "m1",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 2,
+			label: null,
+			ts: "2026-08-22T14:30:01Z",
+			text: "Operator says hello",
+			mode: "now",
+			delivered: true,
+		};
+
+		const items = deriveTranscript([threadMsg, opMsg], { nodes: () => true });
+		const nodeItems = items.filter((i) => i.kind === "node");
+		const operatorItems = items.filter((i) => i.kind === "operator");
+
+		expect(nodeItems).toHaveLength(1);
+		expect(nodeItems[0]?.event.kind).toBe("thread_message");
+		expect(operatorItems).toHaveLength(0);
+	});
+
+	it("without thread_message the operator_message item is drawn (#1024)", () => {
+		const opMsg: CanonicalEvent = {
+			kind: "operator_message",
+			messageId: "m1",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 2,
+			label: null,
+			ts: "2026-08-22T14:30:01Z",
+			text: "Operator says hello",
+			mode: "now",
+			delivered: true,
+		};
+
+		const items = deriveTranscript([opMsg], { nodes: () => true });
+		const operatorItems = items.filter((i) => i.kind === "operator");
+		expect(operatorItems).toHaveLength(1);
+		expect(operatorItems[0]?.text).toBe("Operator says hello");
+	});
 });
+
 
 

@@ -135,12 +135,18 @@ vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
 }));
 
+vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
+	useThreadContext: () => ({ data: null, isLoading: false }),
+}));
+
 vi.mock("@/hooks/use-page-title", () => ({
 	usePageTitle: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
+	useSearch: () => ({}),
+	useNavigate: () => vi.fn(),
 }));
 
 vi.mock("@/components/shared/Hint", () => ({
@@ -159,8 +165,17 @@ vi.mock("@/components/shell/PanelShell", () => ({
 	RightPanel: ({ children }: { children: ReactNode }) => children,
 }));
 
-vi.mock("./ThreadPanel", () => ({
-	ThreadPanel: () => <div data-testid="thread-panel" />,
+vi.mock("./panel/ThreadSidePanel", () => ({
+	ThreadSidePanel: () => <div data-testid="thread-panel" />,
+	PanelStack: ({ children }: { children: ReactNode }) => children,
+}));
+
+vi.mock("./panel/KindTab", () => ({
+	KindTab: () => null,
+}));
+
+vi.mock("./panel/ThreadTab", () => ({
+	ThreadTab: () => null,
 }));
 
 vi.mock("./StatusBox", () => ({

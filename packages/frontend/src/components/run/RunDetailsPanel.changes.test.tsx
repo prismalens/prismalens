@@ -38,7 +38,10 @@ vi.mock("./ChangesTab", async () => {
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const panel = (runId: string) => (
+const panel = (
+	runId: string,
+	over: Partial<Parameters<typeof RunDetailsPanel>[0]> = {},
+) => (
 	<TooltipProvider>
 		<RunDetailsPanel
 			title="Run Details"
@@ -66,6 +69,7 @@ const panel = (runId: string) => (
 				links: [],
 				onOpenHypotheses: vi.fn(),
 			}}
+			{...over}
 		/>
 	</TooltipProvider>
 );
@@ -102,30 +106,18 @@ describe("Changes tab across runs (#975)", () => {
 		expect(state()).toBe("fresh");
 	});
 
-	it("draws each tab as an icon, named for assistive tech (#1020)", async () => {
+	it("shows exactly Incident, Thread, Changes, and Browser appears only with the browser prop or tab browser (#1024)", async () => {
 		await act(async () => root.render(panel("run-1")));
-		const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
-		expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual([
-			"Summary",
-			"Files, 0",
-			"Changes",
-			"Steps, 0",
-			"Context",
-			"Browser",
-		]);
-		for (const t of tabs) expect(t.querySelector("svg")).not.toBeNull();
-		// The open tab's name shows beside its icon only where nothing can hover.
-		const labels = tabs.map((t) =>
-			t.querySelector('[data-testid^="run-details-label-"]'),
-		);
-		expect(
-			labels.map((l) =>
-				l?.className.includes(
-					"[@media(hover:none)]:group-data-[state=active]:inline",
-				),
-			),
-		).toEqual(Array(6).fill(true));
-		for (const l of labels) l?.remove();
-		expect(tabs.map((t) => t.textContent)).toEqual(["", "0", "", "0", "", ""]);
+		const tabs = () =>
+			Array.from(container.querySelectorAll('[data-testid^="panel-tab-"]')).map(
+				(t) => t.textContent,
+			);
+		expect(tabs()).toEqual(["Incident", "Thread", "Changes"]);
+
+		await act(async () => root.render(panel("run-1", { browser: true })));
+		expect(tabs()).toEqual(["Incident", "Thread", "Changes", "Browser"]);
+
+		await act(async () => root.render(panel("run-1", { tab: "browser" })));
+		expect(tabs()).toEqual(["Incident", "Thread", "Changes", "Browser"]);
 	});
 });
