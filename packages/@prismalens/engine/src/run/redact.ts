@@ -41,7 +41,7 @@ export function redactEvent<T>(event: T, secrets: readonly string[]): T {
 }
 
 /**
- * The secrets a user handed this thread through `pl_secret_request` (#1024 spec B): each is
+ * The secrets a user handed this thread through `secret_request` (#1024 spec B): each is
  * redacted whatever its length, unlike {@link injectedSecrets}, since the user said it is one.
  */
 export function requestedSecrets(

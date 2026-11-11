@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Thread titles (#1020): the agent names a thread with `pl_thread_title` until the user
+ * Thread titles (#1020): the agent names a thread with `thread_title` until the user
  * renames it. A title is untrusted plain text, one line, stored as typed and shown as text.
  */
 import { ORPCError } from "@orpc/server";

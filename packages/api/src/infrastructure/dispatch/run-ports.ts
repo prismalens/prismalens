@@ -165,7 +165,7 @@ export interface RunPorts {
 	): Promise<void>;
 	/** How long a question from the agent waits (Settings → Agent); the default when absent (#1024). */
 	questionTimeoutMs?(): Promise<number | undefined>;
-	/** The secrets the user gave this thread through `pl_secret_request`, by variable name, decrypted (#1024 spec B). */
+	/** The secrets the user gave this thread through `secret_request`, by variable name, decrypted (#1024 spec B). */
 	requestedSecrets?(runId: string): Promise<Record<string, string>>;
 	/**
 	 * The incident's newest run started after this one, with its `Run #N` and
@@ -249,7 +249,7 @@ export interface RunPorts {
 			runId: string,
 			serverName: string,
 			harness?: string,
-			/** A follow-up's start, so `pl_run_status` counts its own wall clock. */
+			/** A follow-up's start, so `run_status` counts its own wall clock. */
 			turnStartedAt?: Date,
 			/** What the run is about and owes; its tools follow (#1020). */
 			scope?: HarnessScope,
