@@ -271,6 +271,7 @@ function Approval({
 				onClick={() =>
 					onAnswer({ kind: "permission", decision: "approve", scope: "once" })
 				}
+				aria-keyshortcuts="Alt+Y"
 				data-testid="ask-dock-allow"
 			>
 				{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
@@ -295,6 +296,7 @@ function Approval({
 				variant="secondary"
 				disabled={busy}
 				onClick={() => onAnswer({ kind: "permission", decision: "deny" })}
+				aria-keyshortcuts="Alt+N"
 				data-testid="ask-dock-deny"
 			>
 				{plan ? "Keep planning" : "Deny"} <Kbd>Alt N</Kbd>

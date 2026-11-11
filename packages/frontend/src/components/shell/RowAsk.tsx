@@ -182,6 +182,7 @@ export function RowAsk({
 								size="sm"
 								disabled={state.busy}
 								onClick={state.approve}
+								aria-keyshortcuts="Y"
 								data-testid="row-ask-approve"
 							>
 								Approve <Kbd>Y</Kbd>
@@ -191,6 +192,7 @@ export function RowAsk({
 								variant="secondary"
 								disabled={state.busy}
 								onClick={() => state.decline()}
+								aria-keyshortcuts="N"
 								data-testid="row-ask-decline"
 							>
 								Decline <Kbd>N</Kbd>
@@ -277,7 +279,9 @@ export function Kbd({
 	className?: string;
 }) {
 	return (
+		// The button's name stays its verb; the key reaches screen readers as aria-keyshortcuts.
 		<kbd
+			aria-hidden
 			className={cn(
 				"rounded-[4px] bg-surface-4 px-1 font-mono text-[11px] text-text-2 leading-4",
 				className,
