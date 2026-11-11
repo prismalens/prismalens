@@ -239,14 +239,30 @@ describe("About with the update controls", () => {
 		expect(about.checkForUpdates).toBe(false);
 	});
 
-	it("writes update-channel.json on npm install when channel nightly requested and returns updated About", async () => {
+	it("writes update-channel.json on npm install when channel nightly requested and returns updated About from the nightly cache", async () => {
 		const { s } = service({ channel: "npm" });
+		// A fresh nightly answer, so the save never asks npm or GitHub; a fetch would throw.
+		writeFileSync(
+			join(workspace, "update-check.json"),
+			JSON.stringify({ checkedAt: Date.now(), latest: "99.0.0-nightly.20261111.1", channel: "nightly" }),
+		);
+		s.fetchImpl = (() => {
+			throw new Error("no network in this test");
+		}) as unknown as typeof fetch;
 		const about = await s.setPrefs({ channel: "nightly" }, true);
 		const file = JSON.parse(
 			readFileSync(join(workspace, "update-channel.json"), "utf8"),
 		);
 		expect(file).toEqual({ channel: "nightly" });
 		expect(about.updateChannel?.current).toBe("nightly");
+		expect(about.update.latest).toBe("99.0.0-nightly.20261111.1");
+		expect(about.update.available).toBe(true);
+	});
+
+	it("status names the nightly npm command once the channel is nightly", async () => {
+		const { s } = service({ channel: "npm" });
+		writeFileSync(join(workspace, "update-channel.json"), '{"channel":"nightly"}\n');
+		expect(s.getStatus().upgradeCommand).toBe("npm install -g prismalens@nightly");
 	});
 
 	it("refuses channel nightly on installer install with BAD_REQUEST and NIGHTLY_NPM_ONLY and writes no file", async () => {

@@ -12,6 +12,7 @@ import {
 } from "@prismalens/config";
 import { describe, expect, it } from "vitest";
 import {
+	commandVersion,
 	pinnedVersionValid,
 	resolveUpdateChannel,
 	upgradeArgv,
@@ -153,5 +154,19 @@ describe("resolveUpdateChannel", () => {
 		} finally {
 			rmSync(workspace, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("commandVersion", () => {
+	it("names the resolved target on npm, so a nightly install offered stable is told that exact version", () => {
+		expect(commandVersion("npm", null, "0.5.5")).toBe("0.5.5");
+		expect(commandVersion("npm", "0.5.4-nightly.20261111.7", "0.5.4-nightly.20261111.7")).toBe(
+			"0.5.4-nightly.20261111.7",
+		);
+	});
+
+	it("names no version for an unpinned non-npm upgrade, and the pin when there is one", () => {
+		expect(commandVersion("homebrew", null, "0.5.5")).toBe(undefined);
+		expect(commandVersion("installer", "0.5.5", "0.5.5")).toBe("0.5.5");
 	});
 });

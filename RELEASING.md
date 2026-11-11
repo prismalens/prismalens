@@ -100,7 +100,7 @@ Not decided yet. VERSIONING.md: "`1.0.0` is a deliberate stability promise, not 
 - Only the newest 10 nightly prereleases stay listed. The installers read the newest 30 releases to find a stable one with archives.
 - To turn it on:
   1. Ship a stable release that carries the 30-release installers, because the installers run from the newest stable release's assets.
-  2. Add `nightly.yml` as a trusted publisher of `prismalens` on npmjs.com, beside `release.yml`.
+  2. Add `nightly.yml` as a trusted publisher of `prismalens` on npmjs.com, beside `release.yml`, and tick **Allow npm publish**. A new trusted publisher only stages publishes by default, and the job runs `npm publish`.
   3. Set the repository variable `NIGHTLY_PUBLISH` to `true`.
 
   A dispatch on `main` with `publish` checked and no `ref` publishes once by hand.

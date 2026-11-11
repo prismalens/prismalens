@@ -95,10 +95,22 @@ jobs:
             fi
             git merge-base --is-ancestor "$prev_sha" "$SHA" || { echo "::error::$SHA is not ahead of $prev ($prev_sha)"; exit 1; }
           fi
+          # npm's nightly now. Only an absent tag (E404, before the first nightly) reads as none; any other failure stops
+          # the run, because an empty answer would switch off the version-order check below.
+          if npm_json=$(npm view prismalens@nightly version build --json 2>"$RUNNER_TEMP/npm.err"); then
+            npm_version=$(jq -r 'if type == "object" then .version else . end // empty' <<<"$npm_json")
+            npm_build=$(jq -r 'if type == "object" then .build // empty else empty end' <<<"$npm_json")
+          elif grep -q E404 "$RUNNER_TEMP/npm.err"; then
+            npm_version="" npm_build=""
+          else
+            cat "$RUNNER_TEMP/npm.err" >&2
+            echo "::error::npm view prismalens@nightly failed"
+            exit 1
+          fi
+          echo "npm_version=$npm_version" >> "$GITHUB_OUTPUT"
           # A run that published npm but not its prerelease left npm's nightly on this commit: finish that version.
-          npm_build=$(npm view prismalens@nightly build 2>/dev/null || true)
-          if [ "$npm_build" = "${SHA:0:7}" ]; then
-            echo "existing=$(npm view prismalens@nightly version)" >> "$GITHUB_OUTPUT"
+          if [ -n "$npm_build" ] && [ "$npm_build" = "${SHA:0:7}" ]; then
+            echo "existing=$npm_version" >> "$GITHUB_OUTPUT"
           fi
           echo "new=true" >> "$GITHUB_OUTPUT"
 
@@ -120,6 +132,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
           EXISTING: ${{ steps.since.outputs.existing }}
+          ABOVE: ${{ steps.since.outputs.npm_version }}
         run: |
           set -euo pipefail
           if [ -n "$EXISTING" ]; then
@@ -128,9 +141,8 @@ jobs:
             exit 0
           fi
           date=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq .created_at | cut -c1-10 | tr -d -)
-          above=$(npm view prismalens@nightly version 2>/dev/null || true)
           version=$(node scripts/nightly-version.mjs --stable "$(jq -r '."."' .release-please-manifest.json)" \
-            --date "$date" --run "$RUN_NUMBER" ${above:+--above "$above"} --write packages/cli/package.json)
+            --date "$date" --run "$RUN_NUMBER" ${ABOVE:+--above "$ABOVE"} --write packages/cli/package.json)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Nightly $version from $SHA" >> "$GITHUB_STEP_SUMMARY"
 

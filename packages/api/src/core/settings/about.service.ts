@@ -24,6 +24,7 @@ import {
 	RELEASES_URL,
 	readCache,
 	refreshUpdateCache,
+	type UpdateChannel,
 	uninstallCommand,
 	updateCheckDisabledBy,
 	upgradeCommand,
@@ -58,12 +59,35 @@ export function latestBackup(workspaceDir: string): string | null {
 export class AboutService {
 	private readonly version = resolveServiceVersion();
 	private readonly build = resolveServiceBuild();
-	private refreshing: Promise<void> | null = null;
+	/** One refresh at a time, for one channel: the cache file holds one channel's answer. */
+	private refreshing: { channel: UpdateChannel; done: Promise<void> } | null =
+		null;
 
 	// Fields rather than constructor parameters: Nest would try to inject them. Tests set them.
 	env: NodeJS.ProcessEnv = process.env;
 	fetchImpl: typeof fetch = fetch;
 	now: () => number = Date.now;
+
+	/** Joins a pending refresh for `channel`; a pending one for the other channel is let finish first. */
+	private async refresh(
+		workspaceDir: string,
+		channel: UpdateChannel,
+	): Promise<void> {
+		while (this.refreshing && this.refreshing.channel !== channel)
+			await this.refreshing.done;
+		if (!this.refreshing) {
+			const done: Promise<void> = refreshUpdateCache(
+				workspaceDir,
+				this.fetchImpl,
+				this.now(),
+				channel,
+			).finally(() => {
+				if (this.refreshing?.done === done) this.refreshing = null;
+			});
+			this.refreshing = { channel, done };
+		}
+		await this.refreshing.done;
+	}
 
 	/**
 	 * `checkEnabled` is About's "Check for updates" row; `force` is Check now,
@@ -87,15 +111,7 @@ export class AboutService {
 			(opts.force ||
 				isStale(readCache(workspaceDir, updateChannel), this.now()))
 		) {
-			this.refreshing ??= refreshUpdateCache(
-				workspaceDir,
-				this.fetchImpl,
-				this.now(),
-				updateChannel,
-			).finally(() => {
-				this.refreshing = null;
-			});
-			await this.refreshing;
+			await this.refresh(workspaceDir, updateChannel);
 		}
 
 		const cache = checking ? readCache(workspaceDir, updateChannel) : null;

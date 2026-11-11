@@ -105,6 +105,35 @@ describe("AboutService", () => {
 	});
 });
 
+describe("AboutService refresh per channel", () => {
+	it("a nightly request while a stable refresh is pending gets a nightly answer, not the stable one", async () => {
+		let releaseStable: () => void = () => {};
+		const stableHeld = new Promise<void>((r) => {
+			releaseStable = r;
+		});
+		const fetchImpl = (async (url: string) => {
+			if (String(url).includes("registry.npmjs.org"))
+				return Response.json({ latest: "99.0.0", nightly: "99.0.1-nightly.20261111.1" });
+			await stableHeld;
+			return String(url).endsWith("/SHA256SUMS")
+				? new Response(null, { status: 302 })
+				: new Response(null, { status: 302, headers: { location: TAG } });
+		}) as unknown as typeof fetch;
+		const s = new AboutService();
+		s.env = {};
+		s.fetchImpl = fetchImpl;
+		s.now = () => 1_000_000;
+		const stable = s.get();
+		writeFileSync(join(workspace, "update-channel.json"), JSON.stringify({ channel: "nightly" }));
+		const nightly = s.get();
+		releaseStable();
+		expect((await stable).update.latest).toBe("99.0.0");
+		const n = await nightly;
+		expect(n.updateChannel?.current).toBe("nightly");
+		expect(n.update.latest).toBe("99.0.1-nightly.20261111.1");
+	});
+});
+
 describe("latestBackup", () => {
 	it("is the newest prismalens.db.bak-*, or null", () => {
 		expect(latestBackup(workspace)).toBe(null);

@@ -21,6 +21,7 @@ import {
 } from "@nestjs/common";
 import {
 	autoInstallBlockedBy,
+	effectiveUpdateChannel,
 	getAppDataDir,
 	installChannel,
 	installerArgv,
@@ -223,7 +224,12 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		const base = {
 			...this.status,
 			draining: this.admission?.draining ?? false,
-			upgradeCommand: upgradeCommand(channel, this.platform),
+			upgradeCommand: upgradeCommand(
+				channel,
+				this.platform,
+				undefined,
+				effectiveUpdateChannel(getAppDataDir(), channel, this.env),
+			),
 		};
 		if (this.status.phase !== "idle") return base;
 		// A handoff that failed after the old process exited left its verdict here.

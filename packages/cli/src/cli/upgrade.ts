@@ -82,6 +82,18 @@ export function switchBackFor(
 	};
 }
 
+/**
+ * The version the printed upgrade command names. On npm it is the resolved target: on
+ * nightly the target can be npm's newer `latest`, which `prismalens@nightly` would miss.
+ */
+export function commandVersion(
+	channel: InstallChannel,
+	pinned: string | null,
+	target: string,
+): string | undefined {
+	return pinned ?? (channel === "npm" ? target : undefined);
+}
+
 /** Whether `--version` may name `version` on this install channel. */
 export function pinnedVersionValid(
 	version: string,
@@ -289,7 +301,7 @@ export default defineCommand({
 		const command = config.upgradeCommand(
 			channel,
 			process.platform,
-			pinned ?? undefined,
+			commandVersion(channel, pinned, target),
 			updateChannel,
 		);
 		if (args.check) {

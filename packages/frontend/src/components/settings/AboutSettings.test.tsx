@@ -110,3 +110,26 @@ describe("AboutSettings release channel", () => {
 		expect(container.textContent).toContain(note);
 	});
 });
+
+describe("AboutSettings release channel set by the environment", () => {
+	it("locks the select and names the variable when PRISMALENS_UPDATE_CHANNEL decides", async () => {
+		about.current = {
+			...baseAbout,
+			updateChannel: {
+				current: "nightly",
+				fromEnv: true,
+				nightlyBlockedBy: null,
+				leavingNightly: null,
+			},
+		};
+		await act(async () => root.render(createElement(AboutSettings)));
+		const select = container.querySelector(
+			'[data-testid="about-release-channel"]',
+		);
+		expect(select?.textContent).toBe("Nightly");
+		expect(select?.hasAttribute("disabled")).toBe(true);
+		expect(container.textContent).toContain(
+			"PRISMALENS_UPDATE_CHANNEL sets it; unset it to choose here",
+		);
+	});
+});
