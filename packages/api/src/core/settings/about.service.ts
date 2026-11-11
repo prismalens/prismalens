@@ -17,6 +17,7 @@ import {
 	installChannel,
 	installedService,
 	isNewer,
+	isNightlyBuild,
 	isStale,
 	isUpdateChannel,
 	leavingNightlyNote,
@@ -151,6 +152,7 @@ export class AboutService {
 				current: updateChannel,
 				fromEnv: isUpdateChannel(envChannel),
 				nightlyBlockedBy: nightlyBlockedBy(channel),
+				nightlyBuild: isNightlyBuild(this.version),
 				leavingNightly:
 					updateChannel === "stable"
 						? leavingNightlyNote(this.version, latest)

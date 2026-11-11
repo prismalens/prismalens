@@ -109,6 +109,7 @@ export type { SecretEnvVar } from "./utils/secrets.js";
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
 export {
 	effectiveUpdateChannel,
+	isNightlyBuild,
 	isUpdateChannel,
 	leavingNightlyNote,
 	NIGHTLY_NPM_ONLY,

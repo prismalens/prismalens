@@ -137,3 +137,51 @@ describe("AboutSettings release channel set by the environment", () => {
 		);
 	});
 });
+
+describe("AboutSettings names the channel and the build", () => {
+	const channel = (over: Record<string, unknown>) => ({
+		current: "stable",
+		fromEnv: false,
+		nightlyBlockedBy: null,
+		leavingNightly: null,
+		nightlyBuild: false,
+		...over,
+	});
+
+	it("says which channel is up to date and shows no Nightly badge on a stable build", async () => {
+		about.current = { ...baseAbout, updateChannel: channel({}) };
+		await act(async () => root.render(createElement(AboutSettings)));
+		expect(container.textContent).toContain("Up to date on stable");
+		expect(container.querySelector('[data-testid="about-nightly-build"]')).toBe(
+			null,
+		);
+	});
+
+	it("marks a nightly build beside its version and names the nightly channel", async () => {
+		about.current = {
+			...baseAbout,
+			version: "0.5.6-nightly.20261111.1",
+			updateChannel: channel({ current: "nightly", nightlyBuild: true }),
+		};
+		await act(async () => root.render(createElement(AboutSettings)));
+		expect(container.textContent).toContain("Up to date on nightly");
+		expect(
+			container.querySelector('[data-testid="about-nightly-build"]')
+				?.textContent,
+		).toBe("Nightly");
+	});
+
+	it("says it waits for the next stable when a nightly build is set back to stable", async () => {
+		about.current = {
+			...baseAbout,
+			version: "0.5.6-nightly.20261111.1",
+			updateChannel: channel({
+				leavingNightly: "You're on nightly 0.5.6-nightly.20261111.1.",
+				nightlyBuild: true,
+			}),
+		};
+		await act(async () => root.render(createElement(AboutSettings)));
+		expect(container.textContent).toContain("Waiting for the next stable");
+		expect(container.textContent).not.toContain("Up to date on stable");
+	});
+});

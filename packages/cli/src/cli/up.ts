@@ -17,6 +17,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isNightlyBuild } from "@prismalens/config";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
@@ -54,6 +55,13 @@ import { updateNotice } from "./update-notice.js";
 import { completePendingRestore } from "./upgrade-trial.js";
 
 const require = createRequire(import.meta.url);
+
+/** The ready line names a nightly build, so a pasted terminal shows which one ran (#1024). */
+export function readyLine(version: string, url: string): string {
+	return isNightlyBuild(version)
+		? `PrismaLens nightly ${version} is ready at ${url}`
+		: `PrismaLens is ready at ${url}`;
+}
 const READY_TIMEOUT_MS = 60_000;
 
 interface PackagedApi {
@@ -301,7 +309,7 @@ export default defineCommand({
 			timeoutMs: READY_TIMEOUT_MS,
 		});
 		if (ready) {
-			consola.success(`PrismaLens is ready at ${url}`);
+			consola.success(readyLine(cliVersion(), url));
 			if (tailnetUrl) {
 				consola.success(`On your tailnet: ${tailnetUrl}`);
 				consola.info("Pair a device there with `pl pair --tailscale`.");

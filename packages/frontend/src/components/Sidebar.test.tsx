@@ -35,8 +35,9 @@ vi.mock("@/lib/api/hooks/use-webhooks-orpc", () => ({
 	useLastDelivery: () => ({ data: null }),
 }));
 
+const about: { data: unknown } = { data: undefined };
 vi.mock("@/components/settings", () => ({
-	useAbout: () => ({ data: undefined }),
+	useAbout: () => about,
 }));
 
 vi.mock("@/hooks/use-operator", () => ({
@@ -91,6 +92,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+	about.data = undefined;
 	state.pathname = "/incidents";
 	state.sidebarHidden = false;
 	state.toggleSidebar = vi.fn();
@@ -149,5 +151,29 @@ describe("Sidebar (case 2)", () => {
 		expect(
 			container.querySelector('[data-testid="settings-sections"]'),
 		).toBeNull();
+	});
+});
+
+describe("Sidebar on a nightly build", () => {
+	it("tags the app name Nightly only when this copy is a nightly build", async () => {
+		await act(async () => root.render(createElement(Sidebar)));
+		expect(container.querySelector('[data-testid="sidebar-nightly"]')).toBe(
+			null,
+		);
+
+		about.data = {
+			update: { available: false },
+			updateChannel: {
+				current: "nightly",
+				fromEnv: false,
+				nightlyBlockedBy: null,
+				leavingNightly: null,
+				nightlyBuild: true,
+			},
+		};
+		await act(async () => root.render(createElement(Sidebar)));
+		expect(
+			container.querySelector('[data-testid="sidebar-nightly"]')?.textContent,
+		).toBe("Nightly");
 	});
 });

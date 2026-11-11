@@ -11,6 +11,7 @@ import { Mono } from "@/components/shared/Mono";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
+import { Badge } from "@/components/ui/badge";
 import {
 	Select,
 	SelectContent,
@@ -160,10 +161,17 @@ export function AboutSettings() {
 					<SettingRow
 						label="Version"
 						description={
-							<Mono>
-								{about.version}
-								{about.build ? `, build ${about.build}` : ""}
-							</Mono>
+							<span className="inline-flex items-center gap-2">
+								<Mono>
+									{about.version}
+									{about.build ? `, build ${about.build}` : ""}
+								</Mono>
+								{about.updateChannel?.nightlyBuild && (
+									<Badge variant="secondary" data-testid="about-nightly-build">
+										Nightly
+									</Badge>
+								)}
+							</span>
 						}
 					/>
 					{about.updateChannel && (
@@ -225,7 +233,11 @@ export function AboutSettings() {
 								? "The update check is off"
 								: update.available && update.latest
 									? `PrismaLens ${update.latest} is available`
-									: "You're on the newest release"
+									: about.updateChannel?.leavingNightly
+										? "Waiting for the next stable"
+										: about.updateChannel
+											? `Up to date on ${about.updateChannel.current}`
+											: "You're on the newest release"
 						}
 						description={
 							update.disabledBy ? (

@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	effectiveUpdateChannel,
+	isNightlyBuild,
 	isUpdateChannel,
 	leavingNightlyNote,
 	nightlyBlockedBy,
@@ -197,5 +198,14 @@ describe("leavingNightlyNote", () => {
 		expect(note).toBe(
 			"You're on nightly 0.5.4-nightly.20261111.7. A nightly may have migrated your workspace past an older release, so this install stays on 0.5.4-nightly.20261111.7 and moves to stable when 0.5.4 or later ships.",
 		);
+	});
+});
+
+describe("isNightlyBuild", () => {
+	it("is true only for a nightly prerelease version", () => {
+		expect(isNightlyBuild("0.5.6-nightly.20261111.1")).toBe(true);
+		expect(isNightlyBuild("0.5.5")).toBe(false);
+		expect(isNightlyBuild("0.6.0-rc.1")).toBe(false);
+		expect(isNightlyBuild("not a version")).toBe(false);
 	});
 });
