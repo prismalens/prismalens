@@ -12,11 +12,15 @@ import { release as osRelease, type as osType } from "node:os";
 import { join } from "node:path";
 import { Injectable } from "@nestjs/common";
 import {
+	effectiveUpdateChannel,
 	getAppDataDir,
 	installChannel,
 	installedService,
 	isNewer,
 	isStale,
+	isUpdateChannel,
+	leavingNightlyNote,
+	nightlyBlockedBy,
 	RELEASES_URL,
 	readCache,
 	refreshUpdateCache,
@@ -72,24 +76,32 @@ export class AboutService {
 		const channel = installChannel(this.env);
 		const disabledBy = updateCheckDisabledBy(this.env);
 		const checking = !disabledBy && opts.checkEnabled !== false;
+		const updateChannel = effectiveUpdateChannel(
+			workspaceDir,
+			channel,
+			this.env,
+		);
 
 		if (
 			checking &&
-			(opts.force || isStale(readCache(workspaceDir), this.now()))
+			(opts.force ||
+				isStale(readCache(workspaceDir, updateChannel), this.now()))
 		) {
 			this.refreshing ??= refreshUpdateCache(
 				workspaceDir,
 				this.fetchImpl,
 				this.now(),
+				updateChannel,
 			).finally(() => {
 				this.refreshing = null;
 			});
 			await this.refreshing;
 		}
 
-		const cache = checking ? readCache(workspaceDir) : null;
+		const cache = checking ? readCache(workspaceDir, updateChannel) : null;
 		const latest = cache?.latest ?? null;
 		const available = latest !== null && isNewer(latest, this.version);
+		const envChannel = this.env.PRISMALENS_UPDATE_CHANNEL?.trim().toLowerCase();
 		return {
 			version: this.version,
 			channel,
@@ -103,7 +115,12 @@ export class AboutService {
 				disabledBy,
 				releaseNotesUrl: latest ? `${RELEASES_URL}/tag/v${latest}` : null,
 			},
-			upgradeCommand: upgradeCommand(channel),
+			upgradeCommand: upgradeCommand(
+				channel,
+				process.platform,
+				undefined,
+				updateChannel,
+			),
 			uninstallCommand: installedService()
 				? `pl service uninstall && ${uninstallCommand(channel)}`
 				: uninstallCommand(channel),
@@ -114,6 +131,15 @@ export class AboutService {
 				arch: process.arch,
 			},
 			checkForUpdates: opts.checkEnabled !== false,
+			updateChannel: {
+				current: updateChannel,
+				fromEnv: isUpdateChannel(envChannel),
+				nightlyBlockedBy: nightlyBlockedBy(channel),
+				leavingNightly:
+					updateChannel === "stable"
+						? leavingNightlyNote(this.version, latest)
+						: null,
+			},
 		};
 	}
 }

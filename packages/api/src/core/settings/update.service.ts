@@ -27,6 +27,8 @@ import {
 	installerDataDir,
 	installerEnv,
 	isNewer,
+	NIGHTLY_NPM_ONLY,
+	nightlyBlockedBy,
 	RESTART_EXIT_CODE,
 	readCache,
 	releaseNotesFor,
@@ -34,6 +36,7 @@ import {
 	underServiceManager,
 	updateCheckDisabledBy,
 	upgradeCommand,
+	writeUpdateChannel,
 } from "@prismalens/config";
 import type {
 	About,
@@ -142,7 +145,14 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 				"FORBIDDEN",
 				"Only the owner can change updates.",
 			);
-		const next = { ...(await this.prefs()), ...input };
+		const { channel, ...rest } = input;
+		if (channel) {
+			// The workspace file, not the DB: `pl upgrade` reads it without the API.
+			if (channel === "nightly" && nightlyBlockedBy(installChannel(this.env)))
+				throw new UpdateRefused("BAD_REQUEST", NIGHTLY_NPM_ONLY);
+			writeUpdateChannel(getAppDataDir(), channel);
+		}
+		const next = { ...(await this.prefs()), ...rest };
 		const value = JSON.stringify(next);
 		await this.prisma.setting.upsert({
 			where: { key: PREFS_KEY },

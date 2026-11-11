@@ -45,9 +45,12 @@ describe("isNewer", () => {
 		expect(isNewer("0.5.0", "0.5.0")).toBe(false);
 		expect(isNewer("0.4.9", "0.5.0")).toBe(false);
 	});
-	it("is false when either side is not a plain x.y.z", () => {
-		expect(isNewer("0.6.0-rc.1", "0.5.0")).toBe(false);
-		expect(isNewer("0.6.0", "0.0.0-dev")).toBe(false);
+	it("sorts a prerelease below its release and is false when either side is not a version", () => {
+		expect(isNewer("0.6.0-rc.1", "0.5.0")).toBe(true);
+		expect(isNewer("0.6.0-rc.1", "0.6.0")).toBe(false);
+		expect(isNewer("0.6.0", "0.6.0-nightly.20261111.1")).toBe(true);
+		expect(isNewer("0.6.0", "dev")).toBe(false);
+		expect(isNewer("latest", "0.5.0")).toBe(false);
 	});
 });
 

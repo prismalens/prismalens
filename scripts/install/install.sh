@@ -218,11 +218,12 @@ trap 'rm -rf "$staging"' EXIT INT TERM
 
 # The newest release with its archives attached. build-standalone-cli.yml builds them for
 # about 20 minutes after a release publishes, so fall back to the one before.
+# 30 releases, because up to 10 nightly prereleases sit among them (nightly.yml prunes the rest).
 if [ -n "$version" ]; then
 	fetch "${base_url}/v${version}/SHA256SUMS" "$staging/SHA256SUMS" || fail "PrismaLens ${version} has no installer archives"
 else
 	step "Finding the newest release"
-	fetch "${api}/releases?per_page=5" "$staging/releases.json" || fail "Couldn't reach GitHub. Pass --version to install a known version."
+	fetch "${api}/releases?per_page=30" "$staging/releases.json" || fail "Couldn't reach GitHub. Pass --version to install a known version."
 	# The API returns one line of JSON: split it per field so every tag is seen,
 	# newest first. Plain x.y.z only, which also skips pre-releases.
 	tags=$(tr ',{' '\n\n' <"$staging/releases.json" | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"[]}[:space:]]*$/\1/p')

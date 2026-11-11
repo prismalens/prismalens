@@ -26,6 +26,8 @@
 
 import {
 	doNotTrack,
+	effectiveUpdateChannel,
+	installChannel,
 	isNewer,
 	isStale,
 	readCache,
@@ -110,11 +112,22 @@ export function updateNotice(options: {
 		return { line: null, refresh: Promise.resolve() };
 	}
 
-	const cache = readCache(workspaceDir);
+	// A cache for the other channel reads as null, so switching never shows the old channel's offer.
+	const channel = effectiveUpdateChannel(
+		workspaceDir,
+		installChannel(env),
+		env,
+	);
+	const cache = readCache(workspaceDir, channel);
 	const line = noticeFor(cache?.latest ?? null, current);
 	if (!isStale(cache, now)) return { line, refresh: Promise.resolve() };
 
-	const refresh = refreshUpdateCache(workspaceDir, fetchImpl).catch(() => {
+	const refresh = refreshUpdateCache(
+		workspaceDir,
+		fetchImpl,
+		Date.now(),
+		channel,
+	).catch(() => {
 		// Already fail-silent one level down; this keeps the promise safe to
 		// leave unawaited whatever a future fetch implementation does.
 	});

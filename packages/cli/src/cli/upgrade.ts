@@ -10,7 +10,12 @@
 
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import type { InstallChannel } from "@prismalens/config";
+import {
+	type InstallChannel,
+	isExactVersion,
+	NIGHTLY_NPM_ONLY,
+	type UpdateChannel,
+} from "@prismalens/config";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
@@ -77,6 +82,57 @@ export function switchBackFor(
 	};
 }
 
+/** Whether `--version` may name `version` on this install channel. */
+export function pinnedVersionValid(
+	version: string,
+	channel: InstallChannel,
+): boolean {
+	if (channel === "npm") return isExactVersion(version);
+	return /^\d+\.\d+\.\d+$/.test(version);
+}
+
+/**
+ * The release channel this upgrade follows. `requested` (`--channel`) is
+ * validated and saved to the workspace first; a saved nightly on a non-npm
+ * install falls back to stable, with a note.
+ */
+export function resolveUpdateChannel(
+	config: Pick<
+		Config,
+		"readUpdateChannel" | "writeUpdateChannel" | "nightlyBlockedBy"
+	>,
+	workspace: string,
+	channel: InstallChannel,
+	requested: string | undefined,
+	env: NodeJS.ProcessEnv = process.env,
+): { channel: UpdateChannel; note?: string } | { error: string } {
+	if (requested !== undefined) {
+		const wanted = requested.trim().toLowerCase();
+		if (wanted !== "stable" && wanted !== "nightly")
+			return {
+				error: `--channel takes stable or nightly, not "${requested}".`,
+			};
+		if (wanted === "nightly" && config.nightlyBlockedBy(channel))
+			return { error: NIGHTLY_NPM_ONLY };
+		config.writeUpdateChannel(workspace, wanted);
+		const effective = config.readUpdateChannel(workspace, env);
+		return {
+			channel: effective,
+			note:
+				effective === wanted
+					? `Release channel set to ${wanted}.`
+					: `Release channel saved as ${wanted}, but PRISMALENS_UPDATE_CHANNEL=${effective} overrides it while it is set.`,
+		};
+	}
+	const saved = config.readUpdateChannel(workspace, env);
+	if (saved === "nightly" && config.nightlyBlockedBy(channel))
+		return {
+			channel: "stable",
+			note: `This copy was installed with ${channel}, so it follows stable. ${NIGHTLY_NPM_ONLY}`,
+		};
+	return { channel: saved };
+}
+
 /** argv to run for `channel`, or null when the user has to act (desktop). */
 export function upgradeArgv(
 	channel: InstallChannel,
@@ -125,6 +181,11 @@ export default defineCommand({
 			type: "string",
 			description: "Install this version instead of the newest",
 		},
+		channel: {
+			type: "string",
+			description:
+				"Follow this release channel from now on: stable (the default) or nightly (npm installs only)",
+		},
 		check: {
 			type: "boolean",
 			description: "Only say whether a newer version exists",
@@ -142,12 +203,31 @@ export default defineCommand({
 		)) as typeof import("@prismalens/config");
 		const current = cliVersion();
 		const channel = config.installChannel();
+		// The service runs this install whatever workspace it serves, so its
+		// workspace is the one trialled and whose channel counts; `pl upgrade` takes no --workspace (#673 w54).
+		const service = config.installedService();
+		const workspace = service?.workspace ?? config.getAppDataDir();
+
+		const chosen = resolveUpdateChannel(
+			config,
+			workspace,
+			channel,
+			args.channel === undefined ? undefined : String(args.channel),
+		);
+		if ("error" in chosen) {
+			consola.error(chosen.error);
+			process.exit(1);
+		}
+		if (chosen.note) consola.info(chosen.note);
+		const updateChannel = chosen.channel;
 
 		const pinned = args.version ? String(args.version).replace(/^v/, "") : null;
-		// Plain x.y.z only: the installer channel puts it into a shell command.
-		if (pinned && !/^\d+\.\d+\.\d+$/.test(pinned)) {
+		// npm takes any exact version; the installer puts it into a shell command, so x.y.z only there.
+		if (pinned && !pinnedVersionValid(pinned, channel)) {
 			consola.error(
-				`--version takes a plain version like 0.5.1, not "${pinned}".`,
+				channel === "npm"
+					? `--version takes an exact version like 0.5.1 or 0.5.2-nightly.20261111.1, not "${pinned}".`
+					: `--version takes a plain version like 0.5.1, not "${pinned}".`,
 			);
 			process.exit(1);
 		}
@@ -177,15 +257,23 @@ export default defineCommand({
 			}
 			target = pinned;
 		} else {
-			const latest = await fetchLatestVersion();
+			const latest = await fetchLatestVersion(fetch, updateChannel);
 			if (!latest) {
 				consola.error(
-					"Couldn't reach GitHub to find the newest release. Pass --version to pick one.",
+					`Couldn't reach ${updateChannel === "nightly" ? "npm" : "GitHub"} to find the newest release. Pass --version to pick one.`,
 				);
 				process.exit(1);
 			}
 			if (!isNewer(latest, current)) {
-				consola.success(`PrismaLens ${current} is the newest release.`);
+				const note =
+					updateChannel === "stable"
+						? config.leavingNightlyNote(current, latest)
+						: null;
+				if (note) consola.info(note);
+				else
+					consola.success(
+						`PrismaLens ${current} is the newest ${updateChannel} release.`,
+					);
 				return;
 			}
 			if (channel !== "npm" && !(await releaseReady(latest))) {
@@ -201,10 +289,11 @@ export default defineCommand({
 			channel,
 			process.platform,
 			pinned ?? undefined,
+			updateChannel,
 		);
 		if (args.check) {
 			consola.info(
-				`${target} is available (you have ${current}, installed with ${channel}). Upgrade with: pl upgrade${pinned ? ` --version ${pinned}` : ""}`,
+				`${target} is available on the ${updateChannel} channel (you have ${current}, installed with ${channel}). Upgrade with: pl upgrade${pinned ? ` --version ${pinned}` : ""}`,
 			);
 			return;
 		}
@@ -216,11 +305,7 @@ export default defineCommand({
 		}
 
 		// A background service on this workspace is stopped for the upgrade and started again after (#732).
-		// The service runs this install whatever workspace it serves, so its
-		// workspace is the one trialled; `pl upgrade` takes no --workspace (#673 w54).
-		const service = config.installedService();
 		const kind = config.serviceManagerKind();
-		const workspace = service?.workspace ?? config.getAppDataDir();
 		const uid = process.getuid?.() ?? 0;
 		const viaService = kind !== null && service !== null;
 		const startService = () =>

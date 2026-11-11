@@ -689,17 +689,15 @@ export function resolveBuildSha({ env = process.env, runGit = null } = {}) {
 
 /**
  * Determine which npm dist-tag to publish to.
- * Explicit `--tag <tag>` wins. If omitted, a prerelease version string
- * (e.g. `0.5.0-rc.0`) sets the tag (e.g. "rc"); otherwise publishing
- * defaults to "latest". Fails closed if the version contains a prerelease
- * indicator ('-') but no tag could be resolved, rather than publishing to
- * "latest".
+ * Explicit `--tag <tag>` wins, except that a prerelease never goes to "latest".
+ * If omitted, a prerelease version string (e.g. `0.5.0-rc.0`) sets the tag
+ * (e.g. "rc"); otherwise publishing defaults to "latest". Fails closed if the
+ * version contains a prerelease indicator ('-') but no tag could be resolved.
  */
 export function resolvePublishTag(options = {}) {
 	const explicit =
 		options.tag ??
 		(options.tagArg !== undefined ? options.tagArg : opt("--tag", null));
-	if (explicit) return explicit;
 
 	const version =
 		options.version ??
@@ -711,6 +709,14 @@ export function resolvePublishTag(options = {}) {
 				return "";
 			}
 		})();
+
+	if (explicit) {
+		if (explicit === "latest" && version.includes("-"))
+			throw new Error(
+				`Refusing to publish prerelease version "${version}" to dist-tag "latest".`,
+			);
+		return explicit;
+	}
 
 	if (version.includes("-")) {
 		const prerelease = version.split("-")[1] ?? "";
