@@ -782,6 +782,12 @@ export function deriveTranscript(
 	/** Which group lists each call: a late result or a re-announced call joins it (#673 w5-1). */
 	const callGroup = new Map<string, OpenGroup>();
 	const delegated = new Set<string>();
+	// A tree message's own line says it; the operator message that carried it is not drawn twice (#1024).
+	const carried = new Set(
+		events.flatMap((e) =>
+			e.kind === "thread_message" && e.messageId ? [e.messageId] : [],
+		),
+	);
 	const queued = new Map<
 		string,
 		Extract<CanonicalEvent, { kind: "message_queued" }>
@@ -952,6 +958,7 @@ export function deriveTranscript(
 				break;
 			}
 			case "operator_message": {
+				if (event.messageId && carried.has(event.messageId)) break;
 				closeGroup();
 				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).

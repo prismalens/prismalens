@@ -8,6 +8,7 @@ import {
 	fidelityAccess,
 	type InvestigationWithRelations,
 	isRunStateLive,
+	type LinkTarget,
 	modelSubstituted,
 	pendingAsks,
 	type RunState,
@@ -50,6 +51,12 @@ import { WhyCard } from "@/components/overview/WhyCard";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
+import {
+	hasDesktopBrowser,
+	hrefOf,
+	placeOf,
+} from "@/components/thread/panel/panel-links";
+import { ThreadTab } from "@/components/thread/panel/ThreadTab";
 import { SubagentList } from "@/components/thread/StatusBox";
 import { type PageSlots, usePageSlots } from "@/components/thread/slots";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
@@ -58,6 +65,7 @@ import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
+import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { compose } from "@/lib/compose";
 import { desktopBridge } from "@/lib/desktop";
@@ -486,6 +494,58 @@ export function RunPage() {
 		setPanel(true);
 	}, [setPanel, setTab]);
 
+	const threadContext = useThreadContext(inv?.id ?? null, live);
+	const [browserOpened, setBrowserOpened] = useState(false);
+	const transcriptLinks = useMemo(() => {
+		if (!inv) return undefined;
+		const here = `/incidents/${incident.id}/conversation`;
+		return {
+			threadId: inv.id,
+			href: (t: LinkTarget) => hrefOf(t, here),
+			open: (t: LinkTarget) => {
+				const place = placeOf(t, hasDesktopBrowser());
+				switch (place.to) {
+					case "panel":
+						if (t.type === "file")
+							return openFile(
+								{
+									repo: t.repo,
+									sha: t.sha,
+									path: t.path,
+									line: t.line ?? null,
+									end: t.end ?? t.line ?? null,
+								},
+								"transcript",
+							);
+						setTab(t.type === "diff" ? "changes" : "steps");
+						return setPanel(true);
+					case "thread":
+						return void navigate({
+							to: "/threads/$id",
+							params: { id: place.id },
+						});
+					case "incident":
+						return void navigate({
+							to: "/incidents/$id",
+							params: { id: place.id },
+						});
+					case "subagent":
+						return openSubagent(place.sessionId);
+					case "artifact":
+						return document
+							.querySelector(`[data-artifact-id="${CSS.escape(place.id)}"]`)
+							?.scrollIntoView({ block: "center" });
+					case "browser":
+						desktopBridge()?.browser?.open(place.href);
+						setBrowserOpened(true);
+						setTab("browser");
+						return setPanel(true);
+					case "tab":
+						window.open(place.href, "_blank", "noreferrer");
+				}
+			},
+		};
+	}, [inv, incident.id, openFile, setTab, setPanel, navigate, openSubagent]);
 	const report = inv?.report;
 	// A chat's answer is its drafted report's summary, in the transcript itself (#1020).
 	const reportTitle =
@@ -872,6 +932,7 @@ export function RunPage() {
 							summaryAbove={incidentThread}
 							runId={live ? inv.id : undefined}
 							onOpenSubagent={openSubagent}
+							links={transcriptLinks}
 						/>
 					)}
 				</div>
@@ -900,6 +961,16 @@ export function RunPage() {
 							)
 						}
 						title={chat ? "Question details" : `${name} details`}
+						thread={(steps) => (
+							<ThreadTab
+								threadId={inv.id}
+								context={threadContext.data}
+								live={live}
+								session={inv.session}
+								steps={steps}
+							/>
+						)}
+						browser={browserOpened}
 						tab={tab}
 						onTab={setTab}
 						onClose={closePanel}
@@ -913,9 +984,9 @@ export function RunPage() {
 									</div>
 								)}
 								{overview}
-								{!live && <KeptWorkspaces runId={inv.id} />}
 							</>
 						}
+						changesTop={!live && <KeptWorkspaces runId={inv.id} />}
 						contextTop={
 							!chat && (
 								<RunRunbooks

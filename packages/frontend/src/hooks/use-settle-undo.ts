@@ -12,7 +12,12 @@ export interface SettleVars {
 	restore?: SettledState[];
 }
 interface SettleOpts {
-	onSuccess?: (out: { ids: string[]; previous: SettledState[] }) => void;
+	onSuccess?: (out: {
+		ids: string[];
+		previous: SettledState[];
+		/** The server's end of the Undo window (#1024); absent before Surface F, which then uses UNDO_MS. */
+		undoUntil?: string;
+	}) => void;
 	onError?: (err: unknown) => void;
 }
 export interface SettleCall {
@@ -24,6 +29,8 @@ export interface UndoEntry {
 	title: string;
 	previous?: SettledState[];
 	restoring?: boolean;
+	/** When Undo closes, from the server, never a timer started on arrival. */
+	until?: number;
 }
 export interface SettleUndo {
 	undo: UndoEntry | null;
@@ -44,7 +51,7 @@ export function useSettleUndo(
 		if (!undo?.previous || undo.restoring) return;
 		const t = window.setTimeout(
 			() => setUndo((u) => (u === undo ? null : u)),
-			UNDO_MS,
+			undo.until ? Math.max(0, undo.until - Date.now()) : UNDO_MS,
 		);
 		return () => window.clearTimeout(t);
 	}, [undo]);
@@ -56,8 +63,16 @@ export function useSettleUndo(
 		mutate(
 			{ id, settled: true },
 			{
-				onSuccess: ({ previous }) =>
-					setUndo((u) => (u?.id === id ? { ...u, previous } : u)),
+				onSuccess: ({ previous, undoUntil }) =>
+					setUndo((u) =>
+						u?.id === id
+							? {
+									...u,
+									previous,
+									...(undoUntil ? { until: Date.parse(undoUntil) } : {}),
+								}
+							: u,
+					),
 				onError: () => setUndo((u) => (u?.id === id && !u.previous ? null : u)),
 			},
 		);

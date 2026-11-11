@@ -119,7 +119,10 @@ export function RunDetailsPanel({
 	subagent,
 	thread,
 	browser,
+	changesTop,
 }: {
+	/** Above the files and diff: the run's kept workspaces (#1024 moved them here from Summary). */
+	changesTop?: ReactNode;
 	/** One sub-agent's view, shown in place of the tabs (#1025). */
 	subagent?: ReactNode;
 	/** An incident thread's impact, fixes, finding and changes, beside the transcript (#1020). */
@@ -201,6 +204,7 @@ export function RunDetailsPanel({
 			(thread?.(stepList) ?? <PanelStack>{stepList}</PanelStack>)
 		) : current === "changes" ? (
 			<div className="flex min-h-0 flex-1 flex-col">
+				{changesTop && <div className="shrink-0 px-3 pt-2.5">{changesTop}</div>}
 				<fieldset
 					aria-label="Show"
 					className="m-0 flex min-w-0 shrink-0 gap-1 border-0 px-3 pt-2.5 pb-0"
