@@ -266,6 +266,27 @@ describe("resolveCall", () => {
 		const resolved = resolveCall(view, "non_existent_tool", {});
 		expect(resolved).toBeUndefined();
 	});
+
+	it("resolves a bare legacy name (incident_get) to the pl_ tool (#1101)", () => {
+		const tools = makeFakeTools();
+		const view = runView(tools, { search: false });
+		const resolved = resolveCall(view, "incident_get", { number: 42 });
+		expect(resolved).toBeDefined();
+		expect(resolved?.tool.name).toBe("pl_incident_get");
+		expect(resolved?.args).toEqual({ number: 42 });
+	});
+
+	it("resolves pl_tools_call with a bare target name to the pl_ target (#1101)", () => {
+		const tools = makeFakeTools();
+		const view = runView(tools, { search: true });
+		const resolved = resolveCall(view, TOOLS_CALL, {
+			name: "investigations_search",
+			arguments: { query: "DB" },
+		});
+		expect(resolved).toBeDefined();
+		expect(resolved?.tool.name).toBe("pl_investigations_search");
+		expect(resolved?.args).toEqual({ query: "DB" });
+	});
 });
 
 describe("act tools stay out of search (#1024)", () => {
