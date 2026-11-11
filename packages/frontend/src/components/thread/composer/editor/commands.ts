@@ -147,7 +147,14 @@ export function replaceChip(
 	else tr.setMeta("addToHistory", false);
 	const made = make(state);
 	if (made) tr.replaceWith(pos, pos + size, made);
-	else tr.delete(pos, pos + size);
+	else {
+		// A removed chip takes the space that was inserted after it.
+		const after = state.doc.textBetween(
+			pos + size,
+			Math.min(pos + size + 1, state.doc.content.size),
+		);
+		tr.delete(pos, pos + size + (after === " " ? 1 : 0));
+	}
 	view.dispatch(tr);
 	return true;
 }

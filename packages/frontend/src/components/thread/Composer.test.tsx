@@ -479,7 +479,7 @@ describe("the one composer (#1020)", () => {
 		expect(onSend).toHaveBeenCalledTimes(2);
 	});
 
-	it.skip("clears only the files a deferred send carried, even when the text changed meanwhile (implementation bug: Composer.tsx clears initial.current on mount before useEditor creates editor)", async () => {
+	it("clears only the files a deferred send carried, even when the text changed meanwhile", async () => {
 		let settle!: (val: "sent" | "cancelled") => void;
 		const settled = new Promise<"sent" | "cancelled">((resolve) => {
 			settle = resolve;
@@ -517,7 +517,8 @@ describe("the one composer (#1020)", () => {
 			settle("sent");
 			await settled;
 		});
-		expect(getText(box)).toBe("something else");
+		// The chip added after the send stays inline; the sent one and its space are gone.
+		expect(getText(box)).toBe("[later.log] something else");
 		expect(
 			Array.from(
 				container.querySelectorAll('[data-testid="composer-file"]'),

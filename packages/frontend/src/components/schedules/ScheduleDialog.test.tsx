@@ -112,7 +112,7 @@ const send = () =>
 		)?.click(),
 	);
 async function typeIn(el: Element | null, text: string) {
-	if (!el) return;
+	if (!el) throw new Error("No composer input to type into");
 	const editor = (
 		el as HTMLElement & { editor?: import("@tiptap/core").Editor }
 	).editor;

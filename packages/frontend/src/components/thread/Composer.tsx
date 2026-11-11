@@ -867,8 +867,19 @@ export function Composer({
 	};
 
 	const clear = (sent: ComposerDoc, sentKeys: Set<string>) => {
-		// A deferred send that lands later clears the box only if it still holds what was sent.
+		// A deferred send that lands after more editing clears only the files it carried.
 		if (sameDoc(docNow.current, sent)) setContent(emptyDoc());
+		else
+			for (const key of Array.from(sentKeys)) {
+				const v = view();
+				if (v)
+					replaceChip(
+						v,
+						(a) => a.chip === "file" && a.key === key,
+						() => null,
+						false,
+					);
+			}
 		if (scope)
 			for (const key of Array.from(filesNow.current.keys()))
 				if (sentKeys.has(key) || !docHasFile(docNow.current, key))

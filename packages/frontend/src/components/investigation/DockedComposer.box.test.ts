@@ -186,8 +186,8 @@ afterEach(async () => {
 });
 
 describe("the box's image previews (R4.3)", () => {
-	it.skip(
-		"keeps a shown thumbnail's URL when another file is added, and revokes each on remove and unmount (implementation bug: Composer does not revoke preview on chip remove to allow undo, only revoking on unmount)",
+	it(
+		"keeps each thumbnail's URL while its chip is removed, so undo can bring it back, and revokes both on unmount",
 		async () => {
 			let n = 0;
 			vi.spyOn(URL, "createObjectURL").mockImplementation(() => `blob:${++n}`);
@@ -212,7 +212,8 @@ describe("the box's image previews (R4.3)", () => {
 			await act(async () => {
 				(container.querySelector('[aria-label="Remove one.png"]') as HTMLButtonElement).click();
 			});
-			expect(revoke.mock.calls).toEqual([["blob:1"]]);
+			expect(container.querySelector('[aria-label="Remove one.png"]')).toBeNull();
+			expect(revoke).not.toHaveBeenCalled();
 
 			await act(async () => root.unmount());
 			expect(revoke.mock.calls).toEqual([["blob:1"], ["blob:2"]]);
@@ -302,8 +303,8 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 		expect(investigates.onSend).toHaveBeenCalledTimes(1);
 	});
 
-	it.skip(
-		"a removed prefill file is reported back, so a remount does not bring it back (implementation bug: Composer.tsx clears initial.current on mount before useEditor creates editor)",
+	it(
+		"a removed prefill file is reported back, so a remount does not bring it back",
 		async () => {
 			const onFilesChange = vi.fn();
 			const a = new File(["a"], "a.log");
