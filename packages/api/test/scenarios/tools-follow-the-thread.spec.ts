@@ -180,6 +180,10 @@ function inputFor(tool: string, run: Seeded) {
 		case "pr_watch":
 		case "pr_unwatch":
 			return { prId: "none", until: "merged" };
+		case "cron_create":
+			return { schedule: "0 9 * * *", prompt: "Check the cart rollout" };
+		case "cron_delete":
+			return { id: "none" };
 		case "secret_request":
 			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:

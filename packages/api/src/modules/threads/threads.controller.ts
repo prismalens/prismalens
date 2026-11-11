@@ -17,7 +17,7 @@ import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { ThreadContextService } from "./thread-context.service.js";
-import { ThreadLifecycleService } from "./thread-lifecycle.js";
+import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { ThreadsService } from "./threads.service.js";
 
 /** The device may start, continue and stop runs: the host's session, or a device paired to. */

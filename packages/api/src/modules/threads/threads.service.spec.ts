@@ -457,10 +457,11 @@ describe("ThreadsService (#1020)", () => {
 			expect(arg.data.updatedAt).toBe(updatedAt);
 			expect(arg.data.settledAt).toBeInstanceOf(Date);
 		}
-		expect(updateMany).toHaveBeenCalledWith({
-			where: { id: { in: ["a", "b"] } },
-			data: { teardownAt: expect.any(Date) },
-		});
+		const teardowns = updateMany.mock.calls
+			.map((c: unknown[]) => c[0] as { where: { id: string }; data: { teardownAt?: Date; updatedAt?: Date } })
+			.filter((c: { data: object }) => "teardownAt" in c.data);
+		expect(teardowns.map((c: { where: { id: string } }) => c.where.id)).toEqual(["a", "b"]);
+		for (const c of teardowns) expect(c.data.updatedAt).toBe(updatedAt);
 	});
 
 	it("shows a row with an unknown level as none, and an investigation kind as such", () => {

@@ -72,7 +72,7 @@ export default defineConfig({
 				"src/modules/threads/pr-feed.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/pr-feed.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/settled.ts": NEW_CODE_THRESHOLD,
-				"src/modules/threads/thread-lifecycle.ts": NEW_CODE_THRESHOLD,
+				"src/modules/threads/thread-lifecycle.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/cron/cron.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/cron.ts": NEW_CODE_THRESHOLD,
 				// #724 and #1024 E

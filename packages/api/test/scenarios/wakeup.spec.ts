@@ -4,6 +4,7 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type FakeAlertmanager, startFakeAlertmanager } from "../../../../scripts/fakes/fake-alertmanager.mjs";
+import type { ThreadLifecycleService } from "../../src/modules/threads/thread-lifecycle.service.js";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
 const pl = new ScenarioApp({ mcp: true });
@@ -56,7 +57,7 @@ describe("Walk: the agent wakes its own thread later (#1024 spec B)", () => {
 		expect(said).toContain("Heard: The wake you scheduled (wakeup_schedule) is due: Check the rollout of revision 42");
 	}, 180_000);
 
-	it("Given a thread with its agent's wake pending, When the user settles it, Then the wake is cancelled; and a wake left on a settled or stopped thread never takes it up again", async () => {
+	it("Given a thread with its agent's wake pending, When the user settles it, Then the wake waits out Undo's window and is then cancelled; and a wake left on a settled or stopped thread never takes it up again", async () => {
 		await pl.serviceWithRepo("settled");
 		const alert = am.fire({
 			labels: { alertname: "SettledSlow fake-session:wakeup", service: "settled", severity: "medium" },
@@ -73,7 +74,15 @@ describe("Walk: the agent wakes its own thread later (#1024 spec B)", () => {
 		const pending = () => db.threadWake.findMany({ where: { investigationId: run.id, kind: "agent", state: "pending" } });
 		expect(await pending()).toHaveLength(1);
 
-		await pl.api(`/threads/${run.id}/settle`, { method: "POST", body: { settled: true } });
+		const settled = (await pl.api(`/threads/${run.id}/settle`, { method: "POST", body: { settled: true } })) as {
+			undoUntil: string;
+		};
+		// Inside Undo's window the wake stays; the teardown after it ends it (#1024 surface F).
+		expect(await pending()).toHaveLength(1);
+		const { ThreadLifecycleService: Lifecycle } = await import("../../src/modules/threads/thread-lifecycle.service.js");
+		const lifecycle = pl.resolve<ThreadLifecycleService>(Lifecycle);
+		if (!lifecycle) throw new Error("no lifecycle service");
+		await lifecycle.teardownDue(new Date(Date.parse(settled.undoUntil) + 1));
 		expect(await pending()).toEqual([]);
 
 		// A wake that slipped past is ended at fire time, for a settled thread and for a stopped one.

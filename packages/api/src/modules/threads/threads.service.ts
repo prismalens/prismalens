@@ -61,7 +61,7 @@ import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
-import { ThreadLifecycleService } from "./thread-lifecycle.js";
+import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { isUnseen, threadSection, unitsOf } from "./thread-sections.js";
 import { renameThread } from "./thread-titles.js";
 
@@ -751,11 +751,8 @@ export class ThreadsService {
 			prior,
 		);
 		// A thread settled before keeps its own teardown, as Undo keeps its own state.
-		const fresh = rows.filter((r) => !isSettled(r)).map((r) => r.id);
-		await this.prisma.investigation.updateMany({
-			where: { id: { in: fresh } },
-			data: { teardownAt: undoUntil },
-		});
+		for (const r of rows.filter((x) => !isSettled(x)))
+			await this.setTeardown(r.id, undoUntil, r.updatedAt);
 		return {
 			ids,
 			previous: rows.map((r) => ({
@@ -801,7 +798,7 @@ export class ThreadsService {
 			const back = restore.filter((r) => inScope.has(r.id));
 			const states = await this.prisma.investigation.findMany({
 				where: { id: { in: back.map((r) => r.id) } },
-				select: { id: true, settledAt: true },
+				select: { id: true, settledAt: true, updatedAt: true },
 			});
 			for (const s of states) prior.set(s.id, s.settledAt);
 			await this.writeSettled(
@@ -811,19 +808,26 @@ export class ThreadsService {
 				})),
 				prior,
 			);
-			await this.prisma.investigation.updateMany({
-				where: { id: { in: back.map((r) => r.id) } },
-				data: { teardownAt: null },
-			});
+			for (const s of states) await this.setTeardown(s.id, null, s.updatedAt);
 			return { ids: block, previous: [], undoUntil: null, ended: null };
 		}
 		// Unsettle with no states to restore clears only the thread named, never its block.
 		await this.writeSettled([{ id, settledAt: null }], prior);
+		const named = rows.find((r) => r.id === id);
+		if (named) await this.setTeardown(id, null, named.updatedAt);
+		return { ids: block, previous: [], undoUntil: null, ended: null };
+	}
+
+	/** Settling never moves `updatedAt`: the feed's order and the settled test both read it. */
+	private async setTeardown(
+		id: string,
+		at: Date | null,
+		updatedAt: Date,
+	): Promise<void> {
 		await this.prisma.investigation.updateMany({
 			where: { id },
-			data: { teardownAt: null },
+			data: { teardownAt: at, updatedAt },
 		});
-		return { ids: block, previous: [], undoUntil: null, ended: null };
 	}
 
 	rename(id: string, title: string): Promise<{ id: string; title: string }> {

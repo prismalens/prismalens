@@ -22,15 +22,15 @@ import {
 	GIT_PROBE_TIMEOUT_MS,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
-import type { PrismaService } from "../../core/prisma/prisma.service.js";
-import type { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import {
 	EVENT_BUS,
 	type EventBus,
 } from "../../infrastructure/dispatch/event-bus.js";
 import { releaseSettledWorkspace } from "../../infrastructure/dispatch/investigation-run.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
-import type { InvestigationsService } from "../investigations/investigations.service.js";
+import { InvestigationsService } from "../investigations/investigations.service.js";
 import { type Ended, endedLine, isSettled } from "./settled.js";
 import { recordWatchEvent } from "./thread-watches.service.js";
 
@@ -238,9 +238,17 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 		const line = endedLine(ended);
 		if (line)
 			for (const id of list) {
+				const row = await this.prisma.investigation.findUnique({
+					where: { id },
+					select: { updatedAt: true },
+				});
+				// Keeps `updatedAt`, which the settled test falls back on.
 				await this.prisma.investigation.updateMany({
 					where: { id },
-					data: { endedNote: line },
+					data: {
+						endedNote: line,
+						...(row ? { updatedAt: row.updatedAt } : {}),
+					},
 				});
 				await recordWatchEvent(this.prisma, this.bus, id, {
 					kind: "jobs_ended",
@@ -279,7 +287,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 				if (!row?.teardownAt || row.teardownAt > now) return false;
 				await tx.investigation.update({
 					where: { id },
-					data: { teardownAt: null },
+					data: { teardownAt: null, updatedAt: row.updatedAt },
 				});
 				// Undo or new activity unsettled it: nothing ends.
 				return isSettled(row);

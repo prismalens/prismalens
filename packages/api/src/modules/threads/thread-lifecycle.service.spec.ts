@@ -8,7 +8,7 @@ import { createPairingLink, READ_SCOPE, prismaPairingStore } from "@prismalens/a
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ScenarioApp } from "../../../test/scenarios/support/scenario-app.js";
 import { TreeIo } from "../thread-tree/tree-io.service.js";
-import { ThreadLifecycleService } from "./thread-lifecycle.js";
+import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 
 const pl = new ScenarioApp();
 

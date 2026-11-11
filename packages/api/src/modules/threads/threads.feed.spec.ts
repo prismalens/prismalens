@@ -385,7 +385,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		});
 		expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
 			where: { id: ids[0] },
-			data: { teardownAt: null },
+			data: { teardownAt: null, updatedAt: stamp },
 		});
 		lifecycle.block.mockResolvedValue([]);
 		await expect(service().settle(uuid(), true)).rejects.toMatchObject({
@@ -423,6 +423,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 				if (typeof where.id === "string") {
 					const r = rows.find((x) => x.id === where.id);
 					if (r && "settledAt" in data) r.settledAt = data.settledAt ?? null;
+					if (r && "teardownAt" in data) r.teardownAt = data.teardownAt ?? null;
 					return { count: 1 };
 				}
 				const ids = where.id?.in ?? [];
@@ -525,7 +526,10 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		const own = uuid();
 		lifecycle.block.mockResolvedValue([own]);
 		lifecycle.descendants.mockResolvedValue([]);
-		prisma.investigation.findMany.mockResolvedValue([{ id: own, settledAt: null, lastActivityAt: null, updatedAt: new Date(), teardownAt: null }]);
+		const ownRow = { id: own, settledAt: null, lastActivityAt: null, updatedAt: new Date(), teardownAt: null };
+		prisma.investigation.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+			where.id.in.includes(own) ? [ownRow] : [],
+		);
 		await service().settle(own, false, [
 			{ id: uuid(), settledAt: "2026-11-01T00:00:00.000Z" },
 		]);
@@ -533,10 +537,10 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			.map((c) => c[0])
 			.filter((c) => "settledAt" in ((c as { data?: object }).data ?? {}));
 		expect(settledWrites).toEqual([]);
-		expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
-			where: { id: { in: [] } },
-			data: { teardownAt: null },
-		});
+		const teardownWrites = prisma.investigation.updateMany.mock.calls
+			.map((c) => c[0])
+			.filter((c) => "teardownAt" in ((c as { data?: object }).data ?? {}));
+		expect(teardownWrites).toEqual([]);
 	});
 
 	it("shows the agent's latest sentence as the row's third line", async () => {
