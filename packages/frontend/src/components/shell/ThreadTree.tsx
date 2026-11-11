@@ -347,6 +347,14 @@ function MoreButton({
 	);
 }
 
+/** Left and right arrows fold and open a root; 0 for any other key. */
+const arrow = (key: string): -1 | 0 | 1 =>
+	key === "ArrowLeft"
+		? -1
+		: key.startsWith("Arrow") && key.endsWith("Right")
+			? 1
+			: 0;
+
 /** Hover opens the peek after this long, so a pass of the pointer never flashes it. */
 const PEEK_DELAY_MS = 450;
 
@@ -411,10 +419,10 @@ function TreeRow({
 			e.preventDefault();
 			setPeek(false);
 			setAskOpen(false);
-		} else if (e.key === "ArrowRight" && onToggle && !expanded) {
+		} else if (arrow(e.key) === 1 && onToggle && !expanded) {
 			e.preventDefault();
 			onToggle();
-		} else if (e.key === "ArrowLeft" && onToggle && expanded) {
+		} else if (arrow(e.key) === -1 && onToggle && expanded) {
 			e.preventDefault();
 			onToggle();
 		} else if (entry && (e.key === "y" || e.key === "Y")) {
