@@ -351,6 +351,27 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 		expect(tripped.guardTripped).toBe("test");
 	});
 
+	it("loop guard starts, with no earlier streak, on a failure that follows a pending poll of the same head", () => {
+		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
+		cur = diff(
+			cur,
+			emptySnap({
+				headSha: SHA_A,
+				runs: [{ name: "test", state: "pending", headSha: SHA_A }],
+			}),
+		).cursor;
+		expect(cur.guard).toBeNull();
+
+		cur = diff(
+			cur,
+			emptySnap({
+				headSha: SHA_A,
+				runs: [{ name: "test", state: "failing", headSha: SHA_A }],
+			}),
+		).cursor;
+		expect(cur.guard).toEqual({ key: "status:test", heads: [SHA_A] });
+	});
+
 	it("loop guard keeps its streak across a head with no run yet, and a pass clears it", () => {
 		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
 		cur = diff(
