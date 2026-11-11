@@ -172,7 +172,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		assertPartialTranscript(all, "toolu_rate");
 
 		const limitEv = all.find((e) => e.kind === "usage_limit");
-		expect(limitEv).toBeDefined();
+		expect(limitEv).toMatchObject({ kind: "usage_limit", mode: "rate_limited" });
 		const limitTs = Date.parse(limitEv!.ts as string);
 		const nextAttemptTs = Date.parse(ses.limit!.nextAttemptAt as string);
 		const diffSeconds = Math.round((nextAttemptTs - limitTs) / 1000);
@@ -325,8 +325,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		assertPartialTranscript(all, "toolu_limit");
 
 		const limitEv = all.find((e) => e.kind === "usage_limit");
-		expect(limitEv).toBeDefined();
-		expect(limitEv).toMatchObject({ window: "session" });
+		expect(limitEv).toMatchObject({ kind: "usage_limit", window: "session" });
 
 		const limitTs = new Date(limitEv!.ts as string);
 		const expectedReset = parseReset(
@@ -383,8 +382,8 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		const { DispatchService } = await import(
 			"../../src/infrastructure/dispatch/dispatch.service.js"
 		);
+		// An unresolved service makes the spy throw, which fails the test.
 		const dispatch = pl.resolve<DispatchService>(DispatchService);
-		expect(dispatch).toBeDefined();
 		const crash = vi
 			.spyOn(dispatch!, "resumeInvestigation")
 			.mockRejectedValueOnce(new Error("crash before admission"));

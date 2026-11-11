@@ -38,9 +38,9 @@ describe("appNodes transcript registry (#1024, #1101)", () => {
 			"resumed",
 			"run_interrupted",
 		] as const;
-		for (const kind of kinds) {
-			expect(hasTranscriptNode(kind, appNodes)).toBe(true);
-		}
+		expect(kinds.map((kind) => hasTranscriptNode(kind, appNodes))).toEqual(
+			kinds.map(() => true),
+		);
 		expect(hasTranscriptNode("turn_usage", appNodes)).toBe(false);
 		expect(hasTranscriptNode("agent_quota", appNodes)).toBe(false);
 	});
