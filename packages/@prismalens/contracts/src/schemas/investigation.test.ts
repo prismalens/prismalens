@@ -16,10 +16,14 @@ import {
 	AnswerAskSchema,
 	CanonicalEventSchema,
 	CulpritSchema,
+	HARNESS_TOOL_STEPS,
 	InvestigationContextSchema,
 	InvestigationJobDataSchema,
 	InvestigationReportSchema,
 	InvestigationSchema,
+	isPlServerName,
+	PL_LEGACY_TOOL_NAMES,
+	plToolName,
 	fidelityAccess,
 	RunFidelitySchema,
 	serviceCheckContext,
@@ -692,5 +696,31 @@ describe("RecommendationWithRelationsSchema (#979)", () => {
 			investigation: { id: base.investigationId, incidentId: null, status: "completed" },
 		});
 		expect(parsed.investigation?.incidentId).toBeNull();
+	});
+});
+
+describe("plToolName, isPlServerName, and HARNESS_TOOL_STEPS (#1101)", () => {
+	it("plToolName maps every PL_LEGACY_TOOL_NAMES entry to pl_+name and leaves pl_cron_list and Bash as they are", () => {
+		for (const name of PL_LEGACY_TOOL_NAMES) {
+			expect(plToolName(name)).toBe(`pl_${name}`);
+		}
+		expect(plToolName("pl_cron_list")).toBe("pl_cron_list");
+		expect(plToolName("Bash")).toBe("Bash");
+	});
+
+	it("isPlServerName is true for prismalens and prismalens-abcdefgh23, false for prismalens-x, my-prismalens, undefined", () => {
+		expect(isPlServerName("prismalens")).toBe(true);
+		expect(isPlServerName("prismalens-abcdefgh23")).toBe(true);
+		expect(isPlServerName("prismalens-x")).toBe(false);
+		expect(isPlServerName("my-prismalens")).toBe(false);
+		expect(isPlServerName(undefined)).toBe(false);
+	});
+
+	it("every HARNESS_TOOL_STEPS key starts with pl_", () => {
+		const keys = Object.keys(HARNESS_TOOL_STEPS);
+		expect(keys.length > 0).toBe(true);
+		for (const key of keys) {
+			expect(key.startsWith("pl_")).toBe(true);
+		}
 	});
 });

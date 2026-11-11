@@ -727,4 +727,132 @@ describe("Transcript spine (#1020)", () => {
 			container.querySelector('[data-testid="transcript-tools"]'),
 		).not.toBeNull();
 	});
+
+	it("renders a long tools group of 12 steps with steps.open = {12} and flagged = {6}: step 6 is rendered, steps 4,5 and 7..9 are folded behind two buttons (#1101)", async () => {
+		const stepsAll = Array.from({ length: 12 }, (_, i) => ({
+			n: i + 1,
+			callId: `call-${i + 1}`,
+			title: `command-${i + 1}`,
+			command: `echo ${i + 1}`,
+			kind: "command" as const,
+			verb: "Ran",
+			ok: true,
+			unfinished: false,
+			output: `output-${i + 1}`,
+			at: "2026-11-03T10:00:00Z",
+			took: 1,
+			input: null,
+		}));
+
+		const item: TranscriptItem = {
+			kind: "tools",
+			key: "tools-long",
+			count: 12,
+			summary: "ran 12 commands",
+			failed: 0,
+			running: 0,
+			rows: [],
+			callIds: stepsAll.map((s) => s.callId),
+		};
+
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={[item]}
+					incidentId="inc-1"
+					agent="Agent"
+					steps={{
+						all: stepsAll,
+						open: new Set<number>([12]),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>([6]),
+						asks: [],
+					}}
+				/>,
+			),
+		);
+
+		// Step 6 is flagged and should be rendered in the document
+		const renderedSteps = Array.from(
+			container.querySelectorAll('[data-testid="step"]'),
+		);
+		const renderedTitles = renderedSteps.map(
+			(el) => el.querySelector('[data-testid="step-title"]')?.textContent,
+		);
+		expect(renderedTitles).toContain("echo 6");
+
+		// Two unfold buttons should exist with the exact requested text
+		const unfoldButtons = Array.from(
+			container.querySelectorAll('[data-testid="steps-unfold"]'),
+		).map((b) => b.textContent);
+
+		expect(unfoldButtons).toEqual([
+			"Steps 4 to 5, 2 more",
+			"Steps 7 to 9, 3 more",
+		]);
+	});
+
+	it("renders a finished turn with data-testid turn-summary exact text and turn-changes with '1 changed file' (#1101)", async () => {
+		const opItem = op("brief", "started", "2026-11-03T10:00:00Z");
+		const toolsItem: TranscriptItem = {
+			kind: "tools",
+			key: "turn-tools",
+			count: 1,
+			summary: "edited a.ts",
+			failed: 0,
+			running: 0,
+			rows: [],
+			callIds: ["c-edit"],
+		};
+		const proseItem: TranscriptItem = {
+			kind: "prose",
+			key: "p-done",
+			text: "Turn finished successfully",
+			at: "2026-11-03T10:02:00Z",
+		};
+
+		const editStep = {
+			n: 1,
+			callId: "c-edit",
+			title: "edit a.ts",
+			command: "edit a.ts",
+			kind: "edit" as const,
+			verb: "Edited",
+			ok: true,
+			unfinished: false,
+			output: "",
+			at: "2026-11-03T10:01:00Z",
+			took: 1,
+			input: null,
+			node: "edit",
+			path: "a.ts",
+			edit: { path: "a.ts", add: 3, del: 1 },
+		};
+
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={[opItem, toolsItem, proseItem]}
+					incidentId="inc-1"
+					agent="Agent"
+					steps={{
+						all: [editStep as never],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [],
+					}}
+				/>,
+			),
+		);
+
+		const summaryEl = container.querySelector('[data-testid="turn-summary"]');
+		expect(summaryEl?.textContent).toBe("Changed 1 file.");
+
+		const changesEl = container.querySelector('[data-testid="turn-changes"]');
+		expect(changesEl).not.toBeNull();
+		expect(changesEl?.textContent).toContain("1 changed file");
+	});
 });
