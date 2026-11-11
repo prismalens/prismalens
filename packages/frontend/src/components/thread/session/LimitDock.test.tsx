@@ -313,6 +313,63 @@ describe("LimitDock actions", () => {
 			container.querySelector('[data-testid="limit-dock-dont-resume"]'),
 		).toBeNull();
 	});
+
+	it("with a draft and onSendNow in resuming state shows limit-dock-send-now Send now and clicking it calls onSendNow once", async () => {
+		const onSendNow = vi.fn();
+		const limit: ThreadLimit = {
+			since: "2026-11-11T15:00:00.000Z",
+			autoResume: true,
+			resetsAt: "2026-11-11T15:43:00.000Z",
+			nextAttemptAt: "2026-11-11T15:45:00.000Z",
+			attempts: 1,
+		};
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={limit}
+					draft="some draft"
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onSendNow={onSendNow}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		const button = container.querySelector(
+			'[data-testid="limit-dock-send-now"]',
+		) as HTMLButtonElement;
+		expect(button.textContent).toBe("Send now");
+		await act(async () => {
+			button.click();
+		});
+		expect(onSendNow).toHaveBeenCalledTimes(1);
+	});
+
+	it("without onSendNow: there is no limit-dock-send-now", async () => {
+		const limit: ThreadLimit = {
+			since: "2026-11-11T15:00:00.000Z",
+			autoResume: true,
+			resetsAt: "2026-11-11T15:43:00.000Z",
+			nextAttemptAt: "2026-11-11T15:45:00.000Z",
+			attempts: 1,
+		};
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={limit}
+					draft="some draft"
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="limit-dock-send-now"]'),
+		).toBeNull();
+	});
 });
 
 describe("autoResumeBody", () => {
