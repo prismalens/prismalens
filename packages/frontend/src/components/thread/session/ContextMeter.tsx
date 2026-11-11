@@ -109,52 +109,50 @@ export function ContextMeter({
 					{percent}%
 				</button>
 			</PopoverTrigger>
-			<PopoverContent
-				align="end"
-				className="grid w-64 gap-2"
-				data-testid="context-meter-popover"
-			>
-				<p className="text-body text-text-1" data-testid="context-meter-line">
-					{meterLine(usage.used, usage.size)}
-				</p>
-				{cache && (
-					<p
-						className="text-meta text-text-3"
-						data-testid="context-meter-cache"
-					>
-						{cache}
+			<PopoverContent align="end" data-testid="context-meter-popover">
+				<div className="grid w-60 gap-2">
+					<p className="text-body text-text-1" data-testid="context-meter-line">
+						{meterLine(usage.used, usage.size)}
 					</p>
-				)}
-				{canCompact && (
-					<form
-						className="grid gap-2"
-						onSubmit={(e) => {
-							e.preventDefault();
-							onCompact?.(compactTakesFocus ? focus : undefined);
-						}}
-					>
-						{compactTakesFocus && (
-							<Textarea
-								value={focus}
-								onChange={(e) => setFocus(e.target.value)}
-								placeholder="What to keep (optional)"
-								aria-label="What to keep"
-								rows={2}
-								maxLength={2000}
-								data-testid="context-meter-focus"
-							/>
-						)}
-						<Button
-							type="submit"
-							variant="secondary"
-							size="sm"
-							disabled={compacting || running}
-							data-testid="context-meter-compact"
+					{cache && (
+						<p
+							className="text-meta text-text-3"
+							data-testid="context-meter-cache"
 						>
-							{compacting ? "Compacting" : "Compact"}
-						</Button>
-					</form>
-				)}
+							{cache}
+						</p>
+					)}
+					{canCompact && (
+						<form
+							className="grid gap-2"
+							onSubmit={(e) => {
+								e.preventDefault();
+								onCompact?.(compactTakesFocus ? focus : undefined);
+							}}
+						>
+							{compactTakesFocus && (
+								<Textarea
+									value={focus}
+									onChange={(e) => setFocus(e.target.value)}
+									placeholder="What to keep (optional)"
+									aria-label="What to keep"
+									rows={2}
+									maxLength={2000}
+									data-testid="context-meter-focus"
+								/>
+							)}
+							<Button
+								type="submit"
+								variant="secondary"
+								size="sm"
+								disabled={compacting || running}
+								data-testid="context-meter-compact"
+							>
+								{compacting ? "Compacting" : "Compact"}
+							</Button>
+						</form>
+					)}
+				</div>
 			</PopoverContent>
 		</Popover>
 	);
