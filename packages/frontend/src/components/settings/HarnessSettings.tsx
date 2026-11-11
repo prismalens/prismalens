@@ -37,7 +37,7 @@ import {
 } from "@/components/agent/AgentPicker";
 import { AddAgentDialog } from "./AddAgentDialog";
 import { agentState, testedHint, versionText } from "./AgentDetail";
-import { AgentThreadsGroup } from "./AgentThreadsSettings";
+import { AgentThreadsGroup, ThreadCapRows } from "./AgentThreadsSettings";
 import {
 	ColdResumeRow,
 	CompactIdleRow,
@@ -574,7 +574,7 @@ function AdvancedSection() {
 	return (
 		<AdvancedFold
 			testId="harness-advanced"
-			description="Claude Code, Codex and OpenCode use these. OpenCode takes depth only."
+			description="Sub-agents: Claude Code, Codex and OpenCode use these; OpenCode takes depth only. Threads: limits on the threads agents start."
 		>
 			<Pool>
 				<SubagentLimitRow
@@ -588,6 +588,9 @@ function AdvancedSection() {
 					description="How many run at once"
 				/>
 			</Pool>
+			<div className="mt-3">
+				<ThreadCapRows />
+			</div>
 		</AdvancedFold>
 	);
 }
