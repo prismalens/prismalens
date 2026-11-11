@@ -169,3 +169,5 @@ so other tools can depend on the same pinned adapters and launch code. For devel
 bundles the agent adapters, including the Claude Agent SDK under Anthropic's
 own terms; NOTICE lists them and their licences, and each release carries
 `THIRD_PARTY_NOTICES.txt` for the code bundled into the dashboard.
+
+<!-- probe -->
