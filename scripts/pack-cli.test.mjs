@@ -73,6 +73,40 @@ test("explicit --tag permits publishing unrecognized prerelease versions", () =>
 	assert.equal(tag, "next");
 });
 
+test("refuses to publish prerelease version to dist-tag latest", () => {
+	assert.throws(
+		() =>
+			resolvePublishTag({
+				tag: "latest",
+				version: "0.5.4-nightly.20261111.812",
+			}),
+		(err) => {
+			assert(err instanceof Error);
+			assert.equal(
+				err.message,
+				'Refusing to publish prerelease version "0.5.4-nightly.20261111.812" to dist-tag "latest".',
+			);
+			return true;
+		},
+	);
+});
+
+test("resolves nightly dist-tag when tag is explicit or omitted for nightly version", () => {
+	assert.equal(
+		resolvePublishTag({
+			tag: "nightly",
+			version: "0.5.4-nightly.20261111.812",
+		}),
+		"nightly",
+	);
+	assert.equal(
+		resolvePublishTag({
+			version: "0.5.4-nightly.20261111.812",
+		}),
+		"nightly",
+	);
+});
+
 test("resolveBuildSha prefers GITHUB_SHA sliced to short sha in CI", () => {
 	const sha = resolveBuildSha({
 		env: { GITHUB_SHA: "1234567890abcdef1234567890abcdef12345678" },

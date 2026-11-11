@@ -36,5 +36,12 @@ describe("upgradeCommand", () => {
 		expect(upgradeCommand("homebrew")).toBe("brew upgrade prismalens");
 		expect(upgradeCommand("scoop")).toBe("scoop update prismalens");
 		expect(upgradeCommand("electron", "darwin", "0.5.1")).toContain("releases/tag/v0.5.1");
+		expect(upgradeCommand("npm", "linux", undefined, "nightly")).toBe(
+			"npm install -g prismalens@nightly",
+		);
+		expect(upgradeCommand("npm", "linux")).toBe("npm install -g prismalens@latest");
+		expect(
+			upgradeCommand("npm", "linux", "0.5.4-nightly.20261111.7", "nightly"),
+		).toBe("npm install -g prismalens@0.5.4-nightly.20261111.7");
 	});
 });
