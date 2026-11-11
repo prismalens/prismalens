@@ -77,6 +77,12 @@ describe("ThreadsService (#1020)", () => {
 		claimDraft: ReturnType<typeof vi.fn>;
 	};
 	let integrations: { getIntegrationsForService: ReturnType<typeof vi.fn> };
+	let lifecycle: {
+		block: ReturnType<typeof vi.fn>;
+		descendants: ReturnType<typeof vi.fn>;
+		preview: ReturnType<typeof vi.fn>;
+		stopRunning: ReturnType<typeof vi.fn>;
+	};
 	const service = () =>
 		new ThreadsService(
 			prisma as never,
@@ -88,9 +94,23 @@ describe("ThreadsService (#1020)", () => {
 			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
 			{ compose: async () => undefined } as never,
 			{ rowGlyphs: async () => new Map() } as never,
+			lifecycle as never,
 		);
 
 	beforeEach(() => {
+		lifecycle = {
+			block: vi.fn(async (id: string) => [id]),
+			descendants: vi.fn(async () => []),
+			preview: vi.fn(async () => ({
+				wakes: 0,
+				watches: 0,
+				crons: 0,
+				children: 0,
+				running: 0,
+				worktrees: [],
+			})),
+			stopRunning: vi.fn(async () => {}),
+		};
 		prisma = {
 			threadWake: { updateMany: vi.fn(async () => ({ count: 0 })) },
 			prWatch: { deleteMany: vi.fn(async () => ({ count: 0 })) },
@@ -310,6 +330,7 @@ describe("ThreadsService (#1020)", () => {
 				{ consume: c } as never,
 				{ compose: async () => undefined } as never,
 				{} as never,
+				{} as never,
 			);
 		const input = {
 			subject: { kind: "none" as const },
@@ -334,6 +355,7 @@ describe("ThreadsService (#1020)", () => {
 			integrations as never,
 			{ consume: async () => { throw new Error("db locked"); } } as never,
 			{ compose: async () => undefined } as never,
+			{} as never,
 			{} as never,
 		);
 		const out = await svc.start({
@@ -390,28 +412,55 @@ describe("ThreadsService (#1020)", () => {
 
 	it("settles every thread of an incident without moving their updatedAt", async () => {
 		const updatedAt = new Date("2026-11-03T00:00:00Z");
-		const findUnique = vi.fn(async (args: { select: object }) =>
-			"updatedAt" in args.select ? { updatedAt } : { incidentId: "inc-1" },
-		);
+		lifecycle.block.mockResolvedValue(["a", "b"]);
+		const findUnique = vi.fn(async ({ where }: { where: { id: string } }) => ({
+			id: where.id,
+			updatedAt,
+			settledAt: null,
+		}));
 		const updateMany = vi.fn(async () => ({ count: 1 }));
 		Object.assign(prisma.investigation, {
 			findUnique,
 			updateMany,
-			findMany: vi.fn(async () => [{ id: "a" }, { id: "b" }]),
+			findMany: vi.fn(async () => [
+				{ id: "a", settledAt: null, lastActivityAt: null, updatedAt, teardownAt: null },
+				{ id: "b", settledAt: null, lastActivityAt: null, updatedAt, teardownAt: null },
+			]),
 		});
 
-		await expect(service().settle("a", true)).resolves.toMatchObject({
+		const res = await service().settle("a", true);
+		expect(res).toMatchObject({
 			ids: ["a", "b"],
+			previous: [
+				{ id: "a", settledAt: null },
+				{ id: "b", settledAt: null },
+			],
+			ended: {
+				wakes: 0,
+				watches: 0,
+				crons: 0,
+				children: 0,
+				running: 0,
+				worktrees: [],
+			},
 		});
+		expect(typeof res.undoUntil).toBe("string");
 
-		expect(updateMany).toHaveBeenCalledTimes(2);
-		for (const [arg] of updateMany.mock.calls as unknown as [
+		const settledCalls = updateMany.mock.calls.filter(
+			(c: unknown[]) => "settledAt" in ((c[0] as { data?: object }).data ?? {}),
+		);
+		expect(settledCalls).toHaveLength(2);
+		for (const [arg] of settledCalls as unknown as [
 			{ where: object; data: { settledAt: Date; updatedAt: Date } },
 		][]) {
-			expect(arg.where).toMatchObject({ updatedAt });
+			expect(arg.where).toMatchObject({ id: expect.any(String), updatedAt });
 			expect(arg.data.updatedAt).toBe(updatedAt);
 			expect(arg.data.settledAt).toBeInstanceOf(Date);
 		}
+		expect(updateMany).toHaveBeenCalledWith({
+			where: { id: { in: ["a", "b"] } },
+			data: { teardownAt: expect.any(Date) },
+		});
 	});
 
 	it("shows a row with an unknown level as none, and an investigation kind as such", () => {
@@ -445,6 +494,9 @@ describe("ThreadsController (#1020)", () => {
 		const routes = new ThreadsController(
 			threads as never,
 			attachments as never,
+			{} as never,
+			{} as never,
+			{} as never,
 			{} as never,
 			{} as never,
 			{} as never,
@@ -490,11 +542,25 @@ describe("ThreadsService.settle (#1020)", () => {
 			[B, null],
 		]);
 		const other = new Map<string, string>();
+		const lifecycle = {
+			block: vi.fn(async (_id: string) => [A, B]),
+			descendants: vi.fn(async () => []),
+			preview: vi.fn(async () => ({
+				wakes: 0,
+				watches: 0,
+				crons: 0,
+				children: 0,
+				running: 0,
+				worktrees: [],
+			})),
+			stopRunning: vi.fn(async () => {}),
+		};
 		const db = {
 			investigation: {
 				findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
 					settledAt.has(where.id)
 						? {
+								id: where.id,
 								incidentId: "inc",
 								updatedAt: stamp,
 								settledAt: settledAt.get(where.id),
@@ -502,20 +568,29 @@ describe("ThreadsService.settle (#1020)", () => {
 						: null,
 				),
 				findMany: vi.fn(async () =>
-					[...settledAt].map(([id, at]) => ({ id, settledAt: at })),
+					[...settledAt].map(([id, at]) => ({
+						id,
+						settledAt: at,
+						lastActivityAt: null,
+						updatedAt: stamp,
+						teardownAt: at ? new Date(stamp.getTime() + 10_000) : null,
+					})),
 				),
 				updateMany: vi.fn(
 					async ({
 						where,
 						data,
 					}: {
-						where: { id: string };
-						data: { settledAt?: Date | null };
+						where: { id: string | { in: string[] } };
+						data: { settledAt?: Date | null; teardownAt?: Date | null };
 					}) => {
-						if (where.id === B) return { count: 0 };
-						other.set("write", "kept");
-						settledAt.set(where.id, data.settledAt ?? null);
-						return { count: 1 };
+						if (typeof where.id === "string") {
+							if (where.id === B) return { count: 0 };
+							other.set("write", "kept");
+							if ("settledAt" in data) settledAt.set(where.id, data.settledAt ?? null);
+							return { count: 1 };
+						}
+						return { count: where.id?.in?.length ?? 0 };
 					},
 				),
 			},
@@ -527,6 +602,7 @@ describe("ThreadsService.settle (#1020)", () => {
 			settledAt,
 			other,
 			db,
+			lifecycle,
 			svc: new ThreadsService(
 				db as never,
 				{} as never,
@@ -537,6 +613,7 @@ describe("ThreadsService.settle (#1020)", () => {
 				{ consume: async () => "none", withDrafts: async () => new Set() } as never,
 				{ compose: async () => undefined } as never,
 				{} as never,
+				lifecycle as never,
 			),
 		};
 	}
@@ -553,7 +630,10 @@ describe("ThreadsService.settle (#1020)", () => {
 		const { svc, settledAt, db } = build();
 		const newer = new Date("2026-11-04T00:00:00Z");
 		const real = db.investigation.updateMany.getMockImplementation() as (
-			args: { where: { id: string }; data: { settledAt?: Date | null } },
+			args: {
+				where: { id: string | { in: string[] } };
+				data: { settledAt?: Date | null; teardownAt?: Date | null };
+			},
 		) => Promise<{ count: number }>;
 		db.investigation.updateMany.mockImplementation(async (args) => {
 			if (args.where.id === B) settledAt.set(A, newer);
@@ -573,5 +653,66 @@ describe("ThreadsService.settle (#1020)", () => {
 			]),
 		).rejects.toMatchObject({ code: "CONFLICT" });
 		expect(settledAt.get(A)).toEqual(stamp);
+	});
+
+	it("a settle whose preview has running > 0 without stopRunning throws CONFLICT with running count", async () => {
+		const { svc, lifecycle } = build();
+		lifecycle.preview.mockResolvedValueOnce({
+			wakes: 0,
+			watches: 0,
+			crons: 0,
+			children: 0,
+			running: 2,
+			worktrees: [],
+		});
+		await expect(svc.settle(A, true)).rejects.toMatchObject({
+			code: "CONFLICT",
+			data: { reason: "running", running: 2 },
+		});
+	});
+
+	it("a settle with something to end and operate: false throws FORBIDDEN", async () => {
+		const { svc, lifecycle } = build();
+		lifecycle.preview.mockResolvedValueOnce({
+			wakes: 1,
+			watches: 0,
+			crons: 0,
+			children: 0,
+			running: 0,
+			worktrees: [],
+		});
+		await expect(svc.settle(A, true, undefined, { operate: false })).rejects.toMatchObject({
+			code: "FORBIDDEN",
+		});
+	});
+
+	it("Undo after the named thread teardown ran throws CONFLICT Already ended", async () => {
+		const { svc, db } = build();
+		const past = new Date("2026-11-01T00:00:00Z");
+		db.investigation.findMany.mockResolvedValueOnce([
+			{
+				id: A,
+				settledAt: stamp,
+				lastActivityAt: null,
+				updatedAt: stamp,
+				teardownAt: past,
+			},
+			{
+				id: B,
+				settledAt: null,
+				lastActivityAt: null,
+				updatedAt: stamp,
+				teardownAt: null,
+			},
+		]);
+		await expect(
+			svc.settle(A, false, [
+				{ id: A, settledAt: null },
+				{ id: B, settledAt: null },
+			]),
+		).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "Already ended",
+		});
 	});
 });
