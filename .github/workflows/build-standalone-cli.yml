@@ -14,6 +14,9 @@ on:
       - "packages/@prismalens/agent-adapters/scripts/**"
       - ".github/workflows/build-standalone-cli.yml"
   # release.yml calls this with the draft release's tag to attach the archives (#717).
+  # Nightly: the macOS, Windows and arm targets a PR no longer builds.
+  schedule:
+    - cron: "31 4 * * *"
   workflow_call:
     inputs:
       release-tag:
@@ -35,18 +38,9 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # A PR builds linux-x64 only; every target runs nightly, on dispatch and in a release.
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x64
-          - os: ubuntu-24.04-arm
-            target: linux-arm64
-          - os: macos-latest
-            target: darwin-arm64
-          - os: macos-15-intel
-            target: darwin-x64
-          - os: windows-2022
-            target: win32-x64
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-latest","target":"linux-x64"}]' || '[{"os":"ubuntu-latest","target":"linux-x64"},{"os":"ubuntu-24.04-arm","target":"linux-arm64"},{"os":"macos-latest","target":"darwin-arm64"},{"os":"macos-15-intel","target":"darwin-x64"},{"os":"windows-2022","target":"win32-x64"}]') }}
     defaults:
       run:
         shell: bash

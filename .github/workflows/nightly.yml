@@ -1,0 +1,242 @@
+# Everything that proves the product against the outside world or on other machines, once a night:
+# the release proofs (`proofs.yml`) and, on dispatch with `live`, the real pinned agent on its free model.
+# Nothing here is a required check; a red night opens or updates one tracking issue (`report`).
+# Release gate: dispatch on `main` with `ref` set to the release PR's base SHA (README.md).
+name: Nightly
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or SHA to prove (default is the branch the run is dispatched on)
+        required: false
+        type: string
+      live:
+        description: Also run the live agent check on the free model (stalls often, #914)
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && format('nightly-{0}', inputs.ref || github.ref) || 'nightly' }}
+  cancel-in-progress: false
+
+env:
+  # The live jobs' model: OpenCode's own free one. Their agent versions are the pins in
+  # scripts/agent-pins.json, which `agent-release-watch.yml` moves (#639, #712, #914).
+  FREE_MODEL: opencode/deepseek-v4.1-flash-free
+
+jobs:
+  proofs:
+    name: Proofs
+    uses: ./.github/workflows/proofs.yml
+    with:
+      ref: ${{ inputs.ref }}
+
+  # One issue holds every red night: found by its exact title, open or closed, so a recurrence reopens it
+  # and a green night closes it. A cancelled or skipped `proofs` counts as red.
+  report:
+    name: Nightly tracking issue
+    needs: proofs
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: nightly-report
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - name: Open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+          PROOFS: ${{ needs.proofs.result }}
+        run: |
+          set -eu
+          title="Nightly CI failing"
+          found=$(gh issue list -R "$REPO" --state all --limit 100 --search "\"$title\" in:title" --json number,title,state)
+          open=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "OPEN")][0].number // empty')
+          closed=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "CLOSED")][0].number // empty')
+          if [ "$PROOFS" = success ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" -R "$REPO" --comment "The nightly proofs passed: $RUN_URL"
+            fi
+            exit 0
+          fi
+          failed=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --jq '.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped" and .name != "Nightly tracking issue") | "- \(.name): \(.conclusion) \(.html_url)"')
+          body="$RUNNER_TEMP/nightly-body.md"
+          {
+            echo "The nightly proofs ended \`$PROOFS\`: $RUN_URL"
+            echo
+            echo "Red jobs:"
+            echo "${failed:-- none listed; the run was cancelled or a job never started}"
+            echo
+            echo "These run outside pull requests and never block one. This issue closes itself on the next green night."
+          } > "$body"
+          if [ -n "$open" ]; then
+            gh issue edit "$open" -R "$REPO" --body-file "$body"
+          elif [ -n "$closed" ]; then
+            gh issue reopen "$closed" -R "$REPO" --comment "Red again: $RUN_URL"
+            gh issue edit "$closed" -R "$REPO" --body-file "$body"
+          else
+            gh issue create -R "$REPO" --title "$title" --body-file "$body"
+          fi
+
+  # The live agent check (#884): the real pinned agent on its free model, on dispatch with `live`.
+  # Release gate: dispatch with `ref` set to the release PR's base SHA (README.md).
+  live-pack:
+    name: "Live: pack npm tarball"
+    if: inputs.live
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Pack tarball
+        run: |
+          mkdir -p /tmp/tarballs
+          node scripts/pack-cli.mjs --out /tmp/tarballs
+          ls -l /tmp/tarballs
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-npm-tarballs
+          path: /tmp/tarballs/*.tgz
+          retention-days: 3
+
+  packed-intake-live:
+    # 3 attempts, passes on at least 2 valid reports; each uploads its paged event
+    # stream, the recording source for #533.
+    name: "Live: alert to report on the free model (2 of 3)"
+    needs: live-pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install the pinned OpenCode
+        run: npm install -g "opencode-ai@$(node -p "require('./scripts/agent-pins.json').pins['opencode-ai']")" && opencode --version
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: live-npm-tarballs
+          path: tarballs
+
+      - name: Three attempts, pass on at least two valid reports
+        env:
+          PACKED_INTAKE_AGENT: live
+          PACKED_INTAKE_REPO: fixture
+          PRISMALENS_HARNESS: opencode
+          PRISMALENS_HARNESS_MODEL: ${{ env.FREE_MODEL }}
+        run: |
+          set -u
+          mkdir -p events
+          passed=0
+          for n in 1 2 3; do
+            echo "::group::attempt $n"
+            if PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
+              PACKED_INTAKE_PORT=$((3102 + n)) \
+              timeout 20m node scripts/packed-intake.mjs tarballs; then
+              passed=$((passed + 1))
+              echo "attempt $n: valid report" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "attempt $n: no valid report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            echo "::endgroup::"
+          done
+          echo "$passed of 3 attempts completed with a valid report" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$passed" -lt 2 ]; then
+            echo "::error::only $passed of 3 attempts completed with a valid report; 2 are needed"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: intake-events-attempt-1
+          path: events/attempt-1.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: intake-events-attempt-2
+          path: events/attempt-2.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: intake-events-attempt-3
+          path: events/attempt-3.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  harness-admission-live:
+    name: "Live: agent qualification (opencode, free model)"
+    if: inputs.live
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the packages the engine imports
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
+
+      - name: Install the pinned OpenCode
+        run: npm install -g "opencode-ai@$(node -p "require('./scripts/agent-pins.json').pins['opencode-ai']")" && opencode --version
+
+      - name: Run the admission script against this checkout
+        env:
+          PRISMALENS_HARNESS_MODEL: ${{ env.FREE_MODEL }}
+        run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"

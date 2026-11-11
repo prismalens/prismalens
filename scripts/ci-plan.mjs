@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Decides what a `CI` run has to run (#1052), so a push that needs nothing starts no runner:
-//   skip    "true": the PR head tree already passed `CI`, or the PR changes only docs.
-//   full    "true": the release-only proofs (the release side checks on all three OSes, the systemd service) run.
-//   agents  "true": the five agent qualification legs run.
+// Decides what a `CI` run has to run (#1052, #1053), so a push that needs nothing starts no runner:
+//   skip    "true": the PR head tree already passed `CI`, or the PR changes only docs. Only `CI gate` runs.
+//   code    "false": only CI-only paths changed, so build, unit tests, the tarball and its smoke are skipped.
+//   e2e     "false": nothing the browser suite boots changed.
+//   intake  "false": nothing the packed tarball's intake and database-upgrade checks read changed.
+//   full    "true": a release PR, or a path the release proofs read; `proofs.yml` runs its OS, service and upgrade-chain proofs.
+//   agents  "true": the agent qualification legs run (`proofs.yml`).
 //   defer   "true": a draft release PR; nothing runs and `CI gate` stays red until it is marked ready.
 // A tier runs unless every changed path is on its safe list, so an unlisted path costs minutes, not a missed check.
-// Anything that is not a pull request (main, the nightly) plans everything.
-// ci.yml's `CI gate` reads these three and lets exactly the matching jobs be skipped.
+// A renamed file counts under both its names. Anything that is not a pull request (main) runs the PR tiers.
+// ci.yml's `CI gate` allows a skip only where the plan says `false` in so many words.
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -21,22 +24,48 @@ const DOCS = [
 	/^\.github\/[^/]+\.md$/,
 ];
 
-/** Paths that cannot change what the tarball does on another OS or under systemd. Any other path turns `full` on. */
-const SAFE_FOR_FULL = [
+/** Repo metadata no job reads. */
+const METADATA = [
 	/\.md$/,
-	/\.(spec|test)\.[cm]?[jt]sx?$/,
 	/^docs\//,
-	/^packages\/(frontend|desktop)\//,
 	/^\.github\/(ISSUE_TEMPLATE\/|assets\/|CODEOWNERS$|dependabot\.yml$)/,
 	/^(\.coderabbit\.yaml|\.worktreeinclude|biome\.json|\.editorconfig|\.gitignore|\.gitattributes|LICENSE)$/,
 ];
 
+/** Paths whose tests run in `lint` and whose behaviour only the nightly or release proofs exercise. */
+const CI_ONLY = [
+	...METADATA,
+	/^\.github\/workflows\/(?!ci\.yml$|e2e-browser\.yml$)/,
+	/^scripts\/(ci-plan|ci-gate-report|agent-probe|agent-tested|agent-adapter-sdk|gate-side-checks|packed-upgrade-chain|admission-fake)(\.test)?\.mjs$/,
+	/^scripts\/(workflow-pins\.test\.mjs|agent-pins\.json)$/,
+];
+
+/** What the browser suite boots, on top of the CI-only paths. The desktop shell is not part of it. */
+const SAFE_FOR_E2E = [...CI_ONLY, /^packages\/desktop\//];
+
+/** The intake and upgrade checks read the app, never the UI or the desktop shell. */
+const SAFE_FOR_INTAKE = [
+	...CI_ONLY,
+	/^packages\/(frontend|desktop)\//,
+	/^scripts\/(e2e-libs|playwright-summary)\./,
+];
+
+/** What the release proofs read: packaging, the gate scripts and the workflows that run them. */
+const FULL_INPUTS = [
+	/^scripts\/(pack-cli|check-artifact|gate-side-checks|packed-upgrade-chain|packed-upgrade-smoke|build-standalone|artifact-budgets)[.-]/,
+	/^scripts\/(install|lib)\//,
+	/^\.github\/workflows\/(ci|proofs|nightly)\.yml$/,
+	/^\.release-please-manifest\.json$/,
+];
+
 /** Paths outside the agent qualification's inputs (the engine's workspace closure, the script, its fakes, the pins). */
 const SAFE_FOR_AGENTS = [
-	...SAFE_FOR_FULL,
-	/^packages\/(api|cli)\//,
+	...METADATA,
+	/\.(spec|test)\.[cm]?[jt]sx?$/,
+	/^packages\/(frontend|desktop|api|cli)\//,
 	/^packages\/@prismalens\/(auth|database|logger)\//,
-	/^\.github\/workflows\/(?!ci\.yml$)/,
+	/^\.github\/workflows\/(?!ci\.yml$|proofs\.yml$|nightly\.yml$)/,
+	/^scripts\/(ci-plan|ci-gate-report|gate-side-checks|packed-upgrade-chain|packed-upgrade-smoke|workflow-pins)(\.test)?\.mjs$/,
 ];
 
 /** An unlisted path counts as unsafe, so a new package runs the tier until someone lists it. */
@@ -53,7 +82,7 @@ const needs = (/** @type {RegExp[]} */ safe, /** @type {string[]} */ files) =>
  *   draft?: boolean,
  *   readyOnPassedHead?: boolean,
  * }} input
- * @returns {{ skip: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean }}
+ * @returns {{ skip: boolean, code: boolean, e2e: boolean, intake: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean }}
  */
 export function plan({
 	event,
@@ -64,55 +93,61 @@ export function plan({
 	draft = false,
 	readyOnPassedHead = false,
 }) {
+	const none = {
+		skip: true,
+		code: false,
+		e2e: false,
+		intake: false,
+		full: false,
+		agents: false,
+	};
 	if (event !== "pull_request")
 		return {
 			skip: false,
-			full: true,
-			agents: true,
-			reason: `${event}: everything runs`,
+			code: true,
+			e2e: true,
+			intake: true,
+			full: false,
+			agents: false,
+			reason: `${event}: the PR checks run; the release proofs run nightly`,
 		};
 	// release-please rebuilds this PR on every push to main; CI waits until it is marked ready.
 	if (draft && headRef.startsWith("release-please--"))
 		return {
-			skip: true,
-			full: false,
-			agents: false,
+			...none,
 			defer: true,
 			reason: "draft release PR: CI waits until it is marked ready for review",
 		};
 	// "Ready for review" starts a run; a head that already passed CI as a draft has nothing left to prove.
 	if (readyOnPassedHead)
 		return {
-			skip: true,
-			full: false,
-			agents: false,
+			...none,
 			reason: "marked ready for review: this head already passed CI",
 		};
 	if (sameTreeAs)
 		return {
-			skip: true,
-			full: false,
-			agents: false,
+			...none,
 			reason: `tree identical to ${sameTreeAs}, which already passed CI: nothing re-run. A head made with "git merge -s ours" lacks main's other changes (CONTRIBUTING.md, Landing a stack)`,
 		};
 	if (files.length > 0 && files.every((f) => DOCS.some((p) => p.test(f))))
-		return {
-			skip: true,
-			full: false,
-			agents: false,
-			reason: "docs only: nothing to build or test",
-		};
+		return { ...none, reason: "docs only: nothing to build or test" };
 	const release = headRef.startsWith("release-please--");
 	const forced = labels.includes("full-ci");
+	const code = needs(CI_ONLY, files);
 	return {
 		skip: false,
-		full: release || forced || needs(SAFE_FOR_FULL, files),
+		code,
+		e2e: code && needs(SAFE_FOR_E2E, files),
+		intake: code && needs(SAFE_FOR_INTAKE, files),
+		full: release || forced || files.some((f) => FULL_INPUTS.some((p) => p.test(f))),
 		agents: release || forced || needs(SAFE_FOR_AGENTS, files),
 		reason: release
 			? "release PR: everything runs"
 			: forced
 				? "label full-ci: everything runs"
-				: "path filters",
+				: code
+					? "path filters"
+					: "CI-only paths: lint and its script tests",
 	};
 }
 
@@ -169,7 +204,7 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 			"--paginate",
 			`repos/${env.REPO}/pulls/${env.PR_NUMBER}/files`,
 			"--jq",
-			".[].filename",
+			".[] | .filename, (.previous_filename // empty)",
 		])
 			.split("\n")
 			.filter(Boolean);
@@ -200,6 +235,9 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 	});
 	const lines = [
 		`skip=${result.skip}`,
+		`code=${result.code}`,
+		`e2e=${result.e2e}`,
+		`intake=${result.intake}`,
 		`full=${result.full}`,
 		`agents=${result.agents}`,
 		`defer=${Boolean(result.defer)}`,
@@ -211,7 +249,7 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 	if (env.GITHUB_STEP_SUMMARY)
 		appendFileSync(
 			env.GITHUB_STEP_SUMMARY,
-			`**CI plan:** ${result.reason} (full=${result.full}, agents=${result.agents})\n`,
+			`**CI plan:** ${result.reason} (code=${result.code}, e2e=${result.e2e}, intake=${result.intake}, full=${result.full}, agents=${result.agents})\n`,
 		);
 }
 

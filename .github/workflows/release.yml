@@ -63,7 +63,8 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: node scripts/acp-registry-snapshot.mjs
-      - run: npx --yes @biomejs/biome@2.5.15 format --write packages/@prismalens/config/src/acp-registry.json
+      # The Biome this branch pins: another version rejects the repo's biome.json plugins (#1020).
+      - run: npx --yes "@biomejs/biome@$(node -p "require('./package.json').devDependencies['@biomejs/biome']")" format --write packages/@prismalens/config/src/acp-registry.json
       - name: Commit when it changed
         run: |
           git diff --quiet -- packages/@prismalens/config/src/acp-registry.json && exit 0

@@ -46,14 +46,6 @@ on:
       - "scripts/cross-os-app-boot.mjs"
       - "scripts/lib/app-boot-retry.mjs"
       - ".release-please-manifest.json"
-  push:
-    branches: [main]
-    paths:
-      - "packages/**"
-      - ".github/workflows/cli-smoke-cross-os.yml"
-      - "scripts/cross-os-smoke.sh"
-      - "scripts/cross-os-app-boot.mjs"
-      - "scripts/lib/app-boot-retry.mjs"
   schedule:
     - cron: "11 4 * * *"
   release:
