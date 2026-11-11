@@ -31,6 +31,7 @@ import {
 	prepareRunEnv,
 	runInvestigation,
 } from "./investigate.js";
+import { PROVIDER_RETRY_NOTE } from "./provider-failure.js";
 import { RESTART_NOTE } from "./handoff.js";
 import { createAskChannel, optionOf, type PermissionPolicy } from "./permission.js";
 import { COMMAND_LEAD } from "./prompt.js";
@@ -60,7 +61,8 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.unstubAllEnvs();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0))
+		rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 function opts(mode: string, extra: Partial<Parameters<typeof runInvestigation>[0]> = {}) {
@@ -2379,4 +2381,14 @@ describe("a command turn (#1024)", () => {
 		});
 		expect(promptsSent(runDir)).toEqual([[{ type: "text", text: "/compact" }]]);
 	});
+});
+
+describe("in-turn provider retry (#1101)", () => {
+	it.skip(
+		"a turn whose prompt fails with a rate limit carrying retryAfterSeconds: 1 is sent again once with opts.sleep stubbed, yields one provider_retry { attempt: 2, maxAttempts: 5 }, and the second prompt's first text block is PROVIDER_RETRY_NOTE (skipped: fake-acp-harness cannot script a transient rate limit with retryAfterSeconds that succeeds on retry)",
+		async () => {
+			// Skipped: fake-acp-harness fixture does not support returning an RPC rate_limit error with retryAfterSeconds on prompt 1 followed by a successful prompt 2.
+			expect(PROVIDER_RETRY_NOTE).toBe("The model provider asked to wait; continue where you left off.");
+		},
+	);
 });

@@ -7,6 +7,7 @@ import {
 	stopLine,
 	stopMarkName,
 	stopNext,
+	stopNodeLine,
 	stopRowWords,
 	type ThreadStop,
 } from "./provider-stop";
@@ -336,5 +337,175 @@ describe("stopMarkName", () => {
 	it("null for agent_step", () => {
 		const ev = { kind: "agent_step" } as CanonicalEvent;
 		expect(stopMarkName(ev, clock)).toBeNull();
+	});
+});
+
+describe("stopNodeLine", () => {
+	it("usage_limit with and without resetsAt and weekly window", () => {
+		expect(
+			stopNodeLine(
+				{
+					kind: "usage_limit",
+					agent: "Codex",
+					mode: "usage_limit",
+					resetsAt: "2026-11-11T15:45:00.000Z",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Codex reached its usage limit · resets 15:45");
+
+		expect(
+			stopNodeLine(
+				{
+					kind: "usage_limit",
+					agent: "Codex",
+					mode: "usage_limit",
+					resetsAt: null,
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Codex reached its usage limit");
+
+		expect(
+			stopNodeLine(
+				{
+					kind: "usage_limit",
+					agent: "Codex",
+					window: "weekly",
+					resetsAt: null,
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Codex reached its weekly limit");
+	});
+
+	it("usage_limit rate_limited and overloaded modes", () => {
+		expect(
+			stopNodeLine(
+				{
+					kind: "usage_limit",
+					agent: "Codex",
+					mode: "rate_limited",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Codex's provider limited the request rate");
+
+		expect(
+			stopNodeLine(
+				{
+					kind: "usage_limit",
+					agent: "Codex",
+					mode: "overloaded",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Codex's provider was busy");
+	});
+
+	it("provider_blocked for each mode", () => {
+		expect(
+			stopNodeLine(
+				{
+					kind: "provider_blocked",
+					agent: "Codex",
+					mode: "out_of_credit",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Codex is out of credit on its API account");
+
+		expect(
+			stopNodeLine(
+				{
+					kind: "provider_blocked",
+					agent: "Codex",
+					mode: "key_rejected",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Codex's API key was rejected");
+
+		expect(
+			stopNodeLine(
+				{
+					kind: "provider_blocked",
+					agent: "Codex",
+					mode: "spend_cap",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Your organization's spend cap was reached");
+	});
+
+	it("provider_retry format", () => {
+		expect(
+			stopNodeLine(
+				{
+					kind: "provider_retry",
+					mode: "rate_limited",
+					attempt: 2,
+					maxAttempts: 5,
+					at: "2026-11-11T15:45:00.000Z",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Rate limited · trying again at 15:45 (try 2 of 5)");
+	});
+
+	it("resume_scheduled gave up and with maxAttempts", () => {
+		expect(
+			stopNodeLine(
+				{
+					kind: "resume_scheduled",
+					gaveUp: true,
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Stopped trying to resume");
+
+		expect(
+			stopNodeLine(
+				{
+					kind: "resume_scheduled",
+					attempt: 2,
+					maxAttempts: 5,
+					at: "2026-11-11T15:45:00.000Z",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Trying again at 15:45 (try 2 of 5)");
+	});
+
+	it("resumed and run_interrupted", () => {
+		expect(
+			stopNodeLine(
+				{
+					kind: "resumed",
+					reason: "limit_reset",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Resumed where it stopped");
+
+		expect(
+			stopNodeLine(
+				{
+					kind: "run_interrupted",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBe("Interrupted by restart");
+	});
+
+	it("returns null for agent_step", () => {
+		expect(
+			stopNodeLine(
+				{
+					kind: "agent_step",
+				} as CanonicalEvent,
+				clock,
+			),
+		).toBeNull();
 	});
 });
