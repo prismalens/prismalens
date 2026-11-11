@@ -1,5 +1,12 @@
 # prismalens
 
+## [0.5.5](https://github.com/prismalens/prismalens/compare/v0.5.4...v0.5.5) (2026-11-11)
+
+
+### Features
+
+* ship a nightly channel beside stable, and let installs choose one ([#1086](https://github.com/prismalens/prismalens/issues/1086)) ([1c61bff](https://github.com/prismalens/prismalens/commit/1c61bff7c5fff50dd5fa7eb54efdd1ecf343aed8))
+
 ## [0.5.4](https://github.com/prismalens/prismalens/compare/v0.5.3...v0.5.4) (2026-11-11)
 
 
