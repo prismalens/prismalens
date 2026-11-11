@@ -9,6 +9,7 @@ import {
 	type InvestigationWithRelations,
 	isRunStateLive,
 	modelSubstituted,
+	pendingAsks,
 	type RunState,
 	recordedFindings,
 } from "@prismalens/contracts";
@@ -38,6 +39,7 @@ import {
 	useRecheck,
 } from "@/components/investigation/DockedComposer";
 import { Transcript } from "@/components/investigation/Transcript";
+import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { ChangesCard } from "@/components/overview/ChangesCard";
 import { ImpactCard } from "@/components/overview/ImpactCard";
 import { nextHandler } from "@/components/overview/next-action";
@@ -49,6 +51,7 @@ import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import { SubagentList } from "@/components/thread/StatusBox";
+import { type PageSlots, usePageSlots } from "@/components/thread/slots";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
@@ -169,6 +172,7 @@ export function RunPage() {
 		() =>
 			deriveTranscript(run.events, {
 				pending: run.pending,
+				nodes: hasTranscriptNode,
 				modelName: (id) => modelName(harness, id) ?? id,
 				agentName: (id) => harnesses.find((h) => h.id === id)?.label ?? id,
 				run: inv
@@ -201,6 +205,17 @@ export function RunPage() {
 		],
 	);
 	const items = useMemo(() => shareItems(shared.current, derived), [derived]);
+	const openAsks = useMemo(
+		() => (inv ? pendingAsks(inv.id, run.events) : []),
+		[inv, run.events],
+	);
+	const slots = usePageSlots({
+		page: "run",
+		threadId: draft ? null : (inv?.id ?? null),
+		incidentId: incident.id,
+		live,
+		asks: openAsks,
+	});
 	useEffect(() => {
 		shared.current = items;
 	}, [items]);
@@ -742,7 +757,7 @@ export function RunPage() {
 		/>
 	);
 
-	if (draft) return <DraftPage record={record} header={header} />;
+	if (draft) return <DraftPage record={record} header={header} slots={slots} />;
 
 	const step = runStepText(run.events, now ?? Date.now(), {
 		streamLost: run.streamFailed,
@@ -822,6 +837,7 @@ export function RunPage() {
 						</div>
 					</div>
 				)}
+				{slots.banner}
 				<div className="min-h-0 flex-1">
 					{run.isLoading ? (
 						<div className="mx-auto max-w-[760px] px-4 pt-5">
@@ -861,7 +877,7 @@ export function RunPage() {
 				</div>
 				{/* Not while the run loads: the key turns from "none" to its id and the remount drops typed text (#807). */}
 				{!run.isLoading && (
-					<DockedComposer key={inv?.id ?? "none"} onStep={jump} />
+					<DockedComposer key={inv?.id ?? "none"} onStep={jump} slots={slots} />
 				)}
 			</div>
 			<RightPanel
@@ -1289,9 +1305,11 @@ function primaryAlert(
 function DraftPage({
 	record,
 	header,
+	slots,
 }: {
 	record: IncidentRecord;
 	header: React.ReactNode;
+	slots: PageSlots;
 }) {
 	const known = record.runs.find((r) => r.hasReport && r.rootCause);
 	return (
@@ -1320,7 +1338,7 @@ function DraftPage({
 								</span>
 							)}
 						</div>
-						<DockedComposer key="draft" floating />
+						<DockedComposer key="draft" floating slots={slots} />
 					</div>
 				</div>
 			</div>

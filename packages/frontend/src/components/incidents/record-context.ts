@@ -8,6 +8,7 @@ import type {
 } from "@prismalens/contracts";
 import { createContext, useContext } from "react";
 import type { InvestigationRun } from "@/components/investigation/useInvestigationRun";
+import type { messageContext } from "@/lib/composer-send";
 import type { RunVerb } from "@/lib/run-verb";
 
 export type RunRef = NonNullable<
@@ -55,6 +56,8 @@ export interface RunStart {
 	effort?: string | null;
 	/** Start it and stay on this page (the overview), not open its transcript. */
 	stay?: boolean;
+	/** The envelope's quotes, references and draft; only the chat route takes them. */
+	context?: ReturnType<typeof messageContext>;
 }
 
 /** What every layer under an incident shares: the incident, its runs, the selected run and the draft. */

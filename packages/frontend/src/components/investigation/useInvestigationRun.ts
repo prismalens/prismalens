@@ -26,6 +26,7 @@ import {
 	useSendInvestigationMessage,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import type { MessageFields } from "@/lib/composer-send";
 import {
 	type AttachmentView,
 	latestAgentText,
@@ -260,6 +261,8 @@ export function useInvestigationRun(investigationId: string | null) {
 				kind?: FollowUpKind;
 				/** A finished run's follow-up in another agent or model. */
 				to?: RunChoice;
+				/** The envelope's quotes, references, draft and cold-dock choices (lib/composer-send.ts). */
+				fields?: MessageFields;
 			},
 		): Promise<void> => {
 			const attachments = opts?.attachments ?? [];
@@ -281,6 +284,7 @@ export function useInvestigationRun(investigationId: string | null) {
 					branchId: opts?.branchId,
 					...(opts?.kind ? { kind: opts.kind } : {}),
 					...opts?.to,
+					...opts?.fields,
 					...(attachments.length
 						? { attachments: attachments.map((a) => a.id) }
 						: {}),

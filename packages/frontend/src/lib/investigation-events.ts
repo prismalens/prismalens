@@ -544,7 +544,9 @@ export type TranscriptItem =
 			/** A restart cut the run off and nothing took it up: the card offers Resume (#981). */
 			interrupted?: boolean;
 	  }
-	| { kind: "empty"; key: string; text: string };
+	| { kind: "empty"; key: string; text: string }
+	/** An event kind no branch here handles, drawn by a lane's registry entry (transcript/registry.ts). */
+	| { kind: "node"; key: string; event: CanonicalEvent };
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
@@ -752,6 +754,8 @@ export function deriveTranscript(
 		modelName?: (id: string) => string;
 		/** An agent's label for its id, for the handoff record. */
 		agentName?: (id: string) => string;
+		/** Kinds a lane draws (`hasTranscriptNode`); only events no branch handles reach it. */
+		nodes?: (kind: string) => boolean;
 	} = {},
 ): TranscriptItem[] {
 	const { run, pending = [] } = opts;
@@ -1159,6 +1163,11 @@ export function deriveTranscript(
 					recheck: run?.kind !== "chat",
 				});
 				break;
+			default:
+				if (opts.nodes?.(event.kind)) {
+					closeGroup();
+					items.push({ kind: "node", key, event });
+				}
 		}
 	}
 

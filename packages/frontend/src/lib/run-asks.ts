@@ -144,3 +144,17 @@ export function askTitle(ask: Pick<AskRecord, "title" | "server">): string {
 	if (!mcp) return ask.title;
 	return `${mcp.tool}, a tool from the ${ask.server ?? mcp.server} MCP server`;
 }
+
+/**
+ * The asks the ask record still holds open, as waiting, live run or not (#1024):
+ * an ask outlives the process that opened it until it is answered or closed.
+ */
+export function openAsksOf(
+	records: readonly AskRecord[],
+	open: readonly { askId: string }[],
+): AskRecord[] {
+	const ids = new Set(open.map((a) => a.askId));
+	return records
+		.filter((a) => ids.has(a.askId))
+		.map((a) => (a.state === "waiting" ? a : { ...a, state: "waiting" }));
+}
