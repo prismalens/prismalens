@@ -5,6 +5,12 @@ import {
 	type ComposerDraft,
 	type ComposerScope,
 	DRAFT_TEXT_MAX_CHARS,
+	docParts,
+	docText,
+	draftDoc,
+	MAX_QUOTES_PER_MESSAGE,
+	MAX_REFERENCES_PER_MESSAGE,
+	sameDoc,
 } from "@prismalens/contracts";
 import type { QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -32,16 +38,22 @@ export interface DraftConflict {
 	theirs: ComposerDraft;
 }
 
+/** A version-2 body: the document, with its flat fields kept for older readers (#1101). */
 function bodyOf(c: DraftContent) {
+	const parts = docParts(c.doc);
 	return {
-		text: c.text.slice(0, DRAFT_TEXT_MAX_CHARS),
+		version: 2 as const,
+		doc: c.doc,
+		text: docText(c.doc).slice(0, DRAFT_TEXT_MAX_CHARS),
 		draftKey: null,
 		attachments: [],
-		quotes: c.quotes,
-		references: c.references,
+		quotes: parts.quotes.slice(0, MAX_QUOTES_PER_MESSAGE),
+		references: parts.references.slice(0, MAX_REFERENCES_PER_MESSAGE),
 		choice: {},
 	};
 }
+
+const contentOf = (d: ComposerDraft): DraftContent => ({ doc: draftDoc(d) });
 
 const conflictCurrent = (e: unknown): ComposerDraft | null => {
 	const err = e as { code?: string; data?: { current?: ComposerDraft | null } };
@@ -97,7 +109,7 @@ export function useComposerDraft({
 			restore.current(r.journal, r.journal.files);
 		} else if (r.kind === "server") {
 			at.current = { rev: r.draft.rev, generation: r.draft.generation };
-			restore.current(r.draft, journal?.files ?? []);
+			restore.current(contentOf(r.draft), journal?.files ?? []);
 		} else if (r.kind === "conflict") {
 			at.current = { rev: r.draft.rev, generation: r.draft.generation };
 			restore.current(r.journal, r.journal.files);
@@ -136,7 +148,7 @@ export function useComposerDraft({
 			if (
 				!retried &&
 				(current.generation !== at.current.generation ||
-					current.text === c.text)
+					sameDoc(draftDoc(current), c.doc))
 			) {
 				at.current = { rev: current.rev, generation: current.generation };
 				return push(true);
@@ -242,7 +254,7 @@ export function useComposerDraft({
 				rev: conflict.theirs.rev,
 				generation: conflict.theirs.generation,
 			};
-			restore.current(conflict.theirs, []);
+			restore.current(contentOf(conflict.theirs), []);
 			writeJournal(scope, undefined);
 			setConflict(null);
 		},

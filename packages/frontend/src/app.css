@@ -138,3 +138,24 @@ pre code {
     animation: none !important;
   }
 }
+
+/* The composer's editor (#1101): the placeholder and a picked command's hint are ghost text. */
+.composer-editor {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.composer-editor p {
+  margin: 0;
+}
+.composer-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--text-3);
+}
+.composer-ghost {
+  color: var(--text-3);
+  pointer-events: none;
+}

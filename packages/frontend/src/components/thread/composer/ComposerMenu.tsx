@@ -7,6 +7,25 @@ import type {
 	ReferenceTrigger,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
+import {
+	Bell,
+	BellOff,
+	BookOpen,
+	CircleDot,
+	Clock,
+	FileText,
+	Folder,
+	FolderGit2,
+	GitPullRequest,
+	ListChecks,
+	type LucideIcon,
+	MessageSquare,
+	Package,
+	Paperclip,
+	Server,
+	Siren,
+	SquareSlash,
+} from "lucide-react";
 import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -63,6 +82,26 @@ const WHY: Record<ReferenceHit["why"], string | null> = {
 
 export const optionId = (i: number) => `composer-menu-option-${i}`;
 
+/** Each row's type icon (#1101 category 6 item 1): what a hit is, before its title. */
+const KIND_ICON: Record<ReferenceHit["ref"]["kind"], LucideIcon> = {
+	file: FileText,
+	folder: Folder,
+	service: Server,
+	project: FolderGit2,
+	attachment: Paperclip,
+	artifact: Package,
+	runbook: BookOpen,
+	thread: MessageSquare,
+	incident: Siren,
+	schedule: Clock,
+	pull_request: GitPullRequest,
+	issue: CircleDot,
+	alert: Bell,
+	silence: BellOff,
+	alert_rule: ListChecks,
+	command: SquareSlash,
+};
+
 /** The one menu for `/`, `@` and `#`, at the box. Focus stays in the box (combobox). */
 export function ComposerMenu({
 	trigger,
@@ -111,6 +150,7 @@ export function ComposerMenu({
 							row++;
 							const i = row;
 							const why = WHY[h.why];
+							const Icon = KIND_ICON[h.ref.kind];
 							return (
 								<div
 									key={`${h.ref.kind}:${h.ref.id}`}
@@ -138,6 +178,12 @@ export function ComposerMenu({
 												: undefined
 										}
 									>
+										<Icon
+											className="size-3.5 shrink-0 text-text-3"
+											aria-hidden
+											data-testid="composer-menu-icon"
+											data-kind={h.ref.kind}
+										/>
 										<span className="shrink-0 truncate">{h.ref.label}</span>
 										{h.inputHint && (
 											<span className="shrink-0 font-mono text-meta text-text-3">
@@ -151,7 +197,10 @@ export function ComposerMenu({
 										)}
 									</span>
 									{why && (
-										<span className="ml-auto shrink-0 text-meta text-text-3">
+										<span
+											className="ml-auto shrink-0 text-meta text-text-3"
+											data-testid="composer-menu-why"
+										>
 											{why}
 										</span>
 									)}
@@ -175,7 +224,7 @@ export function ComposerMenu({
 					className="truncate px-2.5 py-1 text-meta text-text-3"
 					data-testid="composer-menu-unavailable"
 				>
-					{u.source}: unavailable
+					{u.source} unavailable: {u.message}
 				</div>
 			))}
 			{loading && !result && (

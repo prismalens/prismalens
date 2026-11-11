@@ -2,20 +2,25 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	ChipAttrs,
+	ComposerInline,
 	PendingAsk,
 	ReferenceHit,
 	ReferenceSearchResult,
 } from "@prismalens/contracts";
+import { NodeSelection } from "@tiptap/pm/state";
+import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import type { ReactNode } from "react";
+import { AccessLevelRows } from "@/components/agent/AgentPicker";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { ComposerMenu } from "@/components/thread/composer/ComposerMenu";
+import { ConflictLine } from "@/components/thread/composer/chips";
 import {
-	CommandChip,
-	ConflictLine,
-	FileChip,
-	QuoteChipView,
-	RefChip,
-} from "@/components/thread/composer/chips";
+	ChipContext,
+	type ChipFile,
+	ChipView,
+} from "@/components/thread/composer/editor/ChipView";
+import { composerExtensions } from "@/components/thread/composer/editor/extensions";
 import type { GallerySection } from "./gallery";
 
 const THREAD = "00000000-0000-4000-8000-000000000001";
@@ -23,8 +28,6 @@ const noop = () => {};
 
 const file = (name: string, type: string, size: number) =>
 	new File([new Uint8Array(Math.min(size, 16))], name, { type });
-const sized = (f: File, size: number) =>
-	Object.defineProperty(f, "size", { value: size }) as File;
 
 const PIXEL =
 	"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><rect width='24' height='24' fill='%23888'/></svg>";
@@ -77,6 +80,107 @@ const MENU: ReferenceSearchResult = {
 		{ source: "GitLab", message: "No token for gitlab.example.com" },
 	],
 };
+
+const chip = (attrs: ChipAttrs): ComposerInline => ({ type: "chip", attrs });
+const word = (text: string): ComposerInline => ({ type: "text", text });
+
+const INLINE: ComposerInline[] = [
+	word("compare "),
+	chip({
+		chip: "ref",
+		ref: { kind: "thread", id: THREAD, label: "Pool exhaustion on api" },
+	}),
+	word(" with "),
+	chip({
+		chip: "ref",
+		ref: {
+			kind: "pull_request",
+			id: "pr-1",
+			label: "#123 · Raise the pool size",
+		},
+		url: "https://example.com/pr/123",
+		tone: "Open",
+	}),
+	word(" and "),
+	chip({
+		chip: "file",
+		key: "img",
+		name: "grafana.png",
+		type: "image/png",
+		size: 812_000,
+	}),
+];
+
+const FILES: ComposerInline[] = [
+	chip({
+		chip: "file",
+		key: "paste",
+		name: "pasted-text.txt",
+		type: "text/plain",
+		size: PASTE.length,
+		pasted: PASTE,
+	}),
+	word(" "),
+	chip({
+		chip: "file",
+		key: "dump",
+		name: "core.dump",
+		type: "application/octet-stream",
+		size: 31_000_000,
+		refusal: "Over 25 MB",
+	}),
+	word(" "),
+	chip({
+		chip: "quote",
+		quote: {
+			source: { threadId: THREAD, kind: "transcript" },
+			text: "The pool hit its cap at 10:02",
+		},
+		cut: true,
+	}),
+];
+
+const GALLERY_FILES: ReadonlyMap<string, ChipFile> = new Map([
+	["img", { file: file("grafana.png", "image/png", 16), preview: PIXEL }],
+]);
+
+/** A real composer line: the editor with chips inline; `chosenAt` puts a chip in the selected state. */
+function ChipLine({
+	parts,
+	chosenAt,
+}: {
+	parts: ComposerInline[];
+	chosenAt?: number;
+}) {
+	const editor = useEditor({
+		extensions: composerExtensions({
+			chipView: ReactNodeViewRenderer(ChipView, { as: "span" }),
+			placeholder: () => "",
+		}),
+		content: { type: "doc", content: [{ type: "paragraph", content: parts }] },
+		immediatelyRender: false,
+		editorProps: {
+			attributes: { class: "composer-editor text-body leading-6 text-text-1" },
+		},
+		onCreate: ({ editor: ed }) => {
+			if (chosenAt === undefined) return;
+			ed.view.dispatch(
+				ed.state.tr.setSelection(NodeSelection.create(ed.state.doc, chosenAt)),
+			);
+		},
+	});
+	return (
+		<ChipContext.Provider
+			value={{
+				files: GALLERY_FILES,
+				pasteAsText: noop,
+				pasteRefusal: () => null,
+			}}
+		>
+			<EditorContent editor={editor} />
+		</ChipContext.Provider>
+	);
+}
 
 const ask = (over: Partial<PendingAsk>): PendingAsk => ({
 	askId: crypto.randomUUID(),
@@ -153,95 +257,46 @@ const HOST = ask({
 export const composerGallery: GallerySection[] = [
 	{
 		id: "composer-chips",
-		title: "Composer chips",
+		title: "Composer chips, inline",
 		render: () => (
-			<Box>
-				<ul className="flex flex-wrap gap-1.5">
-					<FileChip
-						item={{
-							key: "i",
-							file: file("grafana.png", "image/png", 812_000),
-							preview: PIXEL,
-						}}
-						open={false}
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
+			<div className="grid max-w-[760px] gap-3">
+				<Box>
+					<ChipLine parts={INLINE} />
+				</Box>
+				<Box>
+					<ChipLine parts={INLINE} chosenAt={9} />
+				</Box>
+				<Box>
+					<ChipLine parts={FILES} />
+				</Box>
+				<Box>
+					<ChipLine
+						parts={[
+							chip({
+								chip: "command",
+								name: "review",
+								source: "agent",
+								group: "Codex",
+								inputHint: "[commit|branch|pr]",
+							}),
+						]}
 					/>
-					<FileChip
-						item={{
-							key: "f",
-							file: sized(
-								file("heap.hprof", "application/octet-stream", 16),
-								9_400_000,
-							),
-						}}
-						open={false}
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
-					/>
-					<FileChip
-						item={{
-							key: "r",
-							file: sized(
-								file("core.dump", "application/octet-stream", 16),
-								31_000_000,
-							),
-							refusal: "Over 25 MB",
-						}}
-						open={false}
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
-					/>
-					<QuoteChipView
-						item={{
-							key: "q",
-							quote: {
-								source: { threadId: THREAD, kind: "transcript" },
-								text: "The pool hit its cap at 10:02",
-							},
-							cut: true,
-						}}
-						onRemove={noop}
-					/>
-					<RefChip
-						item={{
-							key: "l",
-							ref: {
-								kind: "pull_request",
-								id: "pr-1",
-								label: "#123 · Raise the pool size",
-							},
-							url: "https://example.com/pr/123",
-							tone: "Open",
-						}}
-						onRemove={noop}
-					/>
-					<CommandChip
-						item={{ name: "review", source: "agent", group: "Codex" }}
-						onRemove={noop}
-					/>
-				</ul>
-				<ul className="mt-2 flex flex-wrap gap-1.5">
-					<FileChip
-						item={{
-							key: "p",
-							file: file("pasted-text.txt", "text/plain", PASTE.length),
-							pasted: PASTE,
-						}}
-						open
-						onToggle={noop}
-						onRemove={noop}
-						onPasteAsText={noop}
-						pasteRefusal={null}
-					/>
-				</ul>
-			</Box>
+				</Box>
+			</div>
+		),
+	},
+	{
+		id: "composer-permission",
+		title: "Permission picker",
+		render: () => (
+			<div className="max-w-[460px] rounded-surface bg-surface-2 p-1 shadow-float">
+				<AccessLevelRows
+					harness={undefined}
+					level="full-access"
+					fallback={{ level: "auto-edits", from: "settings" }}
+					onPick={noop}
+				/>
+			</div>
 		),
 	},
 	{
