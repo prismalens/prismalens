@@ -537,7 +537,8 @@ Versioning and publishing run through
 [release-please](https://github.com/googleapis/release-please)
 (`release-please-config.json` + `.release-please-manifest.json` +
 `.github/workflows/release.yml`), driven by conventional-commit titles on
-`main` — there are no changesets and no pre-release tags (0001 §7, §9).
+`main`, with no changesets (0001 §6). The one prerelease is the nightly
+(RELEASING.md → *Nightly*, 0001 §9).
 
 1. Every commit to `main` needs a conventional-commit title (`fix:`, `feat:`,
    `chore:`, …); release-please reads these to compute the next version.

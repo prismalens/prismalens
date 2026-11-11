@@ -618,6 +618,10 @@ export type UpdateInstallAvailability = z.infer<
 	typeof UpdateInstallAvailabilitySchema
 >;
 
+/** The release channel an install follows (#1024); nightly is npm-only. */
+export const UpdateChannelSchema = z.enum(["stable", "nightly"]);
+export type UpdateChannel = z.infer<typeof UpdateChannelSchema>;
+
 /**
  * Settings → About (#717): what this copy is, whether a newer release is out,
  * and the commands to upgrade or uninstall it the way it was installed.
@@ -652,6 +656,18 @@ export const AboutSchema = z.object({
 	autoInstall: UpdateAutoInstallSchema.optional(),
 	/** "Check for updates" on About; the env switches in `disabledBy` still win. */
 	checkForUpdates: z.boolean().optional(),
+	updateChannel: z
+		.object({
+			/** The channel the check follows now. */
+			current: UpdateChannelSchema,
+			/** Set when `PRISMALENS_UPDATE_CHANNEL` decides it; About then can't change it. */
+			fromEnv: z.boolean(),
+			/** Why this copy can't follow nightly, or null when it can. */
+			nightlyBlockedBy: z.enum(["not_npm"]).nullable(),
+			/** On stable while running a nightly that no stable has overtaken: why it waits. */
+			leavingNightly: z.string().nullable(),
+		})
+		.optional(),
 });
 export type About = z.infer<typeof AboutSchema>;
 
@@ -696,6 +712,8 @@ export type UpdateInstallStatus = z.infer<typeof UpdateInstallStatusSchema>;
 export const UpdatePrefsSchema = z.object({
 	autoInstall: UpdateAutoInstallSchema.optional(),
 	checkForUpdates: z.boolean().optional(),
+	/** Saved to the workspace, where `pl upgrade` reads it too. */
+	channel: UpdateChannelSchema.optional(),
 });
 export type UpdatePrefs = z.infer<typeof UpdatePrefsSchema>;
 

@@ -47,10 +47,12 @@
 	"dependencies": {
 		"@prismalens/agent-adapters": "workspace:*",
 		"@prismalens/agent-host": "workspace:*",
+		"semver": "^7.8.5",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"@types/semver": "^7.8.0",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	},

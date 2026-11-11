@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { About } from "@prismalens/contracts";
-import { useQuery } from "@tanstack/react-query";
+import type { About, UpdateChannel } from "@prismalens/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 import { useEffect } from "react";
@@ -11,6 +11,13 @@ import { Mono } from "@/components/shared/Mono";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatDateTime } from "@/lib/format-time";
 import { DangerZoneSettings } from "./DangerZoneSettings";
@@ -30,6 +37,62 @@ export function useAbout(enabled = true) {
 		enabled,
 		staleTime: 60 * 60 * 1000,
 	});
+}
+
+/** Stable or nightly (#1024). Nightly ships on npm only, and an env override can't be changed here. */
+function ReleaseChannelRow({ about }: { about: About }) {
+	const queryClient = useQueryClient();
+	const save = useMutation({
+		...orpc.settings.update.prefs.mutationOptions(),
+		onSuccess: (data) =>
+			queryClient.setQueryData(orpc.settings.about.get.queryKey(), data),
+	});
+	const channel = about.updateChannel;
+	if (!channel) return null;
+	const description = save.error
+		? save.error.message
+		: channel.fromEnv
+			? "PRISMALENS_UPDATE_CHANNEL sets it; unset it to choose here"
+			: channel.nightlyBlockedBy
+				? `Nightly builds ship on npm only; this copy was installed with ${CHANNEL_LABEL[about.channel]}`
+				: channel.current === "nightly"
+					? "A build of main each night its checks pass. pl upgrade follows it too"
+					: "Tested releases. Nightly gets a build of main each night its checks pass";
+	return (
+		<SettingRow
+			label="Release channel"
+			description={description}
+			below={
+				channel.leavingNightly && (
+					<p className="text-meta text-text-2">{channel.leavingNightly}</p>
+				)
+			}
+		>
+			<Select
+				value={channel.current}
+				disabled={channel.fromEnv || save.isPending}
+				onValueChange={(value) =>
+					save.mutate({ channel: value as UpdateChannel })
+				}
+			>
+				<SelectTrigger
+					aria-label="Release channel"
+					data-testid="about-release-channel"
+				>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="stable">Stable</SelectItem>
+					<SelectItem
+						value="nightly"
+						disabled={channel.nightlyBlockedBy !== null}
+					>
+						Nightly
+					</SelectItem>
+				</SelectContent>
+			</Select>
+		</SettingRow>
+	);
 }
 
 /** A command to run, in mono, with the one Copy button (look ruling §2). */
@@ -114,6 +177,7 @@ export function AboutSettings() {
 							</a>
 						)}
 					</SettingRow>
+					<ReleaseChannelRow about={about} />
 				</Pool>
 			</SettingGroup>
 			<SettingGroup

@@ -4,47 +4,43 @@
 /**
  * The update check shared by `pl up`'s notice and Settings → About (#606, #717):
  * a HEAD of the public GitHub releases redirect, no id, cached for a day in the
- * workspace. A release counts once its `SHA256SUMS` is attached.
+ * workspace. A release counts once its `SHA256SUMS` is attached. The nightly
+ * channel reads npm's dist-tags instead (#1024): nightlies ship on npm only.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import semver from "semver";
+import type { UpdateChannel } from "./update-channel.js";
 
 const RELEASES_LATEST_URL =
 	"https://github.com/prismalens/prismalens/releases/latest";
 const RELEASES_DOWNLOAD_URL =
 	"https://github.com/prismalens/prismalens/releases/download";
 export const RELEASES_URL = "https://github.com/prismalens/prismalens/releases";
+const NPM_DIST_TAGS_URL =
+	"https://registry.npmjs.org/-/package/prismalens/dist-tags";
 const TIMEOUT_MS = 3_000;
 const CACHE_FILE = "update-check.json";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** `{checkedAt, latest}` — the whole of what is kept on disk. */
+/** `{checkedAt, latest, channel}` — the whole of what is kept on disk. */
 export interface UpdateCheckCache {
 	/** Epoch millis of the last completed check, successful or not. */
 	checkedAt: number;
-	/** Latest plain `x.y.z` seen, or null when the last check could not tell. */
+	/** Newest version seen on `channel`, or null when the last check could not tell. */
 	latest: string | null;
 	/** Ask again at this epoch millis instead of a day after `checkedAt`. */
 	recheckAt?: number;
+	/** The channel `latest` was read for; a cache written before channels is stable. */
+	channel?: UpdateChannel;
 }
 
-type Version = [number, number, number];
-
-function parse(version: string): Version | null {
-	const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
-	return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
-}
-
-/** True only for two plain `x.y.z` versions where `latest` is higher. */
+/** True only for two valid semver versions where `latest` is higher; a prerelease sorts below its release. */
 export function isNewer(latest: string, current: string): boolean {
-	const a = parse(latest);
-	const b = parse(current);
-	if (!a || !b) return false;
-	for (let i = 0; i < 3; i++) {
-		if (a[i] !== b[i]) return a[i] > b[i];
-	}
-	return false;
+	const a = semver.valid(latest.trim());
+	const b = semver.valid(current.trim());
+	return a !== null && b !== null && semver.gt(a, b);
 }
 
 /** `DO_NOT_TRACK` counts as set for anything but empty, `0`, `false`, `off`. */
@@ -70,22 +66,32 @@ function cachePath(workspaceDir: string): string {
 	return join(workspaceDir, CACHE_FILE);
 }
 
-/** The cache, or null when it is absent, unreadable or not the shape above. */
-export function readCache(workspaceDir: string): UpdateCheckCache | null {
+/**
+ * The cache, or null when it is absent, unreadable, not the shape above, or
+ * written for another channel: a stable reader never sees a nightly answer.
+ */
+export function readCache(
+	workspaceDir: string,
+	channel: UpdateChannel = "stable",
+): UpdateCheckCache | null {
 	try {
 		const raw: unknown = JSON.parse(
 			readFileSync(cachePath(workspaceDir), "utf8"),
 		);
 		if (typeof raw !== "object" || raw === null) return null;
-		const { checkedAt, latest, recheckAt } = raw as Record<string, unknown>;
+		const fields = raw as Record<string, unknown>;
+		const { checkedAt, latest, recheckAt } = fields;
 		if (typeof checkedAt !== "number" || !Number.isFinite(checkedAt)) {
 			return null;
 		}
 		if (latest !== null && typeof latest !== "string") return null;
+		if ((fields.channel ?? "stable") !== channel) return null;
+		const cache: UpdateCheckCache = { checkedAt, latest };
+		if (fields.channel !== undefined) cache.channel = channel;
 		if (typeof recheckAt === "number" && Number.isFinite(recheckAt)) {
-			return { checkedAt, latest, recheckAt };
+			cache.recheckAt = recheckAt;
 		}
-		return { checkedAt, latest };
+		return cache;
 	} catch {
 		return null;
 	}
@@ -112,14 +118,15 @@ export function isStale(cache: UpdateCheckCache | null, now: number): boolean {
 }
 
 /**
- * HEAD the `releases/latest` redirect and read the tag out of `Location`.
- * `redirect: "manual"` keeps it to one request and no page body; the API is
- * never called, so there is no rate limit and no token. Null on anything
- * unexpected — the caller treats that as "nothing to say".
+ * The newest version on `channel`, or null on anything unexpected — the caller
+ * treats that as "nothing to say". Stable HEADs the `releases/latest` redirect
+ * and reads the tag out of `Location`: one request, no body, no rate limit.
  */
 export async function fetchLatestVersion(
 	fetchImpl: typeof fetch = fetch,
+	channel: UpdateChannel = "stable",
 ): Promise<string | null> {
+	if (channel === "nightly") return fetchNightlyVersion(fetchImpl);
 	try {
 		const res = await fetchImpl(RELEASES_LATEST_URL, {
 			method: "HEAD",
@@ -131,7 +138,32 @@ export async function fetchLatestVersion(
 		const tag = /\/releases\/tag\/(.+)$/.exec(location)?.[1];
 		if (!tag) return null;
 		const version = decodeURIComponent(tag).replace(/^v/, "");
-		return parse(version) ? version : null;
+		return semver.valid(version) && !semver.prerelease(version)
+			? version
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The higher of npm's `nightly` and `latest` dist-tags, so a nightly install
+ * moves to a stable release once one overtakes it. One GET, no id, no token.
+ */
+async function fetchNightlyVersion(
+	fetchImpl: typeof fetch,
+): Promise<string | null> {
+	try {
+		const res = await fetchImpl(NPM_DIST_TAGS_URL, {
+			headers: { accept: "application/json" },
+			signal: AbortSignal.timeout(TIMEOUT_MS),
+		});
+		if (!res.ok) return null;
+		const tags = (await res.json()) as Record<string, unknown>;
+		const candidates = [tags.nightly, tags.latest].filter(
+			(v): v is string => typeof v === "string" && semver.valid(v) !== null,
+		);
+		return candidates.sort(semver.rcompare)[0] ?? null;
 	} catch {
 		return null;
 	}
@@ -164,23 +196,35 @@ export async function releaseReady(
 const NOT_READY_RETRY_MS = 60 * 60 * 1000;
 
 /**
- * Refresh the day-long cache. A release whose `SHA256SUMS` isn't attached yet is
- * not learned; the previous answer is kept and the check comes back in an hour,
- * so a release whose archive build failed doesn't make every run ask again.
+ * Refresh the day-long cache. A stable release whose `SHA256SUMS` isn't attached
+ * yet is not learned; the previous answer is kept and the check comes back in an
+ * hour, so a release whose archive build failed doesn't make every run ask again.
+ * Nightly is npm-only, and npm has a version once its dist-tag points at it.
  */
 export async function refreshUpdateCache(
 	workspaceDir: string,
 	fetchImpl: typeof fetch = fetch,
 	now: number = Date.now(),
+	channel: UpdateChannel = "stable",
 ): Promise<void> {
-	const latest = await fetchLatestVersion(fetchImpl);
-	if (latest && !(await releaseReady(latest, fetchImpl))) {
+	const latest = await fetchLatestVersion(fetchImpl, channel);
+	if (
+		channel === "stable" &&
+		latest &&
+		!(await releaseReady(latest, fetchImpl))
+	) {
 		writeCache(workspaceDir, {
 			checkedAt: now,
-			latest: readCache(workspaceDir)?.latest ?? null,
+			latest: readCache(workspaceDir, channel)?.latest ?? null,
 			recheckAt: now + NOT_READY_RETRY_MS,
+			channel,
 		});
 		return;
 	}
-	writeCache(workspaceDir, { checkedAt: now, latest });
+	writeCache(workspaceDir, { checkedAt: now, latest, channel });
+}
+
+/** True for a full semver version written exactly as semver prints it (`0.5.4-nightly.20261111.1`). */
+export function isExactVersion(version: string): boolean {
+	return semver.valid(version) === version;
 }

@@ -45,9 +45,12 @@ describe("isNewer", () => {
 		expect(isNewer("0.5.0", "0.5.0")).toBe(false);
 		expect(isNewer("0.4.9", "0.5.0")).toBe(false);
 	});
-	it("is false when either side is not a plain x.y.z", () => {
-		expect(isNewer("0.6.0-rc.1", "0.5.0")).toBe(false);
-		expect(isNewer("0.6.0", "0.0.0-dev")).toBe(false);
+	it("sorts a prerelease below its release and is false when either side is not a version", () => {
+		expect(isNewer("0.6.0-rc.1", "0.5.0")).toBe(true);
+		expect(isNewer("0.6.0-rc.1", "0.6.0")).toBe(false);
+		expect(isNewer("0.6.0", "0.6.0-nightly.20261111.1")).toBe(true);
+		expect(isNewer("0.6.0", "dev")).toBe(false);
+		expect(isNewer("latest", "0.5.0")).toBe(false);
 	});
 });
 
@@ -286,5 +289,44 @@ describe("updateNotice", () => {
 			expect(notice.line).toBe(null);
 		}
 		expect(called).toBe(false);
+	});
+
+	it("shows the notice line for nightly when configured and cached", async () => {
+		writeFileSync(
+			join(workspace, "update-channel.json"),
+			JSON.stringify({ channel: "nightly" }),
+		);
+		writeCache(workspace, {
+			checkedAt: 1_000,
+			latest: "0.5.4-nightly.20261111.7",
+			channel: "nightly",
+		});
+		const notice = updateNotice({
+			...enabled,
+			current: "0.5.3",
+			workspaceDir: workspace,
+			now: 1_000,
+		});
+		await notice.refresh;
+		expect(notice.line).toBe(
+			"prismalens 0.5.4-nightly.20261111.7 is available (you have 0.5.3). Run: pl upgrade",
+		);
+	});
+
+	it("never shows another channel's cache when following stable", async () => {
+		// channel stable (no file) and nightly cache
+		writeCache(workspace, {
+			checkedAt: 1_000,
+			latest: "0.5.4-nightly.20261111.7",
+			channel: "nightly",
+		});
+		const notice = updateNotice({
+			...enabled,
+			current: "0.5.3",
+			workspaceDir: workspace,
+			now: 1_000,
+		});
+		await notice.refresh;
+		expect(notice.line).toBe(null);
 	});
 });

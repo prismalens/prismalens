@@ -161,12 +161,13 @@ try {
 
 	# The newest release with its archives attached. build-standalone-cli.yml builds them for
 	# about 20 minutes after a release publishes, so fall back to the one before.
+	# 30 releases, because up to 10 nightly prereleases sit among them (nightly.yml prunes the rest).
 	if ($Version) {
 		if (-not (Fetch "$baseUrl/v$Version/SHA256SUMS" $sums)) { Fail "PrismaLens $Version has no installer archives" }
 	} else {
 		Step "Finding the newest release"
 		$relFile = Join-Path $staging "releases.json"
-		if (-not (Fetch "$api/releases?per_page=5" $relFile)) { Fail "Couldn't reach GitHub. Pass -Version to install a known version." }
+		if (-not (Fetch "$api/releases?per_page=30" $relFile)) { Fail "Couldn't reach GitHub. Pass -Version to install a known version." }
 		$tags = @((Get-Content $relFile -Raw | ConvertFrom-Json) |
 			Where-Object { -not $_.draft -and -not $_.prerelease } |
 			ForEach-Object { $_.tag_name -replace '^v', '' } |

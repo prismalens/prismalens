@@ -17,17 +17,18 @@ vi.mock("@tanstack/react-router", () => ({
 		createElement("a", props, children),
 }));
 
+const about: { current: Record<string, unknown> } = { current: {} };
+const baseAbout = {
+	version: "0.5.2",
+	channel: "npm",
+	latestBackup: null,
+	update: { available: false, latest: null },
+};
+
 vi.mock("@tanstack/react-query", () => ({
-	useQuery: () => ({
-		data: {
-			version: "0.5.2",
-			channel: "npm",
-			latestBackup: null,
-			update: { available: false, latest: null },
-		},
-		isError: false,
-		refetch: vi.fn(),
-	}),
+	useQuery: () => ({ data: about.current, isError: false, refetch: vi.fn() }),
+	useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }),
+	useQueryClient: () => ({ setQueryData: vi.fn() }),
 }));
 
 vi.mock("@/lib/api/hooks", () => ({
@@ -43,6 +44,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+	about.current = baseAbout;
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -59,5 +61,75 @@ describe("AboutSettings (case 1)", () => {
 		await act(async () => root.render(createElement(AboutSettings)));
 		const dangerZone = container.querySelector('[data-testid="danger-zone"]');
 		expect(dangerZone).not.toBeNull();
+	});
+});
+
+describe("AboutSettings release channel", () => {
+	it("shows no Release channel row when the API sends no channel", async () => {
+		await act(async () => root.render(createElement(AboutSettings)));
+		expect(
+			container.querySelector('[data-testid="about-release-channel"]'),
+		).toBe(null);
+	});
+
+	it("explains that an installer copy can't follow nightly", async () => {
+		about.current = {
+			...baseAbout,
+			channel: "installer",
+			updateChannel: {
+				current: "stable",
+				fromEnv: false,
+				nightlyBlockedBy: "not_npm",
+				leavingNightly: null,
+			},
+		};
+		await act(async () => root.render(createElement(AboutSettings)));
+		expect(
+			container.querySelector('[data-testid="about-release-channel"]')
+				?.textContent,
+		).toBe("Stable");
+		expect(container.textContent).toContain(
+			"Nightly builds ship on npm only; this copy was installed with the installer",
+		);
+	});
+
+	it("shows why a nightly install set to stable waits", async () => {
+		const note =
+			"You're on nightly 0.5.3-nightly.20261111.7. A nightly may have migrated your workspace past an older release, so this install stays on 0.5.3-nightly.20261111.7 and moves to stable when 0.5.3 or later ships.";
+		about.current = {
+			...baseAbout,
+			version: "0.5.3-nightly.20261111.7",
+			updateChannel: {
+				current: "stable",
+				fromEnv: false,
+				nightlyBlockedBy: null,
+				leavingNightly: note,
+			},
+		};
+		await act(async () => root.render(createElement(AboutSettings)));
+		expect(container.textContent).toContain(note);
+	});
+});
+
+describe("AboutSettings release channel set by the environment", () => {
+	it("locks the select and names the variable when PRISMALENS_UPDATE_CHANNEL decides", async () => {
+		about.current = {
+			...baseAbout,
+			updateChannel: {
+				current: "nightly",
+				fromEnv: true,
+				nightlyBlockedBy: null,
+				leavingNightly: null,
+			},
+		};
+		await act(async () => root.render(createElement(AboutSettings)));
+		const select = container.querySelector(
+			'[data-testid="about-release-channel"]',
+		);
+		expect(select?.textContent).toBe("Nightly");
+		expect(select?.hasAttribute("disabled")).toBe(true);
+		expect(container.textContent).toContain(
+			"PRISMALENS_UPDATE_CHANNEL sets it; unset it to choose here",
+		);
 	});
 });

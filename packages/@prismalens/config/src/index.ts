@@ -107,8 +107,20 @@ export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
 export {
+	effectiveUpdateChannel,
+	isUpdateChannel,
+	leavingNightlyNote,
+	NIGHTLY_NPM_ONLY,
+	nightlyBlockedBy,
+	readUpdateChannel,
+	UPDATE_CHANNELS,
+	type UpdateChannel,
+	writeUpdateChannel,
+} from "./utils/update-channel.js";
+export {
 	doNotTrack,
 	fetchLatestVersion,
+	isExactVersion,
 	isNewer,
 	isStale,
 	RELEASES_URL,

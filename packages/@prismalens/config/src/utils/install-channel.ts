@@ -32,11 +32,12 @@ export function installChannel(
 
 const RELEASES_URL = "https://github.com/prismalens/prismalens/releases";
 
-/** The command a user runs to upgrade this channel, optionally to `version`. */
+/** The command a user runs to upgrade this channel, optionally to `version`; npm alone follows nightly. */
 export function upgradeCommand(
 	channel: InstallChannel,
 	platform: NodeJS.Platform = process.platform,
 	version?: string,
+	updateChannel: "stable" | "nightly" = "stable",
 ): string {
 	switch (channel) {
 		case "installer":
@@ -52,7 +53,7 @@ export function upgradeCommand(
 		case "electron":
 			return `download the desktop app from ${RELEASES_URL}/${version ? `tag/v${version}` : "latest"}`;
 		default:
-			return `npm install -g prismalens@${version ?? "latest"}`;
+			return `npm install -g prismalens@${version ?? (updateChannel === "nightly" ? "nightly" : "latest")}`;
 	}
 }
 
