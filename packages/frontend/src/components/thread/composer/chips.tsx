@@ -216,7 +216,7 @@ export function RefChip({
 			<span className="truncate">{item.ref.label}</span>
 			{item.tone && (
 				<span
-					className="shrink-0 text-text-3"
+					className="shrink-0 text-text-2"
 					data-testid="composer-link-state"
 				>
 					{item.tone}
