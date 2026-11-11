@@ -462,6 +462,13 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    commit — a required check enforces it (the repo squash-merges, so the PR
    title becomes the trunk commit subject).
 
+### Closing issues
+
+GitHub reads one issue per closing keyword: `closes #a, #b` links only #a, so write `closes #a, closes #b`. A keyword
+only counts when the PR merges into the default branch, so a PR merged into another branch of a stack closes nothing.
+After opening the PR, check that `gh pr view --json closingIssuesReferences` lists every issue it finishes. A PR that
+finishes only part of an issue writes `refs #n`, and the issue stays open with a comment on what is left.
+
 ### Landing a stack
 
 A stack is PRs based on each other's branches. A squash merge puts the bottom PR on `main` as a new commit, so the next
