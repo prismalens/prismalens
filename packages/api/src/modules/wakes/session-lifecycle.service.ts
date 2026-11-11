@@ -359,7 +359,8 @@ export class SessionLifecycleService implements OnModuleInit {
 		} catch {
 			return false;
 		}
-		if (pause.reason !== "ceiling") return true;
+		// A loop-guard pause stops one PR's feed, already stopped; other updates still go.
+		if (pause.reason !== "ceiling") return false;
 		const since = pause.since ? new Date(pause.since) : now;
 		if (!(await this.userSpokeSince(row.id, since))) return true;
 		await this.prisma.investigation.updateMany({
