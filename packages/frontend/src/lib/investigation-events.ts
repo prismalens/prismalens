@@ -1184,6 +1184,16 @@ export function deriveTranscript(
 			default:
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
+					// A compaction's end replaces its own "Compacting" line (#1101).
+					if (event.kind === "compaction" && event.phase !== "started") {
+						const at = items.findLastIndex(
+							(i) =>
+								i.kind === "node" &&
+								i.event.kind === "compaction" &&
+								i.event.phase === "started",
+						);
+						if (at >= 0) items.splice(at, 1);
+					}
 					items.push({ kind: "node", key, event });
 				}
 		}
