@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { readFileSync } from "node:fs";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
 import {
@@ -19,6 +20,19 @@ import { hideQueryDevtools } from "./live-stream-fixtures";
  * The inbox is the page: specs that reset the workspace share a worker's stack,
  * and the demo incident a run page needs is gone by then.
  */
+
+// The release flow refreshes the bundled registry, so the pinned version is read, not typed.
+const AUGGIE_COMMAND: string = (
+	JSON.parse(
+		readFileSync(
+			new URL(
+				"../../../@prismalens/config/src/acp-registry.json",
+				import.meta.url,
+			),
+			"utf8",
+		),
+	) as { id: string; install: string[] }[]
+).find((entry) => entry.id === "auggie")?.install[0] as string;
 
 async function asHost(page: Page) {
 	await page.route(
@@ -103,7 +117,7 @@ test.describe("Terminal panel (#931)", () => {
 			.getByTestId("panel-bottom")
 			.getByTestId("terminal-draft")
 			.locator("input");
-		await expect(draft).toHaveValue("npx -y @augmentcode/auggie@0.36.0 --acp");
+		await expect(draft).toHaveValue(AUGGIE_COMMAND);
 		await expect(page.getByTestId("add-agent-dialog")).toHaveCount(0);
 		await expect(draft).toBeFocused();
 	});
