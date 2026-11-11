@@ -49,7 +49,8 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 	const limit = !live && threadId ? inv?.session?.limit : undefined;
 	const agent = harnesses.find((h) => h.id === inv?.harness);
 	const choices: SwitchChoices = {
-		models: (agent?.models.entries ?? [])
+		// Another model continues here only where the page can send (the thread page).
+		models: (ctx.send ? (agent?.models.entries ?? []) : [])
 			.filter((m) => m.id !== inv?.model)
 			.slice(0, 8)
 			.map((m) => ({ id: m.id, label: m.name })),
@@ -100,7 +101,9 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 			}
 		/>
 	);
+	// The incident run page has its own Interrupted line and Resume.
 	const interrupted =
+		ctx.page === "thread" &&
 		!live &&
 		!!threadId &&
 		inv?.status === "failed" &&

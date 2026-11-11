@@ -14,6 +14,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { stopLine, stopMode, stopNext } from "@/lib/provider-stop";
+import { cn } from "@/lib/utils";
 import { countdown, limitState, type ThreadLimit } from "./session-words";
 
 /** Seconds tick only while something counts down; reduced motion still shows the final text. */
@@ -120,7 +121,10 @@ export function LimitDock({
 			<p className="flex flex-wrap items-baseline gap-x-2 text-body text-text-1">
 				<span
 					aria-hidden
-					className={`h-3 w-[3px] shrink-0 self-center rounded-full ${blocked ? "bg-danger" : "bg-warn"}`}
+					className={cn(
+						"h-3 w-[3px] shrink-0 self-center rounded-full",
+						blocked ? "bg-danger" : "bg-warn",
+					)}
 				/>
 				<span data-testid="limit-dock-line">
 					{stopLine(limit, { clock, now })}
@@ -190,29 +194,27 @@ export function LimitDock({
 						)}
 					</>
 				) : state === "gaveUp" ? (
-					<>
-						{retrying && onRetryNow ? (
+					retrying && onRetryNow ? (
+						<Button
+							size="sm"
+							disabled={pending}
+							onClick={onRetryNow}
+							data-testid="limit-dock-retry-now"
+						>
+							Retry now
+						</Button>
+					) : (
+						onSend && (
 							<Button
 								size="sm"
 								disabled={pending}
-								onClick={onRetryNow}
-								data-testid="limit-dock-retry-now"
+								onClick={onSend}
+								data-testid="limit-dock-send"
 							>
-								Retry now
+								Send
 							</Button>
-						) : (
-							onSend && (
-								<Button
-									size="sm"
-									disabled={pending}
-									onClick={onSend}
-									data-testid="limit-dock-send"
-								>
-									Send
-								</Button>
-							)
-						)}
-					</>
+						)
+					)
 				) : (
 					<>
 						{mode === "overloaded" && onRetryNow && (
