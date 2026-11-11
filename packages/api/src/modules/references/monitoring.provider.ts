@@ -27,6 +27,55 @@ export interface MonitoringSources {
 		templateId: "alertmanager" | "prometheus",
 	): Promise<{ id: string; label: string }[]>;
 	open(src: { id: string; label: string; kind: string }): Promise<OpenedSource>;
+	/** The URL a connection was saved with; a pasted link counts only on its origin and path. */
+	baseUrl?(connectionId: string): Promise<string | null>;
+}
+
+/** What a pasted link names: one kind, and how to find its item among the source's. */
+type Wanted = { kind: ReferenceKind; is: (item: Item) => boolean };
+
+/** `{alertname="X", ...}` in an Alertmanager filter: X, else null. */
+function alertnameOf(filter: string | null): string | null {
+	return filter
+		? (/alertname\s*=\s*"([^"]+)"/.exec(filter)?.[1] ?? null)
+		: null;
+}
+
+/** Alertmanager's UI routes in the fragment: `#/silences/<id>`, `#/alerts?filter={alertname="X"}`. */
+function alertmanagerWanted(url: URL): Wanted | null {
+	const [path = "", query = ""] = url.hash.replace(/^#/, "").split("?");
+	const silence = /^\/silences\/([\w-]+)$/.exec(path);
+	if (silence)
+		return { kind: "silence", is: (i) => i.ref.id.endsWith(`:${silence[1]}`) };
+	const name =
+		path === "/alerts"
+			? alertnameOf(new URLSearchParams(query).get("filter"))
+			: null;
+	return name ? { kind: "alert", is: (i) => i.ref.label === name } : null;
+}
+
+/** Prometheus's `/alerts?search=X` or `/rules?search=X`: the alerting rule named X. */
+function prometheusWanted(url: URL): Wanted | null {
+	const page = url.pathname.split("/").filter(Boolean).pop();
+	const name = url.searchParams.get("search")?.trim();
+	return (page === "alerts" || page === "rules") && name
+		? { kind: "alert_rule", is: (i) => i.ref.label === name }
+		: null;
+}
+
+/** The link is on the connection's origin and under its path. */
+function onConnection(base: string, url: URL): boolean {
+	let b: URL;
+	try {
+		b = new URL(base);
+	} catch {
+		return false;
+	}
+	const root = b.pathname.endsWith("/") ? b.pathname : `${b.pathname}/`;
+	return (
+		b.origin === url.origin &&
+		(url.pathname === b.pathname || `${url.pathname}/`.startsWith(root))
+	);
 }
 
 type Item = { ref: ReferenceRef; detail: string; text: string };
@@ -266,6 +315,47 @@ export class MonitoringProvider implements ReferenceProvider {
 				detail: item.detail.slice(0, 300),
 				group: connectionLabel.slice(0, 120),
 			}));
+	}
+
+	/**
+	 * A pasted link on a saved connection's origin, read through that connection: an
+	 * Alertmanager silence or alert by name, or a Prometheus alerting rule by name.
+	 */
+	async resolveUrl(
+		url: URL,
+		signal: AbortSignal,
+	): Promise<ReferenceCandidate | null> {
+		const baseUrl = this.sources.baseUrl?.bind(this.sources);
+		if (!baseUrl) return null;
+		const conns = await this.sources.connections(this.templateId);
+		for (const c of conns) {
+			const base = await baseUrl(c.id);
+			if (!base || !onConnection(base, url)) continue;
+			const wanted =
+				this.source === "Alertmanager"
+					? alertmanagerWanted(url)
+					: prometheusWanted(url);
+			if (!wanted)
+				throw new SourceUnavailable(
+					this.source,
+					"this link names no single alert, silence or rule",
+				);
+			const found = await this.items([wanted.kind], signal);
+			const hit = found.find(
+				({ item }) => item.ref.id.startsWith(`${c.id}:`) && wanted.is(item),
+			);
+			if (!hit)
+				throw new SourceUnavailable(
+					this.source,
+					"nothing on it matches this link",
+				);
+			return {
+				ref: hit.item.ref,
+				detail: hit.item.detail.slice(0, 300),
+				group: hit.connectionLabel.slice(0, 120),
+			};
+		}
+		return null;
 	}
 
 	async snapshot(ref: ReferenceRef): Promise<ReferenceSnapshot | null> {

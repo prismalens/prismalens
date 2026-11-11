@@ -136,6 +136,8 @@ interface ProductFacts {
 	compactsWhenIdle: boolean;
 	/** The command that compacts the session, without its slash; null when it has none. */
 	compactCommand: string | null;
+	/** Its compact command takes focus instructions after the name (#1024). */
+	compactTakesFocus: boolean;
 }
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
@@ -175,6 +177,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		cacheTtlMinutes: null,
 		compactsWhenIdle: false,
 		compactCommand: null,
+		compactTakesFocus: false,
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
@@ -203,6 +206,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		cacheTtlMinutes: null,
 		compactsWhenIdle: false,
 		compactCommand: "compact",
+		// Claude Code documents `/compact [instructions]`; claude-agent-acp 0.100.0 passes the prompt text through.
+		compactTakesFocus: true,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
 		install:
@@ -234,6 +239,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		cacheTtlMinutes: null,
 		compactsWhenIdle: false,
 		compactCommand: "compact",
+		// codex-acp maps `compact` to Op::Compact, which takes no input.
+		compactTakesFocus: false,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
 		install:
@@ -265,6 +272,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		cacheTtlMinutes: null,
 		compactsWhenIdle: false,
 		compactCommand: null,
+		compactTakesFocus: false,
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
@@ -291,6 +299,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		cacheTtlMinutes: null,
 		compactsWhenIdle: false,
 		compactCommand: null,
+		compactTakesFocus: false,
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
@@ -306,6 +315,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		cacheTtlMinutes: null,
 		compactsWhenIdle: false,
 		compactCommand: null,
+		compactTakesFocus: false,
 		install: "Add it under Settings → Agent → Add agent → Local ACP command.",
 		lines: noModeLines("Local agent"),
 		loginHint: "It signs in on its own.",

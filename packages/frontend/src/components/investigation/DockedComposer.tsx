@@ -563,6 +563,7 @@ export function DockedComposer({
 			<div className="mx-auto w-full max-w-[760px]">
 				<Composer
 					state={live ? "live" : "ready"}
+					scope={inv ? `thread:${inv.id}` : `new:incident:${incident.id}`}
 					{...actionProps(thread.actions, action, setAction)}
 					choice={{ harness, model, effort, accessLevel }}
 					onChoice={onChoice}

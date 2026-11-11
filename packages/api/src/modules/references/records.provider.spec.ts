@@ -20,7 +20,7 @@ function prisma() {
 	const ev = (e: Record<string, unknown>) => ({ event: JSON.stringify({ ...base, ...e }) });
 	return {
 		investigation: {
-			findMany: vi.fn(async () => [{ id: RUN, title: "Checkout slow", status: "running", kind: "chat" }]),
+			findMany: vi.fn(async () => [{ id: RUN, title: "Checkout slow", status: "running", kind: "chat", updatedAt: new Date(base.ts) }]),
 			findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
 				where.id === RUN
 					? {
@@ -37,7 +37,7 @@ function prisma() {
 			),
 		},
 		incident: {
-			findMany: vi.fn(async () => [{ id: INC, number: 7, title: "Checkout p99", status: "triggered" }]),
+			findMany: vi.fn(async () => [{ id: INC, number: 7, title: "Checkout p99", status: "triggered", createdAt: new Date(base.ts) }]),
 			findFirst: vi.fn(async ({ where }: { where: { number: number } }) =>
 				where.number === 7 ? { id: INC, number: 7, title: "Checkout p99", status: "triggered" } : null,
 			),

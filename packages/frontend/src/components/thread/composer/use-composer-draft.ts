@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import {
+	type ComposerDraft,
+	type ComposerScope,
+	DRAFT_TEXT_MAX_CHARS,
+} from "@prismalens/contracts";
+import type { QueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useSaveDraft, useServerDraft } from "@/lib/api/hooks/use-drafts-orpc";
+import {
+	type DraftContent,
+	isEmptyContent,
+	type Journal,
+	keepaliveSave,
+	type PendingFile,
+	readJournal,
+	resolveDraft,
+	writeJournal,
+} from "./draft-store";
+
+/** The server save waits this long after the last change (#1024). */
+export const DRAFT_DEBOUNCE_MS = 300;
+
+export interface DraftConflict {
+	mine: DraftContent;
+	theirs: ComposerDraft;
+}
+
+function bodyOf(c: DraftContent) {
+	return {
+		text: c.text.slice(0, DRAFT_TEXT_MAX_CHARS),
+		draftKey: null,
+		attachments: [],
+		quotes: c.quotes,
+		references: c.references,
+		choice: {},
+	};
+}
+
+const conflictCurrent = (e: unknown): ComposerDraft | null => {
+	const err = e as { code?: string; data?: { current?: ComposerDraft | null } };
+	return err?.code === "CONFLICT" ? (err.data?.current ?? null) : null;
+};
+
+/**
+ * Keeps the box's draft (#1024): a localStorage journal on every change, a debounced
+ * server save, a keepalive save on page hide, and the "Changed on another device"
+ * choice when the server moved past the journal. Null `scope` keeps nothing.
+ */
+export function useComposerDraft({
+	scope,
+	content,
+	files,
+	onRestore,
+	client,
+}: {
+	client: QueryClient;
+	scope: ComposerScope | null;
+	content: DraftContent;
+	files: PendingFile[];
+	/** Puts a restored draft into the box; the journal's pending files come with it. */
+	onRestore: (content: DraftContent, files: PendingFile[]) => void;
+}) {
+	const server = useServerDraft(scope, client);
+	const save = useSaveDraft(client);
+	const [loadedScope, setLoadedScope] = useState<ComposerScope | null>(null);
+	const [conflict, setConflict] = useState<DraftConflict | null>(null);
+	const [unsaved, setUnsaved] = useState(false);
+	const at = useRef({ rev: 0, generation: 0 });
+	const restore = useRef(onRestore);
+	restore.current = onRestore;
+	const latest = useRef({ content, files });
+	latest.current = { content, files };
+	const loaded = !!scope && loadedScope === scope;
+
+	// Load once per scope, after the server answered (or failed: the journal still restores).
+	useEffect(() => {
+		if (!scope || loadedScope === scope || server.isPending) return;
+		const journal = readJournal(scope);
+		const r = resolveDraft(journal, server.data ?? null);
+		at.current = { rev: 0, generation: 0 };
+		if (r.kind === "journal") {
+			at.current = {
+				rev: r.journal.baseRev,
+				generation: r.journal.generation,
+			};
+			restore.current(r.journal, r.journal.files);
+		} else if (r.kind === "server") {
+			at.current = { rev: r.draft.rev, generation: r.draft.generation };
+			restore.current(r.draft, journal?.files ?? []);
+		} else if (r.kind === "conflict") {
+			at.current = { rev: r.draft.rev, generation: r.draft.generation };
+			restore.current(r.journal, r.journal.files);
+			setConflict({ mine: r.journal, theirs: r.draft });
+		}
+		setLoadedScope(scope);
+	}, [scope, loadedScope, server.isPending, server.data]);
+
+	const journalNow = (dirty: boolean): Journal => ({
+		...latest.current.content,
+		files: latest.current.files,
+		baseRev: at.current.rev,
+		generation: at.current.generation,
+		dirty,
+		at: Date.now(),
+	});
+
+	const push = async (retried = false): Promise<void> => {
+		if (!scope) return;
+		const c = latest.current.content;
+		try {
+			const saved = await save.mutateAsync({
+				scope,
+				...bodyOf(c),
+				baseRev: at.current.rev,
+				generation: at.current.generation,
+			});
+			at.current = { rev: saved.rev, generation: saved.generation };
+			const still =
+				JSON.stringify(latest.current.content) === JSON.stringify(c);
+			writeJournal(scope, journalNow(!still));
+		} catch (e) {
+			const current = conflictCurrent(e);
+			if (!current) return; // Offline: the journal keeps it for the next load.
+			// A send moved the generation, or the server holds what we hold: adopt and save again.
+			if (
+				!retried &&
+				(current.generation !== at.current.generation ||
+					current.text === c.text)
+			) {
+				at.current = { rev: current.rev, generation: current.generation };
+				return push(true);
+			}
+			setConflict({ mine: c, theirs: current });
+		}
+	};
+
+	// Every change: the journal now, the server after the debounce.
+	const contentKey = JSON.stringify([content, files.map((f) => f.key)]);
+	const pushRef = useRef(push);
+	pushRef.current = push;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: contentKey is the change signal.
+	useEffect(() => {
+		if (!scope || !loaded || conflict) return;
+		const ok = writeJournal(scope, journalNow(true));
+		setUnsaved(!ok);
+		if (isEmptyContent(content) && at.current.rev === 0) return;
+		const t = setTimeout(() => void pushRef.current(), DRAFT_DEBOUNCE_MS);
+		return () => clearTimeout(t);
+	}, [contentKey, scope, loaded, conflict]);
+
+	// Page hide: one keepalive save; past 60 KiB the journal carries it to the next load.
+	useEffect(() => {
+		if (!scope) return;
+		const flush = () => {
+			const j = readJournal(scope);
+			if (!j?.dirty) return;
+			keepaliveSave(scope, {
+				scope,
+				...bodyOf(j),
+				baseRev: at.current.rev,
+				generation: at.current.generation,
+			});
+		};
+		const onVis = () => document.visibilityState === "hidden" && flush();
+		window.addEventListener("pagehide", flush);
+		document.addEventListener("visibilitychange", onVis);
+		return () => {
+			window.removeEventListener("pagehide", flush);
+			document.removeEventListener("visibilitychange", onVis);
+		};
+	}, [scope]);
+
+	return {
+		loaded,
+		conflict,
+		/** "Changed on another device" never shows once storage refuses the journal. */
+		unsaved,
+		/** The envelope's draft fields: the server deletes the draft when `draftRev` is current. */
+		sendFields: () =>
+			scope && at.current.rev > 0
+				? { draftScope: scope, draftRev: at.current.rev }
+				: scope
+					? { draftScope: scope }
+					: {},
+		/** The server tombstoned the draft: the next save starts its new generation. */
+		sent: () => {
+			if (!scope) return;
+			at.current = {
+				rev: at.current.rev + 1,
+				generation: at.current.generation + 1,
+			};
+			writeJournal(scope, undefined);
+		},
+		keepMine: () => {
+			if (!conflict) return;
+			at.current = {
+				rev: conflict.theirs.rev,
+				generation: conflict.theirs.generation,
+			};
+			setConflict(null);
+			void pushRef.current();
+		},
+		useTheirs: () => {
+			if (!conflict || !scope) return;
+			at.current = {
+				rev: conflict.theirs.rev,
+				generation: conflict.theirs.generation,
+			};
+			restore.current(conflict.theirs, []);
+			writeJournal(scope, undefined);
+			setConflict(null);
+		},
+	};
+}

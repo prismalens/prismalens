@@ -258,6 +258,7 @@ export function OverviewComposer({
 			<div className="mx-auto w-full max-w-[760px]">
 				<Composer
 					state="ready"
+					scope={`new:incident:${incident.id}`}
 					{...actionProps(t.actions, current, (id) =>
 						onAction(id as OverviewAction),
 					)}

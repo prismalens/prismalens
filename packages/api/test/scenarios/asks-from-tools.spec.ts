@@ -9,7 +9,6 @@ import {
 	type FakeAlertmanager,
 	startFakeAlertmanager,
 } from "../../../../scripts/fakes/fake-alertmanager.mjs";
-import { ASK_DOCK } from "../../src/modules/gateway/tools/asks.js";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
 // The fake agent takes the gateway, so its sessions call PrismaLens's tools.
@@ -18,15 +17,12 @@ let am: FakeAlertmanager;
 
 beforeAll(async () => {
 	am = await startFakeAlertmanager();
-	// The tools as the ask dock will offer them: no run gets them before it ships.
-	ASK_DOCK.shipped = true;
 	await pl.boot();
 	// OpenCode: Claude Code and Codex ask through their own question tool instead.
 	await pl.api("/settings/harness", { method: "PATCH", body: { harness: "opencode" } });
 }, 60_000);
 
 afterAll(async () => {
-	ASK_DOCK.shipped = false;
 	await am.close();
 	await pl.dispose();
 });

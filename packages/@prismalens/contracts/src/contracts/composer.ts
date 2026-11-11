@@ -8,11 +8,16 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	ComposerDraftSchema,
+	DraftAttachmentParamSchema,
+	DraftAttachmentSchema,
 	DraftScopeParamSchema,
 	PutDraftSchema,
+	ReferenceResolveInputSchema,
+	ReferenceResolveResultSchema,
 	ReferenceSearchInputSchema,
 	ReferenceSearchResultSchema,
 	ReferenceUseSchema,
+	ServedAttachmentSchema,
 } from "../schemas/index.js";
 
 export const draftsContract = {
@@ -54,6 +59,29 @@ export const draftsContract = {
 		})
 		.input(DraftScopeParamSchema)
 		.output(z.object({ deleted: z.boolean() })),
+
+	/** GET /drafts/{scope}/attachments: the files the draft lists, in its order. */
+	attachments: oc
+		.route({
+			method: "GET",
+			path: "/drafts/{scope}/attachments",
+			summary: "List the files a composer draft holds",
+			tags: ["drafts"],
+		})
+		.input(DraftScopeParamSchema)
+		.output(z.object({ attachments: z.array(DraftAttachmentSchema) })),
+
+	/** GET /drafts/{scope}/attachments/{id}: the bytes, only for a file this draft lists. */
+	attachment: oc
+		.route({
+			method: "GET",
+			path: "/drafts/{scope}/attachments/{id}",
+			summary: "Download a file a composer draft holds",
+			tags: ["drafts"],
+			outputStructure: "detailed",
+		})
+		.input(DraftAttachmentParamSchema)
+		.output(ServedAttachmentSchema),
 };
 
 export const referencesContract = {
@@ -67,6 +95,17 @@ export const referencesContract = {
 		})
 		.input(ReferenceSearchInputSchema)
 		.output(ReferenceSearchResultSchema),
+
+	/** POST /references/resolve: pasted links a connected source recognises, in input order. */
+	resolve: oc
+		.route({
+			method: "POST",
+			path: "/references/resolve",
+			summary: "Resolve pasted links into references",
+			tags: ["references"],
+		})
+		.input(ReferenceResolveInputSchema)
+		.output(ReferenceResolveResultSchema),
 
 	/** POST /references/uses: the user picked a hit; it ranks higher next time. */
 	use: oc

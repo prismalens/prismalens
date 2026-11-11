@@ -12,13 +12,20 @@ import { ORPCError } from "@orpc/nest";
 import {
 	type ComposerDraft,
 	DRAFT_SWEEP_AFTER_MS,
+	type DraftAttachment,
 	type DraftBody,
 	DraftBodySchema,
 	type PutDraftInput,
+	type ServedAttachment,
+	scopeThreadId,
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { attachmentsDir } from "../investigations/attachments.service.js";
+import {
+	attachmentsDir,
+	draftAttachmentRows,
+	servedDraftAttachment,
+} from "../investigations/attachments.service.js";
 
 type Tx = Prisma.TransactionClient;
 type Row = {
@@ -112,6 +119,62 @@ export class DraftsService implements OnApplicationBootstrap {
 	async delete(scope: string): Promise<{ deleted: boolean }> {
 		const r = await this.prisma.composerDraft.deleteMany({ where: { scope } });
 		return { deleted: r.count > 0 };
+	}
+
+	/** The files the draft lists, in its order, so a fresh browser rebuilds each chip (#1024). */
+	async attachments(scope: string): Promise<DraftAttachment[]> {
+		const draft = await this.get(scope);
+		if (!draft) return [];
+		const rows = await this.heldFiles(draft, draft.attachments);
+		const byId = new Map(rows.map((r) => [r.id, r]));
+		const folded = new Set(draft.foldedPastes ?? []);
+		return draft.attachments.flatMap((id) => {
+			const r = byId.get(id);
+			return r
+				? [
+						{
+							id: r.id,
+							name: r.name,
+							mimeType: r.mimeType,
+							size: r.size,
+							foldedPaste: folded.has(r.id),
+						},
+					]
+				: [];
+		});
+	}
+
+	/** A file's bytes, only when this draft lists it and its owner holds it. */
+	async attachment(scope: string, id: string): Promise<ServedAttachment> {
+		const draft = await this.get(scope);
+		const [row] =
+			draft?.attachments.includes(id) === true
+				? await this.heldFiles(draft, [id])
+				: [];
+		if (!row)
+			throw new ORPCError("NOT_FOUND", {
+				message: "This draft holds no such file.",
+			});
+		return servedDraftAttachment(row);
+	}
+
+	private async heldFiles(draft: ComposerDraft, ids: string[]) {
+		const threadId = scopeThreadId(draft.scope);
+		const run = threadId
+			? await this.prisma.investigation.findUnique({
+					where: { id: threadId },
+					select: { incidentId: true },
+				})
+			: null;
+		return draftAttachmentRows(
+			this.prisma,
+			{
+				draftKey: draft.draftKey,
+				investigationId: run ? threadId : null,
+				incidentId: run?.incidentId ?? null,
+			},
+			ids,
+		);
 	}
 
 	/**

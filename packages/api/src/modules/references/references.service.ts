@@ -3,6 +3,7 @@
 
 import { isAbsolute, relative, sep } from "node:path";
 import { Inject, Injectable, Optional } from "@nestjs/common";
+import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import {
 	type AgentCommand,
 	AgentCommandsSchema,
@@ -14,6 +15,7 @@ import {
 	REFERENCE_SNAPSHOTS_MAX_CHARS,
 	type ReferenceKind,
 	type ReferenceRef,
+	type ReferenceResolution,
 	type ReferenceSearchInput,
 	type ReferenceSearchResult,
 	type ReferenceSnapshot,
@@ -24,6 +26,7 @@ import {
 	TRIGGER_KINDS,
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { compactCommandOf, registryFacts } from "../wakes/session.js";
 import { FILE_LIST_TIMED_OUT } from "./file-list.js";
 import { rank, refKey } from "./ranking.js";
 import { RecordsProvider } from "./records.provider.js";
@@ -35,12 +38,52 @@ import {
 	SourceUnavailable,
 } from "./reference-provider.js";
 
-/** PrismaLens's own `/` actions; the agent's advertised commands join them, marked apart. */
-export const APP_COMMANDS: { name: string; description: string }[] = [
+/**
+ * PrismaLens's own `/` actions; the agent's advertised commands join them, marked apart.
+ * `needs: "thread"` lists one only in a thread; `"compact"` only where the agent compacts.
+ */
+export const APP_COMMANDS: {
+	name: string;
+	description: string;
+	needs?: "thread" | "compact";
+}[] = [
 	{ name: "investigate", description: "Investigate: the run owes a report" },
 	{ name: "ask", description: "Ask: the run owes an answer" },
 	{ name: "note", description: "Note: add a note to the thread, no run" },
+	{
+		name: "compact",
+		description: "Compact: summarize the conversation so far to free context",
+		needs: "compact",
+	},
+	{
+		name: "new",
+		description: "New thread: same subject and agent, linked to this one",
+		needs: "thread",
+	},
+	{
+		name: "model",
+		description: "Model: choose the model and effort for the next message",
+	},
+	{
+		name: "effort",
+		description:
+			"Effort: choose the model and effort for the next message, as /model",
+	},
+	{
+		name: "context",
+		description: "Context: what fills the agent's context window",
+		needs: "thread",
+	},
 ];
+
+/** Agent commands never listed: they sign in or out on a terminal, which a run has none of. */
+export const HIDDEN_AGENT_COMMANDS: ReadonlySet<string> = new Set([
+	"login",
+	"logout",
+]);
+
+/** A pasted link's whole read, per link (#1024). */
+export const RESOLVE_TIMEOUT_MS = 5_000;
 
 export const agentCommandsKey = (harness: string) =>
 	`agents.commands.${harness}`;
@@ -51,6 +94,8 @@ interface Resolved {
 	incidentId: string | null;
 	serviceId: string | null;
 	root: string | null;
+	/** The thread's agent, or the new thread's chosen one. */
+	harness: string | null;
 	commands: { list: AgentCommand[]; fromLastRun: boolean };
 	agentTouched: Set<string>;
 }
@@ -84,7 +129,7 @@ export class ReferencesService {
 	}
 
 	async search(input: ReferenceSearchInput): Promise<ReferenceSearchResult> {
-		const ctx = await this.resolve(input.threadId, input.scope);
+		const ctx = await this.resolve(input.threadId, input.scope, input.harness);
 		const kinds: readonly ReferenceKind[] = input.trigger
 			? TRIGGER_KINDS[input.trigger]
 			: REFERENCE_KINDS;
@@ -269,33 +314,116 @@ export class ReferencesService {
 		return `from ${where} of thread "${t?.title ?? q.source.threadId}"${q.source.seq !== undefined ? `, event ${q.source.seq}` : ""}`;
 	}
 
+	/**
+	 * The app's commands, then the agent's under its own name. The agent's compact is the
+	 * app's `/compact` routed to it, so it is one row; any other shared name keeps both rows.
+	 */
 	private commands(ctx: Resolved): ReferenceCandidate[] {
+		const compact = ctx.threadId
+			? compactCommandOf(
+					registryFacts(ctx.harness),
+					ctx.commands.list.map((c) => c.name),
+				)
+			: null;
+		const harness = HARNESS_IDS.find((h) => h === ctx.harness);
+		const group = harness ? HARNESS_REGISTRY[harness].label : "Agent";
 		return [
-			...APP_COMMANDS.map((c) => ({
+			...APP_COMMANDS.filter((c) =>
+				c.needs === "compact"
+					? !!compact
+					: c.needs === "thread"
+						? !!ctx.threadId
+						: true,
+			).map((c) => ({
 				ref: { kind: "command" as const, id: c.name, label: `/${c.name}` },
 				detail: c.description,
 				source: "app" as const,
 				group: "PrismaLens",
 			})),
-			...ctx.commands.list.map((c) => ({
-				ref: {
-					kind: "command" as const,
-					id: `agent:${c.name}`,
-					label: `/${c.name}`,
-				},
-				detail:
-					`${c.description}${ctx.commands.fromLastRun ? " (from the last run)" : ""}`.slice(
-						0,
-						300,
-					),
-				source: "agent" as const,
-				group: "Agent",
-			})),
+			...ctx.commands.list
+				.filter((c) => !HIDDEN_AGENT_COMMANDS.has(c.name) && c.name !== compact)
+				.map((c) => ({
+					ref: {
+						kind: "command" as const,
+						id: `agent:${c.name}`,
+						label: `/${c.name}`,
+					},
+					detail:
+						`${c.description}${ctx.commands.fromLastRun ? " (from the last run)" : ""}`.slice(
+							0,
+							300,
+						),
+					...(c.inputHint !== undefined ? { inputHint: c.inputHint } : {}),
+					source: "agent" as const,
+					group,
+				})),
 		];
 	}
 
+	/**
+	 * `POST /references/resolve`: each pasted link, in order, as the hit the first source
+	 * that recognises it reads through its saved connection, or why none did (#1024).
+	 */
+	async resolveUrls(
+		urls: string[],
+	): Promise<{ results: ReferenceResolution[] }> {
+		const resolvers = this.providers.filter((p) => p.resolveUrl);
+		const results = await Promise.all(
+			urls.map((raw) => this.resolveUrl(raw, resolvers)),
+		);
+		return { results };
+	}
+
+	private async resolveUrl(
+		raw: string,
+		resolvers: ReferenceProvider[],
+	): Promise<ReferenceResolution> {
+		const url = raw.slice(0, 2048);
+		let parsed: URL;
+		try {
+			parsed = new URL(raw.trim());
+		} catch {
+			return { url, reason: "Not a link." };
+		}
+		if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+			return { url, reason: "Not a web link." };
+		const signal = AbortSignal.timeout(RESOLVE_TIMEOUT_MS);
+		// A source that ignores the signal is still cut off at the limit.
+		const late = new Promise<never>((_, reject) =>
+			signal.addEventListener("abort", () =>
+				reject(new Error("it did not answer in 5 s")),
+			),
+		);
+		late.catch(() => {});
+		for (const p of resolvers) {
+			const read = p.resolveUrl?.bind(p);
+			if (!read) continue;
+			try {
+				const hit = await Promise.race([read(parsed, signal), late]);
+				if (!hit) continue;
+				const { active: _active, at: _at, ...c } = hit;
+				return {
+					...c,
+					group: c.group ?? p.source,
+					why: "match",
+					score: 1,
+					url,
+				};
+			} catch (e) {
+				const source = e instanceof SourceUnavailable ? e.source : p.source;
+				const message = e instanceof Error ? e.message : String(e);
+				return { url, reason: `${source}: ${message}`.slice(0, 300) };
+			}
+		}
+		return { url, reason: "No connected source recognises this link." };
+	}
+
 	/** The thread or new-thread scope a search or a send runs in. */
-	private async resolve(threadId?: string, scope?: string): Promise<Resolved> {
+	private async resolve(
+		threadId?: string,
+		scope?: string,
+		harness?: string,
+	): Promise<Resolved> {
 		const id = threadId ?? (scope ? scopeThreadId(scope) : null);
 		const empty: Resolved = {
 			threadId: null,
@@ -303,9 +431,21 @@ export class ReferencesService {
 			incidentId: null,
 			serviceId: null,
 			root: null,
+			harness: null,
 			commands: { list: [], fromLastRun: false },
 			agentTouched: new Set(),
 		};
+		// Before a run exists, the chosen agent's commands from its last run (#1024).
+		const fresh: Resolved = harness
+			? {
+					...empty,
+					harness,
+					commands: {
+						list: await this.lastCommands(harness),
+						fromLastRun: true,
+					},
+				}
+			: empty;
 		if (id) {
 			const run = await this.prisma.investigation.findUnique({
 				where: { id },
@@ -338,6 +478,7 @@ export class ReferencesService {
 				incidentId: run.incidentId,
 				serviceId: run.serviceId,
 				root,
+				harness: run.harness,
 				commands,
 				agentTouched: await this.touched(run.id, root),
 			};
@@ -348,16 +489,16 @@ export class ReferencesService {
 				select: { id: true, sourceKind: true, url: true },
 			});
 			return {
-				...empty,
+				...fresh,
 				repositoryId: repo?.id ?? null,
 				root: repo?.sourceKind === "folder" ? repo.url : null,
 			};
 		}
 		if (scope?.startsWith("new:incident:"))
-			return { ...empty, incidentId: scope.slice("new:incident:".length) };
+			return { ...fresh, incidentId: scope.slice("new:incident:".length) };
 		if (scope?.startsWith("new:service:"))
-			return { ...empty, serviceId: scope.slice("new:service:".length) };
-		return empty;
+			return { ...fresh, serviceId: scope.slice("new:service:".length) };
+		return fresh;
 	}
 
 	private async lastCommands(harness: string): Promise<AgentCommand[]> {

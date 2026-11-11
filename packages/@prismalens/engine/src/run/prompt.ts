@@ -544,3 +544,16 @@ export function newerRunNote(newer: NewerRun): string {
 			: newer.heads.map((r) => `${r.name}@${r.head.slice(0, 7)}`).join(", ");
 	return `Note from PrismaLens, not the operator: this conversation stays at the commit it was pinned to. A newer run (Run #${newer.number}) has since looked at ${at}, so newer commits exist. If your answer rests on code that may have changed since, say so.`;
 }
+
+/**
+ * `/name args` at the start of a message is a command the agent runs, only when it is the
+ * first text of its turn (ACP slash commands); null for any other message (#1024).
+ */
+export function commandLine(text: string): string | null {
+	const line = text.trim();
+	return /^\/[\w:.-]+(?:\s|$)/.test(line) ? line : null;
+}
+
+/** The turn before a command turn: what PrismaLens adds, which cannot share the command's turn. */
+export const COMMAND_LEAD =
+	"Note from PrismaLens, not the operator: the next message runs one of your commands. This message only carries what goes with it. Read it and reply with one word: Ready.";

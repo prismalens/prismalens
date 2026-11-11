@@ -9,7 +9,12 @@ import type { InvestigationQuery } from "@prismalens/contracts";
  *
  * Type-safe hooks for investigation operations using oRPC with TanStack Query.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	type QueryClient,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 import { incidentKeys } from "./use-incidents-orpc";
 
@@ -154,4 +159,33 @@ export function useSendInvestigationMessage() {
 /** The operator's Approve or Deny for the agent's ask (#673 w21): 409 once it no longer waits. */
 export function useAnswerAsk() {
 	return useMutation(orpc.investigations.answerAsk.mutationOptions());
+}
+
+/** Hand a run the secret it asked for (#1024): write-only, the value never comes back. */
+export function useAnswerSecret() {
+	return useMutation(orpc.investigations.answerSecret.mutationOptions());
+}
+
+/** Change a queued message's text before the agent reads it (#1024). */
+export function useEditQueuedMessage() {
+	return useMutation(orpc.investigations.editMessage.mutationOptions());
+}
+
+/** Take back a queued message before the agent reads it (#1024). */
+export function useWithdrawQueuedMessage() {
+	return useMutation(orpc.investigations.withdrawMessage.mutationOptions());
+}
+
+/** `/compact`: the agent's own compaction on a paused thread (#1024). */
+export function useCompactThread(client: QueryClient) {
+	return useMutation(
+		{
+			...orpc.investigations.compact.mutationOptions(),
+			onSuccess: (_d, v) =>
+				client.invalidateQueries({
+					queryKey: investigationKeys.detail(v.id),
+				}),
+		},
+		client,
+	);
 }

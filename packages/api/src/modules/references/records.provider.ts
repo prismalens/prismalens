@@ -21,6 +21,22 @@ import type {
 
 const TAKE = 50;
 
+/**
+ * The rows matching `q` as a substring, plus the newest rows: an acronym such as `pdw`
+ * is no substring of "PR desk: Wave 1", and the ranker drops what does not match (#1024).
+ */
+async function matchedOrRecent<T extends { id: string }>(
+	filtered: boolean,
+	read: (filter: boolean) => Promise<T[]>,
+): Promise<T[]> {
+	if (!filtered) return read(false);
+	const [matched, recent] = await Promise.all([read(true), read(false)]);
+	const seen = new Set(matched.map((r) => r.id));
+	return [...matched, ...recent.filter((r) => !seen.has(r.id))];
+}
+
+const RUNNING = new Set(["pending", "running"]);
+
 /** The run a snapshot is sent into: what it is about, so a record outside it goes as snapshot only. */
 export interface RunScope {
 	threadId: string | null;
@@ -104,41 +120,56 @@ export class RecordsProvider implements ReferenceProvider {
 		}
 		if (want.has("thread"))
 			jobs.push(
-				this.prisma.investigation
-					.findMany({
+				matchedOrRecent(!!like, (filter) =>
+					this.prisma.investigation.findMany({
 						where: {
-							...(like ? { title: like } : {}),
+							...(filter && like ? { title: like } : {}),
 							...(ctx.threadId ? { id: { not: ctx.threadId } } : {}),
 						},
 						orderBy: { updatedAt: "desc" },
 						take: TAKE,
-						select: { id: true, title: true, status: true, kind: true },
-					})
-					.then((rows) => {
-						for (const r of rows)
-							out.push({
-								ref: {
-									kind: "thread",
-									id: r.id,
-									label: (r.title || "Untitled thread").slice(0, 200),
-								},
-								detail: r.status,
-								group: "Threads",
-							});
+						select: {
+							id: true,
+							title: true,
+							status: true,
+							kind: true,
+							updatedAt: true,
+						},
 					}),
+				).then((rows) => {
+					for (const r of rows)
+						out.push({
+							ref: {
+								kind: "thread",
+								id: r.id,
+								label: (r.title || "Untitled thread").slice(0, 200),
+							},
+							detail: r.status,
+							group: "Threads",
+							active: RUNNING.has(r.status),
+							at: r.updatedAt.getTime(),
+						});
+				}),
 			);
 		if (want.has("incident"))
 			jobs.push(
-				this.prisma.incident
-					.findMany({
-						where: like ? { title: like } : {},
+				matchedOrRecent(!!like, (filter) =>
+					this.prisma.incident.findMany({
+						where: filter && like ? { title: like } : {},
 						orderBy: { createdAt: "desc" },
 						take: TAKE,
-						select: { id: true, number: true, title: true, status: true },
-					})
-					.then((rows) => {
-						for (const r of rows) out.push(incidentHit(r));
+						select: {
+							id: true,
+							number: true,
+							title: true,
+							status: true,
+							createdAt: true,
+						},
 					}),
+				).then((rows) => {
+					for (const { createdAt, ...r } of rows)
+						out.push({ ...incidentHit(r), at: createdAt.getTime() });
+				}),
 			);
 		if (want.has("service"))
 			jobs.push(

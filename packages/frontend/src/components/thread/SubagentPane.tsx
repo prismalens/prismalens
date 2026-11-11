@@ -17,6 +17,7 @@ import {
 	type SubagentView,
 	subagentEvents,
 } from "@/lib/subagents";
+import { quoteOf, sendQuote } from "./composer/quote";
 import { SubagentMark } from "./SubagentNode";
 
 const QUOTE_TASK = 240;
@@ -119,7 +120,18 @@ export function SubagentPane({
 						<Button
 							size="sm"
 							variant="secondary"
-							onClick={() => onAskMain(askMainQuote(agent))}
+							onClick={() => {
+								// The main box takes it as a quote chip; a page without one gets the text.
+								const chip = quoteOf(
+									askMainQuote(agent).replace(/^> /, "").trim(),
+									{
+										threadId: runId,
+										kind: "transcript",
+									},
+								);
+								if (!chip || !sendQuote(runId, chip))
+									onAskMain(askMainQuote(agent));
+							}}
 							data-testid="subagent-ask-main"
 						>
 							<MessageSquareQuote className="size-3.5" aria-hidden />
