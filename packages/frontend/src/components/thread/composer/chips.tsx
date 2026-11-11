@@ -77,7 +77,7 @@ export function FileChip({
 			data-testid="composer-file"
 			data-refused={item.refusal ? "" : undefined}
 		>
-			<span className={cn(chip, item.refusal && "text-text-2")}>
+			<span className={cn(chip, item.refusal && "bg-surface-2")}>
 				{item.preview ? (
 					<img
 						src={item.preview}
@@ -102,7 +102,7 @@ export function FileChip({
 					<span className="truncate">{name}</span>
 				)}
 				{!item.pasted && !item.refusal && (
-					<span className="shrink-0 text-text-3">
+					<span className="shrink-0 text-text-2">
 						{typeOf(item.file)}, {sizeWord(item.file.size)}
 					</span>
 				)}
@@ -115,13 +115,17 @@ export function FileChip({
 					</span>
 				)}
 				{item.unsaved && !item.refusal && (
-					<span className="shrink-0 text-text-3">Not saved yet</span>
+					<span className="shrink-0 text-text-2">Not saved yet</span>
 				)}
 				<Remove label={name} onRemove={onRemove} />
 			</span>
 			{open && item.pasted && (
 				<div className="flex flex-col gap-1 rounded-control bg-surface-4 p-2">
-					<pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-meta text-text-1">
+					<pre
+						// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region must take focus to scroll by keyboard.
+						tabIndex={0}
+						className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-meta text-text-1"
+					>
 						{item.pasted}
 					</pre>
 					<div className="flex items-center gap-2">
@@ -164,7 +168,7 @@ export function QuoteChipView({
 				{line}
 			</button>
 			{item.cut && (
-				<span className="shrink-0 text-text-3" data-testid="composer-quote-cut">
+				<span className="shrink-0 text-text-2" data-testid="composer-quote-cut">
 					cut to 4,000 characters
 				</span>
 			)}
@@ -247,7 +251,7 @@ export function CommandChip({
 		>
 			<SquareSlash className="size-3.5 shrink-0 text-text-3" aria-hidden />
 			<span className="font-mono">/{item.name}</span>
-			<span className="shrink-0 text-text-3">{item.group}</span>
+			<span className="shrink-0 text-text-2">{item.group}</span>
 			<Remove label={`/${item.name}`} onRemove={onRemove} />
 		</li>
 	);
