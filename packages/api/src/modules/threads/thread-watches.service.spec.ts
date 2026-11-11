@@ -43,6 +43,9 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 		threadWake: {
 			count: vi.fn(async ({ where }: { where: { kind: { in: string[] } } }) => wakes.filter((w) => where.kind.in.includes(w.kind)).length),
 		},
+		prFeed: {
+			updateMany: vi.fn(async () => ({ count: 0 })),
+		},
 		prWatch: {
 			upsert: vi.fn(async ({ create }: { create: (typeof watches)[number] }) => {
 				watches = [...watches.filter((w) => !(w.prId === create.prId && w.investigationId === create.investigationId)), create];
@@ -50,7 +53,16 @@ function harness(opts: { prStatus?: boolean; prs?: PullRequest[] } = {}) {
 			findUnique: vi.fn(async ({ where }: { where: { prId_investigationId: { prId: string; investigationId: string } } }) =>
 				watches.find((w) => w.prId === where.prId_investigationId.prId && w.investigationId === where.prId_investigationId.investigationId) ?? null,
 			),
-			findMany: vi.fn(async () => watches),
+			findMany: vi.fn(async () =>
+				watches.map((w) => ({
+					...w,
+					investigation: {
+						settledAt: null as Date | null,
+						lastActivityAt: null as Date | null,
+						updatedAt: new Date(),
+					},
+				})),
+			),
 			delete: vi.fn(async ({ where }: { where: { prId_investigationId: { prId: string; investigationId: string } } }) => {
 				const k = where.prId_investigationId;
 				watches = watches.filter((w) => !(w.prId === k.prId && w.investigationId === k.investigationId));
@@ -246,6 +258,14 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		expect(await h.svc.watch(THREAD, "nope", "merged")).toMatchObject({ error: expect.stringContaining("No pull request") });
 		await h.svc.watch(THREAD, "pr1", "review");
 		expect(await h.svc.unwatch(THREAD, "pr1")).toEqual({ stopped: true });
+		expect(h.prisma.prFeed.updateMany).toHaveBeenCalledWith({
+			where: {
+				prId: "pr1",
+				investigationId: THREAD,
+				state: { in: ["watching", "disconnected"] },
+			},
+			data: { state: "stopped", reason: "Stopped by the agent", pending: null },
+		});
 		expect(await h.svc.unwatch(THREAD, "pr1")).toEqual({ stopped: false });
 		expect(h.events.at(-1)).toMatchObject({ kind: "pr_watch", phase: "stopped" });
 	});
@@ -355,6 +375,26 @@ describe("wakeup_schedule, pr_link, pr_watch and pr_unwatch (#1024 spec B)", () 
 		await h.svc.tick();
 		expect(vi.mocked(h.svc["wakes"].schedule).mock.calls.length).toBe(scheduled);
 		expect(h.wakes.filter((w) => w.state === "pending").map((w) => w.reason)).toEqual([`Another PR ended.\n${line}`]);
+	});
+
+	it("tick skips settled threads", async () => {
+		const h = harness();
+		const stamp = new Date("2026-11-11T12:00:00.000Z");
+		h.prisma.prWatch.findMany.mockResolvedValueOnce([
+			{
+				prId: "pr1",
+				investigationId: THREAD,
+				until: "checks_done",
+				expiresAt: new Date(stamp.getTime() + 10_000),
+				investigation: {
+					settledAt: stamp,
+					lastActivityAt: null,
+					updatedAt: stamp,
+				},
+			},
+		]);
+		await h.svc.tick(stamp);
+		expect(h.prSvc.refreshForWatch).not.toHaveBeenCalled();
 	});
 });
 

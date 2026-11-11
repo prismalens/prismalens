@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { runView } from "@prismalens/integrations/harness";
+import { inputSchemaOf, runView } from "@prismalens/integrations/harness";
 import { describe, expect, it } from "vitest";
 import { type GatewayToolData, gatewayTools } from "./index.js";
 import { HOUSE_RULES } from "./rules.js";
@@ -42,5 +42,25 @@ describe("every tool description follows the checklist (#1024 spec F, decision 6
 		for (const n of ["incident_get", "thread_read", "thread_start", "propose_action"])
 			expect(names).toContain(n);
 		expect(every.map((t) => t.name).sort()).toEqual(["tools_call", "tools_search"]);
+	});
+
+	it("the summed description and schema characters of PR and cron tools divided by 4 is under 2500 tokens", () => {
+		const targetNames = [
+			"pr_link",
+			"pr_watch",
+			"pr_unwatch",
+			"wakeup_schedule",
+			"cron_create",
+			"cron_list",
+			"cron_delete",
+		];
+		const subset = tools.filter((t) => targetNames.includes(t.name));
+		expect(subset.map((t) => t.name).sort()).toEqual([...targetNames].sort());
+		const totalChars = subset.reduce(
+			(sum, t) => sum + t.description.length + JSON.stringify(inputSchemaOf(t)).length,
+			0,
+		);
+		const tokens = totalChars / 4;
+		expect(tokens).toBeLessThan(2500);
 	});
 });

@@ -45,6 +45,9 @@ describe("owner and operate checks", () => {
 			{} as never,
 			{} as never,
 			{} as never,
+			{} as never,
+			{} as never,
+			{} as never,
 		);
 		const route = controller.routes().start;
 		// biome-ignore lint/suspicious/noExplicitAny: invoke procedure handler directly

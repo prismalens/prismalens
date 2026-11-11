@@ -56,7 +56,10 @@ const run = (over: Record<string, unknown> = {}) => ({
 describe("ThreadsService feed, visit, settle (#1020)", () => {
 	let prisma: {
 		$transaction: ReturnType<typeof vi.fn>;
-		threadWake: { updateMany: ReturnType<typeof vi.fn> };
+		threadWake: {
+			updateMany: ReturnType<typeof vi.fn>;
+			findMany: ReturnType<typeof vi.fn>;
+		};
 		prWatch: { deleteMany: ReturnType<typeof vi.fn> };
 		investigation: {
 			findMany: ReturnType<typeof vi.fn>;
@@ -73,6 +76,12 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			upsert: ReturnType<typeof vi.fn>;
 		};
 	};
+	let lifecycle: {
+		block: ReturnType<typeof vi.fn>;
+		descendants: ReturnType<typeof vi.fn>;
+		preview: ReturnType<typeof vi.fn>;
+		stopRunning: ReturnType<typeof vi.fn>;
+	};
 	const service = () =>
 		new ThreadsService(
 			prisma as never,
@@ -84,14 +93,31 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
 			{ compose: async () => undefined } as never,
 			{ rowGlyphs: async () => new Map() } as never,
+			lifecycle as never,
 		);
 	const query = (over: Record<string, unknown> = {}) =>
 		ThreadFeedQuerySchema.parse(over);
 
 	beforeEach(() => {
+		lifecycle = {
+			block: vi.fn(async (id: string) => [id]),
+			descendants: vi.fn(async () => []),
+			preview: vi.fn(async () => ({
+				wakes: 0,
+				watches: 0,
+				crons: 0,
+				children: 0,
+				running: 0,
+				worktrees: [],
+			})),
+			stopRunning: vi.fn(async () => {}),
+		};
 		prisma = {
 			$transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
-			threadWake: { updateMany: vi.fn(async () => ({ count: 0 })) },
+			threadWake: {
+				updateMany: vi.fn(async () => ({ count: 0 })),
+				findMany: vi.fn(async () => []),
+			},
 			prWatch: { deleteMany: vi.fn(async () => ({ count: 0 })) },
 
 			investigation: {
@@ -184,6 +210,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			{ withDrafts: async () => drafts } as never,
 			{} as never,
 			{ rowGlyphs: async () => new Map() } as never,
+			lifecycle as never,
 		);
 		const feed = await svc.feed(query(), NOW);
 		const rows = feed.units.flatMap((u) => u.threads);
@@ -301,7 +328,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 			incidentId: null,
 			updatedAt: new Date("2026-01-01T00:00:00Z"),
 		});
-		prisma.investigation.findMany.mockResolvedValue([{ id, settledAt: null }]);
+		prisma.investigation.findMany.mockResolvedValue([{ id, settledAt: null, lastActivityAt: null, updatedAt: new Date(), teardownAt: null }]);
 		prisma.investigation.updateMany.mockResolvedValue({ count: 0 });
 		await expect(service().visit(id)).rejects.toMatchObject({ code: "CONFLICT" });
 		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(3);
@@ -314,18 +341,35 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 	});
 
 	it("settles an incident's whole block, and undoes it", async () => {
-		const inc = uuid();
 		const ids = [uuid(), uuid()];
 		const stamp = new Date("2026-01-01T00:00:00Z");
-		prisma.investigation.findUnique.mockResolvedValue({
-			incidentId: inc,
-			updatedAt: stamp,
-		});
-		prisma.investigation.findMany.mockResolvedValue(ids.map((id) => ({ id })));
+		lifecycle.block.mockResolvedValue(ids);
+		prisma.investigation.findUnique.mockImplementation(
+			async ({ where }: { where: { id: string } }) => ({
+				id: where.id,
+				updatedAt: stamp,
+				settledAt: null,
+			}),
+		);
+		prisma.investigation.findMany.mockResolvedValue(
+			ids.map((id) => ({
+				id,
+				settledAt: null,
+				lastActivityAt: null,
+				updatedAt: stamp,
+				teardownAt: null,
+			})),
+		);
 		expect(await service().settle(ids[0] as string, true)).toMatchObject({ ids });
 		expect(prisma.investigation.findMany).toHaveBeenCalledWith({
-			where: { incidentId: inc },
-			select: { id: true, settledAt: true },
+			where: { id: { in: ids } },
+			select: {
+				id: true,
+				settledAt: true,
+				lastActivityAt: true,
+				updatedAt: true,
+				teardownAt: true,
+			},
 		});
 		for (const id of ids)
 			expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
@@ -335,12 +379,15 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		// A bare Undo clears only the thread it names, never its siblings (#1020).
 		prisma.investigation.updateMany.mockClear();
 		await service().settle(ids[0] as string, false);
-		expect(prisma.investigation.updateMany).toHaveBeenCalledTimes(1);
-		expect(prisma.investigation.updateMany).toHaveBeenLastCalledWith({
+		expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
 			where: { id: ids[0], updatedAt: stamp },
 			data: { settledAt: null, updatedAt: stamp },
 		});
-		prisma.investigation.findUnique.mockResolvedValue(null);
+		expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
+			where: { id: ids[0] },
+			data: { teardownAt: null },
+		});
+		lifecycle.block.mockResolvedValue([]);
 		await expect(service().settle(uuid(), true)).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});
@@ -349,23 +396,42 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 	it("Undo puts each thread of an incident block back as it was, an earlier Settle included", async () => {
 		const inc = uuid();
 		const earlier = new Date("2020-01-01T08:00:00Z");
+		const stamp = new Date("2026-01-01T00:00:00Z");
 		const rows = [
-			{ id: uuid(), incidentId: inc, settledAt: earlier },
-			{ id: uuid(), incidentId: inc, settledAt: null as Date | null },
+			{ id: uuid(), incidentId: inc, settledAt: earlier, teardownAt: null as Date | null },
+			{ id: uuid(), incidentId: inc, settledAt: null as Date | null, teardownAt: null as Date | null },
 		];
+		lifecycle.block.mockResolvedValue(rows.map((r) => r.id));
+		lifecycle.descendants.mockResolvedValue([]);
 		prisma.investigation.findUnique.mockImplementation(
-			async ({ where }: { where: { id: string } }) => ({
-				incidentId: inc,
-				settledAt: rows.find((r) => r.id === where.id)?.settledAt ?? null,
-			}),
+			async ({ where }: { where: { id: string } }) => {
+				const r = rows.find((x) => x.id === where.id);
+				return r ? { id: r.id, updatedAt: stamp, settledAt: r.settledAt } : null;
+			},
 		);
 		prisma.investigation.findMany.mockImplementation(async () =>
-			rows.map((r) => ({ id: r.id, settledAt: r.settledAt })),
+			rows.map((r) => ({
+				id: r.id,
+				settledAt: r.settledAt,
+				lastActivityAt: null,
+				updatedAt: stamp,
+				teardownAt: r.teardownAt,
+			})),
 		);
 		prisma.investigation.updateMany.mockImplementation(
-			async ({ where, data }: { where: { id: string | { in: string[] } }; data: { settledAt: Date | null } }) => {
-				const ids = typeof where.id === "string" ? [where.id] : where.id.in;
-				for (const r of rows) if (ids.includes(r.id)) r.settledAt = data.settledAt;
+			async ({ where, data }: { where: { id: string | { in: string[] } }; data: { settledAt?: Date | null; teardownAt?: Date | null } }) => {
+				if (typeof where.id === "string") {
+					const r = rows.find((x) => x.id === where.id);
+					if (r && "settledAt" in data) r.settledAt = data.settledAt ?? null;
+					return { count: 1 };
+				}
+				const ids = where.id?.in ?? [];
+				for (const r of rows) {
+					if (ids.includes(r.id)) {
+						if ("settledAt" in data) r.settledAt = data.settledAt ?? null;
+						if ("teardownAt" in data) r.teardownAt = data.teardownAt ?? null;
+					}
+				}
 				return { count: ids.length };
 			},
 		);
@@ -382,28 +448,33 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 	});
 
 	it("puts the written threads back when a later one in the block conflicts", async () => {
-		const inc = uuid();
 		const earlier = new Date("2020-01-01T08:00:00Z");
 		const rows = [
 			{ id: uuid(), settledAt: earlier as Date | null },
 			{ id: uuid(), settledAt: null as Date | null },
 		];
 		const stamp = new Date("2026-01-01T00:00:00Z");
+		lifecycle.block.mockResolvedValue(rows.map((r) => r.id));
 		prisma.investigation.findUnique.mockImplementation(
-			async ({ where }: { where: { id: string } }) => ({
-				incidentId: inc,
-				updatedAt: stamp,
-				settledAt: rows.find((r) => r.id === where.id)?.settledAt ?? null,
-			}),
+			async ({ where }: { where: { id: string } }) => {
+				const r = rows.find((x) => x.id === where.id);
+				return r ? { id: r.id, updatedAt: stamp, settledAt: r.settledAt } : null;
+			},
 		);
 		prisma.investigation.findMany.mockImplementation(async () =>
-			rows.map((r) => ({ ...r })),
+			rows.map((r) => ({
+				id: r.id,
+				settledAt: r.settledAt,
+				lastActivityAt: null,
+				updatedAt: stamp,
+				teardownAt: null,
+			})),
 		);
 		prisma.investigation.updateMany.mockImplementation(
-			async ({ where, data }: { where: { id: string }; data: { settledAt: Date | null } }) => {
+			async ({ where, data }: { where: { id: string }; data: { settledAt?: Date | null; teardownAt?: Date | null } }) => {
 				const r = rows.find((x) => x.id === where.id);
 				if (!r || where.id === rows[1]?.id) return { count: 0 };
-				r.settledAt = data.settledAt;
+				if ("settledAt" in data) r.settledAt = data.settledAt ?? null;
 				return { count: 1 };
 			},
 		);
@@ -414,26 +485,32 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 	});
 
 	it("says the block is partly settled when a restore write also conflicts", async () => {
-		const inc = uuid();
 		const rows = [
 			{ id: uuid(), settledAt: null as Date | null },
 			{ id: uuid(), settledAt: null as Date | null },
 		];
+		const stamp = new Date("2026-01-01T00:00:00Z");
+		lifecycle.block.mockResolvedValue(rows.map((r) => r.id));
 		prisma.investigation.findUnique.mockImplementation(
-			async ({ where }: { where: { id: string } }) => ({
-				incidentId: inc,
-				updatedAt: new Date("2026-01-01T00:00:00Z"),
-				settledAt: rows.find((r) => r.id === where.id)?.settledAt ?? null,
-			}),
+			async ({ where }: { where: { id: string } }) => {
+				const r = rows.find((x) => x.id === where.id);
+				return r ? { id: r.id, updatedAt: stamp, settledAt: r.settledAt } : null;
+			},
 		);
 		prisma.investigation.findMany.mockImplementation(async () =>
-			rows.map((r) => ({ ...r })),
+			rows.map((r) => ({
+				id: r.id,
+				settledAt: r.settledAt,
+				lastActivityAt: null,
+				updatedAt: stamp,
+				teardownAt: null,
+			})),
 		);
 		let firstWrites = 0;
 		prisma.investigation.updateMany.mockImplementation(
-			async ({ where, data }: { where: { id: string }; data: { settledAt: Date | null } }) => {
+			async ({ where, data }: { where: { id: string }; data: { settledAt?: Date | null; teardownAt?: Date | null } }) => {
 				if (where.id !== rows[0]?.id || firstWrites++ > 0) return { count: 0 };
-				(rows[0] as { settledAt: Date | null }).settledAt = data.settledAt;
+				if ("settledAt" in data) (rows[0] as { settledAt: Date | null }).settledAt = data.settledAt ?? null;
 				return { count: 1 };
 			},
 		);
@@ -445,15 +522,21 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 	});
 
 	it("restores only threads of the block it was asked about", async () => {
-		const inc = uuid();
 		const own = uuid();
-		prisma.investigation.findUnique.mockResolvedValue({ incidentId: inc });
-		prisma.investigation.findMany.mockResolvedValue([{ id: own, settledAt: null }]);
+		lifecycle.block.mockResolvedValue([own]);
+		lifecycle.descendants.mockResolvedValue([]);
+		prisma.investigation.findMany.mockResolvedValue([{ id: own, settledAt: null, lastActivityAt: null, updatedAt: new Date(), teardownAt: null }]);
 		await service().settle(own, false, [
 			{ id: uuid(), settledAt: "2026-11-01T00:00:00.000Z" },
 		]);
-		const calls = prisma.investigation.updateMany.mock.calls.map((c) => c[0]);
-		expect(calls).toEqual([]);
+		const settledWrites = prisma.investigation.updateMany.mock.calls
+			.map((c) => c[0])
+			.filter((c) => "settledAt" in ((c as { data?: object }).data ?? {}));
+		expect(settledWrites).toEqual([]);
+		expect(prisma.investigation.updateMany).toHaveBeenCalledWith({
+			where: { id: { in: [] } },
+			data: { teardownAt: null },
+		});
 	});
 
 	it("shows the agent's latest sentence as the row's third line", async () => {

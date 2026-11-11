@@ -95,6 +95,7 @@ describe("readGithub against a recorded pull (cli/cli#14927)", () => {
 			name: "ci",
 			state: "failing",
 			appAvatarUrl: "https://img.example/ci.png",
+			headSha: SHA,
 		});
 	});
 

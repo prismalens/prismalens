@@ -12,19 +12,23 @@ const prisma = (watchFails = false) => ({
 			return { count: 1 };
 		}),
 	},
+	cronJob: { deleteMany: vi.fn(async () => ({ count: 1 })) },
 });
 
 describe("ending what an agent scheduled (#1024 spec B)", () => {
-	it("cancels the pending agent and PR-watch wakes and deletes the watches of the threads named", async () => {
+	it("cancels the pending agent, PR-watch and cron wakes and deletes the watches and cron jobs of the threads named", async () => {
 		const db = prisma();
 		await endAgentWakes(db as never, ["t1", "t2"]);
 		expect(db.prWatch.deleteMany).toHaveBeenCalledWith({
 			where: { investigationId: { in: ["t1", "t2"] } },
 		});
+		expect(db.cronJob.deleteMany).toHaveBeenCalledWith({
+			where: { investigationId: { in: ["t1", "t2"] } },
+		});
 		expect(db.threadWake.updateMany).toHaveBeenCalledWith({
 			where: {
 				investigationId: { in: ["t1", "t2"] },
-				kind: { in: ["agent", "pr_watch"] },
+				kind: { in: ["agent", "pr_watch", "cron"] },
 				state: "pending",
 			},
 			data: { state: "cancelled", doneAt: expect.any(Date) },
@@ -41,5 +45,6 @@ describe("ending what an agent scheduled (#1024 spec B)", () => {
 		const db = prisma();
 		await endAgentWakes(db as never, []);
 		expect(db.prWatch.deleteMany).not.toHaveBeenCalled();
+		expect(db.cronJob.deleteMany).not.toHaveBeenCalled();
 	});
 });
