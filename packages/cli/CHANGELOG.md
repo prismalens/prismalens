@@ -1,5 +1,28 @@
 # prismalens
 
+## [0.5.6](https://github.com/prismalens/prismalens/compare/v0.5.5...v0.5.6) (2026-11-11)
+
+
+### Features
+
+* deliver PR status and cron fires to agents, and end a thread's jobs on Settle ([b317e81](https://github.com/prismalens/prismalens/commit/b317e8123d6bd928ff8e70305d06d6d4529daf85))
+* **frontend:** add the Wave 1 seam: transcript registry, page slots, gallery files, tone tokens and one typed send path ([#1090](https://github.com/prismalens/prismalens/issues/1090)) ([6fa515a](https://github.com/prismalens/prismalens/commit/6fa515a30fc96f57fc15c13dfd1b56eb778c75f2))
+* **frontend:** app and Settings for Wave 1, with project faces, Add project from a git host, and About updates ([298a479](https://github.com/prismalens/prismalens/commit/298a479e4e2bcdab3ccaf4fc1318b2460b649b43))
+* **frontend:** one right panel per thread kind, links that open in place, and the thread tree ([#1092](https://github.com/prismalens/prismalens/issues/1092)) ([43d3bec](https://github.com/prismalens/prismalens/commit/43d3becad998fe7bdfdfb783d5bee5935f3f5594))
+* name the update channel, and mark a nightly build in About, the sidebar and pl up ([93ed104](https://github.com/prismalens/prismalens/commit/93ed1042a1d15f6450af6c17237dbbb50667fd5b))
+* name the update channel, and mark a nightly build in About, the sidebar and pl up ([c05bd8d](https://github.com/prismalens/prismalens/commit/c05bd8d376d32ee1b9ac58ac37f1578dfc800d75))
+* the Wave 1 composer: one menu for / @ #, chips, kept drafts, docked asks and the agent's own commands ([#1098](https://github.com/prismalens/prismalens/issues/1098)) ([8dc349a](https://github.com/prismalens/prismalens/commit/8dc349a12a79864b9a6e9732830a3cd372c749e9))
+
+
+### Bug Fixes
+
+* **api:** keep a guarded streak while its check is pending, wait on an unconfirmed cancel, and recheck live runs before Settle commits ([b01822b](https://github.com/prismalens/prismalens/commit/b01822b122fd6432e515f41dfe98cf025ee67ce6))
+* **api:** name the cron tools pl_cron_create, pl_cron_list and pl_cron_delete ([78b6c3c](https://github.com/prismalens/prismalens/commit/78b6c3caaa6aae66e7be26fe0e062e8880eef1cb))
+* **api:** settle waits for a stopped run to end, Undo keeps an earlier teardown, cron retires an expired fire, the loop guard keeps its streak, and PR-status events fit their schema ([573f54a](https://github.com/prismalens/prismalens/commit/573f54a88059bad432bd1bb45913bddb1d0c1bdc))
+* **api:** the host repository list returns proxied avatar URLs, never the host's own ([1cc92c5](https://github.com/prismalens/prismalens/commit/1cc92c5bd0035d29de494f08297169af2dafecc4))
+* **api:** Undo takes any number of states, the loop guard starts on a late first failure, and Settle refuses while a stopped run is still live ([69bf1d6](https://github.com/prismalens/prismalens/commit/69bf1d6b9ea2f1993d0ee98e7c0b51d42a1a5559))
+* keep nightlyBuild optional in About, so About fixtures without it still type-check ([4a5b9dc](https://github.com/prismalens/prismalens/commit/4a5b9dca80ccf8325e1f0b0f9133770bf328cb8e))
+
 ## [0.5.5](https://github.com/prismalens/prismalens/compare/v0.5.4...v0.5.5) (2026-11-11)
 
 
