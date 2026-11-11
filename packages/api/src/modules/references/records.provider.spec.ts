@@ -122,6 +122,28 @@ describe("RecordsProvider (#1024)", () => {
 		expect(hits.find((h) => h.ref.kind === "artifact")?.ref.id).toBe(`${RUN}/a1`);
 	});
 
+	it("finds a thread older than the newest 50 by its acronym", async () => {
+		const OLD = "6f738495-afb0-4bc2-93e4-5f6071829304";
+		const row = (id: string, title: string) => ({ id, title, status: "completed", kind: "chat", updatedAt: new Date(base.ts) });
+		const unrelated = Array.from({ length: 1000 }, (_, i) => row(`t-${i}`, `Other thread ${i}`));
+		const p0 = prisma();
+		const findMany = vi.fn(
+			async (args: { where?: { title?: unknown; id?: { in?: string[] } }; skip?: number; take?: number; select?: Record<string, boolean> }) => {
+				if (args.where?.id?.in) return args.where.id.in.includes(OLD) ? [row(OLD, "PR desk: Wave 1 review")] : [];
+				if (args.skip !== undefined) return args.skip === 0 ? unrelated : [row(OLD, "PR desk: Wave 1 review")];
+				if (args.where?.title) return [];
+				return unrelated.slice(0, 50);
+			},
+		);
+		const p = new RecordsProvider({ ...p0, investigation: { ...p0.investigation, findMany } } as never);
+
+		const hits = await p.search("pdw", { threadId: RUN, root: null, kinds: ["thread"], limit: 50 });
+
+		expect(hits.map((h) => h.ref.id)).toContain(OLD);
+		expect(hits.find((h) => h.ref.id === OLD)?.ref.label).toBe("PR desk: Wave 1 review");
+		expect(hits.filter((h) => h.ref.id === OLD)).toHaveLength(1);
+	});
+
 	it("finds an incident by number for #7", async () => {
 		const p = new RecordsProvider(prisma() as never);
 		const ctx = { root: null, kinds: ["incident"] as const, limit: 10 };
