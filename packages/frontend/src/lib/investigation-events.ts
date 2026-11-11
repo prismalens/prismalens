@@ -1403,8 +1403,14 @@ export function queuedMessages(
 	>();
 	for (const e of events) {
 		if (e.kind === "message_queued") open.set(e.messageId, e);
-		else if (e.kind === "operator_message" && e.messageId)
-			open.delete(e.messageId);
+		else if (e.kind === "message_edited") {
+			const q = open.get(e.messageId);
+			if (q) open.set(e.messageId, { ...q, text: e.text });
+		} else if (
+			e.kind === "message_withdrawn" ||
+			(e.kind === "operator_message" && e.messageId)
+		)
+			open.delete(e.messageId as string);
 	}
 	return [
 		...Array.from(open.values()).map((q) => ({

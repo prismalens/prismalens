@@ -4,6 +4,7 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	queuedMessages,
 	agentStepMessage,
 	deriveStreamView,
 	deriveTranscript,
@@ -630,5 +631,24 @@ describe("deriveTranscript: handoff record", () => {
 	});
 });
 
+describe("queuedMessages folds edits and withdrawals (#1024)", () => {
+	const at = (seq: number) => ({
+		seq,
+		ts: `2026-11-11T10:00:0${seq}.000Z`,
+		branchId: "run",
+	});
+	const A = "11111111-1111-4111-8111-111111111111";
+	const B = "22222222-2222-4222-8222-222222222222";
+	const events = [
+		{ ...at(1), kind: "message_queued", messageId: A, text: "first" },
+		{ ...at(2), kind: "message_queued", messageId: B, text: "second" },
+		{ ...at(3), kind: "message_edited", messageId: A, text: "first, edited" },
+		{ ...at(4), kind: "message_withdrawn", messageId: B },
+	] as unknown as CanonicalEvent[];
 
-
+	it("shows an edited message's new text and drops a withdrawn one", () => {
+		expect(queuedMessages(events, [])).toEqual([
+			{ key: A, text: "first, edited", attachments: [] },
+		]);
+	});
+});

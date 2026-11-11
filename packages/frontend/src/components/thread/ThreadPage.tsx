@@ -317,6 +317,11 @@ export function ThreadPage({ id }: { id: string }) {
 		asks: openAsks,
 	});
 	const { sendMessage } = run;
+	// A finished run's next message may take another model or effort; the run's own until picked (#1024).
+	const [nextChoice, setNextChoice] = useState<{
+		model?: string;
+		effort?: string | null;
+	}>({});
 	const forward = useCallback(
 		async (env: SendEnvelope, now: boolean) => {
 			const attachments = await uploadEach(env.attachments, (f) =>
@@ -325,10 +330,11 @@ export function ThreadPage({ id }: { id: string }) {
 			await sendMessage(env.text, now ? "now" : "queue", {
 				attachments,
 				kind: "chat",
-				fields: messageFields(env),
+				fields: { ...messageFields(env), ...nextChoice },
 			});
+			setNextChoice({});
 		},
-		[id, sendMessage],
+		[id, sendMessage, nextChoice],
 	);
 	const { interceptors } = slots;
 	const onSend = useCallback(
@@ -586,12 +592,24 @@ export function ThreadPage({ id }: { id: string }) {
 						placeholder={run.isActive ? "Message the agent" : "Reply"}
 						choice={{
 							harness,
-							model: inv.model ?? "",
-							effort: inv.effort ?? null,
+							model: nextChoice.model ?? inv.model ?? "",
+							effort:
+								nextChoice.effort !== undefined
+									? nextChoice.effort
+									: (inv.effort ?? null),
 							accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
 						}}
-						onChoice={() => {}}
-						locked
+						onChoice={(next) => {
+							// The thread keeps its agent; another agent is a new thread.
+							if (next.harnessId && next.harnessId !== inv.harness) return;
+							setNextChoice((c) => ({
+								...c,
+								...(next.model !== undefined ? { model: next.model } : {}),
+								...(next.effort !== undefined ? { effort: next.effort } : {}),
+							}));
+						}}
+						locked={run.isActive}
+						accessHint="Kept from the first message"
 						dock={dock}
 						blockedReason={blocked}
 						text={draft}
