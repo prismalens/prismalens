@@ -38,7 +38,7 @@ const CAPS: {
 }[] = [
 	{
 		field: "depth",
-		label: "Depth",
+		label: "Thread depth",
 		description: "Levels below the first thread",
 		range: [1, 5],
 	},

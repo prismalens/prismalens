@@ -574,7 +574,7 @@ function AdvancedSection() {
 	return (
 		<AdvancedFold
 			testId="harness-advanced"
-			description="Sub-agents: Claude Code, Codex and OpenCode use these; OpenCode takes depth only. Threads: limits on the threads agents start."
+			description="Claude Code, Codex and OpenCode use these. OpenCode takes depth only."
 		>
 			<Pool>
 				<SubagentLimitRow
@@ -588,9 +588,10 @@ function AdvancedSection() {
 					description="How many run at once"
 				/>
 			</Pool>
-			<div className="mt-3">
-				<ThreadCapRows />
-			</div>
+			<p className="mt-4 mb-3 text-meta text-text-3">
+				Limits on the threads agents start.
+			</p>
+			<ThreadCapRows />
 		</AdvancedFold>
 	);
 }
