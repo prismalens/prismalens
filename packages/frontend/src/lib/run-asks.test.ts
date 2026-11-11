@@ -8,7 +8,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import type { RunStep } from "@/components/run/run-steps";
 import { mcpTool } from "./report-view";
-import { askEnd, askTitle, deriveAsks } from "./run-asks";
+import { askEnd, askTitle, deriveAsks, openAsksOf, type AskRecord } from "./run-asks";
 
 let seq = 0;
 const base = (s: number) => ({
@@ -123,5 +123,43 @@ describe("MCP tool names (#673 w5-41)", () => {
 		expect(
 			askTitle({ title: "mcp__github__create_issue", server: null }),
 		).toBe("create_issue, a tool from the github MCP server");
+	});
+});
+
+describe("openAsksOf (#1024)", () => {
+	it("returns only records whose askId is in open, each with state: waiting", () => {
+		const recEnded: AskRecord = {
+			askId: "ask-ended",
+			title: "curl -s http://localhost:9093/api/v2/alerts",
+			detail: "curl -s http://localhost:9093/api/v2/alerts",
+			input: null,
+			server: null,
+			at: new Date(Date.UTC(2026, 9, 11, 16, 0, 0)).toISOString(),
+			expiresAt: new Date(Date.UTC(2026, 9, 11, 16, 10, 0)).toISOString(),
+			clamped: false,
+			state: "ended",
+		};
+		const recWaiting: AskRecord = {
+			askId: "ask-waiting",
+			title: "ls -la",
+			detail: "ls -la",
+			input: null,
+			server: null,
+			at: new Date(Date.UTC(2026, 9, 11, 16, 0, 0)).toISOString(),
+			expiresAt: new Date(Date.UTC(2026, 9, 11, 16, 10, 0)).toISOString(),
+			clamped: false,
+			state: "waiting",
+		};
+		const records = [recEnded, recWaiting];
+		const open = [{ askId: "ask-ended" }];
+
+		const result = openAsksOf(records, open);
+
+		expect(result).toEqual([
+			{
+				...recEnded,
+				state: "waiting",
+			},
+		]);
 	});
 });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { HarnessStatus } from "@prismalens/contracts";
+import type { HarnessStatus, Quote } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -208,6 +208,85 @@ describe("the one composer (#1020)", () => {
 		expect(box.value).toBe("");
 		await type("/ship it");
 		expect(q("composer-slash")).toBeNull();
+	});
+
+	it("keeps the typed text in the box when onSend returns deferred or cancelled", async () => {
+		const onSendDeferred = vi.fn(() => "deferred" as const);
+		await render({ onSend: onSendDeferred });
+		const boxDeferred = await type("wait for decision");
+		await act(async () => {
+			boxDeferred.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(onSendDeferred).toHaveBeenCalledTimes(1);
+		expect(boxDeferred.value).toBe("wait for decision");
+
+		const onSendCancelled = vi.fn(() => "cancelled" as const);
+		await render({ onSend: onSendCancelled });
+		const boxCancelled = await type("drop this send");
+		await act(async () => {
+			boxCancelled.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(onSendCancelled).toHaveBeenCalledTimes(1);
+		expect(boxCancelled.value).toBe("drop this send");
+	});
+
+	it("clears the box afterwards when a receipt with result deferred has settled resolve sent", async () => {
+		let resolveSettled!: (val: "sent" | "cancelled") => void;
+		const settled = new Promise<"sent" | "cancelled">((resolve) => {
+			resolveSettled = resolve;
+		});
+		const onSend = vi.fn(() => ({
+			result: "deferred" as const,
+			settled,
+		}));
+		await render({ onSend });
+		const box = await type("holding text");
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(onSend).toHaveBeenCalledTimes(1);
+		expect(box.value).toBe("holding text");
+
+		await act(async () => {
+			resolveSettled("sent");
+			await settled;
+		});
+		expect(box.value).toBe("");
+	});
+
+	it("merges extras into the envelope received by onSend", async () => {
+		const q: Quote = {
+			source: {
+				threadId: "11111111-1111-1111-1111-111111111111",
+				kind: "transcript",
+			},
+			text: "quoted slice",
+		};
+		const onSend = vi.fn(() => "sent" as const);
+		await render({ onSend, extras: { draftRev: 2, quotes: [q] } });
+		const box = await type("sending with extras");
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(onSend).toHaveBeenCalledWith(
+			{
+				text: "sending with extras",
+				attachments: [],
+				quotes: [q],
+				references: [],
+				draftRev: 2,
+			},
+			false,
+		);
+		expect(box.value).toBe("");
 	});
 });
 
