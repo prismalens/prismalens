@@ -262,6 +262,7 @@ export function RunDetailsPanel({
 				content={content}
 				override={subagent}
 				overrideLabel="Sub-agent"
+				closeTestId="run-details-close"
 			/>
 		</div>
 	);

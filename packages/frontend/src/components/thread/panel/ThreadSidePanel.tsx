@@ -19,7 +19,10 @@ export function ThreadSidePanel({
 	content,
 	override,
 	overrideLabel,
+	closeTestId = "thread-panel-close",
 }: {
+	/** The run page keeps its own close test id. */
+	closeTestId?: string;
 	tabs: PanelTab[];
 	tab: PanelId | null;
 	onTab: (id: PanelId) => void;
@@ -94,7 +97,7 @@ export function ThreadSidePanel({
 					aria-label="Close panel"
 					onClick={onClose}
 					className="text-text-3"
-					data-testid="thread-panel-close"
+					data-testid={closeTestId}
 				>
 					<X className="size-3.5" />
 				</Button>
