@@ -155,12 +155,13 @@ describe("Sidebar (case 2)", () => {
 });
 
 describe("Sidebar on a nightly build", () => {
-	it("tags the app name Nightly only when this copy is a nightly build", async () => {
+	it("tags the app name Nightly when the build is nightly, whatever channel it follows", async () => {
 		await act(async () => root.render(createElement(Sidebar)));
 		expect(container.querySelector('[data-testid="sidebar-nightly"]')).toBe(
 			null,
 		);
 
+		// A stable build following nightly: the tag follows the build, so none.
 		about.data = {
 			update: { available: false },
 			updateChannel: {
@@ -168,6 +169,22 @@ describe("Sidebar on a nightly build", () => {
 				fromEnv: false,
 				nightlyBlockedBy: null,
 				leavingNightly: null,
+				nightlyBuild: false,
+			},
+		};
+		await act(async () => root.render(createElement(Sidebar)));
+		expect(container.querySelector('[data-testid="sidebar-nightly"]')).toBe(
+			null,
+		);
+
+		// A nightly build set back to stable: still tagged Nightly.
+		about.data = {
+			update: { available: false },
+			updateChannel: {
+				current: "stable",
+				fromEnv: false,
+				nightlyBlockedBy: null,
+				leavingNightly: "You're on nightly 0.5.6-nightly.20261111.6.",
 				nightlyBuild: true,
 			},
 		};
