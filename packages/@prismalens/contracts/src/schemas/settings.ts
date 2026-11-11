@@ -667,7 +667,7 @@ export const AboutSchema = z.object({
 			/** On stable while running a nightly that no stable has overtaken: why it waits. */
 			leavingNightly: z.string().nullable(),
 			/** This copy is a nightly build, whatever channel is saved. */
-			nightlyBuild: z.boolean(),
+			nightlyBuild: z.boolean().optional(),
 		})
 		.optional(),
 });
