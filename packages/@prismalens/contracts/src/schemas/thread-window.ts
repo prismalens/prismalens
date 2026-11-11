@@ -452,8 +452,8 @@ export type ThreadState = z.infer<typeof ThreadStateSchema>;
 
 export const OpenThreadInputSchema = z.object({
 	id: z.string().uuid(),
-	/** Open at this item; the tail when absent. */
-	at: EventKeySchema.optional(),
+	/** Open at this item, by key or by its seq alone (`#item-1234`); the tail when absent. */
+	at: z.union([EventKeySchema, z.string().regex(/^\d{1,12}$/)]).optional(),
 	/** A named position a resolver answers, e.g. `unread` (#1101 cat 3); the tail when none does. */
 	position: z.string().min(1).max(40).optional(),
 	/** Ship finished turns folded (bar 12.5). */

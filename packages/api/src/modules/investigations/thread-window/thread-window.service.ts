@@ -252,7 +252,11 @@ export class ThreadWindowService {
 	async open(input: OpenThreadInput): Promise<OpenThread> {
 		const p = await this.projection(input.id);
 		let landing: string | null = null;
-		if (input.at && p.at.has(input.at)) landing = input.at;
+		const at =
+			input.at && /^\d+$/.test(input.at)
+				? p.entries.find((e) => e.seq === Number(input.at))?.key
+				: input.at;
+		if (at && p.at.has(at)) landing = at;
 		else if (input.position) {
 			const resolve = this.resolvers.get(input.position);
 			const key = resolve ? await resolve(input.id, p) : null;
