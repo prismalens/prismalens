@@ -8,7 +8,11 @@ import {
 	threadChatContext,
 } from "./investigation.js";
 import { AddRepositorySourceSchema } from "./repository.js";
-import { StartThreadSchema, ThreadListQuerySchema } from "./thread.js";
+import {
+	SettleThreadSchema,
+	StartThreadSchema,
+	ThreadListQuerySchema,
+} from "./thread.js";
 
 const REPO = "11111111-1111-4111-8111-111111111111";
 
@@ -70,5 +74,14 @@ describe("threads on a project, a service or nothing (#1020)", () => {
 
 	it("adds a project with no service", () => {
 		expect(AddRepositorySourceSchema.parse({ source: "/code/shop" })).toEqual({ source: "/code/shop" });
+	});
+
+	it("an Undo can restore more than 10,000 settled states, as Settle may return that many", () => {
+		const restore = Array.from({ length: 10_001 }, (_, i) => ({
+			id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+			settledAt: null,
+		}));
+		const parsed = SettleThreadSchema.parse({ id: REPO, settled: false, restore });
+		expect(parsed.restore).toHaveLength(10_001);
 	});
 });

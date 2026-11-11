@@ -9,6 +9,7 @@ import {
 	type OnModuleDestroy,
 	type OnModuleInit,
 } from "@nestjs/common";
+import { ORPCError } from "@orpc/nest";
 import {
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
@@ -192,7 +193,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 		return live.length;
 	}
 
-	/** A cancel only asks: the run's final usage flush lands after it, so Settle waits for the end. */
+	/** A cancel only asks: the run's final usage flush lands after it, so Settle waits for the end, or refuses. */
 	private async untilEnded(ids: string[]): Promise<void> {
 		const deadline = Date.now() + this.stopWaitMs;
 		let waiting = ids;
@@ -201,7 +202,12 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 				where: { id: { in: waiting }, status: { in: LIVE } },
 				select: { id: true },
 			});
-			if (!live.length || Date.now() >= deadline) return;
+			if (!live.length) return;
+			if (Date.now() >= deadline)
+				throw new ORPCError("CONFLICT", {
+					message: `${plural(live.length, "run")} did not stop in time. Try again in a moment.`,
+					data: { reason: "running", running: live.length },
+				});
 			waiting = live.map((r) => r.id);
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}

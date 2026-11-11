@@ -181,7 +181,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 				cursor.guard = { key: g.key, heads: [...g.heads, head] };
 		} else {
 			if (guardedPassing) cursor.guard = null;
-			if (failedNow[0] && head !== cursor.headSha)
+			if (failedNow[0] && !cursor.guard?.heads.includes(head))
 				cursor.guard = { key: failedNow[0], heads: [head] };
 		}
 		if (cursor.guard && cursor.guard.heads.length >= LOOP_GUARD_HEADS)

@@ -187,7 +187,7 @@ export const SettleThreadSchema = z.object({
 	id: z.string().uuid(),
 	settled: z.boolean(),
 	/** On Undo: each thread's state from Settle's `previous`, restored exactly. */
-	restore: z.array(SettledStateSchema).max(10_000).optional(),
+	restore: z.array(SettledStateSchema).optional(),
 	/** Required when the block has a running run: settling stops it at once. */
 	stopRunning: z.boolean().optional(),
 });

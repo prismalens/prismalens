@@ -48,8 +48,8 @@ describe("ThreadLifecycleService seams (#1024 surface F)", () => {
 			cancelPending: vi.fn().mockResolvedValue(null),
 			markStopRequested: vi.fn().mockResolvedValue(undefined),
 		};
-		const svc = lifecycle({ investigation: { findMany: vi.fn().mockResolvedValue(live) } }, dispatch, investigations);
-		svc.stopWaitMs = 0;
+		const findMany = vi.fn().mockResolvedValueOnce(live).mockResolvedValue([]);
+		const svc = lifecycle({ investigation: { findMany } }, dispatch, investigations);
 		expect(await svc.stopRunning(["pending", "held", "orphan"])).toBe(3);
 		expect(dispatch.cancelPendingJob).toHaveBeenCalledWith("pending");
 		expect(investigations.markStopRequested.mock.calls.map((c) => c[0])).toEqual(["held", "orphan"]);
@@ -74,6 +74,23 @@ describe("ThreadLifecycleService seams (#1024 surface F)", () => {
 
 		expect(findMany).toHaveBeenCalledTimes(3);
 		expect(findMany.mock.calls[1]?.[0]).toMatchObject({ where: { id: { in: ["held"] } } });
+	});
+
+	it("Given a stopped run still live at the deadline, Then stopRunning refuses with the count instead of letting Settle write settledAt", async () => {
+		const findMany = vi
+			.fn()
+			.mockResolvedValueOnce([{ id: "slow", status: "running", incidentId: null }])
+			.mockResolvedValue([{ id: "slow" }]);
+		const dispatch = { requestCancel: vi.fn().mockResolvedValue(1) };
+		const investigations = { markStopRequested: vi.fn().mockResolvedValue(undefined) };
+		const svc = lifecycle({ investigation: { findMany } }, dispatch, investigations);
+		svc.stopWaitMs = 0;
+
+		await expect(svc.stopRunning(["slow"])).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "1 run did not stop in time. Try again in a moment.",
+			data: { reason: "running", running: 1 },
+		});
 	});
 
 	it("Given an in-place thread, a missing worktree and a folder git cannot read, Then the preview keeps the in-place one as it is, lists no verdict for the missing one, and keeps the unreadable one because it could not read it", async () => {

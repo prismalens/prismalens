@@ -320,6 +320,37 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 		expect(failedC.guardTripped).toBe("test");
 	});
 
+	it("loop guard starts on a first failure that comes after a pending or run-less poll of the same head", () => {
+		const fail = (sha: string) => ({
+			name: "test",
+			state: "failing" as const,
+			headSha: sha,
+		});
+		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
+		cur = diff(cur, emptySnap({ headSha: SHA_A, runs: [] })).cursor;
+		expect(cur.guard).toBeNull();
+		cur = diff(cur, emptySnap({ headSha: SHA_A, runs: [fail(SHA_A)] })).cursor;
+		expect(cur.guard).toEqual({ key: "status:test", heads: [SHA_A] });
+
+		cur = diff(
+			cur,
+			emptySnap({
+				headSha: SHA_B,
+				runs: [{ name: "test", state: "pending", headSha: SHA_B }],
+			}),
+		).cursor;
+		cur = diff(cur, emptySnap({ headSha: SHA_B, runs: [fail(SHA_B)] })).cursor;
+		expect(cur.guard).toEqual({ key: "status:test", heads: [SHA_A, SHA_B] });
+
+		const none = diff(cur, emptySnap({ headSha: SHA_C, runs: [] }));
+		expect(none.guardTripped).toBeNull();
+		const tripped = diff(
+			none.cursor,
+			emptySnap({ headSha: SHA_C, runs: [fail(SHA_C)] }),
+		);
+		expect(tripped.guardTripped).toBe("test");
+	});
+
 	it("loop guard keeps its streak across a head with no run yet, and a pass clears it", () => {
 		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
 		cur = diff(
