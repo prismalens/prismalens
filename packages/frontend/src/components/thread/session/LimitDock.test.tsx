@@ -315,9 +315,123 @@ describe("LimitDock actions", () => {
 	});
 });
 
+describe("LimitDock restore and remove", () => {
+	const off: ThreadLimit = {
+		since: "2026-11-11T15:00:00.000Z",
+		autoResume: false,
+		resetsAt: "2026-11-11T15:45:00.000Z",
+		attempts: 1,
+	};
+	const queued: ThreadLimit = {
+		...off,
+		autoResume: true,
+		message: "send the logs",
+	};
+	const press = async (id: string) => {
+		const button = container.querySelector(
+			`[data-testid="${id}"]`,
+		) as HTMLButtonElement;
+		await act(async () => {
+			button.click();
+		});
+	};
+
+	it("autoResume false with an empty draft: Resume at reset calls onResumeAtReset once", async () => {
+		const onResumeAtReset = vi.fn();
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={off}
+					draft=""
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onResumeAtReset={onResumeAtReset}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="limit-dock-resume-at-reset"]')
+				?.textContent,
+		).toBe("Resume at reset");
+		await press("limit-dock-resume-at-reset");
+		expect(onResumeAtReset).toHaveBeenCalledTimes(1);
+	});
+
+	it("autoResume true: no Resume at reset", async () => {
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={queued}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onResumeAtReset={vi.fn()}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="limit-dock-resume-at-reset"]'),
+		).toBeNull();
+	});
+
+	it("a queued draft shows Remove, which calls onRemoveQueued once", async () => {
+		const onRemoveQueued = vi.fn();
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={queued}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onRemoveQueued={onRemoveQueued}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		await press("limit-dock-remove-queued");
+		expect(onRemoveQueued).toHaveBeenCalledTimes(1);
+	});
+
+	it("no queued draft, no Remove", async () => {
+		await act(async () =>
+			root.render(
+				<LimitDock
+					limit={{ ...queued, message: undefined }}
+					onDontResume={vi.fn()}
+					onSendAtReset={vi.fn()}
+					onRemoveQueued={vi.fn()}
+					now={fixedNow}
+					clock={clock}
+				/>,
+			),
+		);
+		expect(
+			container.querySelector('[data-testid="limit-dock-remove-queued"]'),
+		).toBeNull();
+	});
+});
+
 describe("autoResumeBody", () => {
 	it("autoResumeBody.dontResume() equals {on: false}", () => {
 		expect(autoResumeBody.dontResume()).toEqual({ on: false });
+	});
+
+	it("autoResumeBody.resumeAtReset() equals {on: true} with no message key", () => {
+		expect(autoResumeBody.resumeAtReset()).toStrictEqual({ on: true });
+	});
+
+	it("autoResumeBody.removeQueued(on) keeps on and sends message null", () => {
+		expect(autoResumeBody.removeQueued(true)).toEqual({
+			on: true,
+			message: null,
+		});
+		expect(autoResumeBody.removeQueued(false)).toEqual({
+			on: false,
+			message: null,
+		});
 	});
 
 	it("autoResumeBody.sendAtReset(x) equals {on: true, message: x}", () => {

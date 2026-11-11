@@ -30,6 +30,8 @@ export function LimitDock({
 	draft,
 	onDontResume,
 	onSendAtReset,
+	onResumeAtReset,
+	onRemoveQueued,
 	onSend,
 	pending = false,
 	now: fixedNow,
@@ -40,6 +42,10 @@ export function LimitDock({
 	draft?: string;
 	onDontResume: () => void;
 	onSendAtReset: (message: string) => void;
+	/** Turns auto-resume back on with no message; offered while it is off. */
+	onResumeAtReset?: () => void;
+	/** Drops the queued draft and leaves auto-resume as it is. */
+	onRemoveQueued?: () => void;
 	onSend?: () => void;
 	pending?: boolean;
 	/** A fixed clock, for tests and the gallery. */
@@ -74,11 +80,21 @@ export function LimitDock({
 				)}
 			</p>
 			{limit.message && (
-				<p
-					className="truncate text-meta text-text-3"
-					data-testid="limit-dock-queued"
-				>
-					Sends at the reset: {limit.message}
+				<p className="flex items-baseline gap-2 text-meta text-text-3">
+					<span className="truncate" data-testid="limit-dock-queued">
+						Sends at the reset: {limit.message}
+					</span>
+					{onRemoveQueued && (
+						<Button
+							size="sm"
+							variant="text"
+							disabled={pending}
+							onClick={onRemoveQueued}
+							data-testid="limit-dock-remove-queued"
+						>
+							Remove
+						</Button>
+					)}
 				</p>
 			)}
 			<div className="flex flex-wrap gap-2">
@@ -106,6 +122,17 @@ export function LimitDock({
 								Send this draft when it resets
 							</Button>
 						)}
+						{!limit.autoResume && onResumeAtReset && (
+							<Button
+								size="sm"
+								variant="secondary"
+								disabled={pending}
+								onClick={onResumeAtReset}
+								data-testid="limit-dock-resume-at-reset"
+							>
+								Resume at reset
+							</Button>
+						)}
 						{limit.autoResume && (
 							<Button
 								size="sm"
@@ -124,8 +151,10 @@ export function LimitDock({
 	);
 }
 
-/** The `auto-resume` bodies the dock's two controls send. */
+/** The `auto-resume` bodies the dock's controls send. */
 export const autoResumeBody = {
 	dontResume: () => ({ on: false }) as const,
 	sendAtReset: (message: string) => ({ on: true, message }) as const,
+	resumeAtReset: () => ({ on: true }) as const,
+	removeQueued: (on: boolean) => ({ on, message: null }) as const,
 };

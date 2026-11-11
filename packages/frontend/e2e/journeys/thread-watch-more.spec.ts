@@ -228,19 +228,14 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		await panelToggle.click();
 		await expect(page.getByTestId("thread-panel")).toBeVisible();
 
-		// "Open a surface" empty state shows
-		await expect(page.getByTestId("surface-empty")).toHaveText(
-			"Open a surface",
+		// One panel (#1024): Thread and Changes; Browser only after a page opened, no Suspects here.
+		await expect(page.getByRole("tab", { name: "Thread" })).toHaveAttribute(
+			"aria-selected",
+			"true",
 		);
-
-		// Icon tabs Files, Diff, Browser are visible
-		await expect(page.getByRole("tab", { name: "Files" })).toBeVisible();
-		await expect(page.getByRole("tab", { name: "Diff" })).toBeVisible();
-		await expect(page.getByRole("tab", { name: "Browser" })).toBeVisible();
-
-		// No Suspects on a project thread
+		await expect(page.getByRole("tab", { name: "Changes" })).toBeVisible();
+		await expect(page.getByRole("tab", { name: "Browser" })).toHaveCount(0);
 		await expect(page.getByRole("tab", { name: "Suspects" })).toHaveCount(0);
-		await expect(page.getByTestId("surface-suspects")).toHaveCount(0);
 	});
 
 	test("2. the status box is closed by default and opens on click, showing project and branch", async ({
@@ -296,10 +291,10 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 			timeout: 15_000,
 		});
 
-		// Open panel and select Diff tab
+		// Open panel and select Changes: files and the diff together (#1024)
 		await page.getByRole("button", { name: "Panel" }).click();
 		await expect(page.getByTestId("thread-panel")).toBeVisible();
-		await page.getByRole("tab", { name: "Diff" }).click();
+		await page.getByRole("tab", { name: "Changes" }).click();
 		await expect(page.getByTestId("worktree-diff")).toBeVisible();
 
 		// Both edited file and untracked new file are listed
@@ -320,8 +315,11 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		await expect(page.getByTestId("thread-page")).toBeVisible({
 			timeout: 15_000,
 		});
-		await page.getByRole("button", { name: "Panel" }).click();
-		await page.getByRole("tab", { name: "Diff" }).click();
+		// The panel's tab is in the URL (#1024): the reload reopens Changes.
+		await expect(page.getByRole("tab", { name: "Changes" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
 
 		// A deleted workspace shows an empty state (not an error page)
 		await expect(page.getByTestId("diff-unavailable")).toBeVisible();

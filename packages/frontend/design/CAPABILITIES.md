@@ -31,10 +31,20 @@ A UI change keeps every capability below reachable without a shortcut, at most t
 | Theme | Sidebar foot theme button | 1 | Ctrl K action |
 | Hide or show the sidebar | Sidebar head button; page header Show | 1 | `[` |
 | Open a thread's latest run | The thread's row; `/incidents/$id` opens it | 1 | |
-| A project thread's status, files, diff, suspects and browser | Thread page header Status and Panel | 1 to 2 | |
+| A thread's status | Thread page header Status | 1 | |
+| What a thread is about: incident and suspects, a schedule's runs, a service, a project and its scripts | Thread page header Panel, the kind tab (Incident, Runs, Service or Project) | 1 to 2 | `?panel=kind` |
+| A thread's pull requests and checks, the threads its agent started, its plan, steps, machine and agent | Thread page header Panel, Thread tab | 1 to 2 | `?panel=thread` |
+| A thread's changed files and diff | Thread page header Panel, Changes tab; the status box's changes | 1 to 2 | `?panel=changes` |
+| A page the agent or a link opened (desktop app) | Panel, Browser tab, once a page was opened | 1 | `?panel=browser` |
+| Open a path, PR, thread, incident or page the agent named | The link in the agent's message | 1 | Ctrl or Cmd click opens a new tab |
+| Message a thread an agent started | Panel, Thread tab, Threads, then that thread's own box | 2 | |
+| Apply or dismiss an agent's proposal; revoke "Agents may start threads here" | The proposal card in the transcript; Panel, Thread tab, Threads (host only) | 1 to 2 | |
 | Link a service to a blank incident | The incident page, Link service | 1 | |
 | Start git in a plain folder | Project page, Start git here (host only) | 1 | |
 | An incident's impact, fixes, finding and changes | Run page details toggle, Incident tab; report card link | 2 | |
+| A run's summary, runbooks, brief, delivery state, alert labels and flagged content (was Summary and Context) | Run page details toggle, Incident tab | 2 | `?panel=summary` and `?panel=context` still open it |
+| A run's steps, filtered, with failed-step navigation (was Steps) | Run page details toggle, Thread tab, Steps | 2 | `?panel=steps` |
+| A run's files, diff and kept workspaces (was Files and Changes; kept workspaces were on Summary) | Run page details toggle, Changes tab | 2 | `?panel=files`, `?panel=changes` |
 | Stop, retry or resume a run | Run strip | 1 | |
 | Ask for a lasting fix | Summary Next; report card | 1 | |
 | Add a note | Header More, Add a note | 2 | |

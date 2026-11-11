@@ -88,4 +88,16 @@ describe("Settle and Undo on the thread list (#1020)", () => {
 		);
 		expect(hook.undo).toBeNull();
 	});
+
+	it("when the settle response carries undoUntil 20 s ahead, the undo entry is still there after 8 s and gone after 20 s (#1024)", async () => {
+		const undoUntil = new Date(Date.now() + 20_000).toISOString();
+		await act(async () => hook.settle(row));
+		await act(async () =>
+			calls[0]?.opts.onSuccess?.({ ids: ["t1"], previous: prev, undoUntil }),
+		);
+		await act(async () => vi.advanceTimersByTime(8000));
+		expect(hook.undo?.previous).toBe(prev);
+		await act(async () => vi.advanceTimersByTime(12000));
+		expect(hook.undo).toBeNull();
+	});
 });

@@ -1136,7 +1136,7 @@ Then(
 		await expect(page.getByTestId("situation").first()).toBeVisible();
 		if (!(await page.getByTestId("incident-overview").isVisible())) {
 			await page.getByTestId("details-toggle").click();
-			await page.getByTestId("run-details-tab-incident").click();
+			await page.getByTestId("panel-tab-kind").click();
 		}
 		const impact = page.getByTestId("impact-no-source");
 		await expect(impact.locator("dt", { hasText: term })).toBeVisible();

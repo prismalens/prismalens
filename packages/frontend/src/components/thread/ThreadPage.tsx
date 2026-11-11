@@ -3,15 +3,20 @@
 
 import type { AccessLevel } from "@prismalens/config/harness";
 import { pendingAsks, recordedFindings } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, PanelRight, PanelTop, TriangleAlert } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
-import type { EvidenceFiles } from "@/components/run/RunDetailsPanel";
+import { BrowserTab } from "@/components/run/BrowserTab";
+import {
+	type EvidenceFiles,
+	FilesPane,
+	StepsList,
+} from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
 import { TickDot } from "@/components/schedules/TickDot";
 import { Hint } from "@/components/shared/Hint";
@@ -22,6 +27,7 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
+import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import {
@@ -30,18 +36,31 @@ import {
 	type SendEnvelope,
 	uploadEach,
 } from "@/lib/composer-send";
+import { desktopBridge } from "@/lib/desktop";
 import { type FileAt, readsOf, stepFile } from "@/lib/evidence-files";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { openAsksOf } from "@/lib/run-asks";
-import { touchedFiles } from "@/lib/run-panel";
+import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
+import { KindTab } from "./panel/KindTab";
+import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
+import {
+	type PanelId,
+	type PanelSearch,
+	panelTabs,
+	rememberedTab,
+	rememberTab,
+	shownTab,
+} from "./panel/panel-model";
+import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
+import { ThreadTab } from "./panel/ThreadTab";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
-import { type Surface, ThreadPanel } from "./ThreadPanel";
+import { WorktreeDiff } from "./WorktreeDiff";
 
 /** Each run state's tone and its word: two words at most. */
 const STATE = {
@@ -122,9 +141,10 @@ export function ThreadPage({ id }: { id: string }) {
 	const resume = useResumeInvestigation();
 	const [resumeError, setResumeError] = useState<string | null>(null);
 	const [boxOpen, setBoxOpen] = useState(false);
-	const [panelOpen, setPanelOpen] = useState(false);
-	const [surface, setSurface] = useState<Surface | null>(null);
-	const [viewing, setViewing] = useState<FileAt | null>(null);
+	const search = useSearch({ from: "/_authenticated/threads/$id" });
+	const navigate = useNavigate();
+	const panelOpen = !!search.panel;
+	const [browserOpened, setBrowserOpened] = useState(false);
 	const [openSteps, setOpenSteps] = useState<ReadonlySet<number>>(new Set());
 	const [subagentId, setSubagentId] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
@@ -136,6 +156,14 @@ export function ThreadPage({ id }: { id: string }) {
 	const repo = useRepository(inv?.repositoryId ?? "");
 	const service = useService(inv?.repositoryId ? "" : (inv?.serviceId ?? ""));
 	const workspace = inv?.workspace;
+	const context = useThreadContext(inv?.id ?? null, run.isActive);
+	const viewing = useMemo(() => {
+		if (!search.path) return null;
+		const f = fileFromParam(search.path, workspace);
+		return f
+			? { ...f, line: search.line ?? f.line, end: search.line ?? f.end }
+			: null;
+	}, [search.path, search.line, workspace]);
 
 	const items = useMemo(
 		() =>
@@ -181,23 +209,52 @@ export function ThreadPage({ id }: { id: string }) {
 		[run.events],
 	);
 
-	const openSurface = useCallback((s: Surface) => {
-		setSurface(s);
-		setPanelOpen(true);
-	}, []);
+	// Opening pushes, so Back closes the panel; moving inside it replaces (#1024).
+	const openPanel = useCallback(
+		(next: PanelSearch) =>
+			void navigate({
+				to: ".",
+				search: (s: Record<string, unknown>) => ({
+					...s,
+					panel: undefined,
+					section: undefined,
+					path: undefined,
+					line: undefined,
+					...next,
+				}),
+				replace: panelOpen,
+			}),
+		[navigate, panelOpen],
+	);
+	const closePanel = useCallback(() => {
+		setSubagentId(null);
+		void navigate({
+			to: ".",
+			search: (s: Record<string, unknown>) => ({
+				...s,
+				panel: undefined,
+				section: undefined,
+				path: undefined,
+				line: undefined,
+			}),
+			replace: true,
+		});
+	}, [navigate]);
 	const openFile = useCallback(
-		(f: FileAt) => {
-			setViewing(f);
-			openSurface("files");
-		},
-		[openSurface],
+		(f: FileAt) =>
+			openPanel({
+				panel: "changes",
+				path: fileParam({ ...f, line: null, end: null }),
+				...(f.line ? { line: f.line } : {}),
+			}),
+		[openPanel],
 	);
 	const openSubagent = useCallback(
 		(sessionId: string) => {
 			setSubagentId(sessionId);
-			openSurface("subagent");
+			openPanel({ panel: search.panel ?? "thread" });
 		},
-		[openSurface],
+		[openPanel, search.panel],
 	);
 	// A sub-agent is never messaged: the quote goes to the main agent's box (ADR 0002 §5).
 	const askMain = useCallback((quote: string) => {
@@ -240,15 +297,15 @@ export function ThreadPage({ id }: { id: string }) {
 			touched: touchedFiles(run.steps, workspace, []),
 			links: [],
 			viewing,
-			onOpen: (f) => setViewing(f),
-			onClose: () => setViewing(null),
+			onOpen: (f) => openFile(f),
+			onClose: () => openPanel({ panel: "changes" }),
 			backLabel: "Back to files",
 			reads: viewing ? readsOf(viewing, run.steps, workspace) : [],
 			codeHost: null,
 			stepFile: fileOfStep,
 			onOpenHypotheses: () => {},
 		}),
-		[id, workspace, run.steps, viewing, fileOfStep],
+		[id, workspace, run.steps, viewing, fileOfStep, openFile, openPanel],
 	);
 
 	const openAsks = useMemo(() => pendingAsks(id, run.events), [id, run.events]);
@@ -260,6 +317,11 @@ export function ThreadPage({ id }: { id: string }) {
 		asks: openAsks,
 	});
 	const { sendMessage } = run;
+	// A finished run's next message may take another model or effort; the run's own until picked (#1024).
+	const [nextChoice, setNextChoice] = useState<{
+		model?: string;
+		effort?: string | null;
+	}>({});
 	const forward = useCallback(
 		async (env: SendEnvelope, now: boolean) => {
 			const attachments = await uploadEach(env.attachments, (f) =>
@@ -268,10 +330,11 @@ export function ThreadPage({ id }: { id: string }) {
 			await sendMessage(env.text, now ? "now" : "queue", {
 				attachments,
 				kind: "chat",
-				fields: messageFields(env),
+				fields: { ...messageFields(env), ...nextChoice },
 			});
+			setNextChoice({});
 		},
-		[id, sendMessage],
+		[id, sendMessage, nextChoice],
 	);
 	const { interceptors } = slots;
 	const onSend = useCallback(
@@ -279,7 +342,64 @@ export function ThreadPage({ id }: { id: string }) {
 			interceptSend(env, now, interceptors, forward),
 		[interceptors, forward],
 	);
-	const closePanel = useCallback(() => setPanelOpen(false), []);
+	const threadPath = `/threads/${id}`;
+	const links = useMemo(
+		() => ({
+			threadId: id,
+			href: (t: Parameters<typeof hrefOf>[0]) => hrefOf(t, threadPath),
+			open: (t: Parameters<typeof hrefOf>[0]) => {
+				const place = placeOf(t, hasDesktopBrowser());
+				switch (place.to) {
+					case "panel":
+						return openPanel(place.search);
+					case "thread":
+						return void navigate({
+							to: "/threads/$id",
+							params: { id: place.id },
+						});
+					case "incident":
+						return void navigate({
+							to: "/incidents/$id",
+							params: { id: place.id },
+						});
+					case "subagent":
+						return openSubagent(place.sessionId);
+					case "artifact":
+						return document
+							.querySelector(`[data-artifact-id="${CSS.escape(place.id)}"]`)
+							?.scrollIntoView({ block: "center" });
+					case "browser":
+						desktopBridge()?.browser?.open(place.href);
+						setBrowserOpened(true);
+						return openPanel({ panel: "browser" });
+					case "tab":
+						window.open(place.href, "_blank", "noreferrer");
+				}
+			},
+		}),
+		[id, threadPath, openPanel, navigate, openSubagent],
+	);
+	const tabs = panelTabs({
+		kind: context.data?.kind ?? null,
+		thread: true,
+		changes: !!workspace,
+		browser: browserOpened && hasDesktopBrowser(),
+	});
+	const tab = shownTab(tabs, search.panel);
+	useEffect(() => {
+		if (tab && search.panel) rememberTab(id, tab);
+	}, [id, tab, search.panel]);
+	const togglePanel = () =>
+		panelOpen
+			? closePanel()
+			: openPanel({ panel: rememberedTab(id) ?? tabs[0]?.id ?? "thread" });
+	// Settling clears the view the thread opened (#1024); leaving the page does too.
+	useEffect(
+		() => () => {
+			if (browserOpened) desktopBridge()?.browser?.go("clear");
+		},
+		[browserOpened],
+	);
 
 	const ready = !run.isLoading && !run.error && !!inv;
 	const back = inv ? backOf(inv) : backOf({});
@@ -336,7 +456,7 @@ export function ThreadPage({ id }: { id: string }) {
 				label="Panel"
 				pressed={panelOpen}
 				disabled={!ready}
-				onToggle={() => setPanelOpen((o) => !o)}
+				onToggle={togglePanel}
 				icon={<PanelRight className="size-4" aria-hidden />}
 				testId="panel-toggle"
 				controls="thread-panel"
@@ -414,7 +534,7 @@ export function ThreadPage({ id }: { id: string }) {
 						live={run.isActive}
 						project={project}
 						workspace={workspace}
-						onOpenDiff={() => openSurface("diff")}
+						onOpenDiff={() => openPanel({ panel: "changes" })}
 						subagents={subagents}
 						onOpenSubagent={openSubagent}
 					/>
@@ -434,6 +554,7 @@ export function ThreadPage({ id }: { id: string }) {
 						runId={inv.id}
 						foldTurns={{ live: run.isActive }}
 						onOpenSubagent={openSubagent}
+						links={links}
 					/>
 				) : (
 					<p className="px-5 pt-6 text-body text-text-3">
@@ -471,12 +592,24 @@ export function ThreadPage({ id }: { id: string }) {
 						placeholder={run.isActive ? "Message the agent" : "Reply"}
 						choice={{
 							harness,
-							model: inv.model ?? "",
-							effort: inv.effort ?? null,
+							model: nextChoice.model ?? inv.model ?? "",
+							effort:
+								nextChoice.effort !== undefined
+									? nextChoice.effort
+									: (inv.effort ?? null),
 							accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
 						}}
-						onChoice={() => {}}
-						locked
+						onChoice={(next) => {
+							// The thread keeps its agent; another agent is a new thread.
+							if (next.harnessId && next.harnessId !== inv.harness) return;
+							setNextChoice((c) => ({
+								...c,
+								...(next.model !== undefined ? { model: next.model } : {}),
+								...(next.effort !== undefined ? { effort: next.effort } : {}),
+							}));
+						}}
+						locked={run.isActive}
+						accessHint="Kept from the first message"
 						dock={dock}
 						blockedReason={blocked}
 						text={draft}
@@ -492,17 +625,12 @@ export function ThreadPage({ id }: { id: string }) {
 				</div>
 			</div>
 			<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
-				<ThreadPanel
-					surface={surface}
-					onSurface={setSurface}
+				<ThreadSidePanel
+					tabs={tabs}
+					tab={tab}
+					onTab={(t: PanelId) => openPanel({ panel: t })}
 					onClose={closePanel}
-					runId={inv.id}
-					live={run.isActive}
-					investigation={inv.kind === "investigation"}
-					diff={workspace?.layout !== "folder"}
-					files={files}
-					suspects={suspects}
-					subagent={
+					override={
 						viewedSubagent && (
 							<SubagentPane
 								key={viewedSubagent.sessionId}
@@ -511,6 +639,53 @@ export function ThreadPage({ id }: { id: string }) {
 								events={run.events}
 								live={run.isActive}
 								onAskMain={askMain}
+							/>
+						)
+					}
+					overrideLabel="Sub-agent"
+					content={
+						tab === "kind" && context.data ? (
+							<PanelStack>
+								<KindTab context={context.data} />
+							</PanelStack>
+						) : tab === "changes" ? (
+							viewing || search.path ? (
+								<FilesPane files={files} onJump={() => {}} />
+							) : (
+								<div className="flex min-h-0 flex-1 flex-col">
+									{files.touched.length > 0 && (
+										<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
+											<FilesPane files={files} onJump={() => {}} />
+										</div>
+									)}
+									{workspace?.layout !== "folder" && (
+										<WorktreeDiff runId={inv.id} live={run.isActive} />
+									)}
+								</div>
+							)
+						) : tab === "browser" ? (
+							<BrowserTab links={[]} />
+						) : (
+							<ThreadTab
+								threadId={inv.id}
+								context={context.data}
+								live={run.isActive}
+								session={inv.session}
+								section={search.section}
+								focusPr={
+									search.section?.startsWith("pull-requests:")
+										? search.section.slice("pull-requests:".length)
+										: undefined
+								}
+								steps={
+									run.steps.length ? (
+										<StepsList
+											steps={run.steps}
+											files={files}
+											onJump={toggleStep}
+										/>
+									) : undefined
+								}
 							/>
 						)
 					}

@@ -4,6 +4,7 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	queuedMessages,
 	agentStepMessage,
 	deriveStreamView,
 	deriveTranscript,
@@ -573,6 +574,81 @@ describe("deriveTranscript: handoff record", () => {
 			text: `Codex, took over at ${formatClock(ts)}, in a fresh session. It got the alert.`,
 		});
 	});
+
+	it("thread_message with messageId m1 plus operator_message with messageId m1 produces exactly one node item of kind thread_message and no operator item (#1024)", () => {
+		const threadMsg = {
+			kind: "thread_message",
+			messageId: "m1",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 1,
+			ts: "2026-08-22T14:30:00Z",
+		} as unknown as CanonicalEvent;
+
+		const opMsg: CanonicalEvent = {
+			kind: "operator_message",
+			messageId: "m1",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 2,
+			label: null,
+			ts: "2026-08-22T14:30:01Z",
+			text: "Operator says hello",
+			mode: "now",
+			delivered: true,
+		};
+
+		const items = deriveTranscript([threadMsg, opMsg], { nodes: () => true });
+		const nodeItems = items.filter((i) => i.kind === "node");
+		const operatorItems = items.filter((i) => i.kind === "operator");
+
+		expect(nodeItems).toHaveLength(1);
+		expect(nodeItems[0]?.event.kind).toBe("thread_message");
+		expect(operatorItems).toHaveLength(0);
+	});
+
+	it("without thread_message the operator_message item is drawn (#1024)", () => {
+		const opMsg: CanonicalEvent = {
+			kind: "operator_message",
+			messageId: "m1",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 2,
+			label: null,
+			ts: "2026-08-22T14:30:01Z",
+			text: "Operator says hello",
+			mode: "now",
+			delivered: true,
+		};
+
+		const items = deriveTranscript([opMsg], { nodes: () => true });
+		const operatorItems = items.filter((i) => i.kind === "operator");
+		expect(operatorItems).toHaveLength(1);
+		expect(operatorItems[0]?.text).toBe("Operator says hello");
+	});
 });
 
+describe("queuedMessages folds edits and withdrawals (#1024)", () => {
+	const at = (seq: number) => ({
+		seq,
+		ts: `2026-11-11T10:00:0${seq}.000Z`,
+		branchId: "run",
+	});
+	const A = "11111111-1111-4111-8111-111111111111";
+	const B = "22222222-2222-4222-8222-222222222222";
+	const events = [
+		{ ...at(1), kind: "message_queued", messageId: A, text: "first" },
+		{ ...at(2), kind: "message_queued", messageId: B, text: "second" },
+		{ ...at(3), kind: "message_edited", messageId: A, text: "first, edited" },
+		{ ...at(4), kind: "message_withdrawn", messageId: B },
+	] as unknown as CanonicalEvent[];
 
+	it("shows an edited message's new text and drops a withdrawn one", () => {
+		expect(queuedMessages(events, [])).toEqual([
+			{ key: A, text: "first, edited", attachments: [] },
+		]);
+	});
+});

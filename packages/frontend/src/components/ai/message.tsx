@@ -7,11 +7,69 @@
  * type and code, the operator's message a raised block. Agent prose is the
  * only Markdown the app renders (study-v3 §3.4).
  */
-import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
-import { isValidElement, memo } from "react";
+import type { LinkTarget } from "@prismalens/contracts";
+import type {
+	ComponentProps,
+	HTMLAttributes,
+	MouseEvent,
+	ReactNode,
+} from "react";
+import { createContext, isValidElement, memo, useContext } from "react";
 import { type Components, Streamdown } from "streamdown";
 import { RunInTerminal } from "@/components/terminal/RunInTerminal";
+import { linkKey } from "@/lib/link-candidates";
 import { cn } from "@/lib/utils";
+
+/** A message's resolved links and where each opens (#1024). */
+export interface MessageLinks {
+	targets: ReadonlyMap<string, LinkTarget>;
+	/** The address Ctrl or Cmd click opens in a new tab. */
+	href: (target: LinkTarget) => string;
+	open: (target: LinkTarget) => void;
+}
+
+const LinksContext = createContext<MessageLinks | null>(null);
+
+const LINK = "text-accent hover:underline";
+
+/** A link in agent prose: a resolved one opens in place, an unresolved candidate stays text. */
+function ProseLink({
+	children,
+	href,
+}: {
+	children?: ReactNode;
+	href?: string;
+}) {
+	const links = useContext(LinksContext);
+	const key = linkKey(href);
+	const target = links?.targets.get(key ?? href ?? "");
+	if (links && target) {
+		const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+			if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+			e.preventDefault();
+			links.open(target);
+		};
+		return (
+			<a
+				href={links.href(target)}
+				onClick={onClick}
+				className={LINK}
+				data-link-type={target.type}
+				{...(target.type === "url"
+					? { target: "_blank", rel: "noreferrer" }
+					: {})}
+			>
+				{children}
+			</a>
+		);
+	}
+	if (key !== null) return <>{children}</>;
+	return (
+		<a href={href} target="_blank" rel="noreferrer" className={LINK}>
+			{children}
+		</a>
+	);
+}
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 	from: "agent" | "you";
@@ -64,16 +122,7 @@ const components: Components = {
 			{children}
 		</ol>
 	),
-	a: ({ children, href }) => (
-		<a
-			href={href}
-			target="_blank"
-			rel="noreferrer"
-			className="text-accent hover:underline"
-		>
-			{children}
-		</a>
-	),
+	a: ({ children, href }) => <ProseLink href={href}>{children}</ProseLink>,
 	strong: ({ children }) => (
 		<strong className="font-semibold text-text-1">{children}</strong>
 	),
@@ -139,21 +188,27 @@ export function shellLine(children: ReactNode): string | null {
 	return line && !line.includes("\n") ? line : null;
 }
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+	links?: MessageLinks;
+};
 
 export const MessageResponse = memo(
-	({ className, ...props }: MessageResponseProps) => (
-		<Streamdown
-			className={cn(
-				"min-w-0 text-body text-text-1 [overflow-wrap:anywhere]",
-				className,
-			)}
-			components={components}
-			controls={false}
-			mode="static"
-			{...props}
-		/>
+	({ className, links, ...props }: MessageResponseProps) => (
+		<LinksContext.Provider value={links ?? null}>
+			<Streamdown
+				className={cn(
+					"min-w-0 text-body text-text-1 [overflow-wrap:anywhere]",
+					className,
+				)}
+				components={components}
+				controls={false}
+				mode="static"
+				{...props}
+			/>
+		</LinksContext.Provider>
 	),
-	(prev, next) => prev.children === next.children,
+	(prev, next) =>
+		prev.children === next.children &&
+		prev.links?.targets === next.links?.targets,
 );
 MessageResponse.displayName = "MessageResponse";

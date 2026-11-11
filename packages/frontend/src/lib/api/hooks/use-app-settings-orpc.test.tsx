@@ -135,6 +135,41 @@ describe("use-app-settings-orpc", () => {
 		emptyHook.unmount();
 	});
 
+	it("runs two quick tree-settings changes in order, the second on top of the first", async () => {
+		let releaseFirst!: () => void;
+		updateTreeSettingsSpy.mockImplementationOnce(
+			(input) =>
+				new Promise((resolve) => {
+					releaseFirst = () => resolve(input);
+				}),
+		);
+		const queryClient = new QueryClient({
+			defaultOptions: {
+				queries: { retry: false },
+				mutations: { retry: false },
+			},
+		});
+		const hook = renderHook(() => useUpdateTreeSettings(), queryClient);
+		const second = renderHook(() => useUpdateTreeSettings(), queryClient);
+		await act(async () => {
+			hook.result.current.mutate({ agentsStartThreads: "allow" });
+			second.result.current.mutate({ depth: 3 });
+		});
+		expect(updateTreeSettingsSpy).toHaveBeenCalledTimes(1);
+		await act(async () => {
+			releaseFirst();
+		});
+		expect(updateTreeSettingsSpy).toHaveBeenCalledTimes(2);
+		expect(updateTreeSettingsSpy).toHaveBeenLastCalledWith({
+			agentsStartThreads: "allow",
+			depth: 3,
+			children: 4,
+			perTree: 10,
+		});
+		hook.unmount();
+		second.unmount();
+	});
+
 	it("sends defaults with patched depth on tree settings update when uncached", async () => {
 		const queryClient = new QueryClient({
 			defaultOptions: {

@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HARNESS_TOOL_STEPS } from "@prismalens/contracts";
+import { HARNESS_TOOL_STEPS, type LinkTarget } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, FileText } from "lucide-react";
 import {
+	createContext,
 	Fragment,
 	memo,
 	type ReactNode,
+	useContext,
 	useEffect,
 	useMemo,
 	useRef,
@@ -19,7 +21,7 @@ import {
 	ConversationContent,
 	ConversationScrollButton,
 } from "@/components/ai/conversation";
-import { MessageResponse } from "@/components/ai/message";
+import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { AskCard } from "@/components/investigation/RunDock";
 import { ArtifactCard } from "@/components/run/ArtifactCard";
 import type { RunStep } from "@/components/run/run-steps";
@@ -28,6 +30,7 @@ import { StateWord } from "@/components/shared/StateWord";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import { CommandChip } from "@/components/ui/command-chip";
 import { useSecondClock } from "@/hooks/use-clock";
+import { useResolvedLinks } from "@/lib/api/hooks/use-thread-context-orpc";
 import { compose } from "@/lib/compose";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
@@ -39,6 +42,7 @@ import {
 	seconds,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
+import { linkCandidates, linkify, targetsByText } from "@/lib/link-candidates";
 import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
 import { restartSent } from "@/lib/restart";
@@ -51,7 +55,6 @@ import {
 	workedLabel,
 } from "@/lib/spine";
 import { cn } from "@/lib/utils";
-
 import { TranscriptNode } from "./transcript/registry";
 
 export { unfence } from "@/components/run/run-steps";
@@ -167,7 +170,10 @@ export const Transcript = memo(function Transcript({
 	foldTurns,
 	chat = false,
 	onOpenSubagent,
+	links,
 }: {
+	/** Prose links resolve against this thread and open through the page (#1024). */
+	links?: TranscriptLinks;
 	items: TranscriptItem[];
 	/** Null on a scheduled check no finding has linked yet (#979). */
 	incidentId: string | null;
@@ -238,89 +244,153 @@ export const Transcript = memo(function Transcript({
 			if (!next.delete(key)) next.add(key);
 			return next;
 		});
+	// A message still streaming is not resolved: its text keeps changing.
+	const liveProse = live
+		? items.findLast((i) => i.kind === "prose")?.key
+		: undefined;
+	const linkValue = useMemo(
+		() => (links ? { ...links, liveProse } : null),
+		[links, liveProse],
+	);
 	return (
-		<Conversation className="h-full" data-testid="transcript-scroller">
-			<ConversationContent className="px-4 pt-5 pb-2">
-				<ol
-					className="mx-auto flex w-full max-w-[760px] min-w-0 list-none flex-col gap-3 p-0"
-					data-testid="transcript"
-					data-empty={empty ? "" : undefined}
-				>
-					{lead}
-					{folds && worked && brief === -1 && <WorkedToggle worked={worked} />}
-					{items.map((item, i) => {
-						const group = groups.get(item.key);
-						const has = (set: ReadonlySet<number> | undefined) =>
-							set && group?.own.some((s) => set.has(s.n)) ? set : NONE;
-						const lit = steps?.highlight ?? null;
-						return (
-							<Fragment key={item.key}>
-								{turnAt.has(i) && (
-									<TurnToggle
-										fold={turnAt.get(i) as TurnFold}
-										open={openTurns.has(turnAt.get(i)?.key ?? "")}
-										onToggle={toggleTurn}
-									/>
-								)}
-								{!turnHidden.has(i) &&
-									(!folds ||
-										worked?.open ||
-										i <= brief ||
-										i >= end ||
-										item.kind === "artifact") && (
-										<TranscriptRow
-											item={item}
-											incidentId={incidentId}
-											cwd={cwd}
-											agent={agent}
-											runName={runName}
-											briefBy={briefBy}
-											chat={chat}
-											reportTitle={report?.title}
-											reportSummary={report?.summary}
-											reportStop={report?.stop}
-											reportLasting={report?.lasting}
-											loginHint={loginHint}
-											limits={limits}
-											summaryAbove={summaryAbove}
-											hasSteps={!!steps}
-											group={group}
-											open={has(steps?.open)}
-											flagged={has(steps?.flagged)}
-											highlight={
-												lit !== null && group?.own.some((s) => s.n === lit)
-													? lit
-													: null
-											}
-											ask={
-												item.kind === "ask"
-													? steps?.asks?.find((a) => a.askId === item.askId)
-													: undefined
-											}
-											onToggle={steps?.onToggle}
-											onSeeFlag={steps?.onSeeFlag}
-											fileOf={steps?.fileOf}
-											onOpenFile={steps?.onOpenFile}
-											runId={runId}
-											onOpenSubagent={onOpenSubagent}
+		<TranscriptLinksContext.Provider value={linkValue}>
+			<Conversation className="h-full" data-testid="transcript-scroller">
+				<ConversationContent className="px-4 pt-5 pb-2">
+					<ol
+						className="mx-auto flex w-full max-w-[760px] min-w-0 list-none flex-col gap-3 p-0"
+						data-testid="transcript"
+						data-empty={empty ? "" : undefined}
+					>
+						{lead}
+						{folds && worked && brief === -1 && (
+							<WorkedToggle worked={worked} />
+						)}
+						{items.map((item, i) => {
+							const group = groups.get(item.key);
+							const has = (set: ReadonlySet<number> | undefined) =>
+								set && group?.own.some((s) => set.has(s.n)) ? set : NONE;
+							const lit = steps?.highlight ?? null;
+							return (
+								<Fragment key={item.key}>
+									{turnAt.has(i) && (
+										<TurnToggle
+											fold={turnAt.get(i) as TurnFold}
+											open={openTurns.has(turnAt.get(i)?.key ?? "")}
+											onToggle={toggleTurn}
 										/>
 									)}
-								{folds && worked && i === brief && (
-									<WorkedToggle worked={worked} />
-								)}
-								{i === end && report && afterReport}
-							</Fragment>
-						);
-					})}
-				</ol>
-			</ConversationContent>
-			<ConversationScrollButton />
-			<ReleaseOnUnfold open={!!worked?.open || openTurns.size > 0} />
-			{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
-			<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
-		</Conversation>
+									{!turnHidden.has(i) &&
+										(!folds ||
+											worked?.open ||
+											i <= brief ||
+											i >= end ||
+											item.kind === "artifact") && (
+											<TranscriptRow
+												item={item}
+												incidentId={incidentId}
+												cwd={cwd}
+												agent={agent}
+												runName={runName}
+												briefBy={briefBy}
+												chat={chat}
+												reportTitle={report?.title}
+												reportSummary={report?.summary}
+												reportStop={report?.stop}
+												reportLasting={report?.lasting}
+												loginHint={loginHint}
+												limits={limits}
+												summaryAbove={summaryAbove}
+												hasSteps={!!steps}
+												group={group}
+												open={has(steps?.open)}
+												flagged={has(steps?.flagged)}
+												highlight={
+													lit !== null && group?.own.some((s) => s.n === lit)
+														? lit
+														: null
+												}
+												ask={
+													item.kind === "ask"
+														? steps?.asks?.find((a) => a.askId === item.askId)
+														: undefined
+												}
+												onToggle={steps?.onToggle}
+												onSeeFlag={steps?.onSeeFlag}
+												fileOf={steps?.fileOf}
+												onOpenFile={steps?.onOpenFile}
+												runId={runId}
+												onOpenSubagent={onOpenSubagent}
+											/>
+										)}
+									{folds && worked && i === brief && (
+										<WorkedToggle worked={worked} />
+									)}
+									{i === end && report && afterReport}
+								</Fragment>
+							);
+						})}
+					</ol>
+				</ConversationContent>
+				<ConversationScrollButton />
+				<ReleaseOnUnfold open={!!worked?.open || openTurns.size > 0} />
+				{/* A jump to a step unfolds its group; the growth must not pull the reader back to the bottom. */}
+				<ReleaseOnUnfold open={(steps?.highlight ?? null) !== null} />
+			</Conversation>
+		</TranscriptLinksContext.Provider>
 	);
 });
+
+/** How a page opens a prose link: the thread to resolve against, the address, the action. */
+export interface TranscriptLinks {
+	threadId: string;
+	href: MessageLinks["href"];
+	open: MessageLinks["open"];
+}
+
+const TranscriptLinksContext = createContext<
+	(TranscriptLinks & { liveProse?: string }) | null
+>(null);
+
+const NO_TARGETS: ReadonlyMap<string, LinkTarget> = new Map();
+
+/** One agent message; with a page's links, they resolve once it has settled. */
+function ProseText({ id, text }: { id: string; text: string }) {
+	const links = useContext(TranscriptLinksContext);
+	if (!links) return <MessageResponse>{text}</MessageResponse>;
+	return <LinkedProse id={id} text={text} links={links} />;
+}
+
+/** One `links/resolve` call per message, cached by its key. */
+function LinkedProse({
+	id,
+	text,
+	links,
+}: {
+	id: string;
+	text: string;
+	links: TranscriptLinks & { liveProse?: string };
+}) {
+	const candidates = useMemo(() => linkCandidates(text), [text]);
+	const resolved = useResolvedLinks(
+		links.threadId,
+		id,
+		candidates,
+		links.liveProse !== id,
+	);
+	const targets = useMemo(
+		() =>
+			resolved.data
+				? targetsByText(candidates, resolved.data.targets)
+				: NO_TARGETS,
+		[resolved.data, candidates],
+	);
+	const shown = useMemo(() => linkify(text, targets), [text, targets]);
+	const value = useMemo(
+		() => ({ targets, href: links.href, open: links.open }),
+		[links.href, links.open, targets],
+	);
+	return <MessageResponse links={value}>{shown}</MessageResponse>;
+}
 
 /** Unfolding grows the log; without this the follow-the-tail lock pulls a jump back to the bottom. */
 function ReleaseOnUnfold({ open }: { open: boolean }) {
@@ -447,7 +517,7 @@ const TranscriptRow = memo(function TranscriptRow({
 				<li className={ENTER} data-testid="transcript-agent">
 					{item.text && (
 						<div data-testid="transcript-prose" className="leading-[22px]">
-							<MessageResponse>{item.text}</MessageResponse>
+							<ProseText id={item.key} text={item.text} />
 						</div>
 					)}
 					{item.draft && (

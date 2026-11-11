@@ -72,7 +72,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 
 		// The sections / cards on overview live under the Incident tab in details panel
 		await page.getByTestId("details-toggle").click();
-		await page.getByTestId("run-details-tab-incident").click();
+		await page.getByTestId("panel-tab-kind").click();
 		await expect(page.getByTestId("run-details-incident")).toBeVisible();
 		const cardIds = [
 			"impact-card",
@@ -190,7 +190,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		);
 		await expect(page.getByTestId("run-strip-label")).toHaveText(/failed$/);
 
-		const tab = page.getByTestId("run-details-tab-incident");
+		const tab = page.getByTestId("panel-tab-kind");
 		if (!(await tab.isVisible())) {
 			await page.getByTestId("details-toggle").click();
 		}

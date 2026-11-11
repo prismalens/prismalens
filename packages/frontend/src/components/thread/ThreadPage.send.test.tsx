@@ -26,6 +26,13 @@ let capturedProps: {
 		now: boolean,
 	) => Promise<ComposerReply> | ComposerReply;
 	dock?: ReactNode;
+	onChoice?: (next: {
+		harnessId?: string;
+		model?: string;
+		effort?: string | null;
+	}) => void;
+	locked?: boolean;
+	choice?: { model: string; effort: string | null };
 } = {};
 
 vi.mock("./Composer", () => ({
@@ -35,8 +42,21 @@ vi.mock("./Composer", () => ({
 			now: boolean,
 		) => Promise<ComposerReply> | ComposerReply;
 		dock?: ReactNode;
+		onChoice?: (next: {
+			harnessId?: string;
+			model?: string;
+			effort?: string | null;
+		}) => void;
+		locked?: boolean;
+		choice?: { model: string; effort: string | null };
 	}) => {
-		capturedProps = { onSend: props.onSend, dock: props.dock };
+		capturedProps = {
+			onSend: props.onSend,
+			dock: props.dock,
+			...(props.onChoice ? { onChoice: props.onChoice } : {}),
+			...(props.locked !== undefined ? { locked: props.locked } : {}),
+			...(props.choice ? { choice: props.choice } : {}),
+		};
 		return <div data-testid="composer" />;
 	},
 }));
@@ -135,12 +155,18 @@ vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
 }));
 
+vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
+	useThreadContext: () => ({ data: null, isLoading: false }),
+}));
+
 vi.mock("@/hooks/use-page-title", () => ({
 	usePageTitle: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
+	useSearch: () => ({}),
+	useNavigate: () => vi.fn(),
 }));
 
 vi.mock("@/components/shared/Hint", () => ({
@@ -159,8 +185,17 @@ vi.mock("@/components/shell/PanelShell", () => ({
 	RightPanel: ({ children }: { children: ReactNode }) => children,
 }));
 
-vi.mock("./ThreadPanel", () => ({
-	ThreadPanel: () => <div data-testid="thread-panel" />,
+vi.mock("./panel/ThreadSidePanel", () => ({
+	ThreadSidePanel: () => <div data-testid="thread-panel" />,
+	PanelStack: ({ children }: { children: ReactNode }) => children,
+}));
+
+vi.mock("./panel/KindTab", () => ({
+	KindTab: () => null,
+}));
+
+vi.mock("./panel/ThreadTab", () => ({
+	ThreadTab: () => null,
 }));
 
 vi.mock("./StatusBox", () => ({
@@ -272,5 +307,67 @@ describe("ThreadPage send handling (#1024)", () => {
 
 		expect(receipt).toEqual({ result: "deferred" });
 		expect(sendMessage).not.toHaveBeenCalled();
+	});
+
+	describe("the next message's model and effort (#1024)", () => {
+		afterEach(() => {
+			invState.isActive = true;
+		});
+
+		it("locks the agent chips while the run works", async () => {
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			expect(capturedProps.locked).toBe(true);
+		});
+
+		it("sends a picked model and effort with the next follow-up only, then the run's own again", async () => {
+			invState.isActive = false;
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			expect(capturedProps.locked).toBe(false);
+			await act(async () =>
+				capturedProps.onChoice?.({ model: "other-model", effort: "high" }),
+			);
+			expect(capturedProps.choice).toMatchObject({
+				model: "other-model",
+				effort: "high",
+			});
+			const plain = {
+				...envelope,
+				attachments: [],
+				quotes: [],
+				references: [],
+			};
+			const { draftScope: _s, draftRev: _r, compact: _c, ...bare } = plain;
+			await act(async () => {
+				await capturedProps.onSend?.(bare, false);
+			});
+			expect(sendMessage).toHaveBeenLastCalledWith(text, "queue", {
+				attachments: [],
+				kind: "chat",
+				fields: { model: "other-model", effort: "high" },
+			});
+			await act(async () => {
+				await capturedProps.onSend?.(bare, false);
+			});
+			expect(sendMessage).toHaveBeenLastCalledWith(text, "queue", {
+				attachments: [],
+				kind: "chat",
+				fields: {},
+			});
+		});
+
+		it("ignores a pick of another agent: the thread keeps its agent", async () => {
+			invState.isActive = false;
+			await act(async () => {
+				root.render(<ThreadPage id="inv-1" />);
+			});
+			await act(async () =>
+				capturedProps.onChoice?.({ harnessId: "codex", model: "gpt-x" }),
+			);
+			expect(capturedProps.choice).toMatchObject({ model: "base-model" });
+		});
 	});
 });

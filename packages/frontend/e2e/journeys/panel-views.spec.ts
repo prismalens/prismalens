@@ -188,8 +188,8 @@ test.describe("Panel views (#973)", () => {
 		await page.locator("#open-step-1").click();
 
 		await expect(page.getByTestId("run-details-tab-files")).toHaveAttribute(
-			"data-state",
-			"active",
+			"aria-pressed",
+			"true",
 		);
 		await expect(page.getByTestId("evidence-file")).toBeVisible();
 		await expect(page).toHaveURL(/panel=files/);
@@ -246,6 +246,7 @@ test.describe("Panel views (#973)", () => {
 	test("Files lists what the run touched in a named tree", async ({ page }) => {
 		await setup(page);
 		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("panel-tab-changes").click();
 		await page.getByTestId("run-details-tab-files").click();
 		await expect(page).toHaveURL(/panel=files/);
 		await expect(page.getByTestId("run-details-tab-files")).toContainText("1");
@@ -262,6 +263,7 @@ test.describe("Panel views (#973)", () => {
 	}) => {
 		await setup(page);
 		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("panel-tab-changes").click();
 		await page.getByTestId("run-details-tab-files").click();
 		await page.getByTestId("files-mode-all").click();
 		const tree = page.getByRole("tree", { name: /All files at/ });
@@ -279,6 +281,7 @@ test.describe("Panel views (#973)", () => {
 	}) => {
 		await setup(page);
 		await page.getByTestId("details-toggle").click();
+		await page.getByTestId("panel-tab-changes").click();
 		await page.getByTestId("run-details-tab-changes").click();
 		await expect(page.getByTestId("changes-label")).toHaveText(
 			"Deployment v2.14.0 against deployment v2.13.2, 3 commits",
@@ -313,8 +316,8 @@ test.describe("Panel views (#973)", () => {
 	}) => {
 		await setup(page, 1440, `${RUN_URL}&panel=changes`);
 		await expect(page.getByTestId("run-details-tab-changes")).toHaveAttribute(
-			"data-state",
-			"active",
+			"aria-pressed",
+			"true",
 		);
 		await expect(page.getByTestId("changes-diff")).toBeVisible();
 		await page.getByTestId("details-toggle").click();
@@ -338,16 +341,17 @@ test.describe("Panel views (#973)", () => {
 			page,
 		}) => {
 			await setup(page, width, `${RUN_URL}&panel=browser`, 120);
-			await expect(page.getByTestId("run-details-tab-steps")).toContainText(
-				"120",
-			);
-			await expect(page.getByTestId("run-details-tab-files")).toContainText(
-				"12",
-			);
+			// One panel (#1024): Incident, Thread, Changes, and Browser for the run's links.
 			const list = page.getByTestId("run-details").getByRole("tablist");
-			await expect(page.getByTestId("run-details-tab-browser")).toHaveAttribute(
-				"data-state",
-				"active",
+			await expect(list.getByRole("tab")).toHaveText([
+				"Incident",
+				"Thread",
+				"Changes",
+				"Browser",
+			]);
+			await expect(page.getByTestId("panel-tab-browser")).toHaveAttribute(
+				"aria-selected",
+				"true",
 			);
 			if (width === 1440)
 				expect(
@@ -377,7 +381,7 @@ test.describe("Panel browser (#973)", () => {
 	test("in a browser, the run's links open in a new tab", async ({ page }) => {
 		await setup(page);
 		await page.getByTestId("details-toggle").click();
-		await page.getByTestId("run-details-tab-browser").click();
+		await page.getByTestId("panel-tab-browser").click();
 		await expect(page.getByText("Pages open in your browser")).toBeVisible();
 		const links = page.getByTestId("browser-links").getByRole("link");
 		const count = await links.count();
@@ -429,7 +433,7 @@ test.describe("Panel browser (#973)", () => {
 		});
 		await setup(page);
 		await page.getByTestId("details-toggle").click();
-		await page.getByTestId("run-details-tab-browser").click();
+		await page.getByTestId("panel-tab-browser").click();
 		await page.getByTestId("browser-address").fill("grafana.internal/d/x");
 		await page.getByTestId("browser-address").press("Enter");
 		const slot = page.getByTestId("browser-slot");
@@ -450,8 +454,9 @@ test.describe("Panel browser (#973)", () => {
 		};
 		expect(Math.abs(last.bounds.x - (box?.x ?? 0))).toBeLessThan(1);
 		// Leaving the tab and coming back finds the page again (#977 OBJ-006).
+		await page.getByTestId("panel-tab-changes").click();
 		await page.getByTestId("run-details-tab-files").click();
-		await page.getByTestId("run-details-tab-browser").click();
+		await page.getByTestId("panel-tab-browser").click();
 		await expect(slot).toBeVisible();
 		await page.evaluate(() =>
 			(document.activeElement as HTMLElement | null)?.blur(),

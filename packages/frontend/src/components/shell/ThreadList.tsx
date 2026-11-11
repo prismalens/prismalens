@@ -15,6 +15,7 @@ import {
 	BellRing,
 	CalendarClock,
 	Check,
+	Clock3,
 	Pencil,
 	Square,
 	User,
@@ -55,7 +56,30 @@ import {
 } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 
-type State = "asks" | "failed" | "working" | "ready" | "new" | null;
+type State = "asks" | "failed" | "limited" | "working" | "ready" | "new" | null;
+
+/** Surface F's row fields (#1024); read only when its contract has landed. */
+interface LifecycleFields {
+	paused?: boolean | { reason?: string | null } | null;
+	limit?: { resetsAt?: string | null } | null;
+}
+const lifecycle = (t: FeedRow) => t as FeedRow & LifecycleFields;
+
+/** A thread's automatic updates are paused; it waits for you like an ask. */
+export const isPaused = (t: FeedRow) => !!lifecycle(t).paused;
+const pausedReason = (t: FeedRow) => {
+	const p = lifecycle(t).paused;
+	return typeof p === "object" && p?.reason ? p.reason : null;
+};
+const isLimited = (t: FeedRow) => !!lifecycle(t).limit;
+
+const resumeClock = new Intl.DateTimeFormat(undefined, {
+	hour: "numeric",
+	minute: "2-digit",
+});
+
+/** The deepest indent a tree child gets in the sidebar; deeper ones sit at it. */
+export const ROW_INDENT_MAX = 3;
 
 type RowLink =
 	| ThreadLink
@@ -82,6 +106,8 @@ export interface ThreadRow {
 	service?: string | null;
 	/** The live run, for the working time. */
 	live?: { status: string; startedAt: string | null; createdAt: string };
+	/** Its depth in a thread tree, capped at ROW_INDENT_MAX. */
+	depth: number;
 }
 
 /** One mark per trigger kind; the row, the trigger card and Home share it. */
@@ -94,11 +120,15 @@ export const TRIGGER_ICON = {
 
 const time = (at: string | null | undefined) => (at ? Date.parse(at) : 0);
 
-/** The one state a unit shows: an ask outranks a failure, a run, a finding, news. */
+/**
+ * The one mark a unit shows (#1024): a waiting ask or paused updates, then a
+ * failure, a usage limit, a run, a finding, news. A failing PR adds no mark.
+ */
 export function unitState(threads: FeedRow[]): State {
 	const states = threads.map(rowState);
-	if (states.includes("ask")) return "asks";
+	if (states.includes("ask") || threads.some(isPaused)) return "asks";
 	if (states.includes("failed")) return "failed";
+	if (threads.some(isLimited)) return "limited";
 	if (states.includes("live")) return "working";
 	if (states.includes("new"))
 		return threads.some((t) => t.rootCause?.trim()) ? "ready" : "new";
@@ -136,9 +166,11 @@ export function unitRow(
 		origin,
 		state: unitState(unit.threads),
 		hint: [
+			first.hasDraft ? "Draft" : null,
 			chip && !chat ? `INC-${chip.number}` : null,
 			service,
 			TRIGGER_WORD[origin],
+			...unit.threads.flatMap(stateHint),
 		]
 			.filter(Boolean)
 			.join(", "),
@@ -154,6 +186,7 @@ export function unitRow(
 				: { to: "/incidents/$id", params: { id: chip.id } }
 			: threadLink(first),
 		thread: first,
+		depth: Math.min(first.tree?.depth ?? 0, ROW_INDENT_MAX),
 		settled: unit.section === "settled",
 		incidentId: chip?.id,
 		incidentClosed: chip?.status === "closed",
@@ -170,6 +203,26 @@ export function unitRow(
 	};
 }
 
+/** What a thread's own state adds to the hint: paused updates, a limit's reset, a failing PR. */
+export function stateHint(t: FeedRow): string[] {
+	const out: string[] = [];
+	if (isPaused(t)) {
+		const why = pausedReason(t);
+		out.push(
+			why ? `Automatic updates paused: ${why}` : "Automatic updates paused",
+		);
+	}
+	const limit = lifecycle(t).limit;
+	if (limit)
+		out.push(
+			limit.resetsAt
+				? `Limited · resumes ${resumeClock.format(new Date(limit.resetsAt))}`
+				: "Limited",
+		);
+	if (t.pr?.tone === "failing") out.push("PR failing");
+	return out;
+}
+
 /** What started a thread, in a word; a thread you started needs none (#1020). */
 export const ORIGIN_WORD: Record<TriggerKind, string | null> = {
 	you: null,
@@ -181,6 +234,7 @@ export const ORIGIN_WORD: Record<TriggerKind, string | null> = {
 export const STATE_WORD: Record<NonNullable<State>, string> = {
 	asks: "Approval needed",
 	failed: "Failed",
+	limited: "Limited",
 	working: "Working",
 	ready: "Likely cause",
 	new: "New",
@@ -188,6 +242,7 @@ export const STATE_WORD: Record<NonNullable<State>, string> = {
 const STATE_TONE: Record<NonNullable<State>, string> = {
 	asks: "text-warn",
 	failed: "text-danger",
+	limited: "text-warn",
 	working: "text-text-2",
 	ready: "text-accent",
 	new: "text-accent",
@@ -464,7 +519,13 @@ export function ThreadRowView({
 						: "h-8 items-center gap-2 text-body hover:bg-surface-2",
 					on && "bg-surface-3 font-medium text-text-1 hover:bg-surface-3",
 				)}
+				style={
+					!detailed && row.depth
+						? { paddingLeft: `${10 + row.depth * 12}px` }
+						: undefined
+				}
 				data-testid="thread-row"
+				data-depth={row.depth || undefined}
 				data-id={row.thread.id}
 				data-state={row.state ?? "quiet"}
 			>
@@ -489,7 +550,7 @@ export function ThreadRowView({
 						</RowAction>
 					) : (
 						<RowAction
-							label="Settle"
+							label="Settle: ends this thread's watches and schedules"
 							onClick={() => onSettle(row.thread)}
 							testId="thread-settle"
 						>
@@ -535,6 +596,8 @@ function RowMark({
 		mark = <span className="block size-1.5 rounded-full bg-accent" />;
 	else if (row.state === "asks")
 		mark = <span className="block size-1.5 rounded-full bg-warn" />;
+	else if (row.state === "limited")
+		mark = <Clock3 className="size-3 stroke-[1.75] text-warn" />;
 	else if (row.state === "working") mark = <Ring />;
 	else if (origin) {
 		const Icon = TRIGGER_ICON[row.origin];

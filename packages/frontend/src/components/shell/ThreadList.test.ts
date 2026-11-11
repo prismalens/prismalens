@@ -116,6 +116,7 @@ describe("one state per row (#1020)", () => {
 		expect(STATE_WORD).toEqual({
 			asks: "Approval needed",
 			failed: "Failed",
+			limited: "Limited",
 			working: "Working",
 			ready: "Likely cause",
 			new: "New",

@@ -1220,11 +1220,19 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 					.soft(await sidewaysFaults(page), `conversation at ${width}`)
 					.toEqual([]);
 				await page.getByTestId("details-toggle").click();
-				for (const tab of ["summary", "files", "changes", "steps", "context"]) {
-					await page.getByTestId(`run-details-tab-${tab}`).click();
-					await expect(page.getByTestId(`run-details-${tab}`)).toBeVisible();
+				// One panel (#1024): Incident holds Summary and Context, Changes holds Files and the diff.
+				for (const [tab, toggle, shown] of [
+					["kind", null, "run-details-summary"],
+					["changes", "run-details-tab-files", "run-details-files"],
+					["changes", "run-details-tab-changes", "run-details-changes"],
+					["thread", null, "panel-body"],
+					["kind", null, "run-details-context"],
+				] as const) {
+					await page.getByTestId(`panel-tab-${tab}`).click();
+					if (toggle) await page.getByTestId(toggle).click();
+					await expect(page.getByTestId(shown)).toBeVisible();
 					expect
-						.soft(await sidewaysFaults(page), `details ${tab} at ${width}`)
+						.soft(await sidewaysFaults(page), `details ${shown} at ${width}`)
 						.toEqual([]);
 				}
 			}
@@ -1276,7 +1284,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 				await page.setViewportSize({ width, height: 844 });
 				await visit(page, `/incidents/${inc.id}/conversation`);
 				await page.getByTestId("details-toggle").click();
-				await page.getByTestId("run-details-tab-summary").click();
+				await page.getByTestId("panel-tab-kind").click();
 				await expect(page.getByTestId("run-details-summary")).toBeVisible();
 				const covered = await page.evaluate(() => {
 					const strip = Array.from(
@@ -1286,7 +1294,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 						.map((el) => el.getBoundingClientRect());
 					return Array.from(
 						document.querySelectorAll<HTMLElement>(
-							'[data-testid^="run-details-tab-"]',
+							'[data-testid^="panel-tab-"]',
 						),
 					).flatMap((tab) => {
 						const t = tab.getBoundingClientRect();

@@ -18,11 +18,11 @@ export function useCompactSession(id: string) {
 	});
 }
 
-/** Resume after a usage limit, or not; `message` is the draft sent when it resets. */
+/** Resume after a usage limit, or not; `message` is the draft sent when it resets; `null` removes a queued one. */
 export function useSetAutoResume(id: string) {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (input: { on: boolean; message?: string }) =>
+		mutationFn: (input: { on: boolean; message?: string | null }) =>
 			orpc.investigations.setAutoResume.call({ id, ...input }),
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: orpc.investigations.key() }),

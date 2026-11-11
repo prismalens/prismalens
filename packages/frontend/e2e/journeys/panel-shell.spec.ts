@@ -22,11 +22,12 @@ async function openRun(page: Page, width: number, height = 800) {
 
 // The panel's own scroller reaches its last line at every width (OBJ-009).
 async function lastLineReachable(page: Page) {
-	const summary = page.getByTestId("run-details-summary");
-	await summary.evaluate((el) => {
+	// The Incident tab's stack scrolls as one; its last block must come into view (#1024).
+	const stack = page.getByTestId("run-details").getByTestId("panel-stack");
+	await stack.evaluate((el) => {
 		el.scrollTop = el.scrollHeight;
 	});
-	await expect(summary.locator(":scope > *").last()).toBeInViewport();
+	await expect(stack.locator(":scope > *").last()).toBeInViewport();
 }
 
 async function frameDoesNotScroll(page: Page) {
