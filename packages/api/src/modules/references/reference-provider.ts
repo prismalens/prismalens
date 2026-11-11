@@ -32,8 +32,14 @@ export interface SnapshotContext {
 	serviceId?: string | null;
 }
 
-/** A hit before ranking: the search scores and orders every provider's hits together. */
-export type ReferenceCandidate = Omit<ReferenceHit, "why" | "score">;
+/**
+ * A hit before ranking: the search scores and orders every provider's hits together.
+ * `active` and `at` (epoch ms) break ties within a match tier and never leave the ranker.
+ */
+export type ReferenceCandidate = Omit<ReferenceHit, "why" | "score"> & {
+	active?: boolean;
+	at?: number;
+};
 
 /** A source that cannot answer right now: one line in the menu, never a failed search. */
 export class SourceUnavailable extends Error {
@@ -63,6 +69,14 @@ export interface ReferenceProvider {
 	): Promise<ReferenceCandidate[]>;
 	/** A tracker key such as `PROJ-123`. */
 	byKey?(key: string, ctx: ReferenceContext): Promise<ReferenceCandidate[]>;
+	/**
+	 * A pasted link this source recognises, read through a saved connection; null when the
+	 * link is not this source's. Throws `SourceUnavailable` with the reason it cannot read it.
+	 */
+	resolveUrl?(
+		url: URL,
+		signal: AbortSignal,
+	): Promise<ReferenceCandidate | null>;
 	/** The bounded snapshot sent with the message; null when the record is gone. */
 	snapshot(
 		ref: ReferenceRef,

@@ -5,6 +5,7 @@
  * One reference search behind `/`, `@`, `#` and Ctrl K (#1024): `/` to do,
  * `@` to mention anything, `#` to find work items by number, key or title.
  */
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import {
 	ComposerScopeSchema,
@@ -67,6 +68,8 @@ export const ReferenceHitSchema = z.object({
 	detail: z.string().max(300).optional(),
 	/** Commands only: a PrismaLens action, or one the agent advertised. */
 	source: z.enum(["app", "agent"]).optional(),
+	/** Commands only: the agent's hint for what goes after the name, kept as sent. */
+	inputHint: z.string().max(200).optional(),
 	/** A state tone the row may carry (surface D). */
 	tone: z.string().max(40).optional(),
 	/** The menu group: a source such as "GitHub · org/repo", or PrismaLens. */
@@ -82,6 +85,8 @@ export const ReferenceSearchInputSchema = z.object({
 	threadId: z.string().uuid().optional(),
 	/** A new thread's scope, for the project's folder before a run exists. */
 	scope: ComposerScopeSchema.optional(),
+	/** A new thread's chosen agent: its commands from the last run, before a run exists. */
+	harness: z.enum(HARNESS_IDS).optional(),
 	/** What the panel has open, so it ranks first (`why: open`). */
 	open: z.string().max(1024).optional(),
 	limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -98,6 +103,28 @@ export const ReferenceSearchResultSchema = z.object({
 	),
 });
 export type ReferenceSearchResult = z.infer<typeof ReferenceSearchResultSchema>;
+
+export const MAX_RESOLVE_URLS = 20;
+
+/** Body of `POST /references/resolve`: links pasted into the composer. */
+export const ReferenceResolveInputSchema = z.object({
+	urls: z.array(z.string().min(1).max(2048)).min(1).max(MAX_RESOLVE_URLS),
+});
+export type ReferenceResolveInput = z.infer<typeof ReferenceResolveInputSchema>;
+
+/** One pasted link: the hit a connected source recognised, or why none did. */
+export const ReferenceResolutionSchema = z.union([
+	ReferenceHitSchema.extend({ url: z.string().max(2048) }),
+	z.object({ url: z.string().max(2048), reason: z.string().max(300) }),
+]);
+export type ReferenceResolution = z.infer<typeof ReferenceResolutionSchema>;
+
+export const ReferenceResolveResultSchema = z.object({
+	results: z.array(ReferenceResolutionSchema),
+});
+export type ReferenceResolveResult = z.infer<
+	typeof ReferenceResolveResultSchema
+>;
 
 /** Record that the user picked a hit, for frecency (`why: used`). */
 export const ReferenceUseSchema = z.object({

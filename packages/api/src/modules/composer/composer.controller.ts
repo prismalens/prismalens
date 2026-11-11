@@ -26,6 +26,16 @@ export class DraftsController {
 			delete: implement(draftsContract.delete).handler(({ input }) =>
 				this.drafts.delete(input.scope),
 			),
+			// GET /drafts/:scope/attachments
+			attachments: implement(draftsContract.attachments).handler(
+				async ({ input }) => ({
+					attachments: await this.drafts.attachments(input.scope),
+				}),
+			),
+			// GET /drafts/:scope/attachments/:id - only a file this draft lists
+			attachment: implement(draftsContract.attachment).handler(({ input }) =>
+				this.drafts.attachment(input.scope, input.id),
+			),
 		};
 	}
 }
@@ -40,6 +50,10 @@ export class ReferencesController {
 			// GET /references/search - `/`, `@`, `#` and Ctrl K (#1024)
 			search: implement(referencesContract.search).handler(({ input }) =>
 				this.references.search(input),
+			),
+			// POST /references/resolve - pasted links, in input order
+			resolve: implement(referencesContract.resolve).handler(({ input }) =>
+				this.references.resolveUrls(input.urls),
 			),
 			// POST /references/uses
 			use: implement(referencesContract.use).handler(async ({ input }) => {

@@ -119,6 +119,8 @@ export const DraftBodySchema = z.object({
 	/** The key its attachments were uploaded under. */
 	draftKey: z.string().uuid().nullable(),
 	attachments: z.array(z.string().uuid()).max(10),
+	/** Which of `attachments` began as a long paste, so a restored chip expands and pastes back. */
+	foldedPastes: z.array(z.string().uuid()).max(10).optional(),
 	quotes: z.array(QuoteSchema).max(MAX_QUOTES_PER_MESSAGE),
 	references: z.array(ReferenceRefSchema).max(MAX_REFERENCES_PER_MESSAGE),
 	choice: DraftChoiceSchema,
@@ -136,6 +138,22 @@ export const ComposerDraftSchema = DraftBodySchema.extend({
 export type ComposerDraft = z.infer<typeof ComposerDraftSchema>;
 
 export const DraftScopeParamSchema = z.object({ scope: ComposerScopeSchema });
+
+/** One file the draft holds, as a fresh browser rebuilds its chip. */
+export const DraftAttachmentSchema = z.object({
+	id: z.string().uuid(),
+	name: z.string(),
+	mimeType: z.string(),
+	size: z.number().int().min(0),
+	/** It began as a long paste: the chip expands it and offers Paste as text. */
+	foldedPaste: z.boolean(),
+});
+export type DraftAttachment = z.infer<typeof DraftAttachmentSchema>;
+
+export const DraftAttachmentParamSchema = z.object({
+	scope: ComposerScopeSchema,
+	id: z.string().uuid(),
+});
 
 /** Body of `PUT /drafts/{scope}`: the body plus the rev and generation it was edited from. */
 export const PutDraftSchema = DraftBodySchema.extend({

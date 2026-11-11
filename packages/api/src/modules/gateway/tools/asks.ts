@@ -12,10 +12,10 @@ import { withRules } from "./rules.js";
 import { ANYWHERE } from "./serves.js";
 
 /**
- * No screen answers a tool's question or secret ask yet, so no run is offered these
- * tools until the ask dock ships (#1024). The dock's PR sets this; a test may too.
+ * The composer's ask dock answers a tool's question or secret ask (#1024), so runs
+ * are offered these tools. A test may turn it off to check a run without them.
  */
-export const ASK_DOCK = { shipped: false };
+export const ASK_DOCK = { shipped: true };
 
 /** The investigations module's ToolAsksService, reached lazily: it depends on dispatch, which depends on the gateway. */
 export const TOOL_ASKS = Symbol("TOOL_ASKS");

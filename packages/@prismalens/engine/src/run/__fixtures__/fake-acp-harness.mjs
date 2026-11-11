@@ -21,6 +21,7 @@
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
 // FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_FAIL_ON=<prefix> answers any prompt starting with it with an RPC error.
 // FAKE_SESSION_DELAY_MS delays the session/new answer in any mode.
 // FAKE_ADDITIONAL_DIRS=1 advertises sessionCapabilities.additionalDirectories.
 // FAKE_MCP_HTTP=1 advertises mcpCapabilities.http, so a run offers it the gateway.
@@ -771,6 +772,15 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			if (b.type === "image")
 				process.stderr.write(`fake: image ${b.mimeType}\n`);
 		const text = blocks[0]?.text ?? "";
+		// FAKE_FAIL_ON: a prompt starting with it answers with an RPC error, in any mode.
+		if (process.env.FAKE_FAIL_ON && text.startsWith(process.env.FAKE_FAIL_ON)) {
+			send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				error: { code: -32603, message: "The command failed" },
+			});
+			return;
+		}
 		// "limited": the turn answers with Codex's usage-limit error, its text in data (#1024).
 		if (mode === "limited") {
 			send({

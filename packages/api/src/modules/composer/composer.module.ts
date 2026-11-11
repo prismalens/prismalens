@@ -56,6 +56,7 @@ import { DraftsService } from "./drafts.service.js";
 							})
 						).map((c) => ({ id: c.id, label: c.label || c.id })),
 					open: (src) => openSource(integrations, src, MONITORING_REQUEST),
+					baseUrl: (id) => integrations.connectionBaseUrl(id),
 				}),
 			],
 		},

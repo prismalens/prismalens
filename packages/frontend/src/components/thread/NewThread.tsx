@@ -3,6 +3,7 @@
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type {
+	ComposerScope,
 	HelperPlace,
 	Severity,
 	ThreadStartSubject,
@@ -28,6 +29,16 @@ import {
 	uploadEach,
 } from "@/lib/composer-send";
 import { Composer, type SlashCommand } from "./Composer";
+import { takeNewThreadSeed } from "./composer/quote";
+
+/** The draft scope a new thread's box keeps its text under (#1024). */
+export function newThreadScope(subject: ThreadStartSubject): ComposerScope {
+	return subject.kind === "project"
+		? `new:project:${subject.repositoryId}`
+		: subject.kind === "service"
+			? `new:service:${subject.serviceId}`
+			: "new:home";
+}
 
 interface Picked {
 	harness?: HarnessId;
@@ -73,7 +84,12 @@ export function NewThread({
 	const investigate = useInvestigateIncident();
 	const updateIncident = useUpdateIncident();
 	const navigate = useNavigate();
-	const [picked, setPicked] = useState<Picked>({});
+	// "Ask in a new thread" and `/new` hand over a quote, a linked thread and the agent (#1024).
+	const [seed] = useState(takeNewThreadSeed);
+	const [picked, setPicked] = useState<Picked>(() => ({
+		...(seed?.harness ? { harness: seed.harness } : {}),
+		...(seed?.model ? { model: seed.model } : {}),
+	}));
 	// The incident a failed send already made: a retry investigates it, never makes another.
 	const madeIncident = useRef<{
 		id: string;
@@ -149,6 +165,8 @@ export function NewThread({
 			id,
 			brief: text,
 			...run,
+			...(env.draftScope ? { draftScope: env.draftScope } : {}),
+			...(env.draftRev !== undefined ? { draftRev: env.draftRev } : {}),
 			...(uploaded.length ? { attachments: uploaded.map((a) => a.id) } : {}),
 		});
 		madeIncident.current = null;
@@ -190,6 +208,8 @@ export function NewThread({
 		<Composer
 			state="ready"
 			onSend={onSend}
+			scope={newThreadScope(subject)}
+			seed={seed}
 			placeholder={
 				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
 			}

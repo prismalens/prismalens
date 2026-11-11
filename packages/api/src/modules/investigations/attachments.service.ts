@@ -330,6 +330,36 @@ function asJob(rows: Row[], ids: string[]): JobAttachment[] {
 	});
 }
 
+/** Who holds a draft's files: its key before the run exists, then the thread's run or incident. */
+export interface DraftOwner {
+	draftKey: string | null;
+	investigationId: string | null;
+	incidentId: string | null;
+}
+
+/** The rows among `ids` this draft's owner holds (#1024); an id another owner holds is left out. */
+export async function draftAttachmentRows(
+	prisma: Pick<PrismaService, "attachment">,
+	owner: DraftOwner,
+	ids: string[],
+): Promise<Row[]> {
+	const held: Prisma.AttachmentWhereInput[] = [];
+	if (owner.draftKey)
+		held.push({ draftKey: owner.draftKey, investigationId: null });
+	if (owner.investigationId)
+		held.push({ investigationId: owner.investigationId, incidentId: null });
+	if (owner.incidentId) held.push({ incidentId: owner.incidentId });
+	if (!held.length || !ids.length) return [];
+	return prisma.attachment.findMany({
+		where: { id: { in: ids }, OR: held },
+	});
+}
+
+/** A draft's file as served, with the same headers as every other attachment read. */
+export function servedDraftAttachment(row: Row): ServedAttachment {
+	return served(row);
+}
+
 /** Anything but the four image types downloads: XML or HTML bytes would otherwise run as a page. */
 function served(row: Row): ServedAttachment {
 	const bytes = readFileSync(join(attachmentsDir(), row.id));

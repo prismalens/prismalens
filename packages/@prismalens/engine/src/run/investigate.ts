@@ -93,6 +93,8 @@ import {
 import {
 	buildChatPrompt,
 	buildInvestigationPrompt,
+	COMMAND_LEAD,
+	commandLine,
 	investigationPromptParts,
 	type NewerRun,
 	newerRunNote,
@@ -1241,12 +1243,65 @@ async function* runSession(
 			return yield* consume(session.prompt(parts));
 		};
 
+		/**
+		 * One message as one turn, unless it is a command (#1024): then what PrismaLens adds
+		 * (`before`, the addendum, `after`, the `wrap` prompt, the files) goes in a turn just
+		 * before, and the command line is its own turn's only text block.
+		 */
+		const say = async function* (
+			line: string,
+			context: JobMessageContext | undefined,
+			attachments: JobAttachment[] | undefined,
+			frame: {
+				before?: string[];
+				after?: string[];
+				wrap?: (message: string) => string;
+				/** The record of the command line, yielded just before its own turn goes out. */
+				beforeCommand?: () => CanonicalEvent;
+			} = {},
+		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+			const before = frame.before ?? [];
+			const after = frame.after ?? [];
+			const wrap = frame.wrap ?? ((m: string) => m);
+			const command = commandLine(line);
+			if (!command)
+				return yield* turn(
+					promptParts(
+						wrap(
+							[...before, withAddendum(line, context), ...after].join("\n\n"),
+						),
+						attachments,
+						linkOpts(),
+					),
+				);
+			const extra = [
+				...(context?.addendum ? [context.addendum] : []),
+				...after,
+			];
+			if (frame.wrap || before.length || extra.length || attachments?.length) {
+				const lead = yield* turn(
+					promptParts(
+						wrap([...before, COMMAND_LEAD, ...extra].join("\n\n")),
+						attachments,
+						linkOpts(),
+					),
+				);
+				if (!("stop" in lead) || lead.stop === "cancelled") return lead;
+				text = "";
+			}
+			if (frame.beforeCommand) yield frame.beforeCommand();
+			return yield* turn([{ type: "text", text: command }]);
+		};
+
 		/** The agent's own compact command as a turn, between two boundary events (#1024). */
 		const compactTurn = async function* (
 			c: NonNullable<NonNullable<RunInvestigationOptions["resume"]>["compact"]>,
 		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 			const before = lastUsed;
-			const instructions = c.instructions?.trim();
+			// Codex's compact takes no input: focus words would reach it as a malformed command.
+			const instructions = HARNESS_REGISTRY[opts.harness].compactTakesFocus
+				? c.instructions?.trim()
+				: undefined;
 			yield adapter.compaction("started", "agent_command", {
 				...(before !== undefined ? { before } : {}),
 				...(instructions ? { instructions } : {}),
@@ -1274,6 +1329,61 @@ async function* runSession(
 					: {}),
 			});
 			return r;
+		};
+
+		/** Lines sent together: one turn, or each command turn after the lines before it. */
+		const sayLines = async function* (
+			lines: SteerLine[],
+			nowLine: SteerLine | null,
+		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+			let r: { stop: string } | { error: string } = { stop: "end_turn" };
+			let held: SteerLine[] = [];
+			// A line is recorded as delivered when its turn is about to go out, never before.
+			const record = (line: SteerLine, delivered: boolean) =>
+				adapter.operatorMessage(
+					line.text,
+					line === nowLine ? "now" : "queue",
+					delivered,
+					undefined,
+					refsOf(line.attachments),
+					undefined,
+					line.id,
+					undefined,
+					line.context,
+				);
+			let commandSent = false;
+			const flush = async function* (command: SteerLine | null) {
+				for (const l of held) yield record(l, true);
+				const said = held.map((l) => withAddendum(l.text, l.context));
+				const files = [...held, ...(command ? [command] : [])].flatMap(
+					(l) => l.attachments ?? [],
+				);
+				held = [];
+				return command
+					? yield* say(command.text, command.context, files, {
+							before: said,
+							beforeCommand: () => {
+								commandSent = true;
+								return record(command, true);
+							},
+						})
+					: yield* turn(promptParts(said.join("\n\n"), files, linkOpts()));
+			};
+			for (const [at, line] of lines.entries()) {
+				if (!commandLine(line.text)) {
+					held.push(line);
+					continue;
+				}
+				commandSent = false;
+				r = yield* flush(line);
+				if (!("stop" in r) || r.stop === "cancelled") {
+					// What the failed turn left unsent, the command included, stays queued for a later resume.
+					if (!commandSent) yield record(line, false);
+					for (const rest of lines.slice(at + 1)) yield record(rest, false);
+					return r;
+				}
+			}
+			return held.length ? yield* flush(null) : r;
 		};
 
 		let outcome: { stop: string } | { error: string };
@@ -1321,21 +1431,19 @@ async function* runSession(
 				opts.resume.context,
 				opts.resume.delivers,
 			);
-			const said = [
-				...(opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : []),
-				withAddendum(line, opts.resume.context),
-				...(newer ? [newerRunNote(newer)] : []),
-			].join("\n\n");
-			const seeded = handoff
-				? kind === "continue"
+			const seed = (said: string) =>
+				kind === "continue"
 					? `${investigationPrompt({ modeName, noNetwork, level })}\n\n${handoff}\n\n${said}`
 					: buildChatPrompt(opts.context, `${handoff}\n\n${said}`, {
 							noNetwork,
 							level,
 							modeName,
-						})
-				: said;
-			outcome = yield* turn(promptParts(seeded, attachments, linkOpts()));
+						});
+			outcome = yield* say(line, opts.resume.context, attachments, {
+				before: opts.resume.afterRestart && !handoff ? [RESTART_NOTE] : [],
+				after: newer ? [newerRunNote(newer)] : [],
+				...(handoff ? { wrap: seed } : {}),
+			});
 			// After the turn, so history an agent streams late is counted too.
 			if (session.reopen) {
 				const reopen = {
@@ -1359,22 +1467,15 @@ async function* runSession(
 				undefined,
 				opts.messageContext,
 			);
-			outcome = yield* turn(
-				promptParts(
-					buildChatPrompt(
-						opts.context,
-						withAddendum(message, opts.messageContext),
-						{
-							noNetwork,
-							level,
-							modeName,
-							tools: toolsLine,
-						},
-					),
-					opts.attachments,
-					linkOpts(),
-				),
-			);
+			outcome = yield* say(message, opts.messageContext, opts.attachments, {
+				wrap: (said) =>
+					buildChatPrompt(opts.context, said, {
+						noNetwork,
+						level,
+						modeName,
+						tools: toolsLine,
+					}),
+			});
 		} else {
 			const brief = opts.brief?.trim();
 			if (brief || opts.attachments?.length)
@@ -1412,27 +1513,8 @@ async function* runSession(
 				(l): l is SteerLine => l !== null,
 			);
 			if (lines.length === 0) break;
-			for (const line of lines) {
-				yield adapter.operatorMessage(
-					line.text,
-					line === now ? "now" : "queue",
-					true,
-					undefined,
-					refsOf(line.attachments),
-					undefined,
-					line.id,
-					undefined,
-					line.context,
-				);
-			}
 			text = "";
-			outcome = yield* turn(
-				promptParts(
-					lines.map((l) => withAddendum(l.text, l.context)).join("\n\n"),
-					lines.flatMap((l) => l.attachments ?? []),
-					linkOpts(),
-				),
-			);
+			outcome = yield* sayLines(lines, now ?? null);
 		}
 		// Report repair turns still reach the tools, so their calls count until the end (#848).
 		yield* leftovers(false);

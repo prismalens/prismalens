@@ -4,8 +4,13 @@
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useAnswerAsk } from "@/lib/api/hooks/use-investigations-orpc";
+import {
+	useAnswerAsk,
+	useEditQueuedMessage,
+	useWithdrawQueuedMessage,
+} from "@/lib/api/hooks/use-investigations-orpc";
 import { formatClock } from "@/lib/format-time";
+import { getErrorMessage } from "@/lib/get-error-message";
 import type { AttachmentView } from "@/lib/investigation-events";
 import { mcpTool, shortPath } from "@/lib/report-view";
 import { type AskRecord, askTitle, askWho } from "@/lib/run-asks";
@@ -35,6 +40,7 @@ export function RunDock({
 	asks: readonly AskRecord[];
 	queued: readonly {
 		key: string;
+		messageId?: string;
 		text: string;
 		attachments: AttachmentView[];
 	}[];
@@ -63,33 +69,145 @@ export function RunDock({
 					always={always}
 				/>
 			)}
-			{queued.length > 0 && (
-				<ul className="flex flex-col gap-0.5" data-testid="dock-queued">
-					{queued.map((m) => (
-						<li
-							key={m.key}
-							className="flex min-w-0 items-baseline gap-2 text-meta"
-							data-testid="composer-queued"
-						>
-							<span className="shrink-0 text-text-3">
-								Waits for the agent's next pause
-							</span>
-							<span dir="auto" className="min-w-0 flex-1 truncate text-text-1">
-								{m.text}
-							</span>
-							{m.attachments.length > 0 && (
-								<span className="inline-flex shrink-0 items-center gap-1 text-text-3">
-									<FileText className="size-3" aria-hidden />
-									{m.attachments.length === 1
-										? "1 file"
-										: `${m.attachments.length} files`}
-								</span>
-							)}
-						</li>
-					))}
-				</ul>
-			)}
+			{queued.length > 0 && <QueuedList queued={queued} runId={runId} />}
 		</>
+	);
+}
+
+type Queued = {
+	key: string;
+	messageId?: string;
+	text: string;
+	attachments: AttachmentView[];
+};
+
+/** Messages waiting for the agent's next pause, muted, each with Edit and Withdraw (#1024). */
+function QueuedList({
+	queued,
+	runId,
+}: {
+	queued: readonly Queued[];
+	runId?: string;
+}) {
+	const edit = useEditQueuedMessage();
+	const withdraw = useWithdrawQueuedMessage();
+	const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+	const [edited, setEdited] = useState<Record<string, string>>({});
+	const [editing, setEditing] = useState<{ key: string; text: string } | null>(
+		null,
+	);
+	const [error, setError] = useState<string | null>(null);
+	const shown = queued.filter((m) => !gone.has(m.key));
+	if (!shown.length) return null;
+	const fail = (e: unknown) => setError(getErrorMessage(e));
+	return (
+		<ul className="flex flex-col gap-0.5" data-testid="dock-queued">
+			{shown.map((m) => {
+				const text = edited[m.key] ?? m.text;
+				const messageId = m.messageId;
+				if (editing?.key === m.key && runId && messageId)
+					return (
+						<li key={m.key}>
+							<form
+								className="flex items-center gap-2"
+								onSubmit={(e) => {
+									e.preventDefault();
+									const next = editing.text.trim();
+									if (!next) return;
+									edit.mutate(
+										{ id: runId, messageId, text: next },
+										{
+											onSuccess: () => {
+												setEdited((all) => ({ ...all, [m.key]: next }));
+												setEditing(null);
+											},
+											onError: fail,
+										},
+									);
+								}}
+							>
+								<input
+									// biome-ignore lint/a11y/noAutofocus: Edit opens the field to type in.
+									autoFocus
+									aria-label="Queued message"
+									className="h-8 min-w-0 flex-1 rounded-control bg-surface-4 px-2.5 text-body text-text-1 outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+									value={editing.text}
+									onChange={(e) =>
+										setEditing({ key: m.key, text: e.target.value })
+									}
+									onKeyDown={(e) => e.key === "Escape" && setEditing(null)}
+								/>
+								<Button
+									type="submit"
+									variant="secondary"
+									size="sm"
+									disabled={edit.isPending}
+								>
+									Save
+								</Button>
+							</form>
+						</li>
+					);
+				return (
+					<li
+						key={m.key}
+						className="flex min-w-0 items-baseline gap-2 text-meta"
+						data-testid="composer-queued"
+					>
+						<span className="shrink-0 text-text-3">
+							Waits for the agent's next pause
+						</span>
+						<span dir="auto" className="min-w-0 flex-1 truncate text-text-2">
+							{text}
+						</span>
+						{m.attachments.length > 0 && (
+							<span className="inline-flex shrink-0 items-center gap-1 text-text-3">
+								<FileText className="size-3" aria-hidden />
+								{m.attachments.length === 1
+									? "1 file"
+									: `${m.attachments.length} files`}
+							</span>
+						)}
+						{runId && (
+							<>
+								<Button
+									variant="text"
+									size="sm"
+									disabled={!m.messageId}
+									onClick={() => setEditing({ key: m.key, text })}
+									data-testid="queued-edit"
+								>
+									Edit
+								</Button>
+								<Button
+									variant="text"
+									size="sm"
+									disabled={withdraw.isPending || !m.messageId}
+									onClick={() =>
+										m.messageId &&
+										withdraw.mutate(
+											{ id: runId, messageId: m.messageId },
+											{
+												onSuccess: () => setGone((g) => new Set(g).add(m.key)),
+												onError: fail,
+											},
+										)
+									}
+									data-testid="queued-withdraw"
+								>
+									Withdraw
+								</Button>
+							</>
+						)}
+					</li>
+				);
+			})}
+			{error && (
+				<li className="text-meta text-danger" role="alert">
+					{error}
+				</li>
+			)}
+		</ul>
 	);
 }
 

@@ -31,7 +31,9 @@ import {
 	prepareRunEnv,
 	runInvestigation,
 } from "./investigate.js";
+import { RESTART_NOTE } from "./handoff.js";
 import { createAskChannel, optionOf, type PermissionPolicy } from "./permission.js";
+import { COMMAND_LEAD } from "./prompt.js";
 
 const autoApprovePolicy: PermissionPolicy = (req) => {
 	const allow = optionOf(req, "allow");
@@ -512,6 +514,83 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(prose).toContain("Heard: Queued first.\n\nNow second.");
 		expect(queue).toHaveLength(0);
 		expect(deliver).toBeUndefined();
+	});
+
+	it("a failed command leaves the lines after it queued, not recorded as delivered", async () => {
+		let deliver: ((line: { text: string }) => void) | undefined;
+		const queue: { text: string; id?: string }[] = [];
+		const events: CanonicalEvent[] = [];
+		const o = opts("steerable", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "steerable",
+				FAKE_WAIT_CANCEL: "1",
+				FAKE_FAIL_ON: "/boom",
+			},
+			steer: {
+				next: () => queue.shift() ?? null,
+				onNow: (d) => {
+					deliver = d;
+					return () => {
+						deliver = undefined;
+					};
+				},
+			},
+		});
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			if (ev.kind === "tool_result" && ev.result.toolCallId === "t2") {
+				queue.push({ text: "/boom", id: "m1" }, { text: "after the command", id: "m2" });
+				deliver?.({ text: "Now last.", id: "m3" });
+			}
+		}
+		const said = events
+			.filter((e) => e.kind === "operator_message")
+			.map((e) => [e.text, e.mode, e.delivered]);
+		expect(said).toEqual([
+			["/boom", "queue", true],
+			["after the command", "queue", false],
+			["Now last.", "now", false],
+		]);
+		expect(events.at(-1)?.kind).toBe("error");
+	});
+
+	it("a command whose lead turn fails is recorded as queued, not delivered", async () => {
+		let deliver: ((line: { text: string }) => void) | undefined;
+		const queue: { text: string; id?: string }[] = [];
+		const events: CanonicalEvent[] = [];
+		const o = opts("steerable", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "steerable",
+				FAKE_WAIT_CANCEL: "1",
+				FAKE_FAIL_ON: "plain note",
+			},
+			steer: {
+				next: () => queue.shift() ?? null,
+				onNow: (d) => {
+					deliver = d;
+					return () => {
+						deliver = undefined;
+					};
+				},
+			},
+		});
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			if (ev.kind === "tool_result" && ev.result.toolCallId === "t2") {
+				queue.push({ text: "plain note", id: "m1" }, { text: "/review", id: "m2" });
+				deliver?.({ text: "Now last.", id: "m3" });
+			}
+		}
+		const said = events
+			.filter((e) => e.kind === "operator_message")
+			.map((e) => [e.text, e.mode, e.delivered]);
+		expect(said).toEqual([
+			["plain note", "queue", true],
+			["/review", "queue", false],
+			["Now last.", "now", false],
+		]);
 	});
 
 	it("a stop during the report retry ends as cancelled, never as a report failure (#673 w34)", async () => {
@@ -2151,6 +2230,8 @@ describe("session lifecycle over a fake ACP harness (#1024)", () => {
 
 	it("compacts with the agent's own command before the message, between two boundary events", async () => {
 		const { events } = await collect("resume", {
+			// Claude Code's compact takes focus instructions; the registry says so.
+			harness: "claude-code",
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", FAKE_USAGE: "1" },
 			resume: {
 				sessionId: "ses_old",
@@ -2235,3 +2316,66 @@ describe("session lifecycle over a fake ACP harness (#1024)", () => {
 	});
 });
 
+/** Each session/prompt the run sent, as its content blocks, from the wire transcript. */
+function promptsSent(runDir: string): { type: string; text?: string }[][] {
+	return readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+		.split("\n")
+		.filter((l) => l.includes('"d":"out"') && l.includes("session/prompt"))
+		.map((l) => {
+			const row = JSON.parse(l) as { m: string };
+			return (JSON.parse(row.m) as { params: { prompt: { type: string; text?: string }[] } }).params.prompt;
+		});
+}
+
+describe("a command turn (#1024)", () => {
+	it("a new thread's first message that is a command: the opening turn first, then the command as the only text block", async () => {
+		const { runDir } = await collect("resume", { kind: "chat", brief: "/review fix the tests" });
+		const prompts = promptsSent(runDir);
+		expect(prompts).toHaveLength(2);
+		expect(prompts[0]?.[0]?.text).toContain(COMMAND_LEAD);
+		expect(prompts[0]?.[0]?.text).not.toContain("/review fix the tests");
+		expect(prompts[1]).toEqual([{ type: "text", text: "/review fix the tests" }]);
+	});
+
+	it("after a restart, the restart note goes in the turn before the command", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "/review fix the tests", mode: "queue", heads: [], afterRestart: true },
+		});
+		const prompts = promptsSent(runDir);
+		expect(prompts).toHaveLength(2);
+		expect(prompts[0]?.[0]?.text).toBe(`${RESTART_NOTE}\n\n${COMMAND_LEAD}`);
+		expect(prompts[1]).toEqual([{ type: "text", text: "/review fix the tests" }]);
+	});
+
+	it("a warm follow-up that is only a command is one turn of one text block", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "/review fix the tests", mode: "queue", heads: [] },
+		});
+		expect(promptsSent(runDir)).toEqual([[{ type: "text", text: "/review fix the tests" }]]);
+	});
+
+	it("a slash later in the text is an ordinary message: one turn, the text as written", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "why does /review fail?", mode: "queue", heads: [] },
+		});
+		expect(promptsSent(runDir)).toEqual([[{ type: "text", text: "why does /review fail?" }]]);
+	});
+
+	it("Codex's compact goes with no focus words, since its compact takes no input", async () => {
+		const { runDir } = await collect("resume", {
+			harness: "codex",
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "/compact",
+				mode: "queue",
+				heads: [],
+				compact: { command: "compact", instructions: "keep the index finding", only: true },
+			},
+		});
+		expect(promptsSent(runDir)).toEqual([[{ type: "text", text: "/compact" }]]);
+	});
+});

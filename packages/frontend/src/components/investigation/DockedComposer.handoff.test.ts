@@ -87,8 +87,33 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@tanstack/react-query")>()),
 	useQuery: () => h.preview,
 }));
-vi.mock("@/lib/api/orpc-client", () => ({
-	orpc: { investigations: { handoff: { queryOptions: () => ({}) } } },
+vi.mock("@/lib/api/orpc-client", () => {
+	const dummy = { queryOptions: () => ({}), mutationOptions: () => ({}) };
+	return {
+		orpc: {
+			investigations: { handoff: dummy, compact: dummy },
+			references: { search: dummy, use: dummy, resolve: dummy },
+			drafts: { get: dummy, put: dummy, delete: dummy, attachments: dummy },
+		},
+	};
+});
+vi.mock("@/lib/api/hooks/use-references-orpc", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/lib/api/hooks/use-references-orpc")>();
+	return {
+		...actual,
+		useReferenceSearch: () => ({ data: undefined, isFetching: false, error: null }),
+		useReferenceUse: () => ({ mutate: vi.fn() }),
+		useResolveLinks: () => ({ mutate: vi.fn() }),
+	};
+});
+vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
+	useServerDraft: () => ({ data: undefined, isPending: false, isLoading: false }),
+	useSaveDraft: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+	useDeleteDraft: () => ({ mutate: vi.fn() }),
+	useDraftAttachments: () => ({ data: undefined }),
+}));
+vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
+	useCompactThread: () => ({ mutate: vi.fn() }),
 }));
 vi.mock("@/components/incidents/record-context", () => ({
 	useIncidentRecord: () => h.record,
@@ -173,6 +198,7 @@ async function type(text: string) {
 }
 
 beforeEach(() => {
+	localStorage.clear();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);

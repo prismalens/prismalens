@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement, type ReactNode, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { actionProps, Composer, type ComposerAction } from "../thread/Composer";
@@ -45,8 +45,33 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@tanstack/react-query")>()),
 	useQuery: () => ({ data: undefined }),
 }));
-vi.mock("@/lib/api/orpc-client", () => ({
-	orpc: { investigations: { handoff: { queryOptions: () => ({}) } } },
+vi.mock("@/lib/api/orpc-client", () => {
+	const dummy = { queryOptions: () => ({}), mutationOptions: () => ({}) };
+	return {
+		orpc: {
+			investigations: { handoff: dummy, compact: dummy },
+			references: { search: dummy, use: dummy, resolve: dummy },
+			drafts: { get: dummy, put: dummy, delete: dummy, attachments: dummy },
+		},
+	};
+});
+vi.mock("@/lib/api/hooks/use-references-orpc", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/lib/api/hooks/use-references-orpc")>();
+	return {
+		...actual,
+		useReferenceSearch: () => ({ data: undefined, isFetching: false, error: null }),
+		useReferenceUse: () => ({ mutate: vi.fn() }),
+		useResolveLinks: () => ({ mutate: vi.fn() }),
+	};
+});
+vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
+	useServerDraft: () => ({ data: undefined, isPending: false, isLoading: false }),
+	useSaveDraft: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+	useDeleteDraft: () => ({ mutate: vi.fn() }),
+	useDraftAttachments: () => ({ data: undefined }),
+}));
+vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
+	useCompactThread: () => ({ mutate: vi.fn() }),
 }));
 vi.mock("@/components/incidents/record-context", () => ({
 	useIncidentRecord: () => ({
@@ -117,7 +142,6 @@ function box(p: {
 		placeholder: "p",
 		choice: { harness: OPENCODE as never, model: "", effort: null, accessLevel: "supervised" },
 		onChoice: () => {},
-		onText: () => {},
 		...actionProps(actions, action, onAction),
 		...rest,
 	} as Parameters<typeof Composer>[0]);
@@ -132,6 +156,7 @@ async function type(text: string) {
 	const field = q<HTMLTextAreaElement>("composer-input");
 	await act(async () => {
 		Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, text);
+		field.setSelectionRange(text.length, text.length);
 		field.dispatchEvent(new Event("input", { bubbles: true }));
 	});
 }
@@ -145,6 +170,7 @@ async function attach(file: File) {
 }
 
 beforeEach(() => {
+	localStorage.clear();
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -219,11 +245,18 @@ describe("the box: one chip row, one Send (#811, #1020)", () => {
 	};
 
 	it("names the action above the box and offers the others under /, only where there is a choice", async () => {
-		const { onAction } = await render({ text: "/" });
+		const { onAction } = await render({ text: undefined });
+		await type("/");
 		expect(q("composer-mode").getAttribute("data-mode")).toBe("ask");
 		expect(q("composer-mode-clear")).toBeNull();
-		expect(q("composer-slash-ask")).toBeNull();
-		await act(async () => q<HTMLButtonElement>("composer-slash-investigate").click());
+		expect(container.querySelector('[data-ref="command:ask"]')).toBeNull();
+		await act(async () =>
+			(
+				container.querySelector(
+					'[data-ref="command:investigate"]',
+				) as HTMLElement
+			).click(),
+		);
 		expect(onAction).toHaveBeenCalledWith("investigate");
 		const picked = await render({ action: "investigate" });
 		expect(q("composer-mode").textContent).toContain("Investigate");

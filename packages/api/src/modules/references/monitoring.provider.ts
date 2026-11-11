@@ -27,9 +27,90 @@ export interface MonitoringSources {
 		templateId: "alertmanager" | "prometheus",
 	): Promise<{ id: string; label: string }[]>;
 	open(src: { id: string; label: string; kind: string }): Promise<OpenedSource>;
+	/** The URL a connection was saved with; a pasted link counts only on its origin and path. */
+	baseUrl?(connectionId: string): Promise<string | null>;
 }
 
-type Item = { ref: ReferenceRef; detail: string; text: string };
+/** What a pasted link names: one kind, and how to find its item among the source's. */
+type Wanted = {
+	kind: ReferenceKind;
+	is: (item: Item) => boolean;
+	/** The link filters by a pattern, which cannot be checked against one alert. */
+	unverifiable?: boolean;
+};
+
+/** Every `label="value"` matcher of an Alertmanager filter. */
+function matchersOf(
+	filter: string,
+): { key: string; op: string; value: string }[] {
+	return [...filter.matchAll(/([\w.-]+)\s*(=~|!~|!=|=)\s*"([^"]*)"/g)].map(
+		(m) => ({ key: m[1] as string, op: m[2] as string, value: m[3] as string }),
+	);
+}
+
+/** `{alertname="X", ...}` in an Alertmanager filter: X, else null. */
+function alertnameOf(filter: string | null): string | null {
+	return filter
+		? (/alertname\s*=\s*"([^"]+)"/.exec(filter)?.[1] ?? null)
+		: null;
+}
+
+/** Alertmanager's UI routes in the fragment: `#/silences/<id>`, `#/alerts?filter={alertname="X"}`. */
+function alertmanagerWanted(url: URL): Wanted | null {
+	const [path = "", query = ""] = url.hash.replace(/^#/, "").split("?");
+	const silence = /^\/silences\/([\w-]+)$/.exec(path);
+	if (silence)
+		return { kind: "silence", is: (i) => i.ref.id.endsWith(`:${silence[1]}`) };
+	const filter =
+		path === "/alerts" ? new URLSearchParams(query).get("filter") : null;
+	if (!alertnameOf(filter) || !filter) return null;
+	// Every matcher in the link must hold for the one alert it names, read from its own labels.
+	const all = matchersOf(filter);
+	const names = all.filter((m) => m.key === "alertname");
+	const exact = (m: { op: string }) => m.op === "=" || m.op === "!=";
+	if (names.length !== 1 || names[0]?.op !== "=" || !all.every(exact))
+		return { kind: "alert", is: () => false, unverifiable: true };
+	return {
+		kind: "alert",
+		is: (i) =>
+			all.every((m) => {
+				const has = i.labels?.[m.key] === m.value;
+				return m.op === "=" ? has : !has;
+			}),
+	};
+}
+
+/** Prometheus's `/alerts?search=X` or `/rules?search=X`: the alerting rule named X. */
+function prometheusWanted(url: URL): Wanted | null {
+	const page = url.pathname.split("/").filter(Boolean).pop();
+	const name = url.searchParams.get("search")?.trim();
+	return (page === "alerts" || page === "rules") && name
+		? { kind: "alert_rule", is: (i) => i.ref.label === name }
+		: null;
+}
+
+/** The link is on the connection's origin and under its path. */
+function onConnection(base: string, url: URL): boolean {
+	let b: URL;
+	try {
+		b = new URL(base);
+	} catch {
+		return false;
+	}
+	const root = b.pathname.endsWith("/") ? b.pathname : `${b.pathname}/`;
+	return (
+		b.origin === url.origin &&
+		(url.pathname === b.pathname || `${url.pathname}/`.startsWith(root))
+	);
+}
+
+type Item = {
+	ref: ReferenceRef;
+	detail: string;
+	text: string;
+	/** An alert's own labels, for checking a link's matchers against the alert itself. */
+	labels?: Record<string, string>;
+};
 type Lister = (src: OpenedSource, signal: AbortSignal) => Promise<Item[]>;
 
 /** A ref id names its connection, so a snapshot reads the same source again. */
@@ -76,6 +157,7 @@ const ALERTMANAGER: Partial<Record<ReferenceKind, Lister>> = {
 						label: label(name),
 					},
 					detail: `${x.status?.state ?? "active"} · ${x.labels?.severity ?? "no severity"}`,
+					...(x.labels ? { labels: x.labels } : {}),
 					text: [
 						`Alertmanager alert "${name}", ${x.status?.state ?? "active"}, since ${x.startsAt ?? "unknown"}.`,
 						`Labels: ${labels(x.labels)}`,
@@ -212,9 +294,15 @@ export class MonitoringProvider implements ReferenceProvider {
 		return this.source === "Alertmanager" ? "alertmanager" : "prometheus";
 	}
 
-	/** Every item of `kinds` from every connection; throws only when none answered. */
-	private async items(kinds: readonly ReferenceKind[], signal?: AbortSignal) {
-		const conns = await this.sources.connections(this.templateId);
+	/** Every item of `kinds` from every connection, or from `only`; throws only when none answered. */
+	private async items(
+		kinds: readonly ReferenceKind[],
+		signal?: AbortSignal,
+		only?: string,
+	) {
+		const conns = (await this.sources.connections(this.templateId)).filter(
+			(c) => !only || c.id === only,
+		);
 		const out: { connectionLabel: string; item: Item }[] = [];
 		const failed: string[] = [];
 		await Promise.all(
@@ -266,6 +354,58 @@ export class MonitoringProvider implements ReferenceProvider {
 				detail: item.detail.slice(0, 300),
 				group: connectionLabel.slice(0, 120),
 			}));
+	}
+
+	/**
+	 * A pasted link on a saved connection's origin, read through that connection: an
+	 * Alertmanager silence or alert by name, or a Prometheus alerting rule by name.
+	 */
+	async resolveUrl(
+		url: URL,
+		signal: AbortSignal,
+	): Promise<ReferenceCandidate | null> {
+		const baseUrl = this.sources.baseUrl?.bind(this.sources);
+		if (!baseUrl) return null;
+		const conns = await this.sources.connections(this.templateId);
+		for (const c of conns) {
+			const base = await baseUrl(c.id);
+			if (!base || !onConnection(base, url)) continue;
+			const wanted =
+				this.source === "Alertmanager"
+					? alertmanagerWanted(url)
+					: prometheusWanted(url);
+			if (!wanted)
+				throw new SourceUnavailable(
+					this.source,
+					"this link names no single alert, silence or rule",
+				);
+			if (wanted.unverifiable)
+				throw new SourceUnavailable(
+					this.source,
+					"this link filters by a pattern, which cannot name a single alert",
+				);
+			const found = await this.items([wanted.kind], signal, c.id);
+			const hits = found.filter(
+				({ item }) => item.ref.id.startsWith(`${c.id}:`) && wanted.is(item),
+			);
+			if (!hits.length)
+				throw new SourceUnavailable(
+					this.source,
+					"nothing on it matches this link",
+				);
+			if (hits.length > 1)
+				throw new SourceUnavailable(
+					this.source,
+					`${hits.length} items match this link; it names no single one`,
+				);
+			const hit = hits[0] as (typeof hits)[number];
+			return {
+				ref: hit.item.ref,
+				detail: hit.item.detail.slice(0, 300),
+				group: hit.connectionLabel.slice(0, 120),
+			};
+		}
+		return null;
 	}
 
 	async snapshot(ref: ReferenceRef): Promise<ReferenceSnapshot | null> {

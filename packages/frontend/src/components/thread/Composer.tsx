@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
-import type { HarnessStatus } from "@prismalens/contracts";
 import {
-	FileText,
+	type AccessLevel,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import {
+	type ComposerScope,
+	DRAFT_TEXT_MAX_CHARS,
+	type HarnessStatus,
+	type ReferenceHit,
+	scopeThreadId,
+	shouldFoldPaste,
+} from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
+import {
 	GitBranch,
 	Paperclip,
 	Play,
@@ -19,6 +30,7 @@ import {
 	type MutableRefObject,
 	type ReactNode,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -39,7 +51,15 @@ import {
 } from "@/components/ai/prompt-input";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
-import { attachRefusal } from "@/lib/attachments";
+import { usePersistedState } from "@/hooks/use-persisted-state";
+import { useCompactThread } from "@/lib/api/hooks/use-investigations-orpc";
+import {
+	useComposerClient,
+	useReferenceSearch,
+	useReferenceUse,
+	useResolveLinks,
+} from "@/lib/api/hooks/use-references-orpc";
+import { attachRefusal, downscaleImage } from "@/lib/attachments";
 import { composerKeyAction } from "@/lib/composer-keys";
 import {
 	envelopeOf,
@@ -47,8 +67,35 @@ import {
 	type SendReceipt,
 	type SendResult,
 } from "@/lib/composer-send";
+import { openContextMeter } from "@/lib/context-meter";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
+import {
+	ComposerMenu,
+	groupHits,
+	menuRows,
+	optionId,
+} from "./composer/ComposerMenu";
+import {
+	CommandChip,
+	type CommandChipItem,
+	ConflictLine,
+	FileChip,
+	type FileChipItem,
+	QuoteChipView,
+	RefChip,
+	type RefChipItem,
+} from "./composer/chips";
+import { menuResult } from "./composer/commands";
+import { dropFile, keepFile, keptFile } from "./composer/draft-store";
+import {
+	type NewThreadSeed,
+	onQuote,
+	openNewThread,
+	type QuoteChip,
+} from "./composer/quote";
+import { activeTrigger, removeTrigger } from "./composer/trigger";
+import { useComposerDraft } from "./composer/use-composer-draft";
 
 /** What the box holds now, for a page that reads it without sending (a handoff). */
 export interface ComposerSend {
@@ -74,7 +121,7 @@ export interface ComposerChoice {
 	accessLevel: AccessLevel;
 }
 
-/** A `/` menu entry: an app action, never an agent command (#1020). */
+/** A page's own `/` action; the menu also holds app commands and the agent's advertised ones (#1024). */
 export interface SlashCommand {
 	id: string;
 	label: string;
@@ -203,13 +250,15 @@ export interface ComposerProps {
 	onRepeat?: (text: string) => void;
 	/** Each change focuses the box with the caret at the end, e.g. after a quote fills it. */
 	focusSignal?: number;
+	/** Where the draft is kept (#1024); absent or null keeps none. */
+	scope?: ComposerScope | null;
+	/** What a new thread's box starts with: a quote, a linked thread. */
+	seed?: NewThreadSeed | null;
 }
 
-interface Draft {
-	key: string;
-	file: File;
-	preview?: string;
-}
+type Draft = FileChipItem;
+
+const NO_HISTORY: string[] = [];
 
 const without = (id: string) => (h: ReadonlySet<string>) => {
 	const next = new Set(h);
@@ -221,20 +270,42 @@ const release = (drafts: Draft[]) => {
 	for (const d of drafts) if (d.preview) URL.revokeObjectURL(d.preview);
 };
 
-const draftOf = (file: File): Draft => ({
-	key: `${file.name}-${crypto.randomUUID()}`,
+const draftOf = (
+	file: File,
+	extra: Partial<Draft> = {},
+	key = `${file.name}-${crypto.randomUUID()}`,
+): Draft => ({
+	key,
 	file,
-	...(file.type.startsWith("image/")
+	...(file.type.startsWith("image/") && !extra.refusal
 		? { preview: URL.createObjectURL(file) }
 		: {}),
+	...extra,
 });
 
-const TEXT_TYPES = "text/*,.log,.json,.csv,.md,.txt,.yaml,.yml";
+const URL_ONLY = /^https?:\/\/\S+$/;
+/** Sent messages Up recalls in an empty box (#1024). */
+const HISTORY_SIZE = 10;
+
+/** The host a hint names when a pasted link has no matching connection. */
+function connectHint(url: string): string {
+	const host = (() => {
+		try {
+			return new URL(url).hostname;
+		} catch {
+			return "";
+		}
+	})();
+	if (host === "github.com") return "Connect GitHub to preview";
+	if (host === "gitlab.com") return "Connect GitLab to preview";
+	if (host === "bitbucket.org") return "Connect Bitbucket to preview";
+	return "Connect a source to preview";
+}
 
 /**
- * The one composer (#1020): above the box what the thread is about, inside it how the
- * agent runs (attach, model, effort, access, Send / Stop / Resume), under it only a
- * blocked reason or an error.
+ * The one composer (#1020, #1024): above the box what the thread is about; inside it
+ * the chips (files, pastes, quotes, references, a command) and how the agent runs;
+ * under it only a blocked reason or an error. The draft survives reloads (#1024).
  */
 export function Composer({
 	state,
@@ -276,43 +347,181 @@ export function Composer({
 	noFiles,
 	onRepeat,
 	focusSignal,
+	scope: givenScope,
+	seed,
 }: ComposerProps) {
+	// Only the thread page's follow-up box (locked) reads the address; a dialog's box keeps nothing.
+	const scope = givenScope ?? null;
+	const threadId = scope ? scopeThreadId(scope) : null;
 	const [ownText, setOwnText] = useState("");
 	const text = keptText ?? ownText;
 	const setText = onText ?? setOwnText;
 	const [drafts, setDrafts] = useState<Draft[]>(() =>
-		(initialFiles ?? []).map(draftOf),
+		(initialFiles ?? []).map((f) => draftOf(f)),
 	);
+	const seeded = useRef(seed ?? null);
+	const [quotes, setQuotes] = useState<QuoteChip[]>(() => seed?.quotes ?? []);
+	const [refs, setRefs] = useState<RefChipItem[]>(() =>
+		(seed?.references ?? []).map((ref) => ({
+			key: crypto.randomUUID(),
+			ref,
+		})),
+	);
+	const [command, setCommand] = useState<CommandChipItem | null>(null);
+	const [openPaste, setOpenPaste] = useState<string | null>(null);
 	const [refusal, setRefusal] = useState<string | null>(null);
+	const [hint, setHint] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
 	const [held, setHeld] = useState<ReadonlySet<string>>(new Set());
+	const [caret, setCaret] = useState(0);
+	const [dismissed, setDismissed] = useState<number | null>(null);
+	const [active, setActive] = useState(0);
+	const [history, setHistory] = usePersistedState<string[]>(
+		`pl.sent.${scope ?? "none"}`,
+		NO_HISTORY,
+	);
+	const recall = useRef<number | null>(null);
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
+	const client = useComposerClient();
+	const compact = useCompactThread(client);
+	const resolve = useResolveLinks(client);
+	const use = useReferenceUse(client);
 	const live = state === "live";
 	const blocked = !!blockedReason;
 	const hasText = !!text.trim();
+	const kept = drafts.filter((d) => !d.refusal);
+	const hasChips = kept.length > 0 || quotes.length > 0 || refs.length > 0;
 	// A deferred draft stays locked while it is unchanged; editing it makes a new send.
-	const draftId = JSON.stringify([text.trim(), drafts.map((d) => d.key)]);
+	const draftId = JSON.stringify([
+		text.trim(),
+		drafts.map((d) => d.key),
+		quotes.map((q) => q.key),
+		refs.map((r) => r.key),
+	]);
 	const busy = sending || held.has(draftId) || !!pending;
-	const canSend = !busy && !blocked && !holdSend && (hasText || !!emptySend);
-	const slashQuery = /^\/(\w*)$/.exec(text)?.[1]?.toLowerCase();
-	const commands =
-		slash && slashQuery !== undefined
-			? slash.filter((c) => c.id.startsWith(slashQuery))
-			: [];
-	const runCommand = (c: SlashCommand) => {
-		setText("");
-		c.run();
-		ref.current?.focus();
-	};
+	const canSend =
+		!busy &&
+		!blocked &&
+		!holdSend &&
+		(hasText || hasChips || !!command || !!emptySend);
 	const { harness } = choice;
-	const agent = {
-		label: harness?.label ?? "The agent",
+	const facts = harness ? HARNESS_REGISTRY[harness.id as HarnessId] : undefined;
+	const agentLabel = harness?.label ?? "The agent";
+	const agentFacts = {
+		label: agentLabel,
 		images:
 			harness?.checked?.outcome === "answers-acp"
 				? harness.checked.images
 				: null,
 	};
+
+	// The menu: a trigger at the caret, searched as typed; Esc dismisses that trigger only.
+	const trigger = activeTrigger(text, caret);
+	const menuOpen =
+		!!trigger && dismissed !== trigger.start && !blocked && !command;
+	const search = useReferenceSearch(
+		menuOpen && trigger
+			? {
+					q: trigger.query,
+					trigger: trigger.trigger,
+					limit: 20,
+					...(threadId
+						? { threadId }
+						: scope
+							? {
+									scope,
+									...(harness ? { harness: harness.id as HarnessId } : {}),
+								}
+							: harness
+								? { harness: harness.id as HarnessId }
+								: {}),
+				}
+			: null,
+		client,
+	);
+	const result =
+		menuOpen && trigger ? menuResult(search.data, trigger, slash) : undefined;
+	const groups =
+		result && trigger
+			? groupHits(result.hits, trigger.trigger, trigger.query)
+			: [];
+	const rows = menuRows(groups);
+	const activeRow = Math.min(active, Math.max(0, rows.length - 1));
+
+	// The draft: journal and server, restored once per scope.
+	const content = useMemo(
+		() => ({
+			text,
+			quotes: quotes.map((q) => q.quote),
+			references: refs.map((r) => r.ref),
+		}),
+		[text, quotes, refs],
+	);
+	const pendingFiles = useMemo(
+		() =>
+			drafts
+				.filter((d) => !d.refusal)
+				.map((d) => ({
+					key: d.key,
+					name: d.file.name,
+					type: d.file.type,
+					...(d.pasted !== undefined ? { pasted: d.pasted } : {}),
+				})),
+		[drafts],
+	);
+	const draft = useComposerDraft({
+		client,
+		scope,
+		content,
+		files: pendingFiles,
+		onRestore: (c, files) => {
+			// A restored draft keeps the seed the box opened with, such as an "Ask in a new thread" quote.
+			const opened = seeded.current;
+			seeded.current = null;
+			setText(c.text);
+			setQuotes([
+				...c.quotes.map((quote) => ({
+					key: crypto.randomUUID(),
+					quote,
+					cut: false,
+				})),
+				...(opened?.quotes ?? []),
+			]);
+			setRefs([
+				...c.references.map((r) => ({ key: crypto.randomUUID(), ref: r })),
+				...(opened?.references ?? [])
+					.filter(
+						(r) =>
+							!c.references.some((x) => x.kind === r.kind && x.id === r.id),
+					)
+					.map((r) => ({ key: crypto.randomUUID(), ref: r })),
+			]);
+			if (!scope || !files.length) return;
+			void Promise.all(
+				files.map(async (f) => {
+					const file =
+						f.pasted !== undefined
+							? new File([f.pasted], f.name, { type: f.type })
+							: await keptFile(scope, f);
+					return file
+						? draftOf(
+								file,
+								f.pasted !== undefined ? { pasted: f.pasted } : {},
+								f.key,
+							)
+						: null;
+				}),
+			).then((back) => {
+				const found = back.filter((d): d is Draft => !!d);
+				if (found.length)
+					setDrafts((d) => [
+						...d,
+						...found.filter((x) => !d.some((y) => y.key === x.key)),
+					]);
+			});
+		},
+	});
 
 	useEffect(() => {
 		if (autoFocus) ref.current?.focus();
@@ -323,51 +532,202 @@ export function Composer({
 		box.focus();
 		box.setSelectionRange(box.value.length, box.value.length);
 	}, [focusSignal]);
+	// A quote from the selection popover on this thread's page lands here.
+	useEffect(() => {
+		if (!threadId) return;
+		return onQuote(threadId, (q) => {
+			setQuotes((all) => [...all, q]);
+			ref.current?.focus();
+		});
+	}, [threadId]);
 	const shown = useRef(drafts);
 	shown.current = drafts;
 	const textNow = useRef(text);
 	textNow.current = text;
 	useEffect(() => {
-		if (boxRef) boxRef.current = { text, files: drafts.map((d) => d.file) };
-	}, [boxRef, text, drafts]);
+		if (boxRef) boxRef.current = { text, files: kept.map((d) => d.file) };
+	}, [boxRef, text, kept]);
 	const filesChanged = useRef(onFilesChange);
 	filesChanged.current = onFilesChange;
 	useEffect(() => {
-		filesChanged.current?.(drafts.map((d) => d.file));
+		filesChanged.current?.(drafts.filter((d) => !d.refusal).map((d) => d.file));
 	}, [drafts]);
 	useEffect(() => () => release(shown.current), []);
 
-	const add = (files: File[]) => {
-		let count = drafts.length;
-		const next: Draft[] = [];
+	const keepBytes = (d: Draft) => {
+		if (!scope || d.pasted !== undefined) return;
+		void keepFile(scope, d.key, d.file).then((ok) => {
+			if (!ok)
+				setDrafts((all) =>
+					all.map((x) => (x.key === d.key ? { ...x, unsaved: true } : x)),
+				);
+		});
+	};
+
+	const add = async (files: File[], extra: Partial<Draft> = {}) => {
+		const ready = await Promise.all(files.map(downscaleImage));
+		// Counted from what the box shows now; adds are one user action at a time.
+		const ok = shown.current.filter((d) => !d.refusal);
+		let count = ok.length;
+		let bytes = ok.reduce((n, d) => n + d.file.size, 0);
 		let why: string | null = null;
-		for (const file of files) {
-			const no = attachRefusal(file, agent, count);
+		const next = ready.map((file) => {
+			const no = attachRefusal(file, { count, bytes }, agentFacts);
 			if (no) {
 				why = no;
-				continue;
+				return draftOf(file, { ...extra, refusal: no });
 			}
 			count++;
-			next.push(draftOf(file));
-		}
+			bytes += file.size;
+			const d = draftOf(file, extra);
+			keepBytes(d);
+			return d;
+		});
+		setDrafts((current) => [...current, ...next]);
+		// The latest refusal also shows under the box, where the eye already is.
 		setRefusal(why);
-		if (next.length) setDrafts((d) => [...d, ...next]);
+	};
+
+	const removeDraft = (d: Draft) => {
+		release([d]);
+		if (scope) void dropFile(scope, d.key);
+		setDrafts((all) => all.filter((x) => x.key !== d.key));
+	};
+
+	const setBox = (next: string, at: number) => {
+		setText(next);
+		setCaret(at);
+		requestAnimationFrame(() => {
+			const box = ref.current;
+			if (!box) return;
+			box.focus();
+			box.setSelectionRange(at, at);
+		});
 	};
 
 	const clear = (sentText: string, sentKeys: Set<string>) => {
-		// A deferred send that lands later clears the text and files it carried, no others.
+		// A deferred send that lands later clears the text and chips it carried, no others.
 		if (textNow.current.trim() === sentText) setText("");
-		release(shown.current.filter((d) => sentKeys.has(d.key)));
-		setDrafts((d) => d.filter((x) => !sentKeys.has(x.key)));
+		const gone = shown.current.filter((d) => sentKeys.has(d.key) || d.refusal);
+		release(gone);
+		if (scope) for (const d of gone) void dropFile(scope, d.key);
+		setDrafts((d) => d.filter((x) => !sentKeys.has(x.key) && !x.refusal));
+		setQuotes([]);
+		setRefs([]);
+		setCommand(null);
 		setRefusal(null);
+		setHint(null);
+		draft.sent();
 	};
+
+	/** An app command the box runs itself; true when it took the send. */
+	const runApp = (name: string, args: string): boolean => {
+		const local = slash?.find((c) => c.id === name);
+		if (local) {
+			setText(args);
+			local.run();
+			return true;
+		}
+		if (name === "compact") {
+			if (!threadId || !facts?.compactCommand) return false;
+			if (live) {
+				setRefusal("Once the agent pauses");
+				return true;
+			}
+			compact.mutate(
+				{
+					id: threadId,
+					...(facts.compactTakesFocus && args ? { instructions: args } : {}),
+				},
+				{
+					onSuccess: () => clear(text.trim(), new Set()),
+					onError: (e) => setRefusal(getErrorMessage(e)),
+				},
+			);
+			return true;
+		}
+		if (name === "new") {
+			openNewThread({
+				quotes,
+				references: [
+					...refs.map((r) => r.ref),
+					...(threadId
+						? [{ kind: "thread" as const, id: threadId, label: "This thread" }]
+						: []),
+				],
+				...(harness ? { harness: harness.id as HarnessId } : {}),
+				...(choice.model ? { model: choice.model } : {}),
+			});
+			setText(args);
+			setCommand(null);
+			return true;
+		}
+		if (name === "model" || name === "effort") {
+			setText(args);
+			setCommand(null);
+			if (locked) setHint("Kept from the first message");
+			else
+				document
+					.querySelector<HTMLElement>('[data-testid="model-chip"]')
+					?.click();
+			return true;
+		}
+		if (name === "context") {
+			setText(args);
+			setCommand(null);
+			openContextMeter();
+			return true;
+		}
+		return false;
+	};
+
+	const pick = (hit: ReferenceHit) => {
+		if (!trigger) return;
+		const { text: rest, caret: at } = removeTrigger(text, trigger);
+		setDismissed(null);
+		setActive(0);
+		if (hit.ref.kind === "command") {
+			const name = hit.ref.id.replace(/^agent:/, "");
+			const source = hit.source ?? "app";
+			if (source === "app" && name !== "compact") {
+				setBox(rest, at);
+				runApp(name, rest);
+				return;
+			}
+			setCommand({
+				name,
+				source,
+				group: hit.group ?? (source === "app" ? "PrismaLens" : agentLabel),
+				...(hit.inputHint ? { inputHint: hit.inputHint } : {}),
+			});
+			setBox(rest, at);
+			return;
+		}
+		setRefs((all) =>
+			all.some((r) => r.ref.kind === hit.ref.kind && r.ref.id === hit.ref.id)
+				? all
+				: [...all, { key: crypto.randomUUID(), ref: hit.ref }],
+		);
+		use.mutate({ kind: hit.ref.kind, id: hit.ref.id });
+		setBox(rest, at);
+	};
+
 	const submit = async (now: boolean) => {
 		if (!canSend) return;
+		let sentText = text.trim();
+		// A picked command goes first in its own turn; typed, the app's command wins (#1024).
+		if (command?.source === "app") {
+			if (runApp(command.name, sentText)) return;
+		} else if (command) {
+			sentText = `/${command.name}${sentText ? ` ${sentText}` : ""}`;
+		} else {
+			const typed = /^\/([\w:.-]+)(?:\s+([\s\S]*))?$/.exec(sentText);
+			if (typed && runApp(typed[1] as string, (typed[2] ?? "").trim())) return;
+		}
 		setSending(true);
-		const sentText = text.trim();
-		const sent = drafts;
+		const sent = kept;
 		const sentKeys = new Set(sent.map((d) => d.key));
-		const sentId = JSON.stringify([sentText, sent.map((d) => d.key)]);
+		const sentId = draftId;
 		try {
 			const reply = await onSend(
 				{
@@ -375,18 +735,31 @@ export function Composer({
 						sentText,
 						sent.map((d) => d.file),
 					),
+					quotes: quotes.map((q) => q.quote),
+					references: refs.map((r) => r.ref),
+					...draft.sendFields(),
 					...extras,
 				},
 				now,
 			);
 			const receipt = typeof reply === "string" ? { result: reply } : reply;
-			if (receipt.result === "sent") clear(sentText, sentKeys);
-			else if (receipt.result === "deferred") {
+			const remember = () =>
+				sentText &&
+				setHistory((h) =>
+					[sentText, ...h.filter((x) => x !== sentText)].slice(0, HISTORY_SIZE),
+				);
+			if (receipt.result === "sent") {
+				remember();
+				clear(text.trim(), sentKeys);
+			} else if (receipt.result === "deferred") {
 				setHeld((h) => new Set(h).add(sentId));
 				void receipt.settled?.then(
 					(r) => {
 						setHeld(without(sentId));
-						if (r === "sent") clear(sentText, sentKeys);
+						if (r === "sent") {
+							remember();
+							clear(text.trim(), sentKeys);
+						}
 					},
 					(e: unknown) => {
 						setHeld(without(sentId));
@@ -402,16 +775,61 @@ export function Composer({
 	};
 
 	const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-		const first = commands[0];
+		const composing = e.nativeEvent.isComposing || e.keyCode === 229;
+		if (menuOpen && trigger && !composing) {
+			if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+				if (!rows.length) return;
+				e.preventDefault();
+				const step = e.key === "ArrowDown" ? 1 : -1;
+				setActive((activeRow + step + rows.length) % rows.length);
+				return;
+			}
+			if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
+				const hit = rows[activeRow];
+				// Nothing to pick: Enter sends, Tab moves on; nothing becomes a mention unpicked.
+				if (hit) {
+					e.preventDefault();
+					pick(hit);
+					return;
+				}
+			}
+			if (e.key === "Escape") {
+				e.preventDefault();
+				e.stopPropagation();
+				setDismissed(trigger.start);
+				return;
+			}
+		}
+		const box = e.currentTarget;
+		const atStart = box.selectionStart === 0 && box.selectionEnd === 0;
+		if (e.key === "Backspace" && atStart && !composing) {
+			const last = refs[refs.length - 1];
+			if (command) {
+				e.preventDefault();
+				setCommand(null);
+				return;
+			}
+			if (last) {
+				e.preventDefault();
+				setRefs((all) => all.slice(0, -1));
+				if (last.url) setBox(`${last.url}${text}`, last.url.length);
+				return;
+			}
+		}
 		if (
-			first &&
-			e.key === "Enter" &&
-			!e.shiftKey &&
-			!e.nativeEvent.isComposing
+			e.key === "ArrowUp" &&
+			!composing &&
+			history.length &&
+			(!text || recall.current !== null)
 		) {
-			e.preventDefault();
-			runCommand(first);
-			return;
+			const i = recall.current === null ? 0 : recall.current + 1;
+			const back = history[i];
+			if (back !== undefined) {
+				e.preventDefault();
+				recall.current = i;
+				setText(back);
+				return;
+			}
 		}
 		const key = composerKeyAction(
 			{
@@ -420,7 +838,7 @@ export function Composer({
 				ctrlKey: e.ctrlKey,
 				metaKey: e.metaKey,
 				altKey: e.altKey,
-				isComposing: e.nativeEvent.isComposing,
+				isComposing: composing,
 			},
 			live ? "live" : state === "interrupted" ? "resume" : "draft",
 			live && !stopping,
@@ -435,10 +853,68 @@ export function Composer({
 
 	const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
 		const files = Array.from(e.clipboardData.files);
-		if (!files.length || noFiles) return;
-		e.preventDefault();
-		add(files);
+		if (files.length && !noFiles) {
+			e.preventDefault();
+			void add(files);
+			return;
+		}
+		const pasted = e.clipboardData.getData("text/plain");
+		if (!pasted) return;
+		// A long paste becomes a chip, never a refusal, at a fixed threshold (#1024).
+		if (!noFiles && shouldFoldPaste(pasted)) {
+			e.preventDefault();
+			void add(
+				[new File([pasted], "pasted-text.txt", { type: "text/plain" })],
+				{ pasted },
+			);
+			return;
+		}
+		const url = pasted.trim();
+		if (URL_ONLY.test(url)) void linkChip(url);
 	};
+
+	/** A pasted link a connected source knows becomes `#123 · title`; else a quiet hint. */
+	const linkChip = async (url: string) => {
+		try {
+			const {
+				results: [res],
+			} = await resolve.mutateAsync({ urls: [url] });
+			if (!res || !("ref" in res)) {
+				setHint(connectHint(url));
+				return;
+			}
+			const at = textNow.current.indexOf(url);
+			if (at >= 0)
+				setText(
+					textNow.current.slice(0, at) + textNow.current.slice(at + url.length),
+				);
+			setRefs((all) => [
+				...all,
+				{
+					key: crypto.randomUUID(),
+					ref: res.ref,
+					url,
+					...(res.tone ? { tone: res.tone } : {}),
+				},
+			]);
+		} catch {
+			// Unresolved: the link stays text.
+		}
+	};
+
+	const pasteAsText = (d: Draft) => {
+		if (d.pasted === undefined) return;
+		const box = ref.current;
+		const at = box?.selectionStart ?? text.length;
+		removeDraft(d);
+		setOpenPaste(null);
+		setBox(text.slice(0, at) + d.pasted + text.slice(at), at + d.pasted.length);
+	};
+	const pasteRefusal = (d: Draft) =>
+		d.pasted !== undefined &&
+		text.length + d.pasted.length > DRAFT_TEXT_MAX_CHARS
+			? `Over ${DRAFT_TEXT_MAX_CHARS.toLocaleString("en")} characters`
+			: null;
 
 	const action =
 		live && !hasText && onStop ? (
@@ -528,12 +1004,21 @@ export function Composer({
 
 	const hasEffort = effortLevels(harness).length > 0;
 	const clipHint =
-		agent.images === true
-			? "Attach a screenshot or a log"
-			: agent.images === false
-				? `${agent.label} can't take images. Text files only.`
-				: "Images: not checked yet. Text files only.";
-	const docked = !!dock || drafts.length > 0;
+		agentFacts.images === true
+			? "Attach files or a screenshot"
+			: agentFacts.images === false
+				? `${agentLabel} can't take images. Other files attach.`
+				: "Images: not checked yet. Other files attach.";
+	const chipCount =
+		drafts.length + quotes.length + refs.length + (command ? 1 : 0);
+	const docked = !!dock || chipCount > 0;
+	// The command's hint is the ghost text; a command with no hint has no placeholder.
+	const ghost = command
+		? (command.inputHint ??
+			(command.name === "compact" && facts?.compactTakesFocus
+				? "Focus (optional)"
+				: ""))
+		: placeholder;
 	return (
 		<div className="flex flex-col gap-1" data-testid="thread-composer">
 			{above}
@@ -571,35 +1056,23 @@ export function Composer({
 					)}
 				</div>
 			)}
-			{commands.length > 0 && (
-				<ul
-					aria-label="Commands"
-					className="flex flex-col gap-px rounded-[10px] bg-surface-2 p-1"
-					data-testid="composer-slash"
-				>
-					{commands.map((c, i) => (
-						<li key={c.id}>
-							<button
-								type="button"
-								onMouseDown={(e) => e.preventDefault()}
-								onClick={() => runCommand(c)}
-								className={cn(
-									"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body text-text-1 hover:bg-surface-3",
-									i === 0 && "bg-surface-3",
-								)}
-								data-testid={`composer-slash-${c.id}`}
-							>
-								<span className="font-mono text-meta text-text-3">/{c.id}</span>
-								<span className="shrink-0">{c.label}</span>
-								{c.detail && (
-									<span className="min-w-0 truncate text-meta text-text-3">
-										{c.detail}
-									</span>
-								)}
-							</button>
-						</li>
-					))}
-				</ul>
+			{draft.conflict && (
+				<ConflictLine
+					onKeepMine={draft.keepMine}
+					onUseTheirs={draft.useTheirs}
+				/>
+			)}
+			{menuOpen && trigger && (result || search.isFetching || search.error) && (
+				<ComposerMenu
+					trigger={trigger.trigger}
+					query={trigger.query}
+					result={result}
+					loading={search.isFetching}
+					failed={search.error ? getErrorMessage(search.error) : null}
+					active={activeRow}
+					onActive={setActive}
+					onPick={pick}
+				/>
 			)}
 			<div
 				className={cn(
@@ -613,40 +1086,47 @@ export function Composer({
 						data-testid="composer-dock"
 					>
 						{dock}
-						{drafts.length > 0 && (
+						{chipCount > 0 && (
 							<ul
 								className="flex flex-wrap gap-1.5"
 								data-testid="composer-files"
 							>
+								{command && (
+									<CommandChip
+										item={command}
+										onRemove={() => setCommand(null)}
+									/>
+								)}
+								{quotes.map((q) => (
+									<QuoteChipView
+										key={q.key}
+										item={q}
+										onRemove={() =>
+											setQuotes((all) => all.filter((x) => x.key !== q.key))
+										}
+									/>
+								))}
+								{refs.map((r) => (
+									<RefChip
+										key={r.key}
+										item={r}
+										onRemove={() =>
+											setRefs((all) => all.filter((x) => x.key !== r.key))
+										}
+									/>
+								))}
 								{drafts.map((d) => (
-									<li
+									<FileChip
 										key={d.key}
-										className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-control bg-surface-4 pr-1 pl-2 text-meta text-text-1"
-										data-testid="composer-file"
-									>
-										{d.preview ? (
-											<img
-												src={d.preview}
-												alt=""
-												className="size-6 rounded-[4px] object-cover"
-												data-testid="composer-thumb"
-											/>
-										) : (
-											<FileText className="size-3.5 shrink-0 text-text-3" />
-										)}
-										<span className="truncate">{d.file.name}</span>
-										<button
-											type="button"
-											aria-label={`Remove ${d.file.name}`}
-											onClick={() => {
-												release([d]);
-												setDrafts((all) => all.filter((x) => x !== d));
-											}}
-											className="rounded-[4px] p-0.5 text-text-3 hover:bg-surface-3 hover:text-text-1"
-										>
-											<X className="size-3" />
-										</button>
-									</li>
+										item={d}
+										open={openPaste === d.key}
+										onToggle={() =>
+											setOpenPaste((k) => (k === d.key ? null : d.key))
+										}
+										onRemove={() => removeDraft(d)}
+										onPasteAsText={() => pasteAsText(d)}
+										pasteRefusal={pasteRefusal(d)}
+									/>
 								))}
 							</ul>
 						)}
@@ -667,12 +1147,24 @@ export function Composer({
 						<PromptInputTextarea
 							ref={ref}
 							value={text}
-							onChange={(e) => setText(e.target.value)}
+							onChange={(e) => {
+								recall.current = null;
+								setText(e.target.value);
+								setCaret(e.target.selectionStart);
+							}}
+							onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
 							onKeyDown={onKeyDown}
 							onPaste={onPaste}
 							disabled={blocked}
-							placeholder={placeholder}
+							placeholder={ghost}
 							aria-label={placeholder}
+							role="combobox"
+							aria-expanded={menuOpen && rows.length > 0}
+							aria-controls={menuOpen ? "composer-menu" : undefined}
+							aria-autocomplete="list"
+							aria-activedescendant={
+								menuOpen && rows.length ? optionId(activeRow) : undefined
+							}
 							className="min-h-6"
 							data-testid="composer-input"
 						/>
@@ -702,13 +1194,8 @@ export function Composer({
 								type="file"
 								multiple
 								hidden
-								accept={
-									agent.images === true
-										? `image/png,image/jpeg,image/webp,image/gif,${TEXT_TYPES}`
-										: TEXT_TYPES
-								}
 								onChange={(e) => {
-									if (e.target.files) add(Array.from(e.target.files));
+									if (e.target.files) void add(Array.from(e.target.files));
 									e.target.value = "";
 								}}
 								data-testid="composer-file-input"
@@ -761,6 +1248,21 @@ export function Composer({
 					data-testid={refusal ? "composer-refusal" : "composer-blocked"}
 				>
 					{refusal ?? (blocked ? blockedReason : notice)}
+				</p>
+			)}
+			{(hint || draft.unsaved) && (
+				<p
+					className="flex items-center gap-1 px-3 text-meta text-text-3"
+					data-testid="composer-hint"
+				>
+					{hint ?? "Not saved yet"}
+					{hint?.startsWith("Connect") && (
+						<Button variant="text" size="sm" asChild>
+							<Link to="/settings" search={{ tab: "sources" }}>
+								Settings
+							</Link>
+						</Button>
+					)}
 				</p>
 			)}
 			{footer}
