@@ -111,3 +111,40 @@ export function useVisitThread(id: string | null, ended: boolean) {
 		if (id) mutate({ id });
 	}, [id, ended, mutate]);
 }
+
+/** Every open ask across threads, for answering from the list (#1101 category 8). */
+export function useThreadAsks(enabled = true) {
+	return useQuery({
+		...orpc.threads.asks.queryOptions({ input: {} }),
+		enabled,
+		refetchInterval: useLiveRefreshInterval(),
+	});
+}
+
+const refreshThreads = (queryClient: ReturnType<typeof useQueryClient>) =>
+	queryClient.invalidateQueries({ queryKey: threadKeys.all() });
+
+export function usePinThread() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.pin.mutationOptions(),
+		onSettled: () => refreshThreads(queryClient),
+	});
+}
+
+export function useArchiveThread() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.archive.mutationOptions(),
+		onSettled: () => refreshThreads(queryClient),
+	});
+}
+
+/** Fork here or Side question: a child thread under this one (#1101 category 20). */
+export function useForkThread() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.threads.fork.mutationOptions(),
+		onSettled: () => refreshThreads(queryClient),
+	});
+}
