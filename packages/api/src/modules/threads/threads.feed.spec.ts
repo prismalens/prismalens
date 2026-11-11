@@ -81,6 +81,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		descendants: ReturnType<typeof vi.fn>;
 		preview: ReturnType<typeof vi.fn>;
 		stopRunning: ReturnType<typeof vi.fn>;
+		liveCount: ReturnType<typeof vi.fn>;
 	};
 	const service = () =>
 		new ThreadsService(
@@ -111,6 +112,7 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 				worktrees: [],
 			})),
 			stopRunning: vi.fn(async () => {}),
+			liveCount: vi.fn(async () => 0),
 		};
 		prisma = {
 			$transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),

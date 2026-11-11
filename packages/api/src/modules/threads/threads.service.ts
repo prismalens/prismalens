@@ -744,9 +744,23 @@ export class ThreadsService {
 		// Ending jobs, children or worktrees takes the permission Stop takes.
 		if (ends && opts.operate === false)
 			throw new ORPCError("FORBIDDEN", { message: VIEW_ONLY });
-		if (ended.running) await this.lifecycle.stopRunning(ids);
+		let stopped = ended.running > 0;
+		if (stopped) await this.lifecycle.stopRunning(ids);
+		else {
+			// A wake admitted after the preview is a running run the user has not confirmed.
+			const late = await this.lifecycle.liveCount(ids);
+			if (late) {
+				if (!opts.stopRunning)
+					throw new ORPCError("CONFLICT", {
+						message: `Settling stops ${late} running ${late === 1 ? "run" : "runs"}. Confirm to stop ${late === 1 ? "it" : "them"}.`,
+						data: { reason: "running", running: late },
+					});
+				await this.lifecycle.stopRunning(ids);
+				stopped = true;
+			}
+		}
 		// Taken after the stopped runs have ended, so their last write cannot post-date it.
-		const settledAt = ended.running ? new Date() : now;
+		const settledAt = stopped ? new Date() : now;
 		const undoUntil = new Date(settledAt.getTime() + SETTLE_UNDO_MS);
 		await this.writeSettled(
 			ids.map((target) => ({ id: target, settledAt })),

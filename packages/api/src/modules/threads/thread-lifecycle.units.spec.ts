@@ -76,6 +76,37 @@ describe("ThreadLifecycleService seams (#1024 surface F)", () => {
 		expect(findMany.mock.calls[1]?.[0]).toMatchObject({ where: { id: { in: ["held"] } } });
 	});
 
+	it("Given a pending run whose cancel confirmed nothing and a zero-receiver run likewise, Then stopRunning waits on both and refuses while they stay live", async () => {
+		const live = [
+			{ id: "queued", status: "pending", incidentId: null },
+			{ id: "orphan", status: "running", incidentId: null },
+		];
+		const findMany = vi
+			.fn()
+			.mockResolvedValueOnce(live)
+			.mockResolvedValue([{ id: "queued" }, { id: "orphan" }]);
+		const dispatch = {
+			cancelPendingJob: vi.fn().mockResolvedValue(true),
+			requestCancel: vi.fn().mockResolvedValue(0),
+			cancelOrphanedRun: vi.fn().mockResolvedValue(undefined),
+		};
+		const investigations = {
+			cancelPending: vi.fn().mockResolvedValue(null),
+			markStopRequested: vi.fn().mockResolvedValue(undefined),
+		};
+		const svc = lifecycle({ investigation: { findMany } }, dispatch, investigations);
+		svc.stopWaitMs = 0;
+
+		await expect(svc.stopRunning(["queued", "orphan"])).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "2 runs did not stop in time. Try again in a moment.",
+			data: { reason: "running", running: 2 },
+		});
+		expect(findMany.mock.calls[1]?.[0]).toMatchObject({
+			where: { id: { in: ["queued", "orphan"] } },
+		});
+	});
+
 	it("Given a stopped run still live at the deadline, Then stopRunning refuses with the count instead of letting Settle write settledAt", async () => {
 		const findMany = vi
 			.fn()

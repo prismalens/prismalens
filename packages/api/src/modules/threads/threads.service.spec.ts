@@ -82,6 +82,7 @@ describe("ThreadsService (#1020)", () => {
 		descendants: ReturnType<typeof vi.fn>;
 		preview: ReturnType<typeof vi.fn>;
 		stopRunning: ReturnType<typeof vi.fn>;
+		liveCount: ReturnType<typeof vi.fn>;
 	};
 	const service = () =>
 		new ThreadsService(
@@ -110,6 +111,7 @@ describe("ThreadsService (#1020)", () => {
 				worktrees: [],
 			})),
 			stopRunning: vi.fn(async () => {}),
+			liveCount: vi.fn(async () => 0),
 		};
 		prisma = {
 			threadWake: { updateMany: vi.fn(async () => ({ count: 0 })) },
@@ -410,6 +412,30 @@ describe("ThreadsService (#1020)", () => {
 		await expect(service().list({ limit: 5 })).resolves.toEqual([]);
 	});
 
+	it("a run admitted after the preview refuses the settle until stopRunning is confirmed, and is stopped when it is", async () => {
+		const updatedAt = new Date("2026-11-03T00:00:00Z");
+		const updateMany = vi.fn(async () => ({ count: 1 }));
+		Object.assign(prisma.investigation, {
+			findUnique: vi.fn(async () => ({ id: "a", updatedAt, settledAt: null })),
+			updateMany,
+			findMany: vi.fn(async () => [
+				{ id: "a", settledAt: null, lastActivityAt: null, updatedAt, teardownAt: null },
+			]),
+		});
+		lifecycle.liveCount.mockResolvedValue(1);
+
+		await expect(service().settle("a", true)).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "Settling stops 1 running run. Confirm to stop it.",
+			data: { reason: "running", running: 1 },
+		});
+		expect(lifecycle.stopRunning).not.toHaveBeenCalled();
+		expect(updateMany).not.toHaveBeenCalled();
+
+		await service().settle("a", true, undefined, { stopRunning: true });
+		expect(lifecycle.stopRunning).toHaveBeenCalledWith(["a"]);
+	});
+
 	it("settles every thread of an incident without moving their updatedAt", async () => {
 		const updatedAt = new Date("2026-11-03T00:00:00Z");
 		lifecycle.block.mockResolvedValue(["a", "b"]);
@@ -555,6 +581,7 @@ describe("ThreadsService.settle (#1020)", () => {
 				worktrees: [],
 			})),
 			stopRunning: vi.fn(async () => {}),
+			liveCount: vi.fn(async () => 0),
 		};
 		const db = {
 			investigation: {

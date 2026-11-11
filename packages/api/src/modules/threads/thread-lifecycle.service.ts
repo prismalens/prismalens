@@ -164,6 +164,13 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 		};
 	}
 
+	/** Live runs among these threads, for Settle's last look before it commits. */
+	liveCount(ids: readonly string[]): Promise<number> {
+		return this.prisma.investigation.count({
+			where: { id: { in: [...ids] }, status: { in: LIVE } },
+		});
+	}
+
 	/** How long Settle waits for a stopped run to reach a terminal state. */
 	stopWaitMs = 10_000;
 
@@ -180,13 +187,27 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 				row.status === "pending" &&
 				(await this.dispatch.cancelPendingJob(row.id))
 			) {
-				await this.investigations.cancelPending(row.id, row.incidentId, why);
+				if (
+					!(await this.investigations.cancelPending(
+						row.id,
+						row.incidentId,
+						why,
+					))
+				)
+					asked.push(row.id);
 				continue;
 			}
 			await this.investigations.markStopRequested(row.id);
 			if ((await this.dispatch.requestCancel(row.id)) === 0) {
 				await this.dispatch.cancelOrphanedRun(row.id);
-				await this.investigations.cancelPending(row.id, row.incidentId, why);
+				if (
+					!(await this.investigations.cancelPending(
+						row.id,
+						row.incidentId,
+						why,
+					))
+				)
+					asked.push(row.id);
 			} else asked.push(row.id);
 		}
 		await this.untilEnded(asked);

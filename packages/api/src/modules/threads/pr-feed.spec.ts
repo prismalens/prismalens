@@ -372,6 +372,42 @@ describe("pr-feed pure functions (#1024 surface F)", () => {
 		expect(cur.guard).toEqual({ key: "status:test", heads: [SHA_A] });
 	});
 
+	it("loop guard keeps the test streak while test is pending and lint fails, then trips when test fails on the third head", () => {
+		const fail = (name: string, sha: string) => ({
+			name,
+			state: "failing" as const,
+			headSha: sha,
+		});
+		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
+		cur = diff(cur, emptySnap({ headSha: SHA_A, runs: [fail("test", SHA_A)] })).cursor;
+		cur = diff(cur, emptySnap({ headSha: SHA_B, runs: [fail("test", SHA_B)] })).cursor;
+
+		const lintOnly = diff(
+			cur,
+			emptySnap({
+				headSha: SHA_C,
+				runs: [
+					{ name: "test", state: "pending", headSha: SHA_C },
+					fail("lint", SHA_C),
+				],
+			}),
+		);
+		expect(lintOnly.guardTripped).toBeNull();
+		expect(lintOnly.cursor.guard).toEqual({
+			key: "status:test",
+			heads: [SHA_A, SHA_B],
+		});
+
+		const testFails = diff(
+			lintOnly.cursor,
+			emptySnap({
+				headSha: SHA_C,
+				runs: [fail("test", SHA_C), fail("lint", SHA_C)],
+			}),
+		);
+		expect(testFails.guardTripped).toBe("test");
+	});
+
 	it("loop guard keeps its streak across a head with no run yet, and a pass clears it", () => {
 		let cur = diff(null, emptySnap({ headSha: "sha-init" })).cursor;
 		cur = diff(
