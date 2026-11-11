@@ -194,6 +194,49 @@ export function stopMarkName(
 	}
 }
 
+/**
+ * The transcript's one line for a stop, retry, resume or restart event (#1101),
+ * or null for any other event.
+ */
+export function stopNodeLine(
+	e: CanonicalEvent,
+	clock: (at: string) => string = formatClock,
+): string | null {
+	switch (e.kind) {
+		case "usage_limit": {
+			const mode = e.mode ?? "usage_limit";
+			if (mode === "rate_limited")
+				return `${cap(e.agent)}'s provider limited the request rate`;
+			if (mode === "overloaded") return `${cap(e.agent)}'s provider was busy`;
+			const name = limitName(e.window).toLowerCase();
+			return e.resetsAt
+				? `${cap(e.agent)} reached its ${name} · resets ${clock(e.resetsAt)}`
+				: `${cap(e.agent)} reached its ${name}`;
+		}
+		case "provider_blocked":
+			return blockedLine(e.mode, e.agent);
+		case "provider_retry":
+			return `${e.mode === "overloaded" ? "Provider busy" : "Rate limited"} · trying again at ${clock(e.at)} (try ${e.attempt} of ${e.maxAttempts})`;
+		case "resume_scheduled": {
+			if (e.gaveUp || !e.at) return "Stopped trying to resume";
+			const of = e.maxAttempts ? ` of ${e.maxAttempts}` : "";
+			return e.attempt && e.attempt > 1
+				? `Trying again at ${clock(e.at)} (try ${e.attempt}${of})`
+				: `Resumes at ${clock(e.at)}`;
+		}
+		case "resumed":
+			return e.reason === "limit_reset"
+				? "Resumed where it stopped"
+				: e.reason === "idle_compact"
+					? "Compacted while idle"
+					: "Woke up";
+		case "run_interrupted":
+			return "Interrupted by restart";
+		default:
+			return null;
+	}
+}
+
 /** Where each agent's API account is managed; absent when the provider varies (OpenCode). */
 const ACCOUNT_PAGES: Record<
 	string,

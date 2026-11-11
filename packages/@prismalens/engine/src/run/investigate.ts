@@ -1301,7 +1301,13 @@ async function* runSession(
 				await (opts.sleep ?? abortableSleep)(wait, opts.signal);
 				if (opts.signal?.aborted) return { stop: "cancelled" };
 				attempt = next;
-				sent = [{ type: "text", text: PROVIDER_RETRY_NOTE }, ...parts];
+				// A command turn is its own only text block; a note before it would break it.
+				const command =
+					parts[0]?.type === "text" &&
+					parts[0].text.trimStart().startsWith("/");
+				sent = command
+					? parts
+					: [{ type: "text", text: PROVIDER_RETRY_NOTE }, ...parts];
 			}
 		};
 
