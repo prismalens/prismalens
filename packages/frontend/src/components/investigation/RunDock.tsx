@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { AccessLevel } from "@prismalens/config/harness";
+import { ACCESS_LEVEL_LABEL } from "@prismalens/contracts";
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
+import { useAskKeys } from "@/hooks/use-ask-keys";
 import {
 	useAnswerAsk,
 	useEditQueuedMessage,
@@ -33,9 +37,12 @@ export function RunDock({
 	cwd,
 	onStep,
 	always = false,
+	accessLevel,
 }: {
 	/** A schedule's run: its asks offer Always allow (#1020). */
 	always?: boolean;
+	/** The thread's mode, shown on the card with why it asked (#1101 category 8 items 6, 7). */
+	accessLevel?: AccessLevel | null;
 	/** Asks still waiting, oldest first. */
 	asks: readonly AskRecord[];
 	queued: readonly {
@@ -67,6 +74,7 @@ export function RunDock({
 					focus={answered}
 					onAnswer={() => setAnswered(true)}
 					always={always}
+					accessLevel={accessLevel ?? null}
 				/>
 			)}
 			{queued.length > 0 && <QueuedList queued={queued} runId={runId} />}
@@ -228,7 +236,9 @@ export function AskCard({
 	onAnswer,
 	inline = false,
 	always = false,
+	accessLevel = null,
 }: {
+	accessLevel?: AccessLevel | null;
 	/** Offer Always allow: the schedule's next runs allow this exact ask (#1020). */
 	always?: boolean;
 	ask: AskRecord;
@@ -261,6 +271,11 @@ export function AskCard({
 			...(forever ? { always: true } : {}),
 		});
 	};
+	const done = !runId || !armed || answer.isPending || answer.isSuccess;
+	useAskKeys(!inline && !done, {
+		approve: () => send("approve"),
+		decline: () => send("deny"),
+	});
 	const mcp = mcpTool(ask.title);
 	// `Write /tmp/x` keeps its verb; a title that is not the command gives way to the command.
 	const body = mcp
@@ -327,6 +342,13 @@ export function AskCard({
 					{shortPath(body, cwd)}
 				</pre>
 			)}
+			{!inline && (
+				<p className="text-meta text-text-3" data-testid="dock-ask-why">
+					{accessLevel
+						? `Asked because this thread runs in ${ACCESS_LEVEL_LABEL[accessLevel]}.`
+						: "Asked because the agent's own mode asks first."}
+				</p>
+			)}
 			<div className="flex flex-wrap items-center gap-2">
 				<Button
 					variant="primary"
@@ -335,6 +357,7 @@ export function AskCard({
 					data-testid={id("ask-approve")}
 				>
 					Approve
+					{!inline && <Kbd>Alt Y</Kbd>}
 				</Button>
 				{always && ask.identity && (
 					<Button
@@ -353,6 +376,7 @@ export function AskCard({
 					data-testid={id("ask-deny")}
 				>
 					Deny
+					{!inline && <Kbd>Alt N</Kbd>}
 				</Button>
 				{answer.isError && (
 					<span className="text-meta text-danger" data-testid="dock-ask-error">

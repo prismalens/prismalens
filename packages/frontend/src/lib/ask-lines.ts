@@ -27,8 +27,8 @@ export function whyAsked(
 		return "The agent finished planning and waits for your go.";
 	const mode = level ? ACCESS_LEVEL_LABEL[level] : null;
 	return mode
-		? `${mode} mode asks before this kind of action.`
-		: "The agent's own mode asks before this kind of action.";
+		? `Asked because this thread runs in ${mode}.`
+		: "Asked because the agent's own mode asks first.";
 }
 
 /** What Always would remember; null when this ask offers no Always. */

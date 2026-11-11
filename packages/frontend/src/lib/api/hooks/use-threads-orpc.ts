@@ -4,7 +4,11 @@
 /**
  * Project, service and no-subject threads (#1020).
  */
-import type { ThreadFeedQuery } from "@prismalens/contracts";
+import type {
+	ThreadFeed,
+	ThreadFeedQuery,
+	ThreadRow,
+} from "@prismalens/contracts";
 import {
 	useInfiniteQuery,
 	useMutation,
@@ -147,4 +151,17 @@ export function useForkThread() {
 		...orpc.threads.fork.mutationOptions(),
 		onSettled: () => refreshThreads(queryClient),
 	});
+}
+
+/** A thread's row from any loaded feed page: its pin, archive and settle state for the header menu. */
+export function useFeedRow(id: string): ThreadRow | undefined {
+	const queryClient = useQueryClient();
+	const pages = queryClient.getQueriesData<{ pages: ThreadFeed[] }>({
+		queryKey: orpc.threads.feed.key(),
+	});
+	for (const [, data] of pages)
+		for (const page of data?.pages ?? [])
+			for (const u of page.units)
+				for (const t of u.threads) if (t.id === id) return t;
+	return undefined;
 }

@@ -151,7 +151,10 @@ export function ThreadMenu({
 	onSettle,
 	triggerClassName,
 	align = "end",
+	defaultOpen = false,
 }: {
+	/** Open on first draw: the design gallery's frame. */
+	defaultOpen?: boolean;
 	thread: MenuThread;
 	/** The row renames in place; without it the menu asks in a dialog. */
 	onRename?: () => void;
@@ -159,7 +162,7 @@ export function ThreadMenu({
 	triggerClassName?: string;
 	align?: "start" | "end";
 }) {
-	const [open, setOpen] = useState(false);
+	const [open, setOpen] = useState(defaultOpen);
 	const [dialog, setDialog] = useState<"rename" | "fork" | "side" | null>(null);
 	const pin = usePinThread();
 	const archive = useArchiveThread();
@@ -283,7 +286,7 @@ export function ThreadMenu({
 	};
 	return (
 		<>
-			<DropdownMenu open={open} onOpenChange={setOpen}>
+			<DropdownMenu open={open} onOpenChange={setOpen} modal={!defaultOpen}>
 				<DropdownMenuTrigger asChild>
 					<button
 						type="button"

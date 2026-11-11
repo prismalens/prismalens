@@ -193,9 +193,12 @@ export function ThreadTreeView({
 				on={currentId === n.id}
 				asks={asks.get(n.id) ?? []}
 				expanded={expanded}
-				onToggle={n.children.length ? () => toggle(n.id) : undefined}
+				onToggle={
+					n.children.length && !opts.parent ? () => toggle(n.id) : undefined
+				}
 				onSettle={onSettle}
 				showParent={!!opts.parent}
+				askOpenAtStart={expandAll}
 			/>,
 			...(expanded && !opts.parent
 				? n.children.flatMap((c) => rows(c, depth + 1))
@@ -357,7 +360,9 @@ function TreeRow({
 	onToggle,
 	onSettle,
 	showParent,
+	askOpenAtStart = false,
 }: {
+	askOpenAtStart?: boolean;
 	node: ListNode;
 	depth: number;
 	now: number;
@@ -372,7 +377,7 @@ function TreeRow({
 	const unread = useContext(RowUnread)(node.thread);
 	const navigate = useNavigate();
 	const [peek, setPeek] = useState(false);
-	const [askOpen, setAskOpen] = useState(false);
+	const [askOpen, setAskOpen] = useState(askOpenAtStart);
 	const [renaming, setRenaming] = useState(false);
 	const timer = useRef<number | null>(null);
 	const entry = asks[0];
