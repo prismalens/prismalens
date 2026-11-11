@@ -250,7 +250,7 @@ export interface ComposerProps {
 	onRepeat?: (text: string) => void;
 	/** Each change focuses the box with the caret at the end, e.g. after a quote fills it. */
 	focusSignal?: number;
-	/** Where the draft is kept (#1024); absent reads a thread page's address, null keeps none. */
+	/** Where the draft is kept (#1024); absent or null keeps none. */
 	scope?: ComposerScope | null;
 	/** What a new thread's box starts with: a quote, a linked thread. */
 	seed?: NewThreadSeed | null;
@@ -282,13 +282,6 @@ const draftOf = (
 		: {}),
 	...extra,
 });
-
-/** The scope a thread page's box keeps its draft under, read from the address each render. */
-function routeScope(): ComposerScope | null {
-	const path = typeof window === "undefined" ? "" : window.location.pathname;
-	const m = /^\/threads\/([0-9a-f-]{36})$/i.exec(path);
-	return m ? (`thread:${m[1]}` as ComposerScope) : null;
-}
 
 const URL_ONLY = /^https?:\/\/\S+$/;
 /** Sent messages Up recalls in an empty box (#1024). */
@@ -358,8 +351,7 @@ export function Composer({
 	seed,
 }: ComposerProps) {
 	// Only the thread page's follow-up box (locked) reads the address; a dialog's box keeps nothing.
-	const scope =
-		givenScope === undefined ? (locked ? routeScope() : null) : givenScope;
+	const scope = givenScope ?? null;
 	const threadId = scope ? scopeThreadId(scope) : null;
 	const [ownText, setOwnText] = useState("");
 	const text = keptText ?? ownText;

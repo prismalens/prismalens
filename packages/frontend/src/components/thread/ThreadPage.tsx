@@ -579,6 +579,7 @@ export function ThreadPage({ id }: { id: string }) {
 					<Composer
 						state={state}
 						onSend={onSend}
+						scope={`thread:${inv.id}`}
 						onStop={() => run.stop()}
 						stopping={run.stopRequested}
 						onResume={() => {
