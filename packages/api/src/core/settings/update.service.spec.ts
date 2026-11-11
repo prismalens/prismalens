@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import { NIGHTLY_NPM_ONLY } from "@prismalens/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 import { AdmissionService } from "../lifecycle/admission.service.js";
@@ -236,6 +237,32 @@ describe("About with the update controls", () => {
 		const about = await s.setPrefs({ checkForUpdates: false }, true);
 		expect(about.update.available).toBe(false);
 		expect(about.checkForUpdates).toBe(false);
+	});
+
+	it("writes update-channel.json on npm install when channel nightly requested and returns updated About", async () => {
+		const { s } = service({ channel: "npm" });
+		const about = await s.setPrefs({ channel: "nightly" }, true);
+		const file = JSON.parse(
+			readFileSync(join(workspace, "update-channel.json"), "utf8"),
+		);
+		expect(file).toEqual({ channel: "nightly" });
+		expect(about.updateChannel?.current).toBe("nightly");
+	});
+
+	it("refuses channel nightly on installer install with BAD_REQUEST and NIGHTLY_NPM_ONLY and writes no file", async () => {
+		const { s } = service({});
+		await expect(s.setPrefs({ channel: "nightly" }, true)).rejects.toMatchObject({
+			code: "BAD_REQUEST",
+			message: NIGHTLY_NPM_ONLY,
+		});
+		expect(() => readFileSync(join(workspace, "update-channel.json"), "utf8")).toThrow();
+	});
+
+	it("refuses setPrefs with FORBIDDEN when host is false", async () => {
+		const { s } = service({});
+		await expect(s.setPrefs({ channel: "stable" }, false)).rejects.toMatchObject({
+			code: "FORBIDDEN",
+		});
 	});
 });
 

@@ -87,6 +87,22 @@ describe("AboutService", () => {
 		const custom = await service.get();
 		expect(custom.build).toBe("ccf3624");
 	});
+
+	it("reports updateChannel details for an installer install", async () => {
+		const a = await about({ PRISMALENS_INSTALL: "standalone", PRISMALENS_UPDATE_CHECK: "off" }, github(false));
+		expect(a.updateChannel).toEqual({
+			current: "stable",
+			fromEnv: false,
+			nightlyBlockedBy: "not_npm",
+			leavingNightly: null,
+		});
+	});
+
+	it("reports updateChannel details with env PRISMALENS_UPDATE_CHANNEL=nightly on npm install", async () => {
+		const a = await about({ PRISMALENS_UPDATE_CHANNEL: "nightly", PRISMALENS_UPDATE_CHECK: "off" }, github(false));
+		expect(a.updateChannel?.current).toBe("nightly");
+		expect(a.updateChannel?.fromEnv).toBe(true);
+	});
 });
 
 describe("latestBackup", () => {

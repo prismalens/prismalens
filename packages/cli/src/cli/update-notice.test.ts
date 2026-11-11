@@ -290,4 +290,43 @@ describe("updateNotice", () => {
 		}
 		expect(called).toBe(false);
 	});
+
+	it("shows the notice line for nightly when configured and cached", async () => {
+		writeFileSync(
+			join(workspace, "update-channel.json"),
+			JSON.stringify({ channel: "nightly" }),
+		);
+		writeCache(workspace, {
+			checkedAt: 1_000,
+			latest: "0.5.4-nightly.20261111.7",
+			channel: "nightly",
+		});
+		const notice = updateNotice({
+			...enabled,
+			current: "0.5.3",
+			workspaceDir: workspace,
+			now: 1_000,
+		});
+		await notice.refresh;
+		expect(notice.line).toBe(
+			"prismalens 0.5.4-nightly.20261111.7 is available (you have 0.5.3). Run: pl upgrade",
+		);
+	});
+
+	it("never shows another channel's cache when following stable", async () => {
+		// channel stable (no file) and nightly cache
+		writeCache(workspace, {
+			checkedAt: 1_000,
+			latest: "0.5.4-nightly.20261111.7",
+			channel: "nightly",
+		});
+		const notice = updateNotice({
+			...enabled,
+			current: "0.5.3",
+			workspaceDir: workspace,
+			now: 1_000,
+		});
+		await notice.refresh;
+		expect(notice.line).toBe(null);
+	});
 });
