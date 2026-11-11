@@ -30,45 +30,58 @@ The third blocker is not a check at all: `required_review_thread_resolution: tru
 on the same ruleset. An unresolved review thread blocks the merge button natively,
 with no workflow, token or status in the path.
 
-## `ci.yml` jobs: model kind, cadence, required
+## `ci.yml` jobs: what a PR runs
 
 A red `CI gate` should mean the code is wrong, never that a free model was slow,
-renamed or refused (#884). No job here spends money on a model call (#914), and
-live-model jobs are advisory and leave the gate. `CI gate` waits on every job marked
-yes (#920, the operator's ruling of 2026-10-24).
+renamed or refused (#884). No job here spends money on a model call (#914). A PR runs the
+checks below that its plan switches on; the proofs that need other machines, the npm registry or a
+real agent run in `proofs.yml`, nightly and on a release PR (#1053). `CI gate` waits on every job marked yes.
 
 A PR shows the check name; `needs:` and the prose here use the job id. Every check that runs
 the packed tarball starts with `Tarball:`.
 
-| Check name (job id)                                                                                 | What it proves                                                                                                                   | Model                                                                                | Cadence                                                                                                               | Required                                                   |
-| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `Build & typecheck` (`build`)                                                                       | builds and type-checks; OpenAPI spec drift; publint                                                                              | none                                                                                 | every PR                                                                                                              | yes                                                        |
-| `Lint (Biome)` (`lint`)                                                                             | format and lint                                                                                                                  | none                                                                                 | every PR                                                                                                              | yes                                                        |
-| `Unit tests (<os>)` (`test`)                                                                        | every package's tests; on ubuntu with the coverage floors (#58)                                                                  | scripted fake agent                                                                  | ubuntu and macOS on every PR | yes                                                        |
-| `Pack npm tarball` (`pack`)                                                                         | packs both tarballs and gates them (`scripts/check-artifact.mjs`; a second pack gives the same bytes)                            | none                                                                                 | every PR                                                                                                              | yes                                                        |
-| `Tarball: installs and boots` (`packed-smoke`)                                                      | the tarball installs and boots in a clean container                                                                              | none                                                                                 | every PR                                                                                                              | yes                                                        |
-| `Tarball: alert to incident to report, unattended` (`packed-intake`)                                | a webhook becomes an incident, is investigated without a human, and resolves                                                     | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`)                                 | every PR                                                                                                              | yes                                                        |
-| `Tarball: pl service under systemd` (`packed-service`)                                              | `pl service` installs, restarts and uninstalls                                                                                   | none                                                                                 | main, nightly, and a PR that `ci-plan` marks `full` | yes, when it runs |
-| `Tarball: upgrades an old database and every release` (`packed-upgrade-smoke`)                      | an old database upgrades; every release npm lists upgrades to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | scripted fake ACP agent                                                              | every PR                                                                                                              | yes                                                        |
-| `Tarball: release side checks (<os>)` (`gate-side-checks`)                                          | the release gate's side checks on Linux, macOS and Windows, `--no-skip`                                                          | scripted fake ACP agent                                                              | main, nightly, and a PR that `ci-plan` marks `full` | yes, when it runs |
-| `Agent qualification (<agent>, scripted model)` (`harness-admission`): opencode, claude-code, codex | the real pinned agent passes the admission (R1-R11; R5 reopens the session by the agent's own path, R10 holds `session/resume` to no history, and R11 kills the agent mid-tool, reopens the session in a new process and requires the next model request to carry the first prompt with nothing replayed as new) and the behaviour matrix, 3 runs that must agree | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned) | main, nightly, and a PR that touches an agent's launch inputs (`ci-plan` `agents`) | yes, when it runs |
-| the same: gemini, deepagents                                                                        | the same, for the tier-2 agents                                                                                                  | the same                                                                             | the same | yes, when it runs |
-| `E2E / Playwright (Chromium, shard <n>/2)` (`e2e`, calls `e2e-browser.yml`)                         | the browser suite                                                                                                                | none                                                                                 | every PR and push | yes |
+| Check name (job id) | What it proves | Runs | Required |
+| --- | --- | --- | --- |
+| `Build & typecheck` (`build`) | builds and type-checks; OpenAPI spec drift; publint | plan `code` | yes |
+| `Lint (Biome)` (`lint`) | format and lint, the static UI checks (`ui:check:static`), and the `scripts/` tests | every PR but a docs-only one | yes |
+| `Unit tests (ubuntu-latest)` (`test`) | every package's tests, with the coverage floors (#58), on the scripted fake agent | plan `code` | yes |
+| `Pack npm tarball` (`pack`) | packs both tarballs and gates them (`scripts/check-artifact.mjs`; a second pack gives the same bytes) | plan `code` | yes |
+| `Tarball: installs and boots` (`packed-smoke`) | the tarball installs and boots in a clean container | plan `code` | yes |
+| `Tarball: alert to incident to report, unattended` (`packed-intake`) | a webhook becomes an incident, is investigated by the scripted fake ACP agent, and resolves | plan `intake` | yes, when it runs |
+| `Tarball: upgrades an old database` (`packed-upgrade-smoke`) | a database that predates `investigation_turns` upgrades on the packed tarball (#673) | plan `intake` | yes, when it runs |
+| `E2E / Playwright (Chromium, shard <n>/2)` (`e2e`, calls `e2e-browser.yml`) | the browser suite | plan `e2e` | yes, when it runs |
+| `Proofs` (`proofs`, calls `proofs.yml`) | the release proofs below | plan `full` or `agents` | yes, when it runs |
 
-What a run runs is decided first, by the `changes` job (`scripts/ci-plan.mjs`, #1052). `CI gate` stays the one
-required context and accepts a skipped job only when that plan skipped it:
+`proofs.yml` holds what a PR would otherwise pay for on every push. Each job packs or builds its own input:
+
+| Check name (job id) | What it proves | Model |
+| --- | --- | --- |
+| `Tarball: pl service under systemd` (`packed-service`) | `pl service` installs, restarts and uninstalls | none |
+| `Tarball: release side checks (<os>)` (`gate-side-checks`) | the release gate's side checks on Linux, macOS and Windows, `--no-skip` | scripted fake ACP agent |
+| `Tarball: every published release upgrades to it` (`upgrade-chain`) | every release npm lists upgrades to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | scripted fake ACP agent |
+| `Unit tests (macos-latest)` (`macos-tests`) | the unit tests on macOS (#959) | scripted fake agent |
+| `Agent qualification (<agent>, scripted model)` (`harness-admission`) | the real pinned agent passes the admission (R1-R11) and the behaviour matrix, 3 runs that must agree. Tier 1 (opencode, claude-code, codex) gates; tier 2 (gemini, deepagents) does not | aimock on loopback serving `scripts/fakes/scenarios/` (`@copilotkit/aimock`, pinned) |
+
+What a run runs is decided first, by the `changes` job (`scripts/ci-plan.mjs`, #1052, #1053). `CI gate` stays the one
+required context and accepts a skipped job only when that plan says `false` for its tier, in so many words:
 
 | Plan | Set when | Effect |
 | --- | --- | --- |
-| `skip` | the PR head tree equals the tree of an earlier passing `CI` run on that branch (a merge or rebase that leaves the tree unchanged; not `git merge -s ours` while `main` has other changes, see CONTRIBUTING.md, Landing a stack), or the PR changes only root `*.md` files, or the PR is marked ready for review and a `CI` run on exactly that head commit already passed | no job but `changes` and `CI gate` runs |
-| `full` | not a PR (main, nightly); a release-please PR; the `full-ci` label; or a PR touching any path not on `SAFE_FOR_FULL` in `scripts/ci-plan.mjs` (Markdown, test files, `docs/`, `packages/frontend/`, `packages/desktop/`, repo metadata) | `packed-service` and the release side checks on Linux, macOS and Windows run |
-| `agents` | a release PR or the `full-ci` label, or a PR touching any path not on `SAFE_FOR_AGENTS` (the safe-for-full paths plus `packages/api/`, `packages/cli/`, `auth`, `database`, `logger` and every workflow but `ci.yml`) | the five `Agent qualification` legs run |
+| `skip` | the PR head tree equals the tree of an earlier passing `CI` run on that branch (a merge or rebase that leaves the tree unchanged; not `git merge -s ours` while `main` has other changes, see CONTRIBUTING.md, Landing a stack), or the PR changes only root `*.md` files, or the PR is marked ready for review and a `CI` run on exactly that head commit already passed | only `changes` and `CI gate` run |
+| `code` | `false` when every changed path is CI-only: Markdown, `docs/`, repo metadata, workflows other than `ci.yml` and `e2e-browser.yml`, and the scripts the nightly proofs own | `build`, `test`, `pack`, `packed-smoke` are skipped; `lint` and its script tests still run |
+| `e2e` | `true` unless every changed path is CI-only or under `packages/desktop/` | the browser suite |
+| `intake` | `true` unless every changed path is CI-only or under `packages/frontend/` or `packages/desktop/` | `packed-intake` and `packed-upgrade-smoke` |
+| `full` | a release-please PR, the `full-ci` label, or a change to packaging or the gate scripts (`pack-cli`, `check-artifact`, `gate-side-checks`, the upgrade scripts, `scripts/install/`, `scripts/lib/`) or to the CLI commands they drive (`service`, `upgrade`, `update-notice`, `reset`, `instance-check`, `up`) or to `ci.yml`, `proofs.yml`, `nightly.yml` | `proofs` runs the tarball, macOS and release-side proofs |
+| `agents` | a release PR or the `full-ci` label, or a PR touching any path not on `SAFE_FOR_AGENTS` (metadata, tests, `packages/{frontend,desktop,api,cli}`, `auth`, `database`, `logger`, workflows other than `ci.yml`, and the `ci-*`, `gate-side-checks`, upgrade and `workflow-pins` scripts) | `proofs` runs the five `Agent qualification` legs |
 | `defer` | a release-please PR that is a draft | nothing runs; `CI gate` is red on purpose until the PR is marked ready, which starts the run |
 
+A renamed file counts under both its names, so moving a source file into a skipped path still runs its proofs.
+A push to `main` runs the PR checks (`code`, `e2e`, `intake`); the `proofs` jobs run in `nightly.yml`.
+A path on no list turns its tier on, so a new package runs it until it is listed.
+The `full-ci` label is read at the next push or re-run; adding it does not start a run. To run the proofs on a branch
+without a release PR: `gh workflow run nightly.yml --ref <branch>`.
 
-`Cross-OS CLI smoke` runs on main, nightly and releases, and on a PR only when the PR changes the smoke itself or the release manifest. `Desktop app build` and `Cross-OS CLI smoke` also wait for "ready for review" on a draft PR.
-A path on no list turns both tiers on, so a new package runs them until it is listed.
-The `full-ci` label is read at the next push or re-run; adding it does not start a run.
+`Cross-OS CLI smoke` runs nightly and on releases, and on a PR only when the PR changes the smoke itself or the release manifest. `Desktop app build` builds on Linux for a PR and on all three OSes on `main`, in a release and on dispatch. `Standalone CLI build` builds `linux-x64` for a PR and all five targets nightly, on dispatch and in a release. `Agent releases` probes on Linux for a PR and on all three OSes nightly. `Desktop app build` and `Cross-OS CLI smoke` also wait for "ready for review" on a draft PR.
 
 Agent qualification runs its 3 admissions one at a time, because each writes a probe file into the
 checkout. On Linux, as in CI, its 3 behaviour matrices run at once, each with its own scripted model, home
@@ -80,7 +93,7 @@ The pins for the agents these jobs install are in `scripts/agent-pins.json` (the
 `@prismalens/agent-adapters` (the adapter); `agent-release-watch.yml` moves them.
 
 One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turbo-cache`) under
-`turbo-<os>-<sha>`; `test` (ubuntu) and `pack` need it and restore it, so their `pnpm build` replays.
+`turbo-<os>-<sha>`; `test` and `pack` need it and restore it, so their `pnpm build` replays.
 `e2e` needs `build`, so it restores this commit's own cache.
 `cli-smoke-cross-os.yml` waits for `Pack npm tarball` on the same commit and installs that artifact,
 packing itself only if that job is missing or red.
@@ -88,13 +101,22 @@ packing itself only if that job is missing or red.
 ```mermaid
 flowchart LR
     build["ci.yml build"] -- "saves turbo-OS-SHA" --> cache[(".turbo-cache")]
-    cache -- "restores" --> test["test (ubuntu)"]
+    cache -- "restores" --> test["test"]
     cache -- "restores" --> pack["Pack npm tarball"]
     cache -- "restores" --> e2e["e2e (e2e-browser.yml)"]
-    pack -- "npm-tarballs artifact" --> packed["packed-smoke, packed-intake, packed-service,<br/>packed-upgrade-smoke, gate-side-checks x3"]
+    pack -- "npm-tarballs artifact" --> packed["packed-smoke, packed-intake,<br/>packed-upgrade-smoke"]
     pack -. "polled, then downloaded" .-> xos["cli-smoke-cross-os.yml"]
     xos -. "pack missing or red: packs itself" .-> xos
+    nightly["nightly.yml / ci.yml proofs"] --> proofs["proofs.yml: packs its own tarball"]
 ```
+
+## `nightly.yml`: the proofs outside a PR
+
+`nightly.yml` runs at 03:47 UTC once the repository variable `NIGHTLY_ENABLED` is `true` (the schedule does nothing before), and on dispatch. It calls `proofs.yml` with everything on, and nothing in it is a required check.
+On dispatch with `live` it also runs the live agent check. Its `report` job keeps one issue titled `Nightly CI failing`:
+found by that exact title, open or closed, so a red night opens it or rewrites its body, a recurrence reopens it, and a green
+night closes it. On dispatch it only prints what it would do, in the job summary, unless the `report` input is on. A `proofs` run that was cancelled or skipped counts as red. The agent probe (`agent-release-watch.yml`)
+and the standalone, desktop and cross-OS builds report in their own runs.
 
 ## `e2e-browser.yml`: sharded, with a quarantine
 
@@ -107,38 +129,32 @@ quarantined test has an open `bug` issue named in a comment beside the tag, and 
 when the tag comes off (CONTRIBUTING.md, "Browser e2e tier").
 
 - **In `ci-gate`.** `ci.yml` calls this workflow as its `e2e` job (`workflow_call`), which `CI gate`
-  waits on (#920).
+  waits on (#920); it runs only when the plan's `e2e` is `true` (#1053).
 - **`strict_required_status_checks_policy` is `false` (#885, set 2026-10-27 on the operator's word).**
   With 9 to 22 PRs open at once, strict would make every merge invalidate the rest, and the author of each
   would update the branch and wait for a full CI run again. The push run on `main` catches a bad combination
   instead. No workflow depends on either value.
 
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
-script against the real harness on PATH; `packed-intake-live` in `ci.yml` calls it that way.
+script against the real harness on PATH; `packed-intake-live` in `nightly.yml` calls it that way.
 
-## `ci.yml` live jobs: the live tier
+## `nightly.yml` live jobs: the live tier
 
 The live tier checks that the pinned OpenCode and its own free model still complete
-an investigation. It runs on dispatch only, and nothing requires it: that model
+an investigation. It runs on dispatch with `live` only, and nothing requires it: that model
 stalled in 2 of 2 rounds (#914), so a nightly would be red most nights. The agent is
 the version in `scripts/agent-pins.json`; it is not a run against agents' latest
 releases (#639, #712).
 
-The live jobs run only on `workflow_dispatch`, and the PR jobs and
-`CI gate` run on every event except that one, so one run is either the PR tier or
-the live tier, never both. A live run has its own concurrency group
-(`live-agent-<ref>`) and is never cancelled, so it and a push run on `main` cannot
-cancel each other.
+| Job | Model | Cadence | Required |
+| --- | --- | --- | --- |
+| `Live: pack npm tarball` (`live-pack`) | none; packs the tarball the live intake installs | dispatch with `live` | no |
+| `Live: alert to report on the free model (2 of 3)` (`packed-intake-live`) | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | dispatch with `live` | no |
+| `Live: agent qualification (opencode, free model)` (`harness-admission-live`) | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | dispatch with `live` | no |
 
-| Job                                                                           | Model                                                                                                | Cadence  | Required |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------- | -------- |
-| `Live: pack npm tarball` (`live-pack`)                                        | none; packs the tarball the live intake installs                                                     | dispatch | no       |
-| `Live: alert to report on the free model (2 of 3)` (`packed-intake-live`)     | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | dispatch | no       |
-| `Live: agent qualification (opencode, free model)` (`harness-admission-live`) | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model)        | dispatch | no       |
 - **Release gate:** dispatch it on `main` with `ref` set to the release PR's base SHA
-  (`gh workflow run ci.yml --ref main -f ref=<sha>`) and link the run from the PR.
-  Dispatch on `main`, not on a PR branch: a dispatched run on a branch adds a skipped
-  `CI gate` to its head commit.
+  (`gh workflow run nightly.yml --ref main -f ref=<sha> -f live=true`) and link the run from the PR.
+  Dispatch on `main`, not on a PR branch.
 - **Event streams:** each packed-intake attempt uploads its paged
   `/api/investigations/:id/events` as `intake-events-attempt-<n>`, kept 30 days.
   That is the recording source for #533.
@@ -264,16 +280,18 @@ rest are advisory or out-of-band and cannot affect a merge.
 
 | Workflow (Actions name)                                          | Trigger                                                                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml` (CI)                                                    | `pull_request`, `push`, `schedule`, dispatch                        | build, test, lint, pack (the pack job gates both npm tarballs with `scripts/check-artifact.mjs`: path limit, size budget and licence texts; packs twice and compares; publint on the packed manifests), the packed-tarball checks, harness admission and e2e; aggregates to `CI gate`. On dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
+| `ci.yml` (CI) | `pull_request`, `push` | build, test (ubuntu), lint (with the static UI checks and the script tests), pack (gates both npm tarballs with `scripts/check-artifact.mjs`), the packed-tarball smoke, intake and database-upgrade checks, e2e and, when the plan says so, `proofs.yml`; aggregates to `CI gate`. Each is switched on by the plan (`scripts/ci-plan.mjs`) |
 | `ci-rerun-unstarted.yml` (CI rerun for jobs that never started or hit the network) | `workflow_run` of `CI` and `Standalone CLI build` | when a run failed on its first attempt and every red job but `CI gate` either was cancelled before a runner took it or failed on a network fault its log names (`fetch failed`, `ECONNRESET`, a 502/503/504) with no failed check, reruns the failed jobs once (`scripts/ci-gate-report.mjs`) |
+| `proofs.yml` (Proofs) | called by `ci.yml` and `nightly.yml` | the release proofs: systemd service, side checks on Linux, macOS and Windows, the npm upgrade chain, macOS unit tests and the agent qualification legs |
+| `nightly.yml` (Nightly) | schedule, dispatch | calls `proofs.yml` with everything on, keeps one `Nightly CI failing` issue, and on dispatch with `live` runs the live agent check |
 | `agent-release-watch.yml` (Agent releases (probe and pin bumps)) | schedule, dispatch, `pull_request` (paths)                              | the protocol probe of every agent row at its channel's latest and its pin on Linux, Windows and macOS, and the pin-bump pull requests                                                                                                                                                                                                                                                                                                                                                       |
 | `e2e-browser.yml` (Playwright E2E)                               | called by `ci.yml`, dispatch                                            | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome)                                                                                                                                                                                                                                                                                                                                                                      |
 | `e2e-browser-mobile.yml` (Playwright E2E (phone and tablet))     | schedule, dispatch                                                      | the `@responsive` journeys at Pixel 7 and iPad sizes                                                                                                                                                                                                                                                                                                                                                                                          |
-| `cli-smoke-cross-os.yml` (Cross-OS CLI smoke)                    | `pull_request` (narrow), `push`, `schedule`, `release`, dispatch       | CLI smoke across operating systems                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `cli-smoke-cross-os.yml` (Cross-OS CLI smoke)                    | `pull_request` (narrow), `schedule`, `release`, dispatch       | CLI smoke across operating systems                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `dependency-audit.yml` (Dependency audit)                        | schedule, dispatch                                                      | dependency/security audit                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `release.yml` (Release)                                          | `push`, dispatch (resume a draft)                                       | release-please release PR on push; on merging it, a draft release filled by `build-standalone-cli.yml` and `build-desktop-app.yml`, then the `sums` job (one `SHA256SUMS` over every asset and one build-provenance attestation over it), then npm (provenance required), then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows                                         |
-| `build-standalone-cli.yml` (Standalone CLI build)                | `pull_request`, called by `release.yml`, dispatch                       | per-OS standalone archives and installers, smoked without Node, each gated by `scripts/check-artifact.mjs`; a CycloneDX SBOM on linux-x64; attaches them to the draft release when called                                                                                                                                                                                                                                                     |
-| `build-desktop-app.yml` (Desktop app build)                      | `pull_request`, `push`, called by `release.yml`, dispatch               | unpacked Electron app per OS, held to its `scripts/artifact-budgets.json` size and file count, launched and checked; attaches the zips to the draft release when called                                                                                                                                                                                                                                                                       |
+| `build-standalone-cli.yml` (Standalone CLI build)                | `pull_request` (linux-x64), `schedule`, called by `release.yml`, dispatch                       | per-OS standalone archives and installers, smoked without Node, each gated by `scripts/check-artifact.mjs`; a CycloneDX SBOM on linux-x64; attaches them to the draft release when called                                                                                                                                                                                                                                                     |
+| `build-desktop-app.yml` (Desktop app build)                      | `pull_request` (Linux), `push`, called by `release.yml`, dispatch               | unpacked Electron app per OS, held to its `scripts/artifact-budgets.json` size and file count, launched and checked; attaches the zips to the draft release when called                                                                                                                                                                                                                                                                       |
 | `dependabot-auto-merge.yml` (Dependabot auto-merge)              | Dependabot PRs                                                          | auto-merges machine dependency bumps                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `milestone-release-checklist.yml` (Milestone release checklist)  | `milestone`                                                             | milestone bookkeeping                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `claude-code-review.yml` (Claude Code Review)                    | `pull_request`                                                          | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets                                                                                                                                                                                                                                                                                                                      |

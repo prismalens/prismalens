@@ -1,7 +1,7 @@
 name: Playwright E2E
 
-# Called by ci.yml's `e2e` job, which `CI gate` waits on (#920), so it runs on every PR
-# and push there. Dispatch is for running it alone on a branch.
+# Called by ci.yml's `e2e` job, which `CI gate` waits on (#920) and which runs only when the plan
+# says the app or the UI changed (#1053). Dispatch is for running it alone on a branch.
 on:
   workflow_call:
   workflow_dispatch:

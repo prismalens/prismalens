@@ -129,11 +129,11 @@ A PR never waits on a live model, and nothing here spends money on one (#884, #9
 
 | Check                                                                                  | Model                                                                                                                  | Runs                                           | Where                                                                              |
 | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks`                    | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`)                                                            | every PR                                       | `ci.yml`                                                                           |
-| `harness-admission`, one leg per agent: the admission (R1-R11) and the behaviour matrix | the real pinned agent, its model calls served by aimock (`@copilotkit/aimock`, pinned) from `scripts/fakes/scenarios/` | every PR; tier-1 legs gate, tier-2 legs do not | `ci.yml`                                                                           |
+| `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks`                    | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`)                                                            | `test` and the first two on a PR that changes what they read; `gate-side-checks` nightly and on a release PR | `ci.yml`, `proofs.yml` |
+| `harness-admission`, one leg per agent: the admission (R1-R11) and the behaviour matrix | the real pinned agent, its model calls served by aimock (`@copilotkit/aimock`, pinned) from `scripts/fakes/scenarios/` | nightly, a release PR and a PR that touches an agent's launch inputs; tier-1 legs gate, tier-2 legs do not | `proofs.yml` |
 | protocol probe                                                                         | none: `initialize` and `session/new` against each row's latest release                                                 | nightly                                        | `agent-release-watch.yml`                                                          |
 | pin bump                                                                               | none: a pull request once a release has soaked 3 days                                                                  | daily                                          | `agent-release-watch.yml`                                                          |
-| `harness-admission-live`, `packed-intake-live`                                         | the real pinned OpenCode on its own free model                                                                         | on dispatch, and before a release              | `ci.yml` (dispatch only: that model stalls, so a nightly would be red most nights) |
+| `harness-admission-live`, `packed-intake-live`                                         | the real pinned OpenCode on its own free model                                                                         | on dispatch, and before a release              | `nightly.yml`, dispatched with `live` (that model stalls, so a nightly would be red most nights) |
 
 Tier 1 is opencode, claude-code and codex; gemini and deepagents (`dcode`) are tier 2. A row's `tested` comes from CI only: it equals the pin CI installs (`scripts/agent-pins.json` for the agent, `@prismalens/agent-adapters` for the adapter, checked by `harness-pins.test.ts`) and moves only in a merged bump PR, whose CI runs the matrix on the new version.
 
@@ -676,8 +676,8 @@ under `--no-skip`, which CI passes. `rollback` is N/A off Linux (the trial runs 
 systemd) and is skipped on Linux when there is no systemd user manager or a
 `prismalens.service` already exists. On Windows there is no SIGTERM: the lock check ends the holder
 outright and expects the next boot to take the stale lock. CI's `Gate side checks`
-job runs them on Linux, macOS and Windows on every push to `main`, nightly, and on a PR that touches anything beyond docs,
-tests, the frontend and repo metadata (or carries the `full-ci` label); its run on the release PR's base
+job (`proofs.yml`) runs them on Linux, macOS and Windows nightly, on a release PR, on a PR that touches packaging or the
+gate scripts, and on a PR that carries the `full-ci` label; its run on the release PR's base
 SHA is the gate's record.
 
 `pnpm gate:upgrade-chain <dir-with-tarball>` is the chain behind `Packed upgrade smoke`: it reads the stable

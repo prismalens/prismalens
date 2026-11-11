@@ -1,0 +1,350 @@
+# The proofs a PR does not run on every push: the release side checks on Linux, macOS and Windows, the
+# systemd service, the npm upgrade chain, macOS unit tests and the five agent qualification legs.
+# `ci.yml` calls this when its plan says `full` or `agents` (a release PR, a path these read; #1052);
+# `nightly.yml` calls it every night with both on. Each job packs or builds its own inputs, so a nightly
+# needs nothing from another run.
+name: Proofs
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch, tag or SHA to prove (default is the caller's own)
+        required: false
+        type: string
+        default: ""
+      full:
+        description: Run the tarball, macOS and release-side proofs
+        required: false
+        type: boolean
+        default: true
+      agents:
+        description: Run the agent qualification legs
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo-cache
+
+jobs:
+  pack:
+    name: Pack the tarball for the proofs
+    if: inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Pack tarball
+        run: |
+          mkdir -p /tmp/tarballs
+          node scripts/pack-cli.mjs --out /tmp/tarballs
+          ls -l /tmp/tarballs
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: proofs-tarballs
+          path: /tmp/tarballs/*.tgz
+          retention-days: 3
+
+  # macOS runs the unit tests nightly and on a release PR: the PR queue's runs flaked there (#959).
+  # macos-latest is 3 or 5 CPUs, so turbo runs two tasks at a time (#885).
+  macos-tests:
+    name: Unit tests (macos-latest)
+    if: inputs.full
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm turbo run test --concurrency=2
+
+  packed-service:
+    # `pl service` on a real systemd user manager (#732).
+    # Blocking on a release PR: `ci.yml`'s `CI gate` waits on the `proofs` job that calls this (#920).
+    name: "Tarball: pl service under systemd"
+    needs: pack
+    if: inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          sparse-checkout: scripts/lib/npm-install-retry.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: proofs-tarballs
+          path: tarballs
+
+      - name: Install, check, restart and uninstall the service
+        env:
+          PRISMALENS_TELEMETRY: "off"
+          PRISMALENS_UPDATE_CHECK: "off"
+        run: |
+          set -eu
+          # A runner has no login session; lingering gives this user a systemd manager.
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+          prefix=$(mktemp -d); ws=$(mktemp -d)
+          node scripts/lib/npm-install-retry.mjs npm install -g --prefix "$prefix" ./tarballs/prismalens-*.tgz
+          export PATH="$prefix/bin:$PATH"
+          pl service install --port 3190 --workspace "$ws"
+          pl service status
+          curl -fsS http://127.0.0.1:3190/health
+          pl service restart
+          curl -fsS http://127.0.0.1:3190/health
+          pl service uninstall
+          test ! -e "$HOME/.config/systemd/user/prismalens.service"
+          if curl -fsS -m 2 http://127.0.0.1:3190/health; then echo "still serving after uninstall"; exit 1; fi
+          test -f "$ws/PRISMALENS_AUTH_SECRET_FILE"
+
+  gate-side-checks:
+    # The release gate's side checks (#673), scripted: telemetry, update notice, lock,
+    # reset, hosts, `pl upgrade` and, on Linux, its rollback under systemd, each in a
+    # throwaway HOME on the packed tarball (package script `gate:side-checks`). The same
+    # script runs on all three OSes and `--no-skip` makes a SKIP a failure (#920).
+    #
+    # Blocking on a release PR: `ci.yml`'s `CI gate` waits on the `proofs` job that calls this (#920).
+    name: "Tarball: release side checks (${{ matrix.os }})"
+    needs: pack
+    if: inputs.full
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The script needs only the root package's own dependencies (a pseudo-terminal, cross-spawn).
+      - name: Install the script's dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: proofs-tarballs
+          path: tarballs
+
+      - name: Give the runner user a systemd manager (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+
+      - name: Run the side checks
+        run: |
+          set -eu
+          if [ "$RUNNER_OS" = "Linux" ]; then export XDG_RUNTIME_DIR="/run/user/$(id -u)"; fi
+          node scripts/gate-side-checks.mjs --no-skip --tarball "$(ls tarballs/prismalens-[0-9]*.tgz | head -1)"
+
+  harness-admission:
+    # The pinned agent against aimock, so a red run is the code's and not a model's (#884, #914).
+    # A red tier-2 leg leaves the job green (`continue-on-error`).
+    name: Agent qualification (${{ matrix.harness }}, scripted model)
+    if: inputs.agents
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: ${{ matrix.tier == 2 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: opencode
+            pin: opencode-ai
+            binary: opencode
+            tier: 1
+          - harness: claude-code
+            pin: "@anthropic-ai/claude-code"
+            binary: claude
+            tier: 1
+          # The adapter is the shipped one (its pin is in agent-adapters); it runs the codex on PATH.
+          - harness: codex
+            pin: "@openai/codex"
+            binary: codex
+            tier: 1
+          - harness: gemini
+            pin: "@google/gemini-cli"
+            binary: gemini
+            tier: 2
+          - harness: deepagents
+            pin: deepagents-code
+            binary: dcode
+            tier: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the packages the engine imports
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
+
+      - name: Setup uv
+        if: matrix.harness == 'deepagents'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Install the pinned agent
+        env:
+          PIN: ${{ matrix.pin }}
+          BINARY: ${{ matrix.binary }}
+        run: |
+          version=$(node -p "require('./scripts/agent-pins.json').pins[process.env.PIN]")
+          if [ "$PIN" = deepagents-code ]; then
+            # deepagents-code needs Python 3.14; uv fetches it.
+            uv tool install --python 3.14 "$PIN==$version" --with deepagents-acp --with 'agent-client-protocol<1'
+          else
+            npm install -g "$PIN@$version"
+          fi
+          "$BINARY" --version
+
+      # Codex's bwrap sandbox needs unprivileged user namespaces, which ubuntu-24.04 restricts.
+      - name: Allow Codex's sandbox
+        if: matrix.harness == 'codex'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Run the admission (R1-R11) and the behaviour matrix against aimock, 3 times
+        run: |
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3 | tee admission.log
+
+      # Tool search (#848): the run above uses each agent's shipped setting; a PR labelled
+      # `tool-search` also runs the other mode, so both costs and pass rates show.
+      - name: The behaviour matrix with tool search in the other mode
+        if: contains(github.event.pull_request.labels.*.name, 'tool-search')
+        continue-on-error: true
+        run: |
+          shipped=$(grep -E "^SEARCH (on|off)$" admission.log | head -1 | cut -d' ' -f2)
+          export PL_TOOL_SEARCH=$([ "$shipped" = on ] && echo off || echo on)
+          set -o pipefail
+          node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --only matrix --repeat 3 | tee search-on.log
+
+      - name: PrismaLens tool cost and pass rate
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.harness }}: PrismaLens tools"
+            echo '```'
+            grep -hE "^(TOOLCOST|PASSRATE)" admission.log search-on.log 2>/dev/null || echo "no matrix run"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The negative run (#848): with no gateway the model calls no PrismaLens tool, so R8 must fail the gate.
+      - name: Without the gateway, the admission must fail
+        if: matrix.harness == 'opencode'
+        env:
+          ADMISSION_NO_GATEWAY: "1"
+        run: |
+          if node scripts/admission-fake.mjs opencode "$GITHUB_WORKSPACE" --only admission; then
+            echo "::error::the admission passed with no PrismaLens gateway; R8 is not gating"
+            exit 1
+          fi
+
+  # Every release already on npm upgrades through `pl upgrade` to this tarball (#920). The versions come
+  # from `npm view prismalens versions`, never a list in this file.
+  upgrade-chain:
+    name: "Tarball: every published release upgrades to it"
+    needs: pack
+    if: inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The chain script needs only the root package's own dependencies (cross-spawn, semver).
+      - name: Install the script's dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: proofs-tarballs
+          path: tarballs
+
+      - name: Upgrade each published release to this tarball with pl upgrade
+        run: node scripts/packed-upgrade-chain.mjs tarballs

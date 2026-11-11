@@ -102,6 +102,31 @@ export function rerunnable(
 	);
 }
 
+/**
+ * Names of the failed jobs whose log shows a network fault. A log that cannot be read (not ready,
+ * expired, no permission) is unknown, never a network fault: that job is simply not listed.
+ */
+export function networkFailedJobs(
+	/** @type {Job[]} */ jobs,
+	/** @type {(id: number) => string} */ readLog,
+	/** @type {(message: string) => void} */ warn = () => {},
+) {
+	/** @type {Set<string>} */
+	const names = new Set();
+	for (const job of jobs) {
+		if (job.conclusion !== "failure" || job.id === undefined) continue;
+		let log;
+		try {
+			log = readLog(job.id);
+		} catch (error) {
+			warn(`log of "${job.name}" unavailable, so not rerunning it: ${error}`);
+			continue;
+		}
+		if (networkFailure(log)) names.add(job.name);
+	}
+	return names;
+}
+
 /** Jobs that waited at least `minutes` between being queued and starting (or being cancelled). */
 export function queueWaits(/** @type {Job[]} */ jobs, minutes = 10) {
 	/** @type {{ name: string, minutes: number }[]} */
@@ -163,19 +188,24 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 			`### CI gate\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`\n`,
 		);
 	if (env.RERUN === "1") {
-		const network = new Set(
-			jobs
-				.filter((j) => j.conclusion === "failure" && j.id !== undefined)
-				.filter((j) =>
-					networkFailure(
-						gh(["api", `repos/${env.REPO}/actions/jobs/${j.id}/logs`]),
-					),
-				)
-				.map((j) => j.name),
+		const network = networkFailedJobs(
+			jobs,
+			(id) =>
+				// Logs carry colour codes, which `gh api` refuses to print without this flag.
+				gh([
+					"api",
+					"--allow-escape-sequences",
+					`repos/${env.REPO}/actions/jobs/${id}/logs`,
+				]),
+			(message) => console.log(`::warning::${message}`),
 		);
 		if (!rerunnable(reds, "CI gate", network))
 			return console.log(
 				"not rerunning: a red job failed for a reason other than a network fault",
+			);
+		if (env.DRY_RUN === "1")
+			return console.log(
+				`dry run: would rerun the failed jobs of run ${env.RUN_ID}`,
 			);
 		console.log(`rerunning the failed jobs of run ${env.RUN_ID} once`);
 		gh([
