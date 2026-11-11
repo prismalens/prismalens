@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller } from "@nestjs/common";
-import { Implement, implement } from "@orpc/nest";
+import { Implement, implement, ORPCError } from "@orpc/nest";
 import { OPERATE_SCOPE } from "@prismalens/auth";
 import { threadsContract } from "@prismalens/contracts";
 import type { Request } from "express";
@@ -47,6 +47,11 @@ export class ThreadsController {
 			start: implement(threadsContract.start).handler(({ input, context }) => {
 				requireOperate(context.request);
 				return this.threads.start(input);
+			}),
+
+			// GET /threads/search-messages - Message text across threads (#1101 cat 13)
+			searchMessages: implement(threadsContract.searchMessages).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED", { message: "Not built yet" });
 			}),
 
 			// GET /threads - A project's or a service's threads

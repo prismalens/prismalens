@@ -259,6 +259,33 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/window - A thread opened at a position (#1101 cat 12)
+			openWindow: implement(investigationsContract.openWindow).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED", { message: "Not built yet" });
+			}),
+
+			// GET /investigations/:id/window/page
+			windowPage: implement(investigationsContract.windowPage).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED", { message: "Not built yet" });
+			}),
+
+			// GET /investigations/:id/window/index
+			windowIndex: implement(investigationsContract.windowIndex).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED", { message: "Not built yet" });
+			}),
+
+			// GET /investigations/:id/window/event
+			eventFull: implement(investigationsContract.eventFull).handler(() => {
+				throw new ORPCError("NOT_IMPLEMENTED", { message: "Not built yet" });
+			}),
+
+			// GET /investigations/:id/search (#1101 cat 13)
+			searchEvents: implement(investigationsContract.searchEvents).handler(
+				() => {
+					throw new ORPCError("NOT_IMPLEMENTED", { message: "Not built yet" });
+				},
+			),
+
 			// POST /investigations/:id/cancel - Request cancellation of a run.
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
 			//   - RUNNING: publish on the run's EventBus cancel topic. The dispatch loop
