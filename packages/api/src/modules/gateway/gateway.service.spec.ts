@@ -1742,7 +1742,7 @@ describe("read tools for the coding agent (#848)", () => {
 		});
 
 		it("a time that is not ISO is invalid_input", async () => {
-			const out = await use(mocks(), "changes_list", { from: "yesterday" });
+			const out = await use(mocks(), "pl_changes_list", { from: "yesterday" });
 			expect(out.value).toEqual(failure("invalid_input"));
 		});
 	});
