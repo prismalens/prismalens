@@ -5,6 +5,7 @@ import { projectKindOf } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -87,6 +88,11 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 										className="flex h-10 items-center gap-2 rounded-control px-2 text-body text-text-1 hover:bg-surface-2"
 										data-testid="project-row"
 									>
+										<ProjectMark
+											name={r.fullName}
+											iconUrl={r.iconUrl}
+											size="sm"
+										/>
 										<span className="min-w-0 flex-1 truncate">
 											{r.fullName}
 										</span>

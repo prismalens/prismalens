@@ -31,6 +31,10 @@ vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({ setQueryData: vi.fn() }),
 }));
 
+vi.mock("@/hooks/use-operator", () => ({
+	useOperator: () => ({ managesPairing: true }),
+}));
+
 vi.mock("@/lib/api/hooks", () => ({
 	useResetData: () => ({ mutateAsync: vi.fn(), isPending: false, error: null }),
 	useFactoryReset: () => ({

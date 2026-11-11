@@ -176,7 +176,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 13
 		},
 		"settings-768-dark": {
 			"contrastFails": 0,
@@ -185,7 +185,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 13
 		},
 		"settings-390-dark": {
 			"contrastFails": 0,
@@ -203,7 +203,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 13
 		},
 		"settings-768-light": {
 			"contrastFails": 0,
@@ -212,7 +212,7 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 13
 		},
 		"settings-390-light": {
 			"contrastFails": 0,

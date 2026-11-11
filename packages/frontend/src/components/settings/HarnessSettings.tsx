@@ -37,9 +37,16 @@ import {
 } from "@/components/agent/AgentPicker";
 import { AddAgentDialog } from "./AddAgentDialog";
 import { agentState, testedHint, versionText } from "./AgentDetail";
+import { AgentThreadsGroup, ThreadCapRows } from "./AgentThreadsSettings";
+import {
+	ColdResumeRow,
+	CompactIdleRow,
+	ResumeAfterLimitRow,
+} from "./ConversationSettings";
 
 export { testedHint, versionText };
 
+import { AdvancedFold } from "@/components/shared/AdvancedFold";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
@@ -138,11 +145,16 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 
-			<SettingGroup title="Restarts">
+			<SettingGroup title="Long conversations">
 				<Pool>
+					<ColdResumeRow />
+					<ResumeAfterLimitRow />
+					<CompactIdleRow />
 					<ResumeAfterRestartRow />
 				</Pool>
 			</SettingGroup>
+
+			<AgentThreadsGroup />
 
 			<SettingGroup title="Environment">
 				<Pool>
@@ -560,17 +572,10 @@ export function subagentKeys(id: HarnessId): {
 /** Sub-agent limits, folded: each agent applies them through its own key, unset sets nothing (#1024). */
 function AdvancedSection() {
 	return (
-		<details className="group mt-8" data-testid="harness-advanced">
-			<summary className="flex cursor-pointer list-none items-center gap-1.5 text-body font-medium text-text-2 hover:text-text-1">
-				<ChevronRight
-					aria-hidden
-					className="size-3.5 shrink-0 text-text-3 transition-transform duration-(--dur-fast) group-open:rotate-90 motion-reduce:transition-none"
-				/>
-				Advanced
-			</summary>
-			<p className="mt-1 mb-3 text-meta text-text-3">
-				Claude Code, Codex and OpenCode use these. OpenCode takes depth only.
-			</p>
+		<AdvancedFold
+			testId="harness-advanced"
+			description="Claude Code, Codex and OpenCode use these. OpenCode takes depth only."
+		>
 			<Pool>
 				<SubagentLimitRow
 					field="subagentDepth"
@@ -583,7 +588,11 @@ function AdvancedSection() {
 					description="How many run at once"
 				/>
 			</Pool>
-		</details>
+			<p className="mt-4 mb-3 text-meta text-text-3">
+				Limits on the threads agents start.
+			</p>
+			<ThreadCapRows />
+		</AdvancedFold>
 	);
 }
 

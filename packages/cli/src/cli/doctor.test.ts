@@ -13,6 +13,7 @@ import {
 	checkWebhookToken,
 	checkWebhookUrl,
 	doctorChecks,
+	NODE_BELOW_FLOOR,
 	nodeVersionProblem,
 	summary,
 } from "./doctor.js";
@@ -30,6 +31,56 @@ describe("doctor — agents are the app's, never the doctor's (#907)", () => {
 	it("fails only on its own hard checks", () => {
 		const verdict = summary([{ name: "Git", pass: false, detail: "git missing", hard: true }]);
 		expect(verdict.level).toBe("error");
+	});
+});
+
+describe("doctor — summary", () => {
+	it("only the Node check failing returns error level and NODE_BELOW_FLOOR line", () => {
+		const checks = [
+			{ name: "Node version", pass: false, detail: "20.0.0", hard: true },
+			{ name: "Git", pass: true, detail: "git 2.43.0", hard: true },
+		];
+		const verdict = summary(checks);
+		expect(verdict).toEqual({ level: "error", line: NODE_BELOW_FLOOR });
+		expect(verdict.line).toBe(
+			"Node is below the supported version. pl up still starts, but it runs without the Node security fixes; upgrade Node.",
+		);
+	});
+
+	it("Node plus one other hard failure reports the other count and appends NODE_BELOW_FLOOR", () => {
+		const checks = [
+			{ name: "Node version", pass: false, detail: "20.0.0", hard: true },
+			{ name: "Git", pass: false, detail: "git missing", hard: true },
+		];
+		const verdict = summary(checks);
+		expect(verdict).toEqual({
+			level: "error",
+			line: `1 required check(s) failed. Fix the above before running \`pl up\`. ${NODE_BELOW_FLOOR}`,
+		});
+	});
+
+	it("one non-Node hard failure reports the failure count without NODE_BELOW_FLOOR", () => {
+		const checks = [
+			{ name: "Node version", pass: true, detail: "24.22.1", hard: true },
+			{ name: "Git", pass: false, detail: "git missing", hard: true },
+		];
+		const verdict = summary(checks);
+		expect(verdict).toEqual({
+			level: "error",
+			line: "1 required check(s) failed. Fix the above before running `pl up`.",
+		});
+	});
+
+	it("a failing non-hard check only returns success line", () => {
+		const checks = [
+			{ name: "Node version", pass: true, detail: "24.22.1", hard: true },
+			{ name: "PATH", pass: false, detail: "empty", hard: false },
+		];
+		const verdict = summary(checks);
+		expect(verdict).toEqual({
+			level: "success",
+			line: "All required checks passed.",
+		});
 	});
 });
 

@@ -286,16 +286,23 @@ export function webhookTokenCheck(dir: string): DiagnosticCheck {
 	};
 }
 
+/** Windows has no background service; the desktop app starts with Windows instead (#1024). */
+export const WINDOWS_START_AT_LOGIN =
+	"On Windows, turn on Start at login in the desktop app's tray menu.";
+
 export function serviceCheck(
 	service: InstalledService | null,
 	dir: string,
+	platform: NodeJS.Platform = process.platform,
 ): DiagnosticCheck {
 	return {
 		id: "service",
 		label: "Background service",
 		status: "ok",
 		detail: !service
-			? "not installed (pl service install runs PrismaLens in the background)"
+			? platform === "win32"
+				? `not installed. ${WINDOWS_START_AT_LOGIN}`
+				: "not installed (pl service install runs PrismaLens in the background)"
 			: `installed on port ${service.port}${serviceOwnsWorkspace(dir, service) ? "" : `, for workspace ${service.workspace}`}; pl service status shows whether it is running`,
 		required: false,
 	};
@@ -322,6 +329,6 @@ export function runDiagnostics(input: DiagnosticsInput): DiagnosticCheck[] {
 		}),
 		...gitChecks(input.git, service, input.gitScope),
 		webhookTokenCheck(input.workspaceDir),
-		serviceCheck(service, input.workspaceDir),
+		serviceCheck(service, input.workspaceDir, platform),
 	];
 }

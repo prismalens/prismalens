@@ -21,6 +21,7 @@ export {
 	type DevicePairedListener,
 	type DeviceRecord,
 	type DeviceScope,
+	deviceNameFor,
 	generateToken,
 	hashToken,
 	OPERATE_SCOPE,

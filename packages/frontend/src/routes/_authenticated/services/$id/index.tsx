@@ -22,6 +22,7 @@ import {
 } from "@/components/services/service-detail.utils";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
+import { ProjectMark } from "@/components/shared/ProjectMark";
 import { NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { backTarget, useBack } from "@/hooks/use-back";
@@ -158,6 +159,7 @@ function ServicePage() {
 						<ChevronLeft className="size-4" />
 					</a>
 				</Button>
+				<ProjectMark name={service.name} iconUrl={service.iconUrl} />
 				<h1 className="min-w-0 truncate text-title">{service.name}</h1>
 				<span
 					className="flex min-w-0 items-baseline gap-2.5 text-meta"

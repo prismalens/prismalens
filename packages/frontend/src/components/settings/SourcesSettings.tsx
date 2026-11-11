@@ -38,6 +38,7 @@ import {
 	HostDetail,
 	type SourceActions,
 } from "./SourceDetail";
+import { SourceDisplayGroup } from "./SourceDisplaySettings";
 import {
 	AlsoInNote,
 	CredentialChip,
@@ -222,6 +223,9 @@ export function SourcesSettings({ source }: { source?: string }) {
 					Add your first source
 				</Button>
 				{dialogs}
+				<div className="w-full text-left">
+					<SourceDisplayGroup />
+				</div>
 			</div>
 		);
 
@@ -239,6 +243,7 @@ export function SourcesSettings({ source }: { source?: string }) {
 			) : (
 				<FewSources items={items} actions={actions} initialOpen={source} />
 			)}
+			<SourceDisplayGroup />
 			{dialogs}
 		</>
 	);

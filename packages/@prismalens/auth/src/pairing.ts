@@ -184,6 +184,21 @@ export async function redeemPairingLink(
 	return { token: redeemed.token, device: redeemed.device };
 }
 
+/**
+ * The operator's label wins, else the device's own name ("Pixel 9") (#763). The
+ * startup link's label names the host, not a device, so the sent name beats it (#1024).
+ */
+export function deviceNameFor(
+	label: string | null,
+	sent: string,
+	startup: string = STARTUP_LINK_LABEL,
+): string {
+	const own = label?.trim() ?? "";
+	const name = sent.trim();
+	if (own === startup) return name || own;
+	return own || name || "Paired device";
+}
+
 async function redeemLinkToken(
 	store: PairingStore,
 	input: { token: string; name: string; userAgent?: string; now?: Date },
@@ -209,9 +224,7 @@ async function redeemLinkToken(
 	const device = await store.redeemLink({
 		linkId: link.id,
 		tokenHash: hashToken(deviceToken),
-		// The operator's label wins, else the device's own name ("Pixel 9"); the
-		// device list shows the browser from the user agent beside it (#763).
-		name: link.label?.trim() || input.name.trim() || "Paired device",
+		name: deviceNameFor(link.label, input.name),
 		scopes: parseScopes(link.scopes),
 		userAgent: input.userAgent ?? null,
 	});

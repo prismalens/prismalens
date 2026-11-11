@@ -104,7 +104,21 @@ export class IntegrationsController {
 						message: "Listing a git host's repositories is not available here",
 					});
 				try {
-					return await this.hostRepositories.list(input);
+					const listing = await this.hostRepositories.list(input);
+					// Avatars go through the image proxy; one it cannot serve is dropped, never sent raw.
+					return {
+						...listing,
+						repositories: listing.repositories.map((repo) => ({
+							...repo,
+							ownerAvatarUrl: this.images?.urlFor(
+								repo.ownerAvatarUrl,
+								"avatar",
+								{
+									fromHostApi: true,
+								},
+							),
+						})),
+					};
 				} catch (error) {
 					if (error instanceof HostListingError)
 						throw new ORPCError("BAD_GATEWAY", { message: error.message });

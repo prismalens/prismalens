@@ -10,6 +10,7 @@ A UI change keeps every capability below reachable without a shortcut, at most t
 | Repeat a message as a schedule | Composer Repeat… beside Send (host only) | 1 | |
 | Search threads, incidents, services, projects and pages | Sidebar Search | 1 | Ctrl K |
 | Add a project | Search, Add project; Home subject menu, Add project | 2 | Ctrl K "Add project" |
+| Add a project from GitHub, GitLab or Bitbucket | Add project, the host in its switch | 1 | |
 | Projects and their code | Search, Projects | 2 | Ctrl K "Projects" |
 | See every thread | Sidebar Threads, or Recents' View all | 1 | `g t` |
 | Filter threads by who started them, status or project | Threads page filters | 1 | |
@@ -19,9 +20,13 @@ A UI change keeps every capability below reachable without a shortcut, at most t
 | Schedules and alert intake | Sidebar Automation (New schedule there) | 1 | Ctrl K "Automation" |
 | Alerts with no service, linked to a project | Sidebar "N alerts unmapped", then the row's Link to a project | 2 | `g a` |
 | Settle quiet threads after some days | Settings, General | 2 | |
+| Choose the editor files open in | Settings, General, Open files in | 2 | |
+| Cold conversations, resume after a limit, and whether agents start threads | Settings, Agent | 2 | |
+| Pull request status and images from the git host | Settings, Sources | 2 | |
 | Services and their code | Sidebar Services | 1 | Ctrl K "Services" |
 | The incident board | Sidebar Operations (once alerts have arrived) | 1 | `g o` |
 | Settings | Sidebar foot Settings; phone menu | 1 | Ctrl K "Settings" |
+| See and install an update | Sidebar foot Update ready, then About | 1 to 2 | |
 | Terminal | Sidebar foot Terminal | 1 | Ctrl \` |
 | Theme | Sidebar foot theme button | 1 | Ctrl K action |
 | Hide or show the sidebar | Sidebar head button; page header Show | 1 | `[` |

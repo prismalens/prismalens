@@ -10,11 +10,13 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, isIP } from "node:net";
+import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
 	isOnPath,
 	resolveOnPath,
+	WINDOWS_START_AT_LOGIN,
 	windowsInstallOnPath,
 } from "@prismalens/config";
 
@@ -336,15 +338,34 @@ export function portInUseLine(port: number, byPrismaLens: boolean): string {
 		: `Port ${port} is in use. Start on another port with --port.`;
 }
 
-/** The `pl service install` pointer, for a foreground `pl up` on a platform that has a service. */
+/**
+ * The address `pl up --lan` listens on: `::` takes IPv4 and IPv6 together
+ * wherever the OS has IPv6, else IPv4 alone (#1024).
+ */
+export function lanBindHost(ipv6Available: boolean): string {
+	return ipv6Available ? "::" : "0.0.0.0";
+}
+
+/** Whether this machine has any IPv6 address, the loopback included. */
+export function hasIpv6(
+	interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+): boolean {
+	return Object.values(interfaces).some((list) =>
+		(list ?? []).some((a) => a.family === "IPv6"),
+	);
+}
+
+/** How to keep PrismaLens running, for a foreground `pl up`: the service, or the tray on Windows. */
 export function serviceHint(input: {
 	platform: NodeJS.Platform;
 	env: NodeJS.ProcessEnv;
 	serviceOwnsWorkspace: boolean;
 }): string | null {
-	if (input.platform !== "linux" && input.platform !== "darwin") return null;
 	if (input.env.PRISMALENS_SERVICE === "1") return null;
 	if (input.env.PRISMALENS_RUN_MODE === "electron") return null;
 	if (input.serviceOwnsWorkspace) return null;
+	if (input.platform === "win32")
+		return `For a machine that should always be on: ${WINDOWS_START_AT_LOGIN}`;
+	if (input.platform !== "linux" && input.platform !== "darwin") return null;
 	return "For a machine that should always be on: pl service install";
 }

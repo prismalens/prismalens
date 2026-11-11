@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { WINDOWS_START_AT_LOGIN } from "@prismalens/config";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
@@ -402,6 +403,13 @@ export function upgradeLine(o: Outcome): string {
 	return `${o.from} → ${o.to} ${what} on ${when}: ${o.reason ?? "no reason recorded"}`;
 }
 
+/** `pl service status` with nothing installed; Windows has no service to install (#1024). */
+export function noServiceLine(platform: NodeJS.Platform): string {
+	return platform === "win32"
+		? `No background service runs on Windows. ${WINDOWS_START_AT_LOGIN}`
+		: "No background service is installed. Install one with: pl service install";
+}
+
 const status = defineCommand({
 	meta: {
 		name: "status",
@@ -412,9 +420,7 @@ const status = defineCommand({
 		const kind = config.serviceManagerKind();
 		const service = config.installedService();
 		if (!kind || !service) {
-			consola.info(
-				"No background service is installed. Install one with: pl service install",
-			);
+			consola.info(noServiceLine(process.platform));
 			return;
 		}
 		const lock = config.readWorkspaceLockState(service.workspace);

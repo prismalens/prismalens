@@ -5,7 +5,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type DiagnosticGitRun, runDiagnostics } from "./diagnostics.js";
+import {
+	type DiagnosticGitRun,
+	runDiagnostics,
+	serviceCheck,
+	WINDOWS_START_AT_LOGIN,
+} from "./diagnostics.js";
 import { secretFileName } from "./secrets.js";
 
 let workspace: string;
@@ -87,4 +92,27 @@ describe("runDiagnostics (#936: one set of checks for About and pl doctor)", () 
 		expect(c.installs.detail).toContain("2 on PATH");
 		expect(c["webhook-token"].status).toBe("ok");
 	});
+});
+
+describe("serviceCheck with null service", () => {
+	it("win32 detail is exactly not installed and directs to desktop app tray menu without pl service install", () => {
+		const check = serviceCheck(null, workspace, "win32");
+		expect(check.detail).toBe(
+			`not installed. ${WINDOWS_START_AT_LOGIN}`,
+		);
+		expect(check.detail).toBe(
+			"not installed. On Windows, turn on Start at login in the desktop app's tray menu.",
+		);
+		expect(check.detail).not.toContain("pl service install");
+	});
+
+	it.each(["linux", "darwin"] as const)(
+		"%s detail is exactly not installed (pl service install runs PrismaLens in the background)",
+		(platform) => {
+			const check = serviceCheck(null, workspace, platform);
+			expect(check.detail).toBe(
+				"not installed (pl service install runs PrismaLens in the background)",
+			);
+		},
+	);
 });

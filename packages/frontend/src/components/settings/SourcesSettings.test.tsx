@@ -30,6 +30,8 @@ const mockHooks = {
 
 const pinMutate = vi.fn();
 
+// Its rows have their own tests.
+vi.mock("./SourceDisplaySettings", () => ({ SourceDisplayGroup: () => null }));
 vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({
 		invalidateQueries: vi.fn(),

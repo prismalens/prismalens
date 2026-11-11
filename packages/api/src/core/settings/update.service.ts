@@ -474,7 +474,8 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 	private healthUrl(): string {
 		const port = resolvePort(this.env, getAppDataDir());
 		const host =
-			this.env.PRISMALENS_HOST && this.env.PRISMALENS_HOST !== "0.0.0.0"
+			this.env.PRISMALENS_HOST &&
+			!["0.0.0.0", "::"].includes(this.env.PRISMALENS_HOST)
 				? this.env.PRISMALENS_HOST
 				: "127.0.0.1";
 		return `http://${host.includes(":") ? `[${host}]` : host}:${port}/health`;
