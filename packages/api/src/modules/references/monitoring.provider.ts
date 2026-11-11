@@ -32,7 +32,21 @@ export interface MonitoringSources {
 }
 
 /** What a pasted link names: one kind, and how to find its item among the source's. */
-type Wanted = { kind: ReferenceKind; is: (item: Item) => boolean };
+type Wanted = {
+	kind: ReferenceKind;
+	is: (item: Item) => boolean;
+	/** The link filters by a pattern, which cannot be checked against one alert. */
+	unverifiable?: boolean;
+};
+
+/** Every `label="value"` matcher of an Alertmanager filter. */
+function matchersOf(
+	filter: string,
+): { key: string; op: string; value: string }[] {
+	return [...filter.matchAll(/([\w.-]+)\s*(=~|!~|!=|=)\s*"([^"]*)"/g)].map(
+		(m) => ({ key: m[1] as string, op: m[2] as string, value: m[3] as string }),
+	);
+}
 
 /** `{alertname="X", ...}` in an Alertmanager filter: X, else null. */
 function alertnameOf(filter: string | null): string | null {
@@ -47,11 +61,22 @@ function alertmanagerWanted(url: URL): Wanted | null {
 	const silence = /^\/silences\/([\w-]+)$/.exec(path);
 	if (silence)
 		return { kind: "silence", is: (i) => i.ref.id.endsWith(`:${silence[1]}`) };
-	const name =
-		path === "/alerts"
-			? alertnameOf(new URLSearchParams(query).get("filter"))
-			: null;
-	return name ? { kind: "alert", is: (i) => i.ref.label === name } : null;
+	const filter =
+		path === "/alerts" ? new URLSearchParams(query).get("filter") : null;
+	const name = alertnameOf(filter);
+	if (!name || !filter) return null;
+	// Every other matcher in the link must hold for the one alert it names.
+	const rest = matchersOf(filter).filter((m) => m.key !== "alertname");
+	if (rest.some((m) => m.op === "=~" || m.op === "!~"))
+		return { kind: "alert", is: () => false, unverifiable: true };
+	return {
+		kind: "alert",
+		is: (i) =>
+			i.ref.label === name &&
+			rest.every(
+				(m) => i.text.includes(`${m.key}="${m.value}"`) === (m.op === "="),
+			),
+	};
 }
 
 /** Prometheus's `/alerts?search=X` or `/rules?search=X`: the alerting rule named X. */
@@ -345,6 +370,11 @@ export class MonitoringProvider implements ReferenceProvider {
 				throw new SourceUnavailable(
 					this.source,
 					"this link names no single alert, silence or rule",
+				);
+			if (wanted.unverifiable)
+				throw new SourceUnavailable(
+					this.source,
+					"this link filters by a pattern, which cannot name a single alert",
 				);
 			const found = await this.items([wanted.kind], signal, c.id);
 			const hits = found.filter(

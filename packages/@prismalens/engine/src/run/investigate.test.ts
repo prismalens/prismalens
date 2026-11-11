@@ -555,6 +555,44 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.at(-1)?.kind).toBe("error");
 	});
 
+	it("a command whose lead turn fails is recorded as queued, not delivered", async () => {
+		let deliver: ((line: { text: string }) => void) | undefined;
+		const queue: { text: string; id?: string }[] = [];
+		const events: CanonicalEvent[] = [];
+		const o = opts("steerable", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "steerable",
+				FAKE_WAIT_CANCEL: "1",
+				FAKE_FAIL_ON: "plain note",
+			},
+			steer: {
+				next: () => queue.shift() ?? null,
+				onNow: (d) => {
+					deliver = d;
+					return () => {
+						deliver = undefined;
+					};
+				},
+			},
+		});
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			if (ev.kind === "tool_result" && ev.result.toolCallId === "t2") {
+				queue.push({ text: "plain note", id: "m1" }, { text: "/review", id: "m2" });
+				deliver?.({ text: "Now last.", id: "m3" });
+			}
+		}
+		const said = events
+			.filter((e) => e.kind === "operator_message")
+			.map((e) => [e.text, e.mode, e.delivered]);
+		expect(said).toEqual([
+			["plain note", "queue", true],
+			["/review", "queue", false],
+			["Now last.", "now", false],
+		]);
+	});
+
 	it("a stop during the report retry ends as cancelled, never as a report failure (#673 w34)", async () => {
 		const stop = new AbortController();
 		const events: CanonicalEvent[] = [];

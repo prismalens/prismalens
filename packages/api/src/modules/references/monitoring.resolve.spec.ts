@@ -75,11 +75,51 @@ describe("a monitoring link resolved to its record (#1024)", () => {
 		expect(
 			await refusal(
 				p,
-				"http://am.example.com/#/alerts?filter=%7Balertname%3D%22DiskFull%22%2Cinstance%3D%22db-2%22%7D",
+				"http://am.example.com/#/alerts?filter=%7Balertname%3D%22DiskFull%22%7D",
 			),
 		).toEqual({
 			source: "Alertmanager",
 			message: "2 items match this link; it names no single one",
+		});
+	});
+
+	describe("an alert link's other matchers", () => {
+		const url = (filter: string) =>
+			`http://am.example.com/#/alerts?filter=${encodeURIComponent(filter)}`;
+		const p = () =>
+			new MonitoringProvider("Alertmanager", {
+				connections: async () => [{ id: "am-1", label: "prod" }],
+				baseUrl: async () => "http://am.example.com/",
+				open: async (src) => ({
+					id: src.id,
+					label: src.label,
+					kind: "alertmanager",
+					secrets: [],
+					request: (async () =>
+						new Response(JSON.stringify(TWO_DISKS), { status: 200 })) as unknown as OpenedSource["request"],
+				}),
+			});
+
+		it("resolves the alert whose instance the link names", async () => {
+			const hit = await p().resolveUrl(
+				new URL(url('{alertname="DiskFull",instance="db-2"}')),
+				signal,
+			);
+			expect(hit?.ref.id).toBe("am-1:f2");
+		});
+
+		it("refuses a link whose instance no alert has, even when the name matches", async () => {
+			expect(await refusal(p(), url('{alertname="DiskFull",instance="db-3"}'))).toEqual({
+				source: "Alertmanager",
+				message: "nothing on it matches this link",
+			});
+		});
+
+		it("refuses a link that filters by a pattern", async () => {
+			expect(await refusal(p(), url('{alertname="DiskFull",instance=~"db-.*"}'))).toEqual({
+				source: "Alertmanager",
+				message: "this link filters by a pattern, which cannot name a single alert",
+			});
 		});
 	});
 

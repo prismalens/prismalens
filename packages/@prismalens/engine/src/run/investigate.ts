@@ -1256,6 +1256,8 @@ async function* runSession(
 				before?: string[];
 				after?: string[];
 				wrap?: (message: string) => string;
+				/** The record of the command line, yielded just before its own turn goes out. */
+				beforeCommand?: () => CanonicalEvent;
 			} = {},
 		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 			const before = frame.before ?? [];
@@ -1287,6 +1289,7 @@ async function* runSession(
 				if (!("stop" in lead) || lead.stop === "cancelled") return lead;
 				text = "";
 			}
+			if (frame.beforeCommand) yield frame.beforeCommand();
 			return yield* turn([{ type: "text", text: command }]);
 		};
 
@@ -1348,16 +1351,22 @@ async function* runSession(
 					undefined,
 					line.context,
 				);
+			let commandSent = false;
 			const flush = async function* (command: SteerLine | null) {
-				for (const l of [...held, ...(command ? [command] : [])])
-					yield record(l, true);
+				for (const l of held) yield record(l, true);
 				const said = held.map((l) => withAddendum(l.text, l.context));
 				const files = [...held, ...(command ? [command] : [])].flatMap(
 					(l) => l.attachments ?? [],
 				);
 				held = [];
 				return command
-					? yield* say(command.text, command.context, files, { before: said })
+					? yield* say(command.text, command.context, files, {
+							before: said,
+							beforeCommand: () => {
+								commandSent = true;
+								return record(command, true);
+							},
+						})
 					: yield* turn(promptParts(said.join("\n\n"), files, linkOpts()));
 			};
 			for (const [at, line] of lines.entries()) {
@@ -1365,9 +1374,11 @@ async function* runSession(
 					held.push(line);
 					continue;
 				}
+				commandSent = false;
 				r = yield* flush(line);
 				if (!("stop" in r) || r.stop === "cancelled") {
-					// What the failed command left unsent stays queued for a later resume.
+					// What the failed turn left unsent, the command included, stays queued for a later resume.
+					if (!commandSent) yield record(line, false);
 					for (const rest of lines.slice(at + 1)) yield record(rest, false);
 					return r;
 				}
