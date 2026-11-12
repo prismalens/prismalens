@@ -124,6 +124,56 @@ describe("saving a draft (#1024)", () => {
 		expect(api.conflict).toBeNull();
 	});
 
+	it("a send waits for the save in flight and carries the revision it returned", async () => {
+		await show("");
+		await show("plain chat");
+		await wait(DRAFT_DEBOUNCE_MS);
+		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([[0, "plain chat"]]);
+
+		let fields: Awaited<ReturnType<typeof api.sendFields>> | null = null;
+		const reading = act(async () => {
+			fields = await api.sendFields();
+		});
+		await act(async () => saves[0]?.done({ rev: 3, generation: 0 }));
+		await reading;
+		expect(fields).toEqual({ draftScope: "new:home", draftRev: 3 });
+	});
+
+	it("sends no save while a send is out, so the sent text never comes back as a draft", async () => {
+		await show("");
+		await show("plain chat");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 2, generation: 0 }));
+		saves.length = 0;
+
+		await show("plain chat, edited");
+		await act(async () => {
+			await api.sendFields();
+		});
+		await wait(DRAFT_DEBOUNCE_MS * 2);
+		expect(saves).toEqual([]);
+
+		await act(async () => api.sent());
+		await show("");
+		await wait(DRAFT_DEBOUNCE_MS * 2);
+		expect(saves).toEqual([]);
+	});
+
+	it("after a send that failed, saves the text it left in the box", async () => {
+		await show("");
+		await show("kept text");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 2, generation: 0 }));
+		saves.length = 0;
+
+		await act(async () => {
+			await api.sendFields();
+		});
+		await act(async () => api.release());
+		await wait(0);
+		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([[2, "kept text"]]);
+	});
+
 	it("writes no empty draft after a send, so another device's newer text is not wiped", async () => {
 		await show("");
 		await show("hello");

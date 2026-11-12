@@ -1135,6 +1135,7 @@ export function Composer({
 		}
 		const takeBack = () => recorded && record(before);
 		try {
+			const fields = await draft.sendFields();
 			const reply = await onSend(
 				{
 					...envelopeOf(
@@ -1143,7 +1144,7 @@ export function Composer({
 					),
 					quotes: parts.quotes,
 					references: parts.references,
-					...draft.sendFields(),
+					...fields,
 					...extras,
 				},
 				now,
@@ -1169,6 +1170,7 @@ export function Composer({
 			takeBack();
 			setRefusal(getErrorMessage(e));
 		} finally {
+			draft.release();
 			setSending(false);
 		}
 	};

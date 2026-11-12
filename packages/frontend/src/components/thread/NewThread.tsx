@@ -29,6 +29,7 @@ import {
 	type SendEnvelope,
 	uploadEach,
 } from "@/lib/composer-send";
+import { rememberSubject } from "@/lib/last-subject";
 import { Composer, type SlashCommand } from "./Composer";
 import { takeNewThreadSeed } from "./composer/quote";
 
@@ -207,6 +208,7 @@ export function NewThread({
 	const onSend = async (env: SendEnvelope) => {
 		if (incident) await sendIncident(incident, env);
 		else await startThread(env);
+		rememberSubject(subject);
 		return "sent" as const;
 	};
 

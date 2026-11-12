@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
+import { lastSubject, subjectMenu } from "@/lib/last-subject";
 import { cn } from "@/lib/utils";
 import { AwayStrip } from "./AwayStrip";
 
@@ -252,6 +253,8 @@ function SubjectPicker({
 	services: { id: string; name: string }[];
 	onPick: (value: string) => void;
 }) {
+	// Read when the menu renders, so a send in this tab shows up next time.
+	const menu = subjectMenu(projects, services, lastSubject());
 	return (
 		<DropdownMenu>
 			{icon ? (
@@ -279,13 +282,21 @@ function SubjectPicker({
 				side={icon ? "top" : "bottom"}
 			>
 				<DropdownMenuRadioGroup value={value} onValueChange={onPick}>
+					{menu.first && (
+						<DropdownMenuRadioItem
+							value={menu.first.value}
+							data-testid="subject-last"
+						>
+							{menu.first.name}
+						</DropdownMenuRadioItem>
+					)}
 					<DropdownMenuRadioItem value="none" data-testid="subject-none">
 						No project
 					</DropdownMenuRadioItem>
-					{projects.length > 0 && (
+					{menu.projects.length > 0 && (
 						<DropdownMenuLabel>Projects</DropdownMenuLabel>
 					)}
-					{projects.map((p) => (
+					{menu.projects.map((p) => (
 						<DropdownMenuRadioItem
 							key={p.id}
 							value={`project:${p.id}`}
@@ -294,10 +305,10 @@ function SubjectPicker({
 							{p.name}
 						</DropdownMenuRadioItem>
 					))}
-					{services.length > 0 && (
+					{menu.services.length > 0 && (
 						<DropdownMenuLabel>Services</DropdownMenuLabel>
 					)}
-					{services.map((s) => (
+					{menu.services.map((s) => (
 						<DropdownMenuRadioItem
 							key={s.id}
 							value={`service:${s.id}`}

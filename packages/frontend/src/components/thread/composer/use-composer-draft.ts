@@ -96,6 +96,9 @@ export function useComposerDraft({
 	const saving = useRef<Promise<void>>(Promise.resolve());
 	// After a send the box is empty; that is not a draft to save over what the server holds.
 	const justSent = useRef(false);
+	// From the moment a send reads its fields until it settles, no save goes out: a late
+	// save would land after the server's tombstone and bring the sent text back (#1101).
+	const holding = useRef(false);
 	const restore = useRef(onRestore);
 	restore.current = onRestore;
 	const latest = useRef({ content, files });
@@ -135,7 +138,7 @@ export function useComposerDraft({
 	});
 
 	const push = async (retried = false): Promise<void> => {
-		if (!scope) return;
+		if (!scope || holding.current) return;
 		const c = latest.current.content;
 		try {
 			const saved = await save.mutateAsync({
@@ -216,12 +219,21 @@ export function useComposerDraft({
 		/** "Changed on another device" never shows once storage refuses the journal. */
 		unsaved,
 		/** The envelope's draft fields: the server deletes the draft when `draftRev` is current. */
-		sendFields: () =>
-			scope && at.current.rev > 0
+		sendFields: async () => {
+			holding.current = true;
+			await saving.current;
+			return scope && at.current.rev > 0
 				? { draftScope: scope, draftRev: at.current.rev }
 				: scope
 					? { draftScope: scope }
-					: {},
+					: {};
+		},
+		/** The send settled: saves resume, and one goes out for text a failed send left. */
+		release: () => {
+			if (!holding.current) return;
+			holding.current = false;
+			if (!justSent.current) void pushRef.current();
+		},
 		/**
 		 * A send went out: the server tombstoned the draft, unless another device saved a newer
 		 * one first. The server's own revision and generation replace the assumed ones, and a
@@ -235,6 +247,7 @@ export function useComposerDraft({
 				generation: before.generation + 1,
 			};
 			justSent.current = true;
+			holding.current = false;
 			writeJournal(scope, undefined);
 			void fetchServerDraft(client, scope).then(
 				(now) => {
