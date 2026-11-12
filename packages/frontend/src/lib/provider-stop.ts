@@ -161,7 +161,7 @@ export function stopStrip(
 	if (limit.resetsAt)
 		return {
 			head,
-			detail: `Resumes ${clock(limit.nextAttemptAt ?? limit.resetsAt)}`,
+			detail: `Resumes ${clock(limit.resetsAt)}`,
 		};
 	return {
 		head,
@@ -210,13 +210,13 @@ export function stopRowWords(
 			: mode === "overloaded"
 				? "Provider busy"
 				: "Usage limit";
-	// Limited already names the stop: the detail is its one time (sheet §10). A known reset
-	// resumes; with none, the next attempt is only a try (#1101 cat 17 item 4).
+	// Limited already names the stop: the detail is its one time, the reset, which every
+	// surface says (sheet §10). With no reset, the next attempt is only a try (#1101 cat 17).
 	if (limit.resetsAt)
 		return {
 			state: "limited",
 			word: "Limited",
-			detail: `Resumes ${clock(limit.nextAttemptAt ?? limit.resetsAt)}`,
+			detail: `Resumes ${clock(limit.resetsAt)}`,
 		};
 	if (limit.nextAttemptAt)
 		return {

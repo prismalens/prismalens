@@ -152,7 +152,8 @@ describe("incoming messages fold to one row each (#1101 cat 17 item 9)", () => {
 		);
 	});
 
-	it("quotes a child's report without the thread path its header already links", () => {
+	// a04d92755 quotes plain words: no thread path, line breaks folded to spaces.
+	it("quotes a child's report without the thread path its header already links, on one line", () => {
 		const [row] = inboundRows(
 			deriveTranscript([
 				inbound(1, "m1", "delivered", {
@@ -160,7 +161,7 @@ describe("incoming messages fold to one row each (#1101 cat 17 item 9)", () => {
 				}),
 			]),
 		);
-		expect(inboundText(row)).toBe("finished: answered.\nReport done.");
+		expect(inboundText(row)).toBe("finished: answered. Report done.");
 	});
 
 	it("drops a child's finish line when its report arrived as a message, keeping the finish of a child that sent none", () => {
