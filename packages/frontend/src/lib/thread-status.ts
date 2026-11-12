@@ -240,6 +240,15 @@ export function rollUpLine(statuses: readonly ThreadStatus[]): string {
 }
 
 /** A row's age in one short word: "now", "5m", "3h", "2d". */
+/** "1h 11m", "12m", "<1m": how long a running thread has worked. */
+export function elapsedWord(ms: number): string {
+	const min = Math.floor(ms / 60_000);
+	if (min < 1) return "<1m";
+	if (min < 60) return `${min}m`;
+	const h = Math.floor(min / 60);
+	return min % 60 ? `${h}h ${min % 60}m` : `${h}h`;
+}
+
 export function ageWord(at: number, now: number): string {
 	const min = Math.floor((now - at) / 60_000);
 	if (min < 1) return "now";

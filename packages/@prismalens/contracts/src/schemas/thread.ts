@@ -142,6 +142,8 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	hasDraft: z.boolean().optional(),
 	/** The thread's newest linked pull request, for the hover card and the row glyph (#1024). */
 	pr: ThreadRowPrSchema.optional(),
+	/** The branch its workspace works on, for the row's meta line (#1105); null with none. */
+	branch: z.string().max(300).nullable().optional(),
 	/**
 	 * The thread waits on its provider (#1024 surface F, #1101): Limited with its reset
 	 * or next try, or Blocked (`stopState(mode)`) with no timer; null otherwise.
