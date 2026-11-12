@@ -27,7 +27,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		<span data-testid="model-chip">{model}</span>
 	),
 	EffortChip: () => <span data-testid="effort-chip" />,
-	AccessChip: ({ level }: { level: string }) => (
+	ModeChip: ({ level }: { level: string }) => (
 		<span data-testid="access-chip">{level}</span>
 	),
 	effortLevels: (h?: { checked?: { efforts?: unknown[] } }) =>
@@ -207,9 +207,9 @@ describe("the one composer (#1020)", () => {
 		expect(shell?.lastElementChild).toBe(q("composer-blocked"));
 	});
 
-	it("hides effort when the agent has none, and shows it when it does", async () => {
+	it("shows the effort control whether or not the agent has levels; it locks itself when it has none", async () => {
 		await render();
-		expect(q("effort-chip")).toBeNull();
+		expect(q("effort-chip")).not.toBeNull();
 		await render({
 			choice: {
 				harness: agent([{ id: "high", name: "High", default: true }]),
@@ -820,6 +820,38 @@ describe("the one composer (#1020)", () => {
 	});
 });
 
+describe("dropping files on the box (#1101 7, row 13)", () => {
+	const drop = async (target: Element, files: File[]) => {
+		const event = new Event("drop", { bubbles: true, cancelable: true });
+		Object.defineProperty(event, "dataTransfer", {
+			value: { files, types: ["Files"] },
+		});
+		await act(async () => {
+			target.dispatchEvent(event);
+		});
+		await settleEditor();
+		return event;
+	};
+
+	it("a file dropped on the box outside the editor becomes a chip, and a program shows its refusal on the chip", async () => {
+		await render();
+		const box = q("composer-box") as HTMLElement;
+		const footer = q("composer-chips") as HTMLElement;
+		const notes = new File(["hello"], "notes.txt", { type: "text/plain" });
+		const event = await drop(footer, [notes]);
+		expect(event.defaultPrevented).toBe(true);
+		expect(
+			Array.from(box.querySelectorAll('[data-testid="composer-file"]')).map(
+				(c) => c.textContent,
+			),
+		).toEqual([expect.stringContaining("notes.txt")]);
+		await drop(footer, [new File(["MZ"], "setup.exe", { type: "" })]);
+		expect(q("composer-file-refusal")?.textContent).toBe(
+			"Programs can't attach",
+		);
+	});
+});
+
 describe("a schedule's composer (#1020)", () => {
 	it("takes no files when told, and offers Repeat… beside Send with the text", async () => {
 		const onRepeat = vi.fn();
@@ -849,7 +881,7 @@ describe("a schedule's composer (#1020)", () => {
 		expect(onSend).not.toHaveBeenCalled();
 	});
 
-	it("Shift+Tab picks the next permission level, says it, and says how to move focus back (#1101)", async () => {
+	it("Shift+Tab picks the next permission level and says its name; the box still says how to move focus back (#1101)", async () => {
 		const props = await render();
 		const box = q("composer-input") as HTMLElement;
 		await act(async () => {
@@ -862,13 +894,50 @@ describe("a schedule's composer (#1020)", () => {
 				}),
 			);
 		});
-		expect(props.onChoice).toHaveBeenCalledWith({ accessLevel: "auto" });
-		expect(q("composer-hint")?.textContent).toBe(
-			`Auto, above the default. ${ACCESS_LEVEL_LINE.auto} Esc, then Shift+Tab to move focus back.`,
-		);
+		expect(props.onChoice).toHaveBeenCalledWith({
+			accessLevel: "auto",
+			agentMode: null,
+		});
+		expect(q("composer-hint")?.textContent).toBe("Auto");
 		const described = box.getAttribute("aria-describedby") ?? "";
 		expect(document.getElementById(described)?.textContent).toBe(
 			"Shift+Tab changes the permission level. Esc, then Shift+Tab to move focus back.",
 		);
+	});
+
+	it("Shift+Tab steps through the agent's own modes, sending a mode no level maps to as the agent's mode", async () => {
+		const props = await render({
+			choice: {
+				harness: {
+					id: "claude-code",
+					label: "Claude Code",
+					checked: {
+						outcome: "answers-acp",
+						images: true,
+						efforts: [],
+						modes: [
+							{ id: "default", name: "Manual" },
+							{ id: "plan", name: "Plan" },
+						],
+					},
+				} as unknown as HarnessStatus,
+				model: "sonnet",
+				effort: null,
+				accessLevel: "supervised",
+			},
+		});
+		const box = q("composer-input") as HTMLElement;
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					key: "Tab",
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+		expect(props.onChoice).toHaveBeenCalledWith({ agentMode: "plan" });
+		expect(q("composer-hint")?.textContent).toBe("Plan");
 	});
 });

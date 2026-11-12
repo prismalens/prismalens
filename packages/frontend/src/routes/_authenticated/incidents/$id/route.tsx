@@ -176,6 +176,7 @@ function IncidentLayout() {
 		) ?? null;
 	const startInput = (start: RunStart) => ({
 		...(start.accessLevel ? { accessLevel: start.accessLevel } : {}),
+		...(start.agentMode ? { agentMode: start.agentMode } : {}),
 		...(start.harness ? { harness: start.harness } : {}),
 		...(start.model !== undefined ? { model: start.model || null } : {}),
 		...(start.effort !== undefined ? { effort: start.effort } : {}),

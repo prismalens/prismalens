@@ -34,7 +34,7 @@ import { OverlaySchema } from "./overlay.js";
 import { AgentCommandsSchema } from "./references.js";
 import { RunCredentialSchema, WorkInSchema } from "./repository.js";
 import { RunComparisonSchema } from "./run-views.js";
-import { AccessLevelSchema } from "./settings.js";
+import { AccessLevelSchema, AgentModeIdSchema } from "./settings.js";
 import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
 	INVESTIGATION_KINDS,
@@ -969,6 +969,8 @@ export const RunChoiceSchema = z.object({
 	harness: z.enum(HARNESS_IDS).optional(),
 	model: z.string().min(1).max(256).nullable().optional(),
 	effort: z.string().min(1).max(64).nullable().optional(),
+	/** The agent's own mode when no permission level maps to it; the level still sets PrismaLens's asks. */
+	agentMode: AgentModeIdSchema.optional(),
 });
 export type RunChoice = z.infer<typeof RunChoiceSchema>;
 

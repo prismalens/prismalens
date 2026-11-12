@@ -77,11 +77,17 @@ const MERGE_REFUSAL_CODE: Record<
 };
 
 /** The chips a request named; each field it left out falls back to Settings (#673 w52). */
-function runChoice({ harness, model, effort }: RunChoice): RunChoice {
+function runChoice({
+	harness,
+	model,
+	effort,
+	agentMode,
+}: RunChoice): RunChoice {
 	return {
 		...(harness ? { harness } : {}),
 		...(model !== undefined ? { model } : {}),
 		...(effort !== undefined ? { effort } : {}),
+		...(agentMode ? { agentMode } : {}),
 	};
 }
 

@@ -11,7 +11,6 @@ import type {
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import type { ReactNode } from "react";
-import { AccessLevelRows } from "@/components/agent/AgentPicker";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { ComposerMenu } from "@/components/thread/composer/ComposerMenu";
 import { ConflictLine } from "@/components/thread/composer/chips";
@@ -285,20 +284,6 @@ export const composerGallery: GallerySection[] = [
 						]}
 					/>
 				</Box>
-			</div>
-		),
-	},
-	{
-		id: "composer-permission",
-		title: "Permission picker",
-		render: () => (
-			<div className="max-w-[460px] rounded-surface bg-surface-2 p-1 shadow-float">
-				<AccessLevelRows
-					harness={undefined}
-					level="full-access"
-					fallback={{ level: "auto-edits", from: "settings" }}
-					onPick={noop}
-				/>
 			</div>
 		),
 	},

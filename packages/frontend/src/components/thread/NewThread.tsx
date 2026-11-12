@@ -45,6 +45,7 @@ interface Picked {
 	model?: string;
 	effort?: string | null;
 	accessLevel?: AccessLevel;
+	agentMode?: string | null;
 }
 
 /**
@@ -115,8 +116,10 @@ export function NewThread({
 		picked.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
 	const unready = harness ? unreadyLine(harness) : null;
 
+	const agentMode = picked.agentMode ?? null;
 	const run = {
 		accessLevel,
+		...(agentMode ? { agentMode } : {}),
 		...(picked.harness ? { harness: picked.harness } : {}),
 		...(picked.model !== undefined ? { model: picked.model } : {}),
 		...(picked.effort !== undefined ? { effort: picked.effort } : {}),
@@ -213,12 +216,15 @@ export function NewThread({
 			placeholder={
 				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
 			}
-			choice={{ harness, model, effort, accessLevel }}
+			choice={{ harness, model, effort, accessLevel, agentMode }}
 			onChoice={(next) =>
 				setPicked((p) => ({
 					...p,
 					...(next.harnessId
-						? { harness: next.harnessId, effort: undefined }
+						? { harness: next.harnessId, effort: undefined, agentMode: null }
+						: {}),
+					...(next.agentMode !== undefined
+						? { agentMode: next.agentMode }
 						: {}),
 					...(next.model !== undefined ? { model: next.model } : {}),
 					...(next.effort !== undefined ? { effort: next.effort } : {}),

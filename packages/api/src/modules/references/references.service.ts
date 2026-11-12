@@ -113,6 +113,13 @@ const PATH_KEYS = ["path", "file_path", "filePath", "notebook_path"] as const;
  * `GET /references/search` and the send-time snapshots (#1024). Providers answer
  * together; one that fails shows as a line and never blocks the rest.
  */
+/** Menu groups are named by type, never by brand (sheet §5). */
+const APP_COMMANDS_GROUP = "Commands";
+function agentCommandsGroup(harness: string | null): string {
+	const id = HARNESS_IDS.find((h) => h === harness);
+	return id ? `${HARNESS_REGISTRY[id].label} commands` : "Agent commands";
+}
+
 @Injectable()
 export class ReferencesService {
 	readonly records: RecordsProvider;
@@ -146,7 +153,15 @@ export class ReferencesService {
 		const q = number || key ? "" : input.q;
 		const unavailable: ReferenceSearchResult["unavailable"] = [];
 		const candidates: ReferenceCandidate[] = [];
-		if (kinds.includes("command")) candidates.push(...this.commands(ctx));
+		if (kinds.includes("command")) {
+			candidates.push(...this.commands(ctx));
+			// An agent that has reported no commands says so in one row (#1101 6.3).
+			if (ctx.harness && ctx.commands.list.length === 0)
+				unavailable.push({
+					source: agentCommandsGroup(ctx.harness),
+					message: "none reported yet",
+				});
+		}
 		const results = await Promise.allSettled(
 			this.providers
 				.filter((p) => p.kinds.some((k) => kinds.includes(k)))
@@ -325,8 +340,7 @@ export class ReferencesService {
 					ctx.commands.list.map((c) => c.name),
 				)
 			: null;
-		const harness = HARNESS_IDS.find((h) => h === ctx.harness);
-		const group = harness ? HARNESS_REGISTRY[harness].label : "Agent";
+		const group = agentCommandsGroup(ctx.harness);
 		return [
 			...APP_COMMANDS.filter((c) =>
 				c.needs === "compact"
@@ -338,7 +352,7 @@ export class ReferencesService {
 				ref: { kind: "command" as const, id: c.name, label: `/${c.name}` },
 				detail: c.description,
 				source: "app" as const,
-				group: "PrismaLens",
+				group: APP_COMMANDS_GROUP,
 			})),
 			...ctx.commands.list
 				.filter((c) => !HIDDEN_AGENT_COMMANDS.has(c.name) && c.name !== compact)

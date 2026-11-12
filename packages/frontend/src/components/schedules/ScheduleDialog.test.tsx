@@ -31,7 +31,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		<span data-testid="chip">{`${harness?.id ?? "none"}:${model}`}</span>
 	),
 	EffortChip: () => null,
-	AccessChip: ({ level }: { level: string }) => (
+	ModeChip: ({ level }: { level: string }) => (
 		<span data-testid="access-chip">{level}</span>
 	),
 	effortLevels: () => [],

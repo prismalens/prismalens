@@ -49,8 +49,8 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		AccessChip: (p: {
-			onLevel: (l: string) => void;
+		ModeChip: (p: {
+			onPick: (n: { accessLevel?: string; agentMode: string | null }) => void;
 			level: string;
 			lockedHint?: string;
 		}) =>
@@ -61,7 +61,9 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 					"data-value": p.level,
 					"data-hint": p.lockedHint,
 				},
-				button("pick-mode", () => p.onLevel("full-access")),
+				button("pick-mode", () =>
+					p.onPick({ accessLevel: "full-access", agentMode: null }),
+				),
 			),
 		defaultAccessOf: () => ({
 			level: { level: h.settingsLevel, from: "agent" },

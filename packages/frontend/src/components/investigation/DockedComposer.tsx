@@ -59,7 +59,7 @@ import { RunDock } from "./RunDock";
 type Choice =
 	| { kind: "model"; harness: HarnessStatus; model: string }
 	| { kind: "effort"; effort: string }
-	| { kind: "level"; level: AccessLevel };
+	| { kind: "level"; level: AccessLevel; agentMode: string | null };
 
 /** The thread the box sits under, and what Send can do on it (#811). */
 export interface ThreadActions {
@@ -111,8 +111,8 @@ export function threadActions(t: {
 					? "Ask about this incident"
 					: "Brief the agent (optional)",
 			hint: {
-				ask: "Starts a conversation about this incident. Its latest answer also shows on the overview.",
-				investigate: "Starts a run. It runs live and ends in a report here.",
+				ask: "Starts a conversation",
+				investigate: "Ends in a report",
 			},
 		};
 	if (t.live)
@@ -127,7 +127,7 @@ export function threadActions(t: {
 			],
 			initial: "message",
 			placeholder: "Message the agent",
-			hint: { message: "Reaches the agent at its next pause." },
+			hint: { message: "Sends at the next pause" },
 		};
 	if (t.chat)
 		return {
@@ -142,8 +142,7 @@ export function threadActions(t: {
 			initial: "follow-up",
 			placeholder: "Ask a follow-up",
 			hint: {
-				"follow-up":
-					"Follow-ups stay in this conversation. The latest answer also shows on the overview.",
+				"follow-up": "Stays in this conversation",
 			},
 		};
 	// No continue control (rulings 2, 3): typing and sending continues; the run decides which kind.
@@ -161,7 +160,7 @@ export function threadActions(t: {
 			initial: "continue",
 			placeholder: `Message ${t.agent}`,
 			hint: {
-				continue: `Answers here, in the same ${t.agent} session; ends in a report here.`,
+				continue: "Same session, ends in report",
 			},
 		};
 	return {
@@ -175,7 +174,7 @@ export function threadActions(t: {
 		],
 		initial: "follow-up",
 		placeholder: `Message ${t.agent}`,
-		hint: { "follow-up": `Answers here, in the same ${t.agent} session.` },
+		hint: { "follow-up": "Same agent session" },
 	};
 }
 
@@ -384,10 +383,12 @@ export function DockedComposer({
 	const accessLevel: AccessLevel = draft
 		? (own.accessLevel ?? defaults.level.level)
 		: runFollowUpLevel(inv, defaults.level.level, live);
+	// Only a new run takes a picked mode; a follow-up keeps the run's (sheet §5).
+	const agentMode = draft ? (own.agentMode ?? null) : null;
 
 	const choose = (c: Choice) => {
 		const now: DraftChoice = hid
-			? { harness: hid, model, effort, accessLevel }
+			? { harness: hid, model, effort, accessLevel, agentMode }
 			: {};
 		// Effort levels are per agent: another agent starts from its Settings (#798).
 		const next: DraftChoice =
@@ -397,7 +398,7 @@ export function DockedComposer({
 					: { harness: c.harness.id as HarnessId, model: c.model }
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
-					: { ...now, accessLevel: c.level };
+					: { ...now, accessLevel: c.level, agentMode: c.agentMode };
 		// On a run, the draft is this run with one change; a follow-up never changes the level.
 		if (draft) record.setDraftChoice(next);
 		else if (finished && inv) {
@@ -408,6 +409,7 @@ export function DockedComposer({
 		...(own.harness ? { harness: own.harness } : {}),
 		...(own.model !== undefined ? { model: own.model } : {}),
 		...(own.effort !== undefined ? { effort: own.effort } : {}),
+		...(agentMode ? { agentMode } : {}),
 	};
 
 	const unready = draft && harness ? unreadyLine(harness) : null;
@@ -438,7 +440,12 @@ export function DockedComposer({
 			if (picked)
 				choose({ kind: "model", harness: picked, model: n.model ?? "" });
 		} else if (n.effort) choose({ kind: "effort", effort: n.effort });
-		else if (n.accessLevel) choose({ kind: "level", level: n.accessLevel });
+		else if (n.accessLevel || n.agentMode !== undefined)
+			choose({
+				kind: "level",
+				level: n.accessLevel ?? accessLevel,
+				agentMode: n.agentMode ?? null,
+			});
 	};
 
 	const upload = (env: SendEnvelope) =>
@@ -511,14 +518,12 @@ export function DockedComposer({
 			: handoff
 				? [handoff.where, ...(handoff.what ? [handoff.what] : [])]
 				: preview.isPending
-					? [`Checking what ${agentLabel} can take from this run.`]
+					? ["Checking the session"]
 					: [];
 	const notice = !finished
 		? undefined
 		: (handoff?.problem ??
-			(preview.isError
-				? `Unable to check what ${agentLabel} will get. Sending still works.`
-				: undefined));
+			(preview.isError ? "Not checked; sending still works" : undefined));
 	const above = hint.some(Boolean) ? (
 		<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
 			{hint.map((line) => (
@@ -565,7 +570,7 @@ export function DockedComposer({
 					state={live ? "live" : "ready"}
 					scope={inv ? `thread:${inv.id}` : `new:incident:${incident.id}`}
 					{...actionProps(thread.actions, action, setAction)}
-					choice={{ harness, model, effort, accessLevel }}
+					choice={{ harness, model, effort, accessLevel, agentMode }}
 					onChoice={onChoice}
 					accessHint={
 						finished

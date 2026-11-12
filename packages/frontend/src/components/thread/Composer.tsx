@@ -9,7 +9,6 @@ import {
 } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
-	ACCESS_LEVEL_LINE,
 	type ChipAttrs,
 	type ComposerDoc,
 	type ComposerInline,
@@ -49,13 +48,15 @@ import {
 	useState,
 } from "react";
 import {
-	AccessChip,
-	defaultAccessOf,
 	EffortChip,
-	effortLevels,
+	ModeChip,
 	ModelChip,
-	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import {
+	agentModes,
+	chosenMode,
+	levelOfMode,
+} from "@/components/agent/agent-modes";
 import {
 	PromptInput,
 	PromptInputBody,
@@ -156,6 +157,8 @@ export interface ComposerChoice {
 	model: string;
 	effort: string | null;
 	accessLevel: AccessLevel;
+	/** The agent's own mode when no level maps to it; null clears it (sheet §5). */
+	agentMode?: string | null;
 }
 
 /** A page's own `/` action; the menu also holds app commands and the agent's advertised ones (#1024). */
@@ -262,6 +265,8 @@ export interface ComposerProps {
 	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** Access is shown read-only with this reason; the agent chips stay live. */
 	accessHint?: string;
+	/** Offer only modes a level maps to: the host stores a level alone (a schedule). */
+	levelModesOnly?: boolean;
 	/** The message goes to no agent (a note): no agent chips. */
 	agentless?: boolean;
 	/** Send works on an empty box (an investigation's brief is optional). */
@@ -484,6 +489,7 @@ export function Composer({
 	onFilesChange,
 	boxRef,
 	accessHint,
+	levelModesOnly,
 	agentless,
 	emptySend,
 	sendLabel = "Send",
@@ -563,7 +569,6 @@ export function Composer({
 				? harness.checked.images
 				: null,
 	};
-	const { axes } = useAgentChoice();
 
 	// The menu: a trigger at the caret, searched as typed; Esc dismisses that trigger only.
 	const menuOpen =
@@ -1017,16 +1022,28 @@ export function Composer({
 			setHint(why);
 			return;
 		}
+		// The agent's own modes when it lists them, else the four levels (sheet §5).
+		const modes = agentModes(harness);
+		if (modes) {
+			const now = chosenMode(harness, choice.accessLevel, choice.agentMode);
+			const at = modes.findIndex((m) => m.id === now);
+			const next = modes[(at + 1) % modes.length];
+			if (!next) return;
+			const mapped = levelOfMode(harness, next.id, choice.accessLevel);
+			onChoice(
+				mapped
+					? { accessLevel: mapped, agentMode: null }
+					: { agentMode: next.id },
+			);
+			setHint(next.name);
+			return;
+		}
 		const next =
 			ACCESS_LEVELS[
 				(ACCESS_LEVELS.indexOf(choice.accessLevel) + 1) % ACCESS_LEVELS.length
 			] ?? "supervised";
-		onChoice({ accessLevel: next });
-		const fallback = defaultAccessOf(harness, axes).level.level;
-		const above = ACCESS_LEVELS.indexOf(next) > ACCESS_LEVELS.indexOf(fallback);
-		setHint(
-			`${ACCESS_LEVEL_LABEL[next]}${above ? ", above the default" : ""}. ${ACCESS_LEVEL_LINE[next]} ${FOCUS_BACK}`,
-		);
+		onChoice({ accessLevel: next, agentMode: null });
+		setHint(ACCESS_LEVEL_LABEL[next]);
 	};
 
 	const pick = (hit: ReferenceHit) => {
@@ -1440,7 +1457,6 @@ export function Composer({
 			: agentFacts.images === false
 				? `${agentLabel} can't take images. Other files attach.`
 				: "Images: not checked yet. Other files attach.";
-	const hasEffort = effortLevels(harness).length > 0;
 	const docked = !!dock;
 	return (
 		<div
@@ -1489,121 +1505,145 @@ export function Composer({
 					onUseTheirs={draft.useTheirs}
 				/>
 			)}
-			{menuOpen && trigger && (result || search.isFetching || search.error) && (
-				<ComposerMenu
-					trigger={trigger.trigger}
-					query={trigger.query}
-					result={result}
-					loading={search.isFetching}
-					failed={search.error ? getErrorMessage(search.error) : null}
-					active={activeRow}
-					onActive={setActive}
-					onPick={pick}
-				/>
-			)}
-			<div
-				className={cn(
-					"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
-					floating && "shadow-float",
-				)}
-			>
-				{docked && (
-					<div
-						className="flex flex-col gap-2.5 bg-surface-3 px-3 pt-2.5 pb-2"
-						data-testid="composer-dock"
-					>
-						{dock}
-					</div>
-				)}
-				<PromptInput
-					data-live={live ? "" : undefined}
-					className="[&>[data-slot=input-group]]:bg-transparent"
-					onSubmit={() => void submit(false)}
-				>
-					<PromptInputBody>
-						{!agentless && (
-							<span id={keysId} className="sr-only">
-								Shift+Tab changes the permission level. {FOCUS_BACK}
-							</span>
-						)}
-						<ChipContext.Provider value={chipContext}>
-							<EditorContent
-								editor={editor}
-								className="w-full min-w-0 px-3 pt-2.5"
-								data-testid="composer-editor"
+			{/* The menu floats above the box at one width and never pushes the page (sheet §0.5, §5). */}
+			<div className="relative">
+				{menuOpen &&
+					trigger &&
+					(result || search.isFetching || search.error) && (
+						<div className="absolute bottom-full left-0 z-30 mb-1.5 w-[min(100%,480px)]">
+							<ComposerMenu
+								trigger={trigger.trigger}
+								query={trigger.query}
+								result={result}
+								loading={search.isFetching}
+								failed={search.error ? getErrorMessage(search.error) : null}
+								active={activeRow}
+								onActive={setActive}
+								onPick={pick}
 							/>
-						</ChipContext.Provider>
-					</PromptInputBody>
-					<PromptInputFooter className="-ml-1.5">
-						{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
-						<PromptInputTools
-							className="min-w-0 flex-1 gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>*]:shrink-0 sm:flex-wrap sm:gap-y-1"
-							data-testid="composer-chips"
-							data-scroll-x
-						>
-							{!noFiles && (
-								<Hint label={clipHint} side="top">
-									<PromptInputButton
-										aria-label="Attach a file"
-										disabled={blocked}
-										onClick={() => picker.current?.click()}
-										className="w-8 text-text-3"
-										data-testid="composer-attach"
-									>
-										<Paperclip className="size-3.5" />
-									</PromptInputButton>
-								</Hint>
-							)}
-							<input
-								ref={picker}
-								type="file"
-								multiple
-								hidden
-								onChange={(e) => {
-									if (e.target.files) void add(Array.from(e.target.files));
-									e.target.value = "";
-								}}
-								data-testid="composer-file-input"
-							/>
-							{!agentless && (
-								<LockedWhy why={locked ? KEPT : null}>
-									<ModelChip
-										harness={harness}
-										model={choice.model}
-										disabled={locked || blocked}
-										onPick={(h, m) =>
-											onChoice({ harnessId: h.id as HarnessId, model: m })
-										}
-									/>
-								</LockedWhy>
-							)}
-							{!agentless && hasEffort && (
-								<LockedWhy why={locked ? KEPT : null}>
-									<EffortChip
-										harness={harness}
-										model={choice.model}
-										effort={choice.effort}
-										disabled={locked || blocked}
-										onEffort={(effort) => onChoice({ effort })}
-										onModel={(model) => onChoice({ model })}
-									/>
-								</LockedWhy>
-							)}
-							{!agentless && (
-								<AccessChip
-									harness={harness}
-									level={choice.accessLevel}
-									onLevel={(accessLevel) => onChoice({ accessLevel })}
-									lockedHint={accessHint ?? (locked ? KEPT : undefined)}
-									disabled={blocked}
-								/>
-							)}
-						</PromptInputTools>
-						<div className="ml-auto flex shrink-0 items-center gap-0.5">
-							{action}
 						</div>
-					</PromptInputFooter>
-				</PromptInput>
+					)}
+				{/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target; the editor and the attach button are the keyboard paths. */}
+				<div
+					className={cn(
+						"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
+						floating && "shadow-float",
+					)}
+					data-testid="composer-box"
+					onDragOver={(e) => {
+						if (!noFiles && e.dataTransfer?.types.includes("Files"))
+							e.preventDefault();
+					}}
+					onDrop={(e) => {
+						// The editor takes drops on itself at the drop point; this catches the rest of the box.
+						if (e.defaultPrevented || noFiles) return;
+						const list = Array.from(e.dataTransfer?.files ?? []);
+						if (!list.length) return;
+						e.preventDefault();
+						void add(list);
+					}}
+				>
+					{/* One surface inside the box (sheet §5): the dock sits on it over a hairline, and hides when empty. */}
+					{docked && (
+						<div
+							className="relative flex flex-col gap-2.5 px-3 pt-2.5 pb-2 after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-hairline empty:hidden"
+							data-testid="composer-dock"
+						>
+							{dock}
+						</div>
+					)}
+					<PromptInput
+						data-live={live ? "" : undefined}
+						className="[&>[data-slot=input-group]]:bg-transparent"
+						onSubmit={() => void submit(false)}
+					>
+						<PromptInputBody>
+							{!agentless && (
+								<span id={keysId} className="sr-only">
+									Shift+Tab changes the permission level. {FOCUS_BACK}
+								</span>
+							)}
+							<ChipContext.Provider value={chipContext}>
+								<EditorContent
+									editor={editor}
+									className="w-full min-w-0 px-3 pt-2.5"
+									data-testid="composer-editor"
+								/>
+							</ChipContext.Provider>
+						</PromptInputBody>
+						<PromptInputFooter className="-ml-1.5">
+							{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
+							<PromptInputTools
+								className="min-w-0 flex-1 gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&>*]:shrink-0 sm:flex-wrap sm:gap-y-1"
+								data-testid="composer-chips"
+								data-scroll-x
+							>
+								{!noFiles && (
+									<Hint label={clipHint} side="top">
+										<PromptInputButton
+											aria-label="Attach a file"
+											disabled={blocked}
+											onClick={() => picker.current?.click()}
+											className="w-8 text-text-3"
+											data-testid="composer-attach"
+										>
+											<Paperclip className="size-3.5" />
+										</PromptInputButton>
+									</Hint>
+								)}
+								<input
+									ref={picker}
+									type="file"
+									multiple
+									hidden
+									onChange={(e) => {
+										if (e.target.files) void add(Array.from(e.target.files));
+										e.target.value = "";
+									}}
+									data-testid="composer-file-input"
+								/>
+								{!agentless && (
+									<LockedWhy why={locked ? KEPT : null}>
+										<ModelChip
+											harness={harness}
+											model={choice.model}
+											disabled={locked || blocked}
+											onPick={(h, m) =>
+												onChoice({ harnessId: h.id as HarnessId, model: m })
+											}
+										/>
+									</LockedWhy>
+								)}
+								{!agentless && (
+									<LockedWhy why={locked ? KEPT : null}>
+										<EffortChip
+											harness={harness}
+											model={choice.model}
+											effort={choice.effort}
+											disabled={locked || blocked}
+											onEffort={(effort) => onChoice({ effort })}
+											onModel={(model) => onChoice({ model })}
+										/>
+									</LockedWhy>
+								)}
+								{!agentless && (
+									<ModeChip
+										harness={harness}
+										level={choice.accessLevel}
+										agentMode={choice.agentMode ?? null}
+										onPick={(next) => onChoice(next)}
+										lockedHint={accessHint ?? (locked ? KEPT : undefined)}
+										disabled={blocked}
+										levelsOnly={levelModesOnly}
+									/>
+								)}
+							</PromptInputTools>
+							<div className="ml-auto flex shrink-0 items-center gap-0.5">
+								{action}
+							</div>
+						</PromptInputFooter>
+					</PromptInput>
+				</div>
 			</div>
 			{(blocked || refusal || notice) && (
 				<p

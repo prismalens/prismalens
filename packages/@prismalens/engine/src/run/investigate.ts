@@ -165,6 +165,8 @@ export interface RunInvestigationOptions {
 	 * one keeps the reopened session's mode and shows every ask.
 	 */
 	accessLevel?: AccessLevel;
+	/** The agent's own mode the composer picked when no level maps to it (#1101); set as is, no fallback. */
+	agentMode?: string;
 	/** The user's stored values for this agent from Settings (#907); they win over the host's. */
 	env?: NodeJS.ProcessEnv;
 	/** Which host variables reach the agent; the user's env minus PrismaLens's own secrets by default (#817). */
@@ -670,10 +672,11 @@ async function* runSession(
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
 	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
-	let keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
+	let keepMode =
+		!!opts.resume?.sessionId && !opts.accessLevel && !opts.agentMode;
 	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
 	const access = resolveAccess(opts.harness, level);
-	const askedMode = access.mode ?? null;
+	const askedMode = opts.agentMode ?? access.mode ?? null;
 	let fidelity = buildRunFidelity(
 		opts.harness,
 		{ id: opts.model, source: opts.modelSource },
@@ -1147,7 +1150,7 @@ async function* runSession(
 			const refused = await applyMode(session, {
 				label,
 				target: askedMode,
-				fallback: access.fallbackMode,
+				fallback: opts.agentMode ? undefined : access.fallbackMode,
 			});
 			if (refused) {
 				yield* leftovers();

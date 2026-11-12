@@ -65,8 +65,8 @@ export function overviewActions(t: {
 				note,
 			],
 			hint: {
-				message: `Reaches ${t.live} at its next pause. You stay here.`,
-				note: "Goes on the timeline. The agent never reads it.",
+				message: "Sends at the next pause",
+				note: "Agents never read notes",
 			},
 			placeholder,
 		};
@@ -88,9 +88,9 @@ export function overviewActions(t: {
 		],
 		hint: {
 			// The overview is for a thread with no run; the first run opens on its transcript (#1020).
-			ask: "Opens the conversation; the agent answers there.",
-			investigate: `Starts ${t.nextName} and opens it.`,
-			note: "Goes on the timeline. The agent never reads it.",
+			ask: "Opens the conversation",
+			investigate: `Starts ${t.nextName}`,
+			note: "Agents never read notes",
 		},
 		placeholder,
 	};
@@ -120,16 +120,28 @@ export function boxChoice(
 		own.effort !== undefined ? own.effort : (choice.efforts[hid] ?? null);
 	const accessLevel: AccessLevel =
 		own.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
+	const agentMode = own.agentMode ?? null;
 	const now: DraftChoice = hid
-		? { harness: hid, model, effort, accessLevel }
+		? { harness: hid, model, effort, accessLevel, agentMode }
 		: {};
 	const sent = {
 		accessLevel,
+		...(agentMode ? { agentMode } : {}),
 		...(draft.harness && hid ? { harness: hid } : {}),
 		...(own.model !== undefined ? { model: own.model } : {}),
 		...(own.effort !== undefined ? { effort: own.effort } : {}),
 	};
-	return { choice, harness, hid, model, effort, accessLevel, now, sent };
+	return {
+		choice,
+		harness,
+		hid,
+		model,
+		effort,
+		accessLevel,
+		agentMode,
+		now,
+		sent,
+	};
 }
 
 /**
@@ -148,8 +160,17 @@ export function OverviewComposer({
 }) {
 	const record = o.record;
 	const { incident, runs } = record;
-	const { choice, harness, hid, model, effort, accessLevel, now, sent } =
-		useBoxChoice(record);
+	const {
+		choice,
+		harness,
+		hid,
+		model,
+		effort,
+		accessLevel,
+		agentMode,
+		now,
+		sent,
+	} = useBoxChoice(record);
 	const [text, setText] = useState("");
 	const live = o.live;
 	const liveName = live ? viewName(runs, live) : null;
@@ -183,8 +204,12 @@ export function OverviewComposer({
 		else if (n.model !== undefined)
 			record.setDraftChoice({ ...now, model: n.model });
 		else if (n.effort) record.setDraftChoice({ ...now, effort: n.effort });
-		else if (n.accessLevel)
-			record.setDraftChoice({ ...now, accessLevel: n.accessLevel });
+		else if (n.accessLevel || n.agentMode !== undefined)
+			record.setDraftChoice({
+				...now,
+				...(n.accessLevel ? { accessLevel: n.accessLevel } : {}),
+				agentMode: n.agentMode ?? null,
+			});
 	};
 
 	const forward = async (env: SendEnvelope) => {
@@ -262,7 +287,7 @@ export function OverviewComposer({
 					{...actionProps(t.actions, current, (id) =>
 						onAction(id as OverviewAction),
 					)}
-					choice={{ harness, model, effort, accessLevel }}
+					choice={{ harness, model, effort, accessLevel, agentMode }}
 					onChoice={onChoice}
 					agentless={agentless}
 					onSend={onSend}

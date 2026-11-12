@@ -7,7 +7,7 @@ import { HARNESS_IDS } from "@prismalens/config/harness";
  * references and the run choices, kept as one server-side draft per scope.
  */
 import { z } from "zod";
-import { AccessLevelSchema } from "./settings.js";
+import { AccessLevelSchema, AgentModeIdSchema } from "./settings.js";
 
 const UUID =
 	"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -104,6 +104,7 @@ export const DraftChoiceSchema = z.object({
 	model: z.string().min(1).max(256).nullable().optional(),
 	effort: z.string().min(1).max(64).nullable().optional(),
 	accessLevel: AccessLevelSchema.optional(),
+	agentMode: AgentModeIdSchema.nullable().optional(),
 	verb: z.enum(["investigate", "ask"]).optional(),
 	/** The new thread's Incident toggle. */
 	incident: z.boolean().optional(),

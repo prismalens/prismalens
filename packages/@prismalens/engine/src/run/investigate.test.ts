@@ -1174,6 +1174,32 @@ describe("the agent's own mode (#673 w21)", () => {
 		});
 	});
 
+	it("Given a picked agent mode no level maps to, Then set_mode asks for that mode and the report records it", async () => {
+		const { events, runDir } = await collect("ok", {
+			harness: "claude-code",
+			agentMode: "plan",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default=Manual,plan=Plan" },
+		});
+		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
+		expect(sent.filter((m) => m.method === "session/set_mode").map((m) => m.params?.modeId)).toEqual(["plan"]);
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({ mode: "plan", access: "supervised" });
+	});
+
+	it("Given a picked agent mode the agent does not offer, Then the run fails without trying the level's fallback", async () => {
+		const { events, runDir } = await collect("ok", {
+			harness: "claude-code",
+			agentMode: "plan",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default=Manual" },
+		});
+		expect(events.at(-1)).toMatchObject({
+			kind: "error",
+			message: 'Claude Code did not offer mode "plan"; run a check in Settings, Agent',
+		});
+		expect(wireOut(runDir).some((m) => m.includes("session/prompt"))).toBe(false);
+	});
+
 	it("Given a mode the agent does not offer, nor its fallback, Then the run fails before the first prompt", async () => {
 		const { events, runDir } = await collect("ok", { harness: "claude-code", accessLevel: "full-access", env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default" } });
 		expect(events.at(-1)).toMatchObject({

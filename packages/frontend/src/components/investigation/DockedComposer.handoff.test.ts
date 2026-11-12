@@ -59,11 +59,16 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		AccessChip: (p: { onLevel: (l: string) => void; level: string }) =>
+		ModeChip: (p: {
+			onPick: (n: { accessLevel?: string; agentMode: string | null }) => void;
+			level: string;
+		}) =>
 			el(
 				"span",
 				{ "data-testid": "mode", "data-value": p.level },
-				button("pick-mode", () => p.onLevel("full-access")),
+				button("pick-mode", () =>
+					p.onPick({ accessLevel: "full-access", agentMode: null }),
+				),
 			),
 		defaultAccessOf: () => ({
 			level: { level: h.settingsLevel, from: "agent" },
@@ -242,7 +247,7 @@ describe("DockedComposer handoff states on a finished run", () => {
 		);
 	});
 
-	it("handoff-L5: preview.isPending -> hint Checking what <agent> can take and Send disabled", async () => {
+	it("handoff-L5: preview.isPending -> hint Checking the session and Send disabled", async () => {
 		h.preview = {
 			data: undefined,
 			isPending: true,
@@ -254,7 +259,7 @@ describe("DockedComposer handoff states on a finished run", () => {
 		const hint = q("composer-hint");
 		expect(hint).not.toBeNull();
 		expect(hint.textContent).toBe(
-			"Checking what OpenCode can take from this run.",
+			"Checking the session",
 		);
 
 		const sendBtn = q<HTMLButtonElement>("composer-send");
@@ -312,7 +317,7 @@ describe("DockedComposer handoff states on a finished run", () => {
 		const blocked = q("composer-blocked");
 		expect(blocked).not.toBeNull();
 		expect(blocked.textContent).toBe(
-			"Unable to check what OpenCode will get. Sending still works.",
+			"Not checked; sending still works",
 		);
 
 		const sendBtn = q<HTMLButtonElement>("composer-send");

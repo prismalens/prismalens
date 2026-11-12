@@ -410,8 +410,11 @@ async function runJobInternal(
 		// The run's own chip, else Settings and the agent's default as resolved (#673 w21).
 		const accessLevel =
 			data.accessLevel ?? resolved.accessLevel ?? DEFAULT_ACCESS_LEVEL;
+		// A mode the composer picked that no level maps to wins; the level still answers PrismaLens's asks.
 		const agentMode =
-			resolveAccess(selection.harness, accessLevel).mode ?? null;
+			data.agentMode ??
+			resolveAccess(selection.harness, accessLevel).mode ??
+			null;
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
@@ -554,6 +557,7 @@ async function runJobInternal(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				accessLevel,
+				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				...(data.unattended ? { unattended: true } : {}),
 				...(data.waitForAsks ? { waitForAsks: true } : {}),
 				...(data.scheduled?.alwaysAllow?.length
