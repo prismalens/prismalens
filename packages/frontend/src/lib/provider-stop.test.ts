@@ -208,6 +208,7 @@ describe("no Blocked line or stopNext line contains resume or sign in", () => {
 	});
 });
 
+// a04d92755 names the stop once on its strip, so a row's detail is only its one time.
 describe("stopRowWords", () => {
 	it("out_of_credit", () => {
 		expect(stopRowWords({ mode: "out_of_credit", resetsAt: null })).toEqual({
@@ -247,7 +248,7 @@ describe("stopRowWords", () => {
 		).toEqual({
 			state: "limited",
 			word: "Limited",
-			detail: "Rate limited · next try 15:45 (try 2 of 5)",
+			detail: "Next try 15:45 (2 of 5)",
 		});
 	});
 
@@ -264,7 +265,7 @@ describe("stopRowWords", () => {
 		).toEqual({
 			state: "limited",
 			word: "Limited",
-			detail: "Provider busy · next try 15:45",
+			detail: "Next try 15:45",
 		});
 	});
 
@@ -280,7 +281,7 @@ describe("stopRowWords", () => {
 		).toEqual({
 			state: "limited",
 			word: "Limited",
-			detail: "Usage limit · resumes 15:45",
+			detail: "Resumes 15:45",
 		});
 	});
 });
