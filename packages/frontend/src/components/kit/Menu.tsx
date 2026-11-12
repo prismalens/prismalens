@@ -37,21 +37,25 @@ export type MenuEntry =
  */
 export function orderEntries(entries: readonly MenuEntry[]): MenuEntry[] {
 	const danger = (e: MenuEntry) => !("separator" in e) && !!e.danger;
-	const all: MenuEntry[] = entries.some(danger)
-		? [
-				...entries.filter((e) => !danger(e)),
-				{ id: "sep-danger", separator: true },
-				...entries.filter(danger),
-			]
-		: [...entries];
-	const out: MenuEntry[] = [];
-	for (const e of all) {
-		const last = out.at(-1);
-		if ("separator" in e && (!last || "separator" in last)) continue;
-		out.push(e);
-	}
-	while (out.length && "separator" in (out.at(-1) as MenuEntry)) out.pop();
-	return out;
+	const clean = (list: readonly MenuEntry[]) => {
+		const out: MenuEntry[] = [];
+		for (const e of list) {
+			const last = out.at(-1);
+			if ("separator" in e && (!last || "separator" in last)) continue;
+			out.push(e);
+		}
+		while (out.length && "separator" in (out.at(-1) as MenuEntry)) out.pop();
+		return out;
+	};
+	const nonDanger = clean(entries.filter((e) => !danger(e)));
+	const dangerEntries = entries.filter(danger);
+	if (!dangerEntries.length) return nonDanger;
+	if (!nonDanger.length) return dangerEntries;
+	return [
+		...nonDanger,
+		{ id: "sep-danger", separator: true },
+		...dangerEntries,
+	];
 }
 
 /** The entries a palette lists for an object: its menu rows without separators. */
