@@ -14,6 +14,7 @@ export interface TabItem {
 	label: string;
 	/** A count after the label, in the meta colour. */
 	count?: number;
+	testId?: string;
 }
 
 /**
@@ -41,14 +42,18 @@ export function Tabs({
 					<TabsTrigger
 						key={t.value}
 						value={t.value}
-						className="-mx-1 gap-1.5 rounded-control px-1 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+						data-testid={t.testId}
+						className="group/tab focus-visible:outline-none"
 					>
-						{t.label}
-						{t.count !== undefined && (
-							<span className="text-meta text-text-3 tabular-nums">
-								{t.count}
-							</span>
-						)}
+						{/* Active is the word plus the underline; key focus outlines the label only (ui/tabs marks pointer presses). */}
+						<span className="inline-flex items-center gap-1.5 rounded-control outline-accent group-focus-visible/tab:outline group-focus-visible/tab:outline-offset-2 group-data-[pointer]/tab:outline-none!">
+							{t.label}
+							{t.count !== undefined && (
+								<span className="text-meta text-text-3 tabular-nums">
+									{t.count}
+								</span>
+							)}
+						</span>
 					</TabsTrigger>
 				))}
 			</TabsList>
