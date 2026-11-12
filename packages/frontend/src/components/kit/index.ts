@@ -48,13 +48,7 @@ export {
 	type MenuEntry,
 	orderEntries,
 } from "./Menu";
-export {
-	MARKS,
-	type MarkId,
-	markLook,
-	type Reach,
-	reachOf,
-} from "./marks";
+export { MARKS, type MarkId, markLook } from "./marks";
 export { Picker, type PickerOption } from "./Picker";
 export {
 	KitPopover,

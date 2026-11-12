@@ -253,7 +253,6 @@ export const appGallery: GallerySection[] = [
 							"alert",
 							"health",
 							"code",
-							"reach",
 							"repeats",
 						] as const
 					).map((id) => (

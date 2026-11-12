@@ -60,51 +60,6 @@ const baseAsk = (over: Partial<PendingAsk>): PendingAsk => ({
 });
 
 describe("AskDock (#1024)", () => {
-	it("marks what a command ask can reach beside the command: run, tinted warn", async () => {
-		const ask = baseAsk({
-			askId: "ask-reach",
-			kind: "permission",
-			permission: {
-				toolKind: "execute",
-				command: "rm -rf build",
-				options: [{ optionId: "a", name: "Allow", kind: "allow_once" }],
-			},
-		});
-		await act(async () => {
-			root.render(
-				<TooltipProvider>
-					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
-				</TooltipProvider>,
-			);
-		});
-		const mark = q("ask-dock-reach");
-		expect(mark.getAttribute("data-state")).toBe("run");
-		expect(mark.getAttribute("aria-label")).toBe("Reach: Runs a command");
-		expect(mark.querySelector("svg")?.getAttribute("class")).toContain(
-			"text-warn",
-		);
-	});
-
-	it("shows no reach mark on a question", async () => {
-		const ask = baseAsk({
-			questions: [
-				{
-					id: "q1",
-					question: "Which?",
-					options: [{ id: "a", label: "A" }],
-				},
-			],
-		});
-		await act(async () => {
-			root.render(
-				<TooltipProvider>
-					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
-				</TooltipProvider>,
-			);
-		});
-		expect(q("ask-dock-reach")).toBeNull();
-	});
-
 	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("question single-choice click answers with the chosen option", async () => {
 		const ask = baseAsk({
