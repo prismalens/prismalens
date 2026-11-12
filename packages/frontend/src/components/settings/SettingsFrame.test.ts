@@ -2,7 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { SETTINGS_SECTIONS, listedIntegrations } from "./SettingsFrame";
+import {
+	listedIntegrations,
+	navOf,
+	SETTINGS_NAV,
+	SETTINGS_SECTIONS,
+} from "./SettingsFrame";
 
 const holder = { id: "i1", templateId: "git-host-token", label: "Git host token" };
 const prom = { id: "i2", templateId: "prometheus", label: "lab" };
@@ -61,5 +66,39 @@ describe("listedIntegrations (w8-5)", () => {
 		expect(listedIntegrations([holder], [{ integrationId: "i1" }])).toEqual([
 			holder,
 		]);
+	});
+});
+
+describe("the folded settings list (#1101 cat 18)", () => {
+	it("lists nine entries beside each page", () => {
+		expect(SETTINGS_NAV.map((n) => n.label)).toEqual([
+			"General",
+			"Agents",
+			"Appearance",
+			"Notifications",
+			"Usage",
+			"Alert intake",
+			"Sources",
+			"Devices",
+			"About",
+		]);
+	});
+
+	it("keeps every page reachable under exactly one entry", () => {
+		for (const s of SETTINGS_SECTIONS) {
+			const under = SETTINGS_NAV.filter(
+				(n) => n.tab === s.tab || n.pages?.includes(s.tab),
+			);
+			expect([s.tab, under.length]).toEqual([s.tab, 1]);
+		}
+	});
+
+	it("files Models, Permissions, Limits and Runs under Agents, and Usage data under About", () => {
+		expect(navOf("models")?.label).toBe("Agents");
+		expect(navOf("organizer")?.label).toBe("Agents");
+		expect(navOf("runs")?.label).toBe("Agents");
+		expect(navOf("shortcuts")?.label).toBe("Appearance");
+		expect(navOf("telemetry")?.label).toBe("About");
+		expect(navOf("general")?.pages).toBeUndefined();
 	});
 });
