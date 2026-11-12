@@ -2,9 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { type PullRequest, prHostTerms, prLabel } from "@prismalens/contracts";
-import { GitPullRequest } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { checksCount, PR_TONE_WORD, prMarkClass } from "./panel/PullRequests";
+import { Status } from "@/components/kit";
+import {
+	checksCount,
+	PR_STATUS,
+	PR_TONE_WORD,
+	passingOf,
+} from "./panel/PullRequests";
 
 /** The PR the header shows: the newest one still open, else the newest. */
 export function headerPr<T extends Pick<PullRequest, "state">>(
@@ -41,16 +45,20 @@ export function ThreadPrChip({
 			data-testid="thread-pr-chip"
 			data-tone={pr.tone}
 		>
-			<GitPullRequest
-				className={cn("size-3.5 shrink-0", prMarkClass(pr.tone))}
-				aria-hidden
+			<Status
+				kind={PR_STATUS[pr.tone]}
+				word={word}
+				className="max-sm:[&>span:last-child]:sr-only"
 			/>
-			<span className="tabular-nums text-text-1">
+			<span className="whitespace-nowrap tabular-nums text-text-1">
 				{terms.numberPrefix}
 				{pr.number}
 			</span>
-			<span className="max-sm:hidden">{word}</span>
-			{count && <span className="tabular-nums max-md:hidden">{count}</span>}
+			{passingOf(pr.checks) && (
+				<span className="whitespace-nowrap tabular-nums max-md:hidden">
+					{passingOf(pr.checks)}
+				</span>
+			)}
 			{more > 0 && <span className="tabular-nums">+{more}</span>}
 		</button>
 	);
