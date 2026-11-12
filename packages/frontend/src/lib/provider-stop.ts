@@ -271,6 +271,14 @@ export function stopMarkName(
 	}
 }
 
+/** A provider retry's counter, "Retry 3/5": the line leads with it so it reads at a glance. */
+export function retryCount(e: {
+	attempt: number;
+	maxAttempts: number;
+}): string {
+	return `Retry ${e.attempt}/${e.maxAttempts}`;
+}
+
 /**
  * The transcript's one line for a stop, retry, resume or restart event (#1101),
  * or null for any other event.
@@ -292,8 +300,12 @@ export function stopNodeLine(
 		}
 		case "provider_blocked":
 			return blockedLine(e.mode, e.agent);
-		case "provider_retry":
-			return `${e.mode === "overloaded" ? "Provider busy" : "Rate limited"} · trying again at ${clock(e.at)} (try ${e.attempt} of ${e.maxAttempts})`;
+		case "provider_retry": {
+			const why = e.mode === "overloaded" ? "Provider busy" : "Rate limited";
+			return e.phase === "succeeded"
+				? `${retryCount(e)} · went through at ${clock(e.at)}`
+				: `${retryCount(e)} · ${why} · next ${clock(e.at)}`;
+		}
 		case "resume_scheduled": {
 			if (e.gaveUp || !e.at) return "Stopped trying to resume";
 			if (e.nextTry)

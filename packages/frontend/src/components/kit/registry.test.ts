@@ -31,10 +31,6 @@ const galleryIds = new Set(
  * shrinks: registering one fails this test until it is removed here.
  */
 const UNREACHED = [
-	"message",
-	"tool.row",
-	"subagent.node",
-	"child.card",
 	"diff.file",
 	"diff.line",
 	"pr.chip",
@@ -48,7 +44,7 @@ const UNREACHED = [
 	"settings.row",
 	"schedule.row",
 ] as const;
-const UNREACHED_MAX = 16;
+const UNREACHED_MAX = 12;
 
 /**
  * Files that still pass inline `entries` to the kit Menu or ContextMenu instead
