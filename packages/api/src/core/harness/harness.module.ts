@@ -9,6 +9,7 @@ import { HarnessService } from "./harness.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
 import { HarnessProbeService } from "./harness-probe.service.js";
 import { RepoSourceService } from "./repo-source.service.js";
+import { ThreadNamerService } from "./thread-namer.service.js";
 
 @Module({
 	imports: [PrismaModule, ConfigModule],
@@ -18,12 +19,14 @@ import { RepoSourceService } from "./repo-source.service.js";
 		RepoSourceService,
 		HarnessProbeService,
 		HarnessModelsService,
+		ThreadNamerService,
 	],
 	exports: [
 		HarnessService,
 		RepoSourceService,
 		HarnessProbeService,
 		HarnessModelsService,
+		ThreadNamerService,
 	],
 })
 export class HarnessModule {}

@@ -27,6 +27,7 @@ import {
 	type PreRunDetail,
 	PreRunDetailSchema,
 	PreRunSnapshotSchema,
+	THREAD_TITLE_LENGTH,
 } from "@prismalens/contracts/schemas";
 import {
 	type Investigation,
@@ -44,6 +45,7 @@ import { IncidentsService } from "../incidents/incidents.service.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { owePush, pushOwedBy } from "../push/push-outbox.js";
 import { withAsk } from "../schedules/allowed-asks.js";
+import { instantTitle } from "../threads/thread-titles.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { endAgentWakes } from "../wakes/agent-wakes.js";
 import {
@@ -205,7 +207,14 @@ export class InvestigationsService {
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
 						...(dto.kind ? { kind: dto.kind } : {}),
 						liveTurn: dto.kind === "chat" ? "answer" : "report",
-						...(dto.title ? { title: dto.title } : {}),
+						// One line from the first sentence; a small model may rename it later (#1101).
+						...(dto.title
+							? {
+									title:
+										instantTitle(dto.title, THREAD_TITLE_LENGTH.default) ||
+										dto.title.slice(0, THREAD_TITLE_LENGTH.default),
+								}
+							: {}),
 						...(dto.accessLevel ? { accessLevel: dto.accessLevel } : {}),
 					},
 				});

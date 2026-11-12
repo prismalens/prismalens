@@ -267,6 +267,31 @@ export const threadsContract = {
 		.output(z.object({ id: z.string(), title: z.string() })),
 
 	/**
+	 * "Name it again": a small model names the thread from its first message (#1101)
+	 * POST /threads/:id/title/regenerate
+	 */
+	regenerateTitle: oc
+		.route({
+			method: "POST",
+			path: "/threads/{id}/title/regenerate",
+			summary: "Name a thread again",
+			tags: ["threads"],
+		})
+		.input(ThreadIdSchema)
+		.output(
+			z.object({
+				outcome: z.enum([
+					"named",
+					"off",
+					"no-model",
+					"kept",
+					"empty",
+					"failed",
+				]),
+			}),
+		),
+
+	/**
 	 * When quiet threads settle on their own
 	 * GET /threads/settings
 	 */

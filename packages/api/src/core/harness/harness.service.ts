@@ -56,6 +56,8 @@ import {
 	RUNTIME_HOST_ONLY,
 	type RunChoice,
 	type RunRuntimeNote,
+	type ThreadTitleSettings,
+	ThreadTitleSettingsSchema,
 	type UseDefault,
 	UseDefaultSchema,
 } from "@prismalens/contracts/schemas";
@@ -152,6 +154,8 @@ export interface HarnessSettings {
 	subagentConcurrency?: number;
 	/** Per-use agent and model (#1101 cat 18). */
 	useDefaults?: Partial<Record<ModelUse, UseDefault>>;
+	/** Settings → Models → Thread titles (#1101). */
+	threadTitles?: ThreadTitleSettings;
 	/** Read from HARNESS_ENV: names only. */
 	envNames?: Partial<Record<HarnessId, string[]>>;
 }
@@ -198,6 +202,8 @@ export interface HarnessSettingsPatch {
 	subagentConcurrency?: number | null;
 	/** Merged per use; `null` clears that use. */
 	useDefaults?: Partial<Record<ModelUse, UseDefault | null>>;
+	/** Replaces the block; `null` clears it. */
+	threadTitles?: ThreadTitleSettings | null;
 }
 
 const RUNTIME_FIELDS = [
@@ -212,6 +218,7 @@ const RUNTIME_FIELDS = [
 	"subagentDepth",
 	"subagentConcurrency",
 	"useDefaults",
+	"threadTitles",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
 
 /** Per-use defaults that still name a known agent; `null` or junk drops the use. */
@@ -225,6 +232,12 @@ function cleanUseDefaults(raw: unknown): Partial<Record<ModelUse, UseDefault>> {
 		if (parsed.success) out[use] = parsed.data;
 	}
 	return out;
+}
+
+/** The stored thread-title block; junk reads as the defaults. */
+function cleanThreadTitles(raw: unknown): ThreadTitleSettings {
+	const parsed = ThreadTitleSettingsSchema.safeParse(raw);
+	return parsed.success ? parsed.data : {};
 }
 
 /** One use's stored default, for a service that reads it without the harness service (thread tree). */
@@ -766,6 +779,7 @@ export class HarnessService implements OnApplicationBootstrap {
 					parsed.subagentConcurrency,
 				),
 				...nonEmpty("useDefaults", cleanUseDefaults(parsed.useDefaults)),
+				...nonEmpty("threadTitles", cleanThreadTitles(parsed.threadTitles)),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -870,6 +884,14 @@ export class HarnessService implements OnApplicationBootstrap {
 			...nonEmpty(
 				"useDefaults",
 				cleanUseDefaults({ ...current.useDefaults, ...patch.useDefaults }),
+			),
+			...nonEmpty(
+				"threadTitles",
+				cleanThreadTitles(
+					patch.threadTitles === undefined
+						? current.threadTitles
+						: (patch.threadTitles ?? {}),
+				),
 			),
 		};
 		// The variables and the rest of the PATCH land together or not at all (#911).

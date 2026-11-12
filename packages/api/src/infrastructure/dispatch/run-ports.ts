@@ -201,6 +201,8 @@ export interface RunPorts {
 	}>;
 	/** The agent's env, binary path and arguments from Settings → Agent (#907). */
 	agentRuntime(id: HarnessId): Promise<AgentRuntime>;
+	/** Starts a new thread's generated title; never awaited, never throws (#1101). */
+	nameThread?(runId: string, harness: HarnessId, firstText: string): void;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/** What happened on the incident while PrismaLens was stopped, for a restart's message (#981). */
 	restartAlerts?(

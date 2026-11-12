@@ -409,6 +409,14 @@ async function runJobInternal(
 		});
 		const { selection, model, modelSource, effort, customModel } = resolved;
 		if (!selection.runnable) throw new Error(selection.reason);
+		// Off the run's path: a slow or failing title never delays it (#1101).
+		const alert = data.alerts?.[0];
+		const firstText =
+			data.chat?.text ??
+			data.brief ??
+			(alert ? (alert.annotations.summary ?? alert.alertname) : undefined);
+		if (job.attempts <= 1 && !data.toolFree && firstText)
+			ports.nameThread?.(data.investigationId, selection.harness, firstText);
 		// The run's own chip, else Settings and the agent's default as resolved (#673 w21).
 		const accessLevel =
 			data.accessLevel ?? resolved.accessLevel ?? DEFAULT_ACCESS_LEVEL;
