@@ -176,3 +176,6 @@ export function ToolGroup({
 		</div>
 	);
 }
+
+/** The line and chevron, for transcript rows that carry more than a ToolCall (asks, flags). */
+export { Chevron as ToolLineChevron, LINE as TOOL_LINE };
