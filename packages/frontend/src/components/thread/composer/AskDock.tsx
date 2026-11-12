@@ -161,8 +161,7 @@ export function AskDock({
 					className="flex flex-col gap-0.5 rounded-control bg-surface-3 px-2.5 py-1.5"
 					data-testid="ask-dock-host"
 				>
-					<p className="text-meta text-text-1">{refusal.who}</p>
-					<p className="text-meta text-text-3">{refusal.why}</p>
+					<p className="text-meta text-text-1">{refusal.text}</p>
 				</div>
 			)}
 			{/* Refused, the buttons stay in view and inert, so the card shows what it asks of the host. */}

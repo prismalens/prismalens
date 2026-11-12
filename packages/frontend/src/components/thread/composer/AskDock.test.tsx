@@ -391,7 +391,7 @@ describe("AskDock (#1024)", () => {
 
 		const hostNotice = q("ask-dock-host");
 		expect(hostNotice.textContent).toBe(
-			"Only the computer running PrismaLens can approve this.A PrismaLens tool asked, and its answers stay on that computer.",
+			"Only the computer running PrismaLens can answer this: a PrismaLens tool asked, and its answers stay on that computer.",
 		);
 		expect(
 			container.querySelector<HTMLButtonElement>(

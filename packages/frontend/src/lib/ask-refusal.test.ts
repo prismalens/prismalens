@@ -40,27 +40,36 @@ describe("ask-refusal", () => {
 			).toBe(null);
 		});
 
-		it("returns refusal for requiresHost on permission ask", () => {
+		it("refuses a tool's ask with the toolAsk sentence", () => {
 			const res = askRefusal(
 				{ kind: "permission", requiresHost: true },
 				false,
 				false,
 			);
 			expect(res).toEqual({
-				who: "Only the computer running PrismaLens can approve this.",
-				why: "A PrismaLens tool asked, and its answers stay on that computer.",
+				reason: "toolAsk",
+				text: "Only the computer running PrismaLens can answer this: a PrismaLens tool asked, and its answers stay on that computer.",
 			});
 		});
 
-		it("returns refusal for hostOnlyRun on question ask", () => {
+		it("refuses an ask in a run PrismaLens started with its own sentence, never a schedule's", () => {
 			const res = askRefusal(
 				{ kind: "question", requiresHost: false },
 				false,
 				true,
 			);
 			expect(res).toEqual({
-				who: "Only the computer running PrismaLens can answer this.",
-				why: "PrismaLens started this run, so its asks stay on that computer.",
+				reason: "startedByPrismaLens",
+				text: "Only the computer running PrismaLens can answer this: PrismaLens started the run, so its asks stay on that computer.",
+			});
+		});
+
+		it("refuses a secret on a paired device with the secret sentence", () => {
+			expect(
+				askRefusal({ kind: "secret", requiresHost: false }, false, false),
+			).toEqual({
+				reason: "secret",
+				text: "Only the computer running PrismaLens can answer this: a secret is typed on that computer, never sent from a paired device.",
 			});
 		});
 	});

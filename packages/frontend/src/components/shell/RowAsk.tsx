@@ -147,7 +147,7 @@ export function RowAsk({
 					Ended with its run; nothing to answer
 				</p>
 			) : ask.requiresHost && !state.onHost ? (
-				<p className="text-meta text-text-2">{askRefusal(ask, false)?.who}</p>
+				<p className="text-meta text-text-2">{askRefusal(ask, false)?.text}</p>
 			) : ask.kind === "permission" ? (
 				reason !== null ? (
 					<form

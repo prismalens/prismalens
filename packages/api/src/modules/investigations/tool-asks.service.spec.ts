@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PendingAsk } from "@prismalens/contracts";
+import { ASK_REFUSAL, type PendingAsk } from "@prismalens/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { AskConflict, AskForbidden } from "../asks/asks.contract.js";
 import { askQuestions, askTools } from "../gateway/tools/asks.js";
@@ -56,7 +56,7 @@ describe("ask_user and secret_request, their seams (#1024 spec B)", () => {
 		};
 		const asks = { get: vi.fn(async () => ({ ask: question, closed: { outcome: "expired" } })) };
 		const svc = new ToolAsksService(prisma as never, asks as never, {} as never, {} as never, {} as never);
-		await expect(svc.answerSecret(THREAD, ASK, "v", false)).rejects.toBeInstanceOf(AskForbidden);
+		await expect(svc.answerSecret(THREAD, ASK, "v", false)).rejects.toThrow(new AskForbidden(ASK_REFUSAL.secret));
 		await expect(svc.answerSecret("other-thread", ASK, "v", true)).rejects.toBeInstanceOf(AskConflict);
 		await expect(svc.answerSecret(THREAD, ASK, "v", true)).rejects.toBeInstanceOf(AskConflict);
 		expect(prisma.$transaction).not.toHaveBeenCalled();

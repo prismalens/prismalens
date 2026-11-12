@@ -16,6 +16,7 @@ import type {
 } from "@prismalens/contracts";
 import {
 	AccessLevelSchema,
+	ASK_REFUSAL,
 	continuableRun,
 	InvestigationReportSchema,
 	investigationsContract,
@@ -565,7 +566,9 @@ export class InvestigationsController {
 							message: "Send an answer, or a decision.",
 						});
 					const run = await this.investigationsService.findById(input.id);
-					if (run) unattendedRunHostOnly(run, request);
+					// An ask names its own refusal; never a schedule's words (#1101 cat 5).
+					if (run && startedByPrismaLens(run))
+						requireOwner(request, ASK_REFUSAL.startedByPrismaLens);
 					const always =
 						answer.kind === "permission" && answer.scope === "always";
 					if (
@@ -1226,13 +1229,13 @@ export class InvestigationsController {
  * A run PrismaLens started (a schedule or an alert) waits on the host's answers only: a paired
  * device never approves what nobody on this machine asked for (#1020 R33).
  */
-function unattendedRunHostOnly(
-	run: { scheduleId?: string | null; triggerType?: string | null },
-	request: Request | undefined,
-): void {
-	const byPrismaLens =
-		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual");
-	if (byPrismaLens) requireOwner(request, SCHEDULE_HOST_ONLY);
+function startedByPrismaLens(run: {
+	scheduleId?: string | null;
+	triggerType?: string | null;
+}): boolean {
+	return (
+		!!run.scheduleId || (!!run.triggerType && run.triggerType !== "manual")
+	);
 }
 
 function scheduledRunHostOnly(
