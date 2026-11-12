@@ -15,9 +15,9 @@ import {
 	type Failure,
 	fail,
 	type HarnessTool,
+	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
-import { withRules } from "./rules.js";
 import { FOR_A_REPORT } from "./serves.js";
 
 /** What the recording tools write to: the run's ledger, and its workspace for file quotes. */
@@ -69,18 +69,12 @@ function refused(error: string): Failure {
 export function recordTools(data: FindingsData): HarnessTool[] {
 	const base = {
 		group: "record",
-		effect: "record",
 		serves: FOR_A_REPORT,
 	} as const;
 	return [
 		defineHarnessTool({
 			...base,
-			name: "pl_evidence_record",
-			title: "Record evidence",
-			description: withRules(
-				"Record one piece of evidence as you find it; the run view shows it at once. `quote` is text copied exactly from a tool output you saw in this run, or from the file at `path` in the run's workspace. PrismaLens looks the quote up itself: one it cannot find is kept as unanchored and never counts as verified. Returns the evidence id (e1, e2…) that pl_hypothesis_record links. Use it whenever a tool output supports or refutes something.",
-				"guesses: record those as hypotheses.",
-			),
+			...registered("pl_evidence_record"),
 			input: z.object({
 				observation: z.string().trim().min(1).max(1_000),
 				source: z.string().trim().min(1).max(500),
@@ -108,12 +102,7 @@ export function recordTools(data: FindingsData): HarnessTool[] {
 		}),
 		defineHarnessTool({
 			...base,
-			name: "pl_hypothesis_record",
-			title: "Record a hypothesis",
-			description: withRules(
-				"Record a hypothesis, or update one by its `id` (rh1, rh2…), as your thinking changes; the run view shows it at once. `evidence` lists ids pl_evidence_record returned; on an update it replaces the list, and leaving it out keeps it. Give the hypothesis the same `id` in your report, so the report joins its recorded evidence. Use it when your thinking changes.",
-				"evidence: record that with pl_evidence_record.",
-			),
+			...registered("pl_hypothesis_record"),
 			input: z.object({
 				id: HYPOTHESIS_ID.optional(),
 				statement: z.string().trim().min(1).max(1_000),

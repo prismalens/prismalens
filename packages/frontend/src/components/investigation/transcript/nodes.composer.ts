@@ -4,4 +4,4 @@
 import type { TranscriptNodes } from "./types";
 
 /** UI 1's transcript nodes (#1024). Only UI 1 edits this file. */
-export const composerNodes: TranscriptNodes = {};
+export const composerNodes = {} satisfies TranscriptNodes;

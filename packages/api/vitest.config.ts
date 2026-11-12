@@ -149,7 +149,6 @@ export default defineConfig({
 				"src/modules/thread-tree/*.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/thread-tree.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/propose.ts": NEW_CODE_THRESHOLD,
-				"src/modules/gateway/tools/rules.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/tool-asks.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/investigations/subagent-sessions.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/asks.ts": NEW_CODE_THRESHOLD,

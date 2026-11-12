@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	compareKeys,
-	HARNESS_TOOL_STEPS,
-	type LinkTarget,
-} from "@prismalens/contracts";
+import { compareKeys, type LinkTarget } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, FileText, Wrench, X } from "lucide-react";
 import {

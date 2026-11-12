@@ -5,9 +5,9 @@ import {
 	defineHarnessTool,
 	fail,
 	type HarnessTool,
+	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
-import { withRules } from "./rules.js";
 import { SCOPED } from "./serves.js";
 
 /** The run's own state; a field the run never recorded is null, never zero. */
@@ -36,14 +36,8 @@ export type RunStatusLookup = (runId: string) => Promise<RunStatusView | null>;
 export function runTools(status: RunStatusLookup): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "pl_run_status",
-			title: "This run's own state",
-			description: withRules(
-				"This run's state: context used and its size (and cost when the agent reports it), seconds left on the run's wall clock, the access level, and the workspace repositories with the commit each was checked out at. Use it to pace the work or to say which commit you read.",
-				"other threads' state: use pl_thread_read.",
-			),
+			...registered("pl_run_status"),
 			group: "knowledge",
-			effect: "read",
 			serves: SCOPED,
 			input: z.object({}),
 			run: async (_input, ctx) => {
