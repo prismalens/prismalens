@@ -917,7 +917,6 @@ describe("PrFeedService (#1024 surface F)", () => {
 		const ev = h.events.find(
 			(e) => e.investigationId === threadId && e.body.kind === "pr_status",
 		);
-		expect(ev).toBeDefined();
 		expect(ev?.body.tone).toBe("failing");
 		expect(ev?.body.pr).toBe("acme/shop#800");
 		expect(ev?.body.phase).toBe("noted");
