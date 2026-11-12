@@ -17,7 +17,13 @@ import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
-import { DetailsDock, detailsRows } from "@/components/kit";
+import {
+	DetailsCard,
+	DetailsDock,
+	detailsRows,
+	dockFor,
+	KitPopover,
+} from "@/components/kit";
 import { BrowserTab } from "@/components/run/BrowserTab";
 import {
 	type EvidenceFiles,
@@ -433,6 +439,13 @@ export function ThreadPage({ id }: { id: string }) {
 	}, [id, tab, search.panel]);
 	// With no pane open the card is the right side; the toggle docks or closes it (sheet §9.5).
 	const [docked, setDocked] = useDetailsDocked();
+	// Too narrow to dock beside the transcript: the header's toggle opens the card instead.
+	const [areaW, setAreaW] = useState(0);
+	const areaRef = useCallback((el: HTMLDivElement | null) => {
+		if (!el || typeof ResizeObserver === "undefined") return;
+		new ResizeObserver(([e]) => setAreaW(e.contentRect.width)).observe(el);
+	}, []);
+	const wide = areaW === 0 || dockFor(areaW) === "docked";
 	const toggleDetails = () => (panelOpen ? closePanel() : setDocked(!docked));
 	const tree = useThreadTree(id, run.isActive);
 	const detailRows = context.data
@@ -612,17 +625,38 @@ export function ThreadPage({ id }: { id: string }) {
 				controls="status-box"
 			/>
 			{ready && paneMenu}
-			<HeaderToggle
-				label={
-					panelOpen ? "Close pane" : docked ? "Hide details" : "Show details"
-				}
-				pressed={panelOpen || docked}
-				disabled={!ready}
-				onToggle={toggleDetails}
-				icon={<PanelRight className="size-4" aria-hidden />}
-				testId="panel-toggle"
-				controls="thread-panel"
-			/>
+			{!panelOpen && !wide && detailRows ? (
+				<KitPopover
+					family="picker"
+					align="end"
+					label="Details"
+					hint="Details"
+					trigger={
+						<button
+							type="button"
+							aria-label="Details"
+							className="flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1"
+							data-testid="details-button"
+						>
+							<PanelRight className="size-4" aria-hidden />
+						</button>
+					}
+				>
+					<DetailsCard rows={detailRows} className="bg-transparent p-0" />
+				</KitPopover>
+			) : (
+				<HeaderToggle
+					label={
+						panelOpen ? "Close pane" : docked ? "Hide details" : "Show details"
+					}
+					pressed={panelOpen || docked}
+					disabled={!ready}
+					onToggle={toggleDetails}
+					icon={<PanelRight className="size-4" aria-hidden />}
+					testId="panel-toggle"
+					controls="thread-panel"
+				/>
+			)}
 		</header>
 	);
 
@@ -792,17 +826,19 @@ export function ThreadPage({ id }: { id: string }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
 			{header}
-			{!panelOpen && docked && detailRows ? (
-				<DetailsDock
-					rows={detailRows}
-					onDockedChange={setDocked}
-					className="min-h-0 flex-1 pr-3"
-				>
-					<div className="flex h-full min-h-0 flex-col">{main}</div>
-				</DetailsDock>
-			) : (
-				<div className="flex min-h-0 flex-1 flex-col">{main}</div>
-			)}
+			<div ref={areaRef} className="flex min-h-0 flex-1 flex-col">
+				{!panelOpen && docked && wide && detailRows ? (
+					<DetailsDock
+						rows={detailRows}
+						onDockedChange={setDocked}
+						className="pr-3"
+					>
+						<div className="flex h-full min-h-0 flex-col">{main}</div>
+					</DetailsDock>
+				) : (
+					main
+				)}
+			</div>
 			<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
 				<ThreadSidePanel
 					tabs={tabs}
