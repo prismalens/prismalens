@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PullRequest } from "@prismalens/contracts";
-import { GitPullRequest } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { checksCount, PR_TONE_WORD, prMarkClass } from "./panel/PullRequests";
+import { type PullRequest, prHostTerms, prLabel } from "@prismalens/contracts";
+import { Status } from "@/components/kit";
+import {
+	checksCount,
+	PR_STATUS,
+	PR_TONE_WORD,
+	passingOf,
+} from "./panel/PullRequests";
 
 /** The PR the header shows: the newest one still open, else the newest. */
 export function headerPr<T extends Pick<PullRequest, "state">>(
@@ -23,29 +27,38 @@ export function ThreadPrChip({
 	more,
 	onOpen,
 }: {
-	pr: Pick<PullRequest, "id" | "number" | "tone" | "checks">;
+	pr: Pick<PullRequest, "id" | "number" | "tone" | "checks"> &
+		Partial<Pick<PullRequest, "host">>;
 	/** Other PRs the thread has; the panel lists them. */
 	more: number;
 	onOpen: (prId: string) => void;
 }) {
-	const count = checksCount(pr.checks);
+	const terms = prHostTerms(pr.host);
+	const count = checksCount(pr.checks, terms);
 	const word = PR_TONE_WORD[pr.tone];
 	return (
 		<button
 			type="button"
 			onClick={() => onOpen(pr.id)}
 			className="inline-flex h-7 min-w-0 shrink items-center gap-1.5 rounded-control px-2 text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
-			aria-label={`Pull request #${pr.number}, ${word}${count ? `, ${count}` : ""}. Open it`}
+			aria-label={`${prLabel(pr.host, pr.number)}, ${word}${count ? `, ${count}` : ""}. Open it`}
 			data-testid="thread-pr-chip"
 			data-tone={pr.tone}
 		>
-			<GitPullRequest
-				className={cn("size-3.5 shrink-0", prMarkClass(pr.tone))}
-				aria-hidden
+			<Status
+				kind={PR_STATUS[pr.tone]}
+				word={word}
+				className="max-sm:[&>span:last-child]:sr-only"
 			/>
-			<span className="tabular-nums text-text-1">#{pr.number}</span>
-			<span className="max-sm:hidden">{word}</span>
-			{count && <span className="tabular-nums max-md:hidden">{count}</span>}
+			<span className="whitespace-nowrap tabular-nums text-text-1">
+				{terms.numberPrefix}
+				{pr.number}
+			</span>
+			{passingOf(pr.checks) && (
+				<span className="whitespace-nowrap tabular-nums max-md:hidden">
+					{passingOf(pr.checks)}
+				</span>
+			)}
 			{more > 0 && <span className="tabular-nums">+{more}</span>}
 		</button>
 	);

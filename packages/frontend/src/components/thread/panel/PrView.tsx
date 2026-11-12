@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PrCheckLog,
-	PrCheckRun,
-	PrReviewThread,
+import {
+	capitalTerm,
+	type PrCheckLog,
+	type PrCheckRun,
+	type PrReviewThread,
+	prHostTerms,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -16,7 +18,13 @@ import {
 	X,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { TabPanel, Tabs, TOOL_LINE, ToolLineChevron } from "@/components/kit";
+import {
+	Status,
+	TabPanel,
+	Tabs,
+	TOOL_LINE,
+	ToolLineChevron,
+} from "@/components/kit";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { Empty } from "@/components/shared/State";
@@ -26,6 +34,7 @@ import { compose } from "@/lib/compose";
 import { cn } from "@/lib/utils";
 import {
 	MERGE_WORD,
+	PR_STATUS,
 	PR_TONE_WORD,
 	type PrAnswers,
 	type PrRowActions,
@@ -35,6 +44,7 @@ import {
 	prMarkClass,
 	REVIEW_WORD,
 	RUN_WORD,
+	runGroups,
 	sortedRuns,
 	watching,
 	watchLine,
@@ -66,6 +76,7 @@ export function PrView({
 	onBack?: () => void;
 	initialTab?: PrViewTab;
 } & PrRowActions) {
+	const terms = prHostTerms(pr.host);
 	const runs = sortedRuns(pr.checkRuns ?? []);
 	const threads = [...(pr.reviewThreads ?? [])].sort(
 		(a, b) => Number(a.resolved) - Number(b.resolved),
@@ -104,8 +115,8 @@ export function PrView({
 					<Icon
 						aria-hidden
 						className={cn(
-							"mt-1.5 size-3.5 shrink-0 stroke-[1.75]",
-							prMarkClass(pr.tone),
+							// The state's colour is the Status below; the kind glyph stays quiet.
+							"mt-1.5 size-3.5 shrink-0 stroke-[1.75] text-text-3",
 						)}
 					/>
 					<h2
@@ -130,11 +141,13 @@ export function PrView({
 					className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-text-2"
 					data-testid="pr-view-meta"
 				>
-					<span className="text-text-1 tabular-nums">#{pr.number}</span>
-					<span aria-hidden className="text-text-3">
-						·
+					<span data-testid="pr-tone-word">
+						<Status kind={PR_STATUS[pr.tone]} word={PR_TONE_WORD[pr.tone]} />
 					</span>
-					<span data-testid="pr-tone-word">{PR_TONE_WORD[pr.tone]}</span>
+					<span className="text-text-1 tabular-nums">
+						{terms.numberPrefix}
+						{pr.number}
+					</span>
 					{merge && (
 						<>
 							<span aria-hidden className="text-text-3">
@@ -191,13 +204,13 @@ export function PrView({
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
 				<Tabs
-					label="Pull request"
+					label={capitalTerm(terms.changeRequest)}
 					value={tab}
 					onValueChange={(v) => setTab(v as PrViewTab)}
 					items={[
 						{
 							value: "checks",
-							label: "Checks",
+							label: capitalTerm(terms.ci),
 							count: failing || undefined,
 							testId: "pr-tab-checks",
 						},
@@ -212,22 +225,34 @@ export function PrView({
 				>
 					<TabPanel value="checks">
 						{runs.length ? (
-							<ul
-								className="m-0 flex list-none flex-col p-0"
-								data-testid="pr-check-runs"
-							>
-								{runs.map((r, i) => (
-									<CheckLine
-										key={`${r.appName ?? ""}:${r.name}:${r.id ?? ""}`}
-										pr={pr}
-										run={r}
-										defaultOpen={i === 0}
-										{...actions}
-									/>
+							<div className="flex flex-col gap-2" data-testid="pr-check-runs">
+								{runGroups(runs).map((g, gi) => (
+									<section
+										key={g.state}
+										aria-label={`${RUN_WORD[g.state]} ${g.runs.length}`}
+										data-testid="pr-check-group"
+										data-state={g.state}
+									>
+										<p className="m-0 flex items-baseline gap-1.5 px-1 pb-0.5 text-meta text-text-3">
+											<span>{RUN_WORD[g.state]}</span>
+											<span className="tabular-nums">{g.runs.length}</span>
+										</p>
+										<ul className="m-0 flex list-none flex-col p-0">
+											{g.runs.map((r, i) => (
+												<CheckLine
+													key={`${r.appName ?? ""}:${r.name}:${r.id ?? ""}`}
+													pr={pr}
+													run={r}
+													defaultOpen={gi === 0 && i === 0}
+													{...actions}
+												/>
+											))}
+										</ul>
+									</section>
 								))}
-							</ul>
+							</div>
 						) : (
-							<Empty text="No checks reported" />
+							<Empty text={`No ${terms.checks} reported`} />
 						)}
 					</TabPanel>
 					<TabPanel value="reviews">
@@ -313,16 +338,28 @@ function CheckLine({
 	defaultOpen?: boolean;
 } & PrRowActions) {
 	const failing = run.state === "failing";
-	const [open, setOpen] = useState(failing && !!defaultOpen);
+	const optional = run.required === false;
+	const [open, setOpen] = useState(failing && !optional && !!defaultOpen);
 	const head = (
 		<>
-			<span className="flex size-3.5 shrink-0 items-center justify-center">
+			<span
+				className={cn(
+					"flex size-3.5 shrink-0 items-center justify-center",
+					// A check the host merges without never paints the danger colour.
+					optional && "[&>svg]:text-text-3",
+				)}
+			>
 				{RUN_MARK[run.state]}
 			</span>
 			<span className="min-w-0 flex-1 truncate text-text-1">{run.name}</span>
-			<span className="shrink-0 text-meta text-text-3">
-				{RUN_WORD[run.state]}
-			</span>
+			{optional && (
+				<span
+					className="shrink-0 text-meta text-text-3"
+					data-testid="pr-check-optional"
+				>
+					Optional
+				</span>
+			)}
 		</>
 	);
 	return (
@@ -392,7 +429,9 @@ function CheckLogTail({
 					Reading the log
 				</span>
 			) : !run.id ? (
-				<span className="text-text-3">No log for this check</span>
+				<span className="text-text-3">
+					No log for this {prHostTerms(pr.host).check}
+				</span>
 			) : query.error && !log ? (
 				<span className="text-text-3">The host refused the log</span>
 			) : log?.unavailable ? (

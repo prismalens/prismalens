@@ -4,6 +4,7 @@
 import {
 	type CanonicalEvent,
 	inboundLine,
+	isBlockedMode,
 	shortTime,
 } from "@prismalens/contracts";
 
@@ -27,6 +28,8 @@ export interface InboundRow {
 	from?: Inbound["from"];
 	text: string;
 	line: string;
+	/** The provider stop it waits out or failed on. */
+	failure?: Inbound["failure"];
 	mergedAt?: string;
 	retries: InboundRetry[];
 }
@@ -44,6 +47,7 @@ export function foldInbound(
 		from: e.from ?? row?.from,
 		text: e.text || row?.text || "",
 		line: e.line,
+		failure: e.failure ?? (e.state === "delivered" ? undefined : row?.failure),
 		mergedAt: e.mergedInto ? e.mergedAt : undefined,
 		retries: row?.retries ?? [],
 	};
@@ -83,7 +87,15 @@ export function inboundWords(
 					})
 				: "Delivered",
 		};
-	if (row.state === "waiting") return { tone: "waiting", text: row.line };
+	// The stop's own line names it once; each waiting row only says it waits (sheet §10).
+	if (row.state === "waiting")
+		return {
+			tone: "waiting",
+			text:
+				row.failure && !isBlockedMode(row.failure.mode)
+					? "Waiting for the limit"
+					: row.line,
+		};
 	const why = row.line.replace(/^Not delivered:?\s*/, "");
 	return {
 		tone: "failed",
@@ -98,7 +110,26 @@ export function retryWords(r: InboundRetry, locale?: string): string {
 	return `${why} · try ${r.attempt} of ${r.maxAttempts} at ${shortTime(new Date(r.at), locale)}`;
 }
 
+/**
+ * The quoted text as plain words: no agent envelope (`[FROM db #2] result:`), no
+ * thread path, no machine path, no Markdown marks.
+ */
+export function plainExcerpt(text: string): string {
+	return text
+		.replace(/\[FROM [^\]]*\]\s*(?:[a-z_]+:\s*)?/gi, "")
+		.replace(/(?:https?:\/\/[^\s/]+)?\/threads\/[\w-]+\S*\s*/g, "")
+		.replace(
+			/(?:[A-Za-z]:[\\/]|\/(?:Users|home|tmp|var|private)\/)(?:[^\s\\/]+[\\/])+([^\s\\/]+)/g,
+			"$1",
+		)
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)/gm, "")
+		.replace(/(\*\*|__|`+|~~)/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
 /** The quoted text, without the sender's thread path the row's header already links. */
 export function inboundText(row: InboundRow): string {
-	return row.text.replace(/^\/threads\/[\w-]+\s*/, "").trim();
+	return plainExcerpt(row.text);
 }

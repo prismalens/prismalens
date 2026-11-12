@@ -110,6 +110,8 @@ export const PrCheckRunSchema = z.object({
 	headSha: z.string().max(64).optional(),
 	/** The check's log or details page. */
 	url: z.string().url().max(2000).optional(),
+	/** False when the host merges without it: an optional check, a job allowed to fail. */
+	required: z.boolean().optional(),
 });
 export type PrCheckRun = z.infer<typeof PrCheckRunSchema>;
 /** Check runs kept per PR; the summary counts still cover all of them. */
@@ -181,6 +183,66 @@ export type PrDetail = z.infer<typeof PrDetailSchema>;
 export const PR_HOSTS = ["github", "gitlab", "other"] as const;
 export const PrHostSchema = z.enum(PR_HOSTS);
 export type PrHost = z.infer<typeof PrHostSchema>;
+
+/** A git host's own words for its change requests and their CI, lower case (#1122). */
+export const PrHostTermsSchema = z.object({
+	/** `pull request`, `merge request`. */
+	changeRequest: z.string(),
+	/** `PR`, `MR`. */
+	short: z.string(),
+	/** What a number is written after: `#12`, `!12`. */
+	numberPrefix: z.string(),
+	/** One CI result: `check`, `job`. */
+	check: z.string(),
+	checks: z.string(),
+	/** The CI view as a whole: `checks`, `pipeline`. */
+	ci: z.string(),
+});
+export type PrHostTerms = z.infer<typeof PrHostTermsSchema>;
+
+/** Each host kind's terms; the UI renders these and never hard-codes a host's word. */
+export const PR_HOST_TERMS: Record<PrHost, PrHostTerms> = {
+	github: {
+		changeRequest: "pull request",
+		short: "PR",
+		numberPrefix: "#",
+		check: "check",
+		checks: "checks",
+		ci: "checks",
+	},
+	gitlab: {
+		changeRequest: "merge request",
+		short: "MR",
+		numberPrefix: "!",
+		check: "job",
+		checks: "jobs",
+		ci: "pipeline",
+	},
+	other: {
+		changeRequest: "pull request",
+		short: "PR",
+		numberPrefix: "#",
+		check: "check",
+		checks: "checks",
+		ci: "checks",
+	},
+};
+
+/** A host's terms; an absent or unknown host reads as a pull request with checks. */
+export function prHostTerms(host: PrHost | null | undefined): PrHostTerms {
+	return PR_HOST_TERMS[host ?? "other"] ?? PR_HOST_TERMS.other;
+}
+
+/** `PR #12`, `MR !12`. */
+export function prLabel(host: PrHost | null | undefined, n: number): string {
+	const t = prHostTerms(host);
+	return `${t.short} ${t.numberPrefix}${n}`;
+}
+
+/** A term with its first letter upper case, for a label or a sentence start. */
+export function capitalTerm(word: string): string {
+	return word.charAt(0).toUpperCase() + word.slice(1);
+}
 
 /**
  * A watch's lifecycle (#1024 surface F): `waiting` holds a batch for the agent;

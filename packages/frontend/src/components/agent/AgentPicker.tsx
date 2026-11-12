@@ -309,11 +309,14 @@ export function ModelChip({
 	onPick,
 	disabled,
 	side = "top",
+	emptyName,
 }: {
 	harness: HarnessStatus | undefined;
 	model: string;
 	onPick: (harness: HarnessStatus, model: string) => void;
 	disabled?: boolean;
+	/** What the chip reads while no model is picked, such as "Smallest". */
+	emptyName?: string;
 	side?: "top" | "bottom";
 	/** Ignored: the kit picker owns its look. */
 	className?: string;
@@ -439,7 +442,11 @@ export function ModelChip({
 					if (h) onPick(h, rest.join("::"));
 				}}
 				display={{
-					name: isLoading ? "…" : chipModel(harness, model),
+					name: isLoading
+						? "…"
+						: !model && emptyName
+							? emptyName
+							: chipModel(harness, model),
 					...(harness
 						? { mark: <AgentMark id={harness.id} className="size-3.5" /> }
 						: {}),

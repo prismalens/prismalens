@@ -38,6 +38,7 @@ export {
 } from "./Rail";
 export { ResponseActions } from "./ResponseActions";
 export { Status, type StatusKind, statusWord } from "./Status";
+export { Strip, StripAction } from "./Strip";
 export { type TabItem, TabPanel, Tabs } from "./Tabs";
 export {
 	TOOL_LINE,

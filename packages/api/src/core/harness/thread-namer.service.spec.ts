@@ -22,6 +22,9 @@ function createService() {
 		investigationEvent: {
 			findMany: vi.fn(async () => [] as Array<{ event: string }>),
 		},
+		job: {
+			findUnique: vi.fn(async () => null as { payload: string } | null),
+		},
 	};
 	const harness = {
 		getSettings: vi.fn(async (): Promise<{ threadTitles?: ThreadTitleSettings }> => ({
@@ -50,6 +53,7 @@ function createService() {
 }
 
 describe("ThreadNamerService (#1101)", () => {
+	// Deliberately changed by e1c1235096: data.titleSetBy is "generated"
 	it("replaces the instant title with the generated title", async () => {
 		const { svc, prisma } = createService();
 		const outcome = await svc.nameOnce(
@@ -66,7 +70,7 @@ describe("ThreadNamerService (#1101)", () => {
 			},
 			data: {
 				title: "Generated Title",
-				titleSetBy: "agent",
+				titleSetBy: "generated",
 			},
 		});
 	});
@@ -102,6 +106,7 @@ describe("ThreadNamerService (#1101)", () => {
 		expect(prisma.investigation.updateMany).not.toHaveBeenCalled();
 	});
 
+	// Deliberately changed by e1c1235096: data.titleSetBy is "generated"; forced where has OR [{titleSetBy:null},{titleSetBy:{not:"user"}}]
 	it("returns off and never calls name when threadTitles.enabled is false, but regenerate still names it with force", async () => {
 		const { svc, prisma, harness } = createService();
 		harness.getSettings.mockResolvedValue({
@@ -125,12 +130,26 @@ describe("ThreadNamerService (#1101)", () => {
 			where: {
 				id: "run-1",
 				title: "Instant Title",
+				OR: [{ titleSetBy: null }, { titleSetBy: { not: "user" } }],
 			},
 			data: {
 				title: "Generated Title",
-				titleSetBy: "agent",
+				titleSetBy: "generated",
 			},
 		});
+	});
+
+	it("regenerate on a row with titleSetBy user returns kept and never calls name", async () => {
+		const { svc, prisma } = createService();
+		prisma.investigation.findUnique.mockResolvedValue({
+			title: "User Custom Title",
+			harness: "claude-code",
+			titleSetBy: "user",
+			incident: null,
+		});
+		const outcome = await svc.regenerate("run-1");
+		expect(outcome).toBe("kept");
+		expect(svc.name).not.toHaveBeenCalled();
 	});
 
 	it("returns no-model when no small model is listed and none is set", async () => {
@@ -192,5 +211,35 @@ describe("ThreadNamerService (#1101)", () => {
 				prompt: expect.stringContaining("Alert: Payment Service 500 Spike"),
 			}),
 		);
+	});
+
+	it("names it again from the job's brief when no message event exists, not from the current title", async () => {
+		const { svc, prisma } = createService();
+		prisma.job.findUnique.mockResolvedValue({
+			payload: JSON.stringify({ brief: "Why did checkout p99 rise after deploy 412?" }),
+		});
+		expect(await svc.regenerate("run-1")).toBe("named");
+		const prompt = (svc.name as unknown as { mock: { calls: [string, { prompt: string }][] } })
+			.mock.calls[0][1].prompt;
+		expect(prompt).toContain("Why did checkout p99 rise after deploy 412?");
+		expect(prompt).not.toContain("Instant Title");
+	});
+
+	it("ignores a follow-up's job and falls back to the incident title", async () => {
+		const { svc, prisma } = createService();
+		prisma.investigation.findUnique.mockResolvedValue({
+			title: "Instant Title",
+			harness: "claude-code",
+			titleSetBy: null,
+			incident: { title: "Checkout 5xx spike" },
+		});
+		prisma.job.findUnique.mockResolvedValue({
+			payload: JSON.stringify({ resume: { sessionId: "s" }, brief: "follow-up text" }),
+		});
+		expect(await svc.regenerate("run-1")).toBe("named");
+		const prompt = (svc.name as unknown as { mock: { calls: [string, { prompt: string }][] } })
+			.mock.calls[0][1].prompt;
+		expect(prompt).toContain("Task:\nCheckout 5xx spike");
+		expect(prompt).not.toContain("follow-up text");
 	});
 });

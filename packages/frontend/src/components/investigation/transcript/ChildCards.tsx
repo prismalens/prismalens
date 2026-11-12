@@ -208,18 +208,16 @@ export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
 			head={
 				<>
 					<Icon aria-hidden className="size-3.5 shrink-0" />
-					<span className="shrink-0">{sent ? "To" : "From"}</span>
 					<span className="min-w-0 truncate">
+						{sent ? "To" : "From"}{" "}
 						{peerId ? (
 							<ThreadLink id={peerId}>{peerName}</ThreadLink>
 						) : (
 							peerName
 						)}
+						{peerName !== event.peerRole ? ` · ${event.peerRole}` : ""}
+						{` · ${event.type}`}
 					</span>
-					{peerName !== event.peerRole && (
-						<span className="shrink-0">· {event.peerRole}</span>
-					)}
-					<span className="shrink-0">· {event.type}</span>
 					<span className="ml-auto shrink-0 tabular-nums">
 						{formatClock(event.ts)}
 					</span>
@@ -236,7 +234,7 @@ const OUTCOME: Record<Ev<"child_finished">["outcome"], StatusKind> = {
 	limited: "limited",
 };
 
-/** A child's finish as one line ("db finished · Done"), its excerpt quoted under it. */
+/** A child's finish as one line ("db · Done"), its excerpt quoted under it. */
 export function ChildFinishedCard({ event }: { event: Ev<"child_finished"> }) {
 	const tree = useTreeOf(event.runId);
 	const node = tree?.nodes.find((n) => n.id === event.childId);
@@ -251,9 +249,9 @@ export function ChildFinishedCard({ event }: { event: Ev<"child_finished"> }) {
 					<span className="min-w-0 truncate">
 						<ThreadLink id={event.childId}>
 							{node?.title ?? event.role}
-						</ThreadLink>
+						</ThreadLink>{" "}
+						<span aria-hidden>·</span>{" "}
 					</span>
-					<span className="shrink-0">finished ·</span>
 					<Status kind={OUTCOME[event.outcome]} className="shrink-0" />
 					<span className="ml-auto shrink-0 tabular-nums">
 						{formatClock(event.ts)}
@@ -286,8 +284,9 @@ export function ParentBar({ threadId }: { threadId: string }) {
 			data-testid="parent-bar"
 		>
 			<CornerLeftUp aria-hidden className="size-3.5 shrink-0" />
-			<span className="shrink-0">Started by</span>
+			{/* One run of text, so it copies and reads with its spaces. */}
 			<span className="min-w-0 truncate">
+				Started by{" "}
 				<Link
 					to="/threads/$id"
 					params={{ id: self.parentId }}
@@ -296,11 +295,8 @@ export function ParentBar({ threadId }: { threadId: string }) {
 				>
 					{parent?.title ?? `#${parent?.number ?? 1}`}
 				</Link>
-			</span>
-			{self.role && <span className="shrink-0">· {self.role}</span>}
-			<span className="shrink-0">
-				· level {self.depth}
-				{max ? ` of ${max}` : ""}
+				{self.role ? ` · ${self.role}` : ""}
+				{` · level ${self.depth}${max ? ` of ${max}` : ""}`}
 			</span>
 		</div>
 	);

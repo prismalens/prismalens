@@ -4,7 +4,7 @@
 /** Tool rows, child threads and context (#1101 cat 9-11): their states from fixtures. */
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { Transcript } from "@/components/investigation/Transcript";
-import { TurnEnd } from "@/components/investigation/TurnEnd";
+import { TurnEnd, TurnVerdict } from "@/components/investigation/TurnEnd";
 import {
 	ChildFinishedCard,
 	ChildRow,
@@ -46,6 +46,46 @@ const step = (n: number, p: Partial<RunStep> = {}): RunStep => ({
 	input: null,
 	...p,
 });
+
+/** A turn's last test run, as the verdict reads it (#1110). */
+const testRun = (ok: boolean, output: string) =>
+	step(9, { command: "pnpm vitest run", run: "pnpm vitest run", ok, output });
+const CLEAN_FILES = [
+	{ path: "services/api/src/orders/list.ts", add: 12, del: 4 },
+	{ path: "services/api/src/orders/list.test.ts", add: 18, del: 0 },
+	{ path: "pnpm-lock.yaml", add: 140, del: 96 },
+];
+const RISKY_FILES = [
+	{
+		path: "services/api/src/orders/list.ts",
+		add: 12,
+		del: 4,
+		status: "modified",
+	},
+	{ path: ".github/workflows/ci.yml", add: 1, del: 3, status: "modified" },
+	{ path: "services/api/vitest.config.ts", add: 1, del: 1, status: "modified" },
+	{
+		path: "services/api/src/orders/list.slow.test.ts",
+		add: 0,
+		del: 64,
+		status: "deleted",
+	},
+	{
+		path: "services/api/migrations/0042_orders_index.sql",
+		add: 6,
+		del: 0,
+		status: "added",
+	},
+];
+const BIG_FILES = [
+	"apps/web/src/cart.tsx",
+	"apps/admin/src/orders.tsx",
+	"services/api/src/orders/list.ts",
+	"services/billing/src/invoice.ts",
+	"libs/ui/src/table.tsx",
+	"docs/orders.md",
+	"infra/terraform/db.tf",
+].map((path, i) => ({ path, add: 180 + i * 20, del: 40 }));
 
 const PL_STEP = step(4, {
 	title: "Watching PR #1088",
@@ -207,6 +247,42 @@ export const transcriptGallery: GallerySection[] = [
 					<TurnEnd summary={SUMMARY} onOpenDiff={() => {}} />
 				</ol>
 			),
+	},
+	{
+		id: "turn-verdict",
+		title: "A turn's verdict: tests, risk flags, too big to judge",
+		render: () => (
+			<div className="flex max-w-[760px] flex-col gap-4">
+				<div data-testid="gallery-verdict-clean">
+					<TurnVerdict
+						summary={{ text: "" }}
+						files={CLEAN_FILES}
+						steps={[
+							testRun(
+								true,
+								"Test Files  4 passed (4)\n      Tests  38 passed (38)",
+							),
+						]}
+						onOpenDiff={() => {}}
+					/>
+				</div>
+				<div data-testid="gallery-verdict-risky">
+					<TurnVerdict
+						summary={{ text: "" }}
+						files={RISKY_FILES}
+						steps={[testRun(false, "Tests  2 failed | 36 passed (38)")]}
+						onOpenDiff={() => {}}
+					/>
+				</div>
+				<div data-testid="gallery-verdict-big">
+					<TurnVerdict
+						summary={{ text: "" }}
+						files={BIG_FILES}
+						onOpenDiff={() => {}}
+					/>
+				</div>
+			</div>
+		),
 	},
 	{
 		id: "long-group",

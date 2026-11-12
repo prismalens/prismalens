@@ -49,7 +49,6 @@ export function ModelsSettings() {
 					<UseDefaultRow use="alert" />
 					<OrganizerRow />
 					<UseDefaultRow use="delegate" />
-					<ThreadTitlesRow />
 				</Pool>
 			</SettingGroup>
 			<ThreadTitleOptions />
@@ -125,8 +124,8 @@ const LENGTH_OPTIONS = [30, 40, 50, 60, 80].map((n) => ({
 	label: `${n} characters`,
 }));
 const STYLE_OPTIONS = [
-	{ value: "sentence", label: "Sentence case" },
-	{ value: "verb-first", label: "Verb first" },
+	{ value: "sentence", label: "Names the problem" },
+	{ value: "verb-first", label: "Starts with a verb" },
 ] as const;
 
 /** Reads and writes the whole Thread titles block; a write replaces it. */
@@ -143,11 +142,12 @@ function useThreadTitles() {
 	};
 }
 
-/** Thread titles (#1101): the small model that names a new thread, on the thread's own agent. */
-export function ThreadTitlesRow() {
+/** Thread titles (#1101): one section, the model a new thread is named with and how the title reads. */
+export function ThreadTitleOptions() {
 	const { effective, harnesses } = useAgentChoice();
 	const { current, update, hostOnly, save } = useThreadTitles();
-	const off = current.enabled === false;
+	const on = current.enabled !== false;
+	const busy = hostOnly || update.isPending;
 	const picked = Object.keys(current.models ?? {})[0];
 	const harness =
 		harnesses.find((h) => h.id === picked && h.id !== effective?.id) ??
@@ -156,51 +156,11 @@ export function ThreadTitlesRow() {
 		? current.models?.[harness.id as HarnessId]
 		: undefined;
 	const small = harness ? smallestModel(harness.models.entries) : null;
-	const description = off
-		? "Off: a thread keeps the first line of its message"
-		: chosen
-			? "A small model names each new thread on its own agent"
-			: small
-				? "A small model names each new thread on its own agent. Its smallest model by default"
-				: "This agent lists no small model, so a thread keeps the first line of its message";
-	return (
-		<SettingRow
-			label="Thread titles"
-			description={description}
-			testId="models-use-titles"
-			changed={!!current.models}
-			onReset={() => save({ models: undefined })}
-			locked={hostOnly ? HOST_ONLY : undefined}
-		>
-			<ModelChip
-				harness={harness}
-				model={chosen ?? small ?? ""}
-				side="bottom"
-				disabled={hostOnly || off || update.isPending}
-				onPick={(h, model) =>
-					save({
-						models: {
-							...current.models,
-							...(model ? { [h.id as HarnessId]: model } : {}),
-						},
-					})
-				}
-			/>
-		</SettingRow>
-	);
-}
-
-/** On or off, length and style of the generated title. */
-export function ThreadTitleOptions() {
-	const { current, update, hostOnly, save } = useThreadTitles();
-	const on = current.enabled !== false;
-	const busy = hostOnly || update.isPending;
 	return (
 		<SettingGroup title="Thread titles" testId="models-titles">
 			<Pool>
 				<SettingRow
 					label={<label htmlFor="models-titles-on">Name new threads</label>}
-					description="A rename of yours always stays. Name it again from the thread menu"
 					testId="models-titles-on-row"
 					locked={hostOnly ? HOST_ONLY : undefined}
 				>
@@ -213,8 +173,29 @@ export function ThreadTitleOptions() {
 					/>
 				</SettingRow>
 				<SettingRow
+					label="Model"
+					testId="models-use-titles"
+					changed={!!current.models}
+					onReset={() => save({ models: undefined })}
+				>
+					<ModelChip
+						harness={harness}
+						model={chosen ?? ""}
+						emptyName={small ? "Smallest" : "None listed"}
+						side="bottom"
+						disabled={busy || !on}
+						onPick={(h, model) =>
+							save({
+								models: {
+									...current.models,
+									...(model ? { [h.id as HarnessId]: model } : {}),
+								},
+							})
+						}
+					/>
+				</SettingRow>
+				<SettingRow
 					label="Length"
-					description="The most characters a title may have"
 					testId="models-titles-length"
 					changed={current.maxLength !== undefined}
 					onReset={() => save({ maxLength: undefined })}
@@ -230,7 +211,6 @@ export function ThreadTitleOptions() {
 				</SettingRow>
 				<SettingRow
 					label="Style"
-					description="Verb first reads like a task: “Find why checkout p99 rose”"
 					testId="models-titles-style"
 					changed={current.style !== undefined}
 					onReset={() => save({ style: undefined })}

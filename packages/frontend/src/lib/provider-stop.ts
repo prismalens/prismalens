@@ -106,6 +106,69 @@ export function stopLine(
 		: `${name} · reset time unknown${tries ? ` (${tries})` : ""}`;
 }
 
+/** "(2 of 5)": the try a pending wake makes, of the most it makes. */
+function tryOf(limit: ThreadStop): string {
+	const t = tryCount(limit);
+	return t ? ` (${t.slice(4)})` : "";
+}
+
+/**
+ * The strip's two parts (sheet §10): the state, bold, then one plain detail with
+ * one time. "Usage limit reached" · "Resumes 13:30"; "Rate limited" · "Next try 15:45 (2 of 5)".
+ */
+export function stopStrip(
+	limit: ThreadStop,
+	opts: { clock?: (at: string) => string; now?: number } = {},
+): { head: string; detail: string | null } {
+	const clock = opts.clock ?? formatClock;
+	const mode = stopMode(limit);
+	if (mode === "out_of_credit") return { head: "Out of credit", detail: null };
+	if (mode === "key_rejected")
+		return { head: "API key rejected", detail: null };
+	if (mode === "spend_cap") return { head: "Spend cap reached", detail: null };
+	const next = limit.autoResume ? limit.nextAttemptAt : undefined;
+	const stopped = () => {
+		const n = Math.max(0, limit.attempts - 1);
+		return `Stopped after ${n} ${n === 1 ? "try" : "tries"}`;
+	};
+	if (mode === "rate_limited")
+		return {
+			head: "Rate limited",
+			detail: limit.gaveUp
+				? stopped()
+				: next
+					? `Next try ${clock(next)}${tryOf(limit)}`
+					: "Not retrying",
+		};
+	if (mode === "overloaded") {
+		const left = next ? Date.parse(next) - (opts.now ?? Date.now()) : 0;
+		return {
+			head: "Provider busy",
+			detail: limit.gaveUp
+				? stopped()
+				: next
+					? `Retrying ${left > 0 ? `in ${waitWords(left)}` : "now"}${tryOf(limit)}`
+					: "Not retrying",
+		};
+	}
+	const head = "Usage limit reached";
+	if (limit.gaveUp) return { head, detail: stopped() };
+	if (!limit.autoResume)
+		return {
+			head,
+			detail: limit.resetsAt ? `Resets ${clock(limit.resetsAt)}` : null,
+		};
+	if (limit.resetsAt)
+		return {
+			head,
+			detail: `Resumes ${clock(limit.resetsAt)}`,
+		};
+	return {
+		head,
+		detail: next ? `Next try ${clock(next)}${tryOf(limit)}` : null,
+	};
+}
+
 /** The dock's second line: what happens next, and the one thing to do. */
 export function stopNext(limit: ThreadStop): string {
 	const mode = stopMode(limit);
@@ -147,18 +210,19 @@ export function stopRowWords(
 			: mode === "overloaded"
 				? "Provider busy"
 				: "Usage limit";
-	// A known reset resumes; with none, the next attempt is only a try (#1101 cat 17 item 4).
+	// Limited already names the stop: the detail is its one time, the reset, which every
+	// surface says (sheet §10). With no reset, the next attempt is only a try (#1101 cat 17).
 	if (limit.resetsAt)
 		return {
 			state: "limited",
 			word: "Limited",
-			detail: `${cause} · resumes ${clock(limit.nextAttemptAt ?? limit.resetsAt)}`,
+			detail: `Resumes ${clock(limit.resetsAt)}`,
 		};
 	if (limit.nextAttemptAt)
 		return {
 			state: "limited",
 			word: "Limited",
-			detail: `${cause} · next try ${clock(limit.nextAttemptAt)}${limit.nextTry ? ` (try ${limit.nextTry.n} of ${limit.nextTry.of})` : ""}`,
+			detail: `Next try ${clock(limit.nextAttemptAt)}${limit.nextTry ? ` (${limit.nextTry.n} of ${limit.nextTry.of})` : ""}`,
 		};
 	return { state: "limited", word: "Limited", detail: cause };
 }

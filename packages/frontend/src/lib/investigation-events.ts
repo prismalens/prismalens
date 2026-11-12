@@ -9,6 +9,7 @@ import type {
 	RunCredential,
 	StreamToolResult,
 } from "@prismalens/contracts";
+import { isPlServerName, plToolName } from "@prismalens/contracts";
 import {
 	ACCESS_LEVEL_LABEL,
 	ModelReportSchema,
@@ -529,6 +530,8 @@ export type TranscriptItem =
 			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** Its event's seq: where its turn starts, for the turn's snapshot (#1110). */
+			seq?: number;
 	  }
 	| {
 			kind: "end";
@@ -541,6 +544,7 @@ export type TranscriptItem =
 			detail?: string;
 			report?: boolean;
 			path?: string;
+
 			/** What the box can do next, under the line (run-end-line.ts). */
 			hint?: string | null;
 			/** A finished report offers `Investigate again` (#673 w59). */
@@ -809,6 +813,11 @@ export function deriveTranscript(
 	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
 	let limited = false;
 	const gateway = matchGateway(events);
+	/** Rename calls, said as one "Named" line and kept out of every group. */
+	const named = new Set<string>();
+	const stopLines = events.some(
+		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
+	);
 	const findings = new Map<
 		string,
 		Extract<TranscriptItem, { kind: "finding" }>
@@ -966,8 +975,27 @@ export function deriveTranscript(
 					answerPending();
 				}
 				for (const call of event.toolCalls) {
-					if (callGroup.has(call.toolCallId) || delegated.has(call.toolCallId))
+					if (
+						callGroup.has(call.toolCallId) ||
+						delegated.has(call.toolCallId) ||
+						named.has(call.toolCallId)
+					)
 						continue;
+					// Naming the thread is housekeeping: one quiet line, never a step or a command (#1104).
+					if (isRenameCall(call.name)) {
+						named.add(call.toolCallId);
+						const title =
+							typeof call.args.title === "string" ? call.args.title.trim() : "";
+						if (title) {
+							closeGroup();
+							items.push({
+								kind: "line",
+								key: `${key}-${call.toolCallId}`,
+								text: `Named · ${title}`,
+							});
+						}
+						continue;
+					}
 					if (DELEGATE_TOOL.test(call.name)) {
 						delegated.add(call.toolCallId);
 						if (subagents.get(call.toolCallId)?.fallback) {
@@ -1001,6 +1029,7 @@ export function deriveTranscript(
 			}
 			case "tool_result": {
 				const id = event.result.toolCallId;
+				if (named.has(id)) break;
 				const g: OpenGroup =
 					callGroup.get(id) ?? group ?? openGroup(key, event.ts);
 				g.item.until = event.ts;
@@ -1071,6 +1100,7 @@ export function deriveTranscript(
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
+					seq: event.seq,
 					text: event.text,
 					at: event.ts,
 					mode: event.mode,
@@ -1149,6 +1179,7 @@ export function deriveTranscript(
 					});
 				break;
 			case "harness_tool_call": {
+				if (plToolName(event.name) === "pl_thread_title") break;
 				const node = gatewayNode(event.name);
 				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
 				if (
@@ -1201,6 +1232,8 @@ export function deriveTranscript(
 					items.push(stoppedLine(run, event.ts));
 					break;
 				}
+				// A provider stop's own line says it once; the turn adds no end of its own (sheet §10).
+				if (event.failure && stopLines) break;
 				// A message's own end on a thread whose standing it does not change (#673 w59, #804 OBJ-028).
 				if (
 					!first ||
@@ -1282,6 +1315,25 @@ export function deriveTranscript(
 				}
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
+					// A limit's first resume folds into the limit's line, which says the reset: one line,
+					// one time (sheet §10). A limit with no reset takes the resume's time.
+					const last = items.at(-1);
+					if (
+						event.kind === "resume_scheduled" &&
+						event.at &&
+						!event.gaveUp &&
+						!event.nextTry &&
+						(event.attempt ?? 1) <= 1 &&
+						last?.kind === "node" &&
+						last.event.kind === "usage_limit"
+					) {
+						if (!last.event.resetsAt)
+							items[items.length - 1] = {
+								...last,
+								event: { ...last.event, resetsAt: event.at },
+							};
+						break;
+					}
 					// A compaction's end replaces its own "Compacting" line (#1101).
 					if (event.kind === "compaction" && event.phase !== "started") {
 						const at = items.findLastIndex(
@@ -1585,4 +1637,20 @@ export function queuedMessages(
 				attachments: m.attachments ?? [],
 			})),
 	];
+}
+
+/** The agent naming its thread through PrismaLens: `mcp__prismalens__pl_thread_title` or `pl_thread_title (prismalens)`. */
+export function isRenameCall(name: string): boolean {
+	const n = name.replace(/^`([\s\S]*)`$/, "$1").trim();
+	const mcp = /^mcp__(.+?)__(.+)$/.exec(n);
+	if (mcp)
+		return (
+			isPlServerName(mcp[1]) && plToolName(mcp[2] ?? "") === "pl_thread_title"
+		);
+	const shown = /^(\w+) \((.+)\)$/.exec(n);
+	return (
+		!!shown &&
+		isPlServerName(shown[2]) &&
+		plToolName(shown[1] ?? "") === "pl_thread_title"
+	);
 }
