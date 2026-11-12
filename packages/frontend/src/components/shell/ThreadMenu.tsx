@@ -243,11 +243,14 @@ export function ThreadMenu({
 	where = "header",
 	onRename,
 	onSettle,
+	extra = [],
 	triggerClassName,
 	defaultOpen,
 }: {
 	thread: MenuThread;
 	where?: "row" | "header";
+	/** The header's own controls folded in above the thread's entries: a phone's header. */
+	extra?: MenuEntry[];
 	/** The row renames in place; without it the menu asks in a dialog. */
 	onRename?: () => void;
 	onSettle?: () => void;
@@ -265,7 +268,11 @@ export function ThreadMenu({
 		<>
 			<Menu
 				label="Thread actions"
-				entries={entries}
+				entries={
+					extra.length
+						? [...extra, { id: "sep-extra", separator: true }, ...entries]
+						: entries
+				}
 				open={defaultOpen || undefined}
 				trigger={
 					<button

@@ -8,8 +8,10 @@ import {
 	CircleCheck,
 	CircleDashed,
 	CircleHelp,
+	CircleSlash,
 	Clock3,
 	Flag,
+	Gauge,
 	GitBranch,
 	GitMerge,
 	GitPullRequest,
@@ -139,6 +141,28 @@ export const MARKS = {
 		icons: { blocked: Ban },
 		label: "Usage limit",
 		tones: { limited: "warn", blocked: "danger" },
+	}),
+	/** A usage window: amber near its limit, red once full by the rule that parks a thread (`usageWindowState`). */
+	usage: defineMark({
+		id: "usage",
+		icon: Gauge,
+		icons: { near: TriangleAlert, full: Clock3, unreported: CircleSlash },
+		label: "Usage window",
+		tones: {
+			room: "info",
+			near: "warn",
+			full: "danger",
+			unknown: "muted",
+			unreported: "muted",
+		},
+	}),
+	/** An answer sent from a card: green only once the host took it, red with a retry when it did not. */
+	answer: defineMark({
+		id: "answer",
+		icon: CircleDashed,
+		icons: { delivered: CircleCheck, failed: TriangleAlert },
+		label: "Your answer",
+		tones: { sending: "info", delivered: "ok", failed: "danger" },
 	}),
 	/** A risky edit in a turn: tests, CI, coverage, migrations, secrets, permissions (#1110). */
 	risk: defineMark({

@@ -17,7 +17,6 @@ import {
 	MessagesSquare,
 	PanelLeft,
 	Search,
-	ShieldAlert,
 	SlidersHorizontal,
 	SquarePen,
 	SquareTerminal,
@@ -27,6 +26,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useUnreadEvents } from "@/components/attention/EventList";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
+import { MARKS, markLook } from "@/components/kit/marks";
 import { useAbout } from "@/components/settings";
 import { Hint } from "@/components/shared/Hint";
 import { ConnectionWord } from "@/components/shell/ConnectionWord";
@@ -581,6 +581,8 @@ function PhoneStrip({
 	const [open, setOpen] = useState(false);
 	const openSearch = useOpenSearch();
 	const waiting = doors.find((d) => d.sheet && d.count !== undefined);
+	const waitingLook = markLook("ask", "approval");
+	const WaitingIcon = waitingLook.icon;
 	useKeyboardInset();
 	return (
 		<nav
@@ -663,10 +665,14 @@ function PhoneStrip({
 				<button
 					type="button"
 					onClick={() => setOpen(true)}
-					className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-control px-2 text-meta font-medium text-text-1 tabular-nums hover:bg-surface-2"
+					aria-label={`${waiting.count} ${MARKS.ask.label.toLowerCase()}`}
+					className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-meta font-medium text-text-1 tabular-nums hover:bg-surface-2"
 					data-testid="strip-waiting"
 				>
-					<ShieldAlert aria-hidden className="size-3.5 text-warn" />
+					<WaitingIcon
+						aria-hidden
+						className={cn("size-3.5", waitingLook.className)}
+					/>
 					{waiting.count} waiting
 				</button>
 			)}

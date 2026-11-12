@@ -10,15 +10,30 @@ import {
 } from "@prismalens/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
+	BellOff,
+	BellRing,
+	CalendarClock,
 	ChevronLeft,
 	Columns2,
+	GitPullRequest,
 	PanelRight,
 	PanelTop,
 	TriangleAlert,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ComponentProps,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
-import { FollowButton } from "@/components/attention/FollowButton";
+import {
+	FollowButton,
+	useThreadFollow,
+} from "@/components/attention/FollowButton";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { ParentBar } from "@/components/investigation/transcript/ChildCards";
@@ -31,6 +46,8 @@ import {
 	detailsRows,
 	dockFor,
 	KitPopover,
+	type MenuEntry,
+	Status,
 } from "@/components/kit";
 import { BrowserTab } from "@/components/run/BrowserTab";
 import {
@@ -46,6 +63,7 @@ import { RightPanel } from "@/components/shell/PanelShell";
 import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { StatusLabel } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -53,6 +71,7 @@ import {
 	useResumeInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
+import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
@@ -81,7 +100,7 @@ import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { matches } from "@/lib/shortcuts";
 import { deriveSubagents } from "@/lib/subagents";
-import { runStatusInfo } from "@/lib/thread-status";
+import { runStatusInfo, STATUS_WORD } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { cn } from "@/lib/utils";
 import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
@@ -92,7 +111,7 @@ import { FileView } from "./diff/FileView";
 import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { KindTab } from "./panel/KindTab";
-import { PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
+import { iconOf, PaneMenu, PaneUnavailable } from "./panel/PaneMenu";
 import { PrView } from "./panel/PrView";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
@@ -209,6 +228,8 @@ export function ThreadPage({ id }: { id: string }) {
 	const resume = useResumeInvestigation();
 	const [resumeError, setResumeError] = useState<string | null>(null);
 	const [boxOpen, setBoxOpen] = useState(false);
+	// A phone's header keeps the title and folds its controls into ⋯ (#1101 category 5).
+	const phone = useMediaQuery(PHONE);
 	const search = useSearch({ from: "/_authenticated/threads/$id" });
 	const navigate = useNavigate();
 	const panelOpen = !!search.panel;
@@ -791,10 +812,55 @@ export function ThreadPage({ id }: { id: string }) {
 		if (!repo) return openPanel({ panel: "changes" });
 		openFile({ repo: repo.name, sha: repo.head, path, line, end: line });
 	};
+	const statusInfo = inv
+		? (statuses.data?.statuses[inv.id] ?? runStatusInfo(inv.status))
+		: null;
+	const phoneEntries: MenuEntry[] = phone
+		? [
+				...(chipPr
+					? [
+							{
+								id: "pr",
+								label: `PR #${chipPr.number}`,
+								icon: GitPullRequest,
+								onSelect: () =>
+									openPanel({
+										panel: "thread",
+										section: `pull-requests:${chipPr.id}`,
+									}),
+							},
+						]
+					: []),
+				{
+					id: "details",
+					label: "Details",
+					icon: PanelRight,
+					disabled: !ready,
+					onSelect: () => openPanel({ panel: "thread" }),
+				},
+				...panes.tools
+					.filter((t) => t.id !== "thread" && t.id !== "terminal")
+					.map((t) => ({
+						id: `open-${t.id}`,
+						label: t.label,
+						icon: iconOf(t),
+						disabled: !ready,
+						onSelect: () => panes.open(t.id),
+					})),
+				{
+					id: "status-box",
+					label: "Status",
+					icon: PanelTop,
+					checked: boxOpen,
+					disabled: !ready,
+					onSelect: () => setBoxOpen((o) => !o),
+				},
+			]
+		: [];
 	const header = (
 		<header
 			data-title-row
-			className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2"
+			className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 py-1.5 pr-3 pl-2 max-sm:gap-1 max-sm:pr-1 max-sm:pl-1"
 		>
 			<Button variant="ghost" size="icon-lg" aria-label={back.label} asChild>
 				<Link to={back.to} params={back.params}>
@@ -809,15 +875,27 @@ export function ThreadPage({ id }: { id: string }) {
 			</h1>
 			{workspace?.layout === "folder" && (
 				// A plain folder's thread works in the folder itself (#1020).
-				<span
-					className="inline-flex shrink-0 items-center gap-1 text-meta text-warn"
-					data-testid="thread-no-undo"
-				>
-					<TriangleAlert className="size-3.5" aria-hidden />
-					No undo
-				</span>
+				<Hint label="No undo" when={phone}>
+					<span
+						className="inline-flex shrink-0 items-center gap-1 text-meta text-warn"
+						data-testid="thread-no-undo"
+					>
+						<TriangleAlert className="size-3.5" aria-hidden />
+						{phone ? <span className="sr-only">No undo</span> : "No undo"}
+					</span>
+				</Hint>
 			)}
-			{chipPr && (
+			{phone && statusInfo && (
+				<Hint label={STATUS_WORD[statusInfo.status]}>
+					<span
+						className="flex size-11 shrink-0 items-center justify-center"
+						data-testid="thread-state"
+					>
+						<Status kind={statusInfo.status} showWord={false} />
+					</span>
+				</Hint>
+			)}
+			{!phone && chipPr && (
 				<ThreadPrChip
 					pr={chipPr}
 					more={prs.length - 1}
@@ -826,23 +904,22 @@ export function ThreadPage({ id }: { id: string }) {
 					}
 				/>
 			)}
-			{inv && (
+			{!phone && statusInfo && (
 				// The same closed-set status the list shows (#1101 category 2), the run's own until it loads.
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
 					data-testid="thread-state"
 				>
-					<StatusLabel
-						info={statuses.data?.statuses[inv.id] ?? runStatusInfo(inv.status)}
-						now={Date.now()}
-					/>
+					<StatusLabel info={statusInfo} now={Date.now()} />
 					{run.stopRequested && (
 						<span className="text-meta text-text-3">Stopping</span>
 					)}
 				</span>
 			)}
-			{inv && <FollowButton threadId={inv.id} running={run.isActive} />}
-			{inv && (
+			{!phone && inv && (
+				<FollowButton threadId={inv.id} running={run.isActive} />
+			)}
+			{!phone && inv && (
 				<AddScheduleFromThread
 					title={inv.title ?? null}
 					subject={
@@ -855,67 +932,114 @@ export function ThreadPage({ id }: { id: string }) {
 					prUrl={chipPr?.url}
 				/>
 			)}
-			{inv && (
-				<ThreadMenu
-					thread={{
-						...inv,
-						settledAt: feedRow?.settledAt ?? null,
-						pinnedAt: feedRow?.pinnedAt ?? null,
-						archivedAt: feedRow?.archivedAt ?? null,
-					}}
-					triggerClassName="flex size-8 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1"
-					{...(!run.isActive && !feedRow?.settledAt
-						? {
-								onSettle: () =>
-									settleThread.mutate(
-										{ id: inv.id, settled: true },
-										{ onSuccess: () => toast({ title: "Thread settled" }) },
-									),
+			{inv &&
+				(phone ? (
+					<PhoneHeaderMenu
+						threadId={inv.id}
+						running={run.isActive}
+						entries={phoneEntries}
+						schedule={{
+							title: inv.title ?? null,
+							subject: inv.repositoryId
+								? { kind: "project", repositoryId: inv.repositoryId }
+								: inv.serviceId
+									? { kind: "service", serviceId: inv.serviceId }
+									: { kind: "none" },
+							prUrl: chipPr?.url,
+						}}
+						menu={(extra) => (
+							<ThreadMenu
+								thread={{
+									...inv,
+									settledAt: feedRow?.settledAt ?? null,
+									pinnedAt: feedRow?.pinnedAt ?? null,
+									archivedAt: feedRow?.archivedAt ?? null,
+								}}
+								extra={extra}
+								triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
+								{...(!run.isActive && !feedRow?.settledAt
+									? {
+											onSettle: () =>
+												settleThread.mutate(
+													{ id: inv.id, settled: true },
+													{
+														onSuccess: () => toast({ title: "Thread settled" }),
+													},
+												),
+										}
+									: {})}
+							/>
+						)}
+					/>
+				) : (
+					<ThreadMenu
+						thread={{
+							...inv,
+							settledAt: feedRow?.settledAt ?? null,
+							pinnedAt: feedRow?.pinnedAt ?? null,
+							archivedAt: feedRow?.archivedAt ?? null,
+						}}
+						triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
+						{...(!run.isActive && !feedRow?.settledAt
+							? {
+									onSettle: () =>
+										settleThread.mutate(
+											{ id: inv.id, settled: true },
+											{ onSuccess: () => toast({ title: "Thread settled" }) },
+										),
+								}
+							: {})}
+					/>
+				))}
+			{!phone && (
+				<>
+					<HeaderToggle
+						label="Status"
+						pressed={boxOpen}
+						disabled={!ready}
+						onToggle={() => setBoxOpen((o) => !o)}
+						icon={<PanelTop className="size-4" aria-hidden />}
+						testId="status-box-toggle"
+						controls="status-box"
+					/>
+					{ready && paneMenu}
+					{!panelOpen && !wide && detailRows ? (
+						<KitPopover
+							family="picker"
+							align="end"
+							label="Details"
+							hint="Details"
+							trigger={
+								<button
+									type="button"
+									aria-label="Details"
+									className="flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1"
+									data-testid="details-button"
+								>
+									<PanelRight className="size-4" aria-hidden />
+								</button>
 							}
-						: {})}
-				/>
-			)}
-			<HeaderToggle
-				label="Status"
-				pressed={boxOpen}
-				disabled={!ready}
-				onToggle={() => setBoxOpen((o) => !o)}
-				icon={<PanelTop className="size-4" aria-hidden />}
-				testId="status-box-toggle"
-				controls="status-box"
-			/>
-			{ready && paneMenu}
-			{!panelOpen && !wide && detailRows ? (
-				<KitPopover
-					family="picker"
-					align="end"
-					label="Details"
-					hint="Details"
-					trigger={
-						<button
-							type="button"
-							aria-label="Details"
-							className="flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1"
-							data-testid="details-button"
 						>
-							<PanelRight className="size-4" aria-hidden />
-						</button>
-					}
-				>
-					<DetailsCard rows={detailRows} className="bg-transparent p-0" />
-				</KitPopover>
-			) : (
-				<HeaderToggle
-					label={
-						panelOpen ? "Close pane" : docked ? "Hide details" : "Show details"
-					}
-					pressed={panelOpen || docked}
-					disabled={!ready}
-					onToggle={toggleDetails}
-					icon={<PanelRight className="size-4" aria-hidden />}
-					testId="panel-toggle"
-					controls="thread-panel"
-				/>
+							<DetailsCard rows={detailRows} className="bg-transparent p-0" />
+						</KitPopover>
+					) : (
+						<HeaderToggle
+							label={
+								panelOpen
+									? "Close pane"
+									: docked
+										? "Hide details"
+										: "Show details"
+							}
+							pressed={panelOpen || docked}
+							disabled={!ready}
+							onToggle={toggleDetails}
+							icon={<PanelRight className="size-4" aria-hidden />}
+							testId="panel-toggle"
+							controls="thread-panel"
+						/>
+					)}
+				</>
 			)}
 		</header>
 	);
@@ -1273,5 +1397,66 @@ ${about}`
 				</RightPanel>
 			</div>
 		</ThreadWindowEvents.Provider>
+	);
+}
+
+/** A phone header's ⋯: the page's own controls, follow and schedule, then the thread's entries. */
+function PhoneHeaderMenu({
+	threadId,
+	running,
+	entries,
+	schedule,
+	menu,
+}: {
+	threadId: string;
+	running: boolean;
+	entries: MenuEntry[];
+	schedule: Omit<
+		ComponentProps<typeof AddScheduleFromThread>,
+		"open" | "onOpenChange"
+	>;
+	menu: (extra: MenuEntry[]) => ReactNode;
+}) {
+	const follow = useThreadFollow(threadId);
+	const schedules = useSchedules();
+	const [scheduling, setScheduling] = useState(false);
+	const extra: MenuEntry[] = [
+		...entries,
+		{ id: "sep-follow", separator: true },
+		{
+			id: "follow-watch",
+			label: "Notify when finished",
+			icon: BellRing,
+			checked: follow.follow === "watch",
+			disabled: !running && follow.follow !== "watch",
+			onSelect: () => follow.choose("watch"),
+		},
+		{
+			id: "follow-mute",
+			label: "Mute",
+			icon: BellOff,
+			checked: follow.follow === "mute",
+			onSelect: () => follow.choose("mute"),
+		},
+		...(schedules.data?.canEdit
+			? [
+					{
+						id: "schedule",
+						label: "Add scheduled task",
+						icon: CalendarClock,
+						onSelect: () => setScheduling(true),
+					},
+				]
+			: []),
+	];
+	return (
+		<>
+			{menu(extra)}
+			<AddScheduleFromThread
+				{...schedule}
+				open={scheduling}
+				onOpenChange={setScheduling}
+			/>
+		</>
 	);
 }
