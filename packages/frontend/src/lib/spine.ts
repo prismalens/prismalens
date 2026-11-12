@@ -262,7 +262,18 @@ export function turnFolds(
 	return folds;
 }
 
-/** `Worked for 4m 12s`, or `Worked` when the turn kept no times. */
-export function workedLabel(seconds: number | null): string {
-	return seconds === null ? "Worked" : `Worked for ${formatElapsed(seconds)}`;
+/**
+ * `Worked for 4m 12s, 3 steps`. Under a second (or no times) the duration goes,
+ * since "0s" reads as broken; with no steps and no duration there is no line (#1101).
+ */
+export function workedLabel(
+	seconds: number | null,
+	steps?: number,
+): string | null {
+	const time =
+		seconds !== null && seconds >= 1 ? ` for ${formatElapsed(seconds)}` : "";
+	if (!time && steps === 0) return null;
+	const count =
+		steps === undefined ? "" : `, ${steps} ${steps === 1 ? "step" : "steps"}`;
+	return `Worked${time}${count}`;
 }
