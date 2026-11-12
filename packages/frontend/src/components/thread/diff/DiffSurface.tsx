@@ -49,6 +49,13 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
@@ -171,8 +178,7 @@ export function DiffSurface({
 			<div
 				role="toolbar"
 				aria-label="Diff"
-				data-scroll-x
-				className="flex shrink-0 items-center gap-1 overflow-x-auto px-2 py-1.5 shadow-[0_1px_0_var(--hairline)] [scrollbar-width:none]"
+				className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1.5 shadow-[0_1px_0_var(--hairline)]"
 			>
 				<fieldset
 					aria-label="Compare"
@@ -205,22 +211,22 @@ export function DiffSurface({
 					))}
 				</fieldset>
 				{scope === "turn" && turns.length > 1 && (
-					<select
-						aria-label="Turn"
-						value={scoped?.turn ?? ""}
-						onChange={(e) =>
-							onSearch({ scope: "turn", turn: Number(e.target.value) })
-						}
-						className="h-6 shrink-0 rounded-[4px] bg-surface-2 px-1 text-meta text-text-1"
-						data-testid="diff-turn"
+					<Select
+						value={String(scoped?.turn ?? "")}
+						onValueChange={(v) => onSearch({ scope: "turn", turn: Number(v) })}
 					>
-						{turns.map((t, i) => (
-							<option key={t.seq} value={t.seq}>
-								Turn {i + 1}
-								{t.ended ? "" : " (working)"}
-							</option>
-						))}
-					</select>
+						<SelectTrigger aria-label="Turn" data-testid="diff-turn">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{turns.map((t, i) => (
+								<SelectItem key={t.seq} value={String(t.seq)}>
+									Turn {i + 1}
+									{t.ended ? "" : " (working)"}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 				)}
 				{scope === "turn" &&
 					scoped?.turn !== null &&
