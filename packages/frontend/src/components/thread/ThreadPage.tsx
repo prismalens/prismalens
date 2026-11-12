@@ -899,79 +899,48 @@ export function ThreadPage({ id }: { id: string }) {
 			{!phone && inv && (
 				<FollowButton threadId={inv.id} running={run.isActive} />
 			)}
-			{!phone && inv && (
-				<AddScheduleFromThread
-					title={inv.title ?? null}
-					subject={
-						inv.repositoryId
+			{/* One ⋯ at every width; a phone also folds the header's own controls into it. */}
+			{inv && (
+				<HeaderMenu
+					phone={phone}
+					threadId={inv.id}
+					running={run.isActive}
+					controls={phoneControls}
+					is={phoneFacts}
+					schedule={{
+						title: inv.title ?? null,
+						subject: inv.repositoryId
 							? { kind: "project", repositoryId: inv.repositoryId }
 							: inv.serviceId
 								? { kind: "service", serviceId: inv.serviceId }
-								: { kind: "none" }
-					}
-					prUrl={chipPr?.url}
+								: { kind: "none" },
+						prUrl: chipPr?.url,
+					}}
+					menu={(page) => (
+						<ThreadMenu
+							thread={{
+								...inv,
+								settledAt: feedRow?.settledAt ?? null,
+								pinnedAt: feedRow?.pinnedAt ?? null,
+								archivedAt: feedRow?.archivedAt ?? null,
+							}}
+							page={page}
+							triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
+							{...(!run.isActive && !feedRow?.settledAt
+								? {
+										onSettle: () =>
+											settleThread.mutate(
+												{ id: inv.id, settled: true },
+												{
+													onSuccess: () => toast({ title: "Thread settled" }),
+												},
+											),
+									}
+								: {})}
+						/>
+					)}
 				/>
 			)}
-			{inv &&
-				(phone ? (
-					<PhoneHeaderMenu
-						threadId={inv.id}
-						running={run.isActive}
-						controls={phoneControls}
-						is={phoneFacts}
-						schedule={{
-							title: inv.title ?? null,
-							subject: inv.repositoryId
-								? { kind: "project", repositoryId: inv.repositoryId }
-								: inv.serviceId
-									? { kind: "service", serviceId: inv.serviceId }
-									: { kind: "none" },
-							prUrl: chipPr?.url,
-						}}
-						menu={(page) => (
-							<ThreadMenu
-								thread={{
-									...inv,
-									settledAt: feedRow?.settledAt ?? null,
-									pinnedAt: feedRow?.pinnedAt ?? null,
-									archivedAt: feedRow?.archivedAt ?? null,
-								}}
-								page={page}
-								triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
-								{...(!run.isActive && !feedRow?.settledAt
-									? {
-											onSettle: () =>
-												settleThread.mutate(
-													{ id: inv.id, settled: true },
-													{
-														onSuccess: () => toast({ title: "Thread settled" }),
-													},
-												),
-										}
-									: {})}
-							/>
-						)}
-					/>
-				) : (
-					<ThreadMenu
-						thread={{
-							...inv,
-							settledAt: feedRow?.settledAt ?? null,
-							pinnedAt: feedRow?.pinnedAt ?? null,
-							archivedAt: feedRow?.archivedAt ?? null,
-						}}
-						triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
-						{...(!run.isActive && !feedRow?.settledAt
-							? {
-									onSettle: () =>
-										settleThread.mutate(
-											{ id: inv.id, settled: true },
-											{ onSuccess: () => toast({ title: "Thread settled" }) },
-										),
-								}
-							: {})}
-					/>
-				))}
 			{!phone && (
 				<>
 					<HeaderToggle
@@ -1384,7 +1353,8 @@ ${about}`
 type PageFacts = { readonly [S in PageState]?: boolean };
 
 /** A phone header's ⋯: the page's own controls, follow and schedule, then the thread's entries. */
-function PhoneHeaderMenu({
+function HeaderMenu({
+	phone,
 	threadId,
 	running,
 	controls,
@@ -1392,6 +1362,7 @@ function PhoneHeaderMenu({
 	schedule,
 	menu,
 }: {
+	phone: boolean;
 	threadId: string;
 	running: boolean;
 	controls: Omit<ThreadPageControls, "notify" | "mute" | "schedule">;
@@ -1416,7 +1387,7 @@ function PhoneHeaderMenu({
 				},
 				is: {
 					...is,
-					phone: true,
+					phone,
 					running,
 					watching: follow.follow === "watch",
 					muted: follow.follow === "mute",
