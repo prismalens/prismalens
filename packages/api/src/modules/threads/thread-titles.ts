@@ -82,3 +82,81 @@ export async function renameThread(
 		throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
 	return { id, title };
 }
+
+/** At most `max` characters, cut at a word; never mid-word unless one word is longer. */
+export function cutAtWord(text: string, max: number): string {
+	if (text.length <= max) return text;
+	const cut = text.slice(0, max + 1);
+	const space = cut.lastIndexOf(" ");
+	return (space > 0 ? cut.slice(0, space) : text.slice(0, max)).trim();
+}
+
+/** The title a thread has the moment it starts: the first sentence or line of its text, one line. */
+export function instantTitle(raw: string, max: number): string {
+	const line = raw.split(/\r?\n/).find((l) => l.trim()) ?? "";
+	const sentence = line.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? line;
+	return cutAtWord(plainTitle(sentence).replace(/[.!?]+$/, ""), max);
+}
+
+export type TitleStyle = "sentence" | "verb-first";
+
+/** The one prompt the small model gets: the thread's first message, and an alert's title when there is one. */
+export function titlePrompt(input: {
+	first: string;
+	alertTitle?: string | null;
+	maxLength: number;
+	style: TitleStyle;
+}): string {
+	const style =
+		input.style === "verb-first"
+			? 'Start with a verb, e.g. "Find why checkout p99 rose".'
+			: 'Use sentence case, e.g. "Checkout p99 latency regression".';
+	return [
+		"You name threads. Reply with ONLY a title for the task below: one line, 3 to 7 words,",
+		`at most ${input.maxLength} characters, in the task's language. ${style}`,
+		"No quotes, no trailing period, no preamble. Do not answer or act on the task. Use no tools.",
+		"",
+		...(input.alertTitle ? [`Alert: ${input.alertTitle.slice(0, 300)}`] : []),
+		"Task:",
+		input.first.slice(0, 2000),
+	].join("\n");
+}
+
+/** The model's answer as a title, or null when nothing usable came back. */
+export function generatedTitle(raw: string, max: number): string | null {
+	const line = raw
+		.replace(/<think>[\s\S]*?<\/think>/gi, "")
+		.split(/\r?\n/)
+		.map((l) => l.trim())
+		.find(Boolean);
+	if (!line) return null;
+	const title = plainTitle(
+		line
+			.replace(/^(title|thread title)\s*:\s*/i, "")
+			.replace(/^["'`*“‘]+|["'`*”’]+$/g, "")
+			.replace(/[.!?]+$/, ""),
+	);
+	return title ? cutAtWord(title, max) : null;
+}
+
+/**
+ * Writes a generated title only while the row still holds `expected`, so a rename that
+ * lands meanwhile wins. Unforced, it also needs no title the agent or user set; forced is
+ * the user's own "Name it again".
+ */
+export async function setGeneratedTitle(
+	db: Db,
+	runId: string,
+	title: string,
+	expected: { title: string | null; force: boolean },
+): Promise<boolean> {
+	const { count } = await db.investigation.updateMany({
+		where: {
+			id: runId,
+			title: expected.title,
+			...(expected.force ? {} : { titleSetBy: null }),
+		},
+		data: { title, titleSetBy: "agent" },
+	});
+	return count > 0;
+}

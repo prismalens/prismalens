@@ -11,6 +11,7 @@ import {
 	requireOperate,
 	requireOwner,
 } from "../../core/auth/owner.js";
+import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
 import { CronService } from "../cron/cron.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
@@ -44,6 +45,7 @@ export class ThreadsController {
 		@Optional() private readonly finder?: ThreadSearchService,
 		@Optional() private readonly menu?: ThreadMenuService,
 		@Optional() private readonly status?: ThreadStatusService,
+		@Optional() private readonly namer?: ThreadNamerService,
 	) {}
 
 	private need<T>(service: T | undefined): T {
@@ -175,6 +177,18 @@ export class ThreadsController {
 			// POST /threads/:id/title - The user names it; the agent never renames it after
 			rename: implement(threadsContract.rename).handler(({ input }) =>
 				this.threads.rename(input.id, input.title),
+			),
+
+			// POST /threads/:id/title/regenerate - waits for the model; the menu shows it working
+			regenerateTitle: implement(threadsContract.regenerateTitle).handler(
+				async ({ input, context }) => {
+					requireOperate(context.request);
+					return {
+						outcome: this.namer
+							? await this.namer.regenerate(input.id)
+							: "failed",
+					};
+				},
 			),
 
 			// GET /threads/settings

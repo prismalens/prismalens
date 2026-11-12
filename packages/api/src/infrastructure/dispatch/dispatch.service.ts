@@ -59,6 +59,7 @@ import {
 import { type AskResult, reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
+import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
 import { AdmissionService } from "../../core/lifecycle/admission.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -372,6 +373,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		@Optional() private readonly lifecycle?: RuntimeLifecycleService,
 		@Optional() admission?: AdmissionService,
 		@Optional() private readonly credentials?: CredentialsService,
+		@Optional() private readonly threadNamer?: ThreadNamerService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -569,6 +571,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			resolveHarness: (requested) => this.resolveHarness(requested),
 			agentRuntime: (id) => this.harnessService.runtimeFor(id),
+			nameThread: (id, harness, first) => {
+				void this.threadNamer?.nameOnce(id, harness, first);
+			},
 			incidentRepos: async (incidentId) => {
 				const service = {
 					select: {

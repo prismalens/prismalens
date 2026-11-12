@@ -278,6 +278,34 @@ export const UseDefaultSchema = z.object({
 });
 export type UseDefault = z.infer<typeof UseDefaultSchema>;
 
+/** Settings → Models → Thread titles (#1101): a small model names each new thread on its own agent. */
+export const THREAD_TITLE_STYLES = ["sentence", "verb-first"] as const;
+export const ThreadTitleStyleSchema = z.enum(THREAD_TITLE_STYLES);
+export const THREAD_TITLE_LENGTH = { min: 20, max: 80, default: 50 } as const;
+export const ThreadTitleSettingsSchema = z.object({
+	/** Absent is on. */
+	enabled: z.boolean().optional(),
+	/** Per agent; absent is the agent's smallest listed model, else no generated title. */
+	models: z.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema).optional(),
+	maxLength: z
+		.number()
+		.int()
+		.min(THREAD_TITLE_LENGTH.min)
+		.max(THREAD_TITLE_LENGTH.max)
+		.optional(),
+	style: ThreadTitleStyleSchema.optional(),
+});
+export type ThreadTitleSettings = z.infer<typeof ThreadTitleSettingsSchema>;
+
+const SMALL_MODEL = /\b(haiku|mini|nano|flash|lite|small)\b/i;
+
+/** The agent's smallest listed model, by name; null when it lists none. */
+export function smallestModel(
+	models: readonly { id: string; name: string }[],
+): string | null {
+	return models.find((m) => SMALL_MODEL.test(`${m.id} ${m.name}`))?.id ?? null;
+}
+
 /**
  * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
  * stored per harness (#639): an id is in one harness's own format, so a model
@@ -334,6 +362,7 @@ export const HarnessSettingsSchema = z.object({
 	subagentConcurrency: SubagentLimitSchema.optional(),
 	/** Per-use defaults; an absent use follows a new thread (alert) or the parent thread (delegate). */
 	useDefaults: z.partialRecord(ModelUseSchema, UseDefaultSchema).optional(),
+	threadTitles: ThreadTitleSettingsSchema.optional(),
 	/** False on a paired device: runtime fields are the host's alone. */
 	canEditRuntime: z.boolean().optional(),
 });
@@ -406,6 +435,8 @@ export const UpdateHarnessSettingsSchema = z
 		useDefaults: z
 			.partialRecord(ModelUseSchema, UseDefaultSchema.nullable())
 			.optional(),
+		/** Replaces the whole block; `null` goes back to the defaults. Host only. */
+		threadTitles: ThreadTitleSettingsSchema.nullable().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
