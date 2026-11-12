@@ -229,6 +229,62 @@ describe("harnessMcpServer", () => {
 			await server.close();
 		}
 	});
+
+	it("Given a tool returning images, When tools/call runs, Then content has the text then image and the recorded call passed to onCall has no images key", async () => {
+		const imageTool = defineHarnessTool({
+			name: "browser_screenshot",
+			title: "Screenshot",
+			description: "Take screenshot.",
+			group: "core",
+			serves: { subjects: EVERY_SUBJECT },
+			effect: "read",
+			input: z.object({}),
+			run: async () => ({
+				value: { ok: true },
+				images: [{ data: "aW1hZ2VkYXRh", mimeType: "image/jpeg" }],
+			}),
+		});
+		const view = runView([imageTool], { search: false });
+		const recordedCalls: HarnessCall[] = [];
+
+		const server = harnessMcpServer({
+			runId: "run-mcp-images",
+			view,
+			version: "1.0.0",
+			onCall: (call) => recordedCalls.push(call),
+		});
+
+		const [clientTransport, serverTransport] =
+			InMemoryTransport.createLinkedPair();
+
+		const client = new Client({ name: "test-client", version: "1.0.0" });
+		await server.connect(serverTransport);
+		await client.connect(clientTransport);
+
+		try {
+			const res = await client.callTool({
+				name: "browser_screenshot",
+				arguments: {},
+			});
+
+			expect(res.content.length).toBe(2);
+			expect(res.content[0].type).toBe("text");
+			expect((res.content[0] as { type: "text"; text: string }).text).toContain(
+				'"ok": true',
+			);
+			expect(res.content[1]).toEqual({
+				type: "image",
+				data: "aW1hZ2VkYXRh",
+				mimeType: "image/jpeg",
+			});
+			expect(recordedCalls.length).toBe(1);
+			expect(recordedCalls[0].name).toBe("browser_screenshot");
+			expect("images" in recordedCalls[0]).toBe(false);
+		} finally {
+			await client.close();
+			await server.close();
+		}
+	});
 });
 
 describe("harnessPromptLine", () => {
