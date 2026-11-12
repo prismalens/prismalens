@@ -22,6 +22,9 @@ function createService() {
 		investigationEvent: {
 			findMany: vi.fn(async () => [] as Array<{ event: string }>),
 		},
+		job: {
+			findUnique: vi.fn(async () => null as { payload: string } | null),
+		},
 	};
 	const harness = {
 		getSettings: vi.fn(async (): Promise<{ threadTitles?: ThreadTitleSettings }> => ({
@@ -192,5 +195,35 @@ describe("ThreadNamerService (#1101)", () => {
 				prompt: expect.stringContaining("Alert: Payment Service 500 Spike"),
 			}),
 		);
+	});
+
+	it("names it again from the job's brief when no message event exists, not from the current title", async () => {
+		const { svc, prisma } = createService();
+		prisma.job.findUnique.mockResolvedValue({
+			payload: JSON.stringify({ brief: "Why did checkout p99 rise after deploy 412?" }),
+		});
+		expect(await svc.regenerate("run-1")).toBe("named");
+		const prompt = (svc.name as unknown as { mock: { calls: [string, { prompt: string }][] } })
+			.mock.calls[0][1].prompt;
+		expect(prompt).toContain("Why did checkout p99 rise after deploy 412?");
+		expect(prompt).not.toContain("Instant Title");
+	});
+
+	it("ignores a follow-up's job and falls back to the incident title", async () => {
+		const { svc, prisma } = createService();
+		prisma.investigation.findUnique.mockResolvedValue({
+			title: "Instant Title",
+			harness: "claude-code",
+			titleSetBy: null,
+			incident: { title: "Checkout 5xx spike" },
+		});
+		prisma.job.findUnique.mockResolvedValue({
+			payload: JSON.stringify({ resume: { sessionId: "s" }, brief: "follow-up text" }),
+		});
+		expect(await svc.regenerate("run-1")).toBe("named");
+		const prompt = (svc.name as unknown as { mock: { calls: [string, { prompt: string }][] } })
+			.mock.calls[0][1].prompt;
+		expect(prompt).toContain("Task:\nCheckout 5xx spike");
+		expect(prompt).not.toContain("follow-up text");
 	});
 });

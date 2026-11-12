@@ -52,14 +52,32 @@ export class ThreadNamerService {
 		return s.models?.[agent] ?? smallestModel(entries);
 	}
 
-	/** The thread menu's "Name it again": from its first message, else its current title. */
+	/**
+	 * The thread menu's "Name it again", from what started the thread: a chat's first
+	 * message event, else the job's brief or alert, else the incident title.
+	 */
 	async regenerate(runId: string): Promise<NameOutcome> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id: runId },
-			select: { title: true, harness: true },
+			select: {
+				title: true,
+				harness: true,
+				incident: { select: { title: true } },
+			},
 		});
 		if (!row?.harness || !HARNESS_IDS.includes(row.harness as HarnessId))
 			return "no-model";
+		const first =
+			(await this.firstMessage(runId)) ??
+			(await this.jobText(runId)) ??
+			row.incident?.title ??
+			row.title ??
+			"";
+		if (!first.trim()) return "empty";
+		return this.nameOnce(runId, row.harness as HarnessId, first, true);
+	}
+
+	private async firstMessage(runId: string): Promise<string | null> {
 		const events = await this.prisma.investigationEvent.findMany({
 			where: {
 				investigationId: runId,
@@ -69,16 +87,32 @@ export class ThreadNamerService {
 			take: 1,
 			select: { event: true },
 		});
-		let first = row.title ?? "";
-		try {
-			const text = (JSON.parse(events[0]?.event ?? "{}") as { text?: unknown })
-				.text;
-			if (typeof text === "string" && text.trim()) first = text;
-		} catch {
-			// The current title stands in.
-		}
-		if (!first.trim()) return "empty";
-		return this.nameOnce(runId, row.harness as HarnessId, first, true);
+		return textOf(events[0]?.event, (raw) =>
+			typeof raw.text === "string" ? raw.text : null,
+		);
+	}
+
+	/** A follow-up's job replaces the first one, so only a payload without `resume` counts. */
+	private async jobText(runId: string): Promise<string | null> {
+		const job = await this.prisma.job.findUnique({
+			where: { investigationId: runId },
+			select: { payload: true },
+		});
+		return textOf(job?.payload, (raw) => {
+			if (raw.resume) return null;
+			const alert = Array.isArray(raw.alerts)
+				? (raw.alerts[0] as
+						| { alertname?: unknown; annotations?: { summary?: unknown } }
+						| undefined)
+				: undefined;
+			const summary = alert?.annotations?.summary;
+			const candidates = [
+				(raw.chat as { text?: unknown } | undefined)?.text,
+				raw.brief,
+				typeof summary === "string" ? summary : alert?.alertname,
+			];
+			return candidates.find((c): c is string => typeof c === "string") ?? null;
+		});
 	}
 
 	/**
@@ -137,5 +171,19 @@ export class ThreadNamerService {
 		} finally {
 			this.inFlight.delete(runId);
 		}
+	}
+}
+
+/** A stored JSON row's text, or null when it is absent, unreadable or blank. */
+function textOf(
+	json: string | undefined,
+	pick: (raw: Record<string, unknown>) => string | null,
+): string | null {
+	if (!json) return null;
+	try {
+		const text = pick(JSON.parse(json) as Record<string, unknown>);
+		return text?.trim() ? text : null;
+	} catch {
+		return null;
 	}
 }
