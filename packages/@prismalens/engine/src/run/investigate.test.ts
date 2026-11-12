@@ -429,6 +429,29 @@ describe("runInvestigation over a fake ACP harness", () => {
 		if (last?.kind === "error") expect(last.message).toContain("no evidence");
 	});
 
+	it("calls onTurn with start and end around prompt, omitting end on error", async () => {
+		const calls: { phase: "start" | "end"; turnId: number }[] = [];
+		await collect("ok", {
+			onTurn: async (phase, turnId) => {
+				calls.push({ phase, turnId });
+			},
+		});
+		expect(calls).toEqual([
+			{ phase: "start", turnId: 0 },
+			{ phase: "end", turnId: 0 },
+		]);
+
+		const errCalls: { phase: "start" | "end"; turnId: number }[] = [];
+		await collect("crash", {
+			onTurn: async (phase, turnId) => {
+				errCalls.push({ phase, turnId });
+			},
+		});
+		expect(errCalls).toEqual([{ phase: "start", turnId: 0 }]);
+	});
+
+	it.skip("a hook that never resolves lets the turn go on after TURN_HOOK_MS (needs fake timers; investigate.test.ts uses real timers with subprocesses)", () => {});
+
 	it("delivers a queued message when the turn ends and answers it before the report (#743)", async () => {
 		const queue = [{ text: "Check the 13:58 deploy first." }];
 		const { events } = await collect("steerable", {
