@@ -8,6 +8,7 @@
 import {
 	type AttentionEvent,
 	type AttentionKind,
+	type AttentionThread,
 	attentionGroup,
 	FailureModeSchema,
 	type NotifyPrefs,
@@ -138,12 +139,23 @@ export function eventWords(
  * A notification's title and body: an incident's carries its severity and its
  * report's cause, a chat its last answer.
  */
+/** A thread's name on a card or notification; never "Untitled thread" (#1101). */
+export function threadName(
+	t: Pick<AttentionThread, "title" | "rootTitle" | "incident" | "kind">,
+): string {
+	const title = t.title?.trim();
+	if (title) return title;
+	if (t.incident?.number) return `Incident #${t.incident.number}`;
+	if (t.rootTitle?.trim()) return `Part of ${t.rootTitle.trim()}`;
+	return t.kind === "chat" ? "Chat" : "Investigation";
+}
+
 export function notificationText(
 	e: AttentionEvent,
 	clock: (at: string) => string = formatClock,
 ): { title: string; body: string } {
 	const t = e.thread;
-	const name = t.title?.trim() || "Untitled thread";
+	const name = threadName(t);
 	const { word, detail } = eventWords(e, clock);
 	const sev = t.incident ? `${SEVERITY_WORD[t.incident.severity]} · ` : "";
 	const body =

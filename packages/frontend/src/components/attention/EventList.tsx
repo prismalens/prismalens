@@ -14,7 +14,7 @@ import { Status } from "@/components/kit/Status";
 import { Tabs } from "@/components/kit/Tabs";
 import { Empty, Loading } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import { eventWords } from "@/lib/attention/notify-rules";
+import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import {
 	useAttentionEvents,
 	useMarkEventsRead,
@@ -145,7 +145,7 @@ function EventRow({
 							unread ? "font-medium text-text-1" : "text-text-2",
 						)}
 					>
-						{event.thread.title?.trim() || "Untitled thread"}
+						{threadName(event.thread)}
 					</span>
 					<span className="ml-auto shrink-0 text-meta text-text-3">
 						{ageWord(Date.parse(event.at), now)}

@@ -93,7 +93,7 @@ const THREAD_SELECT = {
 	summary: true,
 	error: true,
 	endReason: true,
-	incident: { select: { id: true, number: true, severity: true } },
+	incident: { select: { id: true, number: true, severity: true, title: true } },
 	completedAt: true,
 	attention: { select: { lastStatus: true, follow: true, turnEndedAt: true } },
 } as const;
@@ -507,7 +507,8 @@ export class AttentionService
 			const rootId = r.rootId && r.rootId !== r.id ? r.rootId : null;
 			return {
 				id: r.id,
-				title: r.title,
+				// A run an alert started has no brief of its own: its incident's title names it.
+				title: r.title ?? r.incident?.title ?? null,
 				kind: r.kind,
 				parentId: r.parentId,
 				rootId,
