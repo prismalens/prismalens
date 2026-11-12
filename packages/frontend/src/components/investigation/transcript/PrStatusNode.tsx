@@ -4,8 +4,10 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { GitPullRequest } from "lucide-react";
-import { PR_TONE_WORD } from "@/components/thread/panel/PullRequests";
-import { prToneClass } from "@/lib/pr-tone";
+import {
+	PR_TONE_WORD,
+	prMarkClass,
+} from "@/components/thread/panel/PullRequests";
 import { cn } from "@/lib/utils";
 import type { TranscriptNodeProps } from "./types";
 
@@ -27,7 +29,7 @@ export function PrStatusNode({ event }: TranscriptNodeProps) {
 			data-tone={tone}
 		>
 			<GitPullRequest
-				className={cn("size-3.5 shrink-0 self-center", prToneClass(tone))}
+				className={cn("size-3.5 shrink-0 self-center", prMarkClass(tone))}
 				aria-hidden
 			/>
 			<button
@@ -46,11 +48,7 @@ export function PrStatusNode({ event }: TranscriptNodeProps) {
 			>
 				PR #{number}
 			</button>
-			{e.tone && (
-				<span className={cn("shrink-0", prToneClass(e.tone))}>
-					{PR_TONE_WORD[e.tone]}
-				</span>
-			)}
+			{e.tone && <span className="shrink-0">{PR_TONE_WORD[e.tone]}</span>}
 			<span className="min-w-0 truncate">{e.lines.join(" · ")}</span>
 		</p>
 	);

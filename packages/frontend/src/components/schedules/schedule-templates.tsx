@@ -4,6 +4,7 @@
 import type { ThreadStartSubject } from "@prismalens/contracts";
 import { CalendarClock, GitPullRequest, Newspaper, Radar } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { ListCard, ListGrid } from "@/components/kit";
 import { Hint } from "@/components/shared/Hint";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { cn } from "@/lib/utils";
@@ -24,7 +25,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
 		id: "watch-service",
 		title: "Watch a service",
 		line: "Every 2 hours, new errors",
-		icon: <Radar className="size-4" aria-hidden />,
+		icon: <Radar className="size-3.5" aria-hidden />,
 		prefill: (subject) => ({
 			name: "Watch a service",
 			subject,
@@ -38,7 +39,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
 		id: "daily-digest",
 		title: "Daily digest",
 		line: "Weekdays at 09:00, what changed",
-		icon: <Newspaper className="size-4" aria-hidden />,
+		icon: <Newspaper className="size-3.5" aria-hidden />,
 		prefill: (subject) => ({
 			name: "Daily digest",
 			subject,
@@ -52,7 +53,7 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
 		id: "recheck-pr",
 		title: "Re-check a PR",
 		line: "Every hour, checks and reviews",
-		icon: <GitPullRequest className="size-4" aria-hidden />,
+		icon: <GitPullRequest className="size-3.5" aria-hidden />,
 		prefill: (subject, prUrl) => ({
 			name: "Re-check a PR",
 			subject,
@@ -79,23 +80,18 @@ export function ScheduleTemplates({
 			<h2 className="mb-1.5 ml-1 text-heading text-text-2">
 				Start from a template
 			</h2>
-			<div className="grid gap-2 @xl:grid-cols-3">
+			<ListGrid label="Templates">
 				{SCHEDULE_TEMPLATES.map((t) => (
-					<button
+					<ListCard
 						key={t.id}
-						type="button"
-						onClick={() => setPrefill(t.prefill(subject))}
-						className="flex min-h-14 items-start gap-2.5 rounded-pool bg-surface-2 px-3.5 py-3 text-left hover:bg-surface-3"
-						data-testid={`schedule-template-${t.id}`}
-					>
-						<span className="mt-0.5 text-text-2">{t.icon}</span>
-						<span className="min-w-0">
-							<span className="block text-heading">{t.title}</span>
-							<span className="block text-meta text-text-3">{t.line}</span>
-						</span>
-					</button>
+						title={t.title}
+						icon={t.icon}
+						meta={t.line}
+						onOpen={() => setPrefill(t.prefill(subject))}
+						testId={`schedule-template-${t.id}`}
+					/>
 				))}
-			</div>
+			</ListGrid>
 			<ScheduleDialog
 				open={!!prefill}
 				onOpenChange={(o) => !o && setPrefill(null)}

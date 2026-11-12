@@ -159,6 +159,10 @@ vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({
 	useThreadContext: () => ({ data: null, isLoading: false }),
 }));
 
+vi.mock("@/lib/api/hooks/use-thread-pull-requests", () => ({
+	usePanelPullRequests: () => ({ data: undefined, watch: () => undefined }),
+}));
+
 vi.mock("@/hooks/use-page-title", () => ({
 	usePageTitle: vi.fn(),
 }));
@@ -196,6 +200,7 @@ vi.mock("./panel/KindTab", () => ({
 
 vi.mock("./panel/ThreadTab", () => ({
 	ThreadTab: () => null,
+	prAnswersOf: () => null,
 }));
 vi.mock("@/components/schedules/schedule-templates", () => ({
 	AddScheduleFromThread: () => null,

@@ -51,12 +51,14 @@ import { WhyCard } from "@/components/overview/WhyCard";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
+import { PrView } from "@/components/thread/panel/PrView";
+import type { PullRequestView } from "@/components/thread/panel/PullRequests";
 import {
 	hasDesktopBrowser,
 	hrefOf,
 	placeOf,
 } from "@/components/thread/panel/panel-links";
-import { ThreadTab } from "@/components/thread/panel/ThreadTab";
+import { prAnswersOf, ThreadTab } from "@/components/thread/panel/ThreadTab";
 import { SubagentList } from "@/components/thread/StatusBox";
 import { type PageSlots, usePageSlots } from "@/components/thread/slots";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
@@ -66,6 +68,7 @@ import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { useResumeInvestigation } from "@/lib/api/hooks";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
+import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
 import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { compose } from "@/lib/compose";
 import { desktopBridge } from "@/lib/desktop";
@@ -495,6 +498,18 @@ export function RunPage() {
 	}, [setPanel, setTab]);
 
 	const threadContext = useThreadContext(inv?.id ?? null, live);
+	const pulls = usePanelPullRequests(
+		inv?.id ?? "",
+		(threadContext.data?.pullRequests.length ?? 0) > 0,
+	);
+	const [prId, setPrId] = useState<string | null>(null);
+	const viewedPr = prId
+		? (
+				(pulls.data?.pullRequests ??
+					threadContext.data?.pullRequests ??
+					[]) as PullRequestView[]
+			).find((p) => p.id === prId)
+		: undefined;
 	const [browserOpened, setBrowserOpened] = useState(false);
 	const transcriptLinks = useMemo(() => {
 		if (!inv) return undefined;
@@ -961,15 +976,27 @@ export function RunPage() {
 							)
 						}
 						title={chat ? "Question details" : `${name} details`}
-						thread={(steps) => (
-							<ThreadTab
-								threadId={inv.id}
-								context={threadContext.data}
-								live={live}
-								session={inv.session}
-								steps={steps}
-							/>
-						)}
+						thread={(steps) =>
+							viewedPr ? (
+								<PrView
+									key={viewedPr.id}
+									pr={viewedPr}
+									answers={prAnswersOf(threadContext.data)}
+									threadId={inv.id}
+									onWatch={pulls.watch}
+									onBack={() => setPrId(null)}
+								/>
+							) : (
+								<ThreadTab
+									threadId={inv.id}
+									context={threadContext.data}
+									live={live}
+									session={inv.session}
+									steps={steps}
+									onOpenPr={setPrId}
+								/>
+							)
+						}
 						browser={browserOpened}
 						tab={tab}
 						onTab={setTab}

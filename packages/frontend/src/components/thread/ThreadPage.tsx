@@ -29,6 +29,7 @@ import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc"
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
+import { usePanelPullRequests } from "@/lib/api/hooks/use-thread-pull-requests";
 import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import { onCompose } from "@/lib/compose";
@@ -48,6 +49,8 @@ import { deriveSubagents } from "@/lib/subagents";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
 import { KindTab } from "./panel/KindTab";
+import { PrView } from "./panel/PrView";
+import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
 	type PanelId,
@@ -58,7 +61,7 @@ import {
 	shownTab,
 } from "./panel/panel-model";
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
-import { ThreadTab } from "./panel/ThreadTab";
+import { prAnswersOf, ThreadTab } from "./panel/ThreadTab";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
@@ -169,6 +172,10 @@ export function ThreadPage({ id }: { id: string }) {
 	const service = useService(inv?.repositoryId ? "" : (inv?.serviceId ?? ""));
 	const workspace = inv?.workspace;
 	const context = useThreadContext(inv?.id ?? null, run.isActive);
+	const pulls = usePanelPullRequests(
+		inv?.id ?? "",
+		(context.data?.pullRequests.length ?? 0) > 0,
+	);
 	const viewing = useMemo(() => {
 		if (!search.path) return null;
 		const f = fileFromParam(search.path, workspace);
@@ -422,6 +429,27 @@ export function ThreadPage({ id }: { id: string }) {
 			: STATE[inv.status];
 	const prs = context.data?.pullRequests ?? [];
 	const chipPr = headerPr(prs);
+	const prFocus = search.section?.startsWith("pull-requests:")
+		? search.section.slice("pull-requests:".length)
+		: undefined;
+	const viewedPr = prFocus
+		? ((pulls.data?.pullRequests ?? prs) as PullRequestView[]).find(
+				(p) => p.id === prFocus,
+			)
+		: undefined;
+	// A review thread's path:line lands on that file and line in the diff (cp1 L6a item 1).
+	const openPrFile = (
+		pr: PullRequestView,
+		path: string,
+		line: number | null,
+	) => {
+		const repos = workspace?.repos ?? [];
+		const repo =
+			repos.find((r) => r.name === pr.repo.split("/").pop()) ??
+			(repos.length === 1 ? repos[0] : undefined);
+		if (!repo) return openPanel({ panel: "changes" });
+		openFile({ repo: repo.name, sha: repo.head, path, line, end: line });
+	};
 	const header = (
 		<header
 			data-title-row
@@ -668,7 +696,7 @@ export function ThreadPage({ id }: { id: string }) {
 					onTab={(t: PanelId) => openPanel({ panel: t })}
 					onClose={closePanel}
 					override={
-						viewedSubagent && (
+						viewedSubagent ? (
 							<SubagentPane
 								key={viewedSubagent.sessionId}
 								runId={inv.id}
@@ -677,9 +705,32 @@ export function ThreadPage({ id }: { id: string }) {
 								live={run.isActive}
 								onAskMain={askMain}
 							/>
+						) : (
+							viewedPr && (
+								<PrView
+									key={viewedPr.id}
+									pr={viewedPr}
+									answers={prAnswersOf(context.data)}
+									threadId={inv.id}
+									onWatch={pulls.watch}
+									onOpenFile={openPrFile}
+									onBack={() => openPanel({ panel: "thread" })}
+									files={
+										workspace?.layout !== "folder" ? (
+											<WorktreeDiff runId={inv.id} live={run.isActive} />
+										) : undefined
+									}
+								/>
+							)
 						)
 					}
-					overrideLabel="Sub-agent"
+					overrideLabel={
+						viewedSubagent
+							? "Sub-agent"
+							: viewedPr
+								? `Pull request #${viewedPr.number}`
+								: "Sub-agent"
+					}
 					content={
 						tab === "kind" && context.data ? (
 							<PanelStack>
@@ -709,20 +760,12 @@ export function ThreadPage({ id }: { id: string }) {
 								live={run.isActive}
 								session={inv.session}
 								section={search.section}
-								onOpenPrFile={(pr, path, line) => {
-									const repos = workspace?.repos ?? [];
-									const repo =
-										repos.find((r) => r.name === pr.repo.split("/").pop()) ??
-										(repos.length === 1 ? repos[0] : undefined);
-									if (!repo) return openPanel({ panel: "changes" });
-									openFile({
-										repo: repo.name,
-										sha: repo.head,
-										path,
-										line,
-										end: line,
-									});
-								}}
+								onOpenPr={(prId) =>
+									openPanel({
+										panel: "thread",
+										section: `pull-requests:${prId}`,
+									})
+								}
 								focusPr={
 									search.section?.startsWith("pull-requests:")
 										? search.section.slice("pull-requests:".length)

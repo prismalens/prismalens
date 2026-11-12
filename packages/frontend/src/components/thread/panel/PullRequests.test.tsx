@@ -12,7 +12,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { prToneClass } from "@/lib/pr-tone";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { PrView } from "./PrView";
 import {
 	checksCount,
 	checksLine,
@@ -20,6 +21,7 @@ import {
 	type PrWatch,
 	PullRequestRow,
 	type PullRequestView,
+	prMarkClass,
 	sortedRuns,
 	watchLine,
 } from "./PullRequests";
@@ -47,7 +49,11 @@ function renderWithClient(ui: React.ReactNode) {
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
-	return <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>;
+	return (
+		<QueryClientProvider client={queryClient}>
+			<TooltipProvider>{ui}</TooltipProvider>
+		</QueryClientProvider>
+	);
 }
 
 const basePr: PullRequestView = {
@@ -140,7 +146,17 @@ describe("sortedRuns (#1024)", () => {
 	});
 });
 
-describe("PullRequestRow (#1024)", () => {
+const q = <T extends Element = Element>(sel: string) =>
+	container.querySelector<T>(sel);
+const qa = <T extends Element = Element>(sel: string) =>
+	container.querySelectorAll<T>(sel);
+async function show(ui: React.ReactNode) {
+	await act(async () => {
+		root.render(renderWithClient(ui));
+	});
+}
+
+describe("PullRequestRow: one line that opens the PR view (sheet §3)", () => {
 	it.each([
 		"ready",
 		"open",
@@ -151,39 +167,53 @@ describe("PullRequestRow (#1024)", () => {
 		"closed",
 		"unknown",
 	] as const)(
-		"shows tone word and mark class for tone %s",
+		"shows the tone word for %s and tints only its mark",
 		async (tone: PrTone) => {
-			const pr: PullRequestView = { ...basePr, tone };
-			await act(async () => {
-				root.render(renderWithClient(<PullRequestRow pr={pr} />));
-			});
-			const wordEl = container.querySelector('[data-testid="pr-tone-word"]');
-			expect(wordEl?.textContent).toBe(PR_TONE_WORD[tone]);
-			const icon = container.querySelector("svg");
-			const expectedClass = prToneClass(tone);
-			expect(icon?.getAttribute("class")).toContain(expectedClass);
+			await show(<PullRequestRow pr={{ ...basePr, tone }} onOpen={vi.fn()} />);
+			expect(q('[data-testid="pr-tone-word"]')?.textContent).toBe(
+				PR_TONE_WORD[tone],
+			);
+			expect(q("svg")?.getAttribute("class")).toContain(prMarkClass(tone));
 		},
 	);
 
-	it("shows Merge conflict when conflicts is true", async () => {
-		const pr: PullRequestView = { ...basePr, conflicts: true };
+	it("tints the error colour for failing, the warning colour for attention, and keeps the rest neutral", () => {
+		expect(prMarkClass("failing")).toBe("text-danger");
+		expect(prMarkClass("attention")).toBe("text-warn");
+		expect(prMarkClass("ready")).toBe("text-text-3");
+		expect(prMarkClass("merged")).toBe("text-text-3");
+	});
+
+	it("reads `Failing 7/9` and opens the PR's view with its id on click", async () => {
+		const onOpen = vi.fn();
+		const pr: PullRequestView = {
+			...basePr,
+			tone: "failing",
+			checks: { state: "failing", total: 9, failed: 2, pending: 0 },
+		};
+		await show(<PullRequestRow pr={pr} onOpen={onOpen} />);
+		expect(q('[data-testid="pr-tone-word"]')?.textContent).toBe("Failing 7/9");
 		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={pr} />));
+			q<HTMLButtonElement>('[data-testid="pr-row"] button')?.click();
 		});
-		const el = container.querySelector('[data-testid="pr-conflicts"]');
-		expect(el?.textContent).toBe("Merge conflict");
+		expect(onOpen).toHaveBeenCalledWith("pr-1");
+	});
+});
+
+describe("PrView (sheet §4)", () => {
+	it("shows Merge conflict when conflicts is true", async () => {
+		await show(<PrView pr={{ ...basePr, conflicts: true }} />);
+		expect(q('[data-testid="pr-conflicts"]')?.textContent).toBe(
+			"Merge conflict",
+		);
 	});
 
 	it("shows Approved when review is approved", async () => {
-		const pr: PullRequestView = { ...basePr, review: "approved" };
-		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={pr} />));
-		});
-		const el = container.querySelector('[data-testid="pr-review"]');
-		expect(el?.textContent).toBe("Approved");
+		await show(<PrView pr={{ ...basePr, review: "approved" }} />);
+		expect(q('[data-testid="pr-review"]')?.textContent).toBe("Approved");
 	});
 
-	it("expands check runs on click from aria-expanded false to true and shows 3 rows", async () => {
+	it("lists checks failing first, opens the first failing one, and keeps the others one line", async () => {
 		const pr: PullRequestView = {
 			...basePr,
 			checks: { state: "failing", total: 3, failed: 1, pending: 1 },
@@ -193,62 +223,71 @@ describe("PullRequestRow (#1024)", () => {
 				{ name: "build", state: "pending" },
 			],
 		};
+		await show(<PrView pr={pr} />);
+		const rows = qa('[data-testid="pr-check-run"]');
+		expect(Array.from(rows, (r) => r.getAttribute("data-state"))).toEqual([
+			"failing",
+			"pending",
+			"passing",
+		]);
+		const toggle = q<HTMLButtonElement>('[data-testid="pr-check-toggle"]');
+		expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+		expect(qa('[data-testid="pr-check-toggle"]')).toHaveLength(1);
 		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={pr} />));
+			toggle?.click();
 		});
-		const btn = container.querySelector<HTMLButtonElement>(
-			'[data-testid="pr-checks"]',
-		);
-		expect(btn?.getAttribute("aria-expanded")).toBe("false");
-		expect(
-			container.querySelectorAll('[data-testid="pr-check-run"]'),
-		).toHaveLength(0);
-
-		await act(async () => {
-			btn?.click();
-		});
-
-		expect(btn?.getAttribute("aria-expanded")).toBe("true");
-		const rows = container.querySelectorAll('[data-testid="pr-check-run"]');
-		expect(rows).toHaveLength(3);
+		expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+		expect(q('[data-testid="pr-check-tail"]')).toBeNull();
 	});
 
-	it("with onWatch button reads Stop watching for watching and calls onWatch(pr, false)", async () => {
-		const onWatch = vi.fn();
+	it("counts failing checks on the Checks tab and open threads on the Reviews tab", async () => {
 		const pr: PullRequestView = {
 			...basePr,
-			watch: { state: "watching" },
+			checks: { state: "failing", total: 2, failed: 2, pending: 0 },
+			checkRuns: [
+				{ name: "a", state: "failing" },
+				{ name: "b", state: "failing" },
+			],
+			reviewThreads: [
+				{
+					id: "t1",
+					path: "a.ts",
+					line: 1,
+					author: "ann",
+					resolved: false,
+					outdated: false,
+					excerpt: "x",
+					replies: 0,
+				},
+			],
 		};
-		await act(async () => {
-			root.render(
-				renderWithClient(<PullRequestRow pr={pr} onWatch={onWatch} />),
-			);
-		});
-		const watchEl = container.querySelector('[data-testid="pr-watch"]');
-		const btn = watchEl?.querySelector("button");
-		expect(btn?.textContent).toBe("Stop watching");
+		await show(<PrView pr={pr} />);
+		expect(q('[data-testid="pr-tab-checks"]')?.textContent).toBe("Checks2");
+		expect(q('[data-testid="pr-tab-reviews"]')?.textContent).toBe("Reviews1");
+		expect(q('[data-testid="pr-tab-files"]')?.textContent).toBe("Files");
+	});
 
+	it("with onWatch reads Stop watching for watching and calls onWatch(pr, false)", async () => {
+		const onWatch = vi.fn();
+		const pr: PullRequestView = { ...basePr, watch: { state: "watching" } };
+		await show(<PrView pr={pr} onWatch={onWatch} />);
+		const btn = q('[data-testid="pr-watch"]')?.querySelector("button");
+		expect(btn?.textContent).toBe("Stop watching");
 		await act(async () => {
 			btn?.click();
 		});
 		expect(onWatch).toHaveBeenCalledWith(pr, false);
 	});
 
-	it("with onWatch button reads Watch for stopped and calls onWatch(pr, true)", async () => {
+	it("with onWatch reads Watch for stopped and calls onWatch(pr, true)", async () => {
 		const onWatch = vi.fn();
 		const pr: PullRequestView = {
 			...basePr,
 			watch: { state: "stopped", reason: "merged" },
 		};
-		await act(async () => {
-			root.render(
-				renderWithClient(<PullRequestRow pr={pr} onWatch={onWatch} />),
-			);
-		});
-		const watchEl = container.querySelector('[data-testid="pr-watch"]');
-		const btn = watchEl?.querySelector("button");
+		await show(<PrView pr={pr} onWatch={onWatch} />);
+		const btn = q('[data-testid="pr-watch"]')?.querySelector("button");
 		expect(btn?.textContent).toBe("Watch");
-
 		await act(async () => {
 			btn?.click();
 		});
@@ -256,70 +295,64 @@ describe("PullRequestRow (#1024)", () => {
 	});
 
 	it("shows headRef into baseRef, the merge word for blocked, and none for unknown", async () => {
-		const prBlocked: PullRequestView = {
-			...basePr,
-			headRef: "feat/my-branch",
-			baseRef: "main",
-			mergeState: "blocked",
-		};
-		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={prBlocked} />));
-		});
-		expect(
-			container.querySelector('[data-testid="pr-branches"]')?.textContent,
-		).toBe("feat/my-branch into main");
-		expect(
-			container.querySelector('[data-testid="pr-merge"]')?.textContent,
-		).toBe("Merge blocked");
-
-		const prUnknown: PullRequestView = {
-			...basePr,
-			headRef: "feat/other",
-			baseRef: "develop",
-			mergeState: "unknown",
-		};
-		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={prUnknown} />));
-		});
-		expect(
-			container.querySelector('[data-testid="pr-branches"]')?.textContent,
-		).toBe("feat/other into develop");
-		expect(container.querySelector('[data-testid="pr-merge"]')).toBeNull();
+		await show(
+			<PrView
+				pr={{
+					...basePr,
+					headRef: "feat/my-branch",
+					baseRef: "main",
+					mergeState: "blocked",
+				}}
+			/>,
+		);
+		expect(q('[data-testid="pr-branches"]')?.textContent).toBe(
+			"feat/my-branch into main",
+		);
+		expect(q('[data-testid="pr-merge"]')?.textContent).toBe("Merge blocked");
+		await show(
+			<PrView
+				pr={{
+					...basePr,
+					headRef: "feat/other",
+					baseRef: "develop",
+					mergeState: "unknown",
+				}}
+			/>,
+		);
+		expect(q('[data-testid="pr-branches"]')?.textContent).toBe(
+			"feat/other into develop",
+		);
+		expect(q('[data-testid="pr-merge"]')).toBeNull();
 	});
 
-	it("renders a Log link with exact href for each run with a url", async () => {
+	it("links each run that has a url to its log: the open failing run's Open log, and a passing run's whole line", async () => {
 		const pr: PullRequestView = {
 			...basePr,
-			checks: { state: "failing", total: 2, failed: 1, pending: 0 },
+			checks: { state: "failing", total: 3, failed: 1, pending: 0 },
 			checkRuns: [
 				{
 					name: "ci/build",
 					state: "failing",
-					url: "https://ci.example.com/build/1",
+					url: "https://ci.example.com/b/1",
 				},
-				{ name: "ci/lint", state: "passing" },
+				{
+					name: "ci/lint",
+					state: "passing",
+					url: "https://ci.example.com/l/2",
+				},
+				{ name: "ci/docs", state: "passing" },
 			],
 		};
-		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={pr} />));
-		});
-		const btn = container.querySelector<HTMLButtonElement>(
-			'[data-testid="pr-checks"]',
-		);
-		await act(async () => {
-			btn?.click();
-		});
-		const links = container.querySelectorAll<HTMLAnchorElement>(
-			'[data-testid="pr-check-log-link"]',
-		);
-		expect(links).toHaveLength(1);
-		expect(links[0]?.getAttribute("href")).toBe(
-			"https://ci.example.com/build/1",
-		);
-		expect(links[0]?.textContent).toBe("Log");
+		await show(<PrView pr={pr} />);
+		const links = qa<HTMLAnchorElement>('[data-testid="pr-check-log-link"]');
+		expect(Array.from(links, (a) => a.getAttribute("href"))).toEqual([
+			"https://ci.example.com/b/1",
+			"https://ci.example.com/l/2",
+		]);
+		expect(links[0]?.textContent).toBe("Open log");
 	});
 
-	it("opens with checks expanded when focused with a failing run, showing step and lines from kept checkLogs", async () => {
+	it("shows the open failing run's step and lines from kept checkLogs", async () => {
 		const pr: PullRequestView = {
 			...basePr,
 			checks: { state: "failing", total: 1, failed: 1, pending: 0 },
@@ -340,17 +373,11 @@ describe("PullRequestRow (#1024)", () => {
 				},
 			],
 		};
-		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={pr} focused={true} />));
-		});
-		const checkBtn = container.querySelector<HTMLButtonElement>(
-			'[data-testid="pr-checks"]',
+		await show(<PrView pr={pr} />);
+		expect(q('[data-testid="pr-check-tail"]')?.textContent).toContain(
+			"Failed at Run unit tests",
 		);
-		expect(checkBtn?.getAttribute("aria-expanded")).toBe("true");
-		const tail = container.querySelector('[data-testid="pr-check-tail"]');
-		expect(tail?.textContent).toContain("Failed at Run unit tests");
-		const lines = container.querySelector('[data-testid="pr-check-lines"]');
-		expect(lines?.textContent).toBe(
+		expect(q('[data-testid="pr-check-lines"]')?.textContent).toBe(
 			"FAIL test/example.test.ts\nAssertionError: expected 1 to be 2",
 		);
 	});
@@ -377,19 +404,11 @@ describe("PullRequestRow (#1024)", () => {
 			checkRuns: [run],
 			checkLogs: [log],
 		};
+		await show(<PrView pr={pr} onDraft={onDraft} />);
+		const fix = q<HTMLButtonElement>('[data-testid="pr-fix-check"]');
+		expect(fix?.textContent).toBe("Ask the agent to fix");
 		await act(async () => {
-			root.render(
-				renderWithClient(
-					<PullRequestRow pr={pr} focused={true} onDraft={onDraft} />,
-				),
-			);
-		});
-		const fixBtn = container.querySelector<HTMLButtonElement>(
-			'[data-testid="pr-fix-check"]',
-		);
-		expect(fixBtn?.textContent).toBe("Ask the agent to fix");
-		await act(async () => {
-			fixBtn?.click();
+			fix?.click();
 		});
 		expect(onDraft).toHaveBeenCalledTimes(1);
 		expect(onDraft).toHaveBeenCalledWith(checkFixMessage(pr, run, log));
@@ -418,16 +437,13 @@ describe("PullRequestRow (#1024)", () => {
 				},
 			],
 		};
-		await act(async () => {
-			root.render(renderWithClient(<PullRequestRow pr={pr} focused={true} />));
-		});
-		const unavail = container.querySelector(
-			'[data-testid="pr-check-unavailable"]',
+		await show(<PrView pr={pr} />);
+		expect(q('[data-testid="pr-check-unavailable"]')?.textContent).toBe(
+			"The git host no longer keeps this log.",
 		);
-		expect(unavail?.textContent).toBe("The git host no longer keeps this log.");
 	});
 
-	it("lists open review threads first, calls onOpenFile on path:line click, and displays Resolved without a fix button for resolved ones", async () => {
+	it("lists open review threads first; opening one jumps to path:line and offers a fix only when unresolved", async () => {
 		const onOpenFile = vi.fn();
 		const pr: PullRequestView = {
 			...basePr,
@@ -454,57 +470,55 @@ describe("PullRequestRow (#1024)", () => {
 				},
 			],
 		};
-		await act(async () => {
-			root.render(
-				renderWithClient(<PullRequestRow pr={pr} onOpenFile={onOpenFile} />),
-			);
-		});
-		const threads = container.querySelectorAll(
-			'[data-testid="pr-review-thread"]',
+		await show(<PrView pr={pr} initialTab="reviews" onOpenFile={onOpenFile} />);
+		const threads = qa('[data-testid="pr-review-thread"]');
+		expect(Array.from(threads, (t) => t.getAttribute("data-resolved"))).toEqual(
+			["false", "true"],
 		);
-		expect(threads).toHaveLength(2);
-		expect(threads[0]?.getAttribute("data-resolved")).toBe("false");
-		expect(threads[1]?.getAttribute("data-resolved")).toBe("true");
-
-		const pathBtn = threads[0]?.querySelector<HTMLButtonElement>(
+		expect(threads[0]?.textContent).toBe("src/open.ts:15bob · Open");
+		expect(threads[1]?.textContent).toBe("src/resolved.ts:20alice · Resolved");
+		const toggles = qa<HTMLButtonElement>('[data-testid="pr-review-toggle"]');
+		await act(async () => {
+			toggles[0]?.click();
+			toggles[1]?.click();
+		});
+		const jump = threads[0]?.querySelector<HTMLButtonElement>(
 			'[data-testid="pr-review-where"]',
 		);
-		expect(pathBtn?.textContent).toBe("src/open.ts:15");
+		expect(jump?.textContent).toBe("Open src/open.ts:15");
 		await act(async () => {
-			pathBtn?.click();
+			jump?.click();
 		});
 		expect(onOpenFile).toHaveBeenCalledWith(pr, "src/open.ts", 15);
-
-		const openFixBtn = threads[0]?.querySelector(
-			'[data-testid="pr-fix-review"]',
-		);
-		expect(openFixBtn?.textContent).toBe("Ask the agent to fix");
-
-		expect(threads[1]?.textContent).toContain("Resolved");
-		const resolvedFixBtn = threads[1]?.querySelector(
-			'[data-testid="pr-fix-review"]',
-		);
-		expect(resolvedFixBtn).toBeNull();
+		expect(
+			threads[0]?.querySelector('[data-testid="pr-fix-review"]')?.textContent,
+		).toBe("Ask the agent to fix");
+		expect(
+			threads[1]?.querySelector('[data-testid="pr-fix-review"]'),
+		).toBeNull();
 	});
 
 	it("renders Answers incident #7: likely ... when answers are provided", async () => {
-		const pr: PullRequestView = { ...basePr };
-		await act(async () => {
-			root.render(
-				renderWithClient(
-					<PullRequestRow
-						pr={pr}
-						answers={{
-							incidentNumber: 7,
-							cause: "likely connection timeout in auth service",
-						}}
-					/>,
-				),
-			);
-		});
-		const answersEl = container.querySelector('[data-testid="pr-answers"]');
-		expect(answersEl?.textContent).toBe(
+		await show(
+			<PrView
+				pr={basePr}
+				answers={{
+					incidentNumber: 7,
+					cause: "likely connection timeout in auth service",
+				}}
+			/>,
+		);
+		expect(q('[data-testid="pr-answers"]')?.textContent).toBe(
 			"Answers incident #7: likely connection timeout in auth service",
 		);
+	});
+
+	it("calls onBack from its Back button", async () => {
+		const onBack = vi.fn();
+		await show(<PrView pr={basePr} onBack={onBack} />);
+		await act(async () => {
+			q<HTMLButtonElement>('[data-testid="pr-view-back"]')?.click();
+		});
+		expect(onBack).toHaveBeenCalledTimes(1);
 	});
 });

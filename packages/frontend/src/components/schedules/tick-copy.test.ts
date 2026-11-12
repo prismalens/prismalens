@@ -62,6 +62,47 @@ describe("tickLine (#979)", () => {
 	});
 });
 
+describe("tickLine status and words (#1101 category 22, cp1 L6a item 2)", () => {
+	it("reads a run waiting on its agent's limit as Limited with its reset, even when its status says failed", () => {
+		expect(
+			tickLine(tick({ run: run({ status: "failed", error: "usage limit", limit: { resetsAt: "2026-10-30T16:45:00.000Z" } }) }), fmt),
+		).toMatchObject({ tone: "warn", status: "limited", text: "Usage limit, resets 16:45", link: { kind: "run", id: "r" } });
+		expect(tickLine(tick({ run: run({ status: "running", limit: { resetsAt: null } }) }), fmt)).toMatchObject({
+			status: "limited",
+			text: "Usage limit, reset time unknown",
+		});
+	});
+
+	it("words a failed run with its own cause, else its answer's first line, never a pointer to the thread", () => {
+		expect(tickLine(tick({ run: run({ status: "failed", error: "API key rejected\nstack trace" }) }), fmt)).toMatchObject({
+			status: "failed",
+			text: "Failed: API key rejected",
+		});
+		expect(tickLine(tick({ run: run({ status: "failed", summary: "\nThe deploy hook timed out" }) }), fmt)).toMatchObject({
+			status: "failed",
+			text: "Failed: The deploy hook timed out",
+		});
+		expect(tickLine(tick({ run: run({ status: "failed" }) }), fmt).text).toBe("Failed: the run stopped");
+	});
+
+	it("gives a finished run its answer's first line and the Done status", () => {
+		expect(tickLine(tick({ run: run({ summary: "Checkout p99 is back under 200 ms.\nDetails follow." }) }), fmt)).toMatchObject({
+			tone: "ok",
+			status: "done",
+			text: "Checkout p99 is back under 200 ms.",
+		});
+		expect(tickLine(tick({ run: run() }), fmt)).toMatchObject({ status: "done", text: "Nothing wrong found" });
+	});
+
+	it("maps the other outcomes into the closed set: working, waiting, done for a stop, idle for a miss", () => {
+		expect(tickLine(tick({ run: run({ status: "running" }) }), fmt).status).toBe("working");
+		expect(tickLine(tick({ run: run({ status: "pending" }) }), fmt).status).toBe("waiting");
+		expect(tickLine(tick({ run: run({ status: "cancelled" }) }), fmt)).toMatchObject({ status: "done", text: "Stopped" });
+		expect(tickLine(tick({ outcome: "missed_off", missedCount: 1 }), fmt).status).toBe("idle");
+		expect(tickLine(tick({ outcome: "skipped_bindings_changed" }), fmt).status).toBe("blocked");
+	});
+});
+
 describe("aboutText (#1020)", () => {
 	it("names a service's check, a project, or no project", () => {
 		expect(aboutText({ subject: "service", serviceName: "checkout", repositoryName: null })).toBe("Check checkout");

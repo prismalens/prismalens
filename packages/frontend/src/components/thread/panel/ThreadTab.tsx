@@ -35,7 +35,7 @@ export function ThreadTab({
 	steps,
 	section,
 	focusPr,
-	onOpenPrFile,
+	onOpenPr,
 }: {
 	threadId: string;
 	context: ThreadContext | undefined;
@@ -45,12 +45,8 @@ export function ThreadTab({
 	steps?: ReactNode;
 	section?: string;
 	focusPr?: string;
-	/** Opens a review thread's line in the thread's diff. */
-	onOpenPrFile?: (
-		pr: PullRequestView,
-		path: string,
-		line: number | null,
-	) => void;
+	/** Opens one PR's view in the panel (sheet §4). */
+	onOpenPr: (prId: string) => void;
 }) {
 	const tree = useThreadTree(threadId, live);
 	const revoke = useRevokeTreeAllowance();
@@ -68,10 +64,6 @@ export function ThreadTab({
 	if (!context) return <Loading rows={3} />;
 	const prs = (pulls.data?.pullRequests ??
 		context.pullRequests) as PullRequestView[];
-	const answers: PrAnswers | null =
-		context.kind === "incident"
-			? { incidentNumber: context.incident.number, cause: causeOf(context) }
-			: null;
 	const nodes = tree.data?.nodes ?? [];
 	const agentLabel =
 		harnesses.find((h) => h.id === context.agent.harness)?.label ?? null;
@@ -79,14 +71,7 @@ export function ThreadTab({
 		<PanelStack>
 			{prs.length > 0 && (
 				<PanelSection id="pull-requests" title="Pull requests">
-					<PullRequestList
-						prs={prs}
-						focusId={focusPr}
-						answers={answers}
-						threadId={threadId}
-						onWatch={pulls.watch}
-						onOpenFile={onOpenPrFile}
-					/>
+					<PullRequestList prs={prs} focusId={focusPr} onOpen={onOpenPr} />
 				</PanelSection>
 			)}
 			{tree.data && (nodes.length > 1 || tree.data.allowance) && (
@@ -121,7 +106,16 @@ export function ThreadTab({
 	);
 }
 
-/** The report's cause as the PR row names it; a supported one stays "likely" (guideline 8). */
+/** What a PR answers, from the thread's incident and report (#1101 category 15 item 6). */
+export function prAnswersOf(
+	context: ThreadContext | undefined,
+): PrAnswers | null {
+	return context?.kind === "incident"
+		? { incidentNumber: context.incident.number, cause: causeOf(context) }
+		: null;
+}
+
+/** The report's cause as the PR view names it; a supported one stays "likely" (guideline 8). */
 function causeOf(
 	c: Extract<ThreadContext, { kind: "incident" }>,
 ): string | null {

@@ -3,9 +3,8 @@
 
 import type { PullRequest } from "@prismalens/contracts";
 import { GitPullRequest } from "lucide-react";
-import { prToneClass } from "@/lib/pr-tone";
 import { cn } from "@/lib/utils";
-import { checksCount, PR_TONE_WORD } from "./panel/PullRequests";
+import { checksCount, PR_TONE_WORD, prMarkClass } from "./panel/PullRequests";
 
 /** The PR the header shows: the newest one still open, else the newest. */
 export function headerPr<T extends Pick<PullRequest, "state">>(
@@ -35,17 +34,17 @@ export function ThreadPrChip({
 		<button
 			type="button"
 			onClick={() => onOpen(pr.id)}
-			className="inline-flex h-7 min-w-0 shrink items-center gap-1.5 rounded-control bg-surface-2 px-2 text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
-			aria-label={`Pull request #${pr.number}, ${word}${count ? `, ${count}` : ""}. Open its checks`}
+			className="inline-flex h-7 min-w-0 shrink items-center gap-1.5 rounded-control px-2 text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+			aria-label={`Pull request #${pr.number}, ${word}${count ? `, ${count}` : ""}. Open it`}
 			data-testid="thread-pr-chip"
 			data-tone={pr.tone}
 		>
 			<GitPullRequest
-				className={cn("size-3.5 shrink-0", prToneClass(pr.tone))}
+				className={cn("size-3.5 shrink-0", prMarkClass(pr.tone))}
 				aria-hidden
 			/>
 			<span className="tabular-nums text-text-1">#{pr.number}</span>
-			<span className={cn("max-sm:hidden", prToneClass(pr.tone))}>{word}</span>
+			<span className="max-sm:hidden">{word}</span>
 			{count && <span className="tabular-nums max-md:hidden">{count}</span>}
 			{more > 0 && <span className="tabular-nums">+{more}</span>}
 		</button>

@@ -3,7 +3,9 @@
 
 import type { CanonicalEvent, Schedule } from "@prismalens/contracts";
 import { PrStatusNode } from "@/components/investigation/transcript/PrStatusNode";
+import { ListGrid } from "@/components/kit";
 import { ScheduleRow } from "@/components/schedules/SchedulesSection";
+import { PrView } from "@/components/thread/panel/PrView";
 import {
 	PullRequestList,
 	type PullRequestView,
@@ -216,12 +218,15 @@ const LIMITED = schedule({
 });
 
 const noop = () => {};
+/** The PR view at the panel's width. */
+const VIEW =
+	"flex h-[520px] w-[380px] max-w-full flex-col rounded-pool bg-surface-1";
 
 /** PR and checks, and scheduled tasks (#1101 categories 15 and 22). Only that lane edits this file. */
 export const prGallery: GallerySection[] = [
 	{
 		id: "pr-row",
-		title: "PR row: chip, branch pair, checks, review, merge and watch",
+		title: "PR chip and the panel's one-line PR row",
 		render: () => (
 			<div className="flex max-w-md flex-col gap-3">
 				<div className="flex gap-2">
@@ -239,50 +244,47 @@ export const prGallery: GallerySection[] = [
 				</div>
 				<PullRequestList
 					prs={[{ ...FIXTURE_PR, reviewThreads: [] }]}
-					answers={ANSWERS}
-					onWatch={noop}
+					onOpen={noop}
 				/>
 			</div>
 		),
 	},
 	{
 		id: "pr-checks-tail",
-		title: "Checks expanded, failing first, with its log tail",
+		title: "PR view: checks, failing first, the first one open",
 		render: () => (
-			<div className="max-w-md">
-				<PullRequestList
-					prs={[{ ...FIXTURE_PR, reviewThreads: [] }]}
-					focusId={FIXTURE_PR.id}
+			<div className={VIEW}>
+				<PrView
+					pr={FIXTURE_PR}
+					answers={ANSWERS}
 					onWatch={noop}
 					onDraft={noop}
+					onBack={noop}
 				/>
 			</div>
 		),
 	},
 	{
 		id: "pr-check-unavailable",
-		title: "A log PrismaLens cannot read says why",
+		title: "PR view: a log that cannot be read says why",
 		render: () => (
-			<div className="max-w-md">
-				<PullRequestList
-					prs={[
-						{
-							...FIXTURE_PR,
-							reviewThreads: [],
-							checkLogs: [
-								{
-									runId: "2",
-									headSha: SHA,
-									step: null,
-									lines: [],
-									unavailable:
-										"The git host gives logs only to a signed-in reader with access to its CI; this repository's token cannot read them.",
-									fetchedAt: "2026-11-05T12:00:00Z",
-								},
-							],
-						},
-					]}
-					focusId={FIXTURE_PR.id}
+			<div className={VIEW}>
+				<PrView
+					pr={{
+						...FIXTURE_PR,
+						reviewThreads: [],
+						checkLogs: [
+							{
+								runId: "2",
+								headSha: SHA,
+								step: null,
+								lines: [],
+								unavailable:
+									"The git host gives logs only to a signed-in reader with access to its CI; this repository's token cannot read them.",
+								fetchedAt: "2026-11-05T12:00:00Z",
+							},
+						],
+					}}
 					onDraft={noop}
 				/>
 			</div>
@@ -308,11 +310,12 @@ export const prGallery: GallerySection[] = [
 	},
 	{
 		id: "pr-review-threads",
-		title: "Review threads: open first, path:line, author, excerpt",
+		title: "PR view: review threads, open first",
 		render: () => (
-			<div className="max-w-md">
-				<PullRequestList
-					prs={[{ ...FIXTURE_PR, checkRuns: [] }]}
+			<div className={VIEW}>
+				<PrView
+					pr={FIXTURE_PR}
+					initialTab="reviews"
 					onOpenFile={noop}
 					onDraft={noop}
 				/>
@@ -349,19 +352,19 @@ export const prGallery: GallerySection[] = [
 		id: "schedules-list",
 		title: "Schedules: cadence, next run, last result, unread runs",
 		render: () => (
-			<div className="@container grid gap-px overflow-hidden rounded-pool bg-surface-1">
+			<ListGrid label="Schedules">
 				<ScheduleRow schedule={schedule({})} canEdit />
 				<ScheduleRow schedule={LIMITED} canEdit />
-			</div>
+			</ListGrid>
 		),
 	},
 	{
 		id: "schedule-limit",
 		title: "A scheduled run that hit a usage limit, with its reset",
 		render: () => (
-			<div className="@container grid gap-px overflow-hidden rounded-pool bg-surface-1">
+			<ListGrid label="Schedules">
 				<ScheduleRow schedule={LIMITED} canEdit={false} />
-			</div>
+			</ListGrid>
 		),
 	},
 ];
