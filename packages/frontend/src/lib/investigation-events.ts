@@ -529,6 +529,8 @@ export type TranscriptItem =
 			waitingOn?: "limit";
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** Its event's seq: where its turn starts, for the turn's snapshot (#1110). */
+			seq?: number;
 	  }
 	| {
 			kind: "end";
@@ -1074,6 +1076,7 @@ export function deriveTranscript(
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
+					seq: event.seq,
 					text: event.text,
 					at: event.ts,
 					mode: event.mode,
@@ -1287,7 +1290,8 @@ export function deriveTranscript(
 				}
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
-					// A limit's first resume time joins the limit's line: one line, one time (sheet §10).
+					// A limit's first resume folds into the limit's line, which says the reset: one line,
+					// one time (sheet §10). A limit with no reset takes the resume's time.
 					const last = items.at(-1);
 					if (
 						event.kind === "resume_scheduled" &&
@@ -1298,10 +1302,11 @@ export function deriveTranscript(
 						last?.kind === "node" &&
 						last.event.kind === "usage_limit"
 					) {
-						items[items.length - 1] = {
-							...last,
-							event: { ...last.event, resetsAt: event.at },
-						};
+						if (!last.event.resetsAt)
+							items[items.length - 1] = {
+								...last,
+								event: { ...last.event, resetsAt: event.at },
+							};
 						break;
 					}
 					// A compaction's end replaces its own "Compacting" line (#1101).
