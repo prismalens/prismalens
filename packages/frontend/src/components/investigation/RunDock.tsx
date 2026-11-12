@@ -354,6 +354,7 @@ export function AskCard({
 					variant="primary"
 					disabled={!runId || !armed || answer.isPending || answer.isSuccess}
 					onClick={() => send("approve")}
+					aria-keyshortcuts="Alt+Y"
 					data-testid={id("ask-approve")}
 				>
 					Approve
@@ -373,6 +374,7 @@ export function AskCard({
 					variant="secondary"
 					disabled={!runId || !armed || answer.isPending || answer.isSuccess}
 					onClick={() => send("deny")}
+					aria-keyshortcuts="Alt+N"
 					data-testid={id("ask-deny")}
 				>
 					Deny
