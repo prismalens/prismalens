@@ -97,3 +97,8 @@ export function retryWords(r: InboundRetry, locale?: string): string {
 	const why = r.mode === "overloaded" ? "Provider busy" : "Rate limited";
 	return `${why} · try ${r.attempt} of ${r.maxAttempts} at ${shortTime(new Date(r.at), locale)}`;
 }
+
+/** The quoted text, without the sender's thread path the row's header already links. */
+export function inboundText(row: InboundRow): string {
+	return row.text.replace(/^\/threads\/[\w-]+\s*/, "").trim();
+}

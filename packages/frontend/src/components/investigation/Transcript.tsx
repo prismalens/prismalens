@@ -351,7 +351,9 @@ export const Transcript = memo(function Transcript({
 				worked?.open ||
 				i <= brief ||
 				i >= end ||
-				item.kind === "artifact");
+				item.kind === "artifact" ||
+				// An incoming message's outcome is a result, never folded into the work (sheet §10).
+				item.kind === "inbound");
 		if (shown)
 			rows.push({
 				key: item.key,
