@@ -46,7 +46,7 @@ vi.mock("@/hooks/use-operator", () => ({
 
 // The event list's bell reads the attention API; Sidebar's layout is tested here.
 vi.mock("@/components/attention/EventList", () => ({
-	EventListButton: () => null,
+	useUnreadEvents: () => 0,
 }));
 vi.mock("@/lib/api/hooks", () => ({
 	useServices: () => ({ data: { data: [] } }),

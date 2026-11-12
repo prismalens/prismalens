@@ -10,6 +10,7 @@ import { Link, useLocation } from "@tanstack/react-router";
 import {
 	Activity,
 	ArrowUpCircle,
+	Bell,
 	Boxes,
 	Hourglass,
 	Menu,
@@ -22,7 +23,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { EventListButton } from "@/components/attention/EventList";
+import { useUnreadEvents } from "@/components/attention/EventList";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useAbout } from "@/components/settings";
@@ -53,6 +54,7 @@ type DoorTo =
 	| "/alerts"
 	| "/services"
 	| "/schedules"
+	| "/events"
 	| "/settings";
 
 interface Door {
@@ -64,6 +66,8 @@ interface Door {
 	count?: number;
 	/** Read with the count by assistive tech: `Incidents, 7 need you`. */
 	countLabel?: string;
+	/** A count that informs rather than asks for you: neutral, not warn. */
+	quietCount?: boolean;
 	/** A newer release is out (#717). */
 	dot?: boolean;
 	/** Only where the list is folded away: the rail and the phone strip (#1020). */
@@ -81,6 +85,7 @@ function useDoors(signedIn: boolean): Door[] {
 	const operations =
 		!!delivery || incidents.some((i) => triggerOf(i).kind !== "you");
 	const waiting = useWaitingCount(signedIn);
+	const unread = useUnreadEvents(signedIn);
 	return [
 		...(waiting
 			? [
@@ -113,6 +118,14 @@ function useDoors(signedIn: boolean): Door[] {
 					},
 				]
 			: []),
+		{
+			to: "/events",
+			label: "Events",
+			icon: <Bell className={ICON} />,
+			count: unread || undefined,
+			countLabel: unread ? `${unread} unread` : undefined,
+			quietCount: true,
+		},
 		{
 			to: "/settings",
 			label: "Settings",
@@ -279,7 +292,6 @@ function MainBar({
 			{signedIn && full && <UpdateReady />}
 			<div className="flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
 				{settingsDoor && <SettingsIcon door={settingsDoor} />}
-				{signedIn && <EventListButton />}
 				<TerminalDoor />
 				<ThemeToggle />
 			</div>
@@ -431,7 +443,8 @@ function DoorLink({
 				{door.count !== undefined && (
 					<span
 						className={cn(
-							"ml-auto text-meta font-normal text-warn tabular-nums",
+							"ml-auto text-meta font-normal tabular-nums",
+							door.quietCount ? "text-text-3" : "text-warn",
 							FULL_ONLY,
 						)}
 						data-testid={`nav-${door.slug ?? door.label.toLowerCase()}-count`}
@@ -582,7 +595,6 @@ function PhoneStrip({
 				</SheetContent>
 			</Sheet>
 			<span className="flex-1" />
-			{signedIn && <EventListButton className="size-12" />}
 			{waiting && (
 				<Link
 					to={waiting.to}

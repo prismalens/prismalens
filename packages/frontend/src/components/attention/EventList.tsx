@@ -3,78 +3,37 @@
 
 /**
  * The event list (#1101 categories 3 and 4): what happened to threads, Unread or
- * All, with Mark all read. A row opens its thread at its first unseen event.
+ * All, with Mark all read. It is a page, not a sheet (pattern sheet §1); a row
+ * opens its thread at its first unseen event.
  */
 import type { AttentionEvent } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell } from "lucide-react";
 import { useState } from "react";
 import { kindStatus } from "@/components/home/AwayView";
-import { Hint } from "@/components/shared/Hint";
+import { Status } from "@/components/kit/Status";
+import { Tabs } from "@/components/kit/Tabs";
 import { Empty, Loading } from "@/components/shared/State";
-import { StatusMark } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
 import { eventWords } from "@/lib/attention/notify-rules";
 import {
 	useAttentionEvents,
 	useMarkEventsRead,
 } from "@/lib/attention/use-attention";
-import { ageWord, STATUS_TONE, TONE_TEXT } from "@/lib/thread-status";
+import { ageWord } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
-export function EventListButton({ className }: { className?: string }) {
-	const [open, setOpen] = useState(false);
-	const unread = useAttentionEvents("unread", 1).data?.unread ?? 0;
-	const label = unread > 0 ? `Events, ${unread} unread` : "Events";
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<Hint label={label} side="right">
-				<PopoverTrigger asChild>
-					<button
-						type="button"
-						aria-label={label}
-						className={cn(
-							"relative flex size-8 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
-							className,
-						)}
-						data-testid="events-button"
-					>
-						<Bell className="size-4" aria-hidden />
-						{unread > 0 && (
-							<span
-								className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] leading-4 font-medium text-accent-fg tabular-nums"
-								data-testid="events-unread"
-							>
-								{unread > 99 ? "99+" : unread}
-							</span>
-						)}
-					</button>
-				</PopoverTrigger>
-			</Hint>
-			<PopoverContent
-				align="start"
-				side="right"
-				className="w-[360px] max-w-[calc(100vw-32px)]"
-			>
-				{open && <EventListPanel onOpen={() => setOpen(false)} />}
-			</PopoverContent>
-		</Popover>
-	);
+/** The unread count the sidebar's Events entry carries. */
+export function useUnreadEvents(enabled = true): number {
+	return useAttentionEvents("unread", 1, enabled).data?.unread ?? 0;
 }
 
-export function EventListPanel({ onOpen }: { onOpen?: () => void }) {
+export function EventListPanel() {
 	const [filter, setFilter] = useState<"unread" | "all">("unread");
 	const events = useAttentionEvents(filter, 50);
 	const markRead = useMarkEventsRead();
 	const navigate = useNavigate();
 	const open = (e: AttentionEvent) => {
 		if (!e.readAt) markRead.mutate({ ids: [e.id] });
-		onOpen?.();
 		void navigate({ to: "/threads/$id", params: { id: e.threadId } });
 	};
 	return (
@@ -112,30 +71,23 @@ export function EventListView({
 	now: number;
 }) {
 	return (
-		<div className="flex max-h-[70vh] flex-col" data-testid="event-list">
-			<div className="flex items-center gap-1 px-2 pt-2 pb-1.5">
-				<div role="tablist" aria-label="Events" className="flex gap-0.5">
-					{(["unread", "all"] as const).map((f) => (
-						<button
-							key={f}
-							type="button"
-							role="tab"
-							aria-selected={filter === f}
-							onClick={() => onFilter(f)}
-							className={cn(
-								"h-7 rounded-control px-2.5 text-meta",
-								filter === f
-									? "bg-surface-3 font-medium text-text-1"
-									: "text-text-2 hover:bg-surface-2",
-							)}
-							data-testid={`events-${f}`}
-						>
-							{f === "unread" ? `Unread${unread ? ` ${unread}` : ""}` : "All"}
-						</button>
-					))}
-				</div>
+		<div className="flex flex-col gap-2" data-testid="event-list">
+			<div className="flex items-center gap-3">
+				<Tabs
+					label="Events"
+					value={filter}
+					onValueChange={(v) => onFilter(v as "unread" | "all")}
+					items={[
+						{
+							value: "unread",
+							label: "Unread",
+							count: unread || undefined,
+						},
+						{ value: "all", label: "All" },
+					]}
+				/>
 				<Button
-					variant="ghost"
+					variant="text"
 					size="sm"
 					className="ml-auto"
 					disabled={unread === 0}
@@ -145,31 +97,24 @@ export function EventListView({
 					Mark all read
 				</Button>
 			</div>
-			<div className="min-h-0 flex-1 overflow-y-auto pb-1.5">
-				{loading ? (
-					<div className="px-3">
-						<Loading rows={3} />
-					</div>
-				) : !events?.length ? (
-					<div className="px-3">
-						<Empty
-							text={filter === "unread" ? "All caught up" : "No events yet"}
-						/>
-					</div>
-				) : (
-					<ul>
-						{events.map((e) => (
-							<li key={e.id}>
-								<EventRow event={e} now={now} onOpen={() => onOpenEvent(e)} />
-							</li>
-						))}
-					</ul>
-				)}
-			</div>
+			{loading ? (
+				<Loading rows={3} />
+			) : !events?.length ? (
+				<Empty text={filter === "unread" ? "All caught up" : "No events yet"} />
+			) : (
+				<ul className="flex flex-col">
+					{events.map((e) => (
+						<li key={e.id}>
+							<EventRow event={e} now={now} onOpen={() => onOpenEvent(e)} />
+						</li>
+					))}
+				</ul>
+			)}
 		</div>
 	);
 }
 
+/** A flat row: the status icon, the thread, its age, then the word and one detail line. */
 function EventRow({
 	event,
 	now,
@@ -181,22 +126,23 @@ function EventRow({
 }) {
 	const status = kindStatus(event.kind, event.thread.status);
 	const { word, detail } = eventWords(event);
+	const unread = !event.readAt;
 	return (
 		<button
 			type="button"
 			onClick={onOpen}
-			className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-surface-2 focus-visible:bg-surface-2"
+			className="flex w-full items-start gap-2.5 rounded-control px-2 py-2 text-left outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-accent"
 			data-testid="event-row"
 			data-kind={event.kind}
-			data-unread={event.readAt ? undefined : ""}
+			data-unread={unread ? "" : undefined}
 		>
-			<StatusMark status={status} className="mt-0.5 shrink-0" />
+			<Status kind={status} word={word} showWord={false} className="mt-0.5" />
 			<span className="flex min-w-0 flex-1 flex-col">
 				<span className="flex items-baseline gap-2">
 					<span
 						className={cn(
 							"truncate text-body",
-							event.readAt ? "text-text-2" : "font-medium text-text-1",
+							unread ? "font-medium text-text-1" : "text-text-2",
 						)}
 					>
 						{event.thread.title?.trim() || "Untitled thread"}
@@ -205,11 +151,9 @@ function EventRow({
 						{ageWord(Date.parse(event.at), now)}
 					</span>
 				</span>
-				<span className="truncate text-meta">
-					<span className={cn("font-medium", TONE_TEXT[STATUS_TONE[status]])}>
-						{word}
-					</span>
-					{detail ? <span className="text-text-2"> · {detail}</span> : null}
+				<span className="truncate text-meta text-text-2">
+					<span className="font-medium">{word}</span>
+					{detail ? <span> · {detail}</span> : null}
 				</span>
 				{event.thread.rootTitle && (
 					<span className="truncate text-meta text-text-3">
