@@ -463,7 +463,8 @@ test("design coverage matrix", async ({
 	for (const t of THEMES) {
 		await theme(page, t);
 		await page.setViewportSize({ width: 1280, height: 800 });
-		await visit(page, "/threads");
+		// No Threads page since 03d1002a4; the palette opens from New.
+		await visit(page, "/new");
 		await page.keyboard.press("Control+k");
 		// Row actions are a thread's: highlight one before Alt+Enter.
 		await page.getByTestId("thread-search-result").first().hover();
