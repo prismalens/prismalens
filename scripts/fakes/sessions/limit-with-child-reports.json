@@ -21,7 +21,7 @@
 			},
 			{
 				"call": {
-					"tool": "thread_start",
+					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the database pool",
 						"role": "db",
@@ -35,7 +35,7 @@
 			},
 			{
 				"call": {
-					"tool": "thread_start",
+					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the api retries",
 						"role": "api",
@@ -49,7 +49,7 @@
 			},
 			{
 				"call": {
-					"tool": "thread_start",
+					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the cache",
 						"role": "cache",
@@ -63,7 +63,7 @@
 			},
 			{
 				"call": {
-					"tool": "thread_wait",
+					"tool": "pl_thread_wait",
 					"arguments": {
 						"ids": ["report-db", "report-api", "report-cache"],
 						"mode": "any"
