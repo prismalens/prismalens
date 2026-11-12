@@ -15,6 +15,7 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { Menu } from "@/components/kit/Menu";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { cn } from "@/lib/utils";
@@ -60,7 +61,7 @@ export function FindBar({
 	return (
 		<div className="shrink-0 px-4 pt-2">
 			<search
-				className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-1 gap-y-0.5 rounded-pool bg-surface-1 py-1 pr-1 pl-2.5"
+				className="mx-auto flex w-full max-w-[760px] items-center gap-x-1 gap-y-0.5 rounded-pool bg-surface-1 py-1 pr-1 pl-2.5"
 				data-testid="find-bar"
 				aria-label="Find in thread"
 			>
@@ -110,7 +111,7 @@ export function FindBar({
 					</button>
 				)}
 				<fieldset
-					className="flex shrink-0 items-center max-sm:order-last max-sm:w-full"
+					className="flex shrink-0 items-center max-sm:hidden"
 					aria-label="Find in"
 				>
 					{FIND_SCOPES.map((scope) => (
@@ -131,14 +132,48 @@ export function FindBar({
 						</button>
 					))}
 				</fieldset>
-				<IconButton
-					label="Match case"
-					onClick={() => find.setCase(!find.caseSensitive)}
-					pressed={find.caseSensitive}
-					testId="find-case"
-				>
-					<CaseSensitive className="size-4" aria-hidden />
-				</IconButton>
+				<span className="flex shrink-0 max-sm:hidden">
+					<IconButton
+						label="Match case"
+						onClick={() => find.setCase(!find.caseSensitive)}
+						pressed={find.caseSensitive}
+						testId="find-case"
+					>
+						<CaseSensitive className="size-4" aria-hidden />
+					</IconButton>
+				</span>
+				{/* A phone keeps the strip to one row: scope and case fold into one menu. */}
+				<span className="hidden shrink-0 max-sm:flex">
+					<Menu
+						label="Find options"
+						entries={[
+							...FIND_SCOPES.map((scope) => ({
+								id: `find-scope-${scope}`,
+								label: SCOPE_LABEL[scope],
+								checked: find.scope === scope,
+								onSelect: () => find.setScope(scope),
+							})),
+							{ id: "find-sep", separator: true as const },
+							{
+								id: "find-case",
+								label: "Match case",
+								checked: find.caseSensitive,
+								onSelect: () => find.setCase(!find.caseSensitive),
+							},
+						]}
+						trigger={
+							<button
+								type="button"
+								aria-label={`Find in ${SCOPE_LABEL[find.scope]}`}
+								className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded-control px-1.5 text-meta text-text-2 hover:bg-surface-3 hover:text-text-1"
+								data-testid="find-options"
+							>
+								{SCOPE_LABEL[find.scope]}
+								<ChevronDown className="size-3 text-text-3" aria-hidden />
+							</button>
+						}
+					/>
+				</span>
 				<IconButton
 					label="Previous match"
 					keys={["Shift", "Enter"]}

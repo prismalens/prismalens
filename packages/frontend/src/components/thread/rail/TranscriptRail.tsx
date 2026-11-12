@@ -77,15 +77,17 @@ export interface RailProps {
 	onJump: (key: string) => void;
 }
 
-/** Where a key sits between the record's first and last seq, 0..1. */
-function useSpan(entries: readonly IndexEntry[]) {
+/** The last entry at or before a key, so a tool event on screen still marks its turn. */
+function useEntryAt(entries: readonly IndexEntry[]) {
 	return useMemo(() => {
 		const seqs = entries.map((e) => parseEventKey(e[0])?.seq ?? 0);
-		const lo = Math.min(...seqs, 0);
-		const hi = Math.max(...seqs, lo + 1);
 		return (key: string | null) => {
 			const seq = key ? parseEventKey(key)?.seq : undefined;
-			return seq === undefined ? null : (seq - lo) / (hi - lo);
+			if (seq === undefined) return undefined;
+			let found: string | undefined;
+			for (let i = 0; i < seqs.length && seqs[i] <= seq; i++)
+				found = entries[i][0];
+			return found ?? entries[0]?.[0];
 		};
 	}, [entries]);
 }
@@ -102,26 +104,24 @@ export function TranscriptRail({
 	activeHit,
 	onJump,
 }: RailProps) {
-	const at = useSpan(entries);
+	const entryAt = useEntryAt(entries);
+	// The whole thread maps onto the strip by message order, not event seq: tool
+	// runs between messages would otherwise leave gaps and bunch the rest.
 	const items = useMemo(
 		() =>
-			entries.flatMap((e): RailItem[] => {
-				const y = at(e[0]);
-				if (y === null) return [];
-				return [
-					{
-						id: e[0],
-						at: y,
-						author: e[1] === "you" || e[1] === "agent" ? e[1] : "thread",
-						mark: e[2] ? KIT_MARK[e[2]] : undefined,
-						preview: railPreview(e),
-					},
-				];
-			}),
-		[entries, at],
+			entries.map(
+				(e, i): RailItem => ({
+					id: e[0],
+					at: entries.length > 1 ? i / (entries.length - 1) : 0,
+					author: e[1] === "you" || e[1] === "agent" ? e[1] : "thread",
+					mark: e[2] ? KIT_MARK[e[2]] : undefined,
+					preview: railPreview(e),
+				}),
+			),
+		[entries],
 	);
 	if (items.length < 2) return null;
-	const current = activeHit ?? range.first ?? undefined;
+	const current = activeHit ?? entryAt(range.first);
 	return (
 		<nav
 			aria-label="Thread outline"

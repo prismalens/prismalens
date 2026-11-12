@@ -90,6 +90,41 @@ describe("TranscriptRail", () => {
 		).toBe("agent");
 	});
 
+	it("spaces entries by message order, not event seq, and marks the turn of a tool event on screen as current", async () => {
+		const sparse: IndexEntry[] = [
+			["main:1", "you", null, "Check the outage", "2026-11-12T10:00:00Z", null],
+			["main:2", "agent", null, "Reading logs", "2026-11-12T10:01:00Z", null],
+			[
+				"main:900",
+				"agent",
+				null,
+				"The pool is the cause",
+				"2026-11-12T10:09:00Z",
+				null,
+			],
+		];
+		await act(async () => {
+			root.render(
+				<TranscriptRail
+					entries={sparse}
+					range={{ first: "main:450", last: "main:460" }}
+					hits={[]}
+					activeHit={null}
+					onJump={vi.fn()}
+				/>,
+			);
+		});
+		expect(
+			Array.from(
+				host.querySelectorAll<HTMLElement>("[data-rail-item]"),
+				(e) => e.style.top,
+			),
+		).toEqual(["0%", "50%", "100%"]);
+		expect(
+			host.querySelector('[role="slider"]')?.getAttribute("aria-valuenow"),
+		).toBe("1");
+	});
+
 	it("makes the active find hit current while find is open, and Home calls onJump with the first entry's key", async () => {
 		const onJump = vi.fn();
 		await act(async () => {
