@@ -18,6 +18,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { Status } from "@/components/kit";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
@@ -111,15 +112,13 @@ export function StatusLabel({
 	const reason = infoReason(info, now);
 	return (
 		<Hint label={reason ?? STATUS_WORD[info.status]} when={!!reason}>
+			{/* The kit's Status: one icon, colour and word for a state everywhere (sheet §0.6). */}
 			<span
-				className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
+				className={cn("inline-flex min-w-0 items-center", className)}
 				data-testid="status-label"
 				data-state={info.status}
 			>
-				<StatusMark status={info.status} />
-				<span className={cn("shrink-0 font-medium", wordTone(info.status))}>
-					{STATUS_WORD[info.status]}
-				</span>
+				<Status kind={info.status} word={STATUS_WORD[info.status]} />
 				{reason && <span className="sr-only">, {reason}</span>}
 			</span>
 		</Hint>
