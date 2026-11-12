@@ -146,7 +146,7 @@ export function ListGrid({
 	return (
 		<ul
 			aria-label={label}
-			className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2"
+			className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-start gap-2"
 			data-testid={testId}
 		>
 			{children}
