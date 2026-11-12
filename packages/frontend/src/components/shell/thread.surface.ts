@@ -18,6 +18,7 @@ export const threadRow = defineSurface({
 	menus: {
 		context: [
 			"thread.rename",
+			"thread.nameAgain",
 			"thread.pin",
 			"thread.archive",
 			"-",
@@ -25,6 +26,7 @@ export const threadRow = defineSurface({
 		],
 		more: [
 			"thread.rename",
+			"thread.nameAgain",
 			"thread.pin",
 			"thread.archive",
 			"-",
@@ -40,7 +42,13 @@ export const threadHeader = defineSurface({
 	id: "thread.header",
 	label: "Thread actions",
 	menus: {
-		more: ["thread.rename", "thread.settle", "-", "thread.archive"],
+		more: [
+			"thread.rename",
+			"thread.nameAgain",
+			"thread.settle",
+			"-",
+			"thread.archive",
+		],
 	},
 	states: { default: "thread-header-menu", phone: "thread-header-menu" },
 	marks: ["status"],

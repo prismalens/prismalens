@@ -11,6 +11,7 @@ import {
 	Pencil,
 	Pin,
 	PinOff,
+	RefreshCw,
 	SquareArrowOutUpRight,
 } from "lucide-react";
 import { defineAction, type Facts } from "@/components/kit/actions";
@@ -18,6 +19,7 @@ import { defineAction, type Facts } from "@/components/kit/actions";
 /** A thread, from a sidebar row, its page header or a palette result. */
 export interface ThreadCtx {
 	rename: () => void;
+	nameAgain: () => void;
 	togglePin: () => void;
 	toggleArchive: () => void;
 	settle: () => void;
@@ -34,7 +36,9 @@ export type ThreadState =
 	| "archived"
 	| "live"
 	| "settleable"
-	| "standalone";
+	| "standalone"
+	/** A title is being made now. */
+	| "naming";
 
 declare module "@/components/kit/actions" {
 	interface ObjectContexts {
@@ -47,6 +51,7 @@ declare module "@/components/kit/actions" {
 		"thread.open": "thread";
 		"thread.panel": "thread";
 		"thread.rename": "thread";
+		"thread.nameAgain": "thread";
 		"thread.pin": "thread";
 		"thread.archive": "thread";
 		"thread.transcript": "thread";
@@ -79,6 +84,14 @@ export const threadRename = defineAction({
 	label: "Rename",
 	icon: Pencil,
 	run: (c) => c.rename(),
+});
+
+export const threadNameAgain = defineAction({
+	id: "thread.nameAgain",
+	label: "Name it again",
+	icon: RefreshCw,
+	disabled: (f) => !!f.is?.naming,
+	run: (c) => c.nameAgain(),
 });
 
 export const threadPin = defineAction({

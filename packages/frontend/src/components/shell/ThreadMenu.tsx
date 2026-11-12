@@ -24,6 +24,7 @@ import { toast } from "@/hooks/use-toast";
 import {
 	useArchiveThread,
 	usePinThread,
+	useRegenerateThreadTitle,
 	useRenameThread,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { client } from "@/lib/api/orpc-client";
@@ -112,6 +113,16 @@ export async function allEvents(id: string): Promise<CanonicalEvent[]> {
 	return out;
 }
 
+/** Why "Name it again" kept the title, by the server's outcome. */
+const NAME_AGAIN_WHY: Record<string, string> = {
+	off: "Thread titles are off in Settings, Models.",
+	"no-model":
+		"This agent lists no small model. Pick one in Thread titles in Settings, Models.",
+	kept: "The title changed while it was being named.",
+	empty: "The model gave no usable title.",
+	failed: "The agent could not name it this time.",
+};
+
 /**
  * A thread's context for the registry (#1125): the row offers Rename, Pin,
  * Archive and Settle on ⋯ and on right-click; the header offers Rename, Settle,
@@ -135,6 +146,7 @@ export function useThreadCtx(
 	const navigate = useNavigate();
 	const pin = usePinThread();
 	const archive = useArchiveThread();
+	const regenerate = useRegenerateThreadTitle();
 	const done = (fn: () => void) => () => {
 		onDone?.();
 		fn();
@@ -171,6 +183,25 @@ export function useThreadCtx(
 	const standalone = !thread.incidentId && !thread.scheduleId;
 	const ctx: ThreadCtx = {
 		rename: done(() => (onRename ? onRename() : setRenaming(true))),
+		nameAgain: done(() =>
+			regenerate.mutate(
+				{ id: thread.id },
+				{
+					onSuccess: ({ outcome }) =>
+						outcome !== "named" &&
+						toast({
+							title: "Title kept",
+							description: NAME_AGAIN_WHY[outcome],
+						}),
+					onError: (e) =>
+						toast({
+							title: "Title kept",
+							description: getErrorMessage(e),
+							variant: "destructive",
+						}),
+				},
+			),
+		),
 		togglePin: done(() => pin.mutate({ id: thread.id, on: !thread.pinnedAt })),
 		toggleArchive: done(doArchive),
 		settle: done(() => onSettle?.()),
@@ -209,6 +240,7 @@ export function useThreadCtx(
 				live: isWorkflowLive(thread.status),
 				settleable: !!onSettle,
 				standalone,
+				naming: regenerate.isPending,
 			},
 		},
 	};
