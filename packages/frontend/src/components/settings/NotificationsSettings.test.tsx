@@ -93,14 +93,13 @@ describe("NotificationsSettings (case 1 rest and notifications)", () => {
 		state.slackConfigured = true;
 		await act(async () => root.render(createElement(NotificationsSettings)));
 
-		const helpBtn = container.querySelector<HTMLButtonElement>(
-			'button[aria-label="About webhook url"]',
-		);
-		expect(helpBtn).not.toBeNull();
-		await act(async () => {
-			helpBtn?.click();
-		});
-		expect(document.body.textContent).toContain("Set, never shown again");
+		// 729edb0d1: a setting's sentence is its label's hint, not a ? button.
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="setting-about"]') ?? [],
+				(e) => e.getAttribute("aria-description"),
+			).join("\n"),
+		).toContain("Set, never shown again");
 		const replaceBtn = container.querySelector('[data-testid="slack-replace"]');
 		expect(replaceBtn).not.toBeNull();
 

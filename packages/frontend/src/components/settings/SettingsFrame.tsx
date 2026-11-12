@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
 import { Help } from "@/components/kit/Help";
+import { Tabs } from "@/components/kit/Tabs";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -59,6 +60,50 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
 	{ tab: "telemetry", label: "Usage data" },
 	{ tab: "about", label: "About" },
 ];
+
+export interface SettingsNavItem {
+	tab: SettingsTab;
+	label: string;
+	/** Pages folded into this entry, drawn as a tab row above the page. */
+	pages?: readonly SettingsTab[];
+}
+
+/**
+ * The list beside each page and the phone's landing page: nine entries,
+ * related pages folded into one with their own tab row (#1101 cat 18).
+ */
+export const SETTINGS_NAV: readonly SettingsNavItem[] = [
+	{ tab: "general", label: "General" },
+	{
+		tab: "agent",
+		label: "Agents",
+		pages: ["agent", "models", "permissions", "organizer", "runs"],
+	},
+	{
+		tab: "appearance",
+		label: "Appearance",
+		pages: ["appearance", "shortcuts"],
+	},
+	{ tab: "notifications", label: "Notifications" },
+	{ tab: "usage", label: "Usage" },
+	{ tab: "alert-intake", label: "Alert intake" },
+	{ tab: "sources", label: "Sources" },
+	{ tab: "devices", label: "Devices" },
+	{ tab: "about", label: "About", pages: ["about", "telemetry"] },
+];
+
+/** A folded page's word in its tab row, where the page's own title is longer. */
+const TAB_WORD: Partial<Record<SettingsTab, string>> = {
+	organizer: "Limits",
+	shortcuts: "Shortcuts",
+};
+
+/** The nav entry a page sits under. */
+export function navOf(tab: SettingsSection): SettingsNavItem | undefined {
+	return SETTINGS_NAV.find(
+		(n) => n.tab === tab || n.pages?.includes(tab as SettingsTab),
+	);
+}
 
 /** The page Settings opens on. */
 export const FIRST_SETTINGS_TAB: SettingsTab = "general";
@@ -145,6 +190,7 @@ export function SettingsFrame({
 							<SettingsResults query={query} />
 						) : (
 							<>
+								{!services && <PageTabs section={section} />}
 								<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
 									{/* The section's intro is opt-in behind one ? beside its title (sheet §0.3). */}
 									<div className="flex min-w-0 items-center gap-1.5">
@@ -192,8 +238,8 @@ function SectionList({
 			data-testid="settings-sections"
 		>
 			<SettingsSearchBox query={query} />
-			{SETTINGS_SECTIONS.map((s) => {
-				const on = s.tab === current;
+			{SETTINGS_NAV.map((s) => {
+				const on = navOf(current)?.tab === s.tab;
 				return (
 					<Link
 						key={s.tab}
@@ -211,6 +257,33 @@ function SectionList({
 				);
 			})}
 		</nav>
+	);
+}
+
+/** A folded entry's pages as one tab row over the page; a single page draws none. */
+function PageTabs({ section }: { section: SettingsSection }) {
+	const navigate = useNavigate();
+	const nav = navOf(section);
+	if (!nav?.pages) return null;
+	const label = new Map(SETTINGS_SECTIONS.map((s) => [s.tab, s.label]));
+	return (
+		<div className="mb-5" data-testid="settings-page-tabs">
+			<Tabs
+				label={nav.label}
+				value={section}
+				onValueChange={(tab) =>
+					void navigate({
+						to: "/settings",
+						search: { tab: tab as SettingsTab },
+					})
+				}
+				items={nav.pages.map((tab) => ({
+					value: tab,
+					label: TAB_WORD[tab] ?? label.get(tab) ?? tab,
+					testId: `settings-tab-${tab}`,
+				}))}
+			/>
+		</div>
 	);
 }
 

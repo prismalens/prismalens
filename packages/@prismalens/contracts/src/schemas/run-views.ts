@@ -233,6 +233,14 @@ export const WorktreeRepoChangesSchema = z.discriminatedUnion("state", [
 		truncated: z.boolean(),
 		/** Set when a scope was asked for: what the diff compares (#1101 category 16). */
 		scoped: ScopedDiffSchema.optional(),
+		/** Commits HEAD is ahead of and behind its upstream; null with no upstream. */
+		sync: z
+			.object({
+				ahead: z.number().int().nonnegative(),
+				behind: z.number().int().nonnegative(),
+			})
+			.nullable()
+			.optional(),
 	}),
 	z.object({
 		state: z.literal("unavailable"),

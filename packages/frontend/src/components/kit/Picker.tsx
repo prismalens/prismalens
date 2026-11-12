@@ -56,6 +56,7 @@ export function Picker({
 	emptyText = "No match",
 	searchPlaceholder,
 	side = "top",
+	compact,
 	open,
 	onOpenChange,
 	testId,
@@ -78,6 +79,8 @@ export function Picker({
 	emptyText?: string;
 	searchPlaceholder?: string;
 	side?: "top" | "bottom";
+	/** On a phone the trigger is its icon alone; the name stays in its label. */
+	compact?: boolean;
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 	testId?: string;
@@ -102,18 +105,26 @@ export function Picker({
 			data-testid={testId}
 			data-locked={locked ? "" : undefined}
 			className={cn(
-				"inline-flex h-7 max-w-[220px] min-w-0 shrink-0 items-center gap-1.5 rounded-control px-2 text-body font-medium text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:text-text-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1",
+				"inline-flex h-7 max-w-[220px] min-w-0 shrink-0 items-center max-sm:max-w-[124px] gap-1.5 rounded-control px-2 text-body font-medium text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:text-text-3 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1",
 				locked || disabled
 					? "cursor-default"
 					: "hover:bg-surface-3 hover:text-text-1",
 			)}
 		>
 			<OptionIcon option={shown} />
-			<span className="truncate">{shown?.name ?? label}</span>
+			<span className={cn("truncate", compact && "max-sm:sr-only")}>
+				{shown?.name ?? label}
+			</span>
 			{locked ? (
 				<Lock aria-hidden className="size-3 shrink-0 text-text-3" />
 			) : (
-				<ChevronDown aria-hidden className="size-3 shrink-0 text-text-3" />
+				<ChevronDown
+					aria-hidden
+					className={cn(
+						"size-3 shrink-0 text-text-3",
+						compact && "max-sm:hidden",
+					)}
+				/>
 			)}
 		</button>
 	);

@@ -93,14 +93,13 @@ describe("AboutSettings release channel", () => {
 			container.querySelector('[data-testid="about-release-channel"]')
 				?.textContent,
 		).toBe("Stable");
-		const helpBtn = container.querySelector<HTMLButtonElement>(
-			'button[aria-label="About release channel"]',
-		);
-		expect(helpBtn).not.toBeNull();
-		await act(async () => {
-			helpBtn?.click();
-		});
-		expect(document.body.textContent).toContain(
+		// 729edb0d1: a setting's sentence is its label's hint, not a ? button.
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="setting-about"]'),
+				(e) => e.getAttribute("aria-description"),
+			).join("\n"),
+		).toContain(
 			"Nightly builds ship on npm only; this copy was installed with the installer",
 		);
 	});
@@ -141,16 +140,13 @@ describe("AboutSettings release channel set by the environment", () => {
 		);
 		expect(select?.textContent).toBe("Nightly");
 		expect(select?.hasAttribute("disabled")).toBe(true);
-		const helpBtn = container.querySelector<HTMLButtonElement>(
-			'button[aria-label="About release channel"]',
-		);
-		expect(helpBtn).not.toBeNull();
-		await act(async () => {
-			helpBtn?.click();
-		});
-		expect(document.body.textContent).toContain(
-			"PRISMALENS_UPDATE_CHANNEL sets it; unset it to choose here",
-		);
+		// 729edb0d1: a setting's sentence is its label's hint, not a ? button.
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="setting-about"]'),
+				(e) => e.getAttribute("aria-description"),
+			).join("\n"),
+		).toContain("PRISMALENS_UPDATE_CHANNEL sets it; unset it to choose here");
 	});
 });
 

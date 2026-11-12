@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PrTone, ThreadContext, ThreadTree } from "@prismalens/contracts";
+import type {
+	PrTone,
+	ThreadContext,
+	ThreadTree,
+	ThreadTreeNode,
+} from "@prismalens/contracts";
+import type { ReactNode } from "react";
 import type { Details, DetailsPr } from "@/components/kit";
 import { PR_TONE_WORD, type PullRequestView } from "./PullRequests";
 
@@ -54,6 +60,10 @@ export function detailsOf(o: {
 	tree: ThreadTree | undefined;
 	threadId: string;
 	agentLabel: string | null;
+	/** The card's git action and openers, drawn by the caller. */
+	actions?: ReactNode;
+	/** Live child rows for the thread's direct children. */
+	lineage?: (children: ThreadTreeNode[]) => { node: ReactNode; span: number };
 	open: {
 		diff?: Opener;
 		pr?: Opener;
@@ -90,7 +100,14 @@ export function detailsOf(o: {
 		};
 	}
 	const repos = context.workspace?.repos ?? [];
-	const branch = repos.find((r) => r.branch)?.branch ?? undefined;
+	const branchRepo = repos.find((r) => r.branch);
+	const branch = branchRepo?.branch ?? undefined;
+	const sync =
+		branchRepo &&
+		typeof branchRepo.ahead === "number" &&
+		typeof branchRepo.behind === "number"
+			? { ahead: branchRepo.ahead, behind: branchRepo.behind }
+			: undefined;
 	const counted = repos.filter(
 		(r) => r.additions !== null && r.deletions !== null,
 	);
@@ -112,6 +129,9 @@ export function detailsOf(o: {
 			...(context.agent.model ? { model: context.agent.model } : {}),
 		},
 		...(branch ? { branch } : {}),
+		...(sync ? { sync } : {}),
+		...(o.actions ? { actions: o.actions } : {}),
+		...(o.lineage && children.length ? { lineage: o.lineage(children) } : {}),
 		...(counted.length
 			? {
 					changes: {

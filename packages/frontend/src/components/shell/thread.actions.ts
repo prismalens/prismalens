@@ -273,6 +273,7 @@ export const threadSchedule = defineAction({
 	id: "thread.schedule",
 	label: "Add scheduled task",
 	icon: CalendarClock,
-	when: (f) => phone(f) && !!f.is?.canSchedule,
+	// Every width: a rare action, so it lives in ⋯ and never as a header button.
+	when: (f) => !!f.is?.canSchedule,
 	run: (c) => c.page?.schedule(),
 });
