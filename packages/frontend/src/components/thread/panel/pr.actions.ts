@@ -8,7 +8,7 @@ import {
 	PanelRight,
 	RefreshCw,
 	SquareArrowOutUpRight,
-	WandSparkles,
+	Wrench,
 } from "lucide-react";
 import { defineAction, type Facts } from "@/components/kit/actions";
 import { copyText } from "@/lib/clipboard";
@@ -93,7 +93,7 @@ export const checkToggleLog = defineAction({
 export const checkDraftFix = defineAction({
 	id: "check.draftFix",
 	label: "Ask the agent to fix",
-	icon: WandSparkles,
+	icon: Wrench,
 	when: (f) => !!f.is?.failing,
 	run: (c) => c.draftFix(),
 });
