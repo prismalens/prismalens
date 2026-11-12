@@ -47,7 +47,7 @@ describe("detailsRows for thread", () => {
 		expect(rows.map((r) => r.id)).toEqual(["agent"]);
 	});
 
-	// 98d40f16c made a passing PR's icon green (ok), as the thread list's mark reads.
+	// 98d40f16c colours a passing PR's row green (ok).
 	it("gives row tone danger for pr tone failing, and ok for passing", () => {
 		const failingThread: ThreadDetails = {
 			kind: "thread",

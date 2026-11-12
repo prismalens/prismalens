@@ -760,7 +760,7 @@ const RAIL_ITEMS: RailItem[] = Array.from({ length: 48 }, (_, i) => {
 	const mark: RailItem["mark"] =
 		i === 14
 			? "limit"
-			: i === 27
+			: i === 27 || i === 44
 				? "failure"
 				: i === 33
 					? "restart"
@@ -792,7 +792,7 @@ function RailDemo() {
 	return (
 		<Stage
 			id="rail"
-			caption="Rail: agent long, you short, threads shortest; marks; current; two find hits"
+			caption="Rail: agent long, you short, threads shortest; marks; current; two find hits; F steps failures"
 			className="flex h-[320px] gap-3 rounded-pool bg-canvas p-2"
 		>
 			<Rail
