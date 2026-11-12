@@ -31,7 +31,7 @@ beforeAll(async () => {
 	const started = await pl.api<{ investigationId: string }>("/threads", {
 		method: "POST",
 		body: { subject: { kind: "none" }, text: ASK, place: "alerts" },
-	}, 30_000);
+	});
 	threadId = started.investigationId;
 	await finished(threadId);
 }, 60_000);

@@ -158,6 +158,15 @@ vi.mock("@/lib/api/hooks/use-services-orpc", () => ({
 
 vi.mock("@/components/shell/ThreadMenu", () => ({ ThreadMenu: () => null }));
 
+// The attention lane's hooks and bell call the API; this file tests sending only.
+vi.mock("@/lib/attention/use-attention", () => ({
+	useOpeningRead: () => ({ data: undefined, isFetched: false }),
+	useReadAdvance: vi.fn(),
+	useTabVisible: () => true,
+}));
+vi.mock("@/components/attention/FollowButton", () => ({
+	FollowButton: () => null,
+}));
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
 	useFeedRow: () => undefined,
