@@ -332,4 +332,49 @@ describe("ResumableStream", () => {
 		expect(sink.closed).toBe(true);
 		stream.stop();
 	});
+
+	it("A reset ping while streaming sends reset with the head's gen and closes clean", async () => {
+		const source = new FakeStreamSource();
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 0 }, sink);
+		await stream.start();
+		source.gen = 4;
+		source.onCommitCallback?.("reset");
+		await new Promise((r) => setTimeout(r, 0));
+		expect(sink.frames.map((f) => [f.name, f.data])).toEqual([["reset", { gen: 4 }]]);
+		expect(sink.closed).toBe(true);
+	});
+
+	it("A live event repeated after replay is sent once, and nothing is sent after stop", async () => {
+		const source = new FakeStreamSource();
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", { gen: 0, ordinal: 0 }, sink);
+		await stream.start();
+		const live = makeEvent(7);
+		source.onLiveCallback?.(live);
+		source.onLiveCallback?.(live);
+		expect(sink.frames.map((f) => [f.name, f.data])).toEqual([
+			["live", { gen: 0, event: live }],
+		]);
+		stream.stop();
+		expect(source.onLiveCallback).toBeNull();
+		expect(sink.frames).toHaveLength(1);
+	});
+
+	it("A stream opened with no cursor starts at the head's revision and replays nothing", async () => {
+		const source = new FakeStreamSource();
+		source.revision = 3;
+		for (let i = 1; i <= 3; i++)
+			source.rowList.push({
+				seq: i,
+				branchId: "main",
+				ordinal: i,
+				event: JSON.stringify(makeEvent(i)),
+			});
+		const sink = new RecordingStreamSink();
+		const stream = new ResumableStream(source, "thread-1", null, sink);
+		await stream.start();
+		expect(sink.frames).toEqual([]);
+		stream.stop();
+	});
 });

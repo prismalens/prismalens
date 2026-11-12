@@ -84,15 +84,15 @@ export function rowIndexOf(
 const AT_BOTTOM_PX = 1.5;
 const EDGE_PX = 600;
 
-/** `ol > div > li` would break the list; the item wrapper is presentational. */
+/** virtua's item wrapper is the list item; each row's own items sit in a nested list. */
 const Item = forwardRef<
-	HTMLDivElement,
+	HTMLLIElement,
 	{ style?: React.CSSProperties; children?: ReactNode }
 >(function Item({ style, children }, ref) {
 	return (
-		<div ref={ref} style={style} role="presentation" className="px-4 pt-3">
+		<li ref={ref} style={style} className="px-4 pt-3">
 			<div className="mx-auto w-full max-w-[760px] min-w-0">{children}</div>
-		</div>
+		</li>
 	);
 });
 
@@ -268,13 +268,13 @@ export function WindowedTranscript({
 						onScrollEnd={reportRange}
 					>
 						{all.map((r) => (
-							<div
+							<ul
 								key={r.key}
 								data-at={r.at ?? undefined}
-								className="flex flex-col"
+								className="m-0 flex list-none flex-col p-0"
 							>
 								{r.node}
-							</div>
+							</ul>
 						))}
 					</Virtualizer>
 				</div>
