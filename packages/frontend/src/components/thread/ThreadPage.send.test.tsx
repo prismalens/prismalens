@@ -197,6 +197,9 @@ vi.mock("./panel/KindTab", () => ({
 vi.mock("./panel/ThreadTab", () => ({
 	ThreadTab: () => null,
 }));
+vi.mock("@/components/schedules/schedule-templates", () => ({
+	AddScheduleFromThread: () => null,
+}));
 
 vi.mock("./StatusBox", () => ({
 	StatusBox: () => <div data-testid="status-box" />,
