@@ -803,6 +803,14 @@ test("design kit states", async ({ page }) => {
 			await stage("tool-line-open").scrollIntoViewIfNeeded();
 			await stage("tool-line-open").locator("pre").hover();
 			await shot(`tool-line-open-hover-${sfx}`, "tool-line-open");
+			// A clicked tab shows only its word and underline; keyboard focus outlines the label.
+			await stage("tabs").scrollIntoViewIfNeeded();
+			await stage("tabs")
+				.getByRole("tab", { name: /Reviews/ })
+				.click();
+			await shot(`tabs-clicked-${sfx}`, "tabs");
+			await page.keyboard.press("ArrowRight");
+			await shot(`tabs-keyboard-${sfx}`, "tabs");
 			await stage("rail").scrollIntoViewIfNeeded();
 			await page.keyboard.press("Shift");
 			await page.getByTestId("rail").focus();
