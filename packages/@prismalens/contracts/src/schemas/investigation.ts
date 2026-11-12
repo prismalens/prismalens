@@ -1568,6 +1568,9 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		/** The provider stop it waits out or failed on, named by `failureLine`. */
 		failure: RunFailureSchema.pick({ mode: true, window: true }).optional(),
 		cause: z.enum(INBOUND_CAUSES).optional(),
+		/** Delivered only inside a later fire that replaced it: that fire's `messageId` and arrival. */
+		mergedInto: z.string().min(1).max(200).optional(),
+		mergedAt: z.string().datetime().optional(),
 		/** The row's plain line, from `inboundLine`. */
 		line: z.string().max(300),
 	}),
