@@ -2,13 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// A dev fixture for #1101 categories 15 and 22: a thread whose PR has failing, running and
-// passing checks, a kept log tail and an open review thread, plus schedules with run history
-// and a run held by a usage limit. Recorded data only: the PR is on a repository PrismaLens
-// does not read, so nothing calls a git host. Run it against a dev workspace, never your own.
+// A dev fixture for #1101 categories 15 and 22 on a running PrismaLens with the fake agent on its
+// PATH: a project thread in its own worktree whose PR has failing, running and passing checks, a
+// kept log tail and review threads on a file the thread changed, plus schedules with run history
+// and a run held by a usage limit. The PR's host data is recorded: nothing calls a git host.
+//   PRISMALENS_WORKSPACE_DIR=<server's workspace> pnpm --filter @prismalens/api fixture:pr-checks --url http://127.0.0.1:3311
+import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { prisma } from "@prismalens/database";
+import { firstSlotAtOrAfter } from "../src/modules/schedules/recurrence.js";
 
 const MARK = "fixture:pr-checks";
 const BRIEF_END = "(recorded by the PR and checks fixture)";
@@ -42,21 +47,141 @@ async function clear(): Promise<void> {
 	});
 }
 
-async function prThread(): Promise<string> {
-	const thread = await prisma.investigation.create({
-		data: {
-			kind: "chat",
-			title: "Fix the slow orders query",
-			status: "completed",
-			harness: "claude-code",
-			triggerType: "manual",
-			triggerReason: MARK,
-			startedAt: minutes(-60),
-			completedAt: minutes(-20),
-			lastActivityAt: minutes(-5),
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function arg(name: string): string | undefined {
+	const i = process.argv.indexOf(name);
+	return i > -1 ? process.argv[i + 1] : undefined;
+}
+
+type Api = <T = unknown>(
+	path: string,
+	init?: { method?: string; body?: unknown },
+) => Promise<T>;
+
+/** Pairs as the host's own browser does: an operator link from `pl pair --operator`. */
+async function connect(url: string): Promise<Api> {
+	const out = execSync(
+		"pnpm --silent --filter prismalens dev pair --operator",
+		{
+			encoding: "utf8",
+			env: process.env,
 		},
+	);
+	const token = out.match(/\/pair#([^\s#]+)/)?.[1];
+	if (!token) throw new Error(`No pairing link in:\n${out}`);
+	const redeemed = await fetch(`${url}/api/pairing/redeem`, {
+		method: "POST",
+		headers: { "content-type": "application/json", origin: url },
+		body: JSON.stringify({ token, name: "PR checks fixture" }),
 	});
-	const id = thread.id;
+	const cookie = redeemed.headers
+		.getSetCookie()
+		.find((c) => c.startsWith("prismalens.device."))
+		?.split(";")[0];
+	if (!redeemed.ok || !cookie)
+		throw new Error(
+			`Pairing failed: ${redeemed.status} ${await redeemed.text()}`,
+		);
+	return async <T>(
+		path: string,
+		init: { method?: string; body?: unknown } = {},
+	) => {
+		const res = await fetch(`${url}/api${path}`, {
+			method: init.method ?? "GET",
+			headers: { "content-type": "application/json", origin: url, cookie },
+			body: init.body === undefined ? undefined : JSON.stringify(init.body),
+		});
+		const text = await res.text();
+		if (!res.ok)
+			throw new Error(
+				`${init.method ?? "GET"} ${path}: ${res.status} ${text.slice(0, 300)}`,
+			);
+		return (text ? JSON.parse(text) : undefined) as T;
+	};
+}
+
+const QUERY_TS = Array.from({ length: 40 }, (_, i) =>
+	i === 30
+		? "\tconst rows = await db.order.findMany({ where: { customerId } });"
+		: `// orders query line ${i + 1}`,
+).join("\n");
+const SCHEMA = Array.from({ length: 95 }, (_, i) =>
+	i === 87 ? "  @@index([customerId, createdAt])" : `// schema line ${i + 1}`,
+).join("\n");
+
+/** A project in the server's workspace and a thread on it, in its own worktree. */
+async function projectThread(api: Api, workspace: string): Promise<string> {
+	const source = join(workspace, `pr-checks-shop-${Date.now()}`);
+	const files: Record<string, string> = {
+		"README.md": "# shop\n",
+		"packages/api/src/orders/query.ts": `${QUERY_TS}\n`,
+		"packages/api/prisma/schema.prisma": `${SCHEMA}\n`,
+	};
+	for (const [path, text] of Object.entries(files)) {
+		mkdirSync(dirname(join(source, path)), { recursive: true });
+		writeFileSync(join(source, path), text);
+	}
+	const git = (...a: string[]) =>
+		execFileSync(
+			"git",
+			[
+				"-c",
+				"user.name=fixture",
+				"-c",
+				"user.email=fixture@example.invalid",
+				...a,
+			],
+			{ cwd: source },
+		);
+	git("init", "-q", "-b", "main");
+	// Line endings as written: a Windows autocrlf checkout would show every line as changed.
+	git("config", "core.autocrlf", "false");
+	git("add", ".");
+	git("commit", "-q", "-m", "init");
+	const project = await api<{ id: string }>("/repositories/source", {
+		method: "POST",
+		body: { source },
+	});
+	const { investigationId: id } = await api<{ investigationId: string }>(
+		"/threads",
+		{
+			method: "POST",
+			body: {
+				subject: { kind: "project", repositoryId: project.id },
+				text: "Fix the slow orders query: the list endpoint got slow after the last migration.",
+			},
+		},
+	);
+	for (let i = 0; i < 120; i++) {
+		const run = await api<{ status: string; workspace?: { cwd?: string } }>(
+			`/investigations/${id}`,
+		);
+		if (!["pending", "running", "queued"].includes(run.status)) {
+			const cwd = run.workspace?.cwd;
+			if (!cwd) throw new Error("The thread has no worktree");
+			// The change the PR carries, so the review thread's file is in the diff.
+			const file = join(cwd, "packages/api/src/orders/query.ts");
+			writeFileSync(
+				file,
+				readFileSync(file, "utf8").replace(
+					"findMany({ where: { customerId } })",
+					'findMany({ where: { customerId }, orderBy: { createdAt: "desc" } })',
+				),
+			);
+			await prisma.investigation.update({
+				where: { id },
+				data: { triggerReason: MARK, title: "Fix the slow orders query" },
+			});
+			return id;
+		}
+		await sleep(500);
+	}
+	throw new Error("Timed out waiting for the thread's first turn");
+}
+
+async function prThread(api: Api, workspace: string): Promise<string> {
+	const id = await projectThread(api, workspace);
 	const pr = await prisma.pullRequest.create({
 		data: {
 			investigationId: id,
@@ -151,23 +276,22 @@ async function prThread(): Promise<string> {
 	await prisma.prFeed.create({
 		data: { prId: pr.id, investigationId: id, auto: false, state: "watching" },
 	});
+	const last = await prisma.investigationEvent.aggregate({
+		where: { investigationId: id, branchId: "__links__" },
+		_max: { seq: true },
+	});
+	const at = (last._max.seq ?? 0) + 1;
 	const events = [
 		{
-			kind: "agent_step",
-			...base(1, id),
-			text: `The orders list query lost its index in the last migration. I restored it and opened ${PR_URL}.`,
-			toolCalls: [],
-		},
-		{
 			kind: "pull_request_linked",
-			...base(1, id, "__links__"),
+			...base(at, id, "__links__"),
 			prId: pr.id,
 			url: PR_URL,
 			source: "agent",
 		},
 		{
 			kind: "pr_status",
-			...base(2, id, "__links__"),
+			...base(at + 1, id, "__links__"),
 			prId: pr.id,
 			pr: "acme/shop#412",
 			lines: ["dana requested changes"],
@@ -176,7 +300,7 @@ async function prThread(): Promise<string> {
 		},
 		{
 			kind: "pr_status",
-			...base(3, id, "__links__"),
+			...base(at + 2, id, "__links__"),
 			prId: pr.id,
 			pr: "acme/shop#412",
 			lines: ["unit tests failed on 9f3c2ab"],
@@ -204,22 +328,25 @@ async function schedule(
 		summary?: string;
 		limited?: boolean;
 		seen?: boolean;
+		/** A failed run's cause, in words. */
+		error?: string;
 	}>,
 ): Promise<string> {
+	const recurrence = {
+		type: "cron" as const,
+		expr: cron,
+		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+	};
 	const s = await prisma.schedule.create({
 		data: {
 			name,
 			kind: "service_check",
 			brief: `${name} ${BRIEF_END}`,
-			recurrence: JSON.stringify({
-				type: "cron",
-				expr: cron,
-				timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-			}),
+			recurrence: JSON.stringify(recurrence),
 			harness: "claude-code",
 			report: false,
 			bindingsHash: NONE_HASH,
-			nextRunAt: minutes(24 * 60),
+			nextRunAt: firstSlotAtOrAfter(recurrence, new Date()),
 		},
 	});
 	for (const r of runs) {
@@ -230,7 +357,7 @@ async function schedule(
 				title: `${name}, ${at.toLocaleString()}`,
 				status: r.status,
 				summary: r.summary ?? null,
-				error: r.limited ? "Usage limit reached" : null,
+				error: r.limited ? "Usage limit reached" : (r.error ?? null),
 				endReason: r.limited ? "limited" : null,
 				harness: "claude-code",
 				scheduleId: s.id,
@@ -242,6 +369,36 @@ async function schedule(
 				lastVisitedAt: r.seen ? minutes(-r.hoursAgo * 60 + 10) : null,
 				limitResetsAt: r.limited ? minutes(150) : null,
 			},
+		});
+		// What the run said, so its thread and every card about it carry an answer or a cause.
+		const said = [
+			{
+				kind: "agent_step",
+				...base(1, run.id),
+				ts: minutes(-r.hoursAgo * 60 + 3).toISOString(),
+				text: r.summary ?? r.error ?? "Reading checkout's errors and deploys.",
+				toolCalls: [],
+			},
+			...(r.limited
+				? [
+						{
+							kind: "usage_limit",
+							...base(2, run.id),
+							ts: minutes(-r.hoursAgo * 60 + 4).toISOString(),
+							agent: "claude-code",
+							text: "Usage limit reached",
+							resetsAt: minutes(150).toISOString(),
+						},
+					]
+				: []),
+		];
+		await prisma.investigationEvent.createMany({
+			data: said.map((e) => ({
+				investigationId: run.id,
+				seq: e.seq,
+				branchId: e.branchId,
+				event: JSON.stringify(e),
+			})),
 		});
 		if (r.limited)
 			await prisma.threadWake.create({
@@ -267,8 +424,12 @@ async function schedule(
 }
 
 export async function fixture(): Promise<void> {
+	const url = (arg("--url") ?? "http://127.0.0.1:3000").replace(/\/$/, "");
+	const workspace = process.env.PRISMALENS_WORKSPACE_DIR;
+	if (!workspace)
+		throw new Error("Set PRISMALENS_WORKSPACE_DIR to the server's workspace.");
 	await clear();
-	const thread = await prThread();
+	const thread = await prThread(await connect(url), workspace);
 	const watch = await schedule("Watch checkout", "0 9 * * 1-5", [
 		{
 			hoursAgo: 72,
@@ -282,7 +443,12 @@ export async function fixture(): Promise<void> {
 			summary: "Nothing wrong found",
 			seen: true,
 		},
-		{ hoursAgo: 24, status: "failed" },
+		{
+			hoursAgo: 24,
+			status: "failed",
+			error:
+				"checkout-api answered 502 on every health probe, so the check stopped before reading its logs",
+		},
 		{
 			hoursAgo: 1,
 			status: "completed",
