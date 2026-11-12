@@ -9,6 +9,8 @@ import {
 
 /** A page's string leaves keep this many characters; the rest is read through `eventFull`. */
 export const LEAF_CHARS = 2048;
+/** A message's top-level `text` keeps this many characters before it is cut. */
+export const MESSAGE_CHARS = 32 * 1024;
 /** A structured field (`args`, `input`) over this many bytes is left out whole. */
 const OBJECT_BYTES = 8 * 1024;
 /** An event still over this after its leaves are cut is cut harder, then stubbed (#1101 cat 12). */
@@ -23,9 +25,12 @@ function cutValue(
 	opts: { leaf: number; items: number | null; structured: boolean },
 ): unknown {
 	if (typeof value === "string") {
-		if (value.length <= opts.leaf) return value;
+		// A message's own words are what the reader came for: only a huge one is cut.
+		const limit =
+			path === "text" ? Math.max(opts.leaf, MESSAGE_CHARS) : opts.leaf;
+		if (value.length <= limit) return value;
 		cuts.push({ path, bytes: value.length });
-		return value.slice(0, opts.leaf);
+		return value.slice(0, limit);
 	}
 	if (Array.isArray(value)) {
 		const kept =

@@ -9,12 +9,13 @@ import {
 } from "@prismalens/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, PanelRight, PanelTop, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
+import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
 import { BrowserTab } from "@/components/run/BrowserTab";
 import {
 	type EvidenceFiles,
@@ -57,8 +58,11 @@ import { openAsksOf } from "@/lib/run-asks";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { runStatusInfo } from "@/lib/thread-status";
+import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
+import { FindBar } from "./find/FindBar";
+import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { KindTab } from "./panel/KindTab";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
@@ -71,9 +75,11 @@ import {
 } from "./panel/panel-model";
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { ThreadTab } from "./panel/ThreadTab";
+import { TranscriptRail } from "./rail/TranscriptRail";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
+import { useTranscriptJumps } from "./use-transcript-jumps";
 import { WorktreeDiff } from "./WorktreeDiff";
 
 /** Where Back goes: the thread's project, its service, or home. */
@@ -140,8 +146,17 @@ function HeaderToggle({
  * the status box and the right panel, both closed until you open them, and the
  * shared composer. Its title is the user's first line, shown as plain text.
  */
+/** `#item-<seq>` or `#item-<branch>:<seq>`: the item a link opens the thread at (#1101 cat 12). */
+function itemFromHash(): string | undefined {
+	if (typeof window === "undefined") return undefined;
+	const m = /^#item-(.+)$/.exec(window.location.hash);
+	return m?.[1] ? decodeURIComponent(m[1]) : undefined;
+}
+
 export function ThreadPage({ id }: { id: string }) {
-	const run = useInvestigationRun(id);
+	const [hashAt] = useState(itemFromHash);
+	const run = useInvestigationRun(id, { windowed: { at: hashAt } });
+	const win = run.window;
 	const { harnesses } = useAgentChoice();
 	const resume = useResumeInvestigation();
 	const [resumeError, setResumeError] = useState<string | null>(null);
@@ -174,6 +189,16 @@ export function ThreadPage({ id }: { id: string }) {
 		() =>
 			deriveTranscript(run.events, {
 				pending: run.pending,
+				...(win
+					? {
+							prior: {
+								agent: win.context.agentBefore,
+								ended: win.context.endsBefore > 0,
+								operators: win.context.operatorsBefore,
+							},
+							atTail: !win.hasAfter,
+						}
+					: {}),
 				nodes: hasTranscriptNode,
 				modelName: (m) => modelName(harness, m) ?? m,
 				agentName: (h) => harnesses.find((x) => x.id === h)?.label ?? h,
@@ -200,6 +225,8 @@ export function ThreadPage({ id }: { id: string }) {
 			run.pending,
 			run.isActive,
 			run.stopRequested,
+			win?.context,
+			win?.hasAfter,
 			inv,
 			harness,
 			harnesses,
@@ -210,8 +237,8 @@ export function ThreadPage({ id }: { id: string }) {
 		[run.events, run.isActive],
 	);
 	const suspects = useMemo(
-		() => recordedFindings(run.events).hypotheses,
-		[run.events],
+		() => run.hypotheses ?? recordedFindings(run.events).hypotheses,
+		[run.hypotheses, run.events],
 	);
 
 	// Opening pushes, so Back closes the panel; moving inside it replaces (#1024).
@@ -313,15 +340,94 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, workspace, run.steps, viewing, fileOfStep, openFile, openPanel],
 	);
 
-	const openAsks = useMemo(() => pendingAsks(id, run.events), [id, run.events]);
-	const feedRow = useFeedRow(id);
-	const statuses = useThreadStatuses([id]);
-	const declineAsk = useAnswerAsk();
 	const { sendMessage } = run;
 	const sendWith = useCallback(
 		(text: string, fields: { model?: string }) =>
 			sendMessage(text, "queue", { kind: "chat", to: fields }),
 		[sendMessage],
+	);
+	const openAsks = useMemo(
+		() => run.openAsks ?? pendingAsks(id, run.events),
+		[id, run.openAsks, run.events],
+	);
+	const feedRow = useFeedRow(id);
+	const statuses = useThreadStatuses([id]);
+	const declineAsk = useAnswerAsk();
+	const jumps = useTranscriptJumps(win, run.steps, hashAt, setOpenSteps);
+	const transcriptBox = useRef<HTMLDivElement>(null);
+	// Slots on this page read the window, never the whole record (#1101 cat 12).
+	const windowEvents = useMemo(
+		() => (win ? { threadId: id, events: run.events } : null),
+		[win, id, run.events],
+	);
+	const find = useThreadFind(id, {
+		viewportStart: () => jumps.range.first,
+		onGo: jumps.goTo,
+	});
+	const { openFind, close: closeFind, next: findNext, prev: findPrev } = find;
+	// A palette hit opens the thread with find at it (`?find=…#item-…`).
+	const findParam = search.find;
+	const { setQuery: setFindQuery } = find;
+	useEffect(() => {
+		if (!findParam) return;
+		openFind();
+		setFindQuery(findParam);
+	}, [findParam, openFind, setFindQuery]);
+	const findOpen = find.open;
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (
+				(e.ctrlKey || e.metaKey) &&
+				!e.altKey &&
+				e.key.toLowerCase() === "f"
+			) {
+				e.preventDefault();
+				openFind();
+			} else if (e.key === "F3" && findOpen) {
+				e.preventDefault();
+				if (e.shiftKey) findPrev();
+				else findNext();
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [openFind, findOpen, findNext, findPrev]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: repaint when rows on screen or the window change.
+	useEffect(() => {
+		paintHighlights(transcriptBox.current, find);
+	}, [
+		find.open,
+		find.query,
+		find.caseSensitive,
+		find.hits,
+		find.current,
+		jumps.range,
+		win?.version,
+		openSteps,
+	]);
+	const transcriptWindow: TranscriptWindow | undefined = useMemo(
+		() =>
+			win
+				? {
+						hasBefore: win.hasBefore,
+						hasAfter: win.hasAfter,
+						edges: win.edges,
+						change: win.change,
+						onBefore: () => void win.loadBefore(),
+						onAfter: () => void win.loadAfter(),
+						folded: win.folded,
+						onUnfold: win.unfold,
+						target: jumps.target,
+						onRange: jumps.setRange,
+						messages: win.index?.entries.length ?? 0,
+						onToTail: () => void win.toTail(),
+						connection: win.connection,
+						unsaved: win.unsaved,
+						lost: win.lost,
+						fullFor: jumps.fullFor,
+					}
+				: undefined,
+		[win, jumps.target, jumps.setRange, jumps.fullFor],
 	);
 	const slots = usePageSlots({
 		page: "thread",
@@ -553,199 +659,241 @@ export function ThreadPage({ id }: { id: string }) {
 	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
-			{header}
-			{boxOpen && (
-				<div id="status-box">
-					<StatusBox
-						runId={inv.id}
-						live={run.isActive}
-						project={project}
-						workspace={workspace}
-						onOpenDiff={() => openPanel({ panel: "changes" })}
-						subagents={subagents}
-						onOpenSubagent={openSubagent}
-					/>
-				</div>
-			)}
-			{slots.banner}
-			<div className="min-h-0 flex-1">
-				{items.length ? (
-					<Transcript
-						items={items}
-						incidentId={null}
-						cwd={workspace?.cwd}
-						agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
-						runName={inv.title ?? "Thread"}
-						chat={inv.kind === "chat"}
-						steps={steps}
-						runId={inv.id}
-						foldTurns={{ live: run.isActive }}
-						onOpenSubagent={openSubagent}
-						links={links}
-					/>
-				) : (
-					<p className="px-5 pt-6 text-body text-text-3">
-						{run.isActive ? "Starting the agent" : "Nothing yet"}
-					</p>
+		<ThreadWindowEvents.Provider value={windowEvents}>
+			<div className="flex h-full min-h-0 flex-col" data-testid="thread-page">
+				{header}
+				{boxOpen && (
+					<div id="status-box">
+						<StatusBox
+							runId={inv.id}
+							live={run.isActive}
+							project={project}
+							workspace={workspace}
+							onOpenDiff={() => openPanel({ panel: "changes" })}
+							subagents={subagents}
+							onOpenSubagent={openSubagent}
+						/>
+					</div>
 				)}
-			</div>
-			{inv.status === "failed" && inv.error && !inv.endReason && (
-				// A stopped or interrupted run says so in its dock; any other failure as a sentence (#1101).
-				<div
-					role="status"
-					className="mx-auto flex w-full max-w-[760px] items-start gap-2.5 px-4 text-body"
-					data-testid="thread-failure"
-				>
-					<TriangleAlert
-						className="mt-0.5 size-4 shrink-0 text-danger"
-						aria-hidden
-					/>
-					<span>
-						{failureStatusLine(agentLabel, inv.error, harness?.loginHint)}
-					</span>
-				</div>
-			)}
-			<div className="shrink-0 px-4 pt-2 pb-3">
-				<div className="mx-auto w-full max-w-[760px]">
-					<Composer
-						state={state}
-						onSend={(env, now) => {
-							// Typing while an ask waits declines it with your words as the reason (#1101 cat 8 item 4).
-							const waiting = asks[0];
-							if (waiting && env.text.trim() && !env.attachments.length)
-								return declineAsk
-									.mutateAsync({
-										id: inv.id,
-										askId: waiting.askId,
-										answer: {
-											kind: "permission",
-											decision: "deny",
-											reason: env.text.trim(),
-										},
-									})
-									.then(() => "sent" as const);
-							return onSend(env, now);
-						}}
-						scope={`thread:${inv.id}`}
-						onStop={() => run.stop()}
-						stopping={run.stopRequested}
-						onResume={() => {
-							setResumeError(null);
-							resume.mutate(
-								{ id: inv.id },
-								{ onError: (e) => setResumeError(getErrorMessage(e)) },
-							);
-						}}
-						resuming={resume.isPending}
-						placeholder={
-							asks.length
-								? "Type to decline with feedback"
-								: run.isActive
-									? "Message the agent"
-									: "Reply"
-						}
-						choice={{
-							harness,
-							model: nextChoice.model ?? inv.model ?? "",
-							effort:
-								nextChoice.effort !== undefined
-									? nextChoice.effort
-									: (inv.effort ?? null),
-							accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
-						}}
-						onChoice={(next) => {
-							// The thread keeps its agent; another agent is a new thread.
-							if (next.harnessId && next.harnessId !== inv.harness) return;
-							setNextChoice((c) => ({
-								...c,
-								...(next.model !== undefined ? { model: next.model } : {}),
-								...(next.effort !== undefined ? { effort: next.effort } : {}),
-							}));
-						}}
-						locked={run.isActive}
-						accessHint="Kept from the first message"
-						dock={dock}
-						blockedReason={blocked}
-						text={draft}
-						onText={setDraft}
-						focusSignal={focusSignal}
-						footer={slots.composerFooter}
-					/>
-					{resumeError && (
-						<p className="px-3 pt-1 text-meta text-danger" role="alert">
-							{resumeError}
+				{slots.banner}
+				<FindBar
+					find={find}
+					onClose={() => {
+						closeFind();
+						setFocusSignal((n) => n + 1);
+						// A disabled composer cannot take focus: fall back to the transcript.
+						requestAnimationFrame(() => {
+							if (
+								document.activeElement &&
+								document.activeElement !== document.body
+							)
+								return;
+							transcriptBox.current
+								?.querySelector<HTMLElement>(
+									'[data-testid="transcript-scroller"]',
+								)
+								?.focus();
+						});
+					}}
+				/>
+				<div className="relative min-h-0 flex-1" ref={transcriptBox}>
+					{win?.index && (
+						<TranscriptRail
+							entries={win.index.entries}
+							range={jumps.range}
+							hits={find.open ? find.hits.map((h) => h[0]) : []}
+							activeHit={find.open ? (find.current?.key ?? null) : null}
+							onJump={(key) => void jumps.goTo(key)}
+						/>
+					)}
+					{run.eventsLoading ? (
+						<div className="mx-auto w-full max-w-[760px] px-4 pt-5">
+							<Loading rows={5} />
+						</div>
+					) : win && run.eventsError ? (
+						// The open itself failed: say so with Retry, never an empty "Nothing yet".
+						<Problem
+							text="Couldn't open this thread"
+							onRetry={() => void win.reopen()}
+						/>
+					) : items.length ? (
+						<Transcript
+							items={items}
+							incidentId={null}
+							cwd={workspace?.cwd}
+							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
+							runName={inv.title ?? "Thread"}
+							chat={inv.kind === "chat"}
+							steps={steps}
+							runId={inv.id}
+							foldTurns={{ live: run.isActive }}
+							onOpenSubagent={openSubagent}
+							links={links}
+							window={transcriptWindow}
+						/>
+					) : (
+						<p className="px-5 pt-6 text-body text-text-3">
+							{run.isActive ? "Starting the agent" : "Nothing yet"}
 						</p>
 					)}
 				</div>
-			</div>
-			<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
-				<ThreadSidePanel
-					tabs={tabs}
-					tab={tab}
-					onTab={(t: PanelId) => openPanel({ panel: t })}
-					onClose={closePanel}
-					override={
-						viewedSubagent && (
-							<SubagentPane
-								key={viewedSubagent.sessionId}
-								runId={inv.id}
-								agent={viewedSubagent}
-								events={run.events}
-								live={run.isActive}
-								onAskMain={askMain}
-							/>
-						)
-					}
-					overrideLabel="Sub-agent"
-					content={
-						tab === "kind" && context.data ? (
-							<PanelStack>
-								<KindTab context={context.data} />
-							</PanelStack>
-						) : tab === "changes" ? (
-							viewing || search.path ? (
-								<FilesPane files={files} onJump={() => {}} />
-							) : (
-								<div className="flex min-h-0 flex-1 flex-col">
-									{files.touched.length > 0 && (
-										<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
-											<FilesPane files={files} onJump={() => {}} />
-										</div>
-									)}
-									{workspace?.layout !== "folder" && (
-										<WorktreeDiff runId={inv.id} live={run.isActive} />
-									)}
-								</div>
+				{inv.status === "failed" && inv.error && !inv.endReason && (
+					// A stopped or interrupted run says so in its dock; any other failure as a sentence (#1101).
+					<div
+						role="status"
+						className="mx-auto flex w-full max-w-[760px] items-start gap-2.5 px-4 text-body"
+						data-testid="thread-failure"
+					>
+						<TriangleAlert
+							className="mt-0.5 size-4 shrink-0 text-danger"
+							aria-hidden
+						/>
+						<span>
+							{failureStatusLine(agentLabel, inv.error, harness?.loginHint)}
+						</span>
+					</div>
+				)}
+				<div className="shrink-0 px-4 pt-2 pb-3">
+					<div className="mx-auto w-full max-w-[760px]">
+						<Composer
+							state={state}
+							onSend={(env, now) => {
+								// Typing while an ask waits declines it with your words as the reason (#1101 cat 8 item 4).
+								const waiting = asks[0];
+								if (waiting && env.text.trim() && !env.attachments.length)
+									return declineAsk
+										.mutateAsync({
+											id: inv.id,
+											askId: waiting.askId,
+											answer: {
+												kind: "permission",
+												decision: "deny",
+												reason: env.text.trim(),
+											},
+										})
+										.then(() => "sent" as const);
+								return onSend(env, now);
+							}}
+							scope={`thread:${inv.id}`}
+							onStop={() => run.stop()}
+							stopping={run.stopRequested}
+							onResume={() => {
+								setResumeError(null);
+								resume.mutate(
+									{ id: inv.id },
+									{ onError: (e) => setResumeError(getErrorMessage(e)) },
+								);
+							}}
+							resuming={resume.isPending}
+							placeholder={
+								asks.length
+									? "Type to decline with feedback"
+									: run.isActive
+										? "Message the agent"
+										: "Reply"
+							}
+							choice={{
+								harness,
+								model: nextChoice.model ?? inv.model ?? "",
+								effort:
+									nextChoice.effort !== undefined
+										? nextChoice.effort
+										: (inv.effort ?? null),
+								accessLevel: (inv.accessLevel ?? "supervised") as AccessLevel,
+							}}
+							onChoice={(next) => {
+								// The thread keeps its agent; another agent is a new thread.
+								if (next.harnessId && next.harnessId !== inv.harness) return;
+								setNextChoice((c) => ({
+									...c,
+									...(next.model !== undefined ? { model: next.model } : {}),
+									...(next.effort !== undefined ? { effort: next.effort } : {}),
+								}));
+							}}
+							locked={run.isActive}
+							accessHint="Kept from the first message"
+							dock={dock}
+							blockedReason={blocked}
+							text={draft}
+							onText={setDraft}
+							focusSignal={focusSignal}
+							footer={slots.composerFooter}
+						/>
+						{resumeError && (
+							<p className="px-3 pt-1 text-meta text-danger" role="alert">
+								{resumeError}
+							</p>
+						)}
+					</div>
+				</div>
+				<RightPanel open={panelOpen} label="Thread panel" onClose={closePanel}>
+					<ThreadSidePanel
+						tabs={tabs}
+						tab={tab}
+						onTab={(t: PanelId) => openPanel({ panel: t })}
+						onClose={closePanel}
+						override={
+							viewedSubagent && (
+								<SubagentPane
+									key={viewedSubagent.sessionId}
+									runId={inv.id}
+									agent={viewedSubagent}
+									events={run.events}
+									live={run.isActive}
+									onAskMain={askMain}
+								/>
 							)
-						) : tab === "browser" ? (
-							<BrowserTab links={[]} />
-						) : (
-							<ThreadTab
-								threadId={inv.id}
-								context={context.data}
-								live={run.isActive}
-								session={inv.session}
-								section={search.section}
-								focusPr={
-									search.section?.startsWith("pull-requests:")
-										? search.section.slice("pull-requests:".length)
-										: undefined
-								}
-								steps={
-									run.steps.length ? (
-										<StepsList
-											steps={run.steps}
-											files={files}
-											onJump={toggleStep}
-										/>
-									) : undefined
-								}
-							/>
-						)
-					}
-				/>
-			</RightPanel>
-		</div>
+						}
+						overrideLabel="Sub-agent"
+						content={
+							tab === "kind" && context.data ? (
+								<PanelStack>
+									<KindTab context={context.data} />
+								</PanelStack>
+							) : tab === "changes" ? (
+								viewing || search.path ? (
+									<FilesPane files={files} onJump={() => {}} />
+								) : (
+									<div className="flex min-h-0 flex-1 flex-col">
+										{files.touched.length > 0 && (
+											<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
+												<FilesPane files={files} onJump={() => {}} />
+											</div>
+										)}
+										{workspace?.layout !== "folder" && (
+											<WorktreeDiff runId={inv.id} live={run.isActive} />
+										)}
+									</div>
+								)
+							) : tab === "browser" ? (
+								<BrowserTab links={[]} />
+							) : (
+								<ThreadTab
+									threadId={inv.id}
+									context={context.data}
+									live={run.isActive}
+									session={inv.session}
+									section={search.section}
+									focusPr={
+										search.section?.startsWith("pull-requests:")
+											? search.section.slice("pull-requests:".length)
+											: undefined
+									}
+									steps={
+										run.steps.length ? (
+											<StepsList
+												steps={run.steps}
+												files={files}
+												onJump={toggleStep}
+											/>
+										) : undefined
+									}
+								/>
+							)
+						}
+					/>
+				</RightPanel>
+			</div>
+		</ThreadWindowEvents.Provider>
 	);
 }

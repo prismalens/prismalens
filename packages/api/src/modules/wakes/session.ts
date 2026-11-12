@@ -11,6 +11,7 @@ import {
 	isWorkflowTerminal,
 	LIMIT_WINDOWS,
 	type LimitWindow,
+	PROVIDER_RETRY_ATTEMPTS,
 	type SessionCacheState,
 	type ThreadSession,
 } from "@prismalens/contracts";
@@ -229,6 +230,9 @@ export function threadSession(
 		typeof wake?.payload.maxAttempts === "number"
 			? wake.payload.maxAttempts
 			: opts.maxAttempts;
+	const nextTry = wake
+		? nextTryOf(wake, row.limitResetsAt, opts.maxAttempts)
+		: null;
 	const autoResume = row.autoResume ?? opts.resumeAfterLimit;
 	const message =
 		typeof wake?.payload.message === "string"
@@ -255,10 +259,36 @@ export function threadSession(
 						...(wake.payload.gaveUp === true ? { gaveUp: true } : {}),
 						...(mode ? { mode } : {}),
 						...(window ? { window } : {}),
+						...(nextTry ? { nextTry } : {}),
 						...(opts.facts?.label ? { agent: opts.facts.label } : {}),
 					},
 				}
 			: {}),
+	};
+}
+
+/**
+ * The try a pending wake makes when no reset is known, of the most it makes:
+ * a usage limit counts retries after its first try, a provider retry counts tries.
+ */
+export function nextTryOf(
+	wake: Pick<Wake, "state" | "attempts" | "payload">,
+	resetsAt: Date | null,
+	noTimeRetries = NO_TIME_ATTEMPTS,
+): { n: number; of: number } | null {
+	if (wake.state !== "pending" || resetsAt) return null;
+	const mode = wake.payload.mode;
+	if (mode === "rate_limited" || mode === "overloaded") {
+		const of =
+			typeof wake.payload.maxAttempts === "number"
+				? wake.payload.maxAttempts
+				: PROVIDER_RETRY_ATTEMPTS;
+		return { n: Math.min(wake.attempts, of), of };
+	}
+	if (wake.payload.noTime !== true) return null;
+	return {
+		n: Math.min(wake.attempts + 1, noTimeRetries + 1),
+		of: noTimeRetries + 1,
 	};
 }
 

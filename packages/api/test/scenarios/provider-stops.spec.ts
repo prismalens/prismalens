@@ -325,11 +325,17 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		assertPartialTranscript(all, "toolu_limit");
 
 		const limitEv = all.find((e) => e.kind === "usage_limit");
-		expect(limitEv).toMatchObject({ kind: "usage_limit", window: "session" });
+		// The plain line is what every surface shows; the agent's words, reset and all, stay as raw (#1101).
+		expect(limitEv).toMatchObject({
+			kind: "usage_limit",
+			window: "session",
+			text: "OpenCode reached its session limit",
+			raw: "Internal error: You've hit your session limit · resets 6:10am (Europe/London)",
+		});
 
 		const limitTs = new Date(limitEv!.ts as string);
 		const expectedReset = parseReset(
-			limitEv!.text as string,
+			limitEv!.raw as string,
 			limitTs,
 			"claude-code",
 		);
@@ -459,7 +465,7 @@ describe("Recorded-agent scenarios for provider stops and restart (#1101)", () =
 		const limitEv = allBefore.find((e) => e.kind === "usage_limit");
 		const limitTs = new Date(limitEv!.ts as string);
 		const expectedReset = parseReset(
-			limitEv!.text as string,
+			limitEv!.raw as string,
 			limitTs,
 			"claude-code",
 		);

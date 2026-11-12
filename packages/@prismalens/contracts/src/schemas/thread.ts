@@ -20,7 +20,7 @@ import {
 	InvestigationSchema,
 	RunChoiceSchema,
 } from "./investigation.js";
-import { FailureModeSchema } from "./provider-failure.js";
+import { FailureModeSchema, NextTrySchema } from "./provider-failure.js";
 import { ThreadRowPrSchema } from "./pull-request.js";
 import { WorkInSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
@@ -148,6 +148,8 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 			mode: FailureModeSchema.optional(),
 			/** When PrismaLens tries again; absent when it will not by itself. */
 			nextAttemptAt: DateStringSchema.optional(),
+			/** With no known reset, `nextAttemptAt` is this try: "next try 08:37 (try 2 of 7)". */
+			nextTry: NextTrySchema.optional(),
 		})
 		.nullable()
 		.optional(),

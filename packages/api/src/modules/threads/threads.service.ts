@@ -62,6 +62,7 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { threadSubject } from "../investigations/run-scope.js";
 import { ReferencesService } from "../references/references.service.js";
 import { shownFullName } from "../repositories/serialize-repository.js";
+import { nextTryOf } from "../wakes/session.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
@@ -562,6 +563,7 @@ export class ThreadsService {
 				investigationId: true,
 				state: true,
 				at: true,
+				attempts: true,
 				payload: true,
 				investigation: {
 					select: { limitResetsAt: true, status: true, autoResume: true },
@@ -573,7 +575,13 @@ export class ThreadsService {
 			if (seen.has(r.investigationId)) continue;
 			seen.add(r.investigationId);
 			if (!isWorkflowTerminal(r.investigation.status)) continue;
-			let payload: { mode?: unknown; gaveUp?: unknown; blocked?: unknown } = {};
+			let payload: {
+				mode?: unknown;
+				gaveUp?: unknown;
+				blocked?: unknown;
+				noTime?: unknown;
+				maxAttempts?: unknown;
+			} = {};
 			try {
 				payload = JSON.parse(r.payload ?? "{}") as typeof payload;
 			} catch {
@@ -583,8 +591,17 @@ export class ThreadsService {
 			if (r.state !== "pending" && !(r.state === "skipped" && stopped))
 				continue;
 			const mode = FailureModeSchema.safeParse(payload.mode);
+			const nextTry = nextTryOf(
+				{
+					state: r.state as "pending",
+					attempts: r.attempts,
+					payload: payload as Record<string, unknown>,
+				},
+				r.investigation.limitResetsAt,
+			);
 			out.set(r.investigationId, {
 				resetsAt: r.investigation.limitResetsAt?.toISOString() ?? null,
+				...(nextTry ? { nextTry } : {}),
 				...(mode.success ? { mode: mode.data } : {}),
 				...(r.state === "pending" && r.investigation.autoResume !== false
 					? { nextAttemptAt: r.at.toISOString() }

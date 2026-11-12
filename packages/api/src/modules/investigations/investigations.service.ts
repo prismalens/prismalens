@@ -105,9 +105,7 @@ function isForeignKeyViolation(error: unknown): boolean {
 export function followUpBlockedReason(
 	inv: Pick<Investigation, "workspace">,
 ): string | null {
-	return inv.workspace
-		? null
-		: "This run recorded no workspace, so there is nothing to continue from.";
+	return inv.workspace ? null : "No workspace to continue in";
 }
 
 export type InvestigationWithRelations = Investigation & {

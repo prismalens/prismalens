@@ -756,9 +756,13 @@ export function deriveTranscript(
 		agentName?: (id: string) => string;
 		/** Kinds a lane draws (`hasTranscriptNode`); only events no branch handles reach it. */
 		nodes?: (kind: string) => boolean;
+		/** What the record held before a window's first event, so mid-record rows read the same (#1101). */
+		prior?: { agent: boolean; ended: boolean; operators: number };
+		/** False when the window stops before the record's end: no end, queue or live lines. */
+		atTail?: boolean;
 	} = {},
 ): TranscriptItem[] {
-	const { run, pending = [] } = opts;
+	const { run, pending = [], prior, atTail = true } = opts;
 	const items: TranscriptItem[] = [];
 	const gateway = matchGateway(events);
 	const findings = new Map<
@@ -767,11 +771,11 @@ export function deriveTranscript(
 	>();
 	let group: OpenGroup | null = null;
 	let lastTs: string | null = null;
-	let sawAgent = false;
+	let sawAgent = prior?.agent ?? false;
 	let sawError = false;
 	let sawReport = false;
 	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
-	let sawEnd = false;
+	let sawEnd = prior?.ended ?? false;
 	let standingAt = -1;
 	let lastFollowUpAt = -1;
 	const operators: {
@@ -1006,7 +1010,7 @@ export function deriveTranscript(
 						text: resumedLine(event.resumed),
 					});
 				// The run's first message started it; it never waited for a pause (#673).
-				const brief = !sawAgent && operators.length === 0;
+				const brief = !sawAgent && operators.length === 0 && !prior?.operators;
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
@@ -1141,7 +1145,7 @@ export function deriveTranscript(
 						kind: "end",
 						key,
 						tone: "stale",
-						text: messageEndLine(event.message, event.ts),
+						text: messageEndLine(event.message, event.ts, event.failure),
 					});
 					break;
 				}
@@ -1178,6 +1182,10 @@ export function deriveTranscript(
 		}
 	}
 
+	if (!atTail) {
+		if (run && !run.live) endOpenCalls();
+		return items;
+	}
 	for (const q of Array.from(queued.values()))
 		items.push({
 			kind: "operator",

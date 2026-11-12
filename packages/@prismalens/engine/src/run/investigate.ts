@@ -45,6 +45,7 @@ import {
 	attachmentKind,
 	type CanonicalEvent,
 	type FollowUpKind,
+	failureLine,
 	type InvestigationContext,
 	type InvestigationKind,
 	type JobAttachment,
@@ -1595,7 +1596,7 @@ async function* runSession(
 			yield* toolsSummary();
 			yield opts.signal?.aborted
 				? adapter.error(CANCELLED_MESSAGE)
-				: adapter.error(outcome.error, outcome.failure);
+				: adapter.error(...plainStop(outcome.error, outcome.failure, label));
 			return;
 		}
 		if (opts.signal?.aborted || outcome.stop === "cancelled") {
@@ -1636,7 +1637,7 @@ async function* runSession(
 			}
 			if ("error" in retry) {
 				yield* toolsSummary();
-				yield adapter.error(retry.error, retry.failure);
+				yield adapter.error(...plainStop(retry.error, retry.failure, label));
 				return;
 			}
 			parsed = parseReport(text);
@@ -1808,6 +1809,22 @@ type TurnEnd =
 	| { error: string; failure?: RunFailure };
 
 const AUTH_REQUIRED = /authentication required|auth_required/i;
+
+/**
+ * A provider stop's error says it in plain words, its own words kept as `raw`, so
+ * every surface that shows the message shows no code (#1101 category 23 item 4).
+ */
+export function plainStop(
+	message: string,
+	failure: RunFailure | undefined,
+	agent: string,
+): [string, RunFailure?] {
+	if (!failure) return [message];
+	return [
+		`${failureLine(failure, agent)}.`,
+		{ ...failure, raw: failure.raw ?? message.slice(0, 500) },
+	];
+}
 
 /** The agent runs on an API key: one of its key variables (not a base URL or model) is set. */
 export function apiKeyIn(
