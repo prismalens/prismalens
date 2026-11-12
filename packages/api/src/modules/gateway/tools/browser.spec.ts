@@ -13,7 +13,7 @@ import {
 	type BrowserToolCall,
 	browserTools,
 } from "./browser.js";
-import { HOUSE_RULES } from "./rules.js";
+import { HOUSE_RULES } from "@prismalens/contracts/schemas";
 
 const ctx = { runId: "run-1", signal: new AbortController().signal };
 

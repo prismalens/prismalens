@@ -5,6 +5,6 @@ import { PrStatusNode } from "./PrStatusNode";
 import type { TranscriptNodes } from "./types";
 
 /** PR and checks' transcript nodes (#1101 category 15). Only that lane edits this file. */
-export const prNodes: TranscriptNodes = {
+export const prNodes = {
 	pr_status: { Node: PrStatusNode },
-};
+} satisfies TranscriptNodes;

@@ -20,6 +20,7 @@ import {
 	FileCheck2,
 	FilePen,
 	FileText,
+	Globe,
 	History,
 	type LucideIcon,
 	PanelsTopLeft,
@@ -43,6 +44,7 @@ export type NodeKind =
 	| "suspect"
 	| "artifact"
 	| "report"
+	| "browse"
 	| "failed"
 	| "tool";
 
@@ -57,6 +59,7 @@ export const NODE_ICON: Record<NodeKind, LucideIcon> = {
 	suspect: Crosshair,
 	artifact: PanelsTopLeft,
 	report: FileCheck2,
+	browse: Globe,
 	failed: CircleAlert,
 	tool: Wrench,
 };
@@ -75,7 +78,7 @@ const KIND_NODE: Record<ToolKind, NodeKind> = {
 	watch: "knowledge",
 	schedule: "knowledge",
 	run: "knowledge",
-	browse: "knowledge",
+	browse: "browse",
 };
 
 /** A PrismaLens tool's node: its record kind, or a knowledge lookup. */
