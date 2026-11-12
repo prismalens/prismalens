@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PrCheckLog,
-	PrCheckRun,
-	PrReviewThread,
-	PullRequest,
+import {
+	type PrCheckLog,
+	type PrCheckRun,
+	type PrReviewThread,
+	type PullRequest,
+	prHostTerms,
+	prLabel,
 } from "@prismalens/contracts";
 
 /** Lines of a log tail a fix message carries; the panel shows the whole tail. */
 export const FIX_LOG_LINES = 15;
 
-type PrRef = Pick<PullRequest, "number" | "repo"> & {
-	headSha?: string | null;
-};
+type PrRef = Pick<PullRequest, "number" | "repo"> &
+	Partial<Pick<PullRequest, "host">> & {
+		headSha?: string | null;
+	};
 
 const short = (sha: string | null | undefined) =>
 	sha ? sha.slice(0, 7) : "the current head";
@@ -25,7 +28,7 @@ export function checkFixMessage(
 	log?: Pick<PrCheckLog, "step" | "lines"> | null,
 ): string {
 	const parts = [
-		`The check "${run.name}" fails on PR #${pr.number} (${pr.repo}) at ${short(run.headSha ?? pr.headSha)}.`,
+		`The ${prHostTerms(pr.host).check} "${run.name}" fails on ${prLabel(pr.host, pr.number)} (${pr.repo}) at ${short(run.headSha ?? pr.headSha)}.`,
 	];
 	if (log?.step) parts.push(`It fails at the step "${log.step}".`);
 	const lines = log?.lines.slice(-FIX_LOG_LINES) ?? [];
@@ -43,7 +46,7 @@ export function reviewFixMessage(pr: PrRef, t: PrReviewThread): string {
 		.map((l) => `> ${l}`)
 		.join("\n");
 	return [
-		`@${t.author} left a review thread on ${where} in PR #${pr.number} (${pr.repo}), head ${short(pr.headSha)}:`,
+		`@${t.author} left a review thread on ${where} in ${prLabel(pr.host, pr.number)} (${pr.repo}), head ${short(pr.headSha)}:`,
 		quote,
 		"Address it on this branch, push, and say what you changed.",
 	].join("\n\n");
