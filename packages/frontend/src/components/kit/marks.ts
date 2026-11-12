@@ -38,6 +38,7 @@ import {
 	Network,
 	OctagonAlert,
 	Pencil,
+	RefreshCw,
 	ShieldAlert,
 	Signal,
 	SignalHigh,
@@ -47,6 +48,8 @@ import {
 	Trash2,
 	TrendingUp,
 	TriangleAlert,
+	Wifi,
+	WifiOff,
 } from "lucide-react";
 
 /**
@@ -276,6 +279,23 @@ export const MARKS = {
 		icons: { degraded: CircleAlert, down: OctagonAlert, silent: Circle },
 		label: "Health",
 		tones: { ok: "ok", degraded: "warn", down: "danger", silent: "muted" },
+	}),
+	/** This device's live link to the computer running PrismaLens. */
+	connection: defineMark({
+		id: "connection",
+		icon: Wifi,
+		icons: {
+			connecting: CircleDashed,
+			reconnecting: RefreshCw,
+			unreachable: WifiOff,
+		},
+		label: "Connection",
+		tones: {
+			connected: "ok",
+			connecting: "muted",
+			reconnecting: "warn",
+			unreachable: "danger",
+		},
 	}),
 	/** Whether a run can read the subject's code. */
 	code: defineMark({

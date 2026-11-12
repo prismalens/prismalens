@@ -5,6 +5,7 @@ import type { PendingAsk } from "@prismalens/contracts";
 import type { ReactNode } from "react";
 import type { CardAnswer, CardAnswers } from "@/components/home/PhoneAnswer";
 import { PhoneHomeView } from "@/components/home/PhoneHome";
+import { Mark } from "@/components/kit/Mark";
 import { ConnectionWordView } from "@/components/shell/ConnectionWord";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import { AskDock } from "@/components/thread/composer/AskDock";
@@ -33,9 +34,9 @@ function Strip({ children }: { children: ReactNode }) {
 				Menu
 			</span>
 			{children}
-			<span className="rounded-full bg-warn/15 px-2 text-meta font-medium text-warn tabular-nums">
-				3 waiting
-			</span>
+			<Mark id="ask" state="approval" word="3 waiting for you">
+				<span className="text-meta font-medium text-text-1">3</span>
+			</Mark>
 			<span className="flex size-12 items-center justify-center text-meta text-text-3">
 				New
 			</span>

@@ -155,7 +155,7 @@ function WindowTile({ w, now }: { w: UsageWindow; now: number }) {
 							)}
 							data-testid="usage-window-left"
 						>
-							{amount}
+							{left !== null && state !== "full" && amount}
 						</span>
 					</span>
 					{w.resetsAt && (
