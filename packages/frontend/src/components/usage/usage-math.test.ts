@@ -142,7 +142,15 @@ describe("usage-math", () => {
 	});
 
 	it("bucketLabel formats day in UTC and hour locally", () => {
-		expect(bucketLabel("2026-11-12", "day")).toBe("12 Nov");
+		// The runner's locale orders day and month; the UTC day must not shift.
+		const utcDay = new Intl.DateTimeFormat(undefined, {
+			day: "numeric",
+			month: "short",
+			timeZone: "UTC",
+		}).format(Date.UTC(2026, 10, 12));
+		expect(bucketLabel("2026-11-12", "day")).toBe(utcDay);
+		expect(utcDay.split(/\W+/)).toContain("12");
+		expect(utcDay).toMatch(/Nov/);
 		// For hour, verify it parses and formats non-empty string
 		const hourStr = bucketLabel("2026-11-12T14:00:00.000Z", "hour");
 		expect(hourStr).toMatch(/^\d{2}:\d{2}$/);
