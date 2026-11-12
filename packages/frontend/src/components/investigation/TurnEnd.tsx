@@ -158,7 +158,7 @@ export function TurnVerdict({
 					type="button"
 					onClick={() => setOpen((o) => !o)}
 					aria-expanded={open}
-					className={cn(TOOL_LINE, "flex-1")}
+					className={cn(TOOL_LINE, "w-auto shrink-0")}
 					data-testid="turn-changes-toggle"
 				>
 					<FileDiff
@@ -168,31 +168,36 @@ export function TurnVerdict({
 					<span className="shrink-0">
 						Changed {shown.length} {shown.length === 1 ? "file" : "files"}
 					</span>
+					<ToolLineChevron open={open} />
+				</button>
+				{/* The numbers are the diff's link (thread-panel research): "+a −b" opens it. */}
+				{onOpenDiff ? (
+					<Hint label="Open diff">
+						<button
+							type="button"
+							onClick={onOpenDiff}
+							className="shrink-0 rounded-control px-1 font-mono text-mono tabular-nums underline-offset-2 outline-none hover:underline focus-visible:ring-1 focus-visible:ring-accent"
+							data-testid="turn-changes-open"
+						>
+							<span className="text-ok">+{review.reviewed.add}</span>{" "}
+							<span className="text-danger">−{review.reviewed.del}</span>
+						</button>
+					</Hint>
+				) : (
 					<span className="shrink-0 font-mono text-mono tabular-nums">
 						<span className="text-ok">+{review.reviewed.add}</span>{" "}
 						<span className="text-danger">−{review.reviewed.del}</span>
 					</span>
-					{noise && (
-						<span
-							className="min-w-0 truncate text-text-3"
-							data-testid="turn-noise"
-						>
-							· {noise}
-						</span>
-					)}
-					<span className="flex-1" />
-					<ToolLineChevron open={open} />
-				</button>
-				{onOpenDiff && (
-					<button
-						type="button"
-						onClick={onOpenDiff}
-						className="shrink-0 rounded-control px-1.5 text-meta text-text-2 outline-none hover:text-text-1 focus-visible:ring-1 focus-visible:ring-accent"
-						data-testid="turn-changes-open"
-					>
-						Open diff
-					</button>
 				)}
+				{noise && (
+					<span
+						className="min-w-0 truncate text-meta text-text-3"
+						data-testid="turn-noise"
+					>
+						· {noise}
+					</span>
+				)}
+				<span className="flex-1" />
 				{undo}
 			</div>
 			<VerdictLine review={review} tests={tests} edited={shown.length > 0} />

@@ -42,6 +42,18 @@ export const STATUS_WORD: Record<ThreadStatus, string> = {
 	done: "Done",
 };
 
+/** The row's slot word: the shortest in the closed set; null where the icon says it (Done). */
+export const STATUS_SHORT: Record<ThreadStatus, string | null> = {
+	approval: "Approve",
+	question: "Answer",
+	blocked: "Blocked",
+	failed: "Failed",
+	limited: "Limited",
+	working: "Working",
+	waiting: "Waiting",
+	done: null,
+};
+
 /** Short words for a roll-up count: "2 need you, 5 working". */
 const COUNT_WORD: Record<ReturnType<typeof bucketOf>, string> = {
 	needs: "need you",

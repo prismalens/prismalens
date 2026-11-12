@@ -57,7 +57,9 @@ export type ThreadLink =
 	| { to: "/schedules/$id/runs/$runId"; params: { id: string; runId: string } }
 	| { to: "/threads/$id"; params: { id: string } };
 
-export function threadLink(t: ThreadRow): ThreadLink {
+export function threadLink(
+	t: Pick<ThreadRow, "id" | "incidentId" | "scheduleId">,
+): ThreadLink {
 	if (t.incidentId)
 		return {
 			to: "/incidents/$id/conversation",

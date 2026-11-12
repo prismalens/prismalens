@@ -1334,6 +1334,15 @@ export function deriveTranscript(
 							};
 						break;
 					}
+					// The next try replaces the last one: a retry is a counter, not a new line.
+					if (
+						event.kind === "provider_retry" &&
+						last?.kind === "node" &&
+						last.event.kind === "provider_retry"
+					) {
+						items[items.length - 1] = { ...last, event };
+						break;
+					}
 					// A compaction's end replaces its own "Compacting" line (#1101).
 					if (event.kind === "compaction" && event.phase !== "started") {
 						const at = items.findLastIndex(

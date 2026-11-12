@@ -7,17 +7,10 @@ import {
 	type SettlePreview,
 	type ThreadRow,
 } from "@prismalens/contracts";
-import {
-	Archive,
-	Check,
-	MoreHorizontal,
-	Pencil,
-	Pin,
-	PinOff,
-	RefreshCw,
-} from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { ContextMenu, Menu, type MenuEntry } from "@/components/kit";
+import { useNavigate } from "@tanstack/react-router";
+import { MoreHorizontal } from "lucide-react";
+import { type ReactElement, useState } from "react";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -31,11 +24,17 @@ import { toast } from "@/hooks/use-toast";
 import {
 	useArchiveThread,
 	usePinThread,
-	useRegenerateThreadTitle,
 	useRenameThread,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { client } from "@/lib/api/orpc-client";
+import { copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { threadLink } from "@/lib/thread-rows";
+import type {
+	PageState,
+	ThreadCtx,
+	ThreadPageControls,
+} from "./thread.actions";
 
 /** The thread fields the menu reads; a feed row and an open thread both carry them. */
 export type MenuThread = Pick<
@@ -117,29 +116,33 @@ export async function allEvents(id: string): Promise<CanonicalEvent[]> {
 	return out;
 }
 
-/** Why "Name it again" kept the title, by the server's outcome. */
-const NAME_AGAIN_WHY: Record<string, string> = {
-	off: "Thread titles are off in Settings, Models.",
-	"no-model":
-		"This agent lists no small model. Pick one in Thread titles in Settings, Models.",
-	kept: "The title changed while it was being named.",
-	empty: "The model gave no usable title.",
-	failed: "The agent could not name it this time.",
-};
-
 /**
- * A thread's actions, the same everywhere (sheet §1, §2): the row offers Rename, Pin,
- * Archive and Settle on ⋯ and on right-click; the header offers Rename, Settle, Archive.
+ * A thread's context for the registry (#1125): the row offers Rename, Pin,
+ * Archive and Settle on ⋯ and on right-click; the header offers Rename, Settle,
+ * Archive; the palette adds Open, Copy transcript and Copy link.
  */
-function useThreadActions(
+export function useThreadCtx(
 	thread: MenuThread,
-	where: "row" | "header",
-	onRename?: () => void,
-	onSettle?: () => void,
+	{
+		onRename,
+		onSettle,
+		onDone,
+	}: {
+		/** The row renames in place; without it the menu asks in a dialog. */
+		onRename?: () => void;
+		onSettle?: () => void;
+		/** Runs before an action, e.g. closing the palette. */
+		onDone?: () => void;
+	} = {},
 ) {
 	const [renaming, setRenaming] = useState(false);
+	const navigate = useNavigate();
 	const pin = usePinThread();
 	const archive = useArchiveThread();
+	const done = (fn: () => void) => () => {
+		onDone?.();
+		fn();
+	};
 	const doArchive = () => {
 		const on = !thread.archivedAt;
 		archive.mutate(
@@ -169,72 +172,66 @@ function useThreadActions(
 			},
 		);
 	};
-	const rename: MenuEntry = {
-		id: "rename",
-		label: "Rename",
-		icon: Pencil,
-		onSelect: () => (onRename ? onRename() : setRenaming(true)),
-	};
-	const regenerate = useRegenerateThreadTitle();
-	const nameAgain: MenuEntry = {
-		id: "name-again",
-		label: "Name it again",
-		icon: RefreshCw,
-		disabled: regenerate.isPending,
-		onSelect: () =>
-			regenerate.mutate(
-				{ id: thread.id },
-				{
-					onSuccess: ({ outcome }) =>
-						outcome !== "named" &&
+	const standalone = !thread.incidentId && !thread.scheduleId;
+	const ctx: ThreadCtx = {
+		rename: done(() => (onRename ? onRename() : setRenaming(true))),
+		togglePin: done(() => pin.mutate({ id: thread.id, on: !thread.pinnedAt })),
+		toggleArchive: done(doArchive),
+		settle: done(() => onSettle?.()),
+		open: done(() => void navigate(threadLink(thread))),
+		openWithPanel: done(
+			() =>
+				void navigate({
+					to: "/threads/$id",
+					params: { id: thread.id },
+					search: { panel: "thread" },
+				}),
+		),
+		copyTranscript: done(() => {
+			void allEvents(thread.id)
+				.then(transcriptText)
+				.then((text) => navigator.clipboard.writeText(text))
+				.then(
+					() => toast({ title: "Transcript copied" }),
+					(e: unknown) =>
 						toast({
-							title: "Title kept",
-							description: NAME_AGAIN_WHY[outcome],
-						}),
-					onError: (e) =>
-						toast({
-							title: "Title kept",
+							title: "Transcript not copied",
 							description: getErrorMessage(e),
 							variant: "destructive",
 						}),
-				},
-			),
+				);
+		}),
+		copyLink: done(() => {
+			void copyText(threadUrl(thread)).then(
+				(ok) => ok && toast({ title: "Link copied" }),
+			);
+		}),
+		facts: {
+			is: {
+				pinned: !!thread.pinnedAt,
+				archived: !!thread.archivedAt,
+				live: isWorkflowLive(thread.status),
+				settleable: !!onSettle,
+				standalone,
+			},
+		},
 	};
-	const settle: MenuEntry | null = onSettle
-		? { id: "settle", label: "Settle", icon: Check, onSelect: onSettle }
-		: null;
-	const archiveEntry: MenuEntry = {
-		id: "archive",
-		label: thread.archivedAt ? "Unarchive" : "Archive",
-		icon: Archive,
-		disabled: !!disabledWhy(thread, "archive"),
-		onSelect: doArchive,
-	};
-	const entries: MenuEntry[] =
-		where === "row"
-			? [
-					rename,
-					nameAgain,
-					{
-						id: "pin",
-						label: thread.pinnedAt ? "Unpin" : "Pin",
-						icon: thread.pinnedAt ? PinOff : Pin,
-						onSelect: () => pin.mutate({ id: thread.id, on: !thread.pinnedAt }),
-					},
-					archiveEntry,
-					...(settle ? [{ id: "sep", separator: true } as const, settle] : []),
-				]
-			: [
-					rename,
-					nameAgain,
-					...(settle ? [settle] : []),
-					{ id: "sep", separator: true } as const,
-					archiveEntry,
-				];
 	const dialog = renaming ? (
 		<RenameDialog thread={thread} onClose={() => setRenaming(false)} />
 	) : null;
-	return { entries, dialog };
+	return { ctx, dialog };
+}
+
+/** The thread's absolute link, where its route lives. */
+export function threadUrl(t: MenuThread): string {
+	const l = threadLink(t);
+	const path =
+		l.to === "/threads/$id"
+			? `/threads/${l.params.id}`
+			: l.to === "/schedules/$id/runs/$runId"
+				? `/schedules/${l.params.id}/runs/${l.params.runId}`
+				: `/incidents/${l.params.id}/conversation?investigation=${l.search.investigation}`;
+	return `${window.location.origin}${path}`;
 }
 
 /** The ⋯ trigger and its kit menu (220 px, down from the trigger). */
@@ -243,36 +240,38 @@ export function ThreadMenu({
 	where = "header",
 	onRename,
 	onSettle,
-	extra = [],
 	triggerClassName,
 	defaultOpen,
+	page,
 }: {
 	thread: MenuThread;
 	where?: "row" | "header";
-	/** The header's own controls folded in above the thread's entries: a phone's header. */
-	extra?: MenuEntry[];
 	/** The row renames in place; without it the menu asks in a dialog. */
 	onRename?: () => void;
 	onSettle?: () => void;
 	triggerClassName?: string;
 	/** Open on first draw: the design gallery's frame. */
 	defaultOpen?: boolean;
+	/** A phone header's own controls and their facts, folded into this menu. */
+	page?: {
+		controls: ThreadPageControls;
+		is: { readonly [S in PageState]?: boolean };
+	};
 }) {
-	const { entries, dialog } = useThreadActions(
-		thread,
-		where,
-		onRename,
-		onSettle,
-	);
+	const base = useThreadCtx(thread, { onRename, onSettle });
+	const { dialog } = base;
+	const ctx: ThreadCtx = page
+		? {
+				...base.ctx,
+				page: page.controls,
+				facts: { ...base.ctx.facts, is: { ...base.ctx.facts.is, ...page.is } },
+			}
+		: base.ctx;
 	return (
 		<>
-			<Menu
-				label="Thread actions"
-				entries={
-					extra.length
-						? [...extra, { id: "sep-extra", separator: true }, ...entries]
-						: entries
-				}
+			<SurfaceMore
+				id={where === "row" ? "thread.row" : "thread.header"}
+				ctx={ctx}
 				open={defaultOpen || undefined}
 				trigger={
 					<button
@@ -293,7 +292,7 @@ export function ThreadMenu({
 	);
 }
 
-/** The same row entries on right-click. */
+/** The same row entries on right-click, Shift+F10, the Menu key and a long press. */
 export function ThreadContextMenu({
 	thread,
 	onRename,
@@ -303,19 +302,14 @@ export function ThreadContextMenu({
 	thread: MenuThread;
 	onRename?: () => void;
 	onSettle?: () => void;
-	children: ReactNode;
+	children: ReactElement;
 }) {
-	const { entries, dialog } = useThreadActions(
-		thread,
-		"row",
-		onRename,
-		onSettle,
-	);
+	const { ctx, dialog } = useThreadCtx(thread, { onRename, onSettle });
 	return (
 		<>
-			<ContextMenu label="Thread actions" entries={entries}>
+			<Surface id="thread.row" ctx={ctx}>
 				{children}
-			</ContextMenu>
+			</Surface>
 			{dialog}
 		</>
 	);

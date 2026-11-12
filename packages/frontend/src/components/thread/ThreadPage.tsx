@@ -10,12 +10,8 @@ import {
 } from "@prismalens/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
-	BellOff,
-	BellRing,
-	CalendarClock,
 	ChevronLeft,
 	Columns2,
-	GitPullRequest,
 	PanelRight,
 	PanelTop,
 	TriangleAlert,
@@ -46,7 +42,6 @@ import {
 	detailsRows,
 	dockFor,
 	KitPopover,
-	type MenuEntry,
 	Status,
 } from "@/components/kit";
 import { BrowserTab } from "@/components/run/BrowserTab";
@@ -62,6 +57,10 @@ import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { StatusLabel } from "@/components/shell/ThreadTree";
+import type {
+	PageState,
+	ThreadPageControls,
+} from "@/components/shell/thread.actions";
 import { Button } from "@/components/ui/button";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -815,48 +814,28 @@ export function ThreadPage({ id }: { id: string }) {
 	const statusInfo = inv
 		? (statuses.data?.statuses[inv.id] ?? runStatusInfo(inv.status))
 		: null;
-	const phoneEntries: MenuEntry[] = phone
-		? [
-				...(chipPr
-					? [
-							{
-								id: "pr",
-								label: `PR #${chipPr.number}`,
-								icon: GitPullRequest,
-								onSelect: () =>
-									openPanel({
-										panel: "thread",
-										section: `pull-requests:${chipPr.id}`,
-									}),
-							},
-						]
-					: []),
-				{
-					id: "details",
-					label: "Details",
-					icon: PanelRight,
-					disabled: !ready,
-					onSelect: () => openPanel({ panel: "thread" }),
-				},
-				...panes.tools
-					.filter((t) => t.id !== "thread" && t.id !== "terminal")
-					.map((t) => ({
-						id: `open-${t.id}`,
-						label: t.label,
-						icon: iconOf(t),
-						disabled: !ready,
-						onSelect: () => panes.open(t.id),
-					})),
-				{
-					id: "status-box",
-					label: "Status",
-					icon: PanelTop,
-					checked: boxOpen,
-					disabled: !ready,
-					onSelect: () => setBoxOpen((o) => !o),
-				},
-			]
-		: [];
+	const kindTool = panes.tools.find((t) => t.id === "kind");
+	const hasPane = (id: string) => panes.tools.some((t) => t.id === id);
+	const phoneControls = {
+		prLabel: chipPr ? `PR #${chipPr.number}` : "Pull request",
+		openPr: () =>
+			chipPr &&
+			openPanel({ panel: "thread", section: `pull-requests:${chipPr.id}` }),
+		details: () => openPanel({ panel: "thread" }),
+		openPane: (t: "changes" | "files" | "browser" | "kind") => panes.open(t),
+		kindLabel: kindTool?.label ?? "Subject",
+		kindIcon: kindTool ? iconOf(kindTool) : PanelRight,
+		toggleStatusBox: () => setBoxOpen((o) => !o),
+	};
+	const phoneFacts: PageFacts = {
+		ready,
+		hasPr: !!chipPr,
+		boxOpen,
+		paneChanges: hasPane("changes"),
+		paneFiles: hasPane("files"),
+		paneBrowser: hasPane("browser"),
+		paneKind: !!kindTool,
+	};
 	const header = (
 		<header
 			data-title-row
@@ -937,7 +916,8 @@ export function ThreadPage({ id }: { id: string }) {
 					<PhoneHeaderMenu
 						threadId={inv.id}
 						running={run.isActive}
-						entries={phoneEntries}
+						controls={phoneControls}
+						is={phoneFacts}
 						schedule={{
 							title: inv.title ?? null,
 							subject: inv.repositoryId
@@ -947,7 +927,7 @@ export function ThreadPage({ id }: { id: string }) {
 									: { kind: "none" },
 							prUrl: chipPr?.url,
 						}}
-						menu={(extra) => (
+						menu={(page) => (
 							<ThreadMenu
 								thread={{
 									...inv,
@@ -955,7 +935,7 @@ export function ThreadPage({ id }: { id: string }) {
 									pinnedAt: feedRow?.pinnedAt ?? null,
 									archivedAt: feedRow?.archivedAt ?? null,
 								}}
-								extra={extra}
+								page={page}
 								triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
 								{...(!run.isActive && !feedRow?.settledAt
 									? {
@@ -1400,58 +1380,48 @@ ${about}`
 	);
 }
 
+type PageFacts = { readonly [S in PageState]?: boolean };
+
 /** A phone header's ⋯: the page's own controls, follow and schedule, then the thread's entries. */
 function PhoneHeaderMenu({
 	threadId,
 	running,
-	entries,
+	controls,
+	is,
 	schedule,
 	menu,
 }: {
 	threadId: string;
 	running: boolean;
-	entries: MenuEntry[];
+	controls: Omit<ThreadPageControls, "notify" | "mute" | "schedule">;
+	is: PageFacts;
 	schedule: Omit<
 		ComponentProps<typeof AddScheduleFromThread>,
 		"open" | "onOpenChange"
 	>;
-	menu: (extra: MenuEntry[]) => ReactNode;
+	menu: (page: { controls: ThreadPageControls; is: PageFacts }) => ReactNode;
 }) {
 	const follow = useThreadFollow(threadId);
 	const schedules = useSchedules();
 	const [scheduling, setScheduling] = useState(false);
-	const extra: MenuEntry[] = [
-		...entries,
-		{ id: "sep-follow", separator: true },
-		{
-			id: "follow-watch",
-			label: "Notify when finished",
-			icon: BellRing,
-			checked: follow.follow === "watch",
-			disabled: !running && follow.follow !== "watch",
-			onSelect: () => follow.choose("watch"),
-		},
-		{
-			id: "follow-mute",
-			label: "Mute",
-			icon: BellOff,
-			checked: follow.follow === "mute",
-			onSelect: () => follow.choose("mute"),
-		},
-		...(schedules.data?.canEdit
-			? [
-					{
-						id: "schedule",
-						label: "Add scheduled task",
-						icon: CalendarClock,
-						onSelect: () => setScheduling(true),
-					},
-				]
-			: []),
-	];
 	return (
 		<>
-			{menu(extra)}
+			{menu({
+				controls: {
+					...controls,
+					notify: () => follow.choose("watch"),
+					mute: () => follow.choose("mute"),
+					schedule: () => setScheduling(true),
+				},
+				is: {
+					...is,
+					phone: true,
+					running,
+					watching: follow.follow === "watch",
+					muted: follow.follow === "mute",
+					canSchedule: !!schedules.data?.canEdit,
+				},
+			})}
 			<AddScheduleFromThread
 				{...schedule}
 				open={scheduling}
