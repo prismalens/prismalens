@@ -526,6 +526,8 @@ export type TranscriptItem =
 			attachments: AttachmentView[];
 			/** PrismaLens wrote it after a restart; never labelled "You" (#981). */
 			restart?: RestartVia;
+			/** Its event's seq: where its turn starts, for the turn's snapshot (#1110). */
+			seq?: number;
 	  }
 	| {
 			kind: "end";
@@ -1015,6 +1017,7 @@ export function deriveTranscript(
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
+					seq: event.seq,
 					text: event.text,
 					at: event.ts,
 					mode: event.mode,

@@ -3,11 +3,32 @@
 
 import { ChevronRight, FileDiff } from "lucide-react";
 import { useState } from "react";
+import { TurnUndo } from "@/components/thread/diff/TurnUndo";
+import {
+	snapshotTurnFor,
+	useScopedChanges,
+} from "@/components/thread/diff/use-scoped-changes";
 import { shortPath } from "@/lib/report-view";
 import type { TurnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
 
 const FILES_SHOWN = 6;
+
+/** The seqs of the messages that start this turn and the next (null: none yet). */
+export interface TurnSeq {
+	start: number;
+	next: number | null;
+}
+
+/** Undo for the turn's snapshot, once the run's snapshot list names one in its span. */
+function TurnEndUndo({ runId, seq }: { runId: string; seq: TurnSeq }) {
+	const all = useScopedChanges(runId, "all", undefined, false);
+	const ok = all.data?.repos.find((r) => r.state === "ok" && r.scoped);
+	const turns = ok?.state === "ok" ? ok.scoped?.turns : undefined;
+	const turnId = turns ? snapshotTurnFor(turns, seq.start, seq.next) : null;
+	if (!ok || turnId === null) return null;
+	return <TurnUndo runId={runId} turnId={turnId} repo={ok.repo} />;
+}
 
 /**
  * What ends a finished turn (#1101 cat 9): one summary line, and when the turn edited
@@ -17,10 +38,15 @@ export function TurnEnd({
 	summary,
 	cwd,
 	onOpenDiff,
+	runId,
+	turnSeq,
 }: {
 	summary: TurnSummary;
 	cwd?: string | null;
 	onOpenDiff?: () => void;
+	/** With the turn's seqs, the card offers Undo of the turn's files (#1110). */
+	runId?: string;
+	turnSeq?: TurnSeq;
 }) {
 	const [open, setOpen] = useState(false);
 	const files = summary.files;
@@ -70,6 +96,7 @@ export function TurnEnd({
 								Open diff
 							</button>
 						)}
+						{runId && turnSeq && <TurnEndUndo runId={runId} seq={turnSeq} />}
 					</div>
 					{open && (
 						<ul className="m-0 flex list-none flex-col gap-0.5 bg-[linear-gradient(var(--hairline),var(--hairline))] bg-[length:100%_1px] bg-no-repeat p-0 px-3 pt-1.5 pb-2">

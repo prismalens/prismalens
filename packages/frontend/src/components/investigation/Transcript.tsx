@@ -58,7 +58,7 @@ import {
 } from "@/lib/spine";
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
-import { TurnEnd } from "./TurnEnd";
+import { TurnEnd, type TurnSeq } from "./TurnEnd";
 import { TranscriptNode } from "./transcript/registry";
 import {
 	itemEventKey,
@@ -385,7 +385,8 @@ export const Transcript = memo(function Transcript({
 				at,
 				node: <WorkedToggle worked={worked} />,
 			});
-		const summary = ends.get(i);
+		const turnEnd = ends.get(i);
+		const summary = turnEnd?.summary;
 		if (summary)
 			rows.push({
 				key: `${item.key}:turn-end`,
@@ -394,6 +395,8 @@ export const Transcript = memo(function Transcript({
 					<TurnEnd
 						summary={summary}
 						cwd={cwd}
+						runId={runId}
+						turnSeq={turnEnd?.seq}
 						onOpenDiff={
 							links ? () => links.open({ type: "diff", path: "" }) : undefined
 						}
@@ -440,8 +443,8 @@ function turnEnds(
 	items: readonly TranscriptItem[],
 	groups: ReadonlyMap<string, GroupSteps>,
 	live: boolean,
-): Map<number, TurnSummary> {
-	const out = new Map<number, TurnSummary>();
+): Map<number, { summary: TurnSummary; seq?: TurnSeq }> {
+	const out = new Map<number, { summary: TurnSummary; seq?: TurnSeq }>();
 	const starts = items.flatMap((it, i) =>
 		it.kind === "operator" && it.state !== "queued" ? [i] : [],
 	);
@@ -460,7 +463,17 @@ function turnEnds(
 		// It sits after the turn's last line, before a run-end line if there is one.
 		let at = end - 1;
 		while (at > (starts[n] as number) && items[at]?.kind === "end") at--;
-		if (summary) out.set(at, summary);
+		const first = items[starts[n] as number];
+		const start = first?.kind === "operator" ? first.seq : undefined;
+		const after = next === undefined ? undefined : items[next];
+		const nextSeq = after?.kind === "operator" ? after.seq : undefined;
+		if (summary)
+			out.set(at, {
+				summary,
+				...(start !== undefined
+					? { seq: { start, next: nextSeq ?? null } }
+					: {}),
+			});
 	}
 	return out;
 }
