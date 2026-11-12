@@ -19,9 +19,9 @@ const design = app.filter(([f]) => f.startsWith("../../design/"));
 const galleryIds = new Set(
 	design.flatMap(([, text]) =>
 		[
-			...text.matchAll(/<Stage\s+id="([^"]+)"/g),
-			...text.matchAll(/\bid: "([^"]+)",\s*title:/g),
-			...text.matchAll(/data-kit-state="([^"]+)"/g),
+			...Array.from(text.matchAll(/<Stage\s+id="([^"]+)"/g)),
+			...Array.from(text.matchAll(/\bid: "([^"]+)",\s*title:/g)),
+			...Array.from(text.matchAll(/data-kit-state="([^"]+)"/g)),
 		].map((m) => m[1] as string),
 	),
 );
@@ -116,8 +116,8 @@ describe("the surface and action registry (#1125)", () => {
 		const registered = new Set<string>(allSurfaces().map((s) => s.id));
 		const rendered = app.flatMap(([f, text]) =>
 			[
-				...text.matchAll(/<Surface(?:More)?\s+id="([^"]+)"/g),
-				...text.matchAll(/data-surface="([^"]+)"/g),
+				...Array.from(text.matchAll(/<Surface(?:More)?\s+id="([^"]+)"/g)),
+				...Array.from(text.matchAll(/data-surface="([^"]+)"/g)),
 			]
 				.map((m) => m[1] as string)
 				.filter((id) => !registered.has(id))
@@ -130,7 +130,7 @@ describe("the surface and action registry (#1125)", () => {
 		const stringy = app
 			.filter(([f]) => /\.actions\.ts$/.test(f))
 			.flatMap(([f, text]) =>
-				[...text.matchAll(/(?:when|disabled): \([^)]*\) =>[^\n]*/g)]
+				Array.from(text.matchAll(/(?:when|disabled): \([^)]*\) =>[^\n]*/g))
 					.map((m) => m[0])
 					.filter((line) => /["'`]/.test(line))
 					.map((line) => `${f}: ${line}`),
@@ -148,7 +148,7 @@ describe("the surface and action registry (#1125)", () => {
 		const inline = app
 			.filter(([f, text]) => {
 				if (f.endsWith("/kit/Menu.tsx")) return false;
-				return /<(?:Menu|ContextMenu)\b[^>]*?\bentries=/s.test(text);
+				return /<(?:Menu|ContextMenu)\b[^>]*?\bentries=/.test(text);
 			})
 			.map(([f]) => f)
 			.sort();
