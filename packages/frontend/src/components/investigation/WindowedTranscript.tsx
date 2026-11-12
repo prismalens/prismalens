@@ -84,14 +84,20 @@ export function rowIndexOf(
 const AT_BOTTOM_PX = 1.5;
 const EDGE_PX = 600;
 
-/** virtua's item wrapper is the list item; each row's own items sit in a nested list. */
-const Item = forwardRef<
+/**
+ * virtua's item wrapper is the list item; each row's own items sit in a nested list.
+ * The gap lives inside it: virtua measures the item's content box, so padding on
+ * the item itself is left out and each row would overlap the one above.
+ */
+export const Item = forwardRef<
 	HTMLLIElement,
 	{ style?: React.CSSProperties; children?: ReactNode }
 >(function Item({ style, children }, ref) {
 	return (
-		<li ref={ref} style={style} className="px-4 pt-3">
-			<div className="mx-auto w-full max-w-[760px] min-w-0">{children}</div>
+		<li ref={ref} style={style} data-testid="transcript-item">
+			<div className="px-4 pt-3">
+				<div className="mx-auto w-full max-w-[760px] min-w-0">{children}</div>
+			</div>
 		</li>
 	);
 });
