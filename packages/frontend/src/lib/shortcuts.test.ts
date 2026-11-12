@@ -110,11 +110,12 @@ describe("shortcuts", () => {
 		expect(bindingOf("unknown-id")).toBe("");
 	});
 
-	it("chordTarget('G', ...) finds go.threads for t", () => {
-		const eventT = new KeyboardEvent("keydown", {
-			key: "t",
+	// No place is Threads since 03d1002a4 made the sidebar the thread list; G O goes to Operations.
+	it("chordTarget('G', ...) finds go.incidents for o and nothing for z", () => {
+		const eventO = new KeyboardEvent("keydown", {
+			key: "o",
 		});
-		expect(chordTarget("G", eventT)).toBe("go.threads");
+		expect(chordTarget("G", eventO)).toBe("go.incidents");
 
 		const eventZ = new KeyboardEvent("keydown", {
 			key: "z",
