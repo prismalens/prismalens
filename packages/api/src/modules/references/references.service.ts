@@ -310,6 +310,7 @@ export class ReferencesService {
 			transcript: "the conversation",
 			report: "the report",
 			tool_output: "a tool's output",
+			diff: "the diff",
 		}[q.source.kind];
 		return `from ${where} of thread "${t?.title ?? q.source.threadId}"${q.source.seq !== undefined ? `, event ${q.source.seq}` : ""}`;
 	}

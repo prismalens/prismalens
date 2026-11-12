@@ -46,6 +46,7 @@ import { deriveSubagents } from "@/lib/subagents";
 import { cn } from "@/lib/utils";
 import { Composer, type ComposerState } from "./Composer";
 import { KindTab } from "./panel/KindTab";
+import { NewTabPage, PaneUnavailable } from "./panel/NewTabPage";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
 	type PanelId,
@@ -57,6 +58,7 @@ import {
 } from "./panel/panel-model";
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { ThreadTab } from "./panel/ThreadTab";
+import { useThreadPanes } from "./panel/use-thread-panes";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
@@ -220,6 +222,9 @@ export function ThreadPage({ id }: { id: string }) {
 					section: undefined,
 					path: undefined,
 					line: undefined,
+					scope: undefined,
+					turn: undefined,
+					view: undefined,
 					...next,
 				}),
 				replace: panelOpen,
@@ -236,6 +241,10 @@ export function ThreadPage({ id }: { id: string }) {
 				section: undefined,
 				path: undefined,
 				line: undefined,
+				scope: undefined,
+				turn: undefined,
+				view: undefined,
+				split: undefined,
 			}),
 			replace: true,
 		});
@@ -243,7 +252,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const openFile = useCallback(
 		(f: FileAt) =>
 			openPanel({
-				panel: "changes",
+				panel: "files",
 				path: fileParam({ ...f, line: null, end: null }),
 				...(f.line ? { line: f.line } : {}),
 			}),
@@ -379,13 +388,36 @@ export function ThreadPage({ id }: { id: string }) {
 		}),
 		[id, threadPath, openPanel, navigate, openSubagent],
 	);
+	const baseTabs = panelTabs({
+		kind: context.data?.kind ?? null,
+		thread: true,
+		changes: !!workspace,
+		files: !!workspace,
+		browser: browserOpened && hasDesktopBrowser(),
+	});
+	const panes = useThreadPanes({
+		threadId: id,
+		tabs: baseTabs,
+		workspace: !!workspace && workspace.layout !== "folder",
+		desktopBrowser: hasDesktopBrowser(),
+		onOpen: (t) => openPanel({ panel: t }),
+	});
 	const tabs = panelTabs({
 		kind: context.data?.kind ?? null,
 		thread: true,
 		changes: !!workspace,
-		browser: browserOpened && hasDesktopBrowser(),
+		files: !!workspace,
+		browser:
+			hasDesktopBrowser() &&
+			(browserOpened || panes.layout.opened.includes("browser")),
+		newTab: search.panel === "new",
 	});
 	const tab = shownTab(tabs, search.panel);
+	const splitId =
+		search.split ??
+		(panes.layout.split !== tab ? panes.layout.split : null) ??
+		null;
+	const splitTab = splitId ? tabs.find((t) => t.id === splitId) : undefined;
 	useEffect(() => {
 		if (tab && search.panel) rememberTab(id, tab);
 	}, [id, tab, search.panel]);
@@ -400,6 +432,61 @@ export function ThreadPage({ id }: { id: string }) {
 		},
 		[browserOpened],
 	);
+
+	// One renderer per pane, so a tiled pane shows the same body as its tab (#1101 category 21).
+	const paneBody = (at: PanelId | null) =>
+		at === "kind" && context.data ? (
+			<PanelStack>
+				<KindTab context={context.data} />
+			</PanelStack>
+		) : at === "changes" ? (
+			workspace?.layout === "folder" ? (
+				<PaneUnavailable
+					title="No diff for a folder"
+					why="This thread works in a plain folder, which has no git history to compare against. The Files tab shows what it touched."
+					testId="changes-folder"
+				/>
+			) : (
+				<WorktreeDiff runId={id} live={run.isActive} />
+			)
+		) : at === "files" ? (
+			<FilesPane files={files} onJump={() => {}} />
+		) : at === "browser" ? (
+			<BrowserTab links={[]} />
+		) : at === "new" ? (
+			<NewTabPage
+				tools={panes.tools}
+				onOpen={panes.open}
+				onTile={(t) => {
+					if (t === "terminal" || t === "new") return;
+					const top = rememberedTab(id) ?? "thread";
+					panes.setLayout((l) => ({
+						...l,
+						split: t,
+						opened: l.opened.includes(t) ? l.opened : [...l.opened, t],
+					}));
+					openPanel({ panel: top === t ? "thread" : top, split: t });
+				}}
+			/>
+		) : (
+			<ThreadTab
+				threadId={id}
+				context={context.data}
+				live={run.isActive}
+				session={inv?.session}
+				section={search.section}
+				focusPr={
+					search.section?.startsWith("pull-requests:")
+						? search.section.slice("pull-requests:".length)
+						: undefined
+				}
+				steps={
+					run.steps.length ? (
+						<StepsList steps={run.steps} files={files} onJump={toggleStep} />
+					) : undefined
+				}
+			/>
+		);
 
 	const ready = !run.isLoading && !run.error && !!inv;
 	const back = inv ? backOf(inv) : backOf({});
@@ -644,52 +731,22 @@ export function ThreadPage({ id }: { id: string }) {
 						)
 					}
 					overrideLabel="Sub-agent"
-					content={
-						tab === "kind" && context.data ? (
-							<PanelStack>
-								<KindTab context={context.data} />
-							</PanelStack>
-						) : tab === "changes" ? (
-							viewing || search.path ? (
-								<FilesPane files={files} onJump={() => {}} />
-							) : (
-								<div className="flex min-h-0 flex-1 flex-col">
-									{files.touched.length > 0 && (
-										<div className="shrink-0 shadow-[0_1px_0_var(--hairline)]">
-											<FilesPane files={files} onJump={() => {}} />
-										</div>
-									)}
-									{workspace?.layout !== "folder" && (
-										<WorktreeDiff runId={inv.id} live={run.isActive} />
-									)}
-								</div>
-							)
-						) : tab === "browser" ? (
-							<BrowserTab links={[]} />
-						) : (
-							<ThreadTab
-								threadId={inv.id}
-								context={context.data}
-								live={run.isActive}
-								session={inv.session}
-								section={search.section}
-								focusPr={
-									search.section?.startsWith("pull-requests:")
-										? search.section.slice("pull-requests:".length)
-										: undefined
+					onNewTab={() => openPanel({ panel: "new" })}
+					split={
+						splitTab
+							? {
+									label: splitTab.label,
+									content: paneBody(splitTab.id),
+									ratio: panes.layout.ratio,
+									onRatio: (ratio) => panes.setLayout((l) => ({ ...l, ratio })),
+									onClose: () => {
+										panes.setLayout((l) => ({ ...l, split: null }));
+										openPanel({ panel: tab ?? "thread" });
+									},
 								}
-								steps={
-									run.steps.length ? (
-										<StepsList
-											steps={run.steps}
-											files={files}
-											onJump={toggleStep}
-										/>
-									) : undefined
-								}
-							/>
-						)
+							: undefined
 					}
+					content={paneBody(tab)}
 				/>
 			</RightPanel>
 		</div>

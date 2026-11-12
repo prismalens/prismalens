@@ -69,3 +69,19 @@ export function Hint({
 		</Tooltip>
 	);
 }
+
+/** Keys shown on a page that lists tools with their shortcuts (the New tab page, the palette). */
+export function Keys({ keys }: { keys: string[] }) {
+	return (
+		<span className="flex shrink-0 gap-0.5" aria-hidden>
+			{keys.map((k) => (
+				<kbd
+					key={k}
+					className="min-w-5 rounded-[4px] bg-surface-3 px-1 text-center font-sans text-meta text-text-3"
+				>
+					{k}
+				</kbd>
+			))}
+		</span>
+	);
+}

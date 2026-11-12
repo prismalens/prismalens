@@ -29,15 +29,22 @@ export function scopeThreadId(scope: string): string | null {
 }
 
 export const QUOTE_MAX_CHARS = 8000;
+export const QUOTE_COMMENT_MAX_CHARS = 4000;
 
 export const QuoteSchema = z.object({
 	source: z.object({
 		threadId: z.string().uuid(),
 		/** The event the text came from, so the chip scrolls back to it. */
 		seq: z.number().int().min(0).optional(),
-		kind: z.enum(["transcript", "report", "tool_output"]),
+		kind: z.enum(["transcript", "report", "tool_output", "diff"]),
+		/** `diff` only: `repo:path` and the line a comment sits on (#1101 category 16). */
+		path: z.string().min(1).max(1024).optional(),
+		line: z.number().int().min(1).optional(),
+		side: z.enum(["old", "new"]).optional(),
 	}),
 	text: z.string().min(1).max(QUOTE_MAX_CHARS),
+	/** A diff line comment: what the user wrote about the quoted line. */
+	comment: z.string().min(1).max(QUOTE_COMMENT_MAX_CHARS).optional(),
 });
 export type Quote = z.infer<typeof QuoteSchema>;
 
@@ -188,5 +195,11 @@ export function quoteMarkdown(quote: Quote, sourceLabel: string): string {
 		.split("\n")
 		.map((line) => `> ${line}`)
 		.join("\n");
+	if (quote.source.kind === "diff") {
+		const line = quote.source.line ? `:${quote.source.line}` : "";
+		const side = quote.source.side === "old" ? " (a removed line)" : "";
+		const head = `Comment on \`${quote.source.path ?? "a file"}${line}\`${side}, ${sourceLabel}:`;
+		return [head, body, quote.comment].filter(Boolean).join("\n");
+	}
 	return `${body}\n> — ${sourceLabel}`;
 }
