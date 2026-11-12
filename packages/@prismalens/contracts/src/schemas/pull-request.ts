@@ -110,6 +110,8 @@ export const PrCheckRunSchema = z.object({
 	headSha: z.string().max(64).optional(),
 	/** The check's log or details page. */
 	url: z.string().url().max(2000).optional(),
+	/** False when the host merges without it: an optional check, a job allowed to fail. */
+	required: z.boolean().optional(),
 });
 export type PrCheckRun = z.infer<typeof PrCheckRunSchema>;
 /** Check runs kept per PR; the summary counts still cover all of them. */

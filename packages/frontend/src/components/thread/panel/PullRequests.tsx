@@ -20,6 +20,7 @@ import {
 	GitPullRequestDraft,
 	type LucideIcon,
 } from "lucide-react";
+import type { StatusKind } from "@/components/kit";
 import { cn } from "@/lib/utils";
 
 /** The word beside every tone mark: colour never speaks alone. */
@@ -32,6 +33,18 @@ export const PR_TONE_WORD: Record<PrTone, string> = {
 	merged: "Merged",
 	closed: "Closed",
 	unknown: "Unknown",
+};
+
+/** A change request's tone in the kit's closed set of statuses (sheet §0.6). */
+export const PR_STATUS: Record<PrTone, StatusKind> = {
+	failing: "failed",
+	attention: "question",
+	ready: "done",
+	open: "idle",
+	draft: "idle",
+	merged: "settled",
+	closed: "settled",
+	unknown: "idle",
 };
 
 const TONE_ICON: Record<PrTone, LucideIcon> = {
@@ -63,7 +76,7 @@ export const MERGE_WORD: Record<PrMergeState, [string, PrTone] | null> = {
 };
 
 /** `7/9`: passing of all; null when the host reports no checks. */
-function passingOf(c: PrChecks): string | null {
+export function passingOf(c: PrChecks): string | null {
 	if (c.state === "none" || c.state === "unknown" || c.total === 0) return null;
 	return `${c.total - c.failed - c.pending}/${c.total}`;
 }
@@ -135,12 +148,28 @@ const RUN_ORDER: Record<PrCheckRun["state"], number> = {
 	passing: 3,
 };
 
-/** Failing first, then running, neutral and passing; the host's order within each. */
+/** Failing first, then running, neutral and passing; required before optional, then by name. */
 export function sortedRuns(runs: PrCheckRun[]): PrCheckRun[] {
-	return runs
-		.map((r, i) => [r, i] as const)
-		.sort(([a, i], [b, j]) => RUN_ORDER[a.state] - RUN_ORDER[b.state] || i - j)
-		.map(([r]) => r);
+	const optional = (r: PrCheckRun) => (r.required === false ? 1 : 0);
+	return [...runs].sort(
+		(a, b) =>
+			RUN_ORDER[a.state] - RUN_ORDER[b.state] ||
+			optional(a) - optional(b) ||
+			a.name.localeCompare(b.name),
+	);
+}
+
+/** The checks by state, in `sortedRuns` order, each group with its count. */
+export function runGroups(
+	runs: PrCheckRun[],
+): { state: PrCheckRun["state"]; runs: PrCheckRun[] }[] {
+	const out: { state: PrCheckRun["state"]; runs: PrCheckRun[] }[] = [];
+	for (const r of sortedRuns(runs)) {
+		const last = out.at(-1);
+		if (last?.state === r.state) last.runs.push(r);
+		else out.push({ state: r.state, runs: [r] });
+	}
+	return out;
 }
 
 /** What the PR answers, from the thread's incident and report (#1101 category 15 item 6). */
