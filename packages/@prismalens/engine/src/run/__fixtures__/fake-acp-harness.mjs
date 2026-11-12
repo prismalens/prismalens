@@ -16,6 +16,7 @@
 // advertises loadSession and replays two updates before answering session/load),
 // "continue" (like "resume", but every turn also writes a valid report: a stopped run taken on, R4.4),
 // "limited" (every prompt answers with a usage-limit JSON-RPC error; FAKE_LIMIT_TEXT sets its text),
+// "retry-once" (first prompt reports cost $1.30 and fails with rate limit, second reports cost $1.50 and ends turn),
 // or "auth-required" (offers authMethods, then answers session/new with ACP's -32000).
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
@@ -138,6 +139,7 @@ const report = {
 };
 
 let turns = 0;
+let retryOncePrompts = 0;
 // What session/set_config_option can switch, and the value each option holds now.
 const offered = {
 	model: (process.env.FAKE_MODELS ?? process.env.FAKE_SERVED_MODEL ?? "")
@@ -796,6 +798,63 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 						codexErrorInfo: "usageLimitExceeded",
 					},
 				},
+			});
+			return;
+		}
+		if (mode === "retry-once") {
+			retryOncePrompts += 1;
+			if (retryOncePrompts === 1) {
+				notify(msg.params.sessionId, {
+					sessionUpdate: "usage_update",
+					used: 1000,
+					size: 2000,
+					cost: { amount: 1.3, currency: "USD" },
+				});
+				send({
+					jsonrpc: "2.0",
+					id: msg.id,
+					error: {
+						code: -32603,
+						message: "Rate limit exceeded",
+						data: {
+							code: "rate_limit_exceeded",
+							retryAfterSeconds: 1,
+						},
+					},
+				});
+				return;
+			}
+			notify(msg.params.sessionId, {
+				sessionUpdate: "usage_update",
+				used: 2000,
+				size: 3000,
+				cost: { amount: 1.5, currency: "USD" },
+			});
+			notify(msg.params.sessionId, {
+				sessionUpdate: "tool_call",
+				toolCallId: "t1",
+				title: "pwd",
+				kind: "execute",
+				status: "pending",
+				rawInput: { command: "pwd" },
+			});
+			notify(msg.params.sessionId, {
+				sessionUpdate: "tool_call_update",
+				toolCallId: "t1",
+				status: "completed",
+				content: [{ type: "content", content: { type: "text", text: cwd } }],
+			});
+			notify(msg.params.sessionId, {
+				sessionUpdate: "agent_message_chunk",
+				content: {
+					type: "text",
+					text: `Done.\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`\n`,
+				},
+			});
+			send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				result: { stopReason: "end_turn" },
 			});
 			return;
 		}

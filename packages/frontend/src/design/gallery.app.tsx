@@ -2,11 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadSession } from "@prismalens/contracts";
+import { InboundRowView } from "@/components/investigation/transcript/InboundRow";
 import { LimitDock } from "@/components/thread/session/LimitDock";
 import {
 	ConnectionDock,
 	InterruptedDock,
 } from "@/components/thread/session/StopDocks";
+import type { InboundRow } from "@/lib/inbound-rows";
 import type { GallerySection } from "./gallery";
 
 type Stop = NonNullable<ThreadSession["limit"]>;
@@ -103,6 +105,42 @@ const STOPS: { name: string; limit: Stop; draft?: string; url?: string }[] = [
 	},
 ];
 
+const LIMIT_FAILURE = { mode: "usage_limit", window: "session" } as const;
+const inbound = (
+	n: number,
+	state: InboundRow["state"],
+	text: string,
+	extra: Partial<InboundRow> = {},
+): InboundRow => ({
+	messageId: `m${n}`,
+	source: "child",
+	state,
+	arrivedAt: new Date(NOW - (5 - n) * 60_000).toISOString(),
+	from: { name: `Check ${n}`, link: "#" },
+	text,
+	line: "Waiting: OpenCode reached its session limit",
+	retries: [],
+	...extra,
+});
+/** Three child reports under a usage limit: the reason is the stop line's, said once (sheet §10). */
+const LIMIT_INBOUND: InboundRow[] = [
+	inbound(
+		1,
+		"waiting",
+		"[FROM checkout-tests #1] result: **2 tests** flake in `C:\\Users\\me\\ws\\worktrees\\pl-1\\test\\cart.spec.ts`",
+		{ failure: LIMIT_FAILURE },
+	),
+	inbound(2, "waiting", "/threads/0b1 ## Done\n- no flake in payments", {
+		failure: LIMIT_FAILURE,
+	}),
+	inbound(3, "delivered", "All three checks pass after the retry.", {
+		line: "Delivered",
+	}),
+	inbound(4, "failed", "Report the flaky tests", {
+		line: "Not delivered: the thread has ended",
+	}),
+];
+
 /** UI 3's states in the gallery (#1024, #1101). Only UI 3 edits this file. */
 export const appGallery: GallerySection[] = [
 	{
@@ -142,6 +180,19 @@ export const appGallery: GallerySection[] = [
 						onResume={noop}
 						notResumed="PrismaLens was off for 26 hours, and a run resumes on its own only within a day of stopping."
 					/>
+				</div>
+				<div
+					className="flex flex-col gap-1"
+					data-testid="gallery-limit-inbound"
+				>
+					<span className="text-meta text-text-3">
+						Incoming messages during a limit
+					</span>
+					<ul className="flex flex-col gap-1">
+						{LIMIT_INBOUND.map((r) => (
+							<InboundRowView key={r.messageId} row={r} />
+						))}
+					</ul>
 				</div>
 				<div className="flex flex-col gap-1">
 					<span className="text-meta text-text-3">Connection lost</span>
