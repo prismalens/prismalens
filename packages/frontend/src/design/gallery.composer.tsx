@@ -11,9 +11,11 @@ import type {
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
 import type { ReactNode } from "react";
+import { RunDock } from "@/components/investigation/RunDock";
+import { Mark } from "@/components/kit/Mark";
 import { AskDock } from "@/components/thread/composer/AskDock";
 import { ComposerMenu } from "@/components/thread/composer/ComposerMenu";
-import { ConflictLine } from "@/components/thread/composer/chips";
+import { ConflictLine, SendKeys } from "@/components/thread/composer/chips";
 import {
 	ChipContext,
 	type ChipFile,
@@ -257,6 +259,58 @@ const HOST = ask({
 
 /** UI 1's states in the gallery (#1024). Only UI 1 edits this file. */
 export const composerGallery: GallerySection[] = [
+	{
+		id: "composer-queued",
+		title: "Queue and steer while the agent works",
+		render: () => (
+			<div className="grid max-w-[760px] gap-3">
+				<RunDock
+					asks={[]}
+					runId={THREAD}
+					agent="Codex"
+					queued={[
+						{
+							key: "q1",
+							messageId: "m1",
+							text: "Also check the pool size on checkout-api",
+							attachments: [],
+						},
+						{
+							key: "q2",
+							text: "And attach the last deploy's diff",
+							attachments: [
+								{
+									id: "f1",
+									name: "deploy.diff",
+									mimeType: "text/plain",
+									size: 1200,
+								},
+							],
+						},
+					]}
+				/>
+				<Box>
+					<div className="flex items-center justify-end gap-2 text-meta text-text-2">
+						<SendKeys />
+						<span className="inline-flex size-8 items-center justify-center rounded-full bg-text-1 text-canvas">
+							↑
+						</span>
+					</div>
+				</Box>
+				<div className="flex justify-end">
+					<span className="rounded-[10px] bg-surface-2 px-3 py-2 text-meta text-text-3">
+						You, 10:42
+						<Mark
+							id="delivery"
+							state="steered"
+							word="Steered: sent now, stopping the agent's step"
+							className="ml-1.5 align-[-2px]"
+						/>
+					</span>
+				</div>
+			</div>
+		),
+	},
 	{
 		id: "composer-chips",
 		title: "Composer chips, inline",

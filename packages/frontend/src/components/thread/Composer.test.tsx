@@ -14,6 +14,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Composer, type ComposerProps } from "./Composer";
+import { QUEUE_HINT, STEER_HINT } from "./composer/chips";
 import {
 	getEditor,
 	getJSON,
@@ -193,6 +194,23 @@ describe("the one composer (#1020)", () => {
 			(branch?.compareDocumentPosition(box as Node) ?? 0) &
 				Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBeTruthy();
+	});
+
+	it("shows Enter and Ctrl+Enter as queue and steer keycaps by Send only while the agent works and the box has words (#1101)", async () => {
+		await render({ state: "live", onStop: vi.fn() });
+		expect(q("composer-send-keys")).toBeNull();
+		await type("check the pool");
+		expect(q("composer-key-queue")?.getAttribute("aria-label")).toBe(
+			QUEUE_HINT,
+		);
+		expect(q("composer-key-queue")?.textContent).toBe("↵");
+		expect(q("composer-key-steer")?.getAttribute("aria-label")).toBe(
+			STEER_HINT,
+		);
+		expect(q("composer-key-steer")?.textContent).toBe("Ctrl↵");
+		expect(q("composer-send-keys")?.querySelector("button")).toBeNull();
+		await render({ state: "ready" });
+		expect(q("composer-send-keys")).toBeNull();
 	});
 
 	it("renders nothing under the box unless it is blocked", async () => {

@@ -29,6 +29,7 @@ import {
 import { type MessageLinks, MessageResponse } from "@/components/ai/message";
 import { messageCtx } from "@/components/investigation/message.actions";
 import { AskCard } from "@/components/investigation/RunDock";
+import { Mark } from "@/components/kit/Mark";
 import { ResponseActions } from "@/components/kit/ResponseActions";
 import { Surface } from "@/components/kit/Surface";
 import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
@@ -96,6 +97,9 @@ const LEVEL_TEST_ID = {
 const FOLD_OVER = 8;
 const FOLD_KEEP = 3;
 
+/** A message sent with Ctrl+Enter: drawn as the delivery mark's arrow, the word in its hint. */
+const STEERED_WORD = "sent now";
+
 /** The delivery word beside a message (decision 18): Enter waits for the agent's next pause. */
 function deliveryWord(
 	state: OperatorState,
@@ -109,7 +113,7 @@ function deliveryWord(
 		return OPERATOR_STATE_LABEL[state].toLowerCase();
 	if (state === "queued") return "waits for the next pause";
 	if (state === "answered") return "answered";
-	return mode === "now" ? "sent now" : "delivered at the next pause";
+	return mode === "now" ? STEERED_WORD : "delivered at the next pause";
 }
 
 /** What the page tells the transcript about its steps; absent, tool calls read as plain steps. */
@@ -825,6 +829,14 @@ const TranscriptRow = memo(function TranscriptRow({
 		case "operator": {
 			const brief = item.state === "started" && !chat;
 			const who = brief ? briefBy : "You";
+			const word = brief
+				? runName === "Ask"
+					? "asked"
+					: `brief for ${runName ?? "this run"}`
+				: chat && item.state === "started"
+					? "sent"
+					: deliveryWord(item.state, item.mode, item.waitingOn);
+			const steered = !brief && word === STEERED_WORD;
 			return withMenu(
 				item.text,
 				<li
@@ -842,21 +854,28 @@ const TranscriptRow = memo(function TranscriptRow({
 							</span>
 						) : (
 							<>
-								{who}, {formatClock(item.at)},{" "}
-								<span
-									className={cn(
-										item.state === "not_delivered" && "text-danger",
-									)}
-									data-testid="transcript-delivery"
-								>
-									{brief
-										? runName === "Ask"
-											? "asked"
-											: `brief for ${runName ?? "this run"}`
-										: chat && item.state === "started"
-											? "sent"
-											: deliveryWord(item.state, item.mode, item.waitingOn)}
-								</span>
+								{who}, {formatClock(item.at)}
+								{steered ? (
+									<Mark
+										id="delivery"
+										state="steered"
+										word="Steered: sent now, stopping the agent's step"
+										className="ml-1.5 align-[-2px]"
+										testId="transcript-steered"
+									/>
+								) : (
+									<>
+										,{" "}
+										<span
+											className={cn(
+												item.state === "not_delivered" && "text-danger",
+											)}
+											data-testid="transcript-delivery"
+										>
+											{word}
+										</span>
+									</>
+								)}
 							</>
 						)}
 					</span>

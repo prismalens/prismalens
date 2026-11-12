@@ -3,6 +3,10 @@
 
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Mark } from "@/components/kit/Mark";
+import { surfaceEntries } from "@/components/kit/registry";
+import { Surface } from "@/components/kit/Surface";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import {
 	useAnswerAsk,
@@ -15,7 +19,11 @@ import type { AttachmentView } from "@/lib/investigation-events";
 import { mcpTool, shortPath } from "@/lib/report-view";
 import { type AskRecord, askTitle, askWho } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
+import { queuedCtx } from "./message.actions";
 import { isConflict } from "./useInvestigationRun";
+
+const QUEUED_BTN =
+	"flex size-6 shrink-0 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40";
 
 /** After the next ask takes the slot, a click or key this soon was meant for the last one (#820). */
 const SWAP_GUARD_MS = 600;
@@ -102,7 +110,7 @@ function QueuedList({
 	const fail = (e: unknown) => setError(getErrorMessage(e));
 	return (
 		<ul className="flex flex-col gap-0.5" data-testid="dock-queued">
-			{shown.map((m) => {
+			{shown.map((m, n) => {
 				const text = edited[m.key] ?? m.text;
 				const messageId = m.messageId;
 				if (editing?.key === m.key && runId && messageId)
@@ -148,58 +156,68 @@ function QueuedList({
 							</form>
 						</li>
 					);
+				const ctx = queuedCtx(
+					!!runId && !!messageId,
+					withdraw.isPending || edit.isPending,
+					() => setEditing({ key: m.key, text }),
+					() =>
+						runId &&
+						messageId &&
+						withdraw.mutate(
+							{ id: runId, messageId },
+							{
+								onSuccess: () => setGone((g) => new Set(g).add(m.key)),
+								onError: fail,
+							},
+						),
+				);
 				return (
-					<li
-						key={m.key}
-						className="flex min-w-0 items-baseline gap-2 text-meta"
-						data-testid="composer-queued"
-					>
-						<span className="shrink-0 text-text-3">
-							Waits for the agent's next pause
-						</span>
-						<span dir="auto" className="min-w-0 flex-1 truncate text-text-2">
-							{text}
-						</span>
-						{m.attachments.length > 0 && (
-							<span className="inline-flex shrink-0 items-center gap-1 text-text-3">
-								<FileText className="size-3" aria-hidden />
-								{m.attachments.length === 1
-									? "1 file"
-									: `${m.attachments.length} files`}
+					<Surface key={m.key} id="message.queued" ctx={ctx}>
+						<li
+							className="flex min-h-7 min-w-0 items-center gap-2 text-meta"
+							data-testid="composer-queued"
+						>
+							<Mark
+								id="delivery"
+								state="queued"
+								word={`Queued ${n + 1} of ${shown.length}: waits for the agent's next pause`}
+							/>
+							<span dir="auto" className="min-w-0 flex-1 truncate text-text-2">
+								{text}
 							</span>
-						)}
-						{runId && (
-							<>
-								<Button
-									variant="text"
-									size="sm"
-									disabled={!m.messageId}
-									onClick={() => setEditing({ key: m.key, text })}
-									data-testid="queued-edit"
-								>
-									Edit
-								</Button>
-								<Button
-									variant="text"
-									size="sm"
-									disabled={withdraw.isPending || !m.messageId}
-									onClick={() =>
-										m.messageId &&
-										withdraw.mutate(
-											{ id: runId, messageId: m.messageId },
-											{
-												onSuccess: () => setGone((g) => new Set(g).add(m.key)),
-												onError: fail,
-											},
-										)
+							{m.attachments.length > 0 && (
+								<Hint
+									label={
+										m.attachments.length === 1
+											? "1 file"
+											: `${m.attachments.length} files`
 									}
-									data-testid="queued-withdraw"
 								>
-									Withdraw
-								</Button>
-							</>
-						)}
-					</li>
+									<span className="inline-flex shrink-0 items-center gap-1 text-text-3 tabular-nums">
+										<FileText className="size-3" aria-hidden />
+										{m.attachments.length}
+									</span>
+								</Hint>
+							)}
+							{runId &&
+								surfaceEntries("message.queued", "more", ctx).map((e) =>
+									"separator" in e ? null : (
+										<Hint key={e.id} label={e.label}>
+											<button
+												type="button"
+												aria-label={e.label}
+												disabled={!!e.disabled}
+												className={QUEUED_BTN}
+												data-testid={`queued-${e.id}`}
+												onClick={e.onSelect}
+											>
+												{e.icon && <e.icon className="size-3.5" aria-hidden />}
+											</button>
+										</Hint>
+									),
+								)}
+						</li>
+					</Surface>
 				);
 			})}
 			{error && (

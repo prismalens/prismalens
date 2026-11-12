@@ -16,6 +16,7 @@ import {
 	CircleHelp,
 	CircleOff,
 	Clock3,
+	CornerDownRight,
 	Flag,
 	FolderGit2,
 	FolderX,
@@ -29,6 +30,7 @@ import {
 	KeyRound,
 	Layers,
 	Link2,
+	ListEnd,
 	type LucideIcon,
 	MessageCircleQuestion,
 	Network,
@@ -142,6 +144,14 @@ export const MARKS = {
 		icon: Network,
 		label: "Threads started from it",
 		tones: { any: "muted" },
+	}),
+	/** A message sent while the agent works: queued for its next pause, or steered in now. */
+	delivery: defineMark({
+		id: "delivery",
+		icon: ListEnd,
+		icons: { steered: CornerDownRight },
+		label: "Delivery",
+		tones: { queued: "muted", steered: "info" },
 	}),
 	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
 	ask: defineMark({
