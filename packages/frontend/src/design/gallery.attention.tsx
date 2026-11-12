@@ -229,7 +229,7 @@ export const attentionGallery: GallerySection[] = [
 		title: "The event list, Unread",
 		render: () => (
 			<div
-				className="w-[360px] rounded-surface bg-surface-1"
+				className="w-full max-w-[360px] rounded-surface bg-surface-1"
 				data-testid="gallery-event-list"
 			>
 				<EventListView
