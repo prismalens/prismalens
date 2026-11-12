@@ -139,6 +139,15 @@ pre code {
   }
 }
 
+/* Find hits in the transcript (#1101 cat 13): painted with the Custom Highlight
+   API, so a hit never changes the DOM; the active one reads apart from the rest. */
+::highlight(pl-find) {
+  background-color: color-mix(in oklab, var(--warn) 32%, transparent);
+}
+::highlight(pl-find-active) {
+  background-color: var(--warn);
+  color: var(--canvas);
+}
 /* The composer's editor (#1101): the placeholder and a picked command's hint are ghost text. */
 .composer-editor {
   outline: none;

@@ -91,8 +91,8 @@ export class BoundedSseWriter {
 	 * Queue or write a NAMED frame. Named events are invisible to a client using only
 	 * `onmessage`, which is deliberate for control frames like `lag`.
 	 */
-	sendNamed(event: string, data: string): void {
-		this.push(`event: ${event}\ndata: ${data}\n\n`);
+	sendNamed(event: string, data: string, id?: string): void {
+		this.push(`${id ? `id: ${id}\n` : ""}event: ${event}\ndata: ${data}\n\n`);
 	}
 
 	private push(frame: string): void {

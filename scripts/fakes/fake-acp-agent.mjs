@@ -141,6 +141,8 @@ function run() {
 	let scriptName = defaultName;
 	let turns = 0;
 	let loaded = false;
+	/** @type {Record<string, unknown>} */
+	let respond = {};
 	let sessionId = "";
 	/** The session `session/new` or `session/load` opened; anything else is a sub-agent's. */
 	let rootSessionId = "";
@@ -240,6 +242,10 @@ function run() {
 				(_, name) => process.env[name] ?? "",
 			)
 			.replaceAll("{{cwd}}", cwd)
+			.replaceAll(
+				"{{delay-ms}}",
+				[...prompt.matchAll(/delay-ms:(\d+)/g)].at(-1)?.[1] ?? "0",
+			)
 			.replaceAll("{{prompt}}", prompt)
 			.replaceAll("{{result}}", lastResult)
 			.replaceAll(
@@ -299,7 +305,8 @@ function run() {
 	 */
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
-			if (step.delayMs) await sleep(step.delayMs);
+			// A string delay is filled from the prompt, so one session can finish at different times.
+			if (step.delayMs) await sleep(Number(fill(String(step.delayMs), prompt)));
 			// claude-agent-acp's stamp on a helper's traffic when no sub-agent sessions are declared (#1025).
 			const meta = step.parent
 				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }
@@ -395,6 +402,8 @@ function run() {
 					}));
 				if (!released) return "cancelled";
 			}
+			// Fields the prompt's answer carries, as an agent reports a turn's usage there (#1101).
+			if (step.respond) respond = { ...respond, ...step.respond };
 			if (step.stop) return step.stop;
 			// The prompt answers with a JSON-RPC error, as an agent reports a usage limit (#1024).
 			if (step.error) return { error: step.error };
@@ -535,9 +544,10 @@ function run() {
 					: (script.followUpWhen?.find((w) => prompt.includes(w.match))
 							?.steps ??
 						script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+		respond = {};
 		const forced = await play(sessionId, steps, prompt);
 		if (typeof forced === "object" && forced) return forced;
-		return { stopReason: forced ?? "end_turn" };
+		return { ...respond, stopReason: forced ?? "end_turn" };
 	}
 
 	createInterface({ input: process.stdin }).on("line", async (line) => {

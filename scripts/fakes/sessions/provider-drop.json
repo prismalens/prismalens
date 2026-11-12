@@ -1,0 +1,51 @@
+{
+	"description": "The provider connection drops mid-turn, then the retry inside the turn reaches it (#1101 simulated conditions).",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Checking the recent deploys first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_drop",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"update": {
+					"sessionUpdate": "usage_update",
+					"used": 48000,
+					"size": 200000
+				}
+			},
+			{
+				"error": {
+					"code": -32603,
+					"message": "Internal error: Connection error.",
+					"data": {
+						"errorKind": "server_error",
+						"retryAfterSeconds": 1
+					}
+				}
+			}
+		],
+		[
+			{
+				"say": "Reconnected: {{prompt}}"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Picked up after the stop: {{prompt}}"
+		}
+	]
+}

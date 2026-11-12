@@ -15,7 +15,7 @@ import { defineHarnessTool, EVERY_SUBJECT } from "./tool.js";
 
 const makeFakeTools = (recorded: unknown[] = []) => {
 	const incidentGet = defineHarnessTool({
-		name: "incident_get",
+		name: "pl_incident_get",
 		title: "Get current incident details",
 		description: "Read details of the incident currently being investigated.",
 		group: "core",
@@ -38,7 +38,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const investigationsSearch = defineHarnessTool({
-		name: "investigations_search",
+		name: "pl_investigations_search",
 		title: "Search past investigations",
 		description: "Find past investigations matching query keywords.",
 		group: "knowledge",
@@ -63,7 +63,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const runbooksList = defineHarnessTool({
-		name: "runbooks_list",
+		name: "pl_runbooks_list",
 		title: "List runbooks",
 		description: "List runbooks matching service.",
 		group: "knowledge",
@@ -84,7 +84,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const runbooksRead = defineHarnessTool({
-		name: "runbooks_read",
+		name: "pl_runbooks_read",
 		title: "Read runbook",
 		description: "Read the markdown content of a runbook.",
 		group: "core",
@@ -101,7 +101,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const evidenceRecord = defineHarnessTool({
-		name: "evidence_record",
+		name: "pl_evidence_record",
 		title: "Record evidence",
 		description: "Record a verified piece of evidence.",
 		group: "record",
@@ -119,7 +119,7 @@ const makeFakeTools = (recorded: unknown[] = []) => {
 	});
 
 	const hypothesisRecord = defineHarnessTool({
-		name: "hypothesis_record",
+		name: "pl_hypothesis_record",
 		title: "Record hypothesis",
 		description: "Record a hypothesis being tested.",
 		group: "record",
@@ -157,13 +157,13 @@ describe("runView", () => {
 		const tools = makeFakeTools();
 		const view = runView(tools, { search: true });
 		const deferredNames = view.deferred.map((t) => t.name).sort();
-		expect(deferredNames).toEqual(["investigations_search", "runbooks_list"]);
+		expect(deferredNames).toEqual(["pl_investigations_search", "pl_runbooks_list"]);
 
 		const directNames = view.direct.map((t) => t.name);
-		expect(directNames).toContain("incident_get");
-		expect(directNames).toContain("runbooks_read");
-		expect(directNames).toContain("evidence_record");
-		expect(directNames).toContain("hypothesis_record");
+		expect(directNames).toContain("pl_incident_get");
+		expect(directNames).toContain("pl_runbooks_read");
+		expect(directNames).toContain("pl_evidence_record");
+		expect(directNames).toContain("pl_hypothesis_record");
 		expect(directNames).toContain(TOOLS_SEARCH);
 		expect(directNames).toContain(TOOLS_CALL);
 
@@ -173,8 +173,8 @@ describe("runView", () => {
 	});
 });
 
-describe("tools_search", () => {
-	it("returns investigations_search first with inputSchema when query matches past investigations", async () => {
+describe("pl_tools_search", () => {
+	it("returns pl_investigations_search first with inputSchema when query matches past investigations", async () => {
 		const tools = makeFakeTools();
 		const view = runView(tools, { search: true });
 		const searchTool = view.direct.find((t) => t.name === TOOLS_SEARCH);
@@ -193,7 +193,7 @@ describe("tools_search", () => {
 		const parsed = resultValue(call.output);
 		expect(parsed.tools).toBeDefined();
 		expect(parsed.tools.length).toBeGreaterThan(0);
-		expect(parsed.tools[0].name).toBe("investigations_search");
+		expect(parsed.tools[0].name).toBe("pl_investigations_search");
 		expect(parsed.tools[0].inputSchema).toBeDefined();
 	});
 
@@ -216,7 +216,7 @@ describe("tools_search", () => {
 		const parsed = resultValue(call.output);
 		expect(parsed.tools).toEqual([]);
 		expect(parsed.available).toEqual(
-			expect.arrayContaining(["investigations_search", "runbooks_list"]),
+			expect.arrayContaining(["pl_investigations_search", "pl_runbooks_list"]),
 		);
 	});
 });
@@ -225,27 +225,27 @@ describe("resolveCall", () => {
 	it("refuses a deferred tool called directly by name (returns undefined)", () => {
 		const tools = makeFakeTools();
 		const view = runView(tools, { search: true });
-		const resolved = resolveCall(view, "investigations_search", { query: "x" });
+		const resolved = resolveCall(view, "pl_investigations_search", { query: "x" });
 		expect(resolved).toBeUndefined();
 	});
 
-	it("resolves tools_call to target tool with arguments", () => {
+	it("resolves pl_tools_call to target tool with arguments", () => {
 		const tools = makeFakeTools();
 		const view = runView(tools, { search: true });
 		const resolved = resolveCall(view, TOOLS_CALL, {
-			name: "investigations_search",
+			name: "pl_investigations_search",
 			arguments: { query: "x" },
 		});
 		expect(resolved).toBeDefined();
-		expect(resolved?.tool.name).toBe("investigations_search");
+		expect(resolved?.tool.name).toBe("pl_investigations_search");
 		expect(resolved?.args).toEqual({ query: "x" });
 	});
 
-	it("does not resolve tools_call naming evidence_record (falls back to tools_call)", async () => {
+	it("does not resolve pl_tools_call naming pl_evidence_record (falls back to pl_tools_call)", async () => {
 		const tools = makeFakeTools();
 		const view = runView(tools, { search: true });
 		const resolved = resolveCall(view, TOOLS_CALL, {
-			name: "evidence_record",
+			name: "pl_evidence_record",
 			arguments: { id: "e1" },
 		});
 		expect(resolved).toBeDefined();
@@ -266,11 +266,25 @@ describe("resolveCall", () => {
 		const resolved = resolveCall(view, "non_existent_tool", {});
 		expect(resolved).toBeUndefined();
 	});
+
+	it("a pre-pl_ bare name (incident_get) is an unknown tool (#1101)", () => {
+		const view = runView(makeFakeTools(), { search: false });
+		expect(resolveCall(view, "incident_get", { number: 42 })).toBeUndefined();
+	});
+
+	it("pl_tools_call with a bare target name runs the wrapper itself, never the target (#1101)", () => {
+		const view = runView(makeFakeTools(), { search: true });
+		const resolved = resolveCall(view, TOOLS_CALL, {
+			name: "investigations_search",
+			arguments: { query: "DB" },
+		});
+		expect(resolved?.tool.name).toBe(TOOLS_CALL);
+	});
 });
 
 describe("act tools stay out of search (#1024)", () => {
 	const act = defineHarnessTool({
-		name: "thread_start",
+		name: "pl_thread_start",
 		title: "Start a thread",
 		description: "Starts a thread.",
 		group: "knowledge",
@@ -280,7 +294,7 @@ describe("act tools stay out of search (#1024)", () => {
 		run: async () => ({ value: { started: true } }),
 	});
 	const read = defineHarnessTool({
-		name: "thread_roster",
+		name: "pl_thread_roster",
 		title: "Roster",
 		description: "Reads the roster.",
 		group: "knowledge",
@@ -292,24 +306,24 @@ describe("act tools stay out of search (#1024)", () => {
 
 	it("lists an act tool directly and defers only the read one", () => {
 		const view = runView([act, read], { search: true });
-		expect(view.direct.map((t) => t.name)).toContain("thread_start");
-		expect(view.deferred.map((t) => t.name)).toEqual(["thread_roster"]);
+		expect(view.direct.map((t) => t.name)).toContain("pl_thread_start");
+		expect(view.deferred.map((t) => t.name)).toEqual(["pl_thread_roster"]);
 	});
 
-	it("never runs an act tool through tools_call", () => {
+	it("never runs an act tool through pl_tools_call", () => {
 		const view = runView([act, read], { search: true });
 		const resolved = resolveCall(view, TOOLS_CALL, {
-			name: "thread_start",
+			name: "pl_thread_start",
 			arguments: {},
 		});
 		expect(resolved?.tool.name).toBe(TOOLS_CALL);
-		expect(resolveCall(view, TOOLS_CALL, { name: "thread_roster" })?.tool.name).toBe(
-			"thread_roster",
+		expect(resolveCall(view, TOOLS_CALL, { name: "pl_thread_roster" })?.tool.name).toBe(
+			"pl_thread_roster",
 		);
 	});
 
 	it("auto-allows act tools in the agent's own prompt, since PrismaLens gates them itself", () => {
 		const view = runView([act, read], { search: false });
-		expect(autoAllowed(view)).toEqual(["thread_start", "thread_roster"]);
+		expect(autoAllowed(view)).toEqual(["pl_thread_start", "pl_thread_roster"]);
 	});
 });

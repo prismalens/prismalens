@@ -20,6 +20,7 @@ import {
 	InvestigationSchema,
 	RunChoiceSchema,
 } from "./investigation.js";
+import { FailureModeSchema, NextTrySchema } from "./provider-failure.js";
 import { ThreadRowPrSchema } from "./pull-request.js";
 import { WorkInSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
@@ -133,9 +134,19 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 	hasDraft: z.boolean().optional(),
 	/** The thread's newest linked pull request, for the hover card and the row glyph (#1024). */
 	pr: ThreadRowPrSchema.optional(),
-	/** The thread waits on its agent's usage limit (#1024 surface F); null otherwise. */
+	/**
+	 * The thread waits on its provider (#1024 surface F, #1101): Limited with its reset
+	 * or next try, or Blocked (`stopState(mode)`) with no timer; null otherwise.
+	 */
 	limit: z
-		.object({ resetsAt: DateStringSchema.nullable() })
+		.object({
+			resetsAt: DateStringSchema.nullable(),
+			mode: FailureModeSchema.optional(),
+			/** When PrismaLens tries again; absent when it will not by itself. */
+			nextAttemptAt: DateStringSchema.optional(),
+			/** With no known reset, `nextAttemptAt` is this try: "next try 08:37 (try 2 of 7)". */
+			nextTry: NextTrySchema.optional(),
+		})
 		.nullable()
 		.optional(),
 	/** Automatic updates are paused until a person acts; the row lists under Waiting for you. */

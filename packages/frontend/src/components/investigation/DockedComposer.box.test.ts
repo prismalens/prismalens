@@ -388,7 +388,10 @@ describe("DockedComposer messages (#743)", () => {
 
 		await act(async () => fail(new Error("Internal server error")));
 		expect(getText(q("composer-input"))).toBe("why the pool?");
-		expect(q("composer-refusal").textContent).toBe("Internal server error");
+		// A bare server status reads as a sentence with its next step (#1101).
+		expect(q("composer-refusal").textContent).toBe(
+			"PrismaLens could not finish that. Try again; if it keeps happening, restart it with pl up.",
+		);
 	});
 });
 

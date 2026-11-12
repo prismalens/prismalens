@@ -29,6 +29,7 @@ import { appGallery } from "@/design/gallery.app";
 import { composerGallery } from "@/design/gallery.composer";
 import { kitGallery } from "@/design/gallery.kit";
 import { panelGallery } from "@/design/gallery.panel";
+import { transcriptGallery } from "@/design/gallery.transcript";
 import type { TranscriptItem } from "@/lib/investigation-events";
 
 export const Route = createFileRoute("/_design")({
@@ -44,6 +45,7 @@ const LANE_SECTIONS = [
 	...composerGallery,
 	...panelGallery,
 	...appGallery,
+	...transcriptGallery,
 ];
 
 const NOW = Date.parse("2026-11-05T12:00:00Z");

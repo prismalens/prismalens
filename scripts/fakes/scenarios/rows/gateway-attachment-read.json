@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "attachment_read",
+				"name": "pl_attachment_read",
 				"ok": true,
 				"outputHas": "ScenarioAttachmentText"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-attachment-read]",
-				"toolName": "$gw:attachment_read",
+				"toolName": "$gw:pl_attachment_read",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:attachment_read",
+						"name": "$gw:pl_attachment_read",
 						"arguments": {
 							"id": "00000000-0000-4000-8000-0000000000d1"
 						}
@@ -34,13 +34,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-attachment-read]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "read attachment"
 						}
@@ -51,15 +51,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-attachment-read]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "attachment_read"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_attachment_read"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "attachment_read",
+							"name": "pl_attachment_read",
 							"arguments": {
 								"id": "00000000-0000-4000-8000-0000000000d1"
 							}

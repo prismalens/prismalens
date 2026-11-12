@@ -1116,7 +1116,8 @@ async function runFollowUp(
 					? (data.thread?.repos.find((r) => !r.plain)?.url ?? null)
 					: (data.thread?.repos.find((r) => r.plain)?.url ?? null),
 			)),
-			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
+			// Every run, an older one's follow-up too, serves as `prismalens` now (#1101).
+			toolsServer: newGatewayServerName(),
 			...(recorded.compare ? { compare: recorded.compare } : {}),
 		};
 		seqStart = (await logWorkspaceSetup(id, io, ports)) ?? seqStart;
@@ -2613,7 +2614,7 @@ export async function rebuildWorkspace(
 			);
 		const again = await folderWorkspace(runDirFor(investigationId), ws.cwd);
 		if (again.layout !== "folder") throw new Error(again.note);
-		return { ...again, toolsServer: ws.toolsServer };
+		return { ...again, toolsServer: newGatewayServerName() };
 	}
 	if (ws.layout === "in_place") return reopenCheckout(ws, folder);
 	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.

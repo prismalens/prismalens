@@ -68,6 +68,8 @@ export default defineConfig({
 			],
 			thresholds: {
 				...PACKAGE_FLOOR,
+				// #1101 categories 12-14: the thread window, find and the resumable stream
+				"src/modules/investigations/thread-window/**": NEW_CODE_THRESHOLD,
 				// #1024 surface F: PR status, cron and the thread lifecycle
 				"src/modules/threads/pr-feed.ts": NEW_CODE_THRESHOLD,
 				"src/modules/threads/pr-feed.service.ts": NEW_CODE_THRESHOLD,

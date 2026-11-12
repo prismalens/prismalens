@@ -9,6 +9,7 @@ import {
 	AgentCommandsSchema,
 	CanonicalEventSchema,
 	type JobMessageContext,
+	plToolName,
 	type Quote,
 	quoteMarkdown,
 	REFERENCE_KINDS,
@@ -553,7 +554,10 @@ export class ReferencesService {
 						const rel = typeof v === "string" ? relativeTo(root, v) : null;
 						if (rel) keys.add(refKey({ kind: "file", id: rel }));
 					}
-			if (e.kind === "harness_tool_call" && e.name === "thread_read") {
+			if (
+				e.kind === "harness_tool_call" &&
+				plToolName(e.name) === "pl_thread_read"
+			) {
 				const t = (e.input as { threadId?: unknown } | undefined)?.threadId;
 				if (typeof t === "string") keys.add(refKey({ kind: "thread", id: t }));
 			}

@@ -79,7 +79,7 @@ describe("attachments too big to inline reach the agent as a resource_link (#102
 		};
 	};
 
-	it("without a run-scoped folder, links prismalens://attachment/<id> for attachment_read", () => {
+	it("without a run-scoped folder, links prismalens://attachment/<id> for pl_attachment_read", () => {
 		const parts = promptParts("read this", [pdf()]);
 		expect(parts[1]).toEqual({
 			type: "resource_link",
@@ -89,7 +89,7 @@ describe("attachments too big to inline reach the agent as a resource_link (#102
 			size: 14,
 		});
 		expect(parts[0]).toMatchObject({ type: "text" });
-		expect((parts[0] as { text: string }).text).toContain("attachment_read");
+		expect((parts[0] as { text: string }).text).toContain("pl_attachment_read");
 	});
 
 	it("with the run-scoped folder, copies the file there and links its file:// URI", () => {

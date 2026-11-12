@@ -23,7 +23,7 @@ export interface ArtifactsData {
 export function artifactTools(data: ArtifactsData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			name: "artifact_publish",
+			name: "pl_artifact_publish",
 			title: "Show the operator an HTML page",
 			description: withRules(
 				`Publish one self-contained HTML page into this run, for something prose shows badly: a table of findings, a timeline, a chart drawn in inline SVG. Inline CSS and SVG only: scripts do not run and nothing is fetched, so external images, fonts and links will not load. Up to ${ARTIFACT_HTML_CHARS} characters. The operator sees it where you published it and can open it larger. Use it for a table, a timeline or a chart.`,

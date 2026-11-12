@@ -246,7 +246,7 @@ const INPUT = ask({
 });
 const SECRET = ask({
 	kind: "secret",
-	source: { kind: "tool", tool: "secret_request", requestId: "r" },
+	source: { kind: "tool", tool: "pl_secret_request", requestId: "r" },
 	title: "GRAFANA_TOKEN: to read the dashboards",
 });
 const HOST = ask({

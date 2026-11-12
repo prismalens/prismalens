@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "incidents_similar",
+				"name": "pl_incidents_similar",
 				"ok": true,
 				"outputHas": "ScenarioSimilarTitle"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-incidents-similar]",
-				"toolName": "$gw:incidents_similar",
+				"toolName": "$gw:pl_incidents_similar",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:incidents_similar",
+						"name": "$gw:pl_incidents_similar",
 						"arguments": {}
 					}
 				]
@@ -32,13 +32,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-incidents-similar]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "similar incidents"
 						}
@@ -49,15 +49,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-incidents-similar]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "incidents_similar"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_incidents_similar"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "incidents_similar",
+							"name": "pl_incidents_similar",
 							"arguments": {}
 						}
 					}

@@ -93,7 +93,7 @@ function work(s: number): CanonicalEvent[] {
 			kind: "harness_tool_call",
 			...base(s + 3),
 			server: "prismalens-1",
-			name: "incidents_similar",
+			name: "pl_incidents_similar",
 			at: at(s + 3),
 			turn: "first",
 			output: "INC-7 retry storm\nmore lines",
@@ -104,7 +104,7 @@ function work(s: number): CanonicalEvent[] {
 			result: {
 				name: "mcp__prismalens-1__incidents_similar",
 				toolCallId: "c-pl",
-				source: "incidents_similar",
+				source: "pl_incidents_similar",
 				ok: true,
 				preview: "INC-7",
 			},

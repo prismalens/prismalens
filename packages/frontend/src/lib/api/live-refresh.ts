@@ -38,6 +38,14 @@ function subscribeConnected(l: () => void) {
 	return () => listeners.delete(l);
 }
 
+/** Cuts the stream's wait before its next attempt short; set while it waits. */
+let retrySoon: (() => void) | null = null;
+
+/** The connection dock's Retry now (#1101): the next attempt starts at once. */
+export function reconnectNow(): void {
+	retrySoon?.();
+}
+
 /** `refetchInterval` for a list: off while hints arrive, polling while they can't. */
 export function useLiveRefreshInterval(): number | false {
 	const up = useSyncExternalStore(
@@ -143,7 +151,15 @@ export function useLiveChanges(): void {
 				}
 				setConnected(false);
 				if (signal.aborted) break;
-				await new Promise((r) => setTimeout(r, RETRY_MS));
+				await new Promise<void>((r) => {
+					const t = setTimeout(done, RETRY_MS);
+					function done() {
+						clearTimeout(t);
+						retrySoon = null;
+						r();
+					}
+					retrySoon = done;
+				});
 				first = false;
 			}
 		})();
