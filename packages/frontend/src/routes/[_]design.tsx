@@ -27,6 +27,7 @@ import {
 } from "@/components/shell/ThreadList";
 import { appGallery } from "@/design/gallery.app";
 import { composerGallery } from "@/design/gallery.composer";
+import { kitGallery } from "@/design/gallery.kit";
 import { listGallery } from "@/design/gallery.list";
 import { panelGallery } from "@/design/gallery.panel";
 import type { TranscriptItem } from "@/lib/investigation-events";
@@ -40,6 +41,7 @@ export const Route = createFileRoute("/_design")({
 
 /** Each lane adds its states to its own file, so lanes never edit this one (#1024). */
 const LANE_SECTIONS = [
+	...kitGallery,
 	...composerGallery,
 	...panelGallery,
 	...appGallery,
