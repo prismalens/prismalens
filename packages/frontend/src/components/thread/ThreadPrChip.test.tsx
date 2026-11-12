@@ -70,11 +70,8 @@ describe("ThreadPrChip (#1101)", () => {
 		const chip = container.querySelector<HTMLButtonElement>(
 			'[data-testid="thread-pr-chip"]',
 		);
-		expect(chip).not.toBeNull();
-		expect(chip?.textContent).toContain("#412");
-		expect(chip?.textContent).toContain("Failing");
-		expect(chip?.textContent).toContain("7/10 checks");
-		expect(chip?.textContent).toContain("+3");
+		// cf58d26f1 made the chip the kit Status, then the number, passing/total and the rest.
+		expect(chip?.textContent).toBe("Failing#4127/10+3");
 
 		await act(async () => {
 			chip?.click();
