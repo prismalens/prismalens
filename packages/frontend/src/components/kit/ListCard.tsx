@@ -45,7 +45,7 @@ export function ListCard({
 	selected?: boolean;
 	testId?: string;
 }) {
-	const heading = <span className="truncate">{title}</span>;
+	const heading = <span className="block min-w-0 truncate">{title}</span>;
 	// The phone rule gives every button 48 px (tokens.css, unlayered); the
 	// stretched ::after already makes the whole card the target.
 	const stretch =
