@@ -4,6 +4,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { AlertsBlank } from "@/components/alerts/AlertsBlank";
+import { Help } from "@/components/kit";
 import {
 	NewScheduleAction,
 	SchedulesSection,
@@ -26,18 +27,19 @@ function Automation() {
 		<div className="flex h-full min-h-0 flex-col" data-testid="automation-page">
 			<PageHeader title="Automation" />
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto flex max-w-[52rem] flex-col gap-8 px-4 py-6">
+				<div className="flex flex-col gap-6 px-4 pt-3 pb-6">
 					<section
 						aria-labelledby="auto-schedules"
 						className="flex flex-col gap-2"
 					>
-						<div className="flex items-center gap-3">
+						<div className="flex items-center gap-1.5">
 							<h2 id="auto-schedules" className="text-heading">
 								Schedules
 							</h2>
-							<span className="text-meta text-text-3">
-								The agent runs a prompt on a timetable.
-							</span>
+							<Help
+								about="Schedules"
+								text="The agent runs a prompt on a timetable."
+							/>
 							<span className="ml-auto">
 								<NewScheduleAction />
 							</span>
@@ -48,13 +50,14 @@ function Automation() {
 						aria-labelledby="auto-alerts"
 						className="flex flex-col gap-2"
 					>
-						<div className="flex items-center gap-3">
+						<div className="flex items-center gap-1.5">
 							<h2 id="auto-alerts" className="text-heading">
 								Alerts and webhooks
 							</h2>
-							<span className="text-meta text-text-3">
-								Each alert or event starts a thread.
-							</span>
+							<Help
+								about="Alerts and webhooks"
+								text="Each alert or event starts a thread."
+							/>
 							<Link
 								to="/alerts"
 								data-testid="automation-alerts"
@@ -64,21 +67,23 @@ function Automation() {
 							</Link>
 						</div>
 						{last ? (
-							<div className="flex flex-col gap-2">
+							<div className="flex flex-col gap-1">
 								<p
-									className="text-body text-text-1"
+									className="flex items-center gap-2 text-body text-text-1"
 									data-testid="auto-receiving"
 								>
-									Last delivery {formatDayClock(last.at, now)}, {last.accepted}{" "}
-									accepted.
+									Last delivery {formatDayClock(last.at, now)}
+									<span className="text-text-3 tabular-nums">
+										{last.accepted} accepted
+									</span>
 								</p>
 								<details className="text-body text-text-2">
-									<summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-control bg-surface-2 px-3 text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3 [&::-webkit-details-marker]:hidden">
+									<summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-control px-1 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 [&::-webkit-details-marker]:hidden">
 										<ChevronRight
 											aria-hidden
 											className="size-3.5 transition-transform duration-150 [details[open]_&]:rotate-90"
 										/>
-										Show the webhook address and token
+										Webhook address
 									</summary>
 									<AlertsBlank compact />
 								</details>
