@@ -67,9 +67,10 @@ const STATUS: Record<
 		text: "text-text-2",
 		Icon: null,
 	},
+	// Limited waits on a clock, never on the user: warn on the icon only, never danger (sheet §10).
 	limited: {
 		word: "Limited",
-		icon: "text-text-2",
+		icon: "text-warn",
 		text: "text-text-2",
 		Icon: Clock3,
 	},
