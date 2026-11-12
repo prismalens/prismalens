@@ -152,6 +152,7 @@ describe("the surface and action registry (#1125)", () => {
 			})
 			.map(([f]) => f)
 			.sort();
-		expect(inline).toEqual([...INLINE_MENUS].sort());
+		// A file may only leave the list; one a lower layer already fixed can linger until merge-up.
+		expect(inline.filter((f) => !INLINE_MENUS.includes(f))).toEqual([]);
 	});
 });
