@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import {
+	ASK_REFUSAL,
 	type AskAnswer,
 	AskAnswerSchema,
 	type AskClosedOutcome,
@@ -119,8 +120,7 @@ export class AsksService implements AsksPort {
 				"Allow for the tree is for a PrismaLens tool's ask.",
 			);
 		// A run's bearer token never answers anything.
-		if (by.via === "run")
-			throw new AskForbidden("Only the owner can answer this.");
+		if (by.via === "run") throw new AskForbidden(ASK_REFUSAL.run);
 		const result = this.dispatch.answerAsk(threadId, askId, answer);
 		if (result === "invalid")
 			throw new AskInvalid("That answer does not fit the ask; it still waits.");
@@ -228,8 +228,8 @@ export class AsksService implements AsksPort {
 		if (ask.kind === "secret")
 			throw new AskInvalid("A secret is answered through its own endpoint.");
 		// A tool's ask always needs the host (ADR 0004 §6); a run's bearer never answers.
-		if (by.via === "run" || !by.host)
-			throw new AskForbidden("Only the owner can answer this.");
+		if (by.via === "run") throw new AskForbidden(ASK_REFUSAL.run);
+		if (!by.host) throw new AskForbidden(ASK_REFUSAL.toolAsk);
 		if (answer.kind !== "decline" && answer.kind !== ask.kind)
 			throw new AskInvalid(`This ask takes a ${ask.kind} answer.`);
 		if (await this.expireIfDue(row))

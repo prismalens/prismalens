@@ -233,7 +233,7 @@ beforeEach(async () => {
 
 describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	it("Given Allow within limits, Then it starts a child at once, makes the caller a root, and records it on the parent", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const v = value(await start(root.id));
 		expect(v).toMatchObject({ status: "started", role: "db", number: 2, link: `/threads/${v.childId}` });
@@ -247,7 +247,7 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given the same requestId twice, Then one thread starts and the retry gets the same answer", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const a = value(await start(root.id, { requestId: "r1" }));
 		const b = value(await start(root.id, { requestId: "r1" }));
@@ -256,7 +256,7 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given an incident's thread, Then its child is about the incident's service, never the incident", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const service = await prisma.service.create({ data: { name: `svc-${randomUUID()}` } });
 		const incident = await prisma.incident.create({
 			data: { number: Math.floor(Math.random() * 1e6), title: "boom", severity: "high", serviceId: service.id },
@@ -271,7 +271,7 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given a wider access than the parent's, Then the child is clamped to the parent's and told so", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread({ accessLevel: "auto-edits" });
 		const v = value(await start(root.id, { access: "full-access" }));
 		expect(v.access).toBe("auto-edits");
@@ -280,20 +280,20 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given each cap, Then the start refuses with limit_reached and names its Settings row", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 1, children: 1, perTree: 3 });
+		await settings.set({ agentsStartThreads: "allow", depth: 1, children: 1, perTree: 3, turnsPerDay: 200 });
 		const root = await thread();
 		const child = value(await startIn(root.id));
 		const depth = await startIn(child.childId as string);
 		expect(isFailure(depth) && depth.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Thread depth") });
 		const children = await startIn(root.id);
-		expect(isFailure(children) && children.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Children per thread") });
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 5, perTree: 2 });
+		expect(isFailure(children) && children.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Threads per thread") });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 5, perTree: 2, turnsPerDay: 200 });
 		const perTree = await startIn(root.id);
 		expect(isFailure(perTree) && perTree.failure).toMatchObject({ error: "limit_reached", next: expect.stringContaining("Threads per tree") });
 	});
 
 	it("Given Never, Then it refuses as disabled", async () => {
-		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const r = await start(root.id);
 		expect(isFailure(r) && r.failure.error).toBe("disabled");
@@ -381,7 +381,7 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given a crash after a stop landed, Then the rerun reports the stop instead of failing", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		value(await startIn(root.id, { role: "db" }));
 		const stop = { id: "db", reason: "replaced", requestId: "stop-1" };
@@ -395,21 +395,21 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given concurrent starts in one tree, Then each cap still holds", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 1, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 1, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const outcomes = await Promise.all([1, 2, 3].map(() => startIn(root.id)));
 		expect(outcomes.filter((o) => !isFailure(o))).toHaveLength(1);
 		expect(outcomes.filter((o) => isFailure(o) && o.failure.error === "limit_reached")).toHaveLength(2);
 		expect(await prisma.investigation.count({ where: { parentId: root.id } })).toBe(1);
 		// The same race on one role leaves one running child with it.
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const other = await thread();
 		await Promise.all([1, 2, 3].map(() => startIn(other.id, { role: "db" })));
 		expect(await prisma.investigation.count({ where: { parentId: other.id, role: "db" } })).toBe(1);
 	});
 
 	it("Given concurrent approvals in one tree, Then the cap holds at execution too", async () => {
-		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10 });
+		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		for (const role of ["a", "b", "c"]) value(await start(root.id, { role }));
 		const cards = await asks.pending(root.id);
@@ -456,7 +456,7 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 		live.add(root.id);
 		value(await start(root.id));
 		const [open] = await asks.pending(root.id);
-		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "never", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		await asks.decide(open?.askId as string, "approve");
 		expect(starts).toHaveLength(0);
 		expect((await prisma.pendingAction.findFirstOrThrow()).state).toBe("failed");
@@ -464,7 +464,7 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	});
 
 	it("Given a cap filled before approval, Then the approved action fails with limit_reached", async () => {
-		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10 });
+		await settings.set({ agentsStartThreads: "ask", depth: 2, children: 1, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		value(await start(root.id, { role: "a" }));
 		value(await start(root.id, { role: "b" }));
@@ -488,7 +488,7 @@ describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 
 describe("messages, roster and wake on finish (#1024 spec F)", () => {
 	async function family() {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const a = value(await start(root.id, { role: "api" }));
 		const b = value(await start(root.id, { role: "db" }));
@@ -524,6 +524,8 @@ describe("messages, roster and wake on finish (#1024 spec F)", () => {
 
 	it("stops a tree's messages at TREE_MESSAGE_CAP with limit_reached and stores no more", async () => {
 		const f = await family();
+		// The daily turns cap sits above the tree's own here, so the tree cap is what stops it.
+		await settings.set({ ...(await settings.get()), turnsPerDay: 1000 });
 		live.add(f.db);
 		await prisma.threadMessage.deleteMany();
 		await prisma.threadMessage.createMany({
@@ -661,7 +663,7 @@ describe("proposals (#1024 spec F)", () => {
 });
 
 describe("tree edges (#1024 spec F)", () => {
-	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 	const fails = (o: ToolOutcome) => (isFailure(o) ? o.failure : null);
 
 	it("links each kind of thread where the app shows it, and rings each status", () => {
@@ -883,7 +885,7 @@ describe("the act gate's edges (#1024 spec F)", () => {
 	it("runs nothing for an unknown row, answers a done row again, and survives an executor that throws", async () => {
 		expect(fails(await actions.execute(randomUUID()))?.error).toBe("not_found");
 		const root = await thread();
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		value(await start(root.id, { requestId: "ok" }));
 		const done = await prisma.pendingAction.findFirstOrThrow({ where: { requestId: "ok" } });
 		expect(value(await actions.execute(done.id)).status).toBe("started");
@@ -1010,7 +1012,7 @@ describe("applying proposals (#1024 spec F)", () => {
 });
 
 describe("one runner per action, reused roles and parked messages (#1024 spec F)", () => {
-	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 
 	it("Given two runners of one approved action at once, Then one thread starts", async () => {
 		const root = await thread();
@@ -1171,7 +1173,7 @@ describe("proposals are claimed before they apply (#1024 spec F)", () => {
 });
 
 describe("records follow their threads, and nothing waits forever (#1024 spec F)", () => {
-	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+	const allow = () => settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 
 	it("Given a thread is deleted, Then its inbox, waits, cards, actions and allowance go too, and its sent messages stay", async () => {
 		await allow();
@@ -1244,7 +1246,7 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 	it("Given a wait on a start that ended without a thread, Then the parent still wakes when the rest finish", async () => {
 		const root = await thread();
 		value(await start(root.id, { requestId: "lapses", role: "x" }));
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const child = value(await startIn(root.id, { role: "db" })).childId as string;
 		value(await tree.wait(root.id, ["lapses", "db"], "all"));
 		await prisma.pendingAction.updateMany({ where: { requestId: "lapses" }, data: { state: "expired" } });
@@ -1345,7 +1347,7 @@ describe("rows a pass puts off never hold back newer ones (#1024 spec F)", () =>
 	});
 
 	it("Given 100 results that cannot wake their parent yet, Then a newer message to a running thread is still delivered", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const done = value(await startIn(root.id, { role: "done" })).childId as string;
 		const busy = value(await startIn(root.id, { role: "busy" })).childId as string;
@@ -1389,7 +1391,7 @@ describe("plain folders and overlapping deliveries (#1024 spec F)", () => {
 	});
 
 	it("Given two delivery passes at once, Then a queued message reaches its receiver once", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const db = value(await startIn(root.id, { role: "db" })).childId as string;
 		await prisma.investigation.update({ where: { id: db }, data: { status: "running" } });
@@ -1414,7 +1416,7 @@ describe("one failing delivery never stops the rest (#1024 spec F)", () => {
 	};
 
 	it("Given a result whose reopen throws, Then a later message in the same pass is still delivered, and the failing one is put off", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const child = value(await startIn(root.id, { role: "db" })).childId as string;
 		const peer = value(await startIn(root.id, { role: "peer" })).childId as string;
@@ -1467,7 +1469,7 @@ describe("one failing delivery never stops the rest (#1024 spec F)", () => {
 
 describe("a reopen that keeps throwing is given up (#1024 spec F)", () => {
 	it("Given a result whose reopen always throws, Then it stops after 30 tries and the parent stops waiting", async () => {
-		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 });
+		await settings.set({ agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 });
 		const root = await thread();
 		const child = value(await startIn(root.id, { role: "db" })).childId as string;
 		value(await tree.wait(root.id, ["db"], "any"));
@@ -1495,5 +1497,105 @@ describe("a reopen that keeps throwing is given up (#1024 spec F)", () => {
 		expect(await prisma.threadWait.count({ where: { waiterId: root.id } })).toBe(0);
 		// The result itself is kept for the parent's next run.
 		expect(await prisma.threadMessage.count({ where: { requestId: "throws", state: "queued" } })).toBe(1);
+	});
+});
+
+describe("turnsPerDay limit and delegate default (#1101 cat 18)", () => {
+	it("refuses thread_start with limit_reached and next naming Turns a day when daily cap reached; message from 25h ago does not count", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 3, children: 15, perTree: 20, turnsPerDay: 10 });
+		const root = await thread();
+
+		const now = Date.now();
+		const hourAgo = new Date(now - 60 * 60 * 1000);
+		const oldDate = new Date(now - 25 * 60 * 60 * 1000);
+
+		// Seed a message from 25 hours ago (does not count)
+		await prisma.threadMessage.create({
+			data: {
+				rootId: root.id,
+				fromId: root.id,
+				toId: root.id,
+				type: "message",
+				text: "old",
+				requestId: randomUUID(),
+				createdAt: oldDate,
+			},
+		});
+
+		// Seed 9 messages from 1 hour ago
+		for (let i = 0; i < 9; i++) {
+			await prisma.threadMessage.create({
+				data: {
+					rootId: root.id,
+					fromId: root.id,
+					toId: root.id,
+					type: "message",
+					text: `recent-${i}`,
+					requestId: randomUUID(),
+					createdAt: hourAgo,
+				},
+			});
+		}
+
+		// 9 messages created today + 1 old message. Limit is 10.
+		// So starting 1 child succeeds (total starts + messages today reaches 10).
+		const outcome1 = await start(root.id, { role: "worker-1" });
+		expect(isFailure(outcome1)).toBe(false);
+
+		// Now we have 9 messages + 1 child start today = 10 turns today.
+		// Next thread_start attempt should be refused with limit_reached
+		const outcome2 = await start(root.id, { role: "worker-2" });
+		expect(isFailure(outcome2)).toBe(true);
+		if (isFailure(outcome2)) {
+			expect(outcome2.failure.error).toBe("limit_reached");
+			expect(outcome2.failure.next).toContain("Turns a day");
+		}
+	});
+
+	it("passes delegate useDefault from HARNESS setting to threads.start, but args.agent wins over it", async () => {
+		await settings.set({ agentsStartThreads: "allow", depth: 3, children: 10, perTree: 10, turnsPerDay: 100 });
+		const root = await thread({ harness: "claude-code", model: "claude-3-7-sonnet" });
+
+		// Save delegate default in HARNESS setting row
+		await prisma.setting.upsert({
+			where: { key: "HARNESS" },
+			create: {
+				key: "HARNESS",
+				type: "json",
+				category: "ai",
+				value: JSON.stringify({
+					useDefaults: {
+						delegate: { harness: "codex", model: "gpt-x" },
+					},
+				}),
+			},
+			update: {
+				value: JSON.stringify({
+					useDefaults: {
+						delegate: { harness: "codex", model: "gpt-x" },
+					},
+				}),
+			},
+		});
+
+		// Start without agent: passes harness: "codex", model: "gpt-x"
+		starts.length = 0;
+		const out1 = await start(root.id, { role: "delegate-auto" });
+		expect(isFailure(out1)).toBe(false);
+		expect(starts.length).toBe(1);
+		expect(starts[0]?.input).toMatchObject({
+			harness: "codex",
+			model: "gpt-x",
+		});
+
+		// Start with args.agent: the agent's own choice wins
+		starts.length = 0;
+		const out2 = await start(root.id, { role: "delegate-custom", agent: "gemini-cli", model: "gemini-2.0-flash" });
+		expect(isFailure(out2)).toBe(false);
+		expect(starts.length).toBe(1);
+		expect(starts[0]?.input).toMatchObject({
+			harness: "gemini-cli",
+			model: "gemini-2.0-flash",
+		});
 	});
 });

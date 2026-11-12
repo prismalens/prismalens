@@ -71,6 +71,8 @@ export default defineConfig({
 				// #1101 categories 3 and 4: attention rules and presence leases
 				"src/modules/attention/attention-rules.ts": NEW_CODE_THRESHOLD,
 				"src/modules/attention/presence.ts": NEW_CODE_THRESHOLD,
+				// #1101 categories 17-18: the Usage view and keyboard remaps
+				"src/modules/usage/**": NEW_CODE_THRESHOLD,
 				// #1101 categories 12-14: the thread window, find and the resumable stream
 				"src/modules/investigations/thread-window/**": NEW_CODE_THRESHOLD,
 				// #1024 surface F: PR status, cron and the thread lifecycle

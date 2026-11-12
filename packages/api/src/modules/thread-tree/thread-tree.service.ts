@@ -35,6 +35,7 @@ import {
 	type ToolOutcome,
 } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
+import { storedUseDefault } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -184,6 +185,8 @@ const cap = (text: string, n = THREAD_MESSAGE_CHARS) =>
 	text.length > n ? `${text.slice(0, n - 1)}…` : text;
 
 const rank = (level: AccessLevel) => ACCESS_LEVELS.indexOf(level);
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Threads that start threads (#1024 spec F): a tree of full threads, its caps, its typed
@@ -491,7 +494,7 @@ export class ThreadTreeService
 			return fail(
 				"limit_reached",
 				`A thread ${caller.depth} levels down may not start threads: the depth cap is ${s.depth}.`,
-				"Do the work in this thread, or tell the user the cap is Settings → Agent → Advanced → Thread depth.",
+				"Do the work in this thread, or tell the user the cap is Settings → Organizer limits → Thread depth.",
 			);
 		const children = await this.prisma.investigation.count({
 			where: { parentId: callerId, status: { in: LIVE } },
@@ -500,7 +503,7 @@ export class ThreadTreeService
 			return fail(
 				"limit_reached",
 				`This thread already has ${children} running children, the cap.`,
-				"Wait for one to finish (pl_thread_wait), or cancel one; the cap is Settings → Agent → Advanced → Children per thread.",
+				"Wait for one to finish (pl_thread_wait), or cancel one; the cap is Settings → Organizer limits → Threads per thread.",
 			);
 		const rootId = this.rootOf(caller);
 		const live = await this.prisma.investigation.count({
@@ -510,8 +513,10 @@ export class ThreadTreeService
 			return fail(
 				"limit_reached",
 				`This tree already has ${live} running threads, the cap.`,
-				"Wait for one to finish (pl_thread_wait); the cap is Settings → Agent → Advanced → Threads per tree.",
+				"Wait for one to finish (pl_thread_wait); the cap is Settings → Organizer limits → Threads per tree.",
 			);
+		const today = await this.turnsToday(s.turnsPerDay);
+		if (today) return today;
 		const taken = await this.prisma.investigation.findFirst({
 			where: {
 				parentId: callerId,
@@ -527,6 +532,23 @@ export class ThreadTreeService
 				"Pick a role no running child has, or message that child with pl_thread_send.",
 			);
 		return null;
+	}
+
+	/** Settings → Organizer limits → Turns a day: starts and messages in the last 24 hours, across every tree. */
+	private async turnsToday(cap: number): Promise<Failure | null> {
+		const since = new Date(Date.now() - DAY_MS);
+		const [starts, messages] = await Promise.all([
+			this.prisma.investigation.count({
+				where: { parentId: { not: null }, createdAt: { gte: since } },
+			}),
+			this.prisma.threadMessage.count({ where: { createdAt: { gte: since } } }),
+		]);
+		if (starts + messages < cap) return null;
+		return fail(
+			"limit_reached",
+			`Agents have started or messaged ${starts + messages} threads in the last 24 hours, the daily cap.`,
+			"Finish with what you have; the cap is Settings → Organizer limits → Turns a day.",
+		);
 	}
 
 	/** The child's subject: the parent's project or service; an incident's child gets its service. */
@@ -618,17 +640,20 @@ export class ThreadTreeService
 				args.workspace.ref,
 			);
 			const brief = await this.firstPrompt(callerId, rootId, args);
+			// Settings → Models → Delegate wins over the parent's own; the agent's ask wins over both.
+			const use = await storedUseDefault(this.prisma, "delegate");
+			const agent = args.agent ?? use?.harness ?? parent.harness;
+			const model =
+				args.model ??
+				(use && agent === use.harness ? use.model : undefined) ??
+				(agent === parent.harness ? parent.model : undefined);
 			const started = await this.threads.start(
 				{
 					subject,
 					text: brief,
 					accessLevel: access,
-					...((args.agent ?? parent.harness)
-						? { harness: (args.agent ?? parent.harness) as never }
-						: {}),
-					...((args.model ?? parent.model)
-						? { model: args.model ?? parent.model }
-						: {}),
+					...(agent ? { harness: agent as never } : {}),
+					...(model ? { model } : {}),
 					...((args.effort ?? parent.effort)
 						? { effort: args.effort ?? parent.effort }
 						: {}),
@@ -804,6 +829,10 @@ export class ThreadTreeService
 					link: threadLink((await this.row(retried.toId)) ?? to),
 				},
 			};
+		const today = await this.turnsToday(
+			(await this.settings.get()).turnsPerDay,
+		);
+		if (today) return today;
 		if (sent >= TREE_MESSAGE_CAP)
 			return fail(
 				"limit_reached",

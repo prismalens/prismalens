@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Injectable, type OnModuleInit } from "@nestjs/common";
 import { SAFE_ENV_ALLOWLIST } from "@prismalens/agent-host";
 import {
+	ASK_REFUSAL,
 	type AskQuestion,
 	type PendingAsk,
 	plToolName,
@@ -165,7 +166,7 @@ export class ToolAsksService implements OnModuleInit {
 		value: string,
 		host: boolean,
 	): Promise<void> {
-		if (!host) throw new AskForbidden("Only the owner can answer this.");
+		if (!host) throw new AskForbidden(ASK_REFUSAL.secret);
 		const row = await this.prisma.secretRequested.findUnique({
 			where: { requestId },
 		});
