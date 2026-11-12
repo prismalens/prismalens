@@ -23,6 +23,7 @@ import {
 	ExternalLink,
 	FileText,
 	MessageSquarePlus,
+	MoreHorizontal,
 	Paperclip,
 	SlidersHorizontal,
 	Undo2,
@@ -36,7 +37,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Menu, Picker, TabPanel, Tabs } from "@/components/kit";
+import { Menu, Picker, type PickerOption } from "@/components/kit";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
@@ -87,6 +88,46 @@ export const SCOPE_WORDS: Record<DiffScope, { label: string; detail: string }> =
 	};
 const SCOPES = ["all", "turn", "uncommitted", "outside"] as const;
 
+type TurnRef = { seq: number; ended?: boolean };
+
+/**
+ * The scope is one picker in the summary line (#1101 category 16): the latest turn reads
+ * "This turn", earlier ones sit under Earlier turns as `turn:<seq>`.
+ */
+export function scopeOptions(turns: readonly TurnRef[]): PickerOption[] {
+	const earlier = turns.slice(0, -1);
+	return [
+		...SCOPES.map((s) => ({
+			id: s,
+			name: SCOPE_WORDS[s].label,
+			description: SCOPE_WORDS[s].detail,
+			testId: `diff-scope-${s}`,
+		})),
+		...earlier.map((t, i) => ({
+			id: `turn:${t.seq}`,
+			name: `Turn ${i + 1}`,
+			group: "Earlier turns",
+			testId: `diff-scope-turn-${t.seq}`,
+		})),
+	];
+}
+
+export function scopeValue(
+	scope: DiffScope,
+	turn: number | null | undefined,
+	turns: readonly TurnRef[],
+): string {
+	if (scope !== "turn") return scope;
+	const latest = turns.at(-1)?.seq;
+	return turn == null || turn === latest ? "turn" : `turn:${turn}`;
+}
+
+export function scopeSearch(id: string): PanelSearch {
+	if (id.startsWith("turn:"))
+		return { scope: "turn", turn: Number(id.slice(5)) };
+	return { scope: id as DiffScope };
+}
+
 const TREE_STYLE = {
 	"--trees-fg-override": "var(--text-2)",
 	"--trees-selected-bg-override": "var(--surface-3)",
@@ -115,6 +156,13 @@ function readPrefs(): { style: ViewStyle; wrap: boolean } {
 		return { style: "auto", wrap: true };
 	}
 }
+
+/**
+ * The library words a gap "N unmodified lines" or, when it cannot count, a hedged
+ * sentence; both read as the one control they are (#1101 category 16).
+ */
+const SEPARATOR_CSS =
+	'[data-unmodified-lines]{font-size:0}[data-unmodified-lines]::after{content:"Show more lines";font-size:var(--diffs-font-size,13px)}';
 
 /** Split needs room for two columns of code; narrower goes unified by itself (#1101 category 16). */
 const SPLIT_MIN_PX = 720;
@@ -169,160 +217,126 @@ export function DiffSurface({
 			data-testid="diff-surface"
 			data-scope={scope}
 		>
-			<Tabs
-				fill
-				label="Compare"
-				value={scope}
-				onValueChange={(v) => {
-					const s = v as DiffScope;
-					onSearch({
-						scope: s,
-						...(s === "turn" && search.turn !== undefined
-							? { turn: search.turn }
-							: {}),
-					});
-				}}
-				items={SCOPES.map((s) => ({
-					value: s,
-					label: SCOPE_WORDS[s].label,
-					testId: `diff-scope-${s}`,
-				}))}
-				trailing={
-					<div className="flex shrink-0 items-center gap-0.5 pr-1">
-						{scope === "turn" && turns.length > 1 && (
-							<Picker
-								label="Turn"
-								side="bottom"
-								testId="diff-turn"
-								value={String(scoped?.turn ?? "")}
-								onChange={(v) => onSearch({ scope: "turn", turn: Number(v) })}
-								options={turns.map((t, i) => ({
-									id: String(t.seq),
-									name: `Turn ${i + 1}${t.ended ? "" : ", working"}`,
-								}))}
-							/>
-						)}
-						{scope === "turn" &&
-							scoped?.turn !== null &&
-							scoped?.turn !== undefined && (
-								<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
-							)}
-						<Menu
-							label="Diff view"
-							entries={[
-								...(["auto", "split", "unified"] as const).map((v) => ({
-									id: `diff-style-${v}`,
-									label:
-										v === "auto" ? "Auto" : v === "split" ? "Split" : "Unified",
-									checked: prefs.style === v,
-									onSelect: () => setPrefs({ style: v }),
-								})),
-								{ id: "diff-view-sep", separator: true as const },
-								{
-									id: "diff-wrap",
-									label: "Wrap lines",
-									icon: WrapText,
-									checked: prefs.wrap,
-									onSelect: () => setPrefs({ wrap: !prefs.wrap }),
-								},
-							]}
-							trigger={
-								<button
-									type="button"
-									aria-label="Diff view"
-									className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent data-[state=open]:bg-surface-3"
-									data-testid="diff-view"
-								>
-									<SlidersHorizontal className="size-3.5" />
-								</button>
-							}
-						/>
-					</div>
-				}
-			>
-				<TabPanel value={scope} fill>
-					<div className="flex shrink-0 items-center gap-2 px-3 pt-1.5 pb-1">
-						{repos.length > 1 && (
-							<Picker
-								label="Repository"
-								side="bottom"
-								value={repo?.repo ?? ""}
-								onChange={(r) =>
-									setRepoAt(repos.findIndex((x) => x.repo === r))
-								}
-								options={repos.map((r) => ({ id: r.repo, name: r.repo }))}
-							/>
-						)}
-						<p
-							className="m-0 min-w-0 flex-1 truncate text-meta text-text-2"
-							data-testid="diff-scope-named"
-						>
-							{SCOPE_WORDS[scope].label}
-							{ok && (
-								<>
-									{" · "}
-									{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
-									<span className="text-ok">+{ok.additions}</span>{" "}
-									<span className="text-danger">−{ok.deletions}</span>
-									{scoped?.live ? " · working" : ""}
-								</>
-							)}
-						</p>
-					</div>
-					{search.view === "file" && search.path?.includes(":") ? (
-						<FileView
-							runId={runId}
-							threadId={threadId}
-							workspace={workspace}
-							repo={search.path.split(":")[0] as string}
-							path={search.path.slice(search.path.indexOf(":") + 1)}
-							line={search.line ?? null}
-							live={live}
-							onBack={() => onSearch({ ...search, view: undefined })}
-							backLabel="Changes"
-						/>
-					) : query.isLoading ? (
-						<div className="px-3 pt-3">
-							<Loading rows={4} />
-						</div>
-					) : query.error || !query.data ? (
-						<Problem
-							className="px-3"
-							text="Changes did not load"
-							onRetry={() => void query.refetch()}
-						/>
-					) : !repo ? (
-						<Empty className="px-3" text="No code here" testId="diff-none" />
-					) : repo.state === "unavailable" ? (
-						<Empty
-							className="px-3"
-							text={
-								repo.reason === "no-snapshot"
-									? scope === "outside"
-										? "No turn has ended yet"
-										: "No snapshot for this turn"
-									: repo.reason === "removed"
-										? "Workspace removed"
-										: "Workspace not available"
-							}
-							testId="diff-unavailable"
-						/>
-					) : (
-						<RepoDiff
-							key={`${repo.repo}:${scope}:${scoped?.turn ?? ""}`}
-							runId={runId}
-							threadId={threadId}
-							workspace={workspace}
-							repo={repo}
-							scope={scope}
-							style={prefs.style}
-							wrap={prefs.wrap}
-							search={search}
-							onSearch={onSearch}
-						/>
+			<div className="flex shrink-0 items-center gap-1.5 px-2 pt-1.5 pb-1">
+				{repos.length > 1 && (
+					<Picker
+						label="Repository"
+						side="bottom"
+						value={repo?.repo ?? ""}
+						onChange={(r) => setRepoAt(repos.findIndex((x) => x.repo === r))}
+						options={repos.map((r) => ({ id: r.repo, name: r.repo }))}
+					/>
+				)}
+				<Picker
+					label="Compare"
+					side="bottom"
+					testId="diff-scope"
+					value={scopeValue(scope, scoped?.turn, turns)}
+					onChange={(id) => onSearch(scopeSearch(id))}
+					options={scopeOptions(turns)}
+				/>
+				<p
+					className="m-0 min-w-0 flex-1 truncate text-meta text-text-2 tabular-nums"
+					data-testid="diff-scope-named"
+				>
+					{ok && (
+						<>
+							{"· "}
+							{ok.files.length} {ok.files.length === 1 ? "file" : "files"}{" "}
+							<span className="text-ok">+{ok.additions}</span>{" "}
+							<span className="text-danger">−{ok.deletions}</span>
+							{scoped?.live ? " · working" : ""}
+						</>
 					)}
-				</TabPanel>
-			</Tabs>
+				</p>
+				{scope === "turn" &&
+					scoped?.turn !== null &&
+					scoped?.turn !== undefined && (
+						<TurnUndo runId={runId} turnId={scoped.turn} repo={ok?.repo} />
+					)}
+				<Menu
+					label="Diff view"
+					entries={[
+						...(["auto", "split", "unified"] as const).map((v) => ({
+							id: `diff-style-${v}`,
+							label:
+								v === "auto" ? "Auto" : v === "split" ? "Split" : "Unified",
+							checked: prefs.style === v,
+							onSelect: () => setPrefs({ style: v }),
+						})),
+						{ id: "diff-view-sep", separator: true as const },
+						{
+							id: "diff-wrap",
+							label: "Wrap lines",
+							icon: WrapText,
+							checked: prefs.wrap,
+							onSelect: () => setPrefs({ wrap: !prefs.wrap }),
+						},
+					]}
+					trigger={
+						<button
+							type="button"
+							aria-label="Diff view"
+							className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent data-[state=open]:bg-surface-3"
+							data-testid="diff-view"
+						>
+							<SlidersHorizontal className="size-3.5" />
+						</button>
+					}
+				/>
+			</div>
+			{search.view === "file" && search.path?.includes(":") ? (
+				<FileView
+					runId={runId}
+					threadId={threadId}
+					workspace={workspace}
+					repo={search.path.split(":")[0] as string}
+					path={search.path.slice(search.path.indexOf(":") + 1)}
+					line={search.line ?? null}
+					live={live}
+					onBack={() => onSearch({ ...search, view: undefined })}
+					backLabel="Changes"
+				/>
+			) : query.isLoading ? (
+				<div className="px-3 pt-3">
+					<Loading rows={4} />
+				</div>
+			) : query.error || !query.data ? (
+				<Problem
+					className="px-3"
+					text="Changes did not load"
+					onRetry={() => void query.refetch()}
+				/>
+			) : !repo ? (
+				<Empty className="px-3" text="No code here" testId="diff-none" />
+			) : repo.state === "unavailable" ? (
+				<Empty
+					className="px-3"
+					text={
+						repo.reason === "no-snapshot"
+							? scope === "outside"
+								? "No turn has ended yet"
+								: "No snapshot for this turn"
+							: repo.reason === "removed"
+								? "Workspace removed"
+								: "Workspace not available"
+					}
+					testId="diff-unavailable"
+				/>
+			) : (
+				<RepoDiff
+					key={`${repo.repo}:${scope}:${scoped?.turn ?? ""}`}
+					runId={runId}
+					threadId={threadId}
+					workspace={workspace}
+					repo={repo}
+					scope={scope}
+					style={prefs.style}
+					wrap={prefs.wrap}
+					search={search}
+					onSearch={onSearch}
+				/>
+			)}
 		</div>
 	);
 }
@@ -434,22 +448,26 @@ function DiffTree({
 		renderRowDecoration: ({ item }) => {
 			const f = byPath.current.get(item.path);
 			if (!f) return null;
-			const mark = out.current.has(f.path) ? "outside " : "";
+			const isOut = out.current.has(f.path);
+			// The tree lays parts out as flex items, which drop plain spaces: NBSPs keep them apart.
+			const outPart = isOut
+				? [{ text: "outside  ", color: "var(--text-3)" }]
+				: [];
 			if (f.additions === null)
 				return {
-					text: `${mark}${f.status === "link" ? "not captured" : f.status}`,
+					text: `${isOut ? "outside  " : ""}${f.status === "link" ? "not captured" : f.status}`,
 					title:
 						f.status === "link"
 							? "A link or special file: never read"
 							: f.status,
 				};
 			return {
-				text: `${mark}+${f.additions} −${f.deletions ?? 0}`,
-				title: `${out.current.has(f.path) ? "Changed outside the agent's turns. " : ""}${f.additions} added, ${f.deletions ?? 0} removed`,
+				text: `${isOut ? "outside  " : ""}+${f.additions} −${f.deletions ?? 0}`,
+				title: `${isOut ? "Changed between or after the agent's turns. " : ""}${f.additions} added, ${f.deletions ?? 0} removed`,
 				parts: [
-					...(mark ? [{ text: "outside ", color: "var(--warn)" }] : []),
+					...outPart,
 					{ text: `+${f.additions}`, color: "var(--ok)" },
-					{ text: ` −${f.deletions ?? 0}`, color: "var(--danger)" },
+					{ text: ` −${f.deletions ?? 0}`, color: "var(--danger)" },
 				],
 			};
 		},
@@ -721,20 +739,17 @@ function FileDiffPane({
 			data-testid="diff-file-pane"
 			data-split={split ? "split" : "unified"}
 		>
-			<div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1.5 shadow-[0_1px_0_var(--hairline)]">
-				<span
-					className="min-w-0 flex-1 truncate font-mono text-mono text-text-1"
-					title={undefined}
-				>
-					{path}
-				</span>
+			<div className="flex shrink-0 items-center gap-1.5 px-2 py-1 shadow-[0_1px_0_var(--hairline)]">
+				<FileName path={path} />
 				{outside && (
-					<span
-						className="shrink-0 text-meta text-warn"
-						data-testid="diff-outside-mark"
-					>
-						Changed outside the agent's turns
-					</span>
+					<Hint label="Changed between or after the agent's turns">
+						<span
+							className="shrink-0 text-meta text-text-3"
+							data-testid="diff-outside-mark"
+						>
+							outside
+						</span>
+					</Hint>
 				)}
 				{file?.additions !== null && file && (
 					<span className="shrink-0 text-meta tabular-nums">
@@ -742,63 +757,20 @@ function FileDiffPane({
 						<span className="text-danger">−{file.deletions ?? 0}</span>
 					</span>
 				)}
-				<FileAction
-					label="View file"
-					onClick={onViewFile}
-					icon={<FileText className="size-3.5" />}
-					testId="diff-view-file"
-				/>
-				<FileAction
-					label="Open in editor"
-					onClick={() => openEditor(line ?? undefined)}
-					icon={<ExternalLink className="size-3.5" />}
-					testId="diff-open-editor"
-				/>
-				<FileAction
-					label="Copy path"
-					onClick={() =>
-						void navigator.clipboard
-							.writeText(editorPath)
-							.then(() => toast({ title: "Path copied" }))
-					}
-					icon={<Copy className="size-3.5" />}
-					testId="diff-copy-path"
-				/>
-				<FileAction
-					label="Attach to message"
-					onClick={() =>
-						sendReference(threadId, {
-							kind: "file",
-							id: editorPath,
-							label: path.split("/").pop() ?? path,
-						})
-							? toast({ title: "Attached to your message" })
-							: toast({ title: "Open the composer to attach" })
-					}
-					icon={<Paperclip className="size-3.5" />}
-					testId="diff-attach"
-				/>
-				{scoped &&
-					canRevert &&
-					(status === "added" ||
-						status === "deleted" ||
-						lines?.wholeFileOnly) && (
-						<span
-							className="shrink-0 text-meta text-text-3"
-							data-testid="diff-whole-file-note"
-						>
-							Reverts as a whole file
-						</span>
-					)}
 				{scoped && (
 					<Hint
 						label={
 							scoped.revert
 								? REVERT_BLOCK_WORDS[scoped.revert]
-								: "Revert this file to the scope's start"
+								: canRevert &&
+										(status === "added" ||
+											status === "deleted" ||
+											lines?.wholeFileOnly)
+									? "Reverts as a whole file"
+									: "Revert this file to the scope's start"
 						}
 					>
-						<span>
+						<span className="shrink-0">
 							<Button
 								variant="text"
 								size="sm"
@@ -812,6 +784,55 @@ function FileDiffPane({
 						</span>
 					</Hint>
 				)}
+				<Menu
+					label={`${path} actions`}
+					entries={[
+						{
+							id: "diff-view-file",
+							label: "View file",
+							icon: FileText,
+							onSelect: onViewFile,
+						},
+						{
+							id: "diff-open-editor",
+							label: "Open in editor",
+							icon: ExternalLink,
+							onSelect: () => openEditor(line ?? undefined),
+						},
+						{
+							id: "diff-copy-path",
+							label: "Copy path",
+							icon: Copy,
+							onSelect: () =>
+								void navigator.clipboard
+									.writeText(editorPath)
+									.then(() => toast({ title: "Path copied" })),
+						},
+						{
+							id: "diff-attach",
+							label: "Attach to message",
+							icon: Paperclip,
+							onSelect: () =>
+								sendReference(threadId, {
+									kind: "file",
+									id: editorPath,
+									label: path.split("/").pop() ?? path,
+								})
+									? toast({ title: "Attached to your message" })
+									: toast({ title: "Open the composer to attach" }),
+						},
+					]}
+					trigger={
+						<button
+							type="button"
+							aria-label="File actions"
+							className="grid size-7 shrink-0 place-items-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:outline focus-visible:outline-accent data-[state=open]:bg-surface-3"
+							data-testid="diff-file-more"
+						>
+							<MoreHorizontal className="size-3.5" />
+						</button>
+					}
+				/>
 			</div>
 			{scoped?.revert && (
 				<p
@@ -860,6 +881,7 @@ function FileDiffPane({
 								preferredHighlighter: "shiki-js",
 								enableGutterUtility: true,
 								hunkSeparators: "line-info",
+								unsafeCSS: SEPARATOR_CSS,
 								expansionLineCount: 20,
 								loadDiffFiles: loadFiles,
 								// The library takes the click on its gutter slot (the slot sits under its own layer).
@@ -1022,29 +1044,25 @@ function nameGutterButtons(root: HTMLElement) {
 	});
 }
 
-function FileAction({
-	label,
-	onClick,
-	icon,
-	testId,
-}: {
-	label: string;
-	onClick: () => void;
-	icon: React.ReactNode;
-	testId: string;
-}) {
+/** The file name stays whole; a long directory gives way from its left end. */
+function FileName({ path }: { path: string }) {
+	const cut = path.lastIndexOf("/");
+	const dir = cut >= 0 ? path.slice(0, cut + 1) : "";
+	const name = path.slice(cut + 1);
 	return (
-		<Hint label={label}>
-			<Button
-				variant="text"
-				size="icon"
-				aria-label={label}
-				onClick={onClick}
-				data-testid={testId}
-			>
-				{icon}
-			</Button>
-		</Hint>
+		<span
+			className="flex min-w-0 flex-1 items-baseline font-mono text-mono"
+			data-testid="diff-file-name"
+		>
+			{dir && (
+				<span dir="rtl" className="min-w-0 truncate text-left text-text-3">
+					{`‎${dir}‎`}
+				</span>
+			)}
+			<span className="min-w-0 shrink-[0.0001] truncate text-text-1">
+				{name}
+			</span>
+		</span>
 	);
 }
 

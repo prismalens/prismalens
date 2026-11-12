@@ -126,6 +126,11 @@ async function main() {
 			text: "fake-session:diff-turns fix the timeout",
 		},
 	});
+	// The fake reads its session from the prompt; the title a reader sees is plain words.
+	await api(`/threads/${id}/title`, {
+		method: "POST",
+		body: { title: "Raise the checkout timeout" },
+	});
 	const first = await idle(id, "the first turn");
 	const cwd = first.workspace?.cwd;
 	if (!cwd) throw new Error("The thread has no worktree");

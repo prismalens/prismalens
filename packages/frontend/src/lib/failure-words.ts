@@ -79,6 +79,14 @@ const KNOWN: {
 		},
 	},
 	{
+		test: /exceeded its wall.?clock|wall.?clock (limit|exceeded)/i,
+		words: {
+			what: "The run hit its time limit.",
+			next: "Continue it, or start a new run with a smaller brief.",
+			ours: true,
+		},
+	},
+	{
 		test: /did not validate|could not parse|invalid report/i,
 		words: {
 			what: "The agent's report could not be read.",
