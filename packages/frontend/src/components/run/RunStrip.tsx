@@ -2,18 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import type { RunState } from "@prismalens/contracts";
-import { Square } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { RunDot } from "@/components/incidents/RunTree";
 import type { RunRef } from "@/components/incidents/record-context";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import { RunsMenu } from "./RunsMenu";
 
 export interface StripChip {
@@ -23,11 +17,9 @@ export interface StripChip {
 }
 
 /**
- * The run strip under the header (#811): state, what it is doing (never
- * under 100 px), the model (warn only on a mismatch), which credential
- * cloned the code, a warning when PrismaLens's tools did not reach the
- * agent (#848), Stop run while live, and the runs menu. A phone drops the
- * chips, which Run details' Summary carries, so the runs menu stays on screen (0.5.3 walk W11).
+ * The run's part of the one header (sheet §2): its state word with the detail
+ * in a hint, one warning mark when something is off, Resume or Retry, and the
+ * runs menu. Stop lives in the composer; the credential sits in Run details.
  */
 export function RunStrip({
 	state,
@@ -36,10 +28,7 @@ export function RunStrip({
 	detail,
 	reason,
 	model,
-	code,
 	tools,
-	onStop,
-	stopping,
 	onResume,
 	resuming,
 	onRetry,
@@ -53,16 +42,11 @@ export function RunStrip({
 	waiting?: boolean;
 	label: string;
 	detail: string;
-	/** The full why behind a short state: a phone drops the detail and the label opens this (#1010 N6). */
+	/** The full why behind a short state (#1010 N6). */
 	reason?: string | null;
 	model?: StripChip | null;
-	/** Hidden while the details panel is open: its Summary carries it. */
-	code?: StripChip | null;
 	/** Only when PrismaLens's tools did not reach the agent (#848). */
 	tools?: StripChip | null;
-	/** Live only. */
-	onStop?: () => void;
-	stopping?: boolean;
 	/** An interrupted run PrismaLens did not resume (#981). */
 	onResume?: () => void;
 	resuming?: boolean;
@@ -73,78 +57,52 @@ export function RunStrip({
 	runs: RunRef[];
 	current: string | null;
 }) {
+	const warns = [model?.warn ? model : null, tools].filter(
+		(c): c is StripChip => !!c,
+	);
 	return (
 		<div
-			className="relative flex h-9 min-w-0 shrink-0 items-center gap-2 px-4 whitespace-nowrap md:gap-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline"
+			className="flex min-w-0 shrink items-center gap-1.5 whitespace-nowrap"
 			data-testid="run-strip"
 		>
-			{(state === "starting" || state === "working") && !waiting ? (
-				<Ring />
-			) : state ? (
-				<RunDot state={state} waiting={waiting} className="size-[7px]" />
-			) : (
+			<Hint label={reason ?? detail} when={!!(reason ?? detail)}>
 				<span
-					aria-hidden
-					className="size-[7px] shrink-0 rounded-full bg-text-3"
-				/>
-			)}
-			{reason ? (
-				<Popover>
-					<PopoverTrigger asChild>
-						<button
-							type="button"
-							className="min-w-0 truncate text-left font-medium max-md:flex-1 md:shrink-0"
-							data-testid="run-strip-label"
-						>
-							{label}
-						</button>
-					</PopoverTrigger>
-					<PopoverContent
-						align="start"
-						className="text-meta text-text-2"
-						data-testid="run-strip-reason"
-					>
-						{reason}
-					</PopoverContent>
-				</Popover>
-			) : (
-				<span
-					className="min-w-0 truncate font-medium md:shrink-0"
+					className="inline-flex min-w-0 items-center gap-1.5 text-body"
 					data-testid="run-strip-label"
 				>
-					{label}
+					{(state === "starting" || state === "working") && !waiting ? (
+						<Ring className="text-accent" />
+					) : state ? (
+						<RunDot state={state} waiting={waiting} className="size-[7px]" />
+					) : null}
+					<span className="truncate font-medium text-text-2 max-md:sr-only">
+						{label}
+					</span>
+					<span className="sr-only" data-testid="run-strip-detail">
+						, {detail}
+					</span>
 				</span>
-			)}
-			<span
-				className={cn(
-					"min-w-0 flex-1 truncate md:min-w-[100px]",
-					waiting ? "text-warn" : "text-text-2",
-					reason && "max-md:hidden",
-				)}
-				data-testid="run-strip-detail"
-			>
-				{detail}
-			</span>
-			{/* The box names the model; the strip speaks only when something is off (#1020). */}
-			{model?.warn && <Chip chip={model} testId="run-strip-model" />}
-			{code && <Chip chip={code} testId="run-strip-code" />}
-			{tools && <Chip chip={tools} testId="run-strip-tools" />}
-			{onStop && (
-				<Button
-					variant="secondary"
-					className="h-[26px] shrink-0 gap-1.5 bg-surface-2 hover:bg-surface-3"
-					disabled={stopping}
-					onClick={onStop}
-					data-testid="run-strip-stop"
-				>
-					<Square className="size-3 fill-current" aria-hidden />
-					{stopping ? "Stopping" : "Stop run"}
-				</Button>
+			</Hint>
+			{warns.length > 0 && (
+				<Hint label={warns.map((w) => w.title).join(". ")}>
+					<span
+						// biome-ignore lint/a11y/noNoninteractiveTabindex: the warning's words are in its hint, reached by focus.
+						tabIndex={0}
+						className="flex size-7 items-center justify-center rounded-control text-warn outline-none focus-visible:ring-2 focus-visible:ring-accent"
+						data-testid="run-strip-tools"
+					>
+						<TriangleAlert className="size-3.5" aria-hidden />
+						<span className="sr-only">
+							{warns.map((w) => w.text).join(", ")}
+						</span>
+					</span>
+				</Hint>
 			)}
 			{onResume && (
 				<Button
-					variant="primary"
-					className="h-[26px] shrink-0"
+					variant="text"
+					size="sm"
+					className="shrink-0"
 					disabled={resuming}
 					onClick={onResume}
 					data-testid="run-strip-resume"
@@ -154,34 +112,17 @@ export function RunStrip({
 			)}
 			{onRetry && (
 				<Button
-					variant="primary"
-					className="h-[26px] shrink-0"
+					variant="text"
+					size="sm"
+					className="shrink-0"
 					disabled={retrying}
 					onClick={onRetry}
 					data-testid="run-strip-retry"
 				>
-					{retrying ? "Starting" : "Retry run"}
+					{retrying ? "Starting" : "Retry"}
 				</Button>
 			)}
 			<RunsMenu incidentId={incidentId} runs={runs} current={current} />
 		</div>
-	);
-}
-
-function Chip({ chip, testId }: { chip: StripChip; testId: string }) {
-	return (
-		<Hint label={chip.title}>
-			<span
-				// biome-ignore lint/a11y/noNoninteractiveTabindex: the chip's full source is in its hint, which keyboard users reach by focus.
-				tabIndex={0}
-				className={cn(
-					"h-[22px] max-w-64 shrink-0 truncate rounded-[4px] bg-surface-2 px-2 text-meta leading-[22px] max-lg:hidden",
-					chip.warn ? "text-warn" : "text-text-3",
-				)}
-				data-testid={testId}
-			>
-				{chip.text}
-			</span>
-		</Hint>
 	);
 }

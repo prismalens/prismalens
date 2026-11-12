@@ -45,6 +45,7 @@ import {
 import {
 	ageWord,
 	infoReason,
+	needsYouNow,
 	STATUS_LOUD,
 	STATUS_SHAPE,
 	STATUS_TONE,
@@ -215,9 +216,10 @@ export function ThreadTreeView({
 	const rows = (
 		n: ListNode,
 		depth: number,
-		opts: { parent?: boolean } = {},
+		opts: { parent?: boolean; single?: boolean } = {},
 	): ReactNode[] => {
 		if (!keep(n)) return [];
+		const flat = opts.parent || opts.single;
 		const expanded =
 			expandAll || open.has(n.id) || (!!filter && n.children.some(keep));
 		return [
@@ -229,14 +231,12 @@ export function ThreadTreeView({
 				on={currentId === n.id}
 				asks={asks.get(n.id) ?? []}
 				expanded={expanded}
-				onToggle={
-					n.children.length && !opts.parent ? () => toggle(n.id) : undefined
-				}
+				onToggle={n.children.length && !flat ? () => toggle(n.id) : undefined}
 				onSettle={onSettle}
 				showParent={!!opts.parent}
 				askOpenAtStart={expandAll}
 			/>,
-			...(expanded && !opts.parent
+			...(expanded && !flat
 				? n.children.flatMap((c) => rows(c, depth + 1))
 				: []),
 		];
@@ -254,7 +254,13 @@ export function ThreadTreeView({
 					tone="font-medium text-text-1"
 					testId="thread-section-needs"
 				>
-					{needs.flatMap((n) => rows(n, 0, { parent: true }))}
+					{needs.flatMap((root) => [
+						...rows(root, 0, { single: true }),
+						// The threads in the tree that wait on you, under their root.
+						...descendantsOf(root)
+							.filter((d) => needsYouNow(d.thread, d.info))
+							.flatMap((d) => rows(d, 1, { single: true })),
+					])}
 				</Section>
 			)}
 			{model.pinned.filter(keep).length > 0 && (
@@ -381,6 +387,10 @@ function MoreButton({
 			Show {n} more
 		</button>
 	);
+}
+
+function descendantsOf(n: ListNode): ListNode[] {
+	return n.children.flatMap((c) => [c, ...descendantsOf(c)]);
 }
 
 /** Left and right arrows fold and open a root; 0 for any other key. */
@@ -533,8 +543,6 @@ function TreeRow({
 				className="group/row relative"
 				data-testid="thread-row-wrap"
 				onKeyDown={onKey}
-				onMouseEnter={hoverIn}
-				onMouseLeave={hoverOut}
 			>
 				<P.Root
 					open={cardOpen}
@@ -549,6 +557,8 @@ function TreeRow({
 						<div
 							className="flex items-stretch"
 							style={{ paddingLeft: indent * 12 }}
+							onMouseEnter={hoverIn}
+							onMouseLeave={hoverOut}
 						>
 							{onToggle ? (
 								<button
@@ -731,8 +741,8 @@ function Peek({
 				<span className={cn("font-medium", wordTone(node.info.status))}>
 					{STATUS_WORD[node.info.status]}
 				</span>
-				{reason && <span className="text-text-3">{reason}</span>}
 			</p>
+			{reason && <p className="line-clamp-2 text-meta text-text-3">{reason}</p>}
 			{node.rolled && (
 				<p className="text-meta text-text-2">{node.rolled.line}</p>
 			)}

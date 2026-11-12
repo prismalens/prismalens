@@ -37,7 +37,7 @@ const makeUnit = (
 });
 
 describe("threadList and rootOf (#1101 category 1)", () => {
-	it("puts needs-you threads (any depth) in needs oldest first", () => {
+	it("puts a tree whose children need you in needs once, by its root, counting each child and leaving it out of active", () => {
 		const root = makeThread({
 			id: "root-1",
 			title: "Root Thread",
@@ -62,7 +62,9 @@ describe("threadList and rootOf (#1101 category 1)", () => {
 		const unit = makeUnit([root, child1, child2], "active");
 		const model = threadList([unit]);
 
-		expect(model.needs.map((n) => n.id)).toEqual(["child-1", "child-2"]);
+		expect(model.needs.map((n) => n.id)).toEqual(["root-1"]);
+		expect(model.needsCount).toBe(2);
+		expect(model.active.map((n) => n.id)).toEqual([]);
 	});
 
 	it("a lone needs-you thread not in active", () => {

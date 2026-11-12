@@ -7,6 +7,7 @@ import { ORPCError } from "@orpc/nest";
 import {
 	AccessLevelSchema,
 	isWorkflowLive,
+	type Quote,
 	RunChoiceSchema,
 } from "@prismalens/contracts";
 import { liveChanges } from "../../core/live/live-changes.js";
@@ -66,7 +67,12 @@ export class ThreadMenuService {
 	 * A child thread under this one that reads it as a reference: Fork here carries the
 	 * work on, Side question asks beside it. The parent's own run is never touched.
 	 */
-	async fork(id: string, mode: "fork" | "side", text: string) {
+	async fork(
+		id: string,
+		mode: "fork" | "side",
+		text: string,
+		quotes?: Quote[],
+	) {
 		const parent = await this.prisma.investigation.findUnique({
 			where: { id },
 		});
@@ -96,6 +102,7 @@ export class ThreadMenuService {
 						: { kind: "none" },
 				text,
 				references: [{ kind: "thread", id, label: title.slice(0, 200) }],
+				...(quotes?.length ? { quotes } : {}),
 				...(access ? { accessLevel: access } : {}),
 				...(harness ? { harness } : {}),
 				...(parent.model ? { model: parent.model } : {}),

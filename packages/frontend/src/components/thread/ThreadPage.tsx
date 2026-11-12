@@ -60,7 +60,9 @@ import { deriveSubagents } from "@/lib/subagents";
 import { runStatusInfo } from "@/lib/thread-status";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
 import { cn } from "@/lib/utils";
+import { AsideHost, askAside, btwQuestion, onPrimeAside } from "./aside";
 import { Composer, type ComposerState } from "./Composer";
+import { openNewThread, quoteOf } from "./composer/quote";
 import { FindBar } from "./find/FindBar";
 import { paintHighlights, useThreadFind } from "./find/use-thread-find";
 import { KindTab } from "./panel/KindTab";
@@ -169,6 +171,14 @@ export function ThreadPage({ id }: { id: string }) {
 	const [subagentId, setSubagentId] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const [focusSignal, setFocusSignal] = useState(0);
+	useEffect(
+		() =>
+			onPrimeAside(id, () => {
+				setDraft((d) => (btwQuestion(`${d} x`) ? d : `/btw ${d}`));
+				setFocusSignal((n) => n + 1);
+			}),
+		[id],
+	);
 	const inv = run.investigation;
 	useVisitThread(inv?.id ?? null, !run.isActive);
 	usePageTitle(inv?.title ?? "Thread");
@@ -632,6 +642,18 @@ export function ThreadPage({ id }: { id: string }) {
 			: "ready";
 	// Open asks come from the ask record: one outlives the run that opened it (#1024).
 	const asks = openAsksOf(run.asks, openAsks);
+	// Fork from a response: New thread opens with that response quoted, sent as a child (sheet §2).
+	const forkable = !(inv.incidentId || inv.scheduleId);
+	const forkFrom = (key: string) => {
+		const item = items.find((i) => i.key === key);
+		if (item?.kind !== "prose") return;
+		const chip = quoteOf(item.text, { threadId: inv.id, kind: "transcript" });
+		openNewThread({
+			quotes: chip ? [chip] : [],
+			references: [],
+			forkOf: { id: inv.id },
+		});
+	};
 	const agentLabel = harness?.label ?? "The agent";
 	const askDock =
 		asks.length > 0 || run.queued.length > 0 ? (
@@ -730,6 +752,7 @@ export function ThreadPage({ id }: { id: string }) {
 							onOpenSubagent={openSubagent}
 							links={links}
 							window={transcriptWindow}
+							onFork={forkable ? forkFrom : undefined}
 						/>
 					) : (
 						<p className="px-5 pt-6 text-body text-text-3">
@@ -754,10 +777,26 @@ export function ThreadPage({ id }: { id: string }) {
 					</div>
 				)}
 				<div className="shrink-0 px-4 pt-2 pb-3">
-					<div className="mx-auto w-full max-w-[760px]">
+					<div className="relative mx-auto w-full max-w-[760px]">
+						<AsideHost threadId={inv.id} />
 						<Composer
 							state={state}
 							onSend={(env, now) => {
+								// `/btw` asks aside: never into this transcript or its agent's context (sheet §2).
+								const btw = btwQuestion(env.text);
+								if (btw) {
+									const about = env.quotes[0]?.text.slice(0, 1500);
+									askAside(
+										inv.id,
+										about
+											? `${btw}
+
+About:
+${about}`
+											: btw,
+									);
+									return Promise.resolve("sent" as const);
+								}
 								// Typing while an ask waits declines it with your words as the reason (#1101 cat 8 item 4).
 								const waiting = asks[0];
 								if (waiting && env.text.trim() && !env.attachments.length)

@@ -13,7 +13,11 @@ import {
 	IncidentStatusSchema,
 	SeveritySchema,
 } from "./common.js";
-import { MessageContextShape } from "./composer.js";
+import {
+	MAX_QUOTES_PER_MESSAGE,
+	MessageContextShape,
+	QuoteSchema,
+} from "./composer.js";
 import {
 	AttachmentIdsSchema,
 	HelperPlaceSchema,
@@ -274,6 +278,8 @@ export const ForkThreadSchema = z.object({
 	id: z.string().uuid(),
 	mode: z.enum(["fork", "side"]),
 	text: z.string().trim().min(1).max(4000),
+	/** Fork from a response: the response it starts from, as a quote (#1101 sheet §2). */
+	quotes: z.array(QuoteSchema).max(MAX_QUOTES_PER_MESSAGE).optional(),
 });
 export const ForkThreadResponseSchema = StartThreadResponseSchema;
 

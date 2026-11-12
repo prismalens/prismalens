@@ -58,6 +58,8 @@ export function sendQuote(threadId: string, q: QuoteChip): boolean {
 export interface NewThreadSeed {
 	quotes: QuoteChip[];
 	references: ReferenceRef[];
+	/** Fork from a response: the send makes a child of this thread (#1101 sheet §2). */
+	forkOf?: { id: string };
 	harness?: HarnessId;
 	model?: string;
 }

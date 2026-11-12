@@ -21,7 +21,10 @@ import {
 	useInvestigateIncident,
 	useUpdateIncident,
 } from "@/lib/api/hooks";
-import { useStartThread } from "@/lib/api/hooks/use-threads-orpc";
+import {
+	useForkThread,
+	useStartThread,
+} from "@/lib/api/hooks/use-threads-orpc";
 import { uploadAttachment, uploadThreadAttachment } from "@/lib/attachments";
 import {
 	messageContext,
@@ -80,6 +83,7 @@ export function NewThread({
 }) {
 	const choice = useAgentChoice();
 	const start = useStartThread();
+	const fork = useForkThread();
 	const createIncident = useCreateIncident();
 	const investigate = useInvestigateIncident();
 	const updateIncident = useUpdateIncident();
@@ -179,6 +183,21 @@ export function NewThread({
 
 	const startThread = async (env: SendEnvelope) => {
 		const { text } = env;
+		if (seed?.forkOf) {
+			// A fork is a child of the thread it came from; its quote is the response.
+			const quotes = env.quotes?.length ? env.quotes : undefined;
+			const forked = await fork.mutateAsync({
+				id: seed.forkOf.id,
+				mode: "fork",
+				text,
+				...(quotes ? { quotes } : {}),
+			});
+			await navigate({
+				to: "/threads/$id",
+				params: { id: forked.investigationId },
+			});
+			return;
+		}
 		const draftKey = crypto.randomUUID();
 		const uploaded = await uploadEach(env.attachments, (f) =>
 			uploadThreadAttachment({ draftKey }, f),
