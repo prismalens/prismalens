@@ -29,6 +29,15 @@ const ROWS: { keys: string[]; label: string }[] = [
 	{ keys: ["Ctrl", "Enter"], label: "Send now, ending the agent's step" },
 	{ keys: ["Shift", "Enter"], label: "New line in the box" },
 	{ keys: ["Esc"], label: "Stop the agent, from the box while it works" },
+	{ keys: ["Shift", "Tab"], label: "Next permission level, in the box" },
+	{
+		keys: ["Esc", "Shift", "Tab"],
+		label: "Esc, then Shift+Tab to move focus back",
+	},
+	{ keys: ["Alt", "P"], label: "Open the model list, in the box" },
+	{ keys: ["Ctrl", "Z"], label: "Undo in the box, chips included" },
+	{ keys: ["Ctrl", "Y"], label: "Redo in the box" },
+	{ keys: ["Ctrl", "Shift", "V"], label: "Paste as plain text, in the box" },
 	{ keys: ["?"], label: "This sheet" },
 ];
 

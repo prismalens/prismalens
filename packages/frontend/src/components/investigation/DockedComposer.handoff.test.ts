@@ -6,6 +6,7 @@ import type { HandoffPreview } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { settleEditor, typeIn } from "../thread/composer/editor/test-helpers";
 import { DockedComposer } from "./DockedComposer";
 
 interface PreviewState {
@@ -184,17 +185,12 @@ function setRecord(over: Record<string, unknown> = {}) {
 
 async function render() {
 	await act(async () => root.render(createElement(DockedComposer, {})));
+	await settleEditor();
 }
 
 async function type(text: string) {
-	const field = q<HTMLTextAreaElement>("composer-input");
-	await act(async () => {
-		Object.getOwnPropertyDescriptor(
-			HTMLTextAreaElement.prototype,
-			"value",
-		)?.set?.call(field, text);
-		field.dispatchEvent(new Event("input", { bubbles: true }));
-	});
+	const field = q("composer-input");
+	await typeIn(field, text);
 }
 
 beforeEach(() => {
@@ -294,8 +290,8 @@ describe("DockedComposer handoff states on a finished run", () => {
 			"Agent is not available. Install the agent or choose another.",
 		);
 
-		const input = q<HTMLTextAreaElement>("composer-input");
-		expect(input.disabled).toBe(false);
+		const input = q("composer-input");
+		expect(input.getAttribute("aria-disabled")).toBeNull();
 
 		const sendBtn = q<HTMLButtonElement>("composer-send");
 		expect(sendBtn.disabled).toBe(true);

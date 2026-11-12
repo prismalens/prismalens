@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { type ComposerDraft, textDoc } from "@prismalens/contracts";
 import { QueryClient } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -12,13 +13,7 @@ import { DRAFT_DEBOUNCE_MS, useComposerDraft } from "./use-composer-draft";
 type Saved = { rev: number; generation: number };
 const saves: { baseRev: number; text: string; done: (s: Saved) => void }[] = [];
 
-let serverNow: {
-	rev: number;
-	generation: number;
-	text: string;
-	quotes: [];
-	references: [];
-} | null = null;
+let serverNow: ComposerDraft | null = null;
 
 vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 	fetchServerDraft: async () => serverNow,
@@ -40,9 +35,7 @@ let root: Root;
 let api: ReturnType<typeof useComposerDraft>;
 
 const content = (text: string): DraftContent => ({
-	text,
-	quotes: [],
-	references: [],
+	doc: textDoc(text),
 });
 
 function Harness({ text }: { text: string }) {
@@ -125,9 +118,16 @@ describe("saving a draft (#1024)", () => {
 		serverNow = {
 			rev: 6,
 			generation: 0,
+			version: 2,
+			doc: textDoc("from the laptop"),
 			text: "from the laptop",
 			quotes: [],
 			references: [],
+			choice: {},
+			attachments: [],
+			draftKey: null,
+			scope: "new:home",
+			updatedAt: "2026-11-11T10:00:00.000Z",
 		};
 
 		await act(async () => api.sent());
@@ -146,7 +146,20 @@ describe("saving a draft (#1024)", () => {
 		await wait(DRAFT_DEBOUNCE_MS);
 		await act(async () => saves[0]?.done({ rev: 5, generation: 0 }));
 		saves.length = 0;
-		serverNow = { rev: 8, generation: 3, text: "", quotes: [], references: [] };
+		serverNow = {
+			rev: 8,
+			generation: 3,
+			version: 2,
+			doc: textDoc(""),
+			text: "",
+			quotes: [],
+			references: [],
+			choice: {},
+			attachments: [],
+			draftKey: null,
+			scope: "new:home",
+			updatedAt: "2026-11-11T10:00:00.000Z",
+		};
 
 		await act(async () => api.sent());
 		await show("");

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PutDraftInput } from "@prismalens/contracts";
+import {
+	type ComposerDoc,
+	legacyDoc,
+	type PutDraftInput,
+} from "@prismalens/contracts";
 import { DraftsService } from "./drafts.service.js";
 
 type Row = { scope: string; rev: number; generation: number; body: string; updatedAt: Date };
@@ -222,5 +226,165 @@ describe("DraftsService (#1024)", () => {
 		expect(await drafts.withDrafts([SCOPE, "new:home", "thread:none"])).toEqual(
 			new Set([SCOPE]),
 		);
+	});
+
+	it("a stored legacy body (no doc) reads back with version: 2 and the converted doc", async () => {
+		const { prisma, rows } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		const legacyQuotes = [
+			{ source: { threadId: KEY, kind: "report" as const }, text: "q1" },
+		];
+		const legacyRefs = [{ kind: "issue" as const, id: "1", label: "1" }];
+		rows.set(SCOPE, {
+			scope: SCOPE,
+			rev: 1,
+			generation: 0,
+			body: JSON.stringify({
+				text: "legacy text",
+				quotes: legacyQuotes,
+				references: legacyRefs,
+				draftKey: null,
+				attachments: [],
+				choice: {},
+			}),
+			updatedAt: new Date("2026-11-07T10:00:00Z"),
+		});
+
+		const loaded = await drafts.get(SCOPE);
+		expect(loaded?.version).toBe(2);
+		expect(loaded?.text).toBe("legacy text");
+		expect(loaded?.doc).toEqual(
+			legacyDoc({
+				text: "legacy text",
+				quotes: legacyQuotes,
+				references: legacyRefs,
+			}),
+		);
+	});
+
+	it("a v2 put stores text, quotes, references derived from its doc", async () => {
+		const { prisma, rows } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		const v2Doc: ComposerDoc = {
+			type: "doc",
+			content: [
+				{
+					type: "paragraph",
+					content: [
+						{
+							type: "chip",
+							attrs: {
+								chip: "command",
+								name: "ask",
+								source: "app",
+								group: "General",
+							},
+						},
+						{ type: "text", text: " hello " },
+						{
+							type: "chip",
+							attrs: {
+								chip: "ref",
+								ref: { kind: "issue", id: "55", label: "55" },
+							},
+						},
+						{ type: "text", text: " " },
+						{
+							type: "chip",
+							attrs: {
+								chip: "quote",
+								quote: {
+									source: { threadId: KEY, kind: "transcript" },
+									text: "a quote",
+								},
+								cut: false,
+							},
+						},
+					],
+				},
+			],
+		};
+
+		const saved = await drafts.put(
+			put({
+				version: 2,
+				doc: v2Doc,
+				text: "stale text",
+				quotes: [],
+				references: [],
+			}),
+		);
+
+		const expectedQuotes = [
+			{ source: { threadId: KEY, kind: "transcript" }, text: "a quote" },
+		];
+		const expectedRefs = [{ kind: "issue", id: "55", label: "55" }];
+		const expectedText = "/ask hello #55 > a quote";
+
+		expect(saved.version).toBe(2);
+		expect(saved.text).toBe(expectedText);
+		expect(saved.quotes).toEqual(expectedQuotes);
+		expect(saved.references).toEqual(expectedRefs);
+
+		const storedRow = rows.get(SCOPE);
+		const parsedBody = JSON.parse(storedRow?.body ?? "{}");
+		expect(parsedBody.version).toBe(2);
+		expect(parsedBody.text).toBe(expectedText);
+		expect(parsedBody.quotes).toEqual(expectedQuotes);
+		expect(parsedBody.references).toEqual(expectedRefs);
+	});
+
+	it("withDrafts counts a doc holding only a chip as a draft and an empty doc as none", async () => {
+		const { prisma } = fakePrisma();
+		const drafts = new DraftsService(prisma as never);
+		const chipScope = "thread:11111111-1111-4111-8111-111111111111";
+		const emptyScope = "thread:22222222-2222-4222-8222-222222222222";
+
+		await drafts.put(
+			put({
+				scope: chipScope,
+				version: 2,
+				doc: {
+					type: "doc",
+					content: [
+						{
+							type: "paragraph",
+							content: [
+								{
+									type: "chip",
+									attrs: {
+										chip: "ref",
+										ref: { kind: "file", id: "f1", label: "f.ts" },
+									},
+								},
+							],
+						},
+					],
+				},
+				text: "",
+				attachments: [],
+			}),
+		);
+
+		await drafts.put(
+			put({
+				scope: emptyScope,
+				version: 2,
+				doc: {
+					type: "doc",
+					content: [
+						{
+							type: "paragraph",
+							content: [{ type: "text", text: "   " }],
+						},
+					],
+				},
+				text: "",
+				attachments: [],
+			}),
+		);
+
+		const result = await drafts.withDrafts([chipScope, emptyScope]);
+		expect(result).toEqual(new Set([chipScope]));
 	});
 });

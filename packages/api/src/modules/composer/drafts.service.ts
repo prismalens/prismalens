@@ -12,9 +12,16 @@ import { ORPCError } from "@orpc/nest";
 import {
 	type ComposerDraft,
 	DRAFT_SWEEP_AFTER_MS,
+	DRAFT_TEXT_MAX_CHARS,
 	type DraftAttachment,
 	type DraftBody,
 	DraftBodySchema,
+	docParts,
+	docText,
+	draftDoc,
+	isEmptyDoc,
+	MAX_QUOTES_PER_MESSAGE,
+	MAX_REFERENCES_PER_MESSAGE,
 	type PutDraftInput,
 	type ServedAttachment,
 	scopeThreadId,
@@ -51,10 +58,28 @@ function lostRace(e: unknown): null {
 	throw e;
 }
 
+/** Every draft reads as version 2: a legacy body (text beside chip lists) converts here (#1101). */
+function upgraded(body: DraftBody): DraftBody {
+	return { ...body, version: 2, doc: draftDoc(body) };
+}
+
+/** A version-2 save keeps its flat fields in step with its document, for readers of `text`. */
+function flattened(body: DraftBody): DraftBody {
+	if (!body.doc) return body;
+	const parts = docParts(body.doc);
+	return {
+		...body,
+		version: 2,
+		text: docText(body.doc).slice(0, DRAFT_TEXT_MAX_CHARS),
+		quotes: parts.quotes.slice(0, MAX_QUOTES_PER_MESSAGE),
+		references: parts.references.slice(0, MAX_REFERENCES_PER_MESSAGE),
+	};
+}
+
 function toDraft(row: Row): ComposerDraft {
 	const parsed = DraftBodySchema.safeParse(JSON.parse(row.body));
 	return {
-		...(parsed.success ? parsed.data : EMPTY),
+		...upgraded(parsed.success ? parsed.data : EMPTY),
 		scope: row.scope,
 		rev: row.rev,
 		generation: row.generation,
@@ -89,7 +114,7 @@ export class DraftsService implements OnApplicationBootstrap {
 
 	async put(input: PutDraftInput): Promise<ComposerDraft> {
 		const { scope, baseRev, generation, ...rest } = input;
-		const body = JSON.stringify(DraftBodySchema.parse(rest));
+		const body = JSON.stringify(flattened(DraftBodySchema.parse(rest)));
 		const saved = await this.prisma.$transaction(async (tx) => {
 			const row = await tx.composerDraft.findUnique({ where: { scope } });
 			if (!row) {
@@ -198,7 +223,7 @@ export class DraftsService implements OnApplicationBootstrap {
 			return made ? "sent" : "kept";
 		}
 		if (rev !== undefined && row.rev !== rev) return "kept";
-		const choice = toDraft(row).choice;
+		const { choice } = toDraft(row);
 		const updated = await tx.composerDraft.updateMany({
 			where: { scope, rev: row.rev },
 			data: {
@@ -248,10 +273,8 @@ export class DraftsService implements OnApplicationBootstrap {
 				.filter((r) => {
 					const d = toDraft(r);
 					return (
-						d.text.trim() !== "" ||
-						d.attachments.length > 0 ||
-						d.quotes.length > 0 ||
-						d.references.length > 0
+						(d.doc ? !isEmptyDoc(d.doc) : d.text.trim() !== "") ||
+						d.attachments.length > 0
 					);
 				})
 				.map((r) => r.scope),
