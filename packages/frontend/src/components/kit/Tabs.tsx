@@ -41,7 +41,7 @@ export function Tabs({
 					<TabsTrigger
 						key={t.value}
 						value={t.value}
-						className="gap-1.5 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+						className="-mx-1 gap-1.5 rounded-control px-1 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
 					>
 						{t.label}
 						{t.count !== undefined && (
