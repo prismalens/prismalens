@@ -52,6 +52,7 @@ import { ThreadsService } from "./threads.service.js";
 		ThreadWatchesService,
 		PrFeedService,
 		ThreadLifecycleService,
+		ThreadStatusService,
 		THREAD_WATCHES,
 		WORK_ITEMS,
 	],

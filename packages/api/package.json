@@ -21,6 +21,7 @@
 		"typecheck": "tsc --noEmit",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"openapi:generate": "tsx scripts/generate-openapi.ts",
+		"seed:away": "tsx scripts/seed-away.ts",
 		"seed:long-thread": "tsx scripts/seed-long-thread.ts",
 		"seed:thread-list": "tsx scripts/seed-thread-list.ts"
 	},

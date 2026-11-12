@@ -22,6 +22,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
+import { EventListButton } from "@/components/attention/EventList";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
 import { useAbout } from "@/components/settings";
@@ -278,6 +279,7 @@ function MainBar({
 			{signedIn && full && <UpdateReady />}
 			<div className="flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
 				{settingsDoor && <SettingsIcon door={settingsDoor} />}
+				{signedIn && <EventListButton />}
 				<TerminalDoor />
 				<ThemeToggle />
 			</div>
@@ -580,6 +582,7 @@ function PhoneStrip({
 				</SheetContent>
 			</Sheet>
 			<span className="flex-1" />
+			{signedIn && <EventListButton className="size-12" />}
 			{waiting && (
 				<Link
 					to={waiting.to}

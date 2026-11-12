@@ -16,6 +16,8 @@ const state = {
 	updateMutate: vi.fn(),
 };
 
+// The thread notification choices have their own tests; this file covers Slack delivery.
+vi.mock("./NotifyChoices", () => ({ NotifyChoices: () => null }));
 vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({
 		setQueryData: vi.fn(),

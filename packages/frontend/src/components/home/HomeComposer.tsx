@@ -33,7 +33,7 @@ import {
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { cn } from "@/lib/utils";
-import { AwayStrip } from "./AwayStrip";
+import { AwayView } from "./AwayView";
 
 /** Home's choices; on `/new` they live in the URL, so `c` opens it with Incident on. */
 export interface NewThreadSearch {
@@ -250,7 +250,7 @@ export function HomeComposer({
 				}
 			/>
 			<SetupHint service={service ?? null} />
-			<AwayStrip />
+			<AwayView />
 			{repeat && (
 				<ScheduleDialog
 					open
