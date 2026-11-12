@@ -36,7 +36,7 @@ export function Tabs({
 }) {
 	return (
 		<Root value={value} onValueChange={onValueChange} className="min-w-0">
-			<TabsList aria-label={label} className="max-w-full overflow-x-auto">
+			<TabsList aria-label={label} className="max-w-full overflow-x-auto px-1">
 				{items.map((t) => (
 					<TabsTrigger
 						key={t.value}
