@@ -54,7 +54,7 @@ export function Aside({
 					aria-hidden
 					className="size-3.5 shrink-0 stroke-[1.75] text-text-3"
 				/>
-				<span className="min-w-0 flex-1 truncate text-body text-text-2">
+				<span className="line-clamp-2 min-w-0 flex-1 text-body text-text-2">
 					{e.question}
 				</span>
 				{entries.length > 1 && (
@@ -70,7 +70,7 @@ export function Aside({
 								<ChevronLeft className="size-3.5" />
 							</button>
 						</Hint>
-						<span className="px-1 text-meta text-text-3 tabular-nums">
+						<span className="px-1 text-meta text-text-3 tabular-nums max-sm:hidden">
 							{index + 1}/{entries.length}
 						</span>
 						<Hint label="Later aside">

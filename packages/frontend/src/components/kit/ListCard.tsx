@@ -40,8 +40,10 @@ export function ListCard({
 	testId?: string;
 }) {
 	const heading = <span className="truncate">{title}</span>;
+	// The phone rule gives every button 48 px (tokens.css, unlayered); the
+	// stretched ::after already makes the whole card the target.
 	const stretch =
-		"min-h-0 min-w-0 truncate text-left outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:ring-2 focus-visible:after:ring-accent";
+		"min-h-0! min-w-0 truncate text-left outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:ring-2 focus-visible:after:ring-accent";
 	let opener: ReactNode = heading;
 	if (link) opener = link(heading);
 	else if (onOpen)
@@ -55,7 +57,7 @@ export function ListCard({
 			className={cn(
 				"group/card relative flex min-w-0 flex-col gap-1 rounded-surface bg-surface-1 px-3 py-2.5 transition-colors duration-(--dur-instant) hover:bg-surface-2",
 				selected && "bg-surface-3 hover:bg-surface-3",
-				"[&_a]:min-h-0 [&_a]:min-w-0 [&_a]:truncate [&_a]:outline-none [&_a]:after:absolute [&_a]:after:inset-0 [&_a]:after:rounded-surface [&_a:focus-visible]:after:ring-2 [&_a:focus-visible]:after:ring-accent",
+				"[&_a]:min-h-0! [&_a]:min-w-0 [&_a]:truncate [&_a]:outline-none [&_a]:after:absolute [&_a]:after:inset-0 [&_a]:after:rounded-surface [&_a:focus-visible]:after:ring-2 [&_a:focus-visible]:after:ring-accent",
 			)}
 			data-testid={testId}
 		>

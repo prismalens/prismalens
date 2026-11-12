@@ -644,7 +644,9 @@ test("design kit states", async ({ page }) => {
 				);
 				if (p === "mode") {
 					await page.getByTestId("picker-option-acceptEdits").hover();
-					await page.getByTestId("hint").waitFor();
+					await page
+						.getByRole("tooltip", { name: "Edits run; commands ask" })
+						.waitFor();
 					await shot(`picker-mode-hint-${sfx}`);
 				}
 				if (p === "model") {
@@ -666,7 +668,9 @@ test("design kit states", async ({ page }) => {
 			}
 			await stage("picker-row").scrollIntoViewIfNeeded();
 			await page.getByTestId("kit-picker-locked").hover();
-			await page.getByTestId("hint").waitFor();
+			await page
+				.getByRole("tooltip", { name: "Set when the run started" })
+				.waitFor();
 			await shot(`picker-locked-hint-${sfx}`, "picker-row");
 			// At 390 the docked demo is already a button: the area is under the minimum.
 			if (size.w === 1440) {
