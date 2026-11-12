@@ -57,6 +57,7 @@ import {
 } from "../integrations/git-credential.service.js";
 import { sourceRequestFn } from "../integrations/source-request.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { codeHost } from "./code-hosts/registry.js";
 import {
 	type CheckLogRead,
 	type EtagCache,
@@ -64,12 +65,6 @@ import {
 	HostReadError,
 	LOG_UNAVAILABLE,
 	type PrActivityItem,
-	readActivity,
-	readGithub,
-	readGithubCheckLog,
-	readGitlab,
-	readGitlabJobLog,
-	readReviewThreads,
 } from "./pr-hosts.js";
 import {
 	apiBase,
@@ -444,13 +439,12 @@ export class PullRequestsService implements OnModuleInit {
 		const first = rows[0];
 		const pr = parsePrUrl(url);
 		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
-		if (!first || !pr || !remote || !apiBase(pr)) return null;
+		const host = codeHost(pr?.shape);
+		if (!first || !pr || !remote || !host) return null;
 		const cache = (safeParseJsonObject(first.etag) ?? {}) as EtagCache;
 		const read = await this.read(pr, remote, cache);
-		const base = apiBase(pr) as string;
-		const activity = await readActivity(
-			await this.requestFn(base, remote),
-			pr.shape === "gitlab" ? "gitlab" : "github",
+		const activity = await host.readActivity(
+			await this.requestFn(host.apiBase(pr.host), remote),
 			pr.repo,
 			pr.number,
 			activityCache,
@@ -499,12 +493,10 @@ export class PullRequestsService implements OnModuleInit {
 		remote: Remote,
 		cache: EtagCache,
 	): Promise<HostRead> {
-		const base = apiBase(pr);
-		if (!base) throw new Error(`no API for ${pr.host}`);
-		const req = await this.requestFn(base, remote);
-		return pr.shape === "gitlab"
-			? readGitlab(req, pr.repo, pr.number, cache)
-			: readGithub(req, pr.repo, pr.number, cache);
+		const host = codeHost(pr.shape);
+		if (!host) throw new Error(`no API for ${pr.host}`);
+		const req = await this.requestFn(host.apiBase(pr.host), remote);
+		return host.read(req, pr.repo, pr.number, cache);
 	}
 
 	/**
@@ -564,12 +556,11 @@ export class PullRequestsService implements OnModuleInit {
 		let threads = prev?.reviewThreads;
 		let note: string | undefined;
 		try {
-			threads = await readReviewThreads(
+			threads = await codeHost(pr.shape)?.readReviewThreads(
 				await this.requestFn(base, remote),
-				pr.shape === "gitlab" ? "gitlab" : "github",
 				pr.repo,
 				pr.number,
-				base.endsWith("/api/v3") ? "../graphql" : "graphql",
+				base,
 			);
 		} catch (e) {
 			note =
@@ -649,45 +640,44 @@ export class PullRequestsService implements OnModuleInit {
 			);
 		const pr = parsePrUrl(row.url);
 		const remote = pr ? trustedRemote(pr, await this.remotes()) : null;
-		const base = pr ? apiBase(pr) : null;
-		if (!pr || !remote || !base)
+		const host = codeHost(pr?.shape);
+		if (!pr || !remote || !host)
 			return none(
 				"This pull request's repository is not one PrismaLens reads from.",
 			);
-		// A commit status has no app and no log behind its link.
-		if (pr.shape === "github" && !run.appId)
-			return none(LOG_UNAVAILABLE.status);
+		const base = host.apiBase(pr.host);
 		try {
 			const req = await this.requestFn(base, remote);
-			if (pr.shape === "gitlab")
-				return await readGitlabJobLog(req, pr.repo, run.id as string);
 			const authorization = await this.authorizationFor(remote);
 			const doFetch = this.fetchImpl ?? fetch;
-			return await readGithubCheckLog(
-				req,
+			return await host.readCheckLog(
+				{
+					req,
+					apiBase: base,
+					locate: async (path) => {
+						const res = await doFetch(new URL(path, `${base}/`).href, {
+							headers: {
+								Accept: "application/json",
+								...(authorization ? { Authorization: authorization } : {}),
+							},
+							redirect: "manual",
+							signal: AbortSignal.timeout(PR_TIMEOUT_MS),
+						});
+						await res.body?.cancel();
+						return {
+							status: res.status,
+							location: res.headers.get("location"),
+						};
+					},
+					// The signed log address carries its own access: no credential goes with it.
+					download: (url) => {
+						if (!url.startsWith("https://"))
+							return Promise.resolve(new Response(null, { status: 404 }));
+						return doFetch(url, { signal: AbortSignal.timeout(PR_TIMEOUT_MS) });
+					},
+				},
 				pr.repo,
-				run.id as string,
-				async (path) => {
-					const res = await doFetch(new URL(path, `${base}/`).href, {
-						headers: {
-							Accept: "application/json",
-							...(authorization ? { Authorization: authorization } : {}),
-						},
-						redirect: "manual",
-						signal: AbortSignal.timeout(PR_TIMEOUT_MS),
-					});
-					await res.body?.cancel();
-					return {
-						status: res.status,
-						location: res.headers.get("location"),
-					};
-				},
-				// The signed log address carries its own access: no credential goes with it.
-				(url) => {
-					if (!url.startsWith("https://"))
-						return Promise.resolve(new Response(null, { status: 404 }));
-					return doFetch(url, { signal: AbortSignal.timeout(PR_TIMEOUT_MS) });
-				},
+				run,
 			);
 		} catch (e) {
 			this.logger.warn(
@@ -699,7 +689,7 @@ export class PullRequestsService implements OnModuleInit {
 		}
 	}
 
-	/** A named branch on a GitHub or GitLab remote: its open or latest PR, once a minute at most. */
+	/** A named branch on a remote a code-host adapter reads: its open or latest PR, once a minute at most. */
 	private async lookUpBranch(
 		run: { id: string; workspace: string | null },
 		force: boolean,
@@ -715,14 +705,11 @@ export class PullRequestsService implements OnModuleInit {
 			if (!repo.branch) continue;
 			const remote = await this.remoteForRepo(repo, remotes);
 			if (!remote) continue;
-			const shape = workHostOf(remote.host);
-			if (shape !== "github" && shape !== "gitlab") continue;
+			const host = codeHost(workHostOf(remote.host));
+			if (!host) continue;
 			try {
-				const req = await this.requestFn(
-					workApiBase(remote.host, shape),
-					remote,
-				);
-				const found = await findByBranch(req, shape, remote.repo, repo.branch);
+				const req = await this.requestFn(host.apiBase(remote.host), remote);
+				const found = await host.findByBranch(req, remote.repo, repo.branch);
 				if (found) {
 					const pr = parsePrUrl(found);
 					if (pr && trustedRemote(pr, remotes))
@@ -844,31 +831,4 @@ async function originOf(dir: string): Promise<string | null> {
 	} catch {
 		return null;
 	}
-}
-
-/** The newest PR whose head is `branch`, as its web URL. */
-async function findByBranch(
-	req: AuthenticatedRequestFn,
-	shape: "github" | "gitlab",
-	repo: string,
-	branch: string,
-): Promise<string | null> {
-	const owner = repo.split("/")[0] ?? "";
-	const path =
-		shape === "github"
-			? `repos/${repo}/pulls?state=all&per_page=5&head=${encodeURIComponent(`${owner}:${branch}`)}`
-			: `projects/${encodeURIComponent(repo)}/merge_requests?per_page=5&source_branch=${encodeURIComponent(branch)}`;
-	const res = await req("GET", path, {
-		headers: { Accept: "application/json" },
-	});
-	if (!res.ok) {
-		await res.body?.cancel();
-		return null;
-	}
-	const list = (await res.json().catch(() => [])) as unknown;
-	const first = Array.isArray(list)
-		? (list[0] as Record<string, unknown>)
-		: null;
-	const url = first?.html_url ?? first?.web_url;
-	return typeof url === "string" ? url : null;
 }
