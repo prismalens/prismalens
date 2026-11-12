@@ -33,7 +33,6 @@ const galleryIds = new Set(
 const UNREACHED = [
 	"thread.row",
 	"thread.header",
-	"message",
 	"diff.file",
 	"diff.line",
 	"pr.chip",
@@ -47,13 +46,13 @@ const UNREACHED = [
 	"settings.row",
 	"schedule.row",
 ] as const;
-const UNREACHED_MAX = 15;
+const UNREACHED_MAX = 14;
 
 /**
  * Files that still pass inline `entries` to the kit Menu or ContextMenu instead
  * of a registered surface. The list only shrinks.
  */
-/** Paths as the glob keys them: kit files as `./`, the rest from `src` as `../../`. */
+/** Paths as the glob keys them, relative to `components/kit`. */
 const INLINE_MENUS = [
 	"./ListCard.tsx",
 	"./Surface.tsx",
