@@ -19,7 +19,7 @@ import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
 import { useThreadAsks } from "@/lib/api/hooks/use-threads-orpc";
-import { eventWords } from "@/lib/attention/notify-rules";
+import { eventWords, threadName } from "@/lib/attention/notify-rules";
 import { useAwayView, useMarkEventsRead } from "@/lib/attention/use-attention";
 import { formatDayClock } from "@/lib/format-time";
 
@@ -42,10 +42,6 @@ export function kindStatus(
 		case "started":
 			return "working";
 	}
-}
-
-function threadName(t: AttentionThread): string {
-	return t.title?.trim() || "Untitled thread";
 }
 
 export function AwayView() {

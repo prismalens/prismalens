@@ -191,7 +191,9 @@ export class RecordsProvider implements ReferenceProvider {
 							ref: {
 								kind: "thread",
 								id: r.id,
-								label: (r.title || "Untitled thread").slice(0, 200),
+								label: (
+									r.title || (r.kind === "chat" ? "Chat" : "Investigation")
+								).slice(0, 200),
 							},
 							detail: r.status,
 							group: "Threads",
