@@ -9,6 +9,7 @@ import type {
 	RunCredential,
 	StreamToolResult,
 } from "@prismalens/contracts";
+import { isPlServerName, plToolName } from "@prismalens/contracts";
 import {
 	ACCESS_LEVEL_LABEL,
 	ModelReportSchema,
@@ -543,6 +544,7 @@ export type TranscriptItem =
 			detail?: string;
 			report?: boolean;
 			path?: string;
+
 			/** What the box can do next, under the line (run-end-line.ts). */
 			hint?: string | null;
 			/** A finished report offers `Investigate again` (#673 w59). */
@@ -811,6 +813,8 @@ export function deriveTranscript(
 	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
 	let limited = false;
 	const gateway = matchGateway(events);
+	/** Rename calls, said as one "Named" line and kept out of every group. */
+	const named = new Set<string>();
 	const stopLines = events.some(
 		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
 	);
@@ -971,8 +975,27 @@ export function deriveTranscript(
 					answerPending();
 				}
 				for (const call of event.toolCalls) {
-					if (callGroup.has(call.toolCallId) || delegated.has(call.toolCallId))
+					if (
+						callGroup.has(call.toolCallId) ||
+						delegated.has(call.toolCallId) ||
+						named.has(call.toolCallId)
+					)
 						continue;
+					// Naming the thread is housekeeping: one quiet line, never a step or a command (#1104).
+					if (isRenameCall(call.name)) {
+						named.add(call.toolCallId);
+						const title =
+							typeof call.args.title === "string" ? call.args.title.trim() : "";
+						if (title) {
+							closeGroup();
+							items.push({
+								kind: "line",
+								key: `${key}-${call.toolCallId}`,
+								text: `Named · ${title}`,
+							});
+						}
+						continue;
+					}
 					if (DELEGATE_TOOL.test(call.name)) {
 						delegated.add(call.toolCallId);
 						if (subagents.get(call.toolCallId)?.fallback) {
@@ -1006,6 +1029,7 @@ export function deriveTranscript(
 			}
 			case "tool_result": {
 				const id = event.result.toolCallId;
+				if (named.has(id)) break;
 				const g: OpenGroup =
 					callGroup.get(id) ?? group ?? openGroup(key, event.ts);
 				g.item.until = event.ts;
@@ -1155,6 +1179,7 @@ export function deriveTranscript(
 					});
 				break;
 			case "harness_tool_call": {
+				if (plToolName(event.name) === "pl_thread_title") break;
 				const node = gatewayNode(event.name);
 				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
 				if (
@@ -1612,4 +1637,20 @@ export function queuedMessages(
 				attachments: m.attachments ?? [],
 			})),
 	];
+}
+
+/** The agent naming its thread through PrismaLens: `mcp__prismalens__pl_thread_title` or `pl_thread_title (prismalens)`. */
+export function isRenameCall(name: string): boolean {
+	const n = name.replace(/^`([\s\S]*)`$/, "$1").trim();
+	const mcp = /^mcp__(.+?)__(.+)$/.exec(n);
+	if (mcp)
+		return (
+			isPlServerName(mcp[1]) && plToolName(mcp[2] ?? "") === "pl_thread_title"
+		);
+	const shown = /^(\w+) \((.+)\)$/.exec(n);
+	return (
+		!!shown &&
+		isPlServerName(shown[2]) &&
+		plToolName(shown[1] ?? "") === "pl_thread_title"
+	);
 }
