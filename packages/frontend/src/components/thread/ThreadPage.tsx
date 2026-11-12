@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
+import { useRunScheduleNow } from "@/lib/api/hooks/use-schedules-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
@@ -147,6 +148,7 @@ export function ThreadPage({ id }: { id: string }) {
 	const [boxOpen, setBoxOpen] = useState(false);
 	const search = useSearch({ from: "/_authenticated/threads/$id" });
 	const navigate = useNavigate();
+	const runSchedule = useRunScheduleNow();
 	const panelOpen = !!search.panel;
 	const [browserOpened, setBrowserOpened] = useState(false);
 	const [openSteps, setOpenSteps] = useState<ReadonlySet<number>>(new Set());
@@ -536,6 +538,22 @@ export function ThreadPage({ id }: { id: string }) {
 		run.ended && !run.resumable && state !== "interrupted"
 			? (run.resumeBlockedReason ?? "Can't continue")
 			: null;
+	const scheduleId = inv.scheduleId;
+	const rerun =
+		blocked && scheduleId
+			? () =>
+					runSchedule.mutate(
+						{ id: scheduleId },
+						{
+							onSuccess: (tick) =>
+								tick.run &&
+								void navigate({
+									to: "/schedules/$id/runs/$runId",
+									params: { id: scheduleId, runId: tick.run.id },
+								}),
+						},
+					)
+			: undefined;
 	// A failed turn says so once, in its dock: the transcript drops its own end line.
 	const failedTurn =
 		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
@@ -552,8 +570,9 @@ export function ThreadPage({ id }: { id: string }) {
 				harness?.loginHint,
 				lastProse?.kind === "prose" ? lastProse.text : null,
 			)}
-			onRetry={blocked ? undefined : retry}
-			pending={retrying}
+			// A scheduled run with no workspace to go back to runs its schedule again.
+			onRetry={blocked ? rerun : retry}
+			pending={retrying || runSchedule.isPending}
 		/>
 	);
 	const dock =
@@ -644,6 +663,7 @@ export function ThreadPage({ id }: { id: string }) {
 						accessHint="Kept from the first message"
 						dock={dock}
 						blockedReason={blocked}
+						blockedQuiet={!!failedDock}
 						text={draft}
 						onText={setDraft}
 						focusSignal={focusSignal}
