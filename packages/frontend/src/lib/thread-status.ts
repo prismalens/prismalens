@@ -50,13 +50,13 @@ const COUNT_WORD: Record<ReturnType<typeof bucketOf>, string> = {
 	done: "done",
 };
 
-/** The icon's tint (sheet §9.1): strong colour only for needs-you and failed; words stay neutral. */
+/** The icon's tint (sheet §9.1, §10): warn for needs-you and Limited, danger for failed; words stay neutral. */
 export const STATUS_TONE: Record<ThreadStatus, StateTone> = {
 	approval: "warn",
 	question: "warn",
 	blocked: "danger",
 	failed: "danger",
-	limited: "neutral",
+	limited: "warn",
 	working: "accent",
 	waiting: "quiet",
 	done: "quiet",
