@@ -81,7 +81,7 @@ describe("detailsRows for thread", () => {
 });
 
 describe("detailsRows for incident", () => {
-	it("returns ids severity, cause, next, alert, pr, cause row with lines: 2, and alert firing giving tone danger", () => {
+	it("returns ids severity, cause, next, alert, pr, cause row with lines: 2, severity tinted by its own tone and a firing alert left untinted", () => {
 		const incident: IncidentDetails = {
 			kind: "incident",
 			severity: { word: "High", tone: "sev-high" },
@@ -103,7 +103,8 @@ describe("detailsRows for incident", () => {
 		const causeRow = rows.find((r) => r.id === "cause");
 		expect(causeRow?.lines).toBe(2);
 
-		const alertRow = rows.find((r) => r.id === "alert");
-		expect(alertRow?.tone).toBe("danger");
+		expect(rows.find((r) => r.id === "severity")?.tone).toBe("sev-high");
+		// Only needs-you and failed carry colour; the word "Firing" says it (sheet §9.1).
+		expect(rows.find((r) => r.id === "alert")?.tone).toBeUndefined();
 	});
 });

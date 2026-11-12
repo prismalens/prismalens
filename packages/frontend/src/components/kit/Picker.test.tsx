@@ -124,9 +124,16 @@ describe("Picker", () => {
 			'[data-testid="picker-option-opt-3"]',
 		);
 
-		expect(opt1).not.toBeNull();
-		expect(opt2).not.toBeNull();
-		expect(opt3).not.toBeNull();
+		expect(
+			Array.from(
+				document.querySelectorAll('[data-testid^="picker-option-"]'),
+				(e) => e.getAttribute("data-testid"),
+			),
+		).toEqual([
+			"picker-option-opt-1",
+			"picker-option-opt-2",
+			"picker-option-opt-3",
+		]);
 
 		expect(opt1?.getAttribute("data-on")).toBeNull();
 		expect(opt2?.getAttribute("data-on")).toBe("true");
