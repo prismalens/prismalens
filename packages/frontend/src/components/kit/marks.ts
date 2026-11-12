@@ -3,6 +3,7 @@
 
 import {
 	Ban,
+	Bot,
 	CheckCheck,
 	CircleCheck,
 	CircleDashed,
@@ -19,7 +20,6 @@ import {
 	MessageCircleQuestion,
 	Network,
 	ShieldAlert,
-	Sparkles,
 	TriangleAlert,
 } from "lucide-react";
 
@@ -85,7 +85,7 @@ export const MARKS = {
 	/** The agent: its real mark is drawn by AgentMark; this is its fallback and label. */
 	agent: defineMark({
 		id: "agent",
-		icon: Sparkles,
+		icon: Bot,
 		label: "Agent",
 		tones: { any: "muted" },
 	}),
