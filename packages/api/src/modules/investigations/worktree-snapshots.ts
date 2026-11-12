@@ -205,9 +205,6 @@ export async function openStore(
 			return r.stdout;
 		},
 	};
-	// Ours from HEAD's tree, never a copy of the worktree's index or its flags.
-	if (!(await exists(join(gitDir, "index"))))
-		await store.git(["read-tree", await worktreeHead(store)], { work: true });
 	return store;
 }
 
@@ -273,6 +270,18 @@ export async function takeSnapshot(
 ): Promise<Snapshot> {
 	const signal = o.signal;
 	const head = await worktreeHead(store);
+	// Ours from HEAD's tree, never a copy of the worktree's index; read again when HEAD moves,
+	// or a file the agent committed would count as untracked (and a large one be skipped).
+	const baseFile = join(store.gitDir, "pl-index-base");
+	const base = await readFile(baseFile, "utf8").catch(() => "");
+	if (base.trim() !== head || !(await exists(join(store.gitDir, "index")))) {
+		await store.git(["read-tree", head], { work: true, signal });
+		await writeFile(
+			baseFile,
+			`${head}
+`,
+		);
+	}
 	const [changed, others, extras] = await Promise.all([
 		store
 			.git(["diff-files", "--name-only", "-z", "--ignore-submodules=all"], {
@@ -310,9 +319,11 @@ export async function takeSnapshot(
 	const ignored = extras.length
 		? zsplit(
 				await store
+					// check-ignore refuses literal pathspecs: with them on it failed, and nothing was dropped.
 					.git(["check-ignore", "-z", "--stdin", "--no-index"], {
 						work: true,
 						input: `${extras.join("\0")}\0`,
+						magic: true,
 						signal,
 					})
 					.catch(() => ""),

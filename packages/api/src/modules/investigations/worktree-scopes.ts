@@ -355,15 +355,13 @@ export async function readChangesFile(
 			if (reached) break;
 		}
 		if (!reached) return { state: "unavailable", reason: "no-workspace" };
-		const size = Number(
-			(
-				await store.git(["cat-file", "-s", `${commit}:${path}`]).catch(() => "")
-			).trim(),
-		);
-		if (!Number.isFinite(size) || size <= 0)
-			return size === 0
-				? { state: "ok", contents: "" }
-				: { state: "unavailable", reason: "absent" };
+		// A path the commit lacks fails `cat-file -s`: it is absent, never an empty file.
+		const told = (
+			await store.git(["cat-file", "-s", `${commit}:${path}`]).catch(() => "")
+		).trim();
+		const size = /^\d+$/.test(told) ? Number(told) : Number.NaN;
+		if (Number.isNaN(size)) return { state: "unavailable", reason: "absent" };
+		if (size === 0) return { state: "ok", contents: "" };
 		if (size > WORKTREE_FILE_MAX_BYTES)
 			return { state: "unavailable", reason: "too-large" };
 		const text = await store.git(["cat-file", "blob", `${commit}:${path}`]);
