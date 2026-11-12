@@ -15,7 +15,9 @@ import {
 	CircleDashed,
 	CircleHelp,
 	CircleOff,
+	CircleStop,
 	Clock3,
+	CornerDownRight,
 	Flag,
 	FolderGit2,
 	FolderX,
@@ -29,6 +31,7 @@ import {
 	KeyRound,
 	Layers,
 	Link2,
+	ListEnd,
 	type LucideIcon,
 	MessageCircleQuestion,
 	Network,
@@ -143,6 +146,14 @@ export const MARKS = {
 		label: "Threads started from it",
 		tones: { any: "muted" },
 	}),
+	/** A message sent while the agent works: queued for its next pause, or steered in now. */
+	delivery: defineMark({
+		id: "delivery",
+		icon: ListEnd,
+		icons: { steered: CornerDownRight },
+		label: "Delivery",
+		tones: { queued: "muted", steered: "info" },
+	}),
 	/** An open ask: loudest on the row, and it lifts a parent into needs-you. */
 	ask: defineMark({
 		id: "ask",
@@ -241,6 +252,25 @@ export const MARKS = {
 		icon: Layers,
 		label: "Repeats",
 		tones: { any: "muted" },
+	}),
+	/** One run's outcome: a sub-agent or a scheduled run. A working run draws the ring. */
+	run: defineMark({
+		id: "run",
+		icon: CircleDashed,
+		icons: {
+			pending: Hourglass,
+			completed: CircleCheck,
+			failed: TriangleAlert,
+			cancelled: CircleStop,
+		},
+		label: "Run",
+		tones: {
+			running: "info",
+			pending: "muted",
+			completed: "muted",
+			failed: "danger",
+			cancelled: "muted",
+		},
 	}),
 } as const satisfies Readonly<Record<string, MarkDef>>;
 
