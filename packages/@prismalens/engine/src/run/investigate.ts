@@ -121,6 +121,7 @@ import {
 	retryPrompt,
 	stampReport,
 } from "./report.js";
+import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
 import { parseUsageUpdate, quotaOf } from "./usage.js";
 
@@ -175,6 +176,8 @@ export interface RunInvestigationOptions {
 	 * one keeps the reopened session's mode and shows every ask.
 	 */
 	accessLevel?: AccessLevel;
+	/** The agent's own mode the composer picked when no level maps to it (#1101); set as is, no fallback. */
+	agentMode?: string;
 	/** The user's stored values for this agent from Settings (#907); they win over the host's. */
 	env?: NodeJS.ProcessEnv;
 	/** Which host variables reach the agent; the user's env minus PrismaLens's own secrets by default (#817). */
@@ -304,7 +307,7 @@ export interface RunInvestigationOptions {
 		onCancel(handler: (sessionId: string) => boolean): () => void;
 	};
 	/**
-	 * Values the user gave this thread through `secret_request` (#1024 spec B): redacted
+	 * Values the user gave this thread through `pl_secret_request` (#1024 spec B): redacted
 	 * from every event, the transcript and stderr whatever their length or name.
 	 */
 	secrets?: readonly string[];
@@ -504,7 +507,7 @@ export function promptParts(
 }
 
 const LINKED_FILES_NOTE =
-	"Some attached files are linked below instead of inlined. A file:// link is in a folder you may read; a prismalens://attachment/<id> link is read with the attachment_read tool, in chunks.";
+	"Some attached files are linked below instead of inlined. A file:// link is in a folder you may read; a prismalens://attachment/<id> link is read with the pl_attachment_read tool, in chunks.";
 
 /** An image to 4 MB or a text file to 256 KB goes inline; anything else is linked (#1024). */
 function inlines(a: JobAttachment): boolean {
@@ -687,12 +690,15 @@ async function* runSession(
 	});
 	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
 	let keepMode =
-		!!opts.resume?.sessionId && !opts.accessLevel && !opts.toolFree;
+		!!opts.resume?.sessionId &&
+		!opts.accessLevel &&
+		!opts.agentMode &&
+		!opts.toolFree;
 	const level = opts.toolFree
 		? "supervised"
 		: (opts.accessLevel ?? DEFAULT_ACCESS_LEVEL);
 	const access = resolveAccess(opts.harness, level);
-	const askedMode = access.mode ?? null;
+	const askedMode = opts.agentMode ?? access.mode ?? null;
 	let fidelity = buildRunFidelity(
 		opts.harness,
 		{ id: opts.model, source: opts.modelSource },
@@ -705,6 +711,9 @@ async function* runSession(
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
 	const keyed = apiKeyIn(env, HARNESS_REGISTRY[opts.harness]?.providerKeys);
+	const reservedBy = opts.gateway
+		? userServerByOurName(opts.harness, opts.hostEnv ?? process.env, opts.cwd)
+		: null;
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
@@ -1113,6 +1122,7 @@ async function* runSession(
 				toolsTurn,
 				opts.gateway.connected(),
 				opts.gateway.calls(),
+				reservedBy,
 			);
 		}
 	};
@@ -1193,7 +1203,7 @@ async function* runSession(
 			const refused = await applyMode(session, {
 				label,
 				target: askedMode,
-				fallback: access.fallbackMode,
+				fallback: opts.agentMode ? undefined : access.fallbackMode,
 			});
 			if (refused) {
 				yield* leftovers();
@@ -1288,12 +1298,21 @@ async function* runSession(
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
 			// A short provider wait is sat out here and the message sent again, up to five tries (#1101).
 			let attempt = 1;
+			let retried: "rate_limited" | "overloaded" | undefined;
 			let sent = parts;
 			for (;;) {
 				// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
 				const costBefore = lastCost ?? (opts.resume ? null : undefined);
 				const end = yield* consume(session.prompt(sent));
 				if ("stop" in end) {
+					if (attempt > 1 && retried)
+						yield adapter.providerRetry(
+							retried,
+							attempt,
+							PROVIDER_RETRY_ATTEMPTS,
+							opts.now?.() ?? new Date(),
+							"succeeded",
+						);
 					const usage = turnUsage(end.usage, costBefore, lastCost, lastModel);
 					if (usage) yield adapter.turnUsage(usage);
 					return end;
@@ -1307,8 +1326,9 @@ async function* runSession(
 				if (opts.signal?.aborted || !retriesInTurn(failure, next))
 					return { ...end, failure };
 				const wait = retryDelayMs(failure, next);
+				retried = failure.mode as "rate_limited" | "overloaded";
 				yield adapter.providerRetry(
-					failure.mode as "rate_limited" | "overloaded",
+					retried,
 					next,
 					PROVIDER_RETRY_ATTEMPTS,
 					new Date((opts.now?.() ?? new Date()).getTime() + wait),

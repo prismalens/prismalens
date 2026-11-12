@@ -44,14 +44,14 @@ describe("stepNode (#1020): an ordinary call by what it names", () => {
 	});
 
 	it("draws a PrismaLens tool by its own name", () => {
-		expect(stepNode({ name: "mcp__pl__incidents_similar", args: {}, gateway: "incidents_similar" })).toBe(
+		expect(stepNode({ name: "mcp__pl__incidents_similar", args: {}, gateway: "pl_incidents_similar" })).toBe(
 			"knowledge",
 		);
-		expect(gatewayNode("evidence_record")).toBe("evidence");
-		expect(gatewayNode("hypothesis_record")).toBe("suspect");
-		expect(gatewayNode("artifact_publish")).toBe("artifact");
-		expect(gatewayNode("report_validate")).toBe("report");
-		expect(gatewayNode("timeline_read")).toBe("knowledge");
+		expect(gatewayNode("pl_evidence_record")).toBe("evidence");
+		expect(gatewayNode("pl_hypothesis_record")).toBe("suspect");
+		expect(gatewayNode("pl_artifact_publish")).toBe("artifact");
+		expect(gatewayNode("pl_report_validate")).toBe("report");
+		expect(gatewayNode("pl_timeline_read")).toBe("knowledge");
 	});
 });
 
@@ -93,10 +93,10 @@ describe("matchGateway (#1020)", () => {
 	it("pairs each recorded call with the agent's own call of it, in order; the rest stand alone", () => {
 		const out = matchGateway([
 			step(0, "c1", "mcp__prismalens-1__incidents_similar"),
-			call(1, "incidents_similar", "INC-7"),
+			call(1, "pl_incidents_similar", "INC-7"),
 			step(2, "c2", "mcp__prismalens-1__incidents_similar"),
-			call(3, "incidents_similar", "INC-9"),
-			call(4, "timeline_read", "3 entries"),
+			call(3, "pl_incidents_similar", "INC-9"),
+			call(4, "pl_timeline_read", "3 entries"),
 			step(5, "c3", "mcp__other__incidents_similar"),
 		]);
 		expect(out.byCall.get("c1")?.output).toBe("INC-7");
@@ -105,7 +105,7 @@ describe("matchGateway (#1020)", () => {
 		expect(Array.from(out.unmatched)).toEqual(["main-4"]);
 	});
 
-	it("pairs a deferred call through tools_call with the target it recorded", () => {
+	it("pairs a deferred call through pl_tools_call with the target it recorded", () => {
 		const viaCall = (seq: number, name: string, output: string): CanonicalEvent => ({
 			...(call(seq, name, output) as Extract<CanonicalEvent, { kind: "harness_tool_call" }>),
 			via: "tools_call",
@@ -117,17 +117,17 @@ describe("matchGateway (#1020)", () => {
 			toolCalls: [{ toolCallId: id, name: "mcp__prismalens-1__tools_call", args: { name: target, arguments: {} } }],
 		});
 		const out = matchGateway([
-			deferred(0, "d1", "fixes_list"),
-			viaCall(1, "fixes_list", "2 fixes"),
-			deferred(2, "d2", "runbooks_list"),
-			viaCall(3, "changes_list", "1 change"),
+			deferred(0, "d1", "pl_fixes_list"),
+			viaCall(1, "pl_fixes_list", "2 fixes"),
+			deferred(2, "d2", "pl_runbooks_list"),
+			viaCall(3, "pl_changes_list", "1 change"),
 		]);
-		expect(out.byCall.get("d1")?.name).toBe("fixes_list");
+		expect(out.byCall.get("d1")?.name).toBe("pl_fixes_list");
 		expect(out.byCall.has("d2")).toBe(false);
 		expect(Array.from(out.unmatched)).toEqual(["main-3"]);
 	});
 
-	it("pairs a wrapper call that never resolved, recorded as tools_call with no via", () => {
+	it("pairs a wrapper call that never resolved, recorded as pl_tools_call with no via", () => {
 		const out = matchGateway([
 			{
 				kind: "agent_step",
@@ -137,21 +137,21 @@ describe("matchGateway (#1020)", () => {
 					{ toolCallId: "d1", name: "mcp__prismalens-1__tools_call", args: { name: "nope", arguments: {} } },
 				],
 			},
-			call(1, "tools_call", "Unknown tool"),
+			call(1, "pl_tools_call", "Unknown tool"),
 		]);
 		expect(out.byCall.get("d1")?.output).toBe("Unknown tool");
 		expect(Array.from(out.unmatched)).toEqual([]);
 	});
 
-	it("pairs a refused tools_call wrapper by its recorded input, not a later call of the same target", () => {
+	it("pairs a refused pl_tools_call wrapper by its recorded input, not a later call of the same target", () => {
 		type Recorded = Extract<CanonicalEvent, { kind: "harness_tool_call" }>;
 		const refused: CanonicalEvent = {
-			...(call(1, "tools_call", "invalid arguments") as Recorded),
-			input: { name: "fixes_list", arguments: "x" },
+			...(call(1, "pl_tools_call", "invalid arguments") as Recorded),
+			input: { name: "pl_fixes_list", arguments: "x" },
 			isError: true,
 		};
 		const later: CanonicalEvent = {
-			...(call(3, "fixes_list", "2 fixes") as Recorded),
+			...(call(3, "pl_fixes_list", "2 fixes") as Recorded),
 			via: "tools_call",
 		};
 		const deferred = (seq: number, id: string): CanonicalEvent => ({
@@ -162,7 +162,7 @@ describe("matchGateway (#1020)", () => {
 				{
 					toolCallId: id,
 					name: "mcp__prismalens-1__tools_call",
-					args: { name: "fixes_list" },
+					args: { name: "pl_fixes_list" },
 				},
 			],
 		});

@@ -6,6 +6,7 @@ import type { HandoffPreview } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { settleEditor, typeIn } from "../thread/composer/editor/test-helpers";
 import { DockedComposer } from "./DockedComposer";
 
 interface PreviewState {
@@ -58,11 +59,16 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		AccessChip: (p: { onLevel: (l: string) => void; level: string }) =>
+		ModeChip: (p: {
+			onPick: (n: { accessLevel?: string; agentMode: string | null }) => void;
+			level: string;
+		}) =>
 			el(
 				"span",
 				{ "data-testid": "mode", "data-value": p.level },
-				button("pick-mode", () => p.onLevel("full-access")),
+				button("pick-mode", () =>
+					p.onPick({ accessLevel: "full-access", agentMode: null }),
+				),
 			),
 		defaultAccessOf: () => ({
 			level: { level: h.settingsLevel, from: "agent" },
@@ -184,17 +190,12 @@ function setRecord(over: Record<string, unknown> = {}) {
 
 async function render() {
 	await act(async () => root.render(createElement(DockedComposer, {})));
+	await settleEditor();
 }
 
 async function type(text: string) {
-	const field = q<HTMLTextAreaElement>("composer-input");
-	await act(async () => {
-		Object.getOwnPropertyDescriptor(
-			HTMLTextAreaElement.prototype,
-			"value",
-		)?.set?.call(field, text);
-		field.dispatchEvent(new Event("input", { bubbles: true }));
-	});
+	const field = q("composer-input");
+	await typeIn(field, text);
 }
 
 beforeEach(() => {
@@ -246,7 +247,7 @@ describe("DockedComposer handoff states on a finished run", () => {
 		);
 	});
 
-	it("handoff-L5: preview.isPending -> hint Checking what <agent> can take and Send disabled", async () => {
+	it("handoff-L5: preview.isPending -> hint Checking the session and Send disabled", async () => {
 		h.preview = {
 			data: undefined,
 			isPending: true,
@@ -258,7 +259,7 @@ describe("DockedComposer handoff states on a finished run", () => {
 		const hint = q("composer-hint");
 		expect(hint).not.toBeNull();
 		expect(hint.textContent).toBe(
-			"Checking what OpenCode can take from this run.",
+			"Checking the session",
 		);
 
 		const sendBtn = q<HTMLButtonElement>("composer-send");
@@ -294,8 +295,8 @@ describe("DockedComposer handoff states on a finished run", () => {
 			"Agent is not available. Install the agent or choose another.",
 		);
 
-		const input = q<HTMLTextAreaElement>("composer-input");
-		expect(input.disabled).toBe(false);
+		const input = q("composer-input");
+		expect(input.getAttribute("aria-disabled")).toBeNull();
 
 		const sendBtn = q<HTMLButtonElement>("composer-send");
 		expect(sendBtn.disabled).toBe(true);
@@ -316,7 +317,7 @@ describe("DockedComposer handoff states on a finished run", () => {
 		const blocked = q("composer-blocked");
 		expect(blocked).not.toBeNull();
 		expect(blocked.textContent).toBe(
-			"Unable to check what OpenCode will get. Sending still works.",
+			"Not checked; sending still works",
 		);
 
 		const sendBtn = q<HTMLButtonElement>("composer-send");

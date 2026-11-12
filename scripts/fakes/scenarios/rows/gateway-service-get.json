@@ -7,7 +7,7 @@
 	"gateway": {
 		"calls": [
 			{
-				"name": "service_get",
+				"name": "pl_service_get",
 				"ok": true,
 				"outputHas": "ScenarioTeamPlatform"
 			}
@@ -17,13 +17,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-service-get]",
-				"toolName": "$gw:service_get",
+				"toolName": "$gw:pl_service_get",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:service_get",
+						"name": "$gw:pl_service_get",
 						"arguments": {
 							"name": "scenario"
 						}
@@ -34,13 +34,13 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-service-get]",
-				"toolName": "$gw:tools_search",
+				"toolName": "$gw:pl_tools_search",
 				"hasToolResult": false
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_search",
+						"name": "$gw:pl_tools_search",
 						"arguments": {
 							"query": "get service"
 						}
@@ -51,15 +51,15 @@
 		{
 			"match": {
 				"inConversation": "[row:gateway-service-get]",
-				"afterTool": "$gw:tools_search",
-				"resultContains": "service_get"
+				"afterTool": "$gw:pl_tools_search",
+				"resultContains": "pl_service_get"
 			},
 			"response": {
 				"toolCalls": [
 					{
-						"name": "$gw:tools_call",
+						"name": "$gw:pl_tools_call",
 						"arguments": {
-							"name": "service_get",
+							"name": "pl_service_get",
 							"arguments": {
 								"name": "scenario"
 							}

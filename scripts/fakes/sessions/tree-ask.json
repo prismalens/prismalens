@@ -8,7 +8,7 @@
 		[
 			{
 				"call": {
-					"tool": "thread_start",
+					"tool": "pl_thread_start",
 					"arguments": {
 						"title": "Check the cache hit rate",
 						"role": "cache",

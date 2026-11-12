@@ -65,14 +65,14 @@ const GW = "$gw:";
 /** @param {unknown} name */
 const gwName = (name) =>
 	name === "$incident_get"
-		? "incident_get"
+		? "pl_incident_get"
 		: typeof name === "string" && name.startsWith(GW)
 			? name.slice(GW.length)
 			: null;
 /** @param {string} tool */
 const endsWith = (tool) => new RegExp(`(^|[^a-z0-9])${tool}$`);
-/** PrismaLens's per-run server is `prismalens-<random>`; agents carry it in the name or a namespace. */
-const PL_SERVER = /prismalens[-_][a-z2-7]{10}/;
+/** PrismaLens's server is `prismalens` (`prismalens-<random>` before #1101); agents carry it in the name or a namespace. */
+const PL_SERVER = /(^|[^a-z0-9])prismalens([-_][a-z2-7]{10})?($|[^a-z0-9-])/;
 /** @param {{ function: { name: string }, namespace?: string }} t */
 const isPrismaLens = (t) =>
 	PL_SERVER.test(t.function.name) || PL_SERVER.test(t.namespace ?? "");
@@ -311,7 +311,7 @@ export function requestSummary(req) {
 }
 
 /**
- * `tools_search` results the request carries back to the model, characters by call id.
+ * `pl_tools_search` results the request carries back to the model, characters by call id.
  * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
  */
 function searchResults(req) {
@@ -319,7 +319,7 @@ function searchResults(req) {
 	const out = {};
 	for (const m of req.messages)
 		for (const c of m.tool_calls ?? [])
-			if (endsWith("tools_search").test(c.function.name)) {
+			if (endsWith("pl_tools_search").test(c.function.name)) {
 				const result = req.messages.find(
 					(r) => r.role === "tool" && r.tool_call_id === c.id,
 				);

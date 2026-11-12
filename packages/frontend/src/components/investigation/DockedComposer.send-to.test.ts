@@ -6,6 +6,7 @@ import { ACCESS_LEVEL_LABEL } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { settleEditor, typeIn } from "../thread/composer/editor/test-helpers";
 import { DockedComposer } from "./DockedComposer";
 
 const h = vi.hoisted(() => {
@@ -48,8 +49,8 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		AccessChip: (p: {
-			onLevel: (l: string) => void;
+		ModeChip: (p: {
+			onPick: (n: { accessLevel?: string; agentMode: string | null }) => void;
 			level: string;
 			lockedHint?: string;
 		}) =>
@@ -60,7 +61,9 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 					"data-value": p.level,
 					"data-hint": p.lockedHint,
 				},
-				button("pick-mode", () => p.onLevel("full-access")),
+				button("pick-mode", () =>
+					p.onPick({ accessLevel: "full-access", agentMode: null }),
+				),
 			),
 		defaultAccessOf: () => ({
 			level: { level: h.settingsLevel, from: "agent" },
@@ -135,11 +138,8 @@ const q = <T extends Element = HTMLElement>(testId: string) =>
 const click = (testId: string) => act(async () => q(testId).click());
 
 async function type(text: string) {
-	const field = q<HTMLTextAreaElement>("composer-input");
-	await act(async () => {
-		Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, text);
-		field.dispatchEvent(new Event("input", { bubbles: true }));
-	});
+	const field = q("composer-input");
+	await typeIn(field, text);
 }
 
 function setRecord(over: Record<string, unknown> = {}) {
@@ -190,6 +190,7 @@ function setRecord(over: Record<string, unknown> = {}) {
 
 async function render() {
 	await act(async () => root.render(createElement(DockedComposer, {})));
+	await settleEditor();
 }
 
 beforeEach(() => {
@@ -212,8 +213,8 @@ describe("DockedComposer send-to handoff (#849)", () => {
 		await render();
 
 		await click("pick-agent");
-		const input = q<HTMLTextAreaElement>("composer-input");
-		expect(input.placeholder).toBe("Message Codex");
+		const input = q("composer-input");
+		expect(input.getAttribute("aria-label")).toBe("Message Codex");
 
 		await type("check memory leak");
 		await click("composer-send");

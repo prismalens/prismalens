@@ -497,6 +497,7 @@ export type TranscriptItem =
 			key: string;
 			node: NodeKind;
 			name: string;
+			input?: unknown;
 			outcome: string | null;
 			failed: boolean;
 			at: string;
@@ -549,6 +550,40 @@ export type TranscriptItem =
 	| { kind: "node"; key: string; event: CanonicalEvent };
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
+
+/** How another thread's message reaches this one's agent (thread-tree.service `formatted`). */
+const THREAD_DELIVERY = /^\[FROM (.+?) #(\d+)\] ([a-z_]+): ([\s\S]*)$/;
+
+/**
+ * A message another thread sent, from the text it was delivered as; null for your own
+ * message. A child's result arrives only this way, with no `thread_message` (#1101).
+ */
+export function threadDelivery(e: {
+	runId: string;
+	branchId: string;
+	path: string[];
+	seq: number;
+	ts: string;
+	text: string;
+}): Extract<CanonicalEvent, { kind: "thread_message" }> | null {
+	const m = THREAD_DELIVERY.exec(e.text);
+	if (!m) return null;
+	return {
+		kind: "thread_message",
+		runId: e.runId,
+		branchId: e.branchId,
+		path: e.path,
+		seq: e.seq,
+		ts: e.ts,
+		direction: "received",
+		peerId: `#${m[2]}`,
+		peerRole: m[1] as string,
+		peerLink: "",
+		type: m[3] as Extract<CanonicalEvent, { kind: "thread_message" }>["type"],
+		text: (m[4] as string).trim(),
+		mode: "queue",
+	};
+}
 
 export function seconds(from: string, to: number): number {
 	return Math.max(0, Math.round((to - new Date(from).getTime()) / 1000));
@@ -963,6 +998,13 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				if (event.messageId && carried.has(event.messageId)) break;
+				const fromThread = threadDelivery(event);
+				if (fromThread) {
+					closeGroup();
+					if (event.messageId) queued.delete(event.messageId);
+					items.push({ kind: "node", key, event: fromThread });
+					break;
+				}
 				closeGroup();
 				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
@@ -1082,6 +1124,15 @@ export function deriveTranscript(
 				items.push(item);
 				break;
 			}
+			case "harness_tools":
+				// A server of the user's own by our reserved name is said once per run (#1101).
+				if (event.reservedBy && !items.some((i) => i.key === "reserved-name"))
+					items.push({
+						kind: "line",
+						key: "reserved-name",
+						text: `${event.reservedBy} also defines an MCP server named prismalens. PrismaLens keeps that name for its own tools; rename yours there.`,
+					});
+				break;
 			case "harness_tool_call": {
 				const node = gatewayNode(event.name);
 				// Findings and pages are their own nodes; a call the agent's own step carries is that step.
@@ -1097,6 +1148,7 @@ export function deriveTranscript(
 					key,
 					node: event.isError ? "failed" : node,
 					name: event.name,
+					input: event.input,
 					outcome: outcomeLine(event),
 					failed: !!event.isError,
 					at: event.ts,
@@ -1177,6 +1229,16 @@ export function deriveTranscript(
 			default:
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
+					// A compaction's end replaces its own "Compacting" line (#1101).
+					if (event.kind === "compaction" && event.phase !== "started") {
+						const at = items.findLastIndex(
+							(i) =>
+								i.kind === "node" &&
+								i.event.kind === "compaction" &&
+								i.event.phase === "started",
+						);
+						if (at >= 0) items.splice(at, 1);
+					}
 					items.push({ kind: "node", key, event });
 				}
 		}
@@ -1186,7 +1248,16 @@ export function deriveTranscript(
 		if (run && !run.live) endOpenCalls();
 		return items;
 	}
-	for (const q of Array.from(queued.values()))
+	for (const q of Array.from(queued.values())) {
+		const fromThread = threadDelivery(q);
+		if (fromThread) {
+			items.push({
+				kind: "node",
+				key: `queued-${q.messageId}`,
+				event: fromThread,
+			});
+			continue;
+		}
 		items.push({
 			kind: "operator",
 			key: `queued-${q.messageId}`,
@@ -1197,6 +1268,7 @@ export function deriveTranscript(
 			// The run ended without reading it, and no record says so: it never arrived.
 			state: run && !run.live ? "not_delivered" : "queued",
 		});
+	}
 	for (const p of unmatchedPending(events, pending)) {
 		items.push({
 			kind: "operator",

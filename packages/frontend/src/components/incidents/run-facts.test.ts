@@ -16,7 +16,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
 	CHIP: "chip",
 	EffortChip: () => null,
-	AccessChip: () => null,
+	ModeChip: () => null,
 	defaultAccessOf: () => ({
 		level: { level: "supervised", from: "prismalens" },
 	}),

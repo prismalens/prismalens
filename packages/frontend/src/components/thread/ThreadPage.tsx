@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunDock } from "@/components/investigation/RunDock";
 import { Transcript } from "@/components/investigation/Transcript";
+import { ParentBar } from "@/components/investigation/transcript/ChildCards";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import type { TranscriptWindow } from "@/components/investigation/WindowedTranscript";
@@ -710,6 +711,10 @@ export function ThreadPage({ id }: { id: string }) {
 					</div>
 				)}
 				{slots.banner}
+				{/* Outside the windowed list, so it shows on an empty or short child too (#1101). */}
+				<div className="mx-auto w-full max-w-[760px] px-4 empty:hidden">
+					<ParentBar threadId={inv.id} />
+				</div>
 				<FindBar
 					find={find}
 					onClose={() => {
@@ -869,6 +874,14 @@ ${about}`
 							onText={setDraft}
 							focusSignal={focusSignal}
 							footer={slots.composerFooter}
+							context={
+								inv.usage
+									? {
+											used: inv.usage.used,
+											canCompact: !!inv.session?.compactCommand,
+										}
+									: null
+							}
 						/>
 						{resumeError && (
 							<p className="px-3 pt-1 text-meta text-danger" role="alert">

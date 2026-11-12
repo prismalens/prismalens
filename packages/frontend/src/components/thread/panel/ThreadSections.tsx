@@ -6,17 +6,16 @@ import type {
 	ThreadContext,
 	ThreadNodeState,
 	ThreadSession,
-	ThreadStatusInfo,
 	ThreadTree,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Check, Circle, CircleDot } from "lucide-react";
 import type { ReactNode } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { StatusMark } from "@/components/shell/ThreadTree";
+import { Status, type StatusKind } from "@/components/kit/Status";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useThreadStatuses } from "@/lib/api/hooks/use-threads-orpc";
-import { STATUS_TONE, STATUS_WORD, TONE_TEXT } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
 
 /** One titled section of the Thread tab; `id` is what `?section=` names. */
@@ -47,19 +46,28 @@ export function PanelSection({
 	);
 }
 
-/** A tree node's own state as the closed set, until the server's status arrives. */
-const NODE_STATUS: Record<ThreadNodeState, ThreadStatusInfo> = {
-	queued: { status: "working" },
-	running: { status: "working" },
-	answered: { status: "done" },
-	failed: { status: "failed" },
-	stopped: { status: "done", stopped: true },
+/** A tree node's state in the closed set (sheet §9.1): answered and stopped read Done. */
+const NODE_STATUS: Record<ThreadNodeState, StatusKind> = {
+	queued: "waiting",
+	running: "working",
+	answered: "done",
+	failed: "failed",
+	stopped: "done",
 };
+
+const START_WORD = {
+	ask: "New threads ask you",
+	allow: "Agents start threads freely",
+	never: "Agents may not start threads",
+} as const;
 
 /** The deepest indent the tree draws; deeper threads sit at this level. */
 export const TREE_INDENT_MAX = 3;
 
-/** The threads an agent started from this one: indented, with state and unread count. */
+/**
+ * The threads an agent started from this one, as details-card rows (sheet §3):
+ * indented by depth, the status icon, title, role, unread count.
+ */
 export function ThreadTreeSection({
 	tree,
 	currentId,
@@ -74,63 +82,89 @@ export function ThreadTreeSection({
 	// The roster reads the list's closed-set status, the node's own until it loads (#1101 category 2).
 	const statuses = useThreadStatuses(tree.nodes.map((n) => n.id));
 	return (
-		<div className="flex flex-col gap-1">
+		<div className="flex flex-col">
 			<ul className="m-0 flex list-none flex-col p-0" data-testid="thread-tree">
-				{tree.nodes.map((n) => {
-					const info = statuses.data?.statuses[n.id] ?? NODE_STATUS[n.state];
-					return (
-						<li
-							key={n.id}
-							style={{
-								paddingLeft: `${Math.min(n.depth, TREE_INDENT_MAX) * 14}px`,
-							}}
-							data-testid="thread-tree-node"
-							data-depth={n.depth}
+				{tree.nodes.map((n) => (
+					<li
+						key={n.id}
+						style={{
+							paddingLeft: `${Math.min(n.depth, TREE_INDENT_MAX) * 14}px`,
+						}}
+						data-testid="thread-tree-node"
+						data-depth={n.depth}
+					>
+						<Link
+							to="/threads/$id"
+							params={{ id: n.id }}
+							aria-current={n.id === currentId ? "page" : undefined}
+							className={cn(
+								"flex h-7 min-w-0 items-center gap-2 rounded-control px-2 text-body transition-colors duration-(--dur-instant) hover:bg-surface-3",
+								n.id === currentId && "bg-surface-3",
+							)}
 						>
-							<Link
-								to="/threads/$id"
-								params={{ id: n.id }}
-								aria-current={n.id === currentId ? "page" : undefined}
-								className={cn(
-									"flex min-w-0 items-center gap-2 rounded-control px-2 py-1 transition-colors duration-(--dur-instant) hover:bg-surface-3",
-									n.id === currentId && "bg-surface-3",
-								)}
-							>
-								<StatusMark status={info.status} />
-								<span className="min-w-0 flex-1 truncate text-text-1">
-									{n.title ?? `#${n.number}`}
-								</span>
-								{n.role && (
-									<span className="shrink-0 text-meta text-text-3">
-										{n.role}
-									</span>
-								)}
+							<Status
+								kind={
+									statuses.data?.statuses[n.id]?.status ?? NODE_STATUS[n.state]
+								}
+							/>
+							<span className="min-w-0 flex-1 truncate text-text-1">
+								{n.title ?? `#${n.number}`}
+							</span>
+							{n.role && (
+								<span className="shrink-0 text-meta text-text-3">{n.role}</span>
+							)}
+							{n.unread > 0 && (
 								<span
-									className={cn(
-										"shrink-0 text-meta",
-										TONE_TEXT[STATUS_TONE[info.status]],
-									)}
-									data-testid="thread-tree-status"
+									className="shrink-0 text-meta text-text-2 tabular-nums"
+									data-testid="thread-tree-unread"
 								>
-									{STATUS_WORD[info.status]}
+									<span aria-hidden>{n.unread}</span>
+									<span className="sr-only">{n.unread} unread</span>
 								</span>
-								{n.unread > 0 && (
-									<span
-										className="shrink-0 rounded-full bg-surface-3 px-1.5 text-meta text-text-1 tabular-nums"
-										data-testid="thread-tree-unread"
-									>
-										<span aria-hidden>{n.unread}</span>
-										<span className="sr-only">{n.unread} unread</span>
-									</span>
-								)}
-							</Link>
-						</li>
-					);
-				})}
+							)}
+						</Link>
+						{n.state === "running" && n.lastStep && (
+							<p
+								className="truncate pr-2 pl-[30px] font-mono text-meta text-text-3"
+								data-testid="thread-tree-last-step"
+							>
+								{n.lastStep}
+							</p>
+						)}
+					</li>
+				))}
 			</ul>
+			{tree.limits && (
+				<p
+					className="flex h-7 items-center gap-x-1.5 px-2 text-meta text-text-3"
+					data-testid="thread-tree-limits"
+				>
+					<span>
+						Depth {Math.max(...tree.nodes.map((n) => n.depth))} of{" "}
+						{tree.limits.depth}
+					</span>
+					<span>
+						· {tree.nodes.filter((n) => n.state === "running").length} of{" "}
+						{tree.limits.perTree} running
+					</span>
+					<span className="flex-1" />
+					<Hint
+						label={START_WORD[tree.limits.agentsStartThreads]}
+						when={!tree.allowance}
+					>
+						<Link
+							to="/settings"
+							search={{ tab: "agent" }}
+							className="text-text-2 hover:text-text-1"
+						>
+							Limits
+						</Link>
+					</Hint>
+				</p>
+			)}
 			{tree.allowance && (
 				<p
-					className="flex items-center gap-2 px-2 text-meta text-text-2"
+					className="flex h-7 items-center gap-2 px-2 text-meta text-text-2"
 					data-testid="thread-tree-allowance"
 				>
 					<span className="flex-1">Agents may start threads here</span>

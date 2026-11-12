@@ -193,6 +193,11 @@ vi.mock("@/components/investigation/Transcript", () => ({
 	Transcript: () => <div data-testid="transcript" />,
 }));
 
+// The parent line reads the thread tree; it sits outside the transcript since #1101.
+vi.mock("@/components/investigation/transcript/ChildCards", () => ({
+	ParentBar: () => null,
+}));
+
 vi.mock("@/components/investigation/RunDock", () => ({
 	RunDock: () => <div data-testid="run-dock" />,
 }));
