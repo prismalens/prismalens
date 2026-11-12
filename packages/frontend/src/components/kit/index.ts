@@ -31,6 +31,7 @@ export {
 } from "./details-registry";
 export { Help } from "./Help";
 export { ListCard, ListGrid } from "./ListCard";
+export { Mark } from "./Mark";
 export {
 	ContextMenu,
 	commandEntries,
@@ -39,6 +40,7 @@ export {
 	type MenuEntry,
 	orderEntries,
 } from "./Menu";
+export { MARKS, type MarkId, markLook } from "./marks";
 export { Picker, type PickerOption } from "./Picker";
 export {
 	KitPopover,
