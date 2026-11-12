@@ -1532,6 +1532,7 @@ export function Composer({
 			)}
 			{draft.conflict && (
 				<ConflictLine
+					at={draft.conflict.theirs.updatedAt}
 					onKeepMine={draft.keepMine}
 					onUseTheirs={draft.useTheirs}
 				/>
@@ -1560,7 +1561,7 @@ export function Composer({
 				{/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target; the editor and the attach button are the keyboard paths. */}
 				<div
 					className={cn(
-						"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-2 focus-within:ring-accent/60",
+						"overflow-hidden rounded-[10px] bg-surface-2 focus-within:ring-1 focus-within:ring-accent/50",
 						floating && "shadow-float",
 					)}
 					data-testid="composer-box"

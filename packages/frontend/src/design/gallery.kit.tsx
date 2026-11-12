@@ -437,14 +437,22 @@ function Details() {
 				<Stage
 					id="details-full"
 					caption="Chat thread, full"
-					className="w-[280px]"
+					className="w-full min-w-0 max-w-[280px]"
 				>
 					<DetailsCard rows={THREAD_ROWS} density="full" />
 				</Stage>
-				<Stage id="details-compact" caption="Compact" className="w-[280px]">
+				<Stage
+					id="details-compact"
+					caption="Compact"
+					className="w-full min-w-0 max-w-[280px]"
+				>
 					<DetailsCard rows={THREAD_ROWS} density="compact" />
 				</Stage>
-				<Stage id="details-essential" caption="Essential" className="w-[280px]">
+				<Stage
+					id="details-essential"
+					caption="Essential"
+					className="w-full min-w-0 max-w-[280px]"
+				>
 					<DetailsCard rows={THREAD_ROWS} density="essential" />
 				</Stage>
 			</div>
