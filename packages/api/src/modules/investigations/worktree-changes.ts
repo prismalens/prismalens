@@ -94,6 +94,31 @@ export async function objectsOf(dir: string): Promise<string | null> {
 	}
 }
 
+/**
+ * HEAD against its upstream, as `rev-list --left-right --count @{upstream}...HEAD`
+ * reads it; null with no upstream. Resolving refs runs no program the repo config names.
+ */
+export async function upstreamCounts(
+	dir: string,
+): Promise<{ ahead: number; behind: number } | null> {
+	try {
+		const { stdout } = await spawnGit(
+			[
+				"--no-replace-objects",
+				"rev-list",
+				"--left-right",
+				"--count",
+				"@{upstream}...HEAD",
+			],
+			{ cwd: dir, timeoutMs: GIT_PROBE_TIMEOUT_MS, env: baseEnv() },
+		);
+		const m = /^(\d+)\s+(\d+)$/.exec(stdout.trim());
+		return m ? { behind: Number(m[1]), ahead: Number(m[2]) } : null;
+	} catch {
+		return null;
+	}
+}
+
 /** A GIT_DIR of our own: alternates to the workspace's objects, our config, an empty index. */
 async function scratchRepo(dir: string, objects: string): Promise<string> {
 	const gitDir = await mkdtemp(join(tmpdir(), "pl-changes-"));
@@ -369,6 +394,7 @@ async function repoChanges(
 			}
 			files.push(one);
 		}
+		const sync = await upstreamCounts(root);
 		const tooLarge =
 			tracked === "\0too-large" ||
 			Buffer.byteLength(tracked) > RUN_DIFF_MAX_BYTES;
@@ -385,6 +411,7 @@ async function repoChanges(
 			patch: tooLarge ? null : tracked,
 			omitted: tooLarge ? "too-large" : null,
 			truncated: late || (others?.length ?? 0) > WORKTREE_MAX_FILES,
+			sync,
 		};
 	} finally {
 		await rm(gitDir, { recursive: true, force: true }).catch(() => {});
