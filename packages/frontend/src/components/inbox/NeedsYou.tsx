@@ -10,20 +10,21 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { MoreHorizontal } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { ExternalLink, GitMerge, RotateCw, SquareCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
-import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
-import { Hint } from "@/components/shared/Hint";
-import { Mono } from "@/components/shared/Mono";
-import { Button } from "@/components/ui/button";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+	ListCard,
+	ListGrid,
+	Mark,
+	type MenuEntry,
+	Tabs,
+} from "@/components/kit";
+import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { Mono } from "@/components/shared/Mono";
+import { Ring } from "@/components/shared/Ring";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useInvestigationReadiness,
@@ -40,20 +41,17 @@ import {
 	actionsOf,
 	ago,
 	FIRING_LABEL,
-	type Firing,
 	firingOf,
-	firingSeries,
 	type Grouped,
 	liveOf,
 	NEED_GROUPS,
 	type NeedKey,
 	type RowAction,
 	reasonOf,
-	sparkPoints,
 	type Tone,
 } from "./inbox-model";
 
-const CAP = 5;
+const CAP = 6;
 
 const TONE_TEXT: Record<Tone, string> = {
 	accent: "text-accent",
@@ -64,11 +62,12 @@ const TONE_TEXT: Record<Tone, string> = {
 	plain: "text-text-2",
 };
 
-const FIRING_TEXT: Record<Firing, string> = {
-	worse: "text-danger",
-	steady: "text-text-2",
-	clear: "text-text-3",
-	none: "text-text-3",
+const SEVERITY_RANK: Record<string, number> = {
+	critical: 0,
+	high: 1,
+	medium: 2,
+	low: 3,
+	info: 4,
 };
 
 type Prompt =
@@ -76,7 +75,33 @@ type Prompt =
 	| { kind: "merge"; incident: IncidentWithRelations; targetId: string }
 	| { kind: "merge-pick"; incident: IncidentWithRelations };
 
-/** Needs you (spec §1): the filter, then one card per group, five rows each until "Show N more". */
+/** One subject: an incident and the open repeats of it (same title, same service), newest first. */
+export interface Folded {
+	incident: IncidentWithRelations;
+	repeats: IncidentWithRelations[];
+}
+
+/**
+ * Triage order inside a band: severity, then newest; repeats of one subject
+ * fold into its newest row as ×N (#1101).
+ */
+export function triage(rows: readonly IncidentWithRelations[]): Folded[] {
+	const sorted = [...rows].sort(
+		(a, b) =>
+			(SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9) ||
+			Date.parse(String(b.triggeredAt)) - Date.parse(String(a.triggeredAt)),
+	);
+	const by = new Map<string, Folded>();
+	for (const i of sorted) {
+		const key = `${readableTitle(i.title).replace(/\s*#\d+\b/g, "")}|${incidentServices(i)[0]?.name ?? ""}`;
+		const hit = by.get(key);
+		if (hit) hit.repeats.push(i);
+		else by.set(key, { incident: i, repeats: [] });
+	}
+	return Array.from(by.values());
+}
+
+/** Needs you (spec §1): one tab per band, then each band's cards in triage order. */
 export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
 	const [filter, setFilter] = useState<NeedKey | "all">("all");
 	const [more, setMore] = useState<Partial<Record<NeedKey, boolean>>>({});
@@ -103,90 +128,86 @@ export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
 	return (
 		<section
 			aria-labelledby="needs-heading"
-			className="flex shrink-0 flex-col gap-2"
+			className="flex shrink-0 flex-col gap-3"
 			data-testid="needs-you"
 		>
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+			<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
 				<h2 id="needs-heading" className="text-title">
 					To look at
 				</h2>
-				{total > 0 && (
-					<span className="text-text-3" data-testid="needs-count">
-						{total === 1 ? "1 incident" : `${total} incidents`}
-					</span>
-				)}
-				<span className="flex-1" />
+				<span className="text-text-3 tabular-nums" data-testid="needs-count">
+					{total}
+				</span>
 				{groups.length > 1 && (
-					<fieldset
-						aria-label="Show"
-						className="flex flex-wrap gap-0.5 rounded-control bg-surface-1 p-0.5"
-						data-testid="needs-filter"
-					>
-						{[
-							{ key: "all" as const, label: "All", count: total },
-							...groups.map((g) => ({
-								key: g.key,
-								label: label(g.key),
-								count: g.rows.length,
-							})),
-						].map((f) => {
-							const on = f.key === filter;
-							return (
-								<button
-									key={f.key}
-									type="button"
-									aria-pressed={on}
-									onClick={() => setFilter(f.key)}
-									className={cn(
-										"h-6 rounded-[4px] px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1",
-										on && "bg-surface-3 text-text-1",
-									)}
-									data-testid={`needs-filter-${f.key}`}
-								>
-									{f.label}{" "}
-									<span className="text-text-3 tabular-nums">{f.count}</span>
-								</button>
-							);
-						})}
-					</fieldset>
+					<div className="ml-auto min-w-0" data-testid="needs-filter">
+						<Tabs
+							label="Show"
+							value={filter}
+							onValueChange={(v) => setFilter(v as NeedKey | "all")}
+							items={[
+								{
+									value: "all",
+									label: "All",
+									count: total,
+									testId: "needs-filter-all",
+								},
+								...groups.map((g) => ({
+									value: g.key,
+									label: label(g.key),
+									count: g.rows.length,
+									testId: `needs-filter-${g.key}`,
+								})),
+							]}
+						/>
+					</div>
 				)}
 			</div>
 			{shown.map((g) => {
-				const meta = NEED_GROUPS.find((x) => x.key === g.key);
 				const open = !!more[g.key];
-				const rows = open ? g.rows : g.rows.slice(0, CAP);
-				const hidden = g.rows.length - rows.length;
+				const folded = open
+					? g.rows.map((incident) => ({ incident, repeats: [] }))
+					: triage(g.rows);
+				const cards = open ? folded : folded.slice(0, CAP);
+				const hidden = g.rows.length - cards.length;
 				return (
 					<section
 						key={g.key}
 						aria-labelledby={`need-${g.key}`}
-						className="pool flex flex-col gap-0.5 p-1.5"
+						className="flex flex-col gap-1.5"
 						data-testid="needs-group"
 						data-need={g.key}
 					>
-						<div className="flex min-w-0 items-center gap-2.5 px-2.5 pt-1 pb-1.5 whitespace-nowrap">
-							<h3 id={`need-${g.key}`} className="text-heading">
-								{meta?.label}
-							</h3>
-							<span className="truncate text-text-3">{meta?.hint}</span>
-						</div>
-						{rows.map((incident) => (
-							<InboxRow
-								key={incident.id}
-								incident={incident}
-								need={g.key}
-								now={now}
-								fresh={arrived.has(incident.id)}
-								busy={busy[incident.id]}
-								onAction={(a) => run(incident, a)}
-								onMergePick={() => setPrompt({ kind: "merge-pick", incident })}
-							/>
-						))}
+						<h3
+							id={`need-${g.key}`}
+							className="flex items-center gap-2 text-heading"
+						>
+							{label(g.key)}
+							<span className="text-meta font-normal text-text-3 tabular-nums">
+								{g.rows.length}
+							</span>
+						</h3>
+						<ListGrid label={label(g.key)} wide>
+							{cards.map((f) => (
+								<IncidentCard
+									key={f.incident.id}
+									incident={f.incident}
+									repeats={f.repeats.length}
+									need={g.key}
+									now={now}
+									fresh={arrived.has(f.incident.id)}
+									busy={busy[f.incident.id]}
+									onAction={(a) => run(f.incident, a)}
+									onMergePick={() =>
+										setPrompt({ kind: "merge-pick", incident: f.incident })
+									}
+								/>
+							))}
+						</ListGrid>
 						{hidden > 0 && (
 							<Button
 								variant="text"
 								size="default"
-								className="my-0.5 self-start text-accent lg:ml-[130px]"
+								className="self-start text-accent"
 								onClick={() => setMore((m) => ({ ...m, [g.key]: true }))}
 								data-testid="needs-more"
 							>
@@ -238,20 +259,25 @@ function label(key: NeedKey) {
 	return NEED_GROUPS.find((g) => g.key === key)?.label ?? key;
 }
 
-/** One incident's row (spec §1): severity, ID, title and service over the reason, signal, firing, age, actions. */
-function InboxRow({
+/**
+ * One incident as a list card (sheet §6): severity mark and title, then
+ * marks for its ID, alerts, a live run, repeats and age; the reason under them.
+ */
+export function IncidentCard({
 	incident,
+	repeats = 0,
 	need,
 	now,
-	fresh,
+	fresh = false,
 	busy,
 	onAction,
 	onMergePick,
 }: {
 	incident: IncidentWithRelations;
+	repeats?: number;
 	need: NeedKey;
 	now: number;
-	fresh: boolean;
+	fresh?: boolean;
 	busy?: string;
 	onAction: (a: RowAction) => void;
 	onMergePick: () => void;
@@ -262,176 +288,144 @@ function InboxRow({
 	const live = liveOf(incident);
 	const service = incidentServices(incident)[0]?.name;
 	const severity = incident.severity as Severity;
-	const series = firing === "none" ? null : firingSeries(incident, now);
 	const canClose = canIncidentAction("close", incident.status);
 	const used = new Set([primary.kind, secondary?.kind]);
+	const menu: MenuEntry[] = [
+		{
+			id: "open",
+			label: "Open overview",
+			icon: ExternalLink,
+			onSelect: () => onAction({ kind: "open", label: "Open" }),
+		},
+		...(secondary
+			? [
+					{
+						id: `secondary-${secondary.kind}`,
+						label: secondary.label,
+						onSelect: () => onAction(secondary),
+					},
+				]
+			: []),
+		...(!used.has("investigate")
+			? [
+					{
+						id: "investigate",
+						label: "Investigate again",
+						icon: RotateCw,
+						onSelect: () =>
+							onAction({ kind: "investigate", label: "Investigate again" }),
+					},
+				]
+			: []),
+		...(canClose && !used.has("resolve")
+			? [
+					{
+						id: "resolve",
+						label: "Resolve",
+						icon: SquareCheck,
+						onSelect: () => onAction({ kind: "resolve", label: "Resolve" }),
+					},
+				]
+			: []),
+		{
+			id: "merge",
+			label: "Merge into another",
+			icon: GitMerge,
+			onSelect: onMergePick,
+		},
+	];
 	return (
-		<div
-			className="flex min-h-[52px] min-w-0 items-center gap-3.5 rounded-surface px-2.5 whitespace-nowrap transition-colors duration-(--dur-instant) hover:bg-surface-2 max-lg:flex-wrap max-lg:gap-y-1.5 max-lg:py-2"
-			data-testid="inbox-row"
-			data-incident={incident.id}
-			data-new={fresh ? "" : undefined}
-		>
-			<span
-				className="w-14 shrink-0 text-meta font-medium"
-				style={{ color: `var(--sev-${severity})` }}
-			>
-				{SEVERITY_LABEL[severity] ?? incident.severity}
-			</span>
-			<Mono className="w-[52px] shrink-0 text-text-3">
-				INC-{incident.number}
-			</Mono>
-			<div className="flex min-w-0 flex-1 flex-col max-lg:basis-full">
-				<span className="flex min-w-0 items-baseline gap-2.5">
-					<Hint label={incident.title}>
-						<Link
-							to="/incidents/$id"
-							params={{ id: incident.id }}
-							dir="auto"
-							className="inline-flex min-h-6 min-w-0 items-center truncate font-medium text-text-1 hover:underline hover:underline-offset-3"
-							data-testid="inbox-row-title"
-						>
-							{readableTitle(incident.title)}
-						</Link>
-					</Hint>
-					{service && (
+		<ListCard
+			testId="inbox-row"
+			title={readableTitle(incident.title)}
+			icon={
+				<Mark
+					id="severity"
+					state={severity}
+					word={SEVERITY_LABEL[severity] ?? incident.severity}
+				/>
+			}
+			link={(title) => (
+				<Link
+					to="/incidents/$id"
+					params={{ id: incident.id }}
+					dir="auto"
+					data-testid="inbox-row-title"
+					data-new={fresh ? "" : undefined}
+				>
+					{title}
+				</Link>
+			)}
+			meta={
+				<span className="flex min-w-0 items-center gap-2.5">
+					<Mono className="shrink-0 text-text-3">INC-{incident.number}</Mono>
+					<Mark
+						id="firing"
+						state={firing}
+						word={FIRING_LABEL[firing]}
+						testId="inbox-row-firing"
+					/>
+					{live && (
 						<span
-							dir="auto"
-							className="max-w-[180px] min-w-0 shrink-[4] truncate text-meta text-text-3"
+							role="img"
+							aria-label="A run is working"
+							className="flex shrink-0"
+							data-testid="inbox-row-live"
 						>
+							<Ring className="size-3.5 text-accent" />
+						</span>
+					)}
+					{repeats > 0 && (
+						<Mark
+							id="repeats"
+							word={`${repeats + 1} like this`}
+							className="text-text-2"
+							testId="inbox-row-repeats"
+						>
+							×{repeats + 1}
+						</Mark>
+					)}
+					<span className="shrink-0 text-text-3 tabular-nums">
+						{ago(incident.triggeredAt, now)}
+					</span>
+					{service && (
+						<span dir="auto" className="min-w-0 truncate text-text-3">
 							{service}
 						</span>
 					)}
 				</span>
-				<span
-					dir="auto"
-					className="flex min-w-0 items-center gap-1.5 text-meta text-text-2"
-					data-testid="inbox-row-reason"
-				>
-					{live && (
-						<span
-							className="breathe size-1.5 shrink-0 rounded-full bg-live"
-							data-testid="inbox-row-live"
-						>
-							<span className="sr-only">A run is working.</span>
-						</span>
-					)}
+			}
+			detail={
+				<span dir="auto" data-testid="inbox-row-reason">
 					{reason.tag && (
 						<span
 							className={cn(
-								"shrink-0 font-medium",
+								"font-medium",
 								TONE_TEXT[live ? "live" : reason.tagTone],
 							)}
 						>
-							{reason.tag}
+							{reason.tag}{" "}
 						</span>
 					)}
-					<span className="truncate">{reason.text}</span>
+					{reason.text}
 				</span>
-			</div>
-			<span className="flex w-[72px] shrink-0 items-center max-xl:hidden">
-				{series && (
-					<svg
-						width="72"
-						height="24"
-						viewBox="0 0 72 24"
-						role="img"
-						aria-label={`Firing alerts, last 24 hours: ${FIRING_LABEL[firing].toLowerCase()}`}
-					>
-						<polyline
-							points={sparkPoints(series)}
-							fill="none"
-							strokeWidth="1.5"
-							strokeLinejoin="round"
-							strokeLinecap="round"
-							className={cn(
-								"stroke-text-3",
-								firing === "worse" && "stroke-danger",
-								firing === "steady" && "stroke-text-2",
-							)}
-						/>
-					</svg>
-				)}
-			</span>
-			<span
-				className={cn(
-					"w-[100px] shrink-0 text-meta font-medium",
-					FIRING_TEXT[firing],
-				)}
-				data-testid="inbox-row-firing"
-			>
-				{FIRING_LABEL[firing]}
-			</span>
-			<span className="w-[52px] shrink-0 text-right text-meta text-text-3 tabular-nums">
-				{ago(incident.triggeredAt, now)} ago
-			</span>
-			<span className="flex w-[168px] shrink-0 items-center justify-end gap-1 max-lg:ml-auto max-lg:w-auto">
-				{secondary && (
+			}
+			footer={
+				primary.kind !== "open" || busy ? (
 					<Button
-						variant="text"
-						onClick={() => onAction(secondary)}
+						variant="secondary"
+						size="sm"
+						onClick={() => onAction(primary)}
 						disabled={!!busy}
-						data-testid="inbox-row-secondary"
+						data-testid="inbox-row-action"
+						data-action={primary.kind}
 					>
-						{secondary.label}
+						{busy ?? primary.label}
 					</Button>
-				)}
-				<Button
-					variant="secondary"
-					className="min-w-24"
-					onClick={() => onAction(primary)}
-					disabled={!!busy}
-					data-testid="inbox-row-action"
-					data-action={primary.kind}
-				>
-					{busy ?? primary.label}
-				</Button>
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button
-							variant="text"
-							size="icon"
-							aria-label={`More actions for INC-${incident.number}`}
-							data-testid="inbox-row-menu"
-						>
-							<MoreHorizontal className="size-4" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<MenuLink to={incident.id}>Open overview</MenuLink>
-						{!used.has("investigate") && (
-							<DropdownMenuItem
-								onSelect={() =>
-									onAction({ kind: "investigate", label: "Investigate again" })
-								}
-							>
-								Investigate again
-							</DropdownMenuItem>
-						)}
-						{canClose && !used.has("resolve") && (
-							<DropdownMenuItem
-								onSelect={() => onAction({ kind: "resolve", label: "Resolve" })}
-							>
-								Resolve
-							</DropdownMenuItem>
-						)}
-						<DropdownMenuItem onSelect={onMergePick}>
-							Merge into another incident
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</span>
-		</div>
-	);
-}
-
-function MenuLink({ to, children }: { to: string; children: ReactNode }) {
-	return (
-		<DropdownMenuItem asChild>
-			<Link to="/incidents/$id" params={{ id: to }}>
-				{children}
-			</Link>
-		</DropdownMenuItem>
+				) : undefined
+			}
+			menu={menu}
+		/>
 	);
 }
 
