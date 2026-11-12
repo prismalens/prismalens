@@ -138,10 +138,10 @@ function EventRow({
 		>
 			<Status kind={status} word={word} showWord={false} className="mt-0.5" />
 			<span className="flex min-w-0 flex-1 flex-col">
-				<span className="flex items-baseline gap-2">
+				<span className="flex min-w-0 items-baseline gap-2">
 					<span
 						className={cn(
-							"truncate text-body",
+							"min-w-0 truncate text-body",
 							unread ? "font-medium text-text-1" : "text-text-2",
 						)}
 					>
