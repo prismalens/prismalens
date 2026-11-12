@@ -113,8 +113,103 @@ export type DraftChoice = z.infer<typeof DraftChoiceSchema>;
 /** Above the 4000 a send takes, so a long draft is kept while the user trims it. */
 export const DRAFT_TEXT_MAX_CHARS = 16000;
 
+/** A folded paste keeps its text in the document, so a second device can expand it. */
+export const DRAFT_PASTE_MAX_CHARS = 100_000;
+export const DRAFT_DOC_MAX_CHIPS = 60;
+export const DRAFT_DOC_MAX_BLOCKS = 400;
+
+const nullableText = (max: number) => z.string().max(max).nullable().optional();
+
+/** One inline chip in the composer's document (#1101 category 7). */
+export const ChipAttrsSchema = z.discriminatedUnion("chip", [
+	z.object({
+		chip: z.literal("ref"),
+		ref: ReferenceRefSchema,
+		/** A pasted link: Backspace turns the chip back into this text. */
+		url: nullableText(2048),
+		tone: nullableText(64),
+	}),
+	z.object({
+		chip: z.literal("command"),
+		name: z.string().min(1).max(200),
+		source: z.enum(["app", "agent"]),
+		group: z.string().max(120),
+		inputHint: nullableText(200),
+	}),
+	z.object({
+		chip: z.literal("quote"),
+		quote: QuoteSchema,
+		cut: z.boolean(),
+	}),
+	z.object({
+		chip: z.literal("file"),
+		/** The browser's key for the bytes it keeps until the send. */
+		key: z.string().min(1).max(200),
+		name: z.string().max(255),
+		type: z.string().max(255),
+		size: z.number().int().min(0),
+		pasted: nullableText(DRAFT_PASTE_MAX_CHARS),
+		refusal: nullableText(300),
+	}),
+]);
+export type ChipAttrs = z.infer<typeof ChipAttrsSchema>;
+
+const TextNodeSchema = z.object({
+	type: z.literal("text"),
+	text: z.string().min(1).max(DRAFT_TEXT_MAX_CHARS),
+});
+const ChipNodeSchema = z.object({
+	type: z.literal("chip"),
+	attrs: ChipAttrsSchema,
+});
+const InlineNodeSchema = z.discriminatedUnion("type", [
+	TextNodeSchema,
+	ChipNodeSchema,
+	z.object({ type: z.literal("hardBreak") }),
+]);
+export type ComposerInline = z.infer<typeof InlineNodeSchema>;
+
+/**
+ * The composer's editor document, version 2 of the draft (#1101): paragraphs of text
+ * with chip nodes inline where they were picked, files by key. It is the editor's own
+ * JSON, so a draft loads into the editor without a conversion step.
+ */
+export const ComposerDocSchema = z
+	.object({
+		type: z.literal("doc"),
+		content: z
+			.array(
+				z.object({
+					type: z.literal("paragraph"),
+					content: z.array(InlineNodeSchema).max(2000).optional(),
+				}),
+			)
+			.min(1)
+			.max(DRAFT_DOC_MAX_BLOCKS),
+	})
+	.superRefine((doc, ctx) => {
+		let chips = 0;
+		let chars = 0;
+		for (const p of doc.content)
+			for (const n of p.content ?? []) {
+				if (n.type === "chip") chips++;
+				if (n.type === "text") chars += n.text.length;
+			}
+		if (chips > DRAFT_DOC_MAX_CHIPS)
+			ctx.addIssue({ code: "custom", message: "Too many chips in one draft." });
+		if (chars > DRAFT_TEXT_MAX_CHARS)
+			ctx.addIssue({
+				code: "custom",
+				message: "The draft's text is too long.",
+			});
+	});
+export type ComposerDoc = z.infer<typeof ComposerDocSchema>;
+
 /** The draft's editable body: what `PUT /drafts/{scope}` stores. */
 export const DraftBodySchema = z.object({
+	/** 2 when `doc` is the source of truth; a body without it is a legacy draft. */
+	version: z.literal(2).optional(),
+	doc: ComposerDocSchema.optional(),
 	text: z.string().max(DRAFT_TEXT_MAX_CHARS),
 	/** The key its attachments were uploaded under. */
 	draftKey: z.string().uuid().nullable(),

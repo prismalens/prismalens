@@ -897,10 +897,6 @@ export function AccessChip({
 	const { axes } = useAgentChoice();
 	const [open, setOpen] = useState(false);
 	const fallback = defaultAccessOf(harness, axes).level;
-	const rows = [
-		fallback.level,
-		...ACCESS_LEVELS.filter((l) => l !== fallback.level),
-	];
 	const text = ACCESS_LEVEL_LABEL[level];
 	const locked = levelIcon(levelSandbox(harness, level)) === "lock";
 	// Icon plus word always; a level above the agent's default reads as a warning (#1020).
@@ -967,64 +963,102 @@ export function AccessChip({
 				onKeyDown={roveKeys}
 				onOpenAutoFocus={focusChosen}
 			>
-				<div role="listbox" aria-label="Permission level">
-					{rows.map((l) => {
-						const sandbox = harness ? levelSandbox(harness, l) : undefined;
-						return (
-							<button
-								key={l}
-								type="button"
-								role="option"
-								aria-selected={l === level}
-								tabIndex={l === level ? 0 : -1}
-								data-rove=""
-								data-chosen={l === level ? "" : undefined}
-								onClick={() => {
-									setOpen(false);
-									if (l !== level) onLevel(l);
-								}}
-								className={cn(
-									"grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
-									l === level && "bg-surface-3",
-								)}
-								data-testid={`access-level-${l}`}
-								// One line per level shows (#831 w6-12); the agent's mode and sandbox wait on hover.
-								title={
-									harness
-										? `${levelRowLine(harness, l)} ${sandboxLine(sandbox)}`
-										: undefined
-								}
-							>
-								{levelIcon(sandbox) === "lock" ? (
-									<Lock className="size-3.5 text-text-2" aria-hidden />
-								) : (
-									<span />
-								)}
-								<span className="truncate text-body font-medium text-text-1">
-									{ACCESS_LEVEL_LABEL[l]}
-								</span>
-								{l === fallback.level ? (
-									<span
-										className="text-meta text-text-3"
-										data-testid="access-default-tag"
-									>
-										{levelTag(fallback.from)}
-									</span>
-								) : (
-									<span />
-								)}
-								<span
-									className="col-start-2 col-end-4 text-meta text-text-2"
-									data-testid="access-line"
-								>
-									{ACCESS_LEVEL_LINE[l]}
-								</span>
-							</button>
-						);
-					})}
-				</div>
+				<AccessLevelRows
+					harness={harness}
+					level={level}
+					fallback={fallback}
+					onPick={(l) => {
+						setOpen(false);
+						if (l !== level) onLevel(l);
+					}}
+				/>
 			</PopoverContent>
 		</Popover>
+	);
+}
+
+/**
+ * The four levels as the permission picker lists them (#1101 category 6 item 4): one
+ * sentence each, the agent's default tagged, a level above it marked as a warning.
+ */
+export function AccessLevelRows({
+	harness,
+	level,
+	fallback,
+	onPick,
+}: {
+	harness: HarnessStatus | undefined;
+	level: AccessLevel;
+	fallback: { level: AccessLevel; from: AxisSource };
+	onPick: (level: AccessLevel) => void;
+}) {
+	const rows = [
+		fallback.level,
+		...ACCESS_LEVELS.filter((l) => l !== fallback.level),
+	];
+	return (
+		<div role="listbox" aria-label="Permission level">
+			{rows.map((l) => {
+				const sandbox = harness ? levelSandbox(harness, l) : undefined;
+				return (
+					<button
+						key={l}
+						type="button"
+						role="option"
+						aria-selected={l === level}
+						tabIndex={l === level ? 0 : -1}
+						data-rove=""
+						data-chosen={l === level ? "" : undefined}
+						onClick={() => onPick(l)}
+						className={cn(
+							"grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
+							l === level && "bg-surface-3",
+						)}
+						data-testid={`access-level-${l}`}
+						// One line per level shows (#831 w6-12); the agent's mode and sandbox wait on hover.
+						title={
+							harness
+								? `${levelRowLine(harness, l)} ${sandboxLine(sandbox)}`
+								: undefined
+						}
+					>
+						{levelIcon(sandbox) === "lock" ? (
+							<Lock className="size-3.5 text-text-2" aria-hidden />
+						) : (
+							<span />
+						)}
+						<span className="truncate text-body font-medium text-text-1">
+							{ACCESS_LEVEL_LABEL[l]}
+						</span>
+						{l === fallback.level ? (
+							<span
+								className="text-meta text-text-3"
+								data-testid="access-default-tag"
+							>
+								{levelTag(fallback.from)}
+							</span>
+						) : ACCESS_LEVELS.indexOf(l) >
+							ACCESS_LEVELS.indexOf(fallback.level) ? (
+							<span
+								className="inline-flex items-center gap-1 text-meta text-warn"
+								data-testid="access-above-tag"
+							>
+								<ShieldAlert className="size-3.5" aria-hidden />
+								Above default
+							</span>
+						) : (
+							<span />
+						)}
+						<span
+							className="col-start-2 col-end-4 text-meta text-text-2"
+							data-testid="access-line"
+						>
+							{ACCESS_LEVEL_LINE[l]}
+						</span>
+					</button>
+				);
+			})}
+		</div>
 	);
 }
 
