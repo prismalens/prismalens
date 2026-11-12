@@ -30,6 +30,7 @@ import { attentionGallery } from "@/design/gallery.attention";
 import { composerGallery } from "@/design/gallery.composer";
 import { listGallery } from "@/design/gallery.list";
 import { panelGallery } from "@/design/gallery.panel";
+import { prGallery } from "@/design/gallery.pr";
 import { transcriptGallery } from "@/design/gallery.transcript";
 import type { TranscriptItem } from "@/lib/investigation-events";
 
@@ -48,6 +49,7 @@ const LANE_SECTIONS = [
 	...transcriptGallery,
 	...listGallery,
 	...attentionGallery,
+	...prGallery,
 ];
 
 const NOW = Date.parse("2026-11-05T12:00:00Z");

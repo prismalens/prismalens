@@ -105,6 +105,7 @@ describe("SchedulesService (#979)", () => {
 
 	beforeEach(async () => {
 		await prisma.job.deleteMany();
+		await prisma.threadWake.deleteMany();
 		await prisma.investigation.deleteMany();
 		await prisma.schedule.deleteMany();
 		gaps.length = 0;
@@ -448,5 +449,111 @@ describe("SchedulesService (#979)", () => {
 		await s.evaluate(new Date("2026-06-14T09:30:00Z"));
 		const row = await prisma.schedule.findUniqueOrThrow({ where: { id: created.id } });
 		expect(row).toMatchObject({ enabled: false, pausedReason: "Paused after three failed runs in a row." });
+	});
+
+	it("unreadRuns counts finished run threads opened before finishing or never, ticks read unseen accordingly, and limit reads resetsAt with pending wake or null without", async () => {
+		const s = scheduler();
+		const created = await s.create(input(), "host", new Date("2026-06-15T08:00:00Z"));
+
+		// Run 1: finished, never visited (lastVisitedAt = null), pending limit wake
+		const inv1 = await prisma.investigation.create({
+			data: {
+				scheduleId: created.id,
+				status: "completed",
+				title: "Run 1",
+				triggerType: "scheduled",
+				createdAt: new Date("2026-06-15T09:00:00Z"),
+				startedAt: new Date("2026-06-15T09:01:00Z"),
+				completedAt: new Date("2026-06-15T09:05:00Z"),
+				lastVisitedAt: null,
+				limitResetsAt: new Date("2026-06-15T12:00:00.000Z"),
+			},
+		});
+		await prisma.threadWake.create({
+			data: {
+				investigationId: inv1.id,
+				kind: "limit",
+				state: "pending",
+				at: new Date("2026-06-15T12:00:00.000Z"),
+				reason: "Usage limit reached",
+			},
+		});
+		await prisma.scheduleTick.create({
+			data: {
+				scheduleId: created.id,
+				scheduledFor: new Date("2026-06-15T09:00:00Z"),
+				decidedAt: new Date("2026-06-15T09:00:05Z"),
+				outcome: "started",
+				reason: null,
+				investigationId: inv1.id,
+				revision: created.revision,
+			},
+		});
+
+		// Run 2: finished, opened before it finished (lastVisitedAt < completedAt), no limit wake
+		const inv2 = await prisma.investigation.create({
+			data: {
+				scheduleId: created.id,
+				status: "completed",
+				title: "Run 2",
+				triggerType: "scheduled",
+				createdAt: new Date("2026-06-16T09:00:00Z"),
+				startedAt: new Date("2026-06-16T09:01:00Z"),
+				completedAt: new Date("2026-06-16T09:05:00Z"),
+				lastVisitedAt: new Date("2026-06-16T09:02:00Z"),
+			},
+		});
+		await prisma.scheduleTick.create({
+			data: {
+				scheduleId: created.id,
+				scheduledFor: new Date("2026-06-16T09:00:00Z"),
+				decidedAt: new Date("2026-06-16T09:00:05Z"),
+				outcome: "started",
+				reason: null,
+				investigationId: inv2.id,
+				revision: created.revision,
+			},
+		});
+
+		// Run 3: finished, opened after it finished (lastVisitedAt >= completedAt), no limit wake
+		const inv3 = await prisma.investigation.create({
+			data: {
+				scheduleId: created.id,
+				status: "completed",
+				title: "Run 3",
+				triggerType: "scheduled",
+				createdAt: new Date("2026-06-17T09:00:00Z"),
+				startedAt: new Date("2026-06-17T09:01:00Z"),
+				completedAt: new Date("2026-06-17T09:05:00Z"),
+				lastVisitedAt: new Date("2026-06-17T09:10:00Z"),
+			},
+		});
+		await prisma.scheduleTick.create({
+			data: {
+				scheduleId: created.id,
+				scheduledFor: new Date("2026-06-17T09:00:00Z"),
+				decidedAt: new Date("2026-06-17T09:00:05Z"),
+				outcome: "started",
+				reason: null,
+				investigationId: inv3.id,
+				revision: created.revision,
+			},
+		});
+
+		const { schedule, ticks: tickList } = await s.get(created.id, undefined, 10);
+		expect(schedule.unreadRuns).toBe(2);
+
+		expect(tickList).toHaveLength(3);
+		expect(tickList[0]?.run?.id).toBe(inv3.id);
+		expect(tickList[0]?.run?.unseen).toBe(false);
+		expect(tickList[0]?.run?.limit).toBeNull();
+
+		expect(tickList[1]?.run?.id).toBe(inv2.id);
+		expect(tickList[1]?.run?.unseen).toBe(true);
+		expect(tickList[1]?.run?.limit).toBeNull();
+
+		expect(tickList[2]?.run?.id).toBe(inv1.id);
+		expect(tickList[2]?.run?.unseen).toBe(true);
+		expect(tickList[2]?.run?.limit).toEqual({ resetsAt: "2026-06-15T12:00:00.000Z" });
 	});
 });

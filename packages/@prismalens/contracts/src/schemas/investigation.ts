@@ -36,6 +36,7 @@ import {
 	LimitWindowSchema,
 	RunFailureSchema,
 } from "./provider-failure.js";
+import { PrToneSchema } from "./pull-request.js";
 import { AgentCommandsSchema } from "./references.js";
 import { RunCredentialSchema, WorkInSchema } from "./repository.js";
 import { RunComparisonSchema } from "./run-views.js";
@@ -1606,6 +1607,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		pr: z.string().max(300),
 		lines: z.array(z.string().max(600)).max(50),
 		phase: z.enum(["delivered", "noted", "ended"]),
+		/** The PR's tone after the change, so the line wears the panel's mark (#1101). */
+		tone: PrToneSchema.optional(),
 	}),
 	z.object({
 		/** Settling ended the thread's wakes, watches, cron jobs or children (#1024 surface F). */

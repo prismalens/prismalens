@@ -107,3 +107,13 @@ export function tickLine(
 		link: open,
 	};
 }
+
+/** A run waiting on its agent's usage limit (#1101 category 22 item 5). */
+export function limitLine(
+	resetsAt: string | null,
+	time: (iso: string) => string,
+): string {
+	return resetsAt
+		? `Usage limit, resets ${time(resetsAt)}`
+		: "Usage limit, reset time unknown";
+}

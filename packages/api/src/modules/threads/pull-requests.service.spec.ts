@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { type CanonicalEvent, PullRequestSchema } from "@prismalens/contracts";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { OffOriginError } from "../integrations/source-request.js";
+import { LOG_UNAVAILABLE } from "./pr-hosts.js";
 import { fakeDb } from "./__fixtures__/fake-db.js";
 import { fakeHost, hostFixture } from "./__fixtures__/fake-host.js";
 import {
@@ -324,6 +325,229 @@ describe("PullRequestsService (#1024 decision 2)", () => {
 		const glyphs = await svc.rowGlyphs([RUN]);
 		expect(glyphs.get(RUN)).toEqual({ number: 14927, tone: "unknown" });
 		expect((await svc.rowGlyphs([])).size).toBe(0);
+	});
+
+	it("returns a kept checkLog without calling the host, refuses unknown runId, maps commit status, and stores read logs in detail.checkLogs", async () => {
+		const { svc, db, host } = setup({
+			routes: {
+				...recorded(),
+				[`${GH}/actions/jobs/run-fetch`]: { status: 404 },
+				[`${GH}/check-runs/run-fetch`]: {
+					body: {
+						output: {
+							title: "Compile TypeScript",
+							text: "Error: cannot find module",
+						},
+					},
+				},
+				[`${GH}/check-runs/run-fetch/annotations`]: { body: [] },
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: SHA,
+				detail: JSON.stringify({
+					checkRuns: [
+						{
+							id: "run-kept",
+							name: "test",
+							state: "failing",
+							headSha: SHA,
+							appId: "app-1",
+						},
+						{
+							id: "run-status",
+							name: "ci/status",
+							state: "failing",
+							headSha: SHA,
+						},
+						{
+							id: "run-fetch",
+							name: "build",
+							state: "failing",
+							headSha: SHA,
+							appId: "app-1",
+						},
+					],
+					checkLogs: [
+						{
+							runId: "run-kept",
+							headSha: SHA,
+							step: "Run vitest",
+							lines: ["failed test"],
+							unavailable: null,
+							fetchedAt: "2026-11-12T00:00:00.000Z",
+						},
+					],
+				}),
+			},
+		});
+
+		// 1. Returns kept log for same head commit without calling the host
+		const keptLog = await svc.checkLog(RUN, prRow.id, "run-kept");
+		expect(keptLog.step).toBe("Run vitest");
+		expect(keptLog.lines).toEqual(["failed test"]);
+		expect(keptLog.unavailable).toBeNull();
+		expect(host.calls).toHaveLength(0);
+
+		// 2. Refuses unknown run id with NOT_FOUND and message
+		await expect(svc.checkLog(RUN, prRow.id, "unknown-run")).rejects.toMatchObject({
+			code: "NOT_FOUND",
+			message: "That check is not on this pull request.",
+		});
+
+		// 3. GitHub commit status (run without appId) returns LOG_UNAVAILABLE.status
+		const statusLog = await svc.checkLog(RUN, prRow.id, "run-status");
+		expect(statusLog.unavailable).toBe(LOG_UNAVAILABLE.status);
+		expect(statusLog.lines).toEqual([]);
+		expect(statusLog.step).toBeNull();
+
+		// 4. A read log is stored in the row's detail.checkLogs
+		const fetchedLog = await svc.checkLog(RUN, prRow.id, "run-fetch");
+		expect(fetchedLog.step).toBe("Compile TypeScript");
+		expect(fetchedLog.lines).toEqual(["Error: cannot find module"]);
+		expect(fetchedLog.unavailable).toBeNull();
+
+		const updatedRow = await db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const storedDetail = JSON.parse(String(updatedRow?.detail));
+		expect(storedDetail.checkLogs).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ runId: "run-fetch", step: "Compile TypeScript" }),
+				expect.objectContaining({ runId: "run-kept", step: "Run vitest" }),
+			]),
+		);
+	});
+
+	it("host refresh keeps checkLogs matching new head, stores reviewThreads, and on GraphQL 401 stores reviewThreadsNote keeping previous threads", async () => {
+		const newSha = "d43c4e3ad3c34332c803a568f85f116e3ee58f19";
+		const oldSha = "0000000000000000000000000000000000000000";
+		const { svc, db } = setup({
+			routes: {
+				...recorded(),
+				"/graphql": {
+					body: {
+						data: {
+							repository: {
+								pullRequest: {
+									reviewThreads: {
+										nodes: [
+											{
+												id: "thread-graphql",
+												isResolved: false,
+												isOutdated: false,
+												path: "src/main.ts",
+												line: 10,
+												comments: {
+													totalCount: 1,
+													nodes: [{ author: { login: "reviewer" }, body: "review note" }],
+												},
+											},
+										],
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		});
+
+		const prRow = await db.pullRequest.create({
+			data: {
+				investigationId: RUN,
+				repositoryId: "repo-cli",
+				host: "github",
+				repo: "cli/cli",
+				url: PR_URL,
+				number: 14927,
+				source: "agent",
+				headSha: oldSha,
+				detail: JSON.stringify({
+					checkLogs: [
+						{
+							runId: "run-new",
+							headSha: newSha,
+							step: "Step new",
+							lines: ["new log"],
+							unavailable: null,
+							fetchedAt: "2026-11-12T00:00:00.000Z",
+						},
+						{
+							runId: "run-old",
+							headSha: oldSha,
+							step: "Step old",
+							lines: ["old log"],
+							unavailable: null,
+							fetchedAt: "2026-11-12T00:00:00.000Z",
+						},
+					],
+					reviewThreads: [
+						{
+							id: "thread-initial",
+							path: "src/initial.ts",
+							line: 5,
+							author: "alice",
+							resolved: true,
+							outdated: false,
+							excerpt: "initial thread",
+							replies: 0,
+						},
+					],
+				}),
+			},
+		});
+
+		// 1. Host refresh with successful GraphQL
+		await svc.list(RUN, { force: true });
+		const rowAfterRefresh = await db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const detail1 = JSON.parse(String(rowAfterRefresh?.detail));
+
+		// Keeps checkLogs matching newSha (new head is SHA), drops oldSha
+		expect(detail1.checkLogs).toEqual([
+			expect.objectContaining({ runId: "run-new", headSha: newSha }),
+		]);
+		// Stores reviewThreads from GraphQL
+		expect(detail1.reviewThreads).toEqual([
+			expect.objectContaining({ id: "thread-graphql", path: "src/main.ts" }),
+		]);
+		expect(detail1.reviewThreadsNote).toBeUndefined();
+
+		// 2. Next host refresh with 401 on GraphQL
+		const failingSetup = setup({
+			routes: {
+				...recorded(),
+				"/graphql": { status: 401 },
+			},
+		});
+		// Update row in failingSetup's db
+		await failingSetup.db.pullRequest.create({
+			data: {
+				...prRow,
+				detail: JSON.stringify({
+					checkLogs: detail1.checkLogs,
+					reviewThreads: detail1.reviewThreads,
+				}),
+			},
+		});
+		await failingSetup.svc.list(RUN, { force: true });
+		const rowAfter401 = await failingSetup.db.pullRequest.findFirst({ where: { id: prRow.id } });
+		const detail2 = JSON.parse(String(rowAfter401?.detail));
+
+		// Stores reviewThreadsNote and keeps the previous threads
+		expect(detail2.reviewThreadsNote).toBe(
+			"Review threads need a token for this repository: the host shows them only to a signed-in reader.",
+		);
+		expect(detail2.reviewThreads).toEqual([
+			expect.objectContaining({ id: "thread-graphql", path: "src/main.ts" }),
+		]);
 	});
 });
 

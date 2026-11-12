@@ -28,7 +28,11 @@ import {
 	whenText,
 } from "@/components/schedules/schedule-time";
 import { TickDot } from "@/components/schedules/TickDot";
-import { aboutText, tickLine } from "@/components/schedules/tick-copy";
+import {
+	aboutText,
+	limitLine,
+	tickLine,
+} from "@/components/schedules/tick-copy";
 import { useOlderTicks } from "@/components/schedules/use-older-ticks";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
@@ -350,13 +354,32 @@ function Facts({ schedule: s }: { schedule: Schedule }) {
 }
 
 function TickRow({ tick }: { tick: ScheduleTick }) {
-	const line = tickLine(tick, clock);
+	const limit = tick.run?.limit;
+	const base = tickLine(tick, clock);
+	const line = limit
+		? { ...base, tone: "warn" as const, text: limitLine(limit.resetsAt, clock) }
+		: base;
+	const unseen = tick.run?.unseen === true;
 	return (
 		<div
 			className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 bg-surface-2 px-3.5 py-3 @3xl:grid-cols-[150px_minmax(0,1fr)_80px_110px]"
 			data-testid="schedule-tick"
+			data-unseen={unseen}
 		>
-			<span className="text-meta text-text-2">
+			<span
+				className={cn(
+					"flex items-center gap-1.5 text-meta",
+					unseen ? "text-text-1" : "text-text-2",
+				)}
+			>
+				{unseen && (
+					<span
+						className="size-1.5 shrink-0 rounded-full bg-accent"
+						role="img"
+						aria-label="Unread"
+						data-testid="schedule-tick-unread"
+					/>
+				)}
 				{whenText(tick.scheduledFor)}
 			</span>
 			<span className="col-start-1 flex min-w-0 items-baseline gap-2 text-body @3xl:col-start-auto">
@@ -364,6 +387,7 @@ function TickRow({ tick }: { tick: ScheduleTick }) {
 				<span
 					className={cn(
 						line.tone === "bad" && "text-danger",
+						line.tone === "warn" && "text-warn",
 						line.tone === "muted" && "text-text-2",
 					)}
 				>

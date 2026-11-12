@@ -25,6 +25,7 @@ import {
 	StepsList,
 } from "@/components/run/RunDetailsPanel";
 import type { RunStep } from "@/components/run/run-steps";
+import { AddScheduleFromThread } from "@/components/schedules/schedule-templates";
 import { TickDot } from "@/components/schedules/TickDot";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
@@ -42,6 +43,7 @@ import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
 import { useFeedRow } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import { useOpeningRead, useReadAdvance } from "@/lib/attention/use-attention";
+import { onCompose } from "@/lib/compose";
 import {
 	interceptSend,
 	messageFields,
@@ -77,6 +79,7 @@ import { TranscriptRail } from "./rail/TranscriptRail";
 import { StatusBox } from "./StatusBox";
 import { SubagentPane } from "./SubagentPane";
 import { usePageSlots } from "./slots";
+import { headerPr, ThreadPrChip } from "./ThreadPrChip";
 import { useTranscriptJumps } from "./use-transcript-jumps";
 import { WorktreeDiff } from "./WorktreeDiff";
 
@@ -180,6 +183,15 @@ export function ThreadPage({ id }: { id: string }) {
 	const [subagentId, setSubagentId] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const [focusSignal, setFocusSignal] = useState(0);
+	// "Ask the agent to fix" on a PR check or review thread drafts here; you still press Send.
+	useEffect(
+		() =>
+			onCompose((text) => {
+				if (text) setDraft(text);
+				setFocusSignal((n) => n + 1);
+			}),
+		[],
+	);
 	const inv = run.investigation;
 	usePageTitle(inv?.title ?? "Thread");
 	const harness = harnesses.find((h) => h.id === inv?.harness);
@@ -555,6 +567,8 @@ export function ThreadPage({ id }: { id: string }) {
 		: run.stopRequested
 			? (["live", "Stopping"] as const)
 			: STATE[inv.status];
+	const prs = context.data?.pullRequests ?? [];
+	const chipPr = headerPr(prs);
 	const header = (
 		<header
 			data-title-row
@@ -581,6 +595,15 @@ export function ThreadPage({ id }: { id: string }) {
 					No undo
 				</span>
 			)}
+			{chipPr && (
+				<ThreadPrChip
+					pr={chipPr}
+					more={prs.length - 1}
+					onOpen={(prId) =>
+						openPanel({ panel: "thread", section: `pull-requests:${prId}` })
+					}
+				/>
+			)}
 			{inv && (
 				<span
 					className="inline-flex items-center gap-2 text-body text-text-2"
@@ -600,6 +623,19 @@ export function ThreadPage({ id }: { id: string }) {
 						archivedAt: feedRow?.archivedAt ?? null,
 					}}
 					triggerClassName="flex size-8 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1"
+				/>
+			)}
+			{inv && (
+				<AddScheduleFromThread
+					title={inv.title ?? null}
+					subject={
+						inv.repositoryId
+							? { kind: "project", repositoryId: inv.repositoryId }
+							: inv.serviceId
+								? { kind: "service", serviceId: inv.serviceId }
+								: { kind: "none" }
+					}
+					prUrl={chipPr?.url}
 				/>
 			)}
 			<HeaderToggle
@@ -885,6 +921,20 @@ export function ThreadPage({ id }: { id: string }) {
 								live={run.isActive}
 								session={inv.session}
 								section={search.section}
+								onOpenPrFile={(pr, path, line) => {
+									const repos = workspace?.repos ?? [];
+									const repo =
+										repos.find((r) => r.name === pr.repo.split("/").pop()) ??
+										(repos.length === 1 ? repos[0] : undefined);
+									if (!repo) return openPanel({ panel: "changes" });
+									openFile({
+										repo: repo.name,
+										sha: repo.head,
+										path,
+										line,
+										end: line,
+									});
+								}}
 								focusPr={
 									search.section?.startsWith("pull-requests:")
 										? search.section.slice("pull-requests:".length)

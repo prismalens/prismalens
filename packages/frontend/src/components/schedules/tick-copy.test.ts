@@ -3,7 +3,7 @@
 
 import { TICK_OUTCOMES, type ScheduleTick } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { aboutText, tickLine } from "./tick-copy";
+import { aboutText, limitLine, tickLine } from "./tick-copy";
 
 const tick = (over: Partial<ScheduleTick>): ScheduleTick => ({
 	id: "t",
@@ -67,5 +67,14 @@ describe("aboutText (#1020)", () => {
 		expect(aboutText({ subject: "service", serviceName: "checkout", repositoryName: null })).toBe("Check checkout");
 		expect(aboutText({ subject: "project", serviceName: "", repositoryName: "acme/shop" })).toBe("acme/shop");
 		expect(aboutText({ subject: "none", serviceName: "", repositoryName: null })).toBe("No project");
+	});
+});
+
+describe("limitLine (#1101)", () => {
+	it("renders reset time when time is given, and unknown when null", () => {
+		expect(limitLine("2026-10-30T16:45:00.000Z", fmt)).toBe(
+			"Usage limit, resets 16:45",
+		);
+		expect(limitLine(null, fmt)).toBe("Usage limit, reset time unknown");
 	});
 });
