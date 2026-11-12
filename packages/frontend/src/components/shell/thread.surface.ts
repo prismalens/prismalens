@@ -37,12 +37,24 @@ export const threadRow = defineSurface({
 	marks: ["status", "agent", "children"],
 });
 
-/** The thread page's header ⋯ (sheet §2). */
+/** The thread page's header ⋯ (sheet §2); a phone folds the header's own controls in first. */
 export const threadHeader = defineSurface({
 	id: "thread.header",
 	label: "Thread actions",
 	menus: {
 		more: [
+			"thread.pr",
+			"thread.details",
+			"thread.changes",
+			"thread.files",
+			"thread.browser",
+			"thread.kind",
+			"thread.statusBox",
+			"-",
+			"thread.notify",
+			"thread.mute",
+			"thread.schedule",
+			"-",
 			"thread.rename",
 			"thread.nameAgain",
 			"thread.settle",

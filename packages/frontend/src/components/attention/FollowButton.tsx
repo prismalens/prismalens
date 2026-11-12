@@ -20,6 +20,21 @@ const LABEL = {
 	none: "Notifications",
 } as const;
 
+/** A thread's follow choice and its toggle: the button and the phone header menu share it. */
+export function useThreadFollow(threadId: string) {
+	const view = useQuery(
+		orpc.attention.threads.queryOptions({ input: { ids: [threadId] } }),
+	);
+	const follow = view.data?.[0]?.follow ?? null;
+	const set = useFollowThread();
+	const choose = (next: "watch" | "mute") =>
+		set.mutate(
+			{ id: threadId, follow: follow === next ? null : next },
+			{ onSettled: () => void view.refetch() },
+		);
+	return { follow, choose };
+}
+
 /**
  * A thread's own notification choice (#1101 category 4 item 7): notify when this
  * running thread finishes, or mute it. Applies on every device.
@@ -31,16 +46,7 @@ export function FollowButton({
 	threadId: string;
 	running: boolean;
 }) {
-	const view = useQuery(
-		orpc.attention.threads.queryOptions({ input: { ids: [threadId] } }),
-	);
-	const follow = view.data?.[0]?.follow ?? null;
-	const set = useFollowThread();
-	const choose = (next: "watch" | "mute") =>
-		set.mutate(
-			{ id: threadId, follow: follow === next ? null : next },
-			{ onSettled: () => void view.refetch() },
-		);
+	const { follow, choose } = useThreadFollow(threadId);
 	const Icon =
 		follow === "watch" ? BellRing : follow === "mute" ? BellOff : Bell;
 	const label = LABEL[follow ?? "none"];

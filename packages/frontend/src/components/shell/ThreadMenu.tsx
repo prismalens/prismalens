@@ -31,7 +31,11 @@ import { client } from "@/lib/api/orpc-client";
 import { copyText } from "@/lib/clipboard";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { threadLink } from "@/lib/thread-rows";
-import type { ThreadCtx } from "./thread.actions";
+import type {
+	PageState,
+	ThreadCtx,
+	ThreadPageControls,
+} from "./thread.actions";
 
 /** The thread fields the menu reads; a feed row and an open thread both carry them. */
 export type MenuThread = Pick<
@@ -270,6 +274,7 @@ export function ThreadMenu({
 	onSettle,
 	triggerClassName,
 	defaultOpen,
+	page,
 }: {
 	thread: MenuThread;
 	where?: "row" | "header";
@@ -279,8 +284,21 @@ export function ThreadMenu({
 	triggerClassName?: string;
 	/** Open on first draw: the design gallery's frame. */
 	defaultOpen?: boolean;
+	/** A phone header's own controls and their facts, folded into this menu. */
+	page?: {
+		controls: ThreadPageControls;
+		is: { readonly [S in PageState]?: boolean };
+	};
 }) {
-	const { ctx, dialog } = useThreadCtx(thread, { onRename, onSettle });
+	const base = useThreadCtx(thread, { onRename, onSettle });
+	const { dialog } = base;
+	const ctx: ThreadCtx = page
+		? {
+				...base.ctx,
+				page: page.controls,
+				facts: { ...base.ctx.facts, is: { ...base.ctx.facts.is, ...page.is } },
+			}
+		: base.ctx;
 	return (
 		<>
 			<SurfaceMore
