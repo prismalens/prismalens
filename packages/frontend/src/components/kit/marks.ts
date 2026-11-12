@@ -37,6 +37,8 @@ import {
 	OctagonAlert,
 	Pencil,
 	ShieldAlert,
+	ShieldCheck,
+	ShieldX,
 	Signal,
 	SignalHigh,
 	SignalLow,
@@ -155,6 +157,14 @@ export const MARKS = {
 		icons: { approval: ShieldAlert },
 		label: "Waiting for you",
 		tones: { question: "warn", approval: "warn" },
+	}),
+	/** A call the run's mode answered without asking: approved, or blocked. */
+	decided: defineMark({
+		id: "decided",
+		icon: ShieldCheck,
+		icons: { blocked: ShieldX },
+		label: "Decided for you",
+		tones: { approved: "ok", blocked: "danger" },
 	}),
 	/** A provider stop: Limited waits on a clock, Blocked on the user. */
 	limit: defineMark({
