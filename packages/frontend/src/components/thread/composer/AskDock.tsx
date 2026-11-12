@@ -11,7 +11,7 @@ import {
 } from "@prismalens/contracts";
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Help } from "@/components/kit";
+import { Help, Mark, reachOf } from "@/components/kit";
 import { Hint } from "@/components/shared/Hint";
 import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
@@ -85,6 +85,10 @@ export function AskDock({
 	const ask = list[i];
 	if (!ask) return null;
 	const subject = askSubject(ask);
+	const reach =
+		ask.kind === "permission" && ask.permission?.toolKind
+			? reachOf(ask.permission.toolKind)
+			: null;
 	const inert = ended && ask.source.kind !== "tool";
 	if (hidden)
 		return (
@@ -175,12 +179,23 @@ export function AskDock({
 			</header>
 			{subject && (
 				// The exact command or path, whole: never an Approve without it (#1101 cat 8 item 2).
-				<code
-					className="block max-h-36 overflow-y-auto rounded-control bg-surface-3 px-2.5 py-1.5 font-mono text-meta whitespace-pre-wrap break-all text-text-1"
-					data-testid="ask-dock-subject"
-				>
-					{subject}
-				</code>
+				<div className="flex items-start gap-2">
+					{reach && (
+						<Mark
+							id="reach"
+							state={reach.state}
+							word={reach.word}
+							className="mt-1.5 [&_svg]:size-3.5"
+							testId="ask-dock-reach"
+						/>
+					)}
+					<code
+						className="block max-h-36 min-w-0 flex-1 overflow-y-auto rounded-control bg-surface-3 px-2.5 py-1.5 font-mono text-meta whitespace-pre-wrap break-all text-text-1"
+						data-testid="ask-dock-subject"
+					>
+						{subject}
+					</code>
+				</div>
 			)}
 			{inert ? (
 				<p className="text-meta text-text-2" data-testid="ask-dock-ended">

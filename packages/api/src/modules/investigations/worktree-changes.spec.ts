@@ -150,7 +150,32 @@ describe("readWorktreeChanges (#1020)", () => {
 			deletions: 0,
 			omitted: null,
 			truncated: false,
+			sync: null,
 		});
+	});
+
+	it("returns null sync when the run branch has no upstream", async () => {
+		const repo = await changes();
+		expect(repo.sync).toBeNull();
+	});
+
+	it("reports sync of ahead 2 and behind 1 with an upstream branch", async () => {
+		git(["branch", "up", base], src);
+		git(["branch", "--set-upstream-to=up"], run);
+		write(run, { "src/ahead-1.ts": "1\n" });
+		git(["add", "src/ahead-1.ts"], run);
+		git(["commit", "-q", "-m", "run-1"], run);
+		write(run, { "src/ahead-2.ts": "2\n" });
+		git(["add", "src/ahead-2.ts"], run);
+		git(["commit", "-q", "-m", "run-2"], run);
+		const upWt = join(root, "up-wt");
+		git(["worktree", "add", "-q", upWt, "up"], src);
+		write(upWt, { "src/behind-1.ts": "3\n" });
+		git(["add", "src/behind-1.ts"], upWt);
+		git(["commit", "-q", "-m", "up-1"], upWt);
+
+		const repo = await changes();
+		expect(repo.sync).toEqual({ ahead: 2, behind: 1 });
 	});
 
 	it("shows edits, deletions and staged changes against the start, never the index", async () => {

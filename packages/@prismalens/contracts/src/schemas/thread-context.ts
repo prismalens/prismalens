@@ -34,6 +34,9 @@ const ContextRepoSchema = z.object({
 	/** Live changes against `head`; null when they could not be read. */
 	additions: z.number().int().nonnegative().nullable(),
 	deletions: z.number().int().nonnegative().nullable(),
+	/** Commits ahead of and behind the branch's upstream; null with no upstream or unread. */
+	ahead: z.number().int().nonnegative().nullable().optional(),
+	behind: z.number().int().nonnegative().nullable().optional(),
 });
 
 export const ThreadLineageRunSchema = z.object({

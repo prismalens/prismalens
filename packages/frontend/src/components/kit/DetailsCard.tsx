@@ -2,7 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import { ChevronRight, PanelRight, X } from "lucide-react";
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+	Fragment,
+	type ReactElement,
+	type ReactNode,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
 import {
@@ -28,6 +35,12 @@ const ICON_BTN =
 	"flex size-7 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3";
 
 function Row({ row }: { row: DetailsRow }) {
+	if (row.control)
+		return (
+			<div className="flex min-w-0 flex-col" data-testid={`details-${row.id}`}>
+				{row.control}
+			</div>
+		);
 	const body = (
 		<>
 			<span
@@ -146,8 +159,11 @@ export function DetailsDock({
 	onDockedChange,
 	children,
 	className,
+	wrapCard = (card) => card,
 }: {
 	rows: DetailsRow[];
+	/** Puts the card inside its caller's registered surface (#1125). */
+	wrapCard?: (card: ReactElement) => ReactElement;
 	docked?: boolean;
 	onDockedChange?: (docked: boolean) => void;
 	/** The transcript column. */
@@ -171,7 +187,7 @@ export function DetailsDock({
 					className="group/dock relative shrink-0 pt-2"
 					style={{ width: CARD_W }}
 				>
-					<DetailsCard rows={rows} density={density} />
+					{wrapCard(<DetailsCard rows={rows} density={density} />)}
 					{onDockedChange && (
 						<div className="absolute top-3.5 right-1.5 rounded-control bg-surface-1 opacity-0 group-focus-within/dock:opacity-100 group-hover/dock:opacity-100">
 							<Hint label="Close details">
@@ -221,7 +237,9 @@ export function DetailsDock({
 							</button>
 						}
 					>
-						<DetailsCard rows={rows} className="bg-transparent p-0" />
+						{wrapCard(
+							<DetailsCard rows={rows} className="bg-transparent p-0" />,
+						)}
 					</KitPopover>
 				</div>
 			)}

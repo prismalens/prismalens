@@ -213,9 +213,6 @@ function Gallery() {
 								state={state}
 								label={label}
 								detail={detail}
-								incidentId="fixture"
-								runs={[]}
-								current={null}
 							/>
 						))}
 					</div>

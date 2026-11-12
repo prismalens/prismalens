@@ -63,6 +63,9 @@ export const ThreadTreeNodeSchema = z.object({
 	unread: z.number().int().min(0),
 	/** What a working thread did last, in a line (#1101 cat 10); null when it has not started. */
 	lastStep: z.string().nullable().optional(),
+	/** The agent it runs on and when its run started, for the details card's child rows. */
+	harness: z.string().nullable().optional(),
+	startedAt: z.string().nullable().optional(),
 	/** The thread's path in the app, never an id alone. */
 	link: z.string(),
 });

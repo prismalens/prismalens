@@ -10,7 +10,7 @@ import {
 	type PendingAsk,
 } from "@prismalens/contracts";
 import { EventListView } from "@/components/attention/EventList";
-import { AwayList } from "@/components/home/AwayView";
+import { AwayFold, AwayList } from "@/components/home/AwayView";
 import { UnseenDivider } from "@/components/investigation/WindowedTranscript";
 import { NotifyChoicesView } from "@/components/settings/NotifyChoices";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
@@ -177,6 +177,15 @@ const noop = () => {};
 
 export const attentionGallery: GallerySection[] = [
 	{
+		id: "away-fold",
+		title: "Home's away view, folded",
+		render: () => (
+			<div className="max-w-[640px]" data-testid="gallery-away-fold">
+				<AwayFold data={AWAY} now={NOW} onOpen={noop} />
+			</div>
+		),
+	},
+	{
 		id: "away-list",
 		title: "Home after a short time away: changes by thread, under each root",
 		render: () => (
@@ -220,7 +229,7 @@ export const attentionGallery: GallerySection[] = [
 		title: "The event list, Unread",
 		render: () => (
 			<div
-				className="w-[360px] rounded-surface bg-surface-1"
+				className="w-full max-w-[360px] rounded-surface bg-surface-1"
 				data-testid="gallery-event-list"
 			>
 				<EventListView

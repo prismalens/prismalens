@@ -462,13 +462,20 @@ function CheckLogTail({
 								Failed at <span className="text-text-1">{log.step}</span>
 							</span>
 						)}
-						<pre
-							className="m-0 max-h-64 overflow-auto font-mono text-mono whitespace-pre text-text-2"
-							data-testid="pr-check-lines"
-							data-scroll-x
+						{/* Lines wrap, so the tail never scrolls sideways; it scrolls down from the keyboard too. */}
+						<section
+							// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling log takes focus so keys can scroll it.
+							tabIndex={0}
+							aria-label="Log tail"
+							className="max-h-64 overflow-y-auto rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
 						>
-							{log.lines.join("\n")}
-						</pre>
+							<pre
+								className="m-0 font-mono text-mono break-all whitespace-pre-wrap text-text-2"
+								data-testid="pr-check-lines"
+							>
+								{log.lines.join("\n")}
+							</pre>
+						</section>
 					</>
 				)
 			)}
