@@ -25,6 +25,13 @@ const PACKAGE_FLOOR = {
 	lines: 45,
 };
 
+/** The host browser's seams (#1061), measured with its scenario: raise as the unit tests grow. */
+const BROWSER_SEAM_THRESHOLD = {
+	statements: 80,
+	branches: 70,
+	functions: 55,
+	lines: 80,
+};
 const NEW_CODE_THRESHOLD = {
 	statements: 80,
 	branches: 80,
@@ -75,6 +82,9 @@ export default defineConfig({
 				"src/modules/threads/thread-lifecycle.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/cron/cron.service.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/cron.ts": NEW_CODE_THRESHOLD,
+				// #1061: the host browser's ask rules and its agent tools
+				"src/modules/browser/browser-risk.ts": BROWSER_SEAM_THRESHOLD,
+				"src/modules/gateway/tools/browser.ts": BROWSER_SEAM_THRESHOLD,
 				// #724 and #1024 E
 				"src/core/settings/update.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/settings/update-handoff.ts": NEW_CODE_THRESHOLD,

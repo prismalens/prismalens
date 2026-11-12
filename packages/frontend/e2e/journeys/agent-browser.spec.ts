@@ -224,4 +224,20 @@ test.describe("#1061 — the browser pane while an agent drives it", () => {
 		expect(controls).toEqual([{ to: "human" }]);
 		await shot(page, "browser-user-control-1600");
 	});
+
+	test("Settings → Agent has the browser switch, on by default, as only the host can change it", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1280, height: 800 });
+		await page.goto("/settings?tab=agent");
+		const row = page.getByTestId("agent-browser-row");
+		await expect(row).toContainText("Agents can use the browser");
+		await expect(row).toContainText("Asks before each new site");
+		await expect(page.getByTestId("agent-browser")).toHaveAttribute(
+			"data-state",
+			"checked",
+		);
+		await row.scrollIntoViewIfNeeded();
+		await shot(page, "browser-switch-settings-1280");
+	});
 });
