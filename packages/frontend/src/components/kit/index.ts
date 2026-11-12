@@ -28,7 +28,7 @@ export {
 	middleCut,
 	PrMark,
 	RiskMark,
-} from "./Marks";
+} from "./MarkBadges";
 export { ContextMenu, Menu, type MenuEntry } from "./Menu";
 export { Picker, type PickerOption } from "./Picker";
 export {

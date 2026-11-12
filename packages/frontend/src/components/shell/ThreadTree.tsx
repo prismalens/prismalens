@@ -25,7 +25,7 @@ import {
 	BranchMark,
 	ChildrenMark,
 	PrMark,
-} from "@/components/kit/Marks";
+} from "@/components/kit/MarkBadges";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
