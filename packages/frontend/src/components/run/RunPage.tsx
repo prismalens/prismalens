@@ -20,7 +20,6 @@ import {
 	useRouter,
 	useSearch,
 } from "@tanstack/react-router";
-import { PanelRight } from "lucide-react";
 import {
 	type ReactNode,
 	useCallback,
@@ -31,7 +30,6 @@ import {
 } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import {
-	DRAFT,
 	type IncidentRecord,
 	useIncidentRecord,
 } from "@/components/incidents/record-context";
@@ -44,7 +42,6 @@ import {
 } from "@/components/incidents/run-facts";
 import {
 	DockedComposer,
-	stopFailed,
 	useRecheck,
 } from "@/components/investigation/DockedComposer";
 import { Transcript } from "@/components/investigation/Transcript";
@@ -56,7 +53,6 @@ import { SituationCard } from "@/components/overview/SituationCard";
 import { StopImpactCard } from "@/components/overview/StopImpactCard";
 import { useOverview } from "@/components/overview/use-overview";
 import { WhyCard } from "@/components/overview/WhyCard";
-import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
 import {
@@ -107,7 +103,6 @@ import { runLinks } from "@/lib/run-links";
 import { fileFromParam, fileParam, touchedFiles } from "@/lib/run-panel";
 import { deriveSubagents } from "@/lib/subagents";
 import { isPlainChat } from "@/lib/trigger";
-import { cn } from "@/lib/utils";
 import {
 	type CiteTarget,
 	HYPOTHESES_OPEN_ID,
@@ -127,7 +122,6 @@ import {
 import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
 import { RunSubagentPanel } from "./RunSubagentPanel";
-import { RunsMenu } from "./RunsMenu";
 import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
 	contextSections,
@@ -249,7 +243,6 @@ export function RunPage() {
 	const [remembered, setRemembered] = useState<DetailsTab>("summary");
 	const [open, setOpen] = useState<Set<number>>(() => new Set());
 	const [highlight, setHighlight] = useState<number | null>(null);
-	const toggleRef = useRef<HTMLButtonElement>(null);
 	const timer = useRef<number | undefined>(undefined);
 	const [workOpen, setWorkOpen] = useState(false);
 	const [subagentId, setSubagentId] = useState<string | null>(null);
@@ -267,7 +260,7 @@ export function RunPage() {
 		if (phone) setSheetOpen(open);
 		else setRightPanel(open);
 		// biome-ignore lint/correctness/useExhaustiveDependencies: only a breakpoint crossing moves the state.
-	}, [phone]);
+	}, [phone, rightPanel, setRightPanel, sheetOpen]);
 	const setPanel = useCallback(
 		(open: boolean) => (phone ? setSheetOpen : setRightPanel)(open),
 		[phone, setRightPanel],
@@ -398,7 +391,7 @@ export function RunPage() {
 	useEffect(() => {
 		const browser = desktopBridge()?.browser;
 		return () => browser?.go("clear");
-	}, [inv?.id]);
+	}, []);
 	const links = useMemo(
 		() => runLinks(incident.alerts ?? [], inv?.report ?? null),
 		[incident.alerts, inv?.report],
@@ -465,12 +458,19 @@ export function RunPage() {
 	useEffect(() => {
 		if ((viewing || search.panel) && !panel) setPanel(true);
 		// biome-ignore lint/correctness/useExhaustiveDependencies: only a newly named file or tab opens the panel.
-	}, [viewing?.repo, viewing?.path, search.panel]);
+	}, [viewing?.repo, viewing?.path, search.panel, viewing, setPanel, panel]);
 
 	const closePanel = useCallback(() => {
 		setSubagentId(null);
 		hidePanel();
-		window.setTimeout(() => toggleRef.current?.focus(), 0);
+		// Focus goes back to the ⋯ that holds the details toggle.
+		window.setTimeout(
+			() =>
+				document
+					.querySelector<HTMLButtonElement>('[data-testid="header-more"]')
+					?.focus(),
+			0,
+		);
 	}, [hidePanel]);
 	useEffect(() => {
 		if (!panel) return;
@@ -810,35 +810,27 @@ export function RunPage() {
 							)
 					: null
 			}
-			trailing={
-				<>
-					{tail}
-					{/* Its slot is there from the first paint, so the header never shifts when the run loads (#1020). */}
-					{!draft && (
-						<DetailsToggle
-							ref={toggleRef}
-							disabled={!inv}
-							open={panel && !!inv}
-							onToggle={() => (panel ? closePanel() : setPanel(true))}
-							title={chat ? "Question details" : "Run details"}
-							flagged={flaggedCount}
-							warns={hiddenWarns}
-						/>
-					)}
-				</>
+			trailing={tail}
+			// Status and the state's primary action stay in sight; the rest sits in ⋯ (#1101).
+			details={
+				!draft && inv
+					? {
+							open: panel,
+							onToggle: () => (panel ? closePanel() : setPanel(true)),
+							label: chat ? "Question details" : "Run details",
+							flagged: flaggedCount,
+							warns: hiddenWarns,
+						}
+					: undefined
 			}
+			runs={{ count: runs.length }}
+			resolvePrimary={!!report && !live && !chat}
 		/>
 	);
 
 	if (draft)
 		return (
-			<DraftPage
-				record={record}
-				header={headerWith(
-					<RunsMenu incidentId={incident.id} runs={runs} current={DRAFT} />,
-				)}
-				slots={slots}
-			/>
+			<DraftPage record={record} header={headerWith(null)} slots={slots} />
 		);
 
 	const step = runStepText(run.events, now ?? Date.now(), {
@@ -876,9 +868,6 @@ export function RunPage() {
 			resuming={resuming}
 			onRetry={retryable ? retryNow : undefined}
 			retrying={retrying}
-			incidentId={incident.id}
-			runs={runs}
-			current={inv?.id ?? null}
 		/>,
 	);
 
@@ -1064,78 +1053,11 @@ export function RunPage() {
 	);
 }
 
-/** The header's details toggle: a red dot while something is flagged and the panel is shut. */
-function DetailsToggle({
-	ref,
-	disabled = false,
-	open,
-	onToggle,
-	title,
-	flagged,
-	warns,
-}: {
-	ref: React.Ref<HTMLButtonElement>;
-	disabled?: boolean;
-	open: boolean;
-	onToggle: () => void;
-	title: string;
-	flagged: number;
-	/** Warnings the strip cannot show on a phone. */
-	warns: string[];
-}) {
-	const label = [
-		title,
-		...(flagged > 0
-			? [`${flagged} flagged ${flagged === 1 ? "item" : "items"}`]
-			: []),
-		...warns,
-	].join(", ");
-	return (
-		<Hint label={label}>
-			<button
-				ref={ref}
-				type="button"
-				aria-label={label}
-				aria-pressed={open}
-				id="details-toggle"
-				// Points only at a panel that exists; a closed one has no id to name.
-				aria-controls={open ? "run-details" : undefined}
-				disabled={disabled}
-				onClick={onToggle}
-				className={cn(
-					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3 disabled:opacity-50",
-					open ? "bg-surface-3 text-text-1" : "bg-surface-2 text-text-2",
-				)}
-				data-testid="details-toggle"
-			>
-				<PanelRight className="size-4" aria-hidden />
-				{flagged > 0 && !open && (
-					<span
-						aria-hidden
-						className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-danger"
-						data-testid="details-flag"
-					/>
-				)}
-				{warns.length > 0 && !open && (
-					<span
-						aria-hidden
-						className={cn(
-							"absolute top-[3px] size-[7px] rounded-full bg-warn",
-							flagged > 0 ? "right-[12px]" : "right-[3px]",
-						)}
-						data-testid="details-warn"
-					/>
-				)}
-			</button>
-		</Hint>
-	);
-}
-
 /** The strip's two words: which run and its state, then what it is doing or came to. */
 export function stripWords(
 	inv: InvestigationWithRelations | null,
 	state: RunState | null,
-	activity: string | null,
+	_activity: string | null,
 	name: string,
 	now: number | null,
 	agent: string,
