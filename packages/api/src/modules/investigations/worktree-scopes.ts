@@ -6,6 +6,7 @@
  * diff are commits in the snapshot store, resolved here, never named by the client. Every
  * mutation sets paths from the exact state the user was shown to a state the store holds.
  */
+import { realpathSync } from "node:fs";
 import { lstat, unlink } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import {
@@ -381,7 +382,15 @@ function ownedBy(
 ): boolean {
 	const own = `${WORKTREE_PREFIX}${runId}`;
 	const up = dirname(root);
-	const inRoot = (d: string) => roots.some((r) => samePath(resolve(r), d));
+	// The store's root is a real path (recordedRoot); a location may sit behind a link, as macOS /var does.
+	const real = (r: string) => {
+		try {
+			return realpathSync(resolve(r));
+		} catch {
+			return resolve(r);
+		}
+	};
+	const inRoot = (d: string) => roots.some((r) => samePath(real(r), d));
 	return (
 		(basename(root) === own && inRoot(up)) ||
 		(basename(up) === own && inRoot(dirname(up)))
