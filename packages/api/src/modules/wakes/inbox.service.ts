@@ -34,7 +34,12 @@ type Inbound = Extract<CanonicalEvent, { kind: "message_inbound" }>;
 export type InboundEntry = Pick<
 	Inbound,
 	"messageId" | "source" | "from" | "failure" | "cause"
-> & { state: InboundState; arrivedAt: Date; text: string };
+> & {
+	state: InboundState;
+	arrivedAt: Date;
+	text: string;
+	merged?: { into: string; at: Date };
+};
 
 /** Why a message waits on a thread: the provider stop it is under, or a plain cause. */
 export type WaitReason =
@@ -178,7 +183,14 @@ export class InboxService implements OnModuleInit {
 			text: entry.text.slice(0, 500),
 			...(entry.failure ? { failure: entry.failure } : {}),
 			...(entry.cause ? { cause: entry.cause } : {}),
+			...(entry.merged
+				? {
+						mergedInto: entry.merged.into,
+						mergedAt: entry.merged.at.toISOString(),
+					}
+				: {}),
 			line: inboundLine(entry.state, {
+				...(entry.merged ? { merged: { at: entry.merged.at } } : {}),
 				...(entry.failure ? { failure: entry.failure } : {}),
 				...(entry.cause ? { cause: entry.cause } : {}),
 				...(agent ? { agent } : {}),
@@ -269,13 +281,24 @@ export class InboxService implements OnModuleInit {
 		// A cron or PR status wake carries every fire still pending, so it closes the rows of fires it replaced.
 		const batches = await this.prisma.threadWake.findMany({
 			where: { id: { in: [...ids] }, kind: { in: ["cron", "pr_status"] } },
-			select: { kind: true },
+			select: { id: true, kind: true, at: true },
 		});
-		const carried = new Set(batches.map((w) => wakeSource(w.kind as WakeKind)));
 		for (const [id, e] of open) {
 			if (e.state !== "waiting") continue;
-			if (!ids.has(id) && !carried.has(e.source)) continue;
-			await this.record(threadId, { ...entryOf(e), state: "delivered" });
+			if (ids.has(id)) {
+				await this.record(threadId, { ...entryOf(e), state: "delivered" });
+				continue;
+			}
+			// Never delivered on its own: it reads as merged into the fire that carried it (#1101).
+			const into = batches.find(
+				(w) => wakeSource(w.kind as WakeKind) === e.source,
+			);
+			if (into)
+				await this.record(threadId, {
+					...entryOf(e),
+					state: "delivered",
+					merged: { into: into.id, at: into.at },
+				});
 		}
 	}
 }

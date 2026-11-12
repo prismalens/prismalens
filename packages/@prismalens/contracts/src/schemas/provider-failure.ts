@@ -144,6 +144,21 @@ export function stopState(
 	return isBlockedMode(mode) ? "blocked" : "limited";
 }
 
+/** "2:00 PM" in the reader's locale; the browser passes its own, the server writes en-US. */
+export function shortTime(
+	at: Date,
+	locale = "en-US",
+	timeZone?: string,
+): string {
+	return at
+		.toLocaleTimeString(locale, {
+			hour: "numeric",
+			minute: "2-digit",
+			...(timeZone ? { timeZone } : {}),
+		})
+		.replace(/ /g, " ");
+}
+
 const CAUSE_WORDS = {
 	busy: "the thread is mid-turn",
 	ended: "the thread has ended",
@@ -162,8 +177,12 @@ export function inboundLine(
 		failure?: Pick<RunFailure, "mode" | "window">;
 		cause?: keyof typeof CAUSE_WORDS;
 		agent?: string;
+		/** Delivered inside a later fire that replaced it, which arrived at `at`. */
+		merged?: { at: Date; locale?: string; timeZone?: string };
 	} = {},
 ): string {
+	if (state === "delivered" && why.merged)
+		return `Merged into the ${shortTime(why.merged.at, why.merged.locale, why.merged.timeZone)} run`;
 	if (state === "delivered") return "Delivered";
 	const reason = why.failure
 		? failureLine(why.failure, why.agent)

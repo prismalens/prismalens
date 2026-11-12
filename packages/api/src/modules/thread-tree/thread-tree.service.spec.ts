@@ -26,6 +26,7 @@ const { TreeSettings } = await import("./tree-settings.service.js");
 const { actionReason } = await import("../threads/threads.service.js");
 const { nodeState, threadLink, TREE_MESSAGE_CAP } = await import("./thread-tree.service.js");
 const { FollowUpRefused } = await import("../../infrastructure/dispatch/dispatch.service.js");
+const { InboxService } = await import("../wakes/inbox.service.js");
 
 type Prisma = InstanceType<typeof PrismaService>;
 let prisma: Prisma;
@@ -953,6 +954,47 @@ describe("delivery (#1024 spec F)", () => {
 		expect((await settings.get()).agentsStartThreads).toBe("ask");
 		await prisma.setting.update({ where: { key: "threads.tree" }, data: { value: JSON.stringify({ depth: 3 }) } });
 		expect(await settings.get()).toMatchObject({ depth: 3, children: 4 });
+	});
+
+	it("TreeIo.deliver(id, 'x', { reopen: true }) to a failed thread with endReason: 'limited' returns { state: 'parked' } and never calls dispatch.resumeInvestigation when TreeIo gets an InboxService", async () => {
+		const inbox = new InboxService(prisma, investigations as never);
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never, inbox);
+		const t = await thread({ status: "failed", endReason: "limited" });
+		dispatch.resumeInvestigation.mockClear();
+
+		const result = await io.deliver(t.id, "x", { reopen: true });
+
+		expect(result).toEqual({ state: "parked" });
+		expect(dispatch.resumeInvestigation).not.toHaveBeenCalled();
+	});
+
+	it("with messageId: 'm-1', a live run's dispatch.sendMessage is called with 'm-1' as its 6th argument, and a reopen calls resumeInvestigation with { delivers: ['m-1'] } as its 8th", async () => {
+		const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
+		const liveRun = await thread({ status: "running" });
+		live.add(liveRun.id);
+		dispatch.sendMessage.mockClear();
+
+		const liveResult = await io.deliver(liveRun.id, "x", { reopen: false, messageId: "m-1" });
+		expect(liveResult).toEqual({ state: "delivered", messageId: "m-1" });
+		expect(dispatch.sendMessage).toHaveBeenCalledWith(liveRun.id, "x", "queue", [], undefined, "m-1");
+		live.delete(liveRun.id);
+
+		const ended = await thread({ status: "completed" });
+		dispatch.resumeInvestigation.mockClear();
+		dispatch.resumeInvestigation.mockResolvedValueOnce(true);
+
+		const reopenResult = await io.deliver(ended.id, "x", { reopen: true, messageId: "m-1" });
+		expect(reopenResult).toEqual({ state: "delivered", messageId: "m-1" });
+		expect(dispatch.resumeInvestigation).toHaveBeenCalledWith(
+			ended.id,
+			"x",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ delivers: ["m-1"] },
+		);
 	});
 });
 
