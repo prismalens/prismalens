@@ -342,7 +342,7 @@ describe("stopMarkName", () => {
 });
 
 describe("stopNodeLine", () => {
-	it("usage_limit with and without resetsAt and weekly window", () => {
+	it("usage_limit is the turn's one plain line, with its retry time when the reset is known (sheet §10)", () => {
 		expect(
 			stopNodeLine(
 				{
@@ -353,7 +353,7 @@ describe("stopNodeLine", () => {
 				} as CanonicalEvent,
 				clock,
 			),
-		).toBe("Codex reached its usage limit · resets 15:45");
+		).toBe("Usage limit reached. Retry after 15:45");
 
 		expect(
 			stopNodeLine(
@@ -365,7 +365,7 @@ describe("stopNodeLine", () => {
 				} as CanonicalEvent,
 				clock,
 			),
-		).toBe("Codex reached its usage limit");
+		).toBe("Usage limit reached");
 
 		expect(
 			stopNodeLine(
@@ -377,7 +377,7 @@ describe("stopNodeLine", () => {
 				} as CanonicalEvent,
 				clock,
 			),
-		).toBe("Codex reached its weekly limit");
+		).toBe("Usage limit reached");
 	});
 
 	it("usage_limit rate_limited and overloaded modes", () => {
