@@ -143,10 +143,10 @@ export function LimitDock({
 			<p className="text-meta text-text-2" data-testid="limit-dock-next">
 				{stopNext(limit)}
 			</p>
-			{limit.message && !blocked && (
+			{limit.message && (
 				<p className="flex min-w-0 items-baseline gap-2 text-meta text-text-3">
 					<span className="min-w-0 truncate" data-testid="limit-dock-queued">
-						Sends at the reset: {limit.message}
+						{blocked ? "Sends on retry" : "Sends at the reset"}: {limit.message}
 					</span>
 					{onRemoveQueued && (
 						<Button
