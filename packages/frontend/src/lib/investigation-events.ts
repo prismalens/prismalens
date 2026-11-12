@@ -809,6 +809,9 @@ export function deriveTranscript(
 	// A usage limit holds until a resume: queued messages wait on it, not on a pause.
 	let limited = false;
 	const gateway = matchGateway(events);
+	const stopLines = events.some(
+		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
+	);
 	const findings = new Map<
 		string,
 		Extract<TranscriptItem, { kind: "finding" }>
@@ -1201,6 +1204,8 @@ export function deriveTranscript(
 					items.push(stoppedLine(run, event.ts));
 					break;
 				}
+				// A provider stop's own line says it once; the turn adds no end of its own (sheet §10).
+				if (event.failure && stopLines) break;
 				// A message's own end on a thread whose standing it does not change (#673 w59, #804 OBJ-028).
 				if (
 					!first ||
@@ -1282,6 +1287,23 @@ export function deriveTranscript(
 				}
 				if (opts.nodes?.(event.kind)) {
 					closeGroup();
+					// A limit's first resume time joins the limit's line: one line, one time (sheet §10).
+					const last = items.at(-1);
+					if (
+						event.kind === "resume_scheduled" &&
+						event.at &&
+						!event.gaveUp &&
+						!event.nextTry &&
+						(event.attempt ?? 1) <= 1 &&
+						last?.kind === "node" &&
+						last.event.kind === "usage_limit"
+					) {
+						items[items.length - 1] = {
+							...last,
+							event: { ...last.event, resetsAt: event.at },
+						};
+						break;
+					}
 					// A compaction's end replaces its own "Compacting" line (#1101).
 					if (event.kind === "compaction" && event.phase !== "started") {
 						const at = items.findLastIndex(

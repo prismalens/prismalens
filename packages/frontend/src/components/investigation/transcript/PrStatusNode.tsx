@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, prHostTerms } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { GitPullRequest } from "lucide-react";
 import {
@@ -21,6 +21,7 @@ export function PrStatusNode({ event }: TranscriptNodeProps) {
 	const e = event as PrStatus;
 	const number = e.pr.split("#").pop() ?? e.pr;
 	const tone = e.tone ?? "unknown";
+	const terms = prHostTerms(e.host);
 	const navigate = useNavigate();
 	return (
 		<p
@@ -46,7 +47,8 @@ export function PrStatusNode({ event }: TranscriptNodeProps) {
 				}
 				className="shrink-0 text-text-1 tabular-nums hover:underline"
 			>
-				PR #{number}
+				{terms.short} {terms.numberPrefix}
+				{number}
 			</button>
 			{e.tone && <span className="shrink-0">{PR_TONE_WORD[e.tone]}</span>}
 			<span className="min-w-0 truncate">{e.lines.join(" · ")}</span>

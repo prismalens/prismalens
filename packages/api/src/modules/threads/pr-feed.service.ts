@@ -10,8 +10,11 @@ import {
 import { ORPCError } from "@orpc/nest";
 import {
 	PR_WATCH_EVERY_MS,
+	type PrHost,
+	PrHostSchema,
 	type PrWatch,
 	type PullRequest,
+	prLabel,
 } from "@prismalens/contracts";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -35,6 +38,7 @@ import {
 	recorded,
 } from "./pr-feed.js";
 import { type EtagCache, HostReadError } from "./pr-hosts.js";
+import { parsePrUrl } from "./pr-url.js";
 import {
 	hostDown,
 	PullRequestsService,
@@ -267,6 +271,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 			conflicts: read.conflicts,
 			runs: read.detail.checkRuns ?? [],
 			activity,
+			...(parsePrUrl(url) ? { host: parsePrUrl(url)?.shape } : {}),
 		};
 		// A new watch starts from what the PR shows now, so nothing before it is news.
 		for (const prId of fresh) {
@@ -319,6 +324,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 		if (!row) return;
 		const pr = pullRequestView(row);
 		const label = `${pr.repo}#${pr.number}`;
+		const named = prLabel(pr.host, pr.number);
 		const active = f.investigation.lastActivityAt ?? f.investigation.updatedAt;
 		const until = new Date(
 			Math.max(active.getTime(), f.since.getTime()) + FEED_IDLE_MS,
@@ -329,8 +335,9 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				kind: "pr_status",
 				prId: f.prId,
 				pr: label,
+				host: pr.host,
 				tone: pr.tone,
-				lines: [`Stopped watching PR #${pr.number}: thread idle 7 days`],
+				lines: [`Stopped watching ${named}: thread idle 7 days`],
 				phase: "ended",
 			});
 			return;
@@ -339,7 +346,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 		const d = prev ? diff(prev, snap) : { ...diff(null, snap), lines: [] };
 		const texts = recorded(d.lines.map((l) => l.text));
 		if (d.guardTripped) {
-			const text = `Stopped sending PR #${pr.number} updates: ${d.guardTripped} still failing after 3 tries`;
+			const text = `Stopped sending ${named} updates: ${d.guardTripped} still failing after 3 tries`;
 			await this.prisma.$transaction([
 				this.prisma.prFeed.update({
 					where: { prId: f.prId },
@@ -384,6 +391,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				kind: "pr_status",
 				prId: f.prId,
 				pr: label,
+				host: pr.host,
 				tone: pr.tone,
 				lines: texts,
 				phase: "ended",
@@ -412,6 +420,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				kind: "pr_status",
 				prId: f.prId,
 				pr: label,
+				host: pr.host,
 				tone: pr.tone,
 				lines: texts,
 				phase: "noted",
@@ -447,7 +456,9 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 					state: "watching",
 				},
 				include: {
-					pullRequest: { select: { number: true, title: true, headSha: true } },
+					pullRequest: {
+						select: { number: true, title: true, headSha: true, host: true },
+					},
 				},
 			});
 			const open = await this.wakes.latest(threadId, "pr_status", tx);
@@ -478,6 +489,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 					prId: f.prId,
 					number: f.pullRequest.number,
 					title: f.pullRequest.title,
+					...hostOf(f.pullRequest.host),
 					lines: current([...had, ...p.lines], f.pullRequest.headSha),
 				});
 				await tx.prFeed.update({
@@ -643,4 +655,10 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 	private say(threadId: string, body: Record<string, unknown>): Promise<void> {
 		return recordWatchEvent(this.prisma, this.bus, threadId, body);
 	}
+}
+
+/** A stored host kind, when it is one the contract knows. */
+function hostOf(raw: string): { host: PrHost } | Record<string, never> {
+	const p = PrHostSchema.safeParse(raw);
+	return p.success ? { host: p.data } : {};
 }

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PrCheckRun,
-	PrChecks,
-	PrMergeState,
-	PrReview,
-	PrTone,
-	PullRequest,
+import {
+	type PrCheckRun,
+	type PrChecks,
+	type PrHostTerms,
+	type PrMergeState,
+	type PrReview,
+	type PrTone,
+	type PullRequest,
+	prHostTerms,
+	prLabel,
 } from "@prismalens/contracts";
 import {
 	ChevronRight,
@@ -59,10 +62,19 @@ export const MERGE_WORD: Record<PrMergeState, [string, PrTone] | null> = {
 	unknown: null,
 };
 
-/** `7/9 checks`: passing of all; null when the host reports no checks. */
-export function checksCount(c: PrChecks): string | null {
+/** `7/9`: passing of all; null when the host reports no checks. */
+function passingOf(c: PrChecks): string | null {
 	if (c.state === "none" || c.state === "unknown" || c.total === 0) return null;
-	return `${c.total - c.failed - c.pending}/${c.total} checks`;
+	return `${c.total - c.failed - c.pending}/${c.total}`;
+}
+
+/** `7/9 checks`, `7/9 jobs`: in the host's terms (#1122). */
+export function checksCount(
+	c: PrChecks,
+	terms: PrHostTerms = prHostTerms(null),
+): string | null {
+	const n = passingOf(c);
+	return n ? `${n} ${terms.checks}` : null;
 }
 
 /** `2 failing · 1 running of 9`; null when the host reports no checks. */
@@ -165,7 +177,7 @@ export const prIcon = (tone: PrTone): LucideIcon => TONE_ICON[tone];
 
 /** `Failing 7/9`: the state word and the passing count, as one quiet phrase. */
 export function prSummary(pr: Pick<PullRequest, "tone" | "checks">): string {
-	const count = checksCount(pr.checks)?.replace(/ checks$/, "");
+	const count = passingOf(pr.checks);
 	return [PR_TONE_WORD[pr.tone], count].filter(Boolean).join(" ");
 }
 
@@ -192,7 +204,7 @@ export function PullRequestRow({
 					"group/line flex h-7 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left text-body outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent max-md:h-auto max-md:min-h-11!",
 					focused && "bg-surface-3",
 				)}
-				aria-label={`Pull request #${pr.number}, ${prSummary(pr)}. Open it`}
+				aria-label={`${prLabel(pr.host, pr.number)}, ${prSummary(pr)}. Open it`}
 			>
 				<Icon
 					className={cn(
@@ -201,7 +213,10 @@ export function PullRequestRow({
 					)}
 					aria-hidden
 				/>
-				<span className="shrink-0 text-text-1 tabular-nums">#{pr.number}</span>
+				<span className="shrink-0 text-text-1 tabular-nums">
+					{prHostTerms(pr.host).numberPrefix}
+					{pr.number}
+				</span>
 				<span className="min-w-0 flex-1 truncate text-text-2">
 					{pr.title ?? pr.repo}
 				</span>

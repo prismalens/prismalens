@@ -2435,11 +2435,50 @@ describe("a command turn (#1024)", () => {
 });
 
 describe("in-turn provider retry (#1101)", () => {
-	it.skip(
-		"a turn whose prompt fails with a rate limit carrying retryAfterSeconds: 1 is sent again once with opts.sleep stubbed, yields one provider_retry { attempt: 2, maxAttempts: 5 }, and the second prompt's first text block is PROVIDER_RETRY_NOTE (skipped: fake-acp-harness cannot script a transient rate limit with retryAfterSeconds that succeeds on retry)",
-		async () => {
-			// Skipped: fake-acp-harness fixture does not support returning an RPC rate_limit error with retryAfterSeconds on prompt 1 followed by a successful prompt 2.
-			expect(PROVIDER_RETRY_NOTE).toBe("The model provider asked to wait; continue where you left off.");
-		},
-	);
+	it("a turn whose first prompt hits a rate limit is sent again once and recorded as one turn", async () => {
+		const sleep = vi.fn().mockResolvedValue(undefined);
+		const { events, runDir } = await collect("retry-once", { sleep });
+
+		const retries = events.filter((e) => e.kind === "provider_retry");
+		expect(retries.map((e) => [e.mode, e.attempt, e.maxAttempts, e.phase])).toEqual([
+			["rate_limited", 2, 5, "waiting"],
+			["rate_limited", 2, 5, "succeeded"],
+		]);
+		const waitingRetries = events.filter(
+			(e) => e.kind === "provider_retry" && e.phase === "waiting",
+		);
+		expect(waitingRetries).toHaveLength(1);
+		expect(waitingRetries[0]?.attempt).toBe(2);
+		expect(waitingRetries[0]?.maxAttempts).toBe(5);
+
+		const turnUsages = events.filter((e) => e.kind === "turn_usage");
+		expect(turnUsages).toHaveLength(1);
+
+		const prompts = promptsSent(runDir);
+		expect(prompts).toHaveLength(2);
+
+		expect(sleep.mock.calls).toEqual([[1000, undefined]]);
+	});
+
+	it("the retried turn's usage counts both attempts from the turn's starting cost", async () => {
+		const sleep = vi.fn().mockResolvedValue(undefined);
+		const { events } = await collect("retry-once", { sleep });
+
+		const turnUsages = events.filter((e) => e.kind === "turn_usage");
+		expect(turnUsages).toHaveLength(1);
+		expect(turnUsages[0]?.usage?.cost).toEqual({ amount: 1.5, currency: "USD" });
+		expect(turnUsages[0]?.usage?.cost?.amount).toBe(1.5);
+		expect(turnUsages[0]?.usage?.cost?.amount).not.toBe(0.2);
+	});
+
+	it("the resent prompt opens with PROVIDER_RETRY_NOTE", async () => {
+		const sleep = vi.fn().mockResolvedValue(undefined);
+		const { runDir } = await collect("retry-once", { sleep });
+
+		const prompts = promptsSent(runDir);
+		expect(prompts).toHaveLength(2);
+		expect(prompts[1]?.[0]).toEqual({ type: "text", text: PROVIDER_RETRY_NOTE });
+		expect(prompts[1]?.[1]).toEqual(prompts[0]?.[0]);
+		expect(prompts[1]?.[1]?.text).toBe(prompts[0]?.[0]?.text);
+	});
 });
