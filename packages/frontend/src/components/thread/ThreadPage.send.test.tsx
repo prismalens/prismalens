@@ -137,6 +137,11 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 }));
 
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
+	useAnswerAsk: () => ({
+		mutate: vi.fn(),
+		mutateAsync: vi.fn(),
+		isPending: false,
+	}),
 	useResumeInvestigation: () => ({
 		mutate: vi.fn(),
 		isPending: false,
@@ -151,8 +156,11 @@ vi.mock("@/lib/api/hooks/use-services-orpc", () => ({
 	useService: () => ({ data: null }),
 }));
 
+vi.mock("@/components/shell/ThreadMenu", () => ({ ThreadMenu: () => null }));
+
 vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 	useVisitThread: vi.fn(),
+	useFeedRow: () => undefined,
 }));
 
 vi.mock("@/lib/api/hooks/use-thread-context-orpc", () => ({

@@ -432,6 +432,22 @@ test("design coverage matrix", async ({
 	await shoot("automation-page", "/automation", (p) =>
 		expect(p.getByTestId("automation-page")).toBeVisible(),
 	);
+	// The Ctrl K palette (#1101 category 19): its preview, then a thread's row actions.
+	for (const t of THEMES) {
+		await theme(page, t);
+		await page.setViewportSize({ width: 1280, height: 800 });
+		await visit(page, "/threads");
+		await page.keyboard.press("Control+k");
+		// Row actions are a thread's: highlight one before Alt+Enter.
+		await page.getByTestId("thread-search-result").first().hover();
+		await expect(page.getByTestId("palette-preview-thread")).toBeVisible();
+		await shotHere(`palette-preview-1280-${t}`);
+		await page.keyboard.press("Alt+Enter");
+		await expect(page.getByTestId("palette-row-action-open")).toBeVisible();
+		await shotHere(`palette-row-actions-1280-${t}`);
+		await page.keyboard.press("Escape");
+		await page.keyboard.press("Escape");
+	}
 
 	// A schedule's run, and Home after time away (both in the same slots as any thread).
 	const svc = await ensureService(page, LIVE);

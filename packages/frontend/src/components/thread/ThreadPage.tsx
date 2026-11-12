@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel } from "@prismalens/config/harness";
-import { pendingAsks, recordedFindings } from "@prismalens/contracts";
+import {
+	AccessLevelSchema,
+	pendingAsks,
+	recordedFindings,
+} from "@prismalens/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, PanelRight, PanelTop, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,13 +27,17 @@ import { TickDot } from "@/components/schedules/TickDot";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { RightPanel } from "@/components/shell/PanelShell";
+import { ThreadMenu } from "@/components/shell/ThreadMenu";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
+import {
+	useAnswerAsk,
+	useResumeInvestigation,
+} from "@/lib/api/hooks/use-investigations-orpc";
 import { useRepository } from "@/lib/api/hooks/use-repositories-orpc";
 import { useService } from "@/lib/api/hooks/use-services-orpc";
 import { useThreadContext } from "@/lib/api/hooks/use-thread-context-orpc";
-import { useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
+import { useFeedRow, useVisitThread } from "@/lib/api/hooks/use-threads-orpc";
 import { uploadThreadAttachment } from "@/lib/attachments";
 import {
 	interceptSend,
@@ -335,6 +343,8 @@ export function ThreadPage({ id }: { id: string }) {
 		[id, workspace, run.steps, viewing, fileOfStep, openFile, openPanel],
 	);
 
+	const feedRow = useFeedRow(id);
+	const declineAsk = useAnswerAsk();
 	const { sendMessage } = run;
 	const sendWith = useCallback(
 		(text: string, fields: { model?: string }) =>
@@ -551,6 +561,17 @@ export function ThreadPage({ id }: { id: string }) {
 					{word}
 				</span>
 			)}
+			{inv && (
+				<ThreadMenu
+					thread={{
+						...inv,
+						settledAt: feedRow?.settledAt ?? null,
+						pinnedAt: feedRow?.pinnedAt ?? null,
+						archivedAt: feedRow?.archivedAt ?? null,
+					}}
+					triggerClassName="flex size-8 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1"
+				/>
+			)}
 			<HeaderToggle
 				label="Status"
 				pressed={boxOpen}
@@ -616,6 +637,7 @@ export function ThreadPage({ id }: { id: string }) {
 				runId={inv.id}
 				agent={agentLabel}
 				cwd={workspace?.cwd}
+				accessLevel={AccessLevelSchema.safeParse(inv.accessLevel).data ?? null}
 			/>
 		) : null;
 	const dock =
@@ -709,7 +731,23 @@ export function ThreadPage({ id }: { id: string }) {
 				<div className="mx-auto w-full max-w-[760px]">
 					<Composer
 						state={state}
-						onSend={onSend}
+						onSend={(env, now) => {
+							// Typing while an ask waits declines it with your words as the reason (#1101 cat 8 item 4).
+							const waiting = asks[0];
+							if (waiting && env.text.trim() && !env.attachments.length)
+								return declineAsk
+									.mutateAsync({
+										id: inv.id,
+										askId: waiting.askId,
+										answer: {
+											kind: "permission",
+											decision: "deny",
+											reason: env.text.trim(),
+										},
+									})
+									.then(() => "sent" as const);
+							return onSend(env, now);
+						}}
 						scope={`thread:${inv.id}`}
 						onStop={() => run.stop()}
 						stopping={run.stopRequested}
@@ -721,7 +759,13 @@ export function ThreadPage({ id }: { id: string }) {
 							);
 						}}
 						resuming={resume.isPending}
-						placeholder={run.isActive ? "Message the agent" : "Reply"}
+						placeholder={
+							asks.length
+								? "Type to decline with feedback"
+								: run.isActive
+									? "Message the agent"
+									: "Reply"
+						}
 						choice={{
 							harness,
 							model: nextChoice.model ?? inv.model ?? "",

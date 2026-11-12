@@ -6,7 +6,7 @@
  * an incident's. Incident and schedule threads keep their own routes.
  */
 import { z } from "zod";
-import { AskKindSchema } from "./asks.js";
+import { AskKindSchema, PendingAskSchema } from "./asks.js";
 import {
 	CoerceDateSchema,
 	DateStringSchema,
@@ -25,6 +25,8 @@ import { ThreadRowPrSchema } from "./pull-request.js";
 import { WorkInSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
 import { INVESTIGATION_KINDS } from "./state-semantics.js";
+import { ThreadStatusInfoSchema } from "./thread-status.js";
+import { QueryFlagSchema } from "./thread-window.js";
 
 export const ThreadStartSubjectSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("project"), repositoryId: z.string().uuid() }),
@@ -87,6 +89,8 @@ export const ThreadFeedQuerySchema = z.object({
 	/** Units to skip; a unit is one thread or one incident's block. */
 	cursor: z.coerce.number().int().min(0).default(0),
 	limit: z.coerce.number().int().min(1).max(100).default(40),
+	/** Archived threads only; absent lists every thread that is not archived (#1101). */
+	archived: QueryFlagSchema,
 });
 export type ThreadFeedQuery = z.infer<typeof ThreadFeedQuerySchema>;
 
@@ -159,6 +163,12 @@ export const ThreadRowSchema = InvestigationSchema.extend({
 		})
 		.nullable()
 		.optional(),
+	/** Its one status and the reason behind it (#1101 category 2). */
+	state: ThreadStatusInfoSchema.optional(),
+	/** Pinned rows list first; null when not pinned (#1101 category 20). */
+	pinnedAt: DateStringSchema.nullable().optional(),
+	/** Archived threads leave the list until the archived filter shows them. */
+	archivedAt: DateStringSchema.nullable().optional(),
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
 
@@ -178,6 +188,8 @@ export const ThreadFeedSchema = z.object({
 		needs: z.number().int(),
 		active: z.number().int(),
 		settled: z.number().int(),
+		/** Threads, not units, that need you: the list header's count (#1101 cat 1 item 2). */
+		needsThreads: z.number().int().optional(),
 	}),
 });
 export type ThreadFeed = z.infer<typeof ThreadFeedSchema>;
@@ -241,6 +253,41 @@ export const SettleRefusalSchema = z.object({
 	reason: z.enum(["running", "ended"]),
 	running: z.number().int().nonnegative().optional(),
 });
+
+/** Pin or unpin, archive or unarchive one thread (#1101 category 20). */
+export const ThreadFlagSchema = z.object({
+	id: z.string().uuid(),
+	on: z.boolean(),
+});
+export const ThreadFlagResponseSchema = z.object({
+	id: z.string(),
+	at: DateStringSchema.nullable(),
+});
+
+/**
+ * Fork here or Side question (#1101 category 20): a child thread under this one that
+ * reads it as a reference. A side question leaves the parent's own run untouched either way.
+ */
+export const ForkThreadSchema = z.object({
+	id: z.string().uuid(),
+	mode: z.enum(["fork", "side"]),
+	text: z.string().trim().min(1).max(4000),
+});
+export const ForkThreadResponseSchema = StartThreadResponseSchema;
+
+/** Every open ask across threads, for the list's rows (#1101 category 8). */
+export const ThreadAsksSchema = z.object({
+	asks: z.array(
+		z.object({
+			ask: PendingAskSchema,
+			/** The run that opened it ended: only a durable tool ask stays answerable. */
+			ended: z.boolean(),
+			/** The thread's access level when the ask opened, for the card's mode line. */
+			accessLevel: AccessLevelSchema.nullable(),
+		}),
+	),
+});
+export type ThreadAsks = z.infer<typeof ThreadAsksSchema>;
 
 /** A thread title: one line of plain text (#1020). */
 export const THREAD_TITLE_MAX = 80;

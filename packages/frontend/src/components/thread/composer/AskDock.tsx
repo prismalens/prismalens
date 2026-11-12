@@ -9,6 +9,7 @@ import type {
 } from "@prismalens/contracts";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { Kbd } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -17,11 +18,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useAskKeys } from "@/hooks/use-ask-keys";
 import { useOperator } from "@/hooks/use-operator";
 import {
 	useAnswerAsk,
 	useAnswerSecret,
 } from "@/lib/api/hooks/use-investigations-orpc";
+import { alwaysLine, whyAsked } from "@/lib/ask-lines";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
@@ -140,6 +143,9 @@ export function AskDock({
 			{ask.detail && (
 				<p className="truncate font-mono text-meta text-text-2">{ask.detail}</p>
 			)}
+			<p className="text-meta text-text-3" data-testid="ask-dock-why">
+				{whyAsked(ask, null)}
+			</p>
 			{ask.requiresHost && !onHost ? (
 				<p className="text-meta text-text-2" data-testid="ask-dock-host">
 					Answer on the host machine
@@ -225,6 +231,12 @@ function Approval({
 }) {
 	const [reason, setReason] = useState<string | null>(null);
 	const plan = ask.permission?.variant === "plan";
+	useAskKeys(reason === null && !busy, {
+		approve: () =>
+			onAnswer({ kind: "permission", decision: "approve", scope: "once" }),
+		decline: () => onAnswer({ kind: "permission", decision: "deny" }),
+	});
+	const always = alwaysLine(ask);
 	if (reason !== null)
 		return (
 			<form
@@ -259,9 +271,10 @@ function Approval({
 				onClick={() =>
 					onAnswer({ kind: "permission", decision: "approve", scope: "once" })
 				}
+				aria-keyshortcuts="Alt+Y"
 				data-testid="ask-dock-allow"
 			>
-				{plan ? "Approve" : "Allow once"}
+				{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
 			</Button>
 			{!plan && ask.permission?.identity && (
 				<Button
@@ -283,9 +296,10 @@ function Approval({
 				variant="secondary"
 				disabled={busy}
 				onClick={() => onAnswer({ kind: "permission", decision: "deny" })}
+				aria-keyshortcuts="Alt+N"
 				data-testid="ask-dock-deny"
 			>
-				{plan ? "Keep planning" : "Deny"}
+				{plan ? "Keep planning" : "Deny"} <Kbd>Alt N</Kbd>
 			</Button>
 			{!plan && (
 				<Button
@@ -297,6 +311,14 @@ function Approval({
 				>
 					Deny with a reason
 				</Button>
+			)}
+			{always && (
+				<p
+					className="w-full text-meta text-text-3"
+					data-testid="ask-dock-always-line"
+				>
+					{always}
+				</p>
 			)}
 		</div>
 	);

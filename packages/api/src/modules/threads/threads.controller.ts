@@ -19,6 +19,8 @@ import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
 import { ThreadContextService } from "./thread-context.service.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
+import { ThreadMenuService } from "./thread-menu.service.js";
+import { ThreadStatusService } from "./thread-status.service.js";
 import { ThreadsService } from "./threads.service.js";
 
 /** The device may start, continue and stop runs: the host's session, or a device paired to. */
@@ -40,7 +42,15 @@ export class ThreadsController {
 		private readonly cronJobs: CronService,
 		private readonly lifecycle: ThreadLifecycleService,
 		@Optional() private readonly finder?: ThreadSearchService,
+		@Optional() private readonly menu?: ThreadMenuService,
+		@Optional() private readonly status?: ThreadStatusService,
 	) {}
+
+	private need<T>(service: T | undefined): T {
+		if (!service)
+			throw new ORPCError("NOT_IMPLEMENTED", { message: "Not available" });
+		return service;
+	}
 
 	@Implement(threadsContract)
 	routes() {
@@ -69,6 +79,27 @@ export class ThreadsController {
 			feed: implement(threadsContract.feed).handler(({ input }) =>
 				this.threads.feed(input),
 			),
+
+			// GET /threads/asks - Open asks across threads, for the list's rows (#1101 cat 8)
+			asks: implement(threadsContract.asks).handler(() =>
+				this.need(this.status).openAsks(),
+			),
+
+			// POST /threads/:id/pin
+			pin: implement(threadsContract.pin).handler(({ input }) =>
+				this.need(this.menu).pin(input.id, input.on),
+			),
+
+			// POST /threads/:id/archive
+			archive: implement(threadsContract.archive).handler(({ input }) =>
+				this.need(this.menu).archive(input.id, input.on),
+			),
+
+			// POST /threads/:id/fork - Fork here or Side question: a child that reads this thread
+			fork: implement(threadsContract.fork).handler(({ input, context }) => {
+				requireOperate(context.request);
+				return this.need(this.menu).fork(input.id, input.mode, input.text);
+			}),
 
 			// POST /threads/:id/visit
 			visit: implement(threadsContract.visit).handler(({ input }) =>
