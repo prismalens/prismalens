@@ -22,6 +22,9 @@ export interface DetailsRow {
 	lines?: 1 | 2;
 	mono?: boolean;
 	onOpen?: () => void;
+	/** A row drawn by its caller (buttons, live child rows), `span` lines tall. */
+	control?: ReactNode;
+	span?: number;
 }
 
 export type Density = "full" | "compact" | "essential";
@@ -47,7 +50,10 @@ export function visibleRows(rows: DetailsRow[], density: Density) {
 
 export function cardHeight(rows: DetailsRow[]) {
 	const groups = new Set(rows.map((r) => r.group)).size;
-	const body = rows.reduce((h, r) => h + (r.lines === 2 ? ROW_2_H : ROW_H), 0);
+	const body = rows.reduce(
+		(h, r) => h + (r.lines === 2 ? ROW_2_H : ROW_H * (r.span ?? 1)),
+		0,
+	);
 	return PAD + body + Math.max(0, groups - 1) * GROUP_GAP;
 }
 

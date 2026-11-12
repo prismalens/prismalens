@@ -4,11 +4,9 @@
 import type { RunState } from "@prismalens/contracts";
 import { TriangleAlert } from "lucide-react";
 import { RunDot } from "@/components/incidents/RunTree";
-import type { RunRef } from "@/components/incidents/record-context";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
 import { Button } from "@/components/ui/button";
-import { RunsMenu } from "./RunsMenu";
 
 export interface StripChip {
 	text: string;
@@ -18,9 +16,9 @@ export interface StripChip {
 
 /**
  * The run's part of the one header (sheet §2): its state word with the detail
- * in a hint, one warning mark when something is off, Resume or Retry, and the
- * runs menu. Stop lives in the composer; the credential sits in Run details.
- * A phone keeps the mark and the runs menu; Retry stays in the dock.
+ * in a hint, one warning mark when something is off, and Resume or Retry; the
+ * runs sit in the header's ⋯. Stop lives in the composer; the credential sits
+ * in Run details. A phone keeps the mark; Retry stays in the dock.
  */
 export function RunStrip({
 	state,
@@ -34,9 +32,6 @@ export function RunStrip({
 	resuming,
 	onRetry,
 	retrying,
-	incidentId,
-	runs,
-	current,
 }: {
 	state: RunState | null;
 	/** The agent waits on your answer in the dock (#673 w5-14). */
@@ -54,9 +49,6 @@ export function RunStrip({
 	/** A failed or stopped investigation: a new run, as the board's Retry run. */
 	onRetry?: () => void;
 	retrying?: boolean;
-	incidentId: string;
-	runs: RunRef[];
-	current: string | null;
 }) {
 	const warns = [model?.warn ? model : null, tools].filter(
 		(c): c is StripChip => !!c,
@@ -123,7 +115,6 @@ export function RunStrip({
 					{retrying ? "Starting" : "Retry"}
 				</Button>
 			)}
-			<RunsMenu incidentId={incidentId} runs={runs} current={current} />
 		</div>
 	);
 }

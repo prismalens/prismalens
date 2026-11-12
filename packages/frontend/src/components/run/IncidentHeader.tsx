@@ -9,13 +9,14 @@ import {
 	isIncidentEnded,
 	isIncidentOpen,
 	SEVERITY_LABEL,
-	type Severity,
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
+import { DRAFT } from "@/components/incidents/record-context";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import {
 	AlertDialog,
@@ -28,17 +29,6 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuRadioGroup,
-	DropdownMenuRadioItem,
-	DropdownMenuSub,
-	DropdownMenuSubContent,
-	DropdownMenuSubTrigger,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useEscapeBack } from "@/hooks/use-escape-back";
 import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -50,11 +40,10 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { readableTitle } from "@/lib/title";
 import { isPlainChat } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
+import type { IncidentCtx } from "./incident.actions";
 import { NoteDialog } from "./NoteDialog";
 import { firingWord } from "./run-labels";
 import { StatusUpdateDialog } from "./StatusUpdateDialog";
-
-const SEVERITIES = Object.keys(SEVERITY_LABEL) as Severity[];
 
 /**
  * The breadcrumb header (#811): back to the inbox, `INC-1 WalkGrouped / Run 2`,
@@ -70,6 +59,9 @@ export function IncidentHeader({
 	onEditCause,
 	onInvestigateAgain,
 	trailing,
+	details,
+	runs,
+	resolvePrimary = false,
 }: {
 	incident: IncidentWithRelations;
 	view: string;
@@ -80,8 +72,20 @@ export function IncidentHeader({
 	onEditCause: () => void;
 	/** A reported run: start a new run with its report quoted. */
 	onInvestigateAgain?: (() => void) | null;
-	/** The page's own control before Resolve, e.g. the details toggle. */
+	/** The page's own state before the menu, e.g. the run strip. */
 	trailing?: ReactNode;
+	/** The run's details panel, toggled from the menu; its flags ride on the ⋯. */
+	details?: {
+		open: boolean;
+		onToggle: () => void;
+		label: string;
+		flagged: number;
+		warns: string[];
+	};
+	/** The incident's runs, reached from the menu. */
+	runs?: { count: number };
+	/** Resolve is this state's primary action (a finished report): a button, not a menu row. */
+	resolvePrimary?: boolean;
 }) {
 	// A chat carries no incident number, in the tab title or for screen readers (#1020 D10).
 	usePageTitle(
@@ -130,252 +134,236 @@ export function IncidentHeader({
 			}),
 	});
 
+	const resolve = () => (firing?.firing ? setConfirmOpen(true) : onResolve());
+	const flagged = !!details && !details.open && details.flagged > 0;
+	const warned = !!details && !details.open && details.warns.length > 0;
+	const moreLabel = [
+		"Incident actions",
+		...(flagged && details
+			? [
+					`${details.flagged} flagged ${details.flagged === 1 ? "item" : "items"}`,
+				]
+			: []),
+		...(warned && details ? details.warns : []),
+	].join(", ");
+	const ctx: IncidentCtx = {
+		toggleDetails: () => details?.onToggle(),
+		detailsLabel: details?.label ?? "Details",
+		allRuns: () =>
+			void navigate({ to: "/incidents/$id", params: { id: incident.id } }),
+		newConversation: () =>
+			void navigate({
+				to: "/incidents/$id/conversation",
+				params: { id: incident.id },
+				search: { investigation: DRAFT },
+			}),
+		resolve,
+		note: () => setNoteOpen(true),
+		statusUpdate: () => setUpdateOpen(true),
+		setSeverity: (v) =>
+			v !== incident.severity &&
+			severity.mutate({ id: incident.id, severity: v }),
+		severity: incident.severity,
+		investigateAgain: () => onInvestigateAgain?.(),
+		merge: () => setMergeOpen(true),
+		exportReport: () => reportRunId && exportReport.mutate({ id: reportRunId }),
+		openMerged: () =>
+			merged &&
+			void navigate({ to: "/incidents/$id", params: { id: merged.id } }),
+		editCause: onEditCause,
+		facts: {
+			is: {
+				chat,
+				hasRun: !!details,
+				detailsOpen: !!details?.open,
+				manyRuns: (runs?.count ?? 0) > 1,
+				resolvable: resolvable && !chat,
+				severityEditable: !chat && !merged && !severity.isPending,
+				canInvestigateAgain: !!onInvestigateAgain,
+				canMerge: canMerge && !chat,
+				hasReport: !!reportRunId && !exportReport.isPending,
+				merged: !!merged,
+				closed: incident.status === "closed",
+			},
+		},
+	};
 	return (
-		<header
-			className="flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap"
-			data-testid="incident-header"
-			data-title-row
-		>
-			<Hint label="Back">
-				<Button variant="text" size="icon" className="shrink-0" asChild>
-					<Link to="/new" aria-label="Back" data-testid="incident-back">
-						<ChevronLeft className="size-4" />
-					</Link>
-				</Button>
-			</Hint>
-			<h1 className="min-w-[104px] shrink truncate text-title">
-				{!chat && <span className="sr-only">INC-{incident.number} </span>}
-				<Hint label="The incident's latest run">
+		<Surface id="incident.header" ctx={ctx}>
+			<header
+				className="flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap"
+				data-testid="incident-header"
+				data-title-row
+			>
+				<Hint label="Back">
+					<Button variant="text" size="icon" className="shrink-0" asChild>
+						<Link to="/new" aria-label="Back" data-testid="incident-back">
+							<ChevronLeft className="size-4" />
+						</Link>
+					</Button>
+				</Hint>
+				<h1 className="min-w-[104px] shrink truncate text-title">
+					{!chat && <span className="sr-only">INC-{incident.number} </span>}
+					<Hint label="The incident's latest run">
+						<Link
+							to="/incidents/$id"
+							params={{ id: incident.id }}
+							className="inline-flex min-h-6 max-w-full items-center underline-offset-[3px] hover:underline"
+							data-testid="crumb-incident"
+							dir="auto"
+						>
+							{chat ? incident.title : readableTitle(incident.title)}
+						</Link>
+					</Hint>
+				</h1>
+				<span aria-hidden className="shrink-0 text-text-3 max-sm:hidden">
+					/
+				</span>
+				<span
+					className="shrink-0 text-body font-semibold max-sm:hidden"
+					aria-current="page"
+					data-testid="crumb-view"
+				>
+					{view}
+				</span>
+				{!chat && (
+					<span
+						className="shrink-0 rounded-control bg-surface-2 px-2 text-meta font-medium"
+						style={{ color: `var(--sev-${incident.severity})` }}
+						data-testid="header-severity"
+					>
+						{SEVERITY_LABEL[incident.severity]}
+					</span>
+				)}
+				{chat ? null : merged ? (
 					<Link
 						to="/incidents/$id"
-						params={{ id: incident.id }}
-						className="inline-flex min-h-6 max-w-full items-center underline-offset-[3px] hover:underline"
-						data-testid="crumb-incident"
-						dir="auto"
+						params={{ id: merged.id }}
+						className="shrink-0 text-text-3 underline-offset-2 hover:text-text-1 hover:underline max-sm:hidden"
+						data-testid="header-state"
 					>
-						{chat ? incident.title : readableTitle(incident.title)}
+						Merged into INC-{merged.number}
 					</Link>
-				</Hint>
-			</h1>
-			<span aria-hidden className="shrink-0 text-text-3 max-sm:hidden">
-				/
-			</span>
-			<span
-				className="shrink-0 text-body font-semibold max-sm:hidden"
-				aria-current="page"
-				data-testid="crumb-view"
-			>
-				{view}
-			</span>
-			{!chat && (
-				<span
-					className="shrink-0 rounded-control bg-surface-2 px-2 text-meta font-medium"
-					style={{ color: `var(--sev-${incident.severity})` }}
-					data-testid="header-severity"
-				>
-					{SEVERITY_LABEL[incident.severity]}
-				</span>
-			)}
-			{chat ? null : merged ? (
-				<Link
-					to="/incidents/$id"
-					params={{ id: merged.id }}
-					className="shrink-0 text-text-3 underline-offset-2 hover:text-text-1 hover:underline max-sm:hidden"
-					data-testid="header-state"
-				>
-					Merged into INC-{merged.number}
-				</Link>
-			) : isIncidentEnded(incident.status) ? (
-				<span
-					className="shrink-0 text-text-3 max-sm:hidden"
-					data-testid="header-state"
-				>
-					{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus]}
-				</span>
-			) : (
-				firing && (
+				) : isIncidentEnded(incident.status) ? (
 					<span
-						className={cn(
-							"flex shrink-0 items-center gap-1.5 max-lg:hidden",
-							firing.firing ? "text-danger" : "text-text-3",
-						)}
-						data-testid="header-firing"
+						className="shrink-0 text-text-3 max-sm:hidden"
+						data-testid="header-state"
 					>
-						{firing.firing && (
-							<span aria-hidden className="size-[7px] rounded-full bg-danger" />
-						)}
-						{firing.text}
+						{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus]}
 					</span>
-				)
-			)}
-			<span className="flex-1" />
-			{trailing}
-			{resolvable && !chat && (
-				<Button
-					variant="secondary"
-					// A phone gives the title this room; Resolve waits in More there (#1020).
-					className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3 max-sm:hidden"
-					onClick={() => (firing?.firing ? setConfirmOpen(true) : onResolve())}
-					data-testid="header-resolve"
-				>
-					Resolve
-				</Button>
-			)}
-			{reopenable && (
-				<Button
-					variant="secondary"
-					className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3"
-					onClick={onReopen}
-					data-testid="header-reopen"
-				>
-					Reopen
-				</Button>
-			)}
-			<DropdownMenu modal={false}>
-				<DropdownMenuTrigger asChild>
+				) : (
+					firing && (
+						<span
+							className={cn(
+								"flex shrink-0 items-center gap-1.5 max-lg:hidden",
+								firing.firing ? "text-danger" : "text-text-3",
+							)}
+							data-testid="header-firing"
+						>
+							{firing.firing && (
+								<span
+									aria-hidden
+									className="size-[7px] rounded-full bg-danger"
+								/>
+							)}
+							{firing.text}
+						</span>
+					)
+				)}
+				<span className="flex-1" />
+				{trailing}
+				{resolvable && !chat && resolvePrimary && (
 					<Button
 						variant="secondary"
-						size="icon"
-						className="size-7 shrink-0 bg-surface-2 text-text-2 hover:bg-surface-3"
-						aria-label="More actions"
-						data-testid="header-more"
+						// A phone gives the title this room; Resolve waits in ⋯ there (#1020).
+						className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3 max-sm:hidden"
+						onClick={resolve}
+						data-testid="header-resolve"
 					>
-						<MoreHorizontal className="size-4" />
+						Resolve
 					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="w-60">
-					{resolvable && !chat && (
-						<DropdownMenuItem
-							className="sm:hidden"
-							onClick={() =>
-								firing?.firing ? setConfirmOpen(true) : onResolve()
-							}
-							data-testid="header-resolve-menu"
-						>
-							Resolve
-						</DropdownMenuItem>
-					)}
-					<DropdownMenuItem
-						onClick={() => setNoteOpen(true)}
-						data-testid="header-note"
+				)}
+				{reopenable && (
+					<Button
+						variant="secondary"
+						className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3"
+						onClick={onReopen}
+						data-testid="header-reopen"
 					>
-						Add a note
-					</DropdownMenuItem>
-					<DropdownMenuItem
-						onClick={() => setUpdateOpen(true)}
-						data-testid="header-status-update"
-					>
-						Write a status update
-					</DropdownMenuItem>
-					{!merged && (
-						<DropdownMenuSub>
-							<DropdownMenuSubTrigger data-testid="header-severity-menu">
-								Change severity
-							</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
-								<DropdownMenuRadioGroup
-									value={incident.severity}
-									onValueChange={(v) =>
-										v !== incident.severity &&
-										severity.mutate({
-											id: incident.id,
-											severity: v as Severity,
-										})
-									}
-								>
-									{SEVERITIES.map((s) => (
-										<DropdownMenuRadioItem
-											key={s}
-											value={s}
-											disabled={severity.isPending}
-											data-testid={`header-severity-${s}`}
-										>
-											{SEVERITY_LABEL[s]}
-										</DropdownMenuRadioItem>
-									))}
-								</DropdownMenuRadioGroup>
-							</DropdownMenuSubContent>
-						</DropdownMenuSub>
-					)}
-					{onInvestigateAgain && (
-						<DropdownMenuItem
-							onClick={onInvestigateAgain}
-							data-testid="header-investigate-again"
+						Reopen
+					</Button>
+				)}
+				<SurfaceMore
+					id="incident.header"
+					ctx={ctx}
+					align="end"
+					trigger={
+						<button
+							type="button"
+							aria-label={moreLabel}
+							className="relative flex size-7 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3"
+							data-testid="header-more"
 						>
-							Investigate again
-						</DropdownMenuItem>
-					)}
-					{canMerge && (
-						<DropdownMenuItem
-							onClick={() => setMergeOpen(true)}
-							data-testid="header-merge"
-						>
-							Merge into another incident
-						</DropdownMenuItem>
-					)}
-					{reportRunId && (
-						<DropdownMenuItem
-							disabled={exportReport.isPending}
-							onClick={() => exportReport.mutate({ id: reportRunId })}
-							data-testid="header-export"
-						>
-							Export report as Markdown
-						</DropdownMenuItem>
-					)}
-					{merged && (
-						<DropdownMenuItem asChild>
-							<Link to="/incidents/$id" params={{ id: merged.id }}>
-								Merged into INC-{merged.number}
-							</Link>
-						</DropdownMenuItem>
-					)}
-					{incident.status === "closed" && (
-						<DropdownMenuItem
-							onClick={onEditCause}
-							data-testid="header-edit-cause"
-						>
-							Edit cause
-						</DropdownMenuItem>
-					)}
-				</DropdownMenuContent>
-			</DropdownMenu>
-			<NoteDialog open={noteOpen} onOpenChange={setNoteOpen} />
-			<StatusUpdateDialog
-				open={updateOpen}
-				onOpenChange={setUpdateOpen}
-				incident={incident}
-				now={now}
-			/>
-			<AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-				<AlertDialogContent data-testid="resolve-firing-confirm">
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Resolve while the alert is firing?
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							{incident.title} is still firing. If it keeps firing after you
-							resolve, PrismaLens opens a new incident and links it to this one.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							className={buttonVariants({ variant: "danger-fill" })}
-							onClick={onResolve}
-							data-testid="resolve-anyway"
-						>
-							Resolve anyway
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-			{canMerge && (
-				<MergeDialog
-					open={mergeOpen}
-					onOpenChange={setMergeOpen}
-					incident={incident}
+							<MoreHorizontal className="size-4" aria-hidden />
+							{/* The details panel's flags stay in sight while it is shut. */}
+							{flagged && (
+								<span
+									aria-hidden
+									className="absolute top-[3px] right-[3px] size-[7px] rounded-full bg-danger"
+									data-testid="details-flag"
+								/>
+							)}
+							{warned && (
+								<span
+									aria-hidden
+									className={cn(
+										"absolute top-[3px] size-[7px] rounded-full bg-warn",
+										flagged ? "right-[12px]" : "right-[3px]",
+									)}
+									data-testid="details-warn"
+								/>
+							)}
+						</button>
+					}
 				/>
-			)}
-		</header>
+				<NoteDialog open={noteOpen} onOpenChange={setNoteOpen} />
+				<StatusUpdateDialog
+					open={updateOpen}
+					onOpenChange={setUpdateOpen}
+					incident={incident}
+					now={now}
+				/>
+				<AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+					<AlertDialogContent data-testid="resolve-firing-confirm">
+						<AlertDialogHeader>
+							<AlertDialogTitle>
+								Resolve while the alert is firing?
+							</AlertDialogTitle>
+							<AlertDialogDescription>
+								{incident.title} is still firing. If it keeps firing after you
+								resolve, PrismaLens opens a new incident and links it to this
+								one.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								className={buttonVariants({ variant: "danger-fill" })}
+								onClick={onResolve}
+								data-testid="resolve-anyway"
+							>
+								Resolve anyway
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+				{canMerge && (
+					<MergeDialog
+						open={mergeOpen}
+						onOpenChange={setMergeOpen}
+						incident={incident}
+					/>
+				)}
+			</header>
+		</Surface>
 	);
 }

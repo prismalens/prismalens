@@ -201,9 +201,6 @@ describe("an interrupted run's ended card (#981)", () => {
 						label="Codex interrupted"
 						detail="PrismaLens restarted, not resumed"
 						onResume={() => {}}
-						incidentId="inc-1"
-						runs={[]}
-						current={RUN_ID}
 					/>
 					<Transcript items={items} incidentId="inc-1" agent="Codex" />
 				</>,
@@ -225,9 +222,6 @@ describe("the Resume button on the run strip (#981)", () => {
 					label="Codex interrupted"
 					detail="PrismaLens restarted, not resumed"
 					onResume={onResume}
-					incidentId="inc-1"
-					runs={[]}
-					current={RUN_ID}
 				/>,
 			);
 		});
@@ -349,16 +343,7 @@ describe("a resumed run's strip leaves out the time PrismaLens was off (#1010 N5
 			[restartMessage("auto")],
 		);
 		await act(async () => {
-			renderIn(
-				<RunStrip
-					state="done"
-					label={w.label}
-					detail={w.detail}
-					incidentId="inc-1"
-					runs={[]}
-					current={RUN_ID}
-				/>,
-			);
+			renderIn(<RunStrip state="done" label={w.label} detail={w.detail} />);
 		});
 		const detail = container.querySelector('[data-testid="run-strip-detail"]');
 		expect(detail?.textContent).toContain("took 4m 00s");
@@ -375,9 +360,6 @@ describe("an interrupted run's part of the header at phone width (#1010 N6)", ()
 					detail="PrismaLens restarted, not resumed"
 					reason={NOT_RESUMED}
 					onResume={() => {}}
-					incidentId="inc-1"
-					runs={[]}
-					current={RUN_ID}
 				/>,
 			);
 		});

@@ -934,6 +934,21 @@ describe("dropping files on the box (#1101 7, row 13)", () => {
 	});
 });
 
+describe("an empty page's quick question (#1101)", () => {
+	it("keeps the model alone in the footer: no effort or permission picker", async () => {
+		await render({ lean: true });
+		expect(q("model-chip")?.textContent).toBe("sonnet");
+		expect(q("effort-chip")).toBeNull();
+		expect(q("access-chip")).toBeNull();
+	});
+
+	it("keeps both pickers in an ordinary box", async () => {
+		await render();
+		expect(q("effort-chip")?.tagName).toBe("SPAN");
+		expect(q("access-chip")?.textContent).toBe("auto-edits");
+	});
+});
+
 describe("a schedule's composer (#1020)", () => {
 	it("takes no files when told, and offers Repeat… beside Send with the text", async () => {
 		const onRepeat = vi.fn();

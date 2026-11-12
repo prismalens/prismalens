@@ -125,6 +125,7 @@ import {
 import { PanelStack, ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { prAnswersOf, ThreadTab } from "./panel/ThreadTab";
 import { detailsOf } from "./panel/thread-details";
+import { useDetailsCard } from "./panel/use-details-card";
 import { useDetailsDocked } from "./panel/use-details-docked";
 import { useThreadPanes } from "./panel/use-thread-panes";
 import { TranscriptRail } from "./rail/TranscriptRail";
@@ -263,7 +264,8 @@ export function ThreadPage({ id }: { id: string }) {
 	const context = useThreadContext(inv?.id ?? null, run.isActive);
 	const pulls = usePanelPullRequests(
 		inv?.id ?? "",
-		(context.data?.pullRequests.length ?? 0) > 0,
+		(context.data?.pullRequests.length ?? 0) > 0 ||
+			!!context.data?.workspace?.repos.some((r) => r.branch),
 	);
 	const viewing = useMemo(() => {
 		if (!search.path) return null;
@@ -656,6 +658,20 @@ export function ThreadPage({ id }: { id: string }) {
 	const wide = areaW === 0 || dockFor(areaW) === "docked";
 	const toggleDetails = () => (panelOpen ? closePanel() : setDocked(!docked));
 	const tree = useThreadTree(id, run.isActive);
+	const card = useDetailsCard({
+		threadId: id,
+		context: context.data,
+		workspace,
+		pulls: pulls.data,
+		terminal: panes.tools.some((t) => t.id === "terminal" && !t.unavailable),
+		openPr: (pr) =>
+			openPanel({
+				panel: "thread",
+				section: pr ? `pull-requests:${pr.id}` : "pull-requests",
+			}),
+		openTerminal: () => panes.open("terminal"),
+		openLineage: () => openPanel({ panel: "thread", section: "threads" }),
+	});
 	const detailRows = context.data
 		? detailsRows(
 				detailsOf({
@@ -663,6 +679,8 @@ export function ThreadPage({ id }: { id: string }) {
 					tree: tree.data,
 					threadId: id,
 					agentLabel: harness?.label ?? null,
+					actions: card.actions,
+					lineage: card.lineage,
 					open: {
 						diff: workspace ? () => openPanel({ panel: "changes" }) : undefined,
 						pr: () => openPanel({ panel: "thread", section: "pull-requests" }),
@@ -897,79 +915,48 @@ export function ThreadPage({ id }: { id: string }) {
 			{!phone && inv && (
 				<FollowButton threadId={inv.id} running={run.isActive} />
 			)}
-			{!phone && inv && (
-				<AddScheduleFromThread
-					title={inv.title ?? null}
-					subject={
-						inv.repositoryId
+			{/* One ⋯ at every width; a phone also folds the header's own controls into it. */}
+			{inv && (
+				<HeaderMenu
+					phone={phone}
+					threadId={inv.id}
+					running={run.isActive}
+					controls={phoneControls}
+					is={phoneFacts}
+					schedule={{
+						title: inv.title ?? null,
+						subject: inv.repositoryId
 							? { kind: "project", repositoryId: inv.repositoryId }
 							: inv.serviceId
 								? { kind: "service", serviceId: inv.serviceId }
-								: { kind: "none" }
-					}
-					prUrl={chipPr?.url}
+								: { kind: "none" },
+						prUrl: chipPr?.url,
+					}}
+					menu={(page) => (
+						<ThreadMenu
+							thread={{
+								...inv,
+								settledAt: feedRow?.settledAt ?? null,
+								pinnedAt: feedRow?.pinnedAt ?? null,
+								archivedAt: feedRow?.archivedAt ?? null,
+							}}
+							page={page}
+							triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
+							{...(!run.isActive && !feedRow?.settledAt
+								? {
+										onSettle: () =>
+											settleThread.mutate(
+												{ id: inv.id, settled: true },
+												{
+													onSuccess: () => toast({ title: "Thread settled" }),
+												},
+											),
+									}
+								: {})}
+						/>
+					)}
 				/>
 			)}
-			{inv &&
-				(phone ? (
-					<PhoneHeaderMenu
-						threadId={inv.id}
-						running={run.isActive}
-						controls={phoneControls}
-						is={phoneFacts}
-						schedule={{
-							title: inv.title ?? null,
-							subject: inv.repositoryId
-								? { kind: "project", repositoryId: inv.repositoryId }
-								: inv.serviceId
-									? { kind: "service", serviceId: inv.serviceId }
-									: { kind: "none" },
-							prUrl: chipPr?.url,
-						}}
-						menu={(page) => (
-							<ThreadMenu
-								thread={{
-									...inv,
-									settledAt: feedRow?.settledAt ?? null,
-									pinnedAt: feedRow?.pinnedAt ?? null,
-									archivedAt: feedRow?.archivedAt ?? null,
-								}}
-								page={page}
-								triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
-								{...(!run.isActive && !feedRow?.settledAt
-									? {
-											onSettle: () =>
-												settleThread.mutate(
-													{ id: inv.id, settled: true },
-													{
-														onSuccess: () => toast({ title: "Thread settled" }),
-													},
-												),
-										}
-									: {})}
-							/>
-						)}
-					/>
-				) : (
-					<ThreadMenu
-						thread={{
-							...inv,
-							settledAt: feedRow?.settledAt ?? null,
-							pinnedAt: feedRow?.pinnedAt ?? null,
-							archivedAt: feedRow?.archivedAt ?? null,
-						}}
-						triggerClassName="flex size-8 shrink-0 items-center justify-center rounded-control text-text-2 hover:bg-surface-3 hover:text-text-1 max-sm:size-11"
-						{...(!run.isActive && !feedRow?.settledAt
-							? {
-									onSettle: () =>
-										settleThread.mutate(
-											{ id: inv.id, settled: true },
-											{ onSuccess: () => toast({ title: "Thread settled" }) },
-										),
-								}
-							: {})}
-					/>
-				))}
 			{!phone && (
 				<>
 					<HeaderToggle
@@ -1304,6 +1291,7 @@ ${about}`
 					{!panelOpen && docked && wide && detailRows ? (
 						<DetailsDock
 							rows={detailRows}
+							wrapCard={card.wrap}
 							onDockedChange={setDocked}
 							className="pr-3"
 						>
@@ -1382,7 +1370,8 @@ ${about}`
 type PageFacts = { readonly [S in PageState]?: boolean };
 
 /** A phone header's ⋯: the page's own controls, follow and schedule, then the thread's entries. */
-function PhoneHeaderMenu({
+function HeaderMenu({
+	phone,
 	threadId,
 	running,
 	controls,
@@ -1390,6 +1379,7 @@ function PhoneHeaderMenu({
 	schedule,
 	menu,
 }: {
+	phone: boolean;
 	threadId: string;
 	running: boolean;
 	controls: Omit<ThreadPageControls, "notify" | "mute" | "schedule">;
@@ -1414,7 +1404,7 @@ function PhoneHeaderMenu({
 				},
 				is: {
 					...is,
-					phone: true,
+					phone,
 					running,
 					watching: follow.follow === "watch",
 					muted: follow.follow === "mute",

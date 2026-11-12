@@ -302,6 +302,8 @@ export interface ComposerProps {
 	floating?: boolean;
 	/** The box takes no files (a schedule's saved text): no attach, no pasted files. */
 	noFiles?: boolean;
+	/** A quick question (an empty page's helper): the model alone, effort and mode as set. */
+	lean?: boolean;
 	/** Beside Send: save this text as a schedule instead (#1020). */
 	onRepeat?: (text: string) => void;
 	/** Each change focuses the box with the caret at the end, e.g. after a quote fills it. */
@@ -518,6 +520,7 @@ export function Composer({
 	above,
 	floating,
 	noFiles,
+	lean,
 	tools,
 	onRepeat,
 	focusSignal,
@@ -1634,9 +1637,9 @@ export function Composer({
 							</ChipContext.Provider>
 						</PromptInputBody>
 						<PromptInputFooter className="-ml-1.5">
-							{/* One row on a phone: chips keep full labels and scroll sideways, Send stays put (#1020). */}
+							{/* One row on a phone: Effort and Permission shrink to their icons, Send stays put (#1020). */}
 							<PromptInputTools
-								className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1 [&>*]:shrink-0"
+								className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1 max-sm:flex-nowrap max-sm:overflow-hidden [&>*]:shrink-0"
 								data-testid="composer-chips"
 							>
 								{!noFiles && (
@@ -1676,7 +1679,7 @@ export function Composer({
 										/>
 									</LockedWhy>
 								)}
-								{!agentless && (
+								{!agentless && !lean && (
 									<LockedWhy why={locked ? KEPT : null}>
 										<EffortChip
 											harness={harness}
@@ -1685,10 +1688,11 @@ export function Composer({
 											disabled={locked || blocked}
 											onEffort={(effort) => onChoice({ effort })}
 											onModel={(model) => onChoice({ model })}
+											compact
 										/>
 									</LockedWhy>
 								)}
-								{!agentless && (
+								{!agentless && !lean && (
 									<ModeChip
 										harness={harness}
 										level={choice.accessLevel}
@@ -1697,6 +1701,7 @@ export function Composer({
 										lockedHint={accessHint ?? (locked ? KEPT : undefined)}
 										disabled={blocked}
 										levelsOnly={levelModesOnly}
+										compact
 									/>
 								)}
 								{context && (

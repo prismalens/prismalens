@@ -4,7 +4,10 @@
 import type { ReactNode } from "react";
 import { Help } from "@/components/kit/Help";
 import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
+import { Hint } from "./Hint";
 import { Row } from "./Row";
 
 export interface SettingRowProps {
@@ -50,13 +53,15 @@ export function SettingRow({
 			Reset
 		</Button>
 	);
-	// A sentence about the setting is opt-in behind one ?; a live state stays on the row (sheet §0.3).
+	// A sentence about the setting is opt-in: the label's hint, or one ? on a phone,
+	// which has no hover; a live state stays on the row (sheet §0.3).
+	const phone = useMediaQuery(PHONE);
 	const explains = typeof description === "string";
 	const shown = explains ? undefined : description;
 	return (
 		<Row
 			label={
-				explains ? (
+				explains && phone ? (
 					<span className="inline-flex min-w-0 items-center gap-1">
 						<span className="min-w-0 truncate">{label}</span>
 						<Help
@@ -64,6 +69,21 @@ export function SettingRow({
 							text={description}
 						/>
 					</span>
+				) : explains ? (
+					// Its own provider, so a row drawn outside the app shell still shows its hint.
+					<TooltipProvider>
+						<Hint label={description}>
+							<span
+								// biome-ignore lint/a11y/noNoninteractiveTabindex: the label is focusable only to show its hint.
+								tabIndex={0}
+								aria-description={description}
+								className="min-w-0 cursor-help truncate rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+								data-testid="setting-about"
+							>
+								{label}
+							</span>
+						</Hint>
+					</TooltipProvider>
 				) : (
 					label
 				)

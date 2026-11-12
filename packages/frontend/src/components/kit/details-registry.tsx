@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ArrowDown,
+	ArrowUp,
 	BellRing,
 	CalendarClock,
 	CornerLeftUp,
@@ -17,7 +19,9 @@ import {
 	SignalHigh,
 	SquareTerminal,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
+import { Hint } from "@/components/shared/Hint";
 import type { DetailsRow } from "./details";
 
 type PrTone = "failing" | "attention" | "passing" | "running" | "merged";
@@ -29,6 +33,36 @@ const PR_TONE: Record<PrTone, DetailsRow["tone"]> = {
 	running: "accent",
 	merged: "accent",
 };
+
+/** Commits ahead of and behind the upstream: `↑a ↓b`, the words in the hint. */
+function SyncMarks({ ahead, behind }: { ahead: number; behind: number }) {
+	if (!ahead && !behind) return null;
+	const words = [ahead && `${ahead} to push`, behind && `${behind} to pull`]
+		.filter(Boolean)
+		.join(", ");
+	return (
+		<Hint label={words}>
+			<span
+				className="flex items-center gap-1.5 font-mono text-mono text-text-2 tabular-nums"
+				data-testid="details-sync"
+			>
+				{ahead > 0 && (
+					<span className="flex items-center">
+						<ArrowUp aria-hidden className="size-3" />
+						{ahead}
+					</span>
+				)}
+				{behind > 0 && (
+					<span className="flex items-center">
+						<ArrowDown aria-hidden className="size-3" />
+						{behind}
+					</span>
+				)}
+				<span className="sr-only">{words}</span>
+			</span>
+		</Hint>
+	);
+}
 
 export interface DetailsPr {
 	number: number;
@@ -45,6 +79,8 @@ export interface ThreadDetails {
 	machine?: string;
 	agent: { id: string; name: string; model?: string };
 	branch?: string;
+	/** Commits against the branch's upstream; absent with none. */
+	sync?: { ahead: number; behind: number };
 	changes?: { added: number; removed: number };
 	pr?: DetailsPr;
 	parent?: string;
@@ -53,6 +89,10 @@ export interface ThreadDetails {
 	schedule?: string;
 	/** Share of the context window used, 0 to 100. */
 	context?: number;
+	/** The card's one git action and its openers, drawn by the thread page. */
+	actions?: ReactNode;
+	/** Live child rows in place of the children count, `span` lines tall. */
+	lineage?: { node: ReactNode; span: number };
 	open?: Partial<Record<"diff" | "pr" | "parent" | "children", () => void>>;
 }
 
@@ -111,6 +151,9 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			icon: GitBranch,
 			label: d.branch,
 			mono: true,
+			...(d.sync
+				? { value: <SyncMarks ahead={d.sync.ahead} behind={d.sync.behind} /> }
+				: {}),
 		},
 		d.changes && {
 			id: "changes",
@@ -127,6 +170,13 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			onOpen: d.open?.diff,
 		},
 		d.pr && prRow(d.pr, 1, d.open?.pr),
+		d.actions !== undefined && {
+			id: "actions",
+			group: "code",
+			priority: 1,
+			label: null,
+			control: d.actions,
+		},
 		d.parent !== undefined && {
 			id: "parent",
 			group: "lineage",
@@ -135,17 +185,26 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			label: d.parent,
 			onOpen: d.open?.parent,
 		},
-		d.children && {
+		d.lineage && {
 			id: "children",
 			group: "lineage",
-			priority: 3,
-			icon: GitFork,
-			label: `${d.children.count} ${d.children.count === 1 ? "child" : "children"}`,
-			value: d.children.working ? (
-				<span className="text-text-2">{d.children.working} working</span>
-			) : undefined,
-			onOpen: d.open?.children,
+			priority: 2,
+			label: null,
+			control: d.lineage.node,
+			span: d.lineage.span,
 		},
+		!d.lineage &&
+			d.children && {
+				id: "children",
+				group: "lineage",
+				priority: 3,
+				icon: GitFork,
+				label: `${d.children.count} ${d.children.count === 1 ? "child" : "children"}`,
+				value: d.children.working ? (
+					<span className="text-text-2">{d.children.working} working</span>
+				) : undefined,
+				onOpen: d.open?.children,
+			},
 		d.watching !== undefined && {
 			id: "watching",
 			group: "watch",

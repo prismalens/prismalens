@@ -15,6 +15,8 @@ import type {
 	ThreadStatus,
 } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import { Button } from "@/components/ui/button";
@@ -44,11 +46,21 @@ export function kindStatus(
 	}
 }
 
-export function AwayView() {
+export function AwayView({ fold }: { fold?: boolean } = {}) {
 	const away = useAwayView();
 	const asks = useThreadAsks(!!away.data?.long);
 	const markRead = useMarkEventsRead();
+	const [open, setOpen] = useState(false);
 	if (!away.data || away.data.groups.length === 0) return null;
+	// Home stays a clean page (sheet §1): the list opens only when asked.
+	if (fold && !open)
+		return (
+			<AwayFold
+				data={away.data}
+				now={Date.now()}
+				onOpen={() => setOpen(true)}
+			/>
+		);
 	return (
 		<AwayList
 			data={away.data}
@@ -57,6 +69,32 @@ export function AwayView() {
 			onMarkAll={() => markRead.mutate({})}
 			marking={markRead.isPending}
 		/>
+	);
+}
+
+/** The folded view: one line with the heading and how many threads changed. */
+export function AwayFold({
+	data,
+	now,
+	onOpen,
+}: {
+	data: AwayData;
+	now: number;
+	onOpen: () => void;
+}) {
+	const n = data.groups.reduce((sum, g) => sum + g.threads.length, 0);
+	return (
+		<button
+			type="button"
+			aria-expanded={false}
+			onClick={onOpen}
+			className="inline-flex min-h-8 items-center gap-1.5 self-start rounded-control px-2 text-body text-text-2 outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+			data-testid="away-fold"
+		>
+			<ChevronRight aria-hidden className="size-3.5 text-text-3" />
+			{data.since ? `Since ${formatDayClock(data.since, now)}` : "What changed"}
+			<span className="text-meta text-text-3 tabular-nums">{n}</span>
+		</button>
 	);
 }
 

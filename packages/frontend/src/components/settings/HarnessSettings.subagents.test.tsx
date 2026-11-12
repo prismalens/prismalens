@@ -233,14 +233,13 @@ describe("sub-agent limits under Organizer limits' Advanced (#1024, #1101)", () 
 			const row = container.querySelector(
 				'[data-testid="harness-subagentDepth-row"]',
 			);
-			const helpBtn = row?.querySelector<HTMLButtonElement>(
-				'button[data-testid="help"]',
-			);
-			expect(helpBtn).not.toBeNull();
-			await act(async () => {
-				helpBtn?.click();
-			});
-			expect(document.body.textContent).toContain(`For ${effective.label}`);
+			// 729edb0d1: a setting's sentence is its label's hint, not a ? button.
+			expect(
+				Array.from(
+					row?.querySelectorAll('[data-testid="setting-about"]') ?? [],
+					(e) => e.getAttribute("aria-description"),
+				).join("\n"),
+			).toContain(`For ${effective.label}`);
 		}
 	});
 });

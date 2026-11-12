@@ -4,6 +4,7 @@
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ListCard, Mark } from "@/components/kit";
+import { ago } from "@/hooks/use-now";
 import { codeWhere, kindWord, tierWord } from "./service-detail.utils";
 
 export type Health = "ok" | "degraded" | "down" | "silent";
@@ -14,10 +15,26 @@ const HEALTH_WORD: Record<Health, string> = {
 	silent: "Stopped reporting",
 };
 
-/** The worst open severity: critical or high is down, anything else open is degraded. */
-export function healthOf(severities: readonly string[]): Health {
+/** Quiet this long after a report, a service is silent. No shared staleness threshold exists to reuse. */
+export const SILENT_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The worst open severity: critical or high is down, anything else open is
+ * degraded. With nothing open, a service whose last report is older than
+ * `SILENT_AFTER_MS` is silent; one that never reported is ok.
+ */
+export function healthOf(
+	severities: readonly string[],
+	lastReportAt?: string | null,
+	now?: number | null,
+): Health {
 	if (severities.some((s) => s === "critical" || s === "high")) return "down";
-	return severities.length ? "degraded" : "ok";
+	if (severities.length) return "degraded";
+	if (lastReportAt && now != null) {
+		const quiet = now - Date.parse(lastReportAt);
+		if (quiet > SILENT_AFTER_MS) return "silent";
+	}
+	return "ok";
 }
 
 /**
@@ -28,10 +45,13 @@ export function ServiceCard({
 	service,
 	open,
 	health,
+	now = null,
 }: {
 	service: ServiceWithRelations;
 	open: number;
 	health: Health;
+	/** For the silent mark's hint: when the service last reported. */
+	now?: number | null;
 }) {
 	const code = codeWhere(service);
 	return (
@@ -43,6 +63,11 @@ export function ServiceCard({
 					id="health"
 					state={health}
 					word={HEALTH_WORD[health]}
+					meta={
+						health === "silent" && service.lastReportAt && now != null
+							? `Last report ${ago(service.lastReportAt, now)}`
+							: undefined
+					}
 					testId="service-health"
 				/>
 			}
