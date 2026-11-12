@@ -321,9 +321,13 @@ export const appGallery: GallerySection[] = [
 						health="down"
 					/>
 					<ServiceCard
-						service={service("ledger-sync", linked)}
+						service={service("ledger-sync", {
+							...linked,
+							lastReportAt: ago(3 * 24 * 60),
+						})}
 						open={0}
 						health="silent"
+						now={NOW}
 					/>
 				</ListGrid>
 			</Stage>
