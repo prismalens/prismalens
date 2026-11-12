@@ -100,7 +100,7 @@ export function Rail({
 			aria-valuemax={Math.max(items.length - 1, 0)}
 			aria-valuenow={Math.max(at, 0)}
 			aria-valuetext={items[at]?.preview}
-			className="group/rail relative h-full w-6 shrink-0 cursor-pointer rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
+			className="group/rail relative h-full w-6 shrink-0 cursor-pointer outline-none"
 			data-testid="rail"
 			onPointerMove={(e) => setHover(index(e))}
 			onPointerLeave={() => setHover(null)}
@@ -118,6 +118,9 @@ export function Rail({
 					aria-hidden
 					className={cn(
 						"absolute left-1 block",
+						// Focus is quiet: the lines brighten and the current tick gets a 1 px outline.
+						i === at &&
+							"group-focus-visible/rail:bg-text-1 group-focus-visible/rail:outline group-focus-visible/rail:outline-offset-2 group-focus-visible/rail:outline-accent",
 						it.mark ? "h-0.5 w-4" : cn("h-px", AUTHOR_W[it.author]),
 						it.mark
 							? MARK_BG[it.mark]

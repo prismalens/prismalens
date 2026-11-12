@@ -33,6 +33,7 @@ import {
 	type PickerOption,
 	Rail,
 	type RailItem,
+	ResponseActions,
 	Status,
 	type StatusKind,
 	TabPanel,
@@ -530,6 +531,19 @@ function Tools() {
 						failed: "exit 1: 1 test failed",
 						output: "FAIL src/orders/query.test.ts > lists a customer's orders",
 					}}
+				/>
+			</Stage>
+			<Stage
+				id="response-actions"
+				caption="After a response: Copy and Fork, quiet"
+				className="flex flex-col gap-1"
+			>
+				<p className="text-body text-text-1">
+					The pool sizing is the likely cause; v2.14.1 set it to 5.
+				</p>
+				<ResponseActions
+					text="The pool sizing is the likely cause."
+					onFork={noop}
 				/>
 			</Stage>
 			<Stage id="tool-line-open" caption="A line, opened">

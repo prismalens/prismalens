@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ChevronRight, type LucideIcon, Wrench } from "lucide-react";
+import { ChevronRight, type LucideIcon, Wrench, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { Ring } from "@/components/shared/Ring";
@@ -24,9 +24,9 @@ export interface ToolCall {
 	output?: string;
 }
 
-// Phones give every button 48 px (tokens.css); plain lines match so the rhythm holds.
+// Disclosure rows take 44 px on phones, under the 48 px rule tokens.css gives buttons (#1101).
 const LINE =
-	"group/line flex h-7 max-md:h-12 w-full min-w-0 items-center gap-2 rounded-control text-left text-body text-text-2 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
+	"group/line flex h-7 max-md:h-auto max-md:min-h-11! w-full min-w-0 items-center gap-2 rounded-control text-left text-body text-text-2 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent";
 
 function Chevron({ open }: { open: boolean }) {
 	return (
@@ -66,6 +66,8 @@ export function ToolLine({
 			>
 				{call.running ? (
 					<Ring className="size-3.5" />
+				) : call.failed ? (
+					<X aria-label="Failed" className="size-3.5 stroke-[2]" />
 				) : (
 					(call.mark ?? <Icon aria-hidden className="size-3.5 stroke-[1.75]" />)
 				)}
