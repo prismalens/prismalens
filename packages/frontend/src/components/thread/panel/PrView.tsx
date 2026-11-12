@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PrCheckLog,
-	PrCheckRun,
-	PrReviewThread,
+import {
+	capitalTerm,
+	type PrCheckLog,
+	type PrCheckRun,
+	type PrReviewThread,
+	prHostTerms,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -66,6 +68,7 @@ export function PrView({
 	onBack?: () => void;
 	initialTab?: PrViewTab;
 } & PrRowActions) {
+	const terms = prHostTerms(pr.host);
 	const runs = sortedRuns(pr.checkRuns ?? []);
 	const threads = [...(pr.reviewThreads ?? [])].sort(
 		(a, b) => Number(a.resolved) - Number(b.resolved),
@@ -130,7 +133,10 @@ export function PrView({
 					className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-text-2"
 					data-testid="pr-view-meta"
 				>
-					<span className="text-text-1 tabular-nums">#{pr.number}</span>
+					<span className="text-text-1 tabular-nums">
+						{terms.numberPrefix}
+						{pr.number}
+					</span>
 					<span aria-hidden className="text-text-3">
 						·
 					</span>
@@ -191,13 +197,13 @@ export function PrView({
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
 				<Tabs
-					label="Pull request"
+					label={capitalTerm(terms.changeRequest)}
 					value={tab}
 					onValueChange={(v) => setTab(v as PrViewTab)}
 					items={[
 						{
 							value: "checks",
-							label: "Checks",
+							label: capitalTerm(terms.ci),
 							count: failing || undefined,
 							testId: "pr-tab-checks",
 						},
@@ -227,7 +233,7 @@ export function PrView({
 								))}
 							</ul>
 						) : (
-							<Empty text="No checks reported" />
+							<Empty text={`No ${terms.checks} reported`} />
 						)}
 					</TabPanel>
 					<TabPanel value="reviews">
@@ -392,7 +398,9 @@ function CheckLogTail({
 					Reading the log
 				</span>
 			) : !run.id ? (
-				<span className="text-text-3">No log for this check</span>
+				<span className="text-text-3">
+					No log for this {prHostTerms(pr.host).check}
+				</span>
 			) : query.error && !log ? (
 				<span className="text-text-3">The host refused the log</span>
 			) : log?.unavailable ? (

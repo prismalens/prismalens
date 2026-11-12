@@ -6,7 +6,14 @@
  * heard, as one short line per change. Pure: the cursor goes in, lines and the
  * next cursor come out, so a restart between two reads neither repeats nor drops.
  */
-import type { PrCheckRun, PrState } from "@prismalens/contracts";
+import {
+	capitalTerm,
+	type PrCheckRun,
+	type PrHost,
+	type PrState,
+	prHostTerms,
+	prLabel,
+} from "@prismalens/contracts";
 import { fenceUntrusted, sanitizeUntrustedLine } from "@prismalens/engine";
 import { z } from "zod";
 import type { PrActivityItem } from "./pr-hosts.js";
@@ -62,6 +69,8 @@ export interface FeedSnapshot {
 	conflicts: boolean | null;
 	runs: PrCheckRun[];
 	activity: PrActivityItem[];
+	/** Whose terms the lines use (#1122); absent reads as a pull request with checks. */
+	host?: PrHost;
 }
 
 export interface FeedDiff {
@@ -157,7 +166,7 @@ export function diff(prev: FeedCursor | null, snap: FeedSnapshot): FeedDiff {
 			});
 		} else if (run.state === "passing" && before?.state === "failing")
 			lines.push({
-				text: `Check recovered: ${name(run.name)} on ${short(head as string)}`,
+				text: `${capitalTerm(prHostTerms(snap.host).check)} recovered: ${name(run.name)} on ${short(head as string)}`,
 				wake: false,
 				kind: "check",
 			});
@@ -248,14 +257,16 @@ export interface FeedBatch {
 	number: number;
 	title: string | null;
 	lines: FeedLine[];
+	host?: PrHost;
 }
 
-/** One PR's part of a message: headed `PR #123 <title>`, one line per change. */
+/** One PR's part of a message: headed `PR #123 <title>` in its host's terms, one line per change. */
 export function batchText(b: FeedBatch): string {
 	const title = b.title ? ` ${name(b.title)}` : "";
-	return [`PR #${b.number}${title}`, ...b.lines.map((l) => `- ${l.text}`)].join(
-		"\n",
-	);
+	return [
+		`${prLabel(b.host, b.number)}${title}`,
+		...b.lines.map((l) => `- ${l.text}`),
+	].join("\n");
 }
 
 /** The message the agent hears: every PR's batch, fenced as data. */

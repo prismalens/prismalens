@@ -226,7 +226,7 @@ const VIEW =
 export const prGallery: GallerySection[] = [
 	{
 		id: "pr-row",
-		title: "PR chip and the panel's one-line PR row",
+		title: "PR chip (a GitLab MR last) and the panel's one-line PR row",
 		render: () => (
 			<div className="flex max-w-md flex-col gap-3">
 				<div className="flex gap-2">
@@ -239,6 +239,11 @@ export const prGallery: GallerySection[] = [
 							checks: { state: "passing", total: 6, failed: 0, pending: 0 },
 						}}
 						more={1}
+						onOpen={noop}
+					/>
+					<ThreadPrChip
+						pr={{ ...FIXTURE_PR, host: "gitlab", number: 88 }}
+						more={0}
 						onOpen={noop}
 					/>
 				</div>
