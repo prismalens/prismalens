@@ -25,6 +25,7 @@ interface MemPullRequest {
 	state: "open" | "closed" | "merged";
 	headSha: string | null;
 	investigationId: string;
+	checks?: string;
 }
 
 interface MemPrFeed {
@@ -864,5 +865,61 @@ describe("PrFeedService (#1024 surface F)", () => {
 
 		await h.svc.tick(now);
 		expect(h.getReadSharedCalls()).toBe(0);
+	});
+
+	it("A pr_status event written by a pass carries the PR's tone (e.g. failing for a PR whose checks fail)", async () => {
+		const now = new Date("2026-11-11T12:00:00.000Z");
+		const h = harness(now);
+		const threadId = "thread-tone";
+		const prId = "pr-tone";
+		const headSha = "sha-tone-1";
+
+		h.investigations.set(threadId, {
+			id: threadId,
+			settledAt: null,
+			lastActivityAt: null,
+			updatedAt: now,
+			teardownAt: null,
+			autoPause: null,
+		});
+		h.pullRequests.set(prId, {
+			id: prId,
+			url: "https://github.com/acme/shop/pull/800",
+			repo: "acme/shop",
+			number: 800,
+			title: "Failing PR",
+			source: "branch",
+			state: "open",
+			headSha,
+			investigationId: threadId,
+			checks: JSON.stringify({ state: "failing", total: 2, failed: 1, pending: 0 }),
+		});
+		h.prFeeds.set(prId, {
+			prId,
+			investigationId: threadId,
+			auto: true,
+			state: "watching",
+			reason: null,
+			cursor: JSON.stringify({ checks: {}, headSha, reviews: {}, comments: [] }),
+			pending: null,
+			since: now,
+			until: null,
+			guardFailures: 0,
+		});
+
+		h.sharedResult.read.headSha = headSha;
+		h.sharedResult.read.detail.checkRuns = [
+			{ id: "101", appId: 1, headSha, name: "lint", state: "failing", url: "https://ci/lint" },
+		];
+
+		await h.svc.tick(now);
+
+		const ev = h.events.find(
+			(e) => e.investigationId === threadId && e.body.kind === "pr_status",
+		);
+		expect(ev).toBeDefined();
+		expect(ev?.body.tone).toBe("failing");
+		expect(ev?.body.pr).toBe("acme/shop#800");
+		expect(ev?.body.phase).toBe("noted");
 	});
 });
