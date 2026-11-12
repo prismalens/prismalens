@@ -9,9 +9,7 @@
 import {
 	type CanonicalEvent,
 	HARNESS_DATA_NOTE,
-	plTool,
 	plToolName,
-	type ToolKind,
 } from "@prismalens/contracts";
 import {
 	ChartLine,
@@ -61,27 +59,19 @@ export const NODE_ICON: Record<NodeKind, LucideIcon> = {
 	tool: Wrench,
 };
 
-/** A PrismaLens tool's node by its registry kind (#1125); lookups and the rest read as knowledge. */
-const KIND_NODE: Record<ToolKind, NodeKind> = {
-	lookup: "knowledge",
-	search: "knowledge",
-	file: "read",
-	evidence: "evidence",
-	hypothesis: "suspect",
-	publish: "artifact",
-	report: "report",
-	thread: "knowledge",
-	ask: "knowledge",
-	watch: "knowledge",
-	schedule: "knowledge",
-	run: "knowledge",
-	browse: "knowledge",
+/** PrismaLens's own tools by name; the rest of its server's tools read as knowledge. */
+const GATEWAY_KIND: Record<string, NodeKind> = {
+	pl_evidence_record: "evidence",
+	pl_hypothesis_record: "suspect",
+	pl_artifact_publish: "artifact",
+	pl_report_validate: "report",
+	pl_attachments_list: "read",
+	pl_attachment_read: "read",
 };
 
 /** A PrismaLens tool's node: its record kind, or a knowledge lookup. */
 export function gatewayNode(tool: string): NodeKind {
-	const kind = plTool(tool)?.kind;
-	return kind ? KIND_NODE[kind] : "knowledge";
+	return GATEWAY_KIND[plToolName(tool)] ?? "knowledge";
 }
 
 const TELEMETRY_COMMAND =

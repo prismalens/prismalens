@@ -5,9 +5,9 @@ import {
 	defineHarnessTool,
 	fail,
 	type HarnessTool,
-	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 import { INCIDENT_ONLY, SCOPED } from "./serves.js";
 
 export interface PastInvestigation {
@@ -71,8 +71,14 @@ export function knowledgeTools(
 ): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			...registered("pl_incident_get"),
+			name: "pl_incident_get",
+			title: "Look up an incident",
+			description: withRules(
+				"An incident PrismaLens recorded: title, status, severity and service, with the alerts, deploy and change events PrismaLens recorded for its services from a day before it started. Without `number`, the incident this run investigates. Use it first on an incident thread.",
+				"project or service threads, which have no incident.",
+			),
 			group: "core",
+			effect: "read",
 			serves: INCIDENT_ONLY,
 			input: z.object({
 				number: z.number().int().min(1).optional(),
@@ -96,8 +102,14 @@ export function knowledgeTools(
 			},
 		}),
 		defineHarnessTool({
-			...registered("pl_investigations_search"),
+			name: "pl_investigations_search",
+			title: "Search past investigations",
+			description: withRules(
+				"Past PrismaLens investigations matching a text query, newest first. `agentFinding` is what the agent concluded; `operatorRecordedCause` is what the operator recorded as the real cause, and wins where they differ. Use it to find earlier causes of a symptom.",
+				"this run's own findings.",
+			),
 			group: "knowledge",
+			effect: "read",
 			serves: SCOPED,
 			input: z.object({
 				query: z.string().trim().min(1).max(200),

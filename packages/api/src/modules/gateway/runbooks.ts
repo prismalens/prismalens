@@ -3,15 +3,14 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { RUNBOOK_CHARS } from "@prismalens/contracts/schemas";
 import { parse } from "yaml";
 import { z } from "zod";
 import { gitEnv } from "../../core/harness/git-env.js";
 
-export { RUNBOOK_CHARS };
-
 const run = promisify(execFile);
 
+/** Characters of one runbook a tool result returns, as the other gateway tools cap theirs. */
+export const RUNBOOK_CHARS = 32_000;
 const GIT_BYTES = 4 * 1024 * 1024;
 /** Each git read the scan makes; the whole pre-run scan has its own deadline (#848). */
 export const RUNBOOK_GIT_MS = 5_000;

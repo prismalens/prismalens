@@ -22,11 +22,11 @@ function StopNode({ event }: TranscriptNodeProps) {
 const stop = { Node: StopNode };
 
 /** UI 3's transcript nodes (#1024, #1101). Only UI 3 edits this file. */
-export const appNodes = {
+export const appNodes: TranscriptNodes = {
 	usage_limit: stop,
 	provider_blocked: stop,
 	provider_retry: stop,
 	resume_scheduled: stop,
 	resumed: stop,
 	run_interrupted: stop,
-} satisfies TranscriptNodes;
+};

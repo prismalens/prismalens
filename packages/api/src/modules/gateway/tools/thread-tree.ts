@@ -11,10 +11,10 @@ import {
 import {
 	defineHarnessTool,
 	type HarnessTool,
-	registered,
 	type ToolOutcome,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 import { ANYWHERE } from "./serves.js";
 
 /** The caller's own key for a call; a retry with the same key never repeats it. */
@@ -77,22 +77,40 @@ export interface ThreadTreeData {
 export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			...registered("pl_thread_start"),
+			name: "pl_thread_start",
+			title: "Start a child thread",
+			description: withRules(
+				"Start a full thread for one line of work, such as one suspect service, with its own workspace and session. Use it when parallel work saves time. The brief is the child's only context: give the goal, the files, the command that must pass and what to return. Name agent, model and effort if they should differ from yours; access is never broader than yours. Asynchronous: it may answer `pending_approval` until the user approves on PrismaLens's card; do not poll, the result arrives as a message. `requestId` is your key: a retry with it never starts a second thread.",
+				"small steps you can do here, or sub-tasks your own sub-agents handle.",
+			),
 			group: "core",
+			effect: "act",
 			serves: ANYWHERE,
 			input: ThreadStartInput,
 			run: (input, ctx) => data.start(ctx.runId, input),
 		}),
 		defineHarnessTool({
-			...registered("pl_thread_send"),
+			name: "pl_thread_send",
+			title: "Message a thread in this tree",
+			description: withRules(
+				"Send a typed message (handoff, blocker, fact, question, reply) to a member of this thread's tree, by its role, `parent` or `root`. Use it only for what changes the receiver's work; never acknowledge, and reply only to a question. Asynchronous: it is delivered at the receiver's next pause; do not poll for a reply. `steer` delivers now and is only for a parent's blocker to its own child. `requestId` is your key: a retry with it is not sent twice.",
+				"threads outside this tree, or status updates.",
+			),
 			group: "core",
+			effect: "record",
 			serves: ANYWHERE,
 			input: ThreadSendInput,
 			run: (input, ctx) => data.send(ctx.runId, input),
 		}),
 		defineHarnessTool({
-			...registered("pl_thread_wait"),
+			name: "pl_thread_wait",
+			title: "Be woken when children finish",
+			description: withRules(
+				"Register a wake on your children, by role, link or the `requestId` of a pl_thread_start still waiting for approval. It never blocks: end your turn, and each result arrives as a message at your next pause; if you have ended, your thread reopens for it (`all`: once every one has finished). Use it before you end a turn that needs a child's result. Do not poll pl_thread_roster or pl_thread_read instead.",
+				"threads you did not start.",
+			),
 			group: "core",
+			effect: "read",
 			serves: ANYWHERE,
 			input: z.object({
 				ids: z.array(MEMBER).min(1).max(20),
@@ -101,8 +119,14 @@ export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 			run: ({ ids, mode }, ctx) => data.wait(ctx.runId, ids, mode),
 		}),
 		defineHarnessTool({
-			...registered("pl_thread_cancel"),
+			name: "pl_thread_cancel",
+			title: "Stop a thread you started",
+			description: withRules(
+				"Stop a thread this one started, directly or below it, by role or link, with the reason it gets. Use it to cancel what you replace. Asynchronous: it may answer `pending_approval` until the user approves; do not poll. `requestId` is your key: a retry with it is not sent twice.",
+				"pausing a thread, or threads you did not start.",
+			),
 			group: "core",
+			effect: "act",
 			serves: ANYWHERE,
 			input: z.object({
 				id: MEMBER,
@@ -113,8 +137,14 @@ export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 				data.cancel(ctx.runId, id, reason, requestId),
 		}),
 		defineHarnessTool({
-			...registered("pl_thread_roster"),
+			name: "pl_thread_roster",
+			title: "This thread's tree",
+			description: withRules(
+				"The members of this thread's tree: number, role, how each relates to you (parent, child, sibling, root), title, state and link. Use it to address a member by role, or once after a roster update. A thread outside any tree gets itself alone.",
+				"waiting: register a wake with pl_thread_wait.",
+			),
 			group: "knowledge",
+			effect: "read",
 			serves: ANYWHERE,
 			input: z.object({}),
 			run: (_input, ctx) => data.roster(ctx.runId),

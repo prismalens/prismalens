@@ -47,5 +47,4 @@ export * from "./thread-context.js";
 export * from "./thread-tree.js";
 export * from "./thread-window.js";
 export * from "./timeline.js";
-export * from "./tools.js";
 export * from "./webhook.js";

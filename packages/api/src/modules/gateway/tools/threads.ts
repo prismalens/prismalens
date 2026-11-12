@@ -5,10 +5,10 @@ import {
 	defineHarnessTool,
 	fail,
 	type HarnessTool,
-	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
 import { agentTitle } from "../../threads/thread-titles.js";
+import { withRules } from "./rules.js";
 import { ANYWHERE, SCOPED } from "./serves.js";
 
 /** A thread as a list shows it: enough to pick one to read. */
@@ -77,8 +77,14 @@ const limit = z.number().int().min(1).max(50).default(10);
 export function threadTools(data: ThreadsData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			...registered("pl_thread_list"),
+			name: "pl_thread_list",
+			title: "Threads on this incident, project or service",
+			description: withRules(
+				"Earlier investigations and chats (threads) on this run's incident, project or service, or across one of its services named in `service`, newest first: id, kind, status, start and finish time, agent and model, and a one-line summary when finished. Excludes this run. Use it to see what was already tried; read one with pl_thread_read.",
+				"this thread's own tree: use pl_thread_roster.",
+			),
 			group: "knowledge",
+			effect: "read",
 			serves: SCOPED,
 			input: z.object({
 				service: z.string().trim().min(1).max(200).optional(),
@@ -101,8 +107,14 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 			},
 		}),
 		defineHarnessTool({
-			...registered("pl_thread_read"),
+			name: "pl_thread_read",
+			title: "Read one thread",
+			description: withRules(
+				"One thread pl_thread_list returned, by id. A finished one gives its report: summary, root cause, hypotheses with status, next steps and culprit. A failed or stopped one gives its status, error and last 20 agent-step texts; a running one gives only its status. Only threads on this run's incident, project or services, or in its own tree, can be read. Use it to see what a thread found; `afterSeq` and `limit` page a running tree member's steps, and `page.nextSeq` is the next `afterSeq`.",
+				"this run itself.",
+			),
 			group: "knowledge",
+			effect: "read",
 			serves: { ...SCOPED, tree: true },
 			input: z.object({
 				threadId: z.string().trim().min(1).max(100),
@@ -139,8 +151,14 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 			},
 		}),
 		defineHarnessTool({
-			...registered("pl_thread_title"),
+			name: "pl_thread_title",
+			title: "Name this thread",
+			description: withRules(
+				"Give this thread a short title, 3 to 7 words and at most 80 characters, once you know what it is about; call it again if the subject changes. Plain words only. Once the user renames the thread, their name stays and this returns it with `kept: true`. Use it once you know the subject.",
+				"status updates: the title is a name.",
+			),
 			group: "record",
+			effect: "record",
 			serves: ANYWHERE,
 			input: z.object({
 				title: z.string().min(1).max(200),

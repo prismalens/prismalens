@@ -12,9 +12,10 @@ import {
 import { ACCESS_LEVELS, type AccessLevel } from "@prismalens/config/harness";
 import {
 	type CanonicalEvent,
+	HARNESS_TOOL_STEPS,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
-	plTool,
+	plToolName,
 	RunWorkspaceSchema,
 	THREAD_MESSAGE_CHARS,
 	type ThreadMessageKind,
@@ -118,7 +119,8 @@ const LAST_STEP_SCAN = 25;
 
 /** One event as the step a parent sees: a PrismaLens tool, the agent's own call, or its words. */
 function stepLine(e: CanonicalEvent): string | null {
-	if (e.kind === "harness_tool_call") return plTool(e.name)?.label.step ?? null;
+	if (e.kind === "harness_tool_call")
+		return HARNESS_TOOL_STEPS[plToolName(e.name)] ?? null;
 	if (e.kind !== "agent_step") return null;
 	const call = e.toolCalls.at(-1);
 	if (call) {

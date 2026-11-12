@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type CanonicalEvent,
-	PL_TOOLS,
+	HARNESS_TOOL_STEPS,
 	type RecordedFinding,
 	recordedFindings,
 } from "@prismalens/contracts/schemas";
@@ -376,13 +376,13 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(service?.tools).not.toContain("pl_incidents_similar");
 	});
 
-	it("every PrismaLens tool, search and call included, has a plain step name in PL_TOOLS (#1020; moved to the registry by #1125)", () => {
+	it("every PrismaLens tool, search and call included, has a plain step name (#1020)", () => {
 		const names = [...gateway().tools.map((t) => t.name), TOOLS_SEARCH, TOOLS_CALL];
 		expect(names).toEqual(expect.arrayContaining(["pl_thread_start", "pl_thread_send", "pl_thread_wait", "pl_thread_cancel", "pl_thread_roster", "pl_propose_action"]));
-		for (const n of names) expect(PL_TOOLS[n as keyof typeof PL_TOOLS].label.step, n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
-		expect(Object.keys(PL_TOOLS).sort()).toEqual([...names].sort());
+		for (const n of names) expect(HARNESS_TOOL_STEPS[n], n).toMatch(/^[A-Z][a-z]+( [A-Za-z]+){1,4}$/);
+		expect(Object.keys(HARNESS_TOOL_STEPS).sort()).toEqual([...names].sort());
 		// A search can come back empty: its step line never claims a find.
-		expect(PL_TOOLS.pl_incidents_similar.label.step).toBe("Searched for similar incidents");
+		expect(HARNESS_TOOL_STEPS.pl_incidents_similar).toBe("Searched for similar incidents");
 	});
 
 	it("a report's tools go by what the run owes, not by its subject (#1020)", async () => {

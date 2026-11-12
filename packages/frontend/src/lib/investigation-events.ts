@@ -204,32 +204,11 @@ function wholeReport(text: string): string | null {
 	return null;
 }
 
-export type EventKind = CanonicalEvent["kind"];
-type EventOf<K extends EventKind> = Extract<CanonicalEvent, { kind: K }>;
-
-/**
- * How the transcript draws a kind: its own branch in `deriveTranscript`, a lane's node
- * (`transcript/registry.ts`, which must then have one), or nothing.
- */
-export type TranscriptView = "built-in" | "node" | "hidden";
-
-export interface EventView<E extends CanonicalEvent = CanonicalEvent> {
-	transcript: TranscriptView;
-	/** The run log's line; null when the log shows nothing for it. */
-	row: ((event: E) => EventRow | null) | null;
-}
-
-const at = (e: { branchId: string; seq: number }) => `${e.branchId}-${e.seq}`;
-const builtIn = { transcript: "built-in", row: null } as const;
-const node = { transcript: "node", row: null } as const;
-const hidden = { transcript: "hidden", row: null } as const;
-
-/** Every event kind's view (#1125): a new kind fails typecheck until it has one. */
-export const EVENT_VIEWS = {
-	agent_step: {
-		transcript: "built-in",
-		row: (event) => {
-			const key = at(event);
+/** Map one canonical event to a row, or null when it shouldn't be shown. */
+export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
+	switch (event.kind) {
+		case "agent_step": {
+			const key = `${event.branchId}-${event.seq}`;
 			const text = agentStepMessage(event.text.trim());
 			if (event.toolCalls.length > 0) {
 				const names = event.toolCalls.map((t) => t.name).join(", ");
@@ -241,108 +220,54 @@ export const EVENT_VIEWS = {
 				};
 			}
 			return text ? { key, icon: "brain", message: text } : null;
-		},
-	},
-	tool_result: {
-		transcript: "built-in",
-		row: (event) => ({
-			key: at(event),
-			icon: event.result.ok ? "check" : "warning",
-			message: event.result.source,
-			detail: event.result.preview?.slice(0, 240) || undefined,
-			ok: event.result.ok,
-			callId: event.result.toolCallId,
-		}),
-	},
-	branch_done: {
-		transcript: "built-in",
-		row: (event) => ({
-			key: at(event),
-			icon: "activity",
-			message: `Investigation ${event.reason}`,
-		}),
-	},
-	error: {
-		transcript: "built-in",
-		row: (event) => ({
-			key: at(event),
-			icon: "warning",
-			message: `Error: ${event.message}`,
-		}),
-	},
-	report: {
-		transcript: "built-in",
-		row: (event) => ({
-			key: `report-${event.seq}`,
-			icon: "check",
-			message: "Report ready",
-		}),
-	},
-	operator_message: {
-		transcript: "built-in",
-		row: (event) => ({
-			key: at(event),
-			icon: "activity",
-			message: event.delivered ? "Your message" : "Your message, not delivered",
-			detail: event.text,
-		}),
-	},
-	session_config: {
-		transcript: "built-in",
-		row: (event) => ({
-			key: at(event),
-			icon: event.accepted ? "check" : "warning",
-			message: sessionConfigLine(event),
-		}),
-	},
-	subagent: builtIn,
-	artifact_published: builtIn,
-	finding_recorded: builtIn,
-	harness_tools: builtIn,
-	harness_tool_call: builtIn,
-	message_queued: builtIn,
-	permission_ask: builtIn,
-	permission_answer: builtIn,
-	message_inbound: builtIn,
-	thread_started: node,
-	thread_message: node,
-	child_finished: node,
-	action_proposed: node,
-	action_resolved: node,
-	compaction: node,
-	usage_limit: node,
-	provider_blocked: node,
-	provider_retry: node,
-	resume_scheduled: node,
-	resumed: node,
-	run_interrupted: node,
-	message_edited: hidden,
-	message_withdrawn: hidden,
-	ask_opened: hidden,
-	ask_closed: hidden,
-	agent_quota: hidden,
-	turn_usage: hidden,
-	wake_scheduled: hidden,
-	pr_watch: hidden,
-	plan: hidden,
-	thought: hidden,
-	pr_status: hidden,
-	jobs_ended: hidden,
-	auto_paused: hidden,
-	pull_request_linked: hidden,
-} as const satisfies { [K in EventKind]: EventView<EventOf<K>> };
-
-/** Kinds a lane's transcript node draws; `transcript/registry.ts` must cover each. */
-export type NodeEventKind = {
-	[K in EventKind]: (typeof EVENT_VIEWS)[K]["transcript"] extends "node"
-		? K
-		: never;
-}[EventKind];
-
-/** Map one canonical event to a row, or null when it shouldn't be shown. */
-export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
-	const row = EVENT_VIEWS[event.kind].row as EventView["row"];
-	return row ? row(event) : null;
+		}
+		case "tool_result": {
+			const key = `${event.branchId}-${event.seq}`;
+			return {
+				key,
+				icon: event.result.ok ? "check" : "warning",
+				message: event.result.source,
+				detail: event.result.preview?.slice(0, 240) || undefined,
+				ok: event.result.ok,
+				callId: event.result.toolCallId,
+			};
+		}
+		case "branch_done":
+			return {
+				key: `${event.branchId}-${event.seq}`,
+				icon: "activity",
+				message: `Investigation ${event.reason}`,
+			};
+		case "error":
+			return {
+				key: `${event.branchId}-${event.seq}`,
+				icon: "warning",
+				message: `Error: ${event.message}`,
+			};
+		case "report":
+			return {
+				key: `report-${event.seq}`,
+				icon: "check",
+				message: "Report ready",
+			};
+		case "operator_message":
+			return {
+				key: `${event.branchId}-${event.seq}`,
+				icon: "activity",
+				message: event.delivered
+					? "Your message"
+					: "Your message, not delivered",
+				detail: event.text,
+			};
+		case "session_config":
+			return {
+				key: `${event.branchId}-${event.seq}`,
+				icon: event.accepted ? "check" : "warning",
+				message: sessionConfigLine(event),
+			};
+		default:
+			return null;
+	}
 }
 
 export interface BranchGroup {

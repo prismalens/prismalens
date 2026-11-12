@@ -2,18 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	ATTACHMENT_READ_BYTES,
-	ATTACHMENT_READ_CHARS,
-} from "@prismalens/contracts/schemas";
-import {
 	defineHarnessTool,
 	fail,
 	type HarnessTool,
 	RESULT_CHARS,
-	registered,
 } from "@prismalens/integrations/harness";
 import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 
 export interface AttachmentItem {
 	id: string;
@@ -47,6 +43,11 @@ export interface AttachmentsData {
 const FILE_SUBJECTS = {
 	subjects: ["incident", "project", "service", "none"],
 } as const;
+
+/** The most of a file `pl_attachment_read` returns. */
+export const ATTACHMENT_READ_CHARS = 32_000;
+/** The most bytes of a binary file one call returns; base64 keeps the result under RESULT_CHARS. */
+export const ATTACHMENT_READ_BYTES = 18_000;
 
 type FileHead = { id: string; name: string; mimeType: string; size: number };
 
@@ -135,8 +136,14 @@ export async function pdfText(bytes: Uint8Array): Promise<string | null> {
 export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			...registered("pl_attachments_list"),
+			name: "pl_attachments_list",
+			title: "Files attached to this thread",
+			description: withRules(
+				"The files the operator attached to this run's incident, or to this thread when it has no incident, newest first: id, name, mime type, size in bytes and when. Read a text one with pl_attachment_read. Use it when the operator says they attached something.",
+				"images, which the prompt already carries.",
+			),
 			group: "knowledge",
+			effect: "read",
 			serves: FILE_SUBJECTS,
 			input: z.object({}),
 			run: async (_input, ctx) => {
@@ -151,8 +158,14 @@ export function attachmentTools(data: AttachmentsData): HarnessTool[] {
 			},
 		}),
 		defineHarnessTool({
-			...registered("pl_attachment_read"),
+			name: "pl_attachment_read",
+			title: "Read an attached file",
+			description: withRules(
+				`One file pl_attachments_list returned, by id (a prismalens://attachment/<id> link names the same id). Text, JSON, YAML, XML and CSV come back as text, and a PDF as its text, at most ${ATTACHMENT_READ_CHARS} characters per call. Any other file comes back as base64 bytes, at most ${ATTACHMENT_READ_BYTES} per call. Pass offset (and length) to read the next chunk. Use it after pl_attachments_list.`,
+				"images the operator's prompt already carries.",
+			),
 			group: "knowledge",
+			effect: "read",
 			serves: FILE_SUBJECTS,
 			input: z.object({
 				id: z.string().trim().min(1).max(200),

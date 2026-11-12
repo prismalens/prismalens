@@ -14,11 +14,10 @@ import {
 	fail,
 	type HarnessTool,
 	inputSchemaOf,
-	registered,
 } from "./tool.js";
 
-export const TOOLS_SEARCH = "pl_tools_search" as const;
-export const TOOLS_CALL = "pl_tools_call" as const;
+export const TOOLS_SEARCH = "pl_tools_search";
+export const TOOLS_CALL = "pl_tools_call";
 
 /** Which of `tools` a run gets, and how: every one listed, or a core plus search. */
 export function runView(
@@ -59,8 +58,11 @@ function score(tool: HarnessTool, query: string[]): number {
 
 function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
-		...registered(TOOLS_SEARCH),
+		name: TOOLS_SEARCH,
+		title: "Find more PrismaLens tools",
+		description: `Find PrismaLens tools that are not listed up front, by what you want to do (e.g. "past incidents", "runbooks"). Use it before guessing a tool name. Returns each match's name, description and input schema; run one with ${TOOLS_CALL}. Not for tools already listed. Show the user links, not ids. On failure, follow \`next\`.`,
 		group: "core",
+		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },
 		input: z.object({
 			query: z.string().trim().min(1).max(200),
@@ -96,8 +98,11 @@ function searchTool(deferred: readonly HarnessTool[]): HarnessTool {
 
 function callTool(deferred: readonly HarnessTool[]): HarnessTool {
 	return defineHarnessTool({
-		...registered(TOOLS_CALL),
+		name: TOOLS_CALL,
+		title: "Run a PrismaLens tool found by search",
+		description: `Run a tool ${TOOLS_SEARCH} returned: pass its exact \`name\` and its \`arguments\` as its input schema describes. Use it only for a name ${TOOLS_SEARCH} gave you. Not for listed tools: call those directly. Show the user links, not ids. On failure, follow \`next\`.`,
 		group: "core",
+		effect: "read",
 		serves: { subjects: EVERY_SUBJECT },
 		input: z.object({
 			name: z.string().trim().min(1).max(64),

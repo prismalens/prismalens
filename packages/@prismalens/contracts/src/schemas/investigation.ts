@@ -992,6 +992,49 @@ export function isPlServerName(server: string | undefined): boolean {
 	);
 }
 
+/**
+ * A PrismaLens tool as a step line names it: plain words, never its raw name (#1020).
+ * Every tool the gateway serves has one; the api's gateway spec checks.
+ */
+export const HARNESS_TOOL_STEPS: Readonly<Record<string, string>> = {
+	pl_artifact_publish: "Published a page",
+	pl_ask_user: "Asked you a question",
+	pl_pr_link: "Linked a pull request",
+	pl_pr_unwatch: "Stopped watching a pull request",
+	pl_pr_watch: "Watched a pull request",
+	pl_cron_create: "Scheduled a recurring prompt",
+	pl_cron_list: "Listed scheduled prompts",
+	pl_cron_delete: "Deleted a scheduled prompt",
+	pl_attachment_read: "Read an attached file",
+	pl_attachments_list: "Listed attached files",
+	pl_changes_list: "Listed recent changes",
+	pl_evidence_record: "Recorded evidence",
+	pl_fixes_list: "Listed past fixes",
+	pl_hypothesis_record: "Recorded a hypothesis",
+	pl_incident_get: "Read the incident",
+	pl_incidents_similar: "Searched for similar incidents",
+	pl_propose_action: "Proposed a change",
+	pl_investigations_search: "Searched past reports",
+	pl_report_validate: "Checked the report",
+	pl_run_status: "Checked the run",
+	pl_runbooks_list: "Listed runbooks",
+	pl_runbooks_read: "Read a runbook",
+	pl_secret_request: "Asked you for a secret",
+	pl_wakeup_schedule: "Scheduled a wake up",
+	pl_service_get: "Read a service",
+	pl_thread_list: "Listed threads",
+	pl_thread_cancel: "Stopped a thread",
+	pl_thread_read: "Read a thread",
+	pl_thread_roster: "Read the thread tree",
+	pl_thread_send: "Messaged a thread",
+	pl_thread_start: "Started a thread",
+	pl_thread_title: "Set the thread name",
+	pl_thread_wait: "Waited on threads",
+	pl_timeline_read: "Read the timeline",
+	pl_tools_call: "Ran a PrismaLens tool",
+	pl_tools_search: "Searched PrismaLens tools",
+};
+
 const StreamBaseShape = {
 	runId: z.string().uuid(),
 	/**

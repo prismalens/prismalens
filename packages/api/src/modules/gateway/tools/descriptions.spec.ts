@@ -4,7 +4,7 @@
 import { inputSchemaOf, runView } from "@prismalens/integrations/harness";
 import { describe, expect, it } from "vitest";
 import { type GatewayToolData, gatewayTools } from "./index.js";
-import { HOUSE_RULES } from "@prismalens/contracts/schemas";
+import { HOUSE_RULES } from "./rules.js";
 
 /** Tool data is only read when a tool runs; describing them needs none. */
 const NO_DATA = new Proxy({}, { get: () => ({}) }) as GatewayToolData;

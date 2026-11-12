@@ -5,9 +5,9 @@ import { parseReport } from "@prismalens/engine";
 import {
 	defineHarnessTool,
 	type HarnessTool,
-	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import { withRules } from "./rules.js";
 import { FOR_A_REPORT } from "./serves.js";
 
 /** `parseReport` joins zod's issues as "path: message; path: message". */
@@ -28,8 +28,14 @@ function problemsOf(failure: {
 export function reportTools(): HarnessTool[] {
 	return [
 		defineHarnessTool({
-			...registered("pl_report_validate"),
+			name: "pl_report_validate",
+			title: "Check your final report",
+			description: withRules(
+				"Check your final report before you finish; PrismaLens rejects a report that fails this. Pass the full final answer you intend to give, including its fenced json block. Returns valid, or each field that fails and what it expects. Use it once, just before you finish.",
+				"drafts mid-investigation.",
+			),
 			group: "knowledge",
+			effect: "read",
 			serves: FOR_A_REPORT,
 			input: z.object({ report: z.string().min(1).max(200_000) }),
 			run: async ({ report }) => {
