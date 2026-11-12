@@ -12,6 +12,11 @@ vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
 }));
 
+// Severity and run outcomes are kit marks with a hint since 0f01b2f73.
+vi.mock("@/components/shared/Hint", () => ({
+	Hint: ({ children }: { children: ReactNode }) => children,
+}));
+
 vi.mock("@/components/terminal/RunInTerminal", () => ({
 	RunInTerminal: ({ command }: { command: string }) => (
 		<span data-testid="run-terminal">{command}</span>
@@ -84,7 +89,7 @@ describe("recurrenceLine (#1024)", () => {
 });
 
 describe("KindTab (#1024)", () => {
-	it("renders kind-tab-incident with INC-7 CheckoutLatencyHigh, a suspect statement, and its status word", async () => {
+	it("renders kind-tab-incident with INC-7 CheckoutLatencyHigh, its severity mark, a suspect statement, and its status word", async () => {
 		const context: ThreadContext = {
 			...baseContext,
 			kind: "incident",
@@ -114,6 +119,11 @@ describe("KindTab (#1024)", () => {
 		const el = container.querySelector('[data-testid="kind-tab-incident"]');
 		expect(el).not.toBeNull();
 		expect(container.textContent).toContain("INC-7 CheckoutLatencyHigh");
+		expect(
+			container
+				.querySelector('[data-testid="kind-severity"]')
+				?.getAttribute("aria-label"),
+		).toBe("Severity: High");
 		const suspect = container.querySelector('[data-testid="suspect"]');
 		expect(suspect?.textContent).toBe(
 			"SupportedDatabase connection pool exhausted",
