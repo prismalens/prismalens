@@ -26,6 +26,15 @@ vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
 	useUpdateTreeSettings: () => ({ mutate: updateSpy, isPending: false }),
 }));
 
+const browserUpdateSpy = vi.fn();
+vi.mock("@/lib/api/hooks/use-browser-orpc", () => ({
+	useBrowserSettings: () => ({ data: { agentBrowser: true } }),
+	useUpdateBrowserSettings: () => ({
+		mutate: browserUpdateSpy,
+		isPending: false,
+	}),
+}));
+
 vi.mock("@/hooks/use-operator", () => ({
 	useOperator: () => mockOperator,
 }));
@@ -144,6 +153,7 @@ beforeEach(() => {
 	document.body.appendChild(container);
 	root = createRoot(container);
 	updateSpy.mockClear();
+	browserUpdateSpy.mockClear();
 	mockTreeSettings = {
 		agentsStartThreads: "ask",
 		depth: 2,
@@ -240,5 +250,20 @@ describe("AgentThreadsSettings", () => {
 			allow: "Allowed within limits",
 			never: "Never",
 		});
+	});
+
+	it("shows Agents can use the browser switched on, and turning it off saves false (#1061)", async () => {
+		await act(async () => {
+			root.render(<AgentThreadsGroup />);
+		});
+		const row = container.querySelector('[data-testid="agent-browser-row"]');
+		expect(row?.textContent).toContain("Agents can use the browser");
+		expect(row?.textContent).toContain("Asks before each new site");
+		const toggle = container.querySelector(
+			'[data-testid="agent-browser"]',
+		) as HTMLButtonElement;
+		expect(toggle.getAttribute("aria-checked")).toBe("true");
+		await act(async () => toggle.click());
+		expect(browserUpdateSpy).toHaveBeenCalledWith(false);
 	});
 });
