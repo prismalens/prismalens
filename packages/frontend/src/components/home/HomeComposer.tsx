@@ -2,10 +2,23 @@
 // Copyright 2026 Sumit Patel
 
 import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
-import { ChevronDown, FolderOpen, Siren } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+	Bot,
+	Boxes,
+	FolderGit2,
+	MessageSquare,
+	Plus,
+	Siren,
+} from "lucide-react";
 import { useState } from "react";
-import { useSetupProgress } from "@/components/incidents/FirstRunPanel";
+import { AgentMark } from "@/components/agent/AgentMark";
+import {
+	CHIP,
+	unreadyReason,
+	useAgentChoice,
+} from "@/components/agent/AgentPicker";
+import { Mark, markLook, Picker, type PickerOption } from "@/components/kit";
 import {
 	ScheduleDialog,
 	type SchedulePrefill,
@@ -13,28 +26,10 @@ import {
 import { codeWhere } from "@/components/services/service-detail.utils";
 import { Hint } from "@/components/shared/Hint";
 import { NewThread } from "@/components/thread/NewThread";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuRadioGroup,
-	DropdownMenuRadioItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
 import { lastSubject, subjectMenu } from "@/lib/last-subject";
 import { cn } from "@/lib/utils";
-import { AwayStrip } from "./AwayStrip";
 
 /** Home's choices; on `/new` they live in the URL, so `c` opens it with Incident on. */
 export interface NewThreadSearch {
@@ -63,9 +58,9 @@ export function subjectOf(search: NewThreadSearch): ThreadStartSubject {
 }
 
 /**
- * Home (#1020): one question over one box, generic first (sheet §1, #1101).
- * Nothing is assumed: the subject, the Incident toggle and the code hint
- * show once the user picks a project or a service.
+ * Home (#1020): the cursor in one box under one row of chips, each a mark:
+ * the subject (and whether its code is linked), the agent's readiness and,
+ * once a service is picked, Incident. Nothing is assumed (sheet §1, #1101).
  */
 export function HomeComposer({
 	search: given,
@@ -104,104 +99,100 @@ export function HomeComposer({
 	};
 	const top = (
 		<div
-			className="flex flex-wrap items-center gap-1.5 px-0.5"
+			className="flex flex-wrap items-center gap-0.5"
 			data-testid="composer-top"
 		>
-			<button
-				type="button"
-				aria-pressed={!!incident}
-				disabled={incidentOff}
-				aria-label={incidentOff ? "Incident: needs a service" : undefined}
-				onClick={() =>
-					set({ incident: search.incident ? undefined : true, note: undefined })
+			<SubjectPicker
+				value={
+					picked.project
+						? `project:${picked.project}`
+						: picked.service
+							? `service:${picked.service}`
+							: "none"
 				}
-				className={cn(
-					"inline-flex h-7 items-center gap-1.5 rounded-control px-2 text-meta transition-colors duration-(--dur-instant)",
-					incident
-						? "bg-surface-3 font-medium text-text-1"
-						: "bg-surface-2 text-text-2 hover:text-text-1",
-					incidentOff && "cursor-not-allowed opacity-50",
-				)}
-				data-testid="composer-incident"
-			>
-				<Siren aria-hidden className="size-3.5" />
-				Incident
-			</button>
-			{incident && (
-				<Select
-					value={incident}
-					onValueChange={(v) => set({ severity: v as Severity })}
+				projects={repos.map((r) => ({ id: r.id, name: r.fullName }))}
+				services={services.map((s) => ({
+					id: s.id,
+					name: s.displayName || s.name,
+				}))}
+				onPick={pick}
+			/>
+			{service && !codeWhere(service) && (
+				<Link
+					to="/services/$id"
+					params={{ id: service.id }}
+					aria-label="No code linked: link it"
+					className={cn(CHIP, "px-2")}
+					data-testid="composer-code"
 				>
-					<SelectTrigger
-						aria-label="Severity"
-						className="text-meta"
-						data-testid="composer-severity"
-					>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{SEVERITIES.map((sv) => (
-							<SelectItem key={sv} value={sv} data-testid={`severity-${sv}`}>
-								{SEVERITY_WORD[sv]}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+					<Mark id="code" state="missing" word="No code linked" />
+				</Link>
+			)}
+			<AgentReady />
+			{(service || incident) && (
+				<button
+					type="button"
+					aria-pressed={!!incident}
+					disabled={incidentOff}
+					aria-label={incidentOff ? "Incident: needs a service" : undefined}
+					onClick={() =>
+						set({
+							incident: search.incident ? undefined : true,
+							note: undefined,
+						})
+					}
+					className={cn(
+						CHIP,
+						"gap-1.5",
+						incident && "bg-surface-3 text-text-1",
+						incidentOff && "cursor-not-allowed opacity-50",
+					)}
+					data-testid="composer-incident"
+				>
+					<Siren aria-hidden className="size-3.5" />
+					Incident
+				</button>
+			)}
+			{incident && (
+				<Picker
+					label="Severity"
+					side="bottom"
+					value={incident}
+					onChange={(id) => set({ severity: id as Severity })}
+					options={SEVERITIES.map((sv) => ({
+						id: sv,
+						name: SEVERITY_WORD[sv],
+						mark: <SeverityIcon severity={sv} />,
+						testId: `severity-${sv}`,
+					}))}
+					testId="composer-severity"
+				/>
 			)}
 			{search.note && incident && (
-				<span className="text-meta text-text-3" data-testid="composer-note">
+				<span
+					className="px-1 text-meta text-text-3"
+					data-testid="composer-note"
+				>
 					Note only
 				</span>
 			)}
 		</div>
 	);
-	const chosen = !!(picked.project || picked.service);
-	const subjectPicker = (icon: boolean) => (
-		<SubjectPicker
-			icon={icon}
-			value={
-				picked.project
-					? `project:${picked.project}`
-					: picked.service
-						? `service:${picked.service}`
-						: "none"
-			}
-			label={
-				repo?.fullName ??
-				(service ? service.displayName || service.name : "No project")
-			}
-			projects={repos.map((r) => ({ id: r.id, name: r.fullName }))}
-			services={services.map((s) => ({
-				id: s.id,
-				name: s.displayName || s.name,
-			}))}
-			onPick={pick}
-		/>
-	);
 
 	return (
 		<div
-			className="mx-auto flex w-full max-w-[680px] flex-col gap-4 px-4 pt-[18vh] pb-12"
+			className="mx-auto flex w-full max-w-[680px] flex-col gap-3 px-4 pt-[18vh] pb-12"
 			data-testid="home"
 		>
-			<div className="flex flex-col items-center gap-1">
-				<h2 className="text-center text-display text-text-1">
-					What should we work on?
-				</h2>
-				{chosen && (
-					// The subject is a quiet line under the question, so a long name never outweighs it.
-					<p className="flex items-center gap-1 text-body text-text-3">
-						in {subjectPicker(false)}
-					</p>
-				)}
-			</div>
+			<h2 className="text-center text-display text-text-1">
+				What should we work on?
+			</h2>
 			<NewThread
 				subject={subject}
 				branch={repo?.defaultBranch ?? null}
 				incident={incident}
 				note={!!search.note}
-				top={service || incident ? top : undefined}
-				tools={subjectPicker(true)}
+				top={top}
 				placeholder="Ask anything"
 				{...(canSchedule ? { onRepeat: setRepeat } : {})}
 				slash={
@@ -221,8 +212,6 @@ export function HomeComposer({
 							]
 				}
 			/>
-			<SetupHint service={service ?? null} />
-			<AwayStrip />
 			{repeat && (
 				<ScheduleDialog
 					open
@@ -237,139 +226,166 @@ export function HomeComposer({
 	);
 }
 
+function SeverityIcon({ severity }: { severity: Severity }) {
+	const look = markLook("severity", severity);
+	return (
+		<look.icon
+			aria-hidden
+			className={cn("size-3.5 shrink-0 stroke-[1.75]", look.className)}
+		/>
+	);
+}
+
+/** The subject chip: the kit picker of projects and services, searchable past nine rows. */
 function SubjectPicker({
-	icon,
 	value,
-	label,
 	projects,
 	services,
 	onPick,
 }: {
-	/** In the composer's tools: an icon, opening upward; otherwise the line's text. */
-	icon: boolean;
 	value: string;
-	label: string;
 	projects: { id: string; name: string }[];
 	services: { id: string; name: string }[];
 	onPick: (value: string) => void;
 }) {
+	const navigate = useNavigate();
 	// Read when the menu renders, so a send in this tab shows up next time.
 	const menu = subjectMenu(projects, services, lastSubject());
+	const kindIcon = (v: string) =>
+		v.startsWith("project:") ? FolderGit2 : Boxes;
+	const options: PickerOption[] = [
+		...(menu.first
+			? [
+					{
+						id: menu.first.value,
+						name: menu.first.name,
+						icon: kindIcon(menu.first.value),
+						testId: "subject-last",
+					},
+				]
+			: []),
+		{
+			id: "none",
+			name: "No project",
+			icon: MessageSquare,
+			testId: "subject-none",
+		},
+		...menu.projects.map((p) => ({
+			id: `project:${p.id}`,
+			name: p.name,
+			icon: FolderGit2,
+			group: "Projects",
+			testId: `subject-project-${p.id}`,
+		})),
+		...menu.services.map((s) => ({
+			id: `service:${s.id}`,
+			name: s.name,
+			icon: Boxes,
+			group: "Services",
+			testId: `subject-service-${s.id}`,
+		})),
+	];
 	return (
-		<DropdownMenu>
-			{icon ? (
-				<Hint label="Project or service" side="top">
-					<DropdownMenuTrigger
-						className="flex size-8 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3"
-						aria-label={`Project or service: ${label}`}
-						data-testid="composer-subject-tool"
-					>
-						<FolderOpen className="size-3.5" />
-					</DropdownMenuTrigger>
-				</Hint>
-			) : (
-				<DropdownMenuTrigger
-					className="inline-flex min-h-6 max-w-[28rem] items-center gap-1 rounded-control px-1.5 text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent"
-					aria-label={`Subject: ${label}`}
-					data-testid="composer-subject"
-				>
-					<span className="truncate">{label}</span>
-					<ChevronDown className="size-4 self-center text-text-3" />
-				</DropdownMenuTrigger>
-			)}
-			<DropdownMenuContent
-				align={icon ? "start" : "center"}
-				side={icon ? "top" : "bottom"}
-			>
-				<DropdownMenuRadioGroup value={value} onValueChange={onPick}>
-					{menu.first && (
-						<DropdownMenuRadioItem
-							value={menu.first.value}
-							data-testid="subject-last"
-						>
-							{menu.first.name}
-						</DropdownMenuRadioItem>
-					)}
-					<DropdownMenuRadioItem value="none" data-testid="subject-none">
-						No project
-					</DropdownMenuRadioItem>
-					{menu.projects.length > 0 && (
-						<DropdownMenuLabel>Projects</DropdownMenuLabel>
-					)}
-					{menu.projects.map((p) => (
-						<DropdownMenuRadioItem
-							key={p.id}
-							value={`project:${p.id}`}
-							data-testid={`subject-project-${p.id}`}
-						>
-							{p.name}
-						</DropdownMenuRadioItem>
-					))}
-					{menu.services.length > 0 && (
-						<DropdownMenuLabel>Services</DropdownMenuLabel>
-					)}
-					{menu.services.map((s) => (
-						<DropdownMenuRadioItem
-							key={s.id}
-							value={`service:${s.id}`}
-							data-testid={`subject-service-${s.id}`}
-						>
-							{s.name}
-						</DropdownMenuRadioItem>
-					))}
-				</DropdownMenuRadioGroup>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem asChild>
-					<Link to="/projects" search={{ add: true }}>
-						Add project
-					</Link>
-				</DropdownMenuItem>
-				<DropdownMenuItem asChild>
-					<Link to="/services" search={{ add: "1" }}>
-						Add a service
-					</Link>
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
+		<Picker
+			label="Subject"
+			side="bottom"
+			value={value}
+			onChange={onPick}
+			options={options}
+			actions={[
+				{
+					id: "add-project",
+					name: "Add project",
+					icon: Plus,
+					run: () => void navigate({ to: "/projects", search: { add: true } }),
+				},
+				{
+					id: "add-service",
+					name: "Add a service",
+					icon: Plus,
+					run: () => void navigate({ to: "/services", search: { add: "1" } }),
+				},
+			]}
+			testId="composer-subject"
+		/>
 	);
 }
 
-/**
- * One quiet line for the first missing step; gone once setup is done. The
- * code step is about the picked service only; alerts, an optional trigger, come last.
- */
-function SetupHint({
-	service,
+/** Ready once the agent answered a check; installed but silent needs a sign-in or a fix. */
+export function agentReadiness(
+	h: { installed: boolean; checked?: { outcome: string } | null } | undefined,
+): "ready" | "signIn" | "missing" {
+	if (!h?.installed) return "missing";
+	return h.checked?.outcome === "answers-acp" ? "ready" : "signIn";
+}
+
+/** The default agent's logo with its readiness dot; not ready opens Settings, Agent. */
+export function AgentReady() {
+	const choice = useAgentChoice();
+	if (choice.isLoading) return null;
+	const h = choice.effective;
+	const state = agentReadiness(h);
+	const word = !h
+		? "No agent installed"
+		: state === "ready"
+			? `${h.label} ready`
+			: state === "missing"
+				? `${h.label} not installed`
+				: (unreadyReason(h) ?? `${h.label} not checked`);
+	return <AgentReadyChip agent={h?.id ?? null} state={state} word={word} />;
+}
+
+/** The chip alone, so the gallery can show each state from fixtures. */
+export function AgentReadyChip({
+	agent,
+	state,
+	word,
 }: {
-	service: { id: string; name: string } | null;
+	agent: string | null;
+	state: "ready" | "signIn" | "missing";
+	word: string;
 }) {
-	const p = useSetupProgress();
-	if (!p.loaded) return null;
-	const noCode =
-		service && !codeWhere(service as Parameters<typeof codeWhere>[0]);
-	const link = !p.steps.agent ? (
-		<Link to="/settings" search={{ tab: "agent" }}>
-			Set up
-		</Link>
-	) : noCode && service ? (
-		<Link to="/services/$id" params={{ id: service.id }}>
-			Link code
-		</Link>
-	) : service && !p.alertsIn ? (
-		<Link to="/alerts">Connect</Link>
-	) : null;
-	if (!link) return null;
-	const what = !p.steps.agent
-		? "No agent ready."
-		: noCode && service
-			? "The agent can't read this service's code yet."
-			: "Alerts not connected.";
+	const look = markLook("agentReady", state);
+	const label = `${look.label}: ${word}`;
+	const mark = (
+		<span className="relative flex">
+			{agent ? (
+				<AgentMark id={agent} className="size-4" />
+			) : (
+				<Bot aria-hidden className="size-4 text-text-3" />
+			)}
+			<span className="absolute -right-1 -bottom-1 flex rounded-full bg-surface-1 p-px">
+				<look.icon
+					aria-hidden
+					className={cn("size-2.5 stroke-[2.5]", look.className)}
+				/>
+			</span>
+		</span>
+	);
 	return (
-		<p
-			className="text-center text-body text-text-2 [&_a]:inline-flex [&_a]:min-h-6 [&_a]:items-center [&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2"
-			data-testid="setup-line"
-		>
-			{what} {link}
-		</p>
+		<Hint label={word}>
+			{state === "ready" ? (
+				<span
+					role="img"
+					aria-label={label}
+					className={cn(CHIP, "px-2 hover:bg-transparent")}
+					data-testid="composer-agent-ready"
+					data-state={state}
+				>
+					{mark}
+				</span>
+			) : (
+				<Link
+					to="/settings"
+					search={{ tab: "agent" }}
+					aria-label={label}
+					className={cn(CHIP, "px-2")}
+					data-testid="composer-agent-ready"
+					data-state={state}
+				>
+					{mark}
+				</Link>
+			)}
+		</Hint>
 	);
 }
