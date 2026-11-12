@@ -202,9 +202,40 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
 			expect(row).toMatchObject({ endReason: "limited", limitResetsAt: RESET });
 			const events = await investigations.allEvents(t.id);
-			expect(events[0]).toMatchObject({ kind: "usage_limit", agent: "Codex", text: RESET_TEXT, resetsAt: RESET.toISOString() });
+			// The line every surface shows is plain; the agent's words stay as raw (#1101).
+			expect(events[0]).toMatchObject({
+				kind: "usage_limit",
+				agent: "Codex",
+				text: "Codex reached its usage limit",
+				raw: RESET_TEXT,
+				resetsAt: RESET.toISOString(),
+			});
 			expect(events[1]).toMatchObject({ kind: "resume_scheduled", wakeKind: "limit", attempt: 1 });
 			expect((await s.sessionOf(row)).limit).toMatchObject({ resetsAt: RESET.toISOString(), autoResume: true, attempts: 1 });
+		});
+
+		it("with no reset known, the resume line and the session say a next try, try 2 of 7, never a reset (#1101)", async () => {
+			const t = await thread();
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: "You've hit your session limit. Upgrade for more usage." });
+			const events = await investigations.allEvents(t.id);
+			expect(events.find((e) => e.kind === "resume_scheduled")).toMatchObject({
+				attempt: 1,
+				maxAttempts: 7,
+				nextTry: { n: 2, of: 7 },
+			});
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect((await s.sessionOf(row)).limit).toMatchObject({ resetsAt: null, nextTry: { n: 2, of: 7 } });
+		});
+
+		it("a known reset carries no next try (#1101)", async () => {
+			const t = await thread();
+			const s = lifecycle();
+			await s.onSettled(t.id, { outcome: "failed", error: RESET_TEXT });
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect((await s.sessionOf(row)).limit?.nextTry).toBeUndefined();
+			const events = await investigations.allEvents(t.id);
+			expect(events.find((e) => e.kind === "resume_scheduled")).not.toHaveProperty("nextTry");
 		});
 
 		it("a later transient error never schedules from an older limit's stored text, and clears the stale limit", async () => {
@@ -448,7 +479,8 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			expect(events.at(-1)).toMatchObject({
 				kind: "provider_blocked",
 				mode: "key_rejected",
-				text: "Invalid API key",
+				text: "Codex's API key was rejected",
+				raw: "Invalid API key",
 			});
 
 			const session = await s.sessionOf(row);

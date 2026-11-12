@@ -2224,11 +2224,13 @@ describe("a service-check run (#979)", () => {
 });
 
 describe("session lifecycle over a fake ACP harness (#1024)", () => {
-	it("ends a turn the agent refused for its usage limit with the limit text, not the generic RPC message", async () => {
+	it("ends a turn the agent refused for its usage limit with the plain line, its limit text kept as raw (#1101)", async () => {
 		const { events } = await collect("limited");
-		const last = events.at(-1);
-		expect(last?.kind).toBe("error");
-		if (last?.kind === "error") expect(last.message).toBe("You've hit your usage limit. Try again at 3:45 PM.");
+		expect(events.at(-1)).toMatchObject({
+			kind: "error",
+			message: "OpenCode reached its usage limit.",
+			failure: { mode: "usage_limit", raw: "You've hit your usage limit. Try again at 3:45 PM." },
+		});
 	});
 
 	it("compacts with the agent's own command before the message, between two boundary events", async () => {

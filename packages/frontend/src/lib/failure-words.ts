@@ -126,6 +126,8 @@ export function failureWords(
 	for (const k of KNOWN)
 		if (k.test.test(error))
 			return typeof k.words === "function" ? k.words(agent, hint) : k.words;
-	const clause = firstClause(error);
+	const clause = firstClause(
+		error.replace(/^(?:internal error|api error|error)\s*:\s*/i, ""),
+	);
 	return { what: /[.!?]$/.test(clause) ? clause : `${clause}.` };
 }
