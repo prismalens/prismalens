@@ -138,8 +138,7 @@ describe("Thread context and pull requests (#1024, surface D)", () => {
 		expect(hostCalls).toHaveLength(n);
 		const feed = await pl.api<ThreadFeed>("/threads/feed");
 		const row = feed.units.flatMap((u) => u.threads).find((t) => t.id === thread);
-		// 0ab5288b9 adds the row's PR count.
-		expect(row?.pr).toEqual({ number: 14927, tone: "draft", count: 1 });
+		expect(row?.pr).toEqual({ number: 14927, tone: "draft" });
 	});
 
 	it("When prose names paths, a URL and the PR, Then only what exists resolves", async () => {
