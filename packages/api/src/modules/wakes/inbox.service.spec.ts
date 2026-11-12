@@ -259,6 +259,42 @@ describe("InboxService (#1101)", () => {
 		expect(delivered2).toHaveLength(1);
 	});
 
+	it("delivering a cron wake closes the waiting schedule row of the earlier fire it replaced, and leaves a waiting thread message open", async () => {
+		const t = await thread({ status: "failed", endReason: "limited" });
+		const at = new Date("2026-11-12T10:00:00.000Z");
+		await inbox.arrived(t.id, { messageId: "cron-old", source: "schedule", arrivedAt: at, text: "first fire" });
+		await inbox.arrived(t.id, { messageId: "fact-1", source: "thread", arrivedAt: at, text: "a fact" });
+		const wake = await prisma.threadWake.create({
+			data: { investigationId: t.id, kind: "cron", at, reason: "first fire\n\nsecond fire", payload: "{}" },
+		});
+		await investigations.appendEvents(t.id, [
+			{
+				kind: "operator_message",
+				runId: t.id,
+				branchId: "run",
+				path: [],
+				seq: (await investigations.lastEventSeq(t.id)) + 1,
+				ts: new Date().toISOString(),
+				text: "first fire\n\nsecond fire",
+				mode: "queue",
+				delivered: true,
+				messageId: wake.id,
+			} as CanonicalEvent,
+		]);
+		const rows = await prisma.investigationEvent.findMany({
+			where: { investigationId: t.id },
+			orderBy: { seq: "asc" },
+		});
+		const states = rows
+			.map((r) => JSON.parse(r.event) as CanonicalEvent)
+			.flatMap((e) => (e.kind === "message_inbound" ? [[e.messageId, e.state]] : []));
+		expect(states).toEqual([
+			["cron-old", "waiting"],
+			["fact-1", "waiting"],
+			["cron-old", "delivered"],
+		]);
+	});
+
 	it("failed(threadId, id, { cause: 'stopped' }) records state: 'failed', cause: 'stopped' only for a waiting message, and nothing for an unknown id", async () => {
 		const t = await thread({
 			status: "failed",
