@@ -582,3 +582,125 @@ test("design coverage matrix", async ({
 		`${JSON.stringify({ walk, report }, null, 2)}\n`,
 	);
 });
+
+/** The Wave 2 kit's states (#1101): each `data-kit-state` box at 1440 and 390, both themes. */
+test("design kit states", async ({ page }) => {
+	const dir = join(OUT, "kit");
+	mkdirSync(dir, { recursive: true });
+	await hideQueryDevtools(page);
+	page.setDefaultTimeout(8_000);
+	const faults: Record<string, string[]> = {};
+	const stage = (id: string) => page.locator(`[data-kit-state="${id}"]`);
+	/** A stage, or the viewport when a popover leaves the stage's box. */
+	const shot = async (key: string, id?: string) => {
+		await page.waitForTimeout(250);
+		const opts = {
+			path: join(dir, `${key}.png`),
+			animations: "disabled",
+		} as const;
+		if (id) await stage(id).screenshot(opts);
+		else await page.screenshot(opts);
+	};
+	const opened = async (id: string, testId: string, key: string) => {
+		await stage(id).scrollIntoViewIfNeeded();
+		await page.getByTestId(testId).click();
+		await shot(key, id);
+	};
+	for (const t of THEMES) {
+		await theme(page, t);
+		for (const size of [
+			{ w: 1440, h: 900 },
+			{ w: 390, h: 844 },
+		]) {
+			await page.setViewportSize({ width: size.w, height: size.h });
+			await visit(page, "/_design", "design-gallery");
+			const states = page.locator("[data-kit-state]");
+			await expect(states.first()).toBeVisible();
+			const sfx = `${size.w}-${t}`;
+			for (const id of await states.evaluateAll((els) =>
+				els.map((e) => (e as HTMLElement).dataset.kitState ?? ""),
+			)) {
+				await stage(id).scrollIntoViewIfNeeded();
+				await shot(`${id}-${sfx}`, id);
+			}
+			// Open states, by the interaction a user makes.
+			await opened("menu-open", "kit-menu-trigger", `menu-open-${sfx}`);
+			await page.keyboard.press("Escape");
+			await stage("menu-context").scrollIntoViewIfNeeded();
+			await page.getByTestId("kit-context-target").click({ button: "right" });
+			await shot(`menu-context-open-${sfx}`, "menu-context");
+			await page.keyboard.press("Escape");
+			await opened(
+				"popover-card",
+				"kit-popover-trigger",
+				`popover-card-open-${sfx}`,
+			);
+			await page.keyboard.press("Escape");
+			for (const p of ["model", "effort", "mode"]) {
+				await opened(
+					`picker-${p}`,
+					`kit-picker-${p}`,
+					`picker-${p}-open-${sfx}`,
+				);
+				if (p === "mode") {
+					await page.getByTestId("picker-option-acceptEdits").hover();
+					await page.getByTestId("hint").waitFor();
+					await shot(`picker-mode-hint-${sfx}`);
+				}
+				if (p === "model") {
+					await page.keyboard.type("son");
+					await shot(`picker-model-search-${sfx}`, "picker-model");
+				}
+				if (size.w === 1440 && p === "mode") {
+					const axe = await new AxeBuilder({ page })
+						.include("[data-kit-state]")
+						.include('[data-float="pop"]')
+						.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+						.analyze();
+					faults[`${sfx}-open`] = axe.violations.map(
+						(v) =>
+							`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 90) ?? ""}`,
+					);
+				}
+				await page.keyboard.press("Escape");
+			}
+			await stage("picker-row").scrollIntoViewIfNeeded();
+			await page.getByTestId("kit-picker-locked").hover();
+			await page.getByTestId("hint").waitFor();
+			await shot(`picker-locked-hint-${sfx}`, "picker-row");
+			// At 390 the docked demo is already a button: the area is under the minimum.
+			if (size.w === 1440) {
+				await stage("details-docked").scrollIntoViewIfNeeded();
+				await stage("details-docked").getByTestId("details-card").hover();
+				await shot(`details-docked-hover-${sfx}`, "details-docked");
+				await stage("details-docked")
+					.getByRole("button", { name: "Close details" })
+					.click();
+				await shot(`details-closed-${sfx}`, "details-docked");
+				await stage("details-docked").getByTestId("details-button").click();
+			}
+			await stage("details-narrow").scrollIntoViewIfNeeded();
+			await stage("details-narrow").getByTestId("details-button").click();
+			await shot(`details-narrow-open-${sfx}`, "details-narrow");
+			await shot(`details-narrow-open-view-${sfx}`);
+			await page.keyboard.press("Escape");
+			await stage("tool-line-open").scrollIntoViewIfNeeded();
+			await stage("tool-line-open").locator("pre").hover();
+			await shot(`tool-line-open-hover-${sfx}`, "tool-line-open");
+			await stage("rail").scrollIntoViewIfNeeded();
+			await page.keyboard.press("Shift");
+			await page.getByTestId("rail").focus();
+			await page.keyboard.press("ArrowDown");
+			await shot(`rail-focus-${sfx}`, "rail");
+			const axe = await new AxeBuilder({ page })
+				.include("[data-kit-state]")
+				.withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+				.analyze();
+			faults[sfx] = axe.violations.map(
+				(v) =>
+					`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 90) ?? ""}`,
+			);
+		}
+	}
+	writeFileSync(join(dir, "kit-axe.json"), JSON.stringify(faults, null, 2));
+});
