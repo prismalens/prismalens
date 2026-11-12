@@ -128,10 +128,9 @@ async function endsOf(
 		if (!t?.start) return null;
 		return { from: t.start, to: t.end ?? now, turn: t.seq, live: !t.end };
 	}
-	const last = turns.findLast((x) => x.end);
-	return last?.end
-		? { from: last.end, to: now, turn: null, live: false }
-		: null;
+	// Outside turns: the files changed between or after them, each against the base (#1101 category 16).
+	if (!turns.some((x) => x.end)) return null;
+	return endsOf(store, "all", undefined, now);
 }
 
 /** Paths changed outside the agent's turns: in each gap between them, and after the last. */
@@ -169,11 +168,25 @@ async function repoScoped(
 		const ends = await endsOf(store, scope, turn, now.commit);
 		if (!ends) return unavailable(repo.name, "no-snapshot");
 		const { from, to } = ends;
+		const outside = await outsidePaths(store, now.commit);
+		// No outside path: an empty pathspec would mean every path.
+		const only =
+			scope === "outside"
+				? outside.length
+					? ["--", ...outside]
+					: ["--", ":(exclude,top)*"]
+				: [];
 		const [statuses, counts] = await Promise.all([
 			store
-				.git(["diff", "--name-status", "-z", ...DIFF, from, to])
+				.git(["diff", "--name-status", "-z", ...DIFF, from, to, ...only], {
+					magic: only.length > 0 && !outside.length,
+				})
 				.then(nameStatus),
-			store.git(["diff", "--numstat", "-z", ...DIFF, from, to]).then(numstat),
+			store
+				.git(["diff", "--numstat", "-z", ...DIFF, from, to, ...only], {
+					magic: only.length > 0 && !outside.length,
+				})
+				.then(numstat),
 		]);
 		const files: WorktreeFile[] = statuses.map(({ path, code }) => {
 			const [additions, deletions] = counts.get(path) ?? [null, null];
@@ -189,7 +202,9 @@ async function repoScoped(
 			};
 		});
 		let patch: string | null = (
-			await store.git(["diff", "--full-index", ...DIFF, from, to])
+			await store.git(["diff", "--full-index", ...DIFF, from, to, ...only], {
+				magic: only.length > 0 && !outside.length,
+			})
 		).toString();
 		if (Buffer.byteLength(patch) > RUN_DIFF_MAX_BYTES) patch = null;
 		const toMessage = await store.git(["log", "-1", "--format=%B", to]);
@@ -228,7 +243,7 @@ async function repoScoped(
 				turn: ends.turn,
 				live: ends.live,
 				states: Object.fromEntries(states),
-				outside: await outsidePaths(store, now.commit),
+				outside,
 				skipped,
 				turns: turns
 					.filter((t) => t.start)
