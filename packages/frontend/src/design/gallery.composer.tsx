@@ -222,6 +222,31 @@ const APPROVAL = ask({
 		identity: "h1",
 	},
 });
+/** Raw MCP tool ids the agent names its asks by: the dock reads them as words (#1105). */
+const MCP_OTHER = ask({
+	kind: "permission",
+	title: "mcp__github__create_issue",
+	permission: {
+		toolKind: "other",
+		options: [
+			{ optionId: "a", name: "Allow", kind: "allow_once" },
+			{ optionId: "d", name: "Deny", kind: "reject_once" },
+		],
+		identity: "h2",
+	},
+});
+const MCP_OURS = ask({
+	kind: "permission",
+	title: "mcp__prismalens__pl_cron_create",
+	permission: {
+		toolKind: "other",
+		options: [
+			{ optionId: "a", name: "Allow", kind: "allow_once" },
+			{ optionId: "d", name: "Deny", kind: "reject_once" },
+		],
+		identity: "h3",
+	},
+});
 const PLAN = ask({
 	kind: "permission",
 	title: "Plan ready",
@@ -340,7 +365,16 @@ export const composerGallery: GallerySection[] = [
 		title: "Asks at the box",
 		render: () => (
 			<div className="grid max-w-[760px] gap-3">
-				{[QUESTION, APPROVAL, PLAN, INPUT, SECRET, HOST].map((a) => (
+				{[
+					QUESTION,
+					APPROVAL,
+					MCP_OTHER,
+					MCP_OURS,
+					PLAN,
+					INPUT,
+					SECRET,
+					HOST,
+				].map((a) => (
 					<Box key={a.askId}>
 						<AskDock asks={[a]} threadId={THREAD} agent="Codex" />
 					</Box>
