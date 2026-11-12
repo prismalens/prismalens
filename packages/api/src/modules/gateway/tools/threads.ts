@@ -154,7 +154,7 @@ export function threadTools(data: ThreadsData): HarnessTool[] {
 			name: "pl_thread_title",
 			title: "Name this thread",
 			description: withRules(
-				"Give this thread a short title, 3 to 7 words and at most 80 characters, once you know what it is about; call it again if the subject changes. Plain words only. Once the user renames the thread, their name stays and this returns it with `kept: true`. Use it once you know the subject.",
+				"Give this thread a short title, 3 to 7 words; past 50 characters it is cut at a word. Name it once you know what it is about; call it again if the subject changes. Plain words only. Once the user renames the thread, their name stays and this returns it with `kept: true`. Use it once you know the subject.",
 				"status updates: the title is a name.",
 			),
 			group: "record",
