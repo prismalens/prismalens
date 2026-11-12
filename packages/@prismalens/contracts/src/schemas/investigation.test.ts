@@ -16,7 +16,6 @@ import {
 	AnswerAskSchema,
 	CanonicalEventSchema,
 	CulpritSchema,
-	HARNESS_TOOL_STEPS,
 	InvestigationContextSchema,
 	InvestigationJobDataSchema,
 	InvestigationReportSchema,
@@ -31,6 +30,7 @@ import {
 	toFiringAlert,
 } from "./investigation.js";
 import { RecommendationWithRelationsSchema } from "./recommendation.js";
+import { PL_TOOLS } from "./tools.js";
 
 describe("RunFidelitySchema", () => {
 	it("parses a fidelity record with a model, and strips keys older records carry", () => {
@@ -699,7 +699,7 @@ describe("RecommendationWithRelationsSchema (#979)", () => {
 	});
 });
 
-describe("plToolName, isPlServerName, and HARNESS_TOOL_STEPS (#1101)", () => {
+describe("plToolName, isPlServerName, and PL_TOOLS (#1101; labels moved to PL_TOOLS by #1125)", () => {
 	it("plToolName maps every PL_LEGACY_TOOL_NAMES entry to pl_+name and leaves pl_cron_list and Bash as they are", () => {
 		for (const name of PL_LEGACY_TOOL_NAMES) {
 			expect(plToolName(name)).toBe(`pl_${name}`);
@@ -716,11 +716,12 @@ describe("plToolName, isPlServerName, and HARNESS_TOOL_STEPS (#1101)", () => {
 		expect(isPlServerName(undefined)).toBe(false);
 	});
 
-	it("every HARNESS_TOOL_STEPS key starts with pl_", () => {
-		const keys = Object.keys(HARNESS_TOOL_STEPS);
-		expect(keys.length > 0).toBe(true);
+	it("every PL_TOOLS key starts with pl_ and is its entry's name", () => {
+		const keys = Object.keys(PL_TOOLS);
+		expect(keys).toContain("pl_cron_list");
 		for (const key of keys) {
 			expect(key.startsWith("pl_")).toBe(true);
+			expect(PL_TOOLS[key as keyof typeof PL_TOOLS].name).toBe(key);
 		}
 	});
 });

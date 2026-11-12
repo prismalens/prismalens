@@ -7,21 +7,19 @@
  */
 import { createHash } from "node:crypto";
 import {
+	PL_TOOLS,
+	type PlToolName,
 	THREAD_SUBJECTS,
 	type ThreadSubjectKind,
+	type ToolAccess,
 } from "@prismalens/contracts/schemas";
 import { z } from "zod";
 
 /** At most 46 characters and never `__`, which agents use to join server and tool names. */
 export const HARNESS_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 
-/**
- * What a tool may do. `read`: PrismaLens's own records. `record`: append to this run's
- * own record, or a message to its own thread tree, nothing outside it. `ask`: open an ask the user answers, nothing else.
- * `act`: change something beyond the run, behind PrismaLens's own approval, never
- * the agent's permission prompt (#1024 spec F).
- */
-export type HarnessEffect = "read" | "record" | "ask" | "act";
+/** What a tool may do: its registry `access` (#1125). */
+export type HarnessEffect = ToolAccess;
 
 export type HarnessGroup = "core" | "knowledge" | "record";
 
@@ -140,6 +138,17 @@ export function defineHarnessTool<
 	E extends HarnessEffect,
 >(tool: HarnessTool<S, E>): HarnessTool {
 	return tool as unknown as HarnessTool;
+}
+
+/** A `pl_*` tool's name, title, description and access, read from the registry (#1125). */
+export function registered<N extends PlToolName>(name: N) {
+	const d = PL_TOOLS[name];
+	return {
+		name: d.name,
+		title: d.title,
+		description: d.describe,
+		effect: d.access,
+	};
 }
 
 export class HarnessToolRefused extends Error {}
