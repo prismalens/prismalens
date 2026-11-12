@@ -31,7 +31,6 @@ const galleryIds = new Set(
  * shrinks: registering one fails this test until it is removed here.
  */
 const UNREACHED = [
-	"diff.file",
 	"diff.line",
 	"pr.chip",
 	"check.row",
@@ -44,7 +43,7 @@ const UNREACHED = [
 	"settings.row",
 	"schedule.row",
 ] as const;
-const UNREACHED_MAX = 12;
+const UNREACHED_MAX = 11;
 
 /**
  * Files that still pass inline `entries` to the kit Menu or ContextMenu instead
@@ -55,6 +54,8 @@ const INLINE_MENUS = [
 	"./ListCard.tsx",
 	"./Surface.tsx",
 	"../../design/gallery.kit.tsx",
+	"../thread/diff/DiffSurface.tsx",
+	"../thread/panel/PaneMenu.tsx",
 	"../investigation/Transcript.tsx",
 	"../shell/RowAsk.tsx",
 	"../thread/find/FindBar.tsx",
