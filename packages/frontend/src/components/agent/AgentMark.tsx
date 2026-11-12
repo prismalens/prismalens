@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { SquareTerminal, Star } from "lucide-react";
-import { siClaude, siGooglegemini, siOpencode } from "simple-icons";
+import { CodeXml, SquareTerminal, Star } from "lucide-react";
+import { siClaude, siGooglegemini } from "simple-icons";
 import { cn } from "@/lib/utils";
 
 /**
  * Each agent's own mark (decision 20), from simple-icons (CC0 paths; the marks
  * stay their owners' trademarks, shown only to name the agent). Codex and
  * deepagents have no mark we may bundle (#1020), so they keep a two-letter tile.
- * A null color paints in the theme text color: the brand color is black.
+ * OpenCode's mark is a filled square that reads as a missing image at 16 px,
+ * so it takes a neutral code glyph (#1101).
  */
 const MARKS: Record<string, { path: string; color: string | null }> = {
-	opencode: { path: siOpencode.path, color: null },
 	"claude-code": { path: siClaude.path, color: `#${siClaude.hex}` },
 	gemini: { path: siGooglegemini.path, color: `#${siGooglegemini.hex}` },
 };
@@ -31,6 +31,15 @@ export function AgentMark({
 }) {
 	const mark = MARKS[id];
 	const letters = LETTERS[id];
+	if (id === "opencode")
+		return (
+			<CodeXml
+				aria-hidden
+				data-testid="agent-glyph"
+				className={cn("size-4 shrink-0 text-text-2", className)}
+				strokeWidth={1.75}
+			/>
+		);
 	if (letters)
 		return (
 			<span

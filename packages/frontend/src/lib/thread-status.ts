@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import type { StateTone } from "@/components/shared/StateWord";
 import { stopRowWords } from "@/lib/provider-stop";
+import { failureWords } from "./failure-words";
 
 export const STATUS_WORD: Record<ThreadStatus, string> = {
 	approval: "Approval needed",
@@ -208,7 +209,10 @@ export function statusReason(
 		case "waiting":
 			return info.waitingOn ? waitingLine(info.waitingOn, at) : null;
 		case "failed":
-			return t.error?.trim() || "Run failed";
+			// A row shows the failure in words, never the raw error (#1101).
+			return t.error?.trim()
+				? failureWords(t.error).what.replace(/\.$/, "")
+				: "Run failed";
 		case "done":
 			return info.stopped ? "Stopped by you" : null;
 	}

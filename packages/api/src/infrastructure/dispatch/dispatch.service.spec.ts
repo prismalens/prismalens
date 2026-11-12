@@ -172,6 +172,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
 	const keep = Object.values(legacy);
+	await prisma.threadWait.deleteMany();
+	await prisma.threadMessage.deleteMany();
 	await prisma.job.deleteMany({ where: { investigationId: { notIn: keep } } });
 	await prisma.incident.deleteMany({ where: { NOT: { title: { startsWith: "legacy " } } } });
 	await prisma.investigation.deleteMany({ where: { incidentId: null } });
@@ -559,6 +561,120 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 
 		expect(results.filter(Boolean)).toHaveLength(1);
 		expect(await prisma.job.count({ where: { investigationId: failed.id } })).toBe(1);
+	});
+
+	it("with session.claims naming two queued thread messages to the thread, admission returns true, both rows read delivered, and a threadWait from the thread to the sender of a result claim is deleted", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+		const sender = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-msg-1",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "result",
+				text: "result payload",
+				requestId: "req-1",
+				state: "queued",
+			},
+		});
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-msg-2",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "handoff",
+				text: "handoff payload",
+				requestId: "req-2",
+				state: "queued",
+			},
+		});
+		await prisma.threadWait.create({
+			data: {
+				waiterId: done.id,
+				targetId: sender.id,
+				mode: "any",
+			},
+		});
+
+		const admitted = await service.resumeInvestigation(
+			done.id,
+			"resuming with claims",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ claims: ["claim-msg-1", "claim-msg-2"] },
+		);
+
+		expect(admitted).toBe(true);
+		const m1 = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-msg-1" } });
+		const m2 = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-msg-2" } });
+		expect(m1.state).toBe("delivered");
+		expect(m1.deliveredAt).not.toBeNull();
+		expect(m2.state).toBe("delivered");
+		expect(m2.deliveredAt).not.toBeNull();
+
+		const waitCount = await prisma.threadWait.count({
+			where: { waiterId: done.id, targetId: sender.id },
+		});
+		expect(waitCount).toBe(0);
+	});
+
+	it("when one claimed row is already delivered, admission returns false, the thread's status is unchanged, no job is enqueued, and the other row is still queued", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { status: "completed", completedAt: new Date(restoreDone.completedAt) });
+		const sender = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-already-delivered",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "result",
+				text: "already delivered",
+				requestId: "req-delivered",
+				state: "delivered",
+				deliveredAt: new Date(),
+			},
+		});
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-still-queued",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "handoff",
+				text: "still queued",
+				requestId: "req-queued",
+				state: "queued",
+			},
+		});
+
+		const admitted = await service.resumeInvestigation(
+			done.id,
+			"resuming with stale claim",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ claims: ["claim-already-delivered", "claim-still-queued"] },
+		);
+
+		expect(admitted).toBe(false);
+		expect((await read(done.id)).status).toBe("completed");
+		expect(await prisma.job.count({ where: { investigationId: done.id } })).toBe(0);
+		const stillQueued = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-still-queued" } });
+		expect(stillQueued.state).toBe("queued");
+		expect(stillQueued.deliveredAt).toBeNull();
 	});
 
 	describe("continue is admitted only on a reportless stopped or failed investigation (T16)", () => {

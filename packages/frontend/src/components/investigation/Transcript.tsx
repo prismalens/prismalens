@@ -66,6 +66,7 @@ import {
 import { type TurnSummary, turnSummary } from "@/lib/turn-summary";
 import { cn } from "@/lib/utils";
 import { TurnEnd } from "./TurnEnd";
+import { InboundRowView } from "./transcript/InboundRow";
 import { TranscriptNode } from "./transcript/registry";
 import {
 	itemEventKey,
@@ -92,7 +93,13 @@ const FOLD_OVER = 8;
 const FOLD_KEEP = 3;
 
 /** The delivery word beside a message (decision 18): Enter waits for the agent's next pause. */
-function deliveryWord(state: OperatorState, mode: "queue" | "now"): string {
+function deliveryWord(
+	state: OperatorState,
+	mode: "queue" | "now",
+	waitingOn?: "limit",
+): string {
+	if (state === "queued" && waitingOn === "limit")
+		return "waiting for the limit";
 	if (state === "not_delivered") return "not delivered";
 	if (state === "started" || state === "resumed" || state === "asked")
 		return OPERATOR_STATE_LABEL[state].toLowerCase();
@@ -344,7 +351,9 @@ export const Transcript = memo(function Transcript({
 				worked?.open ||
 				i <= brief ||
 				i >= end ||
-				item.kind === "artifact");
+				item.kind === "artifact" ||
+				// An incoming message's outcome is a result, never folded into the work (sheet §10).
+				item.kind === "inbound");
 		if (shown)
 			rows.push({
 				key: item.key,
@@ -565,6 +574,8 @@ function ReleaseOnUnfold({ open }: { open: boolean }) {
 
 /** `Worked for 4m 12s, 23 steps`: the steps-unfold row with the sidebar tree's disclosure chevron. */
 function WorkedToggle({ worked }: { worked: WorkedFold }) {
+	const label = workedLabel(worked.seconds, worked.steps);
+	if (!label) return null;
 	return (
 		<li>
 			<button
@@ -574,10 +585,7 @@ function WorkedToggle({ worked }: { worked: WorkedFold }) {
 				className={TOOL_LINE}
 				data-testid="worked-toggle"
 			>
-				<span className="truncate">
-					Worked for {formatElapsed(worked.seconds)}, {worked.steps}{" "}
-					{worked.steps === 1 ? "step" : "steps"}
-				</span>
+				<span className="truncate">{label}</span>
 				<ToolLineChevron open={worked.open} />
 			</button>
 		</li>
@@ -825,7 +833,7 @@ const TranscriptRow = memo(function TranscriptRow({
 											: `brief for ${runName ?? "this run"}`
 										: chat && item.state === "started"
 											? "sent"
-											: deliveryWord(item.state, item.mode)}
+											: deliveryWord(item.state, item.mode, item.waitingOn)}
 								</span>
 							</>
 						)}
@@ -1001,6 +1009,8 @@ const TranscriptRow = memo(function TranscriptRow({
 					{item.text}
 				</li>
 			);
+		case "inbound":
+			return <InboundRowView row={item.row} />;
 		case "node":
 			return (
 				<TranscriptNode
