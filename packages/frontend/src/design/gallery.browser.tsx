@@ -8,8 +8,9 @@ import { PaneUnavailable } from "@/components/thread/panel/NewTabPage";
 import type { GallerySection } from "./gallery";
 
 const noop = () => {};
-const box = "flex flex-col gap-2 rounded-pool bg-surface-1 p-2";
-const frameBox = "flex h-[420px] flex-col gap-2 rounded-pool bg-surface-1 p-2";
+const box = "flex min-w-0 flex-col gap-2 rounded-pool bg-surface-1 p-2";
+const frameBox =
+	"flex h-[420px] min-w-0 flex-col gap-2 rounded-pool bg-surface-1 p-2";
 
 const TAB: BrowserTab = {
 	id: "t1",
