@@ -2,20 +2,18 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it, vi } from "vitest";
-import { firstMessage } from "./ThreadMenu";
-import { threadSchedule } from "./thread.actions";
-import { threadHeader, threadRow } from "./thread.surface";
 
-const getEvents = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api/orpc-client", () => {
-	// Any `orpc.x.y` a module touches on import resolves to another stub.
-	const stub: object = new Proxy(() => stub, { get: () => stub });
-	return {
-		client: { investigations: { getEvents: (a: unknown) => getEvents(a) } },
-		orpc: stub,
-	};
-});
+const getEvents = vi.fn();
+// Any `orpc.x.y` a module touches on import resolves to another stub.
+const stub: object = new Proxy(() => stub, { get: () => stub });
+vi.mock("@/lib/api/orpc-client", () => ({
+	client: { investigations: { getEvents: (a: unknown) => getEvents(a) } },
+	orpc: stub,
+}));
 
+const { threadSchedule } = await import("./thread.actions");
+const { threadHeader, threadRow } = await import("./thread.surface");
+const { firstMessage } = await import("./ThreadMenu");
 
 describe("Repeat on a schedule… from a thread (#1101 scheduled tasks)", () => {
 	it("is listed only for a standalone thread on the host that saves schedules", () => {
