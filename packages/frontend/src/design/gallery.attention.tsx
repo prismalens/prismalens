@@ -298,33 +298,38 @@ export const attentionGallery: GallerySection[] = [
 		id: "attention-toast",
 		title: "A toast for another thread's event",
 		render: () => (
-			<ToastProvider>
-				<Toast open variant="neutral" duration={Number.POSITIVE_INFINITY}>
-					<div className="flex min-w-0 flex-col">
-						<ToastTitle>Needs you: Restart the checkout pods</ToastTitle>
-						<ToastDescription>Run kubectl</ToastDescription>
-					</div>
-				</Toast>
-				<Toast open variant="default" duration={Number.POSITIVE_INFINITY}>
-					<div className="flex min-w-0 flex-col">
-						<ToastTitle>High · Finished: Checkout 502s after deploy</ToastTitle>
-						<ToastDescription>
-							Likely cause: v2.14.1 cut the checkout DB pool from 50 to 5.
-						</ToastDescription>
-					</div>
-				</Toast>
-				<ToastViewport
-					className="relative w-[420px]"
-					data-testid="gallery-attention-toast"
-				/>
-			</ToastProvider>
+			<div className="relative h-56 max-w-full overflow-hidden [contain:paint]">
+				{/* Paint containment keeps the fixed toast list inside this stage, as the screen holds it. */}
+				<ToastProvider>
+					<Toast open variant="neutral" duration={Number.POSITIVE_INFINITY}>
+						<div className="flex min-w-0 flex-col">
+							<ToastTitle>Needs you: Restart the checkout pods</ToastTitle>
+							<ToastDescription>Run kubectl</ToastDescription>
+						</div>
+					</Toast>
+					<Toast open variant="default" duration={Number.POSITIVE_INFINITY}>
+						<div className="flex min-w-0 flex-col">
+							<ToastTitle>
+								High · Finished: Checkout 502s after deploy
+							</ToastTitle>
+							<ToastDescription>
+								Likely cause: v2.14.1 cut the checkout DB pool from 50 to 5.
+							</ToastDescription>
+						</div>
+					</Toast>
+					<ToastViewport
+						className="relative w-[420px]"
+						data-testid="gallery-attention-toast"
+					/>
+				</ToastProvider>
+			</div>
 		),
 	},
 	...PERMISSIONS.map((p) => ({
 		id: `notify-${p}`,
-		title: `Notifications, browser permission: ${p}`,
+		title: `Notifications, browser permission: $p`,
 		render: () => (
-			<div className="max-w-[720px]" data-testid={`gallery-notify-${p}`}>
+			<div className="max-w-[720px]" data-testid={`gallery-notify-$p`}>
 				<NotifyChoicesView
 					prefs={DEFAULT_NOTIFY_PREFS}
 					onChange={noop}

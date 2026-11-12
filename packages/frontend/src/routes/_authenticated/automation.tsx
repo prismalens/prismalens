@@ -4,11 +4,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { AlertsBlank } from "@/components/alerts/AlertsBlank";
-import { Help } from "@/components/kit";
 import {
 	NewScheduleAction,
 	SchedulesSection,
 } from "@/components/schedules/SchedulesSection";
+import { Hint } from "@/components/shared/Hint";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
@@ -33,13 +33,18 @@ function Automation() {
 						className="flex flex-col gap-2"
 					>
 						<div className="flex items-center gap-1.5">
-							<h2 id="auto-schedules" className="text-heading">
-								Schedules
-							</h2>
-							<Help
-								about="Schedules"
-								text="The agent runs a prompt on a timetable."
-							/>
+							{/* The section's one line is its heading's hint, not a ? button (#1101 budget). */}
+							<Hint label="The agent runs a prompt on a timetable.">
+								<h2
+									id="auto-schedules"
+									// biome-ignore lint/a11y/noNoninteractiveTabindex: focusable only to show its hint.
+									tabIndex={0}
+									aria-description="The agent runs a prompt on a timetable."
+									className="cursor-help rounded-sm text-heading outline-none focus-visible:ring-2 focus-visible:ring-accent"
+								>
+									Schedules
+								</h2>
+							</Hint>
 							<span className="ml-auto">
 								<NewScheduleAction />
 							</span>
@@ -51,13 +56,18 @@ function Automation() {
 						className="flex flex-col gap-2"
 					>
 						<div className="flex items-center gap-1.5">
-							<h2 id="auto-alerts" className="text-heading">
-								Alerts and webhooks
-							</h2>
-							<Help
-								about="Alerts and webhooks"
-								text="Each alert or event starts a thread."
-							/>
+							{/* The section's one line is its heading's hint, not a ? button (#1101 budget). */}
+							<Hint label="Each alert or event starts a thread.">
+								<h2
+									id="auto-alerts"
+									// biome-ignore lint/a11y/noNoninteractiveTabindex: focusable only to show its hint.
+									tabIndex={0}
+									aria-description="Each alert or event starts a thread."
+									className="cursor-help rounded-sm text-heading outline-none focus-visible:ring-2 focus-visible:ring-accent"
+								>
+									Alerts and webhooks
+								</h2>
+							</Hint>
 							<Link
 								to="/alerts"
 								data-testid="automation-alerts"
