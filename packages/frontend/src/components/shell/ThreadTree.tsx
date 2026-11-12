@@ -31,6 +31,7 @@ import {
 import { ThreadContextMenu, ThreadMenu } from "@/components/shell/ThreadMenu";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject, waitedFor } from "@/lib/ask-lines";
+import { plainExcerpt } from "@/lib/inbound-rows";
 import {
 	type ListNode,
 	recedes,
@@ -502,7 +503,13 @@ function TreeRow({
 			/>
 		);
 	const right = (
-		<span className="flex shrink-0 items-center gap-1.5 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible">
+		// The row's actions take this slot on hover, focus and the open row; it keeps their width.
+		<span
+			className={cn(
+				"flex min-w-12 shrink-0 items-center justify-end gap-1.5 text-meta text-text-3 tabular-nums group-focus-within/row:invisible group-hover/row:invisible",
+				on && "invisible",
+			)}
+		>
 			{t.pr && (
 				<span className="font-mono" data-testid="row-pr">
 					#{t.pr.number}
@@ -622,7 +629,7 @@ function TreeRow({
 												className="min-w-0 truncate text-text-3"
 												data-testid="row-detail"
 											>
-												{detail}
+												{plainExcerpt(detail)}
 											</span>
 										</>
 									)}
