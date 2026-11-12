@@ -64,7 +64,8 @@ describe("A usage limit while child reports arrive (#1101 category 17 item 9)", 
 	it.each([{ restart: false }, { restart: true }])(
 		"limit-with-child-reports (restart: $restart): three reports wait while Limited, then reach the parent once each, in order, on resume",
 		async ({ restart }) => {
-			const treeSettings = { agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10 };
+			// 00cf39eb1 adds the daily turn cap; 200 is its default.
+			const treeSettings = { agentsStartThreads: "allow", depth: 2, children: 4, perTree: 10, turnsPerDay: 200 };
 			const put = await pl.fetchAs("PUT", "/threads/tree-settings", treeSettings);
 			expect([put.status, await put.json()]).toEqual([200, treeSettings]);
 			const id = await startThread("limit-with-child-reports", "Why is the pool exhausted?");
