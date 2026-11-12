@@ -78,10 +78,16 @@ describe("scheduledRunTitle", () => {
 		).toBe("Watch checkout · 04:37");
 	});
 
-	it("adds the day when the slot falls on another local day", () => {
+	it("adds the weekday when the slot falls on another local day this week", () => {
 		expect(
 			scheduledRunTitle("Watch checkout", new Date("2026-11-11T23:07:00Z"), now, "Asia/Kolkata"),
-		).toBe("Watch checkout · 12 Nov 04:37");
+		).toBe("Watch checkout · Thu 04:37");
+	});
+
+	it("adds the date when the slot is a week or more away", () => {
+		expect(
+			scheduledRunTitle("Watch checkout", new Date("2026-11-01T23:07:00Z"), now, "Asia/Kolkata"),
+		).toBe("Watch checkout · 2 Nov 04:37");
 	});
 
 	it("cuts a long name at a word so the title stays within 50 characters", () => {

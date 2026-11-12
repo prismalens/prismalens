@@ -139,7 +139,7 @@ export function dstNote(r: Recurrence, now: Date): string | null {
 
 const RUN_TITLE_MAX = 50;
 
-/** "Watch checkout · 09:00", with the day when the slot is not today; the name is cut at a word to fit 50. */
+/** "Watch checkout · 09:00", with "Thu" or "12 Nov" when the slot is not today; the name is cut at a word to fit 50. */
 export function scheduledRunTitle(
 	name: string,
 	slot: Date,
@@ -151,10 +151,11 @@ export function scheduledRunTitle(
 	const day = (d: Date) =>
 		new Intl.DateTimeFormat("en-CA", { timeZone }).format(d);
 	const time = fmt({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+	const week = Math.abs(now.getTime() - slot.getTime()) < 6 * 86_400_000;
 	const when =
 		day(slot) === day(now)
 			? time
-			: `${fmt({ day: "numeric", month: "short" })} ${time}`;
+			: `${fmt(week ? { weekday: "short" } : { day: "numeric", month: "short" })} ${time}`;
 	const suffix = ` · ${when}`;
 	const room = RUN_TITLE_MAX - suffix.length;
 	const flat = name.replace(/\s+/g, " ").trim();
