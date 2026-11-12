@@ -620,7 +620,7 @@ function Preview({ item, now }: { item: Item; now: number }) {
 					PR #{t.pr.number}, {t.pr.tone}
 				</p>
 			)}
-			{t.limit && (
+			{t.limit && statusReason(t, { status: "limited" }, now) !== reason && (
 				<p className="text-meta text-text-2">
 					{statusReason(t, { status: "limited" }, now)}
 				</p>
