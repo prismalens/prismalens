@@ -192,6 +192,13 @@ describe("generatedTitle (#1101)", () => {
 		).toBe("Alpha beta gamma");
 	});
 
+	it("returns null when the model greets, refuses or answers instead of naming", () => {
+		expect(generatedTitle("Hello! How can I assist you today?", 80)).toBeNull();
+		expect(generatedTitle("I'm sorry, I can't help with that.", 80)).toBeNull();
+		expect(generatedTitle("Here is a title: Checkout errors", 80)).toBeNull();
+		expect(generatedTitle("Hiring pipeline outage", 80)).toBe("Hiring pipeline outage");
+	});
+
 	it("returns null for blank output", () => {
 		expect(generatedTitle("", 80)).toBeNull();
 		expect(generatedTitle("   \n\t  ", 80)).toBeNull();
