@@ -31,7 +31,8 @@ describe("every tool description follows the checklist (#1024 spec F, decision 6
 			expect(d, "links, not ids; and what `next` means").toContain(HOUSE_RULES);
 			if ("requestId" in tool.input.shape)
 				expect(d, "its idempotency key").toMatch(/`requestId` is your key/);
-			if (ASYNC.has(tool.name) || tool.effect === "act") {
+			// Browser tools act on the open web and answer when done, with no card of ours (79de724ca).
+			if (ASYNC.has(tool.name) || (tool.effect === "act" && tool.world !== "open")) {
 				expect(d, "asynchronous").toMatch(/Asynchronous|never blocks/);
 				expect(d, "no polling").toMatch(/[Dd]o not poll/);
 			}
