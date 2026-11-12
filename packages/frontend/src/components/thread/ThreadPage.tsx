@@ -1266,6 +1266,7 @@ ${about}`
 						onText={setDraft}
 						focusSignal={focusSignal}
 						footer={slots.composerFooter}
+						usageRing
 						context={
 							inv.usage
 								? {

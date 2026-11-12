@@ -17,6 +17,8 @@ import {
 	paceWord,
 	percentLeft,
 	share,
+	warnHint,
+	warnWindow,
 	windowLabel,
 } from "./usage-math";
 
@@ -159,5 +161,60 @@ describe("usage-math", () => {
 	it("countOf pluralizes words based on count", () => {
 		expect(countOf(1, "turn")).toBe("1 turn");
 		expect(countOf(3, "turn")).toBe("3 turns");
+	});
+});
+
+describe("the composer's usage warning (#1101)", () => {
+	const NOW = Date.parse("2026-11-12T10:00:00Z");
+	const w = (
+		window: "session" | "weekly",
+		usedPercent: number | null,
+		status: string | null,
+		resetsInMin: number | null,
+	) => ({
+		window,
+		type: window === "session" ? "five_hour" : "seven_day",
+		usedPercent,
+		status,
+		resetsAt:
+			resetsInMin === null
+				? null
+				: new Date(NOW + resetsInMin * 60_000).toISOString(),
+	});
+
+	it("warns on nothing while every window is under 90%", () => {
+		expect(
+			warnWindow([w("session", 89, "allowed", 60), w("weekly", 40, null, 3000)], NOW),
+		).toBeNull();
+	});
+
+	it("warns at 90% and on the agent's own warning below it", () => {
+		const near = w("weekly", 90, null, 3000);
+		expect(warnWindow([w("session", 50, null, 60), near], NOW)).toBe(near);
+		const warned = w("session", 70, "allowed_warning", 60);
+		expect(warnWindow([warned], NOW)).toBe(warned);
+	});
+
+	it("picks a full window over a fuller-looking near one, as the Limited stop does", () => {
+		const full = w("session", 80, "rejected", 60);
+		expect(warnWindow([w("weekly", 99, null, 3000), full], NOW)).toBe(full);
+	});
+
+	it("picks the more used of two near windows", () => {
+		const more = w("weekly", 96, null, 3000);
+		expect(warnWindow([w("session", 91, null, 60), more], NOW)).toBe(more);
+	});
+
+	it("ignores a window whose reset has already passed", () => {
+		expect(warnWindow([w("session", 100, "rejected", -1)], NOW)).toBeNull();
+	});
+
+	it("says the window, the share used and when it resets", () => {
+		const hint = warnHint(w("session", 93.4, null, 74), NOW);
+		expect(hint.startsWith("Session, 5 hours: 93% used, resets ")).toBe(true);
+		expect(hint.endsWith(" (in 1h 14m)")).toBe(true);
+		expect(warnHint(w("weekly", null, "rejected", null), NOW)).toBe(
+			"Weekly: limit reached",
+		);
 	});
 });
