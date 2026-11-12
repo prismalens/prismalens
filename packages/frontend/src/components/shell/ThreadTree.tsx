@@ -51,6 +51,7 @@ import {
 	TONE_TEXT,
 } from "@/lib/thread-status";
 import { readableTitle } from "@/lib/title";
+import { toolTitle } from "@/lib/tool-title";
 import { cn } from "@/lib/utils";
 
 /**
@@ -159,7 +160,7 @@ export function detailLine(
 	if (n.rolled && !own) return n.rolled.line;
 	// An ask row says what is asked and how long ago (#1101 category 8 item 1).
 	if (ask)
-		return `${askSubject(ask.ask) ?? ask.ask.title}, ${waitedFor(ask.ask.openedAt, now)}`;
+		return `${askSubject(ask.ask) ?? toolTitle(ask.ask.title)}, ${waitedFor(ask.ask.openedAt, now)}`;
 	return statusReason(n.thread, n.info, now) ?? rowLine(n.thread);
 }
 
