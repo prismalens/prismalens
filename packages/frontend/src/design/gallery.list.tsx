@@ -263,6 +263,12 @@ const FX: Fx[] = [
 	})),
 ];
 
+const BRANCHES = [
+	"fix/checkout-pool-size",
+	"feat/orders-index-restore-concurrently",
+	"agent/flaky-payments-retry",
+];
+
 function row(f: Fx): ThreadRow {
 	const root = (() => {
 		let at = f;
@@ -295,8 +301,10 @@ function row(f: Fx): ThreadRow {
 		kind: "chat",
 		title: f.title,
 		accessLevel: "supervised",
-		harness: "claude-code",
-		model: null,
+		harness: f.n % 5 === 0 ? "codex" : "claude-code",
+		model: f.n % 5 === 0 ? "gpt-6.1" : "claude-opus-5-5",
+		// Every other thread works on a branch; the running ones also have a change request (#1105).
+		branch: f.n % 2 === 1 ? BRANCHES[f.n % BRANCHES.length] : null,
 		effort: null,
 		startedAt: ago(f.ago + 20),
 		completedAt: null,
@@ -332,7 +340,13 @@ function row(f: Fx): ThreadRow {
 		state: f.state,
 		pinnedAt: f.pinned ? ago(1) : null,
 		archivedAt: null,
-		...(f.pr ? { pr: f.pr } : {}),
+		...(f.pr
+			? { pr: f.pr }
+			: f.state.status === "working"
+				? { pr: { number: 400 + f.n, tone: "failing", count: 2 } }
+				: f.state.status === "limited"
+					? { pr: { number: 400 + f.n, tone: "draft" } }
+					: {}),
 	} as ThreadRow;
 }
 
