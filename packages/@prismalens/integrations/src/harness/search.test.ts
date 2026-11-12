@@ -340,6 +340,6 @@ describe("act tools stay out of search (#1024)", () => {
 			run: async () => ({ value: { done: true } }),
 		});
 		const view = runView([act, read, runsCode], { search: false });
-		expect(autoAllowed(view)).toEqual(["thread_start", "thread_roster"]);
+		expect(autoAllowed(view)).toEqual(["pl_thread_start", "pl_thread_roster"]);
 	});
 });

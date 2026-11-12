@@ -21,6 +21,11 @@ vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
 	useTreeSettings: () => ({ data: undefined }),
 	useUpdateTreeSettings: () => ({ mutate: vi.fn(), isPending: false }),
 }));
+// The Agent group holds the browser switch since e4712e7d8; it reads its own settings.
+vi.mock("@/lib/api/hooks/use-browser-orpc", () => ({
+	useBrowserSettings: () => ({ data: { agentBrowser: true } }),
+	useUpdateBrowserSettings: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock("@/hooks/use-operator", () => ({
 	useOperator: () => ({ managesPairing: true }),
 }));
