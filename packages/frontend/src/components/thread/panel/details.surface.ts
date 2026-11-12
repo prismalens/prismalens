@@ -25,10 +25,13 @@ export const threadDetails = defineSurface({
 			"details.openFolder",
 			"details.openTerminal",
 		],
+		/** The folder button's chevron: the other openers. */
+		more: ["details.openTerminal"],
 	},
 	states: {
-		default: "details-actions",
-		phone: "details-actions",
+		default: "details-full",
+		phone: "details-full",
+		actions: "details-actions",
 		children: "details-children",
 	},
 	marks: ["status", "agent", "branch", "changeRequest", "children"],

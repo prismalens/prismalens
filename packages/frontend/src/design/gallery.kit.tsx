@@ -582,7 +582,10 @@ function Details() {
 					<DetailsCard rows={THREAD_ROWS} density="essential" />
 				</Stage>
 			</div>
-			<div className="grid gap-6 md:grid-cols-3">
+			<div
+				className="grid gap-6 md:grid-cols-3"
+				data-kit-state="details-actions"
+			>
 				{(
 					[
 						["push", "github"],
@@ -595,7 +598,7 @@ function Details() {
 				).map(([a, host]) => (
 					<Stage
 						key={a}
-						id={a === "push" ? "details-actions" : `details-actions-${a}`}
+						id={`details-actions-${a}`}
 						caption={`Primary: ${a}`}
 						className="w-full min-w-0 max-w-[280px]"
 					>

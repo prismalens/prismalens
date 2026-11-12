@@ -2,8 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 import { ChevronDown, FolderOpen } from "lucide-react";
-import { Menu, type MenuEntry } from "@/components/kit/Menu";
-import { entryOf } from "@/components/kit/registry";
+import type { MenuEntry } from "@/components/kit/Menu";
+import { entryOf, surfaceEntries } from "@/components/kit/registry";
+import { SurfaceMore } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -39,9 +40,7 @@ export function DetailsActions({
 }) {
 	const action = primary ? row(entryOf(`details.${primary}`, ctx)) : null;
 	const folder = row(entryOf("details.openFolder", ctx));
-	const others = [row(entryOf("details.openTerminal", ctx))].filter(
-		(e): e is Row => !!e,
-	);
+	const others = surfaceEntries("thread.details", "more", ctx).length > 0;
 	return (
 		<div className="flex h-7 items-center gap-2 px-2">
 			{folder && (
@@ -57,11 +56,11 @@ export function DetailsActions({
 							<FolderOpen aria-hidden className="size-3.5" />
 						</button>
 					</Hint>
-					{others.length > 0 && (
-						<Menu
-							label="Open with"
+					{others && (
+						<SurfaceMore
+							id="thread.details"
+							ctx={ctx}
 							align="start"
-							entries={others}
 							trigger={
 								<button
 									type="button"
