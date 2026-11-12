@@ -123,7 +123,12 @@ import {
 	triggerAt,
 } from "./composer/editor/commands";
 import { chipAttrs, composerExtensions } from "./composer/editor/extensions";
-import { type NewThreadSeed, onQuote, openNewThread } from "./composer/quote";
+import {
+	type NewThreadSeed,
+	onQuote,
+	onReference,
+	openNewThread,
+} from "./composer/quote";
 import { useComposerDraft } from "./composer/use-composer-draft";
 
 /** What the box holds now, for a page that reads it without sending (a handoff). */
@@ -744,6 +749,24 @@ export function Composer({
 				editor.state.doc.content.size - 1,
 			);
 			editor.commands.focus("end");
+		});
+	}, [threadId, editor]);
+	// A pane's "Attach to message" lands here as a reference chip at the end of the text (#1101 category 16).
+	useEffect(() => {
+		if (!threadId || !editor) return;
+		return onReference(threadId, (r) => {
+			let held = false;
+			editor.state.doc.descendants((n) => {
+				const a = n.type.name === "chip" ? chipAttrs(n.attrs) : null;
+				if (a?.chip === "ref" && a.ref.kind === r.kind && a.ref.id === r.id)
+					held = true;
+			});
+			if (held) return;
+			insertChips(
+				editor.view,
+				[{ chip: "ref", ref: r }],
+				editor.state.doc.content.size - 1,
+			);
 		});
 	}, [threadId, editor]);
 	// Initial files a page hands in (a prefilled handoff) become chips once.

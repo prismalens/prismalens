@@ -23,6 +23,8 @@ const UNAVAILABLE: Record<
 	removed: "Workspace removed",
 	"not-a-workspace": "Workspace not found",
 	"commit-gone": "Start commit gone",
+	"no-snapshot": "No snapshot yet",
+	"too-many-links": "Too many linked files",
 };
 
 const STATUS_WORD = {

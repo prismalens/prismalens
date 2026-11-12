@@ -72,8 +72,13 @@ function label(a: ChipAttrs): string {
 			return `/${a.name}`;
 		case "ref":
 			return a.ref.label;
-		case "quote":
-			return a.quote.text.split("\n")[0]?.slice(0, 80) ?? "";
+		case "quote": {
+			const q = a.quote;
+			// A diff line comment reads as where it sits and what it says (#1101 category 16).
+			if (q.source.kind === "diff" && q.comment)
+				return `${(q.source.path ?? "").split(":").pop()}${q.source.line ? `:${q.source.line}` : ""} · ${q.comment}`;
+			return q.text.split("\n")[0]?.slice(0, 80) ?? "";
+		}
 		case "file":
 			return a.pasted
 				? `Pasted text, ${lines(a.pasted)} ${lines(a.pasted) === 1 ? "line" : "lines"}`

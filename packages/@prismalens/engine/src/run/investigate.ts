@@ -233,6 +233,16 @@ export interface RunInvestigationOptions {
 	onHarnessStderr?: (chunk: string) => void;
 	/** A permission the policy allowed without naming its kind; the host logs it at warn. */
 	onPolicyWarning?: (message: string) => void;
+	/**
+	 * Called right before each prompt goes out and after it completes normally, with one id
+	 * for both: the seq the turn's first event takes. The host snapshots the worktree (#1101
+	 * category 16); the start waits at most TURN_HOOK_MS, then `signal` aborts it.
+	 */
+	onTurn?: (
+		phase: "start" | "end",
+		turnId: number,
+		signal: AbortSignal,
+	) => Promise<void>;
 	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
 	onHarnessDrift?: (message: string) => void;
 	/** Each ACP `usage_update` the harness sends; never called for a harness that sends none. */
@@ -652,6 +662,9 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	writeLaunchFiles(plan);
 	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
 }
+
+/** A turn's worktree snapshot waits at most this long before the prompt goes out anyway. */
+const TURN_HOOK_MS = 15_000;
 
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
@@ -1269,6 +1282,29 @@ async function* runSession(
 			}
 			fidelity = { ...fidelity, effort: opts.effort };
 		}
+		const turnHook = async (phase: "start" | "end", turnId: number) => {
+			const hook = opts.onTurn;
+			if (!hook) return;
+			const stop = new AbortController();
+			const timer = setTimeout(() => stop.abort(), TURN_HOOK_MS);
+			try {
+				await Promise.race([
+					Promise.resolve()
+						.then(() => hook(phase, turnId, stop.signal))
+						.catch((e: unknown) =>
+							opts.onPolicyWarning?.(
+								`Turn ${phase} snapshot failed: ${String(e)}`,
+							),
+						),
+					new Promise<void>((r) =>
+						stop.signal.addEventListener("abort", () => r(), { once: true }),
+					),
+				]);
+			} finally {
+				clearTimeout(timer);
+				stop.abort();
+			}
+		};
 		// codex-acp drops the effort after a turn (codex-acp#336), so it is sent again before each later one.
 		let turns = 0;
 		const turn = async function* (
@@ -1280,6 +1316,9 @@ async function* runSession(
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
+			const turnId = adapter.peekSeq();
+			await turnHook("start", turnId);
+			if (opts.signal?.aborted) return { stop: "cancelled" };
 			// A short provider wait is sat out here and the message sent again, up to five tries (#1101).
 			let attempt = 1;
 			let sent = parts;
@@ -1290,6 +1329,8 @@ async function* runSession(
 				if ("stop" in end) {
 					const usage = turnUsage(end.usage, costBefore, lastCost, lastModel);
 					if (usage) yield adapter.turnUsage(usage);
+					// Only a prompt that completed: an unwound or failed one may still be writing.
+					await turnHook("end", turnId);
 					return end;
 				}
 				// Claude Code and Codex answer a provider 401 with ACP's auth-required: with a key set, the key was rejected.
