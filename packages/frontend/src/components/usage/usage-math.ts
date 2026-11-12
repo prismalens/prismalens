@@ -2,10 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
-import type {
-	LimitWindow,
-	UsageTokens,
-	UsageWindow,
+import {
+	type LimitWindow,
+	type UsageTokens,
+	type UsageWindow,
+	usageWindowState,
 } from "@prismalens/contracts";
 
 const HOUR_MS = 3_600_000;
@@ -195,4 +196,50 @@ export function formatResetAt(iso: string): string {
 /** "1 turn", "3 turns". */
 export function countOf(n: number, word: string): string {
 	return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+type Warnable = Pick<
+	UsageWindow,
+	"usedPercent" | "status" | "resetsAt" | "window" | "type"
+>;
+
+/**
+ * The window the composer warns on before a turn: full beats near, then the
+ * most used. The Limited stop's own rule (`usageWindowState`) decides both, and
+ * a window whose reset has passed counts for neither; null when all have room.
+ */
+export function warnWindow<W extends Warnable>(
+	windows: readonly W[],
+	now: number,
+): W | null {
+	let worst: W | null = null;
+	let rank = 0;
+	for (const w of windows) {
+		if (w.resetsAt && Date.parse(w.resetsAt) <= now) continue;
+		const state = usageWindowState(w);
+		const r = state === "full" ? 2 : state === "near" ? 1 : 0;
+		if (
+			r > rank ||
+			(r > 0 && r === rank && (w.usedPercent ?? 0) > (worst?.usedPercent ?? 0))
+		) {
+			worst = w;
+			rank = r;
+		}
+	}
+	return worst;
+}
+
+/** The warning ring's hint: "Weekly: 94% used, resets Thu 17:54 GMT+1 (in 2d 3h)". */
+export function warnHint(w: Warnable, now: number): string {
+	const full = usageWindowState(w) === "full";
+	const used =
+		w.usedPercent === null
+			? full
+				? "limit reached"
+				: "near the limit"
+			: `${Math.round(w.usedPercent)}% used`;
+	const reset = w.resetsAt
+		? `, resets ${formatResetAt(w.resetsAt)} (in ${formatUntil(w.resetsAt, now)})`
+		: "";
+	return `${windowLabel(w)}: ${used}${reset}`;
 }

@@ -7,10 +7,12 @@ import {
 	usageWindowState,
 } from "@prismalens/contracts";
 import { RotateCw } from "lucide-react";
+import { useEffect, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { markLook } from "@/components/kit/marks";
 import { Hint } from "@/components/shared/Hint";
 import { Empty } from "@/components/shared/State";
+import { useUsageLimits } from "@/lib/api/hooks/use-usage-orpc";
 import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import {
@@ -22,6 +24,8 @@ import {
 	paceElapsed,
 	paceWord,
 	percentLeft,
+	warnHint,
+	warnWindow,
 	windowLabel,
 } from "./usage-math";
 
@@ -105,6 +109,84 @@ export function UsageRing({
 	);
 }
 
+/**
+ * The composer footer's warning before a turn (#1101): a small ring, amber at
+ * 90% and red when full, by the same rule as the Limited stop. Nothing while
+ * every window has room, or for an agent that reports none.
+ */
+export function ComposerUsageRing({ agent }: { agent: string | undefined }) {
+	const limits = useUsageLimits(!!agent).data;
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		const t = setInterval(() => setNow(Date.now()), 60_000);
+		return () => clearInterval(t);
+	}, []);
+	const windows = limits?.agents.find((a) => a.agent === agent)?.windows ?? [];
+	const w = warnWindow(windows, now);
+	if (!w) return null;
+	return <UsageWarnRing w={w} now={now} />;
+}
+
+/** The ring itself: used share in the state's tone, the state's icon inside, the reset in its hint. */
+export function UsageWarnRing({
+	w,
+	now,
+}: {
+	w: Pick<
+		UsageWindow,
+		"usedPercent" | "status" | "window" | "type" | "resetsAt"
+	>;
+	now: number;
+}) {
+	const state = usageWindowState(w);
+	const look = markLook("usage", state);
+	const Icon = look.icon;
+	const hint = warnHint(w, now);
+	const used = Math.min(w.usedPercent ?? 100, 100);
+	return (
+		<Hint label={hint} side="top">
+			<span
+				role="img"
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: the hint is the reset time, so a keyboard must reach it.
+				tabIndex={0}
+				aria-label={`${look.label}: ${hint}`}
+				className={cn(
+					"relative inline-flex size-7 shrink-0 items-center justify-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent",
+					look.className,
+				)}
+				data-testid="composer-usage-ring"
+				data-state={state}
+			>
+				<svg viewBox="0 0 20 20" aria-hidden className="absolute size-5">
+					<circle
+						cx="10"
+						cy="10"
+						r="8"
+						fill="none"
+						stroke="currentColor"
+						strokeOpacity="0.2"
+						strokeWidth="2"
+					/>
+					<circle
+						cx="10"
+						cy="10"
+						r="8"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeDasharray={`${(used / 100) * SMALL_C} ${SMALL_C}`}
+						transform="rotate(-90 10 10)"
+					/>
+				</svg>
+				<Icon aria-hidden className="size-2.5 stroke-[2.25]" />
+			</span>
+		</Hint>
+	);
+}
+
+const SMALL_C = 2 * Math.PI * 8;
+
 const STATE_WORD = {
 	room: null,
 	near: "Near the limit",
@@ -155,7 +237,7 @@ function WindowTile({ w, now }: { w: UsageWindow; now: number }) {
 							)}
 							data-testid="usage-window-left"
 						>
-							{amount}
+							{left !== null && state !== "full" && amount}
 						</span>
 					</span>
 					{w.resetsAt && (

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { markLook } from "@/components/kit/marks";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -14,13 +15,6 @@ import {
 	type ConnectionWord as Word,
 } from "@/lib/connection-word";
 import { cn } from "@/lib/utils";
-
-const MARK: Record<Word["state"], string> = {
-	connected: "bg-ok",
-	connecting: "bg-text-3",
-	reconnecting: "bg-warn",
-	unreachable: "bg-danger",
-};
 
 /** The phone header's live connection, read from the app's one change stream. */
 export function ConnectionWord() {
@@ -39,6 +33,8 @@ export function ConnectionWordView({
 	word: Word;
 	defaultOpen?: boolean;
 }) {
+	// Connected is the quiet mark alone; a stale view keeps its word on screen.
+	const look = markLook("connection", word.state);
 	return (
 		<Popover defaultOpen={defaultOpen}>
 			<PopoverTrigger asChild>
@@ -52,11 +48,13 @@ export function ConnectionWordView({
 					data-testid="phone-connection"
 					data-state={word.state}
 				>
-					<span
+					<look.icon
 						aria-hidden
-						className={cn("size-1.5 shrink-0 rounded-full", MARK[word.state])}
+						className={cn("size-3.5 shrink-0 stroke-[1.75]", look.className)}
 					/>
-					<span className="truncate">{word.word}</span>
+					{word.state !== "connected" && (
+						<span className="truncate">{word.word}</span>
+					)}
 				</button>
 			</PopoverTrigger>
 			<PopoverContent align="start" className="flex w-64 flex-col gap-2">
