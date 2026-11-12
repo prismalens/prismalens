@@ -127,11 +127,7 @@ export function NotifyChoicesView({
 						onValueChange={(v) => onChange({ ...prefs, mode: v as NotifyMode })}
 						disabled={saving}
 					>
-						<SelectTrigger
-							aria-labelledby={modeId}
-							className="w-52"
-							data-testid="notify-mode"
-						>
+						<SelectTrigger aria-labelledby={modeId} data-testid="notify-mode">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>

@@ -3,6 +3,7 @@
 
 import { Link, useLocation } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
+import { Help } from "@/components/kit/Help";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -145,16 +146,21 @@ export function SettingsFrame({
 						) : (
 							<>
 								<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-									<div className="min-w-0">
+									{/* The section's intro is opt-in behind one ? beside its title (sheet §0.3). */}
+									<div className="flex min-w-0 items-center gap-1.5">
 										{!services && (
 											<h2 className="text-display" data-testid="settings-title">
 												{title}
 											</h2>
 										)}
-										{intro && (
-											<p className="mt-1 min-w-0 text-body text-text-2">
-												{intro}
-											</p>
+										{typeof intro === "string" && !services ? (
+											<Help about={title} text={intro} />
+										) : (
+											intro && (
+												<p className="mt-1 min-w-0 text-body text-text-2">
+													{intro}
+												</p>
+											)
 										)}
 									</div>
 									{actions && (

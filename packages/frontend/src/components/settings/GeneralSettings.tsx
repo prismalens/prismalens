@@ -58,11 +58,7 @@ function SidebarGroup({
 						value={sidebarRest}
 						onValueChange={(v) => setSidebarRest(v as SidebarRest)}
 					>
-						<SelectTrigger
-							aria-label="Sidebar"
-							className="w-36"
-							data-testid="general-sidebar"
-						>
+						<SelectTrigger aria-label="Sidebar" data-testid="general-sidebar">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
@@ -94,7 +90,6 @@ function ThreadsGroup() {
 					>
 						<SelectTrigger
 							aria-label="Settle quiet threads"
-							className="w-36"
 							data-testid="general-settle-days"
 						>
 							<SelectValue />
@@ -145,7 +140,6 @@ function FilesGroup() {
 					>
 						<SelectTrigger
 							aria-labelledby="general-editor-label"
-							className="w-44"
 							data-testid="general-editor"
 						>
 							<SelectValue />

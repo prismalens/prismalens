@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ReactNode } from "react";
+import { Help } from "@/components/kit/Help";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Row } from "./Row";
@@ -49,20 +50,35 @@ export function SettingRow({
 			Reset
 		</Button>
 	);
+	// A sentence about the setting is opt-in behind one ?; a live state stays on the row (sheet §0.3).
+	const explains = typeof description === "string";
+	const shown = explains ? undefined : description;
 	return (
 		<Row
-			label={label}
+			label={
+				explains ? (
+					<span className="inline-flex min-w-0 items-center gap-1">
+						<span className="min-w-0 truncate">{label}</span>
+						<Help
+							about={typeof label === "string" ? label : "This setting"}
+							text={description}
+						/>
+					</span>
+				) : (
+					label
+				)
+			}
 			meta={
 				locked ? (
 					<>
-						{description}
-						{description && " "}
+						{shown}
+						{shown && " "}
 						<span className="text-text-3" data-testid="host-only">
 							{locked}
 						</span>
 					</>
 				) : (
-					description
+					shown
 				)
 			}
 			trailing={

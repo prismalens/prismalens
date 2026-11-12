@@ -77,7 +77,6 @@ export function AppearanceSettings() {
 						>
 							<SelectTrigger
 								aria-label="Interface font"
-								className="w-44"
 								data-testid="appearance-font"
 							>
 								<SelectValue />

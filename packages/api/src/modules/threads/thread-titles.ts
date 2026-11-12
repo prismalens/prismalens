@@ -89,9 +89,13 @@ export async function renameThread(
 /** The default title length, the bar's "50 characters or fewer" (#1101). */
 const TITLE_LENGTH = 50;
 
-/** The one rule every agent-set or generated title passes: cut at a word, no trailing punctuation. */
+/** The one rule every title source passes: cut at a word, no trailing punctuation, first letter capital. */
 export function finishTitle(raw: string, max: number): string {
-	return cutAtWord(plainTitle(raw), max).replace(/[\s.,;:!?\u2026-]+$/u, "");
+	const title = cutAtWord(plainTitle(raw), max).replace(
+		/[\s.,;:!?\u2026-]+$/u,
+		"",
+	);
+	return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
 /** At most `max` characters, cut at a word; never mid-word unless one word is longer. */
@@ -113,7 +117,7 @@ export function instantTitle(raw: string, max: number): string {
 		bare = bare.replace(LEADING_FILLER, "");
 	}
 	const words = bare || plain;
-	return finishTitle(words.charAt(0).toUpperCase() + words.slice(1), max);
+	return finishTitle(words, max);
 }
 
 /** Greetings and asks that open a message but name nothing; stripped from its front, repeatedly. */

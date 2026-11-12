@@ -89,6 +89,7 @@ describe("agentTitle (#1020)", () => {
 	});
 
 	// Deliberately changed by e1c1235096: agentTitle no longer refuses length; setAgentTitle cuts it.
+	// Commit fa875d08a capitalises the first letter of every title source.
 	it("agentTitle no longer refuses length; setAgentTitle cuts it", async () => {
 		const long = `${"a".repeat(30)} ${"b".repeat(30)} ${"c".repeat(30)}`;
 		expect(agentTitle(long)).toEqual({
@@ -97,7 +98,7 @@ describe("agentTitle (#1020)", () => {
 		const db = prisma();
 		const res = await setAgentTitle(db as never, "run-1", long);
 		expect(res.title.length).toBeLessThanOrEqual(50);
-		expect(res.title).toBe("a".repeat(30));
+		expect(res.title).toBe("A" + "a".repeat(29));
 	});
 });
 
@@ -457,5 +458,20 @@ describe("title precedence, length and filler rules (#1101)", () => {
 		);
 		expect(second.length).toBeLessThanOrEqual(50);
 		expect(second).toBe("The orders export job has been timing out every");
+	});
+
+	it("capitalises the first letter of generated and agent titles while preserving the rest of the case", async () => {
+		expect(
+			generatedTitle("invoice pdf emails stalled after mailer upgrade", 50),
+		).toBe("Invoice pdf emails stalled after mailer upgrade");
+
+		const db = createFakeDb({ id: "run-1", title: "Instant Title", titleSetBy: null });
+		const res = await setAgentTitle(
+			db as never,
+			"run-1",
+			"nightly orders export timeouts on GitHub",
+		);
+		expect(res.title).toBe("Nightly orders export timeouts on GitHub");
+		expect(db.row.title).toBe("Nightly orders export timeouts on GitHub");
 	});
 });
