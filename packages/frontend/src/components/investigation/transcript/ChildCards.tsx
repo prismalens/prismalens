@@ -213,7 +213,9 @@ export function ThreadMessageCard({ event }: { event: Ev<"thread_message"> }) {
 							peerName
 						)}
 					</span>
-					<span className="shrink-0">· {event.peerRole}</span>
+					{peerName !== event.peerRole && (
+						<span className="shrink-0">· {event.peerRole}</span>
+					)}
 					<span className="shrink-0">· {event.type}</span>
 					<span className="ml-auto shrink-0 tabular-nums">
 						{formatClock(event.ts)}
@@ -248,7 +250,7 @@ export function ChildFinishedCard({ event }: { event: Ev<"child_finished"> }) {
 							{node?.title ?? event.role}
 						</ThreadLink>
 					</span>
-					<span className="shrink-0">· {event.role}</span>
+					{node?.title && <span className="shrink-0">· {event.role}</span>}
 					<Status kind={OUTCOME[event.outcome]} className="shrink-0" />
 					<span className="ml-auto shrink-0 tabular-nums">
 						{formatClock(event.ts)}
