@@ -35,6 +35,14 @@ export const FAILURE_CASES = {
 	"provider-drop":
 		"Provider connection dropped mid-turn: retried in place, the turn finishes",
 	"live-stuck": "A stalled turn: Working, quiet for N min",
+	"limit-with-child-reports":
+		"Limit mid-turn after starting three children: stays Limited while their reports arrive, each waiting; Retry now delivers each once, in order",
+};
+
+/** What a judge does for a case beyond firing it. */
+const CASE_NOTES = {
+	"limit-with-child-reports":
+		"If Settings > Agent > Agents start threads is Ask, approve the three starts; the children report 4, 7 and 10 s later.",
 };
 
 function arg(name) {
@@ -45,7 +53,8 @@ function arg(name) {
 async function main() {
 	const install = arg("--install");
 	if (install) {
-		installFakeAgent(install);
+		// With the gateway, so a case's agent can start threads (#1101).
+		installFakeAgent(install, { mcp: true });
 		console.log(
 			`Fake agents written to ${install}. Start PrismaLens with it first on PATH.`,
 		);
@@ -115,6 +124,7 @@ async function main() {
 	console.log(
 		`Fired "${labels.alertname}". Open ${url}/ and the new incident's thread: ${FAILURE_CASES[name]}.`,
 	);
+	if (name in CASE_NOTES) console.log(CASE_NOTES[name]);
 }
 
 main().catch((e) => {

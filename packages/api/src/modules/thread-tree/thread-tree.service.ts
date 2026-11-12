@@ -7,6 +7,7 @@ import {
 	Injectable,
 	type OnApplicationBootstrap,
 	type OnModuleDestroy,
+	Optional,
 } from "@nestjs/common";
 import { ACCESS_LEVELS, type AccessLevel } from "@prismalens/config/harness";
 import {
@@ -35,10 +36,12 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { actionReason, ThreadsService } from "../threads/threads.service.js";
+import { InboxService } from "../wakes/inbox.service.js";
 import { PendingActionsService } from "./pending-actions.service.js";
 import { PutOff } from "./put-off.js";
 import { isDuplicate, TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
+import { treeMessageText } from "./tree-text.js";
 
 const git = promisify(execFile);
 const logger = new Logger({ context: "ThreadTree" });
@@ -186,6 +189,7 @@ export class ThreadTreeService
 		private readonly settings: TreeSettings,
 		private readonly actions: PendingActionsService,
 		private readonly io: TreeIo,
+		@Optional() private readonly inbox?: InboxService,
 	) {
 		actions.register("thread_start", {
 			check: (caller, args) => this.startRefusal(caller, args as StartArgs),
@@ -783,6 +787,17 @@ export class ThreadTreeService
 			text: args.text,
 			mode: args.mode,
 		});
+		await this.inbox?.arrived(to.id, {
+			messageId: message.id,
+			source: "thread",
+			arrivedAt: message.createdAt,
+			from: {
+				id: callerId,
+				name: this.nameOf(self, rootId),
+				link: threadLink(self),
+			},
+			text: args.text,
+		});
 		await this.drain();
 		const now = await this.prisma.threadMessage.findUniqueOrThrow({
 			where: { id: message.id },
@@ -802,17 +817,13 @@ export class ThreadTreeService
 	}
 
 	/** The text an agent receives for a message. */
-	private async formatted(m: {
+	private formatted(m: {
 		fromId: string;
 		rootId: string;
 		type: string;
 		text: string;
 	}): Promise<string> {
-		const members = await this.members(m.rootId);
-		const i = members.findIndex((x) => x.id === m.fromId);
-		const from = members[i];
-		const name = from ? this.nameOf(from, m.rootId) : "thread";
-		return `[FROM ${name} #${i + 1}] ${m.type}: ${m.text}`;
+		return treeMessageText(this.prisma, m);
 	}
 
 	/** Hands every queued message to its receiver; a result reopens a parent that waits on it. */
@@ -884,9 +895,17 @@ export class ThreadTreeService
 
 	private async deliverMessage(m: Queued): Promise<void> {
 		const reopen = m.type === "result" && (await this.wakes(m.toId, m.fromId));
-		const got = await this.io.deliver(m.toId, await this.formatted(m), {
+		const text = await this.formatted(m);
+		// A limit's resume may have carried it since this pass read it.
+		const fresh = await this.prisma.threadMessage.findUnique({
+			where: { id: m.id },
+			select: { state: true },
+		});
+		if (fresh?.state !== "queued") return;
+		const got = await this.io.deliver(m.toId, text, {
 			steer: m.mode === "steer",
 			reopen,
+			messageId: m.id,
 		});
 		if (reopen && got.state === "later") await this.refusedReopen(m);
 		if (got.state !== "delivered") {
@@ -894,8 +913,8 @@ export class ThreadTreeService
 			return;
 		}
 		this.reopenTries.delete(m.id);
-		await this.prisma.threadMessage.update({
-			where: { id: m.id },
+		await this.prisma.threadMessage.updateMany({
+			where: { id: m.id, state: "queued" },
 			data: { state: "delivered", deliveredAt: new Date() },
 		});
 		if (reopen)
@@ -984,8 +1003,9 @@ export class ThreadTreeService
 				(await this.finalText(child.id)) ?? child.summary ?? "",
 			);
 			const link = threadLink(child);
+			let result: { id: string; createdAt: Date; text: string };
 			try {
-				await this.prisma.threadMessage.create({
+				result = await this.prisma.threadMessage.create({
 					data: {
 						rootId,
 						fromId: child.id,
@@ -1006,6 +1026,13 @@ export class ThreadTreeService
 				role: child.role ?? "thread",
 				outcome,
 				excerpt,
+			});
+			await this.inbox?.arrived(parentId, {
+				messageId: result.id,
+				source: "child",
+				arrivedAt: result.createdAt,
+				from: { id: child.id, name: this.nameOf(child, rootId), link },
+				text: result.text,
 			});
 		}
 		this.sweptTo = now;

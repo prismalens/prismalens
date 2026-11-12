@@ -229,6 +229,10 @@ function run() {
 				(_, name) => process.env[name] ?? "",
 			)
 			.replaceAll("{{cwd}}", cwd)
+			.replaceAll(
+				"{{delay-ms}}",
+				[...prompt.matchAll(/delay-ms:(\d+)/g)].at(-1)?.[1] ?? "0",
+			)
 			.replaceAll("{{prompt}}", prompt)
 			.replaceAll("{{result}}", lastResult)
 			.replaceAll(
@@ -288,7 +292,8 @@ function run() {
 	 */
 	async function play(sessionId, steps, prompt) {
 		for (const step of steps) {
-			if (step.delayMs) await sleep(step.delayMs);
+			// A string delay is filled from the prompt, so one session can finish at different times.
+			if (step.delayMs) await sleep(Number(fill(String(step.delayMs), prompt)));
 			// claude-agent-acp's stamp on a helper's traffic when no sub-agent sessions are declared (#1025).
 			const meta = step.parent
 				? { _meta: { claudeCode: { parentToolUseId: step.parent } } }

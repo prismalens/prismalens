@@ -1278,12 +1278,21 @@ async function* runSession(
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
 			// A short provider wait is sat out here and the message sent again, up to five tries (#1101).
 			let attempt = 1;
+			let retried: "rate_limited" | "overloaded" | undefined;
 			let sent = parts;
 			for (;;) {
 				// A reopened session's first cumulative cost holds earlier turns: unknown, so no cost.
 				const costBefore = lastCost ?? (opts.resume ? null : undefined);
 				const end = yield* consume(session.prompt(sent));
 				if ("stop" in end) {
+					if (attempt > 1 && retried)
+						yield adapter.providerRetry(
+							retried,
+							attempt,
+							PROVIDER_RETRY_ATTEMPTS,
+							opts.now?.() ?? new Date(),
+							"succeeded",
+						);
 					const usage = turnUsage(end.usage, costBefore, lastCost, lastModel);
 					if (usage) yield adapter.turnUsage(usage);
 					return end;
@@ -1297,8 +1306,9 @@ async function* runSession(
 				if (opts.signal?.aborted || !retriesInTurn(failure, next))
 					return { ...end, failure };
 				const wait = retryDelayMs(failure, next);
+				retried = failure.mode as "rate_limited" | "overloaded";
 				yield adapter.providerRetry(
-					failure.mode as "rate_limited" | "overloaded",
+					retried,
 					next,
 					PROVIDER_RETRY_ATTEMPTS,
 					new Date((opts.now?.() ?? new Date()).getTime() + wait),
