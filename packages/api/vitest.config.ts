@@ -68,6 +68,8 @@ export default defineConfig({
 			],
 			thresholds: {
 				...PACKAGE_FLOOR,
+				// #1101 categories 17-18: the Usage view and keyboard remaps
+				"src/modules/usage/**": NEW_CODE_THRESHOLD,
 				// #1101 categories 12-14: the thread window, find and the resumable stream
 				"src/modules/investigations/thread-window/**": NEW_CODE_THRESHOLD,
 				// #1024 surface F: PR status, cron and the thread lifecycle
