@@ -356,10 +356,14 @@ export function ThreadPage({ id }: { id: string }) {
 	const [retrying, setRetrying] = useState(false);
 	const retry = useCallback(() => {
 		setRetrying(true);
-		void sendMessage(RETRY_NOTE, "queue", { kind: "chat" }).finally(() =>
-			setRetrying(false),
-		);
-	}, [sendMessage]);
+		const env = {
+			text: RETRY_NOTE,
+			attachments: [],
+			quotes: [],
+			references: [],
+		};
+		void onSend(env, false).finally(() => setRetrying(false));
+	}, [onSend]);
 	const threadPath = `/threads/${id}`;
 	const links = useMemo(
 		() => ({
@@ -528,6 +532,10 @@ export function ThreadPage({ id }: { id: string }) {
 				cwd={workspace?.cwd}
 			/>
 		) : null;
+	const blocked =
+		run.ended && !run.resumable && state !== "interrupted"
+			? (run.resumeBlockedReason ?? "Can't continue")
+			: null;
 	// A failed turn says so once, in its dock: the transcript drops its own end line.
 	const failedTurn =
 		!run.isActive && inv.status === "failed" && !!inv.error && !inv.endReason;
@@ -544,7 +552,7 @@ export function ThreadPage({ id }: { id: string }) {
 				harness?.loginHint,
 				lastProse?.kind === "prose" ? lastProse.text : null,
 			)}
-			onRetry={run.resumable ? retry : undefined}
+			onRetry={blocked ? undefined : retry}
 			pending={retrying}
 		/>
 	);
@@ -556,10 +564,6 @@ export function ThreadPage({ id }: { id: string }) {
 				{failedDock}
 			</>
 		) : null;
-	const blocked =
-		run.ended && !run.resumable && state !== "interrupted"
-			? (run.resumeBlockedReason ?? "Can't continue")
-			: null;
 	const project = repo.data?.fullName ?? service.data?.name ?? null;
 	const viewedSubagent = subagents.find((s) => s.sessionId === subagentId);
 
