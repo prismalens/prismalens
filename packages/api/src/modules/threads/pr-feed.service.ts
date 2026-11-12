@@ -35,7 +35,11 @@ import {
 	recorded,
 } from "./pr-feed.js";
 import { type EtagCache, HostReadError } from "./pr-hosts.js";
-import { hostDown, PullRequestsService } from "./pull-requests.service.js";
+import {
+	hostDown,
+	PullRequestsService,
+	pullRequestView,
+} from "./pull-requests.service.js";
 import { isSettled } from "./settled.js";
 import { readThreadContextSettings } from "./thread-context-settings.js";
 import { recordWatchEvent } from "./thread-watches.service.js";
@@ -309,11 +313,11 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 		read: { title: string | null; headSha: string | null },
 		now: Date,
 	): Promise<void> {
-		const pr = await this.prisma.pullRequest.findUnique({
+		const row = await this.prisma.pullRequest.findUnique({
 			where: { id: f.prId },
-			select: { number: true, repo: true },
 		});
-		if (!pr) return;
+		if (!row) return;
+		const pr = pullRequestView(row);
 		const label = `${pr.repo}#${pr.number}`;
 		const active = f.investigation.lastActivityAt ?? f.investigation.updatedAt;
 		const until = new Date(
@@ -325,6 +329,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				kind: "pr_status",
 				prId: f.prId,
 				pr: label,
+				tone: pr.tone,
 				lines: [`Stopped watching PR #${pr.number}: thread idle 7 days`],
 				phase: "ended",
 			});
@@ -379,6 +384,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				kind: "pr_status",
 				prId: f.prId,
 				pr: label,
+				tone: pr.tone,
 				lines: texts,
 				phase: "ended",
 			});
@@ -406,6 +412,7 @@ export class PrFeedService implements OnModuleInit, OnModuleDestroy {
 				kind: "pr_status",
 				prId: f.prId,
 				pr: label,
+				tone: pr.tone,
 				lines: texts,
 				phase: "noted",
 			});

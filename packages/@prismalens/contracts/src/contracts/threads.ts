@@ -12,6 +12,8 @@ import {
 	GetAttachmentSchema,
 	InvestigationRefusalSchema,
 	LinkPullRequestSchema,
+	PrCheckLogInputSchema,
+	PrCheckLogSchema,
 	PullRequestSchema,
 	RenameThreadSchema,
 	ResolvedLinksSchema,
@@ -300,6 +302,20 @@ export const threadsContract = {
 		})
 		.input(WatchPullRequestSchema)
 		.output(PullRequestSchema),
+
+	/**
+	 * One check's log tail, read from the host once per head commit (#1101 category 15)
+	 * GET /threads/:id/pull-requests/:prId/checks/:runId/log
+	 */
+	prCheckLog: oc
+		.route({
+			method: "GET",
+			path: "/threads/{id}/pull-requests/{prId}/checks/{runId}/log",
+			summary: "Read a pull request check's log tail",
+			tags: ["threads"],
+		})
+		.input(PrCheckLogInputSchema)
+		.output(PrCheckLogSchema),
 
 	/**
 	 * The thread's cron jobs, for its Scheduled section (#1024 surface F)

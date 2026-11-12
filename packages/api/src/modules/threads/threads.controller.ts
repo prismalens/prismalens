@@ -94,6 +94,11 @@ export class ThreadsController {
 				},
 			),
 
+			// GET /threads/:id/pull-requests/:prId/checks/:runId/log - Read once per head commit
+			prCheckLog: implement(threadsContract.prCheckLog).handler(({ input }) =>
+				this.pullRequests.checkLog(input.id, input.prId, input.runId),
+			),
+
 			// GET /threads/:id/cron - The thread's Scheduled section
 			cron: implement(threadsContract.cron).handler(async ({ input }) => ({
 				jobs: await this.cronJobs.list(input.id),

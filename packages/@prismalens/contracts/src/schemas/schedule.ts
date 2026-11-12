@@ -55,6 +55,13 @@ export const TickRunSchema = z.object({
 	completedAt: DateStringSchema.nullable(),
 	incidentId: z.string().nullable(),
 	incidentNumber: z.number().int().nullable(),
+	/** The run's thread finished after it was last opened (#1101 category 22). */
+	unseen: z.boolean().optional(),
+	/** It waits on its agent's usage limit; `resetsAt` null when the agent gave no time. */
+	limit: z
+		.object({ resetsAt: DateStringSchema.nullable() })
+		.nullable()
+		.optional(),
 });
 
 export const ScheduleTickSchema = z.object({
@@ -131,6 +138,8 @@ export const ScheduleSchema = ScheduleInputSchema.extend({
 	lastTick: ScheduleTickSchema.nullable(),
 	/** The run still going, if any; a tick due meanwhile is skipped. */
 	liveRunId: z.string().nullable(),
+	/** Its recent runs whose threads finished unopened (#1101 category 22). */
+	unreadRuns: z.number().int().nonnegative().optional(),
 	revision: z.number().int(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,

@@ -115,11 +115,66 @@ export type PrCheckRun = z.infer<typeof PrCheckRunSchema>;
 /** Check runs kept per PR; the summary counts still cover all of them. */
 export const PR_CHECK_RUNS_MAX = 50;
 
+/** Whether the host would merge it now, beyond conflicts (#1101 category 15). */
+export const PR_MERGE_STATES = [
+	"clean",
+	"blocked",
+	"behind",
+	"conflicts",
+	"unstable",
+	"draft",
+	"unknown",
+] as const;
+export const PrMergeStateSchema = z.enum(PR_MERGE_STATES);
+export type PrMergeState = z.infer<typeof PrMergeStateSchema>;
+
+/** One review conversation anchored to a line (#1101 category 15). */
+export const PrReviewThreadSchema = z.object({
+	id: z.string().max(200),
+	path: z.string().max(1000),
+	/** null on a thread whose line the newer commits removed. */
+	line: z.number().int().positive().nullable(),
+	author: z.string().max(200),
+	resolved: z.boolean(),
+	/** The diff moved on since the comment. */
+	outdated: z.boolean(),
+	excerpt: z.string().max(600),
+	replies: z.number().int().nonnegative(),
+	url: z.string().url().max(2000).optional(),
+});
+export type PrReviewThread = z.infer<typeof PrReviewThreadSchema>;
+export const PR_REVIEW_THREADS_MAX = 50;
+
+/** A check's log tail, read when asked and kept per head commit (#1101 category 15). */
+export const PrCheckLogSchema = z.object({
+	runId: z.string().max(100),
+	headSha: z.string().max(64).nullable(),
+	/** The step that failed, when the host names steps. */
+	step: z.string().max(300).nullable(),
+	lines: z.array(z.string().max(400)).max(60),
+	/** Why there is no tail, in plain words; null when `lines` holds it. */
+	unavailable: z.string().max(300).nullable(),
+	fetchedAt: z.string().datetime(),
+});
+export type PrCheckLog = z.infer<typeof PrCheckLogSchema>;
+export const PR_CHECK_LOGS_MAX = 10;
+
 /** Who and what the host shows beside a PR, stored as one JSON column. */
 export const PrDetailSchema = z.object({
 	author: PrPersonSchema.optional(),
 	reviewers: z.array(PrReviewerSchema).max(50).optional(),
 	checkRuns: z.array(PrCheckRunSchema).max(PR_CHECK_RUNS_MAX).optional(),
+	/** The branch pair: the PR's head merges into its base. */
+	headRef: z.string().max(300).optional(),
+	baseRef: z.string().max(300).optional(),
+	mergeState: PrMergeStateSchema.optional(),
+	reviewThreads: z
+		.array(PrReviewThreadSchema)
+		.max(PR_REVIEW_THREADS_MAX)
+		.optional(),
+	/** Why review threads could not be read; absent when they were. */
+	reviewThreadsNote: z.string().max(300).optional(),
+	checkLogs: z.array(PrCheckLogSchema).max(PR_CHECK_LOGS_MAX).optional(),
 });
 export type PrDetail = z.infer<typeof PrDetailSchema>;
 
@@ -237,6 +292,11 @@ export const UnlinkPullRequestSchema = z.object({
 
 /** Watch or Stop watching one of the thread's PRs. */
 export const WatchPullRequestSchema = UnlinkPullRequestSchema;
+
+/** One check's log tail on one of the thread's PRs. */
+export const PrCheckLogInputSchema = UnlinkPullRequestSchema.extend({
+	runId: z.string().min(1).max(100),
+});
 
 /** The feed row's glyph: number and tone only (#1024 decision 9). */
 export const ThreadRowPrSchema = z.object({

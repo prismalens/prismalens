@@ -7,9 +7,14 @@ import { Lock, Plus } from "lucide-react";
 import { useState } from "react";
 import { HostOnlyNote } from "@/components/schedules/HostOnlyNote";
 import { ScheduleDialog } from "@/components/schedules/ScheduleDialog";
+import { ScheduleTemplates } from "@/components/schedules/schedule-templates";
 import { clock, whenText } from "@/components/schedules/schedule-time";
 import { TickDot } from "@/components/schedules/TickDot";
-import { aboutText, tickLine } from "@/components/schedules/tick-copy";
+import {
+	aboutText,
+	limitLine,
+	tickLine,
+} from "@/components/schedules/tick-copy";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { HelperThread } from "@/components/thread/HelperThread";
 import { Button } from "@/components/ui/button";
@@ -74,6 +79,7 @@ export function SchedulesSection() {
 								: "No schedules yet."
 						}
 					/>
+					<ScheduleTemplates />
 					<HelperThread place="schedules" />
 				</>
 			) : (
@@ -100,6 +106,7 @@ export function SchedulesSection() {
 					</div>
 				)
 			)}
+			{data && data.schedules.length > 0 && <ScheduleTemplates />}
 			{data && data.builtIns.length > 0 && (
 				<section>
 					<h2 className="mb-1.5 ml-1 text-heading text-text-2">
@@ -116,7 +123,7 @@ export function SchedulesSection() {
 	);
 }
 
-function ScheduleRow({
+export function ScheduleRow({
 	schedule: s,
 	canEdit,
 }: {
@@ -125,7 +132,15 @@ function ScheduleRow({
 }) {
 	const toggle = useSetScheduleEnabled();
 	const { toast } = useToast();
-	const last = s.lastTick ? tickLine(s.lastTick, clock) : null;
+	const limited = s.lastTick?.run?.limit
+		? limitLine(s.lastTick.run.limit.resetsAt, clock)
+		: null;
+	const last = limited
+		? { tone: "warn" as const, text: limited }
+		: s.lastTick
+			? tickLine(s.lastTick, clock)
+			: null;
+	const unread = s.unreadRuns ?? 0;
 	return (
 		<div
 			className={cn(ROW, "relative bg-surface-2 hover:bg-surface-3")}
@@ -141,7 +156,14 @@ function ScheduleRow({
 				>
 					{s.name}
 				</div>
-				<div className="truncate text-meta text-text-3">{aboutText(s)}</div>
+				<div className="truncate text-meta text-text-3">
+					{unread > 0 && (
+						<span className="text-accent" data-testid="schedule-unread">
+							{unread} unread ·{" "}
+						</span>
+					)}
+					{aboutText(s)}
+				</div>
 			</Link>
 			<span className={cn(CELL, "text-text-2")}>{s.description}</span>
 			<span className={cn(CELL, "text-text-3")}>
@@ -154,7 +176,12 @@ function ScheduleRow({
 					<>
 						<TickDot tone={last.tone} />
 						<span
-							className={cn("truncate", last.tone === "bad" && "text-danger")}
+							className={cn(
+								"truncate",
+								last.tone === "bad" && "text-danger",
+								last.tone === "warn" && "text-warn",
+							)}
+							data-testid="schedule-last"
 						>
 							{last.text}
 						</span>
