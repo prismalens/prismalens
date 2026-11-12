@@ -17,6 +17,8 @@ export function ListCard({
 	status,
 	statusWord,
 	meta,
+	detail,
+	footer,
 	icon,
 	link,
 	onOpen,
@@ -29,6 +31,10 @@ export function ListCard({
 	/** Overrides the status's own word, e.g. "Usage limit" for limited. */
 	statusWord?: string;
 	meta?: ReactNode;
+	/** Up to two lines under the meta: an answer excerpt or a cause in words. */
+	detail?: ReactNode;
+	/** Controls under the card (an inline ask); they sit above the card's own target. */
+	footer?: ReactNode;
 	/** A type mark before the title when the grid mixes kinds. */
 	icon?: ReactNode;
 	/** Wraps the title in the route's `<Link>`; the whole card follows it. */
@@ -57,7 +63,7 @@ export function ListCard({
 			className={cn(
 				"group/card relative flex min-w-0 flex-col gap-1 rounded-surface bg-surface-1 px-3 py-2.5 transition-colors duration-(--dur-instant) hover:bg-surface-2",
 				selected && "bg-surface-3 hover:bg-surface-3",
-				"[&_a]:min-h-0! [&_a]:min-w-0 [&_a]:truncate [&_a]:outline-none [&_a]:after:absolute [&_a]:after:inset-0 [&_a]:after:rounded-surface [&_a:focus-visible]:after:ring-2 [&_a:focus-visible]:after:ring-accent",
+				"[&_[data-card-title]_a]:min-h-0! [&_[data-card-title]_a]:min-w-0 [&_[data-card-title]_a]:truncate [&_[data-card-title]_a]:outline-none [&_[data-card-title]_a]:after:absolute [&_[data-card-title]_a]:after:inset-0 [&_[data-card-title]_a]:after:rounded-surface [&_[data-card-title]_a:focus-visible]:after:ring-2 [&_[data-card-title]_a:focus-visible]:after:ring-accent",
 			)}
 			data-testid={testId}
 		>
@@ -67,7 +73,10 @@ export function ListCard({
 						{icon}
 					</span>
 				)}
-				<span className="flex min-w-0 text-body font-medium text-text-1">
+				<span
+					className="flex min-w-0 text-body font-medium text-text-1"
+					data-card-title
+				>
 					{opener}
 				</span>
 			</div>
@@ -84,6 +93,12 @@ export function ListCard({
 					{meta && <span className="min-w-0 truncate">{meta}</span>}
 				</div>
 			)}
+			{detail && (
+				<p className="line-clamp-2 text-meta text-text-2" data-card-detail>
+					{detail}
+				</p>
+			)}
+			{footer && <div className="relative z-10 pt-1">{footer}</div>}
 			{menu && (
 				<div
 					className={cn(
@@ -131,7 +146,7 @@ export function ListGrid({
 	return (
 		<ul
 			aria-label={label}
-			className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2"
+			className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-start gap-2"
 			data-testid={testId}
 		>
 			{children}
